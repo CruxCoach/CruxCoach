@@ -1,0 +1,602 @@
+[
+  {
+    "name_de": "Max Hangs 20mm",
+    "name_en": "Max Hangs 20mm",
+    "category": "HANGBOARD",
+    "equipment_needed": ["HANGBOARD"],
+    "muscle_groups": ["finger", "forearm"],
+    "description_de": "7-Sekunden maximaler Hang an der 20mm-Leiste. Vollständig ausgestreckter Arm, offene Schultern. Zwischen den Sets 3 Minuten Pause.",
+    "difficulty_level": 2,
+    "contraindications": ["finger", "pulley"]
+  },
+  {
+    "name_de": "Max Hangs 15mm",
+    "name_en": "Max Hangs 15mm",
+    "category": "HANGBOARD",
+    "equipment_needed": ["HANGBOARD"],
+    "muscle_groups": ["finger", "forearm"],
+    "description_de": "7-Sekunden maximaler Hang an der 15mm-Leiste. Nur für Fortgeschrittene mit solider Sehnengesundheit. Langsam steigern.",
+    "difficulty_level": 4,
+    "contraindications": ["finger", "pulley"]
+  },
+  {
+    "name_de": "Repeaters 20mm",
+    "name_en": "Repeaters 20mm",
+    "category": "HANGBOARD",
+    "equipment_needed": ["HANGBOARD"],
+    "muscle_groups": ["finger", "forearm", "endurance"],
+    "description_de": "7 Sek hängen, 3 Sek Pause, 6 Wiederholungen pro Set. Trainiert Kraftausdauer der Finger. Weniger Gewicht als bei Max Hangs.",
+    "difficulty_level": 2,
+    "contraindications": ["finger", "pulley"]
+  },
+  {
+    "name_de": "Repeaters 15mm",
+    "name_en": "Repeaters 15mm",
+    "category": "HANGBOARD",
+    "equipment_needed": ["HANGBOARD"],
+    "muscle_groups": ["finger", "forearm", "endurance"],
+    "description_de": "7 Sek hängen, 3 Sek Pause an der 15mm-Leiste. Fortgeschrittene Variante der Repeaters. Sehnenbelastung beachten.",
+    "difficulty_level": 4,
+    "contraindications": ["finger", "pulley"]
+  },
+  {
+    "name_de": "Min Edge Training",
+    "name_en": "Minimum Edge Training",
+    "category": "HANGBOARD",
+    "equipment_needed": ["HANGBOARD"],
+    "muscle_groups": ["finger", "forearm"],
+    "description_de": "Finde die kleinste Leiste, an der du 7 Sek hängen kannst. Kein Zusatzgewicht – die Leistenbreite ist der Widerstand.",
+    "difficulty_level": 3,
+    "contraindications": ["finger", "pulley"]
+  },
+  {
+    "name_de": "Einarmige Hangs",
+    "name_en": "One-Arm Hangs",
+    "category": "HANGBOARD",
+    "equipment_needed": ["HANGBOARD"],
+    "muscle_groups": ["finger", "forearm", "shoulder"],
+    "description_de": "Einarmiger Hang an der 20mm-Leiste. Assistenz mit Seilzug oder Band erlaubt. Nur für Elite-Kletterer ohne Verletzungshistorie.",
+    "difficulty_level": 5,
+    "contraindications": ["finger", "pulley", "shoulder"]
+  },
+  {
+    "name_de": "Offset Hangs",
+    "name_en": "Offset Hangs",
+    "category": "HANGBOARD",
+    "equipment_needed": ["HANGBOARD"],
+    "muscle_groups": ["finger", "forearm"],
+    "description_de": "Eine Hand höher, eine tiefer – die tiefere Hand trägt mehr Last. Übergang zwischen beidarmig und einarmig.",
+    "difficulty_level": 4,
+    "contraindications": ["finger", "pulley"]
+  },
+  {
+    "name_de": "Half-Crimp Hangs",
+    "name_en": "Half-Crimp Hangs",
+    "category": "HANGBOARD",
+    "equipment_needed": ["HANGBOARD"],
+    "muscle_groups": ["finger", "forearm"],
+    "description_de": "Hängen in der Half-Crimp-Position (90° Fingergelenke, Daumen nicht aufgesetzt). Wichtig für crimpy Routen.",
+    "difficulty_level": 3,
+    "contraindications": ["finger", "pulley"]
+  },
+  {
+    "name_de": "Klimmzüge mit Zusatzgewicht",
+    "name_en": "Weighted Pullups",
+    "category": "PULL",
+    "equipment_needed": ["PULL_UP_BAR", "WEIGHTS"],
+    "muscle_groups": ["upper_body_pull", "lat", "bicep"],
+    "description_de": "Klimmzüge mit Gewichtsgurt. Voller Bewegungsumfang: von gestreckten Armen bis Kinn über Stange. 3-5 Wiederholungen pro Set.",
+    "difficulty_level": 3,
+    "contraindications": ["shoulder", "elbow"]
+  },
+  {
+    "name_de": "Klimmzüge",
+    "name_en": "Pullups",
+    "category": "PULL",
+    "equipment_needed": ["PULL_UP_BAR"],
+    "muscle_groups": ["upper_body_pull", "lat", "bicep"],
+    "description_de": "Standard-Klimmzüge mit vollem Bewegungsumfang. Kontrolliert hoch und runter, keine Kipping-Bewegung.",
+    "difficulty_level": 1,
+    "contraindications": ["shoulder"]
+  },
+  {
+    "name_de": "Frenchies",
+    "name_en": "Frenchies",
+    "category": "PULL",
+    "equipment_needed": ["PULL_UP_BAR"],
+    "muscle_groups": ["upper_body_pull", "bicep", "lock_off"],
+    "description_de": "Klimmzug + Lock-Off oben (5 Sek), Klimmzug + Lock-Off 90° (5 Sek), Klimmzug + Lock-Off 120° (5 Sek). Das ist 1 Rep.",
+    "difficulty_level": 3,
+    "contraindications": ["shoulder", "elbow"]
+  },
+  {
+    "name_de": "Lock-Offs",
+    "name_en": "Lock-Offs",
+    "category": "PULL",
+    "equipment_needed": ["PULL_UP_BAR"],
+    "muscle_groups": ["upper_body_pull", "bicep", "lock_off"],
+    "description_de": "Hochziehen und in verschiedenen Winkeln (90°, 120°, oben) jeweils 5-10 Sekunden halten. Baut isometrische Zugkraft auf.",
+    "difficulty_level": 3,
+    "contraindications": ["elbow"]
+  },
+  {
+    "name_de": "Typewriter-Klimmzüge",
+    "name_en": "Typewriter Pullups",
+    "category": "PULL",
+    "equipment_needed": ["PULL_UP_BAR"],
+    "muscle_groups": ["upper_body_pull", "lat", "core"],
+    "description_de": "Oben halten und seitlich von Hand zu Hand bewegen, wie eine Schreibmaschine. Extrem lat-intensiv.",
+    "difficulty_level": 4,
+    "contraindications": ["shoulder"]
+  },
+  {
+    "name_de": "Einarmige Negative",
+    "name_en": "One-Arm Negatives",
+    "category": "PULL",
+    "equipment_needed": ["PULL_UP_BAR"],
+    "muscle_groups": ["upper_body_pull", "lat", "bicep"],
+    "description_de": "Mit beiden Armen hochziehen, dann langsam (5-8 Sek) mit einem Arm ablassen. Alternierend links/rechts.",
+    "difficulty_level": 4,
+    "contraindications": ["shoulder", "elbow"]
+  },
+  {
+    "name_de": "Rudern (Bodyweight Rows)",
+    "name_en": "Bodyweight Rows",
+    "category": "PULL",
+    "equipment_needed": ["RINGS"],
+    "muscle_groups": ["upper_body_pull", "rhomboid", "rear_delt"],
+    "description_de": "An Ringen oder niedriger Stange horizontal rudern. Füße am Boden, Körper gerade. Schulterblätter aktiv zusammenziehen.",
+    "difficulty_level": 1,
+    "contraindications": []
+  },
+  {
+    "name_de": "Breite Klimmzüge",
+    "name_en": "Wide Pullups",
+    "category": "PULL",
+    "equipment_needed": ["PULL_UP_BAR"],
+    "muscle_groups": ["upper_body_pull", "lat"],
+    "description_de": "Klimmzüge mit breiterem Griff als schulterbreit. Betont den Latissimus stärker als enge Klimmzüge.",
+    "difficulty_level": 2,
+    "contraindications": ["shoulder"]
+  },
+  {
+    "name_de": "Liegestütze",
+    "name_en": "Push-Ups",
+    "category": "PUSH",
+    "equipment_needed": [],
+    "muscle_groups": ["chest", "tricep", "shoulder"],
+    "description_de": "Standard-Liegestütze mit korrekter Körperspannung. Ellenbogen 45° vom Körper. Voller Bewegungsumfang bis Brust fast Boden berührt.",
+    "difficulty_level": 1,
+    "contraindications": []
+  },
+  {
+    "name_de": "Dips",
+    "name_en": "Dips",
+    "category": "PUSH",
+    "equipment_needed": [],
+    "muscle_groups": ["chest", "tricep", "shoulder"],
+    "description_de": "An Parallelbarren oder stabilen Stühlen. Tief runter (90° Ellenbogen) und explosiv drücken. Oberkörper leicht nach vorne.",
+    "difficulty_level": 2,
+    "contraindications": ["shoulder"]
+  },
+  {
+    "name_de": "Schulterdrücken",
+    "name_en": "Overhead Press",
+    "category": "PUSH",
+    "equipment_needed": ["WEIGHTS"],
+    "muscle_groups": ["shoulder", "tricep"],
+    "description_de": "Kurzhanteln oder Kettlebell über Kopf drücken. Stehend für mehr Core-Beteiligung. Kontrollierte Bewegung.",
+    "difficulty_level": 2,
+    "contraindications": ["shoulder"]
+  },
+  {
+    "name_de": "Diamant-Liegestütze",
+    "name_en": "Diamond Push-Ups",
+    "category": "PUSH",
+    "equipment_needed": [],
+    "muscle_groups": ["tricep", "chest"],
+    "description_de": "Liegestütze mit Händen eng zusammen (Daumen und Zeigefinger bilden Diamant). Fokus auf Trizeps.",
+    "difficulty_level": 2,
+    "contraindications": ["elbow"]
+  },
+  {
+    "name_de": "Pike Push-Ups",
+    "name_en": "Pike Push-Ups",
+    "category": "PUSH",
+    "equipment_needed": [],
+    "muscle_groups": ["shoulder", "tricep"],
+    "description_de": "V-Position: Hüfte hoch, Hände und Füße nah zusammen. Kopf Richtung Boden senken. Vorstufe zum Handstand-Drücken.",
+    "difficulty_level": 2,
+    "contraindications": ["shoulder"]
+  },
+  {
+    "name_de": "Front Lever Progression",
+    "name_en": "Front Lever Progression",
+    "category": "CORE",
+    "equipment_needed": ["PULL_UP_BAR"],
+    "muscle_groups": ["core", "lat", "hip_flexor"],
+    "description_de": "Tuck → Advanced Tuck → One Leg → Straddle → Full. An der Stange hängend, Körper horizontal halten. Progressiv steigern.",
+    "difficulty_level": 4,
+    "contraindications": ["shoulder"]
+  },
+  {
+    "name_de": "Front Plank",
+    "name_en": "Front Plank",
+    "category": "CORE",
+    "equipment_needed": [],
+    "muscle_groups": ["core", "shoulder"],
+    "description_de": "Unterarmstütz mit geradem Körper. Becken nicht durchhängen lassen, Bauch aktiv anspannen. Atmen nicht vergessen.",
+    "difficulty_level": 1,
+    "contraindications": []
+  },
+  {
+    "name_de": "Seitstütz",
+    "name_en": "Side Plank",
+    "category": "CORE",
+    "equipment_needed": [],
+    "muscle_groups": ["core", "oblique"],
+    "description_de": "Seitlicher Unterarmstütz. Hüfte hoch, Körper gerade. Beide Seiten trainieren. Für mehr Schwierigkeit: oberes Bein heben.",
+    "difficulty_level": 1,
+    "contraindications": []
+  },
+  {
+    "name_de": "Hängendes Beinheben",
+    "name_en": "Hanging Leg Raises",
+    "category": "CORE",
+    "equipment_needed": ["PULL_UP_BAR"],
+    "muscle_groups": ["core", "hip_flexor"],
+    "description_de": "An der Stange hängen und gestreckte Beine bis horizontal (oder höher) anheben. Kein Schwung! Kontrolliert ablassen.",
+    "difficulty_level": 3,
+    "contraindications": ["shoulder"]
+  },
+  {
+    "name_de": "Toes to Bar",
+    "name_en": "Toes to Bar",
+    "category": "CORE",
+    "equipment_needed": ["PULL_UP_BAR"],
+    "muscle_groups": ["core", "hip_flexor", "grip"],
+    "description_de": "An der Stange hängen und Fußspitzen zur Stange bringen. Fortgeschrittene Variante des Beinhebens. Erfordert guten Grip.",
+    "difficulty_level": 4,
+    "contraindications": ["shoulder"]
+  },
+  {
+    "name_de": "Ab Wheel",
+    "name_en": "Ab Wheel Rollout",
+    "category": "CORE",
+    "equipment_needed": [],
+    "muscle_groups": ["core", "shoulder"],
+    "description_de": "Auf den Knien mit dem Ab-Wheel nach vorne rollen und kontrolliert zurückkommen. Langsam steigern – Rücken gerade halten!",
+    "difficulty_level": 3,
+    "contraindications": []
+  },
+  {
+    "name_de": "Hollow Hold",
+    "name_en": "Hollow Hold",
+    "category": "CORE",
+    "equipment_needed": [],
+    "muscle_groups": ["core"],
+    "description_de": "Auf dem Rücken, Arme und Beine leicht angehoben, unterer Rücken komplett am Boden. Die Boulder-Core-Übung schlechthin.",
+    "difficulty_level": 2,
+    "contraindications": []
+  },
+  {
+    "name_de": "L-Sit Progression",
+    "name_en": "L-Sit Progression",
+    "category": "CORE",
+    "equipment_needed": [],
+    "muscle_groups": ["core", "hip_flexor", "tricep"],
+    "description_de": "Am Boden oder an Parallettes: Tuck → One Leg → Full L-Sit. Beine horizontal halten, Arme gestreckt. Baut immense Rumpfkraft auf.",
+    "difficulty_level": 3,
+    "contraindications": ["elbow"]
+  },
+  {
+    "name_de": "Campus Leitern",
+    "name_en": "Campus Ladders",
+    "category": "POWER",
+    "equipment_needed": ["CAMPUS_BOARD"],
+    "muscle_groups": ["power", "finger", "lat"],
+    "description_de": "Dynamisch von Leiste zu Leiste hochsteigen ohne Füße. 1-3-5 oder 1-4-7 Pattern. Nur mit vorgewärmten Fingern!",
+    "difficulty_level": 4,
+    "contraindications": ["finger", "pulley", "shoulder"]
+  },
+  {
+    "name_de": "Campus Touches",
+    "name_en": "Campus Touches",
+    "category": "POWER",
+    "equipment_needed": ["CAMPUS_BOARD"],
+    "muscle_groups": ["power", "finger"],
+    "description_de": "Von einer Leiste dynamisch zur nächsten greifen und sofort zurück. Trainiert kontaktstarke, explosive Fingerkraft.",
+    "difficulty_level": 4,
+    "contraindications": ["finger", "pulley", "shoulder"]
+  },
+  {
+    "name_de": "Explosive Klimmzüge",
+    "name_en": "Explosive Pullups",
+    "category": "POWER",
+    "equipment_needed": ["PULL_UP_BAR"],
+    "muscle_groups": ["power", "upper_body_pull", "lat"],
+    "description_de": "Klimmzüge so explosiv wie möglich – Hände sollen kurz die Stange loslassen. Clap-Pullups für Fortgeschrittene.",
+    "difficulty_level": 3,
+    "contraindications": ["shoulder"]
+  },
+  {
+    "name_de": "Dynos",
+    "name_en": "Dynos",
+    "category": "POWER",
+    "equipment_needed": [],
+    "muscle_groups": ["power", "coordination", "finger"],
+    "description_de": "Dynamische Züge an der Boulderwand: von zwei Griffen abspringen und einen weit entfernten Griff fangen. Ganzkörper-Koordination.",
+    "difficulty_level": 3,
+    "contraindications": ["finger", "shoulder"]
+  },
+  {
+    "name_de": "Doppeldynos",
+    "name_en": "Double Dynos",
+    "category": "POWER",
+    "equipment_needed": [],
+    "muscle_groups": ["power", "coordination"],
+    "description_de": "Beide Hände gleichzeitig loslassen und einen neuen Griff fangen. Maximale Explosivität und Timing gefragt.",
+    "difficulty_level": 5,
+    "contraindications": ["finger", "shoulder"]
+  },
+  {
+    "name_de": "Limit Bouldern",
+    "name_en": "Limit Bouldering",
+    "category": "POWER",
+    "equipment_needed": [],
+    "muscle_groups": ["power", "finger", "technique"],
+    "description_de": "Projekte am persönlichen Limit klettern. Maximal 3-5 Versuche pro Boulder, lange Pausen (5+ Min). Qualität vor Quantität.",
+    "difficulty_level": 3,
+    "contraindications": ["finger"]
+  },
+  {
+    "name_de": "4x4s",
+    "name_en": "4x4s",
+    "category": "ENDURANCE",
+    "equipment_needed": [],
+    "muscle_groups": ["endurance", "power_endurance"],
+    "description_de": "4 Boulder hintereinander klettern, 4 Sets. Boulder 2-3 Grade unter Maximum. Pause zwischen Bouldern: nur Absteigen. Zwischen Sets: 4 Min.",
+    "difficulty_level": 2,
+    "contraindications": []
+  },
+  {
+    "name_de": "Pyramiden",
+    "name_en": "Pyramids",
+    "category": "ENDURANCE",
+    "equipment_needed": [],
+    "muscle_groups": ["endurance", "technique"],
+    "description_de": "Vom leichtesten Grad starten, pro Boulder einen Grad höher. Wenn du fällst, einen Grad runter. Auf und ab wie eine Pyramide.",
+    "difficulty_level": 1,
+    "contraindications": []
+  },
+  {
+    "name_de": "ARC Training",
+    "name_en": "ARC Training",
+    "category": "ENDURANCE",
+    "equipment_needed": [],
+    "muscle_groups": ["endurance", "aerobic"],
+    "description_de": "20-30 Minuten kontinuierlich einfache Züge klettern (Traversieren oder leichte Wand). Pumpig, aber nie am Limit. Aufbau der aeroben Basis.",
+    "difficulty_level": 1,
+    "contraindications": []
+  },
+  {
+    "name_de": "Linked Circuits",
+    "name_en": "Linked Circuits",
+    "category": "ENDURANCE",
+    "equipment_needed": [],
+    "muscle_groups": ["endurance", "power_endurance"],
+    "description_de": "3-4 leichte Boulder nacheinander ohne Pause klettern. Ein Durchgang = 1 Circuit. 3-4 Circuits mit 5 Min Pause dazwischen.",
+    "difficulty_level": 2,
+    "contraindications": []
+  },
+  {
+    "name_de": "Traversieren",
+    "name_en": "Traversing",
+    "category": "ENDURANCE",
+    "equipment_needed": [],
+    "muscle_groups": ["endurance", "technique", "footwork"],
+    "description_de": "Seitlich an der Wand entlangklettern ohne abzusteigen. Fokus auf saubere Fußarbeit und effiziente Bewegung. Ideal zum Aufwärmen.",
+    "difficulty_level": 1,
+    "contraindications": []
+  },
+  {
+    "name_de": "Schulter-Stretches",
+    "name_en": "Shoulder Stretches",
+    "category": "MOBILITY",
+    "equipment_needed": [],
+    "muscle_groups": ["shoulder", "mobility"],
+    "description_de": "Türrahmen-Stretch, Sleeper Stretch, Cross-Body Stretch. Jede Position 30-45 Sek halten. Nicht federn, sanft dehnen.",
+    "difficulty_level": 1,
+    "contraindications": []
+  },
+  {
+    "name_de": "Hüftöffner",
+    "name_en": "Hip Openers",
+    "category": "MOBILITY",
+    "equipment_needed": [],
+    "muscle_groups": ["hip", "flexibility"],
+    "description_de": "Pigeon Pose, 90-90 Stretch, tiefe Grätsche. Offene Hüften sind essentiell für High-Steps und Hooks. Täglich 5 Min reichen.",
+    "difficulty_level": 1,
+    "contraindications": []
+  },
+  {
+    "name_de": "Finger-Stretches",
+    "name_en": "Finger Stretches",
+    "category": "MOBILITY",
+    "equipment_needed": [],
+    "muscle_groups": ["finger", "forearm", "mobility"],
+    "description_de": "Finger einzeln und zusammen dehnen, Gebets-Position, umgekehrte Gebets-Position. Nach jedem Klettertraining Pflicht.",
+    "difficulty_level": 1,
+    "contraindications": []
+  },
+  {
+    "name_de": "Frosch-Stretch",
+    "name_en": "Frog Stretch",
+    "category": "MOBILITY",
+    "equipment_needed": [],
+    "muscle_groups": ["hip", "groin", "flexibility"],
+    "description_de": "Auf allen Vieren, Knie weit auseinander, langsam Hüfte nach hinten sinken lassen. Öffnet die Leiste für Froschmoves.",
+    "difficulty_level": 1,
+    "contraindications": []
+  },
+  {
+    "name_de": "Thorakale Rotation",
+    "name_en": "Thoracic Spine Rotation",
+    "category": "MOBILITY",
+    "equipment_needed": ["FOAM_ROLLER"],
+    "muscle_groups": ["spine", "mobility"],
+    "description_de": "Auf Schaumrolle liegend, Arme zur Seite rotieren. Verbessert die Brustwirbelsäulen-Mobilität für Drehbewegungen an der Wand.",
+    "difficulty_level": 1,
+    "contraindications": []
+  },
+  {
+    "name_de": "Handgelenk-Mobilität",
+    "name_en": "Wrist Mobility",
+    "category": "MOBILITY",
+    "equipment_needed": [],
+    "muscle_groups": ["wrist", "forearm", "mobility"],
+    "description_de": "Kreise, Beugung, Streckung, seitliche Bewegungen. Auf allen Vieren mit Handflächen am Boden für Dehnung. Wichtig für Mantles.",
+    "difficulty_level": 1,
+    "contraindications": []
+  },
+  {
+    "name_de": "Silent Feet",
+    "name_en": "Silent Feet",
+    "category": "TECHNIQUE",
+    "equipment_needed": [],
+    "muscle_groups": ["technique", "footwork"],
+    "description_de": "Klettere leichte Boulder und setze jeden Fuß lautlos und präzise. Kein Umsetzen erlaubt. Trainiert bewusste Fußarbeit.",
+    "difficulty_level": 1,
+    "contraindications": []
+  },
+  {
+    "name_de": "Hover Hands",
+    "name_en": "Hover Hands",
+    "category": "TECHNIQUE",
+    "equipment_needed": [],
+    "muscle_groups": ["technique", "balance"],
+    "description_de": "Vor jedem Griff 2 Sekunden darüber schweben, bevor du zugreifst. Trainiert Kontrolle, Körperspannung und bewusstes Greifen.",
+    "difficulty_level": 1,
+    "contraindications": []
+  },
+  {
+    "name_de": "Abklettern",
+    "name_en": "Down-Climbing",
+    "category": "TECHNIQUE",
+    "equipment_needed": [],
+    "muscle_groups": ["technique", "control"],
+    "description_de": "Jeden Boulder rückwärts abklettern statt abzuspringen. Fantastisches Training für Körperkontrolle und exzentrisches Bewegen.",
+    "difficulty_level": 1,
+    "contraindications": []
+  },
+  {
+    "name_de": "Einarmig Klettern (leicht)",
+    "name_en": "One-Arm Climbing (easy)",
+    "category": "TECHNIQUE",
+    "equipment_needed": [],
+    "muscle_groups": ["technique", "balance", "core"],
+    "description_de": "Sehr leichte Boulder mit nur einer Hand klettern. Die andere Hand hinter dem Rücken. Zwingt zu perfekter Fußarbeit und Balance.",
+    "difficulty_level": 3,
+    "contraindications": ["shoulder"]
+  },
+  {
+    "name_de": "Flag-Drill",
+    "name_en": "Flag Drill",
+    "category": "TECHNIQUE",
+    "equipment_needed": [],
+    "muscle_groups": ["technique", "balance"],
+    "description_de": "In jedem Boulder bewusst Flaggen einbauen: Inside Flag, Outside Flag, Back Flag. Verbessert die Gleichgewichtskontrolle enorm.",
+    "difficulty_level": 2,
+    "contraindications": []
+  },
+  {
+    "name_de": "Drop-Knee-Drill",
+    "name_en": "Drop Knee Drill",
+    "category": "TECHNIQUE",
+    "equipment_needed": [],
+    "muscle_groups": ["technique", "hip"],
+    "description_de": "Leichte Boulder klettern und bei jedem Zug bewusst einen Drop-Knee einsetzen. Trainiert die wichtigste Überhang-Technik.",
+    "difficulty_level": 2,
+    "contraindications": []
+  },
+  {
+    "name_de": "Platte-Only Session",
+    "name_en": "Slab-Only Session",
+    "category": "TECHNIQUE",
+    "equipment_needed": [],
+    "muscle_groups": ["technique", "balance", "footwork"],
+    "description_de": "Eine ganze Session nur auf der Platte klettern. Erzwingt Vertrauen in die Füße, Gewichtsverlagerung und Reibungskletterei.",
+    "difficulty_level": 2,
+    "contraindications": []
+  },
+  {
+    "name_de": "Außenrotation",
+    "name_en": "External Rotation",
+    "category": "ANTAGONIST",
+    "equipment_needed": ["RESISTANCE_BANDS"],
+    "muscle_groups": ["shoulder", "rotator_cuff"],
+    "description_de": "Mit Theraband: Ellenbogen am Körper, Unterarm nach außen rotieren. 15 Reps pro Seite. Schützt die Schulter vor Impingement.",
+    "difficulty_level": 1,
+    "contraindications": []
+  },
+  {
+    "name_de": "Handgelenkbeuger",
+    "name_en": "Wrist Curls",
+    "category": "ANTAGONIST",
+    "equipment_needed": ["WEIGHTS"],
+    "muscle_groups": ["forearm", "wrist"],
+    "description_de": "Unterarme auf Oberschenkel, Handflächen nach oben, Kurzhantel beugen. Stärkt die Handgelenkbeuger als Gegengewicht zum Klettern.",
+    "difficulty_level": 1,
+    "contraindications": []
+  },
+  {
+    "name_de": "Reverse Handgelenkbeuger",
+    "name_en": "Reverse Wrist Curls",
+    "category": "ANTAGONIST",
+    "equipment_needed": ["WEIGHTS"],
+    "muscle_groups": ["forearm", "wrist"],
+    "description_de": "Wie Wrist Curls, aber Handflächen nach unten. Stärkt die Handgelenkstrecker. Wichtig gegen Kletterer-Ellenbogen.",
+    "difficulty_level": 1,
+    "contraindications": []
+  },
+  {
+    "name_de": "Push-Up Plus",
+    "name_en": "Push-Up Plus",
+    "category": "ANTAGONIST",
+    "equipment_needed": [],
+    "muscle_groups": ["serratus", "shoulder"],
+    "description_de": "Liegestütz oben: Schulterblätter zusätzlich nach vorne drücken (Protraction). Stärkt den Serratus Anterior – wichtig für Schulterstabilität.",
+    "difficulty_level": 1,
+    "contraindications": []
+  },
+  {
+    "name_de": "Band Pull-Aparts",
+    "name_en": "Band Pull-Aparts",
+    "category": "ANTAGONIST",
+    "equipment_needed": ["RESISTANCE_BANDS"],
+    "muscle_groups": ["rear_delt", "rhomboid"],
+    "description_de": "Theraband vor der Brust, Arme auseinanderziehen. Trainiert hintere Schulter und Rhomboiden gegen die Kletterer-Haltung.",
+    "difficulty_level": 1,
+    "contraindications": []
+  },
+  {
+    "name_de": "Face Pulls",
+    "name_en": "Face Pulls",
+    "category": "ANTAGONIST",
+    "equipment_needed": ["RESISTANCE_BANDS"],
+    "muscle_groups": ["rear_delt", "rotator_cuff"],
+    "description_de": "Theraband auf Gesichtshöhe befestigen, zum Gesicht ziehen mit Außenrotation. Die beste Übung gegen Kletterer-Schulter.",
+    "difficulty_level": 1,
+    "contraindications": []
+  },
+  {
+    "name_de": "Pronation/Supination",
+    "name_en": "Pronator/Supinator",
+    "category": "ANTAGONIST",
+    "equipment_needed": ["WEIGHTS"],
+    "muscle_groups": ["forearm", "wrist"],
+    "description_de": "Kurzhantel am Ende greifen, Unterarm drehen (Pronation/Supination). Stärkt Unterarmmuskulatur gleichmäßig. Beugt Ellenbogenproblemen vor.",
+    "difficulty_level": 1,
+    "contraindications": []
+  }
+]

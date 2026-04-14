@@ -1,0 +1,238 @@
+package com.cruxcoach.android.ui.settings
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SuggestionChip
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.cruxcoach.android.R
+import com.cruxcoach.android.ui.theme.OrangeAccent
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun KeyImportScreen(
+    onNavigateBack: () -> Unit,
+    viewModel: KeyImportViewModel = hiltViewModel()
+) {
+    val state by viewModel.state.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+
+    LaunchedEffect(state.requireRestart) {
+        if (state.requireRestart) {
+            restartApp(context)
+        }
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text(stringResource(R.string.key_import_title)) },
+                navigationIcon = {
+                    IconButton(onClick = onNavigateBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
+                    }
+                }
+            )
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.key_import_prompt),
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium
+            )
+
+            OutlinedTextField(
+                value = state.input,
+                onValueChange = { viewModel.updateInput(it) },
+                label = { Text(stringResource(R.string.key_import_label)) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(140.dp),
+                shape = RoundedCornerShape(12.dp),
+                supportingText = {
+                    Text(
+                        text = stringResource(R.string.key_import_supported_formats),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            )
+
+            // Detected format indicator
+            val detectedFormat = state.detectedFormat
+            if (detectedFormat != ImportFormat.UNKNOWN) {
+                SuggestionChip(
+                    onClick = {},
+                    label = {
+                        Text(
+                            text = stringResource(R.string.key_import_detected, detectedFormat.name.lowercase()),
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                )
+            }
+
+            // Error message
+            val error = state.error
+            if (error != null) {
+                Text(
+                    text = error,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Button(
+                onClick = { viewModel.startImport() },
+                enabled = detectedFormat != ImportFormat.UNKNOWN,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.key_import_button),
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+    }
+
+    // Password dialog for ncryptsec
+    if (state.showPasswordDialog) {
+        NcryptsecPasswordDialog(
+            onDismiss = { viewModel.dismissPasswordDialog() },
+            onConfirm = { password -> viewModel.submitPassword(password) }
+        )
+    }
+
+    // Overwrite warning dialog
+    if (state.showOverwriteWarning) {
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissOverwriteWarning() },
+            title = { Text(stringResource(R.string.key_import_overwrite_title)) },
+            text = {
+                Text(stringResource(R.string.key_import_overwrite_text))
+            },
+            confirmButton = {
+                TextButton(onClick = { viewModel.confirmOverwrite() }) {
+                    Text(stringResource(R.string.key_import_overwrite_confirm), color = OrangeAccent)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.dismissOverwriteWarning() }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            }
+        )
+    }
+
+    // Confirm dialog showing derived npub
+    if (state.showConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissConfirmDialog() },
+            title = { Text(stringResource(R.string.key_import_confirm_title)) },
+            text = {
+                Text(
+                    text = state.derivedNpub,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { viewModel.confirmImport() }) {
+                    Text(stringResource(R.string.key_import_confirm_button), color = OrangeAccent)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.dismissConfirmDialog() }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun NcryptsecPasswordDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var password by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.key_import_password_title)) },
+        text = {
+            OutlinedTextField(
+                value = password,
+                onValueChange = { password = it },
+                label = { Text(stringResource(R.string.key_import_password_label)) },
+                visualTransformation = PasswordVisualTransformation(),
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp)
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onConfirm(password) },
+                enabled = password.isNotBlank()
+            ) {
+                Text(
+                    stringResource(R.string.key_import_decrypt_button),
+                    color = if (password.isNotBlank()) OrangeAccent
+                    else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.action_cancel))
+            }
+        }
+    )
+}

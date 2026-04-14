@@ -1,0 +1,139 @@
+-- User ascents (sends) — private, per-key DB file
+-- Denormalized fields (climb_name, difficulty_average, climb_frames, frames_count)
+-- are populated at insert time and refreshed after board sync.
+
+CREATE TABLE aurora_ascent (
+    uuid TEXT NOT NULL PRIMARY KEY,
+    climb_uuid TEXT NOT NULL,
+    angle INTEGER NOT NULL,
+    is_mirror INTEGER NOT NULL DEFAULT 0,
+    attempt_id INTEGER DEFAULT 0,
+    bid_count INTEGER DEFAULT 0,
+    quality INTEGER,
+    difficulty INTEGER,
+    is_benchmark INTEGER DEFAULT 0,
+    comment TEXT,
+    climbed_at TEXT NOT NULL,
+    synced INTEGER NOT NULL DEFAULT 0,
+    gym_uuid TEXT,
+    wall_uuid TEXT,
+    product_layout_uuid TEXT,
+    -- Denormalized from BoardDB (refreshable)
+    climb_name TEXT NOT NULL DEFAULT '',
+    difficulty_average REAL,
+    climb_frames TEXT NOT NULL DEFAULT '',
+    frames_count INTEGER NOT NULL DEFAULT 1
+);
+
+CREATE INDEX idx_ascent_climb ON aurora_ascent(climb_uuid);
+CREATE INDEX idx_ascent_date ON aurora_ascent(climbed_at);
+
+-- ═══ Insert / Update / Delete ═══
+
+insertAscent:
+INSERT OR REPLACE INTO aurora_ascent(uuid, climb_uuid, angle, is_mirror,
+    attempt_id, bid_count, quality, difficulty, is_benchmark, comment, climbed_at, synced,
+    gym_uuid, wall_uuid, product_layout_uuid,
+    climb_name, difficulty_average, climb_frames, frames_count)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+deleteAscent:
+DELETE FROM aurora_ascent WHERE uuid = ?;
+
+updateAscent:
+UPDATE aurora_ascent SET bid_count = ?, quality = ?, comment = ?, synced = 0 WHERE uuid = ?;
+
+-- ═══ UUID lookups (for browser status filter) ═══
+
+getUserSentClimbUuids:
+SELECT DISTINCT climb_uuid FROM aurora_ascent;
+
+-- ═══ Logbook queries (denormalized — no JOINs needed) ═══
+
+getUserAscentsAll:
+SELECT * FROM aurora_ascent ORDER BY climbed_at DESC;
+
+getUserAscentsBetween:
+SELECT * FROM aurora_ascent WHERE climbed_at >= ? AND climbed_at <= ? ORDER BY climbed_at ASC;
+
+-- Combined logbook: ascents + bids (paginated)
+getUserLogbookPage:
+SELECT uuid, climb_uuid, angle, is_mirror,
+       bid_count, quality, difficulty, comment, climbed_at,
+       climb_name, climb_frames, frames_count,
+       difficulty_average, 1 AS is_send
+FROM aurora_ascent
+UNION ALL
+SELECT uuid, climb_uuid, angle, is_mirror,
+       bid_count, NULL, NULL, comment, climbed_at,
+       climb_name, '' AS climb_frames, 1 AS frames_count,
+       difficulty_average, 0 AS is_send
+FROM aurora_bid
+ORDER BY climbed_at DESC
+LIMIT :limit OFFSET :offset;
+
+-- Combined logbook: all entries (light, no frames)
+getUserLogbookAllLight:
+SELECT uuid, climb_uuid, angle, is_mirror,
+       bid_count, quality, difficulty, comment, climbed_at,
+       climb_name, '' AS climb_frames, frames_count,
+       difficulty_average, 1 AS is_send
+FROM aurora_ascent
+UNION ALL
+SELECT uuid, climb_uuid, angle, is_mirror,
+       bid_count, NULL, NULL, comment, climbed_at,
+       climb_name, '' AS climb_frames, 1 AS frames_count,
+       difficulty_average, 0 AS is_send
+FROM aurora_bid
+ORDER BY climbed_at DESC;
+
+-- Per-climb history
+getUserHistoryForClimb:
+SELECT uuid, climb_uuid, angle, is_mirror,
+       bid_count, quality, difficulty, comment, climbed_at,
+       climb_name, climb_frames, frames_count,
+       difficulty_average, 1 AS is_send
+FROM aurora_ascent WHERE climb_uuid = :climbUuid
+UNION ALL
+SELECT uuid, climb_uuid, angle, is_mirror,
+       bid_count, NULL, NULL, comment, climbed_at,
+       climb_name, '' AS climb_frames, 1 AS frames_count,
+       difficulty_average, 0 AS is_send
+FROM aurora_bid WHERE climb_uuid = :climbUuid
+ORDER BY climbed_at DESC;
+
+-- Combined count
+countUserLogbook:
+SELECT (SELECT COUNT(*) FROM aurora_ascent) + (SELECT COUNT(*) FROM aurora_bid);
+
+-- ═══ Difficulty queries (for grade pyramid) ═══
+
+getUserSendDifficulties:
+SELECT difficulty_average FROM aurora_ascent WHERE climbed_at >= ?;
+
+-- ═══ Repeat count (for browser sort-by-repeats) ═══
+
+getRepeatCounts:
+SELECT climb_uuid, COUNT(*) AS repeat_count FROM aurora_ascent GROUP BY climb_uuid;
+
+-- ═══ Kilter sync ═══
+
+getUnsyncedAscents:
+SELECT * FROM aurora_ascent WHERE synced = 0;
+
+markAscentSynced:
+UPDATE aurora_ascent SET synced = 1 WHERE uuid = ?;
+
+-- ═══ Denormalization refresh (after board sync) ═══
+
+updateAscentDenormalized:
+UPDATE aurora_ascent SET climb_name = ?, difficulty_average = ?, climb_frames = ?, frames_count = ?
+WHERE climb_uuid = ? AND angle = ?;
+
+-- ═══ Bulk operations ═══
+
+deleteAllAscents:
+DELETE FROM aurora_ascent;
+
+getAllAscentClimbKeys:
+SELECT DISTINCT climb_uuid, angle FROM aurora_ascent;

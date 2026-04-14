@@ -1,0 +1,34 @@
+CREATE TABLE ExerciseLibrary (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name_de TEXT NOT NULL,
+    name_en TEXT NOT NULL,
+    category TEXT NOT NULL,
+    equipment_needed TEXT NOT NULL DEFAULT '[]',
+    muscle_groups TEXT NOT NULL DEFAULT '[]',
+    description_de TEXT,
+    difficulty_level INTEGER NOT NULL DEFAULT 3,
+    contraindications TEXT NOT NULL DEFAULT '[]',
+    is_active INTEGER NOT NULL DEFAULT 1
+);
+
+insert:
+INSERT INTO ExerciseLibrary (name_de, name_en, category, equipment_needed,
+    muscle_groups, description_de, difficulty_level, contraindications, is_active)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+getById:
+SELECT * FROM ExerciseLibrary WHERE id = ?;
+
+getByCategory:
+SELECT * FROM ExerciseLibrary WHERE category = ? AND is_active = 1
+ORDER BY difficulty_level;
+
+getAll:
+SELECT * FROM ExerciseLibrary WHERE is_active = 1 ORDER BY category, name_de;
+
+search:
+SELECT * FROM ExerciseLibrary WHERE is_active = 1
+AND (name_de LIKE ? OR name_en LIKE ?) ORDER BY name_de;
+
+count:
+SELECT COUNT(*) FROM ExerciseLibrary;

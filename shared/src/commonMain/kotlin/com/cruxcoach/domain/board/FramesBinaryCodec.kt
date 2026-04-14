@@ -1,0 +1,144 @@
+package com.cruxcoach.domain.board
+
+/**
+ * Binary codec for Aurora Board frame strings.
+ *
+ * Encodes the TEXT frame format into a compact BLOB (3 bytes per hold entry)
+ * and decodes back to the original TEXT format for transparent use by parsers.
+ *
+ * **Single-frame (boulder)**: `"p1091r15p1096r15p1163r12"`
+ *   → `[low][high][roleId]` per hold, no header.
+ *
+ * **Multi-frame (route)**: `"p100r42p200r45,x100p300r43,x200p400r44"`
+ *   → `[0xFF][frameCount][len_lo][len_hi][entries...][len_lo][len_hi][entries...]...`
+ *   Removal entries (`x{id}`) use `0xFE` as the third byte.
+ *
+ * Magic byte `0xFF` distinguishes multi-frame (max placementId ~16000 → high byte ≤ 0x3E).
+ * Removal marker `0xFE` is outside valid roleId range (12-15, 42-45).
+ */
+object FramesBinaryCodec {
+
+    private const val MULTI_FRAME_MAGIC: Byte = 0xFF.toByte()
+    private const val REMOVAL_MARKER: Byte = 0xFE.toByte()
+    private const val BYTES_PER_ENTRY = 3
+
+    // Matches both Aurora (p{id}r{role}, x{id}) and Kilter climbConcat (h{id}p{role})
+    private val ENTRY_REGEX = Regex("([pxh])(\\d+)[rp]?(\\d*)")
+
+    fun encode(framesText: String): ByteArray {
+        if (framesText.isEmpty()) return ByteArray(0)
+
+        val frames = framesText.split(",")
+        if (frames.size == 1) {
+            return encodeSingleFrame(frames[0])
+        }
+        return encodeMultiFrame(frames)
+    }
+
+    fun decode(blob: ByteArray): String {
+        if (blob.isEmpty()) return ""
+
+        if (blob[0] == MULTI_FRAME_MAGIC) {
+            return decodeMultiFrame(blob)
+        }
+        // Detect raw UTF-8 text BLOBs (from CAST migration, not yet binary-encoded).
+        // Text format chars: p, x, r, 0-9, comma. Binary format always has roleId
+        // bytes (12-15, 42-45, 254) by position 2 which are outside this set.
+        if (looksLikeText(blob)) {
+            return blob.decodeToString()
+        }
+        return decodeSingleFrame(blob)
+    }
+
+    private fun looksLikeText(blob: ByteArray): Boolean {
+        if (blob.size < 4) return false
+        val checkLen = minOf(20, blob.size)
+        for (i in 0 until checkLen) {
+            val b = blob[i].toInt() and 0xFF
+            // Valid text chars: p, x, r, comma, digits (Aurora) + h (Kilter climbConcat)
+            if (b != 0x70 && b != 0x78 && b != 0x72 && b != 0x68 && b != 0x2C &&
+                !(b in 0x30..0x39)
+            ) return false
+        }
+        return true
+    }
+
+    // ── Single-frame encoding ─────────────────────────────────────
+
+    private fun encodeSingleFrame(frame: String): ByteArray {
+        val entries = parseEntries(frame)
+        val buf = ByteArray(entries.size * BYTES_PER_ENTRY)
+        var pos = 0
+        for ((type, id, role) in entries) {
+            buf[pos++] = (id and 0xFF).toByte()
+            buf[pos++] = ((id shr 8) and 0xFF).toByte()
+            buf[pos++] = if (type == 'x') REMOVAL_MARKER else role.toByte()
+        }
+        return buf
+    }
+
+    private fun decodeSingleFrame(blob: ByteArray): String {
+        val sb = StringBuilder()
+        var pos = 0
+        while (pos + BYTES_PER_ENTRY <= blob.size) {
+            val low = blob[pos++].toInt() and 0xFF
+            val high = blob[pos++].toInt() and 0xFF
+            val roleByte = blob[pos++]
+            val id = low or (high shl 8)
+            if (roleByte == REMOVAL_MARKER) {
+                sb.append("x${id}")
+            } else {
+                sb.append("p${id}r${roleByte.toInt() and 0xFF}")
+            }
+        }
+        return sb.toString()
+    }
+
+    // ── Multi-frame encoding ──────────────────────────────────────
+
+    private fun encodeMultiFrame(frames: List<String>): ByteArray {
+        val frameBlobs = frames.map { encodeSingleFrame(it) }
+        // header: 1 (magic) + 1 (count) + 2 * frameCount (lengths)
+        val totalSize = 2 + frames.size * 2 + frameBlobs.sumOf { it.size }
+        val buf = ByteArray(totalSize)
+        var pos = 0
+        buf[pos++] = MULTI_FRAME_MAGIC
+        buf[pos++] = frames.size.toByte()
+        for (fb in frameBlobs) {
+            buf[pos++] = (fb.size and 0xFF).toByte()
+            buf[pos++] = ((fb.size shr 8) and 0xFF).toByte()
+            fb.copyInto(buf, pos)
+            pos += fb.size
+        }
+        return buf
+    }
+
+    private fun decodeMultiFrame(blob: ByteArray): String {
+        var pos = 1 // skip magic
+        val frameCount = blob[pos++].toInt() and 0xFF
+        val sb = StringBuilder()
+        for (i in 0 until frameCount) {
+            val lenLow = blob[pos++].toInt() and 0xFF
+            val lenHigh = blob[pos++].toInt() and 0xFF
+            val frameLen = lenLow or (lenHigh shl 8)
+            if (i > 0) sb.append(',')
+            val frameBlob = blob.copyOfRange(pos, pos + frameLen)
+            sb.append(decodeSingleFrame(frameBlob))
+            pos += frameLen
+        }
+        return sb.toString()
+    }
+
+    // ── Text parsing ──────────────────────────────────────────────
+
+    private data class Entry(val type: Char, val id: Int, val role: Int)
+
+    private fun parseEntries(frame: String): List<Entry> {
+        return ENTRY_REGEX.findAll(frame).map { match ->
+            val type = match.groupValues[1][0]
+            val id = match.groupValues[2].toInt()
+            val role = if (type == 'x') 0 else match.groupValues[3].toIntOrNull() ?: 0
+            Entry(type, id, role)
+        }.toList()
+    }
+}

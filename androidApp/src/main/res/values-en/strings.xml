@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- English: falls through to default values/strings.xml (which IS English).
+     This file exists so AGP's generateLocaleConfig detects "en" as a supported locale. -->
+<resources/>

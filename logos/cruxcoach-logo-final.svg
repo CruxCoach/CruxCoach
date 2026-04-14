@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <radialGradient id="gL" cx="256" cy="256" r="210" gradientUnits="userSpaceOnUse">
+      <stop offset="40%" stop-color="#FF8C2A"/>
+      <stop offset="100%" stop-color="#B84400"/>
+    </radialGradient>
+    <radialGradient id="gR" cx="256" cy="256" r="210" gradientUnits="userSpaceOnUse">
+      <stop offset="40%" stop-color="#E05800"/>
+      <stop offset="100%" stop-color="#8C3000"/>
+    </radialGradient>
+    <radialGradient id="gX" cx="256" cy="256" r="80" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFD080"/>
+      <stop offset="100%" stop-color="#E08A00"/>
+    </radialGradient>
+  </defs>
+  <rect width="512" height="512" fill="#000000"/>
+  <g id="icon">
+    <!-- Left C: outer R=200, inner R=128, tapered gap -->
+    <path d="
+      M 252,56
+      A 200,200 0 1 0 248,456
+      L 248,384
+      A 128,128 0 1 1 252,128
+      Z
+    " fill="url(#gL)"/>
+
+    <!-- Right C -->
+    <path d="
+      M 260,456
+      A 200,200 0 1 0 264,56
+      L 264,128
+      A 128,128 0 1 1 260,384
+      Z
+    " fill="url(#gR)"/>
+
+    <!-- Central X — scaled up proportionally -->
+    <polygon points="192,214 214,192 256,234 298,192 320,214 274,256 320,298 298,320 256,278 214,320 192,298 238,256" fill="url(#gX)" stroke="#FFFFFF" stroke-width="1" stroke-opacity="0.15"/>
+  </g>
+</svg>

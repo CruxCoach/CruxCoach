@@ -1,0 +1,64 @@
+name: Release to Zapstore
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  release:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract version
+        id: version
+        run: |
+          VERSION_NAME=$(grep 'versionName' androidApp/build.gradle.kts | head -1 | grep -Po '"\K[^"]+')
+          echo "version=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+
+          # Check if tag already exists
+          if git rev-parse "v$VERSION_NAME" >/dev/null 2>&1; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Tag v$VERSION_NAME already exists — skipping release"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "New version: $VERSION_NAME"
+          fi
+
+      - name: Copy signing config
+        if: steps.version.outputs.skip == 'false'
+        run: |
+          cp $CRUXCOACH_SECRETS_DIR/local.properties local.properties
+          cp -r $CRUXCOACH_SECRETS_DIR/.signing .signing
+
+      - name: Build release APK
+        if: steps.version.outputs.skip == 'false'
+        run: |
+          ./gradlew :androidApp:assembleRelease
+
+      - name: Verify APK signature
+        if: steps.version.outputs.skip == 'false'
+        run: |
+          APK=androidApp/build/outputs/apk/release/androidApp-release.apk
+          $ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner verify --print-certs "$APK"
+          echo "APK verified successfully"
+
+      - name: Publish to Zapstore
+        if: steps.version.outputs.skip == 'false'
+        run: |
+          cp $CRUXCOACH_SECRETS_DIR/.env .env
+          zsp publish --skip-preview --skip-certificate-linking --quiet
+
+      - name: Tag release
+        if: steps.version.outputs.skip == 'false'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          git config user.name "CruxCoach CI"
+          git config user.email "cruxcoach@noreply.codeberg.org"
+          export GIT_SSH_COMMAND="ssh -i $RUNNER_DEPLOY_KEY -o StrictHostKeyChecking=no"
+          git remote set-url origin git@codeberg.org:CruxCoach/CruxCoach.git
+          git tag -a "v$VERSION" -m "Release v$VERSION"
+          git push origin "v$VERSION"

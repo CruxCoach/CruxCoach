@@ -1,0 +1,677 @@
+package com.cruxcoach.android.data
+
+import android.content.Context
+import android.database.sqlite.SQLiteDatabase
+import com.cruxcoach.data.repository.BoardRepository
+import java.io.File
+import java.io.FileOutputStream
+
+/**
+ * Imports the Kilter Board database into our SQLDelight tables.
+ *
+ * Sources:
+ * - **Blossom** ([importFromChunks]): Imports from 3 separate chunk files (meta, climbs, stats)
+ * - **Online legacy** ([downloadAndImport]): Delegates APK download and DB extraction
+ *   to [ApkDownloader], then imports the extracted file.
+ *
+ * All produce temp SQLite files with the raw Aurora schema (climbs, climb_stats,
+ * placements, holes, etc.), then bulk-insert into SQLDelight.
+ */
+class BoardDatabaseImporter(
+    private val context: Context,
+    private val boardRepository: BoardRepository,
+    private val apkDownloader: ApkDownloader
+) {
+    companion object {
+        private const val BATCH_SIZE = 500
+    }
+
+    /** Returns true if board data has already been imported (including layout data). */
+    fun isImported(): Boolean {
+        return boardRepository.getClimbCount() > 0
+    }
+
+    fun getClimbCount(): Long = boardRepository.getClimbCount()
+    fun getStatCount(): Long = boardRepository.getStatCount()
+    fun climbExistsByUuid(uuid: String): Boolean = boardRepository.climbExistsByUuid(uuid)
+    fun statExistsByUuid(uuid: String): Boolean = boardRepository.statExistsByUuid(uuid)
+
+    /** Returns true if board layout data (placements, sizes, images) needs importing. */
+    fun needsLayoutImport(): Boolean {
+        return boardRepository.getAllPlacements().isEmpty()
+    }
+
+    /** Delegates to [ApkDownloader.checkForUpdate]. */
+    fun checkForUpdate(): ApkDownloader.UpdateCheck =
+        apkDownloader.checkForUpdate()
+
+    /** Delegates to [ApkDownloader.saveApkVersionCode]. */
+    fun saveApkVersionCode(versionCode: String) = apkDownloader.saveApkVersionCode(versionCode)
+
+    // ── Public entry points ──────────────────────────────────────────
+
+    /**
+     * Blossom import: imports from multiple SQLite chunk files grouped by type.
+     * Supports monthly chunking (v2): N climb chunks + N stat chunks + 1 meta chunk.
+     *
+     * Import order: climbs first, then stats, then meta (layout data).
+     */
+    fun importFromChunks(
+        metaDbFiles: List<File>,
+        climbsDbFiles: List<File>,
+        statsDbFiles: List<File>,
+        onProgress: ((step: ImportStep) -> Unit)? = null
+    ) {
+        val snapshot = loadExistingSnapshot()
+
+        // Pre-count totals across all chunks (COUNT(*) is ~instant on SQLite)
+        val climbChunkCounts = climbsDbFiles.map { file ->
+            openReadOnly(file) { db -> queryLong(db, "SELECT COUNT(*) FROM climbs WHERE is_listed = 1").toInt() }
+        }
+        val statChunkCounts = statsDbFiles.map { file ->
+            openReadOnly(file) { db -> queryLong(db, "SELECT COUNT(*) FROM climb_stats").toInt() }
+        }
+        val grandClimbTotal = climbChunkCounts.sum()
+        val grandStatTotal = statChunkCounts.sum()
+
+        // Drop indexes before bulk import, rebuild after (avoids per-row index maintenance)
+        withDeferredIndexes {
+            // Import all climb chunks (bulk ATTACH or row-by-row fallback)
+            if (climbsDbFiles.isNotEmpty()) {
+                var cumInserted = 0; var cumScanned = 0
+                onProgress?.invoke(ImportStep.ImportClimbs(0, 0, grandClimbTotal))
+                for ((i, file) in climbsDbFiles.withIndex()) {
+                    val baseInserted = cumInserted; val baseScanned = cumScanned
+                    openReadOnly(file) { rawDb ->
+                        importClimbs(rawDb) { inserted, scanned, _ ->
+                            onProgress?.invoke(ImportStep.ImportClimbs(
+                                baseInserted + inserted, baseScanned + scanned, grandClimbTotal
+                            ))
+                        }
+                    }.also { chunkInserted ->
+                        cumInserted += chunkInserted
+                        cumScanned += climbChunkCounts[i]
+                    }
+                }
+            }
+
+            // Import all stat chunks (bulk ATTACH or row-by-row fallback)
+            if (statsDbFiles.isNotEmpty()) {
+                var cumInserted = 0; var cumScanned = 0
+                onProgress?.invoke(ImportStep.ImportStats(0, 0, grandStatTotal))
+                for ((i, file) in statsDbFiles.withIndex()) {
+                    val baseInserted = cumInserted; val baseScanned = cumScanned
+                    openReadOnly(file) { rawDb ->
+                        importClimbStats(rawDb) { inserted, scanned, _ ->
+                            onProgress?.invoke(ImportStep.ImportStats(
+                                baseInserted + inserted, baseScanned + scanned, grandStatTotal
+                            ))
+                        }
+                    }.also { chunkInserted ->
+                        cumInserted += chunkInserted
+                        cumScanned += statChunkCounts[i]
+                    }
+                }
+            }
+        }
+
+        if (boardRepository.getSyncState("metadata_v7") == null) {
+            boardRepository.upsertSyncState("metadata_v7", "done")
+        }
+
+        // Import meta chunks (usually just 1)
+        for (file in metaDbFiles) {
+            openReadOnly(file) { rawDb ->
+                onProgress?.invoke(ImportStep.ImportLayout(0))
+                val hasLayout = snapshot != null && snapshot.placementCount > 0
+                val layoutCount = if (hasLayout) snapshot!!.placementCount else importPlacements(rawDb)
+                if (!hasLayout) { importProductSizes(rawDb); importBoardImages(rawDb) }
+                if (snapshot == null || snapshot.ledCount == 0) importLeds(rawDb)
+                importSyncState(rawDb)
+                onProgress?.invoke(ImportStep.ImportLayout(layoutCount))
+            }
+        }
+
+        val climbCount = boardRepository.getClimbCount()
+        val statCount = boardRepository.getStatCount()
+        val placementCount = boardRepository.getAllPlacements().size
+        val nomatchCount = boardRepository.countNomatchClimbs()
+        onProgress?.invoke(ImportStep.Done(climbCount.toInt(), statCount.toInt(), placementCount, nomatchCount.toInt()))
+    }
+
+    /**
+     * Import from a full uncompressed board DB (e.g. received via local WiFi share).
+     * This is the same as the legacy online import path.
+     */
+    fun importFromLocalDb(
+        dbFile: File,
+        onProgress: ((step: ImportStep) -> Unit)? = null
+    ) {
+        importFromDbFile(dbFile, onProgress)
+    }
+
+    /**
+     * Online import: delegates APK download and DB extraction to [ApkDownloader],
+     * then imports via the shared [importFromDbFile].
+     */
+    fun downloadAndImport(
+        onProgress: ((step: ImportStep) -> Unit)? = null
+    ) {
+        val tempDb = File(context.cacheDir, "aurora_apk_db.sqlite3")
+        try {
+            onProgress?.invoke(ImportStep.Download(0, 0))
+            apkDownloader.downloadAndExtractDatabase(
+                targetDbFile = tempDb,
+                onDownloadProgress = { bytesRead, totalBytes ->
+                    onProgress?.invoke(ImportStep.Download(bytesRead, totalBytes))
+                }
+            )
+
+            onProgress?.invoke(ImportStep.Extract)
+            importFromDbFile(tempDb, onProgress)
+        } finally {
+            tempDb.delete()
+        }
+    }
+
+    // ── Shared import core ───────────────────────────────────────────
+
+    /**
+     * Central import method used by both online and offline paths.
+     * Opens the raw-schema SQLite [dbFile], runs delta comparison if data
+     * already exists, and bulk-inserts all tables into SQLDelight.
+     */
+    private fun importFromDbFile(
+        dbFile: File,
+        onProgress: ((step: ImportStep) -> Unit)? = null
+    ) {
+        val snapshot = loadExistingSnapshot()
+
+        val rawDb = SQLiteDatabase.openDatabase(
+            dbFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY
+        )
+        try {
+            val (climbCount, statCount) = withDeferredIndexes {
+                onProgress?.invoke(ImportStep.ImportClimbs(0, 0, 0))
+                val climbs = importClimbs(rawDb) { inserted, scanned, total ->
+                    onProgress?.invoke(ImportStep.ImportClimbs(inserted, scanned, total))
+                }
+                onProgress?.invoke(ImportStep.ImportStats(0, 0, 0))
+                val stats = importClimbStats(rawDb) { inserted, scanned, total ->
+                    onProgress?.invoke(ImportStep.ImportStats(inserted, scanned, total))
+                }
+                climbs to stats
+            }
+
+            if (boardRepository.getSyncState("metadata_v7") == null) {
+                boardRepository.upsertSyncState("metadata_v7", "done")
+            }
+
+            onProgress?.invoke(ImportStep.ImportLayout(0))
+            val hasLayout = snapshot != null && snapshot.placementCount > 0
+            val layoutCount = if (hasLayout) {
+                snapshot!!.placementCount
+            } else {
+                importPlacements(rawDb)
+            }
+            if (!hasLayout) {
+                importProductSizes(rawDb)
+                importBoardImages(rawDb)
+            }
+            if (snapshot == null || snapshot.ledCount == 0) {
+                importLeds(rawDb)
+            }
+            importSyncState(rawDb)
+            onProgress?.invoke(ImportStep.ImportLayout(layoutCount))
+
+            val nomatchCount = boardRepository.countNomatchClimbs()
+            onProgress?.invoke(ImportStep.Done(
+                climbCount, statCount, layoutCount,
+                nomatchCount = nomatchCount.toInt()
+            ))
+        } finally {
+            rawDb.close()
+        }
+    }
+
+    // ── Progress model ───────────────────────────────────────────────
+
+    sealed class ImportStep {
+        data object CheckingUpdate : ImportStep()
+        data class Download(val bytesRead: Long, val totalBytes: Long) : ImportStep()
+        data object Extract : ImportStep()
+
+        /** Fetching the Blossom manifest from Nostr relays. */
+        data object FetchingManifest : ImportStep()
+        /** Downloading Blossom chunks (possibly in parallel). */
+        data class DownloadChunk(
+            val chunkName: String,
+            val chunkIndex: Int,
+            val totalChunks: Int,
+            val bytesRead: Long,
+            val totalBytes: Long,
+            /** Cumulative bytes downloaded across ALL chunks so far. */
+            val cumulativeBytesRead: Long = 0,
+            /** Total compressed size of ALL chunks to download. */
+            val cumulativeTotalBytes: Long = 0
+        ) : ImportStep()
+        data class ImportClimbs(val inserted: Int, val scanned: Int, val total: Int) : ImportStep()
+        data class ImportStats(val inserted: Int, val scanned: Int, val total: Int) : ImportStep()
+        data class ImportLayout(val count: Int) : ImportStep()
+        data class Done(
+            val climbs: Int, val stats: Int, val placements: Int,
+            val nomatchCount: Int = 0
+        ) : ImportStep()
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────
+
+    private inline fun <R> openReadOnly(file: File, block: (SQLiteDatabase) -> R): R {
+        val db = SQLiteDatabase.openDatabase(file.absolutePath, null, SQLiteDatabase.OPEN_READONLY)
+        return try { block(db) } finally { db.close() }
+    }
+
+    // ── Delta snapshot ───────────────────────────────────────────────
+
+    private fun loadExistingSnapshot(): DiffSnapshot? {
+        if (boardRepository.getClimbCount() == 0L) return null
+        return DiffSnapshot(
+            placementCount = boardRepository.getAllPlacements().size,
+            ledCount = boardRepository.countLeds().toInt()
+        )
+    }
+
+    private data class DiffSnapshot(
+        val placementCount: Int,
+        val ledCount: Int
+    )
+
+    // ── Table import methods (raw Aurora schema) ─────────────────────
+
+    /**
+     * Bulk-import climbs from a chunk SQLite file using ATTACH DATABASE.
+     * One SQL statement replaces the entire cursor→batch→upsert loop.
+     */
+    private fun importClimbs(
+        rawDb: SQLiteDatabase,
+        existingUuids: Set<String>? = null,
+        onProgress: ((inserted: Int, scanned: Int, total: Int) -> Unit)? = null
+    ): Int {
+        val chunkPath = rawDb.path ?: return importClimbsLegacy(rawDb, existingUuids, onProgress)
+        val targetDb = openTargetDb()
+        try {
+            targetDb.execSQL("ATTACH DATABASE ? AS src", arrayOf(chunkPath))
+            val total = queryLong(targetDb, "SELECT COUNT(*) FROM src.climbs WHERE is_listed = 1").toInt()
+            val countBefore = queryLong(targetDb, "SELECT COUNT(*) FROM aurora_climb")
+            onProgress?.invoke(0, 0, total)
+            targetDb.beginTransaction()
+            try {
+                targetDb.execSQL("""
+                    INSERT OR REPLACE INTO aurora_climb(
+                        uuid, layout_id, setter_username, name, frames,
+                        frames_count, is_listed, edge_left, edge_right,
+                        edge_bottom, edge_top, created_at,
+                        description, is_nomatch, frames_pace, hsm)
+                    SELECT uuid, layout_id, setter_username, name, frames,
+                           frames_count, is_listed, edge_left, edge_right,
+                           edge_bottom, edge_top, created_at,
+                           COALESCE(description, ''), COALESCE(is_nomatch, 0),
+                           COALESCE(frames_pace, 0), COALESCE(hsm, 0)
+                    FROM src.climbs WHERE is_listed = 1
+                """)
+                targetDb.setTransactionSuccessful()
+            } finally {
+                targetDb.endTransaction()
+            }
+            val countAfter = queryLong(targetDb, "SELECT COUNT(*) FROM aurora_climb")
+            val inserted = (countAfter - countBefore).toInt()
+            onProgress?.invoke(inserted, total, total)
+            targetDb.execSQL("DETACH DATABASE src")
+            return inserted
+        } catch (e: Exception) {
+            try { targetDb.execSQL("DETACH DATABASE src") } catch (_: Exception) {}
+            // Fallback to legacy row-by-row import
+            return importClimbsLegacy(rawDb, existingUuids, onProgress)
+        } finally {
+            targetDb.close()
+        }
+    }
+
+    /** Row-by-row fallback for when ATTACH is not available (e.g. in-memory DB). */
+    private fun importClimbsLegacy(
+        rawDb: SQLiteDatabase,
+        existingUuids: Set<String>? = null,
+        onProgress: ((inserted: Int, scanned: Int, total: Int) -> Unit)? = null
+    ): Int {
+        val cursor = rawDb.rawQuery(
+            """SELECT uuid, layout_id, setter_username, name, frames,
+                      frames_count, is_listed, edge_left, edge_right,
+                      edge_bottom, edge_top, created_at,
+                      COALESCE(description, '') AS description,
+                      COALESCE(is_nomatch, 0) AS is_nomatch,
+                      COALESCE(frames_pace, 0) AS frames_pace,
+                      COALESCE(hsm, 0) AS hsm
+               FROM climbs WHERE is_listed = 1""",
+            null
+        )
+        val total = cursor.count
+        var inserted = 0
+        var scanned = 0
+        cursor.use {
+            while (it.moveToNext()) {
+                scanned++
+                val uuid = it.getString(0)
+                if (existingUuids != null && uuid in existingUuids) {
+                    if (scanned % (BATCH_SIZE * 4) == 0) onProgress?.invoke(inserted, scanned, total)
+                    continue
+                }
+                inserted++
+                boardRepository.upsertClimb(
+                    uuid, it.getLong(1), if (it.isNull(2)) null else it.getString(2),
+                    it.getString(3), it.getString(4), it.getLong(5), it.getLong(6),
+                    if (it.isNull(7)) null else it.getLong(7),
+                    if (it.isNull(8)) null else it.getLong(8),
+                    if (it.isNull(9)) null else it.getLong(9),
+                    if (it.isNull(10)) null else it.getLong(10),
+                    if (it.isNull(11)) null else it.getString(11),
+                    it.getString(12), it.getLong(13), it.getLong(14), it.getLong(15)
+                )
+                if (inserted % BATCH_SIZE == 0) onProgress?.invoke(inserted, scanned, total)
+            }
+            onProgress?.invoke(inserted, scanned, total)
+        }
+        return inserted
+    }
+
+    /**
+     * Bulk-import stats from a chunk SQLite file using ATTACH DATABASE.
+     */
+    private fun importClimbStats(
+        rawDb: SQLiteDatabase,
+        existingStats: Map<Pair<String, Long>, Long?>? = null,
+        onProgress: ((inserted: Int, scanned: Int, total: Int) -> Unit)? = null
+    ): Int {
+        val chunkPath = rawDb.path ?: return importClimbStatsLegacy(rawDb, existingStats, onProgress)
+        val targetDb = openTargetDb()
+        try {
+            targetDb.execSQL("ATTACH DATABASE ? AS src", arrayOf(chunkPath))
+            val total = queryLong(targetDb, "SELECT COUNT(*) FROM src.climb_stats").toInt()
+            val countBefore = queryLong(targetDb, "SELECT COUNT(*) FROM aurora_climb_stat")
+            onProgress?.invoke(0, 0, total)
+            targetDb.beginTransaction()
+            try {
+                targetDb.execSQL("""
+                    INSERT OR REPLACE INTO aurora_climb_stat(
+                        climb_uuid, angle, display_difficulty, difficulty_average,
+                        quality_average, ascensionist_count, benchmark_difficulty,
+                        fa_username, fa_at)
+                    SELECT climb_uuid, angle, display_difficulty, difficulty_average,
+                           quality_average, ascensionist_count, benchmark_difficulty,
+                           fa_username, fa_at
+                    FROM src.climb_stats
+                """)
+                targetDb.setTransactionSuccessful()
+            } finally {
+                targetDb.endTransaction()
+            }
+            val countAfter = queryLong(targetDb, "SELECT COUNT(*) FROM aurora_climb_stat")
+            val inserted = (countAfter - countBefore).toInt()
+            onProgress?.invoke(inserted, total, total)
+            targetDb.execSQL("DETACH DATABASE src")
+            return inserted
+        } catch (e: Exception) {
+            try { targetDb.execSQL("DETACH DATABASE src") } catch (_: Exception) {}
+            return importClimbStatsLegacy(rawDb, existingStats, onProgress)
+        } finally {
+            targetDb.close()
+        }
+    }
+
+    /** Row-by-row fallback for stats. */
+    private fun importClimbStatsLegacy(
+        rawDb: SQLiteDatabase,
+        existingStats: Map<Pair<String, Long>, Long?>? = null,
+        onProgress: ((inserted: Int, scanned: Int, total: Int) -> Unit)? = null
+    ): Int {
+        val cursor = rawDb.rawQuery(
+            """SELECT climb_uuid, angle, display_difficulty, difficulty_average,
+                      quality_average, ascensionist_count, benchmark_difficulty,
+                      fa_username, fa_at
+               FROM climb_stats""",
+            null
+        )
+        val total = cursor.count
+        var inserted = 0
+        var scanned = 0
+        cursor.use {
+            while (it.moveToNext()) {
+                scanned++
+                val climbUuid = it.getString(0)
+                val angle = it.getLong(1)
+                val ascensionistCount = if (it.isNull(5)) null else it.getLong(5)
+                if (existingStats != null) {
+                    val key = climbUuid to angle
+                    if (existingStats.containsKey(key) && existingStats[key] == ascensionistCount) {
+                        if (scanned % (BATCH_SIZE * 4) == 0) onProgress?.invoke(inserted, scanned, total)
+                        continue
+                    }
+                }
+                inserted++
+                boardRepository.upsertClimbStat(
+                    climbUuid, angle,
+                    if (it.isNull(2)) null else it.getDouble(2),
+                    if (it.isNull(3)) null else it.getDouble(3),
+                    if (it.isNull(4)) null else it.getDouble(4),
+                    ascensionistCount,
+                    if (it.isNull(6)) null else it.getDouble(6),
+                    if (it.isNull(7)) null else it.getString(7),
+                    if (it.isNull(8)) null else it.getString(8)
+                )
+                if (inserted % BATCH_SIZE == 0) onProgress?.invoke(inserted, scanned, total)
+            }
+            onProgress?.invoke(inserted, scanned, total)
+        }
+        return inserted
+    }
+
+    /** Open the target board database directly for ATTACH operations. */
+    private fun openTargetDb(): SQLiteDatabase {
+        val dbFile = context.getDatabasePath("cruxcoach.db")
+        return SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE)
+    }
+
+    private fun queryLong(db: SQLiteDatabase, sql: String): Long {
+        val cursor = db.rawQuery(sql, null)
+        return cursor.use { if (it.moveToFirst()) it.getLong(0) else 0L }
+    }
+
+    // ── Index management for bulk import performance ────────────────
+
+    private val CLIMB_INDEXES = arrayOf(
+        "idx_aurora_climb_listed" to
+                "CREATE INDEX idx_aurora_climb_listed ON aurora_climb(is_listed)",
+        "idx_aurora_climb_frames_count" to
+                "CREATE INDEX idx_aurora_climb_frames_count ON aurora_climb(is_listed, frames_count, uuid)"
+    )
+
+    private val STAT_INDEXES = arrayOf(
+        "idx_aurora_climb_stat_angle" to
+                "CREATE INDEX idx_aurora_climb_stat_angle ON aurora_climb_stat(angle)",
+        "idx_climb_stat_browse" to
+                """CREATE INDEX idx_climb_stat_browse ON aurora_climb_stat(
+                   angle, difficulty_average, quality_average, ascensionist_count,
+                   benchmark_difficulty, climb_uuid)""",
+        "idx_climb_stat_by_popularity" to
+                """CREATE INDEX idx_climb_stat_by_popularity ON aurora_climb_stat(
+                   angle, ascensionist_count, difficulty_average, climb_uuid)""",
+        "idx_climb_stat_count_cover" to
+                """CREATE INDEX idx_climb_stat_count_cover ON aurora_climb_stat(
+                   angle, ascensionist_count, difficulty_average, benchmark_difficulty, climb_uuid)"""
+    )
+
+    private fun dropIndexes(db: SQLiteDatabase, indexes: Array<Pair<String, String>>) {
+        for ((name, _) in indexes) db.execSQL("DROP INDEX IF EXISTS $name")
+    }
+
+    private fun createIndexes(db: SQLiteDatabase, indexes: Array<Pair<String, String>>) {
+        for ((_, ddl) in indexes) db.execSQL(ddl)
+    }
+
+    /** Drop climb+stat indexes, run [block], rebuild indexes, then PRAGMA optimize. */
+    private inline fun <R> withDeferredIndexes(block: () -> R): R {
+        val db = openTargetDb()
+        try {
+            dropIndexes(db, CLIMB_INDEXES)
+            dropIndexes(db, STAT_INDEXES)
+        } finally {
+            db.close()
+        }
+        try {
+            return block()
+        } finally {
+            val db2 = openTargetDb()
+            try {
+                createIndexes(db2, CLIMB_INDEXES)
+                createIndexes(db2, STAT_INDEXES)
+                db2.execSQL("PRAGMA optimize")
+            } finally {
+                db2.close()
+            }
+        }
+    }
+
+    private fun importPlacements(rawDb: SQLiteDatabase): Int {
+        val cursor = rawDb.rawQuery(
+            """SELECT p.id, p.hole_id, p.set_id, h.x, h.y
+               FROM placements p
+               JOIN holes h ON p.hole_id = h.id
+               WHERE p.layout_id = (
+                   SELECT MIN(id) FROM layouts
+                   WHERE product_id = (SELECT MIN(id) FROM products)
+               )""",
+            null
+        )
+        var inserted = 0
+        cursor.use {
+            val rows = mutableListOf<PlacementRow>()
+            while (it.moveToNext()) {
+                rows.add(
+                    PlacementRow(
+                        placementId = it.getLong(0),
+                        holeId = it.getLong(1),
+                        setId = it.getLong(2),
+                        x = it.getLong(3),
+                        y = it.getLong(4)
+                    )
+                )
+                if (rows.size >= BATCH_SIZE) {
+                    flushPlacements(rows)
+                    inserted += rows.size
+                    rows.clear()
+                }
+            }
+            if (rows.isNotEmpty()) {
+                flushPlacements(rows)
+                inserted += rows.size
+            }
+        }
+        return inserted
+    }
+
+    private fun flushPlacements(rows: List<PlacementRow>) {
+        boardRepository.runInTransaction {
+            for (r in rows) {
+                boardRepository.upsertPlacement(r.placementId, r.holeId, r.setId, r.x, r.y)
+            }
+        }
+    }
+
+    private fun importProductSizes(rawDb: SQLiteDatabase) {
+        val cursor = rawDb.rawQuery(
+            """SELECT id, product_id, name, edge_left, edge_right, edge_bottom, edge_top, image_filename
+               FROM product_sizes WHERE is_listed = 1""",
+            null
+        )
+        cursor.use {
+            while (it.moveToNext()) {
+                boardRepository.upsertProductSize(
+                    id = it.getLong(0),
+                    productId = it.getLong(1),
+                    name = it.getString(2),
+                    edgeLeft = it.getLong(3),
+                    edgeRight = it.getLong(4),
+                    edgeBottom = it.getLong(5),
+                    edgeTop = it.getLong(6),
+                    imageFilename = if (it.isNull(7)) null else it.getString(7)
+                )
+            }
+        }
+    }
+
+    private fun importBoardImages(rawDb: SQLiteDatabase) {
+        val cursor = rawDb.rawQuery(
+            """SELECT id, product_size_id, layout_id, set_id, image_filename
+               FROM product_sizes_layouts_sets
+               WHERE image_filename IS NOT NULL AND is_listed = 1""",
+            null
+        )
+        cursor.use {
+            while (it.moveToNext()) {
+                boardRepository.upsertBoardImage(
+                    id = it.getLong(0),
+                    productSizeId = it.getLong(1),
+                    layoutId = it.getLong(2),
+                    setId = it.getLong(3),
+                    imageFilename = it.getString(4)
+                )
+            }
+        }
+    }
+
+    private fun importLeds(rawDb: SQLiteDatabase) {
+        val cursor = rawDb.rawQuery(
+            "SELECT hole_id, product_size_id, position FROM leds",
+            null
+        )
+        cursor.use {
+            val rows = mutableListOf<Triple<Long, Long, Long>>()
+            while (it.moveToNext()) {
+                rows.add(Triple(it.getLong(0), it.getLong(1), it.getLong(2)))
+                if (rows.size >= BATCH_SIZE) {
+                    boardRepository.runInTransaction {
+                        for ((holeId, productSizeId, position) in rows) {
+                            boardRepository.upsertLed(holeId, productSizeId, position)
+                        }
+                    }
+                    rows.clear()
+                }
+            }
+            if (rows.isNotEmpty()) {
+                boardRepository.runInTransaction {
+                    for ((holeId, productSizeId, position) in rows) {
+                        boardRepository.upsertLed(holeId, productSizeId, position)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun importSyncState(rawDb: SQLiteDatabase) {
+        val cursor = rawDb.rawQuery(
+            "SELECT table_name, last_synchronized_at FROM shared_syncs",
+            null
+        )
+        cursor.use {
+            while (it.moveToNext()) {
+                boardRepository.upsertSyncState(it.getString(0), it.getString(1))
+            }
+        }
+    }
+
+    // ── Row data classes ─────────────────────────────────────────────
+
+    private data class PlacementRow(
+        val placementId: Long, val holeId: Long, val setId: Long,
+        val x: Long, val y: Long
+    )
+}

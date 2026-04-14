@@ -1,0 +1,215 @@
+package com.cruxcoach.android.fakes
+
+import com.cruxcoach.data.repository.AngleClimbCount
+import com.cruxcoach.data.repository.AngleOption
+import com.cruxcoach.data.repository.AuroraClimbWithStats
+import com.cruxcoach.data.repository.AuroraPlacement
+import com.cruxcoach.data.repository.BoardImage
+import com.cruxcoach.data.repository.BoardRepository
+import com.cruxcoach.data.repository.BoardSize
+import com.cruxcoach.data.repository.ClimbFrameRow
+import com.cruxcoach.data.repository.ClimbSortField
+import com.cruxcoach.data.repository.ClimbTypeFilter
+import com.cruxcoach.data.repository.LedGridPoint
+import com.cruxcoach.data.repository.SortDirection
+
+/**
+ * In-memory fake of [BoardRepository] for ViewModel unit tests.
+ * Focuses on methods used by BoardBrowserViewModel; other methods
+ * return sensible defaults (empty lists, 0 counts).
+ */
+class FakeBoardRepository : BoardRepository {
+
+    val climbs = mutableListOf<AuroraClimbWithStats>()
+
+    // -- Test helpers --
+
+    fun addClimb(climb: AuroraClimbWithStats) {
+        climbs.add(climb)
+    }
+
+    fun addClimbs(vararg climbList: AuroraClimbWithStats) {
+        climbs.addAll(climbList)
+    }
+
+    // -- BoardClimbQueries --
+
+    override fun searchClimbsByName(
+        query: String, angle: Int, layoutId: Int, sortField: ClimbSortField,
+        sortDirection: SortDirection, limit: Int, offset: Int,
+        climbType: ClimbTypeFilter
+    ): List<AuroraClimbWithStats> {
+        val filtered = climbs.filter {
+            it.name.contains(query, ignoreCase = true) ||
+                it.setterUsername?.contains(query, ignoreCase = true) == true
+        }
+        return filtered.drop(offset).take(limit)
+    }
+
+    override fun searchClimbsSorted(
+        angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double,
+        minAscensionists: Int, sortField: ClimbSortField,
+        sortDirection: SortDirection, limit: Int, offset: Int,
+        climbType: ClimbTypeFilter
+    ): List<AuroraClimbWithStats> {
+        val filtered = climbs.filter { climb ->
+            val diff = climb.difficultyAverage ?: return@filter false
+            diff in minDifficulty..maxDifficulty &&
+                (climb.ascensionistCount ?: 0) >= minAscensionists
+        }
+        return filtered.drop(offset).take(limit)
+    }
+
+    override fun getClimbByUuid(uuid: String, angle: Int): AuroraClimbWithStats? {
+        return climbs.firstOrNull { it.uuid.equals(uuid, ignoreCase = true) }
+    }
+
+    override fun countFilteredClimbs(
+        angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double,
+        minAscensionists: Int, climbType: ClimbTypeFilter
+    ): Long {
+        return climbs.count { climb ->
+            val diff = climb.difficultyAverage ?: return@count false
+            diff in minDifficulty..maxDifficulty &&
+                (climb.ascensionistCount ?: 0) >= minAscensionists
+        }.toLong()
+    }
+
+    override fun countFilteredClimbsFast(
+        angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int
+    ): Long {
+        return climbs.count { climb ->
+            val diff = climb.difficultyAverage ?: return@count false
+            diff in minDifficulty..maxDifficulty &&
+                (climb.ascensionistCount ?: 0) >= minAscensionists
+        }.toLong()
+    }
+
+    override fun countBenchmarkFilteredClimbs(
+        angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double,
+        minAscensionists: Int, climbType: ClimbTypeFilter
+    ): Long {
+        return climbs.count { climb ->
+            val diff = climb.difficultyAverage ?: return@count false
+            diff in minDifficulty..maxDifficulty &&
+                (climb.ascensionistCount ?: 0) >= minAscensionists &&
+                climb.benchmarkDifficulty > 0.0
+        }.toLong()
+    }
+
+    override fun countSearchClimbs(query: String, angle: Int, layoutId: Int, climbType: ClimbTypeFilter): Long {
+        return climbs.count {
+            it.name.contains(query, ignoreCase = true) ||
+                it.setterUsername?.contains(query, ignoreCase = true) == true
+        }.toLong()
+    }
+
+    override fun countBenchmarkSearchClimbs(query: String, angle: Int, layoutId: Int, climbType: ClimbTypeFilter): Long {
+        return climbs.count {
+            (it.name.contains(query, ignoreCase = true) ||
+                it.setterUsername?.contains(query, ignoreCase = true) == true) &&
+                it.benchmarkDifficulty > 0.0
+        }.toLong()
+    }
+
+    override fun getClimbCount(): Long = climbs.size.toLong()
+    override fun climbExistsByUuid(uuid: String): Boolean = climbs.any { it.uuid == uuid }
+    override fun statExistsByUuid(uuid: String): Boolean = false
+
+    override fun getClimbCountByAngle(layoutId: Int, climbType: ClimbTypeFilter): List<AngleClimbCount> = emptyList()
+    override fun getAnglesForClimb(climbUuid: String): List<AngleOption> = emptyList()
+
+    override fun countNomatchClimbs(): Long = 0L
+
+    override fun getClimbsByUuids(
+        uuids: Collection<String>, angle: Int, layoutId: Int, minDifficulty: Double,
+        maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter
+    ): List<AuroraClimbWithStats> {
+        return climbs.filter { it.uuid in uuids }
+    }
+
+    override fun getClimbsByUuids(uuids: Collection<String>, angle: Int): List<AuroraClimbWithStats> {
+        return climbs.filter { it.uuid in uuids }
+    }
+
+    override fun getStatCount(): Long = 0L
+
+    override fun searchClimbUuidsByHold(
+        holdPattern: String, angle: Int, layoutId: Int, minDifficulty: Double,
+        maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter
+    ): List<String> {
+        return climbs.filter { climb ->
+            val diff = climb.difficultyAverage ?: return@filter false
+            diff in minDifficulty..maxDifficulty &&
+                (climb.ascensionistCount ?: 0) >= minAscensionists &&
+                climb.frames.contains(holdPattern)
+        }.map { it.uuid }
+    }
+
+    override fun searchClimbUuidsByAllHolds(
+        holdPatterns: List<String>, angle: Int, layoutId: Int, minDifficulty: Double,
+        maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter
+    ): Set<String> {
+        if (holdPatterns.isEmpty()) return emptySet()
+        return climbs.filter { climb ->
+            val diff = climb.difficultyAverage ?: return@filter false
+            diff in minDifficulty..maxDifficulty &&
+                (climb.ascensionistCount ?: 0) >= minAscensionists &&
+                holdPatterns.all { pattern -> climb.frames.contains(pattern) }
+        }.map { it.uuid }.toSet()
+    }
+
+    override fun getAllFramesForHeatmap(
+        angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double,
+        minAscensionists: Int, climbType: ClimbTypeFilter
+    ): List<ClimbFrameRow> {
+        return climbs.filter { climb ->
+            val diff = climb.difficultyAverage ?: return@filter false
+            diff in minDifficulty..maxDifficulty &&
+                (climb.ascensionistCount ?: 0) >= minAscensionists &&
+                climb.frames.isNotEmpty()
+        }.map { ClimbFrameRow(it.uuid, it.frames) }
+    }
+
+    // -- BoardLayoutQueries --
+
+    override fun getAllPlacements(): List<AuroraPlacement> = emptyList()
+    override fun getProductSize(id: Int): BoardSize? = null
+    override fun getAllProductSizes(): List<BoardSize> = emptyList()
+    override fun getBoardImages(productSizeId: Int, layoutId: Int): List<BoardImage> = emptyList()
+    override fun getPlacementLedMap(productSizeId: Int): Map<Int, Int> = emptyMap()
+    override fun getMirrorPlacementMap(productSizeId: Int): Map<Int, Int> = emptyMap()
+    override fun countLeds(): Long = 0L
+    override fun getLedGrid(productSizeId: Int): List<LedGridPoint> = emptyList()
+
+    // -- BoardWriteOperations --
+
+    override fun upsertClimb(
+        uuid: String, layoutId: Long, setter: String?, name: String,
+        frames: String, framesCount: Long, isListed: Long,
+        edgeLeft: Long?, edgeRight: Long?, edgeBottom: Long?, edgeTop: Long?,
+        createdAt: String?, description: String, isNomatch: Long,
+        framesPace: Long, hsm: Long
+    ) {}
+
+    override fun upsertClimbStat(
+        climbUuid: String, angle: Long, displayDifficulty: Double?,
+        difficultyAverage: Double?, qualityAverage: Double?,
+        ascensionistCount: Long?, benchmarkDifficulty: Double?,
+        faUsername: String?, faAt: String?,
+        officialKilterDifficulty: Long?
+    ) {}
+
+    override fun upsertHoldPosition(holeId: Long, productSizeId: Long, x: Long, y: Long, ledPosition: Long, placementId: Long) {}
+    override fun upsertLed(holeId: Long, productSizeId: Long, position: Long) {}
+    override fun upsertHole(id: Long, productSizeId: Long, x: Long, y: Long, mirroredHoleId: Long?) {}
+    override fun upsertPlacement(placementId: Long, holeId: Long, setId: Long, x: Long, y: Long) {}
+    override fun upsertProductSize(id: Long, productId: Long, name: String, edgeLeft: Long, edgeRight: Long, edgeBottom: Long, edgeTop: Long, imageFilename: String?) {}
+    override fun upsertBoardImage(id: Long, productSizeId: Long, layoutId: Long, setId: Long, imageFilename: String) {}
+    override fun upsertSyncState(tableName: String, lastSynchronizedAt: String) {}
+    override fun getSyncState(tableName: String): String? = null
+    override fun getAllClimbUuids(): Set<String> = climbs.map { it.uuid }.toSet()
+    override fun getAllStatKeys(): Map<Pair<String, Long>, Long?> = emptyMap()
+    override fun runInTransaction(block: () -> Unit) { block() }
+    override fun deleteAllBoardData() { climbs.clear() }
+}

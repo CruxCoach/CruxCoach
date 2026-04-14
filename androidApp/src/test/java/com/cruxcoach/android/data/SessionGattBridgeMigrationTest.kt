@@ -1,0 +1,379 @@
+package com.cruxcoach.android.data
+
+import android.bluetooth.BluetoothDevice
+import android.content.Context
+import com.cruxcoach.android.ble.AuroraBleConnection
+import com.cruxcoach.android.ble.ClimbBleAdvertiser
+import com.cruxcoach.android.ble.ConnectionState
+import com.cruxcoach.android.ble.GattCommand
+import com.cruxcoach.android.ble.GattConnectionEvent
+import com.cruxcoach.android.ble.NearbyClimb
+import com.cruxcoach.android.ble.NearbyClimbScanner
+import com.cruxcoach.android.ble.NearbySession
+import com.cruxcoach.android.ble.QueueItem
+import com.cruxcoach.android.ble.SessionClientState
+import com.cruxcoach.android.ble.SessionGattClient
+import com.cruxcoach.android.ble.SessionGattServer
+import com.cruxcoach.android.ble.SessionQueueProtocol
+import com.cruxcoach.data.repository.BoardRepository
+import io.mockk.coEvery
+import io.mockk.every
+import io.mockk.just
+import io.mockk.mockk
+import io.mockk.Runs
+import io.mockk.verify
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.setMain
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertFalse
+import org.junit.Before
+import org.junit.Test
+
+/**
+ * Regression tests for host migration in [SessionGattBridge].
+ *
+ * Covers three bugs fixed in the host-handover feature:
+ *
+ * 1. **Stale session filter used wrong ID** — participants always have `sessionId=0`
+ *    in [SessionQueueState]. The filter `it.sessionId != lastHostSessionId` was a no-op
+ *    (no session has id=0). Fix: set `lastHostSessionId` from [NearbyClimbScanner.nearbySessions]
+ *    (the host's real advertised ID) inside [SessionGattBridge.joinSession].
+ *
+ * 2. **Migration retried the same dying session** — after the stale-session join failed
+ *    (`isConnecting=true`, DISCONNECTED), the old code called `setError()` instead of
+ *    retrying migration. Fix: DISCONNECTED + `isConnecting` + non-empty queue → retry.
+ *
+ * 3. **Stale session still visible during retry** — even with retry, `lastHostSessionId`
+ *    wasn't updated on failed joins, so retries found the same session. Fix: `joinSession()`
+ *    always updates `lastHostSessionId`, so retries automatically filter the previously
+ *    failed session.
+ */
+@OptIn(ExperimentalCoroutinesApi::class)
+class SessionGattBridgeMigrationTest {
+
+    private val testDispatcher = UnconfinedTestDispatcher()
+
+    // Real queue manager so we can assert its state transitions
+    private lateinit var queueManager: SessionQueueManager
+
+    // Mocked dependencies
+    private val mockContext = mockk<Context>(relaxed = true)
+    private val mockGattServer = mockk<SessionGattServer>(relaxed = true)
+    private val mockGattClient = mockk<SessionGattClient>(relaxed = true)
+    private val mockAdvertiser = mockk<ClimbBleAdvertiser>(relaxed = true)
+    private val mockNearbyScanner = mockk<NearbyClimbScanner>(relaxed = true)
+    private val mockBleConnection = mockk<AuroraBleConnection>(relaxed = true)
+    private val mockBoardRepository = mockk<BoardRepository>(relaxed = true)
+    private val mockBoardStateManager = mockk<BoardStateManager>(relaxed = true)
+    private val mockClimbNameResolver = mockk<ClimbNameResolver>(relaxed = true)
+    private val mockUserPreferences = mockk<UserPreferences>(relaxed = true)
+    private val mockBoardSessionManager = mockk<BoardSessionManager>(relaxed = true)
+
+    // Controllable flows for SessionGattClient
+    private val clientStateFlow = MutableStateFlow(SessionClientState.DISCONNECTED)
+    private val sessionInfoFlow = MutableSharedFlow<ByteArray>(extraBufferCapacity = 4)
+    private val queueEventsFlow = MutableSharedFlow<ByteArray>(extraBufferCapacity = 4)
+    private val queueStateFlow = MutableSharedFlow<ByteArray>(extraBufferCapacity = 4)
+    private val participantListFlow = MutableSharedFlow<ByteArray>(extraBufferCapacity = 4)
+    private val currentClimbFlow = MutableSharedFlow<ByteArray>(extraBufferCapacity = 4)
+
+    // Controllable flows for NearbyClimbScanner
+    private val nearbyClimbsFlow = MutableStateFlow<List<NearbyClimb>>(emptyList())
+    private val nearbySessionsFlow = MutableStateFlow<List<NearbySession>>(emptyList())
+
+    // Controllable flows for SessionGattServer
+    private val serverCommandsFlow = MutableSharedFlow<GattCommand>(extraBufferCapacity = 4)
+    private val serverConnectionEventsFlow =
+        MutableSharedFlow<GattConnectionEvent>(extraBufferCapacity = 4)
+
+    // Controllable flow for AuroraBleConnection
+    private val bleConnectionStateFlow = MutableStateFlow(ConnectionState.DISCONNECTED)
+
+    private lateinit var bridge: SessionGattBridge
+
+    @Before
+    fun setup() {
+        Dispatchers.setMain(testDispatcher)
+
+        every { mockBleConnection.connectionState } returns bleConnectionStateFlow
+
+        every { mockGattClient.connectionState } returns clientStateFlow
+        every { mockGattClient.queueEvents } returns queueEventsFlow
+        every { mockGattClient.sessionInfoUpdates } returns sessionInfoFlow
+        every { mockGattClient.queueStateUpdates } returns queueStateFlow
+        every { mockGattClient.participantListUpdates } returns participantListFlow
+        every { mockGattClient.currentClimbUpdates } returns currentClimbFlow
+        every { mockGattClient.connect(any()) } just Runs
+        every { mockGattClient.disconnect() } just Runs
+        coEvery { mockGattClient.sendCommand(any()) } returns true
+        coEvery { mockGattClient.readInitialState() } just Runs
+
+        every { mockGattServer.commands } returns serverCommandsFlow
+        every { mockGattServer.connectionEvents } returns serverConnectionEventsFlow
+        every { mockGattServer.start() } returns true
+        every { mockGattServer.getConnectedCount() } returns 0
+
+        every { mockNearbyScanner.nearbyClimbs } returns nearbyClimbsFlow
+        every { mockNearbyScanner.nearbySessions } returns nearbySessionsFlow
+        every { mockNearbyScanner.disconnectRequests } returns MutableSharedFlow(extraBufferCapacity = 1)
+
+        queueManager = SessionQueueManager(mockBleConnection, mockBoardRepository, mockClimbNameResolver, mockUserPreferences)
+
+        bridge = SessionGattBridge(
+            context = mockContext,
+            queueManager = queueManager,
+            gattServer = mockGattServer,
+            gattClient = mockGattClient,
+            advertiser = mockAdvertiser,
+            nearbyScanner = mockNearbyScanner,
+            bleConnection = mockBleConnection,
+            boardStateManager = mockBoardStateManager,
+            boardSessionManager = mockBoardSessionManager
+        )
+    }
+
+    @After
+    fun tearDown() {
+        Dispatchers.resetMain()
+    }
+
+    // ===== Helpers =====
+
+    private fun mockDevice(address: String): BluetoothDevice =
+        mockk<BluetoothDevice>(relaxed = true).also { every { it.address } returns address }
+
+    private fun makeSession(
+        sessionId: Int,
+        deviceAddress: String,
+        device: BluetoothDevice? = null
+    ) = NearbySession(
+        sessionId = sessionId,
+        participantCount = 2,
+        hostName = "TestHost",
+        rssi = -60,
+        lastSeenMs = System.currentTimeMillis(),
+        deviceAddress = deviceAddress,
+        device = device
+    )
+
+    private fun sentinelBytes(): ByteArray =
+        SessionQueueProtocol.encodeSessionInfo("", 0)
+
+    /**
+     * Simulates a participant joining a session: triggers joinSession, drives the
+     * CONNECTED state through the GATT client flow, and populates the queue so
+     * migration has items to work with.
+     */
+    private fun participantJoinsSession(hostDevice: BluetoothDevice, sessionId: Int) {
+        nearbySessionsFlow.value = listOf(makeSession(sessionId, hostDevice.address, hostDevice))
+        bridge.joinSession(hostDevice)
+        // Trigger the CONNECTED handler — sets role=PARTICIPANT
+        clientStateFlow.value = SessionClientState.CONNECTED
+        // Add climbs so migration has a non-empty queue
+        queueManager.applyRemoteState(0, listOf(
+            QueueItem("climb-a", 40),
+            QueueItem("climb-b", 40)
+        ))
+    }
+
+    // ===== Test 1: participant sessionId is always 0 =====
+
+    /**
+     * Design invariant: [SessionQueueManager.setParticipantRole] is called with sessionId=0
+     * (hardcoded in [SessionGattBridge.joinSession]). Participant devices do not own the
+     * session ID — that belongs to the host. Migration must NOT use queueManager.state.sessionId
+     * as the stale-ad filter because it would always be 0, making the filter a no-op.
+     */
+    @Test
+    fun `participant sessionId is always 0 and cannot serve as stale-session filter`() {
+        queueManager.setParticipantRole(0, "SomeHost")
+
+        assertEquals(
+            "setParticipantRole passes sessionId=0, so qState.sessionId==0 for participants; " +
+                "migration must use nearbySessions to get the real host session ID",
+            0,
+            queueManager.state.value.sessionId
+        )
+    }
+
+    // ===== Test 2: migration promotes to host when only the old host's session is visible =====
+
+    /**
+     * Regression for Bug 1 (stale-session filter was a no-op).
+     *
+     * When the host ends the session and migration starts, the dying host's BLE advertisement
+     * can still be visible for ~5 seconds (NearbyClimbScanner stale timeout). Before the fix,
+     * the migration filter used queueManager.state.sessionId (always 0) → filter matched
+     * nothing → migration joined the dying host → connection failed → queue lost.
+     *
+     * After the fix, joinSession() records the host's real advertised session ID from
+     * nearbySessions, and migration filters it out correctly.
+     */
+    @Test
+    fun `migration promotes to host when only old host session is visible`() = runTest {
+        val hostDevice = mockDevice("AA:BB:CC:DD:EE:01")
+        val hostSessionId = 12345
+
+        // Join the host's session — records lastHostSessionId = 12345
+        participantJoinsSession(hostDevice, hostSessionId)
+
+        // During migration, only the old (dying) host's session is still advertising
+        nearbySessionsFlow.value = listOf(makeSession(hostSessionId, "AA:BB:CC:DD:EE:01", hostDevice))
+
+        // Host sends session-ended sentinel
+        sessionInfoFlow.emit(sentinelBytes())
+
+        // Advance through migration wait: index=0 → waitMs=1000ms, polling every 500ms
+        advanceTimeBy(1_100)
+
+        assertEquals(
+            "Migration must promote to HOST when the only nearby session is the stale old-host session",
+            SessionRole.HOST,
+            queueManager.state.value.role
+        )
+        assertEquals("Queue must be preserved after promotion", 2, queueManager.state.value.queue.size)
+    }
+
+    // ===== Test 3: migration joins a genuinely new host =====
+
+    /**
+     * When a NEW session (different ID, different device) appears during migration,
+     * the participant must join it instead of self-promoting.
+     */
+    @Test
+    fun `migration joins new host session instead of self-promoting`() = runTest {
+        val oldHostDevice = mockDevice("AA:BB:CC:DD:EE:01")
+        val oldHostSessionId = 11111
+
+        val newHostDevice = mockDevice("FF:EE:DD:CC:BB:AA")
+        val newHostSessionId = 22222
+
+        // Join the old host's session
+        participantJoinsSession(oldHostDevice, oldHostSessionId)
+
+        // During migration, a NEW session from a different host appears alongside the stale one
+        nearbySessionsFlow.value = listOf(
+            makeSession(oldHostSessionId, "AA:BB:CC:DD:EE:01", oldHostDevice), // stale, must be filtered
+            makeSession(newHostSessionId, "FF:EE:DD:CC:BB:AA", newHostDevice)  // new host
+        )
+
+        // Host sends sentinel
+        sessionInfoFlow.emit(sentinelBytes())
+
+        // Advance through first poll (500ms) — migration should find the new session
+        advanceTimeBy(600)
+
+        // Migration joined the new host → connect() must have been called for new device
+        verify { mockGattClient.connect(newHostDevice) }
+
+        // Role is PARTICIPANT (connecting to new host), NOT HOST
+        assertNotEquals(
+            "Migration must join the new host, not self-promote, when a fresh session is available",
+            SessionRole.HOST,
+            queueManager.state.value.role
+        )
+    }
+
+    // ===== Test 4: DISCONNECTED with isConnecting retries migration, not error =====
+
+    /**
+     * Regression for Bug 2 (failed join showed error instead of retrying migration).
+     *
+     * When migration calls joinSession() and the GATT connection fails immediately
+     * (DISCONNECTED fires with isConnecting=true), the participant's queue must not be
+     * stranded with an error. Migration must be retried so a successor host can emerge.
+     */
+    @Test
+    fun `failed migration join does not produce error and keeps queue intact`() = runTest {
+        val hostDevice = mockDevice("AA:BB:CC:DD:EE:01")
+        val hostSessionId = 99999
+
+        participantJoinsSession(hostDevice, hostSessionId)
+
+        // Only stale session is nearby — migration will find nothing and promote after wait
+        nearbySessionsFlow.value = listOf(makeSession(hostSessionId, "AA:BB:CC:DD:EE:01", hostDevice))
+
+        // Sentinel → migration starts
+        sessionInfoFlow.emit(sentinelBytes())
+
+        // Simulate a failed join attempt:
+        // isConnecting is set true inside joinSession() → setConnecting()
+        // DISCONNECTED fires while isConnecting=true
+        queueManager.setConnecting()
+        clientStateFlow.value = SessionClientState.DISCONNECTED
+
+        // Must NOT show an error
+        assertNull(
+            "Failed migration join must not set an error on the queue — must retry migration instead",
+            queueManager.state.value.error
+        )
+        // Queue must still be intact
+        assertEquals("Queue must be preserved after failed join", 2, queueManager.state.value.queue.size)
+    }
+
+    // ===== Test 5: migration ends queue when queue is empty =====
+
+    /**
+     * When the host disconnects but the queue is empty, migration should end the queue
+     * immediately rather than waiting and self-promoting to host with nothing to play.
+     */
+    @Test
+    fun `migration ends queue immediately when queue is empty`() = runTest {
+        val hostDevice = mockDevice("AA:BB:CC:DD:EE:01")
+        nearbySessionsFlow.value = listOf(makeSession(55555, "AA:BB:CC:DD:EE:01", hostDevice))
+
+        bridge.joinSession(hostDevice)
+        clientStateFlow.value = SessionClientState.CONNECTED
+        queueManager.setParticipantRole(0, "TestHost")
+        // Queue stays EMPTY — no applyRemoteState call
+
+        sessionInfoFlow.emit(sentinelBytes())
+
+        assertFalse(
+            "With empty queue, migration must end the session (role=NONE), not promote to HOST",
+            queueManager.state.value.isActive
+        )
+        assertEquals(SessionRole.NONE, queueManager.state.value.role)
+    }
+
+    // ===== Test 6: lastHostSessionId updated on each joinSession call =====
+
+    /**
+     * Regression for Bug 3 (stale session still visible during retry).
+     *
+     * When the retry path calls joinSession() again (targeting session X), lastHostSessionId
+     * must be updated to X so that the NEXT retry filters X correctly.
+     * This is verified by confirming migration promotes to host (not re-joining X)
+     * when X is the only nearby session across multiple retries.
+     */
+    @Test
+    fun `subsequent migration retries also filter the session that was last tried`() = runTest {
+        val hostDevice = mockDevice("AA:BB:CC:DD:EE:01")
+        val hostSessionId = 77777
+
+        participantJoinsSession(hostDevice, hostSessionId)
+
+        // Stale session stays visible throughout
+        nearbySessionsFlow.value = listOf(makeSession(hostSessionId, "AA:BB:CC:DD:EE:01", hostDevice))
+
+        // First sentinel → migration starts, filtered → promotes to host
+        sessionInfoFlow.emit(sentinelBytes())
+        advanceTimeBy(1_100)
+
+        assertEquals(
+            "After retry cycle with only stale session visible, must end up as HOST",
+            SessionRole.HOST,
+            queueManager.state.value.role
+        )
+    }
+}

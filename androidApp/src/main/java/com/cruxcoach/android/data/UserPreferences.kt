@@ -1,0 +1,629 @@
+package com.cruxcoach.android.data
+
+import android.content.Context
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.floatPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.preferencesDataStore
+import com.cruxcoach.android.notification.AnnouncementTagParser
+import com.cruxcoach.android.nostr.SignerMode
+import com.cruxcoach.domain.board.HoldRole
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+
+val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "cruxcoach_prefs")
+
+/**
+ * Per-key DataStore keys — preferences that belong to a specific Nostr identity.
+ * These are stored in a separate DataStore file per pubkey prefix.
+ */
+object KeyScopedKeys {
+    val NOSTR_SYNC_CURSOR = longPreferencesKey("nostr_sync_cursor")
+    val NOSTR_SYNC_RECOVERY_VERSION = intPreferencesKey("nostr_sync_recovery_version")
+    val KEY_BACKED_UP = booleanPreferencesKey("key_backed_up")
+    val AUTO_PUBLISH_ASCENTS = booleanPreferencesKey("auto_publish_ascents")
+    val LEADERBOARD_DISPLAY_NAME = stringPreferencesKey("leaderboard_display_name")
+    val KILTER_SYNC_ENABLED = booleanPreferencesKey("kilter_sync_enabled")
+    val KILTER_PUSH_ENABLED = booleanPreferencesKey("kilter_push_enabled")
+    val KILTER_LAST_SYNC = stringPreferencesKey("kilter_last_sync")
+    val SIGNER_MODE = stringPreferencesKey("signer_mode")
+    val AMBER_PUBKEY = stringPreferencesKey("amber_pubkey")
+    val AMBER_PACKAGE_NAME = stringPreferencesKey("amber_package_name")
+    val ONBOARDING_COMPLETED = booleanPreferencesKey("onboarding_completed")
+}
+
+enum class GradeScale(val label: String) {
+    V_SCALE("V-Scale"),
+    FRENCH("Fontainebleau")
+}
+
+enum class SyncInterval(val label: String) {
+    DAILY("Taeglich"),
+    WEEKLY("Woechentlich"),
+    MANUAL("Manuell")
+}
+
+enum class DarkModeSetting(val label: String) {
+    SYSTEM("System"),
+    LIGHT("Hell"),
+    DARK("Dunkel")
+}
+
+/**
+ * Configurable LED colors for each hold role on the board.
+ * Default values use CruxCoach branded colors.
+ */
+data class LedHoldColors(
+    val start: Int = CRUXCOACH_START,
+    val hand: Int = CRUXCOACH_HAND,
+    val finish: Int = CRUXCOACH_FINISH,
+    val foot: Int = CRUXCOACH_FOOT
+) {
+    companion object {
+        // CruxCoach "Royal" preset (default)
+        const val CRUXCOACH_START: Int = 0xEC   // CruxCoach Orange (FF6D00)
+        const val CRUXCOACH_HAND: Int = 0x03     // Blue (0000FF)
+        const val CRUXCOACH_FINISH: Int = 0xE3   // Magenta (FF00FF)
+        const val CRUXCOACH_FOOT: Int = 0x1D     // Teal (00FF40)
+
+        // Official Kilter Board preset (from placement_roles.led_color DB)
+        const val KILTER_START: Int = 0x1C   // Green (00FF00)
+        const val KILTER_HAND: Int = 0x1F    // Cyan (00FFFF)
+        const val KILTER_FINISH: Int = 0xE3  // Magenta (FF00FF)
+        const val KILTER_FOOT: Int = 0xF4    // Orange (FFA500)
+
+        fun kilterStandard() = LedHoldColors(
+            start = KILTER_START,
+            hand = KILTER_HAND,
+            finish = KILTER_FINISH,
+            foot = KILTER_FOOT
+        )
+    }
+    fun toRoleColorMap(): Map<Int, Int> = mapOf(
+        HoldRole.START to start,
+        HoldRole.HAND to hand,
+        HoldRole.FINISH to finish,
+        HoldRole.FOOT to foot,
+        HoldRole.ROUTE_START to start,
+        HoldRole.ROUTE_HAND to hand,
+        HoldRole.ROUTE_FINISH to finish,
+        HoldRole.ROUTE_FOOT to foot
+    )
+
+    fun colorForRole(roleId: Int): Int = when (HoldRole.normalize(roleId)) {
+        HoldRole.START -> start
+        HoldRole.HAND -> hand
+        HoldRole.FINISH -> finish
+        HoldRole.FOOT -> foot
+        else -> 0xFF
+    }
+}
+
+/** Shared preference keys — device-level settings, same across all Nostr identities. */
+object PreferenceKeys {
+    val BOARD_PRODUCT_SIZE_ID = intPreferencesKey("board_product_size_id")
+    val BOARD_LAYOUT_ID = intPreferencesKey("board_layout_id")
+    val SYNC_INTERVAL = stringPreferencesKey("sync_interval")
+    val LAST_SYNC_TIMESTAMP = stringPreferencesKey("last_sync_timestamp")
+    val GRADE_SCALE = stringPreferencesKey("grade_scale")
+    val LED_COLOR_START = intPreferencesKey("led_color_start")
+    val LED_COLOR_HAND = intPreferencesKey("led_color_hand")
+    val LED_COLOR_FINISH = intPreferencesKey("led_color_finish")
+    val LED_COLOR_FOOT = intPreferencesKey("led_color_foot")
+    val BLE_AUTO_DISCONNECT_MINUTES = intPreferencesKey("ble_auto_disconnect_minutes")
+    val BOARD_ANGLE = intPreferencesKey("board_angle")
+    val BOARD_MIN_GRADE = intPreferencesKey("board_min_grade")
+    val BOARD_MAX_GRADE = intPreferencesKey("board_max_grade")
+    val BOARD_MIN_ASCENSIONISTS = intPreferencesKey("board_min_ascensionists")
+    val BOARD_SORT_FIELD = stringPreferencesKey("board_sort_field")
+    val BOARD_SORT_DIRECTION = stringPreferencesKey("board_sort_direction")
+    val BOARD_STATUS_FILTER = stringPreferencesKey("board_status_filter")
+    val BOARD_CLIMB_TYPE = stringPreferencesKey("board_climb_type")
+    val BOARD_BENCHMARK_ONLY = booleanPreferencesKey("board_benchmark_only")
+    val ROUTE_FRAME_SPEED = floatPreferencesKey("route_frame_speed_f")
+    val ROUTE_USE_SETTER_SPEED = booleanPreferencesKey("route_use_setter_speed")
+    val ROUTE_COUNTDOWN = booleanPreferencesKey("route_countdown")
+    val ROUTE_COUNTDOWN_SECONDS = intPreferencesKey("route_countdown_seconds")
+    val ROUTE_AUTO_LOOP = booleanPreferencesKey("route_auto_loop")
+    val REST_TIMER_DURATION_SECONDS = intPreferencesKey("rest_timer_duration_seconds")
+    val REST_TIMER_AUTO_START = booleanPreferencesKey("rest_timer_auto_start")
+    val NEARBY_CLIMB_SHARING = booleanPreferencesKey("nearby_climb_sharing")
+    val ALLOW_REMOTE_DISCONNECT = booleanPreferencesKey("allow_remote_disconnect")
+    val EASTER_ANIMATIONS_UNLOCKED = booleanPreferencesKey("easter_animations_unlocked")
+    val KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
+    val DARK_MODE = stringPreferencesKey("dark_mode")
+    val SESSION_DISPLAY_NAME = stringPreferencesKey("session_display_name")
+    val LAST_CLIMB_UUID = stringPreferencesKey("last_climb_uuid")
+    val LAST_CLIMB_ANGLE = intPreferencesKey("last_climb_angle")
+    val LAST_CLIMB_TIMESTAMP = longPreferencesKey("last_climb_timestamp")
+    val CRASH_REPORT_OPT_IN = booleanPreferencesKey("crash_report_opt_in")
+    val LAST_ANNOUNCEMENT_CHECK = stringPreferencesKey("last_announcement_check")
+    val ANNOUNCEMENTS_ENABLED = booleanPreferencesKey("announcements_enabled")
+    val ANNOUNCEMENT_CAT_RELEASE = booleanPreferencesKey("announcement_cat_release")
+    val ANNOUNCEMENT_CAT_ISSUE = booleanPreferencesKey("announcement_cat_issue")
+    val ANNOUNCEMENT_CAT_TIP = booleanPreferencesKey("announcement_cat_tip")
+    val ANNOUNCEMENT_CAT_GENERAL = booleanPreferencesKey("announcement_cat_general")
+    val APP_LAUNCH_COUNT = intPreferencesKey("app_launch_count")
+}
+
+/**
+ * Snapshot of all board browser filter preferences from a single DataStore read.
+ * Avoids 10 separate Flow subscriptions (~90ms saved on cold start).
+ */
+data class BoardFilterSnapshot(
+    val angle: Int,
+    val layoutId: Int,
+    val minGrade: Int,
+    val maxGrade: Int,
+    val minAscensionists: Int,
+    val gradeScale: GradeScale,
+    val sortField: String,
+    val sortDirection: String,
+    val statusFilter: String,
+    val climbType: String,
+    val benchmarkOnly: Boolean
+)
+
+class UserPreferences(
+    private val dataStore: DataStore<Preferences>,
+    private val keyScoped: DataStore<Preferences>
+) {
+
+    /** Single-read snapshot of all board filter prefs (counterpart to [setBoardFilters]). */
+    suspend fun getBoardFilterSnapshot(): BoardFilterSnapshot {
+        val prefs = dataStore.data.first()
+        return BoardFilterSnapshot(
+            angle = prefs[PreferenceKeys.BOARD_ANGLE] ?: 40,
+            layoutId = prefs[PreferenceKeys.BOARD_LAYOUT_ID] ?: BoardConstants.KILTER_ORIGINAL_LAYOUT,
+            minGrade = prefs[PreferenceKeys.BOARD_MIN_GRADE] ?: 0,
+            maxGrade = prefs[PreferenceKeys.BOARD_MAX_GRADE] ?: 14,
+            minAscensionists = prefs[PreferenceKeys.BOARD_MIN_ASCENSIONISTS] ?: 0,
+            gradeScale = try { GradeScale.valueOf(prefs[PreferenceKeys.GRADE_SCALE] ?: GradeScale.FRENCH.name) } catch (_: IllegalArgumentException) { GradeScale.FRENCH },
+            sortField = prefs[PreferenceKeys.BOARD_SORT_FIELD] ?: "ASCENSIONISTS",
+            sortDirection = prefs[PreferenceKeys.BOARD_SORT_DIRECTION] ?: "DESC",
+            statusFilter = prefs[PreferenceKeys.BOARD_STATUS_FILTER] ?: "ALL",
+            climbType = prefs[PreferenceKeys.BOARD_CLIMB_TYPE] ?: "BOULDER",
+            benchmarkOnly = prefs[PreferenceKeys.BOARD_BENCHMARK_ONLY] ?: false
+        )
+    }
+
+    val boardProductSizeId: Flow<Int> = dataStore.data.map { prefs ->
+        prefs[PreferenceKeys.BOARD_PRODUCT_SIZE_ID] ?: BoardConstants.KILTER_DEFAULT_SIZE
+    }
+
+    /** True if the user has never explicitly chosen a board model. */
+    val isBoardProductSizeDefault: Flow<Boolean> = dataStore.data.map { prefs ->
+        !prefs.contains(PreferenceKeys.BOARD_PRODUCT_SIZE_ID)
+    }
+
+    val boardLayoutId: Flow<Int> = dataStore.data.map { prefs ->
+        prefs[PreferenceKeys.BOARD_LAYOUT_ID] ?: BoardConstants.KILTER_ORIGINAL_LAYOUT
+    }
+
+    val syncInterval: Flow<SyncInterval> = dataStore.data.map { prefs ->
+        val value = prefs[PreferenceKeys.SYNC_INTERVAL] ?: SyncInterval.MANUAL.name
+        try { SyncInterval.valueOf(value) } catch (_: IllegalArgumentException) { SyncInterval.MANUAL }
+    }
+
+    val lastSyncTimestamp: Flow<String?> = dataStore.data.map { prefs ->
+        prefs[PreferenceKeys.LAST_SYNC_TIMESTAMP]
+    }
+
+    val gradeScale: Flow<GradeScale> = dataStore.data.map { prefs ->
+        val value = prefs[PreferenceKeys.GRADE_SCALE] ?: GradeScale.FRENCH.name
+        try { GradeScale.valueOf(value) } catch (_: IllegalArgumentException) { GradeScale.FRENCH }
+    }
+
+    suspend fun setBoardProductSizeId(id: Int) {
+        dataStore.edit { prefs ->
+            prefs[PreferenceKeys.BOARD_PRODUCT_SIZE_ID] = id
+        }
+    }
+
+    suspend fun setBoardLayoutId(id: Int) {
+        dataStore.edit { prefs ->
+            prefs[PreferenceKeys.BOARD_LAYOUT_ID] = id
+        }
+    }
+
+    suspend fun setSyncInterval(interval: SyncInterval) {
+        dataStore.edit { prefs ->
+            prefs[PreferenceKeys.SYNC_INTERVAL] = interval.name
+        }
+    }
+
+    suspend fun setLastSyncTimestamp(timestamp: String?) {
+        dataStore.edit { prefs ->
+            if (timestamp != null) {
+                prefs[PreferenceKeys.LAST_SYNC_TIMESTAMP] = timestamp
+            } else {
+                prefs.remove(PreferenceKeys.LAST_SYNC_TIMESTAMP)
+            }
+        }
+    }
+
+    val kilterSyncEnabled: Flow<Boolean> = keyScoped.data.map { prefs ->
+        prefs[KeyScopedKeys.KILTER_SYNC_ENABLED] ?: false
+    }
+
+    val kilterPushEnabled: Flow<Boolean> = keyScoped.data.map { prefs ->
+        prefs[KeyScopedKeys.KILTER_PUSH_ENABLED] ?: false
+    }
+
+    val kilterLastSync: Flow<String?> = keyScoped.data.map { prefs ->
+        prefs[KeyScopedKeys.KILTER_LAST_SYNC]
+    }
+
+    suspend fun setKilterSyncEnabled(enabled: Boolean) {
+        keyScoped.edit { prefs -> prefs[KeyScopedKeys.KILTER_SYNC_ENABLED] = enabled }
+    }
+
+    suspend fun setKilterPushEnabled(enabled: Boolean) {
+        keyScoped.edit { prefs -> prefs[KeyScopedKeys.KILTER_PUSH_ENABLED] = enabled }
+    }
+
+    suspend fun setKilterLastSync(timestamp: String?) {
+        keyScoped.edit { prefs ->
+            if (timestamp != null) prefs[KeyScopedKeys.KILTER_LAST_SYNC] = timestamp
+            else prefs.remove(KeyScopedKeys.KILTER_LAST_SYNC)
+        }
+    }
+
+    suspend fun setGradeScale(scale: GradeScale) {
+        dataStore.edit { prefs ->
+            prefs[PreferenceKeys.GRADE_SCALE] = scale.name
+        }
+    }
+
+    val ledHoldColors: Flow<LedHoldColors> = combine(
+        dataStore.data.map { it[PreferenceKeys.LED_COLOR_START] },
+        dataStore.data.map { it[PreferenceKeys.LED_COLOR_HAND] },
+        dataStore.data.map { it[PreferenceKeys.LED_COLOR_FINISH] },
+        dataStore.data.map { it[PreferenceKeys.LED_COLOR_FOOT] }
+    ) { start, hand, finish, foot ->
+        LedHoldColors(
+            start = start ?: LedHoldColors.CRUXCOACH_START,
+            hand = hand ?: LedHoldColors.CRUXCOACH_HAND,
+            finish = finish ?: LedHoldColors.CRUXCOACH_FINISH,
+            foot = foot ?: LedHoldColors.CRUXCOACH_FOOT
+        )
+    }
+
+    suspend fun setLedColor(roleId: Int, colorByte: Int) {
+        dataStore.edit { prefs ->
+            when (roleId) {
+                HoldRole.START -> prefs[PreferenceKeys.LED_COLOR_START] = colorByte
+                HoldRole.HAND -> prefs[PreferenceKeys.LED_COLOR_HAND] = colorByte
+                HoldRole.FINISH -> prefs[PreferenceKeys.LED_COLOR_FINISH] = colorByte
+                HoldRole.FOOT -> prefs[PreferenceKeys.LED_COLOR_FOOT] = colorByte
+            }
+        }
+    }
+
+    val bleAutoDisconnectMinutes: Flow<Int> = dataStore.data.map { prefs ->
+        prefs[PreferenceKeys.BLE_AUTO_DISCONNECT_MINUTES] ?: 1
+    }
+
+    suspend fun setBleAutoDisconnectMinutes(minutes: Int) {
+        dataStore.edit { prefs ->
+            prefs[PreferenceKeys.BLE_AUTO_DISCONNECT_MINUTES] = minutes
+        }
+    }
+
+    suspend fun resetLedColors() {
+        dataStore.edit { prefs ->
+            prefs.remove(PreferenceKeys.LED_COLOR_START)
+            prefs.remove(PreferenceKeys.LED_COLOR_HAND)
+            prefs.remove(PreferenceKeys.LED_COLOR_FINISH)
+            prefs.remove(PreferenceKeys.LED_COLOR_FOOT)
+        }
+    }
+
+    suspend fun setKilterColors() {
+        val kilter = LedHoldColors.kilterStandard()
+        dataStore.edit { prefs ->
+            prefs[PreferenceKeys.LED_COLOR_START] = kilter.start
+            prefs[PreferenceKeys.LED_COLOR_HAND] = kilter.hand
+            prefs[PreferenceKeys.LED_COLOR_FINISH] = kilter.finish
+            prefs[PreferenceKeys.LED_COLOR_FOOT] = kilter.foot
+        }
+    }
+
+    // Board browser filter persistence
+    val boardAngle: Flow<Int> = dataStore.data.map { it[PreferenceKeys.BOARD_ANGLE] ?: 40 }
+    val boardMinGrade: Flow<Int> = dataStore.data.map { it[PreferenceKeys.BOARD_MIN_GRADE] ?: 0 }
+    val boardMaxGrade: Flow<Int> = dataStore.data.map { it[PreferenceKeys.BOARD_MAX_GRADE] ?: 14 }
+    val boardMinAscensionists: Flow<Int> = dataStore.data.map { it[PreferenceKeys.BOARD_MIN_ASCENSIONISTS] ?: 0 }
+    val boardSortField: Flow<String> = dataStore.data.map { it[PreferenceKeys.BOARD_SORT_FIELD] ?: "ASCENSIONISTS" }
+    val boardSortDirection: Flow<String> = dataStore.data.map { it[PreferenceKeys.BOARD_SORT_DIRECTION] ?: "DESC" }
+    val boardStatusFilter: Flow<String> = dataStore.data.map { it[PreferenceKeys.BOARD_STATUS_FILTER] ?: "ALL" }
+    val boardClimbType: Flow<String> = dataStore.data.map { it[PreferenceKeys.BOARD_CLIMB_TYPE] ?: "BOULDER" }
+    val boardBenchmarkOnly: Flow<Boolean> = dataStore.data.map { it[PreferenceKeys.BOARD_BENCHMARK_ONLY] ?: false }
+
+    suspend fun setBoardFilters(
+        angle: Int, minGrade: Int, maxGrade: Int, minAscensionists: Int,
+        sortField: String, sortDirection: String, statusFilter: String,
+        climbType: String = "BOULDER", benchmarkOnly: Boolean = false
+    ) {
+        dataStore.edit { prefs ->
+            prefs[PreferenceKeys.BOARD_ANGLE] = angle
+            prefs[PreferenceKeys.BOARD_MIN_GRADE] = minGrade
+            prefs[PreferenceKeys.BOARD_MAX_GRADE] = maxGrade
+            prefs[PreferenceKeys.BOARD_MIN_ASCENSIONISTS] = minAscensionists
+            prefs[PreferenceKeys.BOARD_SORT_FIELD] = sortField
+            prefs[PreferenceKeys.BOARD_SORT_DIRECTION] = sortDirection
+            prefs[PreferenceKeys.BOARD_STATUS_FILTER] = statusFilter
+            prefs[PreferenceKeys.BOARD_CLIMB_TYPE] = climbType
+            prefs[PreferenceKeys.BOARD_BENCHMARK_ONLY] = benchmarkOnly
+        }
+    }
+
+    // Route playback settings
+    val routeFrameSpeed: Flow<Float> = dataStore.data.map { it[PreferenceKeys.ROUTE_FRAME_SPEED] ?: 5f }
+    val routeUseSetterSpeed: Flow<Boolean> = dataStore.data.map { it[PreferenceKeys.ROUTE_USE_SETTER_SPEED] ?: true }
+    val routeCountdown: Flow<Boolean> = dataStore.data.map { it[PreferenceKeys.ROUTE_COUNTDOWN] ?: true }
+    val routeCountdownSeconds: Flow<Int> = dataStore.data.map { it[PreferenceKeys.ROUTE_COUNTDOWN_SECONDS] ?: 5 }
+    val routeAutoLoop: Flow<Boolean> = dataStore.data.map { it[PreferenceKeys.ROUTE_AUTO_LOOP] ?: false }
+
+    suspend fun setRouteFrameSpeed(seconds: Float) {
+        dataStore.edit { it[PreferenceKeys.ROUTE_FRAME_SPEED] = seconds }
+    }
+
+    suspend fun setRouteUseSetterSpeed(enabled: Boolean) {
+        dataStore.edit { it[PreferenceKeys.ROUTE_USE_SETTER_SPEED] = enabled }
+    }
+
+    suspend fun setRouteCountdown(enabled: Boolean) {
+        dataStore.edit { it[PreferenceKeys.ROUTE_COUNTDOWN] = enabled }
+    }
+
+    suspend fun setRouteCountdownSeconds(seconds: Int) {
+        dataStore.edit { it[PreferenceKeys.ROUTE_COUNTDOWN_SECONDS] = seconds }
+    }
+
+    suspend fun setRouteAutoLoop(enabled: Boolean) {
+        dataStore.edit { it[PreferenceKeys.ROUTE_AUTO_LOOP] = enabled }
+    }
+
+    // Rest timer settings
+    val restTimerDurationSeconds: Flow<Int> = dataStore.data.map {
+        it[PreferenceKeys.REST_TIMER_DURATION_SECONDS] ?: 180 // default 3 min
+    }
+    val restTimerAutoStart: Flow<Boolean> = dataStore.data.map {
+        it[PreferenceKeys.REST_TIMER_AUTO_START] ?: false
+    }
+
+    suspend fun setRestTimerDurationSeconds(seconds: Int) {
+        dataStore.edit { it[PreferenceKeys.REST_TIMER_DURATION_SECONDS] = seconds }
+    }
+
+    suspend fun setRestTimerAutoStart(enabled: Boolean) {
+        dataStore.edit { it[PreferenceKeys.REST_TIMER_AUTO_START] = enabled }
+    }
+
+    // Nearby climb sharing
+    val nearbyClimbSharing: Flow<Boolean> = dataStore.data.map {
+        it[PreferenceKeys.NEARBY_CLIMB_SHARING] ?: false
+    }
+    val allowRemoteDisconnect: Flow<Boolean> = dataStore.data.map {
+        it[PreferenceKeys.ALLOW_REMOTE_DISCONNECT] ?: false
+    }
+
+    suspend fun setNearbyClimbSharing(enabled: Boolean) {
+        dataStore.edit { it[PreferenceKeys.NEARBY_CLIMB_SHARING] = enabled }
+    }
+
+    suspend fun setAllowRemoteDisconnect(enabled: Boolean) {
+        dataStore.edit { it[PreferenceKeys.ALLOW_REMOTE_DISCONNECT] = enabled }
+    }
+
+    val keepScreenOn: Flow<Boolean> = dataStore.data.map {
+        it[PreferenceKeys.KEEP_SCREEN_ON] ?: false
+    }
+
+    suspend fun setKeepScreenOn(enabled: Boolean) {
+        dataStore.edit { it[PreferenceKeys.KEEP_SCREEN_ON] = enabled }
+    }
+
+    suspend fun isOnboardingCompleted(): Boolean =
+        keyScoped.data.first()[KeyScopedKeys.ONBOARDING_COMPLETED] ?: false
+
+    suspend fun setOnboardingCompleted(completed: Boolean) {
+        keyScoped.edit { it[KeyScopedKeys.ONBOARDING_COMPLETED] = completed }
+    }
+
+    val darkMode: Flow<DarkModeSetting> = dataStore.data.map { prefs ->
+        val value = prefs[PreferenceKeys.DARK_MODE] ?: DarkModeSetting.SYSTEM.name
+        try { DarkModeSetting.valueOf(value) } catch (_: IllegalArgumentException) { DarkModeSetting.SYSTEM }
+    }
+
+    suspend fun setDarkMode(mode: DarkModeSetting) {
+        dataStore.edit { it[PreferenceKeys.DARK_MODE] = mode.name }
+    }
+
+    val sessionDisplayName: Flow<String> = dataStore.data.map {
+        it[PreferenceKeys.SESSION_DISPLAY_NAME] ?: ""
+    }
+
+    suspend fun setSessionDisplayName(name: String) {
+        dataStore.edit { it[PreferenceKeys.SESSION_DISPLAY_NAME] = name }
+    }
+
+    // Persisted last climb (survives app restart)
+    val lastClimbUuid: Flow<String?> = dataStore.data.map {
+        it[PreferenceKeys.LAST_CLIMB_UUID]
+    }
+    val lastClimbAngle: Flow<Int> = dataStore.data.map {
+        it[PreferenceKeys.LAST_CLIMB_ANGLE] ?: 0
+    }
+    val lastClimbTimestamp: Flow<Long> = dataStore.data.map {
+        it[PreferenceKeys.LAST_CLIMB_TIMESTAMP] ?: 0L
+    }
+
+    suspend fun setLastClimb(uuid: String, angle: Int) {
+        dataStore.edit {
+            it[PreferenceKeys.LAST_CLIMB_UUID] = uuid
+            it[PreferenceKeys.LAST_CLIMB_ANGLE] = angle
+            it[PreferenceKeys.LAST_CLIMB_TIMESTAMP] = System.currentTimeMillis()
+        }
+    }
+
+
+    val easterAnimationsUnlocked: Flow<Boolean> = dataStore.data.map {
+        it[PreferenceKeys.EASTER_ANIMATIONS_UNLOCKED] ?: false
+    }
+
+    suspend fun setEasterAnimationsUnlocked(unlocked: Boolean) {
+        dataStore.edit { it[PreferenceKeys.EASTER_ANIMATIONS_UNLOCKED] = unlocked }
+    }
+
+    /** null = user has never been asked yet, true/false = user's explicit choice */
+    val crashReportOptIn: Flow<Boolean?> = dataStore.data.map {
+        it[PreferenceKeys.CRASH_REPORT_OPT_IN]
+    }
+
+    suspend fun setCrashReportOptIn(enabled: Boolean) {
+        dataStore.edit { it[PreferenceKeys.CRASH_REPORT_OPT_IN] = enabled }
+    }
+
+    val lastAnnouncementCheck: Flow<Long?> = dataStore.data.map {
+        it[PreferenceKeys.LAST_ANNOUNCEMENT_CHECK]?.toLongOrNull()
+    }
+
+    suspend fun setLastAnnouncementCheck(timestamp: Long) {
+        dataStore.edit { it[PreferenceKeys.LAST_ANNOUNCEMENT_CHECK] = timestamp.toString() }
+    }
+
+    /**
+     * Persistent sync cursor (Unix seconds) for the Nostr DM relay subscription.
+     * Latest `created_at` we successfully ingested. Survives app restarts and
+     * any DB wipe so the relay subscription can resume from where it left off
+     * instead of using a fixed time window.
+     */
+    val nostrSyncCursor: Flow<Long?> = keyScoped.data.map {
+        it[KeyScopedKeys.NOSTR_SYNC_CURSOR]
+    }
+
+    suspend fun getNostrSyncCursor(): Long? =
+        keyScoped.data.first()[KeyScopedKeys.NOSTR_SYNC_CURSOR]
+
+    suspend fun setNostrSyncCursor(cursor: Long) {
+        keyScoped.edit { it[KeyScopedKeys.NOSTR_SYNC_CURSOR] = cursor }
+    }
+
+    /**
+     * Schema version of the Nostr sync recovery state. Bumping the constant in
+     * code triggers a one-shot cursor reset on next app start so the relay
+     * back-fills missing history (e.g. after the BoardDB → SecureDB split).
+     */
+    suspend fun getNostrRecoveryVersion(): Int =
+        keyScoped.data.first()[KeyScopedKeys.NOSTR_SYNC_RECOVERY_VERSION] ?: 0
+
+    suspend fun setNostrRecoveryVersion(version: Int) {
+        keyScoped.edit { it[KeyScopedKeys.NOSTR_SYNC_RECOVERY_VERSION] = version }
+    }
+
+    val announcementsEnabled: Flow<Boolean> = dataStore.data.map {
+        it[PreferenceKeys.ANNOUNCEMENTS_ENABLED] ?: true
+    }
+
+    suspend fun setAnnouncementsEnabled(enabled: Boolean) {
+        dataStore.edit { it[PreferenceKeys.ANNOUNCEMENTS_ENABLED] = enabled }
+    }
+
+    val announcementCatRelease: Flow<Boolean> = dataStore.data.map {
+        it[PreferenceKeys.ANNOUNCEMENT_CAT_RELEASE] ?: true
+    }
+    val announcementCatIssue: Flow<Boolean> = dataStore.data.map {
+        it[PreferenceKeys.ANNOUNCEMENT_CAT_ISSUE] ?: true
+    }
+    val announcementCatTip: Flow<Boolean> = dataStore.data.map {
+        it[PreferenceKeys.ANNOUNCEMENT_CAT_TIP] ?: true
+    }
+    val announcementCatGeneral: Flow<Boolean> = dataStore.data.map {
+        it[PreferenceKeys.ANNOUNCEMENT_CAT_GENERAL] ?: true
+    }
+
+    suspend fun setAnnouncementCategoryEnabled(category: String, enabled: Boolean) {
+        dataStore.edit {
+            val key = when (category) {
+                AnnouncementTagParser.CATEGORY_RELEASE -> PreferenceKeys.ANNOUNCEMENT_CAT_RELEASE
+                AnnouncementTagParser.CATEGORY_ISSUE -> PreferenceKeys.ANNOUNCEMENT_CAT_ISSUE
+                AnnouncementTagParser.CATEGORY_TIP -> PreferenceKeys.ANNOUNCEMENT_CAT_TIP
+                AnnouncementTagParser.CATEGORY_GENERAL -> PreferenceKeys.ANNOUNCEMENT_CAT_GENERAL
+                else -> return@edit
+            }
+            it[key] = enabled
+        }
+    }
+
+    val autoPublishAscents: Flow<Boolean> = keyScoped.data.map {
+        it[KeyScopedKeys.AUTO_PUBLISH_ASCENTS] ?: false
+    }
+
+    suspend fun setAutoPublishAscents(enabled: Boolean) {
+        keyScoped.edit { it[KeyScopedKeys.AUTO_PUBLISH_ASCENTS] = enabled }
+    }
+
+    val leaderboardDisplayName: Flow<String> = keyScoped.data.map {
+        it[KeyScopedKeys.LEADERBOARD_DISPLAY_NAME] ?: ""
+    }
+
+    suspend fun setLeaderboardDisplayName(name: String) {
+        keyScoped.edit { it[KeyScopedKeys.LEADERBOARD_DISPLAY_NAME] = name }
+    }
+
+    // Nostr key management
+    val signerMode: Flow<SignerMode> = keyScoped.data.map { prefs ->
+        val value = prefs[KeyScopedKeys.SIGNER_MODE] ?: SignerMode.LOCAL.name
+        try { SignerMode.valueOf(value) } catch (_: IllegalArgumentException) { SignerMode.LOCAL }
+    }
+
+    suspend fun setSignerMode(mode: SignerMode) {
+        keyScoped.edit { it[KeyScopedKeys.SIGNER_MODE] = mode.name }
+    }
+
+    val amberPubkey: Flow<String?> = keyScoped.data.map { it[KeyScopedKeys.AMBER_PUBKEY] }
+
+    suspend fun setAmberPubkey(pubkey: String?) {
+        keyScoped.edit {
+            if (pubkey != null) it[KeyScopedKeys.AMBER_PUBKEY] = pubkey
+            else it.remove(KeyScopedKeys.AMBER_PUBKEY)
+        }
+    }
+
+    val amberPackageName: Flow<String?> = keyScoped.data.map { it[KeyScopedKeys.AMBER_PACKAGE_NAME] }
+
+    suspend fun setAmberPackageName(name: String?) {
+        keyScoped.edit {
+            if (name != null) it[KeyScopedKeys.AMBER_PACKAGE_NAME] = name
+            else it.remove(KeyScopedKeys.AMBER_PACKAGE_NAME)
+        }
+    }
+
+    val keyBackedUp: Flow<Boolean> = keyScoped.data.map {
+        it[KeyScopedKeys.KEY_BACKED_UP] ?: false
+    }
+
+    suspend fun setKeyBackedUp(backedUp: Boolean) {
+        keyScoped.edit { it[KeyScopedKeys.KEY_BACKED_UP] = backedUp }
+    }
+
+    val appLaunchCount: Flow<Int> = dataStore.data.map {
+        it[PreferenceKeys.APP_LAUNCH_COUNT] ?: 0
+    }
+
+    suspend fun incrementLaunchCount() {
+        dataStore.edit {
+            val current = it[PreferenceKeys.APP_LAUNCH_COUNT] ?: 0
+            it[PreferenceKeys.APP_LAUNCH_COUNT] = current + 1
+        }
+    }
+}
