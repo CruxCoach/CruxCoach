@@ -2,7 +2,9 @@
 
 Open-source Kilter Board climbing app for Android.
 
-Browse climbs, control your board via Bluetooth, log ascents, import your Kilter logbook, and track your progress — no third-party cloud services, full control over your data.
+Browse climbs, control your Kilter Board via Bluetooth, log ascents, import your Kilter logbook, and track your progress — no third-party cloud services, full control over your data.
+
+[![Download on Zapstore](https://img.shields.io/badge/Download-Zapstore-purple)](https://zapstore.dev/apps/com.cruxcoach.android)
 
 <p align="center">
   <img src="docs/screenshots/board-browser.png" alt="Board Browser" width="220">&nbsp;&nbsp;
@@ -15,9 +17,9 @@ Browse climbs, control your board via Bluetooth, log ascents, import your Kilter
 
 ## What makes it different
 
-**Custom LED Colors** — Choose your own hold colors on the board. Different colors for start, hand, foot, and top holds. Visible to everyone around you.
+**Custom LED Colors** — Choose your own hold colors on the Kilter Board. Different colors for start, hand, foot, and top holds. Visible to everyone around you.
 
-**Nearby Sharing** — Share your current climb with nearby CruxCoach users over Bluetooth. No internet needed, works instantly at the board.
+**Nearby Sharing** — Share your current climb with nearby CruxCoach users over Bluetooth. No internet needed, works instantly at the Kilter Board.
 
 **Your Data, Your Device** — All personal data encrypted locally. Decentralized identity via [Nostr](https://nostr.com) — no email, no password, no central server. No cloud accounts, no telemetry, no ads.
 
@@ -29,7 +31,7 @@ Browse climbs, control your board via Bluetooth, log ascents, import your Kilter
 - **BLE board control** — light up holds on your Kilter Board
 - **Climb lists** — favorites, projects, custom lists
 - **Log ascents** with grade opinions, attempts, and notes
-- **Hold Search** — tap holds on the board to find climbs that use them
+- **Hold Search** — tap holds on the Kilter Board to find climbs that use them
 - **Heatmap** — visualize hold popularity by type, sends, or all climbs
 - **Kilter logbook import** from your Kilter account
 - **Statistics** — grade progression, difficulty trends, favorite angles
@@ -40,7 +42,7 @@ Browse climbs, control your board via Bluetooth, log ascents, import your Kilter
 
 ## Download
 
-**[Zapstore](https://zapstore.dev)** (recommended) — Nostr-native app store with verifiable builds.
+**[Zapstore](https://zapstore.dev/apps/com.cruxcoach.android)** (recommended) — Nostr-native app store with verifiable builds.
 
 Or [build from source](#building-from-source).
 

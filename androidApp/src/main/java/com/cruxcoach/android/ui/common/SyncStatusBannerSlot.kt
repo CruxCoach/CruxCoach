@@ -256,9 +256,9 @@ private fun stepLabel(step: ImportStep?): String = when (step) {
         } else stringResource(R.string.sync_downloading)
     }
     is ImportStep.DownloadChunk -> {
-        if (step.totalBytes > 0) {
-            val mb = step.bytesRead / 1_048_576
-            val totalMb = step.totalBytes / 1_048_576
+        if (step.cumulativeTotalBytes > 0) {
+            val mb = step.cumulativeBytesRead / 1_048_576
+            val totalMb = step.cumulativeTotalBytes / 1_048_576
             stringResource(R.string.sync_downloading_progress, mb, totalMb)
         } else stringResource(R.string.sync_downloading)
     }
@@ -273,6 +273,7 @@ private fun stepLabel(step: ImportStep?): String = when (step) {
 
 private fun stepProgress(step: ImportStep?): Float? = when (step) {
     is ImportStep.Download -> if (step.totalBytes > 0) step.bytesRead.toFloat() / step.totalBytes else null
+    is ImportStep.DownloadChunk -> if (step.cumulativeTotalBytes > 0) step.cumulativeBytesRead.toFloat() / step.cumulativeTotalBytes else null
     is ImportStep.ImportClimbs -> if (step.total > 0) step.scanned.toFloat() / step.total else null
     is ImportStep.ImportStats -> if (step.total > 0) step.scanned.toFloat() / step.total else null
     else -> null
