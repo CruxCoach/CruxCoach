@@ -1,0 +1,447 @@
+-- Aurora Climbing Board tables (Kilter, Tension, Grasshopper etc.)
+
+CREATE TABLE aurora_climb (
+    uuid TEXT NOT NULL PRIMARY KEY,
+    layout_id INTEGER NOT NULL,
+    setter_username TEXT,
+    name TEXT NOT NULL,
+    frames_count INTEGER NOT NULL DEFAULT 1,
+    is_listed INTEGER NOT NULL DEFAULT 1,
+    edge_left INTEGER,
+    edge_right INTEGER,
+    edge_bottom INTEGER,
+    edge_top INTEGER,
+    created_at TEXT,
+    description TEXT NOT NULL DEFAULT '',
+    is_nomatch INTEGER NOT NULL DEFAULT 0,
+    frames_pace INTEGER NOT NULL DEFAULT 0,
+    hsm INTEGER NOT NULL DEFAULT 0,
+    frames BLOB AS kotlin.String NOT NULL,
+    is_deleted INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE aurora_climb_stat (
+    climb_uuid TEXT NOT NULL,
+    angle INTEGER NOT NULL,
+    display_difficulty REAL,
+    difficulty_average REAL,
+    quality_average REAL,
+    ascensionist_count INTEGER DEFAULT 0,
+    benchmark_difficulty REAL,
+    fa_username TEXT,
+    fa_at TEXT,
+    official_kilter_difficulty INTEGER,
+    PRIMARY KEY (climb_uuid, angle)
+);
+
+CREATE TABLE board_hold_position (
+    hole_id INTEGER NOT NULL,
+    product_size_id INTEGER NOT NULL,
+    x INTEGER NOT NULL,
+    y INTEGER NOT NULL,
+    led_position INTEGER NOT NULL,
+    placement_id INTEGER NOT NULL,
+    PRIMARY KEY (hole_id, product_size_id)
+);
+
+-- Placement → coordinate mapping (pre-joined from placements + holes)
+CREATE TABLE aurora_placement (
+    placement_id INTEGER NOT NULL PRIMARY KEY,
+    hole_id INTEGER NOT NULL,
+    set_id INTEGER NOT NULL,
+    x INTEGER NOT NULL,
+    y INTEGER NOT NULL
+);
+
+-- Board size definitions with edge boundaries for coordinate transformation
+CREATE TABLE aurora_product_size (
+    id INTEGER NOT NULL PRIMARY KEY,
+    product_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    edge_left INTEGER NOT NULL,
+    edge_right INTEGER NOT NULL,
+    edge_bottom INTEGER NOT NULL,
+    edge_top INTEGER NOT NULL,
+    image_filename TEXT
+);
+
+-- Board images per size+layout+set combination
+CREATE TABLE aurora_board_image (
+    id INTEGER NOT NULL PRIMARY KEY,
+    product_size_id INTEGER NOT NULL,
+    layout_id INTEGER NOT NULL,
+    set_id INTEGER NOT NULL,
+    image_filename TEXT NOT NULL
+);
+
+-- LED position per hole per board size (from Aurora leds table)
+CREATE TABLE aurora_led (
+    hole_id INTEGER NOT NULL,
+    product_size_id INTEGER NOT NULL,
+    position INTEGER NOT NULL,
+    PRIMARY KEY (hole_id, product_size_id)
+);
+
+-- Raw hole coordinates from Aurora API (joined with placements to derive positions)
+CREATE TABLE aurora_hole (
+    id INTEGER NOT NULL PRIMARY KEY,
+    product_size_id INTEGER NOT NULL,
+    x INTEGER NOT NULL,
+    y INTEGER NOT NULL,
+    mirrored_hole_id INTEGER
+);
+
+CREATE INDEX idx_aurora_placement_set ON aurora_placement(set_id);
+CREATE INDEX idx_aurora_board_image_size ON aurora_board_image(product_size_id);
+
+CREATE TABLE aurora_sync_state (
+    table_name TEXT NOT NULL PRIMARY KEY,
+    last_synchronized_at TEXT NOT NULL
+);
+
+CREATE TABLE aurora_beta_link (
+    id INTEGER NOT NULL PRIMARY KEY,
+    climb_uuid TEXT NOT NULL,
+    foreign_username TEXT,
+    link TEXT NOT NULL,
+    created_at TEXT
+);
+
+CREATE INDEX idx_aurora_beta_link_climb ON aurora_beta_link(climb_uuid);
+CREATE INDEX idx_aurora_climb_stat_angle ON aurora_climb_stat(angle);
+CREATE INDEX idx_aurora_climb_listed ON aurora_climb(is_listed);
+CREATE INDEX idx_climb_stat_browse ON aurora_climb_stat(
+    angle, difficulty_average, quality_average, ascensionist_count,
+    benchmark_difficulty, climb_uuid
+);
+-- Optimized for default sort (ASCENSIONISTS DESC): angle equality + sort column
+-- lets SQLite scan backward without temp sort for LIMIT queries.
+CREATE INDEX idx_climb_stat_by_popularity ON aurora_climb_stat(
+    angle, ascensionist_count, difficulty_average, climb_uuid
+);
+CREATE INDEX idx_aurora_climb_frames_count ON aurora_climb(is_listed, frames_count, uuid);
+
+-- Covering index for COUNT queries: angle equality → range filters → climb_uuid for JOIN.
+-- Allows SQLite to satisfy countFilteredClimbs entirely from the index (no table lookup).
+CREATE INDEX idx_climb_stat_count_cover ON aurora_climb_stat(
+    angle, ascensionist_count, difficulty_average, benchmark_difficulty, climb_uuid
+);
+
+-- Browse VIEW: live join of climb + stats, no frames column (saves ~50MB).
+-- SQLite flattens simple INNER JOIN views into the outer query (no materialization).
+CREATE VIEW climb_browse AS
+SELECT
+    c.uuid, c.name, c.setter_username, c.frames_count, c.layout_id,
+    COALESCE(c.description, '') AS description,
+    c.is_nomatch, c.frames_pace, c.hsm,
+    cs.angle, cs.difficulty_average, cs.quality_average,
+    cs.ascensionist_count, cs.benchmark_difficulty
+FROM aurora_climb c
+INNER JOIN aurora_climb_stat cs ON c.uuid = cs.climb_uuid
+WHERE c.is_listed = 1;
+
+-- Queries
+
+upsertClimb:
+INSERT OR REPLACE INTO aurora_climb(uuid, layout_id, setter_username, name,
+    frames_count, is_listed, edge_left, edge_right, edge_bottom, edge_top, created_at,
+    description, is_nomatch, frames_pace, hsm, frames)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+upsertClimbStat:
+INSERT OR REPLACE INTO aurora_climb_stat(climb_uuid, angle, display_difficulty,
+    difficulty_average, quality_average, ascensionist_count, benchmark_difficulty,
+    fa_username, fa_at, official_kilter_difficulty)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+upsertHoldPosition:
+INSERT OR REPLACE INTO board_hold_position(hole_id, product_size_id, x, y, led_position, placement_id)
+VALUES (?, ?, ?, ?, ?, ?);
+
+upsertSyncState:
+INSERT OR REPLACE INTO aurora_sync_state(table_name, last_synchronized_at) VALUES (?, ?);
+
+getSyncState:
+SELECT last_synchronized_at FROM aurora_sync_state WHERE table_name = ?;
+
+-- ═══ Browse queries (climb_browse VIEW — JOIN flattened by SQLite) ═══
+
+browseByQualityDesc:
+SELECT * FROM climb_browse WHERE layout_id = :layoutId AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND difficulty_average >= :minDiff AND difficulty_average <= :maxDiff AND ascensionist_count >= :minAsc ORDER BY quality_average DESC LIMIT :limit OFFSET :offset;
+
+browseByQualityAsc:
+SELECT * FROM climb_browse WHERE layout_id = :layoutId AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND difficulty_average >= :minDiff AND difficulty_average <= :maxDiff AND ascensionist_count >= :minAsc ORDER BY quality_average ASC LIMIT :limit OFFSET :offset;
+
+browseByDifficultyDesc:
+SELECT * FROM climb_browse WHERE layout_id = :layoutId AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND difficulty_average >= :minDiff AND difficulty_average <= :maxDiff AND ascensionist_count >= :minAsc ORDER BY difficulty_average DESC LIMIT :limit OFFSET :offset;
+
+browseByDifficultyAsc:
+SELECT * FROM climb_browse WHERE layout_id = :layoutId AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND difficulty_average >= :minDiff AND difficulty_average <= :maxDiff AND ascensionist_count >= :minAsc ORDER BY difficulty_average ASC LIMIT :limit OFFSET :offset;
+
+browseByAscensionistsDesc:
+SELECT * FROM climb_browse WHERE layout_id = :layoutId AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND difficulty_average >= :minDiff AND difficulty_average <= :maxDiff AND ascensionist_count >= :minAsc ORDER BY ascensionist_count DESC LIMIT :limit OFFSET :offset;
+
+browseByAscensionistsAsc:
+SELECT * FROM climb_browse WHERE layout_id = :layoutId AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND difficulty_average >= :minDiff AND difficulty_average <= :maxDiff AND ascensionist_count >= :minAsc ORDER BY ascensionist_count ASC LIMIT :limit OFFSET :offset;
+
+browseByNameDesc:
+SELECT * FROM climb_browse WHERE layout_id = :layoutId AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND difficulty_average >= :minDiff AND difficulty_average <= :maxDiff AND ascensionist_count >= :minAsc ORDER BY name DESC LIMIT :limit OFFSET :offset;
+
+browseByNameAsc:
+SELECT * FROM climb_browse WHERE layout_id = :layoutId AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND difficulty_average >= :minDiff AND difficulty_average <= :maxDiff AND ascensionist_count >= :minAsc ORDER BY name ASC LIMIT :limit OFFSET :offset;
+
+-- ═══ Search queries (climb_browse VIEW — additional JOIN for repeat_count) ═══
+
+searchByQualityDesc:
+SELECT * FROM climb_browse WHERE layout_id = :layoutId AND (name LIKE '%' || :query || '%' OR setter_username LIKE '%' || :query || '%') AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames ORDER BY quality_average DESC LIMIT :limit OFFSET :offset;
+
+searchByQualityAsc:
+SELECT * FROM climb_browse WHERE layout_id = :layoutId AND (name LIKE '%' || :query || '%' OR setter_username LIKE '%' || :query || '%') AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames ORDER BY quality_average ASC LIMIT :limit OFFSET :offset;
+
+searchByDifficultyDesc:
+SELECT * FROM climb_browse WHERE layout_id = :layoutId AND (name LIKE '%' || :query || '%' OR setter_username LIKE '%' || :query || '%') AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames ORDER BY difficulty_average DESC LIMIT :limit OFFSET :offset;
+
+searchByDifficultyAsc:
+SELECT * FROM climb_browse WHERE layout_id = :layoutId AND (name LIKE '%' || :query || '%' OR setter_username LIKE '%' || :query || '%') AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames ORDER BY difficulty_average ASC LIMIT :limit OFFSET :offset;
+
+searchByAscensionistsDesc:
+SELECT * FROM climb_browse WHERE layout_id = :layoutId AND (name LIKE '%' || :query || '%' OR setter_username LIKE '%' || :query || '%') AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames ORDER BY ascensionist_count DESC LIMIT :limit OFFSET :offset;
+
+searchByAscensionistsAsc:
+SELECT * FROM climb_browse WHERE layout_id = :layoutId AND (name LIKE '%' || :query || '%' OR setter_username LIKE '%' || :query || '%') AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames ORDER BY ascensionist_count ASC LIMIT :limit OFFSET :offset;
+
+searchByNameDesc:
+SELECT * FROM climb_browse WHERE layout_id = :layoutId AND (name LIKE '%' || :query || '%' OR setter_username LIKE '%' || :query || '%') AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames ORDER BY name DESC LIMIT :limit OFFSET :offset;
+
+searchByNameAsc:
+SELECT * FROM climb_browse WHERE layout_id = :layoutId AND (name LIKE '%' || :query || '%' OR setter_username LIKE '%' || :query || '%') AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames ORDER BY name ASC LIMIT :limit OFFSET :offset;
+
+getClimbsByUuids:
+SELECT * FROM climb_browse
+WHERE layout_id = :layoutId
+  AND uuid IN ?
+  AND angle = :angle
+  AND frames_count >= :minFrames AND frames_count <= :maxFrames
+  AND difficulty_average >= :minDiff AND difficulty_average <= :maxDiff
+  AND ascensionist_count >= :minAsc;
+
+getClimbsByUuidsSimple:
+SELECT * FROM climb_browse
+WHERE uuid IN ?
+  AND angle = :angle;
+
+getClimbByUuid:
+SELECT c.*, cs.difficulty_average, cs.quality_average, cs.ascensionist_count,
+    cs.benchmark_difficulty, cs.fa_username, cs.fa_at
+FROM aurora_climb c
+LEFT JOIN aurora_climb_stat cs ON c.uuid = cs.climb_uuid AND cs.angle = ?
+WHERE c.uuid = ?;
+
+countLeds:
+SELECT COUNT(*) FROM aurora_led;
+
+upsertLed:
+INSERT OR REPLACE INTO aurora_led(hole_id, product_size_id, position) VALUES (?, ?, ?);
+
+getPlacementLedMap:
+SELECT p.placement_id, l.position AS led_position
+FROM aurora_placement p
+JOIN aurora_led l ON p.hole_id = l.hole_id
+WHERE l.product_size_id = ?;
+
+countClimbs:
+SELECT COUNT(*) FROM aurora_climb;
+
+getClimbCountByAngle:
+SELECT cs.angle, COUNT(*) AS climb_count
+FROM aurora_climb_stat cs
+INNER JOIN aurora_climb c ON c.uuid = cs.climb_uuid
+WHERE c.layout_id = ?
+  AND c.is_listed = 1
+  AND c.frames_count >= ?
+  AND c.frames_count <= ?
+GROUP BY cs.angle
+ORDER BY cs.angle;
+
+getAnglesForClimb:
+SELECT cs.angle, cs.difficulty_average, cs.quality_average,
+    cs.ascensionist_count, cs.benchmark_difficulty
+FROM aurora_climb_stat cs
+WHERE cs.climb_uuid = ?
+ORDER BY cs.angle;
+
+-- Fast count: stats-only, no JOIN. Accurate when all climbs are is_listed=1
+-- and filter doesn't need frames_count check (boulder default: frames_count=1).
+countFilteredClimbsFast:
+SELECT COUNT(*)
+FROM aurora_climb_stat cs
+INNER JOIN aurora_climb c ON c.uuid = cs.climb_uuid
+WHERE c.layout_id = ?
+  AND cs.angle = ?
+  AND cs.difficulty_average >= ? AND cs.difficulty_average <= ?
+  AND cs.ascensionist_count >= ?;
+
+-- Full COUNT queries: bypass the VIEW, JOIN only for is_listed/frames_count check.
+
+countFilteredClimbs:
+SELECT COUNT(*)
+FROM aurora_climb_stat cs
+INNER JOIN aurora_climb c ON c.uuid = cs.climb_uuid
+WHERE c.layout_id = ?
+  AND cs.angle = ?
+  AND c.is_listed = 1
+  AND c.frames_count >= ? AND c.frames_count <= ?
+  AND cs.difficulty_average >= ? AND cs.difficulty_average <= ?
+  AND cs.ascensionist_count >= ?;
+
+countBenchmarkFilteredClimbs:
+SELECT COUNT(*)
+FROM aurora_climb_stat cs
+INNER JOIN aurora_climb c ON c.uuid = cs.climb_uuid
+WHERE c.layout_id = ?
+  AND cs.angle = ?
+  AND c.is_listed = 1
+  AND c.frames_count >= ? AND c.frames_count <= ?
+  AND cs.difficulty_average >= ? AND cs.difficulty_average <= ?
+  AND cs.ascensionist_count >= ?
+  AND cs.benchmark_difficulty > 0;
+
+countSearchClimbs:
+SELECT COUNT(*)
+FROM aurora_climb c
+INNER JOIN aurora_climb_stat cs ON c.uuid = cs.climb_uuid
+WHERE c.layout_id = ?
+  AND (c.name LIKE '%' || ? || '%' OR c.setter_username LIKE '%' || ? || '%')
+  AND cs.angle = ?
+  AND c.is_listed = 1
+  AND c.frames_count >= ? AND c.frames_count <= ?;
+
+countBenchmarkSearchClimbs:
+SELECT COUNT(*)
+FROM aurora_climb c
+INNER JOIN aurora_climb_stat cs ON c.uuid = cs.climb_uuid
+WHERE c.layout_id = ?
+  AND (c.name LIKE '%' || ? || '%' OR c.setter_username LIKE '%' || ? || '%')
+  AND cs.angle = ?
+  AND c.is_listed = 1
+  AND c.frames_count >= ? AND c.frames_count <= ?
+  AND cs.benchmark_difficulty > 0;
+
+-- ═══ Hold-based search + heatmap queries (query aurora_climb directly) ═══
+
+-- Get (uuid, frames) for heatmap computation (Kotlin-side processing).
+getAllFramesForFilter:
+SELECT c.uuid, c.frames
+FROM aurora_climb c
+INNER JOIN aurora_climb_stat cs ON c.uuid = cs.climb_uuid
+WHERE c.layout_id = :layoutId
+  AND cs.angle = :angle
+  AND c.frames_count >= :minFrames AND c.frames_count <= :maxFrames
+  AND cs.difficulty_average >= :minDiff AND cs.difficulty_average <= :maxDiff
+  AND cs.ascensionist_count >= :minAsc
+  AND LENGTH(c.frames) > 0 AND c.is_listed = 1;
+
+-- Placement queries (for board visualization)
+upsertPlacement:
+INSERT OR REPLACE INTO aurora_placement(placement_id, hole_id, set_id, x, y)
+VALUES (?, ?, ?, ?, ?);
+
+getAllPlacements:
+SELECT * FROM aurora_placement;
+
+-- Product size queries (for edge boundaries)
+upsertProductSize:
+INSERT OR REPLACE INTO aurora_product_size(id, product_id, name, edge_left, edge_right, edge_bottom, edge_top, image_filename)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+
+getProductSize:
+SELECT * FROM aurora_product_size WHERE id = ?;
+
+getAllProductSizes:
+SELECT id, product_id, name, edge_left, edge_right, edge_bottom, edge_top, image_filename
+FROM aurora_product_size
+WHERE product_id = :productId
+ORDER BY id;
+
+-- Board image queries
+upsertBoardImage:
+INSERT OR REPLACE INTO aurora_board_image(id, product_size_id, layout_id, set_id, image_filename)
+VALUES (?, ?, ?, ?, ?);
+
+getBoardImages:
+SELECT * FROM aurora_board_image WHERE product_size_id = ? AND layout_id = ?;
+
+-- Hole queries (for placement join)
+upsertHole:
+INSERT OR REPLACE INTO aurora_hole(id, product_size_id, x, y, mirrored_hole_id)
+VALUES (?, ?, ?, ?, ?);
+
+-- Mirror placement map: originalPlacementId → mirroredPlacementId
+-- Joins placement → hole → mirroredHole → placement (same set_id)
+getMirrorPlacementMap:
+SELECT p1.placement_id AS original_placement_id, p2.placement_id AS mirrored_placement_id
+FROM aurora_placement p1
+JOIN aurora_hole h1 ON p1.hole_id = h1.id
+JOIN aurora_hole h2 ON h1.mirrored_hole_id = h2.id
+JOIN aurora_placement p2 ON p2.hole_id = h2.id AND p2.set_id = p1.set_id
+WHERE h1.product_size_id = ?;
+
+-- Delta import helpers: bulk-read existing keys for diff comparison
+getAllClimbUuids:
+SELECT uuid FROM aurora_climb;
+
+getAllStatKeys:
+SELECT climb_uuid, angle, ascensionist_count FROM aurora_climb_stat;
+
+-- Diagnostic: check if a specific climb UUID exists
+climbExistsByUuid:
+SELECT COUNT(*) FROM aurora_climb WHERE uuid = ?;
+
+statExistsByUuid:
+SELECT COUNT(*) FROM aurora_climb_stat WHERE climb_uuid = ?;
+
+countStats:
+SELECT COUNT(*) FROM aurora_climb_stat;
+
+countNomatchClimbs:
+SELECT COUNT(*) FROM aurora_climb WHERE is_nomatch = 1;
+
+-- Bulk delete: public board data (re-downloadable via sync)
+deleteAllClimbs:
+DELETE FROM aurora_climb;
+
+deleteAllClimbStats:
+DELETE FROM aurora_climb_stat;
+
+deleteAllPlacements:
+DELETE FROM aurora_placement;
+
+deleteAllProductSizes:
+DELETE FROM aurora_product_size;
+
+deleteAllBoardImages:
+DELETE FROM aurora_board_image;
+
+deleteAllLeds:
+DELETE FROM aurora_led;
+
+deleteAllHoles:
+DELETE FROM aurora_hole;
+
+deleteAllHoldPositions:
+DELETE FROM board_hold_position;
+
+deleteAllSyncState:
+DELETE FROM aurora_sync_state;
+
+deleteAllBetaLinks:
+DELETE FROM aurora_beta_link;
+
+
+-- LED grid with coordinates for animations (joins placement coords + LED positions)
+getAllLedGrid:
+SELECT p.placement_id, p.x, p.y, l.position AS led_position
+FROM aurora_placement p
+JOIN aurora_led l ON p.hole_id = l.hole_id
+WHERE l.product_size_id = ?;
+

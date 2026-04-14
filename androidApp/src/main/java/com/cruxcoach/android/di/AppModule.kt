@@ -1,0 +1,648 @@
+package com.cruxcoach.android.di
+
+import android.content.Context
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
+import com.cruxcoach.android.data.UserPreferences
+import com.cruxcoach.android.data.dataStore
+import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import com.cruxcoach.android.nostr.NostrKeyStore
+import com.cruxcoach.android.nostr.NostrSigner
+import com.cruxcoach.android.nostr.NostrRelayPool
+import com.cruxcoach.android.nostr.NostrEventBuilder
+import com.cruxcoach.android.nostr.NostrPublicEventBuilder
+import com.cruxcoach.android.nostr.NostrEventDecryptor
+import com.cruxcoach.android.nostr.NostrMessageSender
+import com.cruxcoach.android.nostr.NostrRelaySubscription
+import com.cruxcoach.android.nostr.OfflineQueueManager
+import com.cruxcoach.android.nostr.PaymentManager
+import com.cruxcoach.android.payment.NostrPaymentManager
+import com.cruxcoach.android.payment.NostrProfileManager
+import com.cruxcoach.android.payment.PaymentRepository
+import com.cruxcoach.android.payment.ZapManager
+import com.cruxcoach.android.data.AnnouncementRepository
+import com.cruxcoach.android.data.NostrMessageRepository
+import com.cruxcoach.android.notification.NotificationHelper
+import okhttp3.OkHttpClient
+import java.util.concurrent.TimeUnit
+import javax.inject.Named
+import com.cruxcoach.android.data.SqlCipherKeyManager
+import com.cruxcoach.android.data.ApkDownloader
+import com.cruxcoach.android.data.kilter.KilterApiClient
+import com.cruxcoach.android.data.kilter.KilterSyncEngine
+import com.cruxcoach.android.data.kilter.KilterTokenStore
+import com.cruxcoach.android.data.BoardDatabaseImporter
+import com.cruxcoach.android.data.BleShareManager
+import com.cruxcoach.android.data.BoardSessionManager
+import com.cruxcoach.android.data.BoardStateManager
+import com.cruxcoach.android.data.ClimbNameResolver
+import com.cruxcoach.android.data.RestTimerAlarmScheduler
+import com.cruxcoach.android.data.BoardSyncManager
+import com.cruxcoach.android.data.blossom.BlossomSyncManager
+import com.cruxcoach.android.data.NearbyPresenceManager
+import com.cruxcoach.android.data.SessionGattBridge
+import com.cruxcoach.android.data.SessionQueueManager
+import com.cruxcoach.android.data.SharingConfig
+import com.cruxcoach.android.notification.AppNotificationService
+import com.cruxcoach.android.data.IntensityZoneManager
+import com.cruxcoach.android.ble.AuroraBleConnection
+import com.cruxcoach.android.ble.AuroraBleScanner
+import com.cruxcoach.android.ble.ClimbBleAdvertiser
+import com.cruxcoach.android.ble.NearbyClimbScanner
+import com.cruxcoach.android.ble.SessionGattClient
+import com.cruxcoach.android.ble.SessionGattServer
+import com.cruxcoach.android.util.PerfLogger
+import com.cruxcoach.data.BoardDriverFactory
+import com.cruxcoach.data.SecureDriverFactory
+import com.cruxcoach.data.SecureDatabaseTransactionRunner
+import com.cruxcoach.data.TransactionRunner
+import com.cruxcoach.data.createBoardDatabase
+import com.cruxcoach.data.createSecureDatabase
+import com.cruxcoach.data.repository.*
+import com.cruxcoach.db.board.BoardDatabase
+import com.cruxcoach.db.secure.SecureDatabase
+import com.cruxcoach.domain.engine.*
+import com.cruxcoach.domain.usecase.AdaptPlanUseCase
+import com.cruxcoach.domain.usecase.GeneratePlanUseCase
+import dagger.Module
+import dagger.Provides
+import dagger.hilt.InstallIn
+import dagger.hilt.android.qualifiers.ApplicationContext
+import dagger.hilt.components.SingletonComponent
+import javax.inject.Singleton
+
+@Module
+@InstallIn(SingletonComponent::class)
+object AppModule {
+
+    @Provides
+    @Singleton
+    fun provideSqlCipherKeyManager(@ApplicationContext context: Context): SqlCipherKeyManager {
+        val prefs = context.getSharedPreferences("sqlcipher_prefs", Context.MODE_PRIVATE)
+        return SqlCipherKeyManager(prefs)
+    }
+
+    @Provides
+    @Singleton
+    fun provideSecureDatabase(
+        @ApplicationContext context: Context,
+        keyManager: SqlCipherKeyManager,
+        nostrSigner: NostrSigner
+    ): SecureDatabase {
+        return PerfLogger.trace("DI: SecureDatabase") {
+            val pubkeyHex = nostrSigner.getPublicKeyHex()
+            val prefix = pubkeyHex.take(16)
+            val dbName = "cruxcoach_secure_$prefix.db"
+            val key = keyManager.getDerivedKeyForPubkey(pubkeyHex)
+            try { createSecureDatabase(SecureDriverFactory(context, key), dbName) }
+            finally { key.fill(0) }
+        }
+    }
+
+    @Provides
+    @Singleton
+    fun provideBoardDatabase(
+        @ApplicationContext context: Context
+    ): BoardDatabase {
+        return PerfLogger.trace("DI: BoardDatabase") {
+            createBoardDatabase(BoardDriverFactory(context))
+        }
+    }
+
+    // --- Repositories ---
+
+    @Provides
+    @Singleton
+    fun provideUserRepository(database: SecureDatabase): UserRepository {
+        return UserRepositoryImpl(database)
+    }
+
+    @Provides
+    @Singleton
+    fun providePlanRepository(database: SecureDatabase): PlanRepository {
+        return PlanRepositoryImpl(database)
+    }
+
+    @Provides
+    @Singleton
+    fun provideWorkoutRepository(database: SecureDatabase): WorkoutRepository {
+        return WorkoutRepositoryImpl(database)
+    }
+
+    @Provides
+    @Singleton
+    fun provideClimbRepository(database: SecureDatabase): ClimbRepository {
+        return ClimbRepositoryImpl(database)
+    }
+
+    @Provides
+    @Singleton
+    fun provideExerciseRepository(database: BoardDatabase): ExerciseRepository {
+        return ExerciseRepositoryImpl(database)
+    }
+
+    @Provides
+    @Singleton
+    fun provideBodyStatRepository(database: SecureDatabase): BodyStatRepository {
+        return BodyStatRepositoryImpl(database)
+    }
+
+    @Provides
+    @Singleton
+    fun provideBoardRepository(database: BoardDatabase): BoardRepository {
+        return BoardRepositoryImpl(database)
+    }
+
+    @Provides
+    @Singleton
+    fun providePersonalBoardRepository(database: SecureDatabase): PersonalBoardRepository {
+        return PersonalBoardRepositoryImpl(database)
+    }
+
+    @Provides
+    @Singleton
+    fun provideTransactionRunner(database: SecureDatabase): TransactionRunner {
+        return SecureDatabaseTransactionRunner(database)
+    }
+
+    // --- Preferences ---
+
+    @Provides
+    @Singleton
+    fun provideDataStore(@ApplicationContext context: Context): DataStore<Preferences> {
+        return context.dataStore
+    }
+
+    @Provides
+    @Singleton
+    @Named("keyScoped")
+    fun provideKeyScopedDataStore(
+        @ApplicationContext context: Context,
+        nostrSigner: NostrSigner
+    ): DataStore<Preferences> {
+        val prefix = nostrSigner.getPublicKeyHex().take(16)
+        return PreferenceDataStoreFactory.create {
+            java.io.File(context.filesDir, "datastore/cruxcoach_prefs_$prefix.preferences_pb")
+        }
+    }
+
+    @Provides
+    @Singleton
+    fun provideUserPreferences(
+        dataStore: DataStore<Preferences>,
+        @Named("keyScoped") keyScopedDataStore: DataStore<Preferences>
+    ): UserPreferences {
+        return UserPreferences(dataStore, keyScopedDataStore)
+    }
+
+    @Provides
+    @Singleton
+    fun provideApkDownloader(
+        @ApplicationContext context: Context,
+        boardRepository: BoardRepository
+    ): ApkDownloader {
+        return ApkDownloader(context, boardRepository)
+    }
+
+    @Provides
+    @Singleton
+    fun provideBoardDatabaseImporter(
+        @ApplicationContext context: Context,
+        boardRepository: BoardRepository,
+        apkDownloader: ApkDownloader
+    ): BoardDatabaseImporter {
+        return BoardDatabaseImporter(context, boardRepository, apkDownloader)
+    }
+
+    @Provides
+    @Singleton
+    fun provideBlossomSyncManager(
+        @ApplicationContext context: Context,
+        @Named("nostr") okHttpClient: OkHttpClient
+    ): BlossomSyncManager {
+        return BlossomSyncManager(context, okHttpClient)
+    }
+
+    @Provides
+    @Singleton
+    fun provideBoardSyncManager(
+        importer: BoardDatabaseImporter,
+        blossomSyncManager: BlossomSyncManager,
+        userPreferences: UserPreferences,
+        @ApplicationContext context: Context,
+        boardRepository: BoardRepository,
+        personalBoardRepo: PersonalBoardRepository
+    ): BoardSyncManager {
+        return BoardSyncManager(importer, blossomSyncManager, userPreferences, context, boardRepository, personalBoardRepo)
+    }
+
+    @Provides
+    @Singleton
+    fun provideAppNotificationService(
+        @ApplicationContext context: Context
+    ): AppNotificationService {
+        return AppNotificationService(context)
+    }
+
+    @Provides
+    @Singleton
+    fun provideBoardSessionManager(
+        personalBoardRepo: PersonalBoardRepository,
+        notificationService: AppNotificationService,
+        @ApplicationContext context: Context
+    ): BoardSessionManager {
+        return BoardSessionManager(
+            personalBoardRepo,
+            notificationService,
+            RestTimerAlarmScheduler(context)
+        )
+    }
+
+    @Provides
+    @Singleton
+    fun provideIntensityZoneManager(
+        personalBoardRepo: PersonalBoardRepository
+    ): IntensityZoneManager {
+        return IntensityZoneManager(personalBoardRepo)
+    }
+
+    // --- BLE ---
+
+    @Provides
+    @Singleton
+    fun provideAuroraBleScanner(@ApplicationContext context: Context): AuroraBleScanner {
+        return PerfLogger.trace("DI: AuroraBleScanner") { AuroraBleScanner(context) }
+    }
+
+    @Provides
+    @Singleton
+    fun provideAuroraBleConnection(@ApplicationContext context: Context): AuroraBleConnection {
+        return PerfLogger.trace("DI: AuroraBleConnection") { AuroraBleConnection(context) }
+    }
+
+    @Provides
+    @Singleton
+    fun provideClimbNameResolver(
+        boardRepository: BoardRepository
+    ): ClimbNameResolver {
+        return ClimbNameResolver(boardRepository)
+    }
+
+    @Provides
+    @Singleton
+    fun provideBoardStateManager(
+        userPreferences: UserPreferences,
+        climbNameResolver: ClimbNameResolver
+    ): BoardStateManager {
+        return PerfLogger.trace("DI: BoardStateManager") {
+            BoardStateManager(userPreferences, climbNameResolver)
+        }
+    }
+
+    @Provides
+    @Singleton
+    fun provideNearbyPresenceManager(
+        nearbyClimbScanner: NearbyClimbScanner,
+        climbNameResolver: ClimbNameResolver
+    ): NearbyPresenceManager {
+        return NearbyPresenceManager(nearbyClimbScanner, climbNameResolver)
+    }
+
+    @Provides
+    @Singleton
+    fun provideSharingConfig(
+        userPreferences: UserPreferences
+    ): SharingConfig {
+        return SharingConfig(userPreferences)
+    }
+
+    @Provides
+    @Singleton
+    fun provideBleShareManager(
+        boardStateManager: BoardStateManager,
+        nearbyPresenceManager: NearbyPresenceManager,
+        nearbyClimbScanner: NearbyClimbScanner,
+        sharingConfig: SharingConfig,
+        climbBleAdvertiser: ClimbBleAdvertiser,
+        sessionQueueManager: SessionQueueManager,
+        boardSessionManager: BoardSessionManager,
+        userPreferences: UserPreferences
+    ): BleShareManager {
+        return PerfLogger.trace("DI: BleShareManager") {
+            BleShareManager(
+                boardStateManager, nearbyPresenceManager, nearbyClimbScanner,
+                sharingConfig, climbBleAdvertiser, sessionQueueManager, boardSessionManager,
+                userPreferences
+            )
+        }
+    }
+
+    @Provides
+    @Singleton
+    fun provideClimbBleAdvertiser(
+        @ApplicationContext context: Context,
+        boardStateManager: BoardStateManager
+    ): ClimbBleAdvertiser {
+        return ClimbBleAdvertiser(context, boardStateManager)
+    }
+
+    @Provides
+    @Singleton
+    fun provideNearbyClimbScanner(@ApplicationContext context: Context): NearbyClimbScanner {
+        return NearbyClimbScanner(context)
+    }
+
+    @Provides
+    @Singleton
+    fun provideSessionGattServer(@ApplicationContext context: Context): SessionGattServer {
+        return SessionGattServer(context)
+    }
+
+    @Provides
+    @Singleton
+    fun provideSessionGattClient(@ApplicationContext context: Context): SessionGattClient {
+        return SessionGattClient(context)
+    }
+
+    @Provides
+    @Singleton
+    fun provideSessionQueueManager(
+        bleConnection: AuroraBleConnection,
+        boardRepository: BoardRepository,
+        climbNameResolver: ClimbNameResolver,
+        userPreferences: UserPreferences
+    ): SessionQueueManager {
+        return SessionQueueManager(bleConnection, boardRepository, climbNameResolver, userPreferences)
+    }
+
+    @Provides
+    @Singleton
+    fun provideSessionGattBridge(
+        @ApplicationContext context: Context,
+        queueManager: SessionQueueManager,
+        gattServer: SessionGattServer,
+        gattClient: SessionGattClient,
+        advertiser: ClimbBleAdvertiser,
+        nearbyScanner: NearbyClimbScanner,
+        bleConnection: AuroraBleConnection,
+        boardStateManager: BoardStateManager,
+        boardSessionManager: BoardSessionManager
+    ): SessionGattBridge {
+        return PerfLogger.trace("DI: SessionGattBridge") {
+            SessionGattBridge(context, queueManager, gattServer, gattClient, advertiser, nearbyScanner, bleConnection, boardStateManager, boardSessionManager)
+        }
+    }
+
+    // --- Nostr Communication ---
+
+    @Provides
+    @Singleton
+    @Named("nostr")
+    fun provideNostrOkHttpClient(): OkHttpClient {
+        return PerfLogger.trace("DI: NostrOkHttpClient") {
+            OkHttpClient.Builder()
+                .connectTimeout(10, TimeUnit.SECONDS)
+                .readTimeout(10, TimeUnit.SECONDS)
+                .writeTimeout(10, TimeUnit.SECONDS)
+                .pingInterval(30, TimeUnit.SECONDS)
+                .build()
+        }
+    }
+
+    @Provides
+    @Singleton
+    fun provideNostrKeyStore(@ApplicationContext context: Context): NostrKeyStore {
+        return PerfLogger.trace("DI: NostrKeyStore") { NostrKeyStore(context) }
+    }
+
+    @Provides
+    @Singleton
+    fun provideNostrSigner(keyStore: NostrKeyStore, @ApplicationContext context: Context): NostrSigner {
+        return PerfLogger.trace("DI: NostrSigner") {
+            NostrSigner(keyStore, context).also { it.restoreAmberIfConfigured() }
+        }
+    }
+
+    @Provides
+    @Singleton
+    fun provideNostrRelayPool(@Named("nostr") okHttpClient: OkHttpClient): NostrRelayPool {
+        return PerfLogger.trace("DI: NostrRelayPool") { NostrRelayPool(okHttpClient) }
+    }
+
+    @Provides
+    @Singleton
+    fun provideNostrEventBuilder(signer: NostrSigner): NostrEventBuilder {
+        return PerfLogger.trace("DI: NostrEventBuilder") { NostrEventBuilder(signer) }
+    }
+
+    // --- Kilter Account ---
+
+    @Provides
+    @Singleton
+    @Named("kilter")
+    fun provideKilterOkHttpClient(): OkHttpClient {
+        return OkHttpClient.Builder()
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(15, TimeUnit.SECONDS)
+            .build()
+    }
+
+    @Provides
+    @Singleton
+    fun provideKilterTokenStore(
+        @ApplicationContext context: Context,
+        nostrSigner: NostrSigner
+    ): KilterTokenStore {
+        val prefix = nostrSigner.getPublicKeyHex().take(16)
+        return KilterTokenStore(context, prefix)
+    }
+
+    @Provides
+    @Singleton
+    fun provideKilterApiClient(
+        tokenStore: KilterTokenStore,
+        @Named("kilter") httpClient: OkHttpClient
+    ): KilterApiClient {
+        return KilterApiClient(tokenStore, httpClient)
+    }
+
+    @Provides
+    @Singleton
+    fun provideKilterSyncEngine(
+        apiClient: KilterApiClient,
+        tokenStore: KilterTokenStore,
+        boardRepository: BoardRepository,
+        personalBoardRepo: PersonalBoardRepository,
+        userPreferences: UserPreferences
+    ): KilterSyncEngine {
+        return KilterSyncEngine(apiClient, tokenStore, boardRepository, personalBoardRepo, userPreferences)
+    }
+
+    @Provides
+    @Singleton
+    fun provideNostrPublicEventBuilder(signer: NostrSigner): NostrPublicEventBuilder {
+        return NostrPublicEventBuilder(signer)
+    }
+
+    @Provides
+    @Singleton
+    fun provideNostrEventDecryptor(signer: NostrSigner): NostrEventDecryptor {
+        return NostrEventDecryptor(signer)
+    }
+
+    @Provides
+    @Singleton
+    fun provideNostrMessageSender(
+        eventBuilder: NostrEventBuilder,
+        relayPool: NostrRelayPool,
+        nostrSigner: NostrSigner
+    ): NostrMessageSender {
+        return NostrMessageSender(eventBuilder, relayPool, nostrSigner)
+    }
+
+    @Provides
+    @Singleton
+    fun provideNostrRelaySubscription(
+        relayPool: NostrRelayPool,
+        decryptor: NostrEventDecryptor,
+        signer: NostrSigner,
+        userPreferences: UserPreferences
+    ): NostrRelaySubscription {
+        return NostrRelaySubscription(relayPool, decryptor, signer, userPreferences)
+    }
+
+    @Provides
+    @Singleton
+    fun provideNostrMessageRepository(database: SecureDatabase): NostrMessageRepository {
+        return NostrMessageRepository(database)
+    }
+
+    @Provides
+    @Singleton
+    fun provideOfflineQueueManager(
+        messageRepository: NostrMessageRepository,
+        messageSender: NostrMessageSender
+    ): OfflineQueueManager {
+        return OfflineQueueManager(messageRepository, messageSender)
+    }
+
+    @Provides
+    @Singleton
+    fun provideAnnouncementRepository(database: SecureDatabase): AnnouncementRepository {
+        return AnnouncementRepository(database)
+    }
+
+    @Provides
+    @Singleton
+    fun provideNotificationHelper(@ApplicationContext context: Context): NotificationHelper {
+        return NotificationHelper(context)
+    }
+
+    // --- Payment Infrastructure ---
+
+    @Provides
+    @Singleton
+    fun provideNostrProfileManager(
+        publicEventBuilder: NostrPublicEventBuilder,
+        relayPool: NostrRelayPool,
+        database: SecureDatabase
+    ): NostrProfileManager {
+        return NostrProfileManager(publicEventBuilder, relayPool, database)
+    }
+
+    @Provides
+    @Singleton
+    fun provideZapManager(
+        signer: NostrSigner,
+        publicEventBuilder: NostrPublicEventBuilder,
+        relayPool: NostrRelayPool,
+        @Named("nostr") okHttpClient: OkHttpClient,
+        profileManager: NostrProfileManager
+    ): ZapManager {
+        return ZapManager(signer, publicEventBuilder, relayPool, okHttpClient, profileManager)
+    }
+
+    @Provides
+    @Singleton
+    fun providePaymentRepository(database: SecureDatabase): PaymentRepository {
+        return PaymentRepository(database)
+    }
+
+    @Provides
+    @Singleton
+    fun providePaymentManager(
+        zapManager: ZapManager,
+        profileManager: NostrProfileManager
+    ): PaymentManager {
+        return NostrPaymentManager(zapManager, profileManager)
+    }
+
+    // --- Engine classes ---
+
+    @Provides
+    @Singleton
+    fun provideProfileClassifier(): ProfileClassifier {
+        return ProfileClassifier()
+    }
+
+    @Provides
+    @Singleton
+    fun providePhaseSelector(): PhaseSelector {
+        return PhaseSelector()
+    }
+
+    @Provides
+    @Singleton
+    fun provideExerciseSelector(exerciseRepository: ExerciseRepository): ExerciseSelector {
+        return PerfLogger.trace("DI: ExerciseSelector (DB getAll!)") {
+            ExerciseSelector(exerciseRepository.getAll())
+        }
+    }
+
+    @Provides
+    @Singleton
+    fun provideInjuryGuard(): InjuryGuard {
+        return InjuryGuard()
+    }
+
+    @Provides
+    @Singleton
+    fun provideAdaptiveAdjuster(): AdaptiveAdjuster {
+        return AdaptiveAdjuster()
+    }
+
+    @Provides
+    @Singleton
+    fun provideTrainingEngine(
+        exerciseSelector: ExerciseSelector,
+        phaseSelector: PhaseSelector,
+        injuryGuard: InjuryGuard
+    ): TrainingEngine {
+        return TrainingEngine(exerciseSelector, phaseSelector, injuryGuard)
+    }
+
+    // --- Use cases ---
+
+    @Provides
+    @Singleton
+    fun provideGeneratePlanUseCase(
+        profileClassifier: ProfileClassifier,
+        trainingEngine: TrainingEngine,
+        planRepository: PlanRepository,
+        workoutRepository: WorkoutRepository
+    ): GeneratePlanUseCase {
+        return GeneratePlanUseCase(profileClassifier, trainingEngine, planRepository, workoutRepository)
+    }
+
+    @Provides
+    @Singleton
+    fun provideAdaptPlanUseCase(
+        adaptiveAdjuster: AdaptiveAdjuster,
+        planRepository: PlanRepository,
+        workoutRepository: WorkoutRepository,
+        climbRepository: ClimbRepository
+    ): AdaptPlanUseCase {
+        return AdaptPlanUseCase(adaptiveAdjuster, planRepository, workoutRepository, climbRepository)
+    }
+}

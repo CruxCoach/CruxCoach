@@ -1,0 +1,18 @@
+package com.cruxcoach.android.ble
+
+import java.util.UUID
+
+/**
+ * GATT UUIDs for the BLE Session Queue feature.
+ * Service UUID reuses CRUXCOACH_CLIMB_SHARING; characteristics are sub-UUIDs.
+ */
+object SessionGattUuids {
+    val SERVICE: UUID = AuroraBleUuids.CRUXCOACH_CLIMB_SHARING
+    val SESSION_INFO: UUID = UUID.fromString("C1140B01-CC01-4000-8000-DEADC0AC0001")
+    val CURRENT_CLIMB: UUID = UUID.fromString("C1140B02-CC01-4000-8000-DEADC0AC0001")
+    val QUEUE_STATE: UUID = UUID.fromString("C1140B03-CC01-4000-8000-DEADC0AC0001")
+    val QUEUE_COMMAND: UUID = UUID.fromString("C1140B04-CC01-4000-8000-DEADC0AC0001")
+    val QUEUE_EVENT: UUID = UUID.fromString("C1140B05-CC01-4000-8000-DEADC0AC0001")
+    val PARTICIPANT_LIST: UUID = UUID.fromString("C1140B06-CC01-4000-8000-DEADC0AC0001")
+    val CCCD: UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
+}

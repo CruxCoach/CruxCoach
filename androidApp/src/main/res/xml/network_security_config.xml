@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!--
+        Cleartext (HTTP) is allowed globally because the ONLY http:// connections
+        are local WiFi share transfers to private IPs (WiFi Direct / LocalOnlyHotspot).
+        All internet-bound traffic (Blossom, Nostr, APIs) uses https:// URLs and
+        is always encrypted regardless of this setting.
+    -->
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

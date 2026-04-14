@@ -1,0 +1,49 @@
+CREATE TABLE UserProfile (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    age INTEGER NOT NULL,
+    weight_kg REAL NOT NULL,
+    height_cm REAL NOT NULL,
+    ape_index REAL,
+    max_boulder_grade TEXT NOT NULL,
+    max_sport_grade TEXT,
+    climbing_years REAL NOT NULL DEFAULT 1.0,
+    sessions_per_week INTEGER NOT NULL DEFAULT 3,
+    available_equipment TEXT NOT NULL DEFAULT '[]',
+    injury_history TEXT NOT NULL DEFAULT '[]',
+    goals TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+insert:
+INSERT INTO UserProfile (name, age, weight_kg, height_cm, ape_index,
+    max_boulder_grade, max_sport_grade, climbing_years, sessions_per_week,
+    available_equipment, injury_history, goals, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+getById:
+SELECT * FROM UserProfile WHERE id = ?;
+
+getActive:
+SELECT * FROM UserProfile ORDER BY updated_at DESC LIMIT 1;
+
+getAll:
+SELECT * FROM UserProfile ORDER BY updated_at DESC;
+
+update:
+UPDATE UserProfile SET
+    name = ?, age = ?, weight_kg = ?, height_cm = ?, ape_index = ?,
+    max_boulder_grade = ?, max_sport_grade = ?, climbing_years = ?,
+    sessions_per_week = ?, available_equipment = ?, injury_history = ?,
+    goals = ?, updated_at = ?
+WHERE id = ?;
+
+deleteById:
+DELETE FROM UserProfile WHERE id = ?;
+
+lastInsertRowId:
+SELECT last_insert_rowid();
+
+count:
+SELECT COUNT(*) FROM UserProfile;

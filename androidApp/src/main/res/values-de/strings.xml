@@ -1,0 +1,1312 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">CruxCoach</string>
+
+    <!-- Onboarding -->
+    <string name="onboarding_welcome">Willkommen bei CruxCoach</string>
+    <string name="onboarding_welcome_subtitle">Dein Companion für Kilter Board Bouldern. Durchsuche Climbs, steuere dein Board und teile Sessions mit Freunden.</string>
+    <string name="onboarding_privacy_title">Wie möchtest du CruxCoach nutzen?</string>
+    <string name="onboarding_privacy_subtitle">Wähle aus, welche Funktionen aktiv sein sollen. Du kannst alles jederzeit in den Einstellungen ändern.</string>
+    <string name="onboarding_privacy_ble_title">Board-Sharing in der Nähe</string>
+    <string name="onboarding_privacy_ble_desc">Teile Climbs mit Leuten am Board und nutze den Session-Modus zum gemeinsamen Bouldern.</string>
+    <string name="onboarding_privacy_community_title">Community &amp; Feedback</string>
+    <string name="onboarding_privacy_community_desc">Crash-Berichte, App-Ankündigungen und Entwickler-Chat — alles verschlüsselt und ohne Account.</string>
+    <string name="onboarding_privacy_hint">Keine persönlichen Daten verlassen dein Gerät. Alle Kommunikation ist Ende-zu-Ende verschlüsselt.</string>
+    <string name="onboarding_lets_go">Los geht\'s</string>
+    <string name="onboarding_board_setup_title">Board &amp; Logbook einrichten</string>
+    <string name="onboarding_board_setup_subtitle">Lade die Climb-Datenbank und importiere optional dein Kilter-Logbook.</string>
+    <string name="onboarding_board_skip_hint">Du kannst beide Schritte überspringen und jederzeit in den Einstellungen nachholen.</string>
+    <string name="onboarding_board_sync">Board-Daten synchronisieren</string>
+    <string name="onboarding_board_db_title">Board-Datenbank</string>
+    <string name="onboarding_board_db_subtitle">Climbs, Bewertungen und Statistiken für dein Kilter Board.</string>
+    <string name="onboarding_kilter_title">Kilter Logbook importieren</string>
+    <string name="onboarding_kilter_desc">Hast du einen Kilter Account? Importiere deine Begehungen und Projekte.</string>
+    <string name="onboarding_kilter_credentials_hint">Deine Zugangsdaten werden nur für den Import verwendet und können danach verworfen werden.</string>
+    <string name="onboarding_kilter_logged_in">Angemeldet als %s</string>
+    <string name="onboarding_kilter_preview">%d Einträge gefunden: %d Begehungen, %d Projekte (%d bereits vorhanden)</string>
+    <string name="onboarding_kilter_import_once">Einmalig importieren</string>
+    <string name="onboarding_kilter_import_sync">Dauerhaft synchronisieren</string>
+    <string name="onboarding_kilter_import_success">%d Einträge importiert!</string>
+    <string name="onboarding_kilter_import_error">Import fehlgeschlagen: %s</string>
+
+    <!-- Navigation -->
+    <string name="nav_dashboard">Dashboard</string>
+    <string name="nav_week_plan">Wochenplan</string>
+    <string name="nav_climb_log">Loggen</string>
+    <string name="nav_stats">Statistiken</string>
+    <string name="nav_exercises">Übungsbibliothek</string>
+
+    <!-- Common Actions -->
+    <string name="action_cancel">Abbrechen</string>
+    <string name="action_ok">OK</string>
+    <string name="action_save">Speichern</string>
+    <string name="action_delete">Löschen</string>
+    <string name="action_back">Zurück</string>
+    <string name="action_refresh">Aktualisieren</string>
+    <string name="action_done">Fertig</string>
+    <string name="action_share">Freigeben</string>
+    <string name="action_skip">Überspringen</string>
+    <string name="action_import">Importieren</string>
+    <string name="action_disconnect">Trennen</string>
+    <string name="action_next">Weiter</string>
+    <string name="action_close">Schließen</string>
+    <string name="action_send">Senden</string>
+    <string name="action_retry">Erneut versuchen</string>
+    <string name="action_reset">Zurücksetzen</string>
+    <string name="action_understood">Verstanden</string>
+
+    <!-- Settings -->
+    <string name="settings_language_title">Sprache</string>
+    <string name="settings_title">Einstellungen</string>
+    <string name="settings_display_title">Anzeige</string>
+    <string name="settings_display_appearance">Erscheinungsbild:</string>
+    <string name="settings_display_grade_scale">Grad-Skala:</string>
+    <string name="settings_board_title">Board-Einstellungen</string>
+    <string name="settings_board_collapse">Einklappen</string>
+    <string name="settings_board_expand">Ausklappen</string>
+    <string name="settings_app_info_title">App-Info</string>
+    <string name="settings_app_info_easter_remaining">Noch %d× tippen…</string>
+    <string name="settings_app_info_easter_unlocked">Easter Egg freigeschaltet!</string>
+    <string name="settings_app_info_easter_play">Oster-Ei projizieren</string>
+    <string name="settings_app_info_easter_no_board">Oster-Ei (Board nicht verbunden)</string>
+    <string name="settings_app_info_animation_stop">Animation stoppen</string>
+
+    <!-- Settings: Profile -->
+    <string name="settings_profile_title">Profil</string>
+    <string name="settings_profile_name">Name</string>
+    <string name="settings_profile_age">Alter</string>
+    <string name="settings_profile_height">Größe (cm)</string>
+    <string name="settings_profile_weight">Gewicht (kg)</string>
+    <string name="settings_profile_max_grade">Max-Grad:</string>
+    <string name="settings_profile_sessions_per_week">Sessions/Woche: %d</string>
+    <string name="settings_profile_save">Profil speichern</string>
+    <string name="settings_profile_saved">Gespeichert</string>
+    <string name="settings_profile_updated">Profil aktualisiert</string>
+
+    <!-- Settings: Assessment -->
+    <string name="settings_assessment_title">Kraft-Assessment</string>
+    <string name="settings_assessment_strength_test">Krafttest</string>
+    <string name="settings_assessment_intro">Gib deine aktuellen Kraftwerte ein. Alle Felder sind optional — je mehr Daten, desto besser kann der Trainingsplan kalibriert werden.</string>
+    <string name="settings_assessment_exists">Assessment vorhanden. Führe einen neuen Test durch, um deinen Plan zu optimieren.</string>
+    <string name="settings_assessment_missing">Kein Assessment vorhanden. Ein Krafttest hilft, deinen Plan besser zu kalibrieren.</string>
+    <string name="settings_assessment_start">Krafttest starten</string>
+    <string name="settings_assessment_redo">Neues Assessment durchführen</string>
+    <string name="settings_assessment_save">Assessment speichern</string>
+    <string name="settings_assessment_max_hang">Max Hang 20mm (kg)</string>
+    <string name="settings_assessment_max_hang_hint">7s Hang, beide Hände, Zusatzgewicht</string>
+    <string name="settings_assessment_pullup_max">Klimmzüge max</string>
+    <string name="settings_assessment_pushup_max">Liegestütze max</string>
+    <string name="settings_assessment_weighted_pullup">Gewichteter Klimmzug (kg)</string>
+    <string name="settings_assessment_weighted_pullup_hint">1RM Zusatzgewicht</string>
+    <string name="settings_assessment_core_hold">L-Sit / Front Lever Hold (Sek)</string>
+    <string name="settings_assessment_tip">Tipp: Teste regelmäßig (alle 4–6 Wochen), um deinen Fortschritt zu verfolgen.</string>
+
+    <!-- Settings: Board Data -->
+    <string name="settings_board_data_title">Board-Daten</string>
+    <string name="settings_board_type">Board-Typ:</string>
+    <string name="settings_board_last_sync">Letzter Sync: %s</string>
+    <string name="settings_board_sync_button">Datenbank aktualisieren</string>
+    <string name="settings_board_auto_download">Automatischer Download (WLAN):</string>
+    <string name="settings_board_auto_download_desc">Lädt die komplette Board-Datenbank (~30 MB) im Hintergrund über WLAN herunter.</string>
+
+    <!-- Settings: BLE -->
+    <string name="settings_ble_auto_disconnect_title">BLE Auto-Disconnect</string>
+    <string name="settings_ble_auto_disconnect_desc">Board-Verbindung automatisch trennen nach Inaktivität.</string>
+    <string name="settings_ble_disconnect_off">Aus</string>
+    <string name="settings_ble_disconnect_1min">1 Min</string>
+    <string name="settings_ble_disconnect_5min">5 Min</string>
+    <string name="settings_ble_disconnect_10min">10 Min</string>
+    <string name="settings_ble_disconnect_15min">15 Min</string>
+    <string name="settings_ble_disconnect_30min">30 Min</string>
+    <string name="settings_ble_keep_screen_on">Bildschirm anlassen</string>
+    <string name="settings_ble_keep_screen_on_desc">Bildschirm bleibt auf Board-Screens an, damit du nicht ständig entsperren musst.</string>
+
+    <!-- Settings: LED Colors -->
+    <string name="settings_led_title">LED-Farben</string>
+    <string name="settings_led_desc">Farben für die Griff-Rollen auf dem Board.</string>
+    <string name="settings_led_role_start">Start</string>
+    <string name="settings_led_role_hand">Hand</string>
+    <string name="settings_led_role_foot">Fuß</string>
+    <string name="settings_led_role_top">Top</string>
+    <string name="settings_led_selected">Ausgewählt</string>
+    <string name="settings_led_pick_color">Farbe für %s wählen</string>
+    <string name="settings_led_reset_cruxcoach">CruxCoach Standard</string>
+    <string name="settings_led_reset_kilter">Kilter Standard</string>
+
+    <!-- Settings: Timer -->
+    <string name="settings_timer_title">Pausentimer</string>
+    <string name="settings_timer_desc">Timer zwischen Boulder-Versuchen. Startet nach dem Loggen einer Begehung.</string>
+    <string name="settings_timer_duration">Dauer: %s</string>
+    <string name="settings_timer_30s">30s</string>
+    <string name="settings_timer_1min">1 Min</string>
+    <string name="settings_timer_1m30">1:30</string>
+    <string name="settings_timer_2min">2 Min</string>
+    <string name="settings_timer_3min">3 Min</string>
+    <string name="settings_timer_4min">4 Min</string>
+    <string name="settings_timer_5min">5 Min</string>
+    <string name="settings_timer_auto_start">Auto-Start</string>
+    <string name="settings_timer_auto_start_desc">Timer startet automatisch nach dem Loggen</string>
+
+    <!-- Settings: Playback -->
+    <string name="settings_playback_title">Routen</string>
+    <string name="settings_playback_desc">Einstellungen für die Wiedergabe von Multi-Frame-Routen.</string>
+    <string name="settings_playback_setter_speed">Setter-Geschwindigkeit</string>
+    <string name="settings_playback_setter_speed_desc">Vom Ersteller festgelegte Speed verwenden</string>
+    <string name="settings_playback_frame_speed">Frame-Geschwindigkeit: %s</string>
+    <string name="settings_playback_frame_speed_desc">Eigene Geschwindigkeit für alle Routen</string>
+    <string name="settings_playback_fallback_speed">Fallback-Geschwindigkeit: %s</string>
+    <string name="settings_playback_fallback_speed_desc">Wird verwendet wenn keine Setter-Speed vorhanden</string>
+    <string name="settings_playback_countdown">Countdown</string>
+    <string name="settings_playback_countdown_desc">Countdown vor Auto-Play</string>
+    <string name="settings_playback_countdown_duration">Countdown-Dauer: %ds</string>
+    <string name="settings_playback_auto_loop">Auto-Loop</string>
+    <string name="settings_playback_auto_loop_desc">Automatisch wiederholen</string>
+
+    <!-- Settings: Data Management -->
+    <string name="settings_data_title">Datenverwaltung</string>
+    <string name="settings_data_export">Daten exportieren</string>
+    <string name="settings_data_export_desc">Vollständiges Backup oder Waistline-Export</string>
+    <string name="settings_data_import">Daten importieren</string>
+    <string name="settings_data_import_desc">Backup oder Waistline-Daten importieren</string>
+    <string name="settings_data_delete_board">Board-Daten löschen</string>
+    <string name="settings_data_delete_board_desc">Entfernt alle heruntergeladenen Kilter-Board-Climbs, Statistiken und Layout-Daten. Können jederzeit neu synchronisiert werden.</string>
+    <string name="settings_data_delete_board_dialog_title">Board-Daten löschen?</string>
+    <string name="settings_data_delete_board_dialog_message">Alle heruntergeladenen Climbs, Statistiken und Layout-Daten werden gelöscht. Du kannst sie jederzeit über die Board-Synchronisierung neu herunterladen.</string>
+    <string name="settings_data_delete_user">Eigene Logbuch-Daten löschen</string>
+    <string name="settings_data_delete_user_desc">Entfernt alle Begehungen, Projekte, Board-Sessions und Listen unwiderruflich.</string>
+    <string name="settings_data_delete_user_dialog_title">Logbuch-Daten löschen?</string>
+    <string name="settings_data_delete_user_dialog_message">Alle deine Begehungen, Projekte, Board-Sessions und Listen werden unwiderruflich gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.</string>
+    <string name="settings_data_delete_user_confirm">Unwiderruflich löschen</string>
+
+    <!-- Settings: App Sharing -->
+    <string name="settings_share_title">App teilen</string>
+    <string name="settings_share_desc">CruxCoach APK mit anderen teilen (ohne Nutzerdaten).</string>
+    <string name="settings_share_via_apps">Über Apps teilen</string>
+    <string name="settings_share_local">Lokal teilen (WiFi Direct)</string>
+    <string name="settings_share_local_desc">Erstellt einen WiFi-Hotspot + Download-Seite. Kein Internet nötig.</string>
+    <string name="settings_share_stop">Stoppen</string>
+    <string name="settings_share_network">Netzwerk: %s</string>
+    <string name="settings_share_password">Passwort: %s</string>
+    <string name="settings_share_mobile_data_warning">Wichtig: Mobile Daten auf dem anderen Gerät ausschalten, damit der Download über den Hotspot läuft.</string>
+    <string name="settings_share_step1">Schritt 1: QR-Code scannen, um mit dem Hotspot zu verbinden</string>
+    <string name="settings_share_step2">Schritt 2: Diesen QR-Code scannen oder URL öffnen, um die App herunterzuladen</string>
+    <string name="settings_share_permissions_needed">Berechtigungen benötigt: %s. Bitte in den App-Einstellungen erlauben.</string>
+    <string name="settings_share_open_settings">App-Einstellungen öffnen</string>
+    <string name="settings_share_error">Fehler: %s</string>
+    <string name="settings_share_server_error">Server-Fehler: %s</string>
+
+    <!-- Settings: Climb Sharing -->
+    <string name="settings_sharing_title">Climb-Teilen</string>
+    <string name="settings_sharing_enable">Climb-Teilen aktivieren</string>
+    <string name="settings_sharing_enable_desc">Zeigt anderen CruxCoach-Nutzern in der Nähe, welcher Climb gerade projiziert ist. Wird auch benötigt, um Disconnect-Anfragen an andere Nutzer zu senden.</string>
+    <string name="settings_sharing_bluetooth_off">Bluetooth ist ausgeschaltet. Schalte Bluetooth ein, um Climb-Teilen nutzen zu können.</string>
+    <string name="settings_sharing_no_ble_advertising">Dieses Gerät unterstützt kein BLE Advertising. Das Feature ist nicht verfügbar.</string>
+    <string name="settings_sharing_remote_disconnect">Remote-Disconnect erlauben</string>
+    <string name="settings_sharing_remote_disconnect_desc">Andere CruxCoach-Nutzer können anfragen, dass du dich vom Board trennst.</string>
+
+    <!-- Training -->
+    <string name="phase_base">Basis</string>
+    <string name="phase_strength">Kraft</string>
+    <string name="phase_power">Power</string>
+    <string name="phase_performance">Performance</string>
+    <string name="phase_deload">Deload</string>
+
+    <!-- Skin Status -->
+    <string name="skin_good">Gut</string>
+    <string name="skin_thin">Dünn</string>
+    <string name="skin_split">Riss</string>
+
+    <!-- Session Types -->
+    <string name="session_strength">Kraft</string>
+    <string name="session_power">Power</string>
+    <string name="session_volume">Volumen</string>
+    <string name="session_technique">Technik</string>
+    <string name="session_deload">Deload</string>
+    <string name="session_rest">Ruhe</string>
+
+    <!-- Week Plan -->
+    <string name="week_plan_title">Wochenplan</string>
+    <string name="week_plan_no_plan">Kein aktiver Plan. Bitte generiere einen neuen Plan.</string>
+    <string name="week_plan_generate">Plan generieren</string>
+    <string name="week_plan_adapt">Plan anpassen</string>
+    <string name="week_plan_rest_day">Ruhetag</string>
+    <string name="week_plan_focus">Fokus</string>
+    <string name="week_plan_adaptations">Anpassungen</string>
+
+    <!-- Session Detail -->
+    <string name="session_detail_title">Session Details</string>
+    <string name="session_detail_exercises">Übungen</string>
+    <string name="session_detail_start">Workout starten</string>
+    <string name="session_detail_duration">Dauer</string>
+    <string name="session_detail_target_rpe">Ziel-RPE</string>
+    <string name="session_detail_sets">Sets</string>
+    <string name="session_detail_rest">Pause</string>
+
+    <!-- Exercise Categories -->
+    <string name="cat_hangboard">Hangboard</string>
+    <string name="cat_pull">Zugkraft</string>
+    <string name="cat_push">Druckkraft</string>
+    <string name="cat_core">Rumpf</string>
+    <string name="cat_power">Power</string>
+    <string name="cat_endurance">Ausdauer</string>
+    <string name="cat_mobility">Mobilität</string>
+    <string name="cat_technique">Technik</string>
+    <string name="cat_antagonist">Antagonist</string>
+
+    <!-- Day Names -->
+    <string name="day_mon">Mo</string>
+    <string name="day_tue">Di</string>
+    <string name="day_wed">Mi</string>
+    <string name="day_thu">Do</string>
+    <string name="day_fri">Fr</string>
+    <string name="day_sat">Sa</string>
+    <string name="day_sun">So</string>
+
+    <!-- Active Workout -->
+    <string name="workout_finish">Beenden</string>
+    <string name="workout_set_done">Set fertig</string>
+    <string name="workout_skip_rest">Pause überspringen</string>
+    <string name="workout_skip_exercise">Überspringen</string>
+    <string name="workout_rest">Pause</string>
+    <string name="workout_exercise_of">Übung %1$d von %2$d</string>
+    <string name="workout_type_strength">Kraft-Workout</string>
+    <string name="workout_type_power">Power-Workout</string>
+    <string name="workout_type_volume">Volumen-Workout</string>
+    <string name="workout_type_technique">Technik-Workout</string>
+    <string name="workout_type_deload">Deload-Workout</string>
+    <string name="workout_error">Fehler</string>
+    <string name="workout_no_recording">Kein Workout aufgezeichnet</string>
+    <string name="workout_set_done_label">%s fertig</string>
+    <string name="workout_hours">%s Stunden</string>
+    <string name="workout_minutes">Minuten</string>
+    <string name="workout_weight">Gewicht</string>
+    <string name="workout_notes_placeholder">Wie war das Training?</string>
+    <string name="workout_energy_top">Top</string>
+    <string name="workout_energy_good">Gut</string>
+    <string name="workout_energy_normal">Normal</string>
+    <string name="workout_energy_tired">Müde</string>
+    <string name="workout_energy_exhausted">Erschöpft</string>
+    <string name="workout_mood_great">Super</string>
+    <string name="workout_mood_good">Gut</string>
+    <string name="workout_mood_ok">Ok</string>
+    <string name="workout_mood_fair">Mäßig</string>
+    <string name="workout_mood_bad">Schlecht</string>
+    <string name="workout_rpe_very_hard">Sehr schwer</string>
+
+    <!-- Post Workout -->
+    <string name="post_workout_title">Workout-Zusammenfassung</string>
+    <string name="post_workout_rpe">Belastungsempfinden (RPE)</string>
+    <string name="post_workout_energy">Energielevel</string>
+    <string name="post_workout_mood_pre">Stimmung vor dem Training</string>
+    <string name="post_workout_mood_post">Stimmung nach dem Training</string>
+    <string name="post_workout_skin">Hautzustand Finger</string>
+    <string name="post_workout_pain">Schmerzbereiche</string>
+    <string name="post_workout_sleep">Schlaf letzte Nacht</string>
+    <string name="post_workout_notes">Notizen (optional)</string>
+    <string name="post_workout_save">Speichern</string>
+
+    <!-- Pain Areas -->
+    <string name="pain_a2">A2 Ringband</string>
+    <string name="pain_a4">A4 Ringband</string>
+    <string name="pain_shoulder">Schulter</string>
+    <string name="pain_elbow">Ellbogen</string>
+    <string name="pain_wrist">Handgelenk</string>
+    <string name="pain_back">Rücken</string>
+    <string name="pain_knee">Knie</string>
+
+    <!-- RPE Labels -->
+    <string name="rpe_very_light">Sehr leicht</string>
+    <string name="rpe_light">Leicht</string>
+    <string name="rpe_moderate">Moderat</string>
+    <string name="rpe_hard">Anstrengend</string>
+    <string name="rpe_very_hard">Schwer</string>
+    <string name="rpe_max">Maximum</string>
+
+    <!-- Climb Log -->
+    <string name="climb_log_title">Loggen</string>
+    <string name="climb_log_grade">Grad</string>
+    <string name="climb_log_sent">Gesendet</string>
+    <string name="climb_log_flash">Flash</string>
+    <string name="climb_log_attempts">Versuche</string>
+    <string name="climb_log_style">Stil (optional)</string>
+    <string name="climb_log_holds">Griffarten (optional)</string>
+    <string name="climb_log_board">Board (optional)</string>
+    <string name="climb_log_notes">Notizen (optional)</string>
+    <string name="climb_log_save_next">Speichern + Nächster</string>
+    <string name="climb_notes_placeholder">Beta, Bedingungen…</string>
+
+    <!-- Climb Styles -->
+    <string name="style_slab">Platte</string>
+    <string name="style_vert">Vertikal</string>
+    <string name="style_overhang">Überhang</string>
+    <string name="style_roof">Dach</string>
+    <string name="style_dyno">Dyno</string>
+    <string name="style_comp">Comp-Style</string>
+
+    <!-- Hold Types -->
+    <string name="hold_crimp">Crimp</string>
+    <string name="hold_sloper">Sloper</string>
+    <string name="hold_pinch">Pinch</string>
+    <string name="hold_jug">Jug</string>
+    <string name="hold_pocket">Pocket</string>
+    <string name="hold_volume">Volume</string>
+    <string name="hold_undercling">Untergriff</string>
+
+    <!-- Dashboard -->
+    <string name="dashboard_title">CruxCoach</string>
+    <string name="dashboard_no_plan">Kein aktiver Trainingsplan</string>
+    <string name="dashboard_no_plan_hint">Erstelle einen Plan, um loszulegen.</string>
+    <string name="dashboard_sessions_week">Sessions diese Woche</string>
+    <string name="dashboard_streak">Tage Streak</string>
+    <string name="dashboard_best_grade">Bester Grad</string>
+    <string name="dashboard_avg_rpe">Avg RPE</string>
+    <string name="dashboard_next_session">Nächste Session</string>
+    <string name="dashboard_today_climbed">Heute geklettert</string>
+    <string name="dashboard_quick_actions">Schnellzugriff</string>
+    <string name="dashboard_refresh">Aktualisieren</string>
+    <string name="dashboard_retry">Erneut versuchen</string>
+    <string name="dashboard_error">Fehler</string>
+    <string name="dashboard_log_boulder">Boulder loggen</string>
+    <string name="dashboard_phase">Phase: %s</string>
+    <string name="dashboard_session_summary">%d Übungen, %d min</string>
+    <string name="dashboard_to_weekplan">Zum Wochenplan</string>
+
+    <!-- Stats -->
+    <string name="stats_title">Statistiken</string>
+    <string name="stats_grade_pyramid">Grad-Pyramide</string>
+    <string name="stats_rpe_trend">RPE-Trend (letzte Workouts)</string>
+    <string name="stats_style_dist">Stil-Verteilung</string>
+    <string name="stats_sends">Sends</string>
+    <string name="stats_no_data">Noch keine Daten</string>
+    <string name="stats_no_data_hint">Logge deine Workouts und Boulder, um Statistiken zu sehen.</string>
+    <string name="stats_body_data">Körperdaten</string>
+    <string name="stats_compare_with">Vergleichen mit…</string>
+    <string name="stats_measurements">%d Messungen</string>
+    <string name="stats_average">Ø %s</string>
+    <string name="stats_error">Fehler</string>
+
+    <!-- Board Browser -->
+    <string name="board_browser_title">Board Browser</string>
+    <string name="board_search_placeholder">Climb suchen…</string>
+    <string name="board_climbs_found">%d Climbs gefunden</string>
+    <string name="board_no_data_title">Keine Board-Daten</string>
+    <string name="board_no_data_hint">Synchronisiere die Kilter/Tension Board-Datenbank, um Climbs zu suchen.</string>
+    <string name="board_angle">Winkel</string>
+    <string name="board_moves">Züge</string>
+    <string name="board_quality">Qualität</string>
+    <string name="board_sends">Sends</string>
+    <string name="board_holds">Griffe</string>
+    <string name="board_hold_types">Griff-Typen</string>
+    <string name="board_hold_start">Start</string>
+    <string name="board_hold_hand">Hand</string>
+    <string name="board_hold_top">Top</string>
+    <string name="board_hold_foot">Fuß</string>
+    <string name="board_filter_angle">Winkel: %d°</string>
+    <string name="board_filter_grade">Grad: V%1$d – V%2$d</string>
+    <string name="board_filter_min_ascents">Min. Begehungen: %d</string>
+    <string name="board_show_on_board">Auf Board anzeigen</string>
+    <string name="board_log_send">Send loggen</string>
+    <string name="board_log_attempt">Attempt loggen</string>
+    <string name="board_browser_search_hint">Name oder Setter suchen…</string>
+    <string name="board_browser_climbs_count">%d Climbs</string>
+    <string name="board_browser_climbs_loaded">%d Climbs (%d geladen)</string>
+    <string name="board_detail_title">Climb Details</string>
+    <string name="board_detail_by_setter">von %s</string>
+    <string name="board_detail_error">Fehler</string>
+    <string name="board_detail_delete_ascent_title">Begehung löschen?</string>
+    <string name="board_detail_delete_ascent_message">Diese Begehung wird unwiderruflich gelöscht.</string>
+    <string name="board_filter_all">Alle</string>
+    <string name="board_filter_benchmarks_only">Nur Benchmarks</string>
+    <string name="board_filter_grade_range">Grad: %1$s – %2$s</string>
+    <string name="board_filter_sort">Sortierung</string>
+    <string name="board_filter_sort_asc">Aufsteigend</string>
+    <string name="board_filter_sort_desc">Absteigend</string>
+    <string name="board_filter_status">Status</string>
+    <string name="board_filter_status_new">Neu</string>
+    <string name="board_filter_status_attempted">Versucht</string>
+    <string name="board_filter_status_sent">Gesendet</string>
+    <string name="board_filter_status_unsent">Offen</string>
+    <string name="board_filter_type">Typ</string>
+    <string name="board_filter_type_boulder">Boulder</string>
+    <string name="board_filter_type_routes">Routen</string>
+    <string name="board_session_connecting">Verbinde mit Session…</string>
+    <string name="board_session_end_title">Session beenden?</string>
+    <string name="board_session_end_confirm">Beenden</string>
+    <string name="board_session_end_summary">Gesamtzeit: %1$s\nAktiv: %2$s\nPausen: %3$s\nSends: %4$d / Versuche: %5$d</string>
+    <string name="board_ble_disconnect_request_title">Verbindungsanfrage</string>
+    <string name="board_ble_disconnect_request_message">Jemand in der Nähe möchte sich mit dem Board verbinden. Verbindung freigeben?</string>
+    <string name="board_ble_disconnect_request_confirm">Freigeben</string>
+    <string name="board_ble_disconnect_request_deny">Ablehnen</string>
+    <string name="board_bt_off_title">Bluetooth deaktiviert</string>
+    <string name="board_bt_off_message">Bluetooth wird für die aktive Session und Board-Verbindung benötigt. Bitte wieder aktivieren.</string>
+    <string name="board_bt_off_enable">Bluetooth aktivieren</string>
+    <string name="board_bt_off_ignore">Ignorieren</string>
+
+    <!-- BLE -->
+    <string name="ble_scanning">Suche Board…</string>
+    <string name="ble_connected">Verbunden mit %s</string>
+    <string name="ble_disconnected">Getrennt</string>
+    <string name="ble_permission_needed">Bluetooth-Berechtigung benötigt</string>
+
+    <!-- Crash Reporting -->
+    <string name="crash_dialog_title">CruxCoach ist unerwartet beendet worden</string>
+    <string name="crash_dialog_message">Möchtest du einen verschlüsselten Crash-Bericht an den Entwickler senden? Du kannst ihn vorher einsehen.</string>
+    <string name="crash_dialog_send">Senden</string>
+    <string name="crash_dialog_view">Bericht anzeigen</string>
+    <string name="crash_dialog_dismiss">Nein, danke</string>
+    <string name="crash_dialog_dont_ask_again">Auswahl merken</string>
+    <string name="crash_viewer_title">Crash-Bericht</string>
+    <string name="crash_viewer_close">Schließen</string>
+    <string name="crash_send_success">Crash-Bericht gesendet</string>
+    <string name="crash_send_failure">Senden fehlgeschlagen — Bericht wird beim nächsten Start erneut angeboten</string>
+    <string name="crash_section_title">Crash-Berichte</string>
+    <string name="crash_opt_in_label">Crash-Berichte anbieten</string>
+    <string name="crash_opt_in_description">Bei einem App-Absturz wird beim nächsten Start ein verschlüsselter Bericht angeboten</string>
+
+    <!-- Announcements -->
+    <string name="announcements_title">Ankündigungen</string>
+    <string name="announcements_empty">Keine Ankündigungen</string>
+    <string name="announcements_badge_release">Release</string>
+    <string name="announcements_badge_issue">Problem</string>
+    <string name="announcements_badge_tip">Tipp</string>
+    <string name="announcements_badge_general">Allgemein</string>
+    <string name="announcement_cat_release_desc">Neue Versionen</string>
+    <string name="announcement_cat_issue_desc">Bekannte Bugs</string>
+    <string name="announcement_cat_tip_desc">Nutzungstipps</string>
+    <string name="announcement_cat_general_desc">Sonstige Mitteilungen</string>
+    <string name="announcements_notification_release">Neue Version verfügbar</string>
+    <string name="announcements_notification_issue">Bekanntes Problem</string>
+    <string name="announcements_notification_tip">Tipp vom Entwickler</string>
+    <string name="announcements_notifications_label">Benachrichtigungen</string>
+    <string name="announcements_notifications_description">Push-Benachrichtigungen bei neuen Ankündigungen</string>
+
+    <!-- Payment -->
+    <string name="payment_sheet_title">Freiwilliges Geschenk</string>
+    <string name="payment_lightning_title">Lightning</string>
+    <string name="payment_lightning_desc">Schnell, günstig, privat</string>
+    <string name="payment_kofi_title">Ko-fi</string>
+    <string name="payment_kofi_desc">Klassisch mit Karte/PayPal</string>
+    <string name="payment_amount_title">Betrag wählen:</string>
+    <string name="payment_custom_amount">Eigener Betrag (Sats)</string>
+    <string name="payment_message_hint">Nachricht (optional)</string>
+    <string name="payment_send">Geschenk senden</string>
+    <string name="payment_sending">Geschenk wird gesendet\u2026</string>
+    <string name="payment_success">Geschenk gesendet — Danke!</string>
+    <string name="payment_error">Fehler beim Senden des Geschenks</string>
+    <string name="payment_gift_disclaimer">CruxCoach ist und bleibt vollständig kostenlos — unabhängig davon, ob du ein Geschenk sendest oder nicht. Geschenke sind rein freiwillig und begründen keinen Anspruch auf Gegenleistungen.</string>
+    <string name="payment_no_wallet_title">Keine Lightning-Wallet gefunden</string>
+    <string name="payment_no_wallet_message">Du benötigst eine Lightning-Wallet-App, um Zaps zu senden.</string>
+    <string name="payment_recommended_wallets">Empfohlene Wallets:</string>
+    <string name="payment_profile_setup_title">Nostr-Profil einrichten</string>
+    <string name="payment_profile_setup_message">Erstelle ein Profil, um Zaps empfangen zu können.</string>
+    <string name="payment_profile_name_hint">Anzeigename (optional)</string>
+    <string name="payment_profile_lightning_hint">Lightning-Adresse</string>
+    <string name="payment_profile_setup_confirm">Einrichten</string>
+    <string name="payment_profile_setup_skip">Später</string>
+    <string name="payment_zap_privacy_notice">Hinweis: Lightning Zaps sind auf Nostr-Relays öffentlich sichtbar (Betrag, Absender, Zeitpunkt). Ko-fi ist die privatere Alternative.</string>
+
+    <!-- Offline Queue -->
+    <string name="queue_pending_label">Wird gesendet…</string>
+    <string name="queue_count_label">%d Nachricht(en) warten auf Versand</string>
+    <string name="queue_drain_button">Jetzt senden</string>
+    <string name="queue_crash_queued">Crash-Bericht wird gesendet sobald Netzwerk verfügbar</string>
+
+    <!-- Nostr Key Management -->
+    <string name="keys_title">CruxCoach Account</string>
+    <string name="keys_login_method">Login-Methode</string>
+    <string name="keys_login_local">Lokaler Schlüssel</string>
+    <string name="keys_login_amber">Amber Signer</string>
+    <string name="keys_npub_title">Öffentlicher Schlüssel (npub)</string>
+    <string name="keys_nsec_title">Privater Schlüssel</string>
+    <string name="keys_nsec_hidden">Zum Schutz ausgeblendet.</string>
+    <string name="keys_copy_nsec">nsec kopieren</string>
+    <string name="keys_export_backup">Backup erstellen</string>
+    <string name="keys_warning">Teile deinen privaten Schlüssel niemals. Wer ihn hat, kontrolliert deinen Account dauerhaft.</string>
+    <string name="keys_amber_title">Amber Signer verwenden</string>
+    <string name="keys_amber_description">Dein Schlüssel bleibt in Amber. CruxCoach sieht ihn nie.</string>
+    <string name="keys_amber_setup">Einrichten</string>
+    <string name="keys_import_title">Schlüssel importieren</string>
+    <string name="keys_import_hint">nsec, ncryptsec, hex oder 12/24 Wörter</string>
+    <string name="keys_import_button">Importieren</string>
+    <string name="keys_import_confirm">Ist das dein Schlüssel?</string>
+    <string name="keys_import_overwrite_warning">Du hast bereits einen Schlüssel. Der Import ersetzt ihn. Hast du ein Backup?</string>
+    <string name="keys_biometric_title">Privaten Schlüssel anzeigen</string>
+    <string name="keys_biometric_subtitle">Authentifiziere dich</string>
+    <string name="keys_copy_warning">Dieser Schlüssel kontrolliert deinen gesamten CruxCoach Account. Die Zwischenablage wird nach 60 Sekunden geleert.</string>
+    <string name="keys_copied_toast">Schlüssel kopiert. Zwischenablage wird in 60s geleert.</string>
+    <string name="keys_backup_password_title">Verschlüsseltes Backup erstellen</string>
+    <string name="keys_backup_password_hint">Starkes Passwort wählen</string>
+    <string name="keys_backup_confirm_hint">Passwort bestätigen</string>
+    <string name="keys_backup_create">Backup erstellen</string>
+    <string name="keys_backup_reminder">Account nicht gesichert. Bei Geräteverlust ist dein Account weg.</string>
+    <string name="keys_backup_now">Jetzt sichern</string>
+    <string name="keys_amber_not_installed">Amber ist nicht installiert. Amber ist eine Nostr-Signer-App die deinen Schlüssel sicher verwaltet.</string>
+    <string name="keys_amber_install">Bei F-Droid installieren</string>
+    <string name="keys_amber_success">Amber ist eingerichtet. Lokale Schlüsselkopie löschen?</string>
+    <string name="keys_amber_keep">Behalten</string>
+    <string name="keys_amber_delete">Löschen</string>
+    <string name="keys_amber_missing">Amber ist nicht mehr installiert. Bitte neu installieren oder auf lokalen Schlüssel wechseln.</string>
+    <string name="keys_no_security">Richte zuerst eine Bildschirmsperre ein (PIN, Muster oder Fingerabdruck), um deinen Schlüssel zu schützen.</string>
+    <string name="keys_go_to_settings">Zu den Einstellungen</string>
+    <string name="keys_npub_copied">Öffentlicher Schlüssel kopiert</string>
+    <string name="keys_imported_toast">Schlüssel importiert</string>
+    <string name="keys_password_enter">Passwort eingeben</string>
+    <string name="keys_password_hint">ncryptsec Passwort</string>
+    <string name="keys_overwrite_confirm">Trotzdem importieren</string>
+
+    <!-- Bottom Navigation -->
+    <string name="bottom_nav_home">Home</string>
+    <string name="bottom_nav_plan">Wochenplan</string>
+    <string name="bottom_nav_boulder">Boulder</string>
+    <string name="bottom_nav_stats">Stats</string>
+
+    <!-- Board: Hold Search -->
+    <string name="board_holdsearch_title">Hold-Suche &amp; Heatmap</string>
+    <string name="board_holdsearch_heatmap">Heatmap</string>
+    <string name="board_holdsearch_hold_search">Hold-Suche</string>
+    <string name="board_holdsearch_hint">Tippe Holds auf dem Board an, um Climbs zu finden die diese Holds verwenden.</string>
+    <string name="board_holdsearch_holds_selected">%d Holds ausgewählt</string>
+    <string name="board_holdsearch_reset">Zurücksetzen</string>
+    <string name="board_holdsearch_searching">Suche…</string>
+    <string name="board_holdsearch_climbs_found">%d Climbs gefunden</string>
+    <string name="board_holdsearch_filter">Filtern</string>
+    <string name="board_holdsearch_change">Ändern</string>
+    <string name="board_holdsearch_clear">Aufheben</string>
+
+    <!-- Board: Logbook -->
+    <string name="board_logbook_title">Board Logbook</string>
+    <string name="board_logbook_selected">%d ausgewählt</string>
+    <string name="board_logbook_delete_title">%d Begehungen löschen?</string>
+    <string name="board_logbook_delete_message">Alle ausgewählten Begehungen werden unwiderruflich gelöscht.</string>
+    <string name="board_logbook_ascent_count">%d Begehungen</string>
+
+    <!-- Board: Lists -->
+    <string name="board_lists_title">Meine Listen</string>
+    <string name="board_lists_delete_title">Liste löschen?</string>
+    <string name="board_lists_delete_message">Die Liste und alle Einträge werden gelöscht.</string>
+    <string name="board_lists_empty_title">Noch keine Listen</string>
+    <string name="board_lists_empty_message">Erstelle eine Liste, um Climbs zu organisieren.</string>
+    <string name="board_lists_new_list">Neue Liste</string>
+    <string name="board_lists_list_name">Listenname</string>
+    <string name="board_lists_create">Erstellen</string>
+
+    <!-- Board: Add to List -->
+    <string name="board_addtolist_title">Zu Liste hinzufügen</string>
+    <string name="board_addtolist_new_list">Neue Liste…</string>
+    <string name="board_addtolist_done">Fertig</string>
+
+    <!-- Board: Ascent History -->
+    <string name="board_ascenthistory_title">Deine Begehungen</string>
+
+    <!-- Board: Ascent Logging -->
+    <string name="board_ascent_edit_title">Begehung bearbeiten</string>
+    <string name="board_ascent_log_title">Begehung loggen</string>
+    <string name="board_ascent_type">Typ:</string>
+    <string name="board_ascent_benchmark_label">Benchmark:</string>
+    <string name="board_ascent_benchmark_attempt">Benchmark-Versuch</string>
+    <string name="board_ascent_attempts">Versuche: %d</string>
+    <string name="board_ascent_quality">Qualität:</string>
+    <string name="board_ascent_comment">Kommentar (optional)</string>
+
+    <!-- Board: Session Summary -->
+    <string name="board_session_summary_title">Session beendet</string>
+    <string name="board_session_summary_attempts">Versuche</string>
+    <string name="board_session_summary_hardest_send">Härtester Send</string>
+    <string name="board_session_summary_total_time">Gesamtzeit</string>
+    <string name="board_session_summary_active_time">Aktive Zeit</string>
+    <string name="board_session_summary_pause_time">Pausenzeit</string>
+    <string name="board_session_summary_grade_distribution">Grad-Verteilung</string>
+    <string name="board_session_summary_intensity_zones">Intensitätszonen</string>
+    <string name="board_session_summary_session_type">Session-Typ</string>
+    <string name="board_session_type_warmup">Warm-Up</string>
+    <string name="board_session_type_volume">Volume</string>
+    <string name="board_session_type_limit">Limit</string>
+    <string name="board_session_type_pyramid">Pyramide</string>
+
+    <!-- Board: BLE Connection -->
+    <string name="board_ble_title">Board verbinden</string>
+    <string name="board_ble_permission_title">Bluetooth-Berechtigung erforderlich</string>
+    <string name="board_ble_permission_message">CruxCoach benötigt Bluetooth-Zugriff, um dein Board zu finden und zu verbinden.</string>
+    <string name="board_ble_grant_permission">Berechtigung erteilen</string>
+    <string name="board_ble_bt_disabled_title">Bluetooth ist deaktiviert</string>
+    <string name="board_ble_bt_disabled_message">Aktiviere Bluetooth in den Systemeinstellungen, um dein Board zu verbinden.</string>
+    <string name="board_ble_location_disabled_title">Standortdienste deaktiviert</string>
+    <string name="board_ble_location_disabled_message">Auf diesem Gerät müssen die Standortdienste (GPS) eingeschaltet sein, damit Bluetooth-Geräte gefunden werden können.</string>
+    <string name="board_ble_session_active_title">Session aktiv</string>
+    <string name="board_ble_session_active_message">Das Board wird vom Session-Host gesteuert. Deine Climbs werden über die Warteschlange an das Board gesendet.</string>
+    <string name="board_ble_legacy_warning_title">Experimentelle Board-Verbindung</string>
+    <string name="board_ble_legacy_warning_message">Auf Android-Versionen vor 12 ist die BLE-Verbindung instabil. Es kann zu Verbindungsabbrüchen kommen.</string>
+    <string name="board_ble_connect_anyway">Trotzdem verbinden</string>
+    <string name="board_ble_connected">Verbunden</string>
+    <string name="board_ble_sending">Sende an Board…</string>
+    <string name="board_ble_disconnect">Trennen</string>
+    <string name="board_ble_connecting_to">Verbinde mit %s\u2026</string>
+    <string name="board_ble_connecting">Verbinde\u2026</string>
+    <string name="board_ble_scanning">Suche Boards…</string>
+    <string name="board_ble_no_boards">Keine Boards gefunden. Starte einen Scan, um Boards in der Nähe zu finden.</string>
+    <string name="board_ble_start_scan">Scan starten</string>
+    <string name="board_ble_stop_scan">Scan stoppen</string>
+    <string name="board_ble_board_occupied">Board ist besetzt</string>
+    <string name="board_ble_someone_climbing">Jemand klettert in der Nähe</string>
+    <string name="board_ble_unknown_climb">Unbekannter Climb</string>
+    <string name="board_ble_enable_sharing_hint">Aktiviere \u201EClimb-Teilen\u201C in den Einstellungen, um Disconnect-Anfragen senden zu können.</string>
+    <string name="board_ble_request_sent">Anfrage gesendet\u2026</string>
+    <string name="board_ble_request_disconnect">Disconnect anfragen</string>
+
+    <!-- Board: Climb Card -->
+    <string name="board_climb_by_setter">von %s</string>
+    <string name="board_climb_moves">%d Züge</string>
+    <string name="board_climb_no_data_title">Keine Board-Daten</string>
+    <string name="board_climb_no_data_message">Synchronisiere die Kilter/Tension Board-Datenbank, um Climbs zu suchen und auf dem Board anzuzeigen.</string>
+    <string name="board_sync_title">Board-Daten synchronisieren</string>
+
+    <!-- Board: Detail -->
+    <string name="board_detail_sending">Sende an Board\u2026</string>
+    <string name="board_detail_sent">An Board gesendet</string>
+    <string name="board_detail_climb_shared">Climb wird geteilt</string>
+
+    <!-- Board: Stats -->
+    <string name="board_stats_title">Statistiken</string>
+    <string name="board_stats_select_period">Wähle einen Zeitraum (30T/90T/1J) für den Vergleich</string>
+    <string name="board_stats_select_date_range">Zeitraum wählen</string>
+
+    <!-- Board: Playback -->
+    <string name="board_playback_speed">Speed</string>
+
+    <!-- Board: Sync -->
+    <string name="board_sync_no_network_title">Keine Netzwerkverbindung</string>
+    <string name="board_sync_no_network_message">Für die Synchronisierung wird eine aktive Internetverbindung benötigt.</string>
+    <string name="board_sync_open_settings">Einstellungen öffnen</string>
+    <string name="board_sync_up_to_date_title">Daten sind aktuell</string>
+    <string name="board_sync_up_to_date_message">Die Kilter Board APK hat sich seit dem letzten Sync nicht verändert. Trotzdem herunterladen?</string>
+    <string name="board_sync_download">Herunterladen</string>
+    <string name="board_sync_wifi_required_title">WLAN erforderlich</string>
+    <string name="board_sync_wifi_required_message">Der Download der Board-Datenbank ist ca. 30 MB groß und kann nur über WLAN gestartet werden.</string>
+    <string name="board_sync_wifi_settings">WLAN-Einstellungen</string>
+    <string name="board_sync_no_network_banner">Kein Netzwerk verfügbar</string>
+    <string name="board_sync_no_wifi_banner">Kein WLAN — Online-Download nur über WLAN möglich</string>
+    <string name="board_sync_to_browser">Zum Browser</string>
+    <string name="board_sync_db_title">Kilter Board-Datenbank</string>
+    <string name="board_sync_db_description">Lädt die aktuelle Kilter Board Climb-Datenbank herunter (~30 MB). WLAN empfohlen.</string>
+    <string name="board_sync_db_synced">Datenbank synchronisiert</string>
+    <string name="board_sync_last_sync">Letzter Sync: %s</string>
+    <string name="board_sync_redownload">Neu herunterladen</string>
+    <string name="board_sync_update_online">Online aktualisieren</string>
+
+    <!-- Kilter Account -->
+    <string name="kilter_section_title">Kilter Board Account</string>
+    <string name="kilter_connect_button">Kilter Account verbinden</string>
+    <string name="kilter_connect_desc">Importiere deine Begehungen aus der offiziellen Kilter App</string>
+    <string name="kilter_connected_as">Verbunden als: %s</string>
+    <string name="kilter_last_sync">Letzter Sync: %s</string>
+    <string name="kilter_sync_now">Jetzt synchronisieren</string>
+    <string name="kilter_push_label">Zu Kilter hochladen</string>
+    <string name="kilter_push_desc">Lokale Begehungen auch nach Kilter hochladen</string>
+    <string name="kilter_session_expired">Sitzung abgelaufen — bitte neu anmelden</string>
+    <string name="kilter_relogin_button">Neu anmelden</string>
+    <string name="kilter_disconnect">Verbindung trennen</string>
+    <string name="kilter_disconnect_confirm">Kilter-Konto wirklich trennen? Importierte Begehungen bleiben erhalten.</string>
+    <string name="kilter_login_title">Kilter Anmeldung</string>
+    <string name="kilter_email_label">E-Mail</string>
+    <string name="kilter_password_label">Passwort</string>
+    <string name="kilter_login_button">Anmelden</string>
+    <string name="kilter_login_error">Anmeldung fehlgeschlagen</string>
+    <string name="kilter_login_privacy">Dein Passwort wird nicht gespeichert. CruxCoach nutzt einen Token, der sich bei jeder App-Nutzung erneuert.</string>
+    <string name="kilter_preview_title">Kilter Begehungen</string>
+    <string name="kilter_preview_found">%1$d Begehungen gefunden (%2$d neu, %3$d bereits vorhanden)</string>
+    <string name="kilter_import_one_time">Einmalig importieren</string>
+    <string name="kilter_import_one_time_desc">Begehungen importieren, Kilter-Zugangsdaten verwerfen</string>
+    <string name="kilter_import_persistent">Dauerhaft synchronisieren</string>
+    <string name="kilter_import_persistent_desc">Begehungen in beide Richtungen synchronisieren</string>
+    <string name="kilter_import_success">%d Begehungen importiert</string>
+    <string name="kilter_sync_success">Sync abgeschlossen: %1$d heruntergeladen, %2$d hochgeladen</string>
+    <string name="kilter_sync_error">Sync fehlgeschlagen: %s</string>
+    <string name="kilter_no_new">Keine neuen Begehungen gefunden</string>
+
+    <string name="board_sync_step_prepare_db">Datenbank vorbereiten</string>
+    <string name="board_sync_step_check_update">Update prüfen\u2026</string>
+    <string name="board_sync_step_fetch_manifest">Manifest laden\u2026</string>
+    <string name="board_sync_step_download_chunk" formatted="false">%s herunterladen (%d/%d)</string>
+    <string name="board_sync_step_download_apk">APK herunterladen</string>
+    <string name="board_sync_step_extract_db">Datenbank extrahieren</string>
+    <string name="board_sync_step_import_climbs">Climbs importieren</string>
+    <string name="board_sync_step_import_stats">Statistiken importieren</string>
+    <string name="board_sync_step_import_layout">Layout-Daten importieren</string>
+
+    <!-- Climb Labels -->
+    <string name="climb_label_boulder">Boulder</string>
+    <string name="climb_label_sends">Sends</string>
+    <string name="climb_label_flashes">Flashes</string>
+
+    <!-- Plan -->
+    <string name="plan_start_workout">Workout starten</string>
+    <string name="plan_exercises">Übungen</string>
+    <string name="plan_duration">Dauer</string>
+    <string name="plan_target_rpe">Ziel-RPE</string>
+    <string name="plan_rest_label">Pause: %s</string>
+    <string name="plan_week_plan">Wochenplan</string>
+    <string name="plan_generate">Plan generieren</string>
+    <string name="plan_adaptations">Anpassungen</string>
+    <string name="plan_focus">Fokus: %s</string>
+    <string name="plan_rest_day">Ruhetag</string>
+
+    <!-- Body Stats -->
+    <string name="bodystat_title">Körperdaten</string>
+    <string name="bodystat_last_weight">Letztes Gewicht</string>
+    <string name="bodystat_recent_entries">Letzte Einträge</string>
+    <string name="bodystat_tap_to_record">Tippe zum Erfassen</string>
+    <string name="bodystat_import">Importieren</string>
+    <string name="bodystat_select_file">Datei auswählen</string>
+    <string name="bodystat_analyzing_file">Datei wird analysiert…</string>
+    <string name="bodystat_choose_file">Datei wählen</string>
+    <string name="bodystat_export">Exportieren</string>
+    <string name="bodystat_all">Alle</string>
+    <string name="bodystat_none">Keine</string>
+    <string name="bodystat_error_enter_value">Mindestens ein Wert eingeben</string>
+    <string name="bodystat_error_invalid_value">Ungültiger Wert</string>
+    <string name="bodystat_error_save_failed">Fehler beim Speichern</string>
+    <string name="bodystat_values_saved">%1$d Wert(e) gespeichert</string>
+    <string name="bodystat_stat_saved">%1$s gespeichert</string>
+
+    <!-- Dev Contact -->
+    <string name="devcontact_chat_title">Entwickler-Chat</string>
+    <string name="devcontact_write_message">Nachricht schreiben…</string>
+    <string name="devcontact_feature_suggest">Feature vorschlagen</string>
+    <string name="devcontact_title_required">Titel *</string>
+    <string name="devcontact_description_required">Beschreibung *</string>
+    <string name="devcontact_feature_placeholder">Was wünschst du dir?</string>
+    <string name="devcontact_wishes">Wünsche</string>
+    <string name="devcontact_bug_reports">Fehlerberichte</string>
+    <string name="devcontact_crash_reports">Crash Reports</string>
+    <string name="devcontact_write_reply">Antwort schreiben…</string>
+    <string name="devcontact_report_bug">Bug melden</string>
+    <string name="devcontact_steps_optional">Schritte zum Reproduzieren (optional)</string>
+    <string name="devcontact_announcements">Ankündigungen</string>
+
+    <!-- Common Components -->
+    <string name="common_empty">Leer</string>
+    <string name="common_join">Beitreten</string>
+    <string name="common_request_sent">Anfrage gesendet\u2026</string>
+    <string name="common_request_disconnect">Disconnect anfragen</string>
+
+    <!-- Exercises -->
+    <string name="exercises_library_title">Übungsbibliothek</string>
+    <string name="exercises_search_placeholder">Übung suchen…</string>
+    <string name="exercises_all">Alle</string>
+
+    <!-- Onboarding: Additional -->
+    <string name="onboarding_ape_index">Ape-Index</string>
+
+    <!-- Identity Switch Transition -->
+    <string name="identity_switch_title">Account wird gewechselt…</string>
+
+    <!-- Identity Reset Dialog -->
+    <string name="keys_identity_reset_title">Account zurückgesetzt</string>
+    <string name="keys_identity_reset_message">Dein CruxCoach Account musste neu erstellt werden. Bisherige Chat-Verläufe mit dem Entwickler können nicht fortgesetzt werden.</string>
+
+    <!-- Notifications -->
+    <string name="notification_rest_timer_title">Pause vorbei!</string>
+    <string name="notification_rest_timer_message">Bereit für den nächsten Versuch</string>
+    <string name="notification_sync_title">Board-Synchronisierung</string>
+    <string name="notification_sync_message">Board-Datenbank wird heruntergeladen…</string>
+
+    <!-- Notification Channels -->
+    <string name="notification_channel_rest_timer">Pausentimer</string>
+    <string name="notification_channel_rest_timer_desc">Benachrichtigung wenn der Pausentimer abgelaufen ist</string>
+    <string name="notification_channel_training_reminder">Training-Erinnerungen</string>
+    <string name="notification_channel_training_reminder_desc">Erinnerungen an geplante Trainings-Sessions</string>
+    <string name="notification_channel_board_sync">Board-Synchronisierung</string>
+    <string name="notification_channel_board_sync_desc">Benachrichtigungen zur Board-Daten-Synchronisierung</string>
+
+    <!-- Board Ascent Types -->
+    <string name="board_ascent_send">Send</string>
+    <string name="board_ascent_attempt">Attempt</string>
+
+    <!-- Dropdown -->
+    <string name="dropdown_selection_placeholder">Auswahl…</string>
+
+    <!-- i18n sweep: externalized strings -->
+    <string name="ble_board_occupied">Board belegt</string>
+    <string name="ble_board_occupied_detail">%1$d Nutzer am Board</string>
+    <string name="ble_climbing_now">Klettert gerade</string>
+    <string name="ble_end_session">Session beenden</string>
+    <string name="ble_leave_session">Session verlassen</string>
+    <string name="ble_on_board">Auf dem Board</string>
+    <string name="ble_participants">%1$d Teilnehmer</string>
+    <string name="ble_queue_empty">Warteschlange ist leer</string>
+    <string name="ble_session_climb">Session-Climb</string>
+    <string name="ble_session_label">SESSION</string>
+    <string name="ble_sharing_title">BLE Sharing</string>
+    <string name="ble_still_visible">Noch sichtbar</string>
+    <string name="ble_unknown">Unbekannt</string>
+    <string name="ble_unknown_climb">Unbekannter Climb</string>
+    <string name="ble_your_climb">Dein Climb</string>
+    <string name="board_ascent_tries">%d Tries</string>
+    <string name="board_climb_frames">Frames</string>
+    <string name="board_climb_sends_count">%d sends</string>
+    <string name="board_detail_benchmark">Benchmark</string>
+    <string name="board_detail_frames">Frames</string>
+    <string name="board_detail_matching">Matching</string>
+    <string name="board_detail_no_matching">Kein Matching</string>
+    <string name="board_heatmap_finish">Top-Holds</string>
+    <string name="board_heatmap_foot">Fuß-Holds</string>
+    <string name="board_heatmap_global">Alle Climbs</string>
+    <string name="board_heatmap_hand">Hand-Holds</string>
+    <string name="board_heatmap_less">Weniger</string>
+    <string name="board_heatmap_more">Mehr</string>
+    <string name="board_heatmap_off">Aus</string>
+    <string name="board_heatmap_personal">Meine Sends</string>
+    <string name="board_heatmap_start">Start-Holds</string>
+    <string name="board_holdsearch_filter_summary">%1$d Holds → %2$d Climbs</string>
+    <string name="board_list_climb_count">%d Climbs</string>
+    <string name="board_list_default_name">Liste</string>
+    <string name="board_list_empty_message">Füge Climbs über den Browser hinzu</string>
+    <string name="board_list_empty_title">Liste ist leer</string>
+    <string name="board_logbook_attempts">Attempts</string>
+    <string name="board_logbook_best_grade">Bester Grad</string>
+    <string name="board_logbook_day_entries">%d Einträge</string>
+    <string name="board_logbook_empty_message">Logge deine erste Begehung, um sie hier zu sehen</string>
+    <string name="board_logbook_empty_title">Noch keine Begehungen</string>
+    <string name="board_logbook_flash">Flash</string>
+    <string name="board_logbook_sessions">Sessions</string>
+    <string name="board_logbook_unique_climbs">Unique Climbs</string>
+    <string name="stats_interval_all">Gesamt</string>
+    <string name="stats_interval_30_days">30 Tage</string>
+    <string name="stats_interval_90_days">90 Tage</string>
+    <string name="stats_interval_1_year">1 Jahr</string>
+    <string name="stats_previous_interval">Vorherige %1$s</string>
+    <string name="day_name_mon">Mo</string>
+    <string name="day_name_tue">Di</string>
+    <string name="day_name_wed">Mi</string>
+    <string name="day_name_thu">Do</string>
+    <string name="day_name_fri">Fr</string>
+    <string name="day_name_sat">Sa</string>
+    <string name="day_name_sun">So</string>
+    <string name="calendar_week_short">KW %1$d</string>
+    <string name="calendar_week_short_year">KW %1$d/%2$d</string>
+    <string name="notification_channel_announcements">Ankündigungen</string>
+    <string name="notification_channel_announcements_desc">Ankündigungen vom Entwickler</string>
+    <string name="notification_channel_messages">Nachrichten</string>
+    <string name="notification_channel_messages_desc">Antworten vom Entwickler auf Bug Reports, Feature Requests und Chat</string>
+    <string name="notification_announcement_release">Neue Version verfügbar</string>
+    <string name="notification_announcement_issue">Bekanntes Problem</string>
+    <string name="notification_announcement_tip">Tipp vom Entwickler</string>
+    <string name="notification_sender_developer">Entwickler</string>
+    <string name="training_reminder_title">Training heute geplant</string>
+    <string name="training_reminder_message">%1$s-Session mit %2$d Übungen</string>
+    <string name="training_type_strength">Kraft</string>
+    <string name="training_type_power">Power</string>
+    <string name="training_type_volume">Volumen</string>
+    <string name="training_type_technique">Technik</string>
+    <string name="training_type_deload">Deload</string>
+    <string name="wifi_disabled_error">WiFi ist ausgeschaltet. Bitte WiFi einschalten.</string>
+    <string name="share_app_chooser">App teilen</string>
+    <string name="hotspot_start_failed">Hotspot konnte nicht gestartet werden.\n\nAPI: %1$d, WiFi: %2$s\n\nVersuche:\n%3$s</string>
+    <string name="share_download_button">CruxCoach herunterladen</string>
+    <string name="share_download_instructions">Nach dem Download die APK-Datei öffnen und installieren.\nEventuell muss \"Aus unbekannten Quellen installieren\" erlaubt werden.</string>
+    <string name="board_playback_frame">%1$d / %2$d</string>
+    <string name="board_queue_empty">Warteschlange ist leer</string>
+    <string name="board_queue_empty_editor">Füge Climbs aus dem Browser hinzu</string>
+    <string name="board_queue_end_session">Session beenden</string>
+    <string name="board_queue_leave_session">Session verlassen</string>
+    <string name="board_queue_participants">Teilnehmer (%d)</string>
+    <string name="board_queue_title">Warteschlange</string>
+    <string name="board_queue_you_host">Du (Host)</string>
+    <string name="board_random_climb">Zufall</string>
+    <string name="board_rest_timer_finished">Pause vorbei!</string>
+    <string name="board_rest_timer_ready">Bereit für den nächsten Versuch!</string>
+    <string name="board_rest_timer_rest">Pause</string>
+    <string name="board_session_flashes">Flashes</string>
+    <string name="board_session_label">Session</string>
+    <string name="board_sort_repeats">Repeats</string>
+    <string name="board_stats_activity">Aktivität</string>
+    <string name="board_stats_angle_distribution">Winkel-Verteilung</string>
+    <string name="board_stats_attempt">Versuch</string>
+    <string name="board_stats_current_streak">Aktueller Streak</string>
+    <string name="board_stats_date_range">Zeitraum…</string>
+    <string name="board_stats_flash_rate">Flash-Rate</string>
+    <string name="board_stats_flash_send_attempt">Flash / Send / Versuch</string>
+    <string name="board_stats_grade_easy">Leicht</string>
+    <string name="board_stats_grade_elite">Elite</string>
+    <string name="board_stats_grade_hard">Schwer</string>
+    <string name="board_stats_grade_medium">Mittel</string>
+    <string name="board_stats_grade_progression">Grad-Progression</string>
+    <string name="board_stats_grade_pyramid">Grad-Pyramide</string>
+    <string name="board_stats_hardest">Härtester</string>
+    <string name="board_stats_hardest_flash">Härtester Flash</string>
+    <string name="board_stats_interval_1y">1 Jahr</string>
+    <string name="board_stats_interval_30d">30 Tage</string>
+    <string name="board_stats_interval_90d">90 Tage</string>
+    <string name="board_stats_interval_all">Gesamt</string>
+    <string name="board_stats_longest_streak">Längster Streak</string>
+    <string name="board_stats_most_sends_day">Meiste Sends/Tag</string>
+    <string name="board_stats_outcome_distribution">Ergebnis-Verteilung</string>
+    <string name="board_stats_period_comparison">Perioden-Vergleich</string>
+    <string name="board_stats_sends_over_time">Sends über Zeit</string>
+    <string name="board_stats_total">Gesamt</string>
+    <string name="board_stats_unique">Unique</string>
+    <string name="board_stats_weekly_volume">Wochen-Volumen</string>
+    <string name="board_zone_limit">Limit</string>
+    <string name="board_zone_optimal">Optimal</string>
+    <string name="board_zone_warmup">Warm-Up</string>
+    <string name="cd_adapt_plan">Plan anpassen</string>
+    <string name="cd_add">Hinzufügen</string>
+    <string name="cd_add_favorite">Zu Favoriten hinzufügen</string>
+    <string name="cd_add_to_list">Zu Liste hinzufügen</string>
+    <string name="cd_app_share">App teilen</string>
+    <string name="cd_bluetooth">Bluetooth</string>
+    <string name="cd_board_connect">Board verbinden</string>
+    <string name="cd_board_connected">Board verbunden</string>
+    <string name="cd_board_image">Board</string>
+    <string name="cd_body_stats">Körperdaten</string>
+    <string name="cd_cancel_timer">Timer abbrechen</string>
+    <string name="cd_change_angle">Winkel ändern</string>
+    <string name="cd_clear_search">Suche leeren</string>
+    <string name="cd_collapse">Einklappen</string>
+    <string name="cd_create">Erstellen</string>
+    <string name="cd_create_list">Liste erstellen</string>
+    <string name="cd_delete_selected">Ausgewählte löschen</string>
+    <string name="cd_deselect_all">Alle abwählen</string>
+    <string name="cd_dismiss">Verwerfen</string>
+    <string name="cd_download_qr_code">Download-URL QR-Code</string>
+    <string name="cd_edit">Bearbeiten</string>
+    <string name="cd_expand">Erweitern</string>
+    <string name="cd_filter">Filter</string>
+    <string name="cd_first_frame">Erstes Frame</string>
+    <string name="cd_grade_down">Grad runter</string>
+    <string name="cd_grade_up">Grad hoch</string>
+    <string name="cd_hold_search">Hold-Suche</string>
+    <string name="cd_last_frame">Letztes Frame</string>
+    <string name="cd_less">Weniger</string>
+    <string name="cd_log_ascent">Begehung loggen</string>
+    <string name="cd_loop_off">Loop aus</string>
+    <string name="cd_loop_on">Loop an</string>
+    <string name="cd_mirror_off">Spiegelung aus</string>
+    <string name="cd_mirror_on">Spiegelung an</string>
+    <string name="cd_mirrored">Gespiegelt</string>
+    <string name="cd_more">Mehr</string>
+    <string name="cd_next">Weiter</string>
+    <string name="cd_next_frame">Nächstes Frame</string>
+    <string name="cd_open">Öffnen</string>
+    <string name="cd_pause">Pausieren</string>
+    <string name="cd_play">Abspielen</string>
+    <string name="cd_preview_off">Vorschau aus</string>
+    <string name="cd_preview_on">Vorschau an</string>
+    <string name="cd_previous">Zurück</string>
+    <string name="cd_previous_frame">Vorheriges Frame</string>
+    <string name="cd_profile_assessment">Profil &amp; Assessment</string>
+    <string name="cd_project">Projizieren</string>
+    <string name="cd_random_add">Zufällig hinzufügen</string>
+    <string name="cd_refresh">Aktualisieren</string>
+    <string name="cd_remove">Entfernen</string>
+    <string name="cd_remove_favorite">Von Favoriten entfernen</string>
+    <string name="cd_reorder">Verschieben</string>
+    <string name="cd_report_bug">Bug melden</string>
+    <string name="cd_rest_timer">Pausentimer</string>
+    <string name="cd_resume">Fortsetzen</string>
+    <string name="cd_retry_send">Erneut senden</string>
+    <string name="cd_select_all">Alle auswählen</string>
+    <string name="cd_select_view">Ansicht wählen</string>
+    <string name="cd_settings">Einstellungen</string>
+    <string name="cd_signal">Signal: %1$d dBm</string>
+    <string name="cd_signal_strength">Signalstärke</string>
+    <string name="cd_stars">%d Sterne</string>
+    <string name="cd_stop">Beenden</string>
+    <string name="cd_suggest_feature">Feature vorschlagen</string>
+    <string name="cd_wifi_qr_code">WiFi QR-Code</string>
+    <string name="dashboard_greeting">Hey, %1$s!</string>
+    <string name="day_fr">Fr</string>
+    <string name="day_mo">Mo</string>
+    <string name="day_sa">Sa</string>
+    <string name="day_su">So</string>
+    <string name="day_th">Do</string>
+    <string name="day_tu">Di</string>
+    <string name="day_we">Mi</string>
+    <string name="devcontact_app_version">App-Version</string>
+    <string name="devcontact_badge_bug">[FEHLER]</string>
+    <string name="devcontact_badge_wish">[WUNSCH]</string>
+    <string name="devcontact_bug_sent">Bug Report gesendet</string>
+    <string name="devcontact_bugs_empty">Keine Fehlerberichte gesendet</string>
+    <string name="devcontact_category_general">Allgemein</string>
+    <string name="devcontact_category_issue">Problem</string>
+    <string name="devcontact_category_release">Release</string>
+    <string name="devcontact_category_tip">Tipp</string>
+    <string name="devcontact_chat_empty">Noch keine Nachrichten.\nSchreib dem Entwickler!</string>
+    <string name="devcontact_crashes_empty">Keine Crash Reports gesendet</string>
+    <string name="devcontact_developer">Entwickler</string>
+    <string name="devcontact_device">Gerät</string>
+    <string name="devcontact_device_info">Geräteinformationen</string>
+    <string name="devcontact_feature_sent">Feature Request gesendet</string>
+    <string name="devcontact_language">Sprache</string>
+    <string name="devcontact_message">Nachricht</string>
+    <string name="devcontact_messages">Nachrichten</string>
+    <string name="devcontact_notifications">Benachrichtigungen</string>
+    <string name="devcontact_notifications_desc">Push-Benachrichtigungen bei neuen Ankündigungen</string>
+    <string name="devcontact_send_crash_reports">Crash-Berichte senden</string>
+    <string name="devcontact_send_crash_reports_desc">Automatisch anonyme Absturzberichte an den Entwickler senden</string>
+    <string name="devcontact_send_failed">Senden fehlgeschlagen</string>
+    <string name="devcontact_status_delivered">✓ Zugestellt · %1$s</string>
+    <string name="devcontact_status_not_delivered">✗ Nicht zugestellt</string>
+    <string name="devcontact_status_queued">⏳ In Warteschlange</string>
+    <string name="devcontact_support_developer">Geschenk senden</string>
+    <string name="devcontact_title">Entwickler-Kontakt</string>
+    <string name="devcontact_unknown">unbekannt</string>
+    <string name="devcontact_wishes_empty">Keine Wünsche gesendet</string>
+    <string name="exercises_contraindications_label">Kontraindikationen: </string>
+    <string name="exercises_count">%1$d Übungen</string>
+    <string name="exercises_equipment_label">Equipment: </string>
+    <string name="exercises_muscles_label">Muskeln: </string>
+    <string name="exercises_none_found">Keine Übungen gefunden</string>
+    <string name="error_climb_not_found">Climb nicht gefunden [uuid=%1$s angle=%2$d]</string>
+    <string name="error_select_category">Wähle mindestens eine Kategorie</string>
+    <string name="error_cannot_open_file">Kann Datei nicht öffnen</string>
+    <string name="error_cannot_read_file">Kann Datei nicht lesen</string>
+    <string name="error_file_not_readable">Datei nicht lesbar: %1$s</string>
+    <string name="error_export_failed">Export fehlgeschlagen: %1$s</string>
+    <string name="error_import_failed">Import fehlgeschlagen: %1$s</string>
+    <string name="error_label">Fehler</string>
+    <string name="error_report_bug">Bug melden</string>
+    <string name="error_bug_report_import_title">Import-Fehler</string>
+    <string name="error_bug_report_export_title">Export-Fehler</string>
+    <string name="error_bug_report_sync_title">Sync-Fehler</string>
+    <string name="error_bug_report_climb_title">Climb-Detail-Fehler</string>
+    <string name="error_bug_report_workout_title">Workout-Fehler</string>
+    <string name="error_bug_report_stats_title">Statistik-Fehler</string>
+    <string name="error_bug_report_climblog_title">Climb-Log-Fehler</string>
+    <string name="error_bug_report_session_title">Session-Detail-Fehler</string>
+    <string name="error_bug_report_share_title">App-Sharing-Fehler</string>
+    <string name="error_bug_report_ble_title">BLE-Verbindungsfehler</string>
+    <string name="action_dismiss">Schließen</string>
+    <string name="export_backup_label">CruxCoach-Backup</string>
+    <string name="export_format_cruxcoach">CruxCoach</string>
+    <string name="export_format_cruxcoach_desc">Vollständiges Backup</string>
+    <string name="export_format_title">Format wählen</string>
+    <string name="export_format_waistline_csv">Waistline CSV</string>
+    <string name="export_format_waistline_csv_desc">Nur Körperdaten, Semikolon-getrennt</string>
+    <string name="export_format_waistline_json">Waistline JSON</string>
+    <string name="export_format_waistline_json_desc">Nur Körperdaten, Waistline-kompatibel</string>
+    <string name="export_waistline_csv_label">Waistline CSV</string>
+    <string name="export_waistline_hint">Für den Import in die Waistline-App</string>
+    <string name="export_waistline_json_label">Waistline JSON</string>
+    <string name="export_categories_exported">%1$d Kategorie(n) exportiert</string>
+    <string name="export_waistline_json_success">Waistline JSON exportiert</string>
+    <string name="export_waistline_csv_success">Waistline CSV exportiert</string>
+    <string name="import_auto_detect_hint">Format wird automatisch erkannt</string>
+    <string name="import_backup_detected">CruxCoach-Backup erkannt</string>
+    <string name="import_duplicate_hint">Duplikate werden automatisch übersprungen</string>
+    <string name="import_no_data">Keine Daten gefunden</string>
+    <string name="import_result_profile">Profil</string>
+    <string name="import_result_assessments">%1$d Assessments</string>
+    <string name="import_result_body_stats">%1$d Körperdaten</string>
+    <string name="import_result_workouts">%1$d Workouts</string>
+    <string name="import_result_climbs">%1$d Boulder</string>
+    <string name="import_result_plans">%1$d Trainingspläne</string>
+    <string name="import_result_board_sends">%1$d Board-Sends</string>
+    <string name="import_result_board_bids">%1$d Board-Versuche</string>
+    <string name="import_result_board_sessions">%1$d Board-Sessions</string>
+    <string name="import_result_lists">%1$d Listen</string>
+    <string name="import_result_no_data">Keine Daten</string>
+    <string name="import_result_summary">Importiert: %1$s</string>
+    <string name="import_result_duplicates_skipped"> (%1$d Duplikate übersprungen)</string>
+    <string name="import_waistline_success">Waistline-Import: %1$d Wert(e) importiert</string>
+    <string name="import_select_categories">Kategorien zum Importieren auswählen:</string>
+    <string name="import_pubkey_mismatch_title">Anderer CruxCoach Account</string>
+    <string name="import_pubkey_mismatch_body">Dieses Backup stammt von einem anderen CruxCoach Account (%1$s). Die Daten werden in deinen aktuellen Account importiert. Dies kann für eine Account-Migration gewünscht sein.</string>
+    <string name="import_pubkey_mismatch_confirm">Trotzdem importieren</string>
+    <string name="month_apr">Apr</string>
+    <string name="month_aug">Aug</string>
+    <string name="month_dec">Dez</string>
+    <string name="month_feb">Feb</string>
+    <string name="month_jan">Jan</string>
+    <string name="month_jul">Jul</string>
+    <string name="month_jun">Jun</string>
+    <string name="month_mar">Mär</string>
+    <string name="month_may">Mai</string>
+    <string name="month_nov">Nov</string>
+    <string name="month_oct">Okt</string>
+    <string name="month_sep">Sep</string>
+    <string name="plan_error">Fehler</string>
+    <string name="plan_rest_min">%1$d min</string>
+    <string name="plan_rest_sec">%1$d s</string>
+    <string name="plan_session_details">Session Details</string>
+    <string name="plan_session_summary">%1$d Übungen · %2$d min · RPE %3$.1f</string>
+    <string name="plan_sets_count">%1$d Sets</string>
+    <string name="post_workout_rpe_display">RPE: %1$s – %2$s</string>
+    <string name="rest_timer_done">Pause vorbei!</string>
+    <string name="rest_timer_label">Pause</string>
+    <string name="settings_app_share_title">App teilen</string>
+    <string name="settings_profile_assessment_title">Profil &amp; Assessment</string>
+    <string name="settings_section_board">Board-Einstellungen</string>
+    <string name="settings_section_data">Datenverwaltung</string>
+    <string name="settings_section_dev_contact">Entwickler-Kontakt</string>
+    <string name="settings_section_display">Anzeige</string>
+    <string name="stats_body_range">Min %1$s · Max %2$s · %3$d Messungen</string>
+    <string name="style_unknown">Unbekannt</string>
+    <string name="sync_checking_update">Prüfe auf Updates…</string>
+    <string name="sync_complete">Sync abgeschlossen</string>
+    <string name="sync_done">Fertig!</string>
+    <string name="sync_downloading">Lade herunter…</string>
+    <string name="sync_downloading_progress">Lade… %1$d / %2$d MB</string>
+    <string name="sync_extracting">Entpacke…</string>
+    <string name="sync_importing">Importiere…</string>
+    <string name="sync_importing_climbs">Climbs: %1$d / %2$d</string>
+    <string name="sync_importing_layout">Importiere Layout…</string>
+    <string name="sync_importing_stats">Stats: %1$d / %2$d</string>
+    <string name="sync_running">Sync läuft…</string>
+    <string name="workout_reps_label">Reps</string>
+    <string name="workout_set_label">Set</string>
+    <string name="workout_sets_label">Sets</string>
+    <string name="workout_title">Workout</string>
+
+    <!-- Error messages -->
+    <string name="error_session_not_found">Session nicht gefunden</string>
+    <string name="error_no_profile">Kein Profil gefunden</string>
+    <string name="error_no_active_plan">Kein aktiver Plan. Bitte generiere einen neuen Plan.</string>
+    <string name="error_send_failed">Fehler beim Senden: %1$s</string>
+    <string name="error_unknown">Unbekannter Fehler</string>
+
+    <!-- Data deletion messages -->
+    <string name="settings_delete_board_success">Board-Daten gelöscht</string>
+    <string name="settings_delete_logbook_success">Logbuch-Daten gelöscht</string>
+
+    <!-- Color names (LED color picker) -->
+    <string name="color_red">Rot</string>
+    <string name="color_dark_red">Dunkelrot</string>
+    <string name="color_wine_red">Weinrot</string>
+    <string name="color_salmon_pink">Lachsrosa</string>
+    <string name="color_coral">Koralle</string>
+    <string name="color_brick_red">Ziegelrot</string>
+    <string name="color_dark_orange">Dunkelorange</string>
+    <string name="color_orange">Orange</string>
+    <string name="color_light_orange">Hellorange</string>
+    <string name="color_copper">Kupfer</string>
+    <string name="color_yellow">Gelb</string>
+    <string name="color_gold_yellow">Goldgelb</string>
+    <string name="color_light_yellow">Hellgelb</string>
+    <string name="color_olive_yellow">Olivgelb</string>
+    <string name="color_green">Grün</string>
+    <string name="color_lime_green">Lindgrün</string>
+    <string name="color_light_green">Hellgrün</string>
+    <string name="color_grass_green">Grasgrün</string>
+    <string name="color_dark_green">Dunkelgrün</string>
+    <string name="color_forest_green">Waldgrün</string>
+    <string name="color_emerald_green">Smaragdgrün</string>
+    <string name="color_cyan">Cyan</string>
+    <string name="color_mint_green">Mintgrün</string>
+    <string name="color_turquoise">Türkis</string>
+    <string name="color_teal">Petrol</string>
+    <string name="color_aquamarine">Aquamarin</string>
+    <string name="color_blue">Blau</string>
+    <string name="color_dark_blue">Dunkelblau</string>
+    <string name="color_azure">Azurblau</string>
+    <string name="color_sky_blue">Himmelblau</string>
+    <string name="color_cornflower_blue">Kornblumenblau</string>
+    <string name="color_violet">Violett</string>
+    <string name="color_purple">Lila</string>
+    <string name="color_indigo">Indigo</string>
+    <string name="color_lilac">Flieder</string>
+    <string name="color_magenta">Magenta</string>
+    <string name="color_pink">Pink</string>
+    <string name="color_rose">Rosa</string>
+    <string name="color_raspberry">Himbeerrot</string>
+    <string name="color_orchid">Orchidee</string>
+    <string name="color_white">Weiß</string>
+    <string name="color_light_gray">Hellgrau</string>
+    <string name="color_custom">Benutzerdefiniert</string>
+
+    <!-- Color family names -->
+    <string name="color_family_red">Rot</string>
+    <string name="color_family_orange">Orange</string>
+    <string name="color_family_yellow">Gelb</string>
+    <string name="color_family_green">Grün</string>
+    <string name="color_family_cyan">Cyan/Türkis</string>
+    <string name="color_family_blue">Blau</string>
+    <string name="color_family_violet">Violett</string>
+    <string name="color_family_magenta">Magenta/Rosa</string>
+    <string name="color_family_neutral">Neutral</string>
+
+    <!-- Key Management -->
+    <string name="key_public_key_copied">Öffentlicher Schlüssel kopiert</string>
+    <string name="key_backup_failed">Backup fehlgeschlagen: %1$s</string>
+    <string name="key_secret_copied_clipboard_clear">Schlüssel kopiert. Zwischenablage wird in %1$ds geleert.</string>
+    <string name="key_import_format_unknown">Format nicht erkannt. Unterstützt: nsec, ncryptsec, hex, 12/24 Wörter.</string>
+    <string name="key_import_failed">Import fehlgeschlagen: %1$s</string>
+    <string name="key_import_invalid_nsec">Ungültiger nsec-Schlüssel</string>
+
+    <!-- Key Management: Screen -->
+    <string name="key_section_account_keys">CruxCoach Account</string>
+    <string name="key_section_nostr_intro">Dein CruxCoach Account funktioniert grundlegend anders als herkömmliche Accounts: Statt E-Mail und Passwort bei einer Firma zu hinterlegen, besitzt du einen kryptographischen Schlüssel. Dieser Schlüssel ist dein Account — wer ihn hat, hat Zugang. Kein Unternehmen kann deinen Account sperren, löschen oder deine Daten einsehen. Nachrichten an den Entwickler sind Ende-zu-Ende-verschlüsselt. Dafür liegt die Verantwortung bei dir: Geht der Schlüssel verloren, kann ihn niemand zurücksetzen. Technisch basiert dein Account auf dem offenen Nostr-Protokoll.</string>
+    <string name="key_section_description">Hier kannst du deinen Account sichern, auf ein neues Gerät übertragen oder die externe Signer-App Amber verwenden.</string>
+    <string name="key_button_manage">Account verwalten</string>
+    <string name="key_label_not_backed_up">Account nicht gesichert</string>
+    <string name="key_label_not_backed_up_desc">Bei Geräteverlust ist dein Account weg.</string>
+    <string name="key_label_login_method">Login-Methode:</string>
+    <string name="key_label_login_local">Lokaler Schlüssel</string>
+    <string name="key_label_login_amber">Amber Signer</string>
+    <string name="key_section_npub">Öffentlicher Schlüssel (npub)</string>
+    <string name="key_button_copy_npub">npub kopieren</string>
+    <string name="key_toast_npub_copied">npub kopiert</string>
+    <string name="key_section_nsec">Privater Schlüssel</string>
+    <string name="key_label_nsec_hidden">Zum Schutz ausgeblendet.</string>
+    <string name="key_button_copy_nsec">nsec kopieren</string>
+    <string name="key_button_create_backup">Backup erstellen</string>
+    <string name="key_label_nsec_warning">Teile deinen privaten Schlüssel niemals. Wer ihn hat, kontrolliert deinen Account dauerhaft.</string>
+    <string name="key_section_recommended">Empfohlen</string>
+    <string name="key_label_use_amber">Amber Signer verwenden</string>
+    <string name="key_label_amber_active">Aktiv — Dein Schlüssel wird von Amber verwaltet.</string>
+    <string name="key_label_amber_inactive">Dein Schlüssel bleibt in Amber. CruxCoach sieht ihn nie.</string>
+    <string name="key_button_setup">Einrichten</string>
+    <string name="key_button_disconnect_amber">Zu lokalem Schlüssel wechseln</string>
+    <string name="key_label_local_key_inactive">Lokaler Schlüssel (inaktiv)</string>
+    <string name="key_label_active_identity">Aktiver Account</string>
+    <string name="key_button_import">Account importieren (nsec/Mnemonic)</string>
+
+    <!-- Key Management: Dialogs -->
+    <string name="key_dialog_nsec_title">Privater Schlüssel</string>
+    <string name="key_dialog_nsec_text">Dieser Schlüssel kontrolliert deinen gesamten CruxCoach Account. Wenn jemand ihn sieht, kann er sich als du ausgeben. Die Zwischenablage wird nach 60 Sekunden geleert.</string>
+    <string name="key_dialog_nsec_confirm">Ich verstehe, kopieren</string>
+    <string name="key_dialog_backup_title">Verschlüsseltes Backup erstellen</string>
+    <string name="key_dialog_backup_text">Dein privater Schlüssel wird mit deinem Passwort verschlüsselt (ncryptsec-Format). Ohne dieses Passwort kann der Schlüssel nicht wiederhergestellt werden – wähle ein starkes Passwort und bewahre es sicher auf.</string>
+    <string name="key_label_password">Passwort</string>
+    <string name="key_label_password_confirm">Passwort bestätigen</string>
+    <string name="key_label_password_too_short">Mindestens 8 Zeichen</string>
+    <string name="key_label_password_mismatch">Passwörter stimmen nicht überein</string>
+    <string name="key_dialog_backup_result_title">Backup erstellt</string>
+    <string name="key_dialog_backup_result_text">Speichere den QR-Code oder ncryptsec-Text an einem sicheren Ort (z.\u00A0B. Passwort-Manager oder Ausdruck). Zum Wiederherstellen: Einstellungen → Schlüssel importieren → ncryptsec einfügen → Passwort eingeben.</string>
+    <string name="key_label_qr_content_desc">ncryptsec QR Code</string>
+    <string name="key_button_copy_ncryptsec">ncryptsec kopieren</string>
+    <string name="key_dialog_biometric_title">Bildschirmsperre erforderlich</string>
+    <string name="key_dialog_biometric_text">Richte zuerst eine Bildschirmsperre ein (PIN, Muster oder Fingerabdruck), um deinen Schlüssel zu schützen.</string>
+    <string name="key_button_open_settings">Zu den Einstellungen</string>
+    <string name="key_dialog_amber_not_installed_title">Amber nicht installiert</string>
+    <string name="key_dialog_amber_not_installed_text">Amber ist nicht installiert. Amber ist eine Nostr-Signer-App, die deinen Schlüssel sicher verwaltet.</string>
+    <string name="key_button_install_zapstore">Zapstore</string>
+    <string name="key_button_install_fdroid">F-Droid</string>
+    <string name="key_dialog_amber_success_title">Amber eingerichtet</string>
+    <string name="key_dialog_amber_success_text">Amber ist eingerichtet. Dein Schlüssel wird jetzt von Amber verwaltet.\n\nDie App wird neu gestartet, um den Account zu wechseln.\n\nLokale Schlüsselkopie löschen?</string>
+    <string name="key_button_delete">Löschen</string>
+    <string name="key_button_keep">Behalten</string>
+    <string name="key_dialog_no_security_title">Kein Geräteschutz</string>
+    <string name="key_dialog_no_security_text">Dieses Gerät hat keine Bildschirmsperre oder biometrische Sicherung. Dein privater Schlüssel ist dadurch nicht geschützt. Es wird dringend empfohlen, eine Bildschirmsperre einzurichten.</string>
+    <string name="key_button_proceed_anyway">Trotzdem fortfahren</string>
+    <string name="key_toast_auth_failed">Authentifizierung fehlgeschlagen</string>
+    <string name="key_biometric_title">Privaten Schlüssel anzeigen</string>
+    <string name="key_biometric_subtitle">Authentifiziere dich</string>
+
+    <!-- Key Import Screen -->
+    <string name="key_import_title">Account importieren</string>
+    <string name="key_import_prompt">Füge deinen privaten Schlüssel ein:</string>
+    <string name="key_import_label">Schlüssel</string>
+    <string name="key_import_supported_formats">Unterstützt: nsec, ncryptsec, hex, 12/24 Wörter</string>
+    <string name="key_import_detected">Erkannt: %1$s</string>
+    <string name="key_import_button">Importieren</string>
+    <string name="key_import_success_toast">Schlüssel importiert</string>
+    <string name="key_import_overwrite_title">Account ersetzen?</string>
+    <string name="key_import_overwrite_text">Du hast bereits einen Account. Der Import ersetzt ihn. Hast du ein Backup des aktuellen Schlüssels?</string>
+    <string name="key_import_overwrite_confirm">Trotzdem importieren</string>
+    <string name="key_import_confirm_title">Ist das dein Schlüssel?</string>
+    <string name="key_import_confirm_button">Ja, importieren</string>
+    <string name="key_import_password_title">Passwort eingeben</string>
+    <string name="key_import_password_label">ncryptsec Passwort</string>
+    <string name="key_import_decrypt_button">Entschlüsseln</string>
+</resources>
