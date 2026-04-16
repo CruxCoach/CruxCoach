@@ -18,6 +18,7 @@ jobs:
         run: |
           VERSION_NAME=$(grep 'versionName' androidApp/build.gradle.kts | head -1 | grep -Po '"\K[^"]+')
           BRANCH="${GITHUB_REF_NAME}"
+          COMMIT_SHA=$(git rev-parse HEAD)
           if [ "$BRANCH" = "dev" ]; then
             SHORT_SHA=$(git rev-parse --short HEAD)
             TAG_NAME="v${VERSION_NAME}-dev.${SHORT_SHA}"
@@ -34,6 +35,7 @@ jobs:
           echo "release_name=$RELEASE_NAME" >> "$GITHUB_OUTPUT"
           echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
           echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+          echo "sha=$COMMIT_SHA" >> "$GITHUB_OUTPUT"
 
           # On main: skip if tag already exists. On dev: always build.
           if [ "$BRANCH" = "main" ] && git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
@@ -68,17 +70,6 @@ jobs:
           cp $CRUXCOACH_SECRETS_DIR/.env .env
           zsp publish --skip-preview --skip-certificate-linking --quiet
 
-      - name: Tag release
-        if: steps.version.outputs.skip == 'false'
-        run: |
-          TAG="${{ steps.version.outputs.tag }}"
-          git config user.name "CruxCoach CI"
-          git config user.email "cruxcoach@noreply.codeberg.org"
-          export GIT_SSH_COMMAND="ssh -i $RUNNER_DEPLOY_KEY -o StrictHostKeyChecking=no"
-          git remote set-url origin git@codeberg.org:CruxCoach/CruxCoach.git
-          git tag -a "$TAG" -m "Release $TAG"
-          git push origin "$TAG"
-
       - name: Delete old dev release
         if: steps.version.outputs.skip == 'false' && steps.version.outputs.branch == 'dev'
         env:
@@ -101,7 +92,18 @@ jobs:
             curl -s -X DELETE \
               -H "Authorization: token ${CODEBERG_TOKEN}" \
               "${API}/releases/${OLD_ID}"
-            # Also delete the old tag
+            curl -s -X DELETE \
+              -H "Authorization: token ${CODEBERG_TOKEN}" \
+              "${API}/tags/${OLD_TAG}"
+          done
+
+          # Also clean up orphan dev tags (from previous failed runs)
+          TAGS=$(curl -s -H "Authorization: token ${CODEBERG_TOKEN}" \
+            "${API}/tags?limit=50")
+          echo "$TAGS" | sed 's/},{/}\n{/g' | while read -r entry; do
+            OLD_TAG=$(echo "$entry" | sed -n 's/.*"name":"\([^"]*\)".*/\1/p')
+            echo "$OLD_TAG" | grep -q '\-dev\.' || continue
+            echo "Deleting orphan dev tag: $OLD_TAG"
             curl -s -X DELETE \
               -H "Authorization: token ${CODEBERG_TOKEN}" \
               "${API}/tags/${OLD_TAG}"
@@ -116,16 +118,18 @@ jobs:
           TAG="${{ steps.version.outputs.tag }}"
           NAME="${{ steps.version.outputs.release_name }}"
           PRERELEASE="${{ steps.version.outputs.prerelease }}"
+          SHA="${{ steps.version.outputs.sha }}"
           APK="androidApp/build/outputs/apk/release/androidApp-release.apk"
           API="https://codeberg.org/api/v1/repos/CruxCoach/CruxCoach"
 
-          # Create release from existing tag (pushed in previous step)
+          # Create release (API creates the tag from target SHA)
           RELEASE_RESPONSE=$(curl -s -X POST \
             -H "Authorization: token ${CODEBERG_TOKEN}" \
             -H "Content-Type: application/json" \
             "${API}/releases" \
             -d "{
               \"tag_name\": \"$TAG\",
+              \"target_commitish\": \"$SHA\",
               \"name\": \"$NAME\",
               \"body\": \"Release $NAME\",
               \"prerelease\": $PRERELEASE
