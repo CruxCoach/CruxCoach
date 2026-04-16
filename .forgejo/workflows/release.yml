@@ -123,9 +123,12 @@ jobs:
           git config user.name "CruxCoach CI"
           git config user.email "ci@cruxcoach.local"
           REMOTE_URL="https://x-access-token:${CODEBERG_TOKEN}@codeberg.org/CruxCoach/CruxCoach.git"
-          # Delete tag if it exists (from a previous failed run)
+          # Delete tag locally + remotely if it exists (from a previous failed run)
           git tag -d "$TAG" 2>/dev/null || true
           git push "$REMOTE_URL" ":refs/tags/$TAG" 2>/dev/null || true
+          curl -sS -o /dev/null -w "cleanup-tag-delete: %{http_code}\n" -X DELETE \
+            -H "Authorization: token ${CODEBERG_TOKEN}" \
+            "${API}/tags/${TAG}"
           git tag -a "$TAG" -m "Release $TAG"
           git push "$REMOTE_URL" "$TAG"
 
@@ -134,25 +137,39 @@ jobs:
             -H "Authorization: token ${CODEBERG_TOKEN}" \
             "${API}/git/refs/tags/${TAG}"
 
-          # Create release. target_commitish must be an existing branch name —
-          # Forgejo validates it even when the tag already exists, and falls
-          # back to the default branch (main) if omitted, causing 404 when
-          # the tag points to a commit on dev.
+          # Sanitize prerelease to valid JSON bool
+          case "$PRERELEASE" in true|false) ;; *) PRERELEASE=false ;; esac
+
+          # Build payload with printf to avoid shell quoting issues
+          PAYLOAD=$(printf '{"tag_name":"%s","target_commitish":"%s","name":"%s","body":"Release %s","prerelease":%s}' \
+            "$TAG" "$BRANCH" "$NAME" "$NAME" "$PRERELEASE")
+
+          echo "=== Release POST body ==="
+          echo "$PAYLOAD"
+
           echo "=== Release POST ==="
           HTTP_CODE=$(curl -sS -o /tmp/release.json -w '%{http_code}' \
             -X POST "${API}/releases" \
             -H "Authorization: token ${CODEBERG_TOKEN}" \
             -H "Content-Type: application/json" \
-            -d "{
-              \"tag_name\": \"$TAG\",
-              \"target_commitish\": \"$BRANCH\",
-              \"name\": \"$NAME\",
-              \"body\": \"Release $NAME\",
-              \"prerelease\": $PRERELEASE
-            }")
+            -d "$PAYLOAD")
 
           echo "Status: $HTTP_CODE"
           cat /tmp/release.json; echo
+
+          # If 500, try minimal payload to isolate the problem field
+          if [ "$HTTP_CODE" = "500" ]; then
+            echo "=== Minimal release POST (tag_name only) ==="
+            MIN_CODE=$(curl -sS -o /tmp/release_min.json -w '%{http_code}' \
+              -X POST "${API}/releases" \
+              -H "Authorization: token ${CODEBERG_TOKEN}" \
+              -H "Content-Type: application/json" \
+              -d "{\"tag_name\":\"$TAG\"}")
+            echo "Status: $MIN_CODE"
+            cat /tmp/release_min.json; echo
+            exit 1
+          fi
+
           [ "$HTTP_CODE" = "201" ] || exit 1
 
           RELEASE_ID=$(sed -n 's/.*"id":\([0-9]*\).*/\1/p' /tmp/release.json)
