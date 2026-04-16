@@ -66,10 +66,16 @@ class BoardDatabaseImporter(
 
         // Pre-count totals across all chunks (COUNT(*) is ~instant on SQLite)
         val climbChunkCounts = climbsDbFiles.map { file ->
-            openReadOnly(file) { db -> queryLong(db, "SELECT COUNT(*) FROM climbs WHERE is_listed = 1").toInt() }
+            openReadOnly(file) { db ->
+                val table = resolveClimbsTable(db)
+                queryLong(db, "SELECT COUNT(*) FROM $table WHERE is_listed = 1").toInt()
+            }
         }
         val statChunkCounts = statsDbFiles.map { file ->
-            openReadOnly(file) { db -> queryLong(db, "SELECT COUNT(*) FROM climb_stats").toInt() }
+            openReadOnly(file) { db ->
+                val table = resolveStatsTable(db)
+                queryLong(db, "SELECT COUNT(*) FROM $table").toInt()
+            }
         }
         val grandClimbTotal = climbChunkCounts.sum()
         val grandStatTotal = statChunkCounts.sum()
@@ -286,6 +292,27 @@ class BoardDatabaseImporter(
         val ledCount: Int
     )
 
+    // ── Schema detection ───────────────────────────────────────────
+
+    /**
+     * Detect whether a source DB uses the Kilter schema (`climbs`, `climb_stats`)
+     * or the CruxCoach schema (`aurora_climb`, `aurora_climb_stat`).
+     * CruxCoach's own `cruxcoach.db` is served during local WiFi share.
+     */
+    private fun hasTable(db: SQLiteDatabase, table: String): Boolean {
+        val cursor = db.rawQuery(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+            arrayOf(table)
+        )
+        return cursor.use { it.moveToFirst() }
+    }
+
+    private fun resolveClimbsTable(db: SQLiteDatabase): String =
+        if (hasTable(db, "climbs")) "climbs" else "aurora_climb"
+
+    private fun resolveStatsTable(db: SQLiteDatabase): String =
+        if (hasTable(db, "climb_stats")) "climb_stats" else "aurora_climb_stat"
+
     // ── Table import methods (raw Aurora schema) ─────────────────────
 
     /**
@@ -298,10 +325,11 @@ class BoardDatabaseImporter(
         onProgress: ((inserted: Int, scanned: Int, total: Int) -> Unit)? = null
     ): Int {
         val chunkPath = rawDb.path ?: return importClimbsLegacy(rawDb, existingUuids, onProgress)
+        val srcTable = resolveClimbsTable(rawDb)
         val targetDb = openTargetDb()
         try {
             targetDb.execSQL("ATTACH DATABASE ? AS src", arrayOf(chunkPath))
-            val total = queryLong(targetDb, "SELECT COUNT(*) FROM src.climbs WHERE is_listed = 1").toInt()
+            val total = queryLong(targetDb, "SELECT COUNT(*) FROM src.$srcTable WHERE is_listed = 1").toInt()
             val countBefore = queryLong(targetDb, "SELECT COUNT(*) FROM aurora_climb")
             onProgress?.invoke(0, 0, total)
             targetDb.beginTransaction()
@@ -317,7 +345,7 @@ class BoardDatabaseImporter(
                            edge_bottom, edge_top, created_at,
                            COALESCE(description, ''), COALESCE(is_nomatch, 0),
                            COALESCE(frames_pace, 0), COALESCE(hsm, 0)
-                    FROM src.climbs WHERE is_listed = 1
+                    FROM src.$srcTable WHERE is_listed = 1
                 """)
                 targetDb.setTransactionSuccessful()
             } finally {
@@ -343,6 +371,7 @@ class BoardDatabaseImporter(
         existingUuids: Set<String>? = null,
         onProgress: ((inserted: Int, scanned: Int, total: Int) -> Unit)? = null
     ): Int {
+        val srcTable = resolveClimbsTable(rawDb)
         val cursor = rawDb.rawQuery(
             """SELECT uuid, layout_id, setter_username, name, frames,
                       frames_count, is_listed, edge_left, edge_right,
@@ -351,7 +380,7 @@ class BoardDatabaseImporter(
                       COALESCE(is_nomatch, 0) AS is_nomatch,
                       COALESCE(frames_pace, 0) AS frames_pace,
                       COALESCE(hsm, 0) AS hsm
-               FROM climbs WHERE is_listed = 1""",
+               FROM $srcTable WHERE is_listed = 1""",
             null
         )
         val total = cursor.count
@@ -392,10 +421,11 @@ class BoardDatabaseImporter(
         onProgress: ((inserted: Int, scanned: Int, total: Int) -> Unit)? = null
     ): Int {
         val chunkPath = rawDb.path ?: return importClimbStatsLegacy(rawDb, existingStats, onProgress)
+        val srcTable = resolveStatsTable(rawDb)
         val targetDb = openTargetDb()
         try {
             targetDb.execSQL("ATTACH DATABASE ? AS src", arrayOf(chunkPath))
-            val total = queryLong(targetDb, "SELECT COUNT(*) FROM src.climb_stats").toInt()
+            val total = queryLong(targetDb, "SELECT COUNT(*) FROM src.$srcTable").toInt()
             val countBefore = queryLong(targetDb, "SELECT COUNT(*) FROM aurora_climb_stat")
             onProgress?.invoke(0, 0, total)
             targetDb.beginTransaction()
@@ -408,7 +438,7 @@ class BoardDatabaseImporter(
                     SELECT climb_uuid, angle, display_difficulty, difficulty_average,
                            quality_average, ascensionist_count, benchmark_difficulty,
                            fa_username, fa_at
-                    FROM src.climb_stats
+                    FROM src.$srcTable
                 """)
                 targetDb.setTransactionSuccessful()
             } finally {
@@ -433,11 +463,12 @@ class BoardDatabaseImporter(
         existingStats: Map<Pair<String, Long>, Long?>? = null,
         onProgress: ((inserted: Int, scanned: Int, total: Int) -> Unit)? = null
     ): Int {
+        val srcTable = resolveStatsTable(rawDb)
         val cursor = rawDb.rawQuery(
             """SELECT climb_uuid, angle, display_difficulty, difficulty_average,
                       quality_average, ascensionist_count, benchmark_difficulty,
                       fa_username, fa_at
-               FROM climb_stats""",
+               FROM $srcTable""",
             null
         )
         val total = cursor.count
@@ -541,16 +572,21 @@ class BoardDatabaseImporter(
     }
 
     private fun importPlacements(rawDb: SQLiteDatabase): Int {
-        val cursor = rawDb.rawQuery(
+        val isCruxCoachSchema = hasTable(rawDb, "aurora_placement")
+        val query = if (isCruxCoachSchema) {
+            """SELECT p.id, p.hole_id, p.set_id, h.x, h.y
+               FROM aurora_placement p
+               JOIN aurora_hole h ON p.hole_id = h.id"""
+        } else {
             """SELECT p.id, p.hole_id, p.set_id, h.x, h.y
                FROM placements p
                JOIN holes h ON p.hole_id = h.id
                WHERE p.layout_id = (
                    SELECT MIN(id) FROM layouts
                    WHERE product_id = (SELECT MIN(id) FROM products)
-               )""",
-            null
-        )
+               )"""
+        }
+        val cursor = rawDb.rawQuery(query, null)
         var inserted = 0
         cursor.use {
             val rows = mutableListOf<PlacementRow>()
@@ -587,9 +623,10 @@ class BoardDatabaseImporter(
     }
 
     private fun importProductSizes(rawDb: SQLiteDatabase) {
+        val table = if (hasTable(rawDb, "product_sizes")) "product_sizes" else "aurora_product_size"
         val cursor = rawDb.rawQuery(
             """SELECT id, product_id, name, edge_left, edge_right, edge_bottom, edge_top, image_filename
-               FROM product_sizes WHERE is_listed = 1""",
+               FROM $table WHERE is_listed = 1""",
             null
         )
         cursor.use {
@@ -609,9 +646,11 @@ class BoardDatabaseImporter(
     }
 
     private fun importBoardImages(rawDb: SQLiteDatabase) {
+        val table = if (hasTable(rawDb, "product_sizes_layouts_sets"))
+            "product_sizes_layouts_sets" else "aurora_board_image"
         val cursor = rawDb.rawQuery(
             """SELECT id, product_size_id, layout_id, set_id, image_filename
-               FROM product_sizes_layouts_sets
+               FROM $table
                WHERE image_filename IS NOT NULL AND is_listed = 1""",
             null
         )
@@ -629,8 +668,9 @@ class BoardDatabaseImporter(
     }
 
     private fun importLeds(rawDb: SQLiteDatabase) {
+        val table = if (hasTable(rawDb, "leds")) "leds" else "aurora_led"
         val cursor = rawDb.rawQuery(
-            "SELECT hole_id, product_size_id, position FROM leds",
+            "SELECT hole_id, product_size_id, position FROM $table",
             null
         )
         cursor.use {
@@ -657,8 +697,9 @@ class BoardDatabaseImporter(
     }
 
     private fun importSyncState(rawDb: SQLiteDatabase) {
+        val table = if (hasTable(rawDb, "shared_syncs")) "shared_syncs" else "aurora_sync_state"
         val cursor = rawDb.rawQuery(
-            "SELECT table_name, last_synchronized_at FROM shared_syncs",
+            "SELECT table_name, last_synchronized_at FROM $table",
             null
         )
         cursor.use {
