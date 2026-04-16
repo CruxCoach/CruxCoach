@@ -117,17 +117,15 @@ jobs:
           NAME="${{ steps.version.outputs.release_name }}"
           PRERELEASE="${{ steps.version.outputs.prerelease }}"
           APK="androidApp/build/outputs/apk/release/androidApp-release.apk"
-          COMMIT_SHA="${{ github.sha }}"
           API="https://codeberg.org/api/v1/repos/CruxCoach/CruxCoach"
 
-          # Create release (target = commit SHA, not branch name)
+          # Create release from existing tag (pushed in previous step)
           RELEASE_RESPONSE=$(curl -s -X POST \
             -H "Authorization: token ${CODEBERG_TOKEN}" \
             -H "Content-Type: application/json" \
             "${API}/releases" \
             -d "{
               \"tag_name\": \"$TAG\",
-              \"target_commitish\": \"$COMMIT_SHA\",
               \"name\": \"$NAME\",
               \"body\": \"Release $NAME\",
               \"prerelease\": $PRERELEASE
