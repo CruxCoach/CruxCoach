@@ -333,31 +333,37 @@ class BoardDatabaseImporter(
     private fun backfillMoveCounts() {
         val db = openTargetDb()
         try {
-            // Only process single-frame boulders with missing move_count
-            val cursor = db.rawQuery(
-                "SELECT uuid, frames FROM aurora_climb WHERE move_count = 0 AND frames_count = 1",
-                null
+            val stmt = db.compileStatement(
+                "UPDATE aurora_climb SET move_count = ? WHERE uuid = ?"
             )
-            db.beginTransaction()
-            try {
-                cursor.use {
-                    val stmt = db.compileStatement(
-                        "UPDATE aurora_climb SET move_count = ? WHERE uuid = ?"
-                    )
-                    while (it.moveToNext()) {
-                        val uuid = it.getString(0)
-                        val frames = it.getString(1) ?: ""
-                        val moves = computeMoveCount(frames)
-                        if (moves > 0) {
-                            stmt.bindLong(1, moves)
-                            stmt.bindString(2, uuid)
-                            stmt.executeUpdateDelete()
+            // Process in batches to avoid CursorWindow overflow on older APIs
+            var lastUuid = ""
+            while (true) {
+                val cursor = db.rawQuery(
+                    """SELECT uuid, frames FROM aurora_climb
+                       WHERE move_count = 0 AND frames_count = 1 AND uuid > ?
+                       ORDER BY uuid LIMIT $BULK_BATCH_SIZE""",
+                    arrayOf(lastUuid)
+                )
+                if (cursor.count == 0) { cursor.close(); break }
+                db.beginTransaction()
+                try {
+                    cursor.use {
+                        while (it.moveToNext()) {
+                            lastUuid = it.getString(0)
+                            val frames = it.getString(1) ?: ""
+                            val moves = computeMoveCount(frames)
+                            if (moves > 0) {
+                                stmt.bindLong(1, moves)
+                                stmt.bindString(2, lastUuid)
+                                stmt.executeUpdateDelete()
+                            }
                         }
                     }
+                    db.setTransactionSuccessful()
+                } finally {
+                    db.endTransaction()
                 }
-                db.setTransactionSuccessful()
-            } finally {
-                db.endTransaction()
             }
         } finally {
             db.close()
