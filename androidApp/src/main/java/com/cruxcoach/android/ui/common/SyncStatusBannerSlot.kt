@@ -264,8 +264,14 @@ private fun stepLabel(step: ImportStep?): String = when (step) {
     }
     is ImportStep.Extract -> stringResource(R.string.sync_extracting)
 
-    is ImportStep.ImportClimbs -> stringResource(R.string.sync_importing_climbs, step.scanned, step.total)
-    is ImportStep.ImportStats -> stringResource(R.string.sync_importing_stats, step.scanned, step.total)
+    is ImportStep.ImportClimbs -> {
+        if (step.scanned == 0 && step.total > 0) stringResource(R.string.sync_importing_climbs_bulk, step.total)
+        else stringResource(R.string.sync_importing_climbs, step.scanned, step.total)
+    }
+    is ImportStep.ImportStats -> {
+        if (step.scanned == 0 && step.total > 0) stringResource(R.string.sync_importing_stats_bulk, step.total)
+        else stringResource(R.string.sync_importing_stats, step.scanned, step.total)
+    }
     is ImportStep.ImportLayout -> stringResource(R.string.sync_importing_layout)
     is ImportStep.Done -> stringResource(R.string.sync_done)
     null -> stringResource(R.string.sync_running)
@@ -274,7 +280,7 @@ private fun stepLabel(step: ImportStep?): String = when (step) {
 private fun stepProgress(step: ImportStep?): Float? = when (step) {
     is ImportStep.Download -> if (step.totalBytes > 0) step.bytesRead.toFloat() / step.totalBytes else null
     is ImportStep.DownloadChunk -> if (step.cumulativeTotalBytes > 0) step.cumulativeBytesRead.toFloat() / step.cumulativeTotalBytes else null
-    is ImportStep.ImportClimbs -> if (step.total > 0) step.scanned.toFloat() / step.total else null
-    is ImportStep.ImportStats -> if (step.total > 0) step.scanned.toFloat() / step.total else null
+    is ImportStep.ImportClimbs -> if (step.total > 0 && step.scanned > 0) step.scanned.toFloat() / step.total else null
+    is ImportStep.ImportStats -> if (step.total > 0 && step.scanned > 0) step.scanned.toFloat() / step.total else null
     else -> null
 }

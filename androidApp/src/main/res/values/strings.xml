@@ -1105,8 +1105,10 @@
     <string name="sync_extracting">Extracting…</string>
     <string name="sync_importing">Importing…</string>
     <string name="sync_importing_climbs">Climbs: %1$d / %2$d</string>
+    <string name="sync_importing_climbs_bulk">Importing %1$d climbs…</string>
     <string name="sync_importing_layout">Importing layout…</string>
     <string name="sync_importing_stats">Stats: %1$d / %2$d</string>
+    <string name="sync_importing_stats_bulk">Importing %1$d stats…</string>
     <string name="sync_running">Syncing…</string>
     <string name="workout_reps_label">Reps</string>
     <string name="workout_set_label">Set</string>
