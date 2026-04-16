@@ -122,9 +122,9 @@ jobs:
           APK="androidApp/build/outputs/apk/release/androidApp-release.apk"
           API="https://codeberg.org/api/v1/repos/CruxCoach/CruxCoach"
 
-          # Step 1: Create tag via API (raw SHA not supported in release endpoint)
+          # Step 1: Create tag via API
           echo "Creating tag $TAG at $SHA"
-          TAG_RESPONSE=$(curl -s -X POST \
+          curl -s -X POST \
             -H "Authorization: token ${CODEBERG_TOKEN}" \
             -H "Content-Type: application/json" \
             "${API}/tags" \
@@ -132,16 +132,19 @@ jobs:
               \"tag_name\": \"$TAG\",
               \"target\": \"$SHA\",
               \"message\": \"Release $TAG\"
-            }")
-          echo "Tag response: $TAG_RESPONSE"
+            }"
 
-          # Step 2: Create release from the tag
+          # Wait for tag to propagate
+          sleep 3
+
+          # Step 2: Create release referencing the tag
           RELEASE_RESPONSE=$(curl -s -X POST \
             -H "Authorization: token ${CODEBERG_TOKEN}" \
             -H "Content-Type: application/json" \
             "${API}/releases" \
             -d "{
               \"tag_name\": \"$TAG\",
+              \"target_commitish\": \"$TAG\",
               \"name\": \"$NAME\",
               \"body\": \"Release $NAME\",
               \"prerelease\": $PRERELEASE
