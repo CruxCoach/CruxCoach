@@ -140,26 +140,49 @@ jobs:
           # Sanitize prerelease to valid JSON bool
           case "$PRERELEASE" in true|false) ;; *) PRERELEASE=false ;; esac
 
-          # Build payload — omit target_commitish (causes Forgejo 500 on
-          # Codeberg). The tag already points to the correct commit.
-          PAYLOAD=$(printf '{"tag_name":"%s","name":"%s","body":"Release %s","prerelease":%s}' \
-            "$TAG" "$NAME" "$NAME" "$PRERELEASE")
-
-          echo "=== Release POST body ==="
-          echo "$PAYLOAD"
-
-          echo "=== Release POST ==="
+          # Create release with minimal payload (full POST causes Forgejo 500)
+          echo "=== Create release (minimal) ==="
           HTTP_CODE=$(curl -sS -o /tmp/release.json -w '%{http_code}' \
             -X POST "${API}/releases" \
             -H "Authorization: token ${CODEBERG_TOKEN}" \
             -H "Content-Type: application/json" \
-            -d "$PAYLOAD")
-
+            -d "{\"tag_name\":\"$TAG\"}")
           echo "Status: $HTTP_CODE"
           cat /tmp/release.json; echo
           [ "$HTTP_CODE" = "201" ] || exit 1
 
           RELEASE_ID=$(sed -n 's/.*"id":\([0-9]*\).*/\1/p' /tmp/release.json)
+          echo "Created release ID: $RELEASE_ID"
+
+          # Update release with name, body, prerelease via PATCH
+          PATCH_PAYLOAD=$(printf '{"name":"%s","body":"Release %s","prerelease":%s}' \
+            "$NAME" "$NAME" "$PRERELEASE")
+          echo "=== PATCH release ==="
+          echo "$PATCH_PAYLOAD"
+          PATCH_CODE=$(curl -sS -o /tmp/release_patch.json -w '%{http_code}' \
+            -X PATCH "${API}/releases/${RELEASE_ID}" \
+            -H "Authorization: token ${CODEBERG_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "$PATCH_PAYLOAD")
+          echo "Status: $PATCH_CODE"
+          cat /tmp/release_patch.json; echo
+
+          # If PATCH fails, try individual fields to isolate
+          if [ "$PATCH_CODE" != "200" ]; then
+            for FIELD in \
+              "{\"name\":\"$NAME\"}" \
+              "{\"body\":\"Release $NAME\"}" \
+              "{\"prerelease\":$PRERELEASE}"; do
+              echo "=== PATCH field: $FIELD ==="
+              F_CODE=$(curl -sS -o /dev/null -w '%{http_code}' \
+                -X PATCH "${API}/releases/${RELEASE_ID}" \
+                -H "Authorization: token ${CODEBERG_TOKEN}" \
+                -H "Content-Type: application/json" \
+                -d "$FIELD")
+              echo "Status: $F_CODE"
+            done
+            exit 1
+          fi
           echo "Created release ID: $RELEASE_ID"
 
           # Upload APK as attachment
