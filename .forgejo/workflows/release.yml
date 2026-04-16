@@ -81,6 +81,8 @@ jobs:
 
       - name: Create Codeberg release
         if: steps.version.outputs.skip == 'false'
+        env:
+          CODEBERG_TOKEN: ${{ secrets.CODEBERG_TOKEN }}
         run: |
           TAG="${{ steps.version.outputs.tag }}"
           NAME="${{ steps.version.outputs.release_name }}"
