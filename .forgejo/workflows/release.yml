@@ -18,7 +18,6 @@ jobs:
         run: |
           VERSION_NAME=$(grep 'versionName' androidApp/build.gradle.kts | head -1 | grep -Po '"\K[^"]+')
           BRANCH="${GITHUB_REF_NAME}"
-          COMMIT_SHA=$(git rev-parse HEAD)
           if [ "$BRANCH" = "dev" ]; then
             SHORT_SHA=$(git rev-parse --short HEAD)
             TAG_NAME="v${VERSION_NAME}-dev.${SHORT_SHA}"
@@ -35,7 +34,6 @@ jobs:
           echo "release_name=$RELEASE_NAME" >> "$GITHUB_OUTPUT"
           echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
           echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
-          echo "sha=$COMMIT_SHA" >> "$GITHUB_OUTPUT"
 
           # On main: skip if tag already exists. On dev: always build.
           if [ "$BRANCH" = "main" ] && git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
@@ -77,11 +75,9 @@ jobs:
         run: |
           API="https://codeberg.org/api/v1/repos/CruxCoach/CruxCoach"
 
-          # Find existing dev pre-releases
+          # Delete existing dev pre-releases
           RELEASES=$(curl -s -H "Authorization: token ${CODEBERG_TOKEN}" \
             "${API}/releases?limit=50")
-
-          # Extract IDs + tags of pre-releases with dev tags
           echo "$RELEASES" | sed 's/},{/}\n{/g' | while read -r entry; do
             IS_PRE=$(echo "$entry" | sed -n 's/.*"prerelease":\([a-z]*\).*/\1/p')
             [ "$IS_PRE" != "true" ] && continue
@@ -89,24 +85,17 @@ jobs:
             echo "$OLD_TAG" | grep -q '\-dev\.' || continue
             OLD_ID=$(echo "$entry" | sed -n 's/.*"id":\([0-9]*\).*/\1/p')
             echo "Deleting old dev release: $OLD_TAG (ID: $OLD_ID)"
-            curl -s -X DELETE \
-              -H "Authorization: token ${CODEBERG_TOKEN}" \
-              "${API}/releases/${OLD_ID}"
-            curl -s -X DELETE \
-              -H "Authorization: token ${CODEBERG_TOKEN}" \
-              "${API}/tags/${OLD_TAG}"
+            curl -s -X DELETE -H "Authorization: token ${CODEBERG_TOKEN}" "${API}/releases/${OLD_ID}"
+            curl -s -X DELETE -H "Authorization: token ${CODEBERG_TOKEN}" "${API}/tags/${OLD_TAG}"
           done
 
-          # Also clean up orphan dev tags (from previous failed runs)
-          TAGS=$(curl -s -H "Authorization: token ${CODEBERG_TOKEN}" \
-            "${API}/tags?limit=50")
+          # Clean up orphan dev tags (from previous failed runs)
+          TAGS=$(curl -s -H "Authorization: token ${CODEBERG_TOKEN}" "${API}/tags?limit=50")
           echo "$TAGS" | sed 's/},{/}\n{/g' | while read -r entry; do
             OLD_TAG=$(echo "$entry" | sed -n 's/.*"name":"\([^"]*\)".*/\1/p')
             echo "$OLD_TAG" | grep -q '\-dev\.' || continue
             echo "Deleting orphan dev tag: $OLD_TAG"
-            curl -s -X DELETE \
-              -H "Authorization: token ${CODEBERG_TOKEN}" \
-              "${API}/tags/${OLD_TAG}"
+            curl -s -X DELETE -H "Authorization: token ${CODEBERG_TOKEN}" "${API}/tags/${OLD_TAG}"
           done
           echo "Cleanup done"
 
@@ -115,53 +104,40 @@ jobs:
         env:
           CODEBERG_TOKEN: ${{ secrets.CODEBERG_TOKEN }}
         run: |
+          set -euo pipefail
           TAG="${{ steps.version.outputs.tag }}"
           NAME="${{ steps.version.outputs.release_name }}"
           PRERELEASE="${{ steps.version.outputs.prerelease }}"
-          SHA="${{ steps.version.outputs.sha }}"
           APK="androidApp/build/outputs/apk/release/androidApp-release.apk"
           API="https://codeberg.org/api/v1/repos/CruxCoach/CruxCoach"
 
-          # Step 1: Create tag via API
-          echo "Creating tag $TAG at $SHA"
-          curl -s -X POST \
-            -H "Authorization: token ${CODEBERG_TOKEN}" \
-            -H "Content-Type: application/json" \
-            "${API}/tags" \
-            -d "{
-              \"tag_name\": \"$TAG\",
-              \"target\": \"$SHA\",
-              \"message\": \"Release $TAG\"
-            }"
+          # Push tag via git (synchronous — avoids API race condition where
+          # tag created via REST isn't immediately visible to release endpoint)
+          git config user.name "CruxCoach CI"
+          git config user.email "ci@cruxcoach.local"
+          git tag -a "$TAG" -m "Release $TAG"
+          git push "https://x-access-token:${CODEBERG_TOKEN}@codeberg.org/CruxCoach/CruxCoach.git" "$TAG"
 
-          # Step 2: Create release from existing tag (no target_commitish —
-          # Forgejo validates it as a branch name when the tag exists, which
-          # fails for SHAs and tag names alike. Omitting it lets Forgejo
-          # resolve the commit from the tag directly.)
-          RELEASE_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+          # Create release (no target_commitish — tag already points to the commit)
+          HTTP_CODE=$(curl -sS -o /tmp/release.json -w '%{http_code}' \
+            -X POST "${API}/releases" \
             -H "Authorization: token ${CODEBERG_TOKEN}" \
             -H "Content-Type: application/json" \
-            "${API}/releases" \
             -d "{
               \"tag_name\": \"$TAG\",
               \"name\": \"$NAME\",
               \"body\": \"Release $NAME\",
               \"prerelease\": $PRERELEASE
             }")
-          HTTP_CODE=$(echo "$RELEASE_RESPONSE" | tail -1)
-          RELEASE_BODY=$(echo "$RELEASE_RESPONSE" | sed '$d')
 
-          echo "Release API response (HTTP $HTTP_CODE): $RELEASE_BODY"
+          echo "Release API (HTTP $HTTP_CODE):"; cat /tmp/release.json; echo
+          [ "$HTTP_CODE" = "201" ] || exit 1
 
-          RELEASE_ID=$(echo "$RELEASE_BODY" | sed -n 's/.*"id":\([0-9]*\).*/\1/p')
-          if [ -z "$RELEASE_ID" ] || [ "$HTTP_CODE" != "201" ]; then
-            echo "Failed to create release (HTTP $HTTP_CODE)"
-            exit 1
-          fi
+          RELEASE_ID=$(sed -n 's/.*"id":\([0-9]*\).*/\1/p' /tmp/release.json)
           echo "Created release ID: $RELEASE_ID"
 
           # Upload APK as attachment
-          curl -s -X POST \
+          curl -sS -X POST \
             -H "Authorization: token ${CODEBERG_TOKEN}" \
             -F "attachment=@${APK};filename=CruxCoach-${TAG}.apk" \
             "${API}/releases/${RELEASE_ID}/assets"
