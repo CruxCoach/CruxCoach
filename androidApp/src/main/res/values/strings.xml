@@ -19,6 +19,7 @@
     <string name="onboarding_board_sync">Sync board data</string>
     <string name="onboarding_board_db_title">Board database</string>
     <string name="onboarding_board_db_subtitle">Climbs, ratings and stats for your Kilter Board.</string>
+    <string name="onboarding_board_db_imported">Board database already loaded</string>
     <string name="onboarding_kilter_title">Import Kilter logbook</string>
     <string name="onboarding_kilter_desc">Have a Kilter account? Import your ascents and projects.</string>
     <string name="onboarding_kilter_credentials_hint">Your credentials are only used for the import and can be discarded afterwards.</string>
