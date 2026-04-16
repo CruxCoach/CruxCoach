@@ -103,7 +103,7 @@ jobs:
               \"prerelease\": $PRERELEASE
             }")
 
-          RELEASE_ID=$(echo "$RELEASE_RESPONSE" | jq -r '.id')
+          RELEASE_ID=$(echo "$RELEASE_RESPONSE" | grep -o '"id":[0-9]*' | head -1 | grep -o '[0-9]*')
           if [ "$RELEASE_ID" = "null" ] || [ -z "$RELEASE_ID" ]; then
             echo "Failed to create release:"
             echo "$RELEASE_RESPONSE"
