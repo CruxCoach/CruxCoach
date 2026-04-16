@@ -108,6 +108,7 @@ jobs:
           TAG="${{ steps.version.outputs.tag }}"
           NAME="${{ steps.version.outputs.release_name }}"
           PRERELEASE="${{ steps.version.outputs.prerelease }}"
+          BRANCH="${{ steps.version.outputs.branch }}"
           APK="androidApp/build/outputs/apk/release/androidApp-release.apk"
           API="https://codeberg.org/api/v1/repos/CruxCoach/CruxCoach"
 
@@ -118,13 +119,17 @@ jobs:
           git tag -a "$TAG" -m "Release $TAG"
           git push "https://x-access-token:${CODEBERG_TOKEN}@codeberg.org/CruxCoach/CruxCoach.git" "$TAG"
 
-          # Create release (no target_commitish — tag already points to the commit)
+          # Create release. target_commitish must be an existing branch name —
+          # Forgejo validates it even when the tag already exists, and falls
+          # back to the default branch (main) if omitted, causing 404 when
+          # the tag points to a commit on dev.
           HTTP_CODE=$(curl -sS -o /tmp/release.json -w '%{http_code}' \
             -X POST "${API}/releases" \
             -H "Authorization: token ${CODEBERG_TOKEN}" \
             -H "Content-Type: application/json" \
             -d "{
               \"tag_name\": \"$TAG\",
+              \"target_commitish\": \"$BRANCH\",
               \"name\": \"$NAME\",
               \"body\": \"Release $NAME\",
               \"prerelease\": $PRERELEASE
