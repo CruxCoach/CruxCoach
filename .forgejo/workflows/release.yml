@@ -112,6 +112,13 @@ jobs:
           APK="androidApp/build/outputs/apk/release/androidApp-release.apk"
           API="https://codeberg.org/api/v1/repos/CruxCoach/CruxCoach"
 
+          # Verify API token has correct scopes (Forgejo returns 404, not 403, on scope issues)
+          AUTH_CODE=$(curl -sS -o /dev/null -w '%{http_code}' \
+            -H "Authorization: token ${CODEBERG_TOKEN}" \
+            "https://codeberg.org/api/v1/user")
+          echo "Token auth check: HTTP $AUTH_CODE"
+          [ "$AUTH_CODE" = "200" ] || { echo "ERROR: Token lacks API scopes (got $AUTH_CODE)"; exit 1; }
+
           # Push tag via git (synchronous — avoids API race condition where
           # tag created via REST isn't immediately visible to release endpoint)
           git config user.name "CruxCoach CI"
