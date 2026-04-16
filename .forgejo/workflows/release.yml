@@ -112,12 +112,11 @@ jobs:
           APK="androidApp/build/outputs/apk/release/androidApp-release.apk"
           API="https://codeberg.org/api/v1/repos/CruxCoach/CruxCoach"
 
-          # Verify API token has correct scopes (Forgejo returns 404, not 403, on scope issues)
-          AUTH_CODE=$(curl -sS -o /dev/null -w '%{http_code}' \
+          # Debug: token auth + scopes (against repo endpoint, not /user)
+          echo "=== Token auth + scopes ==="
+          curl -sS -D- -o /dev/null \
             -H "Authorization: token ${CODEBERG_TOKEN}" \
-            "https://codeberg.org/api/v1/user")
-          echo "Token auth check: HTTP $AUTH_CODE"
-          [ "$AUTH_CODE" = "200" ] || { echo "ERROR: Token lacks API scopes (got $AUTH_CODE)"; exit 1; }
+            "${API}" 2>&1 | grep -iE '^(HTTP/|x-(gitea|oauth)-scopes:|x-gitea-token-name:)'
 
           # Push tag via git (synchronous — avoids API race condition where
           # tag created via REST isn't immediately visible to release endpoint)
@@ -130,10 +129,16 @@ jobs:
           git tag -a "$TAG" -m "Release $TAG"
           git push "$REMOTE_URL" "$TAG"
 
+          echo "=== Tag sichtbar? ==="
+          curl -sS -o /dev/null -w "HTTP: %{http_code}\n" \
+            -H "Authorization: token ${CODEBERG_TOKEN}" \
+            "${API}/git/refs/tags/${TAG}"
+
           # Create release. target_commitish must be an existing branch name —
           # Forgejo validates it even when the tag already exists, and falls
           # back to the default branch (main) if omitted, causing 404 when
           # the tag points to a commit on dev.
+          echo "=== Release POST ==="
           HTTP_CODE=$(curl -sS -o /tmp/release.json -w '%{http_code}' \
             -X POST "${API}/releases" \
             -H "Authorization: token ${CODEBERG_TOKEN}" \
@@ -146,7 +151,8 @@ jobs:
               \"prerelease\": $PRERELEASE
             }")
 
-          echo "Release API (HTTP $HTTP_CODE):"; cat /tmp/release.json; echo
+          echo "Status: $HTTP_CODE"
+          cat /tmp/release.json; echo
           [ "$HTTP_CODE" = "201" ] || exit 1
 
           RELEASE_ID=$(sed -n 's/.*"id":\([0-9]*\).*/\1/p' /tmp/release.json)
