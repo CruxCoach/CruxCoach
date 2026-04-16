@@ -1,0 +1,33 @@
+# ──────────────────────────────────────────────────────────────────────
+# local.properties template
+# ──────────────────────────────────────────────────────────────────────
+# Copy this file to local.properties and fill in only the values you need.
+# local.properties is gitignored — never commit the real file.
+#
+# Every maintainer-bound constant below has a working default baked into
+# androidApp/build.gradle.kts, so forks and contributors only need to set
+# keys they actually want to override.
+
+# ─── Android SDK location ────────────────────────────────────────────
+# Usually auto-written by Android Studio on first project import.
+# Override manually if you keep the SDK somewhere non-standard.
+# sdk.dir=/home/yourname/Android/Sdk
+
+# ─── Release signing (optional for local development) ───────────────
+# Debug builds do not need any of these keys. Release builds silently
+# fall back to the debug keystore when RELEASE_STORE_FILE is empty —
+# fine for local testing, not acceptable for distribution.
+# See CONTRIBUTING.md → "Release signing" for the keytool recipe.
+# RELEASE_STORE_FILE=.signing/release.jks
+# RELEASE_STORE_PASSWORD=
+# RELEASE_KEY_ALIAS=
+# RELEASE_KEY_PASSWORD=
+
+# ─── Fork overrides (all optional — defaults point at upstream) ─────
+# Change these in your fork to route donations, crash reports, and
+# announcements to your own Nostr identity / Lightning address.
+# See CONTRIBUTING.md → "Customizing for forks" and TRADEMARK.md.
+# MAINTAINER_PUBKEY=<64-char hex pubkey>
+# MAINTAINER_LIGHTNING_ADDRESS=you@lightning.example
+# MAINTAINER_KOFI_URL=https://ko-fi.com/yourhandle
+# ANNOUNCE_NAMESPACE=com.yourfork.announce

@@ -19,6 +19,7 @@
     <string name="onboarding_board_sync">Sync board data</string>
     <string name="onboarding_board_db_title">Board database</string>
     <string name="onboarding_board_db_subtitle">Climbs, ratings and stats for your Kilter Board.</string>
+    <string name="onboarding_board_db_imported">Board database already loaded</string>
     <string name="onboarding_kilter_title">Import Kilter logbook</string>
     <string name="onboarding_kilter_desc">Have a Kilter account? Import your ascents and projects.</string>
     <string name="onboarding_kilter_credentials_hint">Your credentials are only used for the import and can be discarded afterwards.</string>
@@ -187,7 +188,7 @@
     <string name="settings_share_stop">Stop</string>
     <string name="settings_share_network">Network: %s</string>
     <string name="settings_share_password">Password: %s</string>
-    <string name="settings_share_mobile_data_warning">Important: Turn off mobile data on the other device so the download goes through the hotspot.</string>
+    <string name="settings_share_mobile_data_warning">Important: Turn off VPN on both devices. Turn off mobile data on the other device so the download goes through the hotspot.</string>
     <string name="settings_share_step1">Step 1: Scan QR code to connect to the hotspot</string>
     <string name="settings_share_step2">Step 2: Scan this QR code or open the URL to download the app</string>
     <string name="settings_share_permissions_needed">Permissions needed: %s. Please allow in app settings.</string>
@@ -796,7 +797,7 @@
     <string name="ble_unknown_climb">Unknown climb</string>
     <string name="ble_your_climb">Your climb</string>
     <string name="board_ascent_tries">%d Tries</string>
-    <string name="board_climb_frames">Frames</string>
+    <string name="board_climb_frames">%d frames</string>
     <string name="board_climb_sends_count">%d sends</string>
     <string name="board_detail_benchmark">Benchmark</string>
     <string name="board_detail_frames">Frames</string>
@@ -1104,8 +1105,10 @@
     <string name="sync_extracting">Extracting…</string>
     <string name="sync_importing">Importing…</string>
     <string name="sync_importing_climbs">Climbs: %1$d / %2$d</string>
+    <string name="sync_importing_climbs_bulk">Importing %1$d climbs…</string>
     <string name="sync_importing_layout">Importing layout…</string>
     <string name="sync_importing_stats">Stats: %1$d / %2$d</string>
+    <string name="sync_importing_stats_bulk">Importing %1$d stats…</string>
     <string name="sync_running">Syncing…</string>
     <string name="workout_reps_label">Reps</string>
     <string name="workout_set_label">Set</string>

@@ -51,9 +51,25 @@ CruxCoach distributes board reference data and community-created climb data via 
 ### What we do NOT distribute
 
 - Kilter's proprietary software, source code, or firmware
-- Kilter's trademarks, logos, or branding assets
+- Kilter's wordmark, logo, or marketing/branding artwork
 - User personal data (email, profile photos, account details)
 - Kilter's app binary or any portion thereof
+
+### Bundled Kilter layout images
+
+A small set of Kilter Board layout photographs lives inside the APK at
+[`androidApp/src/main/assets/board_images/`](androidApp/src/main/assets/board_images/)
+so the app can render a recognisable offline view of the board behind its
+hold overlay. These images remain the property of **Kilter Grips, LLC**
+(formerly Aurora Climbing) and are included strictly for interoperability
+and referential purposes — permitted under **§ 23(1) No. 3 MarkenG** in
+Germany and under analogous referential/nominative fair-use doctrines in
+other jurisdictions. CruxCoach claims no ownership, affiliation, or
+endorsement. See the in-directory
+[`README.md`](androidApp/src/main/assets/board_images/README.md) for origin,
+scope, and removal-request contacts, and
+[`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md) for the maintained
+attribution inventory.
 
 ### Integrity & verifiability
 

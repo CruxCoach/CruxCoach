@@ -1,0 +1,28 @@
+CruxCoach
+Copyright (C) 2025-2026 CruxCoach contributors
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License v3.0 as published by the Free
+Software Foundation. See the LICENSE file for the full text.
+
+================================================================================
+This product bundles or includes the following third-party components:
+================================================================================
+
+zstd (Zstandard) — Copyright (c) Meta Platforms, Inc. and affiliates.
+    Vendored under androidApp/src/main/cpp/zstd/ at version 1.5.6.
+    Dual-licensed BSD-3-Clause OR GPLv2; CruxCoach elects BSD-3-Clause.
+    Full attribution in androidApp/src/main/cpp/zstd/LICENSE and
+    THIRD_PARTY_LICENSES.md.
+
+Kilter Board layout images — Property of Kilter Grips, LLC (formerly Aurora
+    Climbing). Bundled under androidApp/src/main/assets/board_images/ for
+    offline board visualization only. No affiliation, sponsorship, or
+    endorsement is claimed. Rights holder may request removal at any time —
+    see androidApp/src/main/assets/board_images/README.md, LEGAL.md, and
+    THIRD_PARTY_LICENSES.md.
+
+================================================================================
+For runtime Maven/Gradle dependencies, see the build system's license report.
+For a maintained inventory of vendored sources and bundled assets, see
+THIRD_PARTY_LICENSES.md.

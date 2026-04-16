@@ -1,9 +1,16 @@
 package com.cruxcoach.android.nostr
 
+import com.cruxcoach.android.BuildConfig
 import com.cruxcoach.android.nostr.model.RelayConfig
 
 object NostrConfig {
-    const val DEV_PUBKEY = "e75a185c019d09049d5fcb0e29a2cc9bfd016ec0f6d892fc98f6ffe0181a480d"
+    // Maintainer-bound: forks override via local.properties — see
+    // CONTRIBUTING.md "Customizing for forks". Defaults baked in by the
+    // Gradle build live in androidApp/build.gradle.kts.
+    val DEV_PUBKEY: String = BuildConfig.MAINTAINER_PUBKEY
+    val KOFI_URL: String = BuildConfig.MAINTAINER_KOFI_URL
+    val DEV_LIGHTNING_ADDRESS: String = BuildConfig.MAINTAINER_LIGHTNING_ADDRESS
+    val ANNOUNCE_NAMESPACE: String = BuildConfig.ANNOUNCE_NAMESPACE
 
     val DEFAULT_RELAYS = listOf(
         RelayConfig(url = "wss://relay.damus.io"),
@@ -15,8 +22,4 @@ object NostrConfig {
     const val RECONNECT_DELAY_MS = 10_000L
     const val RECONNECT_MAX_DELAY_MS = 60_000L
     const val MAX_RECONNECT_ATTEMPTS = 5
-    const val KOFI_URL = "https://ko-fi.com/cruxcoach"
-    const val ANNOUNCE_NAMESPACE = "com.cruxcoach.announce"
-
-    const val DEV_LIGHTNING_ADDRESS = "cruxcoach@npub.cash"
 }

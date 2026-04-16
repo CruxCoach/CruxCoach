@@ -1,8 +1,8 @@
-name: Release to Zapstore
+name: Release
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
 
 jobs:
   release:
@@ -17,22 +17,39 @@ jobs:
         id: version
         run: |
           VERSION_NAME=$(grep 'versionName' androidApp/build.gradle.kts | head -1 | grep -Po '"\K[^"]+')
-          echo "version=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+          BRANCH="${GITHUB_REF_NAME}"
+          if [ "$BRANCH" = "dev" ]; then
+            SHORT_SHA=$(git rev-parse --short HEAD)
+            TAG_NAME="v${VERSION_NAME}-dev.${SHORT_SHA}"
+            RELEASE_NAME="v${VERSION_NAME}-dev (${SHORT_SHA})"
+            PRERELEASE=true
+          else
+            TAG_NAME="v${VERSION_NAME}"
+            RELEASE_NAME="v${VERSION_NAME}"
+            PRERELEASE=false
+          fi
 
-          # Check if tag already exists
-          if git rev-parse "v$VERSION_NAME" >/dev/null 2>&1; then
+          echo "version=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG_NAME" >> "$GITHUB_OUTPUT"
+          echo "release_name=$RELEASE_NAME" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+
+          # On main: skip if tag already exists. On dev: always build.
+          if [ "$BRANCH" = "main" ] && git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "Tag v$VERSION_NAME already exists — skipping release"
+            echo "Tag $TAG_NAME already exists — skipping release"
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
-            echo "New version: $VERSION_NAME"
+            echo "New release: $RELEASE_NAME"
           fi
 
       - name: Copy signing config
         if: steps.version.outputs.skip == 'false'
         run: |
-          cp $CRUXCOACH_SECRETS_DIR/local.properties local.properties
-          cp -r $CRUXCOACH_SECRETS_DIR/.signing .signing
+          : "${CRUXCOACH_SECRETS_DIR:?CRUXCOACH_SECRETS_DIR must be set on the runner — see CONTRIBUTING.md 'Releases & CI (maintainer only)'}"
+          cp "$CRUXCOACH_SECRETS_DIR/local.properties" local.properties
+          cp -r "$CRUXCOACH_SECRETS_DIR/.signing" .signing
 
       - name: Build release APK
         if: steps.version.outputs.skip == 'false'
@@ -42,23 +59,122 @@ jobs:
       - name: Verify APK signature
         if: steps.version.outputs.skip == 'false'
         run: |
+          : "${ANDROID_SDK_ROOT:?ANDROID_SDK_ROOT must be set on the runner}"
+          APKSIGNER=$(ls -d "$ANDROID_SDK_ROOT"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1)
+          [ -x "$APKSIGNER" ] || { echo "apksigner not found under $ANDROID_SDK_ROOT/build-tools/"; exit 1; }
           APK=androidApp/build/outputs/apk/release/androidApp-release.apk
-          $ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner verify --print-certs "$APK"
+          "$APKSIGNER" verify --print-certs "$APK"
           echo "APK verified successfully"
 
       - name: Publish to Zapstore
-        if: steps.version.outputs.skip == 'false'
+        if: steps.version.outputs.skip == 'false' && steps.version.outputs.branch == 'main'
+        continue-on-error: true
+        id: zapstore
         run: |
-          cp $CRUXCOACH_SECRETS_DIR/.env .env
-          zsp publish --skip-preview --skip-certificate-linking --quiet
+          : "${CRUXCOACH_SECRETS_DIR:?CRUXCOACH_SECRETS_DIR must be set on the runner}"
+          cp "$CRUXCOACH_SECRETS_DIR/.env" .env
+          for ATTEMPT in 1 2 3; do
+            echo "Zapstore publish attempt $ATTEMPT/3..."
+            if timeout 120 zsp publish --skip-preview --skip-certificate-linking --quiet; then
+              echo "Zapstore publish succeeded"
+              exit 0
+            fi
+            echo "Attempt $ATTEMPT failed (timeout or error), retrying in 10s..."
+            sleep 10
+          done
+          echo "::error::Zapstore publish failed after 3 attempts"
+          exit 1
 
-      - name: Tag release
-        if: steps.version.outputs.skip == 'false'
+      - name: Delete old dev release
+        if: steps.version.outputs.skip == 'false' && steps.version.outputs.branch == 'dev'
+        env:
+          CODEBERG_TOKEN: ${{ secrets.CODEBERG_TOKEN }}
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
+          API="https://codeberg.org/api/v1/repos/CruxCoach/CruxCoach"
+
+          # Delete existing dev releases (by tag pattern, regardless of prerelease flag)
+          RELEASES=$(curl -s -H "Authorization: token ${CODEBERG_TOKEN}" \
+            "${API}/releases?limit=50")
+          echo "$RELEASES" | sed 's/},{/}\n{/g' | while read -r entry; do
+            OLD_TAG=$(echo "$entry" | sed -n 's/.*"tag_name":"\([^"]*\)".*/\1/p')
+            echo "$OLD_TAG" | grep -q '\-dev\.' || continue
+            OLD_ID=$(echo "$entry" | grep -o '"id":[0-9]*' | head -1 | grep -o '[0-9]*')
+            DEL_CODE=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE \
+              -H "Authorization: token ${CODEBERG_TOKEN}" "${API}/releases/${OLD_ID}")
+            echo "Deleted dev release: $OLD_TAG (ID: $OLD_ID) → $DEL_CODE"
+            TAG_DEL=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE \
+              -H "Authorization: token ${CODEBERG_TOKEN}" "${API}/tags/${OLD_TAG}")
+            echo "Deleted tag: $OLD_TAG → $TAG_DEL"
+          done
+
+          # Clean up orphan dev tags (from previous failed runs)
+          TAGS=$(curl -s -H "Authorization: token ${CODEBERG_TOKEN}" "${API}/tags?limit=50")
+          echo "$TAGS" | sed 's/},{/}\n{/g' | while read -r entry; do
+            OLD_TAG=$(echo "$entry" | sed -n 's/.*"name":"\([^"]*\)".*/\1/p')
+            echo "$OLD_TAG" | grep -q '\-dev\.' || continue
+            TAG_DEL=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE \
+              -H "Authorization: token ${CODEBERG_TOKEN}" "${API}/tags/${OLD_TAG}")
+            echo "Deleted orphan dev tag: $OLD_TAG → $TAG_DEL"
+          done
+          echo "Cleanup done"
+
+      - name: Create Codeberg release
+        if: steps.version.outputs.skip == 'false'
+        env:
+          CODEBERG_TOKEN: ${{ secrets.CODEBERG_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.version.outputs.tag }}"
+          NAME="${{ steps.version.outputs.release_name }}"
+          PRERELEASE="${{ steps.version.outputs.prerelease }}"
+          BRANCH="${{ steps.version.outputs.branch }}"
+          APK="androidApp/build/outputs/apk/release/androidApp-release.apk"
+          API="https://codeberg.org/api/v1/repos/CruxCoach/CruxCoach"
+
+          # Sanitize prerelease to valid JSON bool
+          case "$PRERELEASE" in true|false) ;; *) PRERELEASE=false ;; esac
+
+          # Push tag via git
           git config user.name "CruxCoach CI"
-          git config user.email "cruxcoach@noreply.codeberg.org"
-          export GIT_SSH_COMMAND="ssh -i $RUNNER_DEPLOY_KEY -o StrictHostKeyChecking=no"
-          git remote set-url origin git@codeberg.org:CruxCoach/CruxCoach.git
-          git tag -a "v$VERSION" -m "Release v$VERSION"
-          git push origin "v$VERSION"
+          git config user.email "ci@cruxcoach.local"
+          REMOTE_URL="https://x-access-token:${CODEBERG_TOKEN}@codeberg.org/CruxCoach/CruxCoach.git"
+          # Delete tag if it exists (from a previous failed run)
+          git tag -d "$TAG" 2>/dev/null || true
+          git push "$REMOTE_URL" ":refs/tags/$TAG" 2>/dev/null || true
+          curl -sS -o /dev/null -X DELETE \
+            -H "Authorization: token ${CODEBERG_TOKEN}" \
+            "${API}/tags/${TAG}"
+          git tag "$TAG"
+          git push "$REMOTE_URL" "$TAG"
+
+          # Create release via minimal POST + PATCH (full POST triggers
+          # intermittent Forgejo 500). Retry on transient failures.
+          for ATTEMPT in 1 2 3; do
+            HTTP_CODE=$(curl -sS -o /tmp/release.json -w '%{http_code}' \
+              -X POST "${API}/releases" \
+              -H "Authorization: token ${CODEBERG_TOKEN}" \
+              -H "Content-Type: application/json" \
+              -d "{\"tag_name\":\"$TAG\"}")
+            [ "$HTTP_CODE" = "201" ] && break
+            sleep 3
+          done
+          [ "$HTTP_CODE" = "201" ] || { cat /tmp/release.json; exit 1; }
+
+          RELEASE_ID=$(grep -o '"id":[0-9]*' /tmp/release.json | head -1 | grep -o '[0-9]*')
+
+          # Set name, body, and prerelease flag
+          PATCH_CODE=$(curl -sS -o /dev/null -w '%{http_code}' \
+            -X PATCH "${API}/releases/${RELEASE_ID}" \
+            -H "Authorization: token ${CODEBERG_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "$(printf '{"name":"%s","body":"Release %s","prerelease":%s}' \
+              "$NAME" "$NAME" "$PRERELEASE")")
+          [ "$PATCH_CODE" = "200" ] || { echo "PATCH failed: $PATCH_CODE"; exit 1; }
+
+          # Upload APK
+          curl -sS -X POST \
+            -H "Authorization: token ${CODEBERG_TOKEN}" \
+            -F "attachment=@${APK};filename=CruxCoach-${TAG}.apk" \
+            "${API}/releases/${RELEASE_ID}/assets"
+
+          echo "Release $NAME published with APK"

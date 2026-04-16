@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-04-16
+
+### Added
+- Move count for boulders, frame count for routes in browse and detail views
+- Detect already-imported board database during onboarding (skips download)
+- VPN and mobile data warning on local app share screen
+- APK downloads on Codeberg releases page
+
+### Fixed
+- Local app share — receiving device can now import the shared climb database
+- Progress bar stuck at 0% during initial board data import
+- Download progress jumping back and forth in status banner
+- Import crashes on older devices with large databases
+- Splash logo not visible in light mode
+
+### Changed
+- Consistent "Kilter Board" branding in README and Zapstore listing
+
 ## [0.1.0] - 2026-04-14
 
 ### Added

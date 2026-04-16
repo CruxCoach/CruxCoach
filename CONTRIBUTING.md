@@ -55,6 +55,55 @@ source ~/.bashrc   # or ~/.zshrc
 adb install androidApp/build/outputs/apk/debug/androidApp-debug.apk
 ```
 
+### Configuration templates
+
+Two example files ship with the repo so first-time contributors can see
+which keys the build expects without reading the Gradle scripts:
+
+| Template | Copy to | Purpose |
+|----------|---------|---------|
+| [`local.properties.example`](local.properties.example) | `local.properties` | SDK path, release signing keys, fork overrides |
+| [`.env.example`](.env.example) | `.env` | Zapstore publishing credentials (`zsp publish`) — maintainer / fork publishers only |
+
+Both target files are gitignored — never commit populated copies.
+
+### Release signing
+
+Debug builds need no signing setup — AGP uses the built-in debug keystore
+automatically. Release builds (`./gradlew :androidApp:assembleRelease`)
+**silently fall back to debug signing** if `RELEASE_STORE_FILE` is empty,
+which is convenient locally but means distribution builds are only trusted
+when you have explicitly configured a release keystore.
+
+1. Generate a release keystore (one-time, keep it outside the repo too):
+
+   ```bash
+   keytool -genkeypair -v \
+     -keystore .signing/release.jks \
+     -alias cruxcoach-release \
+     -keyalg RSA -keysize 4096 -validity 10000
+   ```
+
+2. Add the four keys to `local.properties` (see
+   [`local.properties.example`](local.properties.example)):
+
+   ```properties
+   RELEASE_STORE_FILE=.signing/release.jks
+   RELEASE_STORE_PASSWORD=<store-password>
+   RELEASE_KEY_ALIAS=cruxcoach-release
+   RELEASE_KEY_PASSWORD=<key-password>
+   ```
+
+3. Verify the APK after building:
+
+   ```bash
+   $ANDROID_SDK_ROOT/build-tools/<version>/apksigner verify --print-certs \
+     androidApp/build/outputs/apk/release/androidApp-release.apk
+   ```
+
+The `.signing/` directory is gitignored; keep the keystore and passwords
+off shared machines and out of version control.
+
 ### Project Structure
 
 ```
@@ -71,6 +120,47 @@ androidApp/                # Android app (Jetpack Compose)
 ├── ble/                   # Bluetooth board communication (Nordic UART)
 └── nostr/                 # Nostr relay pool, sync, announcements
 ```
+
+### Releases & CI (maintainer only)
+
+The release workflow (`.forgejo/workflows/release.yml`) runs **exclusively** on the maintainer's self-hosted Forgejo runner. Pull requests do **not** receive automated build or test feedback — the maintainer runs Gradle locally during review.
+
+The runner expects two environment variables to be defined in its execution environment (e.g. via systemd `Environment=` directives or the runner's config file):
+
+| Variable | Purpose |
+|----------|---------|
+| `CRUXCOACH_SECRETS_DIR` | Directory containing `local.properties`, `.signing/`, and `.env` for Zapstore publishing — kept outside the repo and never committed |
+| `ANDROID_SDK_ROOT` | Standard Android SDK location; the workflow auto-discovers `build-tools/<version>/apksigner` |
+
+The only repository secret used is `CODEBERG_TOKEN` (for creating Codeberg releases via the Forgejo API).
+
+Forks running their own Forgejo runner can reproduce the workflow by providing equivalent secrets and an `ANDROID_SDK_ROOT`; the workflow itself contains no host-specific paths.
+
+### Customizing for forks
+
+CruxCoach is GPLv3 — fork freely. The **name and logo** are reserved
+([`TRADEMARK.md`](TRADEMARK.md)); if you publish modified binaries to a
+wide audience, please rename and replace the launcher icon. App-launcher
+sources to replace are in [`logos/`](logos/) and the regeneration procedure
+is documented there.
+
+Maintainer-bound runtime constants are exposed as Gradle `BuildConfig`
+fields with sensible defaults. Override them in your fork by adding the
+following keys to `local.properties` — no source edits required:
+
+| `local.properties` key | What it sets | Default |
+|------------------------|--------------|---------|
+| `MAINTAINER_PUBKEY` | Recipient hex pubkey for in-app crash reports, dev-contact DMs, and announcement subscriptions | upstream maintainer |
+| `MAINTAINER_LIGHTNING_ADDRESS` | Lightning address shown for upstream-style donation flows | `cruxcoach@npub.cash` |
+| `MAINTAINER_KOFI_URL` | Ko-fi donation link surfaced in the Payments UI | `https://ko-fi.com/cruxcoach` |
+| `ANNOUNCE_NAMESPACE` | Nostr `L`/`l` tag namespace for announcement events | `com.cruxcoach.announce` — change this when you fork to avoid notification cross-talk with upstream users |
+
+The `zapstore.yaml` signing pubkey is maintainer-specific too. Forks
+publishing to Zapstore should replace it with their own zsp-managed
+identity (or remove the file if not publishing through Zapstore).
+
+The README's donation block points at the upstream maintainer — update it
+to your own channels when rebranding.
 
 ---
 
@@ -100,7 +190,7 @@ These are non-negotiable for all contributions.
 
 ### Language
 - Code is written in English.
-- UI strings are in German (primary) and English. Both `values/strings.xml` and `values-en/strings.xml` must always be updated together.
+- UI strings live in `values/strings.xml` (English — the default/fallback) and `values-de/strings.xml` (German). Both must always be updated together when you add or change a UI string. The empty `values-en/strings.xml` is only a locale-detection marker — do not edit it by hand.
 
 ### Dependencies
 - Constructor injection via Hilt. No global mutable singletons.
@@ -134,7 +224,7 @@ Before submitting a PR:
 - [ ] Code compiles: `./gradlew :androidApp:assembleDebug`
 - [ ] Shared tests pass: `./gradlew :shared:testDebugUnitTest`
 - [ ] Android tests pass: `./gradlew :androidApp:testDebugUnitTest`
-- [ ] Both `strings.xml` files updated (if UI strings changed)
+- [ ] `values/strings.xml` (en) and `values-de/strings.xml` both updated (if UI strings changed)
 - [ ] No new warnings introduced
 - [ ] No files exceed ~500 lines
 

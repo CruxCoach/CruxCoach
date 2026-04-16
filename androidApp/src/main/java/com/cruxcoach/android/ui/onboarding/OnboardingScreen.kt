@@ -329,13 +329,29 @@ private fun BoardSetupStep(
                     textAlign = TextAlign.Center,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                Button(
-                    onClick = onNavigateToSync,
-                    modifier = Modifier.fillMaxWidth().testTag("onboarding_sync_button"),
-                    colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Text(stringResource(R.string.onboarding_board_sync), fontWeight = FontWeight.Bold)
+                if (state.boardDataImported) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.padding(vertical = 4.dp)
+                    ) {
+                        Icon(Icons.Default.CheckCircle, null, tint = SuccessGreen, modifier = Modifier.size(20.dp))
+                        Text(
+                            stringResource(R.string.onboarding_board_db_imported),
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = SuccessGreen
+                        )
+                    }
+                } else {
+                    Button(
+                        onClick = onNavigateToSync,
+                        modifier = Modifier.fillMaxWidth().testTag("onboarding_sync_button"),
+                        colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text(stringResource(R.string.onboarding_board_sync), fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }

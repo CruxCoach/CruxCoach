@@ -24,8 +24,8 @@ android {
         applicationId = "com.cruxcoach.android"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.1.1"
 
         // Only bundle native libs for ARM — removes MIPS/x86 bloat from
         // quartz-android's transitive JNA + secp256k1 + libsodium.
@@ -34,6 +34,19 @@ android {
         }
 
         resourceConfigurations += listOf("en", "de")
+
+        // Maintainer-bound constants exposed as BuildConfig fields so forks
+        // can override them in their own local.properties without source
+        // edits. See CONTRIBUTING.md "Customizing for forks" and
+        // TRADEMARK.md for the rationale.
+        buildConfigField("String", "MAINTAINER_PUBKEY",
+            "\"${localProps.getProperty("MAINTAINER_PUBKEY", "e75a185c019d09049d5fcb0e29a2cc9bfd016ec0f6d892fc98f6ffe0181a480d")}\"")
+        buildConfigField("String", "MAINTAINER_KOFI_URL",
+            "\"${localProps.getProperty("MAINTAINER_KOFI_URL", "https://ko-fi.com/cruxcoach")}\"")
+        buildConfigField("String", "MAINTAINER_LIGHTNING_ADDRESS",
+            "\"${localProps.getProperty("MAINTAINER_LIGHTNING_ADDRESS", "cruxcoach@npub.cash")}\"")
+        buildConfigField("String", "ANNOUNCE_NAMESPACE",
+            "\"${localProps.getProperty("ANNOUNCE_NAMESPACE", "com.cruxcoach.announce")}\"")
     }
 
     externalNativeBuild {
@@ -93,6 +106,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
 }

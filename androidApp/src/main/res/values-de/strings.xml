@@ -19,6 +19,7 @@
     <string name="onboarding_board_sync">Board-Daten synchronisieren</string>
     <string name="onboarding_board_db_title">Board-Datenbank</string>
     <string name="onboarding_board_db_subtitle">Climbs, Bewertungen und Statistiken für dein Kilter Board.</string>
+    <string name="onboarding_board_db_imported">Board-Datenbank bereits geladen</string>
     <string name="onboarding_kilter_title">Kilter Logbook importieren</string>
     <string name="onboarding_kilter_desc">Hast du einen Kilter Account? Importiere deine Begehungen und Projekte.</string>
     <string name="onboarding_kilter_credentials_hint">Deine Zugangsdaten werden nur für den Import verwendet und können danach verworfen werden.</string>
@@ -187,7 +188,7 @@
     <string name="settings_share_stop">Stoppen</string>
     <string name="settings_share_network">Netzwerk: %s</string>
     <string name="settings_share_password">Passwort: %s</string>
-    <string name="settings_share_mobile_data_warning">Wichtig: Mobile Daten auf dem anderen Gerät ausschalten, damit der Download über den Hotspot läuft.</string>
+    <string name="settings_share_mobile_data_warning">Wichtig: VPN auf beiden Geräten ausschalten. Mobile Daten auf dem anderen Gerät ausschalten, damit der Download über den Hotspot läuft.</string>
     <string name="settings_share_step1">Schritt 1: QR-Code scannen, um mit dem Hotspot zu verbinden</string>
     <string name="settings_share_step2">Schritt 2: Diesen QR-Code scannen oder URL öffnen, um die App herunterzuladen</string>
     <string name="settings_share_permissions_needed">Berechtigungen benötigt: %s. Bitte in den App-Einstellungen erlauben.</string>
@@ -842,7 +843,7 @@
     <string name="ble_unknown_climb">Unbekannter Climb</string>
     <string name="ble_your_climb">Dein Climb</string>
     <string name="board_ascent_tries">%d Tries</string>
-    <string name="board_climb_frames">Frames</string>
+    <string name="board_climb_frames">%d Frames</string>
     <string name="board_climb_sends_count">%d sends</string>
     <string name="board_detail_benchmark">Benchmark</string>
     <string name="board_detail_frames">Frames</string>
@@ -1150,8 +1151,10 @@
     <string name="sync_extracting">Entpacke…</string>
     <string name="sync_importing">Importiere…</string>
     <string name="sync_importing_climbs">Climbs: %1$d / %2$d</string>
+    <string name="sync_importing_climbs_bulk">Importiere %1$d Climbs…</string>
     <string name="sync_importing_layout">Importiere Layout…</string>
     <string name="sync_importing_stats">Stats: %1$d / %2$d</string>
+    <string name="sync_importing_stats_bulk">Importiere %1$d Stats…</string>
     <string name="sync_running">Sync läuft…</string>
     <string name="workout_reps_label">Reps</string>
     <string name="workout_set_label">Set</string>

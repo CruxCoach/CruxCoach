@@ -95,15 +95,16 @@ internal fun ClimbCard(
                             } else Modifier
                         )
                     }
-                    Text(
-                        stringResource(R.string.board_climb_moves, moveCount),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    if (climb.framesCount > 1) {
+                    if (climb.isRoute) {
                         Text(
                             stringResource(R.string.board_climb_frames, climb.framesCount),
-                            style = MaterialTheme.typography.labelSmall,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        Text(
+                            stringResource(R.string.board_climb_moves, moveCount),
+                            style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }

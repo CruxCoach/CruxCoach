@@ -17,7 +17,8 @@ CREATE TABLE aurora_climb (
     frames_pace INTEGER NOT NULL DEFAULT 0,
     hsm INTEGER NOT NULL DEFAULT 0,
     frames BLOB AS kotlin.String NOT NULL,
-    is_deleted INTEGER NOT NULL DEFAULT 0
+    is_deleted INTEGER NOT NULL DEFAULT 0,
+    move_count INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE aurora_climb_stat (
@@ -133,7 +134,7 @@ CREATE VIEW climb_browse AS
 SELECT
     c.uuid, c.name, c.setter_username, c.frames_count, c.layout_id,
     COALESCE(c.description, '') AS description,
-    c.is_nomatch, c.frames_pace, c.hsm,
+    c.is_nomatch, c.frames_pace, c.hsm, c.move_count,
     cs.angle, cs.difficulty_average, cs.quality_average,
     cs.ascensionist_count, cs.benchmark_difficulty
 FROM aurora_climb c
@@ -145,8 +146,8 @@ WHERE c.is_listed = 1;
 upsertClimb:
 INSERT OR REPLACE INTO aurora_climb(uuid, layout_id, setter_username, name,
     frames_count, is_listed, edge_left, edge_right, edge_bottom, edge_top, created_at,
-    description, is_nomatch, frames_pace, hsm, frames)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+    description, is_nomatch, frames_pace, hsm, frames, move_count)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 upsertClimbStat:
 INSERT OR REPLACE INTO aurora_climb_stat(climb_uuid, angle, display_difficulty,
