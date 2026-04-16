@@ -188,7 +188,7 @@
     <string name="settings_share_stop">Stop</string>
     <string name="settings_share_network">Network: %s</string>
     <string name="settings_share_password">Password: %s</string>
-    <string name="settings_share_mobile_data_warning">Important: Turn off mobile data on the other device so the download goes through the hotspot.</string>
+    <string name="settings_share_mobile_data_warning">Important: Turn off VPN on both devices. Turn off mobile data on the other device so the download goes through the hotspot.</string>
     <string name="settings_share_step1">Step 1: Scan QR code to connect to the hotspot</string>
     <string name="settings_share_step2">Step 2: Scan this QR code or open the URL to download the app</string>
     <string name="settings_share_permissions_needed">Permissions needed: %s. Please allow in app settings.</string>

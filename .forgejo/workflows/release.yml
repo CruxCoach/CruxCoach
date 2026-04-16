@@ -1,8 +1,8 @@
-name: Release to Zapstore
+name: Release
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
 
 jobs:
   release:
@@ -17,15 +17,31 @@ jobs:
         id: version
         run: |
           VERSION_NAME=$(grep 'versionName' androidApp/build.gradle.kts | head -1 | grep -Po '"\K[^"]+')
+          BRANCH="${GITHUB_REF_NAME}"
+          if [ "$BRANCH" = "dev" ]; then
+            SHORT_SHA=$(git rev-parse --short HEAD)
+            TAG_NAME="v${VERSION_NAME}-dev.${SHORT_SHA}"
+            RELEASE_NAME="v${VERSION_NAME}-dev (${SHORT_SHA})"
+            PRERELEASE=true
+          else
+            TAG_NAME="v${VERSION_NAME}"
+            RELEASE_NAME="v${VERSION_NAME}"
+            PRERELEASE=false
+          fi
+
           echo "version=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG_NAME" >> "$GITHUB_OUTPUT"
+          echo "release_name=$RELEASE_NAME" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
 
           # Check if tag already exists
-          if git rev-parse "v$VERSION_NAME" >/dev/null 2>&1; then
+          if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "Tag v$VERSION_NAME already exists — skipping release"
+            echo "Tag $TAG_NAME already exists — skipping release"
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
-            echo "New version: $VERSION_NAME"
+            echo "New release: $RELEASE_NAME"
           fi
 
       - name: Copy signing config
@@ -47,7 +63,7 @@ jobs:
           echo "APK verified successfully"
 
       - name: Publish to Zapstore
-        if: steps.version.outputs.skip == 'false'
+        if: steps.version.outputs.skip == 'false' && steps.version.outputs.branch == 'main'
         run: |
           cp $CRUXCOACH_SECRETS_DIR/.env .env
           zsp publish --skip-preview --skip-certificate-linking --quiet
@@ -55,10 +71,48 @@ jobs:
       - name: Tag release
         if: steps.version.outputs.skip == 'false'
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
+          TAG="${{ steps.version.outputs.tag }}"
           git config user.name "CruxCoach CI"
           git config user.email "cruxcoach@noreply.codeberg.org"
           export GIT_SSH_COMMAND="ssh -i $RUNNER_DEPLOY_KEY -o StrictHostKeyChecking=no"
           git remote set-url origin git@codeberg.org:CruxCoach/CruxCoach.git
-          git tag -a "v$VERSION" -m "Release v$VERSION"
-          git push origin "v$VERSION"
+          git tag -a "$TAG" -m "Release $TAG"
+          git push origin "$TAG"
+
+      - name: Create Codeberg release
+        if: steps.version.outputs.skip == 'false'
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          NAME="${{ steps.version.outputs.release_name }}"
+          PRERELEASE="${{ steps.version.outputs.prerelease }}"
+          APK="androidApp/build/outputs/apk/release/androidApp-release.apk"
+          BRANCH="${{ steps.version.outputs.branch }}"
+
+          # Create release
+          RELEASE_RESPONSE=$(curl -s -X POST \
+            -H "Authorization: token ${CODEBERG_TOKEN}" \
+            -H "Content-Type: application/json" \
+            "https://codeberg.org/api/v1/repos/CruxCoach/CruxCoach/releases" \
+            -d "{
+              \"tag_name\": \"$TAG\",
+              \"target_commitish\": \"$BRANCH\",
+              \"name\": \"$NAME\",
+              \"body\": \"Release $NAME\",
+              \"prerelease\": $PRERELEASE
+            }")
+
+          RELEASE_ID=$(echo "$RELEASE_RESPONSE" | jq -r '.id')
+          if [ "$RELEASE_ID" = "null" ] || [ -z "$RELEASE_ID" ]; then
+            echo "Failed to create release:"
+            echo "$RELEASE_RESPONSE"
+            exit 1
+          fi
+          echo "Created release ID: $RELEASE_ID"
+
+          # Upload APK as attachment
+          curl -s -X POST \
+            -H "Authorization: token ${CODEBERG_TOKEN}" \
+            -F "attachment=@${APK};filename=CruxCoach-${TAG}.apk" \
+            "https://codeberg.org/api/v1/repos/CruxCoach/CruxCoach/releases/${RELEASE_ID}/assets"
+
+          echo "Release $NAME published with APK attachment"
