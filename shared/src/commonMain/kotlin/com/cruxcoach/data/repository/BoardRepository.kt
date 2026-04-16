@@ -27,16 +27,19 @@ data class AuroraClimbWithStats(
     val hsm: Long = 0,
     val benchmarkDifficulty: Double = 0.0,
     val faUsername: String? = null,
-    val faAt: String? = null
+    val faAt: String? = null,
+    /** Pre-computed move count from DB. 0 = not yet computed (fallback to live parse). */
+    val storedMoveCount: Long = 0
 ) {
-    /** Lazy-cached move count — avoids regex parsing on every access. */
-    val moveCount: Int by lazy {
-        if (frames.isNotEmpty()) BoardClimbParser.estimateMoveCount(BoardClimbParser.parseFrames(frames))
-        else framesCount.toInt()
-    }
+    /** True when this climb is a multi-frame route (not a boulder). */
+    val isRoute: Boolean get() = framesCount > 1
 
-    @Deprecated("Use moveCount property", replaceWith = ReplaceWith("moveCount"))
-    fun estimateMoveCount(): Int = moveCount
+    /** Move count: uses pre-computed DB value, falls back to live parse from frames. */
+    val moveCount: Int by lazy {
+        if (storedMoveCount > 0) storedMoveCount.toInt()
+        else if (frames.isNotEmpty()) BoardClimbParser.estimateMoveCount(BoardClimbParser.parseFrames(frames))
+        else 0
+    }
 }
 
 data class AuroraAscentWithClimb(
@@ -197,7 +200,8 @@ interface BoardWriteOperations {
     fun upsertClimb(uuid: String, layoutId: Long, setter: String?, name: String, frames: String,
                     framesCount: Long, isListed: Long, edgeLeft: Long?, edgeRight: Long?,
                     edgeBottom: Long?, edgeTop: Long?, createdAt: String?,
-                    description: String = "", isNomatch: Long = 0, framesPace: Long = 0, hsm: Long = 0)
+                    description: String = "", isNomatch: Long = 0, framesPace: Long = 0, hsm: Long = 0,
+                    moveCount: Long = 0)
     fun upsertClimbStat(climbUuid: String, angle: Long, displayDifficulty: Double?,
                         difficultyAverage: Double?, qualityAverage: Double?,
                         ascensionistCount: Long?, benchmarkDifficulty: Double?,

@@ -796,7 +796,7 @@
     <string name="ble_unknown_climb">Unknown climb</string>
     <string name="ble_your_climb">Your climb</string>
     <string name="board_ascent_tries">%d Tries</string>
-    <string name="board_climb_frames">Frames</string>
+    <string name="board_climb_frames">%d frames</string>
     <string name="board_climb_sends_count">%d sends</string>
     <string name="board_detail_benchmark">Benchmark</string>
     <string name="board_detail_frames">Frames</string>

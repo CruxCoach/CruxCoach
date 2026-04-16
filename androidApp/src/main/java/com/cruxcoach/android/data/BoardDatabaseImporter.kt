@@ -3,6 +3,7 @@ package com.cruxcoach.android.data
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import com.cruxcoach.data.repository.BoardRepository
+import com.cruxcoach.domain.board.BoardClimbParser
 import java.io.File
 import java.io.FileOutputStream
 
@@ -121,6 +122,8 @@ class BoardDatabaseImporter(
             }
         }
 
+        backfillMoveCounts()
+
         if (boardRepository.getSyncState("metadata_v7") == null) {
             boardRepository.upsertSyncState("metadata_v7", "done")
         }
@@ -208,6 +211,8 @@ class BoardDatabaseImporter(
                 }
                 climbs to stats
             }
+
+            backfillMoveCounts()
 
             if (boardRepository.getSyncState("metadata_v7") == null) {
                 boardRepository.upsertSyncState("metadata_v7", "done")
@@ -313,6 +318,51 @@ class BoardDatabaseImporter(
     private fun resolveStatsTable(db: SQLiteDatabase): String =
         if (hasTable(db, "climb_stats")) "climb_stats" else "aurora_climb_stat"
 
+    /** Compute move count for a single-frame boulder from its frames string. */
+    private fun computeMoveCount(frames: String): Long {
+        if (frames.isEmpty() || frames.contains(",")) return 0
+        return BoardClimbParser.estimateMoveCount(BoardClimbParser.parseFrames(frames)).toLong()
+    }
+
+    /**
+     * Batch-update move_count for all boulders (single-frame climbs) where
+     * move_count is still 0. Called after bulk ATTACH imports where frames
+     * were inserted via SQL without Kotlin-side parsing.
+     */
+    private fun backfillMoveCounts() {
+        val db = openTargetDb()
+        try {
+            // Only process single-frame boulders with missing move_count
+            val cursor = db.rawQuery(
+                "SELECT uuid, frames FROM aurora_climb WHERE move_count = 0 AND frames_count = 1",
+                null
+            )
+            db.beginTransaction()
+            try {
+                cursor.use {
+                    val stmt = db.compileStatement(
+                        "UPDATE aurora_climb SET move_count = ? WHERE uuid = ?"
+                    )
+                    while (it.moveToNext()) {
+                        val uuid = it.getString(0)
+                        val frames = it.getString(1) ?: ""
+                        val moves = computeMoveCount(frames)
+                        if (moves > 0) {
+                            stmt.bindLong(1, moves)
+                            stmt.bindString(2, uuid)
+                            stmt.executeUpdateDelete()
+                        }
+                    }
+                }
+                db.setTransactionSuccessful()
+            } finally {
+                db.endTransaction()
+            }
+        } finally {
+            db.close()
+        }
+    }
+
     // ── Table import methods (raw Aurora schema) ─────────────────────
 
     /**
@@ -334,17 +384,25 @@ class BoardDatabaseImporter(
             onProgress?.invoke(0, 0, total)
             targetDb.beginTransaction()
             try {
+                // Copy move_count from CruxCoach-schema sources; Kilter sources lack the column
+                val hasMoveCount = srcTable == "aurora_climb" && hasTable(rawDb, "aurora_climb") &&
+                    rawDb.rawQuery("PRAGMA table_info(aurora_climb)", null).use { c ->
+                        generateSequence { if (c.moveToNext()) c.getString(1) else null }
+                            .any { it == "move_count" }
+                    }
+                val moveCountExpr = if (hasMoveCount) "COALESCE(move_count, 0)" else "0"
                 targetDb.execSQL("""
                     INSERT OR REPLACE INTO aurora_climb(
                         uuid, layout_id, setter_username, name, frames,
                         frames_count, is_listed, edge_left, edge_right,
                         edge_bottom, edge_top, created_at,
-                        description, is_nomatch, frames_pace, hsm)
+                        description, is_nomatch, frames_pace, hsm, move_count)
                     SELECT uuid, layout_id, setter_username, name, frames,
                            frames_count, is_listed, edge_left, edge_right,
                            edge_bottom, edge_top, created_at,
                            COALESCE(description, ''), COALESCE(is_nomatch, 0),
-                           COALESCE(frames_pace, 0), COALESCE(hsm, 0)
+                           COALESCE(frames_pace, 0), COALESCE(hsm, 0),
+                           $moveCountExpr
                     FROM src.$srcTable WHERE is_listed = 1
                 """)
                 targetDb.setTransactionSuccessful()
@@ -395,15 +453,18 @@ class BoardDatabaseImporter(
                     continue
                 }
                 inserted++
+                val frames = it.getString(4)
+                val moves = computeMoveCount(frames)
                 boardRepository.upsertClimb(
                     uuid, it.getLong(1), if (it.isNull(2)) null else it.getString(2),
-                    it.getString(3), it.getString(4), it.getLong(5), it.getLong(6),
+                    it.getString(3), frames, it.getLong(5), it.getLong(6),
                     if (it.isNull(7)) null else it.getLong(7),
                     if (it.isNull(8)) null else it.getLong(8),
                     if (it.isNull(9)) null else it.getLong(9),
                     if (it.isNull(10)) null else it.getLong(10),
                     if (it.isNull(11)) null else it.getString(11),
-                    it.getString(12), it.getLong(13), it.getLong(14), it.getLong(15)
+                    it.getString(12), it.getLong(13), it.getLong(14), it.getLong(15),
+                    moveCount = moves
                 )
                 if (inserted % BATCH_SIZE == 0) onProgress?.invoke(inserted, scanned, total)
             }
@@ -574,9 +635,9 @@ class BoardDatabaseImporter(
     private fun importPlacements(rawDb: SQLiteDatabase): Int {
         val isCruxCoachSchema = hasTable(rawDb, "aurora_placement")
         val query = if (isCruxCoachSchema) {
-            """SELECT p.id, p.hole_id, p.set_id, h.x, h.y
-               FROM aurora_placement p
-               JOIN aurora_hole h ON p.hole_id = h.id"""
+            // aurora_placement already has x/y pre-joined; PK is placement_id
+            """SELECT placement_id, hole_id, set_id, x, y
+               FROM aurora_placement"""
         } else {
             """SELECT p.id, p.hole_id, p.set_id, h.x, h.y
                FROM placements p
@@ -623,10 +684,13 @@ class BoardDatabaseImporter(
     }
 
     private fun importProductSizes(rawDb: SQLiteDatabase) {
-        val table = if (hasTable(rawDb, "product_sizes")) "product_sizes" else "aurora_product_size"
+        val isKilter = hasTable(rawDb, "product_sizes")
+        val table = if (isKilter) "product_sizes" else "aurora_product_size"
+        // Kilter schema has is_listed; CruxCoach aurora_product_size does not
+        val filter = if (isKilter) " WHERE is_listed = 1" else ""
         val cursor = rawDb.rawQuery(
             """SELECT id, product_id, name, edge_left, edge_right, edge_bottom, edge_top, image_filename
-               FROM $table WHERE is_listed = 1""",
+               FROM $table$filter""",
             null
         )
         cursor.use {
@@ -646,12 +710,14 @@ class BoardDatabaseImporter(
     }
 
     private fun importBoardImages(rawDb: SQLiteDatabase) {
-        val table = if (hasTable(rawDb, "product_sizes_layouts_sets"))
-            "product_sizes_layouts_sets" else "aurora_board_image"
+        val isKilter = hasTable(rawDb, "product_sizes_layouts_sets")
+        val table = if (isKilter) "product_sizes_layouts_sets" else "aurora_board_image"
+        // Kilter schema has is_listed; CruxCoach aurora_board_image does not
+        val filter = if (isKilter) " AND is_listed = 1" else ""
         val cursor = rawDb.rawQuery(
             """SELECT id, product_size_id, layout_id, set_id, image_filename
                FROM $table
-               WHERE image_filename IS NOT NULL AND is_listed = 1""",
+               WHERE image_filename IS NOT NULL$filter""",
             null
         )
         cursor.use {

@@ -54,7 +54,6 @@ import com.cruxcoach.android.ui.common.SyncStatusBannerSlot
 import com.cruxcoach.android.ui.theme.*
 import com.cruxcoach.android.util.GradeDisplayHelper
 import com.cruxcoach.data.repository.AngleOption
-import com.cruxcoach.domain.board.BoardClimbParser
 import com.cruxcoach.domain.board.IntensityZones
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
@@ -449,7 +448,7 @@ private fun ClimbDetailPageContent(
                             if (state.playback.isRoute) {
                                 StatItem(stringResource(R.string.board_detail_frames), "${state.playback.totalFrames}")
                             } else {
-                                StatItem(stringResource(R.string.board_moves), "${BoardClimbParser.estimateMoveCount(state.holds)}")
+                                StatItem(stringResource(R.string.board_moves), "${climb.moveCount}")
                             }
                             StatItem(stringResource(R.string.board_quality), climb.qualityAverage?.let { "%.1f".format(it) } ?: "--")
                             StatItem(stringResource(R.string.board_sends), "${climb.ascensionistCount ?: 0}")

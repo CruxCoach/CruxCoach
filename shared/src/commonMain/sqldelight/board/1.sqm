@@ -1,0 +1,18 @@
+-- Migration from version 1 to 2: add move_count column for pre-computed move count.
+-- frames_count stays as-is (1 = boulder, >1 = route frame count).
+-- move_count stores the actual number of moves (hand + finish holds - start holds).
+
+ALTER TABLE aurora_climb ADD COLUMN move_count INTEGER NOT NULL DEFAULT 0;
+
+-- Recreate climb_browse VIEW to include move_count.
+DROP VIEW IF EXISTS climb_browse;
+CREATE VIEW climb_browse AS
+SELECT
+    c.uuid, c.name, c.setter_username, c.frames_count, c.layout_id,
+    COALESCE(c.description, '') AS description,
+    c.is_nomatch, c.frames_pace, c.hsm, c.move_count,
+    cs.angle, cs.difficulty_average, cs.quality_average,
+    cs.ascensionist_count, cs.benchmark_difficulty
+FROM aurora_climb c
+INNER JOIN aurora_climb_stat cs ON c.uuid = cs.climb_uuid
+WHERE c.is_listed = 1;

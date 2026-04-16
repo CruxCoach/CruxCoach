@@ -18,7 +18,8 @@ class BoardRepositoryImpl(
         ascensionistCount: Long?, description: String,
         isNomatch: Long, framesPace: Long, hsm: Long,
         benchmarkDifficulty: Double = 0.0,
-        faUsername: String? = null, faAt: String? = null
+        faUsername: String? = null, faAt: String? = null,
+        moveCount: Long = 0
     ) = AuroraClimbWithStats(
         uuid = uuid, layoutId = layoutId, setterUsername = setterUsername,
         name = name, frames = frames, framesCount = framesCount,
@@ -26,7 +27,8 @@ class BoardRepositoryImpl(
         ascensionistCount = ascensionistCount, description = description,
         isNomatch = isNomatch != 0L, framesPace = framesPace, hsm = hsm,
         benchmarkDifficulty = benchmarkDifficulty,
-        faUsername = faUsername, faAt = faAt
+        faUsername = faUsername, faAt = faAt,
+        storedMoveCount = moveCount
     )
 
     // ── Climb Queries ──────────────────────────────────────────
@@ -36,7 +38,8 @@ class BoardRepositoryImpl(
         it.uuid, it.layout_id, it.setter_username, it.name, "", it.frames_count,
         it.difficulty_average, it.quality_average, it.ascensionist_count,
         it.description, it.is_nomatch, it.frames_pace, it.hsm,
-        benchmarkDifficulty = it.benchmark_difficulty ?: 0.0
+        benchmarkDifficulty = it.benchmark_difficulty ?: 0.0,
+        moveCount = it.move_count
     )
 
     override fun searchClimbsByName(query: String, angle: Int, layoutId: Int, sortField: ClimbSortField, sortDirection: SortDirection, limit: Int, offset: Int, climbType: ClimbTypeFilter): List<AuroraClimbWithStats> {
@@ -58,7 +61,7 @@ class BoardRepositoryImpl(
 
     override fun getClimbByUuid(uuid: String, angle: Int): AuroraClimbWithStats? {
         return q.getClimbByUuid(angle.toLong(), uuid).executeAsOneOrNull()?.let {
-            mapClimb(it.uuid, it.layout_id, it.setter_username, it.name, it.frames, it.frames_count, it.difficulty_average, it.quality_average, it.ascensionist_count, it.description, it.is_nomatch, it.frames_pace, it.hsm, benchmarkDifficulty = it.benchmark_difficulty ?: 0.0, faUsername = it.fa_username, faAt = it.fa_at)
+            mapClimb(it.uuid, it.layout_id, it.setter_username, it.name, it.frames, it.frames_count, it.difficulty_average, it.quality_average, it.ascensionist_count, it.description, it.is_nomatch, it.frames_pace, it.hsm, benchmarkDifficulty = it.benchmark_difficulty ?: 0.0, faUsername = it.fa_username, faAt = it.fa_at, moveCount = it.move_count)
         }
     }
 
@@ -249,11 +252,12 @@ class BoardRepositoryImpl(
         uuid: String, layoutId: Long, setter: String?, name: String, frames: String,
         framesCount: Long, isListed: Long, edgeLeft: Long?, edgeRight: Long?,
         edgeBottom: Long?, edgeTop: Long?, createdAt: String?,
-        description: String, isNomatch: Long, framesPace: Long, hsm: Long
+        description: String, isNomatch: Long, framesPace: Long, hsm: Long,
+        moveCount: Long
     ) {
         q.upsertClimb(uuid, layoutId, setter, name, framesCount,
             isListed, edgeLeft, edgeRight, edgeBottom, edgeTop, createdAt,
-            description, isNomatch, framesPace, hsm, frames)
+            description, isNomatch, framesPace, hsm, frames, moveCount)
     }
 
     override fun upsertClimbStat(
