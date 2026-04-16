@@ -115,12 +115,27 @@ jobs:
         env:
           CODEBERG_TOKEN: ${{ secrets.CODEBERG_TOKEN }}
         run: |
+          # Debug: verify token is available
+          if [ -z "${CODEBERG_TOKEN}" ]; then
+            echo "ERROR: CODEBERG_TOKEN is empty!"
+            exit 1
+          fi
+          TOKEN_LEN=${#CODEBERG_TOKEN}
+          echo "Token length: $TOKEN_LEN chars"
+
           TAG="${{ steps.version.outputs.tag }}"
           NAME="${{ steps.version.outputs.release_name }}"
           PRERELEASE="${{ steps.version.outputs.prerelease }}"
           SHA="${{ steps.version.outputs.sha }}"
           APK="androidApp/build/outputs/apk/release/androidApp-release.apk"
           API="https://codeberg.org/api/v1/repos/CruxCoach/CruxCoach"
+
+          # Verify token auth works
+          AUTH_CHECK=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: token ${CODEBERG_TOKEN}" \
+            "${API}")
+          echo "Auth check status: $AUTH_CHECK"
+          echo "Target SHA: $SHA"
 
           # Create release (API creates the tag from target SHA)
           RELEASE_RESPONSE=$(curl -s -X POST \
