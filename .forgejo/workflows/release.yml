@@ -119,6 +119,21 @@ jobs:
           git tag -a "$TAG" -m "Release $TAG"
           git push "https://x-access-token:${CODEBERG_TOKEN}@codeberg.org/CruxCoach/CruxCoach.git" "$TAG"
 
+          # Debug: verify token scopes and permissions
+          echo "=== Token scopes ==="
+          curl -sS -D- -o /dev/null \
+            -H "Authorization: token ${CODEBERG_TOKEN}" \
+            "https://codeberg.org/api/v1/user" 2>&1 | grep -iE 'x-(oauth|gitea)-scopes|HTTP/'
+
+          echo "=== Repo permissions ==="
+          curl -sS -H "Authorization: token ${CODEBERG_TOKEN}" \
+            "${API}" | sed -n 's/.*"permissions":\({[^}]*}\).*/\1/p'
+
+          echo "=== Tag visible? ==="
+          curl -sS -o /dev/null -w "HTTP: %{http_code}\n" \
+            -H "Authorization: token ${CODEBERG_TOKEN}" \
+            "${API}/git/refs/tags/${TAG}"
+
           # Create release. target_commitish must be an existing branch name —
           # Forgejo validates it even when the tag already exists, and falls
           # back to the default branch (main) if omitted, causing 404 when
