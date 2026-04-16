@@ -25,6 +25,7 @@ class BoardDatabaseImporter(
 ) {
     companion object {
         private const val BATCH_SIZE = 500
+        private const val BULK_BATCH_SIZE = 10_000
     }
 
     /** Returns true if board data has already been imported (including layout data). */
@@ -382,33 +383,44 @@ class BoardDatabaseImporter(
             val total = queryLong(targetDb, "SELECT COUNT(*) FROM src.$srcTable WHERE is_listed = 1").toInt()
             val countBefore = queryLong(targetDb, "SELECT COUNT(*) FROM aurora_climb")
             onProgress?.invoke(0, 0, total)
-            targetDb.beginTransaction()
-            try {
-                // Copy move_count from CruxCoach-schema sources; Kilter sources lack the column
-                val hasMoveCount = srcTable == "aurora_climb" && hasTable(rawDb, "aurora_climb") &&
-                    rawDb.rawQuery("PRAGMA table_info(aurora_climb)", null).use { c ->
-                        generateSequence { if (c.moveToNext()) c.getString(1) else null }
-                            .any { it == "move_count" }
-                    }
-                val moveCountExpr = if (hasMoveCount) "COALESCE(move_count, 0)" else "0"
-                targetDb.execSQL("""
-                    INSERT OR REPLACE INTO aurora_climb(
-                        uuid, layout_id, setter_username, name, frames,
-                        frames_count, is_listed, edge_left, edge_right,
-                        edge_bottom, edge_top, created_at,
-                        description, is_nomatch, frames_pace, hsm, move_count)
-                    SELECT uuid, layout_id, setter_username, name, frames,
-                           frames_count, is_listed, edge_left, edge_right,
-                           edge_bottom, edge_top, created_at,
-                           COALESCE(description, ''), COALESCE(is_nomatch, 0),
-                           COALESCE(frames_pace, 0), COALESCE(hsm, 0),
-                           $moveCountExpr
-                    FROM src.$srcTable WHERE is_listed = 1
-                """)
-                targetDb.setTransactionSuccessful()
-            } finally {
-                targetDb.endTransaction()
+
+            // Copy move_count from CruxCoach-schema sources; Kilter sources lack the column
+            val hasMoveCount = srcTable == "aurora_climb" && hasTable(rawDb, "aurora_climb") &&
+                rawDb.rawQuery("PRAGMA table_info(aurora_climb)", null).use { c ->
+                    generateSequence { if (c.moveToNext()) c.getString(1) else null }
+                        .any { it == "move_count" }
+                }
+            val moveCountExpr = if (hasMoveCount) "COALESCE(move_count, 0)" else "0"
+
+            // Import in batches for progress reporting
+            var offset = 0
+            while (offset < total) {
+                targetDb.beginTransaction()
+                try {
+                    targetDb.execSQL("""
+                        INSERT OR REPLACE INTO aurora_climb(
+                            uuid, layout_id, setter_username, name, frames,
+                            frames_count, is_listed, edge_left, edge_right,
+                            edge_bottom, edge_top, created_at,
+                            description, is_nomatch, frames_pace, hsm, move_count)
+                        SELECT uuid, layout_id, setter_username, name, frames,
+                               frames_count, is_listed, edge_left, edge_right,
+                               edge_bottom, edge_top, created_at,
+                               COALESCE(description, ''), COALESCE(is_nomatch, 0),
+                               COALESCE(frames_pace, 0), COALESCE(hsm, 0),
+                               $moveCountExpr
+                        FROM src.$srcTable WHERE is_listed = 1
+                        LIMIT $BULK_BATCH_SIZE OFFSET $offset
+                    """)
+                    targetDb.setTransactionSuccessful()
+                } finally {
+                    targetDb.endTransaction()
+                }
+                offset += BULK_BATCH_SIZE
+                val scanned = offset.coerceAtMost(total)
+                onProgress?.invoke(scanned, scanned, total)
             }
+
             val countAfter = queryLong(targetDb, "SELECT COUNT(*) FROM aurora_climb")
             val inserted = (countAfter - countBefore).toInt()
             onProgress?.invoke(inserted, total, total)
@@ -489,22 +501,32 @@ class BoardDatabaseImporter(
             val total = queryLong(targetDb, "SELECT COUNT(*) FROM src.$srcTable").toInt()
             val countBefore = queryLong(targetDb, "SELECT COUNT(*) FROM aurora_climb_stat")
             onProgress?.invoke(0, 0, total)
-            targetDb.beginTransaction()
-            try {
-                targetDb.execSQL("""
-                    INSERT OR REPLACE INTO aurora_climb_stat(
-                        climb_uuid, angle, display_difficulty, difficulty_average,
-                        quality_average, ascensionist_count, benchmark_difficulty,
-                        fa_username, fa_at)
-                    SELECT climb_uuid, angle, display_difficulty, difficulty_average,
-                           quality_average, ascensionist_count, benchmark_difficulty,
-                           fa_username, fa_at
-                    FROM src.$srcTable
-                """)
-                targetDb.setTransactionSuccessful()
-            } finally {
-                targetDb.endTransaction()
+
+            // Import in batches for progress reporting
+            var offset = 0
+            while (offset < total) {
+                targetDb.beginTransaction()
+                try {
+                    targetDb.execSQL("""
+                        INSERT OR REPLACE INTO aurora_climb_stat(
+                            climb_uuid, angle, display_difficulty, difficulty_average,
+                            quality_average, ascensionist_count, benchmark_difficulty,
+                            fa_username, fa_at)
+                        SELECT climb_uuid, angle, display_difficulty, difficulty_average,
+                               quality_average, ascensionist_count, benchmark_difficulty,
+                               fa_username, fa_at
+                        FROM src.$srcTable
+                        LIMIT $BULK_BATCH_SIZE OFFSET $offset
+                    """)
+                    targetDb.setTransactionSuccessful()
+                } finally {
+                    targetDb.endTransaction()
+                }
+                offset += BULK_BATCH_SIZE
+                val scanned = offset.coerceAtMost(total)
+                onProgress?.invoke(scanned, scanned, total)
             }
+
             val countAfter = queryLong(targetDb, "SELECT COUNT(*) FROM aurora_climb_stat")
             val inserted = (countAfter - countBefore).toInt()
             onProgress?.invoke(inserted, total, total)
