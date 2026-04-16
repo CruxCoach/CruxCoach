@@ -392,9 +392,13 @@ class BoardDatabaseImporter(
                 }
             val moveCountExpr = if (hasMoveCount) "COALESCE(move_count, 0)" else "0"
 
-            // Import in batches for progress reporting
-            var offset = 0
-            while (offset < total) {
+            // Import in batches by rowid range (avoids OFFSET scanning and CursorWindow issues on older APIs)
+            val minRowid = queryLong(targetDb, "SELECT MIN(rowid) FROM src.$srcTable WHERE is_listed = 1")
+            val maxRowid = queryLong(targetDb, "SELECT MAX(rowid) FROM src.$srcTable WHERE is_listed = 1")
+            var batchStart = minRowid
+            var scanned = 0
+            while (batchStart <= maxRowid) {
+                val batchEnd = batchStart + BULK_BATCH_SIZE - 1
                 targetDb.beginTransaction()
                 try {
                     targetDb.execSQL("""
@@ -409,16 +413,19 @@ class BoardDatabaseImporter(
                                COALESCE(description, ''), COALESCE(is_nomatch, 0),
                                COALESCE(frames_pace, 0), COALESCE(hsm, 0),
                                $moveCountExpr
-                        FROM src.$srcTable WHERE is_listed = 1
-                        LIMIT $BULK_BATCH_SIZE OFFSET $offset
+                        FROM src.$srcTable
+                        WHERE is_listed = 1 AND rowid BETWEEN $batchStart AND $batchEnd
                     """)
                     targetDb.setTransactionSuccessful()
                 } finally {
                     targetDb.endTransaction()
                 }
-                offset += BULK_BATCH_SIZE
-                val scanned = offset.coerceAtMost(total)
+                val batchCount = queryLong(targetDb,
+                    "SELECT COUNT(*) FROM src.$srcTable WHERE is_listed = 1 AND rowid BETWEEN $batchStart AND $batchEnd"
+                ).toInt()
+                scanned += batchCount
                 onProgress?.invoke(scanned, scanned, total)
+                batchStart = batchEnd + 1
             }
 
             val countAfter = queryLong(targetDb, "SELECT COUNT(*) FROM aurora_climb")
@@ -502,9 +509,13 @@ class BoardDatabaseImporter(
             val countBefore = queryLong(targetDb, "SELECT COUNT(*) FROM aurora_climb_stat")
             onProgress?.invoke(0, 0, total)
 
-            // Import in batches for progress reporting
-            var offset = 0
-            while (offset < total) {
+            // Import in batches by rowid range (avoids OFFSET scanning and CursorWindow issues on older APIs)
+            val minRowid = queryLong(targetDb, "SELECT MIN(rowid) FROM src.$srcTable")
+            val maxRowid = queryLong(targetDb, "SELECT MAX(rowid) FROM src.$srcTable")
+            var batchStart = minRowid
+            var scanned = 0
+            while (batchStart <= maxRowid) {
+                val batchEnd = batchStart + BULK_BATCH_SIZE - 1
                 targetDb.beginTransaction()
                 try {
                     targetDb.execSQL("""
@@ -516,15 +527,18 @@ class BoardDatabaseImporter(
                                quality_average, ascensionist_count, benchmark_difficulty,
                                fa_username, fa_at
                         FROM src.$srcTable
-                        LIMIT $BULK_BATCH_SIZE OFFSET $offset
+                        WHERE rowid BETWEEN $batchStart AND $batchEnd
                     """)
                     targetDb.setTransactionSuccessful()
                 } finally {
                     targetDb.endTransaction()
                 }
-                offset += BULK_BATCH_SIZE
-                val scanned = offset.coerceAtMost(total)
+                val batchCount = queryLong(targetDb,
+                    "SELECT COUNT(*) FROM src.$srcTable WHERE rowid BETWEEN $batchStart AND $batchEnd"
+                ).toInt()
+                scanned += batchCount
                 onProgress?.invoke(scanned, scanned, total)
+                batchStart = batchEnd + 1
             }
 
             val countAfter = queryLong(targetDb, "SELECT COUNT(*) FROM aurora_climb_stat")
