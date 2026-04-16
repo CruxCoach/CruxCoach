@@ -134,27 +134,28 @@ jobs:
               \"message\": \"Release $TAG\"
             }"
 
-          # Wait for tag to propagate
-          sleep 3
-
-          # Step 2: Create release referencing the tag
-          RELEASE_RESPONSE=$(curl -s -X POST \
+          # Step 2: Create release from existing tag (no target_commitish —
+          # Forgejo validates it as a branch name when the tag exists, which
+          # fails for SHAs and tag names alike. Omitting it lets Forgejo
+          # resolve the commit from the tag directly.)
+          RELEASE_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
             -H "Authorization: token ${CODEBERG_TOKEN}" \
             -H "Content-Type: application/json" \
             "${API}/releases" \
             -d "{
               \"tag_name\": \"$TAG\",
-              \"target_commitish\": \"$TAG\",
               \"name\": \"$NAME\",
               \"body\": \"Release $NAME\",
               \"prerelease\": $PRERELEASE
             }")
+          HTTP_CODE=$(echo "$RELEASE_RESPONSE" | tail -1)
+          RELEASE_BODY=$(echo "$RELEASE_RESPONSE" | sed '$d')
 
-          echo "API response: $RELEASE_RESPONSE"
+          echo "Release API response (HTTP $HTTP_CODE): $RELEASE_BODY"
 
-          RELEASE_ID=$(echo "$RELEASE_RESPONSE" | sed -n 's/.*"id":\([0-9]*\).*/\1/p')
-          if [ -z "$RELEASE_ID" ]; then
-            echo "Failed to create release"
+          RELEASE_ID=$(echo "$RELEASE_BODY" | sed -n 's/.*"id":\([0-9]*\).*/\1/p')
+          if [ -z "$RELEASE_ID" ] || [ "$HTTP_CODE" != "201" ]; then
+            echo "Failed to create release (HTTP $HTTP_CODE)"
             exit 1
           fi
           echo "Created release ID: $RELEASE_ID"
