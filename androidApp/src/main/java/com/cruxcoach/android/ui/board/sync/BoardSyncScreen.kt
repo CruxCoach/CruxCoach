@@ -482,16 +482,21 @@ private fun SyncProgressChecklist(
             else -> StepStatus.PENDING
         }
         val climbDetail = if (step is ImportStep.ImportClimbs && step.total > 0) {
-            val isDelta = step.scanned != step.inserted
-            if (isDelta) {
-                "%,d / %,d  (%,d neu)".format(step.scanned, step.total, step.inserted)
+            if (step.scanned == 0) {
+                // Bulk import (atomic SQL) — no per-row progress available
+                "%,d Climbs…".format(step.total)
             } else {
-                "%,d / %,d".format(step.scanned, step.total)
+                val isDelta = step.scanned != step.inserted
+                if (isDelta) {
+                    "%,d / %,d  (%,d neu)".format(step.scanned, step.total, step.inserted)
+                } else {
+                    "%,d / %,d".format(step.scanned, step.total)
+                }
             }
         } else if (step is ImportStep.Done) {
             "%,d".format(step.climbs)
         } else null
-        val climbProgress = if (step is ImportStep.ImportClimbs && step.total > 0) {
+        val climbProgress = if (step is ImportStep.ImportClimbs && step.total > 0 && step.scanned > 0) {
             step.scanned.toFloat() / step.total.toFloat()
         } else null
         SyncStepRow(stringResource(R.string.board_sync_step_import_climbs), climbStatus, climbDetail, climbProgress)
@@ -503,16 +508,21 @@ private fun SyncProgressChecklist(
             else -> StepStatus.PENDING
         }
         val statDetail = if (step is ImportStep.ImportStats && step.total > 0) {
-            val isDelta = step.scanned != step.inserted
-            if (isDelta) {
-                "%,d / %,d  (%,d neu)".format(step.scanned, step.total, step.inserted)
+            if (step.scanned == 0) {
+                // Bulk import (atomic SQL) — no per-row progress available
+                "%,d Stats…".format(step.total)
             } else {
-                "%,d / %,d".format(step.scanned, step.total)
+                val isDelta = step.scanned != step.inserted
+                if (isDelta) {
+                    "%,d / %,d  (%,d neu)".format(step.scanned, step.total, step.inserted)
+                } else {
+                    "%,d / %,d".format(step.scanned, step.total)
+                }
             }
         } else if (step is ImportStep.Done) {
             "%,d".format(step.stats)
         } else null
-        val statProgress = if (step is ImportStep.ImportStats && step.total > 0) {
+        val statProgress = if (step is ImportStep.ImportStats && step.total > 0 && step.scanned > 0) {
             step.scanned.toFloat() / step.total.toFloat()
         } else null
         SyncStepRow(stringResource(R.string.board_sync_step_import_stats), statStatus, statDetail, statProgress)

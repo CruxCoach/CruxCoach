@@ -24,8 +24,8 @@ android {
         applicationId = "com.cruxcoach.android"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.1.1"
 
         // Only bundle native libs for ARM — removes MIPS/x86 bloat from
         // quartz-android's transitive JNA + secp256k1 + libsodium.

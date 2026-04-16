@@ -189,7 +189,7 @@ class FakeBoardRepository : BoardRepository {
         frames: String, framesCount: Long, isListed: Long,
         edgeLeft: Long?, edgeRight: Long?, edgeBottom: Long?, edgeTop: Long?,
         createdAt: String?, description: String, isNomatch: Long,
-        framesPace: Long, hsm: Long
+        framesPace: Long, hsm: Long, moveCount: Long
     ) {}
 
     override fun upsertClimbStat(

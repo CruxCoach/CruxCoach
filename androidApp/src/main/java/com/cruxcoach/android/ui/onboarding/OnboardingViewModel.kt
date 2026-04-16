@@ -4,6 +4,7 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.data.UserPreferences
+import com.cruxcoach.android.data.BoardSyncManager
 import com.cruxcoach.android.data.kilter.KilterApiClient
 import com.cruxcoach.android.data.kilter.KilterAuthResult
 import com.cruxcoach.android.data.kilter.KilterImportPreview
@@ -39,6 +40,8 @@ data class OnboardingState(
     val isKilterImporting: Boolean = false,
     val kilterImportResult: String? = null,
 
+    val boardDataImported: Boolean = false,
+
     val isSaving: Boolean = false,
     val error: String? = null
 )
@@ -48,7 +51,8 @@ class OnboardingViewModel @Inject constructor(
     private val userPreferences: UserPreferences,
     private val kilterApiClient: KilterApiClient,
     private val kilterTokenStore: KilterTokenStore,
-    private val kilterSyncEngine: KilterSyncEngine
+    private val kilterSyncEngine: KilterSyncEngine,
+    private val boardSyncManager: BoardSyncManager
 ) : ViewModel() {
 
     private companion object {
@@ -57,6 +61,14 @@ class OnboardingViewModel @Inject constructor(
 
     private val _state = MutableStateFlow(OnboardingState())
     val state: StateFlow<OnboardingState> = _state.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            boardSyncManager.state.collect { syncState ->
+                _state.update { it.copy(boardDataImported = syncState.alreadyImported) }
+            }
+        }
+    }
 
     fun nextStep() {
         val next = when (_state.value.currentStep) {

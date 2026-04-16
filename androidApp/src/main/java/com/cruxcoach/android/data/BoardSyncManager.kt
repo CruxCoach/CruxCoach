@@ -90,6 +90,15 @@ class BoardSyncManager(
                 Log.d(TAG, "No data yet — skipping auto-sync")
                 return@launch
             }
+
+            // One-time backfill after v1→v2 migration added move_count column
+            if (boardRepository.getSyncState("move_count_backfill") == null) {
+                Log.d(TAG, "Running one-time move_count backfill...")
+                importer.backfillMoveCounts()
+                boardRepository.upsertSyncState("move_count_backfill", "done")
+                Log.d(TAG, "Move count backfill complete")
+            }
+
             if (_state.value.isSyncing) return@launch
 
             val interval = userPreferences.syncInterval.first()

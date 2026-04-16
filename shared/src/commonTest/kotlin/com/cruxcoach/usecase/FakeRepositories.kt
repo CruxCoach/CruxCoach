@@ -177,7 +177,8 @@ class FakeBoardRepository : BoardRepository {
     override fun upsertClimb(uuid: String, layoutId: Long, setter: String?, name: String, frames: String,
                              framesCount: Long, isListed: Long, edgeLeft: Long?, edgeRight: Long?,
                              edgeBottom: Long?, edgeTop: Long?, createdAt: String?,
-                             description: String, isNomatch: Long, framesPace: Long, hsm: Long) {
+                             description: String, isNomatch: Long, framesPace: Long, hsm: Long,
+                             moveCount: Long) {
         storedClimbs[uuid] = StoredClimb(uuid, layoutId, setter, name, frames, framesCount, isListed, edgeLeft, edgeRight, edgeBottom, edgeTop, createdAt)
     }
 
