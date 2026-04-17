@@ -1,6 +1,6 @@
 # Feature Spec: Nostr Encrypted Backup & Sync (v0.2.0)
 
-> **Status:** Draft — design complete, pending engineering review before implementation.
+> **Status:** Ready for implementation — all design decisions resolved (§16).
 > **Depends on:** FEAT-001 (Nostr Relay Discovery / NIP-65) for the resolved relay pool.
 
 ## 1. Overview
@@ -144,19 +144,19 @@ Instead, Amber users derive d-tags via Schnorr signature:
 4. Cache the d-tag locally (SharedPreferences) — compute once, reuse forever
 ```
 
-BIP-340 Schnorr signatures are deterministic given fixed `aux_rand`. If
-Amber's implementation uses non-deterministic `aux_rand`, the d-tag is
-computed once on first backup setup and cached locally alongside the dataKey.
-On restore, the app recomputes by requesting Amber to sign the same fixed
-event — if the result matches the cached d-tag, it's deterministic. If not
-(non-deterministic Amber), the cached d-tag from the original device is
-needed, which limits cross-device restore for this edge case.
+The cached d-tag drives every subsequent write on the same device (step 4).
+For cross-device restore (fresh install, imported key, no local cache), we
+do NOT rely on Schnorr determinism — Amber implementations vary on
+`aux_rand` handling, and detecting determinism adds branching we can avoid.
 
-**Fallback for non-deterministic Amber:** Store the d-tags in the encrypted
-pointer event content itself. On restore, query relays for ALL Kind 30078
-events by this pubkey (no d-tag filter), decrypt each, and check for the
-CruxCoach version field. This is O(N) where N is the user's Kind 30078
-events — typically under 10, so the performance impact is negligible.
+**Restore for Amber users: unconditional O(N) query-all.** Query relays for
+all Kind 30078 events by this pubkey (no d-tag filter), decrypt each with
+NIP-44, and identify CruxCoach events by the `version` field in the
+decrypted content. Typical N is well under 10 Kind 30078 events per user,
+so the cost is negligible. Local-key users continue to use the deterministic
+HMAC path; only Amber restore falls back to query-all. This kills the
+deterministic-detection branch and makes the restore path uniform across
+Amber implementations.
 
 ### 3.2 Pointer Event
 
@@ -204,6 +204,13 @@ Decrypted content:
 
 The `previous_sha256` field enables blob cleanup: after uploading a new blob,
 DELETE the old one from each Blossom server (best-effort, no error if it fails).
+
+> **Versioning note.** The `version: 1` field above is the **pointer format
+> version**, distinct from the `version: Int = 2` on `CruxCoachBackup.Backup`
+> in §9 (the **payload schema version**). Both evolve independently: the
+> pointer envelope can change (new metadata fields) without reserializing
+> every user's backup blob, and the payload schema can change (new tables,
+> renamed fields) without breaking pointer discovery.
 
 ### 3.3 Key Event
 
@@ -349,19 +356,22 @@ writes will target `write`-marked relays only and reads will hit
 
 ```kotlin
 suspend fun fetchBlossomServers(pubkey: String): List<String> {
-    // Query user's Blossom server list
+    // Additive union of user's Kind 10063 list and defaults — mirrors
+    // FEAT-001 §6 relay merge policy. Never replace, always union.
+    // User order first so preferences drive upload priority; defaults
+    // guarantee >=2 servers for redundancy even when the user lists just one.
     val serverListEvent = queryFirstValid(
         relays = allWriteRelays,
         filter = Filter(kinds = listOf(10063), authors = listOf(pubkey)),
         timeout = 5_000
-    ) ?: return DEFAULT_BLOSSOM_SERVERS
+    )
 
-    val userServers = serverListEvent.tags
-        .filter { it.size >= 2 && it[0] == "server" }
-        .map { it[1].trimEnd('/') }
+    val userServers = serverListEvent?.tags
+        ?.filter { it.size >= 2 && it[0] == "server" }
+        ?.map { it[1].trimEnd('/') }
+        ?: emptyList()
 
-    return if (userServers.size >= 2) userServers
-           else (userServers + DEFAULT_BLOSSOM_SERVERS).distinct()
+    return (userServers + DEFAULT_BLOSSOM_SERVERS).distinct()
 }
 ```
 
@@ -475,12 +485,17 @@ Major public Blossom servers (blossom.nostr.build, blossom.band) may restrict
 free uploads to media types (images, audio, video). Encrypted backup blobs are
 `application/octet-stream` and may be rejected with 415 Unsupported Media Type.
 
-**Mitigation:** Before first upload, test server acceptance with a BUD-06
-preflight check (`HEAD /upload` with `X-Content-Type: application/octet-stream`).
-Cache compatible servers. If default servers reject arbitrary types, fall back
-to permissive servers (cdn.satellite.earth, nostr.download, self-hosted).
-
-This must be verified during development for each default Blossom server.
+**Runtime preflight (BUD-06), not a ship-blocker.** Before the first upload
+to any configured server, send `HEAD /upload` with
+`X-Content-Type: application/octet-stream`. Cache the per-server result
+(`accepted` / `rejected_octet` / `incompatible`) in SharedPreferences.
+Servers that reject `application/octet-stream` are retried with
+`application/x-cruxcoach-backup` as a Content-Type hint; if that also fails,
+the server is marked `incompatible` and upload proceeds on the remaining
+servers. A server marked incompatible is re-probed on the next backup cycle
+to recover if the server later starts accepting arbitrary types. This moves
+the compatibility question from a pre-release matrix to a self-healing
+runtime fallback — no Blossom endpoint list is frozen at ship time.
 
 ### 6.6 Blossom Server Configuration
 
@@ -489,7 +504,7 @@ hardcoded defaults. User can add/remove servers in Settings. Upload goes to
 all configured servers for redundancy. Download tries servers in order until
 one succeeds.
 
-### 6.6 SHA-256 Integrity Verification
+### 6.7 SHA-256 Integrity Verification
 
 After download, verify the blob hash matches the pointer event:
 
@@ -626,8 +641,9 @@ suspend fun performFullBackup() {
 
     // 7. ONLY NOW publish pointer event on ALL write relays (fire-and-forget)
     val writeRelays = fetchWriteRelays(signer.pubKey)
-    val previousSha256 = getCurrentPointerSha256()
+    val previousSha256 = getCurrentPointerSha256()  // reads local SharedPreferences
     publishPointerEvent(sha256, encrypted.size, blossomServers, writeRelays)
+    setCurrentPointerSha256(sha256)                 // atomic, after publish succeeds
 
     // 8. Cleanup old blob (best-effort)
     cleanupPreviousBlob(previousSha256, blossomServers, signer)
@@ -639,6 +655,16 @@ suspend fun performFullBackup() {
     userPreferences.setLastBackupSync(TimeUtils.now())
 }
 ```
+
+**`getCurrentPointerSha256()` source.** The previous blob's SHA-256 is read
+from local SharedPreferences (key: `backup_current_pointer_sha256`), written
+atomically in step 7 after each successful pointer publish. This gives cleanup
+zero extra round-trips — no relay fetch, no Blossom HEAD walk. On fresh install
+(cache miss), the function returns `null` and step 8 is a no-op; the single
+orphaned blob left behind on the old server is reconciled at its server's
+retention policy or by the next health-check cycle if the user adds that
+server back. The cache is the authority because it always reflects *this
+device's* last write.
 
 ### 7.4 Manual Sync
 
@@ -1009,7 +1035,8 @@ Never shown during normal operation.
 ### 13.2 Key Loss Protection
 
 Two layers:
-1. **Local cache** in EncryptedSharedPreferences (survives app updates, not uninstall)
+1. **Local cache** in plain SharedPreferences (NIP-44-wrapped ciphertext,
+   self-protecting — see §11.2; survives app updates, not uninstall)
 2. **Multi-relay redundancy** (key event on 3+ relays)
 
 If both fail, backups are irrecoverable. Local SQLCipher DB is unaffected.
@@ -1055,14 +1082,16 @@ APK size impact: Zero. All dependencies are already bundled.
 
 | Question | Decision | Rationale |
 |----------|----------|-----------|
-| Blossom server discovery | Read Kind 10063, fallback to defaults | Standard Nostr practice. User's preferred servers are respected automatically |
+| Blossom server discovery | Additive union of user Kind 10063 + defaults | Mirrors FEAT-001 §6 relay merge policy (never replace, always union). User order first so preferences drive upload priority; defaults guarantee >=2 servers for redundancy even if the user lists just one. Kills the former `>=2 threshold` branch |
 | Citrine integration | No | Local relay has same SPOF as local DB — device loss kills both. Extra app install for zero safety gain |
 | Backup size warning | No | 500 KB gzip = 5-year power user = ~1s upload. Warning makes sense at 5-10 MB (10+ years extreme use). Build when needed, not proactively |
-| D-tag privacy | HMAC-SHA256(HKDF-derived key, identifier) | Plaintext d-tags enable app-usage fingerprinting. HKDF domain separation from signing/ECDH. Amber fallback via Schnorr sign + SHA-256 |
+| D-tag privacy (local key) | HMAC-SHA256 over HKDF-SHA256(nsec)-derived 32-byte key | Plaintext d-tags enable app-usage fingerprinting. RFC 5869 HKDF with SHA-256 and 32-byte output matches the Nostr ecosystem standard (NIP-44 v2); provides domain separation from signing/ECDH at negligible cost. `javax.crypto.Mac` with `HmacSHA256` — no new deps |
+| D-tag privacy (Amber) | Cached Schnorr-sig-derived d-tag for writes; unconditional O(N) query-all on restore | Amber cannot expose nsec, so HMAC path is unavailable. Schnorr-over-fixed-template is computed once on first backup setup and cached for all subsequent writes on this device. Restore on a fresh install deliberately does NOT rely on Schnorr determinism — we query all Kind 30078 events for the pubkey (typically <10) and identify CruxCoach events by decrypted content. Uniform across Amber implementations; no deterministic-detection branch |
 | Label tags | Removed entirely | `com.cruxcoach` labels leak app identity to relay operators and indexers |
 | Relay discovery | Delegated to FEAT-001 | Single source of truth across all Nostr features. FEAT-002 consumes the resolved pool; no backup-specific bootstrap logic |
 | NIP-70 `["-"]` tag | Not used | Relays without NIP-70 support silently reject events containing it. Content is already NIP-44 encrypted and d-tags are HMAC-obfuscated — marginal privacy benefit doesn't justify relay compatibility risk |
 | EncryptedSharedPreferences | Not used | ESP is deprecated (security-crypto 1.1.0-alpha07), has known Tink keyset corruption bugs on Samsung S24/Android 14. NIP-44-wrapped key blob in plain SharedPreferences is simpler and more reliable |
 | Multi-device backup | Not supported in v0.2.0 | Single-device only. Two devices backing up simultaneously create orphaned blobs. Future: per-device d-tags (`cruxcoach/backup/{device-uuid}`) |
 | DataKey rotation | Not in v0.2.0 | Mathematically safe for this volume (NIST 2^64-block limit). Optional annual rotation can be added later |
-| Blossom content-type | Must verify before shipping | Some servers reject `application/octet-stream` on free tier. BUD-06 preflight check required during development |
+| Blossom content-type | Runtime BUD-06 preflight, cached per server, self-healing | Dev-time compatibility matrix is fragile (servers change policies). On first upload per server, HEAD-probe `/upload` with `X-Content-Type: application/octet-stream`; cache result. On 415, retry with `application/x-cruxcoach-backup`; if still rejected, mark `incompatible` and skip. Re-probe once per backup cycle to recover. No Blossom endpoint list is frozen at ship time |
+| Previous blob SHA-256 source | Local SharedPreferences, written atomically after each successful pointer publish | Zero extra round-trips during cleanup — no relay fetch, no HEAD walk. On fresh install (cache miss), cleanup is a no-op; the one orphaned blob is reconciled by server retention or next health-check. The cache is authoritative because it always reflects *this* device's last write |
