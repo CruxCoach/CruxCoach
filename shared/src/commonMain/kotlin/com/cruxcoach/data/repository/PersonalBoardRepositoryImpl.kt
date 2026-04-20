@@ -295,15 +295,19 @@ class PersonalBoardRepositoryImpl(
         totalDurationSeconds: Long, pauseDurationSeconds: Long,
         ascentCount: Long, bidCount: Long
     ): Long {
-        database.boardSessionQueries.insertBoardSession(
-            started_at = startedAt,
-            ended_at = endedAt,
-            total_duration_seconds = totalDurationSeconds,
-            pause_duration_seconds = pauseDurationSeconds,
-            ascent_count = ascentCount,
-            bid_count = bidCount
-        )
-        return database.boardSessionQueries.getLastInsertedSessionId().executeAsOne()
+        // INSERT + last_insert_rowid() must run in the same transaction so
+        // concurrent inserts can't steal the id.
+        return database.transactionWithResult {
+            database.boardSessionQueries.insertBoardSession(
+                started_at = startedAt,
+                ended_at = endedAt,
+                total_duration_seconds = totalDurationSeconds,
+                pause_duration_seconds = pauseDurationSeconds,
+                ascent_count = ascentCount,
+                bid_count = bidCount
+            )
+            database.boardSessionQueries.getLastInsertedSessionId().executeAsOne()
+        }
     }
 
     override fun getRecentBoardSessions(limit: Int): List<BoardSession> {
@@ -373,14 +377,18 @@ class PersonalBoardRepositoryImpl(
 
     override fun ensureFavoritesListExists(): Long {
         cachedFavoritesListId?.let { return it }
-        val existing = database.climbListQueries.getBuiltinFavoritesList().executeAsOneOrNull()
-        if (existing != null) {
-            cachedFavoritesListId = existing.id
-            return existing.id
+        // Check-and-insert + last_insert_rowid() must be atomic. Without the
+        // transaction, two rapid callers could both miss the existing list
+        // and insert duplicate 'Favoriten' rows.
+        val id = database.transactionWithResult {
+            val existing = database.climbListQueries.getBuiltinFavoritesList().executeAsOneOrNull()
+            if (existing != null) {
+                existing.id
+            } else {
+                database.climbListQueries.insertClimbList("Favoriten", 1L, DateTimeUtil.nowIso())
+                database.climbListQueries.getLastInsertedListId().executeAsOne()
+            }
         }
-        val now = DateTimeUtil.nowIso()
-        database.climbListQueries.insertClimbList("Favoriten", 1L, now)
-        val id = database.climbListQueries.getLastInsertedListId().executeAsOne()
         cachedFavoritesListId = id
         return id
     }
@@ -411,8 +419,10 @@ class PersonalBoardRepositoryImpl(
 
     override fun createClimbList(name: String): Long {
         val now = DateTimeUtil.nowIso()
-        database.climbListQueries.insertClimbList(name, 0L, now)
-        return database.climbListQueries.getLastInsertedListId().executeAsOne()
+        return database.transactionWithResult {
+            database.climbListQueries.insertClimbList(name, 0L, now)
+            database.climbListQueries.getLastInsertedListId().executeAsOne()
+        }
     }
 
     override fun renameClimbList(id: Long, name: String) {
@@ -456,13 +466,17 @@ class PersonalBoardRepositoryImpl(
 
     override fun toggleFavorite(climbUuid: String): Boolean {
         val favId = ensureFavoritesListExists()
-        val isFav = database.climbListQueries.isClimbInList(favId, climbUuid).executeAsOne() > 0
-        if (isFav) {
-            removeClimbFromList(favId, climbUuid)
-        } else {
-            addClimbToList(favId, climbUuid)
+        // Read-modify-write must be atomic: two rapid taps otherwise both
+        // observe the same state and either double-insert or double-delete.
+        return database.transactionWithResult {
+            val isFav = database.climbListQueries.isClimbInList(favId, climbUuid).executeAsOne() > 0
+            if (isFav) {
+                database.climbListQueries.removeClimbListEntry(favId, climbUuid)
+            } else {
+                database.climbListQueries.insertClimbListEntry(favId, climbUuid, DateTimeUtil.nowIso())
+            }
+            !isFav
         }
-        return !isFav
     }
 
     override fun getClimbListEntriesRaw(): List<RawClimbListEntry> {
