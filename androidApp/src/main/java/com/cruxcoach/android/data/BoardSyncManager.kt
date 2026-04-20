@@ -135,6 +135,35 @@ class BoardSyncManager(
         }
     }
 
+    /**
+     * Atomically claim the sync slot. Returns true if this caller flipped
+     * isSyncing from false to true (i.e. wins the race and must proceed);
+     * returns false if another sync is already running.
+     *
+     * Fixes the check-then-set race where two concurrent sync triggers
+     * (user tap + auto-sync, Blossom + local share, etc.) could both
+     * observe isSyncing=false and start duplicate imports.
+     */
+    private fun claimSyncSlot(initialStep: ImportStep): Boolean {
+        var claimed = false
+        _state.update { current ->
+            if (current.isSyncing) {
+                claimed = false
+                current
+            } else {
+                claimed = true
+                current.copy(
+                    isSyncing = true,
+                    syncComplete = false,
+                    errorMessage = null,
+                    importStep = initialStep,
+                    syncGeneration = current.syncGeneration + 1
+                )
+            }
+        }
+        return claimed
+    }
+
     private fun isStale(lastSync: String?, interval: SyncInterval): Boolean {
         if (lastSync == null) return true
         return try {
@@ -214,15 +243,9 @@ class BoardSyncManager(
      * decompresses, and imports into the board database.
      */
     private fun startBlossomSync() {
-        if (_state.value.isSyncing) return
-
-        _state.update { it.copy(
-            isSyncing = true,
-            syncComplete = false,
-            errorMessage = null,
-            importStep = ImportStep.FetchingManifest,
-            syncGeneration = it.syncGeneration + 1
-        ) }
+        // Atomic check-and-claim: only the caller that flips isSyncing
+        // from false to true is allowed to proceed.
+        if (!claimSyncSlot(ImportStep.FetchingManifest)) return
 
         scope.launch {
             try {
@@ -371,15 +394,7 @@ class BoardSyncManager(
      * Downloads the full uncompressed SQLite file and imports it.
      */
     fun importFromLocalUrl(url: String) {
-        if (_state.value.isSyncing) return
-
-        _state.update { it.copy(
-            isSyncing = true,
-            syncComplete = false,
-            errorMessage = null,
-            importStep = ImportStep.Download(0, 0),
-            syncGeneration = it.syncGeneration + 1
-        ) }
+        if (!claimSyncSlot(ImportStep.Download(0, 0))) return
 
         scope.launch {
             val tempFile = File(appContext.cacheDir, "local_board.sqlite3")
