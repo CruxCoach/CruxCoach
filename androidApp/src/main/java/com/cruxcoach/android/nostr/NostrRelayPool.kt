@@ -222,7 +222,9 @@ class NostrRelayPool @Inject constructor(
     }
 
     private fun getOrCreateConnection(url: String): RelayConnection {
-        return connections.getOrPut(url) { RelayConnection(url) }
+        // computeIfAbsent is atomic on ConcurrentHashMap; getOrPut is not
+        // (it is get() ?: put(), which races and leaks duplicate connections).
+        return connections.computeIfAbsent(url) { RelayConnection(it) }
     }
 
     suspend fun sendEvent(event: Event): Boolean {
