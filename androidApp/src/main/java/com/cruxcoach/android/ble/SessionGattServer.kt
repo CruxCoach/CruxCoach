@@ -55,10 +55,13 @@ class SessionGattServer(private val context: Context) {
     private val _isRunning = MutableStateFlow(false)
     val isRunning: StateFlow<Boolean> = _isRunning.asStateFlow()
 
-    private val _commands = MutableSharedFlow<GattCommand>(extraBufferCapacity = 16)
+    // Buffer sized to absorb a burst from MAX_CONNECTED_DEVICES participants
+    // issuing queue commands simultaneously — tryEmit on the BLE binder
+    // thread must not silently drop user actions.
+    private val _commands = MutableSharedFlow<GattCommand>(extraBufferCapacity = 128)
     val commands: SharedFlow<GattCommand> = _commands.asSharedFlow()
 
-    private val _connectionEvents = MutableSharedFlow<GattConnectionEvent>(extraBufferCapacity = 8)
+    private val _connectionEvents = MutableSharedFlow<GattConnectionEvent>(extraBufferCapacity = 32)
     val connectionEvents: SharedFlow<GattConnectionEvent> = _connectionEvents.asSharedFlow()
 
     // Tracks connected devices and their CCCD subscriptions.
@@ -66,6 +69,12 @@ class SessionGattServer(private val context: Context) {
     private val lock = Any()
     private val connectedDevices = mutableSetOf<String>()
     private val subscribedDevices = mutableMapOf<UUID, MutableSet<String>>()
+
+    // Serializes notifyAll — pre-Android-13 notifyCharacteristicChanged reads
+    // from the shared characteristic.value object, so concurrent writers can
+    // corrupt in-flight notifications. Android 13+ has a value-parameter
+    // overload that sidesteps this; we still serialize for simplicity.
+    private val notifyLock = Any()
 
     // Data providers set by SessionQueueManager
     var sessionInfoProvider: (() -> ByteArray)? = null
@@ -88,7 +97,9 @@ class SessionGattServer(private val context: Context) {
                         connectedDevices.add(address)
                         Log.d(TAG, "Device connected: $address (${connectedDevices.size} total)")
                     }
-                    _connectionEvents.tryEmit(GattConnectionEvent.Connected(address))
+                    if (!_connectionEvents.tryEmit(GattConnectionEvent.Connected(address))) {
+                        Log.w(TAG, "connectionEvents buffer full — dropping Connected($address)")
+                    }
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
                     synchronized(lock) {
@@ -96,7 +107,9 @@ class SessionGattServer(private val context: Context) {
                         subscribedDevices.values.forEach { it.remove(address) }
                         Log.d(TAG, "Device disconnected: $address (${connectedDevices.size} remaining)")
                     }
-                    _connectionEvents.tryEmit(GattConnectionEvent.Disconnected(address))
+                    if (!_connectionEvents.tryEmit(GattConnectionEvent.Disconnected(address))) {
+                        Log.w(TAG, "connectionEvents buffer full — dropping Disconnected($address)")
+                    }
                 }
             }
         }
@@ -140,7 +153,9 @@ class SessionGattServer(private val context: Context) {
         ) {
             if (characteristic.uuid == SessionGattUuids.QUEUE_COMMAND && value != null) {
                 Log.d(TAG, "Write request: QUEUE_COMMAND ${value.size} bytes from ${device.address}")
-                _commands.tryEmit(GattCommand(device.address, value))
+                if (!_commands.tryEmit(GattCommand(device.address, value))) {
+                    Log.w(TAG, "commands buffer full — dropping ${value.size}B from ${device.address}")
+                }
                 if (responseNeeded) {
                     gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, null)
                 }
@@ -299,15 +314,19 @@ class SessionGattServer(private val context: Context) {
 
         Log.d(TAG, "notifyAll: uuid=...${charUuid.toString().substring(4, 8)}, " +
             "${value.size} bytes, ${subscribers.size} subscribers: $subscribers")
-        char.value = value
         val manager = bluetoothManager ?: return
-        for (address in subscribers) {
-            val device = manager.adapter.getRemoteDevice(address)
-            try {
-                val sent = server.notifyCharacteristicChanged(device, char, false)
-                if (!sent) Log.w(TAG, "notifyAll: notifyCharacteristicChanged returned false for $address")
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to notify $address for $charUuid", e)
+        // Serialize the shared characteristic.value assignment + iteration so
+        // concurrent notifyAll callers can't overwrite bytes mid-send.
+        synchronized(notifyLock) {
+            char.value = value
+            for (address in subscribers) {
+                val device = manager.adapter.getRemoteDevice(address)
+                try {
+                    val sent = server.notifyCharacteristicChanged(device, char, false)
+                    if (!sent) Log.w(TAG, "notifyAll: notifyCharacteristicChanged returned false for $address")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to notify $address for $charUuid", e)
+                }
             }
         }
     }

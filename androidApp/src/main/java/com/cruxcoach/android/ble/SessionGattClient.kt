@@ -51,20 +51,22 @@ class SessionGattClient(private val context: Context) {
     private val _connectionState = MutableStateFlow(SessionClientState.DISCONNECTED)
     val connectionState: StateFlow<SessionClientState> = _connectionState.asStateFlow()
 
-    // Incoming notifications from host
-    private val _queueEvents = MutableSharedFlow<ByteArray>(extraBufferCapacity = 32)
+    // Incoming notifications from host. Buffers are sized to absorb a
+    // multi-device burst (e.g. 7 participants joining a session
+    // simultaneously) so tryEmit never silently drops a BLE notification.
+    private val _queueEvents = MutableSharedFlow<ByteArray>(extraBufferCapacity = 128)
     val queueEvents: SharedFlow<ByteArray> = _queueEvents.asSharedFlow()
 
-    private val _sessionInfoUpdates = MutableSharedFlow<ByteArray>(extraBufferCapacity = 4)
+    private val _sessionInfoUpdates = MutableSharedFlow<ByteArray>(extraBufferCapacity = 16)
     val sessionInfoUpdates: SharedFlow<ByteArray> = _sessionInfoUpdates.asSharedFlow()
 
-    private val _currentClimbUpdates = MutableSharedFlow<ByteArray>(extraBufferCapacity = 8)
+    private val _currentClimbUpdates = MutableSharedFlow<ByteArray>(extraBufferCapacity = 16)
     val currentClimbUpdates: SharedFlow<ByteArray> = _currentClimbUpdates.asSharedFlow()
 
-    private val _participantListUpdates = MutableSharedFlow<ByteArray>(extraBufferCapacity = 4)
+    private val _participantListUpdates = MutableSharedFlow<ByteArray>(extraBufferCapacity = 16)
     val participantListUpdates: SharedFlow<ByteArray> = _participantListUpdates.asSharedFlow()
 
-    private val _queueStateUpdates = MutableSharedFlow<ByteArray>(extraBufferCapacity = 4)
+    private val _queueStateUpdates = MutableSharedFlow<ByteArray>(extraBufferCapacity = 16)
     val queueStateUpdates: SharedFlow<ByteArray> = _queueStateUpdates.asSharedFlow()
 
     private var gatt: BluetoothGatt? = null
@@ -141,19 +143,24 @@ class SessionGattClient(private val context: Context) {
             val uuidShort = characteristic.uuid.toString().substring(4, 8)
             Log.d(TAG, "onCharacteristicChanged: uuid=...$uuidShort, ${data.size} bytes" +
                 if (data.isNotEmpty()) ", first=0x${"%02X".format(data[0])}" else "")
-            when (characteristic.uuid) {
-                SessionGattUuids.QUEUE_EVENT -> _queueEvents.tryEmit(data.copyOf())
-                SessionGattUuids.QUEUE_STATE -> _queueStateUpdates.tryEmit(data.copyOf())
+            val payload = data.copyOf()
+            val (flow, flowName) = when (characteristic.uuid) {
+                SessionGattUuids.QUEUE_EVENT -> _queueEvents to "queueEvents"
+                SessionGattUuids.QUEUE_STATE -> _queueStateUpdates to "queueStateUpdates"
                 SessionGattUuids.SESSION_INFO -> {
-                    if (data.isNotEmpty()) {
-                        val count = data[0].toInt() and 0xFF
+                    if (payload.isNotEmpty()) {
+                        val count = payload[0].toInt() and 0xFF
                         Log.d(TAG, "SESSION_INFO notification: participantCount=$count " +
                             "(0=session-ended sentinel)")
                     }
-                    _sessionInfoUpdates.tryEmit(data.copyOf())
+                    _sessionInfoUpdates to "sessionInfoUpdates"
                 }
-                SessionGattUuids.CURRENT_CLIMB -> _currentClimbUpdates.tryEmit(data.copyOf())
-                SessionGattUuids.PARTICIPANT_LIST -> _participantListUpdates.tryEmit(data.copyOf())
+                SessionGattUuids.CURRENT_CLIMB -> _currentClimbUpdates to "currentClimbUpdates"
+                SessionGattUuids.PARTICIPANT_LIST -> _participantListUpdates to "participantListUpdates"
+                else -> return
+            }
+            if (!flow.tryEmit(payload)) {
+                Log.w(TAG, "$flowName buffer full — dropping ${payload.size}B notification")
             }
         }
 
