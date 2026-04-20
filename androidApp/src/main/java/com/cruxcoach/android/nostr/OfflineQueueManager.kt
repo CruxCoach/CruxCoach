@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -38,13 +39,24 @@ class OfflineQueueManager @Inject constructor(
             val batch = queued.take(MAX_DRAIN_BATCH)
             for (msg in batch) {
                 val eventJson = msg.event_json ?: continue
-                val success = messageSender.retrySend(eventJson)
-                if (success) {
-                    withContext(Dispatchers.IO) { messageRepository.clearQueued(msg.id) }
-                    Log.d(TAG, "Queue drain: sent ${msg.id}")
-                } else {
-                    Log.w(TAG, "Queue drain: failed to send ${msg.id}, will retry later")
-                    break
+                // Cap per-message send so a stalled relay cannot hold drainMutex
+                // across the whole batch and silently starve other drain triggers.
+                val success = withTimeoutOrNull(RELAY_SEND_TIMEOUT_MS) {
+                    messageSender.retrySend(eventJson)
+                }
+                when (success) {
+                    true -> {
+                        withContext(Dispatchers.IO) { messageRepository.clearQueued(msg.id) }
+                        Log.d(TAG, "Queue drain: sent ${msg.id}")
+                    }
+                    false -> {
+                        Log.w(TAG, "Queue drain: failed to send ${msg.id}, will retry later")
+                        break
+                    }
+                    null -> {
+                        Log.w(TAG, "Queue drain: send timed out for ${msg.id}, will retry later")
+                        break
+                    }
                 }
             }
 
@@ -67,5 +79,6 @@ class OfflineQueueManager @Inject constructor(
         private const val TAG = "OfflineQueueManager"
         private const val MAX_DRAIN_BATCH = 10
         private const val EXPIRY_MS = 30L * 24 * 60 * 60 * 1000 // 30 days
+        private const val RELAY_SEND_TIMEOUT_MS = 10_000L
     }
 }
