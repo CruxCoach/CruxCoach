@@ -11,6 +11,7 @@ import android.os.Looper
 import android.os.PowerManager
 import android.util.Log
 import com.cruxcoach.android.R
+import java.security.SecureRandom
 import kotlin.random.Random
 
 /**
@@ -317,8 +318,11 @@ class WifiDirectHotspot(context: Context) {
 
     private fun generatePassphrase(): String {
         // 16 chars from 30-char alphabet ≈ 78 bits entropy.
-        // WPA2 PBKDF2 makes offline brute force infeasible at this length.
+        // WPA2 PBKDF2 makes offline brute force infeasible at this length —
+        // but only if the seed is unpredictable, so use SecureRandom (not
+        // kotlin.random.Random, which is a seedable deterministic PRNG).
         val chars = "abcdefghjkmnpqrstuvwxyz23456789"
-        return (1..16).map { chars[Random.nextInt(chars.length)] }.joinToString("")
+        val rng = SecureRandom()
+        return (1..16).map { chars[rng.nextInt(chars.length)] }.joinToString("")
     }
 }
