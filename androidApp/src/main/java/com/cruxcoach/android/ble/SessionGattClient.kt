@@ -91,7 +91,12 @@ class SessionGattClient(private val context: Context) {
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
                     Log.d(TAG, "Disconnected (status=0x${status.toString(16)})")
+                    // Complete all three deferred slots so suspended read/
+                    // descriptor coroutines return immediately on peer
+                    // disconnect instead of waiting out their 5s timeout.
                     writeDeferred?.complete(BluetoothGatt.GATT_FAILURE)
+                    readDeferred?.complete(BluetoothGatt.GATT_FAILURE)
+                    descriptorDeferred?.complete(BluetoothGatt.GATT_FAILURE)
                     cleanupGatt(gatt)
                     _connectionState.value = SessionClientState.DISCONNECTED
                 }
