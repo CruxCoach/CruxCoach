@@ -273,12 +273,40 @@ class MainActivity : AppCompatActivity() {
     /**
      * Extract local board DB import URL from cruxcoach://import-board-db?url=...
      * Returns a navigation route like "board_sync?localDbUrl=http://..."
+     *
+     * Hardens against phishing: only accepts http(s) URLs whose host is an
+     * IPv4 literal in an RFC1918 / loopback range (the WiFi-Direct share
+     * endpoint is always 192.168.49.1 / 192.168.43.1). Public-internet
+     * URLs are silently rejected.
      */
     private fun extractBoardDbDeepLink(intent: Intent?): String? {
         val data = intent?.data ?: return null
         if (data.scheme != "cruxcoach" || data.host != "import-board-db") return null
         val url = data.getQueryParameter("url") ?: return null
+        if (!isAllowedLocalImportUrl(url)) {
+            android.util.Log.w("MainActivity", "Rejected import-board-db deep link: host not on private IPv4 range")
+            return null
+        }
         return "board_sync?localDbUrl=${android.net.Uri.encode(url)}"
+    }
+
+    private fun isAllowedLocalImportUrl(rawUrl: String): Boolean {
+        val uri = runCatching { android.net.Uri.parse(rawUrl) }.getOrNull() ?: return false
+        val scheme = uri.scheme?.lowercase()
+        if (scheme != "http" && scheme != "https") return false
+        val host = uri.host ?: return false
+        val parts = host.split(".")
+        if (parts.size != 4) return false
+        val octets = parts.map { it.toIntOrNull() ?: return false }
+        if (octets.any { it !in 0..255 }) return false
+        val (a, b, _, _) = octets
+        return when {
+            a == 10 -> true
+            a == 127 -> true
+            a == 192 && b == 168 -> true
+            a == 172 && b in 16..31 -> true
+            else -> false
+        }
     }
 
     private suspend fun sendCrashReport(crashText: String) {
