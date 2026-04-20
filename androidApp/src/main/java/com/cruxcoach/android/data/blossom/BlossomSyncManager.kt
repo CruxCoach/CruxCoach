@@ -176,6 +176,11 @@ class BlossomSyncManager(
             ?: throw BlossomSyncException("Empty response body for chunk ${chunk.name}")
 
         val totalBytes = chunk.size
+        // Hard ceiling = declared size + small margin for protocol framing.
+        // SHA-256 verification only rejects the stored file; it does not stop
+        // an over-long stream from filling cacheDir first. Abort as soon as
+        // the declared size is exceeded so a hostile CDN can't disk-fill.
+        val maxAllowedBytes = totalBytes + CHUNK_SIZE_OVERRUN_MARGIN
         var bytesRead = 0L
 
         body.byteStream().use { input ->
@@ -183,8 +188,14 @@ class BlossomSyncManager(
                 val buffer = ByteArray(8192)
                 var read: Int
                 while (input.read(buffer).also { read = it } != -1) {
-                    output.write(buffer, 0, read)
                     bytesRead += read
+                    if (bytesRead > maxAllowedBytes) {
+                        throw BlossomSyncException(
+                            "Chunk ${chunk.name} exceeded declared size " +
+                                "($bytesRead > $totalBytes + margin)"
+                        )
+                    }
+                    output.write(buffer, 0, read)
                     onProgress?.invoke(bytesRead, totalBytes)
                 }
             }
@@ -230,6 +241,10 @@ class BlossomSyncManager(
     companion object {
         private const val TAG = "BlossomSyncManager"
         private const val RELAY_TIMEOUT_MS = 15_000L
+        // Slack above the manifest-declared chunk size for HTTP/zstd framing
+        // overhead. Generous enough that legitimate chunks are never rejected,
+        // tight enough that a hostile server can't stream gigabytes.
+        private const val CHUNK_SIZE_OVERRUN_MARGIN = 64L * 1024
 
         const val MANIFEST_PUBKEY =
             "70b2740bff77cf65743a7d6ffa5465b3a27105ae26123458cf5450eafb1bd68d"
