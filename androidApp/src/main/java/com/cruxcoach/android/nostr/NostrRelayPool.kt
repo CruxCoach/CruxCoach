@@ -101,6 +101,11 @@ class NostrRelayPool @Inject constructor(
                 override fun onClosed(ws: WebSocket, code: Int, reason: String) {
                     connected = false
                     this@RelayConnection.ws = null
+                    // Fail pending OKs immediately instead of waiting for each
+                    // publisher's RELAY_TIMEOUT_MS — otherwise every in-flight
+                    // sendEvent hangs and the pendingOks map piles up while
+                    // reconnect is pending.
+                    failAllPending(Exception("Relay $url closed: $code $reason"))
                     if (activeFilters.isNotEmpty()) scheduleReconnect()
                 }
             })
