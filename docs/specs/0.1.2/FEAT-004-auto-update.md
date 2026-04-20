@@ -17,9 +17,10 @@ Releases API, downloads the newer APK when one exists, verifies its
 signing certificate against a trust-on-first-use pin, and hands off to
 the Android `PackageInstaller` with a user-consented install dialog.
 
-If CruxCoach was installed via Zapstore (or another known store),
-runtime detection disables the self-updater entirely to avoid
-conflicting notifications.
+If CruxCoach was installed via Zapstore, runtime detection disables
+the self-updater entirely to avoid conflicting notifications. Zapstore
+is currently the only store-based distribution channel; F-Droid / Play
+are not supported, so their installer IDs are not recognized.
 
 ### Goals
 
@@ -29,7 +30,7 @@ conflicting notifications.
 - Verify the download's signing certificate against a locally-pinned hash (TOFU)
 - Surface an in-app notification with release notes parsed from the Codeberg release body
 - Hand off to `PackageInstaller` session API with system consent prompt
-- Hard-disable the updater when installed via Zapstore / F-Droid / Play
+- Hard-disable the updater when installed via Zapstore
 
 ### Non-Goals
 
@@ -311,17 +312,20 @@ On success: clear `pendingUpdate`, delete cached APK, reset `pendingDownloadId`.
 
 **Why:** `pinnedCertSha256` should not be trivially tamperable; on-device attacker with filesystem read is already a catastrophic threat model, but encryption adds friction. `cacheDir` is not world-readable (unlike external-files-dir) and auto-cleaned on low storage.
 
-### 6.6 Coexistence with Zapstore / F-Droid / Play — Runtime Hard-Disable
+### 6.6 Coexistence with Zapstore — Runtime Hard-Disable
 
-**Decision:** At app launch, `InstallSourceGate` queries `PackageManager.getInstallSourceInfo(packageName)` (API 30+, fall back to `getInstallerPackageName`). If the installer is in `{"dev.zapstore.app", "org.fdroid.fdroid", "com.android.vending"}`, the self-updater is fully disabled:
+**Decision:** At app launch, `InstallSourceGate` queries `PackageManager.getInstallSourceInfo(packageName)` (API 30+, fall back to `getInstallerPackageName`). Zapstore is the only store-based distribution channel CruxCoach uses today, so the gate matches a single installer ID — `"dev.zapstore.app"`. If that matches, the self-updater is fully disabled:
 - `UpdateCheckWorker` is not enqueued
-- The Settings "App updates" section shows: *"Updates erhältst du über Zapstore/F-Droid/Play. Der App-eigene Updater ist deaktiviert."* (localized in both locales)
+- The Settings "App updates" section shows: *"Updates erhältst du über Zapstore. Der App-eigene Updater ist deaktiviert."* (localized in both locales)
 - No toggle, no override
 
-**Why:** Single-APK distribution stays simple; Signal's flavor approach doubles CI effort. Detecting at runtime catches sideload-from-Zapstore cleanly. Hard-disable (not warn-and-allow) prevents double notifications and confusion about "which version should win."
+If a new store-based channel is added later (e.g. F-Droid), its installer ID is appended to the recognized set — it is not silently allowed through the self-updater.
+
+**Why:** Single-APK distribution stays simple; Signal's flavor approach doubles CI effort. Detecting at runtime catches sideload-from-Zapstore cleanly. Hard-disable (not warn-and-allow) prevents double notifications and confusion about "which version should win." Limiting the match to installers CruxCoach actually ships through avoids silently trusting identifiers we have not verified in practice.
 
 **How to apply:**
 - `InstallSourceGate.selfUpdateAllowed(): Boolean` — checked by `UpdateCheckWorker`, `UpdaterRepository.checkNow()`, and the Settings UI
+- The set of recognized store installer IDs lives in a single constant (`InstallSourceGate.STORE_INSTALLER_IDS`) so adding F-Droid / Play later is one edit
 - Detection runs on every check (not cached) — users can uninstall Zapstore and reinstall CruxCoach from Codeberg later; the gate reflects the current install source immediately
 
 ### 6.7 Network Policy — Wi-Fi Default, User-Overridable
