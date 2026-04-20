@@ -19,6 +19,16 @@ CruxCoach feature specifications, grouped by release.
 
 ## Index
 
+### v0.1.2 — Hardening + Auto-Update
+
+| Spec | Title | Status | Depends on |
+|------|-------|--------|------------|
+| [FEAT-004](0.1.2/FEAT-004-auto-update.md) | In-App Update Notification & APK Installer (Codeberg) | Skeleton | — |
+
+The 0.1.2 release also bundles fixes for Critical + High findings from
+the RepoLens audit; see [`0.1.2/triage/`](0.1.2/triage/) for the triage
+baseline and workflow.
+
 ### v0.2.0 — Nostr relay discovery + encrypted backup
 
 | Spec | Title | Status | Depends on |
