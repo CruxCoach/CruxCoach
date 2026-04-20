@@ -611,7 +611,11 @@ class BoardDatabaseImporter(
     /** Open the target board database directly for ATTACH operations. */
     private fun openTargetDb(): SQLiteDatabase {
         val dbFile = context.getDatabasePath("cruxcoach.db")
-        return SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE)
+        val db = SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE)
+        // Prevent SQLITE_BUSY when the SQLDelight driver concurrently reads the
+        // same DB during an import: wait up to 5s for locks before failing.
+        db.execSQL("PRAGMA busy_timeout = 5000")
+        return db
     }
 
     private fun queryLong(db: SQLiteDatabase, sql: String): Long {
