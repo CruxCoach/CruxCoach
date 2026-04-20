@@ -155,6 +155,19 @@ class NotificationPollWorker @AssistedInject constructor(
                 // NIP-17 self-wraps echo our sent messages back. Store them
                 // as "sent" so sent history is recoverable; don't notify.
                 val isSelfWrap = msg.senderPubkey == ownPubkey
+                val isFromDev = msg.senderPubkey == NostrConfig.DEV_PUBKEY
+                // Dev↔user DMs are the only legitimate source for this app;
+                // drop anything else *before* touching the DB or posting a
+                // notification so attackers can't impersonate the developer
+                // via a crafted NIP-17 gift wrap.
+                if (!isSelfWrap && !isFromDev) {
+                    Log.w(
+                        TAG,
+                        "Dropping DM from unauthorized sender: " +
+                            "${msg.senderPubkey.take(8)}…"
+                    )
+                    continue
+                }
                 val direction = if (isSelfWrap) "sent" else "received"
 
                 messageRepository.insert(
