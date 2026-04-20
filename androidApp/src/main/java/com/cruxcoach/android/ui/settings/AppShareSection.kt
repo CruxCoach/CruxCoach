@@ -23,6 +23,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
+import com.cruxcoach.android.BuildConfig
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.common.ErrorCard
 import com.cruxcoach.android.ui.theme.OrangeAccent
@@ -46,6 +47,15 @@ internal fun AppShareSection(
     var downloadUrl by remember { mutableStateOf("") }
     var isStarting by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var showCodebergQr by remember { mutableStateOf(false) }
+
+    val codebergApkUrl = remember {
+        val tag = "v${BuildConfig.VERSION_NAME}"
+        "https://codeberg.org/CruxCoach/CruxCoach/releases/download/$tag/CruxCoach-$tag.apk"
+    }
+    val codebergQrBitmap = remember {
+        runCatching { ApkShareHelper.generateQrBitmap(codebergApkUrl) }.getOrNull()
+    }
 
     val startSharing: () -> Unit = {
         isStarting = true
@@ -135,6 +145,30 @@ internal fun AppShareSection(
         shape = RoundedCornerShape(12.dp),
         colors = ButtonDefaults.outlinedButtonColors(contentColor = OrangeAccent)
     ) { Text(stringResource(R.string.settings_share_via_apps)) }
+
+    // Codeberg download QR
+    OutlinedButton(
+        onClick = { showCodebergQr = !showCodebergQr },
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = OrangeAccent)
+    ) {
+        Text(stringResource(
+            if (showCodebergQr) R.string.settings_share_codeberg_hide
+            else R.string.settings_share_codeberg
+        ))
+    }
+    Text(
+        stringResource(R.string.settings_share_codeberg_desc),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+    if (showCodebergQr && codebergQrBitmap != null) {
+        CodebergDownloadCard(
+            qrBitmap = codebergQrBitmap,
+            downloadUrl = codebergApkUrl
+        )
+    }
 
     // Error
     errorMessage?.let { err ->
@@ -262,6 +296,41 @@ private fun AppShareActiveCard(
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
             ) { Text(stringResource(R.string.settings_share_stop)) }
+        }
+    }
+}
+
+@Composable
+private fun CodebergDownloadCard(
+    qrBitmap: Bitmap,
+    downloadUrl: String
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = OrangeAccent.copy(alpha = 0.08f))
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                stringResource(R.string.settings_share_codeberg_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Image(
+                bitmap = qrBitmap.asImageBitmap(),
+                contentDescription = stringResource(R.string.cd_codeberg_download_qr),
+                modifier = Modifier.size(220.dp)
+            )
+            Text(
+                downloadUrl,
+                style = MaterialTheme.typography.bodySmall,
+                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }

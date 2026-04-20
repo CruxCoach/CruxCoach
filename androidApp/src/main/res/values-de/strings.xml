@@ -183,6 +183,10 @@
     <string name="settings_share_title">App teilen</string>
     <string name="settings_share_desc">CruxCoach APK mit anderen teilen (ohne Nutzerdaten).</string>
     <string name="settings_share_via_apps">Über Apps teilen</string>
+    <string name="settings_share_codeberg">Codeberg-Download-QR anzeigen</string>
+    <string name="settings_share_codeberg_hide">Codeberg-QR ausblenden</string>
+    <string name="settings_share_codeberg_desc">Mit einem QR-Reader scannen, um die APK von Codeberg herunterzuladen.</string>
+    <string name="settings_share_codeberg_hint">Scannen, um den Codeberg-APK-Download zu öffnen.</string>
     <string name="settings_share_local">Lokal teilen (WiFi Direct)</string>
     <string name="settings_share_local_desc">Erstellt einen WiFi-Hotspot + Download-Seite. Kein Internet nötig.</string>
     <string name="settings_share_stop">Stoppen</string>
@@ -970,6 +974,7 @@
     <string name="cd_deselect_all">Alle abwählen</string>
     <string name="cd_dismiss">Verwerfen</string>
     <string name="cd_download_qr_code">Download-URL QR-Code</string>
+    <string name="cd_codeberg_download_qr">Codeberg-APK-Download QR-Code</string>
     <string name="cd_edit">Bearbeiten</string>
     <string name="cd_expand">Erweitern</string>
     <string name="cd_filter">Filter</string>
