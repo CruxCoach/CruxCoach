@@ -1,5 +1,7 @@
 package com.cruxcoach.android.ui.settings
 
+import android.app.Activity
+import android.view.WindowManager
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -26,6 +28,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -33,6 +36,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -50,6 +54,17 @@ fun KeyImportScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val view = LocalView.current
+
+    // Prevent screenshots and the recents-thumbnail from capturing pasted
+    // nsec/mnemonic while this screen is active.
+    DisposableEffect(view) {
+        val window = (view.context as? Activity)?.window
+        window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        onDispose {
+            window?.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        }
+    }
 
     LaunchedEffect(state.requireRestart) {
         if (state.requireRestart) {
