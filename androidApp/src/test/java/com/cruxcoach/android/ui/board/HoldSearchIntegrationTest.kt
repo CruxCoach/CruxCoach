@@ -54,7 +54,7 @@ class HoldSearchIntegrationTest {
         repo.addClimb(climb("c", f3))
 
         val pattern = HoldHeatmapComputer.holdLikePattern(100) // "p100r"
-        val result = repo.searchClimbUuidsByHold(pattern, 40, 0.0, 100.0, 0, ClimbTypeFilter.BOULDER)
+        val result = repo.searchClimbUuidsByHold(pattern, 40, 1, 0.0, 100.0, 0, ClimbTypeFilter.BOULDER)
 
         assertEquals(listOf("a", "b"), result.sorted())
     }
@@ -65,7 +65,7 @@ class HoldSearchIntegrationTest {
         repo.addClimb(climb("a", frames(100 to HoldRole.START)))
 
         val pattern = HoldHeatmapComputer.holdLikePattern(999)
-        val result = repo.searchClimbUuidsByHold(pattern, 40, 0.0, 100.0, 0, ClimbTypeFilter.BOULDER)
+        val result = repo.searchClimbUuidsByHold(pattern, 40, 1, 0.0, 100.0, 0, ClimbTypeFilter.BOULDER)
 
         assertTrue(result.isEmpty())
     }
@@ -78,7 +78,7 @@ class HoldSearchIntegrationTest {
         repo.addClimb(climb("hard", f, difficulty = 25.0))
 
         val pattern = HoldHeatmapComputer.holdLikePattern(100)
-        val result = repo.searchClimbUuidsByHold(pattern, 40, 10.0, 30.0, 0, ClimbTypeFilter.BOULDER)
+        val result = repo.searchClimbUuidsByHold(pattern, 40, 1, 10.0, 30.0, 0, ClimbTypeFilter.BOULDER)
 
         assertEquals(listOf("hard"), result)
     }
@@ -91,7 +91,7 @@ class HoldSearchIntegrationTest {
         repo.addClimb(climb("obscure", f, ascensionists = 2))
 
         val pattern = HoldHeatmapComputer.holdLikePattern(100)
-        val result = repo.searchClimbUuidsByHold(pattern, 40, 0.0, 100.0, 10, ClimbTypeFilter.BOULDER)
+        val result = repo.searchClimbUuidsByHold(pattern, 40, 1, 0.0, 100.0, 10, ClimbTypeFilter.BOULDER)
 
         assertEquals(listOf("popular"), result)
     }
@@ -114,7 +114,7 @@ class HoldSearchIntegrationTest {
         for (holdId in selectedHolds) {
             val pattern = HoldHeatmapComputer.holdLikePattern(holdId)
             val uuids = repo.searchClimbUuidsByHold(
-                pattern, 40, 0.0, 100.0, 0, ClimbTypeFilter.BOULDER
+                pattern, 40, 1, 0.0, 100.0, 0, ClimbTypeFilter.BOULDER
             ).toSet()
             resultUuids = resultUuids?.intersect(uuids) ?: uuids
             if (resultUuids.isEmpty()) break
@@ -135,7 +135,7 @@ class HoldSearchIntegrationTest {
         for (holdId in selectedHolds) {
             val pattern = HoldHeatmapComputer.holdLikePattern(holdId)
             val uuids = repo.searchClimbUuidsByHold(
-                pattern, 40, 0.0, 100.0, 0, ClimbTypeFilter.BOULDER
+                pattern, 40, 1, 0.0, 100.0, 0, ClimbTypeFilter.BOULDER
             ).toSet()
             resultUuids = resultUuids?.intersect(uuids) ?: uuids
             if (resultUuids.isEmpty()) break
@@ -157,7 +157,7 @@ class HoldSearchIntegrationTest {
             iterations++
             val pattern = HoldHeatmapComputer.holdLikePattern(holdId)
             val uuids = repo.searchClimbUuidsByHold(
-                pattern, 40, 0.0, 100.0, 0, ClimbTypeFilter.BOULDER
+                pattern, 40, 1, 0.0, 100.0, 0, ClimbTypeFilter.BOULDER
             ).toSet()
             resultUuids = resultUuids?.intersect(uuids) ?: uuids
             if (resultUuids.isEmpty()) break
@@ -179,7 +179,7 @@ class HoldSearchIntegrationTest {
         repo.addClimb(climb("b", f2))
         repo.addClimb(climb("c", f3))
 
-        val frameRows = repo.getAllFramesForHeatmap(40, 0.0, 100.0, 0, ClimbTypeFilter.BOULDER)
+        val frameRows = repo.getAllFramesForHeatmap(40, 1, 0.0, 100.0, 0, ClimbTypeFilter.BOULDER)
         val rawHeatmap = HoldHeatmapComputer.computeGlobalHeatmap(frameRows.map { it.frames })
         val normalized = HoldHeatmapComputer.normalizeHeatmap(rawHeatmap)
 
@@ -202,7 +202,7 @@ class HoldSearchIntegrationTest {
         repo.addClimb(climb("hard", f, difficulty = 25.0))
 
         // Only mid-range climbs
-        val frameRows = repo.getAllFramesForHeatmap(40, 10.0, 20.0, 0, ClimbTypeFilter.BOULDER)
+        val frameRows = repo.getAllFramesForHeatmap(40, 1, 10.0, 20.0, 0, ClimbTypeFilter.BOULDER)
         assertEquals(1, frameRows.size)
         assertEquals("mid", frameRows[0].uuid)
     }
@@ -215,7 +215,7 @@ class HoldSearchIntegrationTest {
         repo.addClimb(climb("a", f1))
         repo.addClimb(climb("b", f2))
 
-        val frameRows = repo.getAllFramesForHeatmap(40, 0.0, 100.0, 0, ClimbTypeFilter.BOULDER)
+        val frameRows = repo.getAllFramesForHeatmap(40, 1, 0.0, 100.0, 0, ClimbTypeFilter.BOULDER)
         val startHeatmap = HoldHeatmapComputer.computeHeatmapByRole(
             frameRows.map { it.frames }, HoldRole.START
         )
@@ -229,7 +229,7 @@ class HoldSearchIntegrationTest {
     fun `heatmap pipeline empty repo returns empty heatmap`() {
         val repo = FakeBoardRepository()
 
-        val frameRows = repo.getAllFramesForHeatmap(40, 0.0, 100.0, 0, ClimbTypeFilter.BOULDER)
+        val frameRows = repo.getAllFramesForHeatmap(40, 1, 0.0, 100.0, 0, ClimbTypeFilter.BOULDER)
         val rawHeatmap = HoldHeatmapComputer.computeGlobalHeatmap(frameRows.map { it.frames })
         val normalized = HoldHeatmapComputer.normalizeHeatmap(rawHeatmap)
 
