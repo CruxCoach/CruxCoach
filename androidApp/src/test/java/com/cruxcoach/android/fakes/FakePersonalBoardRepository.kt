@@ -44,7 +44,7 @@ class FakePersonalBoardRepository : PersonalBoardRepository {
     override fun countUserLogbook(): Long = 0L
     override fun getRepeatCounts(): Map<String, Long> = emptyMap()
     override fun getUnsyncedAscents(): List<RawAscent> = emptyList()
-    override fun markAscentSynced(uuid: String) {}
+    override fun markAscentSyncedIfUnchanged(uuid: String, expectedRowVersion: Long): Boolean = true
 
     // -- Bid queries --
 
@@ -59,7 +59,7 @@ class FakePersonalBoardRepository : PersonalBoardRepository {
     override fun deleteBid(uuid: String) {}
     override fun getUserBidDifficulties(since: String): List<Double> = emptyList()
     override fun getUnsyncedBids(): List<RawBid> = emptyList()
-    override fun markBidSynced(uuid: String) {}
+    override fun markBidSyncedIfUnchanged(uuid: String, expectedRowVersion: Long): Boolean = true
     override fun getRawBidsForUser(): List<RawBid> = emptyList()
 
     // -- Board session queries --

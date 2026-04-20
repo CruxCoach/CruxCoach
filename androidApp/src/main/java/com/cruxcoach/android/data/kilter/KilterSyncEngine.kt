@@ -388,13 +388,30 @@ class KilterSyncEngine @Inject constructor(
 
         val result = apiClient.uploadLogs(kilterLogs)
         if (result.isSuccess) {
+            // Optimistic mark — stamp synced=1 only when row_version still
+            // matches the snapshot captured at read time. Any user edit
+            // during the HTTP upload window bumps row_version and the stamp
+            // is skipped, so the next sync re-uploads the newer data
+            // instead of silently losing it to a stale write.
+            var skipped = 0
             personalBoardRepo.runInTransaction {
                 for (ascent in unsyncedAscents) {
-                    personalBoardRepo.markAscentSynced(ascent.uuid)
+                    val applied = personalBoardRepo.markAscentSyncedIfUnchanged(
+                        uuid = ascent.uuid,
+                        expectedRowVersion = ascent.rowVersion
+                    )
+                    if (!applied) skipped++
                 }
                 for (bid in unsyncedBids) {
-                    personalBoardRepo.markBidSynced(bid.uuid)
+                    val applied = personalBoardRepo.markBidSyncedIfUnchanged(
+                        uuid = bid.uuid,
+                        expectedRowVersion = bid.rowVersion
+                    )
+                    if (!applied) skipped++
                 }
+            }
+            if (skipped > 0) {
+                Log.i(TAG, "Sync: $skipped log(s) edited during upload — will re-upload next sync")
             }
             return kilterLogs.size
         } else {

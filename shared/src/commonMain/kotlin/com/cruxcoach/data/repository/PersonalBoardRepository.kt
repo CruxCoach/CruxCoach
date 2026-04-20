@@ -36,7 +36,15 @@ interface PersonalBoardRepository {
     fun getRepeatCounts(): Map<String, Long>
 
     fun getUnsyncedAscents(): List<RawAscent>
-    fun markAscentSynced(uuid: String)
+
+    /**
+     * Stamp `synced = 1` only if [expectedRowVersion] still matches the
+     * current row. Returns `true` when the stamp applied, `false` if a
+     * concurrent edit bumped `row_version` in the meantime — in that case
+     * the caller should leave `synced = 0` so the next sync re-uploads
+     * the newer data.
+     */
+    fun markAscentSyncedIfUnchanged(uuid: String, expectedRowVersion: Long): Boolean
 
     // ── Bid queries ─────────────────────────────────────────────
 
@@ -52,7 +60,9 @@ interface PersonalBoardRepository {
     fun getUserBidDifficulties(since: String): List<Double>
 
     fun getUnsyncedBids(): List<RawBid>
-    fun markBidSynced(uuid: String)
+
+    /** See [markAscentSyncedIfUnchanged]. */
+    fun markBidSyncedIfUnchanged(uuid: String, expectedRowVersion: Long): Boolean
     fun getRawBidsForUser(): List<RawBid>
 
     // ── Board session queries ───────────────────────────────────

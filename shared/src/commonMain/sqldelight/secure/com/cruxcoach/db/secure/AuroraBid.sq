@@ -14,7 +14,9 @@ CREATE TABLE aurora_bid (
     product_layout_uuid TEXT,
     -- Denormalized from BoardDB (refreshable)
     climb_name TEXT NOT NULL DEFAULT '',
-    difficulty_average REAL
+    difficulty_average REAL,
+    -- Optimistic-locking token — see aurora_ascent for the full rationale.
+    row_version INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX idx_bid_climb ON aurora_bid(climb_uuid);
@@ -49,8 +51,13 @@ SELECT difficulty_average FROM aurora_bid WHERE climbed_at >= ?;
 getUnsyncedBids:
 SELECT * FROM aurora_bid WHERE synced = 0;
 
-markBidSynced:
-UPDATE aurora_bid SET synced = 1 WHERE uuid = ?;
+-- Optimistic mark — see aurora_ascent.markAscentSyncedIfUnchanged.
+markBidSyncedIfUnchanged:
+UPDATE aurora_bid SET synced = 1 WHERE uuid = ? AND row_version = ?;
+
+-- See aurora_ascent.lastAscentChangeCount.
+lastBidChangeCount:
+SELECT changes();
 
 -- ═���═ Export (raw, no JOIN) ═══
 

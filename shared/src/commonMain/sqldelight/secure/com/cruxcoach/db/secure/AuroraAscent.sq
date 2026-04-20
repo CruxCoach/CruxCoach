@@ -22,7 +22,12 @@ CREATE TABLE aurora_ascent (
     climb_name TEXT NOT NULL DEFAULT '',
     difficulty_average REAL,
     climb_frames TEXT NOT NULL DEFAULT '',
-    frames_count INTEGER NOT NULL DEFAULT 1
+    frames_count INTEGER NOT NULL DEFAULT 1,
+    -- Optimistic-locking token bumped on every user edit. Kilter sync
+    -- captures the value at read time and only stamps synced=1 if it
+    -- still matches at write time — prevents TOCTOU where an edit
+    -- during the upload window would be silently re-flagged as synced.
+    row_version INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX idx_ascent_climb ON aurora_ascent(climb_uuid);
@@ -30,6 +35,10 @@ CREATE INDEX idx_ascent_date ON aurora_ascent(climbed_at);
 
 -- ═══ Insert / Update / Delete ═══
 
+-- row_version starts at 0 via column DEFAULT; the re-insert path (INSERT OR
+-- REPLACE) resets it, which is fine because the row's UUID is identical and
+-- any in-flight upload snapshot for the old row is already invalidated by
+-- the REPLACE itself (synced flag is explicit).
 insertAscent:
 INSERT OR REPLACE INTO aurora_ascent(uuid, climb_uuid, angle, is_mirror,
     attempt_id, bid_count, quality, difficulty, is_benchmark, comment, climbed_at, synced,
@@ -40,8 +49,12 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 deleteAscent:
 DELETE FROM aurora_ascent WHERE uuid = ?;
 
+-- Increment row_version on every user edit so concurrent sync snapshots go
+-- stale and markAscentSyncedIfUnchanged refuses to stamp.
 updateAscent:
-UPDATE aurora_ascent SET bid_count = ?, quality = ?, comment = ?, synced = 0 WHERE uuid = ?;
+UPDATE aurora_ascent
+SET bid_count = ?, quality = ?, comment = ?, synced = 0, row_version = row_version + 1
+WHERE uuid = ?;
 
 -- ═══ UUID lookups (for browser status filter) ═══
 
@@ -121,8 +134,17 @@ SELECT climb_uuid, COUNT(*) AS repeat_count FROM aurora_ascent GROUP BY climb_uu
 getUnsyncedAscents:
 SELECT * FROM aurora_ascent WHERE synced = 0;
 
-markAscentSynced:
-UPDATE aurora_ascent SET synced = 1 WHERE uuid = ?;
+-- Optimistic mark: only stamp synced=1 when the captured row_version still
+-- matches. If the user edited the row during the upload window row_version
+-- has advanced; the UPDATE touches zero rows and the next sync re-uploads.
+markAscentSyncedIfUnchanged:
+UPDATE aurora_ascent SET synced = 1 WHERE uuid = ? AND row_version = ?;
+
+-- Number of rows affected by the last UPDATE on this connection. Scope per
+-- transaction to read immediately after [markAscentSyncedIfUnchanged] and
+-- tell applied marks from stale-snapshot skips.
+lastAscentChangeCount:
+SELECT changes();
 
 -- ═══ Denormalization refresh (after board sync) ═══
 

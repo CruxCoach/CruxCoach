@@ -204,13 +204,20 @@ class PersonalBoardRepositoryImpl(
                 synced = row.synced != 0L,
                 gymUuid = row.gym_uuid,
                 wallUuid = row.wall_uuid,
-                productLayoutUuid = row.product_layout_uuid
+                productLayoutUuid = row.product_layout_uuid,
+                rowVersion = row.row_version
             )
         }
     }
 
-    override fun markAscentSynced(uuid: String) {
-        database.auroraAscentQueries.markAscentSynced(uuid)
+    override fun markAscentSyncedIfUnchanged(uuid: String, expectedRowVersion: Long): Boolean {
+        // UPDATE + changes() must be atomic: `changes()` returns rows
+        // affected by the last statement on the same connection, so any
+        // interleaved write between the two would corrupt the result.
+        return database.transactionWithResult {
+            database.auroraAscentQueries.markAscentSyncedIfUnchanged(uuid, expectedRowVersion)
+            database.auroraAscentQueries.lastAscentChangeCount().executeAsOne() > 0L
+        }
     }
 
     // ── Bid ─────────────────────────────────────────────────────
@@ -261,13 +268,17 @@ class PersonalBoardRepositoryImpl(
                 synced = row.synced != 0L,
                 gymUuid = row.gym_uuid,
                 wallUuid = row.wall_uuid,
-                productLayoutUuid = row.product_layout_uuid
+                productLayoutUuid = row.product_layout_uuid,
+                rowVersion = row.row_version
             )
         }
     }
 
-    override fun markBidSynced(uuid: String) {
-        database.auroraBidQueries.markBidSynced(uuid)
+    override fun markBidSyncedIfUnchanged(uuid: String, expectedRowVersion: Long): Boolean {
+        return database.transactionWithResult {
+            database.auroraBidQueries.markBidSyncedIfUnchanged(uuid, expectedRowVersion)
+            database.auroraBidQueries.lastBidChangeCount().executeAsOne() > 0L
+        }
     }
 
     override fun getRawBidsForUser(): List<RawBid> {
@@ -283,7 +294,8 @@ class PersonalBoardRepositoryImpl(
                 synced = row.synced != 0L,
                 gymUuid = row.gym_uuid,
                 wallUuid = row.wall_uuid,
-                productLayoutUuid = row.product_layout_uuid
+                productLayoutUuid = row.product_layout_uuid,
+                rowVersion = row.row_version
             )
         }
     }
