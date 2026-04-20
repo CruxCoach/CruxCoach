@@ -196,11 +196,12 @@ class NotificationPollWorker @AssistedInject constructor(
         }
 
         // Advance the shared cursor with a 60s back-off for safety against
-        // out-of-order delivery from multiple relays.
+        // out-of-order delivery from multiple relays. Go through the
+        // atomic advance helper so foreground subscription advances
+        // during the 30s collect window are not overwritten by our
+        // stale `cursor` snapshot.
         val newCursor = (latestTimestamp - 60).coerceAtLeast(0L)
-        if (newCursor > cursor) {
-            userPreferences.setNostrSyncCursor(newCursor)
-        }
+        userPreferences.advanceNostrSyncCursor(newCursor)
     }
 
     private suspend fun collectEventsWithTimeout(filter: String): List<String> {

@@ -519,6 +519,26 @@ class UserPreferences(
     }
 
     /**
+     * Monotonically advance the cursor: write [candidate] only if it is
+     * strictly greater than the on-disk value. The compare-and-write
+     * happens inside the same `edit` block, which DataStore serializes
+     * per instance, so concurrent advancers from the foreground
+     * subscription and the background poll worker cannot regress the
+     * cursor by writing a stale snapshot.
+     *
+     * Use this instead of the get+compare+set pattern for anything that
+     * should only ever move forward. Full overwrites (e.g. explicit
+     * reset to 0 on identity switch) should still go through
+     * [setNostrSyncCursor].
+     */
+    suspend fun advanceNostrSyncCursor(candidate: Long) {
+        keyScoped.edit { prefs ->
+            val current = prefs[KeyScopedKeys.NOSTR_SYNC_CURSOR] ?: 0L
+            if (candidate > current) prefs[KeyScopedKeys.NOSTR_SYNC_CURSOR] = candidate
+        }
+    }
+
+    /**
      * Schema version of the Nostr sync recovery state. Bumping the constant in
      * code triggers a one-shot cursor reset on next app start so the relay
      * back-fills missing history (e.g. after the BoardDB → SecureDB split).

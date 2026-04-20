@@ -31,11 +31,11 @@ class NostrRelaySubscription @Inject constructor(
                 // back-off guards against out-of-order delivery from
                 // multiple relays.
                 val wrapCreatedAtSec = msg.wrapTimestamp / 1000
-                val current = userPreferences.getNostrSyncCursor() ?: 0L
                 val next = (wrapCreatedAtSec - 60).coerceAtLeast(0L)
-                if (next > current) {
-                    userPreferences.setNostrSyncCursor(next)
-                }
+                // Atomic monotonic advance: the read+compare+write happens
+                // inside DataStore's serialized edit block so the poll
+                // worker can't overwrite our newer value with a stale one.
+                userPreferences.advanceNostrSyncCursor(next)
                 msg
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to process incoming event", e)
