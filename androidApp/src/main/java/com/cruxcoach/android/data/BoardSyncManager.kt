@@ -45,6 +45,9 @@ class BoardSyncManager(
         const val TAG = "BoardSyncManager"
         /** Max concurrent chunk downloads. */
         const val PARALLEL_DOWNLOADS = 4
+        /** Denormalized-field refresh batch size — keeps per-transaction
+         *  write-lock hold time short so user writes can interleave. */
+        const val REFRESH_BATCH_SIZE = 100
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -483,16 +486,22 @@ class BoardSyncManager(
             if (keys.isEmpty()) return
             Log.d(TAG, "Refreshing denormalized data for ${keys.size} climb keys")
 
-            personalBoardRepo.runInTransaction {
-                for ((climbUuid, angle) in keys) {
-                    val climb = boardRepository.getClimbByUuid(climbUuid, angle.toInt()) ?: continue
-                    personalBoardRepo.updateAscentDenormalized(
-                        climbUuid, angle, climb.name, climb.difficultyAverage,
-                        climb.frames, climb.framesCount
-                    )
-                    personalBoardRepo.updateBidDenormalized(
-                        climbUuid, angle, climb.name, climb.difficultyAverage
-                    )
+            // Chunk into batches so the secure-DB write lock is released
+            // periodically, letting concurrent user writes (log ascent,
+            // favorites toggle, comment edit) interleave instead of
+            // blocking for the whole loop on users with many ascents.
+            keys.chunked(REFRESH_BATCH_SIZE).forEach { batch ->
+                personalBoardRepo.runInTransaction {
+                    for ((climbUuid, angle) in batch) {
+                        val climb = boardRepository.getClimbByUuid(climbUuid, angle.toInt()) ?: continue
+                        personalBoardRepo.updateAscentDenormalized(
+                            climbUuid, angle, climb.name, climb.difficultyAverage,
+                            climb.frames, climb.framesCount
+                        )
+                        personalBoardRepo.updateBidDenormalized(
+                            climbUuid, angle, climb.name, climb.difficultyAverage
+                        )
+                    }
                 }
             }
             Log.d(TAG, "Denormalized data refresh complete")
