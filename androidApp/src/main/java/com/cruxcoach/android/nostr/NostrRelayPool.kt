@@ -49,6 +49,10 @@ class NostrRelayPool @Inject constructor(
     )
 
     private inner class RelayConnection(val url: String) {
+        // @Volatile: ws is written from the OkHttp WebSocketListener dispatcher
+        // (onFailure / onClosed) and read from sender coroutines — visibility
+        // must be guaranteed to avoid leaked/stale WebSocket references.
+        @Volatile
         private var ws: WebSocket? = null
         private val pendingOks = ConcurrentHashMap<String, CompletableDeferred<Boolean>>()
         private val subscriptionFlows = ConcurrentHashMap<String, MutableSharedFlow<String>>()
