@@ -79,7 +79,10 @@ class AuroraBleConnection(private val context: Context) {
     /** When true, the idle timer is suppressed (e.g. during an active shared session). */
     var suppressAutoDisconnect: Boolean = false
 
-    // Write flow control: signaled by onCharacteristicWrite callback
+    // Write flow control: signaled by onCharacteristicWrite callback.
+    // @Volatile: callback may arrive on a GATT-stack Binder thread on some
+    // Android versions, so writer/reader visibility must be guaranteed.
+    @Volatile
     private var writeDeferred: CompletableDeferred<Int>? = null
     private val writeMutex = Mutex()
 
@@ -147,8 +150,11 @@ class AuroraBleConnection(private val context: Context) {
                 BluetoothProfile.STATE_DISCONNECTED -> {
                     connectionTimeoutJob?.cancel()
                     connectionTimeoutJob = null
-                    writeDeferred?.complete(BluetoothGatt.GATT_FAILURE)
+                    // Snapshot-before-null so a concurrent writer that just
+                    // installed a new deferred doesn't get its completion lost.
+                    val d = writeDeferred
                     writeDeferred = null
+                    d?.complete(BluetoothGatt.GATT_FAILURE)
 
                     // On Android <12, delay before close() — the BLE stack needs time
                     // after STATE_DISCONNECTED to fully release internal resources.
@@ -476,8 +482,11 @@ class AuroraBleConnection(private val context: Context) {
         disconnectJob = null
         closeSafetyJob?.cancel()
 
-        writeDeferred?.complete(BluetoothGatt.GATT_FAILURE)
-        writeDeferred = null
+        run {
+            val d = writeDeferred
+            writeDeferred = null
+            d?.complete(BluetoothGatt.GATT_FAILURE)
+        }
 
         val g = gatt
         gatt = null
