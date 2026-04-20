@@ -97,7 +97,7 @@ class MainActivity : AppCompatActivity() {
 
         PerfLogger.trace("super.onCreate") { super.onCreate(savedInstanceState) }
         if (savedInstanceState == null) {
-            pendingDeepLink.value = intent?.getStringExtra("navigate_to")
+            pendingDeepLink.value = safeNavigateToRoute(intent)
                 ?: extractBoardDbDeepLink(intent)
         }
         // userPreferences injected via Hilt
@@ -266,8 +266,34 @@ class MainActivity : AppCompatActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        pendingDeepLink.value = intent.getStringExtra("navigate_to")
+        pendingDeepLink.value = safeNavigateToRoute(intent)
             ?: extractBoardDbDeepLink(intent)
+    }
+
+    /**
+     * MainActivity is `exported="true"` (needed for LAUNCHER), so any app on
+     * the device can launch it with arbitrary `navigate_to` extras. Restrict
+     * the extra to the routes NotificationHelper actually emits —
+     * `announcements`, `dev_chat`, and `message_thread/<hex>` — so an
+     * attacker APK cannot smuggle in `board_sync?localDbUrl=…` and reach
+     * the sqlite-import sink.
+     */
+    private fun safeNavigateToRoute(intent: Intent?): String? {
+        val raw = intent?.getStringExtra("navigate_to") ?: return null
+        return when {
+            raw == "announcements" -> raw
+            raw == "dev_chat" -> raw
+            raw.startsWith("message_thread/") &&
+                raw.removePrefix("message_thread/")
+                    .matches(Regex("^[0-9a-fA-F]{1,128}$")) -> raw
+            else -> {
+                android.util.Log.w(
+                    "MainActivity",
+                    "Rejected navigate_to='$raw' from external intent"
+                )
+                null
+            }
+        }
     }
 
     /**
