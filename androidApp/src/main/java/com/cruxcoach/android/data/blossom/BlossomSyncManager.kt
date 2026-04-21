@@ -3,6 +3,7 @@ package com.cruxcoach.android.data.blossom
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
+import com.cruxcoach.android.nostr.NostrConfig
 import com.cruxcoach.android.util.ZstdNative
 import com.vitorpamplona.quartz.nip01Core.core.Event
 import com.vitorpamplona.quartz.nip01Core.crypto.verifySignature
@@ -47,11 +48,7 @@ class BlossomSyncManager(
      * to avoid coupling with the app's relay pool lifecycle.
      */
     suspend fun fetchManifest(): BlossomManifest = withContext(Dispatchers.IO) {
-        val relayUrls = listOf(
-            "wss://relay.damus.io",
-            "wss://nos.lol",
-            "wss://relay.primal.net"
-        )
+        val relayUrls = NostrConfig.DEFAULT_RELAYS.map { it.url }
 
         for (relayUrl in relayUrls) {
             try {
