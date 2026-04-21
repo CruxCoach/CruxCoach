@@ -12,6 +12,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -41,6 +44,24 @@ class UpdaterRepository @Inject constructor(
 
     val state: Flow<UpdaterState> = preferences.state
 
+    /** Live download progress in percent [0..100], null when no download in flight. */
+    private val _downloadProgress = MutableStateFlow<Int?>(null)
+    val downloadProgress: StateFlow<Int?> = _downloadProgress.asStateFlow()
+
+    /** Signal to the UI that the download-confirm dialog should open now.
+     *  Set by [requestDownloadDialog] (typically from the notification tap
+     *  intent); cleared by the UI once the dialog is shown or dismissed. */
+    private val _downloadDialogRequested = MutableStateFlow(false)
+    val downloadDialogRequested: StateFlow<Boolean> = _downloadDialogRequested.asStateFlow()
+
+    fun requestDownloadDialog() {
+        _downloadDialogRequested.value = true
+    }
+
+    fun consumeDownloadDialogRequest() {
+        _downloadDialogRequested.value = false
+    }
+
     suspend fun snapshot(): UpdaterState = preferences.snapshot()
 
     fun selfUpdateAllowed(): Boolean = installSourceGate.selfUpdateAllowed()
@@ -59,18 +80,9 @@ class UpdaterRepository @Inject constructor(
     }
 
     private suspend fun onNewerUpdateDetected(info: UpdateInfo) {
-        val prefs = preferences.snapshot()
-        val transport = downloader.currentTransport()
-        val canAuto = when (transport) {
-            ApkDownloader.Transport.WIFI -> prefs.autoDownloadOnWifi
-            ApkDownloader.Transport.CELLULAR -> prefs.autoDownloadOnMobile
-            else -> false
-        }
-        if (canAuto) {
-            startDownload(info, allowMobile = prefs.autoDownloadOnMobile)
-        } else {
-            notifier.showPendingDownload(info)
-        }
+        // No auto-download: every download is gated behind an in-app
+        // confirmation dialog. Notification brings the user into the app.
+        notifier.showPendingDownload(info)
     }
 
     /** Starts (or resumes) the download and watches it to completion. */
@@ -108,13 +120,16 @@ class UpdaterRepository @Inject constructor(
 
     private fun monitorDownload(info: UpdateInfo, id: Long) {
         downloadMonitorJob?.cancel()
+        _downloadProgress.value = 0
         downloadMonitorJob = scope.launch {
             var lastNotifyPct = -1
             while (true) {
                 val status = downloader.query(id) ?: break
                 when (status.state) {
                     ApkDownloader.State.SUCCESSFUL -> {
+                        _downloadProgress.value = 100
                         onDownloadFinished(info)
+                        _downloadProgress.value = null
                         return@launch
                     }
                     ApkDownloader.State.FAILED -> {
@@ -125,12 +140,14 @@ class UpdaterRepository @Inject constructor(
                                 pipelineStage = PipelineStage.PENDING_DOWNLOAD,
                             )
                         }
+                        _downloadProgress.value = null
                         downloader.clearCacheFor(info.versionName)
                         notifier.showDownloadError(info, reason = UpdateNotifier.DownloadError.GENERIC)
                         return@launch
                     }
                     else -> {
                         val pct = status.progressPercent
+                        if (pct != null) _downloadProgress.value = pct
                         if (pct != null && pct != lastNotifyPct) {
                             lastNotifyPct = pct
                             notifier.showDownloading(info, pct)
@@ -139,6 +156,7 @@ class UpdaterRepository @Inject constructor(
                 }
                 delay(PROGRESS_POLL_MS)
             }
+            _downloadProgress.value = null
         }
     }
 

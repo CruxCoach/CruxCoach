@@ -182,6 +182,7 @@
     <!-- Settings: App Sharing -->
     <string name="settings_share_title">App teilen</string>
     <string name="settings_share_desc">CruxCoach APK mit anderen teilen (ohne Nutzerdaten).</string>
+    <string name="board_filter_title">Filter</string>
     <string name="settings_share_via_apps">Über Apps</string>
     <string name="settings_share_codeberg">Online</string>
     <string name="settings_share_codeberg_hide">Online ausblenden</string>
@@ -868,6 +869,9 @@
     <string name="updater_settings_pending_title">Version %1$s verfügbar</string>
     <string name="updater_settings_pending_size">ca. %1$s</string>
     <string name="updater_settings_pending_release_notes">Release-Notes</string>
+    <string name="updater_download_confirm_title">Update %1$s herunterladen?</string>
+    <string name="updater_download_confirm_body">Download ist ca. %1$s groß. Anschließend kannst du das Update installieren.</string>
+    <string name="updater_download_confirm_start">Herunterladen</string>
     <string name="updater_settings_cert_title">Update blockiert — Signatur hat sich geändert</string>
     <string name="updater_settings_cert_body">Zum manuellen Neuinstallieren auf Codeberg öffnen.</string>
     <string name="updater_settings_nudge_title">Update-Hinweise deaktiviert</string>

@@ -182,6 +182,7 @@
     <!-- Settings: App Sharing -->
     <string name="settings_share_title">Share app</string>
     <string name="settings_share_desc">Share CruxCoach APK with others (without user data).</string>
+    <string name="board_filter_title">Filters</string>
     <string name="settings_share_via_apps">Via apps</string>
     <string name="settings_share_codeberg">Online</string>
     <string name="settings_share_codeberg_hide">Hide online</string>
@@ -822,6 +823,9 @@
     <string name="updater_settings_pending_title">Version %1$s available</string>
     <string name="updater_settings_pending_size">about %1$s</string>
     <string name="updater_settings_pending_release_notes">Release notes</string>
+    <string name="updater_download_confirm_title">Download update %1$s?</string>
+    <string name="updater_download_confirm_body">Download is about %1$s. You can then install the update.</string>
+    <string name="updater_download_confirm_start">Download</string>
     <string name="updater_settings_cert_title">Update blocked — signature changed</string>
     <string name="updater_settings_cert_body">Tap to open Codeberg and reinstall manually.</string>
     <string name="updater_settings_nudge_title">Update notifications off</string>

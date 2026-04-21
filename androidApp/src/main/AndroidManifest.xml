@@ -16,6 +16,10 @@
          install goes through the system consent dialog (§6.8); we do NOT
          request UPDATE_PACKAGES_WITHOUT_USER_ACTION. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- FEAT-004 in-app updater: DownloadManager.setNotificationVisibility(
+         VISIBILITY_HIDDEN) requires this permission — we post our own
+         progress UI so the system notification would be a duplicate. -->
+    <uses-permission android:name="android.permission.DOWNLOAD_WITHOUT_NOTIFICATION" />
 
     <!-- Foreground service for background sync notifications -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />

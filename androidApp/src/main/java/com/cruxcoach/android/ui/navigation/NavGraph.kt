@@ -51,6 +51,8 @@ import com.cruxcoach.android.ui.bodystat.BodyStatScreen
 import com.cruxcoach.android.ui.bodystat.DataExportScreen
 import com.cruxcoach.android.ui.bodystat.DataImportScreen
 import com.cruxcoach.android.ui.board.BoardBrowserScreen
+import com.cruxcoach.android.ui.board.BoardBrowserViewModel
+import com.cruxcoach.android.ui.board.BoardFilterScreen
 import com.cruxcoach.android.ui.board.BoardClimbDetailScreen
 import com.cruxcoach.android.ui.board.BoardListDetailScreen
 import com.cruxcoach.android.ui.board.BoardListsScreen
@@ -89,6 +91,7 @@ object Routes {
     const val STATS = "stats"
     const val EXERCISE_LIBRARY = "exercise_library"
     const val BOARD_BROWSER = "board_browser"
+    const val BOARD_FILTER = "board_filter"
     const val BOARD_CLIMB_DETAIL = "board_climb_detail/{climbUuid}/{angle}"
     const val BOARD_LOGBOOK = "board_logbook"
     const val BOARD_SYNC = "board_sync"
@@ -199,6 +202,7 @@ fun CruxCoachNavHost(
         when {
             route == Routes.ANNOUNCEMENTS ||
             route == Routes.DEV_CHAT ||
+            route == Routes.SETTINGS ||
             route.startsWith("message_thread/") ->
                 navController.navigate(route) { launchSingleTop = true }
             route.startsWith("board_sync") -> {
@@ -385,7 +389,19 @@ fun CruxCoachNavHost(
                     onNavigateToSync = { navController.navigate(Routes.BOARD_SYNC) },
                     onNavigateToLogbook = { navController.navigate(Routes.BOARD_LOGBOOK) },
                     onNavigateToLists = { navController.navigate(Routes.BOARD_LISTS) },
-                    onNavigateToSettings = { navController.navigate(Routes.SETTINGS) }
+                    onNavigateToSettings = { navController.navigate(Routes.SETTINGS) },
+                    onNavigateToFilter = { navController.navigate(Routes.BOARD_FILTER) }
+                )
+            }
+
+            composable(Routes.BOARD_FILTER) { entry ->
+                val parentEntry = remember(entry) {
+                    navController.getBackStackEntry(Routes.BOARD_BROWSER)
+                }
+                val sharedVm: BoardBrowserViewModel = hiltViewModel(parentEntry)
+                BoardFilterScreen(
+                    viewModel = sharedVm,
+                    onNavigateBack = { navController.popBackStack() }
                 )
             }
 

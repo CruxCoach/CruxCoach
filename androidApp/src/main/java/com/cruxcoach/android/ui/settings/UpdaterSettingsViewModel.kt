@@ -46,6 +46,11 @@ class UpdaterSettingsViewModel @Inject constructor(
         UpdaterState(),
     )
 
+    val downloadProgress: StateFlow<Int?> = repository.downloadProgress
+    val downloadDialogRequested: StateFlow<Boolean> = repository.downloadDialogRequested
+
+    fun consumeDownloadDialogRequest() = repository.consumeDownloadDialogRequest()
+
     val pendingPipelineStage: StateFlow<PipelineStage> =
         state.map { it.pipelineStage }.stateIn(
             viewModelScope,

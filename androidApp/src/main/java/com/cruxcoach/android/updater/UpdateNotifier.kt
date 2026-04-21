@@ -32,17 +32,14 @@ class UpdateNotifier(private val context: Context) {
     private val manager: NotificationManagerCompat = NotificationManagerCompat.from(context)
 
     fun showPendingDownload(info: UpdateInfo) {
+        // No inline Download action: tapping the notification opens
+        // Settings and auto-triggers the download-confirm dialog — the
+        // user still gets one explicit confirmation before any bytes fly.
         val builder = base(info)
             .setContentTitle(context.getString(R.string.updater_notif_pending_title, info.versionName))
             .setContentText(context.getString(R.string.updater_notif_pending_body, humanizeSize(info.apkSizeBytes)))
             .setOngoing(false)
-            .addAction(
-                NotificationCompat.Action.Builder(
-                    0,
-                    context.getString(R.string.updater_notif_action_download),
-                    actionPendingIntent(Action.DOWNLOAD),
-                ).build()
-            )
+            .setContentIntent(settingsPendingIntent(askDownload = true))
         notify(builder)
     }
 
@@ -140,14 +137,15 @@ class UpdateNotifier(private val context: Context) {
             .setDeleteIntent(actionPendingIntent(Action.DISMISS))
     }
 
-    private fun settingsPendingIntent(): PendingIntent {
+    private fun settingsPendingIntent(askDownload: Boolean = false): PendingIntent {
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra("navigate_to", "settings")
+            if (askDownload) putExtra("updater_show_download_dialog", true)
         }
         return PendingIntent.getActivity(
             context,
-            REQ_SETTINGS,
+            if (askDownload) REQ_SETTINGS_ASK else REQ_SETTINGS,
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
@@ -206,5 +204,6 @@ class UpdateNotifier(private val context: Context) {
     companion object {
         private const val REQ_SETTINGS = 200
         private const val REQ_OPEN_CODEBERG = 201
+        private const val REQ_SETTINGS_ASK = 202
     }
 }

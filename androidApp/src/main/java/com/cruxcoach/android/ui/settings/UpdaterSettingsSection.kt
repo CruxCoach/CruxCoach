@@ -9,18 +9,21 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -70,6 +73,8 @@ internal fun UpdaterSettingsSection(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val checkingNow by viewModel.checkingNow.collectAsStateWithLifecycle()
     val nudgeVisible by viewModel.notificationNudgeVisible.collectAsStateWithLifecycle()
+    val downloadProgress by viewModel.downloadProgress.collectAsStateWithLifecycle()
+    val dialogRequested by viewModel.downloadDialogRequested.collectAsStateWithLifecycle()
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (nudgeVisible) {
@@ -134,28 +139,24 @@ internal fun UpdaterSettingsSection(
             }
         }
 
-        ToggleRow(
-            title = stringResource(R.string.updater_settings_auto_check),
-            description = stringResource(R.string.updater_settings_auto_check_desc),
-            checked = state.autoCheckEnabled,
-            onCheckedChange = viewModel::setAutoCheck,
-        )
-
-        ToggleRow(
-            title = stringResource(R.string.updater_settings_auto_wifi),
-            description = stringResource(R.string.updater_settings_auto_wifi_desc),
-            checked = state.autoDownloadOnWifi,
-            onCheckedChange = viewModel::setAutoDownloadOnWifi,
-        )
-
-        ToggleRow(
-            title = stringResource(R.string.updater_settings_auto_mobile),
-            description = stringResource(R.string.updater_settings_auto_mobile_desc),
-            checked = state.autoDownloadOnMobile,
-            onCheckedChange = viewModel::setAutoDownloadOnMobile,
-        )
+        var downloadConfirmFor by remember { mutableStateOf<com.cruxcoach.android.updater.UpdateInfo?>(null) }
 
         val info = state.pendingUpdate()
+
+        // Notification tap → open-dialog request. Auto-surface the dialog
+        // here so the user lands directly on the confirmation prompt.
+        LaunchedEffect(dialogRequested, info) {
+            if (dialogRequested && info != null &&
+                state.pipelineStage != PipelineStage.READY_TO_INSTALL &&
+                state.pipelineStage != PipelineStage.DOWNLOADING
+            ) {
+                downloadConfirmFor = info
+            }
+            if (dialogRequested) {
+                viewModel.consumeDownloadDialogRequest()
+            }
+        }
+
         when {
             info != null && state.pipelineStage == PipelineStage.BLOCKED_CERT_MISMATCH -> {
                 CertMismatchRow(onOpen = viewModel::openReleasePage)
@@ -166,35 +167,40 @@ internal fun UpdaterSettingsSection(
                     version = info.versionName,
                     sizeBytes = info.apkSizeBytes,
                     stage = state.pipelineStage,
-                    onDownload = viewModel::downloadNow,
+                    downloadProgress = downloadProgress,
+                    onDownload = { downloadConfirmFor = info },
                     onInstall = viewModel::installPending,
                 )
             }
         }
-    }
-}
 
-@Composable
-private fun ToggleRow(
-    title: String,
-    description: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(text = title, fontWeight = FontWeight.SemiBold)
-            Text(
-                text = description,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+        downloadConfirmFor?.let { pending ->
+            AlertDialog(
+                onDismissRequest = { downloadConfirmFor = null },
+                title = { Text(stringResource(R.string.updater_download_confirm_title, pending.versionName)) },
+                text = {
+                    Text(
+                        stringResource(
+                            R.string.updater_download_confirm_body,
+                            humanSize(pending.apkSizeBytes),
+                        )
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        downloadConfirmFor = null
+                        viewModel.downloadNow()
+                    }) {
+                        Text(stringResource(R.string.updater_download_confirm_start))
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { downloadConfirmFor = null }) {
+                        Text(stringResource(R.string.action_cancel))
+                    }
+                },
             )
         }
-        Spacer(Modifier.width(8.dp))
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
 
@@ -203,6 +209,7 @@ private fun PendingUpdateRow(
     version: String,
     sizeBytes: Long,
     stage: PipelineStage,
+    downloadProgress: Int?,
     onDownload: () -> Unit,
     onInstall: () -> Unit,
 ) {
@@ -227,9 +234,14 @@ private fun PendingUpdateRow(
                     }
                 }
                 PipelineStage.DOWNLOADING -> {
+                    val pct = downloadProgress ?: 0
                     Text(
-                        text = stringResource(R.string.updater_notif_downloading_body, 0),
+                        text = stringResource(R.string.updater_notif_downloading_body, pct),
                         style = MaterialTheme.typography.bodySmall,
+                    )
+                    androidx.compose.material3.LinearProgressIndicator(
+                        progress = { pct / 100f },
+                        modifier = Modifier.fillMaxWidth(),
                     )
                 }
                 else -> {

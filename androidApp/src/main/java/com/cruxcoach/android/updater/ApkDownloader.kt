@@ -17,11 +17,15 @@ import java.io.File
  * pending-update APK on disk. Public surface is deliberately narrow:
  * start, query, clear.
  *
- * Storage: target file is `cacheDir/pending-update-<versionName>.apk`.
- * The cache dir is app-private and not world-readable; the APK is
- * considered untrusted bytes until [IntegrityVerifier] has cleared it.
+ * Storage: target file lives under the app-scoped external files dir
+ * (`getExternalFilesDir(null)/updater/pending-update-<versionName>.apk`).
+ * DownloadManager refuses internal `/data/data` destinations on modern
+ * Android (SecurityException "Unsupported path"); the external-files dir
+ * is app-private on API 29+ (scoped storage) and does not need any
+ * storage permission. The APK is still untrusted bytes until
+ * [IntegrityVerifier] has cleared it.
  *
- * Pre-flight [StatFs] check rejects the enqueue when the cache partition
+ * Pre-flight [StatFs] check rejects the enqueue when the target partition
  * does not have `apkSizeBytes + 16 MiB` free — otherwise DownloadManager
  * happily starts a download that will silently fail partway (§R4).
  */
@@ -31,9 +35,19 @@ class ApkDownloader(private val context: Context) {
         context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
     }
 
+    /** Directory DownloadManager is allowed to write into (scoped external, no permission). */
+    private fun updaterDir(): File? {
+        val base = context.getExternalFilesDir(null) ?: return null
+        val dir = File(base, "updater")
+        if (!dir.exists() && !dir.mkdirs() && !dir.isDirectory) return null
+        return dir
+    }
+
     /** Prepare — does not enqueue. Returns the target file the caller should pass to [start]. */
-    fun targetFileFor(versionName: String): File =
-        File(context.cacheDir, "pending-update-$versionName.apk")
+    fun targetFileFor(versionName: String): File {
+        val dir = updaterDir() ?: File(context.cacheDir, "updater").apply { mkdirs() }
+        return File(dir, "pending-update-$versionName.apk")
+    }
 
     /**
      * Enqueues the download if [PreFlight] is clean; returns the DownloadManager
@@ -53,7 +67,7 @@ class ApkDownloader(private val context: Context) {
         val headroomBytes = 16L * 1024 * 1024
         val needed = info.apkSizeBytes + headroomBytes
         val free = try {
-            StatFs(context.cacheDir.absolutePath).availableBytes
+            StatFs(target.parentFile!!.absolutePath).availableBytes
         } catch (e: Exception) {
             Log.w(TAG, "StatFs failed — proceeding without pre-flight", e)
             Long.MAX_VALUE

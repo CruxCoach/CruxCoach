@@ -84,44 +84,14 @@ internal fun HoldSearchSheet(
                 fontWeight = FontWeight.Bold
             )
 
-            // Interactive board visualization
-            if (placements.isNotEmpty()) {
-                KilterBoardVisualization(
-                    holds = emptyList(),
-                    placements = placements,
-                    boardSize = boardSize,
-                    boardImages = boardImages,
-                    heatmapData = heatmapData.ifEmpty { null },
-                    selectedHolds = selectedHolds,
-                    onHoldTapped = onHoldTapped,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-
-            // Heatmap mode chips
-            Text(stringResource(R.string.board_holdsearch_heatmap), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                HeatmapMode.entries.forEach { mode ->
-                    FilterChip(
-                        selected = mode == heatmapMode,
-                        onClick = { onHeatmapModeSelect(mode) },
-                        label = { Text(heatmapModeLabel(mode), style = MaterialTheme.typography.labelSmall) },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = OrangeAccent,
-                            selectedLabelColor = DarkBackground
-                        ),
-                        shape = RoundedCornerShape(16.dp)
-                    )
-                }
-            }
-
-            HorizontalDivider()
-
-            // Hold selection section
-            Text(stringResource(R.string.board_holdsearch_hold_search), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            // Hold selection section — moved ABOVE the board so the user sees
+            // the match count and the filter button without scrolling past the
+            // full-height board diagram first.
+            Text(
+                stringResource(R.string.board_holdsearch_hold_search),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold
+            )
             Text(
                 stringResource(R.string.board_holdsearch_hint),
                 style = MaterialTheme.typography.bodySmall,
@@ -129,7 +99,6 @@ internal fun HoldSearchSheet(
             )
 
             if (selectedHolds.isNotEmpty()) {
-                // Clear button
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -147,7 +116,6 @@ internal fun HoldSearchSheet(
                     }
                 }
 
-                // Match count + filter button
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -182,6 +150,50 @@ internal fun HoldSearchSheet(
                         Text(stringResource(R.string.board_holdsearch_filter), fontWeight = FontWeight.Bold)
                     }
                 }
+            }
+
+            HorizontalDivider()
+
+            // Interactive board visualization
+            if (placements.isNotEmpty()) {
+                KilterBoardVisualization(
+                    holds = emptyList(),
+                    placements = placements,
+                    boardSize = boardSize,
+                    boardImages = boardImages,
+                    heatmapData = heatmapData.ifEmpty { null },
+                    selectedHolds = selectedHolds,
+                    onHoldTapped = onHoldTapped,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
+            // Heatmap mode chips — personal heatmap is intentionally NOT here;
+            // it lives in the logbook stats sheet where the user's own sends
+            // belong contextually.
+            Text(
+                stringResource(R.string.board_holdsearch_heatmap),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold
+            )
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                HeatmapMode.entries
+                    .filter { it != HeatmapMode.PERSONAL }
+                    .forEach { mode ->
+                        FilterChip(
+                            selected = mode == heatmapMode,
+                            onClick = { onHeatmapModeSelect(mode) },
+                            label = { Text(heatmapModeLabel(mode), style = MaterialTheme.typography.labelSmall) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = OrangeAccent,
+                                selectedLabelColor = DarkBackground
+                            ),
+                            shape = RoundedCornerShape(16.dp)
+                        )
+                    }
             }
         }
     }

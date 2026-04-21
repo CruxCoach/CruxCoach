@@ -84,6 +84,9 @@ class MainActivity : AppCompatActivity() {
     @Inject
     lateinit var userPreferences: UserPreferences
 
+    @Inject
+    lateinit var updaterRepository: dagger.Lazy<com.cruxcoach.android.updater.UpdaterRepository>
+
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { /* granted or not — we check hasPermission() before each notification */ }
@@ -99,6 +102,7 @@ class MainActivity : AppCompatActivity() {
         if (savedInstanceState == null) {
             pendingDeepLink.value = safeNavigateToRoute(intent)
                 ?: extractBoardDbDeepLink(intent)
+            handleUpdaterExtras(intent)
         }
         // userPreferences injected via Hilt
         PerfLogger.trace("enableEdgeToEdge") { enableEdgeToEdge() }
@@ -268,6 +272,13 @@ class MainActivity : AppCompatActivity() {
         super.onNewIntent(intent)
         pendingDeepLink.value = safeNavigateToRoute(intent)
             ?: extractBoardDbDeepLink(intent)
+        handleUpdaterExtras(intent)
+    }
+
+    private fun handleUpdaterExtras(intent: Intent?) {
+        if (intent?.getBooleanExtra("updater_show_download_dialog", false) == true) {
+            updaterRepository.get().requestDownloadDialog()
+        }
     }
 
     /**
