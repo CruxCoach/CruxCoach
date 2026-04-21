@@ -12,6 +12,8 @@ import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
 import java.io.File
 import java.net.Inet4Address
+import java.net.InetAddress
+import java.net.InetSocketAddress
 import java.net.NetworkInterface
 import java.net.ServerSocket
 import java.net.Socket
@@ -122,10 +124,27 @@ class LocalApkServer(
         private set
 
     fun start(port: Int = LOCAL_SHARE_PORT, hostIp: String? = null): Int {
+        // Bind to a specific interface IP so the share server isn't reachable
+        // on every network the device happens to be connected to (mobile data,
+        // home WiFi, …). Default to loopback if the caller didn't pass an IP —
+        // useless for LAN sharing, but prevents accidental exposure.
+        val bindAddress: InetAddress = when {
+            hostIp.isNullOrBlank() || hostIp == "0.0.0.0" || hostIp == "::" -> {
+                InetAddress.getByName("127.0.0.1")
+            }
+            else -> InetAddress.getByName(hostIp)
+        }
         val ss = try {
-            ServerSocket(port)
+            ServerSocket().apply {
+                reuseAddress = true
+                bind(InetSocketAddress(bindAddress, port))
+            }
         } catch (_: Exception) {
-            ServerSocket(0) // fallback to random port if fixed port is busy
+            // Fallback: same bind address, random port if the fixed one is busy.
+            ServerSocket().apply {
+                reuseAddress = true
+                bind(InetSocketAddress(bindAddress, 0))
+            }
         }
         serverSocket = ss
         running = true
