@@ -172,6 +172,14 @@ class AppNotificationService(private val context: Context) {
         ).apply {
             description = context.getString(R.string.notification_channel_board_sync_desc)
         })
+
+        mgr.createNotificationChannel(NotificationChannel(
+            Channel.UPDATER,
+            context.getString(R.string.notification_channel_updater),
+            NotificationManager.IMPORTANCE_DEFAULT
+        ).apply {
+            description = context.getString(R.string.notification_channel_updater_desc)
+        })
     }
 
     // ── Constants ────────────────────────────────────────────────
@@ -180,6 +188,7 @@ class AppNotificationService(private val context: Context) {
         const val REST_TIMER = "rest_timer"
         const val TRAINING_REMINDER = "training_reminder"
         const val BOARD_SYNC = "board_sync"
+        const val UPDATER = "updater"
     }
 
     object Id {
@@ -187,6 +196,7 @@ class AppNotificationService(private val context: Context) {
         const val TRAINING_REMINDER = 1001
         const val SYNC_PROGRESS = 2001
         const val SYNC_RESULT = 2002
+        const val UPDATE = 4001
     }
 
     companion object {

@@ -12,6 +12,11 @@
     <!-- Vibration for rest timer -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
+    <!-- FEAT-004 in-app updater: hand off APK to PackageInstaller. Every
+         install goes through the system consent dialog (§6.8); we do NOT
+         request UPDATE_PACKAGES_WITHOUT_USER_ACTION. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
     <!-- Foreground service for background sync notifications -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
@@ -121,6 +126,27 @@
         <receiver
             android:name=".notification.RestTimerAlarmReceiver"
             android:exported="false" />
+
+        <!-- FEAT-004 updater: notification-action taps (Download / Install /
+             Dismiss) dispatch here even after the Activity has died. -->
+        <receiver
+            android:name=".updater.UpdaterActionReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.cruxcoach.android.updater.ACTION_DOWNLOAD" />
+                <action android:name="com.cruxcoach.android.updater.ACTION_INSTALL" />
+                <action android:name="com.cruxcoach.android.updater.ACTION_DISMISS" />
+            </intent-filter>
+        </receiver>
+
+        <!-- PackageInstaller status callbacks (§5.5). -->
+        <receiver
+            android:name=".updater.ApkInstallStatusReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.cruxcoach.android.updater.INSTALL_STATUS" />
+            </intent-filter>
+        </receiver>
 
         <!-- Disable default WorkManager initializer (we use HiltWorkerFactory) -->
         <provider

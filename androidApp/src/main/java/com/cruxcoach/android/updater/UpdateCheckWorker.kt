@@ -1,0 +1,92 @@
+package com.cruxcoach.android.updater
+
+import android.content.Context
+import androidx.hilt.work.HiltWorker
+import androidx.work.Constraints
+import androidx.work.CoroutineWorker
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.ExistingWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.OutOfQuotaPolicy
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.WorkerParameters
+import dagger.assisted.Assisted
+import dagger.assisted.AssistedInject
+import java.util.concurrent.TimeUnit
+
+/**
+ * Backstop check runner (§6.12). Flex interval so WorkManager picks the
+ * exact moment inside the 24 h window — we never pin a clock time and
+ * never fire while offline.
+ *
+ * Explicitly `setRequiresDeviceIdle(false)` + `setRequiresCharging(false)`
+ * because idle-constrained jobs on OEM-killer devices (Xiaomi/Huawei/Oppo)
+ * are often deferred for days. First-run expedited (`OneTimeWorkRequest`)
+ * is scheduled separately so a fresh install knows within minutes
+ * whether it's already stale.
+ */
+@HiltWorker
+class UpdateCheckWorker @AssistedInject constructor(
+    @Assisted context: Context,
+    @Assisted params: WorkerParameters,
+    private val repository: UpdaterRepository,
+) : CoroutineWorker(context, params) {
+
+    override suspend fun doWork(): Result {
+        if (!repository.selfUpdateAllowed()) return Result.success()
+        return when (val outcome = repository.checkNow(UpdateChecker.Trigger.PERIODIC)) {
+            is UpdateChecker.CheckOutcome.Error -> Result.retry()
+            else -> {
+                @Suppress("UNUSED_VARIABLE")
+                val ignored = outcome
+                Result.success()
+            }
+        }
+    }
+
+    companion object {
+        private const val PERIODIC_NAME = "cruxcoach.updater.periodic"
+        private const val FIRST_RUN_NAME = "cruxcoach.updater.first_run"
+
+        fun enqueue(context: Context) {
+            val constraints = Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .setRequiresBatteryNotLow(true)
+                .setRequiresDeviceIdle(false)
+                .setRequiresCharging(false)
+                .build()
+
+            val periodic = PeriodicWorkRequestBuilder<UpdateCheckWorker>(
+                repeatInterval = 24, repeatIntervalTimeUnit = TimeUnit.HOURS,
+                flexTimeInterval = 6, flexTimeIntervalUnit = TimeUnit.HOURS,
+            )
+                .setConstraints(constraints)
+                .build()
+
+            val wm = WorkManager.getInstance(context)
+            wm.enqueueUniquePeriodicWork(
+                PERIODIC_NAME,
+                ExistingPeriodicWorkPolicy.KEEP,
+                periodic,
+            )
+
+            val firstRun = OneTimeWorkRequestBuilder<UpdateCheckWorker>()
+                .setConstraints(constraints)
+                .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+                .build()
+            wm.enqueueUniqueWork(
+                FIRST_RUN_NAME,
+                ExistingWorkPolicy.KEEP,
+                firstRun,
+            )
+        }
+
+        fun cancel(context: Context) {
+            val wm = WorkManager.getInstance(context)
+            wm.cancelUniqueWork(PERIODIC_NAME)
+            wm.cancelUniqueWork(FIRST_RUN_NAME)
+        }
+    }
+}

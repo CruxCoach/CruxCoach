@@ -63,6 +63,7 @@ fun SettingsScreen(
     var kilterExpanded by rememberSaveable { mutableStateOf(false) }
     var devContactExpanded by rememberSaveable { mutableStateOf(false) }
     var dataExpanded by rememberSaveable { mutableStateOf(false) }
+    var updaterExpanded by rememberSaveable { mutableStateOf(false) }
     var showBoardModelDialog by rememberSaveable { mutableStateOf(false) }
 
     Scaffold(
@@ -271,6 +272,16 @@ fun SettingsScreen(
                         onCategoryChange = { cat, enabled -> viewModel.updateAnnouncementCategory(cat, enabled) },
                         onDrainQueue = { viewModel.drainQueue() }
                     )
+                }
+            }
+
+            HorizontalDivider()
+
+            // Section: App updates (FEAT-004)
+            CollapsibleHeader(stringResource(R.string.updater_settings_title), updaterExpanded) { updaterExpanded = !updaterExpanded }
+            AnimatedVisibility(visible = updaterExpanded) {
+                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    UpdaterSettingsSection()
                 }
             }
 

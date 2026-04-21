@@ -50,6 +50,9 @@ class CruxCoachApp : Application(), Configuration.Provider {
     @Inject
     lateinit var pushCoordinator: dagger.Lazy<NostrPushCoordinator>
 
+    @Inject
+    lateinit var updaterCoordinator: dagger.Lazy<com.cruxcoach.android.updater.UpdaterCoordinator>
+
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override val workManagerConfiguration: Configuration
@@ -102,6 +105,11 @@ class CruxCoachApp : Application(), Configuration.Provider {
         PerfLogger.trace("NostrRelayConnectivityObserver.start") {
             connectivityObserver.get().start()
         }
+
+        // FEAT-004: in-app updater. Opportunistic checks on app start,
+        // network regain, and a 24 h WorkManager backstop. Hard-disabled
+        // when installed via Zapstore (§6.6).
+        PerfLogger.trace("UpdaterCoordinator.start") { updaterCoordinator.get().start() }
 
         ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
             private var lastForegroundPoll = 0L

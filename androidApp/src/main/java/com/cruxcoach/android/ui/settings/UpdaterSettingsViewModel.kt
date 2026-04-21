@@ -1,0 +1,101 @@
+package com.cruxcoach.android.ui.settings
+
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.cruxcoach.android.updater.InstallSourceGate
+import com.cruxcoach.android.updater.PipelineStage
+import com.cruxcoach.android.updater.UpdateChecker
+import com.cruxcoach.android.updater.UpdateNotificationReliabilityHelper
+import com.cruxcoach.android.updater.UpdaterRepository
+import com.cruxcoach.android.updater.UpdaterState
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.launch
+import javax.inject.Inject
+
+/**
+ * Backs [UpdaterSettingsSection] (§6.15). Thin state aggregator: exposes
+ * the persisted state + computed view fields (gated info, permission
+ * nudge, button-in-flight flag), defers all mutation to
+ * [UpdaterRepository].
+ */
+@HiltViewModel
+class UpdaterSettingsViewModel @Inject constructor(
+    application: Application,
+    private val repository: UpdaterRepository,
+    private val installSourceGate: InstallSourceGate,
+) : AndroidViewModel(application) {
+
+    private val _checkingNow = MutableStateFlow(false)
+    val checkingNow: StateFlow<Boolean> = _checkingNow.asStateFlow()
+
+    private val _notificationNudgeVisible = MutableStateFlow(false)
+    val notificationNudgeVisible: StateFlow<Boolean> = _notificationNudgeVisible.asStateFlow()
+
+    val storeGated: Boolean get() = !installSourceGate.selfUpdateAllowed()
+
+    val state: StateFlow<UpdaterState> = repository.state.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5_000),
+        UpdaterState(),
+    )
+
+    val pendingPipelineStage: StateFlow<PipelineStage> =
+        state.map { it.pipelineStage }.stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(5_000),
+            PipelineStage.NONE,
+        )
+
+    fun refreshNotificationNudge() {
+        _notificationNudgeVisible.value =
+            UpdateNotificationReliabilityHelper.isBlocked(getApplication())
+    }
+
+    fun checkNow() {
+        if (_checkingNow.value) return
+        viewModelScope.launch {
+            _checkingNow.value = true
+            try {
+                repository.checkNow(UpdateChecker.Trigger.MANUAL)
+            } finally {
+                _checkingNow.value = false
+            }
+        }
+    }
+
+    fun setAutoCheck(enabled: Boolean) = viewModelScope.launch {
+        repository.setAutoCheck(enabled)
+    }
+
+    fun setAutoDownloadOnWifi(enabled: Boolean) = viewModelScope.launch {
+        repository.setAutoDownloadOnWifi(enabled)
+    }
+
+    fun setAutoDownloadOnMobile(enabled: Boolean) = viewModelScope.launch {
+        repository.setAutoDownloadOnMobile(enabled)
+    }
+
+    fun downloadNow() {
+        viewModelScope.launch {
+            val prefs = repository.snapshot()
+            val info = prefs.pendingUpdate() ?: return@launch
+            repository.startDownload(info, allowMobile = prefs.autoDownloadOnMobile)
+        }
+    }
+
+    fun installPending() = repository.installPending()
+
+    fun openReleasePage() {
+        viewModelScope.launch {
+            val info = repository.snapshot().pendingUpdate() ?: return@launch
+            repository.openReleasePage(info)
+        }
+    }
+}

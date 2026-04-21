@@ -283,6 +283,7 @@ class MainActivity : AppCompatActivity() {
         return when {
             raw == "announcements" -> raw
             raw == "dev_chat" -> raw
+            raw == "settings" -> raw
             raw.startsWith("message_thread/") &&
                 raw.removePrefix("message_thread/")
                     .matches(Regex("^[0-9a-fA-F]{1,128}$")) -> raw
