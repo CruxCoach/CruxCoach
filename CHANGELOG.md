@@ -25,6 +25,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Board database import on older devices occasionally failed with a "database is locked" error
 - Board browser could become slow after a board database update was interrupted — the speed-up indexes now repair themselves automatically on app start
 - The version number shown in Settings is now always correct
+- Hold heatmap on the board image is now clearly visible again, and the personal heatmap correctly shows your climbs
+- Activity matrix in the logbook statistics is scrollable again
+- Heatmap section moved to the bottom of the statistics sheet so primary stats are visible first
+- Default foot-hold LED color now shows a readable name ("Mint Green") instead of "Custom"
+- Auto-updater signature check is more robust across Android versions
+- Auto-updater no longer gets blocked for 24 hours after a transient network error
+- Local app-share hotspot now waits until its IP address is bound before reporting "ready"
 
 ### Security
 - Downloaded board databases are now cryptographically verified and size-limited — a malicious server can't feed you tampered or oversized data
