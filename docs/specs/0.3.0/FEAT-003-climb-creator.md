@@ -1,3 +1,6 @@
+---
+status: failed
+---
 # Feature Spec: Climb Creator & Nostr Community Climbs (v0.3.0)
 
 > **Status:** Draft — design complete, pending engineering review before implementation.
