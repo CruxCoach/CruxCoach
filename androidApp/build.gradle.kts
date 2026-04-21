@@ -189,4 +189,6 @@ dependencies {
     testImplementation(libs.kotlin.test)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.mockk)
+    // JDBC SQLite driver for real-SQL repository races / TOCTOU regression tests
+    testImplementation(libs.sqldelight.sqlite.driver)
 }
