@@ -88,11 +88,17 @@ fun BoardLogbookScreen(
             zones = state.zones,
             customDateFrom = state.customDateFrom,
             customDateTo = state.customDateTo,
+            heatmapMode = state.heatmapMode,
+            heatmapData = state.heatmapData,
+            placements = state.placements,
+            boardSize = state.boardSize,
+            boardImages = state.boardImages,
             onIntervalSelect = { viewModel.setStatsInterval(it) },
             onGradeChartViewSelect = { viewModel.setGradeChartView(it) },
             onTimeChartViewSelect = { viewModel.setTimeChartView(it) },
             onDistributionChartViewSelect = { viewModel.setDistributionChartView(it) },
             onCustomDateRange = { from, to -> viewModel.setCustomDateRange(from, to) },
+            onHeatmapModeSelect = { viewModel.setHeatmapMode(it) },
             onDismiss = { viewModel.toggleStatsSheet() }
         )
     }

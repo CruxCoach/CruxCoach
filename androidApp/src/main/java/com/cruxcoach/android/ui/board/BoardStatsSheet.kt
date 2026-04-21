@@ -25,6 +25,17 @@ private fun statsTimeIntervalLabel(interval: StatsTimeInterval): String = when (
 }
 
 @Composable
+private fun heatmapModeLabel(mode: HeatmapMode): String = when (mode) {
+    HeatmapMode.OFF -> stringResource(R.string.board_heatmap_off)
+    HeatmapMode.GLOBAL -> stringResource(R.string.board_heatmap_global)
+    HeatmapMode.PERSONAL -> stringResource(R.string.board_heatmap_personal)
+    HeatmapMode.START -> stringResource(R.string.board_heatmap_start)
+    HeatmapMode.HAND -> stringResource(R.string.board_heatmap_hand)
+    HeatmapMode.FOOT -> stringResource(R.string.board_heatmap_foot)
+    HeatmapMode.FINISH -> stringResource(R.string.board_heatmap_finish)
+}
+
+@Composable
 private fun gradeChartViewLabel(view: GradeChartView): String = when (view) {
     GradeChartView.PYRAMID -> stringResource(R.string.board_stats_grade_pyramid)
     GradeChartView.FLASH_SEND_ATTEMPT -> stringResource(R.string.board_stats_flash_send_attempt)
@@ -57,11 +68,17 @@ internal fun BoardStatsSheet(
     zones: IntensityZones? = null,
     customDateFrom: LocalDate? = null,
     customDateTo: LocalDate? = null,
+    heatmapMode: HeatmapMode = HeatmapMode.PERSONAL,
+    heatmapData: Map<Int, Float> = emptyMap(),
+    placements: Map<Int, com.cruxcoach.data.repository.AuroraPlacement> = emptyMap(),
+    boardSize: com.cruxcoach.data.repository.BoardSize? = null,
+    boardImages: List<com.cruxcoach.data.repository.BoardImage> = emptyList(),
     onIntervalSelect: (StatsTimeInterval) -> Unit,
     onGradeChartViewSelect: (GradeChartView) -> Unit,
     onTimeChartViewSelect: (TimeChartView) -> Unit,
     onDistributionChartViewSelect: (DistributionChartView) -> Unit,
     onCustomDateRange: (LocalDate, LocalDate) -> Unit,
+    onHeatmapModeSelect: (HeatmapMode) -> Unit = {},
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -107,6 +124,50 @@ internal fun BoardStatsSheet(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     HeatmapLegend()
+                }
+            }
+
+            // Heatmap section — full mode picker (Meine Sends / Global /
+            // Start / Hand / Foot / Finish). Lives here, not in the global
+            // hold-search sheet, because the personal mode is part of the
+            // user's stats and the others are quick comparison views.
+            if (placements.isNotEmpty()) {
+                ChartSection(stringResource(R.string.board_stats_personal_heatmap)) {
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        HeatmapMode.entries
+                            .filter { it != HeatmapMode.OFF }
+                            .forEach { mode ->
+                                FilterChip(
+                                    selected = mode == heatmapMode,
+                                    onClick = { onHeatmapModeSelect(mode) },
+                                    label = {
+                                        Text(
+                                            heatmapModeLabel(mode),
+                                            style = MaterialTheme.typography.labelSmall
+                                        )
+                                    },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = OrangeAccent,
+                                        selectedLabelColor = DarkBackground
+                                    ),
+                                    shape = RoundedCornerShape(16.dp)
+                                )
+                            }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    KilterBoardVisualization(
+                        holds = emptyList(),
+                        placements = placements,
+                        boardSize = boardSize,
+                        boardImages = boardImages,
+                        heatmapData = heatmapData.ifEmpty { null },
+                        selectedHolds = emptySet(),
+                        onHoldTapped = {},
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
             }
 

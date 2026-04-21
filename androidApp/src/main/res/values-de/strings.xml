@@ -989,6 +989,7 @@
     <string name="board_session_label">Session</string>
     <string name="board_sort_repeats">Repeats</string>
     <string name="board_stats_activity">Aktivität</string>
+    <string name="board_stats_personal_heatmap">Meine Sends — Heatmap</string>
     <string name="board_stats_angle_distribution">Winkel-Verteilung</string>
     <string name="board_stats_attempt">Versuch</string>
     <string name="board_stats_current_streak">Aktueller Streak</string>

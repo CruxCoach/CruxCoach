@@ -30,34 +30,22 @@ enum class HeatmapMode {
     FINISH
 }
 
-@Composable
-private fun heatmapModeLabel(mode: HeatmapMode): String = when (mode) {
-    HeatmapMode.OFF -> stringResource(R.string.board_heatmap_off)
-    HeatmapMode.GLOBAL -> stringResource(R.string.board_heatmap_global)
-    HeatmapMode.PERSONAL -> stringResource(R.string.board_heatmap_personal)
-    HeatmapMode.START -> stringResource(R.string.board_heatmap_start)
-    HeatmapMode.HAND -> stringResource(R.string.board_heatmap_hand)
-    HeatmapMode.FOOT -> stringResource(R.string.board_heatmap_foot)
-    HeatmapMode.FINISH -> stringResource(R.string.board_heatmap_finish)
-}
-
 /**
- * Full-screen bottom sheet for hold-based search and heatmap.
- * Contains interactive board + heatmap mode selector + hold search controls.
+ * Full-screen bottom sheet for hold-based search.
+ * Pure hold-filter UI now — heatmap modes (personal / global / start /
+ * hand / foot / finish) live in the logbook stats sheet alongside the
+ * other personal stats.
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 internal fun HoldSearchSheet(
     selectedHolds: Set<Int>,
-    heatmapMode: HeatmapMode,
-    heatmapData: Map<Int, Float>,
     matchCount: Int,
     isSearching: Boolean,
     placements: Map<Int, com.cruxcoach.data.repository.AuroraPlacement>,
     boardSize: com.cruxcoach.data.repository.BoardSize?,
     boardImages: List<com.cruxcoach.data.repository.BoardImage> = emptyList(),
     onHoldTapped: (Int) -> Unit,
-    onHeatmapModeSelect: (HeatmapMode) -> Unit,
     onClearSelection: () -> Unit,
     onSearchByHolds: () -> Unit,
     onDismiss: () -> Unit
@@ -154,46 +142,18 @@ internal fun HoldSearchSheet(
 
             HorizontalDivider()
 
-            // Interactive board visualization
+            // Interactive board visualization (pure selection — no heatmap overlay)
             if (placements.isNotEmpty()) {
                 KilterBoardVisualization(
                     holds = emptyList(),
                     placements = placements,
                     boardSize = boardSize,
                     boardImages = boardImages,
-                    heatmapData = heatmapData.ifEmpty { null },
+                    heatmapData = null,
                     selectedHolds = selectedHolds,
                     onHoldTapped = onHoldTapped,
                     modifier = Modifier.fillMaxWidth()
                 )
-            }
-
-            // Heatmap mode chips — personal heatmap is intentionally NOT here;
-            // it lives in the logbook stats sheet where the user's own sends
-            // belong contextually.
-            Text(
-                stringResource(R.string.board_holdsearch_heatmap),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold
-            )
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                HeatmapMode.entries
-                    .filter { it != HeatmapMode.PERSONAL }
-                    .forEach { mode ->
-                        FilterChip(
-                            selected = mode == heatmapMode,
-                            onClick = { onHeatmapModeSelect(mode) },
-                            label = { Text(heatmapModeLabel(mode), style = MaterialTheme.typography.labelSmall) },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = OrangeAccent,
-                                selectedLabelColor = DarkBackground
-                            ),
-                            shape = RoundedCornerShape(16.dp)
-                        )
-                    }
             }
         }
     }

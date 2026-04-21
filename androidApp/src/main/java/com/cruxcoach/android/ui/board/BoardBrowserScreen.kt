@@ -215,19 +215,16 @@ fun BoardBrowserScreen(
         )
     }
 
-    // Hold search sheet
+    // Hold search sheet — pure hold-filter UI now (heatmaps moved to logbook stats)
     if (state.holdSearch.showSheet) {
         HoldSearchSheet(
             selectedHolds = state.holdSearch.selectedHolds,
-            heatmapMode = state.holdSearch.heatmapMode,
-            heatmapData = state.holdSearch.heatmapData,
             matchCount = state.holdSearch.matchCount,
             isSearching = state.holdSearch.isSearching,
             placements = state.placements,
             boardSize = state.boardSize,
             boardImages = state.boardImages,
             onHoldTapped = { viewModel.toggleHoldSelection(it) },
-            onHeatmapModeSelect = { viewModel.setHeatmapMode(it) },
             onClearSelection = { viewModel.clearHoldSelection() },
             onSearchByHolds = { viewModel.applyHoldFilter() },
             onDismiss = { viewModel.toggleHoldSearchSheet() }
@@ -395,7 +392,7 @@ fun BoardBrowserScreen(
             if (state.holdSearch.holdFilterActive) {
                 HoldSearchActionBar(
                     holdFilterActive = true,
-                    heatmapActive = state.holdSearch.heatmapMode != HeatmapMode.OFF,
+                    heatmapActive = false,
                     selectedCount = state.holdSearch.selectedHolds.size,
                     matchCount = state.holdSearch.holdFilterUuids.size,
                     onOpenSheet = { viewModel.toggleHoldSearchSheet() },
@@ -433,8 +430,7 @@ fun BoardBrowserScreen(
                         singleLine = true,
                         shape = RoundedCornerShape(10.dp)
                     )
-                    val holdsTint = if (state.holdSearch.holdFilterActive ||
-                        state.holdSearch.heatmapMode != HeatmapMode.OFF) OrangeAccent
+                    val holdsTint = if (state.holdSearch.holdFilterActive) OrangeAccent
                         else MaterialTheme.colorScheme.onSurfaceVariant
                     IconButton(
                         onClick = { viewModel.toggleHoldSearchSheet() },
