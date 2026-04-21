@@ -696,6 +696,8 @@
     <string name="board_sync_step_import_climbs">Import climbs</string>
     <string name="board_sync_step_import_stats">Import statistics</string>
     <string name="board_sync_step_import_layout">Import layout data</string>
+    <string name="board_sync_step_finalize">Finalize</string>
+    <string name="sync_finalizing">Finalizing — %1$s</string>
     <string name="board_sync_step_fetch_manifest">Fetching manifest\u2026</string>
     <string name="board_sync_step_download_chunk" formatted="false">Downloading %s (%d/%d)</string>
 

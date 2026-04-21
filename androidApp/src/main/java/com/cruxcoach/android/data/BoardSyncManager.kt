@@ -370,6 +370,11 @@ class BoardSyncManager(
             Log.d(TAG, "Import completed successfully")
 
             // 5. Refresh denormalized data in SecureDB
+            _state.update { it.copy(
+                importStep = com.cruxcoach.android.data.BoardDatabaseImporter.ImportStep.Finalizing(
+                    "Eigene Daten aktualisieren"
+                )
+            ) }
             refreshDenormalizedData()
 
             // 6. Save chunk hashes for incremental updates

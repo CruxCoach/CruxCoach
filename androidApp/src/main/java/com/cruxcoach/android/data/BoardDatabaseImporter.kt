@@ -83,7 +83,9 @@ class BoardDatabaseImporter(
         val grandStatTotal = statChunkCounts.sum()
 
         // Drop indexes before bulk import, rebuild after (avoids per-row index maintenance)
-        withDeferredIndexes {
+        withDeferredIndexes(
+            onRebuild = { onProgress?.invoke(ImportStep.Finalizing("Indizes neu aufbauen")) }
+        ) {
             // Import all climb chunks (bulk ATTACH or row-by-row fallback)
             if (climbsDbFiles.isNotEmpty()) {
                 var cumInserted = 0; var cumScanned = 0
@@ -123,6 +125,7 @@ class BoardDatabaseImporter(
             }
         }
 
+        onProgress?.invoke(ImportStep.Finalizing("Bewegungen berechnen"))
         backfillMoveCounts()
 
         if (boardRepository.getSyncState("metadata_v7") == null) {
@@ -270,6 +273,11 @@ class BoardDatabaseImporter(
         data class ImportClimbs(val inserted: Int, val scanned: Int, val total: Int) : ImportStep()
         data class ImportStats(val inserted: Int, val scanned: Int, val total: Int) : ImportStep()
         data class ImportLayout(val count: Int) : ImportStep()
+        /** Post-import work the user can't see otherwise (indexes, optimize,
+         *  denormalized refresh). Without this the UI freezes at "100%
+         *  Statistiken importieren" for 30s–2min. [phase] is a short German
+         *  label rendered as-is by the UI. */
+        data class Finalizing(val phase: String) : ImportStep()
         data class Done(
             val climbs: Int, val stats: Int, val placements: Int,
             val nomatchCount: Int = 0
@@ -659,8 +667,14 @@ class BoardDatabaseImporter(
         for ((_, ddl) in indexes) db.execSQL(ddl)
     }
 
-    /** Drop climb+stat indexes, run [block], rebuild indexes, then PRAGMA optimize. */
-    private inline fun <R> withDeferredIndexes(block: () -> R): R {
+    /** Drop climb+stat indexes, run [block], rebuild indexes, then PRAGMA
+     *  optimize. [onRebuild] fires before the rebuild starts so callers can
+     *  surface a "finalizing" status (rebuild can take 30s–2min on a fresh
+     *  full sync). */
+    private inline fun <R> withDeferredIndexes(
+        crossinline onRebuild: () -> Unit = {},
+        block: () -> R,
+    ): R {
         val db = openTargetDb()
         try {
             dropIndexes(db, CLIMB_INDEXES)
@@ -671,6 +685,7 @@ class BoardDatabaseImporter(
         try {
             return block()
         } finally {
+            onRebuild()
             val db2 = openTargetDb()
             try {
                 createIndexes(db2, CLIMB_INDEXES)

@@ -273,6 +273,7 @@ private fun stepLabel(step: ImportStep?): String = when (step) {
         else stringResource(R.string.sync_importing_stats, step.scanned, step.total)
     }
     is ImportStep.ImportLayout -> stringResource(R.string.sync_importing_layout)
+    is ImportStep.Finalizing -> stringResource(R.string.sync_finalizing, step.phase)
     is ImportStep.Done -> stringResource(R.string.sync_done)
     null -> stringResource(R.string.sync_running)
 }

@@ -471,7 +471,8 @@ private fun SyncProgressChecklist(
     step: ImportStep?,
     modifier: Modifier = Modifier
 ) {
-    // Blossom: FetchingManifest(0), DownloadChunk(1), ImportClimbs(2), ImportStats(3), ImportLayout(4), Done(5)
+    // Blossom: FetchingManifest(0), DownloadChunk(1), ImportClimbs(2),
+    // ImportStats(3), ImportLayout(4), Finalizing(5), Done(6)
     val stepIndex = when (step) {
         is ImportStep.FetchingManifest, is ImportStep.CheckingUpdate -> 0
         is ImportStep.DownloadChunk, is ImportStep.Download -> 1
@@ -480,7 +481,8 @@ private fun SyncProgressChecklist(
         is ImportStep.ImportClimbs -> 2
         is ImportStep.ImportStats -> 3
         is ImportStep.ImportLayout -> 4
-        is ImportStep.Done -> 5
+        is ImportStep.Finalizing -> 5
+        is ImportStep.Done -> 6
         else -> -1
     }
 
@@ -579,6 +581,18 @@ private fun SyncProgressChecklist(
             "%,d Placements".format(step.placements)
         } else null
         SyncStepRow(stringResource(R.string.board_sync_step_import_layout), layoutStatus, layoutDetail)
+
+        // Step 5: Finalisieren — index rebuild, move-count backfill,
+        // denormalized refresh. Without this row the user just sees
+        // "Statistiken importieren 100%" frozen for up to 2min.
+        val finalizeIdx = 5
+        val finalizeStatus = when {
+            stepIndex > finalizeIdx -> StepStatus.DONE
+            stepIndex == finalizeIdx -> StepStatus.ACTIVE
+            else -> StepStatus.PENDING
+        }
+        val finalizeDetail = if (step is ImportStep.Finalizing) step.phase else null
+        SyncStepRow(stringResource(R.string.board_sync_step_finalize), finalizeStatus, finalizeDetail)
 
         // Debug: show metadata counters after import
         if (step is ImportStep.Done && step.nomatchCount > 0) {
