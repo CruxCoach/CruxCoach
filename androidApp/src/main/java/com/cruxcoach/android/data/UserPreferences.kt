@@ -67,11 +67,13 @@ data class LedHoldColors(
     val foot: Int = CRUXCOACH_FOOT
 ) {
     companion object {
-        // CruxCoach "Royal" preset (default)
+        // CruxCoach "Royal" preset (default). Byte values must exist in
+        // RGB332_PALETTE so the settings row shows a named color instead
+        // of "Benutzerdefiniert" / "Custom".
         const val CRUXCOACH_START: Int = 0xEC   // CruxCoach Orange (FF6D00)
         const val CRUXCOACH_HAND: Int = 0x03     // Blue (0000FF)
         const val CRUXCOACH_FINISH: Int = 0xE3   // Magenta (FF00FF)
-        const val CRUXCOACH_FOOT: Int = 0x1D     // Teal (00FF40)
+        const val CRUXCOACH_FOOT: Int = 0x1E     // Mint Green (00FFAA)
 
         // Official Kilter Board preset (from placement_roles.led_color DB)
         const val KILTER_START: Int = 0x1C   // Green (00FF00)
