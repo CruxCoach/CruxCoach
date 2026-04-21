@@ -150,8 +150,6 @@ class NotificationPollWorker @AssistedInject constructor(
             try {
                 val msg = decryptor.decrypt(json) ?: continue
 
-                if (messageRepository.getById(msg.id) != null) continue
-
                 // NIP-17 self-wraps echo our sent messages back. Store them
                 // as "sent" so sent history is recoverable; don't notify.
                 val isSelfWrap = msg.senderPubkey == ownPubkey
@@ -168,6 +166,16 @@ class NotificationPollWorker @AssistedInject constructor(
                     )
                     continue
                 }
+
+                val existingRow = messageRepository.getById(msg.id)
+                // Seeing our own wrap echoed by a relay proves the relay has
+                // the event, so flip any pre-existing queued row to delivered
+                // even if we skip the duplicate insert below.
+                if (isSelfWrap && existingRow != null) {
+                    messageRepository.clearQueued(msg.id)
+                }
+                if (existingRow != null) continue
+
                 val direction = if (isSelfWrap) "sent" else "received"
 
                 messageRepository.insert(

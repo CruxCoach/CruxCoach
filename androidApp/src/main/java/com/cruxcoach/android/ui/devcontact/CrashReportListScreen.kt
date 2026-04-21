@@ -30,6 +30,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -54,6 +55,12 @@ fun CrashReportListScreen(
     viewModel: DevContactViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+
+    // Retry any still-queued reports on open. If the relay now ACKs a
+    // previously dropped send, status flips queued → delivered.
+    LaunchedEffect(Unit) {
+        viewModel.drainQueue()
+    }
 
     Scaffold(
         topBar = {

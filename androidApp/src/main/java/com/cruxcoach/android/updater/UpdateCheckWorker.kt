@@ -51,7 +51,7 @@ class UpdateCheckWorker @AssistedInject constructor(
         private const val FIRST_RUN_NAME = "cruxcoach.updater.first_run"
 
         fun enqueue(context: Context) {
-            val constraints = Constraints.Builder()
+            val periodicConstraints = Constraints.Builder()
                 .setRequiredNetworkType(NetworkType.CONNECTED)
                 .setRequiresBatteryNotLow(true)
                 .setRequiresDeviceIdle(false)
@@ -62,7 +62,7 @@ class UpdateCheckWorker @AssistedInject constructor(
                 repeatInterval = 24, repeatIntervalTimeUnit = TimeUnit.HOURS,
                 flexTimeInterval = 6, flexTimeIntervalUnit = TimeUnit.HOURS,
             )
-                .setConstraints(constraints)
+                .setConstraints(periodicConstraints)
                 .build()
 
             val wm = WorkManager.getInstance(context)
@@ -72,8 +72,12 @@ class UpdateCheckWorker @AssistedInject constructor(
                 periodic,
             )
 
+            // Expedited jobs only accept network + storage constraints.
+            val firstRunConstraints = Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .build()
             val firstRun = OneTimeWorkRequestBuilder<UpdateCheckWorker>()
-                .setConstraints(constraints)
+                .setConstraints(firstRunConstraints)
                 .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
                 .build()
             wm.enqueueUniqueWork(

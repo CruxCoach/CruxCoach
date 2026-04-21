@@ -167,6 +167,12 @@ class NostrPushCoordinator @Inject constructor(
                 read = isSelfWrap,
                 replyToId = msg.replyToId
             )
+            // Self-wrap echoes prove the relay has the event. Flip any
+            // pre-existing queued row (INSERT OR IGNORE left it untouched)
+            // to delivered so the UI transitions queued → delivered.
+            if (isSelfWrap) {
+                messageRepository.clearQueued(msg.id)
+            }
         }
 
         if (!isSelfWrap && !alreadyExists) {

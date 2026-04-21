@@ -182,13 +182,13 @@
     <!-- Settings: App Sharing -->
     <string name="settings_share_title">Share app</string>
     <string name="settings_share_desc">Share CruxCoach APK with others (without user data).</string>
-    <string name="settings_share_via_apps">Share via apps</string>
-    <string name="settings_share_codeberg">Show Codeberg download QR</string>
-    <string name="settings_share_codeberg_hide">Hide Codeberg QR</string>
-    <string name="settings_share_codeberg_desc">Scan with any QR reader to download the APK from Codeberg.</string>
+    <string name="settings_share_via_apps">Via apps</string>
+    <string name="settings_share_codeberg">Online</string>
+    <string name="settings_share_codeberg_hide">Hide online</string>
+    <string name="settings_share_codeberg_desc">Scan the QR code to download the app online from Codeberg.</string>
     <string name="settings_share_codeberg_hint">Scan to open the Codeberg APK download.</string>
-    <string name="settings_share_local">Share locally (WiFi Direct)</string>
-    <string name="settings_share_local_desc">Creates a WiFi hotspot + download page. No internet needed.</string>
+    <string name="settings_share_local">Offline</string>
+    <string name="settings_share_local_desc">Share the app locally via WiFi hotspot. No internet needed.</string>
     <string name="settings_share_stop">Stop</string>
     <string name="settings_share_network">Network: %s</string>
     <string name="settings_share_password">Password: %s</string>
