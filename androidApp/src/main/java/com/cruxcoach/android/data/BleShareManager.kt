@@ -312,13 +312,15 @@ class BleShareManager @Inject constructor(
         // "Auf dem Board" causes name-drift between the two banners.
         // Never suppress:
         // - REMOTE_ACTIVE — someone else is actively climbing, board was overwritten
+        // - SESSION_REMOTE only for role=NONE (no queue banner is rendered, so there is
+        //   nothing to be redundant with — PARTICIPANT/HOST DO have a banner and must suppress)
         // - REMOTE_LAST while overwriteSessionUuid is set — board still shows external climb
         // Don't suppress during isConnecting — role isn't PARTICIPANT yet.
         val queueState = sessionQueueManager.state.value
         val sessionClimbUuid = queueState.currentClimb?.climbUuid
         val isNonSuppressible = rawOnBoard != null && (
             rawOnBoard.source == OnBoardSource.REMOTE_ACTIVE ||
-            rawOnBoard.source == OnBoardSource.SESSION_REMOTE ||
+            (rawOnBoard.source == OnBoardSource.SESSION_REMOTE && queueState.role == SessionRole.NONE) ||
             (rawOnBoard.source == OnBoardSource.REMOTE_LAST && overwriteSessionUuid != null)
         )
         val onBoardClimb = if (rawOnBoard != null && sessionClimbUuid != null &&
@@ -408,7 +410,12 @@ class BleShareManager @Inject constructor(
         var activeClimbCleared = false
         if (queueState.role == SessionRole.NONE) {
             if (nearbySessionUuid != null) {
-                val sessionOverwrites = nearbySessionUuid != lastSeenSessionClimbUuid
+                // Overwrite only counts on a genuine UUID transition (A→B). First discovery
+                // (null→A) is not proof our LEDs were overwritten — the session may have
+                // been broadcasting UUID A long before we became active — so LOCAL_ACTIVE
+                // must remain authoritative while we're connected and sending.
+                val sessionOverwrites = lastSeenSessionClimbUuid != null &&
+                    nearbySessionUuid != lastSeenSessionClimbUuid
                 if (sessionOverwrites && climbAdvertiser.hasActiveClimb()) {
                     Log.d(TAG, "RESOLVE session overwrites ${lastSeenSessionClimbUuid?.take(8)}→${nearbySessionUuid.take(8)} → clearing LOCAL_ACTIVE")
                     climbAdvertiser.clearActiveClimb()
