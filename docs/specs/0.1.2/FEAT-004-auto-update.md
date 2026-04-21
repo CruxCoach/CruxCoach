@@ -142,7 +142,7 @@ are not supported, so their installer IDs are not recognized.
 
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
-| Update source | Codeberg Releases API (`/api/v1/repos/<org>/cruxcoach/releases`, list endpoint) | List endpoint lets us skip prereleases explicitly; `latest` alone is not sufficient because our CI also publishes `-dev` prereleases |
+| Update source | Codeberg Releases API (`/api/v1/repos/CruxCoach/CruxCoach/releases`, list endpoint) | List endpoint lets us skip prereleases explicitly; `latest` alone is not sufficient because our CI also publishes `-dev` prereleases |
 | Release channel | Stable only — reject `prerelease=true` and any tag matching `-dev.*` / `-rc.*` / `-beta.*` (§6.11) | CI publishes dev builds to Codeberg from the `dev` branch; users must never be handed a dev APK |
 | Scheduling | **Opportunistic**, not cron: app `onStart` + `NetworkCallback.onAvailable` + manual "Check now", with WorkManager as a 24 h backstop only (§6.12) | Fixed cron wakes the device to fail if offline; opportunistic checks only fire when the user is already using the device and online |
 | User surface | **Persistent system notification** for the offer; Settings badge for in-app hint; **no dialog** before the install-consent step (§6.10) | Dialogs interrupt; a notification sits silently and re-arms if dismissed. The only unavoidable dialog is Android's own install consent at the very end |
@@ -169,6 +169,7 @@ back if the most recent entry is a dev build (see §6.11).
   "prerelease": false,
   "draft": false,
   "body": "## Highlights\n- In-app auto-update...\n",
+  "html_url": "https://codeberg.org/CruxCoach/CruxCoach/releases/tag/v0.1.2",
   "published_at": "2026-05-01T18:00:00Z",
   "assets": [
     {
@@ -197,6 +198,9 @@ back if the most recent entry is a dev build (see §6.11).
     release notes can never corrupt the integrity anchor. If the sha256
     asset is missing, the release is rejected (logged, not surfaced)
 - `body` → release notes only (markdown). No machine-parsed data.
+- `html_url` → the user-facing Codeberg page for this release. Used by the
+  cert-mismatch handoff in §5.4.3 to launch the user's browser when the
+  TOFU pin refuses an APK.
 
 ### 3.2 Parsed Update Info
 
@@ -210,6 +214,7 @@ data class UpdateInfo(
     val apkSizeBytes: Long,
     val apkSha256: String,             // hex, lowercase — from sha256 asset
     val releaseNotesMarkdown: String,
+    val releasePageUrl: String,        // Codeberg `html_url` — §5.4.3 handoff target
     val publishedAt: Instant,
 )
 
@@ -343,7 +348,10 @@ completes. This prevents a user tapping the button repeatedly from
 becoming a small DoS against the Codeberg API.
 
 Fetch path:
-- `GET https://codeberg.org/api/v1/repos/<org>/cruxcoach/releases?limit=10`
+- `GET https://codeberg.org/api/v1/repos/CruxCoach/CruxCoach/releases?limit=10`
+  — the org/repo pair is pinned via `BuildConfig.UPDATER_REPO_OWNER` and
+  `BuildConfig.UPDATER_REPO_NAME` (§10), not user-configurable: changing
+  the source repo would invalidate the TOFU cert pin
 - Parse JSON; apply the stable-release filter (§6.11): skip any entry
   where `prerelease` or `draft` is `true`, or where the tag has a suffix
   after the `MAJOR.MINOR.PATCH` segment. Pick the first remaining entry
@@ -534,7 +542,7 @@ keep `pendingUpdate`, reset `pendingDownloadId`. User must re-download.
 ### 6.1 Update Source — Codeberg Releases API (list, not `/latest`)
 
 **Decision:** Query the **list endpoint**
-`/api/v1/repos/<org>/cruxcoach/releases?limit=10`, filter client-side
+`/api/v1/repos/CruxCoach/CruxCoach/releases?limit=10`, filter client-side
 per §6.11, pick the highest-version stable release. No self-hosted
 manifest.
 
@@ -1097,6 +1105,12 @@ gets updates."
 ## 10. Delivery Checklist (for full spec later)
 
 - [ ] Concrete class names, package placement, function signatures
+- [ ] `androidApp/build.gradle.kts` — add three `buildConfigField`s the
+      updater reads: `UPDATER_REPO_OWNER = "CruxCoach"`,
+      `UPDATER_REPO_NAME = "CruxCoach"`,
+      `UPDATER_API_BASE = "https://codeberg.org/api/v1"`. Hardcoded for
+      release builds; debug builds may override via `local.properties`
+      to test against a fork
 - [ ] Error handling matrix (all `PackageInstaller.STATUS_*` codes mapped
       to user messages, localized DE/EN per §5.5)
 - [ ] Test plan:
