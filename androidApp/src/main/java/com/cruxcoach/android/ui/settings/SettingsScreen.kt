@@ -102,20 +102,25 @@ fun SettingsScreen(
             return@Scaffold
         }
 
+        // Eager-load so "Ändern" doesn't open onto an empty list while the
+        // background load races the dialog visibility flag.
+        LaunchedEffect(Unit) { viewModel.loadProductSizes() }
+
         if (showBoardModelDialog) {
-            LaunchedEffect(Unit) { viewModel.loadProductSizes() }
-            if (state.productSizes.isNotEmpty()) {
-                BoardModelSelectionDialog(
-                    productSizes = state.productSizes,
-                    selectedId = state.boardProductSizeId,
-                    onConfirm = { id ->
-                        val name = state.productSizes.find { it.id.toInt() == id }?.name ?: ""
-                        viewModel.updateBoardProductSize(id, name)
-                        showBoardModelDialog = false
-                    },
-                    onDismiss = { showBoardModelDialog = false }
-                )
-            }
+            BoardModelSelectionDialog(
+                productSizes = state.productSizes,
+                selectedId = state.boardProductSizeId,
+                onConfirm = { id ->
+                    val name = state.productSizes.find { it.id.toInt() == id }?.name ?: ""
+                    viewModel.updateBoardProductSize(id, name)
+                    showBoardModelDialog = false
+                },
+                onDismiss = { showBoardModelDialog = false },
+                onNavigateToSync = {
+                    showBoardModelDialog = false
+                    onNavigateToSync()
+                }
+            )
         }
 
         Column(
