@@ -640,9 +640,6 @@
     <string name="board_sync_no_network_title">No network connection</string>
     <string name="board_sync_no_network_message">An active internet connection is required for syncing.</string>
     <string name="board_sync_open_settings">Open settings</string>
-    <string name="board_sync_up_to_date_title">Data is up to date</string>
-    <string name="board_sync_up_to_date_message">The Kilter Board APK has not changed since the last sync. Download anyway?</string>
-    <string name="board_sync_download">Download</string>
     <string name="board_sync_wifi_required_title">WiFi required</string>
     <string name="board_sync_wifi_required_message">The board database download is approximately 30 MB and can only be started over WiFi.</string>
     <string name="board_sync_wifi_settings">WiFi settings</string>

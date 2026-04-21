@@ -683,9 +683,6 @@
     <string name="board_sync_no_network_title">Keine Netzwerkverbindung</string>
     <string name="board_sync_no_network_message">Für die Synchronisierung wird eine aktive Internetverbindung benötigt.</string>
     <string name="board_sync_open_settings">Einstellungen öffnen</string>
-    <string name="board_sync_up_to_date_title">Daten sind aktuell</string>
-    <string name="board_sync_up_to_date_message">Die Kilter Board APK hat sich seit dem letzten Sync nicht verändert. Trotzdem herunterladen?</string>
-    <string name="board_sync_download">Herunterladen</string>
     <string name="board_sync_wifi_required_title">WLAN erforderlich</string>
     <string name="board_sync_wifi_required_message">Der Download der Board-Datenbank ist ca. 30 MB groß und kann nur über WLAN gestartet werden.</string>
     <string name="board_sync_wifi_settings">WLAN-Einstellungen</string>

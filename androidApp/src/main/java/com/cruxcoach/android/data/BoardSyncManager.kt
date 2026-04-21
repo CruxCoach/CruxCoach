@@ -19,6 +19,8 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import java.io.File
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.time.Clock
@@ -41,8 +43,11 @@ class BoardSyncManager(
 ) {
     private companion object {
         const val TAG = "BoardSyncManager"
-        /** Max concurrent chunk downloads. */
-        const val PARALLEL_DOWNLOADS = 4
+        /** Max concurrent chunk downloads. 8 matches a modern browser's
+         *  per-origin connection limit and is well within primal.net's
+         *  comfort zone. OkHttp's synchronous `.execute()` bypasses the
+         *  Dispatcher's per-host cap, so this number is the only gate. */
+        const val PARALLEL_DOWNLOADS = 8
         /** Denormalized-field refresh batch size — keeps per-transaction
          *  write-lock hold time short so user writes can interleave. */
         const val REFRESH_BATCH_SIZE = 100
@@ -225,19 +230,6 @@ class BoardSyncManager(
         startBlossomSync()
     }
 
-    /** User acknowledged "up to date" — just dismiss and mark sync complete. */
-    fun forceSync() {
-        _state.update { it.copy(
-            showUpToDateDialog = false,
-            syncComplete = true,
-            alreadyImported = true
-        ) }
-    }
-
-    fun dismissUpToDateDialog() {
-        _state.update { it.copy(showUpToDateDialog = false) }
-    }
-
     /**
      * Starts a Blossom-based sync: fetches manifest, downloads changed chunks,
      * decompresses, and imports into the board database.
@@ -297,23 +289,25 @@ class BoardSyncManager(
                 alreadyImported = true,
                 lastSyncTimestamp = timestamp,
                 importStep = null,
-                showUpToDateDialog = true,
                 lastSyncCompletedAtMillis = System.currentTimeMillis()
             ) }
             return
         }
 
-        // 3. Download and decompress changed chunks (parallel, max 4 concurrent)
+        // 3. Download and decompress changed chunks (semaphore-bounded parallel).
+        //    Chunked-batch + awaitAll() would stall each wave on its slowest
+        //    download; a semaphore keeps PARALLEL_DOWNLOADS workers busy with
+        //    whichever chunk is next in line.
         val chunkFiles = mutableMapOf<String, File>()
         try {
             val totalAllBytes = chunksToDownload.sumOf { it.size }
             val completedBytes = AtomicLong(0)
+            val permits = Semaphore(PARALLEL_DOWNLOADS)
 
             coroutineScope {
-                chunksToDownload.chunked(PARALLEL_DOWNLOADS).forEach { batch ->
-                    batch.mapIndexed { batchIdx, chunk ->
-                        val globalIdx = chunksToDownload.indexOf(chunk)
-                        async {
+                chunksToDownload.mapIndexed { idx, chunk ->
+                    async {
+                        permits.withPermit {
                             val outputFile = File(appContext.cacheDir, "blossom_${chunk.name}.sqlite3")
                             blossomSyncManager.downloadAndDecompressChunk(
                                 chunk = chunk,
@@ -323,7 +317,7 @@ class BoardSyncManager(
                                     _state.update { it.copy(
                                         importStep = ImportStep.DownloadChunk(
                                             chunkName = chunk.name,
-                                            chunkIndex = globalIdx,
+                                            chunkIndex = idx,
                                             totalChunks = chunksToDownload.size,
                                             bytesRead = bytesRead,
                                             totalBytes = totalBytes,
@@ -339,8 +333,8 @@ class BoardSyncManager(
                             }
                             Log.d(TAG, "Chunk ${chunk.name} downloaded+decompressed: ${outputFile.length()} bytes")
                         }
-                    }.awaitAll()
-                }
+                    }
+                }.awaitAll()
             }
 
             // 4. Group chunks by type and import
@@ -537,7 +531,6 @@ data class BoardSyncState(
     val wifiConnected: Boolean = false,
     val showNetworkDialog: Boolean = false,
     val showWifiDialog: Boolean = false,
-    val showUpToDateDialog: Boolean = false,
     val importStep: ImportStep? = null,
     val alreadyImported: Boolean = false,
     val lastSyncTimestamp: String? = null,

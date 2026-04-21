@@ -90,38 +90,6 @@ fun BoardSyncScreen(
         )
     }
 
-    // Data is up to date — offer force download
-    if (state.showUpToDateDialog) {
-        AlertDialog(
-            onDismissRequest = { viewModel.dismissUpToDateDialog() },
-            icon = {
-                Icon(
-                    Icons.Default.CheckCircle,
-                    contentDescription = null,
-                    tint = SuccessGreen,
-                    modifier = Modifier.size(40.dp)
-                )
-            },
-            title = { Text(stringResource(R.string.board_sync_up_to_date_title)) },
-            text = {
-                Text(stringResource(R.string.board_sync_up_to_date_message))
-            },
-            confirmButton = {
-                Button(
-                    onClick = { viewModel.forceSync() },
-                    colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent)
-                ) {
-                    Text(stringResource(R.string.board_sync_download))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { viewModel.dismissUpToDateDialog() }) {
-                    Text(stringResource(R.string.action_cancel))
-                }
-            }
-        )
-    }
-
     // Local-share import consent. The tap on the hotspot's landing page
     // happens in an attacker-controllable browser, so this in-app dialog
     // is the real consent moment — it shows the source host and runs in
