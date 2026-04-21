@@ -14,8 +14,10 @@ import androidx.work.WorkManager
 import com.cruxcoach.android.data.BoardSyncManager
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.notification.BoardSyncWorker
+import com.cruxcoach.android.notification.NostrPushCoordinator
 import com.cruxcoach.android.notification.NotificationPollWorker
 import com.cruxcoach.android.notification.TrainingReminderWorker
+import com.cruxcoach.android.nostr.NostrRelayConnectivityObserver
 import com.cruxcoach.android.crash.CruxCoachCrashHandler
 import com.cruxcoach.android.util.ApkShareHelper
 import com.cruxcoach.android.util.PerfLogger
@@ -41,6 +43,12 @@ class CruxCoachApp : Application(), Configuration.Provider {
 
     @Inject
     lateinit var kilterSyncEngine: dagger.Lazy<com.cruxcoach.android.data.kilter.KilterSyncEngine>
+
+    @Inject
+    lateinit var connectivityObserver: dagger.Lazy<NostrRelayConnectivityObserver>
+
+    @Inject
+    lateinit var pushCoordinator: dagger.Lazy<NostrPushCoordinator>
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -82,6 +90,18 @@ class CruxCoachApp : Application(), Configuration.Provider {
         PerfLogger.trace("ApkShareHelper.cleanupCache") { ApkShareHelper.cleanupCache(this) }
         PerfLogger.trace("TrainingReminderWorker.schedule") { TrainingReminderWorker.schedule(this) }
         PerfLogger.trace("NotificationPollWorker.schedule") { NotificationPollWorker.schedule(this) }
+
+        // Persistent relay subscription (app-scoped, no foreground service).
+        // Delivers gift-wrapped DMs with sub-3-second latency while the
+        // process is alive; NotificationPollWorker (15 min) remains the
+        // backstop for when the process gets killed.
+        PerfLogger.trace("NostrPushCoordinator.start") { pushCoordinator.get().start() }
+
+        // Auto-recovery from "reconnect attempts exhausted" after long
+        // offline periods — re-triggers reconnect on every new Network.
+        PerfLogger.trace("NostrRelayConnectivityObserver.start") {
+            connectivityObserver.get().start()
+        }
 
         ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
             private var lastForegroundPoll = 0L

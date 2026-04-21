@@ -10,9 +10,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.data.NostrMessageRepository
 import com.cruxcoach.android.data.UserPreferences
+import com.cruxcoach.android.notification.NostrPushCoordinator
 import com.cruxcoach.android.nostr.NostrConfig
 import com.cruxcoach.android.nostr.NostrMessageSender
-import com.cruxcoach.android.nostr.NostrRelaySubscription
 import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.android.nostr.OfflineQueueManager
 import com.cruxcoach.android.nostr.SendResult
@@ -20,7 +20,6 @@ import com.cruxcoach.android.nostr.model.MessageType
 import com.cruxcoach.db.secure.NostrMessage
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -63,7 +62,7 @@ data class DevContactState(
 class DevContactViewModel @Inject constructor(
     private val messageSender: NostrMessageSender,
     private val messageRepository: NostrMessageRepository,
-    private val relaySubscription: NostrRelaySubscription,
+    private val pushCoordinator: NostrPushCoordinator,
     private val nostrSigner: NostrSigner,
     private val userPreferences: UserPreferences,
     private val queueManager: OfflineQueueManager,
@@ -76,8 +75,6 @@ class DevContactViewModel @Inject constructor(
     private val _threadMessages = MutableStateFlow<List<UiMessage>>(emptyList())
     val threadMessages: StateFlow<List<UiMessage>> = _threadMessages.asStateFlow()
 
-    private var subscriptionJob: Job? = null
-
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
             viewModelScope.launch {
@@ -88,24 +85,32 @@ class DevContactViewModel @Inject constructor(
     }
 
     init {
-        // Sequentialize wipes before the first load/subscribe so we never
-        // briefly render stale rows that the migration/purge is about to
-        // delete.
+        // Sequentialize wipes before the first load so we never briefly
+        // render stale rows that the migration/purge is about to delete.
+        // The live subscription itself now lives in NostrPushCoordinator
+        // (app-scoped), so the ViewModel only re-hydrates from DB when
+        // the coordinator signals a new message.
         viewModelScope.launch {
             applyRecoveryMigration()
             purgeForeignIdentityRows()
             loadMessages()
-            launchSubscription()
         }
-        // Restart subscription when the Nostr identity changes (key import,
-        // Amber switch, etc.) while this screen is open.
+        // Identity change (local ↔ Amber switch, key import) while this
+        // screen is open: purge foreign-identity rows and reload. The
+        // coordinator restarts its own subscription on the same key
+        // version bump.
         viewModelScope.launch {
             nostrSigner.keyVersion.drop(1).collect {
-                subscriptionJob?.cancel()
                 purgeForeignIdentityRows()
                 loadMessages()
-                launchSubscription()
             }
+        }
+        // React to any new message the coordinator ingested (live socket
+        // delivery OR the periodic poll worker's DB insert both surface
+        // here eventually — poll worker writes directly, coordinator
+        // emits on this flow).
+        viewModelScope.launch {
+            pushCoordinator.newMessageEvents.collect { loadMessages() }
         }
         loadCrashOptIn()
         observeQueueCount()
@@ -273,40 +278,6 @@ class DevContactViewModel @Inject constructor(
                     unreadBugs = unreadBugs.toInt(),
                     unreadFeatures = unreadFeatures.toInt()
                 )
-            }
-        }
-    }
-
-    private fun launchSubscription() {
-        subscriptionJob = viewModelScope.launch {
-            val ownPubkey = try {
-                nostrSigner.getPublicKeyHex()
-            } catch (e: Exception) {
-                Log.w(TAG, "No signer key — skipping subscription", e)
-                return@launch
-            }
-            relaySubscription.subscribe().collect { msg ->
-                // NIP-17 publishes a self-wrap p-tagged for the sender so other
-                // devices can decrypt sent messages. The same wrap echoes back
-                // through our subscription — we keep it as a "sent" record so
-                // sent history is recoverable from any device, and dedupe via
-                // INSERT OR IGNORE on the canonical self-wrap id.
-                val direction = if (msg.senderPubkey == ownPubkey) "sent" else "received"
-                withContext(Dispatchers.IO) {
-                    messageRepository.insert(
-                        id = msg.id,
-                        type = msg.type.label,
-                        direction = direction,
-                        content = msg.content,
-                        subject = msg.subject,
-                        senderPubkey = msg.senderPubkey,
-                        createdAt = msg.timestamp,
-                        relayAccepted = true,
-                        read = direction == "sent",
-                        replyToId = msg.replyToId
-                    )
-                }
-                loadMessages()
             }
         }
     }

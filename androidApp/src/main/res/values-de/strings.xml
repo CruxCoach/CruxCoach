@@ -897,6 +897,15 @@
     <string name="notification_announcement_issue">Bekanntes Problem</string>
     <string name="notification_announcement_tip">Tipp vom Entwickler</string>
     <string name="notification_sender_developer">Entwickler</string>
+    <string name="notification_reliability_title">Zuverlässige Benachrichtigungen</string>
+    <string name="notification_reliability_battery_desc">Android kann Benachrichtigungen verzögern oder unterdrücken, wenn die App akku-optimiert ist. Deaktiviere die Optimierung für CruxCoach, damit Nachrichten zeitnah ankommen.</string>
+    <string name="notification_reliability_battery_button">Akku-Optimierung deaktivieren</string>
+    <string name="notification_reliability_oem_desc">Dein Gerätehersteller betreibt einen zusätzlichen Hintergrund-App-Killer. Ohne Ausnahme können Benachrichtigungen verspätet oder gar nicht ankommen.</string>
+    <string name="notification_reliability_oem_button">Hersteller-Einstellungen öffnen</string>
+    <string name="notification_reliability_oem_button_fallback">App-Einstellungen öffnen</string>
+    <string name="notification_reliability_dismiss">Später</string>
+    <string name="notification_reliability_oem_severity_moderate">Dein Hersteller (%1$s) pausiert gelegentlich Hintergrund-Apps — Whitelisting hilft.</string>
+    <string name="notification_reliability_oem_severity_severe">Dein Hersteller (%1$s) beendet Hintergrund-Apps aggressiv. Für volle Zuverlässigkeit ist die Hersteller-spezifische Whitelist nötig.</string>
     <string name="training_reminder_title">Training heute geplant</string>
     <string name="training_reminder_message">%1$s-Session mit %2$d Übungen</string>
     <string name="training_type_strength">Kraft</string>

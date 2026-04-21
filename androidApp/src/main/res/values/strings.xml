@@ -851,6 +851,15 @@
     <string name="notification_announcement_issue">Known issue</string>
     <string name="notification_announcement_tip">Tip from the developer</string>
     <string name="notification_sender_developer">Developer</string>
+    <string name="notification_reliability_title">Reliable notifications</string>
+    <string name="notification_reliability_battery_desc">Android may delay or suppress notifications when the app is battery-optimized. Disable the optimization for CruxCoach to receive messages promptly.</string>
+    <string name="notification_reliability_battery_button">Disable battery optimization</string>
+    <string name="notification_reliability_oem_desc">Your device vendor runs an extra background-app killer. Without an exception, notifications can arrive late or not at all.</string>
+    <string name="notification_reliability_oem_button">Open vendor settings</string>
+    <string name="notification_reliability_oem_button_fallback">Open app settings</string>
+    <string name="notification_reliability_dismiss">Not now</string>
+    <string name="notification_reliability_oem_severity_moderate">Your vendor (%1$s) occasionally pauses background apps — whitelisting helps.</string>
+    <string name="notification_reliability_oem_severity_severe">Your vendor (%1$s) aggressively kills background apps. Full reliability requires the vendor-specific whitelist.</string>
     <string name="training_reminder_title">Training planned today</string>
     <string name="training_reminder_message">%1$s session with %2$d exercises</string>
     <string name="training_type_strength">Strength</string>
