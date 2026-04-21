@@ -66,6 +66,17 @@ fun SettingsScreen(
     var updaterExpanded by rememberSaveable { mutableStateOf(false) }
     var showBoardModelDialog by rememberSaveable { mutableStateOf(false) }
 
+    // Notification-tap deep-link auto-expand: opens the updater section so
+    // the inline confirmation dialog inside [UpdaterSettingsSection] can
+    // actually compose. Without this expansion the section stays collapsed
+    // and the dialog's LaunchedEffect never runs, so the user is dropped on
+    // an empty Settings screen and has to find the section themselves.
+    val updaterVm: UpdaterSettingsViewModel = hiltViewModel()
+    val updaterDialogRequested by updaterVm.downloadDialogRequested.collectAsStateWithLifecycle()
+    LaunchedEffect(updaterDialogRequested) {
+        if (updaterDialogRequested) updaterExpanded = true
+    }
+
     Scaffold(
         topBar = {
             Column {
