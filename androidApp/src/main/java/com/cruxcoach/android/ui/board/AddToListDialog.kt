@@ -10,8 +10,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
@@ -61,7 +61,7 @@ internal fun AddToListDialog(
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Icon(
-                            if (list.isBuiltin) Icons.Default.Star else Icons.Default.PlaylistAdd,
+                            if (list.isBuiltin) Icons.Default.Star else Icons.AutoMirrored.Filled.PlaylistAdd,
                             contentDescription = null,
                             tint = if (list.isBuiltin) WarningYellow else MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(18.dp)
