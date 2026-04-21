@@ -85,6 +85,27 @@ class UpdaterRepository @Inject constructor(
         notifier.showPendingDownload(info)
     }
 
+    /**
+     * Re-posts a `PENDING_DOWNLOAD` notification from cached state. Used after
+     * the user grants POST_NOTIFICATIONS post-hoc: the first check fired while
+     * the permission dialog was still up, so [UpdateNotifier.notify]'s
+     * `areNotificationsEnabled()` guard dropped the notification. State is
+     * cached, so we re-emit without a second network round-trip.
+     *
+     * No-ops when the user has already moved past PENDING_DOWNLOAD (download
+     * started, install ready, …) or dismissed a prior notification — we don't
+     * want to resurrect a surface they already acted on.
+     */
+    fun reNotifyPendingUpdateIfAny() {
+        scope.launch {
+            val prefs = preferences.snapshot()
+            if (prefs.pipelineStage != PipelineStage.PENDING_DOWNLOAD) return@launch
+            if (prefs.notifDismissedAtEpochMs != null) return@launch
+            val info = prefs.pendingUpdate() ?: return@launch
+            notifier.showPendingDownload(info)
+        }
+    }
+
     /** Starts (or resumes) the download and watches it to completion. */
     fun startDownload(info: UpdateInfo, allowMobile: Boolean) {
         scope.launch {

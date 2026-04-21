@@ -89,7 +89,13 @@ class MainActivity : AppCompatActivity() {
 
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
-    ) { /* granted or not — we check hasPermission() before each notification */ }
+    ) { granted ->
+        // The first update check often fires before the user taps Allow,
+        // causing UpdateNotifier to drop the PENDING_DOWNLOAD notification.
+        // Re-emit from cached state so the user sees it without waiting for
+        // the 2 h throttle to expire.
+        if (granted) updaterRepository.get().reNotifyPendingUpdateIfAny()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         PerfLogger.milestone("MainActivity.onCreate START")
