@@ -654,6 +654,9 @@
     <string name="board_sync_last_sync">Last sync: %s</string>
     <string name="board_sync_redownload">Re-download</string>
     <string name="board_sync_update_online">Update online</string>
+    <string name="board_sync_local_import_title">Import board database?</string>
+    <string name="board_sync_local_import_message">A board database is being offered from %1$s. Only confirm if you deliberately connected to a CruxCoach-Share hotspot from someone you trust. The import replaces your current climb database.</string>
+    <string name="board_sync_local_import_confirm">Import</string>
 
     <!-- Kilter Account -->
     <string name="kilter_section_title">Kilter Board Account</string>

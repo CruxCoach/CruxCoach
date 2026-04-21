@@ -154,7 +154,13 @@ class CruxCoachApp : Application(), Configuration.Provider {
             // This must run before the DataStore read (~350 ms cold) to minimize
             // the window where the main thread's CompositionLocalProvider could
             // contend on DoubleCheck locks.
-            syncManager.get().tryLocalShareImport()
+            //
+            // Note: no startup probe of the WiFi-Direct-share endpoint. The
+            // legitimate receive flow is deep-link driven (cruxcoach://import-board-db
+            // from the hotspot's landing page), gated by a user-visible consent
+            // dialog in BoardSyncScreen. A bare "server exists on 192.168.49.1:4949"
+            // is not a trustworthy import signal — any attacker-controlled AP
+            // can synthesise it.
             syncManager.get().syncIfStale()
             // Kilter account: sync (download + upload unsynced) if persistent sync is enabled
             kilterSyncEngine.get().syncOnAppStartIfEnabled()

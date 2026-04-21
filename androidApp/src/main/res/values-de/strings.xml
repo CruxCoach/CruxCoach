@@ -697,6 +697,9 @@
     <string name="board_sync_last_sync">Letzter Sync: %s</string>
     <string name="board_sync_redownload">Neu herunterladen</string>
     <string name="board_sync_update_online">Online aktualisieren</string>
+    <string name="board_sync_local_import_title">Board-Datenbank importieren?</string>
+    <string name="board_sync_local_import_message">Von %1$s wird eine Board-Datenbank angeboten. Nur bestätigen, wenn du dich bewusst mit einem CruxCoach-Share-Hotspot einer dir bekannten Person verbunden hast. Der Import ersetzt deine aktuelle Climb-Datenbank.</string>
+    <string name="board_sync_local_import_confirm">Importieren</string>
 
     <!-- Kilter Account -->
     <string name="kilter_section_title">Kilter Board Account</string>

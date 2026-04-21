@@ -207,7 +207,9 @@ fun CruxCoachNavHost(
                     .getQueryParameter("localDbUrl")
                     ?.let { android.net.Uri.decode(it) }
                 if (localDbUrl != null) {
-                    startViewModel.syncManager.importFromLocalUrl(localDbUrl)
+                    // Stage — the actual download starts only after the user
+                    // confirms in BoardSyncScreen's dialog. Never auto-import.
+                    startViewModel.syncManager.stageLocalImport(localDbUrl)
                 }
                 navController.navigate(Routes.BOARD_SYNC) { launchSingleTop = true }
             }

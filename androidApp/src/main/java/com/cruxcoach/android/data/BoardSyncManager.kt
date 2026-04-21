@@ -4,8 +4,6 @@ import android.content.Context
 import android.util.Log
 import com.cruxcoach.android.data.BoardDatabaseImporter.ImportStep
 import com.cruxcoach.android.data.blossom.BlossomSyncManager
-import com.cruxcoach.android.util.LocalApkServer
-import com.cruxcoach.android.util.WifiDirectHotspot
 import com.cruxcoach.android.util.isNetworkAvailable
 import com.cruxcoach.android.util.isWifiConnected
 import com.cruxcoach.util.DateTimeUtil
@@ -181,33 +179,32 @@ class BoardSyncManager(
     }
 
     /**
-     * Tries to find a local WiFi Direct share server and import the board DB.
-     * WiFi Direct group owner is always at 192.168.49.1 with fixed port 4949.
-     * Returns true if a local server was found and import started.
+     * Stage a local-share import URL for user confirmation.
+     *
+     * The deep-link handler (cruxcoach://import-board-db) calls this after
+     * MainActivity.isAllowedLocalImportUrl has validated the URL is on an
+     * RFC1918 / loopback range. The actual download only starts once the
+     * user taps confirm on the dialog shown by BoardSyncScreen.
+     *
+     * The tap on the hotspot's landing page happens in a browser whose
+     * contents are controlled by whoever runs the AP — so that tap is not
+     * a trustworthy consent signal. The in-app dialog is the real consent
+     * moment: it runs in CruxCoach's own UI and shows the source host so
+     * the user can refuse an unexpected import.
      */
-    fun tryLocalShareImport(): Boolean {
-        if (_state.value.isSyncing || importer.isImported()) return false
+    fun stageLocalImport(url: String) {
+        if (_state.value.isSyncing) return
+        _state.update { it.copy(pendingLocalImportUrl = url) }
+    }
 
-        val url = "http://${WifiDirectHotspot.GROUP_OWNER_IP}:${LocalApkServer.LOCAL_SHARE_PORT}/board.db"
-        // Quick HEAD check — must not block UI, so we fire and update state
-        scope.launch {
-            try {
-                val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
-                conn.requestMethod = "HEAD"
-                conn.connectTimeout = 1500
-                conn.readTimeout = 1500
-                val code = conn.responseCode
-                conn.disconnect()
-                if (code == 200) {
-                    Log.i(TAG, "Local share server found at $url, starting import")
-                    importFromLocalUrl(url)
-                }
-            } catch (e: Exception) {
-                // No local server available — this is the normal case
-                Log.d(TAG, "No local share server found: ${e.message}")
-            }
-        }
-        return true // Probe started (async), result comes via state
+    fun confirmLocalImport() {
+        val url = _state.value.pendingLocalImportUrl ?: return
+        _state.update { it.copy(pendingLocalImportUrl = null) }
+        performLocalImport(url)
+    }
+
+    fun dismissLocalImport() {
+        _state.update { it.copy(pendingLocalImportUrl = null) }
     }
 
     fun startApiSync() {
@@ -395,8 +392,12 @@ class BoardSyncManager(
     /**
      * Import board DB from a local URL (e.g., WiFi Direct share).
      * Downloads the full uncompressed SQLite file and imports it.
+     *
+     * Private because callers must go through [stageLocalImport] +
+     * [confirmLocalImport] so the user sees a consent dialog before
+     * untrusted bytes hit the SQLite parser.
      */
-    fun importFromLocalUrl(url: String) {
+    private fun performLocalImport(url: String) {
         if (!claimSyncSlot(ImportStep.Download(0, 0))) return
 
         scope.launch {
@@ -523,6 +524,12 @@ data class BoardSyncState(
     val importStep: ImportStep? = null,
     val alreadyImported: Boolean = false,
     val lastSyncTimestamp: String? = null,
+    /**
+     * A local-share import URL awaiting user confirmation. Set by
+     * [BoardSyncManager.stageLocalImport]; cleared on confirm/dismiss.
+     * Non-null means the BoardSyncScreen should show the consent dialog.
+     */
+    val pendingLocalImportUrl: String? = null,
     /** Incremented each time a real sync starts. Banner uses this to ignore initial state. */
     val syncGeneration: Int = 0,
     /**

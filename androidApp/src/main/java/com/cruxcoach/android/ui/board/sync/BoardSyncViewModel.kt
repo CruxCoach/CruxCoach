@@ -49,6 +49,8 @@ class BoardSyncViewModel @Inject constructor(
     fun startApiSync() = syncManager.startApiSync()
     fun forceSync() = syncManager.forceSync()
     fun clearError() = syncManager.clearError()
+    fun confirmLocalImport() = syncManager.confirmLocalImport()
+    fun dismissLocalImport() = syncManager.dismissLocalImport()
 
     /**
      * Check if the user needs to select a board model after first sync.

@@ -14,6 +14,7 @@ import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.NetworkWifi
 import androidx.compose.material.icons.filled.SignalWifiOff
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -115,6 +116,45 @@ fun BoardSyncScreen(
             },
             dismissButton = {
                 TextButton(onClick = { viewModel.dismissUpToDateDialog() }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            }
+        )
+    }
+
+    // Local-share import consent. The tap on the hotspot's landing page
+    // happens in an attacker-controllable browser, so this in-app dialog
+    // is the real consent moment — it shows the source host and runs in
+    // CruxCoach's own UI.
+    state.pendingLocalImportUrl?.let { url ->
+        val host = remember(url) {
+            runCatching { android.net.Uri.parse(url).host }.getOrNull() ?: url
+        }
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissLocalImport() },
+            icon = {
+                Icon(
+                    Icons.Default.Warning,
+                    contentDescription = null,
+                    tint = OrangeAccent,
+                    modifier = Modifier.size(40.dp)
+                )
+            },
+            title = { Text(stringResource(R.string.board_sync_local_import_title)) },
+            text = {
+                Text(stringResource(R.string.board_sync_local_import_message, host))
+            },
+            confirmButton = {
+                Button(
+                    onClick = { viewModel.confirmLocalImport() },
+                    colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
+                    modifier = Modifier.testTag("board_sync_local_import_confirm")
+                ) {
+                    Text(stringResource(R.string.board_sync_local_import_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.dismissLocalImport() }) {
                     Text(stringResource(R.string.action_cancel))
                 }
             }
