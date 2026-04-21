@@ -9,7 +9,12 @@ import androidx.security.crypto.MasterKey
 /**
  * Secure storage for Kilter account credentials (refresh token, access token).
  * Uses EncryptedSharedPreferences backed by Android Keystore (AES-256-GCM).
- * Per-key: each Nostr identity gets its own file (kilter_secure_prefs_{prefix}).
+ *
+ * File name is fixed (kilter_secure_prefs) so the backup/data-extraction rules
+ * can exclude it by exact path — Android NSC/backup rules don't support
+ * wildcards. Per-identity isolation is preserved by prefixing every key with
+ * the Nostr pubkey prefix, so switching identities never surfaces another
+ * identity's tokens.
  */
 class KilterTokenStore(
     private val context: Context,
@@ -17,17 +22,18 @@ class KilterTokenStore(
 ) {
     private companion object {
         const val TAG = "KilterTokenStore"
-        const val KEY_ACCESS_TOKEN = "access_token"
-        const val KEY_REFRESH_TOKEN = "refresh_token"
-        const val KEY_ACCESS_TOKEN_EXPIRY = "access_token_expiry"
-        const val KEY_USER_UUID = "user_uuid"
-        const val KEY_USERNAME = "username"
-        const val KEY_GYM_UUID = "gym_uuid"
-        const val KEY_WALL_UUID = "wall_uuid"
-        const val KEY_PRODUCT_LAYOUT_UUID = "product_layout_uuid"
+        const val PREFS_FILE = "kilter_secure_prefs"
     }
 
-    private val prefsFile = "kilter_secure_prefs_$pubkeyPrefix"
+    private val keyAccessToken = "${pubkeyPrefix}_access_token"
+    private val keyRefreshToken = "${pubkeyPrefix}_refresh_token"
+    private val keyAccessTokenExpiry = "${pubkeyPrefix}_access_token_expiry"
+    private val keyUserUuid = "${pubkeyPrefix}_user_uuid"
+    private val keyUsername = "${pubkeyPrefix}_username"
+    private val keyGymUuid = "${pubkeyPrefix}_gym_uuid"
+    private val keyWallUuid = "${pubkeyPrefix}_wall_uuid"
+    private val keyProductLayoutUuid = "${pubkeyPrefix}_product_layout_uuid"
+    private val prefsFile = PREFS_FILE
 
     private val prefs: SharedPreferences by lazy { openOrRecreatePrefs() }
 
@@ -62,32 +68,32 @@ class KilterTokenStore(
         username: String
     ) {
         prefs.edit()
-            .putString(KEY_ACCESS_TOKEN, accessToken)
-            .putString(KEY_REFRESH_TOKEN, refreshToken)
-            .putLong(KEY_ACCESS_TOKEN_EXPIRY, System.currentTimeMillis() + expiresInSeconds * 1000)
-            .putString(KEY_USER_UUID, userUuid)
-            .putString(KEY_USERNAME, username)
+            .putString(keyAccessToken, accessToken)
+            .putString(keyRefreshToken, refreshToken)
+            .putLong(keyAccessTokenExpiry, System.currentTimeMillis() + expiresInSeconds * 1000)
+            .putString(keyUserUuid, userUuid)
+            .putString(keyUsername, username)
             .apply()
     }
 
     fun updateAccessToken(accessToken: String, expiresInSeconds: Long) {
         prefs.edit()
-            .putString(KEY_ACCESS_TOKEN, accessToken)
-            .putLong(KEY_ACCESS_TOKEN_EXPIRY, System.currentTimeMillis() + expiresInSeconds * 1000)
+            .putString(keyAccessToken, accessToken)
+            .putLong(keyAccessTokenExpiry, System.currentTimeMillis() + expiresInSeconds * 1000)
             .apply()
     }
 
     fun updateRefreshToken(refreshToken: String) {
-        prefs.edit().putString(KEY_REFRESH_TOKEN, refreshToken).apply()
+        prefs.edit().putString(keyRefreshToken, refreshToken).apply()
     }
 
-    fun getAccessToken(): String? = prefs.getString(KEY_ACCESS_TOKEN, null)
-    fun getRefreshToken(): String? = prefs.getString(KEY_REFRESH_TOKEN, null)
-    fun getUserUuid(): String? = prefs.getString(KEY_USER_UUID, null)
-    fun getUsername(): String? = prefs.getString(KEY_USERNAME, null)
+    fun getAccessToken(): String? = prefs.getString(keyAccessToken, null)
+    fun getRefreshToken(): String? = prefs.getString(keyRefreshToken, null)
+    fun getUserUuid(): String? = prefs.getString(keyUserUuid, null)
+    fun getUsername(): String? = prefs.getString(keyUsername, null)
 
     fun isAccessTokenExpired(): Boolean {
-        val expiry = prefs.getLong(KEY_ACCESS_TOKEN_EXPIRY, 0)
+        val expiry = prefs.getLong(keyAccessTokenExpiry, 0)
         return System.currentTimeMillis() >= expiry - 60_000 // 1 min buffer
     }
 
@@ -96,18 +102,28 @@ class KilterTokenStore(
     /** Store the Kilter wall context (gym/wall/layout) for log uploads. */
     fun setWallContext(gymUuid: String, wallUuid: String, productLayoutUuid: String) {
         prefs.edit()
-            .putString(KEY_GYM_UUID, gymUuid)
-            .putString(KEY_WALL_UUID, wallUuid)
-            .putString(KEY_PRODUCT_LAYOUT_UUID, productLayoutUuid)
+            .putString(keyGymUuid, gymUuid)
+            .putString(keyWallUuid, wallUuid)
+            .putString(keyProductLayoutUuid, productLayoutUuid)
             .apply()
     }
 
-    fun getGymUuid(): String? = prefs.getString(KEY_GYM_UUID, null)
-    fun getWallUuid(): String? = prefs.getString(KEY_WALL_UUID, null)
-    fun getProductLayoutUuid(): String? = prefs.getString(KEY_PRODUCT_LAYOUT_UUID, null)
+    fun getGymUuid(): String? = prefs.getString(keyGymUuid, null)
+    fun getWallUuid(): String? = prefs.getString(keyWallUuid, null)
+    fun getProductLayoutUuid(): String? = prefs.getString(keyProductLayoutUuid, null)
     fun hasWallContext(): Boolean = getGymUuid() != null && getWallUuid() != null
 
+    /** Clear only this identity's entries, leaving other identities' keys intact. */
     fun clear() {
-        prefs.edit().clear().apply()
+        prefs.edit()
+            .remove(keyAccessToken)
+            .remove(keyRefreshToken)
+            .remove(keyAccessTokenExpiry)
+            .remove(keyUserUuid)
+            .remove(keyUsername)
+            .remove(keyGymUuid)
+            .remove(keyWallUuid)
+            .remove(keyProductLayoutUuid)
+            .apply()
     }
 }

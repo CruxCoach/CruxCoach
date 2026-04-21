@@ -91,6 +91,7 @@ class KilterApiClient @Inject constructor(
     private companion object {
         const val TAG = "KilterApiClient"
         const val TOKEN_URL = "https://idp.kiltergrips.com/realms/kilter/protocol/openid-connect/token"
+        const val LOGOUT_URL = "https://idp.kiltergrips.com/realms/kilter/protocol/openid-connect/logout"
         const val API_BASE = "https://portal.kiltergrips.com/api"
         const val CLIENT_ID = "kilter"
     }
@@ -180,6 +181,35 @@ class KilterApiClient @Inject constructor(
             } catch (e: Exception) {
                 Log.e(TAG, "Token refresh error", e)
             }
+            false
+        }
+    }
+
+    /**
+     * Revoke the refresh token on Keycloak. Call this before clearing the
+     * local token store on logout — otherwise the refresh token remains
+     * valid server-side for its full TTL, and anyone with a stale copy
+     * (adb backup on rooted device, filesystem extraction) can keep using
+     * the account indefinitely.
+     *
+     * Best-effort: if the call fails (offline, server down), we still
+     * proceed with the local clear. Returns true on 2xx, false otherwise.
+     */
+    suspend fun revokeRefreshToken(): Boolean = withContext(Dispatchers.IO) {
+        val refreshToken = tokenStore.getRefreshToken() ?: return@withContext true
+        try {
+            val body = FormBody.Builder()
+                .add("client_id", CLIENT_ID)
+                .add("refresh_token", refreshToken)
+                .build()
+            val request = Request.Builder().url(LOGOUT_URL).post(body).build()
+            val response = httpClient.newCall(request).execute()
+            response.close()
+            val ok = response.isSuccessful
+            if (!ok) Log.w(TAG, "Logout HTTP ${response.code}")
+            ok
+        } catch (e: Exception) {
+            Log.w(TAG, "Logout call failed — continuing with local clear", e)
             false
         }
     }

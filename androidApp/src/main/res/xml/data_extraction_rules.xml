@@ -3,9 +3,11 @@
     <cloud-backup>
         <exclude domain="sharedpref" path="nostr_secure_prefs.xml"/>
         <exclude domain="sharedpref" path="sqlcipher_prefs.xml"/>
+        <exclude domain="sharedpref" path="kilter_secure_prefs.xml"/>
     </cloud-backup>
     <device-transfer>
         <exclude domain="sharedpref" path="nostr_secure_prefs.xml"/>
         <exclude domain="sharedpref" path="sqlcipher_prefs.xml"/>
+        <exclude domain="sharedpref" path="kilter_secure_prefs.xml"/>
     </device-transfer>
 </data-extraction-rules>
