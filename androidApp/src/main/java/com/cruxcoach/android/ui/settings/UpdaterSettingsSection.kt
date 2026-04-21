@@ -145,14 +145,15 @@ internal fun UpdaterSettingsSection(
 
         // Notification tap → open-dialog request. Auto-surface the dialog
         // here so the user lands directly on the confirmation prompt.
-        LaunchedEffect(dialogRequested, info) {
+        // Consume the request ONLY after we've actually opened the dialog;
+        // otherwise a first composition with info==null (state still
+        // loading) would silently swallow the trigger.
+        LaunchedEffect(dialogRequested, info, state.pipelineStage) {
             if (dialogRequested && info != null &&
                 state.pipelineStage != PipelineStage.READY_TO_INSTALL &&
                 state.pipelineStage != PipelineStage.DOWNLOADING
             ) {
                 downloadConfirmFor = info
-            }
-            if (dialogRequested) {
                 viewModel.consumeDownloadDialogRequest()
             }
         }
