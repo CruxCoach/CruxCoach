@@ -739,7 +739,7 @@
     <string name="board_sync_step_import_stats">Statistiken importieren</string>
     <string name="board_sync_step_import_layout">Layout-Daten importieren</string>
     <string name="board_sync_step_finalize">Finalisieren</string>
-    <string name="sync_finalizing">Finalisieren — %1$s</string>
+    <string name="sync_finalizing">Finalisieren…</string>
 
     <!-- Climb Labels -->
     <string name="climb_label_boulder">Boulder</string>

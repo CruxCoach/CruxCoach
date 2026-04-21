@@ -82,9 +82,12 @@ class BoardDatabaseImporter(
         val grandClimbTotal = climbChunkCounts.sum()
         val grandStatTotal = statChunkCounts.sum()
 
-        // Drop indexes before bulk import, rebuild after (avoids per-row index maintenance)
+        // Drop indexes before bulk import, rebuild after (avoids per-row index
+        // maintenance). Layout/meta import is also inside the block so its
+        // INSERTs benefit, and the UI sees a single clean phase progression:
+        // Climbs → Stats → Layout → Finalizing (rebuild + backfill + denorm).
         withDeferredIndexes(
-            onRebuild = { onProgress?.invoke(ImportStep.Finalizing("Indizes neu aufbauen")) }
+            onRebuild = { onProgress?.invoke(ImportStep.Finalizing) }
         ) {
             // Import all climb chunks (bulk ATTACH or row-by-row fallback)
             if (climbsDbFiles.isNotEmpty()) {
@@ -123,26 +126,26 @@ class BoardDatabaseImporter(
                     }
                 }
             }
+
+            // Import meta chunks (usually just 1)
+            for (file in metaDbFiles) {
+                openReadOnly(file) { rawDb ->
+                    onProgress?.invoke(ImportStep.ImportLayout(0))
+                    val hasLayout = snapshot != null && snapshot.placementCount > 0
+                    val layoutCount = if (hasLayout) snapshot!!.placementCount else importPlacements(rawDb)
+                    if (!hasLayout) { importProductSizes(rawDb); importBoardImages(rawDb) }
+                    if (snapshot == null || snapshot.ledCount == 0) importLeds(rawDb)
+                    importSyncState(rawDb)
+                    onProgress?.invoke(ImportStep.ImportLayout(layoutCount))
+                }
+            }
         }
 
-        onProgress?.invoke(ImportStep.Finalizing("Bewegungen berechnen"))
+        // Now indexes are back; UI has already entered Finalizing via onRebuild.
         backfillMoveCounts()
 
         if (boardRepository.getSyncState("metadata_v7") == null) {
             boardRepository.upsertSyncState("metadata_v7", "done")
-        }
-
-        // Import meta chunks (usually just 1)
-        for (file in metaDbFiles) {
-            openReadOnly(file) { rawDb ->
-                onProgress?.invoke(ImportStep.ImportLayout(0))
-                val hasLayout = snapshot != null && snapshot.placementCount > 0
-                val layoutCount = if (hasLayout) snapshot!!.placementCount else importPlacements(rawDb)
-                if (!hasLayout) { importProductSizes(rawDb); importBoardImages(rawDb) }
-                if (snapshot == null || snapshot.ledCount == 0) importLeds(rawDb)
-                importSyncState(rawDb)
-                onProgress?.invoke(ImportStep.ImportLayout(layoutCount))
-            }
         }
 
         val climbCount = boardRepository.getClimbCount()
@@ -273,11 +276,10 @@ class BoardDatabaseImporter(
         data class ImportClimbs(val inserted: Int, val scanned: Int, val total: Int) : ImportStep()
         data class ImportStats(val inserted: Int, val scanned: Int, val total: Int) : ImportStep()
         data class ImportLayout(val count: Int) : ImportStep()
-        /** Post-import work the user can't see otherwise (indexes, optimize,
-         *  denormalized refresh). Without this the UI freezes at "100%
-         *  Statistiken importieren" for 30s–2min. [phase] is a short German
-         *  label rendered as-is by the UI. */
-        data class Finalizing(val phase: String) : ImportStep()
+        /** Post-import work the user can't see otherwise (index rebuild,
+         *  move-count backfill, denormalized refresh). Without this the UI
+         *  freezes at "100% Statistiken importieren" for 30s–2min. */
+        data object Finalizing : ImportStep()
         data class Done(
             val climbs: Int, val stats: Int, val placements: Int,
             val nomatchCount: Int = 0

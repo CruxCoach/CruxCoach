@@ -363,11 +363,11 @@ class BoardSyncManager(
             )
             Log.d(TAG, "Import completed successfully")
 
-            // 5. Refresh denormalized data in SecureDB
+            // 5. Refresh denormalized data in SecureDB. UI is already showing
+            // Finalizing from the importer's index-rebuild callback, so we
+            // just keep that state.
             _state.update { it.copy(
-                importStep = com.cruxcoach.android.data.BoardDatabaseImporter.ImportStep.Finalizing(
-                    "Eigene Daten aktualisieren"
-                )
+                importStep = com.cruxcoach.android.data.BoardDatabaseImporter.ImportStep.Finalizing
             ) }
             refreshDenormalizedData()
 

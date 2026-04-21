@@ -559,8 +559,7 @@ private fun SyncProgressChecklist(
             stepIndex == finalizeIdx -> StepStatus.ACTIVE
             else -> StepStatus.PENDING
         }
-        val finalizeDetail = if (step is ImportStep.Finalizing) step.phase else null
-        SyncStepRow(stringResource(R.string.board_sync_step_finalize), finalizeStatus, finalizeDetail)
+        SyncStepRow(stringResource(R.string.board_sync_step_finalize), finalizeStatus)
 
         // Debug: show metadata counters after import
         if (step is ImportStep.Done && step.nomatchCount > 0) {
