@@ -4,29 +4,30 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
 import com.cruxcoach.android.data.UserPreferences
+import kotlinx.coroutines.CoroutineScope
 import java.io.File
 
 /**
- * Creates a real [UserPreferences] backed by a temporary file-based DataStore.
- * This avoids the need to mock the concrete class -- all flows work correctly
- * because they read from a real (empty) DataStore, returning default values.
+ * Creates a real [UserPreferences] backed by two temporary file-based DataStores.
  *
- * Usage:
- * ```
- * val prefs = createTestUserPreferences()
- * // prefs.boardAngle emits 40 (default), prefs.gradeScale emits FRENCH, etc.
- * ```
+ * Pass a [scope] tied to the test's lifecycle (inside `runTest { ... }` use
+ * `backgroundScope`) so DataStore's background writer is cancelled with the
+ * test. If omitted, DataStore's default `Dispatchers.IO + SupervisorJob()`
+ * scope outlives the test and surfaces as `UncaughtExceptionsBeforeTest` in
+ * the next test that runs.
  */
-fun createTestUserPreferences(): UserPreferences {
+fun createTestUserPreferences(scope: CoroutineScope): UserPreferences {
     val tempFile = File.createTempFile("test_prefs_", ".preferences_pb")
     tempFile.deleteOnExit()
     tempFile.delete()
-    val dataStore: DataStore<Preferences> = PreferenceDataStoreFactory.create { tempFile }
+    val dataStore: DataStore<Preferences> =
+        PreferenceDataStoreFactory.create(scope = scope) { tempFile }
 
     val keyTempFile = File.createTempFile("test_key_prefs_", ".preferences_pb")
     keyTempFile.deleteOnExit()
     keyTempFile.delete()
-    val keyScopedDataStore: DataStore<Preferences> = PreferenceDataStoreFactory.create { keyTempFile }
+    val keyScopedDataStore: DataStore<Preferences> =
+        PreferenceDataStoreFactory.create(scope = scope) { keyTempFile }
 
     return UserPreferences(dataStore, keyScopedDataStore)
 }

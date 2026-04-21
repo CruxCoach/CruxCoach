@@ -6,8 +6,11 @@ import com.cruxcoach.android.ble.QueueItem
 import com.cruxcoach.data.repository.BoardRepository
 import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -30,6 +33,7 @@ import org.junit.Test
 class SessionQueueManagerTest {
 
     private val testDispatcher = UnconfinedTestDispatcher()
+    private lateinit var managerScope: CoroutineScope
     private lateinit var queueManager: SessionQueueManager
     private val bleConnection = mockk<AuroraBleConnection>(relaxed = true)
     private val boardRepository = mockk<BoardRepository>(relaxed = true)
@@ -40,11 +44,19 @@ class SessionQueueManagerTest {
     fun setup() {
         Dispatchers.setMain(testDispatcher)
         every { bleConnection.connectionState } returns MutableStateFlow(ConnectionState.DISCONNECTED)
-        queueManager = SessionQueueManager(bleConnection, boardRepository, climbNameResolver, userPreferences)
+        managerScope = CoroutineScope(SupervisorJob() + testDispatcher)
+        queueManager = SessionQueueManager(
+            bleConnection, boardRepository, climbNameResolver, userPreferences, managerScope
+        )
     }
 
     @After
     fun tearDown() {
+        // Cancel the manager's scope BEFORE resetMain so any in-flight `withContext`
+        // hops (notably state.collect → withContext(Dispatchers.IO) at line 106)
+        // don't resume onto a torn-down Main and leak as UncaughtExceptionsBeforeTest
+        // into the next test in the same JVM.
+        managerScope.cancel()
         Dispatchers.resetMain()
     }
 
