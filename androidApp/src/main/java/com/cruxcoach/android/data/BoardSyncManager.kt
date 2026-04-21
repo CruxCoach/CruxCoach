@@ -252,10 +252,22 @@ class BoardSyncManager(
                 performBlossomSync()
             } catch (e: Exception) {
                 Log.w(TAG, "Blossom sync failed", e)
-                val msg = if (!importer.isImported()) {
-                    "Download fehlgeschlagen. Bitte prüfe deine Internetverbindung und versuche es erneut."
-                } else {
-                    "Aktualisierung nicht möglich. Bestehende Daten bleiben erhalten."
+                // Distinguish network failures (where the "prüfe Internet"
+                // hint is actually useful) from local-side import errors
+                // (SQLite, parsing, disk) where it's misleading.
+                val isNetworkError = e is java.net.UnknownHostException ||
+                    e is java.net.ConnectException ||
+                    e is java.net.SocketTimeoutException ||
+                    (e is java.io.IOException && e !is java.io.FileNotFoundException)
+                val msg = when {
+                    isNetworkError && !importer.isImported() ->
+                        "Download fehlgeschlagen. Bitte prüfe deine Internetverbindung und versuche es erneut."
+                    isNetworkError ->
+                        "Aktualisierung nicht möglich. Bestehende Daten bleiben erhalten."
+                    !importer.isImported() ->
+                        "Import fehlgeschlagen: ${e.message ?: e.javaClass.simpleName}"
+                    else ->
+                        "Aktualisierung fehlgeschlagen: ${e.message ?: e.javaClass.simpleName}. Bestehende Daten bleiben erhalten."
                 }
                 _state.update { it.copy(
                     isSyncing = false,

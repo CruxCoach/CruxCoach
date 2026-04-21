@@ -612,9 +612,13 @@ class BoardDatabaseImporter(
     private fun openTargetDb(): SQLiteDatabase {
         val dbFile = context.getDatabasePath("cruxcoach.db")
         val db = SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE)
-        // Prevent SQLITE_BUSY when the SQLDelight driver concurrently reads the
-        // same DB during an import: wait up to 5s for locks before failing.
-        db.execSQL("PRAGMA busy_timeout = 5000")
+        // Prevent SQLITE_BUSY when the SQLDelight driver concurrently reads
+        // the same DB during an import: wait up to 5s for locks before
+        // failing. PRAGMA busy_timeout returns the new value as a row, so
+        // execSQL() throws "Queries can be performed using SQLiteDatabase
+        // query or rawQuery methods only" — which the sync UI mis-renders
+        // as "prüfe Internetverbindung" even when the download succeeded.
+        db.rawQuery("PRAGMA busy_timeout = 5000", null).use { it.moveToFirst() }
         return db
     }
 
