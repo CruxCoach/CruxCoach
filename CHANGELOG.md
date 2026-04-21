@@ -6,6 +6,39 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-04-21
+
+### Added
+- In-app auto-updater — checks for new versions and walks you through install (automatically turned off when you installed CruxCoach through Zapstore, which handles updates itself)
+- Notification reliability setup — guides you through Android's battery and autostart settings so messages from the developer and sync updates arrive reliably even after the app has been closed for a while
+- App-share QR code in Settings — let nearby climbers scan a QR code to download the app
+
+### Changed
+- Receiving a board database from another climber's sharing hotspot now asks for confirmation and shows the source before importing, so you can't accidentally replace your climbs
+- Board database updates no longer briefly freeze the app while they finish
+
+### Fixed
+- Kilter sync could mark the wrong ascents as synced when you logged several climbs in quick succession
+- Nostr sync could forget recently-synced messages under heavy network activity
+- Outgoing Nostr messages could stay stuck as "pending" after the network connection dropped
+- More stable Bluetooth connection to the Kilter Board during long climbing sessions
+- Board database import on older devices occasionally failed with a "database is locked" error
+- Board browser could become slow after a board database update was interrupted — the speed-up indexes now repair themselves automatically on app start
+- The version number shown in Settings is now always correct
+
+### Security
+- Downloaded board databases are now cryptographically verified and size-limited — a malicious server can't feed you tampered or oversized data
+- Importing a backup file now rejects tampered or malformed data before it can corrupt your personal database
+- Import links (`cruxcoach://import-board-db`) only work when they point to a device on your local network — they can't be abused by a website
+- The local app-share mini-server only listens while you're actively sharing; no open ports at other times
+- Notifications can only open a fixed list of app screens — other apps can't use fake notifications to slip you into sensitive areas
+- Encrypted direct messages are only processed when they come from the developer account — strangers can't spoof bug-report responses
+- Disconnecting your Kilter account now also logs you out on Kilter's server, and your Kilter login token is excluded from Android's system backups
+- Lightning addresses in Nostr profiles are only trusted after signature verification — can't be spoofed by a relay
+- The screen for entering your Nostr private key (nsec) now blocks screenshots and screen recording
+- The password for local sharing hotspots now uses a cryptographically strong random source
+- Build tooling is now cryptographically pinned to prevent supply-chain tampering during builds
+
 ## [0.1.1] - 2026-04-16
 
 ### Added
