@@ -19,7 +19,181 @@ object CruxCoachBackup {
         ignoreUnknownKeys = true
         prettyPrint = true
         encodeDefaults = true
+        // Kept true so export never crashes if a stray NaN/Infinity ever reaches
+        // a user-owned DB. Import-side, every Double? field is post-validated
+        // with isFinite() so a tampered backup can't poison the database.
         allowSpecialFloatingPointValues = true
+    }
+
+    // ── Input validation guards (backup is user-supplied input) ─────
+
+    private const val MAX_COLLECTION_SIZE = 50_000
+    private const val MAX_COMMENT_LEN = 2_000
+    private const val MAX_NOTES_LEN = 4_000
+    private const val MAX_NAME_LEN = 200
+    private const val MAX_CLIMB_FRAMES_LEN = 4_000
+    private const val MAX_GRADE_LEN = 20
+    private const val MAX_STAT_NAME_LEN = 100
+    private const val MAX_UNIT_LEN = 20
+    private const val MAX_EXTERNAL_ID_LEN = 100
+    private const val MAX_DATE_LEN = 40
+
+    private val UUID_REGEX =
+        Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+    private val HEX64_REGEX = Regex("^[0-9a-f]{64}$")
+
+    private fun requireLen(name: String, value: String?, max: Int) {
+        require(value == null || value.length <= max) { "invalid backup: $name too long" }
+    }
+
+    private fun requireUuid(name: String, value: String) {
+        require(UUID_REGEX.matches(value)) { "invalid backup: $name not a UUID" }
+    }
+
+    private fun requireFinite(name: String, value: Double?) {
+        require(value == null || value.isFinite()) { "invalid backup: $name not finite" }
+    }
+
+    private fun requireFiniteFloat(name: String, value: Float) {
+        require(value.isFinite()) { "invalid backup: $name not finite" }
+    }
+
+    private fun requireRange(name: String, value: Long?, range: LongRange) {
+        require(value == null || value in range) { "invalid backup: $name out of range" }
+    }
+
+    private fun requireIntRange(name: String, value: Int?, range: IntRange) {
+        require(value == null || value in range) { "invalid backup: $name out of range" }
+    }
+
+    private fun requireSize(name: String, size: Int) {
+        require(size <= MAX_COLLECTION_SIZE) { "invalid backup: $name too large" }
+    }
+
+    /**
+     * Reject inputs that would corrupt the DB (bad UUIDs, NaN/Infinity,
+     * oversized strings, implausible numeric ranges) before the transaction
+     * starts. Throws IllegalArgumentException on any violation so the import
+     * UI's existing error handler surfaces it cleanly.
+     */
+    internal fun Backup.validate(): Backup {
+        require(version in 1..2) { "invalid backup: unsupported version $version" }
+        requireLen("exportedAt", exportedAt, MAX_DATE_LEN)
+        nostrPubkey?.let { require(HEX64_REGEX.matches(it)) { "invalid backup: nostrPubkey" } }
+
+        requireSize("assessments", assessments.size)
+        requireSize("bodyStats", bodyStats.size)
+        requireSize("workoutLogs", workoutLogs.size)
+        requireSize("climbLogs", climbLogs.size)
+        requireSize("trainingPlans", trainingPlans.size)
+        requireSize("boardAscents", boardAscents.size)
+        requireSize("boardBids", boardBids.size)
+        requireSize("boardSessions", boardSessions.size)
+        requireSize("climbLists", climbLists.size)
+
+        profile?.let { p ->
+            requireLen("profile.name", p.name, MAX_NAME_LEN)
+            requireIntRange("profile.age", p.age, 1..120)
+            requireFinite("profile.weightKg", p.weightKg)
+            requireFinite("profile.heightCm", p.heightCm)
+            requireFinite("profile.apeIndex", p.apeIndex)
+            requireFinite("profile.climbingYears", p.climbingYears)
+            requireIntRange("profile.sessionsPerWeek", p.sessionsPerWeek, 0..21)
+            requireLen("profile.maxBoulderGrade", p.maxBoulderGrade, MAX_GRADE_LEN)
+            requireLen("profile.maxSportGrade", p.maxSportGrade, MAX_GRADE_LEN)
+        }
+
+        for (a in assessments) {
+            requireLen("assessment.date", a.date, MAX_DATE_LEN)
+            requireFinite("assessment.maxHang20mmKg", a.maxHang20mmKg)
+            requireFinite("assessment.maxHangPctBw", a.maxHangPctBw)
+            requireFinite("assessment.weightedPullupKg", a.weightedPullupKg)
+            requireLen("assessment.notes", a.notes, MAX_NOTES_LEN)
+            requireLen("assessment.boardImportSummary", a.boardImportSummary, MAX_NOTES_LEN)
+        }
+
+        for (bs in bodyStats) {
+            requireLen("bodyStat.date", bs.date, MAX_DATE_LEN)
+            requireLen("bodyStat.statName", bs.statName, MAX_STAT_NAME_LEN)
+            requireLen("bodyStat.unit", bs.unit, MAX_UNIT_LEN)
+            require(bs.value.isFinite()) { "invalid backup: bodyStat.value not finite" }
+        }
+
+        for (w in workoutLogs) {
+            requireLen("workout.date", w.date, MAX_DATE_LEN)
+            requireFinite("workout.perceivedRpe", w.perceivedRpe)
+            requireFinite("workout.sleepHoursPrevNight", w.sleepHoursPrevNight)
+            requireLen("workout.freeNotes", w.freeNotes, MAX_NOTES_LEN)
+        }
+
+        for (cl in climbLogs) {
+            requireLen("climbLog.date", cl.date, MAX_DATE_LEN)
+            requireLen("climbLog.grade", cl.grade, MAX_GRADE_LEN)
+            requireLen("climbLog.notes", cl.notes, MAX_NOTES_LEN)
+            requireLen("climbLog.boardClimbExternalId", cl.boardClimbExternalId, MAX_EXTERNAL_ID_LEN)
+        }
+
+        for (pws in trainingPlans) {
+            val plan = pws.plan
+            requireLen("plan.startDate", plan.startDate, MAX_DATE_LEN)
+            requireLen("plan.endDate", plan.endDate, MAX_DATE_LEN)
+            requireIntRange("plan.sessionsPerWeek", plan.sessionsPerWeek, 0..21)
+            require(pws.sessions.size <= 100) { "invalid backup: plan.sessions too large" }
+            for (s in pws.sessions) {
+                requireIntRange("plannedSession.dayOfWeek", s.dayOfWeek, 0..6)
+                requireIntRange("plannedSession.targetDurationMin", s.targetDurationMin, 0..1_440)
+                requireFiniteFloat("plannedSession.targetRpe", s.targetRpe)
+                requireLen("plannedSession.notes", s.notes, MAX_NOTES_LEN)
+            }
+        }
+
+        for (a in boardAscents) {
+            requireUuid("ascent.uuid", a.uuid)
+            requireUuid("ascent.climbUuid", a.climbUuid)
+            requireRange("ascent.angle", a.angle, 0L..70L)
+            requireRange("ascent.bidCount", a.bidCount, 0L..100_000L)
+            requireRange("ascent.quality", a.quality, 0L..3L)
+            requireRange("ascent.difficulty", a.difficulty, 0L..40L)
+            requireRange("ascent.framesCount", a.framesCount, 0L..1_000L)
+            requireFinite("ascent.difficultyAverage", a.difficultyAverage)
+            requireLen("ascent.comment", a.comment, MAX_COMMENT_LEN)
+            requireLen("ascent.climbName", a.climbName, MAX_NAME_LEN)
+            requireLen("ascent.climbFrames", a.climbFrames, MAX_CLIMB_FRAMES_LEN)
+            requireLen("ascent.climbedAt", a.climbedAt, MAX_DATE_LEN)
+        }
+
+        for (b in boardBids) {
+            requireUuid("bid.uuid", b.uuid)
+            requireUuid("bid.climbUuid", b.climbUuid)
+            requireRange("bid.angle", b.angle, 0L..70L)
+            requireRange("bid.bidCount", b.bidCount, 0L..100_000L)
+            requireFinite("bid.difficultyAverage", b.difficultyAverage)
+            requireLen("bid.comment", b.comment, MAX_COMMENT_LEN)
+            requireLen("bid.climbName", b.climbName, MAX_NAME_LEN)
+            requireLen("bid.climbedAt", b.climbedAt, MAX_DATE_LEN)
+        }
+
+        for (s in boardSessions) {
+            requireLen("session.startedAt", s.startedAt, MAX_DATE_LEN)
+            requireLen("session.endedAt", s.endedAt, MAX_DATE_LEN)
+            requireRange("session.totalDurationSeconds", s.totalDurationSeconds, 0L..(86_400L * 7))
+            requireRange("session.pauseDurationSeconds", s.pauseDurationSeconds, 0L..(86_400L * 7))
+            requireRange("session.ascentCount", s.ascentCount, 0L..100_000L)
+            requireRange("session.bidCount", s.bidCount, 0L..100_000L)
+        }
+
+        for (list in climbLists) {
+            requireLen("climbList.name", list.name, MAX_NAME_LEN)
+            requireLen("climbList.createdAt", list.createdAt, MAX_DATE_LEN)
+            require(list.entries.size <= MAX_COLLECTION_SIZE) {
+                "invalid backup: climbList.entries too large"
+            }
+            for (entry in list.entries) {
+                requireUuid("climbList.entry", entry)
+            }
+        }
+
+        return this
     }
 
     // ── Export categories ────────────────────────────────────────
@@ -155,7 +329,7 @@ object CruxCoachBackup {
 
     /** Parse backup and return counts per category without importing. */
     fun preview(jsonString: String): ImportPreview {
-        val backup = json.decodeFromString<Backup>(jsonString)
+        val backup = json.decodeFromString<Backup>(jsonString).validate()
         return ImportPreview(
             nostrPubkey = backup.nostrPubkey,
             hasProfile = backup.profile != null,
@@ -289,7 +463,7 @@ object CruxCoachBackup {
         personalBoardRepo: PersonalBoardRepository,
         transactionRunner: TransactionRunner
     ): ImportResult {
-        val backup = json.decodeFromString<Backup>(jsonString)
+        val backup = json.decodeFromString<Backup>(jsonString).validate()
 
         return transactionRunner.runInTransaction {
             var result = ImportResult()
