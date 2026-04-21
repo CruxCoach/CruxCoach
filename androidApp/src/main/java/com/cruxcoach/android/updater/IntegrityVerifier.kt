@@ -7,6 +7,8 @@ import android.util.Log
 import java.io.File
 import java.io.FileInputStream
 import java.security.MessageDigest
+import java.security.cert.CertificateFactory
+import java.util.zip.ZipFile
 
 /**
  * Two-gate integrity check that sits between download (§5.3) and install
@@ -80,23 +82,96 @@ class IntegrityVerifier(
 
     private fun sha256OfApkSigner(apkFile: File): String? {
         val pm = context.packageManager
-        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            PackageManager.GET_SIGNING_CERTIFICATES
+        val viaPm = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            extractSignerModern(pm, apkFile) ?: extractSignerLegacy(pm, apkFile)
         } else {
-            @Suppress("DEPRECATION")
-            PackageManager.GET_SIGNATURES
+            extractSignerLegacy(pm, apkFile)
         }
-        val info = pm.getPackageArchiveInfo(apkFile.absolutePath, flags) ?: return null
-        val firstSignerBytes: ByteArray = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            val signing = info.signingInfo ?: return null
-            val signers = if (signing.hasMultipleSigners()) signing.apkContentsSigners
-            else signing.signingCertificateHistory
-            signers?.firstOrNull()?.toByteArray() ?: return null
-        } else {
-            @Suppress("DEPRECATION")
-            info.signatures?.firstOrNull()?.toByteArray() ?: return null
+        val signerBytes = viaPm ?: extractSignerFromZip(apkFile)
+        return signerBytes?.let(pinStore::sha256OfApkSigner)
+    }
+
+    /** API 28+ path. Some OEM ROMs (observed on HTC Android 9) hand back a
+     *  non-null [android.content.pm.PackageInfo] with a `null` `signingInfo`
+     *  for APKs in app-scoped external dirs — caller falls back to the
+     *  deprecated [extractSignerLegacy] when this returns null. */
+    private fun extractSignerModern(pm: PackageManager, apkFile: File): ByteArray? {
+        val info = pm.getPackageArchiveInfo(apkFile.absolutePath, PackageManager.GET_SIGNING_CERTIFICATES)
+        if (info == null) {
+            Log.w(TAG, "getPackageArchiveInfo(GET_SIGNING_CERTIFICATES) returned null — size=${apkFile.length()} sdk=${Build.VERSION.SDK_INT}")
+            return null
         }
-        return pinStore.sha256OfApkSigner(firstSignerBytes)
+        val signing = info.signingInfo
+        if (signing == null) {
+            Log.w(TAG, "signingInfo is null — package=${info.packageName} sdk=${Build.VERSION.SDK_INT}")
+            return null
+        }
+        val signers = if (signing.hasMultipleSigners()) signing.apkContentsSigners
+        else signing.signingCertificateHistory
+        val first = signers?.firstOrNull()
+        if (first == null) {
+            Log.w(TAG, "signingInfo has no signers (multi=${signing.hasMultipleSigners()})")
+            return null
+        }
+        return first.toByteArray()
+    }
+
+    /** Legacy [PackageManager.GET_SIGNATURES] path. Works on every SDK;
+     *  reads the v1 (JAR) signature, which for non-rotated keys carries
+     *  the same X.509 certificate as v2/v3 schemes, so the SHA-256 of the
+     *  signer certificate matches the TOFU pin either way. */
+    @Suppress("DEPRECATION")
+    private fun extractSignerLegacy(pm: PackageManager, apkFile: File): ByteArray? {
+        val info = pm.getPackageArchiveInfo(apkFile.absolutePath, PackageManager.GET_SIGNATURES)
+        if (info == null) {
+            Log.w(TAG, "getPackageArchiveInfo(GET_SIGNATURES) returned null — size=${apkFile.length()} sdk=${Build.VERSION.SDK_INT}")
+            return null
+        }
+        val first = info.signatures?.firstOrNull()
+        if (first == null) {
+            Log.w(TAG, "signatures null/empty — package=${info.packageName}")
+            return null
+        }
+        return first.toByteArray()
+    }
+
+    /** Last-resort path: parse the APK as a ZIP, read the PKCS#7 `.RSA`
+     *  (or `.DSA` / `.EC`) entry in `META-INF/`, and let the JCA
+     *  [CertificateFactory] extract the X.509 signer. This sidesteps
+     *  PackageManager entirely, so it still works when a ROM refuses to
+     *  scan APKs in the app-scoped external dir (observed: HTC Android 9).
+     *
+     *  Returns the same DER-encoded certificate bytes as
+     *  `Signature.toByteArray()` for non-rotated signing keys, so the
+     *  SHA-256 fed into the TOFU pin matches byte-for-byte. */
+    private fun extractSignerFromZip(apkFile: File): ByteArray? {
+        return try {
+            ZipFile(apkFile).use { zip ->
+                val entry = zip.entries().asSequence()
+                    .firstOrNull { e ->
+                        val n = e.name.uppercase()
+                        n.startsWith("META-INF/") &&
+                            (n.endsWith(".RSA") || n.endsWith(".DSA") || n.endsWith(".EC"))
+                    }
+                if (entry == null) {
+                    Log.w(TAG, "No META-INF/*.RSA|DSA|EC in APK ZIP")
+                    return@use null
+                }
+                val cf = CertificateFactory.getInstance("X.509")
+                zip.getInputStream(entry).use { input ->
+                    val cert = cf.generateCertificates(input).firstOrNull()
+                    if (cert == null) {
+                        Log.w(TAG, "PKCS#7 entry ${entry.name} yielded no certificates")
+                        null
+                    } else {
+                        cert.encoded
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "ZIP-based signer extraction failed", e)
+            null
+        }
     }
 
     private fun hexEqualsConstantTime(a: String, b: String): Boolean {

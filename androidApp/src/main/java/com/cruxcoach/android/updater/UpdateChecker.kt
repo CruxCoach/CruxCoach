@@ -60,9 +60,13 @@ class UpdateChecker(
                 CheckOutcome.NotModified
             }
             is CodebergReleaseClient.Result.Error -> {
+                // Do NOT stamp lastCheckBootRealtime on network errors — the
+                // 2 h throttle would otherwise block the NETWORK_AVAILABLE
+                // retry after the user regains internet. Typical trigger:
+                // fresh install via local share, device still on the
+                // offline hotspot when APP_FOREGROUND fires.
                 preferences.update {
                     it.copy(
-                        lastCheckBootRealtime = elapsedRealtimeProvider(),
                         lastCheckResult = CheckResult.ERROR,
                         lastErrorAtEpochMs = nowMs(),
                     )
@@ -97,9 +101,10 @@ class UpdateChecker(
                 }
 
                 val resolvedSha = client.fetchSha256(info.apkSha256Url) ?: run {
+                    // Transient network error (same reasoning as Result.Error
+                    // above) — don't stamp lastCheckBootRealtime.
                     preferences.update {
                         it.copy(
-                            lastCheckBootRealtime = elapsedRealtimeProvider(),
                             lastCheckResult = CheckResult.ERROR,
                             lastErrorAtEpochMs = nowMs(),
                         )
