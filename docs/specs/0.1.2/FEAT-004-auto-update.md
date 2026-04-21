@@ -1,6 +1,9 @@
-# Feature Spec: In-App Update Notification & APK Installer (Codeberg) — Skeleton (v0.1.2)
+# Feature Spec: In-App Update Notification & APK Installer (Codeberg) (v0.1.2)
 
-> **Status:** Skeleton — scope + design decisions agreed (§6), implementation details TBD.
+> **Status:** Design complete. Reviewed 2026-04-21 — blockers B1–B4 and
+> robustness items R1–R8 from the review folded in. Still open before
+> implementation: concrete class names & function signatures (§10),
+> `docs/KEY_ROTATION.md` (release blocker, §6.9).
 > **Motivation:** Users who received the APK via local share or direct
 > download from Codeberg currently have no way to learn about new
 > releases. Zapstore users are already covered by Zapstore's own updater.
@@ -148,13 +151,18 @@ back if the most recent entry is a dev build (see §6.11).
   "name": "v0.1.2",
   "prerelease": false,
   "draft": false,
-  "body": "## Highlights\n- In-app auto-update...\n\n### SHA-256\n- cruxcoach-release.apk: `abc123...`",
+  "body": "## Highlights\n- In-app auto-update...\n",
   "published_at": "2026-05-01T18:00:00Z",
   "assets": [
     {
       "name": "cruxcoach-release.apk",
       "browser_download_url": "https://codeberg.org/.../cruxcoach-release.apk",
       "size": 12345678
+    },
+    {
+      "name": "cruxcoach-release.apk.sha256",
+      "browser_download_url": "https://codeberg.org/.../cruxcoach-release.apk.sha256",
+      "size": 64
     }
   ]
 }
@@ -164,52 +172,88 @@ back if the most recent entry is a dev build (see §6.11).
   any tag with a suffix (e.g. `v0.1.1-dev.abc1234`, `-rc.1`, `-beta.2`)
   is rejected regardless of `prerelease`
 - `prerelease` / `draft` → both must be `false`
-- `assets[].browser_download_url` → APK URL (pick `cruxcoach-release.apk`)
-- `body` → both release notes AND source of SHA-256 (parsed from a known-format code block)
+- `assets[]` → two required entries:
+  - `cruxcoach-release.apk` → the APK payload
+  - `cruxcoach-release.apk.sha256` → a single line `<hex>  cruxcoach-release.apk`
+    (coreutils `sha256sum` format). Parsed as a structured asset, NOT
+    scraped from the release `body`, so a typo in the human-written
+    release notes can never corrupt the integrity anchor. If the sha256
+    asset is missing, the release is rejected (logged, not surfaced)
+- `body` → release notes only (markdown). No machine-parsed data.
 
 ### 3.2 Parsed Update Info
 
 ```kotlin
 data class UpdateInfo(
-    val tagName: String,
-    val versionName: String,           // "0.1.2"
-    val versionCode: Int,              // derived from tagName (see §6.2)
+    val tagName: String,               // "v0.1.2" — raw
+    val versionName: String,           // "0.1.2" — display
+    val version: SemVer,               // (major, minor, patch) — comparison
     val apkUrl: String,
+    val apkSha256Url: String,
     val apkSizeBytes: Long,
-    val apkSha256: String,             // hex, lowercase
+    val apkSha256: String,             // hex, lowercase — from sha256 asset
     val releaseNotesMarkdown: String,
     val publishedAt: Instant,
 )
+
+data class SemVer(
+    val major: Int,
+    val minor: Int,
+    val patch: Int,
+) : Comparable<SemVer> {
+    override fun compareTo(other: SemVer): Int =
+        compareValuesBy(this, other, SemVer::major, SemVer::minor, SemVer::patch)
+}
 ```
 
 ### 3.3 Updater State (persistent)
 
-Stored in `EncryptedSharedPreferences` under `updater_state`:
+Two-file split: bulk state in `DataStore<Preferences>` (Proto or key-value
+— whichever the codebase already uses), and the **TOFU cert pin in its
+own HMAC-sealed file** (§6.5). The pin is load-bearing for the trust
+path; everything else is recoverable telemetry.
+
+**Bulk state** — `DataStore` `updater_state.preferences_pb`:
 
 ```kotlin
 data class UpdaterState(
-    val pinnedCertSha256: String?,     // hex, set on first launch (TOFU)
-    val pinnedAt: Instant?,
     val lastCheckAt: Instant?,
+    val lastCheckEtag: String?,        // §6.1 — If-None-Match on next poll
     val lastCheckResult: CheckResult,  // SUCCESS | NO_UPDATE | NO_UPDATE_STABLE | ERROR
+    val lastErrorAt: Instant?,         // most recent ERROR timestamp (§6.4)
     val pendingDownloadId: Long?,      // DownloadManager ID if download in progress
     val pendingUpdate: UpdateInfo?,    // null once consumed or cleared
     val userCheckNetworkOverride: Boolean, // default false = Wi-Fi-only
     // Notification re-arm state (§6.10)
     val lastNotifiedVersionCode: Int?, // version of the last offer surfaced
     val notifDismissedAt: Instant?,    // user swiped the notification away
-    val notifReArmCount: Int,          // capped at 5
+    val notifReArmCount: Int,          // capped at 10, resets on newer release or manual check (§6.10)
 )
 ```
 
+**Trust anchor** — `files/updater_pin.bin` (see §6.5 for format):
+
+```
+pin_cert_sha256_hex (64 bytes, ASCII)
+pinned_at_epoch_seconds (8 bytes, big-endian)
+hmac_sha256 over the above (32 bytes)
+```
+
+The HMAC key lives in the Android Keystore (strongbox-backed when
+available); an attacker with filesystem read but no code exec can read
+the pin but cannot silently swap it.
+
 ### 3.4 Version comparison
 
-`versionCode` is the monotonic integer from `build.gradle.kts`, not the
-tag. The tag is `v<semver>`, and we parse it with a small helper to
-derive a comparable integer using the project's existing
-`versionCode` formula (see `build.gradle.kts` and
-`project_zapstore_release_strategy.md` memory). If parse fails → abort
-update (§6.4 Error Handling).
+Compare parsed `SemVer(major, minor, patch)` directly — lexicographic
+tuple comparison via `Comparable`. The installed version is read from
+`BuildConfig.VERSION_NAME` and parsed with the same regex as the
+tag. No dependency on any `versionCode` formula: the formula can change
+in `build.gradle.kts` without breaking the updater.
+
+If either the remote tag or `BuildConfig.VERSION_NAME` fails the strict
+`v?(\d+)\.(\d+)\.(\d+)` parse, the check aborts with
+`CheckResult.ERROR` (§6.4).
 
 ---
 
@@ -219,18 +263,18 @@ update (§6.4 Error Handling).
 |----------|------|--------|
 | Lifecycle trigger | `androidApp/src/main/java/com/cruxcoach/android/CruxCoachApp.kt` | Register `ProcessLifecycleOwner` observer + `ConnectivityManager` default-network callback that both feed `UpdateChecker.maybeCheck()` (§6.12) — only if self-updater enabled (§6.6) |
 | WorkManager backstop | same | Enqueue the 24 h flex-interval `UpdateCheckWorker` once at startup as the fallback trigger |
-| DI | `di/AppModule.kt` or `di/UpdaterModule.kt` (new) | Provide `UpdateChecker`, `ApkDownloader`, `IntegrityVerifier`, `ApkInstaller`, `InstallSourceGate`, `UpdateNotifier` singletons |
-| Settings UI | `ui/settings/*` | New "App updates" section: last-check timestamp, "Jetzt prüfen" button, Wi-Fi-only toggle, "auto-update check" toggle, badge + inline release-notes row when an update is pending (§6.10), info row when store-gated |
+| DI | `di/AppModule.kt` or `di/UpdaterModule.kt` (new) | Provide `UpdateChecker`, `ApkDownloader`, `IntegrityVerifier`, `ApkInstaller`, `InstallSourceGate`, `UpdateNotifier`, `UpdaterPinStore` singletons |
+| Settings UI | `ui/settings/*` | New "App updates" section: last-check timestamp, "Jetzt prüfen" button (with 10 s soft rate-limit, §R2), Wi-Fi-only toggle, "auto-update check" toggle, badge + inline release-notes row when an update is pending (§6.10), info row when store-gated |
 | Release-notes route | `ui/navigation/NavGraph.kt` + new screen | In-app screen opened by the notification tap; **not** a dialog |
 | Manifest | `androidApp/src/main/AndroidManifest.xml` | Add `REQUEST_INSTALL_PACKAGES`, `POST_NOTIFICATIONS` (Android 13+), receiver for `PackageInstaller` callbacks, notification channel declaration at first launch |
 | Strings | `values/strings.xml` + `values-de/strings.xml` | All update-related UI + notification strings (both locales per CLAUDE.md) |
-| Cert-pin bootstrap | App startup or first settings-open | Read `PackageInfo.GET_SIGNING_CERTIFICATES` of the installed CruxCoach package, write `pinnedCertSha256` if absent |
+| TOFU pin bootstrap | `UpdaterPinStore` (lazy, called on every app start) | Read `PackageInfo.GET_SIGNING_CERTIFICATES` of the installed CruxCoach package, write HMAC-sealed pin file (§6.5.1) only if pin file is absent OR MAC fails. No UI surface |
 
 New package: `com.cruxcoach.android.updater` containing
 `UpdateChecker`, `UpdateCheckWorker`, `UpdateNotifier`,
 `CodebergReleaseClient`, `VersionChecker`, `ApkDownloader`,
 `IntegrityVerifier`, `ApkInstaller`, `InstallSourceGate`,
-`UpdaterRepository`.
+`UpdaterPinStore`, `UpdaterRepository`.
 
 ---
 
@@ -257,8 +301,12 @@ same throttle in `UpdateChecker.maybeCheck()`):
   the next online/foreground event picks it up
 
 Throttle: `UpdateChecker.maybeCheck()` drops any call made within
-`MIN_CHECK_INTERVAL = 2 h` of the last successful network fetch (manual
-check ignores the throttle).
+`MIN_CHECK_INTERVAL = 2 h` of the last successful network fetch. Manual
+"Jetzt prüfen" bypasses the 2 h throttle but is itself soft-rate-limited
+to **once per 10 seconds** at the UI layer — the button is disabled (and
+shows a spinner) while a check is in flight and for 10 s after one
+completes. This prevents a user tapping the button repeatedly from
+becoming a small DoS against the Codeberg API.
 
 Fetch path:
 - `GET https://codeberg.org/api/v1/repos/<org>/cruxcoach/releases?limit=10`
@@ -295,12 +343,35 @@ screen.
 
 ### 5.3 Download
 
+Download is **always user-initiated** — it only starts when the user
+taps "Herunterladen" on the system notification or on the in-app row.
+There is no background pre-fetch, no silent auto-download. The
+`pendingDownloadId` persistence below is strictly for **crash recovery**:
+if the process dies mid-download, the next app start can query
+`DownloadManager` with the saved ID to pick up where we left off rather
+than start over. It is not a scheduling mechanism.
+
+Pre-flight (before starting the download):
+- Verify `StatFs(cacheDir).availableBytes >= apkSizeBytes + 16 MiB
+  headroom`. If false → surface "Kein Speicher frei" in the
+  notification-replaces-notification slot, log, do not enqueue. (§R4
+  — DownloadManager otherwise fails silently mid-stream when storage
+  fills.)
+- Verify current network matches user policy (§6.7) before enqueueing;
+  on mobile-data + Wi-Fi-only toggle set, surface "Wi-Fi nötig —
+  später erneut versuchen".
+
+Enqueue:
 - `DownloadManager.Request` on the APK URL
-- Target: `context.cacheDir / "pending-update-<versionCode>.apk"`
+- Target: `context.cacheDir / "pending-update-<versionName>.apk"`
   (not external-files-dir — CruxCoach APKs are small, and cacheDir is not world-readable)
 - `setAllowedNetworkTypes(NETWORK_WIFI)` unless user override
 - `setNotificationVisibility(VISIBILITY_HIDDEN)` — we post our own progress UI
-- Persist `downloadId` in `UpdaterState.pendingDownloadId`; on next worker run, query status and resume/restart as needed
+- Persist `downloadId` in `UpdaterState.pendingDownloadId`; on next app
+  start, if the download is still running, reuse the ID; if it
+  completed while the process was dead, run verify (§5.4) from the
+  existing cache file; if `DownloadManager` no longer knows the ID,
+  clear the field and require the user to re-initiate
 
 ### 5.4 Verify (critical)
 
@@ -316,10 +387,14 @@ sha256(downloaded bytes) == UpdateInfo.apkSha256   (MessageDigest.isEqual, const
 getPackageArchiveInfo(apkPath, GET_SIGNING_CERTIFICATES)
   .signingInfo.apkContentsSigners[0].toByteArray()
   .sha256()
-  == pinnedCertSha256
+  == UpdaterPinStore.get().pinCertSha256
 ```
 
-Mismatch → delete APK, log, surface "Signatur hat sich geändert — bitte manuell prüfen", abort. Do NOT offer to override from the UI.
+The pin comes from the HMAC-sealed file (§6.5); if the file is absent
+or its MAC does not verify, the store re-TOFUs against the currently
+installed cert (§6.5.1) and uses that. Mismatch against a **valid**
+pin → delete APK, log, surface "Signatur hat sich geändert — bitte
+manuell prüfen", abort. Do NOT offer to override from the UI.
 
 ### 5.5 Install
 
@@ -328,13 +403,38 @@ Mismatch → delete APK, log, surface "Signatur hat sich geändert — bitte man
 - `session.commit(statusReceiver)` with a `PendingIntent` to `ApkInstallStatusReceiver`
 - Receiver handles `PackageInstaller.STATUS_*`:
   - `STATUS_PENDING_USER_ACTION` → launch the system consent dialog
-  - `STATUS_SUCCESS` → notification "Update installed"
-  - `STATUS_FAILURE_INVALID` → "Signatur stimmt nicht — bitte manuell neu installieren" (Androids same-signature rejection)
-  - `STATUS_FAILURE_STORAGE` → specific message
-  - `STATUS_FAILURE_CONFLICT` → specific message
-  - Others → generic "Install fehlgeschlagen"
+  - `STATUS_SUCCESS` → notification "Update installiert"
+  - `STATUS_FAILURE_INVALID` → "APK ist beschädigt oder inkompatibel —
+    bitte erneut herunterladen". (Note: this code covers corrupt APK,
+    unsupported ABI, and API-level mismatch. Signer mismatch is a
+    separate code — `STATUS_FAILURE_CONFLICT` with
+    `EXTRA_STATUS_MESSAGE` containing "INSTALL_FAILED_UPDATE_INCOMPATIBLE"
+    — and in any case we already caught it in §5.4.2 before reaching
+    `PackageInstaller`. So we do not promise "Signatur" in the INVALID
+    copy — it would be misleading in every scenario where this code
+    actually fires.)
+  - `STATUS_FAILURE_STORAGE` → "Kein Speicher frei — bitte Platz schaffen und erneut versuchen"
+  - `STATUS_FAILURE_CONFLICT` → "Installation kollidiert mit vorhandener App — neu installieren erforderlich"
+  - `STATUS_FAILURE_ABORTED` → user cancelled the system consent dialog;
+    keep `pendingUpdate`, keep cached APK, but cancel the install
+    session and return to the "Installieren"-ready state. Next
+    notification re-arm cadence (§6.10) applies normally. No error
+    surface — cancel is a user choice, not a failure.
+  - `STATUS_FAILURE_BLOCKED` → "Installation durch System blockiert
+    (z. B. Play Protect)" — surface with a "Details" link into the
+    in-app release-notes route
+  - Other `STATUS_FAILURE*` → generic "Installation fehlgeschlagen"
+    + last-check screen shows the raw code for bug reports
 
-On success: clear `pendingUpdate`, delete cached APK, reset `pendingDownloadId`.
+On terminal success: clear `pendingUpdate`, delete cached APK, reset
+`pendingDownloadId`, cancel any re-arm notification for this version.
+
+On `STATUS_FAILURE_ABORTED` (user cancelled): keep all state. The user
+can re-tap the notification or "Installieren" in Settings without
+re-downloading.
+
+On any other `STATUS_FAILURE_*`: delete cached APK (it may be corrupt),
+keep `pendingUpdate`, reset `pendingDownloadId`. User must re-download.
 
 ---
 
@@ -358,31 +458,58 @@ infra.
 **How to apply:**
 - HTTP GET via existing OkHttp client
 - `Accept: application/json`, explicit User-Agent `CruxCoach-Updater/<versionName>`
+- **Conditional GET via `If-None-Match: <lastEtag>`** when `UpdaterState.lastCheckEtag` is set; on `304 Not Modified` the call is a no-op (bump `lastCheckAt`, keep result). On `200 OK`, store the new `ETag` header in `UpdaterState.lastCheckEtag` alongside the parsed release. Codeberg (Gitea) serves proper ETags on the releases endpoint; falling back gracefully if the header is missing is fine — the 2 h throttle (§6.12) is the second line of politeness
 - 10 s connect timeout, 15 s read timeout
-- Treat any non-2xx as a transient failure → retry on next trigger
+- Treat any non-2xx (except 304) as a transient failure → retry on next trigger
 - Ten entries is plenty: even if every second release were a dev build,
   ten covers five stable releases back — more than we will ever need to
   skip past
 
-### 6.2 Version Comparison — versionCode, strict `>`
+### 6.2 Version Comparison — SemVer Tuple, Strict `>`
 
-**Decision:** Compare `BuildConfig.VERSION_CODE` against `versionCode` derived from the tag. Strict greater-than; reject equal or lower.
+**Decision:** Compare `SemVer(major, minor, patch)` parsed from both
+`BuildConfig.VERSION_NAME` and the remote tag. Strict greater-than;
+reject equal or lower.
 
-**Why:** Android platform also blocks downgrades for non-debuggable APKs, but the explicit check means we never even prompt the user about a stale release. `versionCode` is the canonical monotonic integer CruxCoach already ships.
-
-**How to apply:**
-- Tag parser: `v?(\d+)\.(\d+)\.(\d+)` → `(major, minor, patch)` → apply existing `versionCode` formula from `build.gradle.kts`
-- Parse failure → abort with `CheckResult.ERROR`, do not offer update
-
-### 6.3 Release Notes — Parsed from Markdown Body
-
-**Decision:** Render the release `body` markdown in the update dialog. Not auto-expanded; user can scroll.
-
-**Why:** Zero extra infra; markdown is already the source of truth on Codeberg. Writers just describe changes in the normal release description.
+**Why:** Using `(major, minor, patch)` tuples decouples the updater
+from the `versionCode` formula in `build.gradle.kts`. That formula has
+already evolved once (see `project_zapstore_release_strategy.md` in
+memory) and will evolve again; every change would otherwise be a
+silent hazard to released updater code. Android's platform downgrade
+protection still applies at install time as a second line of defense.
 
 **How to apply:**
-- `body` field, rendered with existing markdown renderer
-- SHA-256 is extracted from a predictable code block; stripped from the version shown to the user
+- Tag parser: `v?(\d+)\.(\d+)\.(\d+)` → `SemVer(major, minor, patch)`
+- `BuildConfig.VERSION_NAME` parsed with the same regex — the installed
+  version is the ground truth, not `BuildConfig.VERSION_CODE`
+- Parse failure on either side → `CheckResult.ERROR`, no prompt
+- Pre-release / suffix rejection stays in §6.11 (tag shape check); it
+  is orthogonal to version comparison
+
+### 6.3 Release Notes — Markdown Body, SHA-256 as Separate Asset
+
+**Decision:** Release notes come from `body` (markdown). The APK SHA-256
+is a separate release asset (`cruxcoach-release.apk.sha256`), NOT parsed
+from the body. A release missing the `.sha256` asset is treated as
+malformed and skipped.
+
+**Why:** Scraping a hash out of free-form prose is brittle — a
+writer forgetting a backtick, swapping ` ` for `—`, or rewording the
+surrounding line is enough to break verification. Machine-readable data
+(the hash) and human-readable data (release notes) have different
+correctness requirements; they belong in different fields.
+
+**How to apply:**
+- `CodebergReleaseClient.fetchLatestStable()` returns a parsed
+  `CodebergRelease` with explicit `apkAsset` and `sha256Asset` fields;
+  missing `sha256Asset` → `CheckResult.ERROR` (release malformed)
+- `sha256` asset is downloaded as plain text, first 64-hex token parsed
+  with case-insensitive compare; rest of the file is ignored (lets us
+  keep coreutils `sha256sum > file.apk.sha256` format)
+- `body` is rendered with the existing markdown renderer in the in-app
+  release-notes route; nothing is stripped or post-processed
+- Release process (§10): `sha256sum cruxcoach-release.apk > cruxcoach-release.apk.sha256`
+  is a required CI step, uploaded alongside the APK
 
 ### 6.4 Bootstrap Failure Handling — Silent Retry, No User Error
 
@@ -396,11 +523,68 @@ infra.
 - Distinguish transient (network, parse) from security (signature, SHA-256) failures in `UpdaterState`
 - Settings screen shows `lastCheckAt` + a subtle "last check failed" hint only if `ERROR` state has persisted >3 days
 
-### 6.5 Cache & Persistence — EncryptedSharedPreferences
+### 6.5 Cache & Persistence — DataStore + HMAC-sealed Pin File
 
-**Decision:** All updater state lives in an encrypted preference file. The cached APK lives in `cacheDir` and is deleted after install or on any verification failure.
+**Decision:** Bulk updater state in `DataStore<Preferences>`. The TOFU
+cert pin lives in a separate file (`files/updater_pin.bin`) sealed with
+an HMAC-SHA256 over its contents, the HMAC key held in the Android
+Keystore (strongbox-backed when available, software-backed otherwise).
+Cached APK in `cacheDir`, deleted after install or on any verification
+failure.
 
-**Why:** `pinnedCertSha256` should not be trivially tamperable; on-device attacker with filesystem read is already a catastrophic threat model, but encryption adds friction. `cacheDir` is not world-readable (unlike external-files-dir) and auto-cleaned on low storage.
+**Why:**
+- `androidx.security:security-crypto` (which provides
+  `EncryptedSharedPreferences`) has been effectively unmaintained for
+  years; Google flagged a replacement as TBD and the library still
+  blocks AndroidX upgrades in some configurations. Taking on that
+  dependency for a single hash is net-negative.
+- The TOFU pin is a **public** value (it is derived from the installed
+  APK's signing cert, which every app on the device could already read
+  via `PackageManager`). Confidentiality is not the threat — **integrity
+  is**. Encryption would not stop an on-device attacker with code exec
+  from writing a new encrypted blob. An HMAC-sealed file stops a
+  filesystem-write-only attacker (e.g. ADB shell without root) from
+  silently swapping the pin, because they cannot forge the MAC without
+  access to the Keystore key.
+- Splitting trust anchor from telemetry also means a corrupted
+  DataStore (mid-write crash) cannot invalidate the pin: the worst case
+  is we re-check Codeberg once.
+
+**How to apply:**
+- `UpdaterPinStore.get(): Result<Pin>` — reads the file, recomputes the
+  HMAC, rejects on mismatch (treated as first-launch → TOFU re-runs;
+  see §R7 / §6.5.1 below)
+- `UpdaterPinStore.set(pin)` — writes atomically via `File.renameTo`
+  from a tempfile, computes MAC with the Keystore key, persists
+- HMAC key tag: `cruxcoach.updater.pin.hmac.v1`; generated lazily on
+  first pin write; never rotated in v1 (key rotation is explicitly
+  out-of-scope, §8)
+
+#### 6.5.1 TOFU Timing — First Post-Install Launch Only
+
+The pin is written **exactly once**, on the first launch after install
+where no valid pin file exists. In practice that is the first launch of
+the app after the user initially sideloads / installs from Codeberg. If
+the user later clears app data the pin file is wiped; the next launch
+will re-TOFU against whatever APK is currently installed — which is
+acceptable because clearing app data is a deliberate local action and
+does not expand the attacker surface (an attacker with the ability to
+swap the installed APK between clear-data and next-launch already has
+the capabilities of a platform-level compromise).
+
+Boot path:
+1. On every app start, `UpdaterPinStore.get()` is called.
+2. If it returns a valid pin, done.
+3. If it returns "missing" or "MAC mismatch" (indistinguishable and
+   treated identically — a tampered file is semantically the same as
+   a missing one: both force a re-TOFU), compute
+   `sha256(currentSigningCert)` and `set()` it.
+4. No user prompt; no delay; no dialog.
+
+The pin is therefore authoritative for all subsequent verification, and
+any divergence — even one caused by the user deliberately reinstalling
+with a new signing cert — surfaces as the "Signatur hat sich geändert"
+message in §6.9.
 
 ### 6.6 Coexistence with Zapstore — Runtime Hard-Disable
 
@@ -434,7 +618,15 @@ If a new store-based channel is added later (e.g. F-Droid), its installer ID is 
 
 **Decision:** If the signing key is ever rotated (new CruxCoach release signed with a different cert), the TOFU pin will mismatch and updates halt with a user-visible "Signatur hat sich geändert" notice. The user must manually download and reinstall.
 
-**Why:** Auto-override would make TOFU worthless — an attacker with a stolen key would need no further effort to MITM updates. Manual reinstall after intentional rotation is rare, documented in `docs/KEY_ROTATION.md`, and survives audit.
+**Why:** Auto-override would make TOFU worthless — an attacker with a
+stolen key would need no further effort to MITM updates. Manual reinstall
+after intentional rotation is a rare, documented event.
+
+> **Release blocker:** `docs/KEY_ROTATION.md` does not yet exist. It must
+> be created before 0.1.2 ships, describing the user-facing reinstall
+> procedure and the pin-reset step (`adb shell pm clear …` equivalent
+> for non-technical users is "clear app storage in system Settings").
+> See §10 checklist.
 
 ### 6.10 User Surface — Notification Only, No Dialog
 
@@ -447,9 +639,14 @@ Android's own install-consent dialog at the very end — that one is
 platform-required and cannot be suppressed.
 
 If the user swipes the notification away, it is re-armed on a cadence
-(first re-arm at **+24 h**, then every **72 h** up to a cap of **5**
-re-arms). The cadence resets — and the notification is re-posted
-immediately — if a *newer* stable release appears. Once the user taps
+(first re-arm at **+24 h**, then every **72 h** up to a cap of **10**
+re-arms over ~1 month). After the cap is hit, the notification is
+silent until either (a) a *newer* stable release appears — in which
+case `reArmCount` is reset to 0 and a notification fires immediately —
+or (b) the user opens Settings and manually taps "Jetzt prüfen", which
+also resets the cadence. This way a user on a long-running old version
+still has an escape hatch (manual check), and a genuinely important
+follow-up release re-surfaces on its own. Once the user taps
 "Herunterladen" or the update is installed, the notification is
 cancelled permanently for that version.
 
@@ -600,11 +797,19 @@ bursts, just one check when the connection stabilizes.
 
 ## 9. Dependencies
 
-- `androidx.work:work-runtime-ktx` — WorkManager (likely already present)
-- `androidx.security:security-crypto` — `EncryptedSharedPreferences` (check if present; likely for Nostr key store)
+- `androidx.work:work-runtime-ktx` — WorkManager (already present)
+- `androidx.datastore:datastore-preferences` — bulk updater state
+  (add if not already present; it is the standard replacement for
+  `SharedPreferences` in modern Android)
+- Android Keystore (`KeyGenParameterSpec.Builder`, `KeyProperties.PURPOSE_SIGN`)
+  — HMAC-SHA256 key for sealing the TOFU pin file (§6.5). Platform API,
+  no extra dependency
 - Existing OkHttp client + JSON parser (Moshi or kotlinx-serialization — whatever is in use)
 - `android.app.DownloadManager` (platform)
 - `android.content.pm.PackageInstaller` (platform)
+- **Removed from the original skeleton:** `androidx.security:security-crypto`
+  (see §6.5 — effectively unmaintained, and confidentiality is not the
+  threat this feature defends against)
 - No new third-party runtime dependencies expected
 
 ---
@@ -612,12 +817,31 @@ bursts, just one check when the connection stabilizes.
 ## 10. Delivery Checklist (for full spec later)
 
 - [ ] Concrete class names, package placement, function signatures
-- [ ] Error handling matrix (all `PackageInstaller.STATUS_*` codes mapped to user messages, localized DE/EN)
+- [ ] Error handling matrix (all `PackageInstaller.STATUS_*` codes mapped
+      to user messages, localized DE/EN per §5.5)
 - [ ] Test plan:
-  - Unit: tag parser, versionCode comparison, SHA-256 helper, cert-pin compare, install-source gate logic
-  - Integration: mock Codeberg JSON, DownloadManager stub, verify/install happy path + each failure path
-  - Manual: install from Zapstore and verify Settings shows "deaktiviert"; install from Codeberg APK and verify end-to-end update flow
-- [ ] Migration: existing installs have no `pinnedCertSha256` → TOFU on first launch after 0.1.2 upgrade
-- [ ] Rollout / kill-switch: remote flag to disable the updater (e.g. a bool in a known-relay Nostr kind or a static URL) — TBD, not strictly required for v1
-- [ ] `docs/KEY_ROTATION.md` entry for the manual-reinstall procedure
-- [ ] Release process: SHA-256 of the APK must be embedded in the Codeberg release body in a predictable format; document in `docs/RELEASE.md`
+  - Unit: tag parser, `SemVer` comparison, SHA-256 helper, cert-pin compare,
+    install-source gate logic, HMAC pin-file seal/verify, ETag round-trip
+  - Integration: mock Codeberg JSON (incl. 304 Not Modified), DownloadManager
+    stub, verify/install happy path + each failure path incl.
+    `STATUS_FAILURE_ABORTED`
+  - Manual: install from Zapstore and verify Settings shows "deaktiviert";
+    install from Codeberg APK and verify end-to-end update flow; clear
+    app data and verify TOFU re-runs silently
+- [ ] Migration: existing installs have no pin file → TOFU on first
+      launch after 0.1.2 upgrade (§6.5.1)
+- [ ] Rollout / kill-switch: remote flag to disable the updater (e.g. a
+      bool in a known-relay Nostr kind or a static URL) — TBD, not
+      strictly required for v1
+- [ ] **Release blocker — `docs/KEY_ROTATION.md`:** must be written
+      before 0.1.2 ships. Content: (1) why TOFU pin is in place, (2)
+      user procedure on intentional key rotation = uninstall + reinstall
+      + clear-data OR fresh install from the new APK, (3) developer
+      procedure for rotating the Android signing key with coordination
+      warning
+- [ ] Release process (add to `docs/RELEASE.md`):
+  - `sha256sum cruxcoach-release.apk > cruxcoach-release.apk.sha256`
+    is a required CI step
+  - Both `cruxcoach-release.apk` and `cruxcoach-release.apk.sha256`
+    must be uploaded as assets on the Codeberg release
+  - Release body is markdown-only — no machine-parsed data embedded
