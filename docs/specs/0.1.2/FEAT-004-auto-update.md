@@ -1,8 +1,14 @@
 # Feature Spec: In-App Update Notification & APK Installer (Codeberg) (v0.1.2)
 
-> **Status:** Design complete. Reviewed 2026-04-21 — blockers B1–B4 and
-> robustness items R1–R8 from the review folded in. Still open before
-> implementation: concrete class names & function signatures (§10),
+> **Status:** Design complete. Reviewed 2026-04-21 — first pass folded
+> in blockers B1–B4 and robustness items R1–R8; second pass folded in
+> the high-ROI UX/reliability items P2 (auto-download on Wi-Fi default),
+> P3 (notification-permission nudge), P7 (clock-skew-immune throttle via
+> `SystemClock.elapsedRealtime`), P9 (monthly re-arm after dismissal
+> cap), P10 (WorkManager OEM-killer flags + first-run expedited), and
+> P12 (cert-mismatch handoff to Codeberg in browser). Onboarding is
+> Settings-only — no first-run dialog. Still open before implementation:
+> concrete class names & function signatures (§10),
 > `docs/KEY_ROTATION.md` (release blocker, §6.9).
 > **Motivation:** Users who received the APK via local share or direct
 > download from Codeberg currently have no way to learn about new
@@ -40,14 +46,25 @@ are not supported, so their installer IDs are not recognized.
 - **Reject prereleases.** `prerelease=true` in the Codeberg JSON, or a
   `-dev.*` / `-rc.*` / `-beta.*` tag suffix, disqualifies a release even
   if its version is higher than the installed one (§6.11)
-- Download the APK on Wi-Fi (user-overridable) with resume/retry
-- Verify the download's SHA-256 against the release manifest
+- **Auto-download on Wi-Fi by default** (§6.14) so the user sees
+  "ready to install" notifications instead of "tap to download" —
+  collapsing a 5-tap flow to 2 taps. Auto-install is explicitly NOT
+  done (§6.8 — system consent is the trust anchor)
+- Verify the download's SHA-256 (from a separate `.sha256` release asset, §6.3)
 - Verify the download's signing certificate against a locally-pinned hash (TOFU)
-- Surface the update as a **persistent system notification** with release
-  notes parsed from the Codeberg release body; re-arm the notification on
-  a cadence if the user dismisses it (§6.10)
+- Surface the update as a **single persistent system notification**
+  that transitions through `PENDING_DOWNLOAD → DOWNLOADING →
+  READY_TO_INSTALL` states (§5.2, §6.14); re-arm the notification on
+  a cadence if the user dismisses it, monthly indefinitely after 10
+  dismissals (§6.10)
+- Surface a **permission-nudge banner** in Settings when the user has
+  disabled notifications or the updater channel (§6.13) — otherwise
+  the feature is silent failure
 - Hand off to `PackageInstaller` session API with the system consent prompt
-- Hard-disable the updater when installed via Zapstore
+- On cert-pin mismatch (legitimate key rotation OR MITM): give the user
+  a one-tap handoff to the Codeberg release page in their browser (§5.4.3),
+  letting Android's platform signature rule decide
+- Hard-disable the updater when installed via Zapstore (§6.6)
 
 ### Non-Goals
 
@@ -64,55 +81,55 @@ are not supported, so their installer IDs are not recognized.
 ## 2. Architecture
 
 ```
-    Triggers (whichever fires first wins):
+    Triggers (whichever fires first wins; throttled to ≥2h, §6.12):
       - app onStart                  (CruxCoachApp observer)
       - NetworkCallback.onAvailable  (ConnectivityManager)
-      - WorkManager backstop         (flex-interval 24 h, only fires
-                                      when CONNECTED + battery-not-low)
-      - Settings → "Jetzt prüfen"    (manual)
+      - WorkManager backstop         (flex-interval 24h, setRequiresDeviceIdle=false;
+                                      first-run expedited §6.12)
+      - Settings → "Jetzt prüfen"    (manual, 10s UI cooldown §R2)
                    │
                    ▼
     ┌──────────────────────────────┐
-    │  Codeberg Release API        │  (§6.1, prerelease filter §6.11)
-    │  /api/v1/repos/.../releases  │
+    │  Codeberg Release API        │  §6.1 — list endpoint, ETag/304
+    │  /api/v1/repos/.../releases  │       prerelease filter §6.11
     └──────────────┬───────────────┘
-                   │  JSON (list — pick latest with prerelease=false)
+                   │  JSON (list — pick latest with prerelease=false, stable tag)
                    ▼
     ┌──────────────────────────────┐
-    │  UpdateChecker               │  throttled: 1 real fetch / ≥2 h
+    │  UpdateChecker               │  throttled via ElapsedRealtime (§6.12)
     │  (opportunistic, not cron)   │  any earlier trigger coalesces
     └──────────────┬───────────────┘
-                   │  UpdateInfo
+                   │  UpdateInfo (incl. .sha256 asset)
                    ▼
     ┌──────────────────────────────┐     not newer
     │  VersionChecker              │───  / prerelease  ──▶ drop
-    │  (strict > vs BuildConfig,   │
+    │  (SemVer tuple compare §6.2, │
     │   reject -dev/-rc/-beta)     │
     └──────────────┬───────────────┘
                    │  newer stable
                    ▼
     ┌──────────────────────────────┐
-    │  UpdateNotifier              │  (§6.10)
-    │  Persistent notification     │
-    │  (re-arms after dismiss)     │  ← NO in-app dialog
-    │  Settings screen badge       │
+    │  UpdateNotifier              │  (§5.2, §6.10, §6.14)
+    │  Single notification,        │  NO in-app dialog
+    │  3 states: PENDING →         │  permission-nudge banner if
+    │  DOWNLOADING → READY         │  notifications blocked (§6.13)
     └──────────────┬───────────────┘
-                   │  user taps notification → "Download"
+                   │  (auto on Wi-Fi if §6.14 enabled) OR user tap
                    ▼
     ┌──────────────────────────────┐
-    │  ApkDownloader               │
-    │  (DownloadManager, Wi-Fi     │
-    │   default, cacheDir target)  │
+    │  ApkDownloader               │  pre-flight StatFs (§R4)
+    │  DownloadManager, state      │  progress updates notification
+    │  transitions on progress     │  every ≥2s
     └──────────────┬───────────────┘
                    │  apkPath
                    ▼
-    ┌──────────────────────────────┐
-    │  IntegrityVerifier           │
-    │  1. SHA-256 vs manifest      │
-    │  2. Signing cert SHA-256 vs  │
-    │     pinned (TOFU)            │
-    └──────────────┬───────────────┘
-                   │  verified
+    ┌──────────────────────────────┐     SHA-256 fail
+    │  IntegrityVerifier           │───  ────────▶ delete + ERROR
+    │  1. SHA-256 vs .sha256 asset │
+    │  2. Cert SHA-256 vs pinned   │     cert mismatch
+    │     (HMAC-sealed, §6.5)      │───  ────────▶ §5.4.3 handoff
+    └──────────────┬───────────────┘              (Codeberg in browser)
+                   │  both pass
                    ▼
     ┌──────────────────────────────┐
     │  ApkInstaller                │  ← Android's install-consent
@@ -217,17 +234,23 @@ path; everything else is recoverable telemetry.
 
 ```kotlin
 data class UpdaterState(
-    val lastCheckAt: Instant?,
-    val lastCheckEtag: String?,        // §6.1 — If-None-Match on next poll
-    val lastCheckResult: CheckResult,  // SUCCESS | NO_UPDATE | NO_UPDATE_STABLE | ERROR
-    val lastErrorAt: Instant?,         // most recent ERROR timestamp (§6.4)
-    val pendingDownloadId: Long?,      // DownloadManager ID if download in progress
-    val pendingUpdate: UpdateInfo?,    // null once consumed or cleared
-    val userCheckNetworkOverride: Boolean, // default false = Wi-Fi-only
+    val lastCheckAt: Instant?,                  // wall-clock, for display only
+    val lastCheckBootRealtime: Long,            // §6.12 — clock-skew-immune throttle
+    val lastCheckEtag: String?,                 // §6.1 — If-None-Match on next poll
+    val lastCheckResult: CheckResult,           // SUCCESS | NO_UPDATE | NO_UPDATE_STABLE | ERROR | BLOCKED_CERT_MISMATCH
+    val lastErrorAt: Instant?,                  // most recent ERROR timestamp (§6.4)
+    val pendingDownloadId: Long?,               // DownloadManager ID if download in progress
+    val pendingUpdate: UpdateInfo?,             // null once consumed or cleared
+    val pipelineStage: PipelineStage,           // NONE | PENDING_DOWNLOAD | DOWNLOADING | READY_TO_INSTALL | BLOCKED_CERT_MISMATCH
+    // User toggles (§6.14, §6.15)
+    val autoCheckEnabled: Boolean = true,       // §6.15 — user can opt out
+    val autoDownloadOnWifi: Boolean = true,     // §6.14 — default on
+    val autoDownloadOnMobile: Boolean = false,  // §6.14 — explicit opt-in only
+    val userDownloadNetworkOverride: Boolean = false, // one-shot per-download (legacy §6.7)
     // Notification re-arm state (§6.10)
     val lastNotifiedVersionCode: Int?, // version of the last offer surfaced
     val notifDismissedAt: Instant?,    // user swiped the notification away
-    val notifReArmCount: Int,          // capped at 10, resets on newer release or manual check (§6.10)
+    val notifReArmCount: Int,          // 0..10 then monthly (§6.10); resets on newer release or manual check
 )
 ```
 
@@ -264,11 +287,13 @@ If either the remote tag or `BuildConfig.VERSION_NAME` fails the strict
 | Lifecycle trigger | `androidApp/src/main/java/com/cruxcoach/android/CruxCoachApp.kt` | Register `ProcessLifecycleOwner` observer + `ConnectivityManager` default-network callback that both feed `UpdateChecker.maybeCheck()` (§6.12) — only if self-updater enabled (§6.6) |
 | WorkManager backstop | same | Enqueue the 24 h flex-interval `UpdateCheckWorker` once at startup as the fallback trigger |
 | DI | `di/AppModule.kt` or `di/UpdaterModule.kt` (new) | Provide `UpdateChecker`, `ApkDownloader`, `IntegrityVerifier`, `ApkInstaller`, `InstallSourceGate`, `UpdateNotifier`, `UpdaterPinStore` singletons |
-| Settings UI | `ui/settings/*` | New "App updates" section: last-check timestamp, "Jetzt prüfen" button (with 10 s soft rate-limit, §R2), Wi-Fi-only toggle, "auto-update check" toggle, badge + inline release-notes row when an update is pending (§6.10), info row when store-gated |
+| Settings UI | `ui/settings/*` | New "App updates" section per §6.15: last-check + "Jetzt prüfen" (with 10 s soft rate-limit, §R2), `autoCheckEnabled` switch, `autoDownloadOnWifi` switch (default on, §6.14), `autoDownloadOnMobile` switch (default off), permission-nudge banner row (§6.13) when notifications blocked, badge + inline release-notes row when an update is pending (§6.10), info row when store-gated |
 | Release-notes route | `ui/navigation/NavGraph.kt` + new screen | In-app screen opened by the notification tap; **not** a dialog |
 | Manifest | `androidApp/src/main/AndroidManifest.xml` | Add `REQUEST_INSTALL_PACKAGES`, `POST_NOTIFICATIONS` (Android 13+), receiver for `PackageInstaller` callbacks, notification channel declaration at first launch |
 | Strings | `values/strings.xml` + `values-de/strings.xml` | All update-related UI + notification strings (both locales per CLAUDE.md) |
 | TOFU pin bootstrap | `UpdaterPinStore` (lazy, called on every app start) | Read `PackageInfo.GET_SIGNING_CERTIFICATES` of the installed CruxCoach package, write HMAC-sealed pin file (§6.5.1) only if pin file is absent OR MAC fails. No UI surface |
+| Notification-permission nudge | `UpdateNotificationReliabilityHelper` (new) + Settings composable | Wraps `NotificationManagerCompat.areNotificationsEnabled()` + per-channel `IMPORTANCE_NONE` check; mirrors the existing `NotificationReliabilityHelper` API used by the Nostr coordinator. Recomputes on every `ON_RESUME` (§6.13) |
+| Cert-mismatch handoff | new `Intent(ACTION_VIEW, ...)` launcher in `UpdaterRepository` | One-tap path to the Codeberg release page when §5.4.2 detects a pin mismatch (§5.4.3); never auto-overrides the pin |
 
 New package: `com.cruxcoach.android.updater` containing
 `UpdateChecker`, `UpdateCheckWorker`, `UpdateNotifier`,
@@ -294,11 +319,20 @@ same throttle in `UpdateChecker.maybeCheck()`):
   `onAvailable` — catches "came back from offline while app is open"
 - **Manual**: Settings → "Jetzt prüfen" — bypasses throttle
 - **Backstop**: WorkManager `PeriodicWorkRequest`, flex-interval 24 h,
-  constraints `NetworkType.CONNECTED` + `requiresBatteryNotLow`.
-  Flex-interval means WorkManager picks its own moment inside the window
-  — we never pin a clock time. If the device is offline *and* the user
-  isn't using the app, the check simply never happens that cycle, and
-  the next online/foreground event picks it up
+  constraints `NetworkType.CONNECTED` + `requiresBatteryNotLow`,
+  explicitly **`setRequiresDeviceIdle(false)`** and
+  **`setRequiresCharging(false)`**. We want this to actually run on
+  OEM-killer devices (Xiaomi/Huawei/Oppo) where idle-constrained jobs
+  are often deferred for days. Flex-interval means WorkManager picks
+  its own moment inside the window — we never pin a clock time. If
+  the device is offline *and* the user isn't using the app, the check
+  simply never happens that cycle, and the next online/foreground
+  event picks it up
+- **First-run expedited**: the very first check after install uses
+  `OneTimeWorkRequest` with `setExpedited(OUT_OF_QUOTA_POLICY_RUN_AS_NON_EXPEDITED_WORK_REQUEST)`
+  so a fresh install knows within minutes (not 24 h) if it is already
+  stale. Falls back to non-expedited if the system rejects the quota.
+  Subsequent checks use the periodic worker above
 
 Throttle: `UpdateChecker.maybeCheck()` drops any call made within
 `MIN_CHECK_INTERVAL = 2 h` of the last successful network fetch. Manual
@@ -321,35 +355,58 @@ Fetch path:
 Offline / transient failure: logged as `ERROR` with a timestamp; no
 user surface (§6.4). The next trigger retries.
 
-### 5.2 User Prompt — Notification Only
+### 5.2 User Prompt — Single Notification, Three Content States
 
 When a newer stable release is detected, the updater posts a
-**persistent notification** (ongoing=false, but set to auto-re-arm per
-§6.10). It does **not** open any dialog, banner, snackbar, or modal in
-the app.
+**persistent notification**. It does **not** open any dialog, banner,
+snackbar, or modal in the app. The same notification transitions
+through three content states as the pipeline progresses (see §6.14 for
+the state machine), always on the same channel / same id so
+`notify()` replaces in-place:
 
-Notification content:
+**State 1 — `PENDING_DOWNLOAD`** (auto-download disabled or metered-only
+on cellular):
 - Title: "Update verfügbar: v<version>"
-- Short body: "<APK size> — Tippen für Details"
-- Primary action: "Herunterladen"
-- Secondary action: "Details" (opens an in-app release-notes screen —
-  not a dialog; a dedicated route under Settings)
-- Swipe to dismiss: recorded as `dismissedAt`; re-armed per §6.10
+- Body: "<APK size> — Tippen zum Herunterladen"
+- Primary action: "Herunterladen" (starts §5.3)
+- Secondary action: "Details" (opens the in-app release-notes screen)
 
-Inside the app: the Settings screen shows a badge next to the "App
-updates" row and a non-modal, non-interrupting row with release notes
-+ a "Herunterladen" button. No popup ever appears on top of any other
-screen.
+**State 2 — `DOWNLOADING`** (auto-download just triggered or user
+tapped "Herunterladen"):
+- Title: "Update v<version> lädt…"
+- Body: progress bar + "<X> %"
+- Updated at most every 2 s
+- Primary action: "Abbrechen"
+
+**State 3 — `READY_TO_INSTALL`** (download verified):
+- Title: "Update v<version> bereit"
+- Body: "Tippen zum Installieren"
+- Primary action: "Installieren" (launches §5.5 → system consent)
+- Secondary action: "Details" (release-notes)
+
+Swipe to dismiss is only meaningful in states 1 and 3 — during
+`DOWNLOADING` the notification is `setOngoing(true)` so the user cannot
+accidentally dismiss an active download. Dismissal in state 1 or 3
+records `dismissedAt`; re-armed per §6.10.
+
+Inside the app: the Settings "App updates" section mirrors the
+notification state with a matching inline row (badge + release-notes
+snippet + the same primary action as the current state). No popup ever
+appears on top of any other screen.
 
 ### 5.3 Download
 
-Download is **always user-initiated** — it only starts when the user
-taps "Herunterladen" on the system notification or on the in-app row.
-There is no background pre-fetch, no silent auto-download. The
-`pendingDownloadId` persistence below is strictly for **crash recovery**:
-if the process dies mid-download, the next app start can query
-`DownloadManager` with the saved ID to pick up where we left off rather
-than start over. It is not a scheduling mechanism.
+Download starts via one of two paths:
+- **Auto-triggered** (default, §6.14): the check flow detects a newer
+  release while on Wi-Fi and `autoDownloadOnWifi == true`, and enqueues
+  immediately. Notification boots directly into state 2 `DOWNLOADING`
+- **User-initiated**: the user taps "Herunterladen" on a state-1
+  `PENDING_DOWNLOAD` notification or on the inline Settings row
+
+`pendingDownloadId` persistence handles **crash recovery** for both
+paths: if the process dies mid-download, the next app start queries
+`DownloadManager` with the saved ID and picks up where we left off
+rather than re-fetching.
 
 Pre-flight (before starting the download):
 - Verify `StatFs(cacheDir).availableBytes >= apkSizeBytes + 16 MiB
@@ -393,8 +450,42 @@ getPackageArchiveInfo(apkPath, GET_SIGNING_CERTIFICATES)
 The pin comes from the HMAC-sealed file (§6.5); if the file is absent
 or its MAC does not verify, the store re-TOFUs against the currently
 installed cert (§6.5.1) and uses that. Mismatch against a **valid**
-pin → delete APK, log, surface "Signatur hat sich geändert — bitte
-manuell prüfen", abort. Do NOT offer to override from the UI.
+pin → delete APK, log, surface the mismatch screen per §5.4.3. Do NOT
+offer to override the pin from the UI.
+
+### 5.4.3 Cert-Mismatch Recovery Surface
+
+A cert-pin mismatch is effectively the worst-case the TOFU model
+defends against — but it is ALSO what the user sees on a legitimate,
+intentional signing-key rotation. Without a recovery path the user
+would be stuck on the old version forever, because we refuse to
+auto-accept a new cert.
+
+Surface (notification + in-app):
+- Title: "Update kann nicht automatisch installiert werden"
+- Body: "Die Signatur der neuen Version unterscheidet sich von der
+  installierten. Das kann ein legitimer Schlüsselwechsel oder ein
+  Angriff sein. Bitte manuell von Codeberg neu installieren."
+- Primary action button: **"Auf Codeberg öffnen"** →
+  `Intent(ACTION_VIEW, apkAsset.releasePageUrl)` — opens the user's
+  browser directly on the Codeberg release page for the new version.
+  From there the user downloads the APK themselves and installs via
+  system file manager. Android's same-signature install rule handles
+  the actual accept/reject: a legitimate new signer from the same
+  project will install cleanly on a fresh install; a malicious APK
+  with a different signer will be rejected by the platform.
+- Secondary: "Später" — dismisses the error notification; state stays
+  as "blocked" and we do NOT fire the standard re-arm cadence (§6.10)
+  on a blocked update. The user gets exactly one reminder per new
+  mismatched version
+
+This is **not** an override of TOFU — the updater still refuses to
+install the mismatched APK itself. It is a *handoff* to the user +
+the platform's own trust checks. A legitimate rotation is recoverable
+in two taps (Open → system file-manager install); a MITM is caught by
+Android refusing the install; a compromised signer exfiltration is
+a strictly worse attack than what the TOFU pin was ever defending
+against and is out of scope.
 
 ### 5.5 Install
 
@@ -458,7 +549,7 @@ infra.
 **How to apply:**
 - HTTP GET via existing OkHttp client
 - `Accept: application/json`, explicit User-Agent `CruxCoach-Updater/<versionName>`
-- **Conditional GET via `If-None-Match: <lastEtag>`** when `UpdaterState.lastCheckEtag` is set; on `304 Not Modified` the call is a no-op (bump `lastCheckAt`, keep result). On `200 OK`, store the new `ETag` header in `UpdaterState.lastCheckEtag` alongside the parsed release. Codeberg (Gitea) serves proper ETags on the releases endpoint; falling back gracefully if the header is missing is fine — the 2 h throttle (§6.12) is the second line of politeness
+- **Conditional GET via `If-None-Match: <lastEtag>`** when `UpdaterState.lastCheckEtag` is set; on `304 Not Modified` the call is a no-op (bump both `lastCheckAt` and `lastCheckBootRealtime` so the throttle counts the round-trip, keep result). On `200 OK`, store the new `ETag` header in `UpdaterState.lastCheckEtag` alongside the parsed release. Codeberg (Gitea) serves proper ETags on the releases endpoint; falling back gracefully if the header is missing is fine — the 2 h throttle (§6.12) is the second line of politeness
 - 10 s connect timeout, 15 s read timeout
 - Treat any non-2xx (except 304) as a transient failure → retry on next trigger
 - Ten entries is plenty: even if every second release were a dev build,
@@ -602,11 +693,29 @@ If a new store-based channel is added later (e.g. F-Droid), its installer ID is 
 - The set of recognized store installer IDs lives in a single constant (`InstallSourceGate.STORE_INSTALLER_IDS`) so adding F-Droid / Play later is one edit
 - Detection runs on every check (not cached) — users can uninstall Zapstore and reinstall CruxCoach from Codeberg later; the gate reflects the current install source immediately
 
-### 6.7 Network Policy — Wi-Fi Default, User-Overridable
+### 6.7 Network Policy — Wi-Fi Default, Two Independent Knobs
 
-**Decision:** `setAllowedNetworkTypes(NETWORK_WIFI)` by default. Settings toggle "Updates über mobile Daten herunterladen" (off by default) switches to `NETWORK_WIFI | NETWORK_MOBILE`.
+**Decision:** Two separate user toggles govern network usage, both
+shown in the Settings "App updates" section (§6.15):
 
-**Why:** Default respects data plans. Override is available for users who want it.
+1. `autoDownloadOnWifi` (default **on**, §6.14) — auto-triggers a
+   background download as soon as Wi-Fi is available
+2. `autoDownloadOnMobile` (default **off**, §6.14) — explicit opt-in
+   for users on unlimited mobile data plans
+
+On the `DownloadManager.Request` level, this resolves to:
+- Both off → `NETWORK_WIFI` only; download only starts after user tap
+- Wi-Fi on, mobile off → `NETWORK_WIFI` only; auto-triggered on Wi-Fi,
+  otherwise waits
+- Wi-Fi on, mobile on → `NETWORK_WIFI | NETWORK_MOBILE`; auto-triggered
+  on whichever transport is currently active
+
+**Why:** Defaults respect data plans (auto-download on Wi-Fi is free
+to 99 % of users; mobile-data auto-download is only the right default
+for unlimited-plan users, which we cannot detect). Splitting Wi-Fi and
+mobile into two toggles, rather than a single "also mobile" override,
+makes the opt-in explicit and reversible: a user who travels abroad
+can disable mobile auto-download without losing Wi-Fi auto-download.
 
 ### 6.8 Consent Model — System Dialog Every Install
 
@@ -614,18 +723,30 @@ If a new store-based channel is added later (e.g. F-Droid), its installer ID is 
 
 **Why:** `UPDATE_PACKAGES_WITHOUT_USER_ACTION` is a Google-sensitive permission, F-Droid reviewers see it with suspicion. The dialog is one extra tap; the UX cost is small, the trust cost of skipping it is not.
 
-### 6.9 Key Rotation — No Auto-Override
+### 6.9 Key Rotation — No Auto-Override, One-Tap Handoff
 
-**Decision:** If the signing key is ever rotated (new CruxCoach release signed with a different cert), the TOFU pin will mismatch and updates halt with a user-visible "Signatur hat sich geändert" notice. The user must manually download and reinstall.
+**Decision:** If the signing key is ever rotated, the TOFU pin
+mismatches and the self-updater refuses to install. The user is given
+a direct one-tap path to the Codeberg release page (§5.4.3), where
+they download and install themselves. Android's platform same-signature
+rule is the actual accept/reject gate — not our pin.
 
-**Why:** Auto-override would make TOFU worthless — an attacker with a
-stolen key would need no further effort to MITM updates. Manual reinstall
-after intentional rotation is a rare, documented event.
+**Why:** Auto-overriding our own pin would make TOFU worthless — an
+attacker with a stolen key would need no further effort to MITM
+updates. Forcing manual `adb shell pm clear` would strand every
+non-technical user on a rotation. The handoff pattern in §5.4.3 is the
+middle path: we do not bless the new signer, but we do not block the
+user — we let the platform decide. Legitimate rotation works with two
+taps (Open → Install); a MITM is rejected by the platform.
 
-> **Release blocker:** `docs/KEY_ROTATION.md` does not yet exist. It must
-> be created before 0.1.2 ships, describing the user-facing reinstall
-> procedure and the pin-reset step (`adb shell pm clear …` equivalent
-> for non-technical users is "clear app storage in system Settings").
+> **Release blocker:** `docs/KEY_ROTATION.md` does not yet exist. It
+> must be created before 0.1.2 ships, describing:
+> 1. The §5.4.3 user-facing flow ("Auf Codeberg öffnen" button)
+> 2. When the user should vs. should NOT accept the reinstall ("if
+>    you didn't expect a signature change, ask first in the Dev-Chat")
+> 3. The developer procedure for rotating the Android signing key
+>    with coordination warning (announce before pushing the first
+>    release with the new cert)
 > See §10 checklist.
 
 ### 6.10 User Surface — Notification Only, No Dialog
@@ -638,17 +759,22 @@ a small badge and a non-modal row with the release notes + a
 Android's own install-consent dialog at the very end — that one is
 platform-required and cannot be suppressed.
 
-If the user swipes the notification away, it is re-armed on a cadence
-(first re-arm at **+24 h**, then every **72 h** up to a cap of **10**
-re-arms over ~1 month). After the cap is hit, the notification is
-silent until either (a) a *newer* stable release appears — in which
-case `reArmCount` is reset to 0 and a notification fires immediately —
-or (b) the user opens Settings and manually taps "Jetzt prüfen", which
-also resets the cadence. This way a user on a long-running old version
-still has an escape hatch (manual check), and a genuinely important
-follow-up release re-surfaces on its own. Once the user taps
-"Herunterladen" or the update is installed, the notification is
-cancelled permanently for that version.
+If the user swipes the notification away, it is re-armed on a cadence:
+
+1. First re-arm at **+24 h**
+2. Then every **72 h** for up to **10** re-arms (~1 month coverage)
+3. After the cap: re-arm **once every 30 days** indefinitely
+
+Stage 3 replaces what would otherwise be permanent silence for a user
+on a long-running old version. A monthly reminder is neither nagging
+(≪ daily) nor dead-end (not ∞ silence) and aligns with most users'
+"I'll deal with it this weekend" update rhythm.
+
+Cadence **fully resets** (`reArmCount = 0`) and the notification
+re-fires immediately under either signal: (a) a *newer* stable release
+appears, or (b) the user opens Settings and manually taps "Jetzt
+prüfen". Once the user taps "Herunterladen" or the update is installed,
+the notification is cancelled permanently for that version.
 
 **Why:** A popup on app open is hostile. Climbers often open the app at
 the board to queue a climb — they should not have to dismiss an update
@@ -748,13 +874,165 @@ bursts, just one check when the connection stabilizes.
 - `ConnectivityManager` callback registered in the updater's own scope,
   filtered to `NET_CAPABILITY_INTERNET && NET_CAPABILITY_VALIDATED` so
   we don't fire on captive-portal Wi-Fi
-- Single coalescing throttle: `val since = now() - state.lastCheckAt;
-  if (since < MIN_CHECK_INTERVAL && !isManual) return` — no queue, no
-  retry, caller just moves on
+- Single coalescing throttle, **clock-skew-immune**: the elapsed delta
+  is measured against `SystemClock.elapsedRealtime()`, not wall-clock
+  `System.currentTimeMillis()`. Wall-clock is persisted separately as
+  `lastCheckAt` only for display. A device with a wrong system clock
+  (NTP off, timezone stuck, battery-pulled reboot) therefore cannot
+  either skip checks forever or fire on every trigger:
+  ```kotlin
+  val sinceMs = SystemClock.elapsedRealtime() - state.lastCheckBootRealtime
+  if (sinceMs < MIN_CHECK_INTERVAL_MS && !isManual) return
+  ```
+- `lastCheckBootRealtime` resets to 0 across reboots (that is what we
+  want — a reboot is a natural moment to re-check)
+- No queue, no retry — caller just moves on
 - WorkManager uses a `flex-interval`, not a fixed `initialDelay` — the
   system gets to choose the exact moment inside the window
 - If the network capability check fails (offline), the trigger path
   exits early before a single HTTP call is made
+
+### 6.13 Notification-Permission Nudge
+
+**Decision:** The updater depends on notifications to reach the user.
+If the system- or channel-level notification permission is denied, the
+whole feature is silent without any feedback. Surface a permission
+nudge in the Settings "App updates" section — **not a popup**, a
+banner row identical in pattern to `NotificationReliabilityBanner` —
+whenever either of the following is true:
+
+1. `NotificationManagerCompat.areNotificationsEnabled() == false`
+   (app-level denied or Android 13+ runtime permission not granted)
+2. `notificationManager.getNotificationChannel(UPDATE_CHANNEL_ID).importance == NONE`
+   (channel explicitly muted in system settings)
+
+**Why:** A silent failure mode at the transport layer destroys the
+entire reliability contract. A user who dismissed the POST_NOTIFICATIONS
+prompt once (tap, tap, gone) has no other way to learn the feature
+exists. A one-time banner with a deeplink into system settings is the
+smallest intervention that closes this gap.
+
+**How to apply:**
+- New helper `UpdateNotificationReliabilityHelper.isBlocked(context): Boolean`
+  wrapping both checks above; mirrors the existing
+  `NotificationReliabilityHelper` API used by the Nostr coordinator
+- In the Settings "App updates" section, if `isBlocked == true`, render
+  a compact banner above the normal rows with:
+  - Title: "Update-Hinweise deaktiviert"
+  - Body: "Benachrichtigungen für dieses Feature sind ausgeschaltet — du verpasst neue Versionen."
+  - Primary action: "Aktivieren" → opens
+    `Settings.ACTION_APP_NOTIFICATION_SETTINGS` for the app (Android
+    8+) or channel-specific `ACTION_CHANNEL_NOTIFICATION_SETTINGS` if
+    the channel exists but is muted
+- Recomputes on every `ON_RESUME` (user returns from system settings
+  without needing a nav round-trip), exactly like the Nostr banner
+- Dismissible per-session only — we do not persist a "hide forever"
+  flag; this has to stay nudging or users never fix it
+
+### 6.14 Auto-Download on Wi-Fi (Default On)
+
+**Decision:** The updater downloads a newly-detected stable APK
+automatically when the device is on **Wi-Fi** and the feature is
+enabled (default: **on**). Completed downloads are verified and held
+ready. The notification then posts as "Installieren bereit" and tapping
+it goes directly to the system install-consent dialog. No
+mobile-data auto-download; no auto-install (consent dialog is
+non-negotiable, §6.8).
+
+**Why:** The "discover → download → install" path without auto-download
+takes 5 taps and makes the user wait minutes while the download runs.
+With auto-download on Wi-Fi, that collapses to **2 taps** (notification
+tap → system "Install"), and the user never waits for bytes to arrive —
+they only ever see "ready to install." Restricting it to Wi-Fi
+preserves the data-volume-safety default; auto-install is explicitly
+excluded because (a) Android forbids it without the Google-sensitive
+`UPDATE_PACKAGES_WITHOUT_USER_ACTION` permission, and (b) the system
+consent dialog is the final trust anchor and intentionally cannot be
+suppressed.
+
+**How to apply:**
+- New `UpdaterState.autoDownloadOnWifi: Boolean = true` (default on)
+- `UpdaterState.autoDownloadOnMobile: Boolean = false` (separate
+  toggle, default off; exists so a user on an unlimited data plan can
+  explicitly opt in)
+- After §5.1 detects a newer stable release, `UpdateChecker` inspects
+  the current transport via
+  `ConnectivityManager.getNetworkCapabilities(activeNetwork)`:
+  - On Wi-Fi **and** `autoDownloadOnWifi` → enqueue §5.3 immediately;
+    initial notification posts with state "Wird heruntergeladen…"
+  - On cellular **and** `autoDownloadOnMobile` → same
+  - Else → post the pre-download notification ("Update verfügbar —
+    Tippen zum Herunterladen") and wait for the user tap, exactly as
+    before
+- Notification is a single entity that transitions through three
+  content states as the pipeline progresses (not three separate
+  notifications — one channel, same id, `NotificationManager.notify()`
+  replaces):
+  1. `PENDING_DOWNLOAD` — "Update verfügbar: vX.Y.Z — Tippen zum Herunterladen"
+  2. `DOWNLOADING` — "Update vX.Y.Z lädt… (42 %)" with progress bar;
+     updated at most every 2 s to avoid notification spam
+  3. `READY_TO_INSTALL` — "Update vX.Y.Z bereit — Tippen zum Installieren"
+- If `DOWNLOADING` fails (network loss, storage full mid-stream, user
+  cancelled), fall back to `PENDING_DOWNLOAD` with a "Fehler beim
+  Herunterladen — erneut versuchen" suffix. The cached partial APK is
+  deleted; the `pendingDownloadId` is cleared
+- Users on metered connections with `autoDownloadOnMobile = false` get
+  exactly the legacy behavior — no surprise data usage
+
+### 6.15 Settings — "App updates" Section Layout
+
+**Decision:** All updater-related user-facing controls live in a single
+"App updates" section in Settings. There is **no onboarding dialog**,
+no first-run wizard, no consent prompt — the defaults are sensible
+(Wi-Fi auto-download on, mobile-data off, auto-check on), and the
+Settings section is the discoverable escape hatch for users who want
+to change them.
+
+**Section contents (in order):**
+
+```
+─── App updates ────────────────────────────────────────────────
+   [permission nudge banner — only when §6.13 applies]
+   
+   Status
+     Zuletzt geprüft: vor 2 Std.         [Jetzt prüfen]
+     (or: "Zuletzt geprüft: noch nie" for fresh installs)
+   
+   Automatisch prüfen                         [ON  ●]
+     Aus: der Updater prüft nie mehr selbst. Du musst
+     "Jetzt prüfen" manuell drücken.
+   
+   Automatisch herunterladen (WLAN)           [ON  ●]
+     Lädt Updates im Hintergrund, sobald WLAN verfügbar ist.
+     Installation erfordert weiterhin einen Tap.
+   
+   Auch über mobile Daten laden               [OFF ○]
+     Nur aktivieren, wenn du einen unbegrenzten Datentarif hast.
+   
+   [pending-update inline row, only when pendingUpdate != null]
+     Version X.Y.Z verfügbar (ca. 12 MB)
+     [Release-Notes]  [Herunterladen / Installieren]
+─────────────────────────────────────────────────────────────────
+```
+
+**Why all toggles default to sane values:** Requiring a first-run
+dialog would mean either (a) interrupting the user on first app start
+(bad — we are a climbing app, not a cloud-service onboarding) or (b)
+deferring configuration until they find Settings (bad — most users
+never will). Defaults that work silently for 95 % of users + an
+obvious section for the other 5 % is the shortest path to "everyone
+gets updates."
+
+**How to apply:**
+- Implemented as a single `UpdateSettingsScreen` composable under the
+  existing `ui/settings/` tree
+- Uses the same `SettingRow` / `SettingSwitch` components already in
+  use for other settings — no new widgets
+- Pending-update row uses the same `NotificationReliabilityBanner`
+  visual language so the section reads as coherent
+- When `InstallSourceGate.selfUpdateAllowed() == false` (Zapstore
+  install), the entire section is replaced by the single info row from
+  §6.6 — no toggles, no status, no pending row
 
 ---
 
@@ -789,7 +1067,9 @@ bursts, just one check when the connection stabilizes.
 - **Beta / nightly channels** — CI keeps publishing `-dev.<sha>` to Codeberg for testing, but they are not discoverable via the updater (§6.11). No opt-in "I want dev builds" toggle in 0.1.2
 - **Delta / patch updates**
 - **Self-hosted signed manifest** (Nostr-event delivery) — considered, rejected for v1 due to infra cost
-- **Background auto-download** (today: check → notify → user decides; no pre-fetch)
+- **Auto-install** without the system consent dialog — explicitly out of scope (§6.8). Auto-*download* on Wi-Fi IS now in scope (§6.14, default on); the install step always requires user tap + system consent
+- **Auto-download on mobile data by default** — opt-in toggle exists (§6.14) but defaults to off; we never silently consume metered bytes
+- **Onboarding dialog / first-run wizard** for updater settings — defaults are sane, Settings is the discoverable escape hatch (§6.15)
 - **Changelog across multiple versions** (show only the latest release's notes, not cumulative)
 - **Rollback UI**
 
@@ -821,13 +1101,31 @@ bursts, just one check when the connection stabilizes.
       to user messages, localized DE/EN per §5.5)
 - [ ] Test plan:
   - Unit: tag parser, `SemVer` comparison, SHA-256 helper, cert-pin compare,
-    install-source gate logic, HMAC pin-file seal/verify, ETag round-trip
+    install-source gate logic, HMAC pin-file seal/verify, ETag round-trip,
+    notification three-state transitions (`PENDING_DOWNLOAD` → `DOWNLOADING`
+    → `READY_TO_INSTALL` and the `DOWNLOADING` → `PENDING_DOWNLOAD` failure
+    fallback, §6.14), re-arm cadence including the post-cap monthly stage
+    (§6.10), `ElapsedRealtime` throttle ignoring wall-clock changes (§6.12),
+    auto-download decision matrix across Wi-Fi/cellular × `autoDownloadOnWifi`
+    × `autoDownloadOnMobile` (§6.14), `UpdateNotificationReliabilityHelper.isBlocked`
+    matrix across app-disabled / channel-`IMPORTANCE_NONE` / both-allowed (§6.13)
   - Integration: mock Codeberg JSON (incl. 304 Not Modified), DownloadManager
     stub, verify/install happy path + each failure path incl.
-    `STATUS_FAILURE_ABORTED`
+    `STATUS_FAILURE_ABORTED`; auto-download triggered from a fake "Wi-Fi
+    became available" event with notification booting straight into
+    `DOWNLOADING`; cert-mismatch path (§5.4.3) opens
+    `Intent(ACTION_VIEW, releasePageUrl)` and does NOT install; permission-nudge
+    banner appears/disappears across `ON_RESUME` when the simulated
+    permission flips
   - Manual: install from Zapstore and verify Settings shows "deaktiviert";
     install from Codeberg APK and verify end-to-end update flow; clear
-    app data and verify TOFU re-runs silently
+    app data and verify TOFU re-runs silently; deny POST_NOTIFICATIONS at
+    runtime and verify the §6.13 banner shows up in Settings with a working
+    "Aktivieren" deeplink; trigger a cert-pin mismatch on a test build and
+    verify the §5.4.3 "Auf Codeberg öffnen" path lands on the right release
+    page; OEM-killer device check (Xiaomi or Huawei in MIUI/EMUI battery
+    profile "strict") — verify the WorkManager backstop still fires within
+    the 24 h window per §5.1 / §6.12
 - [ ] Migration: existing installs have no pin file → TOFU on first
       launch after 0.1.2 upgrade (§6.5.1)
 - [ ] Rollout / kill-switch: remote flag to disable the updater (e.g. a
