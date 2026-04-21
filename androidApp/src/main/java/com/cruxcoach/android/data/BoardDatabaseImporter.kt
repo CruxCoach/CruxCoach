@@ -398,12 +398,13 @@ class BoardDatabaseImporter(
             val countBefore = queryLong(targetDb, "SELECT COUNT(*) FROM aurora_climb")
             onProgress?.invoke(0, 0, total)
 
-            // Copy move_count from CruxCoach-schema sources; Kilter sources lack the column
-            val hasMoveCount = srcTable == "aurora_climb" && hasTable(rawDb, "aurora_climb") &&
-                rawDb.rawQuery("PRAGMA table_info(aurora_climb)", null).use { c ->
-                    generateSequence { if (c.moveToNext()) c.getString(1) else null }
-                        .any { it == "move_count" }
-                }
+            // Copy move_count when the source has it (CruxCoach backups always,
+            // Blossom chunks from 2026-04-21+). Old chunks without the column
+            // fall back to 0 and backfillMoveCounts() computes it post-import.
+            val hasMoveCount = rawDb.rawQuery("PRAGMA table_info($srcTable)", null).use { c ->
+                generateSequence { if (c.moveToNext()) c.getString(1) else null }
+                    .any { it == "move_count" }
+            }
             val moveCountExpr = if (hasMoveCount) "COALESCE(move_count, 0)" else "0"
 
             // Import in batches by rowid range (avoids OFFSET scanning and CursorWindow issues on older APIs)
