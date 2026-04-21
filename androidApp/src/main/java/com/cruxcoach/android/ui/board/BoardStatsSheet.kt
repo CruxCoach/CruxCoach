@@ -132,7 +132,11 @@ internal fun BoardStatsSheet(
             // hold-search sheet, because the personal mode is part of the
             // user's stats and the others are quick comparison views.
             if (placements.isNotEmpty()) {
-                ChartSection(stringResource(R.string.board_stats_personal_heatmap)) {
+                val sectionTitle = stringResource(
+                    R.string.board_stats_heatmap_section,
+                    heatmapModeLabel(heatmapMode)
+                )
+                ChartSection(sectionTitle) {
                     FlowRow(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp)
