@@ -172,9 +172,22 @@ jobs:
           [ "$PATCH_CODE" = "200" ] || { echo "PATCH failed: $PATCH_CODE"; exit 1; }
 
           # Upload APK
-          curl -sS -X POST \
+          APK_CODE=$(curl -sS -o /tmp/apk_upload.json -w '%{http_code}' -X POST \
             -H "Authorization: token ${CODEBERG_TOKEN}" \
             -F "attachment=@${APK};filename=CruxCoach-${TAG}.apk" \
-            "${API}/releases/${RELEASE_ID}/assets"
+            "${API}/releases/${RELEASE_ID}/assets")
+          [ "$APK_CODE" = "201" ] || { echo "APK upload failed: $APK_CODE"; cat /tmp/apk_upload.json; exit 1; }
 
-          echo "Release $NAME published with APK"
+          # Generate SHA-256 sidecar in coreutils `sha256sum` format.
+          # Required by in-app UpdateChecker (rejects releases without .apk.sha256).
+          SHA_FILE="${APK}.sha256"
+          (cd "$(dirname "$APK")" && sha256sum "$(basename "$APK")" > "$(basename "$APK").sha256")
+
+          # Upload SHA-256 sidecar
+          SHA_CODE=$(curl -sS -o /tmp/sha_upload.json -w '%{http_code}' -X POST \
+            -H "Authorization: token ${CODEBERG_TOKEN}" \
+            -F "attachment=@${SHA_FILE};filename=CruxCoach-${TAG}.apk.sha256" \
+            "${API}/releases/${RELEASE_ID}/assets")
+          [ "$SHA_CODE" = "201" ] || { echo "SHA-256 upload failed: $SHA_CODE"; cat /tmp/sha_upload.json; exit 1; }
+
+          echo "Release $NAME published with APK + SHA-256 sidecar"
