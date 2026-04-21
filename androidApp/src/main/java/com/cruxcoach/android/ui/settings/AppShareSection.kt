@@ -138,15 +138,7 @@ internal fun AppShareSection(
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
 
-    // Share via system share sheet
-    OutlinedButton(
-        onClick = { ApkShareHelper.shareViaIntent(context) },
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        colors = ButtonDefaults.outlinedButtonColors(contentColor = OrangeAccent)
-    ) { Text(stringResource(R.string.settings_share_via_apps)) }
-
-    // Codeberg download QR
+    // 1. Online: Codeberg download QR
     OutlinedButton(
         onClick = { showCodebergQr = !showCodebergQr },
         modifier = Modifier.fillMaxWidth(),
@@ -170,7 +162,7 @@ internal fun AppShareSection(
         )
     }
 
-    // Error
+    // 2. Offline: WiFi Direct hotspot
     errorMessage?.let { err ->
         ErrorCard(
             error = err,
@@ -184,8 +176,6 @@ internal fun AppShareSection(
             }
         )
     }
-
-    // Active: QR code + info
     if (qrBitmap != null) {
         AppShareActiveCard(
             qrBitmap = qrBitmap!!,
@@ -226,6 +216,14 @@ internal fun AppShareSection(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
+
+    // 3. Via apps (system share sheet)
+    OutlinedButton(
+        onClick = { ApkShareHelper.shareViaIntent(context) },
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = OrangeAccent)
+    ) { Text(stringResource(R.string.settings_share_via_apps)) }
 }
 
 @Composable

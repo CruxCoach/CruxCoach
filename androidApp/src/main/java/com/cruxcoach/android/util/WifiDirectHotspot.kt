@@ -11,6 +11,8 @@ import android.os.Looper
 import android.os.PowerManager
 import android.util.Log
 import com.cruxcoach.android.R
+import java.net.Inet4Address
+import java.net.NetworkInterface
 import java.security.SecureRandom
 import kotlin.random.Random
 
@@ -32,6 +34,12 @@ class WifiDirectHotspot(context: Context) {
         // needs time to bring up the interface after channel init (Briar has
         // an implicit delay here via an async DB read).
         private const val INIT_SETTLE_MS = 300L
+        // After requestGroupInfo succeeds the P2P interface may not yet have
+        // the Group-Owner IP (192.168.49.1) bound — DHCP/IP assignment is
+        // async. Poll for it before reporting the hotspot as ready, otherwise
+        // the HTTP server's bind() throws EADDRNOTAVAIL.
+        private const val GO_IP_POLL_DELAY_MS = 500L
+        private const val GO_IP_POLL_MAX_ATTEMPTS = 16  // 8s total
         private const val LOCK_TIMEOUT_MS = 5 * 60 * 1000L  // 5 min
 
         private fun reasonToString(reason: Int): String = when (reason) {
@@ -169,8 +177,7 @@ class WifiDirectHotspot(context: Context) {
         Log.d(TAG, "requestGroupInfo attempt $attempt/$MAX_FRAMEWORK_ATTEMPTS")
         wifiP2pManager?.requestGroupInfo(ch) { group ->
             if (group?.networkName != null && group.passphrase != null) {
-                usedStrategy = "WiFi Direct"
-                onStarted(HotspotInfo(group.networkName, group.passphrase, GROUP_OWNER_IP))
+                waitForGroupOwnerIp(group.networkName, group.passphrase, 1, onStarted, onError)
             } else if (attempt < MAX_FRAMEWORK_ATTEMPTS) {
                 handler.postDelayed({
                     if (running) requestGroupInfoWithRetry(ch, attempt + 1, onStarted, onError)
@@ -179,6 +186,53 @@ class WifiDirectHotspot(context: Context) {
                 failureLog.add("P2P: groupInfo null after $attempt attempts")
                 tryLocalOnlyHotspot(onStarted, onError)
             }
+        }
+    }
+
+    private fun waitForGroupOwnerIp(
+        ssid: String,
+        passphrase: String,
+        attempt: Int,
+        onStarted: (HotspotInfo) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        if (!running) return
+        if (isIpAssignedLocally(GROUP_OWNER_IP)) {
+            Log.d(TAG, "GO IP $GROUP_OWNER_IP assigned after $attempt poll(s)")
+            usedStrategy = "WiFi Direct"
+            onStarted(HotspotInfo(ssid, passphrase, GROUP_OWNER_IP))
+            return
+        }
+        if (attempt >= GO_IP_POLL_MAX_ATTEMPTS) {
+            failureLog.add("P2P: GO IP $GROUP_OWNER_IP never assigned (${GO_IP_POLL_MAX_ATTEMPTS * GO_IP_POLL_DELAY_MS}ms)")
+            Log.w(TAG, "GO IP not assigned, tearing down group and falling back")
+            // Tear down the half-initialised P2P group so LocalOnlyHotspot has
+            // a clean slate (some stacks refuse to start LOH while a stale P2P
+            // group is up).
+            channel?.let { ch ->
+                try {
+                    wifiP2pManager?.removeGroup(ch, null)
+                } catch (e: Exception) { Log.w(TAG, "removeGroup in fallback", e) }
+            }
+            closeChannel()
+            tryLocalOnlyHotspot(onStarted, onError)
+            return
+        }
+        handler.postDelayed({
+            waitForGroupOwnerIp(ssid, passphrase, attempt + 1, onStarted, onError)
+        }, GO_IP_POLL_DELAY_MS)
+    }
+
+    private fun isIpAssignedLocally(targetIp: String): Boolean {
+        return try {
+            NetworkInterface.getNetworkInterfaces()?.toList()?.any { iface ->
+                iface.inetAddresses?.toList()?.any { addr ->
+                    addr is Inet4Address && addr.hostAddress == targetIp
+                } ?: false
+            } ?: false
+        } catch (e: Exception) {
+            Log.w(TAG, "isIpAssignedLocally check failed", e)
+            false
         }
     }
 
