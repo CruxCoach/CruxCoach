@@ -12,7 +12,8 @@
 
 JNIEXPORT void JNICALL
 Java_com_cruxcoach_android_util_ZstdNative_decompressFileNative(
-        JNIEnv *env, jclass cls, jstring jInputPath, jstring jOutputPath) {
+        JNIEnv *env, jclass cls, jstring jInputPath, jstring jOutputPath,
+        jlong maxOutputBytes) {
     const char *inputPath = (*env)->GetStringUTFChars(env, jInputPath, NULL);
     const char *outputPath = (*env)->GetStringUTFChars(env, jOutputPath, NULL);
     if (!inputPath || !outputPath) {
@@ -70,6 +71,7 @@ Java_com_cruxcoach_android_util_ZstdNative_decompressFileNative(
 
     size_t const outBufSize = ZSTD_DStreamOutSize();
     int error = 0;
+    jlong totalOut = 0;
 
     while (1) {
         size_t read = fread(inBuf, 1, ZSTD_DStreamInSize(), fin);
@@ -86,6 +88,16 @@ Java_com_cruxcoach_android_util_ZstdNative_decompressFileNative(
                 break;
             }
             if (output.pos > 0) {
+                /* Bomb guard: refuse to write past the caller-supplied cap.
+                 * We check after decompress and before fwrite so the on-disk
+                 * file never grows beyond maxOutputBytes. */
+                totalOut += (jlong) output.pos;
+                if (totalOut > maxOutputBytes) {
+                    (*env)->ThrowNew(env, (*env)->FindClass(env, "java/io/IOException"),
+                                     "Decompressed output exceeds maximum allowed size");
+                    error = 1;
+                    break;
+                }
                 fwrite(outBuf, 1, output.pos, fout);
             }
         }

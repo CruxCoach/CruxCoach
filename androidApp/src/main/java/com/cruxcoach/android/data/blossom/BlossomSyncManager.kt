@@ -4,13 +4,14 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
 import com.cruxcoach.android.util.ZstdNative
+import com.vitorpamplona.quartz.nip01Core.core.Event
+import com.vitorpamplona.quartz.nip01Core.crypto.verifySignature
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -82,11 +83,20 @@ class BlossomSyncManager(
                             val arr = json.parseToJsonElement(text).jsonArray
                             when (arr[0].jsonPrimitive.content) {
                                 "EVENT" -> {
-                                    val eventObj = arr[2].jsonObject
-                                    val content = eventObj["content"]?.jsonPrimitive?.content
-                                    if (content != null) {
-                                        result = json.decodeFromString<BlossomManifest>(content)
+                                    // Do not trust the relay's filter: re-verify
+                                    // pubkey and Schnorr signature on the event
+                                    // before parsing its content as a manifest.
+                                    val event = Event.fromJson(arr[2].toString())
+                                    if (event.pubKey != MANIFEST_PUBKEY) {
+                                        Log.w(TAG, "Manifest pubkey mismatch from $relayUrl: ${event.pubKey}")
+                                        return
                                     }
+                                    if (!event.verifySignature()) {
+                                        Log.w(TAG, "Manifest signature invalid from $relayUrl")
+                                        return
+                                    }
+                                    val parsed = json.decodeFromString<BlossomManifest>(event.content)
+                                    result = Companion.validateManifest(parsed)
                                 }
                                 "EOSE" -> {
                                     ws.close(1000, "done")
@@ -163,8 +173,10 @@ class BlossomSyncManager(
         targetFile: File,
         onProgress: ((Long, Long) -> Unit)?
     ) {
-        val url = chunk.urls.firstOrNull()
-            ?: throw BlossomSyncException("No URL for chunk ${chunk.name}")
+        // https-only: refuse cleartext URLs so a hostile manifest cannot
+        // downgrade chunk transport to MITM-able http://.
+        val url = chunk.urls.firstOrNull { it.startsWith("https://") }
+            ?: throw BlossomSyncException("No https:// URL for chunk ${chunk.name}")
 
         val request = Request.Builder().url(url).build()
         val response = okHttpClient.newCall(request).execute()
@@ -220,7 +232,10 @@ class BlossomSyncManager(
     }
 
     private fun decompressZstd(compressedFile: File, outputFile: File) {
-        ZstdNative.decompressFile(compressedFile, outputFile)
+        // Cap the decompressed output so a maliciously-crafted chunk (zstd bomb)
+        // cannot fill the disk. 512MB is ~5x the full legitimate board DB and
+        // well above any plausible future growth.
+        ZstdNative.decompressFile(compressedFile, outputFile, MAX_DECOMPRESSED_CHUNK_BYTES)
     }
 
     /** Saves chunk hash after successful import so future syncs can skip unchanged chunks. */
@@ -245,10 +260,34 @@ class BlossomSyncManager(
         // overhead. Generous enough that legitimate chunks are never rejected,
         // tight enough that a hostile server can't stream gigabytes.
         private const val CHUNK_SIZE_OVERRUN_MARGIN = 64L * 1024
+        // Absolute ceiling on decompressed chunk size (zstd-bomb guard).
+        // Board DB is ~85MB total across all chunks today; 512MB covers
+        // years of growth while still refusing any plausible bomb payload.
+        private const val MAX_DECOMPRESSED_CHUNK_BYTES = 512L * 1024 * 1024
+        // Chunk names are joined into filesystem paths; restrict to a strict
+        // allowlist so values like "../x" or "a/b" cannot escape cacheDir.
+        private val CHUNK_NAME_REGEX = Regex("^[A-Za-z0-9_-]{1,64}$")
 
         const val MANIFEST_PUBKEY =
             "70b2740bff77cf65743a7d6ffa5465b3a27105ae26123458cf5450eafb1bd68d"
         const val MANIFEST_D_TAG = "cruxcoach/board-db"
+
+        /**
+         * Validates chunk names and URL schemes after the manifest is parsed.
+         * Rejects anything that could write outside the cache dir or be fetched
+         * over cleartext. `internal` for direct unit testing.
+         */
+        internal fun validateManifest(manifest: BlossomManifest): BlossomManifest {
+            manifest.chunks.forEach { chunk ->
+                require(CHUNK_NAME_REGEX.matches(chunk.name)) {
+                    "Chunk name rejected (path-traversal guard): ${chunk.name}"
+                }
+                require(chunk.urls.any { it.startsWith("https://") }) {
+                    "Chunk ${chunk.name} has no https:// URL"
+                }
+            }
+            return manifest
+        }
     }
 }
 
