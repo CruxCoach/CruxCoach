@@ -322,7 +322,13 @@ class BoardLogbookViewModel @Inject constructor(
             val layoutId = userPreferences.boardLayoutId.first()
             val data = withContext(Dispatchers.IO) {
                 val frameRows: List<String> = when (mode) {
-                    HeatmapMode.PERSONAL -> allAscents.mapNotNull { it.climbFrames }
+                    // allAscents comes from getUserLogbookAllLight() which
+                    // strips climb_frames to save memory for the list UI —
+                    // the heavy SELECT * variant is the only one that carries
+                    // the frames we need to render the personal heatmap.
+                    HeatmapMode.PERSONAL -> personalBoardRepo.getUserAscentsAll()
+                        .map { it.climbFrames }
+                        .filter { it.isNotBlank() }
                     else -> boardRepository.getAllFramesForHeatmap(
                         angle = 40,
                         layoutId = layoutId,

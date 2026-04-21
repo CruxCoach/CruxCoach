@@ -274,15 +274,15 @@ internal fun KilterBoardVisualization(
                             val heatColor = heatmapColor(intensity)
                             // Larger blurred circle for glow effect
                             drawCircle(
-                                color = heatColor.copy(alpha = 0.25f),
-                                radius = xScale * 6f,
+                                color = heatColor.copy(alpha = 0.45f),
+                                radius = xScale * 7f,
                                 center = Offset(px, py),
                                 style = Fill
                             )
                             // Inner solid circle
                             drawCircle(
-                                color = heatColor.copy(alpha = 0.6f),
-                                radius = xScale * 3.5f,
+                                color = heatColor.copy(alpha = 0.85f),
+                                radius = xScale * 4.5f,
                                 center = Offset(px, py),
                                 style = Fill
                             )

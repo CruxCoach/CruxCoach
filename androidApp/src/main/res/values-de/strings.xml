@@ -567,7 +567,7 @@
     <string name="bottom_nav_stats">Stats</string>
 
     <!-- Board: Hold Search -->
-    <string name="board_holdsearch_title">Hold-Suche &amp; Heatmap</string>
+    <string name="board_holdsearch_title">Hold-Suche</string>
     <string name="board_holdsearch_heatmap">Heatmap</string>
     <string name="board_holdsearch_hold_search">Hold-Suche</string>
     <string name="board_holdsearch_hint">Tippe Holds auf dem Board an, um Climbs zu finden die diese Holds verwenden.</string>
@@ -990,6 +990,7 @@
     <string name="board_stats_activity">Aktivität</string>
     <string name="board_stats_personal_heatmap">Meine Sends — Heatmap</string>
     <string name="board_stats_heatmap_section">Heatmap — %1$s</string>
+    <string name="board_stats_heatmap_empty">Noch keine Daten für diesen Heatmap-Modus. Logge ein paar Sends oder probiere einen anderen Modus.</string>
     <string name="board_stats_angle_distribution">Winkel-Verteilung</string>
     <string name="board_stats_attempt">Versuch</string>
     <string name="board_stats_current_streak">Aktueller Streak</string>

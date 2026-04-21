@@ -127,54 +127,6 @@ internal fun BoardStatsSheet(
                 }
             }
 
-            // Heatmap section — full mode picker (Meine Sends / Global /
-            // Start / Hand / Foot / Finish). Lives here, not in the global
-            // hold-search sheet, because the personal mode is part of the
-            // user's stats and the others are quick comparison views.
-            if (placements.isNotEmpty()) {
-                val sectionTitle = stringResource(
-                    R.string.board_stats_heatmap_section,
-                    heatmapModeLabel(heatmapMode)
-                )
-                ChartSection(sectionTitle) {
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        HeatmapMode.entries
-                            .filter { it != HeatmapMode.OFF }
-                            .forEach { mode ->
-                                FilterChip(
-                                    selected = mode == heatmapMode,
-                                    onClick = { onHeatmapModeSelect(mode) },
-                                    label = {
-                                        Text(
-                                            heatmapModeLabel(mode),
-                                            style = MaterialTheme.typography.labelSmall
-                                        )
-                                    },
-                                    colors = FilterChipDefaults.filterChipColors(
-                                        selectedContainerColor = OrangeAccent,
-                                        selectedLabelColor = DarkBackground
-                                    ),
-                                    shape = RoundedCornerShape(16.dp)
-                                )
-                            }
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    KilterBoardVisualization(
-                        holds = emptyList(),
-                        placements = placements,
-                        boardSize = boardSize,
-                        boardImages = boardImages,
-                        heatmapData = heatmapData.ifEmpty { null },
-                        selectedHolds = emptySet(),
-                        onHoldTapped = {},
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            }
-
             // --- Grad-Analyse (dropdown) ---
             if (stats.gradePyramid.isNotEmpty() || stats.gradeOutcomes.isNotEmpty()) {
                 ChartSectionWithSelector(
@@ -260,6 +212,62 @@ internal fun BoardStatsSheet(
                                 )
                             }
                         }
+                    }
+                }
+            }
+
+            // Heatmap section — full mode picker (Meine Sends / Global /
+            // Start / Hand / Foot / Finish). Sits at the very bottom of
+            // the sheet because the board rendering is the heaviest
+            // visual and pushes the charts above into the initial view.
+            if (placements.isNotEmpty()) {
+                val sectionTitle = stringResource(
+                    R.string.board_stats_heatmap_section,
+                    heatmapModeLabel(heatmapMode)
+                )
+                ChartSection(sectionTitle) {
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        HeatmapMode.entries
+                            .filter { it != HeatmapMode.OFF }
+                            .forEach { mode ->
+                                FilterChip(
+                                    selected = mode == heatmapMode,
+                                    onClick = { onHeatmapModeSelect(mode) },
+                                    label = {
+                                        Text(
+                                            heatmapModeLabel(mode),
+                                            style = MaterialTheme.typography.labelSmall
+                                        )
+                                    },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = OrangeAccent,
+                                        selectedLabelColor = DarkBackground
+                                    ),
+                                    shape = RoundedCornerShape(16.dp)
+                                )
+                            }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    KilterBoardVisualization(
+                        holds = emptyList(),
+                        placements = placements,
+                        boardSize = boardSize,
+                        boardImages = boardImages,
+                        heatmapData = heatmapData.ifEmpty { null },
+                        selectedHolds = emptySet(),
+                        onHoldTapped = null,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    if (heatmapData.isEmpty()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            stringResource(R.string.board_stats_heatmap_empty),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             }

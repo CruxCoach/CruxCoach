@@ -3,9 +3,10 @@ package com.cruxcoach.android.ui.board
 import android.graphics.Paint
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -64,7 +65,6 @@ internal fun BoardActivityHeatmap(
     val dayLabelWidth = 24.dp
     val monthLabelHeight = 16.dp
     val cellWithSpacing = cellSize + spacing
-    val gridWidth = dayLabelWidth + cellWithSpacing * totalWeeks
 
     val accentColor = OrangeAccent
     val emptyColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f)
@@ -80,137 +80,132 @@ internal fun BoardActivityHeatmap(
         stringResource(R.string.month_nov), stringResource(R.string.month_dec)
     )
 
-    val scrollState = rememberScrollState()
-
-    // Auto-scroll to end (most recent)
-    LaunchedEffect(totalWeeks) {
-        scrollState.scrollTo(scrollState.maxValue)
+    // Precompute per-week: month (from Monday) and boundaries
+    val weekMonths = remember(totalWeeks, alignedStart) {
+        IntArray(totalWeeks) { week ->
+            alignedStart.plusWeeks(week.toLong()).monthValue
+        }
+    }
+    val monthBoundaryWeeks = remember(totalWeeks, alignedStart) {
+        (1 until totalWeeks).filter {
+            alignedStart.plusWeeks(it.toLong()).monthValue != weekMonths[it - 1]
+        }.toSet()
+    }
+    val yearBoundaryWeeks = remember(totalWeeks, alignedStart) {
+        (1 until totalWeeks).filter {
+            alignedStart.plusWeeks(it.toLong()).year !=
+                alignedStart.plusWeeks((it - 1).toLong()).year
+        }.toSet()
     }
 
-    Column {
-        Row(modifier = Modifier.fillMaxWidth()) {
-            // Day labels column (fixed)
-            Column(modifier = Modifier.width(dayLabelWidth)) {
-                Spacer(modifier = Modifier.height(monthLabelHeight))
-                dayLabels.forEachIndexed { _, label ->
-                    Box(
-                        modifier = Modifier.height(cellWithSpacing),
-                        contentAlignment = Alignment.CenterStart
-                    ) {
-                        if (label.isNotEmpty()) {
-                            Text(
-                                text = label,
-                                style = MaterialTheme.typography.labelSmall,
-                                fontSize = 9.sp,
-                                color = labelColor
-                            )
-                        }
+    val monthTintA = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.07f)
+    val monthTintB = androidx.compose.ui.graphics.Color.Transparent
+    val monthLineColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.20f)
+    val yearLineColor = OrangeAccent.copy(alpha = 0.6f)
+
+    val listState = rememberLazyListState()
+
+    // Auto-scroll to end (most recent) — LazyRow handles its own gesture
+    // nesting cleanly inside the outer verticalScroll + ModalBottomSheet.
+    LaunchedEffect(totalWeeks) {
+        if (totalWeeks > 0) listState.scrollToItem((totalWeeks - 1).coerceAtLeast(0))
+    }
+
+    Row(modifier = Modifier.fillMaxWidth()) {
+        // Day labels column (fixed, outside scroll area)
+        Column(modifier = Modifier.width(dayLabelWidth)) {
+            Spacer(modifier = Modifier.height(monthLabelHeight))
+            dayLabels.forEach { label ->
+                Box(
+                    modifier = Modifier.height(cellWithSpacing),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    if (label.isNotEmpty()) {
+                        Text(
+                            text = label,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontSize = 9.sp,
+                            color = labelColor
+                        )
                     }
                 }
             }
+        }
 
-            // Scrollable grid
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .horizontalScroll(scrollState)
-            ) {
-                // Precompute per-week: month (from Monday) and boundaries
-                val weekMonths = IntArray(totalWeeks)
-                val monthBoundaryWeeks = mutableSetOf<Int>()
-                val yearBoundaryWeeks = mutableSetOf<Int>()
-                for (week in 0 until totalWeeks) {
-                    val ws = alignedStart.plusWeeks(week.toLong())
-                    weekMonths[week] = ws.monthValue
-                    if (week > 0) {
-                        if (ws.monthValue != weekMonths[week - 1]) monthBoundaryWeeks.add(week)
-                        if (ws.year != alignedStart.plusWeeks((week - 1).toLong()).year) yearBoundaryWeeks.add(week)
-                    }
-                }
+        LazyRow(
+            modifier = Modifier.weight(1f),
+            state = listState
+        ) {
+            items(totalWeeks) { week ->
+                val month = weekMonths[week]
+                val bgTint = if (month % 2 == 0) monthTintA else monthTintB
+                val isYearBoundary = week in yearBoundaryWeeks
+                val isMonthBoundary = week in monthBoundaryWeeks
+                val showMonthLabel = week == 0 || weekMonths[week] != weekMonths[week - 1]
 
-                val monthTintA = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.07f)
-                val monthTintB = androidx.compose.ui.graphics.Color.Transparent
-                val monthLineColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.20f)
-                val yearLineColor = OrangeAccent.copy(alpha = 0.6f)
-
-                // Month labels row
-                Row(modifier = Modifier.height(monthLabelHeight)) {
-                    var lastMonth = -1
-                    for (week in 0 until totalWeeks) {
-                        val month = weekMonths[week]
-                        Box(modifier = Modifier.width(cellWithSpacing)) {
-                            if (month != lastMonth) {
-                                Text(
-                                    text = monthNames[month - 1],
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontSize = 9.sp,
-                                    color = labelColor,
-                                    softWrap = false,
-                                    modifier = Modifier.wrapContentWidth(
-                                        align = Alignment.Start,
-                                        unbounded = true
-                                    )
+                Column(modifier = Modifier.width(cellWithSpacing)) {
+                    // Month label slot
+                    Box(modifier = Modifier.height(monthLabelHeight)) {
+                        if (showMonthLabel) {
+                            Text(
+                                text = monthNames[month - 1],
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 9.sp,
+                                color = labelColor,
+                                softWrap = false,
+                                modifier = Modifier.wrapContentWidth(
+                                    align = Alignment.Start,
+                                    unbounded = true
                                 )
-                                lastMonth = month
-                            }
+                            )
                         }
                     }
-                }
 
-                // Grid cells — all columns exactly cellWithSpacing wide,
-                // boundary lines drawn with drawBehind (no extra layout width)
-                Row {
-                    for (week in 0 until totalWeeks) {
-                        val month = weekMonths[week]
-                        val bgTint = if (month % 2 == 0) monthTintA else monthTintB
-                        val isYearBoundary = week in yearBoundaryWeeks
-                        val isMonthBoundary = week in monthBoundaryWeeks
-
-                        Box(
-                            modifier = Modifier
-                                .width(cellWithSpacing)
-                                .background(bgTint)
-                                .drawBehind {
-                                    if (isYearBoundary) {
-                                        drawLine(
-                                            color = yearLineColor,
-                                            start = Offset(0f, 0f),
-                                            end = Offset(0f, size.height),
-                                            strokeWidth = 2.dp.toPx()
-                                        )
-                                    } else if (isMonthBoundary) {
-                                        drawLine(
-                                            color = monthLineColor,
-                                            start = Offset(0f, 0f),
-                                            end = Offset(0f, size.height),
-                                            strokeWidth = 1.dp.toPx()
-                                        )
-                                    }
-                                }
-                        ) {
-                            Column {
-                                for (dayOfWeek in 0 until 7) {
-                                    val date = alignedStart.plusWeeks(week.toLong()).plusDays(dayOfWeek.toLong())
-                                    val count = if (date.isAfter(today) || date.isBefore(startDate)) {
-                                        -1
-                                    } else {
-                                        activityMap[date] ?: 0
-                                    }
-
-                                    Box(
-                                        modifier = Modifier
-                                            .padding(bottom = spacing, end = spacing)
-                                            .size(cellSize)
-                                            .background(
-                                                color = when {
-                                                    count < 0 -> emptyColor.copy(alpha = 0.05f)
-                                                    count == 0 -> emptyColor
-                                                    else -> accentColor.copy(alpha = intensityAlpha(count))
-                                                },
-                                                shape = RoundedCornerShape(2.dp)
-                                            )
+                    // Week column — 7 day cells stacked
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(bgTint)
+                            .drawBehind {
+                                if (isYearBoundary) {
+                                    drawLine(
+                                        color = yearLineColor,
+                                        start = Offset(0f, 0f),
+                                        end = Offset(0f, size.height),
+                                        strokeWidth = 2.dp.toPx()
+                                    )
+                                } else if (isMonthBoundary) {
+                                    drawLine(
+                                        color = monthLineColor,
+                                        start = Offset(0f, 0f),
+                                        end = Offset(0f, size.height),
+                                        strokeWidth = 1.dp.toPx()
                                     )
                                 }
+                            }
+                    ) {
+                        Column {
+                            for (dayOfWeek in 0 until 7) {
+                                val date = alignedStart.plusWeeks(week.toLong()).plusDays(dayOfWeek.toLong())
+                                val count = if (date.isAfter(today) || date.isBefore(startDate)) {
+                                    -1
+                                } else {
+                                    activityMap[date] ?: 0
+                                }
+
+                                Box(
+                                    modifier = Modifier
+                                        .padding(bottom = spacing, end = spacing)
+                                        .size(cellSize)
+                                        .background(
+                                            color = when {
+                                                count < 0 -> emptyColor.copy(alpha = 0.05f)
+                                                count == 0 -> emptyColor
+                                                else -> accentColor.copy(alpha = intensityAlpha(count))
+                                            },
+                                            shape = RoundedCornerShape(2.dp)
+                                        )
+                                )
                             }
                         }
                     }
