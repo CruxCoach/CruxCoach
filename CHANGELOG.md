@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## [0.1.2] - 2026-04-21
+## [0.1.2] - 2026-04-22
 
 ### Added
 - In-app auto-updater — checks for new versions and walks you through install (automatically turned off when you installed CruxCoach through Zapstore, which handles updates itself)
@@ -45,6 +45,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - The screen for entering your Nostr private key (nsec) now blocks screenshots and screen recording
 - The password for local sharing hotspots now uses a cryptographically strong random source
 - Build tooling is now cryptographically pinned to prevent supply-chain tampering during builds
+- The update-download confirmation prompt only opens when there actually is a pending update — other apps on your phone can no longer trick CruxCoach into showing fake update dialogs
 
 ## [0.1.1] - 2026-04-16
 
