@@ -47,14 +47,20 @@ internal fun AppShareSection(
     var downloadUrl by remember { mutableStateOf("") }
     var isStarting by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
-    var showCodebergQr by remember { mutableStateOf(false) }
+    var showReleaseQr by remember { mutableStateOf(false) }
 
-    val codebergApkUrl = remember {
+    val releaseApkUrl = remember {
         val tag = "v${BuildConfig.VERSION_NAME}"
-        "https://codeberg.org/CruxCoach/CruxCoach/releases/download/$tag/CruxCoach-$tag.apk"
+        // Derive web host from the fork-configurable updater API base
+        // ("https://codeberg.org/api/v1" → "https://codeberg.org").
+        val apiBase = BuildConfig.UPDATER_API_BASE
+        val webHost = apiBase.substringBefore("/api/", apiBase)
+        val owner = BuildConfig.UPDATER_REPO_OWNER
+        val repo = BuildConfig.UPDATER_REPO_NAME
+        "$webHost/$owner/$repo/releases/download/$tag/$repo-$tag.apk"
     }
-    val codebergQrBitmap = remember {
-        runCatching { ApkShareHelper.generateQrBitmap(codebergApkUrl) }.getOrNull()
+    val releaseQrBitmap = remember {
+        runCatching { ApkShareHelper.generateQrBitmap(releaseApkUrl) }.getOrNull()
     }
 
     val startSharing: () -> Unit = {
@@ -138,27 +144,27 @@ internal fun AppShareSection(
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
 
-    // 1. Online: Codeberg download QR
+    // 1. Online: release page download QR
     OutlinedButton(
-        onClick = { showCodebergQr = !showCodebergQr },
+        onClick = { showReleaseQr = !showReleaseQr },
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
         colors = ButtonDefaults.outlinedButtonColors(contentColor = OrangeAccent)
     ) {
         Text(stringResource(
-            if (showCodebergQr) R.string.settings_share_codeberg_hide
-            else R.string.settings_share_codeberg
+            if (showReleaseQr) R.string.settings_share_online_hide
+            else R.string.settings_share_online
         ))
     }
     Text(
-        stringResource(R.string.settings_share_codeberg_desc),
+        stringResource(R.string.settings_share_online_desc),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
-    if (showCodebergQr && codebergQrBitmap != null) {
-        CodebergDownloadCard(
-            qrBitmap = codebergQrBitmap,
-            downloadUrl = codebergApkUrl
+    if (showReleaseQr && releaseQrBitmap != null) {
+        ReleaseDownloadCard(
+            qrBitmap = releaseQrBitmap,
+            downloadUrl = releaseApkUrl
         )
     }
 
@@ -299,7 +305,7 @@ private fun AppShareActiveCard(
 }
 
 @Composable
-private fun CodebergDownloadCard(
+private fun ReleaseDownloadCard(
     qrBitmap: Bitmap,
     downloadUrl: String
 ) {
@@ -314,13 +320,13 @@ private fun CodebergDownloadCard(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
-                stringResource(R.string.settings_share_codeberg_hint),
+                stringResource(R.string.settings_share_online_hint),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Image(
                 bitmap = qrBitmap.asImageBitmap(),
-                contentDescription = stringResource(R.string.cd_codeberg_download_qr),
+                contentDescription = stringResource(R.string.cd_release_download_qr),
                 modifier = Modifier.size(220.dp)
             )
             Text(

@@ -184,10 +184,10 @@
     <string name="settings_share_desc">Share CruxCoach APK with others (without user data).</string>
     <string name="board_filter_title">Filters</string>
     <string name="settings_share_via_apps">Via apps</string>
-    <string name="settings_share_codeberg">Online</string>
-    <string name="settings_share_codeberg_hide">Hide online</string>
-    <string name="settings_share_codeberg_desc">Scan the QR code to download the app online from Codeberg.</string>
-    <string name="settings_share_codeberg_hint">Scan to open the Codeberg APK download.</string>
+    <string name="settings_share_online">Online</string>
+    <string name="settings_share_online_hide">Hide online</string>
+    <string name="settings_share_online_desc">Scan the QR code to download the app online from the release page.</string>
+    <string name="settings_share_online_hint">Scan to open the APK download.</string>
     <string name="settings_share_local">Offline</string>
     <string name="settings_share_local_desc">Share the app locally via WiFi hotspot. No internet needed.</string>
     <string name="settings_share_stop">Stop</string>
@@ -792,9 +792,9 @@
     <string name="updater_notif_action_download">Download</string>
     <string name="updater_notif_action_install">Install</string>
     <string name="updater_notif_action_retry">Try again</string>
-    <string name="updater_notif_action_open_codeberg">Open on Codeberg</string>
+    <string name="updater_notif_action_open_release">Open release page</string>
     <string name="updater_notif_cert_title">Update cannot be installed automatically</string>
-    <string name="updater_notif_cert_body">The signature of the new version differs from the installed one. This may be a legitimate key rotation or an attack. Please reinstall manually from Codeberg.</string>
+    <string name="updater_notif_cert_body">The signature of the new version differs from the installed one. This may be a legitimate key rotation or an attack. Please reinstall manually from the release page.</string>
     <string name="updater_notif_error_title">Download of update v%1$s failed</string>
     <string name="updater_notif_error_no_space">No free storage — make room and try again</string>
     <string name="updater_notif_error_corrupt">Download was corrupted — please try again</string>
@@ -826,7 +826,7 @@
     <string name="updater_download_confirm_body">Download is about %1$s. You can then install the update.</string>
     <string name="updater_download_confirm_start">Download</string>
     <string name="updater_settings_cert_title">Update blocked — signature changed</string>
-    <string name="updater_settings_cert_body">Tap to open Codeberg and reinstall manually.</string>
+    <string name="updater_settings_cert_body">Tap to open the release page and reinstall manually.</string>
     <string name="updater_settings_nudge_title">Update notifications off</string>
     <string name="updater_settings_nudge_body">Notifications for this feature are disabled — you will miss new versions.</string>
     <string name="updater_settings_nudge_enable">Enable</string>
@@ -994,7 +994,7 @@
     <string name="cd_deselect_all">Deselect all</string>
     <string name="cd_dismiss">Dismiss</string>
     <string name="cd_download_qr_code">Download URL QR Code</string>
-    <string name="cd_codeberg_download_qr">Codeberg APK download QR code</string>
+    <string name="cd_release_download_qr">Release APK download QR code</string>
     <string name="cd_edit">Edit</string>
     <string name="cd_expand">Expand</string>
     <string name="cd_filter">Filter</string>

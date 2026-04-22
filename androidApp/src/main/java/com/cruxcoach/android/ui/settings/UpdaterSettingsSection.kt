@@ -275,7 +275,7 @@ private fun CertMismatchRow(onOpen: () -> Unit) {
             )
             TextButton(onClick = onOpen) {
                 Text(
-                    stringResource(R.string.updater_notif_action_open_codeberg),
+                    stringResource(R.string.updater_notif_action_open_release),
                     color = Color.Unspecified,
                 )
             }

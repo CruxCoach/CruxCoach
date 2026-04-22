@@ -73,12 +73,12 @@ class UpdateNotifier(private val context: Context) {
             .setContentText(context.getString(R.string.updater_notif_cert_body))
             .setStyle(NotificationCompat.BigTextStyle().bigText(context.getString(R.string.updater_notif_cert_body)))
             .setOngoing(false)
-            .setContentIntent(openCodebergPendingIntent(info.releasePageUrl))
+            .setContentIntent(openReleasePendingIntent(info.releasePageUrl))
             .addAction(
                 NotificationCompat.Action.Builder(
                     0,
-                    context.getString(R.string.updater_notif_action_open_codeberg),
-                    openCodebergPendingIntent(info.releasePageUrl),
+                    context.getString(R.string.updater_notif_action_open_release),
+                    openReleasePendingIntent(info.releasePageUrl),
                 ).build()
             )
         notify(builder)
@@ -151,13 +151,13 @@ class UpdateNotifier(private val context: Context) {
         )
     }
 
-    private fun openCodebergPendingIntent(url: String): PendingIntent {
+    private fun openReleasePendingIntent(url: String): PendingIntent {
         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
         return PendingIntent.getActivity(
             context,
-            REQ_OPEN_CODEBERG,
+            REQ_OPEN_RELEASE_PAGE,
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
@@ -203,7 +203,7 @@ class UpdateNotifier(private val context: Context) {
 
     companion object {
         private const val REQ_SETTINGS = 200
-        private const val REQ_OPEN_CODEBERG = 201
+        private const val REQ_OPEN_RELEASE_PAGE = 201
         private const val REQ_SETTINGS_ASK = 202
     }
 }
