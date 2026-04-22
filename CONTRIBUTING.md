@@ -22,6 +22,11 @@ Open an issue with the `feature` label. Describe:
 - **Why** it would be useful for your climbing workflow
 - **How** you envision the UI/interaction
 
+Non-trivial features are tracked as `FEAT-NNN` specifications under
+[`docs/specs/`](docs/specs/). For larger proposals, open the issue
+first; the maintainer will either draft the spec or invite you to
+contribute one.
+
 > **Tip:** Feature requests can also be sent directly from the app via **Settings > Contact Developer**.
 
 ---

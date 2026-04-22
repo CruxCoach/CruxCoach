@@ -1058,7 +1058,17 @@ gets updates."
 
 **Threats out of scope (acceptable residual risk):**
 
-- Full compromise of Codeberg's TLS (HSTS not pinned — cert pinning on a third-party domain is too brittle)
+- **Full compromise of Codeberg's TLS** (HSTS not pinned on the
+  `OkHttpClient` — cert pinning on a third-party provider's domain is too
+  brittle given 90-day leaf-cert rotation). The TOFU signing-cert pin
+  on the APK itself defeats any tampered-payload attack that a
+  CA-capable adversary could mount, so they would at most be able to
+  (a) freeze the user on their current version (deny-of-update, not RCE)
+  or (b) serve an APK signed by the correct key but a stale/known-bad
+  version — caught by the strict `versionCode >` gate. A fork that
+  wants stronger MITM resistance can add an `OkHttpClient` `CertificatePinner`
+  with their provider's intermediate-CA SPKI and at least one backup
+  pin per OWASP guidance.
 - Signing-key exfiltration (mitigated by protecting `.signing/` per CLAUDE.md, not by this feature)
 - Attacker with on-device code execution (unbounded capability; TOFU pin is one more hurdle but not a fence)
 
