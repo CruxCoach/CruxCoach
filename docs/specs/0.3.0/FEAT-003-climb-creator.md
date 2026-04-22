@@ -3,7 +3,10 @@ status: failed
 ---
 # Feature Spec: Climb Creator & Nostr Community Climbs (v0.3.0)
 
-> **Status:** Draft — design complete, pending engineering review before implementation.
+> **Status:** Failed — superseded by the 2026 Kilter/Aurora split. Aurora
+> API is offline and the new Kilter backend (Keycloak + PowerSync +
+> Flutter) replaces the dual-publishing path this spec was built around.
+> Kept as a record of the attempted design; do not implement from this.
 > **Depends on:** Kilter API re-integration (§12) — independent of v0.2.0 specs.
 
 ## 1. Overview
