@@ -40,9 +40,24 @@ docs/*.md
 !docs/KEY_ROTATION.md
 
 # Internal triage workflow (RepoLens findings, verdicts, per-release audits)
+#
+# HARD RULE: RepoLens findings and any audit-tool output NEVER land in this
+# repo. Always output to an absolute path under ~/cruxcoach-internal-archive/
+# or similar — see CLAUDE.md "RepoLens and other audit tools" for the policy.
+# The patterns below are a defence-in-depth backstop, not the primary control.
 docs/specs/*/triage/
 tools/triage/
-scripts/repolens-feature.sh
+scripts/repolens-*.sh
+
+# RepoLens output shapes (file-name-based backstop across the whole tree)
+findings.jsonl
+verdicts.jsonl
+**/findings.jsonl
+**/verdicts.jsonl
+repolens-out/
+**/repolens-out/
+**/repolens-run-*/
+**/.repolens/
 
 # SQLDelight generated
 shared/build/
