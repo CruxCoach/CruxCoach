@@ -54,9 +54,10 @@ object NotificationReliabilityHelper {
      * battery whitelist. For these we surface a second CTA that
      * deeplinks into the vendor's autostart/battery UI.
      *
-     * Source: dontkillmyapp.com (community-maintained list of affected
-     * manufacturers and the settings screens that unlock reliable
-     * background work per vendor).
+     * Source: dontkillmyapp.com (Urbandroid Team) — CC BY-SA 4.0.
+     * Community-maintained list of affected manufacturers and the settings
+     * screens that unlock reliable background work per vendor.
+     * See THIRD_PARTY_LICENSES.md for the full attribution.
      */
     enum class OemKillerSeverity {
         NONE,       // Pixel, Sony, Nokia (Android One), GrapheneOS, CalyxOS, /e/OS, LineageOS
