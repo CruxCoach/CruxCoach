@@ -37,6 +37,12 @@ local.properties
 docs/audit/
 docs/backlog/
 docs/*.md
+!docs/KEY_ROTATION.md
+
+# Internal triage workflow (RepoLens findings, verdicts, per-release audits)
+docs/specs/*/triage/
+tools/triage/
+scripts/repolens-feature.sh
 
 # SQLDelight generated
 shared/build/
