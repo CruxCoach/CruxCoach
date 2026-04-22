@@ -14,6 +14,7 @@ import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.NetworkWifi
 import androidx.compose.material.icons.filled.SignalWifiOff
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -89,32 +90,39 @@ fun BoardSyncScreen(
         )
     }
 
-    // Data is up to date — offer force download
-    if (state.showUpToDateDialog) {
+    // Local-share import consent. The tap on the hotspot's landing page
+    // happens in an attacker-controllable browser, so this in-app dialog
+    // is the real consent moment — it shows the source host and runs in
+    // CruxCoach's own UI.
+    state.pendingLocalImportUrl?.let { url ->
+        val host = remember(url) {
+            runCatching { android.net.Uri.parse(url).host }.getOrNull() ?: url
+        }
         AlertDialog(
-            onDismissRequest = { viewModel.dismissUpToDateDialog() },
+            onDismissRequest = { viewModel.dismissLocalImport() },
             icon = {
                 Icon(
-                    Icons.Default.CheckCircle,
+                    Icons.Default.Warning,
                     contentDescription = null,
-                    tint = SuccessGreen,
+                    tint = OrangeAccent,
                     modifier = Modifier.size(40.dp)
                 )
             },
-            title = { Text(stringResource(R.string.board_sync_up_to_date_title)) },
+            title = { Text(stringResource(R.string.board_sync_local_import_title)) },
             text = {
-                Text(stringResource(R.string.board_sync_up_to_date_message))
+                Text(stringResource(R.string.board_sync_local_import_message, host))
             },
             confirmButton = {
                 Button(
-                    onClick = { viewModel.forceSync() },
-                    colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent)
+                    onClick = { viewModel.confirmLocalImport() },
+                    colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
+                    modifier = Modifier.testTag("board_sync_local_import_confirm")
                 ) {
-                    Text(stringResource(R.string.board_sync_download))
+                    Text(stringResource(R.string.board_sync_local_import_confirm))
                 }
             },
             dismissButton = {
-                TextButton(onClick = { viewModel.dismissUpToDateDialog() }) {
+                TextButton(onClick = { viewModel.dismissLocalImport() }) {
                     Text(stringResource(R.string.action_cancel))
                 }
             }
@@ -431,7 +439,8 @@ private fun SyncProgressChecklist(
     step: ImportStep?,
     modifier: Modifier = Modifier
 ) {
-    // Blossom: FetchingManifest(0), DownloadChunk(1), ImportClimbs(2), ImportStats(3), ImportLayout(4), Done(5)
+    // Blossom: FetchingManifest(0), DownloadChunk(1), ImportClimbs(2),
+    // ImportStats(3), ImportLayout(4), Finalizing(5), Done(6)
     val stepIndex = when (step) {
         is ImportStep.FetchingManifest, is ImportStep.CheckingUpdate -> 0
         is ImportStep.DownloadChunk, is ImportStep.Download -> 1
@@ -440,7 +449,8 @@ private fun SyncProgressChecklist(
         is ImportStep.ImportClimbs -> 2
         is ImportStep.ImportStats -> 3
         is ImportStep.ImportLayout -> 4
-        is ImportStep.Done -> 5
+        is ImportStep.Finalizing -> 5
+        is ImportStep.Done -> 6
         else -> -1
     }
 
@@ -539,6 +549,17 @@ private fun SyncProgressChecklist(
             "%,d Placements".format(step.placements)
         } else null
         SyncStepRow(stringResource(R.string.board_sync_step_import_layout), layoutStatus, layoutDetail)
+
+        // Step 5: Finalisieren — index rebuild, move-count backfill,
+        // denormalized refresh. Without this row the user just sees
+        // "Statistiken importieren 100%" frozen for up to 2min.
+        val finalizeIdx = 5
+        val finalizeStatus = when {
+            stepIndex > finalizeIdx -> StepStatus.DONE
+            stepIndex == finalizeIdx -> StepStatus.ACTIVE
+            else -> StepStatus.PENDING
+        }
+        SyncStepRow(stringResource(R.string.board_sync_step_finalize), finalizeStatus)
 
         // Debug: show metadata counters after import
         if (step is ImportStep.Done && step.nomatchCount > 0) {

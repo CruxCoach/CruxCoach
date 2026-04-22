@@ -12,6 +12,8 @@ import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
 import java.io.File
 import java.net.Inet4Address
+import java.net.InetAddress
+import java.net.InetSocketAddress
 import java.net.NetworkInterface
 import java.net.ServerSocket
 import java.net.Socket
@@ -122,10 +124,27 @@ class LocalApkServer(
         private set
 
     fun start(port: Int = LOCAL_SHARE_PORT, hostIp: String? = null): Int {
+        // Bind to a specific interface IP so the share server isn't reachable
+        // on every network the device happens to be connected to (mobile data,
+        // home WiFi, …). Default to loopback if the caller didn't pass an IP —
+        // useless for LAN sharing, but prevents accidental exposure.
+        val bindAddress: InetAddress = when {
+            hostIp.isNullOrBlank() || hostIp == "0.0.0.0" || hostIp == "::" -> {
+                InetAddress.getByName("127.0.0.1")
+            }
+            else -> InetAddress.getByName(hostIp)
+        }
         val ss = try {
-            ServerSocket(port)
+            ServerSocket().apply {
+                reuseAddress = true
+                bind(InetSocketAddress(bindAddress, port))
+            }
         } catch (_: Exception) {
-            ServerSocket(0) // fallback to random port if fixed port is busy
+            // Fallback: same bind address, random port if the fixed one is busy.
+            ServerSocket().apply {
+                reuseAddress = true
+                bind(InetSocketAddress(bindAddress, 0))
+            }
         }
         serverSocket = ss
         running = true
@@ -199,10 +218,14 @@ class LocalApkServer(
             val sizeMb = "%.1f".format(boardDbFile.length() / 1_048_576.0)
             val dbUrl = "$baseUrl/board.db"
             val deepLink = "cruxcoach://import-board-db?url=${java.net.URLEncoder.encode(dbUrl, "UTF-8")}"
-            """<a href="$deepLink" class="btn import">&#128640; In CruxCoach importieren ($sizeMb MB)</a>
-<p class="note">Klicke nach der Installation auf den Button oben — die App öffnet sich und importiert die Boulder-Datenbank automatisch.<br>
-After installing, tap the button above — the app opens and imports the boulder database automatically.</p>
-<a href="/board.db" class="btn db">&#128202; Nur DB herunterladen</a>"""
+            """<section class="card">
+  <span class="step">Step 2 · Schritt 2</span>
+  <h2>Import the boulder database</h2>
+  <p class="en">After installing, tap the button below — CruxCoach opens and imports the climbs automatically.</p>
+  <p class="de">Nach der Installation auf den Button tippen — CruxCoach öffnet sich und importiert die Boulder automatisch.</p>
+  <a href="$deepLink" class="btn success">&#128640; Open in CruxCoach &middot; In CruxCoach öffnen ($sizeMb MB)</a>
+  <a href="/board.db" class="btn ghost">Download DB only &middot; Nur DB herunterladen</a>
+</section>"""
         } else ""
         val html = LANDING_HTML.replace("<!-- DB_SECTION -->", dbSection)
         val headers = "HTTP/1.1 200 OK\r\n" +
@@ -258,34 +281,127 @@ After installing, tap the button above — the app opens and imports the boulder
 
         private val LANDING_HTML = """
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CruxCoach</title>
+<title>CruxCoach — Install</title>
 <style>
-body { background:#1a1a1a; color:#fff; font-family:Roboto,Arial,sans-serif;
-       margin:0; padding:24px; text-align:center; }
-h1 { font-size:24px; margin-bottom:8px; }
-p { color:#aaa; font-size:14px; margin-bottom:24px; }
-a.btn { display:block; background:#FF8C00; color:#000; font-weight:700;
-        font-size:18px; text-decoration:none; padding:16px 32px;
-        border-radius:12px; margin:0 auto 16px; max-width:300px; }
-a.btn:active { background:#E07800; }
-a.btn.import { background:#27AE60; color:#fff; }
-a.btn.import:active { background:#1E8449; }
-a.btn.db { background:#555; color:#fff; font-size:14px; padding:10px 20px; }
-a.btn.db:active { background:#444; }
-.note { margin-top:16px; font-size:12px; color:#888; }
+  :root {
+    --bg: #0f0f10;
+    --card: #1c1c1e;
+    --card-2: #26262a;
+    --border: #2e2e33;
+    --text: #f5f5f7;
+    --muted: #9a9aa0;
+    --muted-2: #6d6d73;
+    --accent: #ff8c00;
+    --accent-dark: #e07800;
+    --success: #27ae60;
+    --success-dark: #1e8449;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
+    margin: 0;
+    padding: 24px 16px 48px;
+    line-height: 1.5;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+  .container { max-width: 440px; margin: 0 auto; }
+  header { text-align: center; margin-bottom: 28px; }
+  .logo {
+    width: 64px; height: 64px;
+    margin: 0 auto 12px;
+    border-radius: 16px;
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dark) 100%);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 32px; font-weight: 800; color: #000;
+    box-shadow: 0 8px 24px rgba(255, 140, 0, 0.25);
+  }
+  h1 { font-size: 28px; margin: 0 0 4px; letter-spacing: -0.5px; font-weight: 700; }
+  header .tag { color: var(--muted); font-size: 14px; margin: 0; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 20px;
+    margin-bottom: 14px;
+  }
+  .step {
+    display: inline-block;
+    background: var(--card-2);
+    color: var(--accent);
+    font-weight: 700;
+    font-size: 11px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    margin-bottom: 12px;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+  }
+  .card h2 { font-size: 18px; margin: 0 0 8px; font-weight: 700; }
+  .card p { color: var(--muted); font-size: 14px; margin: 0 0 6px; }
+  .card p.de { color: var(--muted-2); font-size: 13px; font-style: italic; }
+  .btn {
+    display: block;
+    text-align: center;
+    text-decoration: none;
+    font-weight: 700;
+    font-size: 16px;
+    padding: 14px 20px;
+    border-radius: 12px;
+    margin-top: 14px;
+    transition: transform 0.05s ease, background 0.1s ease;
+  }
+  .btn:active { transform: scale(0.98); }
+  .btn.primary { background: var(--accent); color: #000; }
+  .btn.primary:active { background: var(--accent-dark); }
+  .btn.success { background: var(--success); color: #fff; }
+  .btn.success:active { background: var(--success-dark); }
+  .btn.ghost {
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    font-size: 14px;
+    padding: 10px 16px;
+    font-weight: 500;
+    margin-top: 10px;
+  }
+  .btn.ghost:active { background: var(--card-2); color: var(--text); }
+  footer {
+    text-align: center;
+    font-size: 12px;
+    color: var(--muted-2);
+    margin-top: 20px;
+    line-height: 1.6;
+  }
 </style>
 </head>
 <body>
-<h1>CruxCoach</h1>
-<p>Bouldering Training App</p>
-<a href="/CruxCoach.apk" class="btn">&#11015; Download CruxCoach</a>
-<p class="note">Open the APK after download and install it. You may need to allow "Install from unknown sources".<br>
-Nach dem Download die APK-Datei öffnen und installieren. Eventuell muss "Aus unbekannten Quellen installieren" erlaubt werden.</p>
-<!-- DB_SECTION -->
+<div class="container">
+  <header>
+    <div class="logo">C</div>
+    <h1>CruxCoach</h1>
+    <p class="tag">Bouldering training app &middot; Trainings-App</p>
+  </header>
+
+  <section class="card">
+    <span class="step">Step 1 &middot; Schritt 1</span>
+    <h2>Install the app</h2>
+    <p class="en">Tap download, then open the APK to install. You may need to allow "Install from unknown sources".</p>
+    <p class="de">Auf Herunterladen tippen, dann die APK öffnen und installieren. Eventuell muss "Aus unbekannten Quellen installieren" erlaubt werden.</p>
+    <a href="/CruxCoach.apk" class="btn primary">&#11015; Download APK &middot; APK herunterladen</a>
+  </section>
+
+  <!-- DB_SECTION -->
+
+  <footer>Direct LAN transfer &middot; nothing leaves your network.<br>
+  Direkte LAN-Übertragung &middot; verlässt dein Netzwerk nicht.</footer>
+</div>
 </body>
 </html>
 """.trimIndent()

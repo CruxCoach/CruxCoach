@@ -6,8 +6,11 @@ import com.cruxcoach.android.ble.QueueItem
 import com.cruxcoach.data.repository.BoardRepository
 import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -30,6 +33,7 @@ import org.junit.Test
 class SessionQueueManagerTest {
 
     private val testDispatcher = UnconfinedTestDispatcher()
+    private lateinit var managerScope: CoroutineScope
     private lateinit var queueManager: SessionQueueManager
     private val bleConnection = mockk<AuroraBleConnection>(relaxed = true)
     private val boardRepository = mockk<BoardRepository>(relaxed = true)
@@ -40,11 +44,19 @@ class SessionQueueManagerTest {
     fun setup() {
         Dispatchers.setMain(testDispatcher)
         every { bleConnection.connectionState } returns MutableStateFlow(ConnectionState.DISCONNECTED)
-        queueManager = SessionQueueManager(bleConnection, boardRepository, climbNameResolver, userPreferences)
+        managerScope = CoroutineScope(SupervisorJob() + testDispatcher)
+        queueManager = SessionQueueManager(
+            bleConnection, boardRepository, climbNameResolver, userPreferences, managerScope
+        )
     }
 
     @After
     fun tearDown() {
+        // Cancel the manager's scope BEFORE resetMain so any in-flight `withContext`
+        // hops (notably state.collect → withContext(Dispatchers.IO) at line 106)
+        // don't resume onto a torn-down Main and leak as UncaughtExceptionsBeforeTest
+        // into the next test in the same JVM.
+        managerScope.cancel()
         Dispatchers.resetMain()
     }
 
@@ -323,5 +335,213 @@ class SessionQueueManagerTest {
         assertEquals(1, state.participantCount) // just the new host
         assertTrue(state.participants.isEmpty())
         assertEquals("NewHost", state.hostName)
+    }
+
+    // ===== Queue-content operations (remove/next/previous/clear/applyRemote) =====
+
+    @Test
+    fun `removeClimb at index before currentIndex shifts currentIndex down`() {
+        queueManager.startQueue("Host")
+        queueManager.addClimb("uuid0", 40)
+        queueManager.addClimb("uuid1", 40)
+        queueManager.addClimb("uuid2", 40)
+        queueManager.setCurrentClimb(2)
+        assertEquals(2, queueManager.state.value.currentIndex)
+
+        queueManager.removeClimb(0) // remove before the current
+
+        val state = queueManager.state.value
+        assertEquals(2, state.queue.size)
+        assertEquals(1, state.currentIndex) // shifted down to still point at uuid2
+        assertEquals("uuid2", state.queue[state.currentIndex].climbUuid)
+    }
+
+    @Test
+    fun `removeClimb at currentIndex keeps index stable when there is a successor`() {
+        queueManager.startQueue("Host")
+        queueManager.addClimb("uuid0", 40)
+        queueManager.addClimb("uuid1", 40)
+        queueManager.addClimb("uuid2", 40)
+        queueManager.setCurrentClimb(1)
+
+        queueManager.removeClimb(1) // drop the current; index should stay at 1 pointing to uuid2
+
+        val state = queueManager.state.value
+        assertEquals(2, state.queue.size)
+        assertEquals(1, state.currentIndex)
+        assertEquals("uuid2", state.queue[state.currentIndex].climbUuid)
+    }
+
+    @Test
+    fun `removeClimb at currentIndex at end coerces to last valid index`() {
+        queueManager.startQueue("Host")
+        queueManager.addClimb("uuid0", 40)
+        queueManager.addClimb("uuid1", 40)
+        queueManager.setCurrentClimb(1) // pointing at uuid1, the last one
+
+        queueManager.removeClimb(1) // last item gone
+
+        val state = queueManager.state.value
+        assertEquals(1, state.queue.size)
+        assertEquals(0, state.currentIndex) // coerced to last valid index
+    }
+
+    @Test
+    fun `removeClimb at index after currentIndex leaves currentIndex alone`() {
+        queueManager.startQueue("Host")
+        queueManager.addClimb("uuid0", 40)
+        queueManager.addClimb("uuid1", 40)
+        queueManager.addClimb("uuid2", 40)
+        queueManager.setCurrentClimb(0)
+
+        queueManager.removeClimb(2)
+
+        assertEquals(0, queueManager.state.value.currentIndex)
+        assertEquals(2, queueManager.state.value.queue.size)
+    }
+
+    @Test
+    fun `removeClimb emptying queue sets currentIndex to -1`() {
+        queueManager.startQueue("Host")
+        queueManager.addClimb("uuid0", 40)
+        assertEquals(0, queueManager.state.value.currentIndex)
+
+        queueManager.removeClimb(0)
+
+        val state = queueManager.state.value
+        assertTrue(state.queue.isEmpty())
+        assertEquals(-1, state.currentIndex)
+    }
+
+    @Test
+    fun `removeClimb out-of-bounds index is a no-op`() {
+        queueManager.startQueue("Host")
+        queueManager.addClimb("uuid0", 40)
+        val before = queueManager.state.value
+
+        queueManager.removeClimb(-1)
+        queueManager.removeClimb(5)
+
+        assertEquals(before.queue, queueManager.state.value.queue)
+        assertEquals(before.currentIndex, queueManager.state.value.currentIndex)
+    }
+
+    @Test
+    fun `nextClimb advances currentIndex when room`() {
+        queueManager.startQueue("Host")
+        queueManager.addClimb("uuid0", 40)
+        queueManager.addClimb("uuid1", 40)
+        assertEquals(0, queueManager.state.value.currentIndex)
+
+        queueManager.nextClimb()
+        assertEquals(1, queueManager.state.value.currentIndex)
+    }
+
+    @Test
+    fun `nextClimb at end is a no-op`() {
+        queueManager.startQueue("Host")
+        queueManager.addClimb("uuid0", 40)
+        queueManager.addClimb("uuid1", 40)
+        queueManager.setCurrentClimb(1)
+
+        queueManager.nextClimb()
+        assertEquals(1, queueManager.state.value.currentIndex)
+    }
+
+    @Test
+    fun `previousClimb decrements when possible`() {
+        queueManager.startQueue("Host")
+        queueManager.addClimb("uuid0", 40)
+        queueManager.addClimb("uuid1", 40)
+        queueManager.setCurrentClimb(1)
+
+        queueManager.previousClimb()
+        assertEquals(0, queueManager.state.value.currentIndex)
+    }
+
+    @Test
+    fun `previousClimb at start is a no-op`() {
+        queueManager.startQueue("Host")
+        queueManager.addClimb("uuid0", 40)
+
+        queueManager.previousClimb()
+        assertEquals(0, queueManager.state.value.currentIndex)
+    }
+
+    @Test
+    fun `setCurrentClimb out-of-bounds leaves currentIndex unchanged`() {
+        queueManager.startQueue("Host")
+        queueManager.addClimb("uuid0", 40)
+
+        queueManager.setCurrentClimb(-1)
+        assertEquals(0, queueManager.state.value.currentIndex)
+        queueManager.setCurrentClimb(99)
+        assertEquals(0, queueManager.state.value.currentIndex)
+    }
+
+    @Test
+    fun `clearQueue empties list and resets currentIndex`() {
+        queueManager.startQueue("Host")
+        queueManager.addClimb("uuid0", 40)
+        queueManager.addClimb("uuid1", 40)
+
+        queueManager.clearQueue()
+
+        val state = queueManager.state.value
+        assertTrue(state.queue.isEmpty())
+        assertEquals(-1, state.currentIndex)
+    }
+
+    @Test
+    fun `clearQueue fires onCurrentClimbChanged only when there was a current climb`() {
+        queueManager.startQueue("Host")
+        var ccFires = 0
+        queueManager.onCurrentClimbChanged = { ccFires++ }
+
+        // Empty queue → no current climb → no fire
+        queueManager.clearQueue()
+        assertEquals(0, ccFires)
+
+        queueManager.addClimb("uuid0", 40)
+        ccFires = 0 // reset after addClimb's own fire
+
+        queueManager.clearQueue()
+        assertEquals(1, ccFires)
+    }
+
+    @Test
+    fun `applyRemoteState replaces queue and currentIndex atomically`() {
+        queueManager.setParticipantRole(0, "Host")
+        queueManager.applyRemoteState(
+            currentIndex = 2,
+            items = listOf(
+                QueueItem("a", 40),
+                QueueItem("b", 40),
+                QueueItem("c", 40),
+            ),
+        )
+
+        val state = queueManager.state.value
+        assertEquals(3, state.queue.size)
+        assertEquals(2, state.currentIndex)
+        assertEquals("c", state.queue[state.currentIndex].climbUuid)
+    }
+
+    @Test
+    fun `applyRemoteCurrentIndex ignores out-of-range values`() {
+        queueManager.setParticipantRole(0, "Host")
+        queueManager.applyRemoteState(
+            currentIndex = 0,
+            items = listOf(QueueItem("a", 40), QueueItem("b", 40)),
+        )
+
+        queueManager.applyRemoteCurrentIndex(99) // invalid
+        assertEquals(0, queueManager.state.value.currentIndex)
+
+        queueManager.applyRemoteCurrentIndex(1) // valid
+        assertEquals(1, queueManager.state.value.currentIndex)
+
+        queueManager.applyRemoteCurrentIndex(-1) // invalid
+        assertEquals(1, queueManager.state.value.currentIndex)
     }
 }

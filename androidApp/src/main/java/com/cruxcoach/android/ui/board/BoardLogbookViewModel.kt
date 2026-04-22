@@ -16,9 +16,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.cruxcoach.domain.board.HoldHeatmapComputer
+import com.cruxcoach.domain.board.HoldRole
+import com.cruxcoach.data.repository.ClimbTypeFilter
 import java.time.LocalDate
 import javax.inject.Inject
 
@@ -99,7 +103,16 @@ data class BoardLogbookState(
     val timeChartView: TimeChartView = TimeChartView.SENDS_OVER_TIME,
     val distributionChartView: DistributionChartView = DistributionChartView.ANGLE,
     val customDateFrom: LocalDate? = null,
-    val customDateTo: LocalDate? = null
+    val customDateTo: LocalDate? = null,
+    // Heatmap (board visualization in stats sheet). Default = PERSONAL
+    // ("Meine Sends"); other modes pull frames from the board DB so the
+    // user can switch between own / global / role views without leaving
+    // their stats screen.
+    val placements: Map<Int, com.cruxcoach.data.repository.AuroraPlacement> = emptyMap(),
+    val boardSize: com.cruxcoach.data.repository.BoardSize? = null,
+    val boardImages: List<com.cruxcoach.data.repository.BoardImage> = emptyList(),
+    val heatmapMode: HeatmapMode = HeatmapMode.PERSONAL,
+    val heatmapData: Map<Int, Float> = emptyMap()
 )
 
 @HiltViewModel
@@ -135,7 +148,29 @@ class BoardLogbookViewModel @Inject constructor(
                 _state.update { it.copy(zones = zones) }
             }
         }
+        loadBoardData()
         loadAscents()
+    }
+
+    private fun loadBoardData() {
+        viewModelScope.launch {
+            val sizeId = userPreferences.boardProductSizeId.first()
+            val layoutId = userPreferences.boardLayoutId.first()
+            val (placements, boardSize, boardImages) = withContext(Dispatchers.IO) {
+                Triple(
+                    boardRepository.getAllPlacements().associate { it.placementId.toInt() to it },
+                    boardRepository.getProductSize(sizeId),
+                    boardRepository.getBoardImages(sizeId, layoutId)
+                )
+            }
+            _state.update {
+                it.copy(
+                    placements = placements,
+                    boardSize = boardSize,
+                    boardImages = boardImages
+                )
+            }
+        }
     }
 
     private fun loadAscents() {
@@ -267,6 +302,54 @@ class BoardLogbookViewModel @Inject constructor(
                 )
             }
             _state.update { it.copy(stats = stats) }
+            recomputeHeatmap()
+        }
+    }
+
+    fun setHeatmapMode(mode: HeatmapMode) {
+        if (_state.value.heatmapMode == mode) return
+        _state.update { it.copy(heatmapMode = mode, heatmapData = emptyMap()) }
+        recomputeHeatmap()
+    }
+
+    private fun recomputeHeatmap() {
+        viewModelScope.launch {
+            val mode = _state.value.heatmapMode
+            if (mode == HeatmapMode.OFF) {
+                _state.update { it.copy(heatmapData = emptyMap()) }
+                return@launch
+            }
+            val layoutId = userPreferences.boardLayoutId.first()
+            val data = withContext(Dispatchers.IO) {
+                val frameRows: List<String> = when (mode) {
+                    // allAscents comes from getUserLogbookAllLight() which
+                    // strips climb_frames to save memory for the list UI —
+                    // the heavy SELECT * variant is the only one that carries
+                    // the frames we need to render the personal heatmap.
+                    HeatmapMode.PERSONAL -> personalBoardRepo.getUserAscentsAll()
+                        .map { it.climbFrames }
+                        .filter { it.isNotBlank() }
+                    else -> boardRepository.getAllFramesForHeatmap(
+                        angle = 40,
+                        layoutId = layoutId,
+                        minDifficulty = 0.0,
+                        maxDifficulty = Double.MAX_VALUE,
+                        minAscensionists = 0,
+                        climbType = ClimbTypeFilter.ALL
+                    ).map { it.frames }
+                }
+                val raw = when (mode) {
+                    HeatmapMode.START -> HoldHeatmapComputer.computeHeatmapByRole(frameRows, HoldRole.START)
+                    HeatmapMode.HAND -> HoldHeatmapComputer.computeHeatmapByRole(frameRows, HoldRole.HAND)
+                    HeatmapMode.FOOT -> HoldHeatmapComputer.computeHeatmapByRole(frameRows, HoldRole.FOOT)
+                    HeatmapMode.FINISH -> HoldHeatmapComputer.computeHeatmapByRole(frameRows, HoldRole.FINISH)
+                    else -> HoldHeatmapComputer.computeGlobalHeatmap(frameRows)
+                }
+                HoldHeatmapComputer.normalizeHeatmap(raw)
+            }
+            if (_state.value.heatmapMode == mode) {
+                _state.update { it.copy(heatmapData = data) }
+            }
         }
     }
 

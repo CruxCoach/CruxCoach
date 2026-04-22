@@ -2,4 +2,9 @@
 <full-backup-content>
     <exclude domain="sharedpref" path="nostr_secure_prefs.xml"/>
     <exclude domain="sharedpref" path="sqlcipher_prefs.xml"/>
+    <!-- Kilter OAuth tokens: Keystore-wrapped, but the master key never leaves
+         the device anyway, so the backed-up ciphertext would be undecryptable
+         on a restore target. Excluding the file avoids shipping dead bytes and
+         prevents confusion when a user restores across devices. -->
+    <exclude domain="sharedpref" path="kilter_secure_prefs.xml"/>
 </full-backup-content>

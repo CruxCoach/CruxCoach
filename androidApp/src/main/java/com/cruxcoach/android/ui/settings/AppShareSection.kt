@@ -23,6 +23,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
+import com.cruxcoach.android.BuildConfig
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.common.ErrorCard
 import com.cruxcoach.android.ui.theme.OrangeAccent
@@ -46,6 +47,21 @@ internal fun AppShareSection(
     var downloadUrl by remember { mutableStateOf("") }
     var isStarting by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var showReleaseQr by remember { mutableStateOf(false) }
+
+    val releaseApkUrl = remember {
+        val tag = "v${BuildConfig.VERSION_NAME}"
+        // Derive web host from the fork-configurable updater API base
+        // ("https://codeberg.org/api/v1" → "https://codeberg.org").
+        val apiBase = BuildConfig.UPDATER_API_BASE
+        val webHost = apiBase.substringBefore("/api/", apiBase)
+        val owner = BuildConfig.UPDATER_REPO_OWNER
+        val repo = BuildConfig.UPDATER_REPO_NAME
+        "$webHost/$owner/$repo/releases/download/$tag/$repo-$tag.apk"
+    }
+    val releaseQrBitmap = remember {
+        runCatching { ApkShareHelper.generateQrBitmap(releaseApkUrl) }.getOrNull()
+    }
 
     val startSharing: () -> Unit = {
         isStarting = true
@@ -128,15 +144,31 @@ internal fun AppShareSection(
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
 
-    // Share via system share sheet
+    // 1. Online: release page download QR
     OutlinedButton(
-        onClick = { ApkShareHelper.shareViaIntent(context) },
+        onClick = { showReleaseQr = !showReleaseQr },
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
         colors = ButtonDefaults.outlinedButtonColors(contentColor = OrangeAccent)
-    ) { Text(stringResource(R.string.settings_share_via_apps)) }
+    ) {
+        Text(stringResource(
+            if (showReleaseQr) R.string.settings_share_online_hide
+            else R.string.settings_share_online
+        ))
+    }
+    Text(
+        stringResource(R.string.settings_share_online_desc),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+    if (showReleaseQr && releaseQrBitmap != null) {
+        ReleaseDownloadCard(
+            qrBitmap = releaseQrBitmap,
+            downloadUrl = releaseApkUrl
+        )
+    }
 
-    // Error
+    // 2. Offline: WiFi Direct hotspot
     errorMessage?.let { err ->
         ErrorCard(
             error = err,
@@ -150,8 +182,6 @@ internal fun AppShareSection(
             }
         )
     }
-
-    // Active: QR code + info
     if (qrBitmap != null) {
         AppShareActiveCard(
             qrBitmap = qrBitmap!!,
@@ -192,6 +222,14 @@ internal fun AppShareSection(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
+
+    // 3. Via apps (system share sheet)
+    OutlinedButton(
+        onClick = { ApkShareHelper.shareViaIntent(context) },
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = OrangeAccent)
+    ) { Text(stringResource(R.string.settings_share_via_apps)) }
 }
 
 @Composable
@@ -262,6 +300,41 @@ private fun AppShareActiveCard(
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
             ) { Text(stringResource(R.string.settings_share_stop)) }
+        }
+    }
+}
+
+@Composable
+private fun ReleaseDownloadCard(
+    qrBitmap: Bitmap,
+    downloadUrl: String
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = OrangeAccent.copy(alpha = 0.08f))
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                stringResource(R.string.settings_share_online_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Image(
+                bitmap = qrBitmap.asImageBitmap(),
+                contentDescription = stringResource(R.string.cd_release_download_qr),
+                modifier = Modifier.size(220.dp)
+            )
+            Text(
+                downloadUrl,
+                style = MaterialTheme.typography.bodySmall,
+                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }

@@ -84,9 +84,18 @@ class MainActivity : AppCompatActivity() {
     @Inject
     lateinit var userPreferences: UserPreferences
 
+    @Inject
+    lateinit var updaterRepository: dagger.Lazy<com.cruxcoach.android.updater.UpdaterRepository>
+
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
-    ) { /* granted or not — we check hasPermission() before each notification */ }
+    ) { granted ->
+        // The first update check often fires before the user taps Allow,
+        // causing UpdateNotifier to drop the PENDING_DOWNLOAD notification.
+        // Re-emit from cached state so the user sees it without waiting for
+        // the 2 h throttle to expire.
+        if (granted) updaterRepository.get().reNotifyPendingUpdateIfAny()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         PerfLogger.milestone("MainActivity.onCreate START")
@@ -97,8 +106,9 @@ class MainActivity : AppCompatActivity() {
 
         PerfLogger.trace("super.onCreate") { super.onCreate(savedInstanceState) }
         if (savedInstanceState == null) {
-            pendingDeepLink.value = intent?.getStringExtra("navigate_to")
+            pendingDeepLink.value = safeNavigateToRoute(intent)
                 ?: extractBoardDbDeepLink(intent)
+            handleUpdaterExtras(intent)
         }
         // userPreferences injected via Hilt
         PerfLogger.trace("enableEdgeToEdge") { enableEdgeToEdge() }
@@ -266,19 +276,81 @@ class MainActivity : AppCompatActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        pendingDeepLink.value = intent.getStringExtra("navigate_to")
+        pendingDeepLink.value = safeNavigateToRoute(intent)
             ?: extractBoardDbDeepLink(intent)
+        handleUpdaterExtras(intent)
+    }
+
+    private fun handleUpdaterExtras(intent: Intent?) {
+        if (intent?.getBooleanExtra("updater_show_download_dialog", false) == true) {
+            updaterRepository.get().requestDownloadDialog()
+        }
+    }
+
+    /**
+     * MainActivity is `exported="true"` (needed for LAUNCHER), so any app on
+     * the device can launch it with arbitrary `navigate_to` extras. Restrict
+     * the extra to the routes NotificationHelper actually emits —
+     * `announcements`, `dev_chat`, and `message_thread/<hex>` — so an
+     * attacker APK cannot smuggle in `board_sync?localDbUrl=…` and reach
+     * the sqlite-import sink.
+     */
+    private fun safeNavigateToRoute(intent: Intent?): String? {
+        val raw = intent?.getStringExtra("navigate_to") ?: return null
+        return when {
+            raw == "announcements" -> raw
+            raw == "dev_chat" -> raw
+            raw == "settings" -> raw
+            raw.startsWith("message_thread/") &&
+                raw.removePrefix("message_thread/")
+                    .matches(Regex("^[0-9a-fA-F]{1,128}$")) -> raw
+            else -> {
+                android.util.Log.w(
+                    "MainActivity",
+                    "Rejected navigate_to='$raw' from external intent"
+                )
+                null
+            }
+        }
     }
 
     /**
      * Extract local board DB import URL from cruxcoach://import-board-db?url=...
      * Returns a navigation route like "board_sync?localDbUrl=http://..."
+     *
+     * Hardens against phishing: only accepts http(s) URLs whose host is an
+     * IPv4 literal in an RFC1918 / loopback range (the WiFi-Direct share
+     * endpoint is always 192.168.49.1 / 192.168.43.1). Public-internet
+     * URLs are silently rejected.
      */
     private fun extractBoardDbDeepLink(intent: Intent?): String? {
         val data = intent?.data ?: return null
         if (data.scheme != "cruxcoach" || data.host != "import-board-db") return null
         val url = data.getQueryParameter("url") ?: return null
+        if (!isAllowedLocalImportUrl(url)) {
+            android.util.Log.w("MainActivity", "Rejected import-board-db deep link: host not on private IPv4 range")
+            return null
+        }
         return "board_sync?localDbUrl=${android.net.Uri.encode(url)}"
+    }
+
+    private fun isAllowedLocalImportUrl(rawUrl: String): Boolean {
+        val uri = runCatching { android.net.Uri.parse(rawUrl) }.getOrNull() ?: return false
+        val scheme = uri.scheme?.lowercase()
+        if (scheme != "http" && scheme != "https") return false
+        val host = uri.host ?: return false
+        val parts = host.split(".")
+        if (parts.size != 4) return false
+        val octets = parts.map { it.toIntOrNull() ?: return false }
+        if (octets.any { it !in 0..255 }) return false
+        val (a, b, _, _) = octets
+        return when {
+            a == 10 -> true
+            a == 127 -> true
+            a == 192 && b == 168 -> true
+            a == 172 && b in 16..31 -> true
+            else -> false
+        }
     }
 
     private suspend fun sendCrashReport(crashText: String) {

@@ -88,6 +88,7 @@ class NostrKeyStore @Inject constructor(
         )
     }
 
+    @Synchronized
     fun getOrCreateKeyPair(): KeyPair {
         val stored = prefs.getString(KEY_PRIVATE, null)
         if (stored != null) {

@@ -45,10 +45,10 @@ class BoardSyncViewModel @Inject constructor(
     fun checkNetwork() = syncManager.checkNetwork()
     fun dismissWifiDialog() = syncManager.dismissWifiDialog()
     fun dismissNetworkDialog() = syncManager.dismissNetworkDialog()
-    fun dismissUpToDateDialog() = syncManager.dismissUpToDateDialog()
     fun startApiSync() = syncManager.startApiSync()
-    fun forceSync() = syncManager.forceSync()
     fun clearError() = syncManager.clearError()
+    fun confirmLocalImport() = syncManager.confirmLocalImport()
+    fun dismissLocalImport() = syncManager.dismissLocalImport()
 
     /**
      * Check if the user needs to select a board model after first sync.

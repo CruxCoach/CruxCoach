@@ -1,0 +1,7 @@
+-- Migration from version 1 to 2: add row_version optimistic-locking token
+-- to aurora_ascent and aurora_bid for Kilter sync mark-synced TOCTOU
+-- protection. Existing rows start at 0 (default); the next user edit bumps
+-- the counter, which invalidates any concurrent sync snapshot.
+
+ALTER TABLE aurora_ascent ADD COLUMN row_version INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE aurora_bid ADD COLUMN row_version INTEGER NOT NULL DEFAULT 0;

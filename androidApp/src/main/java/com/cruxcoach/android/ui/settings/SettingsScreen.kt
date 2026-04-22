@@ -63,7 +63,19 @@ fun SettingsScreen(
     var kilterExpanded by rememberSaveable { mutableStateOf(false) }
     var devContactExpanded by rememberSaveable { mutableStateOf(false) }
     var dataExpanded by rememberSaveable { mutableStateOf(false) }
+    var updaterExpanded by rememberSaveable { mutableStateOf(false) }
     var showBoardModelDialog by rememberSaveable { mutableStateOf(false) }
+
+    // Notification-tap deep-link auto-expand: opens the updater section so
+    // the inline confirmation dialog inside [UpdaterSettingsSection] can
+    // actually compose. Without this expansion the section stays collapsed
+    // and the dialog's LaunchedEffect never runs, so the user is dropped on
+    // an empty Settings screen and has to find the section themselves.
+    val updaterVm: UpdaterSettingsViewModel = hiltViewModel()
+    val updaterDialogRequested by updaterVm.downloadDialogRequested.collectAsStateWithLifecycle()
+    LaunchedEffect(updaterDialogRequested) {
+        if (updaterDialogRequested) updaterExpanded = true
+    }
 
     Scaffold(
         topBar = {
@@ -101,20 +113,25 @@ fun SettingsScreen(
             return@Scaffold
         }
 
+        // Eager-load so "Ändern" doesn't open onto an empty list while the
+        // background load races the dialog visibility flag.
+        LaunchedEffect(Unit) { viewModel.loadProductSizes() }
+
         if (showBoardModelDialog) {
-            LaunchedEffect(Unit) { viewModel.loadProductSizes() }
-            if (state.productSizes.isNotEmpty()) {
-                BoardModelSelectionDialog(
-                    productSizes = state.productSizes,
-                    selectedId = state.boardProductSizeId,
-                    onConfirm = { id ->
-                        val name = state.productSizes.find { it.id.toInt() == id }?.name ?: ""
-                        viewModel.updateBoardProductSize(id, name)
-                        showBoardModelDialog = false
-                    },
-                    onDismiss = { showBoardModelDialog = false }
-                )
-            }
+            BoardModelSelectionDialog(
+                productSizes = state.productSizes,
+                selectedId = state.boardProductSizeId,
+                onConfirm = { id ->
+                    val name = state.productSizes.find { it.id.toInt() == id }?.name ?: ""
+                    viewModel.updateBoardProductSize(id, name)
+                    showBoardModelDialog = false
+                },
+                onDismiss = { showBoardModelDialog = false },
+                onNavigateToSync = {
+                    showBoardModelDialog = false
+                    onNavigateToSync()
+                }
+            )
         }
 
         Column(
@@ -271,6 +288,16 @@ fun SettingsScreen(
                         onCategoryChange = { cat, enabled -> viewModel.updateAnnouncementCategory(cat, enabled) },
                         onDrainQueue = { viewModel.drainQueue() }
                     )
+                }
+            }
+
+            HorizontalDivider()
+
+            // Section: App updates (FEAT-004)
+            CollapsibleHeader(stringResource(R.string.updater_settings_title), updaterExpanded) { updaterExpanded = !updaterExpanded }
+            AnimatedVisibility(visible = updaterExpanded) {
+                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    UpdaterSettingsSection()
                 }
             }
 

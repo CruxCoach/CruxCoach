@@ -620,7 +620,10 @@ class SettingsViewModel @Inject constructor(
 
     fun dismissKilterPreview() {
         _state.update { it.copy(kilterAccount = it.kilterAccount.copy(showImportPreview = false)) }
-        kilterTokenStore.clear()
+        viewModelScope.launch {
+            kilterApiClient.revokeRefreshToken()
+            kilterTokenStore.clear()
+        }
     }
 
     fun kilterSyncNow() {
@@ -654,9 +657,12 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun kilterDisconnect() {
-        kilterTokenStore.clear()
-        viewModelScope.launch { userPreferences.setKilterSyncEnabled(false) }
-        _state.update { it.copy(kilterAccount = KilterAccountState()) }
+        viewModelScope.launch {
+            kilterApiClient.revokeRefreshToken()
+            kilterTokenStore.clear()
+            userPreferences.setKilterSyncEnabled(false)
+            _state.update { it.copy(kilterAccount = KilterAccountState()) }
+        }
     }
 
     fun dismissKilterResult() {

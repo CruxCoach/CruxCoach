@@ -31,3 +31,12 @@
 # MAINTAINER_LIGHTNING_ADDRESS=you@lightning.example
 # MAINTAINER_KOFI_URL=https://ko-fi.com/yourhandle
 # ANNOUNCE_NAMESPACE=com.yourfork.announce
+
+# ─── Auto-updater (all optional — defaults point at upstream Codeberg) ─
+# The in-app updater polls this Forgejo/Gitea-compatible releases API and
+# downloads <UPDATER_REPO_NAME>-<tag>.apk + .apk.sha256 sidecar per release.
+# Disabled automatically when the app is installed from Zapstore.
+# See CONTRIBUTING.md → "Customizing for forks" for the release-asset contract.
+# UPDATER_API_BASE=https://codeberg.org/api/v1
+# UPDATER_REPO_OWNER=yourhandle
+# UPDATER_REPO_NAME=YourFork

@@ -6,6 +6,8 @@ import com.cruxcoach.android.nostr.NostrPublicEventBuilder
 import com.cruxcoach.android.nostr.NostrRelayPool
 import com.cruxcoach.android.payment.model.NostrProfileData
 import com.cruxcoach.db.secure.SecureDatabase
+import com.vitorpamplona.quartz.nip01Core.core.Event
+import com.vitorpamplona.quartz.nip01Core.crypto.verifySignature
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.withTimeout
 import org.json.JSONObject
@@ -86,9 +88,25 @@ class NostrProfileManager @Inject constructor(
 
     private fun parseAndCacheProfile(pubkey: String, eventJson: String): NostrProfileData? {
         return try {
-            val event = JSONObject(eventJson)
-            val content = JSONObject(event.getString("content"))
+            // Relay is untrusted: verify pubkey, kind, and Schnorr signature
+            // before trusting the profile content. Without this, any relay
+            // can return a forged kind:0 that overwrites the cached lud16
+            // and redirects zaps to an attacker wallet.
+            val event = Event.fromJson(eventJson)
+            if (event.kind != KIND_METADATA) {
+                Log.w(TAG, "Ignoring non-metadata event kind ${event.kind} for $pubkey")
+                return null
+            }
+            if (event.pubKey != pubkey) {
+                Log.w(TAG, "Profile event pubkey mismatch: asked $pubkey, got ${event.pubKey}")
+                return null
+            }
+            if (!event.verifySignature()) {
+                Log.w(TAG, "Profile event signature invalid for $pubkey")
+                return null
+            }
 
+            val content = JSONObject(event.content)
             val displayName = content.optString("name", null)
             val lud16 = content.optString("lud16", null)
             val picture = content.optString("picture", null)

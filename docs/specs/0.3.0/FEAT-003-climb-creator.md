@@ -1,4 +1,13 @@
+---
+status: failed
+---
 # Feature Spec: Climb Creator & Nostr Community Climbs (v0.3.0)
+
+> **Status:** Failed — superseded by the 2026 Kilter/Aurora split. Aurora
+> API is offline and the new Kilter backend (Keycloak + PowerSync +
+> Flutter) replaces the dual-publishing path this spec was built around.
+> Kept as a record of the attempted design; do not implement from this.
+> **Depends on:** Kilter API re-integration (§12) — independent of v0.2.0 specs.
 
 ## 1. Overview
 
@@ -356,7 +365,7 @@ One event per user+climb+angle (replaceable via d-tag). The `a`-tag references
 the climb event for efficient relay queries.
 
 **Privacy:** Public ascents are opt-in. Private ascents use the backup system
-(FEAT-020) and never contribute to community statistics.
+(FEAT-002) and never contribute to community statistics.
 
 ### 4.5 Multi-Angle Handling
 
@@ -886,7 +895,7 @@ explicitly published.
 ### 11.2 Ascent Publishing
 
 **Opt-in only.** Default: ascents are private (stored in encrypted secure DB,
-synced via backup system from FEAT-020). User can explicitly choose to publish
+synced via backup system from FEAT-002). User can explicitly choose to publish
 an ascent to Nostr for community statistics.
 
 ### 11.3 Kilter Account Linkage
@@ -907,6 +916,19 @@ with strict NIP-09 (deletion) compliance.
 
 ### 12.1 Authentication
 
+CruxCoach uses OIDC Resource Owner Password Credentials (`grant_type=password`)
+against the Kilter Keycloak IdP. PKCE / Authorization Code would be preferable
+per OAuth 2.1 / RFC 9700 best practice, but the `kilter` client has a fixed
+`redirect_uri` (`com.kiltergrips:/oauthredirect`) that we cannot override, and
+Dynamic Client Registration is blocked by a `Trusted Hosts` policy on Kilter's
+realm (probed 2026-04-17 via anonymous POST to
+`/clients-registrations/openid-connect` — returned HTTP 403
+`insufficient_scope — Policy 'Trusted Hosts' rejected request`). Device Code
+grant is disabled on the `kilter` client specifically (though the realm
+supports it). A PKCE migration is parked as a project task, contingent on
+Northtech either adding a second `redirect_uri` to the existing `kilter`
+client or provisioning a dedicated `cruxcoach` client.
+
 ```
 POST https://idp.kiltergrips.com/realms/kilter/protocol/openid-connect/token
 
@@ -917,7 +939,51 @@ password=<password>
 scope=openid offline_access
 ```
 
-Response: access_token (4h), refresh_token (offline, 30-day idle timeout).
+The token endpoint returns both an `access_token` and a `refresh_token`. The
+`refresh_token` is issued under the `offline_access` scope with a **30-day idle
+timeout** and is the only credential that persists across app sessions. The
+`access_token` is attached to each outgoing Kilter API request
+(`Authorization: Bearer`) and renewed transparently by
+`KilterApiClient.refreshAccessToken()` using the `refresh_token` — no user
+interaction involved. The user only re-authenticates (enters their Kilter
+password once in the CruxCoach login mask) when the refresh itself fails:
+either because the `refresh_token` expired after 30 days idle, or because
+Keycloak invalidated the session server-side.
+
+**Security invariants (already implemented in `KilterTokenStore` /
+`KilterApiClient`):**
+
+- The plaintext password enters `KilterApiClient.authenticate(email, password)`
+  as a function parameter only. It is sent once to Keycloak via `FormBody`,
+  exchanged for `access_token + refresh_token`, and then goes out of scope.
+  It is never written to any file, SharedPreferences, log, or in-memory cache.
+- `access_token` and `refresh_token` are stored in `KilterTokenStore` via
+  `EncryptedSharedPreferences` backed by the Android Keystore (MasterKey
+  `AES256_GCM`, values encrypted `AES256_GCM`, keys encrypted `AES256_SIV`).
+  The prefs file is scoped per Nostr identity (`kilter_secure_prefs_<pubkey-prefix>`),
+  so multi-account / key-rotation flows keep token stores isolated.
+- `openOrRecreatePrefs()` wraps the ESP open in a try/catch. On a thrown
+  exception (Tink keyset corruption — known Samsung S24 / Android 14 bug)
+  the corrupted prefs file is deleted and recreated. Worst case the user is
+  asked to log in to Kilter again; the app does not crash-loop.
+- Keycloak rotates the refresh token on every refresh. `KilterApiClient`
+  propagates the new refresh token to `KilterTokenStore.updateRefreshToken()`
+  inside a `refreshMutex`, so concurrent refreshes never race and a stale
+  token never overwrites a fresh one.
+- Password Grant cannot authenticate Kilter users who signed up via SSO
+  (Google / Apple) — those accounts have no Kilter-local password. The
+  account-linking UI must surface this limitation and point those users at
+  Pfad 3 (`cruxcoach` client or extra `redirect_uri` negotiated with
+  Northtech) as the only future route.
+
+**Why ESP here, but *not* for the Nostr backup dataKey (see FEAT-002 §11.2):**
+Kilter OAuth tokens are plaintext bearer credentials — ESP *is* the at-rest
+encryption boundary for them. The FEAT-002 dataKey is already NIP-44 ciphertext
+(self-protected inside the blob); wrapping it again in ESP would add only
+redundant failure modes (Tink keyset bugs) without additional confidentiality.
+Different threat model, different storage choice. Do not harmonize the two
+paths under a single "SecureStorage" abstraction — the distinction is
+load-bearing.
 
 ### 12.2 Climb Upload
 

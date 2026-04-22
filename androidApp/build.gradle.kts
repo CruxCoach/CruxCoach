@@ -24,8 +24,8 @@ android {
         applicationId = "com.cruxcoach.android"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.1.1"
+        versionCode = 3
+        versionName = "0.1.2"
 
         // Only bundle native libs for ARM — removes MIPS/x86 bloat from
         // quartz-android's transitive JNA + secp256k1 + libsodium.
@@ -47,6 +47,17 @@ android {
             "\"${localProps.getProperty("MAINTAINER_LIGHTNING_ADDRESS", "cruxcoach@npub.cash")}\"")
         buildConfigField("String", "ANNOUNCE_NAMESPACE",
             "\"${localProps.getProperty("ANNOUNCE_NAMESPACE", "com.cruxcoach.announce")}\"")
+
+        // FEAT-004 in-app updater: source of truth for release polling.
+        // Hardcoded for release builds; forks override via local.properties
+        // to point at their own Codeberg repo (changing the source repo
+        // invalidates the TOFU cert pin, so this cannot be user-configurable).
+        buildConfigField("String", "UPDATER_API_BASE",
+            "\"${localProps.getProperty("UPDATER_API_BASE", "https://codeberg.org/api/v1")}\"")
+        buildConfigField("String", "UPDATER_REPO_OWNER",
+            "\"${localProps.getProperty("UPDATER_REPO_OWNER", "CruxCoach")}\"")
+        buildConfigField("String", "UPDATER_REPO_NAME",
+            "\"${localProps.getProperty("UPDATER_REPO_NAME", "CruxCoach")}\"")
     }
 
     externalNativeBuild {
@@ -189,4 +200,6 @@ dependencies {
     testImplementation(libs.kotlin.test)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.mockk)
+    // JDBC SQLite driver for real-SQL repository races / TOCTOU regression tests
+    testImplementation(libs.sqldelight.sqlite.driver)
 }

@@ -34,10 +34,53 @@ actual class BoardDriverFactory(private val context: Context) {
                     db.pragma("PRAGMA mmap_size = 268435456")
                     db.pragma("PRAGMA cache_size = -8000")
                     db.pragma("PRAGMA temp_store = MEMORY")
+                    ensureHotPathIndexes(db)
                     vacuumIfNeeded(db)
                 }
             }
         )
+    }
+
+    /**
+     * Self-heal for hot-path indexes that are temporarily dropped during bulk
+     * board imports (see BoardDatabaseImporter.withDeferredIndexes). If the
+     * process is killed between DROP and CREATE, the indexes would stay gone
+     * forever and every browse query would fall back to a full table scan.
+     * Running `CREATE INDEX IF NOT EXISTS` on every open is idempotent and
+     * cheap (SQLite returns immediately when the index exists).
+     *
+     * The DDL lives here and in BoardDatabaseImporter — keep both in sync.
+     */
+    private fun ensureHotPathIndexes(db: SupportSQLiteDatabase) {
+        try {
+            db.execSQL("CREATE INDEX IF NOT EXISTS idx_aurora_climb_listed ON aurora_climb(is_listed)")
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS idx_aurora_climb_frames_count " +
+                    "ON aurora_climb(is_listed, frames_count, uuid)"
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS idx_aurora_climb_stat_angle " +
+                    "ON aurora_climb_stat(angle)"
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS idx_climb_stat_browse ON aurora_climb_stat(" +
+                    "angle, difficulty_average, quality_average, ascensionist_count, " +
+                    "benchmark_difficulty, climb_uuid)"
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS idx_climb_stat_by_popularity ON aurora_climb_stat(" +
+                    "angle, ascensionist_count, difficulty_average, climb_uuid)"
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS idx_climb_stat_count_cover ON aurora_climb_stat(" +
+                    "angle, ascensionist_count, difficulty_average, benchmark_difficulty, climb_uuid)"
+            )
+        } catch (e: Exception) {
+            // Tables may not exist yet on brand-new installs; schema callback
+            // will (re-)create the indexes when the schema runs. Don't block
+            // DB open on a self-heal failure.
+            Log.w("DatabaseFactory", "ensureHotPathIndexes failed", e)
+        }
     }
 
     private fun vacuumIfNeeded(db: SupportSQLiteDatabase) {

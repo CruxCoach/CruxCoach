@@ -36,6 +36,9 @@ Browse climbs, control your Kilter Board via Bluetooth, log ascents, import your
 - **Kilter logbook import** from your Kilter account
 - **Statistics** — grade progression, difficulty trends, favorite angles
 - **Data export/import** as JSON backup
+- **App-share QR code** — share CruxCoach with nearby climbers by QR
+- **Reliable notifications** — guided setup for Android battery and autostart restrictions so dev-DMs and sync updates always arrive
+- **In-app auto-updater** — verifiable APK updates with TOFU certificate pinning (auto-disabled on Zapstore installs)
 - **In-app developer contact** via encrypted Nostr DMs
 
 ---
@@ -106,6 +109,8 @@ See [LEGAL.md](LEGAL.md) for our position on interoperability and data usage.
 ## Contributing
 
 We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for bug reporting, dev setup, coding standards, and PR guidelines.
+
+For the active feature roadmap and per-release specifications, see [`docs/specs/`](docs/specs/).
 
 ## Security
 

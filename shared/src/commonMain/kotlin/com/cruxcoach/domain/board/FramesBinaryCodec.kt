@@ -22,8 +22,15 @@ object FramesBinaryCodec {
     private const val REMOVAL_MARKER: Byte = 0xFE.toByte()
     private const val BYTES_PER_ENTRY = 3
 
-    // Matches both Aurora (p{id}r{role}, x{id}) and Kilter climbConcat (h{id}p{role})
-    private val ENTRY_REGEX = Regex("([pxh])(\\d+)[rp]?(\\d*)")
+    // Three disjoint entry shapes in Aurora/Kilter frame strings:
+    //   p{id}r{role}  — Aurora hold
+    //   x{id}         — Aurora removal (no role)
+    //   h{id}p{role}  — Kilter climbConcat hold
+    // A single `[pxh](\d+)[rp]?(\d*)` collapses them, but greedy matching
+    // then swallows the following entry's prefix (e.g. `x100p300r43` parses
+    // as a single `type=x,id=100,role=300` and drops `r43`). Alternation
+    // forces each branch to consume exactly its own shape.
+    private val ENTRY_REGEX = Regex("p(\\d+)r(\\d+)|x(\\d+)|h(\\d+)p(\\d+)")
 
     fun encode(framesText: String): ByteArray {
         if (framesText.isEmpty()) return ByteArray(0)
@@ -135,10 +142,12 @@ object FramesBinaryCodec {
 
     private fun parseEntries(frame: String): List<Entry> {
         return ENTRY_REGEX.findAll(frame).map { match ->
-            val type = match.groupValues[1][0]
-            val id = match.groupValues[2].toInt()
-            val role = if (type == 'x') 0 else match.groupValues[3].toIntOrNull() ?: 0
-            Entry(type, id, role)
+            val g = match.groupValues
+            when {
+                g[1].isNotEmpty() -> Entry('p', g[1].toInt(), g[2].toInt()) // p{id}r{role}
+                g[3].isNotEmpty() -> Entry('x', g[3].toInt(), 0)            // x{id}
+                else -> Entry('h', g[4].toInt(), g[5].toInt())              // h{id}p{role}
+            }
         }.toList()
     }
 }

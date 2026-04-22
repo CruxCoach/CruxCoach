@@ -1,14 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
     <!--
-        Cleartext (HTTP) is allowed globally because the ONLY http:// connections
-        are local WiFi share transfers to private IPs (WiFi Direct / LocalOnlyHotspot).
-        All internet-bound traffic (Blossom, Nostr, APIs) uses https:// URLs and
-        is always encrypted regardless of this setting.
+        Default: no cleartext. All internet-bound traffic (Blossom, Nostr,
+        Keycloak, Codeberg, public APIs) is https and must stay https.
     -->
-    <base-config cleartextTrafficPermitted="true">
+    <base-config cleartextTrafficPermitted="false">
         <trust-anchors>
             <certificates src="system" />
         </trust-anchors>
     </base-config>
+
+    <!--
+        Cleartext is opted in only for the fixed private-IP endpoints used by
+        local WiFi share, which cannot present a CA-signed certificate:
+          - 192.168.49.1 = WiFi Direct group-owner IP (Android standard)
+          - 192.168.43.1 = LocalOnlyHotspot fallback IP
+        Android NetworkSecurityConfig doesn't accept CIDR ranges, so we list
+        the two literal IPs that our own code actually connects to. Deep-link-
+        supplied URLs to other private IPs are gated separately by the
+        RFC1918 check in the import-board-db deep link handler (see
+        MainActivity.extractBoardDbDeepLink).
+    -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">192.168.49.1</domain>
+        <domain includeSubdomains="false">192.168.43.1</domain>
+    </domain-config>
 </network-security-config>

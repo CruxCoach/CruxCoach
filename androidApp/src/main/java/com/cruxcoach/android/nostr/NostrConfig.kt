@@ -18,6 +18,24 @@ object NostrConfig {
         RelayConfig(url = "wss://relay.primal.net")
     )
 
+    /**
+     * Relays used exclusively for the Blossom board-DB manifest (Kind 30078).
+     *
+     * The manifest event is ~66 KB, which trips the 64 KB default limit most
+     * public relays enforce. This list is a curated subset of relays confirmed
+     * to accept that size, so losing any single one doesn't strand the app.
+     * Verified 2026-04-21 by publishing the live manifest and reading back the
+     * OK/NOTICE response:
+     *   - relay.primal.net           — publisher's home relay
+     *   - relay.damus.io             — large iOS client base, high uptime
+     *   - nostr-pub.wellorder.net    — independent operator, generous limits
+     */
+    val MANIFEST_RELAYS = listOf(
+        "wss://relay.primal.net",
+        "wss://relay.damus.io",
+        "wss://nostr-pub.wellorder.net"
+    )
+
     const val RELAY_TIMEOUT_MS = 10_000L
     const val RECONNECT_DELAY_MS = 10_000L
     const val RECONNECT_MAX_DELAY_MS = 60_000L

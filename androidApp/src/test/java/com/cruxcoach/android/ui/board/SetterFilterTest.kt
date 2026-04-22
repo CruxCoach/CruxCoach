@@ -85,7 +85,7 @@ class SetterFilterTest {
             climb("3", name = "Gamma", setter = "MikeSmith")
         )
 
-        val results = repo.searchClimbsByName("JohnDoe", angle = 40)
+        val results = repo.searchClimbsByName("JohnDoe", angle = 40, layoutId = 1)
         assertEquals(1, results.size)
         assertEquals("1", results.first().uuid)
     }
@@ -98,7 +98,7 @@ class SetterFilterTest {
             climb("2", name = "Beta", setter = "JaneDoe")
         )
 
-        val results = repo.searchClimbsByName("johndoe", angle = 40)
+        val results = repo.searchClimbsByName("johndoe", angle = 40, layoutId = 1)
         assertEquals(1, results.size)
         assertEquals("1", results.first().uuid)
     }
@@ -112,7 +112,7 @@ class SetterFilterTest {
             climb("3", name = "Gamma", setter = "MikeSmith")
         )
 
-        val results = repo.searchClimbsByName("JohnDoe", angle = 40)
+        val results = repo.searchClimbsByName("JohnDoe", angle = 40, layoutId = 1)
         assertEquals(2, results.size)
         assertEquals(setOf("1", "2"), results.map { it.uuid }.toSet())
     }
@@ -125,7 +125,7 @@ class SetterFilterTest {
             climb("2", name = "Beta", setter = "JaneDoe")
         )
 
-        val results = repo.searchClimbsByName("NonExistent", angle = 40)
+        val results = repo.searchClimbsByName("NonExistent", angle = 40, layoutId = 1)
         assertTrue(results.isEmpty())
     }
 
@@ -137,7 +137,7 @@ class SetterFilterTest {
             climb("2", name = "Beta", setter = "JohnDoe")
         )
 
-        val results = repo.searchClimbsByName("JohnDoe", angle = 40)
+        val results = repo.searchClimbsByName("JohnDoe", angle = 40, layoutId = 1)
         assertEquals(1, results.size)
         assertEquals("2", results.first().uuid)
     }
@@ -151,7 +151,7 @@ class SetterFilterTest {
             climb("3", name = "Gamma", setter = "MikeSmith")
         )
 
-        val count = repo.countSearchClimbs("JohnDoe", angle = 40)
+        val count = repo.countSearchClimbs("JohnDoe", angle = 40, layoutId = 1)
         assertEquals(2L, count)
     }
 
@@ -164,7 +164,7 @@ class SetterFilterTest {
             climb("2", name = "Beta", setter = "MikeSmith")
         )
 
-        val count = repo.countSearchClimbs("JohnDoe", angle = 40)
+        val count = repo.countSearchClimbs("JohnDoe", angle = 40, layoutId = 1)
         assertEquals(1L, count)
     }
 
@@ -183,8 +183,8 @@ class SetterFilterTest {
             climb("5", name = "Problem 5", setter = setterB)
         )
 
-        val aliceClimbs = repo.searchClimbsByName(setterA, angle = 40)
-        val bobClimbs = repo.searchClimbsByName(setterB, angle = 40)
+        val aliceClimbs = repo.searchClimbsByName(setterA, angle = 40, layoutId = 1)
+        val bobClimbs = repo.searchClimbsByName(setterB, angle = 40, layoutId = 1)
 
         assertEquals(2, aliceClimbs.size)
         assertTrue(aliceClimbs.all { it.setterUsername == setterA })
@@ -213,7 +213,7 @@ class SetterFilterTest {
         navState.pendingSetterFilter = null
 
         // Step 3: Search with the consumed query
-        val results = repo.searchClimbsByName(searchQuery, angle = 40)
+        val results = repo.searchClimbsByName(searchQuery, angle = 40, layoutId = 1)
 
         assertEquals(2, results.size)
         assertTrue(results.all { it.setterUsername == "ProSetter" })

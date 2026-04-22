@@ -10,12 +10,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.BluetoothConnected
 import androidx.compose.material.icons.filled.Book
-import androidx.compose.material.icons.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.CellTower
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.GridView
@@ -36,7 +36,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.platform.testTag
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -68,14 +68,15 @@ fun BoardBrowserScreen(
     onNavigateToLogbook: () -> Unit = {},
     onNavigateToLists: () -> Unit = {},
     onNavigateToSettings: () -> Unit = {},
+    onNavigateToFilter: () -> Unit = {},
     viewModel: BoardBrowserViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val isSessionActive by viewModel.isSessionActive.collectAsStateWithLifecycle()
     val randomClimbEvent by viewModel.randomClimbEvent.collectAsStateWithLifecycle()
-    var showFilters by remember { mutableStateOf(false) }
     var showBleSheet by remember { mutableStateOf(false) }
     var showEndSessionDialog by remember { mutableStateOf(false) }
+    var searchVisible by remember { mutableStateOf(false) }
     val queueManager = LocalSessionQueueManager.current
     val queueState by queueManager.state.collectAsStateWithLifecycle()
     var lastEndedSession by remember { mutableStateOf<com.cruxcoach.data.repository.BoardSession?>(null) }
@@ -214,19 +215,16 @@ fun BoardBrowserScreen(
         )
     }
 
-    // Hold search sheet
+    // Hold search sheet — pure hold-filter UI now (heatmaps moved to logbook stats)
     if (state.holdSearch.showSheet) {
         HoldSearchSheet(
             selectedHolds = state.holdSearch.selectedHolds,
-            heatmapMode = state.holdSearch.heatmapMode,
-            heatmapData = state.holdSearch.heatmapData,
             matchCount = state.holdSearch.matchCount,
             isSearching = state.holdSearch.isSearching,
             placements = state.placements,
             boardSize = state.boardSize,
             boardImages = state.boardImages,
             onHoldTapped = { viewModel.toggleHoldSelection(it) },
-            onHeatmapModeSelect = { viewModel.setHeatmapMode(it) },
             onClearSelection = { viewModel.clearHoldSelection() },
             onSearchByHolds = { viewModel.applyHoldFilter() },
             onDismiss = { viewModel.toggleHoldSearchSheet() }
@@ -284,6 +282,7 @@ fun BoardBrowserScreen(
         )
     }
 
+    Box(modifier = Modifier.fillMaxSize()) {
     Column(modifier = Modifier.fillMaxSize()) {
         TopAppBar(
             title = { Text(stringResource(R.string.board_browser_title)) },
@@ -301,7 +300,7 @@ fun BoardBrowserScreen(
                     )
                 }
                 IconButton(
-                    onClick = { showFilters = !showFilters },
+                    onClick = onNavigateToFilter,
                     modifier = Modifier.testTag("board_filter_toggle")
                 ) {
                     Icon(Icons.Default.Tune, contentDescription = stringResource(R.string.cd_filter))
@@ -316,7 +315,7 @@ fun BoardBrowserScreen(
                     onClick = onNavigateToLists,
                     modifier = Modifier.testTag("board_lists_button")
                 ) {
-                    Icon(Icons.Default.FormatListBulleted, contentDescription = stringResource(R.string.board_lists_title))
+                    Icon(Icons.AutoMirrored.Filled.FormatListBulleted, contentDescription = stringResource(R.string.board_lists_title))
                 }
                 IconButton(
                     onClick = onNavigateToSettings,
@@ -393,7 +392,7 @@ fun BoardBrowserScreen(
             if (state.holdSearch.holdFilterActive) {
                 HoldSearchActionBar(
                     holdFilterActive = true,
-                    heatmapActive = state.holdSearch.heatmapMode != HeatmapMode.OFF,
+                    heatmapActive = false,
                     selectedCount = state.holdSearch.selectedHolds.size,
                     matchCount = state.holdSearch.holdFilterUuids.size,
                     onOpenSheet = { viewModel.toggleHoldSearchSheet() },
@@ -402,70 +401,51 @@ fun BoardBrowserScreen(
             }
 
 
-            // Search bar + Holds button (compact)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                OutlinedTextField(
-                    value = state.filter.searchQuery,
-                    onValueChange = { viewModel.updateSearchQuery(it) },
-                    placeholder = { Text(stringResource(R.string.board_browser_search_hint), style = MaterialTheme.typography.bodySmall) },
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                    trailingIcon = {
-                        if (state.filter.searchQuery.isNotEmpty()) {
-                            IconButton(onClick = { viewModel.updateSearchQuery("") }) {
-                                Icon(Icons.Default.Clear, contentDescription = stringResource(R.string.cd_clear_search), modifier = Modifier.size(18.dp))
-                            }
-                        }
-                    },
-                    textStyle = MaterialTheme.typography.bodySmall,
+            // Search bar + Holds button — hidden until user taps the FAB overlay
+            if (searchVisible) {
+                Row(
                     modifier = Modifier
-                        .weight(1f)
-                        .heightIn(min = 40.dp)
-                        .testTag("board_search_field"),
-                    singleLine = true,
-                    shape = RoundedCornerShape(10.dp)
-                )
-                val holdsTint = if (state.holdSearch.holdFilterActive ||
-                    state.holdSearch.heatmapMode != HeatmapMode.OFF) OrangeAccent
-                    else MaterialTheme.colorScheme.onSurfaceVariant
-                IconButton(
-                    onClick = { viewModel.toggleHoldSearchSheet() },
-                    modifier = Modifier
-                        .size(40.dp)
-                        .testTag("board_hold_search")
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Icon(
-                        Icons.Default.GridView,
-                        contentDescription = stringResource(R.string.cd_hold_search),
-                        tint = holdsTint,
-                        modifier = Modifier.size(22.dp)
+                    OutlinedTextField(
+                        value = state.filter.searchQuery,
+                        onValueChange = { viewModel.updateSearchQuery(it) },
+                        placeholder = { Text(stringResource(R.string.board_browser_search_hint), style = MaterialTheme.typography.bodySmall) },
+                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                        trailingIcon = {
+                            if (state.filter.searchQuery.isNotEmpty()) {
+                                IconButton(onClick = { viewModel.updateSearchQuery("") }) {
+                                    Icon(Icons.Default.Clear, contentDescription = stringResource(R.string.cd_clear_search), modifier = Modifier.size(18.dp))
+                                }
+                            }
+                        },
+                        textStyle = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 40.dp)
+                            .testTag("board_search_field"),
+                        singleLine = true,
+                        shape = RoundedCornerShape(10.dp)
                     )
+                    val holdsTint = if (state.holdSearch.holdFilterActive) OrangeAccent
+                        else MaterialTheme.colorScheme.onSurfaceVariant
+                    IconButton(
+                        onClick = { viewModel.toggleHoldSearchSheet() },
+                        modifier = Modifier
+                            .size(40.dp)
+                            .testTag("board_hold_search")
+                    ) {
+                        Icon(
+                            Icons.Default.GridView,
+                            contentDescription = stringResource(R.string.cd_hold_search),
+                            tint = holdsTint,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
                 }
-            }
-
-            // Filters (collapsible)
-            if (showFilters) {
-                FilterSection(state, viewModel)
-            }
-
-            // Result count (hidden until count query completes)
-            if (state.filteredCount >= 0) {
-                val countText = if (state.filteredCount > state.climbs.size) {
-                    stringResource(R.string.board_browser_climbs_loaded, state.filteredCount, state.climbs.size)
-                } else {
-                    stringResource(R.string.board_browser_climbs_count, state.filteredCount)
-                }
-                Text(
-                    countText,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
             }
 
             // Results
@@ -548,205 +528,25 @@ fun BoardBrowserScreen(
             }
         }
     }
-}
-
-@Composable
-private fun FilterSection(state: BoardBrowserState, viewModel: BoardBrowserViewModel) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp)
-            .heightIn(max = 400.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-        ),
-        shape = RoundedCornerShape(12.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .verticalScroll(rememberScrollState())
-                .padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            // Angle selector
-            Text(stringResource(R.string.board_filter_angle, state.filter.angle), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-            Slider(
-                value = state.filter.angle.toFloat(),
-                onValueChange = { viewModel.setAngle(it.toInt()) },
-                onValueChangeFinished = { viewModel.commitFilterChange() },
-                valueRange = 0f..70f,
-                steps = 13,
-                modifier = Modifier.testTag("board_angle_slider"),
-                colors = SliderDefaults.colors(thumbColor = OrangeAccent, activeTrackColor = OrangeAccent)
-            )
-
-            // Grade range — scale-aware stops (V-Scale: 18 grades, Font: 23 grades)
-            val frenchMode = state.gradeScale == GradeScale.FRENCH
-            val vScaleIndices = remember { GradeConverter.V_SCALE_INDICES }
-            val gradeStops = if (frenchMode) GradeConverter.MAX_INDEX + 1 else vScaleIndices.size
-            val gradeSliderMax = (gradeStops - 1).toFloat()
-
-            fun toSliderPos(unifiedIndex: Int): Float {
-                if (frenchMode) return unifiedIndex.toFloat()
-                val pos = vScaleIndices.indexOfFirst { it >= unifiedIndex }
-                return (if (pos < 0) vScaleIndices.size - 1 else pos).toFloat()
-            }
-            fun toUnifiedIndex(sliderPos: Float): Int {
-                if (frenchMode) return sliderPos.toInt()
-                return vScaleIndices.getOrElse(sliderPos.toInt()) { vScaleIndices.last() }
-            }
-
-            val minLabel = GradeDisplayHelper.formatByIndex(state.filter.minGradeIndex, state.gradeScale)
-            val maxLabel = GradeDisplayHelper.formatByIndex(state.filter.maxGradeIndex, state.gradeScale)
-            Text(
-                stringResource(R.string.board_filter_grade_range, minLabel, maxLabel),
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Bold
-            )
-            RangeSlider(
-                value = toSliderPos(state.filter.minGradeIndex)..toSliderPos(state.filter.maxGradeIndex),
-                onValueChange = {
-                    viewModel.setGradeRange(
-                        toUnifiedIndex(it.start),
-                        toUnifiedIndex(it.endInclusive)
-                    )
-                },
-                onValueChangeFinished = { viewModel.commitFilterChange() },
-                valueRange = 0f..gradeSliderMax,
-                steps = (gradeStops - 2).coerceAtLeast(0),
-                modifier = Modifier.testTag("board_grade_slider"),
-                colors = SliderDefaults.colors(thumbColor = OrangeAccent, activeTrackColor = OrangeAccent)
-            )
-
-            // Min ascensionists
-            Text(
-                stringResource(R.string.board_filter_min_ascents, state.filter.minAscensionists),
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Bold
-            )
-            Slider(
-                value = state.filter.minAscensionists.toFloat(),
-                onValueChange = { viewModel.setMinAscensionists(it.toInt()) },
-                onValueChangeFinished = { viewModel.commitFilterChange() },
-                valueRange = 0f..50f,
-                steps = 49,
-                colors = SliderDefaults.colors(thumbColor = OrangeAccent, activeTrackColor = OrangeAccent)
-            )
-
-            // Climb type filter
-            Text(stringResource(R.string.board_filter_type), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.horizontalScroll(rememberScrollState())
-            ) {
-                val typeOptions = listOf(
-                    ClimbTypeFilter.BOULDER to stringResource(R.string.board_filter_type_boulder),
-                    ClimbTypeFilter.ROUTE to stringResource(R.string.board_filter_type_routes),
-                    ClimbTypeFilter.ALL to stringResource(R.string.board_filter_all)
-                )
-                typeOptions.forEach { (filter, label) ->
-                    FilterChip(
-                        selected = state.filter.climbTypeFilter == filter,
-                        onClick = { viewModel.updateClimbTypeFilter(filter) },
-                        label = { Text(label, style = MaterialTheme.typography.labelSmall) },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
-                            selectedLabelColor = OrangeAccent
-                        ),
-                        modifier = Modifier.height(32.dp)
-                    )
-                }
-            }
-
-            // Status filter
-            Text(stringResource(R.string.board_filter_status), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.horizontalScroll(rememberScrollState())
-            ) {
-                val statusOptions = listOf(
-                    ClimbStatusFilter.NEW to stringResource(R.string.board_filter_status_new),
-                    ClimbStatusFilter.UNSENT to stringResource(R.string.board_filter_status_unsent),
-                    ClimbStatusFilter.SENT to stringResource(R.string.board_filter_status_sent),
-                    ClimbStatusFilter.ATTEMPTED to stringResource(R.string.board_filter_status_attempted),
-                    ClimbStatusFilter.ALL to stringResource(R.string.board_filter_all)
-                )
-                statusOptions.forEach { (filter, label) ->
-                    FilterChip(
-                        selected = state.filter.statusFilter == filter,
-                        onClick = { viewModel.updateStatusFilter(filter) },
-                        label = { Text(label, style = MaterialTheme.typography.labelSmall) },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
-                            selectedLabelColor = OrangeAccent
-                        ),
-                        modifier = Modifier.height(32.dp)
-                    )
-                }
-            }
-
-            // Benchmark filter
-            FilterChip(
-                selected = state.filter.benchmarkOnly,
-                onClick = { viewModel.updateBenchmarkFilter(!state.filter.benchmarkOnly) },
-                label = { Text(stringResource(R.string.board_filter_benchmarks_only), style = MaterialTheme.typography.labelSmall) },
-                leadingIcon = if (state.filter.benchmarkOnly) {
-                    { Icon(Icons.Default.Verified, contentDescription = null, modifier = Modifier.size(16.dp)) }
-                } else null,
-                colors = FilterChipDefaults.filterChipColors(
-                    selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
-                    selectedLabelColor = OrangeAccent
-                ),
-                modifier = Modifier.height(32.dp)
-            )
-
-            // Sort options
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(stringResource(R.string.board_filter_sort), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                IconButton(
-                    onClick = { viewModel.toggleSortDirection() },
-                    modifier = Modifier.size(32.dp).testTag("board_sort_direction")
-                ) {
-                    Icon(
-                        if (state.filter.sortDirection == SortDirection.DESC) Icons.Default.ArrowDownward
-                        else Icons.Default.ArrowUpward,
-                        contentDescription = stringResource(if (state.filter.sortDirection == SortDirection.DESC) R.string.board_filter_sort_desc else R.string.board_filter_sort_asc),
-                        tint = OrangeAccent,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-            }
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically,
+        // Floating search toggle (magnifying glass overlay, bottom-right)
+        if (state.hasBoardData) {
+            FloatingActionButton(
+                onClick = { searchVisible = !searchVisible },
+                containerColor = OrangeAccent,
+                contentColor = DarkBackground,
                 modifier = Modifier
-                    .horizontalScroll(rememberScrollState())
-                    .testTag("board_sort_row")
+                    .align(Alignment.BottomEnd)
+                    .padding(16.dp)
+                    .testTag("board_search_fab")
             ) {
-                val sortOptions = listOf(
-                    ClimbSortField.ASCENSIONISTS to stringResource(R.string.board_sends),
-                    ClimbSortField.REPEATS to stringResource(R.string.board_sort_repeats),
-                    ClimbSortField.QUALITY to stringResource(R.string.board_quality),
-                    ClimbSortField.HOLDS to stringResource(R.string.board_moves)
-                )
-                sortOptions.forEach { (field, label) ->
-                    FilterChip(
-                        selected = state.filter.sortField == field,
-                        onClick = { viewModel.updateSortField(field) },
-                        label = { Text(label, style = MaterialTheme.typography.labelSmall) },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
-                            selectedLabelColor = OrangeAccent
-                        ),
-                        modifier = Modifier.height(32.dp)
+                Icon(
+                    if (searchVisible) Icons.Default.Clear else Icons.Default.Search,
+                    contentDescription = stringResource(
+                        if (searchVisible) R.string.cd_clear_search else R.string.board_browser_search_hint
                     )
-                }
+                )
             }
         }
     }
 }
+

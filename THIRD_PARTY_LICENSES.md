@@ -52,6 +52,24 @@ These images are **not** covered by the CruxCoach GPLv3 source license.
 
 ---
 
+## Bundled Datasets
+
+### dontkillmyapp.com — OEM background-killer taxonomy
+
+- **Used in:** [`NotificationReliabilityHelper.kt`](androidApp/src/main/java/com/cruxcoach/android/notification/NotificationReliabilityHelper.kt)
+- **Source:** https://dontkillmyapp.com/
+- **Maintainer:** Urbandroid Team
+- **License:** CC BY-SA 4.0 (https://creativecommons.org/licenses/by-sa/4.0/)
+- **Scope of use:** Manufacturer/brand → severity classification
+  (`NONE` / `MODERATE` / `SEVERE`) and the corresponding OEM autostart-settings
+  Activity component names. Underlying package names and intent components are
+  functional Android API references; the editorial severity classification is
+  reproduced under CC BY-SA 4.0.
+- **Modifications:** Adapted into Kotlin enums + Android `ComponentName` lookups;
+  not redistributed verbatim.
+
+---
+
 ## Notes for Maintainers
 
 When vendoring a new third-party source tree:

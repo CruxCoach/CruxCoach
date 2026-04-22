@@ -53,13 +53,17 @@ class SessionQueueManager(
     private val bleConnection: AuroraBleConnection,
     private val boardRepository: BoardRepository,
     private val climbNameResolver: ClimbNameResolver,
-    private val userPreferences: UserPreferences
+    private val userPreferences: UserPreferences,
+    // Injectable for tests — production keeps the original Main-dispatched scope.
+    // Tests MUST pass a scope they can cancel in @After, otherwise the internal
+    // launchers (including a `withContext(Dispatchers.IO)` inside `state.collect`)
+    // outlive `Dispatchers.resetMain()` and surface as UncaughtExceptionsBeforeTest
+    // in whichever test runs next in the same JVM.
+    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 ) {
     companion object {
         private const val TAG = "SessionQueueManager"
     }
-
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     private val _state = MutableStateFlow(SessionQueueState())
     val state: StateFlow<SessionQueueState> = _state.asStateFlow()

@@ -22,6 +22,11 @@ Open an issue with the `feature` label. Describe:
 - **Why** it would be useful for your climbing workflow
 - **How** you envision the UI/interaction
 
+Non-trivial features are tracked as `FEAT-NNN` specifications under
+[`docs/specs/`](docs/specs/). For larger proposals, open the issue
+first; the maintainer will either draft the spec or invite you to
+contribute one.
+
 > **Tip:** Feature requests can also be sent directly from the app via **Settings > Contact Developer**.
 
 ---
@@ -154,6 +159,30 @@ following keys to `local.properties` — no source edits required:
 | `MAINTAINER_LIGHTNING_ADDRESS` | Lightning address shown for upstream-style donation flows | `cruxcoach@npub.cash` |
 | `MAINTAINER_KOFI_URL` | Ko-fi donation link surfaced in the Payments UI | `https://ko-fi.com/cruxcoach` |
 | `ANNOUNCE_NAMESPACE` | Nostr `L`/`l` tag namespace for announcement events | `com.cruxcoach.announce` — change this when you fork to avoid notification cross-talk with upstream users |
+| `UPDATER_API_BASE` | Forgejo/Gitea API root that the in-app auto-updater polls for new releases | `https://codeberg.org/api/v1` |
+| `UPDATER_REPO_OWNER` | Repository owner used by the auto-updater and the "Online" app-share QR code | `CruxCoach` |
+| `UPDATER_REPO_NAME` | Repository name used by the auto-updater and the app-share QR code; also drives the expected APK filename `<repo>-<tag>.apk` | `CruxCoach` |
+
+The auto-updater is disabled automatically on Zapstore installs (Zapstore
+handles updates itself). Forks whose APKs are distributed through other
+channels need to expose releases as a Forgejo/Gitea-compatible `releases`
+API endpoint and upload two assets per release:
+
+- `<repo>-<tag>.apk` — the signed release APK (must match `UPDATER_REPO_NAME`)
+- `<repo>-<tag>.apk.sha256` — a single-line `<hex>  <filename>` hash sidecar
+
+The first install pins the signing certificate (trust-on-first-use); the
+updater refuses any future release whose signing cert doesn't match.
+
+The auto-updater also requires two runtime permissions declared in the
+manifest:
+
+- `android.permission.REQUEST_INSTALL_PACKAGES` — hands the downloaded APK to
+  the system `PackageInstaller`; the user must additionally grant
+  "Install unknown apps" in system settings on first use
+- `android.permission.DOWNLOAD_WITHOUT_NOTIFICATION` — lets the background
+  WorkManager pull the APK without surfacing a system DownloadManager
+  notification (the in-app updater posts its own progress notification)
 
 The `zapstore.yaml` signing pubkey is maintainer-specific too. Forks
 publishing to Zapstore should replace it with their own zsp-managed

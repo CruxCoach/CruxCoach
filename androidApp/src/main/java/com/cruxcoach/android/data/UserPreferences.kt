@@ -67,11 +67,13 @@ data class LedHoldColors(
     val foot: Int = CRUXCOACH_FOOT
 ) {
     companion object {
-        // CruxCoach "Royal" preset (default)
+        // CruxCoach "Royal" preset (default). Byte values must exist in
+        // RGB332_PALETTE so the settings row shows a named color instead
+        // of "Benutzerdefiniert" / "Custom".
         const val CRUXCOACH_START: Int = 0xEC   // CruxCoach Orange (FF6D00)
         const val CRUXCOACH_HAND: Int = 0x03     // Blue (0000FF)
         const val CRUXCOACH_FINISH: Int = 0xE3   // Magenta (FF00FF)
-        const val CRUXCOACH_FOOT: Int = 0x1D     // Teal (00FF40)
+        const val CRUXCOACH_FOOT: Int = 0x1E     // Mint Green (00FFAA)
 
         // Official Kilter Board preset (from placement_roles.led_color DB)
         const val KILTER_START: Int = 0x1C   // Green (00FF00)
@@ -516,6 +518,26 @@ class UserPreferences(
 
     suspend fun setNostrSyncCursor(cursor: Long) {
         keyScoped.edit { it[KeyScopedKeys.NOSTR_SYNC_CURSOR] = cursor }
+    }
+
+    /**
+     * Monotonically advance the cursor: write [candidate] only if it is
+     * strictly greater than the on-disk value. The compare-and-write
+     * happens inside the same `edit` block, which DataStore serializes
+     * per instance, so concurrent advancers from the foreground
+     * subscription and the background poll worker cannot regress the
+     * cursor by writing a stale snapshot.
+     *
+     * Use this instead of the get+compare+set pattern for anything that
+     * should only ever move forward. Full overwrites (e.g. explicit
+     * reset to 0 on identity switch) should still go through
+     * [setNostrSyncCursor].
+     */
+    suspend fun advanceNostrSyncCursor(candidate: Long) {
+        keyScoped.edit { prefs ->
+            val current = prefs[KeyScopedKeys.NOSTR_SYNC_CURSOR] ?: 0L
+            if (candidate > current) prefs[KeyScopedKeys.NOSTR_SYNC_CURSOR] = candidate
+        }
     }
 
     /**

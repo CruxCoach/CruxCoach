@@ -12,13 +12,13 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.BluetoothConnected
 import androidx.compose.material.icons.filled.CellTower
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.PlaylistAdd
-import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Timer
@@ -219,7 +219,7 @@ fun BoardClimbDetailScreen(
                             modifier = Modifier.testTag("boarddetail_add_to_list_button")
                         ) {
                             Icon(
-                                Icons.Default.PlaylistAdd,
+                                Icons.AutoMirrored.Filled.PlaylistAdd,
                                 contentDescription = stringResource(R.string.cd_add_to_list),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )

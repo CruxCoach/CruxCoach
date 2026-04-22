@@ -4,8 +4,6 @@ import android.content.Context
 import android.util.Log
 import com.cruxcoach.android.data.BoardDatabaseImporter.ImportStep
 import com.cruxcoach.android.data.blossom.BlossomSyncManager
-import com.cruxcoach.android.util.LocalApkServer
-import com.cruxcoach.android.util.WifiDirectHotspot
 import com.cruxcoach.android.util.isNetworkAvailable
 import com.cruxcoach.android.util.isWifiConnected
 import com.cruxcoach.util.DateTimeUtil
@@ -21,6 +19,8 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import java.io.File
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.time.Clock
@@ -43,8 +43,14 @@ class BoardSyncManager(
 ) {
     private companion object {
         const val TAG = "BoardSyncManager"
-        /** Max concurrent chunk downloads. */
-        const val PARALLEL_DOWNLOADS = 4
+        /** Max concurrent chunk downloads. 8 matches a modern browser's
+         *  per-origin connection limit and is well within primal.net's
+         *  comfort zone. OkHttp's synchronous `.execute()` bypasses the
+         *  Dispatcher's per-host cap, so this number is the only gate. */
+        const val PARALLEL_DOWNLOADS = 8
+        /** Denormalized-field refresh batch size — keeps per-transaction
+         *  write-lock hold time short so user writes can interleave. */
+        const val REFRESH_BATCH_SIZE = 100
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -135,6 +141,35 @@ class BoardSyncManager(
         }
     }
 
+    /**
+     * Atomically claim the sync slot. Returns true if this caller flipped
+     * isSyncing from false to true (i.e. wins the race and must proceed);
+     * returns false if another sync is already running.
+     *
+     * Fixes the check-then-set race where two concurrent sync triggers
+     * (user tap + auto-sync, Blossom + local share, etc.) could both
+     * observe isSyncing=false and start duplicate imports.
+     */
+    private fun claimSyncSlot(initialStep: ImportStep): Boolean {
+        var claimed = false
+        _state.update { current ->
+            if (current.isSyncing) {
+                claimed = false
+                current
+            } else {
+                claimed = true
+                current.copy(
+                    isSyncing = true,
+                    syncComplete = false,
+                    errorMessage = null,
+                    importStep = initialStep,
+                    syncGeneration = current.syncGeneration + 1
+                )
+            }
+        }
+        return claimed
+    }
+
     private fun isStale(lastSync: String?, interval: SyncInterval): Boolean {
         if (lastSync == null) return true
         return try {
@@ -149,33 +184,32 @@ class BoardSyncManager(
     }
 
     /**
-     * Tries to find a local WiFi Direct share server and import the board DB.
-     * WiFi Direct group owner is always at 192.168.49.1 with fixed port 4949.
-     * Returns true if a local server was found and import started.
+     * Stage a local-share import URL for user confirmation.
+     *
+     * The deep-link handler (cruxcoach://import-board-db) calls this after
+     * MainActivity.isAllowedLocalImportUrl has validated the URL is on an
+     * RFC1918 / loopback range. The actual download only starts once the
+     * user taps confirm on the dialog shown by BoardSyncScreen.
+     *
+     * The tap on the hotspot's landing page happens in a browser whose
+     * contents are controlled by whoever runs the AP — so that tap is not
+     * a trustworthy consent signal. The in-app dialog is the real consent
+     * moment: it runs in CruxCoach's own UI and shows the source host so
+     * the user can refuse an unexpected import.
      */
-    fun tryLocalShareImport(): Boolean {
-        if (_state.value.isSyncing || importer.isImported()) return false
+    fun stageLocalImport(url: String) {
+        if (_state.value.isSyncing) return
+        _state.update { it.copy(pendingLocalImportUrl = url) }
+    }
 
-        val url = "http://${WifiDirectHotspot.GROUP_OWNER_IP}:${LocalApkServer.LOCAL_SHARE_PORT}/board.db"
-        // Quick HEAD check — must not block UI, so we fire and update state
-        scope.launch {
-            try {
-                val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
-                conn.requestMethod = "HEAD"
-                conn.connectTimeout = 1500
-                conn.readTimeout = 1500
-                val code = conn.responseCode
-                conn.disconnect()
-                if (code == 200) {
-                    Log.i(TAG, "Local share server found at $url, starting import")
-                    importFromLocalUrl(url)
-                }
-            } catch (e: Exception) {
-                // No local server available — this is the normal case
-                Log.d(TAG, "No local share server found: ${e.message}")
-            }
-        }
-        return true // Probe started (async), result comes via state
+    fun confirmLocalImport() {
+        val url = _state.value.pendingLocalImportUrl ?: return
+        _state.update { it.copy(pendingLocalImportUrl = null) }
+        performLocalImport(url)
+    }
+
+    fun dismissLocalImport() {
+        _state.update { it.copy(pendingLocalImportUrl = null) }
     }
 
     fun startApiSync() {
@@ -196,43 +230,36 @@ class BoardSyncManager(
         startBlossomSync()
     }
 
-    /** User acknowledged "up to date" — just dismiss and mark sync complete. */
-    fun forceSync() {
-        _state.update { it.copy(
-            showUpToDateDialog = false,
-            syncComplete = true,
-            alreadyImported = true
-        ) }
-    }
-
-    fun dismissUpToDateDialog() {
-        _state.update { it.copy(showUpToDateDialog = false) }
-    }
-
     /**
      * Starts a Blossom-based sync: fetches manifest, downloads changed chunks,
      * decompresses, and imports into the board database.
      */
     private fun startBlossomSync() {
-        if (_state.value.isSyncing) return
-
-        _state.update { it.copy(
-            isSyncing = true,
-            syncComplete = false,
-            errorMessage = null,
-            importStep = ImportStep.FetchingManifest,
-            syncGeneration = it.syncGeneration + 1
-        ) }
+        // Atomic check-and-claim: only the caller that flips isSyncing
+        // from false to true is allowed to proceed.
+        if (!claimSyncSlot(ImportStep.FetchingManifest)) return
 
         scope.launch {
             try {
                 performBlossomSync()
             } catch (e: Exception) {
                 Log.w(TAG, "Blossom sync failed", e)
-                val msg = if (!importer.isImported()) {
-                    "Download fehlgeschlagen. Bitte prüfe deine Internetverbindung und versuche es erneut."
-                } else {
-                    "Aktualisierung nicht möglich. Bestehende Daten bleiben erhalten."
+                // Distinguish network failures (where the "prüfe Internet"
+                // hint is actually useful) from local-side import errors
+                // (SQLite, parsing, disk) where it's misleading.
+                val isNetworkError = e is java.net.UnknownHostException ||
+                    e is java.net.ConnectException ||
+                    e is java.net.SocketTimeoutException ||
+                    (e is java.io.IOException && e !is java.io.FileNotFoundException)
+                val msg = when {
+                    isNetworkError && !importer.isImported() ->
+                        "Download fehlgeschlagen. Bitte prüfe deine Internetverbindung und versuche es erneut."
+                    isNetworkError ->
+                        "Aktualisierung nicht möglich. Bestehende Daten bleiben erhalten."
+                    !importer.isImported() ->
+                        "Import fehlgeschlagen: ${e.message ?: e.javaClass.simpleName}"
+                    else ->
+                        "Aktualisierung fehlgeschlagen: ${e.message ?: e.javaClass.simpleName}. Bestehende Daten bleiben erhalten."
                 }
                 _state.update { it.copy(
                     isSyncing = false,
@@ -262,23 +289,25 @@ class BoardSyncManager(
                 alreadyImported = true,
                 lastSyncTimestamp = timestamp,
                 importStep = null,
-                showUpToDateDialog = true,
                 lastSyncCompletedAtMillis = System.currentTimeMillis()
             ) }
             return
         }
 
-        // 3. Download and decompress changed chunks (parallel, max 4 concurrent)
+        // 3. Download and decompress changed chunks (semaphore-bounded parallel).
+        //    Chunked-batch + awaitAll() would stall each wave on its slowest
+        //    download; a semaphore keeps PARALLEL_DOWNLOADS workers busy with
+        //    whichever chunk is next in line.
         val chunkFiles = mutableMapOf<String, File>()
         try {
             val totalAllBytes = chunksToDownload.sumOf { it.size }
             val completedBytes = AtomicLong(0)
+            val permits = Semaphore(PARALLEL_DOWNLOADS)
 
             coroutineScope {
-                chunksToDownload.chunked(PARALLEL_DOWNLOADS).forEach { batch ->
-                    batch.mapIndexed { batchIdx, chunk ->
-                        val globalIdx = chunksToDownload.indexOf(chunk)
-                        async {
+                chunksToDownload.mapIndexed { idx, chunk ->
+                    async {
+                        permits.withPermit {
                             val outputFile = File(appContext.cacheDir, "blossom_${chunk.name}.sqlite3")
                             blossomSyncManager.downloadAndDecompressChunk(
                                 chunk = chunk,
@@ -288,7 +317,7 @@ class BoardSyncManager(
                                     _state.update { it.copy(
                                         importStep = ImportStep.DownloadChunk(
                                             chunkName = chunk.name,
-                                            chunkIndex = globalIdx,
+                                            chunkIndex = idx,
                                             totalChunks = chunksToDownload.size,
                                             bytesRead = bytesRead,
                                             totalBytes = totalBytes,
@@ -304,8 +333,8 @@ class BoardSyncManager(
                             }
                             Log.d(TAG, "Chunk ${chunk.name} downloaded+decompressed: ${outputFile.length()} bytes")
                         }
-                    }.awaitAll()
-                }
+                    }
+                }.awaitAll()
             }
 
             // 4. Group chunks by type and import
@@ -334,7 +363,12 @@ class BoardSyncManager(
             )
             Log.d(TAG, "Import completed successfully")
 
-            // 5. Refresh denormalized data in SecureDB
+            // 5. Refresh denormalized data in SecureDB. UI is already showing
+            // Finalizing from the importer's index-rebuild callback, so we
+            // just keep that state.
+            _state.update { it.copy(
+                importStep = com.cruxcoach.android.data.BoardDatabaseImporter.ImportStep.Finalizing
+            ) }
             refreshDenormalizedData()
 
             // 6. Save chunk hashes for incremental updates
@@ -369,17 +403,13 @@ class BoardSyncManager(
     /**
      * Import board DB from a local URL (e.g., WiFi Direct share).
      * Downloads the full uncompressed SQLite file and imports it.
+     *
+     * Private because callers must go through [stageLocalImport] +
+     * [confirmLocalImport] so the user sees a consent dialog before
+     * untrusted bytes hit the SQLite parser.
      */
-    fun importFromLocalUrl(url: String) {
-        if (_state.value.isSyncing) return
-
-        _state.update { it.copy(
-            isSyncing = true,
-            syncComplete = false,
-            errorMessage = null,
-            importStep = ImportStep.Download(0, 0),
-            syncGeneration = it.syncGeneration + 1
-        ) }
+    private fun performLocalImport(url: String) {
+        if (!claimSyncSlot(ImportStep.Download(0, 0))) return
 
         scope.launch {
             val tempFile = File(appContext.cacheDir, "local_board.sqlite3")
@@ -468,16 +498,22 @@ class BoardSyncManager(
             if (keys.isEmpty()) return
             Log.d(TAG, "Refreshing denormalized data for ${keys.size} climb keys")
 
-            personalBoardRepo.runInTransaction {
-                for ((climbUuid, angle) in keys) {
-                    val climb = boardRepository.getClimbByUuid(climbUuid, angle.toInt()) ?: continue
-                    personalBoardRepo.updateAscentDenormalized(
-                        climbUuid, angle, climb.name, climb.difficultyAverage,
-                        climb.frames, climb.framesCount
-                    )
-                    personalBoardRepo.updateBidDenormalized(
-                        climbUuid, angle, climb.name, climb.difficultyAverage
-                    )
+            // Chunk into batches so the secure-DB write lock is released
+            // periodically, letting concurrent user writes (log ascent,
+            // favorites toggle, comment edit) interleave instead of
+            // blocking for the whole loop on users with many ascents.
+            keys.chunked(REFRESH_BATCH_SIZE).forEach { batch ->
+                personalBoardRepo.runInTransaction {
+                    for ((climbUuid, angle) in batch) {
+                        val climb = boardRepository.getClimbByUuid(climbUuid, angle.toInt()) ?: continue
+                        personalBoardRepo.updateAscentDenormalized(
+                            climbUuid, angle, climb.name, climb.difficultyAverage,
+                            climb.frames, climb.framesCount
+                        )
+                        personalBoardRepo.updateBidDenormalized(
+                            climbUuid, angle, climb.name, climb.difficultyAverage
+                        )
+                    }
                 }
             }
             Log.d(TAG, "Denormalized data refresh complete")
@@ -495,10 +531,15 @@ data class BoardSyncState(
     val wifiConnected: Boolean = false,
     val showNetworkDialog: Boolean = false,
     val showWifiDialog: Boolean = false,
-    val showUpToDateDialog: Boolean = false,
     val importStep: ImportStep? = null,
     val alreadyImported: Boolean = false,
     val lastSyncTimestamp: String? = null,
+    /**
+     * A local-share import URL awaiting user confirmation. Set by
+     * [BoardSyncManager.stageLocalImport]; cleared on confirm/dismiss.
+     * Non-null means the BoardSyncScreen should show the consent dialog.
+     */
+    val pendingLocalImportUrl: String? = null,
     /** Incremented each time a real sync starts. Banner uses this to ignore initial state. */
     val syncGeneration: Int = 0,
     /**

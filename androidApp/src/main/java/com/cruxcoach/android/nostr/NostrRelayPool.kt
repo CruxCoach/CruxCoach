@@ -49,6 +49,10 @@ class NostrRelayPool @Inject constructor(
     )
 
     private inner class RelayConnection(val url: String) {
+        // @Volatile: ws is written from the OkHttp WebSocketListener dispatcher
+        // (onFailure / onClosed) and read from sender coroutines — visibility
+        // must be guaranteed to avoid leaked/stale WebSocket references.
+        @Volatile
         private var ws: WebSocket? = null
         private val pendingOks = ConcurrentHashMap<String, CompletableDeferred<Boolean>>()
         private val subscriptionFlows = ConcurrentHashMap<String, MutableSharedFlow<String>>()
@@ -97,6 +101,11 @@ class NostrRelayPool @Inject constructor(
                 override fun onClosed(ws: WebSocket, code: Int, reason: String) {
                     connected = false
                     this@RelayConnection.ws = null
+                    // Fail pending OKs immediately instead of waiting for each
+                    // publisher's RELAY_TIMEOUT_MS — otherwise every in-flight
+                    // sendEvent hangs and the pendingOks map piles up while
+                    // reconnect is pending.
+                    failAllPending(Exception("Relay $url closed: $code $reason"))
                     if (activeFilters.isNotEmpty()) scheduleReconnect()
                 }
             })
@@ -218,7 +227,9 @@ class NostrRelayPool @Inject constructor(
     }
 
     private fun getOrCreateConnection(url: String): RelayConnection {
-        return connections.getOrPut(url) { RelayConnection(url) }
+        // computeIfAbsent is atomic on ConcurrentHashMap; getOrPut is not
+        // (it is get() ?: put(), which races and leaks duplicate connections).
+        return connections.computeIfAbsent(url) { RelayConnection(it) }
     }
 
     suspend fun sendEvent(event: Event): Boolean {

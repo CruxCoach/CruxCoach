@@ -645,4 +645,100 @@ object AppModule {
     ): AdaptPlanUseCase {
         return AdaptPlanUseCase(adaptiveAdjuster, planRepository, workoutRepository, climbRepository)
     }
+
+    // --- Updater (FEAT-004) ---
+
+    @Provides
+    @Singleton
+    @Named("updater")
+    fun provideUpdaterDataStore(@ApplicationContext context: Context): DataStore<Preferences> {
+        return PreferenceDataStoreFactory.create {
+            java.io.File(context.filesDir, "datastore/updater_state.preferences_pb")
+        }
+    }
+
+    @Provides
+    @Singleton
+    fun provideUpdaterPreferences(
+        @Named("updater") store: DataStore<Preferences>,
+    ): com.cruxcoach.android.updater.UpdaterPreferences {
+        return com.cruxcoach.android.updater.UpdaterPreferences(store)
+    }
+
+    @Provides
+    @Singleton
+    fun provideUpdaterPinStore(
+        @ApplicationContext context: Context,
+    ): com.cruxcoach.android.updater.UpdaterPinStore {
+        return com.cruxcoach.android.updater.UpdaterPinStore(context)
+    }
+
+    @Provides
+    @Singleton
+    fun provideInstallSourceGate(
+        @ApplicationContext context: Context,
+    ): com.cruxcoach.android.updater.InstallSourceGate {
+        return com.cruxcoach.android.updater.InstallSourceGate(context)
+    }
+
+    @Provides
+    @Singleton
+    @Named("updater")
+    fun provideUpdaterOkHttpClient(): OkHttpClient {
+        return OkHttpClient.Builder()
+            .connectTimeout(10, TimeUnit.SECONDS)
+            .readTimeout(15, TimeUnit.SECONDS)
+            .build()
+    }
+
+    @Provides
+    @Singleton
+    fun provideCodebergReleaseClient(
+        @Named("updater") okHttpClient: OkHttpClient,
+    ): com.cruxcoach.android.updater.CodebergReleaseClient {
+        return com.cruxcoach.android.updater.CodebergReleaseClient(okHttpClient)
+    }
+
+    @Provides
+    @Singleton
+    fun provideUpdateChecker(
+        preferences: com.cruxcoach.android.updater.UpdaterPreferences,
+        client: com.cruxcoach.android.updater.CodebergReleaseClient,
+        gate: com.cruxcoach.android.updater.InstallSourceGate,
+    ): com.cruxcoach.android.updater.UpdateChecker {
+        return com.cruxcoach.android.updater.UpdateChecker(preferences, client, gate)
+    }
+
+    @Provides
+    @Singleton
+    fun provideUpdaterApkDownloader(
+        @ApplicationContext context: Context,
+    ): com.cruxcoach.android.updater.ApkDownloader {
+        return com.cruxcoach.android.updater.ApkDownloader(context)
+    }
+
+    @Provides
+    @Singleton
+    fun provideIntegrityVerifier(
+        @ApplicationContext context: Context,
+        pinStore: com.cruxcoach.android.updater.UpdaterPinStore,
+    ): com.cruxcoach.android.updater.IntegrityVerifier {
+        return com.cruxcoach.android.updater.IntegrityVerifier(context, pinStore)
+    }
+
+    @Provides
+    @Singleton
+    fun provideUpdaterApkInstaller(
+        @ApplicationContext context: Context,
+    ): com.cruxcoach.android.updater.ApkInstaller {
+        return com.cruxcoach.android.updater.ApkInstaller(context)
+    }
+
+    @Provides
+    @Singleton
+    fun provideUpdateNotifier(
+        @ApplicationContext context: Context,
+    ): com.cruxcoach.android.updater.UpdateNotifier {
+        return com.cruxcoach.android.updater.UpdateNotifier(context)
+    }
 }

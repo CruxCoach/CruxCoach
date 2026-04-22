@@ -239,7 +239,10 @@ data class RawAscent(
     val synced: Boolean,
     val gymUuid: String? = null,
     val wallUuid: String? = null,
-    val productLayoutUuid: String? = null
+    val productLayoutUuid: String? = null,
+    /** Optimistic-locking token snapshot at read time. Pass to
+     *  [PersonalBoardRepository.markAscentSyncedIfUnchanged]. */
+    val rowVersion: Long = 0L
 )
 
 data class RawBid(
@@ -254,7 +257,10 @@ data class RawBid(
     val synced: Boolean,
     val gymUuid: String? = null,
     val wallUuid: String? = null,
-    val productLayoutUuid: String? = null
+    val productLayoutUuid: String? = null,
+    /** Optimistic-locking token snapshot at read time. Pass to
+     *  [PersonalBoardRepository.markBidSyncedIfUnchanged]. */
+    val rowVersion: Long = 0L
 )
 
 data class RawClimbListEntry(

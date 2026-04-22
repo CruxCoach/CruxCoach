@@ -12,6 +12,15 @@
     <!-- Vibration for rest timer -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
+    <!-- FEAT-004 in-app updater: hand off APK to PackageInstaller. Every
+         install goes through the system consent dialog (§6.8); we do NOT
+         request UPDATE_PACKAGES_WITHOUT_USER_ACTION. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- FEAT-004 in-app updater: DownloadManager.setNotificationVisibility(
+         VISIBILITY_HIDDEN) requires this permission — we post our own
+         progress UI so the system notification would be a duplicate. -->
+    <uses-permission android:name="android.permission.DOWNLOAD_WITHOUT_NOTIFICATION" />
+
     <!-- Foreground service for background sync notifications -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
@@ -46,6 +55,19 @@
         <package android:name="com.greenart7c3.nostrsigner" />
         <package android:name="dev.zapstore.app" />
         <package android:name="org.fdroid.fdroid" />
+        <!-- OEM autostart / battery settings apps (NotificationReliabilityHelper
+             resolves component-targeted intents into these; API 30+ blocks
+             package visibility unless declared here). -->
+        <package android:name="com.miui.securitycenter" />
+        <package android:name="com.huawei.systemmanager" />
+        <package android:name="com.coloros.safecenter" />
+        <package android:name="com.oppo.safe" />
+        <package android:name="com.iqoo.secure" />
+        <package android:name="com.vivo.permissionmanager" />
+        <package android:name="com.meizu.safe" />
+        <package android:name="com.samsung.android.lool" />
+        <package android:name="com.samsung.android.sm" />
+        <package android:name="com.oneplus.security" />
     </queries>
 
     <application
@@ -108,6 +130,27 @@
         <receiver
             android:name=".notification.RestTimerAlarmReceiver"
             android:exported="false" />
+
+        <!-- FEAT-004 updater: notification-action taps (Download / Install /
+             Dismiss) dispatch here even after the Activity has died. -->
+        <receiver
+            android:name=".updater.UpdaterActionReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.cruxcoach.android.updater.ACTION_DOWNLOAD" />
+                <action android:name="com.cruxcoach.android.updater.ACTION_INSTALL" />
+                <action android:name="com.cruxcoach.android.updater.ACTION_DISMISS" />
+            </intent-filter>
+        </receiver>
+
+        <!-- PackageInstaller status callbacks (§5.5). -->
+        <receiver
+            android:name=".updater.ApkInstallStatusReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.cruxcoach.android.updater.INSTALL_STATUS" />
+            </intent-filter>
+        </receiver>
 
         <!-- Disable default WorkManager initializer (we use HiltWorkerFactory) -->
         <provider

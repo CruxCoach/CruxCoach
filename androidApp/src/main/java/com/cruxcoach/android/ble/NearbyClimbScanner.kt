@@ -210,9 +210,13 @@ class NearbyClimbScanner(private val context: Context) {
                 is NearbyPayload.Gone -> {
                     val addr = result.device.address
                     val now = System.currentTimeMillis()
-                    val lastProcessed = goneProcessedAt[addr] ?: 0L
-                    if (now - lastProcessed < GONE_DEDUP_MS) return // already handled recently
-                    goneProcessedAt[addr] = now
+                    // Atomic claim: compute returns `now` only for the caller
+                    // that wins the race; later callers within GONE_DEDUP_MS
+                    // get the existing timestamp back and bail out.
+                    val claimed = goneProcessedAt.compute(addr) { _, existing ->
+                        if (existing != null && now - existing < GONE_DEDUP_MS) existing else now
+                    }
+                    if (claimed != now) return // another thread already handled this GONE
                     Log.d(TAG, "Received GONE from $addr — removing immediately")
                     synchronized(rawEntries) {
                         rawEntries.remove(addr)
@@ -226,7 +230,6 @@ class NearbyClimbScanner(private val context: Context) {
                 }
                 is NearbyPayload.SessionAdvertisement -> {
                     val now = System.currentTimeMillis()
-                    val isNew = !rawSessionEntries.containsKey(result.device.address)
                     // Check scan response for embedded climb data (company ID 0xFFFE)
                     val climbData = scanRecord.getManufacturerSpecificData(
                         NearbyClimbProtocol.SESSION_CLIMB_COMPANY_ID
@@ -240,31 +243,36 @@ class NearbyClimbScanner(private val context: Context) {
                         is NearbyPayload.ClimbData -> sessionClimb.angle
                         else -> 0
                     }
-                    // BLE scan responses arrive separately from advertisements and may be
-                    // missed intermittently. When the scan response is absent, retain the
-                    // previous currentClimbUuid instead of overwriting with null.
-                    val existing = rawSessionEntries[result.device.address]
-                    val effectiveClimbUuid = climbUuid ?: existing?.currentClimbUuid
-                    val effectiveClimbAngle = if (climbUuid != null) climbAngle
-                        else (existing?.currentClimbAngle ?: 0)
-                    val entry = NearbySession(
-                        sessionId = payload.sessionId,
-                        participantCount = payload.participantCount,
-                        hostName = payload.hostName,
-                        rssi = rssi,
-                        lastSeenMs = now,
-                        deviceAddress = result.device.address,
-                        device = result.device,
-                        currentClimbUuid = effectiveClimbUuid,
-                        currentClimbAngle = effectiveClimbAngle
-                    )
-                    if (isNew) {
-                        Log.d(TAG, "New session discovered: id=${payload.sessionId}, " +
-                            "host='${payload.hostName}', count=${payload.participantCount}, " +
-                            "climb=${climbUuid?.take(8)}, " +
-                            "addr=${result.device.address}, rssi=$rssi")
-                    }
+                    // Read existing + compute isNew + write all inside the lock
+                    // so concurrent callbacks can't see a stale !containsKey()
+                    // and log "new session discovered" for a device that was
+                    // already tracked.
                     synchronized(rawSessionEntries) {
+                        val existing = rawSessionEntries[result.device.address]
+                        val isNew = existing == null
+                        // BLE scan responses arrive separately from advertisements and may be
+                        // missed intermittently. When the scan response is absent, retain the
+                        // previous currentClimbUuid instead of overwriting with null.
+                        val effectiveClimbUuid = climbUuid ?: existing?.currentClimbUuid
+                        val effectiveClimbAngle = if (climbUuid != null) climbAngle
+                            else (existing?.currentClimbAngle ?: 0)
+                        val entry = NearbySession(
+                            sessionId = payload.sessionId,
+                            participantCount = payload.participantCount,
+                            hostName = payload.hostName,
+                            rssi = rssi,
+                            lastSeenMs = now,
+                            deviceAddress = result.device.address,
+                            device = result.device,
+                            currentClimbUuid = effectiveClimbUuid,
+                            currentClimbAngle = effectiveClimbAngle
+                        )
+                        if (isNew) {
+                            Log.d(TAG, "New session discovered: id=${payload.sessionId}, " +
+                                "host='${payload.hostName}', count=${payload.participantCount}, " +
+                                "climb=${climbUuid?.take(8)}, " +
+                                "addr=${result.device.address}, rssi=$rssi")
+                        }
                         rawSessionEntries[result.device.address] = entry
                         publishDedupedSessions()
                     }
@@ -359,9 +367,15 @@ class NearbyClimbScanner(private val context: Context) {
                         publishDedupedSessions()
                     }
                 }
-                // Clean up stale GONE dedup entries
+                // Clean up stale GONE dedup entries. Use computeIfPresent
+                // with a null-return-to-remove pattern so each entry's read
+                // and delete are atomic against concurrent callback writes.
                 val now = System.currentTimeMillis()
-                goneProcessedAt.entries.removeAll { now - it.value > GONE_DEDUP_MS }
+                goneProcessedAt.keys.toList().forEach { key ->
+                    goneProcessedAt.computeIfPresent(key) { _, v ->
+                        if (now - v > GONE_DEDUP_MS) null else v
+                    }
+                }
             }
         }
     }

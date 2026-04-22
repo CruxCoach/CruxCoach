@@ -19,6 +19,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
+import com.cruxcoach.android.BuildConfig
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.theme.SuccessGreen
@@ -233,7 +234,7 @@ internal fun AppInfoSection(
             .padding(vertical = 4.dp)
     ) {
         Text(
-            "CruxCoach v0.1.0",
+            "CruxCoach v${BuildConfig.VERSION_NAME}",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )

@@ -82,8 +82,13 @@ class BoardDatabaseImporter(
         val grandClimbTotal = climbChunkCounts.sum()
         val grandStatTotal = statChunkCounts.sum()
 
-        // Drop indexes before bulk import, rebuild after (avoids per-row index maintenance)
-        withDeferredIndexes {
+        // Drop indexes before bulk import, rebuild after (avoids per-row index
+        // maintenance). Layout/meta import is also inside the block so its
+        // INSERTs benefit, and the UI sees a single clean phase progression:
+        // Climbs → Stats → Layout → Finalizing (rebuild + backfill + denorm).
+        withDeferredIndexes(
+            onRebuild = { onProgress?.invoke(ImportStep.Finalizing) }
+        ) {
             // Import all climb chunks (bulk ATTACH or row-by-row fallback)
             if (climbsDbFiles.isNotEmpty()) {
                 var cumInserted = 0; var cumScanned = 0
@@ -121,25 +126,26 @@ class BoardDatabaseImporter(
                     }
                 }
             }
+
+            // Import meta chunks (usually just 1)
+            for (file in metaDbFiles) {
+                openReadOnly(file) { rawDb ->
+                    onProgress?.invoke(ImportStep.ImportLayout(0))
+                    val hasLayout = snapshot != null && snapshot.placementCount > 0
+                    val layoutCount = if (hasLayout) snapshot!!.placementCount else importPlacements(rawDb)
+                    if (!hasLayout) { importProductSizes(rawDb); importBoardImages(rawDb) }
+                    if (snapshot == null || snapshot.ledCount == 0) importLeds(rawDb)
+                    importSyncState(rawDb)
+                    onProgress?.invoke(ImportStep.ImportLayout(layoutCount))
+                }
+            }
         }
 
+        // Now indexes are back; UI has already entered Finalizing via onRebuild.
         backfillMoveCounts()
 
         if (boardRepository.getSyncState("metadata_v7") == null) {
             boardRepository.upsertSyncState("metadata_v7", "done")
-        }
-
-        // Import meta chunks (usually just 1)
-        for (file in metaDbFiles) {
-            openReadOnly(file) { rawDb ->
-                onProgress?.invoke(ImportStep.ImportLayout(0))
-                val hasLayout = snapshot != null && snapshot.placementCount > 0
-                val layoutCount = if (hasLayout) snapshot!!.placementCount else importPlacements(rawDb)
-                if (!hasLayout) { importProductSizes(rawDb); importBoardImages(rawDb) }
-                if (snapshot == null || snapshot.ledCount == 0) importLeds(rawDb)
-                importSyncState(rawDb)
-                onProgress?.invoke(ImportStep.ImportLayout(layoutCount))
-            }
         }
 
         val climbCount = boardRepository.getClimbCount()
@@ -270,6 +276,10 @@ class BoardDatabaseImporter(
         data class ImportClimbs(val inserted: Int, val scanned: Int, val total: Int) : ImportStep()
         data class ImportStats(val inserted: Int, val scanned: Int, val total: Int) : ImportStep()
         data class ImportLayout(val count: Int) : ImportStep()
+        /** Post-import work the user can't see otherwise (index rebuild,
+         *  move-count backfill, denormalized refresh). Without this the UI
+         *  freezes at "100% Statistiken importieren" for 30s–2min. */
+        data object Finalizing : ImportStep()
         data class Done(
             val climbs: Int, val stats: Int, val placements: Int,
             val nomatchCount: Int = 0
@@ -390,12 +400,13 @@ class BoardDatabaseImporter(
             val countBefore = queryLong(targetDb, "SELECT COUNT(*) FROM aurora_climb")
             onProgress?.invoke(0, 0, total)
 
-            // Copy move_count from CruxCoach-schema sources; Kilter sources lack the column
-            val hasMoveCount = srcTable == "aurora_climb" && hasTable(rawDb, "aurora_climb") &&
-                rawDb.rawQuery("PRAGMA table_info(aurora_climb)", null).use { c ->
-                    generateSequence { if (c.moveToNext()) c.getString(1) else null }
-                        .any { it == "move_count" }
-                }
+            // Copy move_count when the source has it (CruxCoach backups always,
+            // Blossom chunks from 2026-04-21+). Old chunks without the column
+            // fall back to 0 and backfillMoveCounts() computes it post-import.
+            val hasMoveCount = rawDb.rawQuery("PRAGMA table_info($srcTable)", null).use { c ->
+                generateSequence { if (c.moveToNext()) c.getString(1) else null }
+                    .any { it == "move_count" }
+            }
             val moveCountExpr = if (hasMoveCount) "COALESCE(move_count, 0)" else "0"
 
             // Import in batches by rowid range (avoids OFFSET scanning and CursorWindow issues on older APIs)
@@ -611,7 +622,15 @@ class BoardDatabaseImporter(
     /** Open the target board database directly for ATTACH operations. */
     private fun openTargetDb(): SQLiteDatabase {
         val dbFile = context.getDatabasePath("cruxcoach.db")
-        return SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE)
+        val db = SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE)
+        // Prevent SQLITE_BUSY when the SQLDelight driver concurrently reads
+        // the same DB during an import: wait up to 5s for locks before
+        // failing. PRAGMA busy_timeout returns the new value as a row, so
+        // execSQL() throws "Queries can be performed using SQLiteDatabase
+        // query or rawQuery methods only" — which the sync UI mis-renders
+        // as "prüfe Internetverbindung" even when the download succeeded.
+        db.rawQuery("PRAGMA busy_timeout = 5000", null).use { it.moveToFirst() }
+        return db
     }
 
     private fun queryLong(db: SQLiteDatabase, sql: String): Long {
@@ -651,8 +670,14 @@ class BoardDatabaseImporter(
         for ((_, ddl) in indexes) db.execSQL(ddl)
     }
 
-    /** Drop climb+stat indexes, run [block], rebuild indexes, then PRAGMA optimize. */
-    private inline fun <R> withDeferredIndexes(block: () -> R): R {
+    /** Drop climb+stat indexes, run [block], rebuild indexes, then PRAGMA
+     *  optimize. [onRebuild] fires before the rebuild starts so callers can
+     *  surface a "finalizing" status (rebuild can take 30s–2min on a fresh
+     *  full sync). */
+    private inline fun <R> withDeferredIndexes(
+        crossinline onRebuild: () -> Unit = {},
+        block: () -> R,
+    ): R {
         val db = openTargetDb()
         try {
             dropIndexes(db, CLIMB_INDEXES)
@@ -663,6 +688,7 @@ class BoardDatabaseImporter(
         try {
             return block()
         } finally {
+            onRebuild()
             val db2 = openTargetDb()
             try {
                 createIndexes(db2, CLIMB_INDEXES)

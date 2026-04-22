@@ -22,8 +22,11 @@ import io.mockk.just
 import io.mockk.mockk
 import io.mockk.Runs
 import io.mockk.verify
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -100,10 +103,12 @@ class SessionGattBridgeMigrationTest {
     private val bleConnectionStateFlow = MutableStateFlow(ConnectionState.DISCONNECTED)
 
     private lateinit var bridge: SessionGattBridge
+    private lateinit var managerScope: CoroutineScope
 
     @Before
     fun setup() {
         Dispatchers.setMain(testDispatcher)
+        managerScope = CoroutineScope(SupervisorJob() + testDispatcher)
 
         every { mockBleConnection.connectionState } returns bleConnectionStateFlow
 
@@ -127,7 +132,10 @@ class SessionGattBridgeMigrationTest {
         every { mockNearbyScanner.nearbySessions } returns nearbySessionsFlow
         every { mockNearbyScanner.disconnectRequests } returns MutableSharedFlow(extraBufferCapacity = 1)
 
-        queueManager = SessionQueueManager(mockBleConnection, mockBoardRepository, mockClimbNameResolver, mockUserPreferences)
+        queueManager = SessionQueueManager(
+            mockBleConnection, mockBoardRepository, mockClimbNameResolver, mockUserPreferences,
+            managerScope
+        )
 
         bridge = SessionGattBridge(
             context = mockContext,
@@ -144,6 +152,8 @@ class SessionGattBridgeMigrationTest {
 
     @After
     fun tearDown() {
+        // Cancel before resetMain — see SessionQueueManagerTest.tearDown for the rationale.
+        managerScope.cancel()
         Dispatchers.resetMain()
     }
 

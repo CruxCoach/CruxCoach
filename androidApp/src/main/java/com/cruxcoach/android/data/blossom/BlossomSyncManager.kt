@@ -3,14 +3,19 @@ package com.cruxcoach.android.data.blossom
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
+import com.cruxcoach.android.nostr.NostrConfig
 import com.cruxcoach.android.util.ZstdNative
+import com.vitorpamplona.quartz.nip01Core.core.Event
+import com.vitorpamplona.quartz.nip01Core.crypto.verifySignature
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -42,25 +47,37 @@ class BlossomSyncManager(
     private val json = Json { ignoreUnknownKeys = true }
 
     /**
-     * Fetches the manifest from Nostr relays. Uses a dedicated short-lived WebSocket
-     * to avoid coupling with the app's relay pool lifecycle.
+     * Fetches the manifest from Nostr relays. Uses dedicated short-lived
+     * WebSockets to avoid coupling with the app's relay pool lifecycle.
+     *
+     * Queries all relays in parallel and returns the manifest with the highest
+     * `created_at`. Kind 30078 is a parameterized-replaceable event, so
+     * different relays may serve different versions (e.g. a relay that was
+     * offline during the last publish still holds yesterday's manifest).
+     * Picking first-success would deterministically pin us to the slowest-
+     * updating relay and defeat every fresh publish.
      */
     suspend fun fetchManifest(): BlossomManifest = withContext(Dispatchers.IO) {
-        val relayUrls = listOf(
-            "wss://relay.damus.io",
-            "wss://nos.lol",
-            "wss://relay.primal.net"
-        )
+        val relayUrls = NostrConfig.MANIFEST_RELAYS
 
-        for (relayUrl in relayUrls) {
-            try {
-                val manifest = fetchManifestFromRelay(relayUrl)
-                if (manifest != null) return@withContext manifest
-            } catch (e: Exception) {
-                Log.w(TAG, "Manifest fetch from $relayUrl failed", e)
-            }
-        }
-        throw BlossomSyncException("Failed to fetch manifest from any relay")
+        val manifests = coroutineScope {
+            relayUrls.map { relayUrl ->
+                async {
+                    try {
+                        fetchManifestFromRelay(relayUrl)?.also {
+                            Log.d(TAG, "Manifest from $relayUrl: createdAt=${it.createdAt} chunks=${it.chunks.size}")
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Manifest fetch from $relayUrl failed", e)
+                        null
+                    }
+                }
+            }.awaitAll()
+        }.filterNotNull()
+
+        manifests.maxByOrNull { it.createdAt }
+            ?.also { Log.d(TAG, "Selected manifest: createdAt=${it.createdAt} chunks=${it.chunks.size}") }
+            ?: throw BlossomSyncException("Failed to fetch manifest from any relay")
     }
 
     private suspend fun fetchManifestFromRelay(relayUrl: String): BlossomManifest? {
@@ -82,11 +99,20 @@ class BlossomSyncManager(
                             val arr = json.parseToJsonElement(text).jsonArray
                             when (arr[0].jsonPrimitive.content) {
                                 "EVENT" -> {
-                                    val eventObj = arr[2].jsonObject
-                                    val content = eventObj["content"]?.jsonPrimitive?.content
-                                    if (content != null) {
-                                        result = json.decodeFromString<BlossomManifest>(content)
+                                    // Do not trust the relay's filter: re-verify
+                                    // pubkey and Schnorr signature on the event
+                                    // before parsing its content as a manifest.
+                                    val event = Event.fromJson(arr[2].toString())
+                                    if (event.pubKey != MANIFEST_PUBKEY) {
+                                        Log.w(TAG, "Manifest pubkey mismatch from $relayUrl: ${event.pubKey}")
+                                        return
                                     }
+                                    if (!event.verifySignature()) {
+                                        Log.w(TAG, "Manifest signature invalid from $relayUrl")
+                                        return
+                                    }
+                                    val parsed = json.decodeFromString<BlossomManifest>(event.content)
+                                    result = Companion.validateManifest(parsed)
                                 }
                                 "EOSE" -> {
                                     ws.close(1000, "done")
@@ -163,29 +189,76 @@ class BlossomSyncManager(
         targetFile: File,
         onProgress: ((Long, Long) -> Unit)?
     ) {
-        val url = chunk.urls.firstOrNull()
-            ?: throw BlossomSyncException("No URL for chunk ${chunk.name}")
-
-        val request = Request.Builder().url(url).build()
-        val response = okHttpClient.newCall(request).execute()
-        if (!response.isSuccessful) {
-            throw BlossomSyncException("HTTP ${response.code} downloading chunk ${chunk.name}")
+        // https-only: refuse cleartext URLs so a hostile manifest cannot
+        // downgrade chunk transport to MITM-able http://.
+        val httpsUrls = chunk.urls.filter { it.startsWith("https://") }
+        if (httpsUrls.isEmpty()) {
+            throw BlossomSyncException("No https:// URL for chunk ${chunk.name}")
         }
 
-        val body = response.body
-            ?: throw BlossomSyncException("Empty response body for chunk ${chunk.name}")
+        // Try each Blossom mirror in order. Blobs are content-addressed by
+        // SHA-256, so any Blossom server holding the blob returns the same
+        // bytes — a single slow/down mirror must not strand the sync.
+        var lastError: Throwable? = null
+        for ((attempt, url) in httpsUrls.withIndex()) {
+            try {
+                downloadChunkFromUrl(chunk, url, targetFile, onProgress)
+                return
+            } catch (e: Exception) {
+                lastError = e
+                Log.w(
+                    TAG,
+                    "Chunk ${chunk.name} download failed from $url " +
+                        "(${attempt + 1}/${httpsUrls.size}): ${e.message}"
+                )
+            }
+        }
+        throw BlossomSyncException(
+            "All ${httpsUrls.size} mirror(s) failed for chunk ${chunk.name}",
+            lastError
+        )
+    }
 
-        val totalBytes = chunk.size
-        var bytesRead = 0L
+    private fun downloadChunkFromUrl(
+        chunk: BlossomChunk,
+        url: String,
+        targetFile: File,
+        onProgress: ((Long, Long) -> Unit)?
+    ) {
+        val request = Request.Builder().url(url).build()
+        val response = okHttpClient.newCall(request).execute()
+        response.use { r ->
+            if (!r.isSuccessful) {
+                throw BlossomSyncException("HTTP ${r.code} downloading chunk ${chunk.name}")
+            }
 
-        body.byteStream().use { input ->
-            FileOutputStream(targetFile).use { output ->
-                val buffer = ByteArray(8192)
-                var read: Int
-                while (input.read(buffer).also { read = it } != -1) {
-                    output.write(buffer, 0, read)
-                    bytesRead += read
-                    onProgress?.invoke(bytesRead, totalBytes)
+            val body = r.body
+                ?: throw BlossomSyncException("Empty response body for chunk ${chunk.name}")
+
+            val totalBytes = chunk.size
+            // Hard ceiling = declared size + small margin for protocol framing.
+            // SHA-256 verification only rejects the stored file; it does not
+            // stop an over-long stream from filling cacheDir first. Abort as
+            // soon as the declared size is exceeded so a hostile CDN can't
+            // disk-fill.
+            val maxAllowedBytes = totalBytes + CHUNK_SIZE_OVERRUN_MARGIN
+            var bytesRead = 0L
+
+            body.byteStream().use { input ->
+                FileOutputStream(targetFile).use { output ->
+                    val buffer = ByteArray(8192)
+                    var read: Int
+                    while (input.read(buffer).also { read = it } != -1) {
+                        bytesRead += read
+                        if (bytesRead > maxAllowedBytes) {
+                            throw BlossomSyncException(
+                                "Chunk ${chunk.name} exceeded declared size " +
+                                    "($bytesRead > $totalBytes + margin)"
+                            )
+                        }
+                        output.write(buffer, 0, read)
+                        onProgress?.invoke(bytesRead, totalBytes)
+                    }
                 }
             }
         }
@@ -209,7 +282,10 @@ class BlossomSyncManager(
     }
 
     private fun decompressZstd(compressedFile: File, outputFile: File) {
-        ZstdNative.decompressFile(compressedFile, outputFile)
+        // Cap the decompressed output so a maliciously-crafted chunk (zstd bomb)
+        // cannot fill the disk. 512MB is ~5x the full legitimate board DB and
+        // well above any plausible future growth.
+        ZstdNative.decompressFile(compressedFile, outputFile, MAX_DECOMPRESSED_CHUNK_BYTES)
     }
 
     /** Saves chunk hash after successful import so future syncs can skip unchanged chunks. */
@@ -230,10 +306,38 @@ class BlossomSyncManager(
     companion object {
         private const val TAG = "BlossomSyncManager"
         private const val RELAY_TIMEOUT_MS = 15_000L
+        // Slack above the manifest-declared chunk size for HTTP/zstd framing
+        // overhead. Generous enough that legitimate chunks are never rejected,
+        // tight enough that a hostile server can't stream gigabytes.
+        private const val CHUNK_SIZE_OVERRUN_MARGIN = 64L * 1024
+        // Absolute ceiling on decompressed chunk size (zstd-bomb guard).
+        // Board DB is ~85MB total across all chunks today; 512MB covers
+        // years of growth while still refusing any plausible bomb payload.
+        private const val MAX_DECOMPRESSED_CHUNK_BYTES = 512L * 1024 * 1024
+        // Chunk names are joined into filesystem paths; restrict to a strict
+        // allowlist so values like "../x" or "a/b" cannot escape cacheDir.
+        private val CHUNK_NAME_REGEX = Regex("^[A-Za-z0-9_-]{1,64}$")
 
         const val MANIFEST_PUBKEY =
             "70b2740bff77cf65743a7d6ffa5465b3a27105ae26123458cf5450eafb1bd68d"
         const val MANIFEST_D_TAG = "cruxcoach/board-db"
+
+        /**
+         * Validates chunk names and URL schemes after the manifest is parsed.
+         * Rejects anything that could write outside the cache dir or be fetched
+         * over cleartext. `internal` for direct unit testing.
+         */
+        internal fun validateManifest(manifest: BlossomManifest): BlossomManifest {
+            manifest.chunks.forEach { chunk ->
+                require(CHUNK_NAME_REGEX.matches(chunk.name)) {
+                    "Chunk name rejected (path-traversal guard): ${chunk.name}"
+                }
+                require(chunk.urls.any { it.startsWith("https://") }) {
+                    "Chunk ${chunk.name} has no https:// URL"
+                }
+            }
+            return manifest
+        }
     }
 }
 

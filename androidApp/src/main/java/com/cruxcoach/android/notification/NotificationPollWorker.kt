@@ -150,11 +150,32 @@ class NotificationPollWorker @AssistedInject constructor(
             try {
                 val msg = decryptor.decrypt(json) ?: continue
 
-                if (messageRepository.getById(msg.id) != null) continue
-
                 // NIP-17 self-wraps echo our sent messages back. Store them
                 // as "sent" so sent history is recoverable; don't notify.
                 val isSelfWrap = msg.senderPubkey == ownPubkey
+                val isFromDev = msg.senderPubkey == NostrConfig.DEV_PUBKEY
+                // Dev↔user DMs are the only legitimate source for this app;
+                // drop anything else *before* touching the DB or posting a
+                // notification so attackers can't impersonate the developer
+                // via a crafted NIP-17 gift wrap.
+                if (!isSelfWrap && !isFromDev) {
+                    Log.w(
+                        TAG,
+                        "Dropping DM from unauthorized sender: " +
+                            "${msg.senderPubkey.take(8)}…"
+                    )
+                    continue
+                }
+
+                val existingRow = messageRepository.getById(msg.id)
+                // Seeing our own wrap echoed by a relay proves the relay has
+                // the event, so flip any pre-existing queued row to delivered
+                // even if we skip the duplicate insert below.
+                if (isSelfWrap && existingRow != null) {
+                    messageRepository.clearQueued(msg.id)
+                }
+                if (existingRow != null) continue
+
                 val direction = if (isSelfWrap) "sent" else "received"
 
                 messageRepository.insert(
@@ -196,11 +217,12 @@ class NotificationPollWorker @AssistedInject constructor(
         }
 
         // Advance the shared cursor with a 60s back-off for safety against
-        // out-of-order delivery from multiple relays.
+        // out-of-order delivery from multiple relays. Go through the
+        // atomic advance helper so foreground subscription advances
+        // during the 30s collect window are not overwritten by our
+        // stale `cursor` snapshot.
         val newCursor = (latestTimestamp - 60).coerceAtLeast(0L)
-        if (newCursor > cursor) {
-            userPreferences.setNostrSyncCursor(newCursor)
-        }
+        userPreferences.advanceNostrSyncCursor(newCursor)
     }
 
     private suspend fun collectEventsWithTimeout(filter: String): List<String> {

@@ -54,7 +54,7 @@ internal fun <T> ChartSectionWithSelector(
             ) {
                 Row(
                     modifier = Modifier
-                        .menuAnchor(MenuAnchorType.PrimaryNotEditable)
+                        .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
                         .fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {

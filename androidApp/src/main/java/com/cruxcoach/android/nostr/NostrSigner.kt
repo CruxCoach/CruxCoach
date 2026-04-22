@@ -13,6 +13,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -48,7 +49,7 @@ class NostrSigner @Inject constructor(
         synchronized(signerLock) {
             _signer = NostrSignerInternal(keyStore.getOrCreateKeyPair())
         }
-        _keyVersion.value = _keyVersion.value + 1
+        _keyVersion.update { it + 1 }
     }
 
     fun switchToAmber(pubkeyHex: String, packageName: String, contentResolver: ContentResolver) {
@@ -59,7 +60,7 @@ class NostrSigner @Inject constructor(
         synchronized(signerLock) {
             _signer = NostrSignerExternal(pubkeyHex, packageName, contentResolver)
         }
-        _keyVersion.value = _keyVersion.value + 1
+        _keyVersion.update { it + 1 }
     }
 
     /**

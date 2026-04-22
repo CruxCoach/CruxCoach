@@ -30,34 +30,22 @@ enum class HeatmapMode {
     FINISH
 }
 
-@Composable
-private fun heatmapModeLabel(mode: HeatmapMode): String = when (mode) {
-    HeatmapMode.OFF -> stringResource(R.string.board_heatmap_off)
-    HeatmapMode.GLOBAL -> stringResource(R.string.board_heatmap_global)
-    HeatmapMode.PERSONAL -> stringResource(R.string.board_heatmap_personal)
-    HeatmapMode.START -> stringResource(R.string.board_heatmap_start)
-    HeatmapMode.HAND -> stringResource(R.string.board_heatmap_hand)
-    HeatmapMode.FOOT -> stringResource(R.string.board_heatmap_foot)
-    HeatmapMode.FINISH -> stringResource(R.string.board_heatmap_finish)
-}
-
 /**
- * Full-screen bottom sheet for hold-based search and heatmap.
- * Contains interactive board + heatmap mode selector + hold search controls.
+ * Full-screen bottom sheet for hold-based search.
+ * Pure hold-filter UI now — heatmap modes (personal / global / start /
+ * hand / foot / finish) live in the logbook stats sheet alongside the
+ * other personal stats.
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 internal fun HoldSearchSheet(
     selectedHolds: Set<Int>,
-    heatmapMode: HeatmapMode,
-    heatmapData: Map<Int, Float>,
     matchCount: Int,
     isSearching: Boolean,
     placements: Map<Int, com.cruxcoach.data.repository.AuroraPlacement>,
     boardSize: com.cruxcoach.data.repository.BoardSize?,
     boardImages: List<com.cruxcoach.data.repository.BoardImage> = emptyList(),
     onHoldTapped: (Int) -> Unit,
-    onHeatmapModeSelect: (HeatmapMode) -> Unit,
     onClearSelection: () -> Unit,
     onSearchByHolds: () -> Unit,
     onDismiss: () -> Unit
@@ -84,44 +72,14 @@ internal fun HoldSearchSheet(
                 fontWeight = FontWeight.Bold
             )
 
-            // Interactive board visualization
-            if (placements.isNotEmpty()) {
-                KilterBoardVisualization(
-                    holds = emptyList(),
-                    placements = placements,
-                    boardSize = boardSize,
-                    boardImages = boardImages,
-                    heatmapData = heatmapData.ifEmpty { null },
-                    selectedHolds = selectedHolds,
-                    onHoldTapped = onHoldTapped,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-
-            // Heatmap mode chips
-            Text(stringResource(R.string.board_holdsearch_heatmap), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                HeatmapMode.entries.forEach { mode ->
-                    FilterChip(
-                        selected = mode == heatmapMode,
-                        onClick = { onHeatmapModeSelect(mode) },
-                        label = { Text(heatmapModeLabel(mode), style = MaterialTheme.typography.labelSmall) },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = OrangeAccent,
-                            selectedLabelColor = DarkBackground
-                        ),
-                        shape = RoundedCornerShape(16.dp)
-                    )
-                }
-            }
-
-            HorizontalDivider()
-
-            // Hold selection section
-            Text(stringResource(R.string.board_holdsearch_hold_search), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            // Hold selection section — moved ABOVE the board so the user sees
+            // the match count and the filter button without scrolling past the
+            // full-height board diagram first.
+            Text(
+                stringResource(R.string.board_holdsearch_hold_search),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold
+            )
             Text(
                 stringResource(R.string.board_holdsearch_hint),
                 style = MaterialTheme.typography.bodySmall,
@@ -129,7 +87,6 @@ internal fun HoldSearchSheet(
             )
 
             if (selectedHolds.isNotEmpty()) {
-                // Clear button
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -147,7 +104,6 @@ internal fun HoldSearchSheet(
                     }
                 }
 
-                // Match count + filter button
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -182,6 +138,22 @@ internal fun HoldSearchSheet(
                         Text(stringResource(R.string.board_holdsearch_filter), fontWeight = FontWeight.Bold)
                     }
                 }
+            }
+
+            HorizontalDivider()
+
+            // Interactive board visualization (pure selection — no heatmap overlay)
+            if (placements.isNotEmpty()) {
+                KilterBoardVisualization(
+                    holds = emptyList(),
+                    placements = placements,
+                    boardSize = boardSize,
+                    boardImages = boardImages,
+                    heatmapData = null,
+                    selectedHolds = selectedHolds,
+                    onHoldTapped = onHoldTapped,
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
         }
     }

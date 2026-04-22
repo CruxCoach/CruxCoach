@@ -50,7 +50,7 @@ class BoardBrowserStatusFilterTest {
         repo.addClimbs(c1, c2, c3)
 
         val result = repo.getClimbsByUuids(
-            setOf("uuid-1", "uuid-3"), angle = 40,
+            setOf("uuid-1", "uuid-3"), angle = 40, layoutId = 1,
             minDifficulty = 0.0, maxDifficulty = 100.0,
             minAscensionists = 0, climbType = ClimbTypeFilter.BOULDER
         )
@@ -65,7 +65,7 @@ class BoardBrowserStatusFilterTest {
         repo.addClimb(climb("uuid-1"))
 
         val result = repo.getClimbsByUuids(
-            emptySet(), angle = 40,
+            emptySet(), angle = 40, layoutId = 1,
             minDifficulty = 0.0, maxDifficulty = 100.0,
             minAscensionists = 0, climbType = ClimbTypeFilter.BOULDER
         )
@@ -79,7 +79,7 @@ class BoardBrowserStatusFilterTest {
         repo.addClimb(climb("uuid-1"))
 
         val result = repo.getClimbsByUuids(
-            setOf("no-match"), angle = 40,
+            setOf("no-match"), angle = 40, layoutId = 1,
             minDifficulty = 0.0, maxDifficulty = 100.0,
             minAscensionists = 0, climbType = ClimbTypeFilter.BOULDER
         )
@@ -273,7 +273,7 @@ class BoardBrowserStatusFilterTest {
 
         val sentUuids = personalRepo.getUserSentClimbUuids()
         val sentClimbs = boardRepo.getClimbsByUuids(
-            sentUuids, angle = 40,
+            sentUuids, angle = 40, layoutId = 1,
             minDifficulty = 0.0, maxDifficulty = 100.0,
             minAscensionists = 0, climbType = ClimbTypeFilter.BOULDER
         )

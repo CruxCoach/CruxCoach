@@ -22,6 +22,12 @@ Kilter Board layout images — Property of Kilter Grips, LLC (formerly Aurora
     see androidApp/src/main/assets/board_images/README.md, LEGAL.md, and
     THIRD_PARTY_LICENSES.md.
 
+dontkillmyapp.com (Urbandroid Team) — OEM background-killer taxonomy used in
+    androidApp/src/main/java/com/cruxcoach/android/notification/
+    NotificationReliabilityHelper.kt. Licensed under CC BY-SA 4.0
+    (https://creativecommons.org/licenses/by-sa/4.0/). See
+    THIRD_PARTY_LICENSES.md for the full attribution.
+
 ================================================================================
 For runtime Maven/Gradle dependencies, see the build system's license report.
 For a maintained inventory of vendored sources and bundled assets, see
