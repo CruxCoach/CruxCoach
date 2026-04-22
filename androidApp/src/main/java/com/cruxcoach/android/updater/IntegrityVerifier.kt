@@ -45,7 +45,7 @@ class IntegrityVerifier(
             return Result.PayloadError(e.message ?: e.javaClass.simpleName)
         }
         if (!hexEqualsConstantTime(actualHash, expectedSha256Hex)) {
-            Log.w(TAG, "Payload SHA-256 mismatch — expected=$expectedSha256Hex actual=$actualHash")
+            Log.w(TAG, "Payload SHA-256 mismatch — expected=${expectedSha256Hex.redactHash()} actual=${actualHash.redactHash()}")
             return Result.PayloadMismatch
         }
 
@@ -60,7 +60,7 @@ class IntegrityVerifier(
         if (!hexEqualsConstantTime(signerHash, pin.certSha256Hex)) {
             Log.w(
                 TAG,
-                "Cert pin mismatch — pinned=${pin.certSha256Hex} apk=$signerHash",
+                "Cert pin mismatch — pinned=${pin.certSha256Hex.redactHash()} apk=${signerHash.redactHash()}",
             )
             return Result.CertMismatch(expected = pin.certSha256Hex, actual = signerHash)
         }
@@ -191,11 +191,18 @@ class IntegrityVerifier(
         data object Ok : Result
         data object PayloadMissing : Result
         data object PayloadMismatch : Result
-        data class CertMismatch(val expected: String, val actual: String) : Result
+        data class CertMismatch(val expected: String, val actual: String) : Result {
+            override fun toString(): String =
+                "CertMismatch(expected=${expected.redactHash()}, actual=${actual.redactHash()})"
+        }
         data class PayloadError(val message: String) : Result
     }
 
     companion object {
         private const val TAG = "IntegrityVerifier"
+
+        /** Trims a hex hash for logs: first 8 + last 8 chars, rest elided. */
+        internal fun String.redactHash(): String =
+            if (length >= 16) "${take(8)}…${takeLast(8)}" else "…"
     }
 }

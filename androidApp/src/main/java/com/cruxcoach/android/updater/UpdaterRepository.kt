@@ -54,8 +54,20 @@ class UpdaterRepository @Inject constructor(
     private val _downloadDialogRequested = MutableStateFlow(false)
     val downloadDialogRequested: StateFlow<Boolean> = _downloadDialogRequested.asStateFlow()
 
+    /** Signal to the UI to open the download-confirm dialog.
+     *
+     *  Only honoured when the pipeline is actually in [PipelineStage.PENDING_DOWNLOAD].
+     *  Without this guard, any app on the device could start MainActivity with
+     *  `updater_show_download_dialog=true` and spawn a dialog at will (MainActivity
+     *  is exported for LAUNCHER). When there's no pending download, the "honest"
+     *  notification tap is a no-op anyway, so this check matches user intent and
+     *  drops external-app spoofs without changing legitimate UX. */
     fun requestDownloadDialog() {
-        _downloadDialogRequested.value = true
+        scope.launch {
+            if (preferences.snapshot().pipelineStage == PipelineStage.PENDING_DOWNLOAD) {
+                _downloadDialogRequested.value = true
+            }
+        }
     }
 
     fun consumeDownloadDialogRequest() {
