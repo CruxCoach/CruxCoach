@@ -1081,7 +1081,7 @@ gets updates."
 
 ## 8. Out of Scope — Explicitly Deferred
 
-- **Silent install** (`UPDATE_PACKAGES_WITHOUT_USER_ACTION`) — possible 0.2.0+ opt-in
+- **Silent install** (`UPDATE_PACKAGES_WITHOUT_USER_ACTION`) — possible 0.1.3+ opt-in
 - **Beta / nightly channels** — CI keeps publishing `-dev.<sha>` to Codeberg for testing, but they are not discoverable via the updater (§6.11). No opt-in "I want dev builds" toggle in 0.1.2
 - **Delta / patch updates**
 - **Self-hosted signed manifest** (Nostr-event delivery) — considered, rejected for v1 due to infra cost

@@ -1,4 +1,4 @@
-# Feature Spec: Nostr Relay Discovery (NIP-65) — Skeleton (v0.2.0)
+# Feature Spec: Nostr Relay Discovery (NIP-65) — Skeleton (v0.1.3)
 
 > **Status:** Skeleton — scope + design decisions agreed (§6), implementation details TBD.
 > **Prerequisite for:** FEAT-002 (Nostr Backup & Sync) relies on Kind 10002 discovery.

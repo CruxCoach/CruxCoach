@@ -1,4 +1,4 @@
-# Feature Spec: Nostr Encrypted Backup & Sync (v0.2.0)
+# Feature Spec: Nostr Encrypted Backup & Sync (v0.1.3)
 
 > **Status:** Ready for implementation — all design decisions resolved (§16).
 > **Depends on:** FEAT-001 (Nostr Relay Discovery / NIP-65) for the resolved relay pool.
@@ -1062,7 +1062,7 @@ next cycle will upload their data.
 ## 15. Dependencies
 
 ```kotlin
-// No new dependencies for 0.2.0
+// No new dependencies for 0.1.3
 dependencies {
     // Already in use:
     // net.zetetic:android-database-sqlcipher (local encryption)
@@ -1091,7 +1091,7 @@ APK size impact: Zero. All dependencies are already bundled.
 | Relay discovery | Delegated to FEAT-001 | Single source of truth across all Nostr features. FEAT-002 consumes the resolved pool; no backup-specific bootstrap logic |
 | NIP-70 `["-"]` tag | Not used | Relays without NIP-70 support silently reject events containing it. Content is already NIP-44 encrypted and d-tags are HMAC-obfuscated — marginal privacy benefit doesn't justify relay compatibility risk |
 | EncryptedSharedPreferences | Not used | ESP is deprecated (security-crypto 1.1.0-alpha07), has known Tink keyset corruption bugs on Samsung S24/Android 14. NIP-44-wrapped key blob in plain SharedPreferences is simpler and more reliable |
-| Multi-device backup | Not supported in v0.2.0 | Single-device only. Two devices backing up simultaneously create orphaned blobs. Future: per-device d-tags (`cruxcoach/backup/{device-uuid}`) |
-| DataKey rotation | Not in v0.2.0 | Mathematically safe for this volume (NIST 2^64-block limit). Optional annual rotation can be added later |
+| Multi-device backup | Not supported in v0.1.3 | Single-device only. Two devices backing up simultaneously create orphaned blobs. Future: per-device d-tags (`cruxcoach/backup/{device-uuid}`) |
+| DataKey rotation | Not in v0.1.3 | Mathematically safe for this volume (NIST 2^64-block limit). Optional annual rotation can be added later |
 | Blossom content-type | Runtime BUD-06 preflight, cached per server, self-healing | Dev-time compatibility matrix is fragile (servers change policies). On first upload per server, HEAD-probe `/upload` with `X-Content-Type: application/octet-stream`; cache result. On 415, retry with `application/x-cruxcoach-backup`; if still rejected, mark `incompatible` and skip. Re-probe once per backup cycle to recover. No Blossom endpoint list is frozen at ship time |
 | Previous blob SHA-256 source | Local SharedPreferences, written atomically after each successful pointer publish | Zero extra round-trips during cleanup — no relay fetch, no HEAD walk. On fresh install (cache miss), cleanup is a no-op; the one orphaned blob is reconciled by server retention or next health-check. The cache is authoritative because it always reflects *this* device's last write |

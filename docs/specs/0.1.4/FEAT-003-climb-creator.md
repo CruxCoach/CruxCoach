@@ -1,13 +1,13 @@
 ---
 status: failed
 ---
-# Feature Spec: Climb Creator & Nostr Community Climbs (v0.3.0)
+# Feature Spec: Climb Creator & Nostr Community Climbs (v0.1.4)
 
 > **Status:** Failed — superseded by the 2026 Kilter/Aurora split. Aurora
 > API is offline and the new Kilter backend (Keycloak + PowerSync +
 > Flutter) replaces the dual-publishing path this spec was built around.
 > Kept as a record of the attempted design; do not implement from this.
-> **Depends on:** Kilter API re-integration (§12) — independent of v0.2.0 specs.
+> **Depends on:** Kilter API re-integration (§12) — independent of v0.1.3 specs.
 
 ## 1. Overview
 
@@ -28,7 +28,7 @@ database.
 ### Non-Goals
 
 - Multi-board support (Tension, Moonboard etc.) — Kilter only
-- Route creation (multi-frame) — boulders only for v0.3.0
+- Route creation (multi-frame) — boulders only for v0.1.4
 - Climb video/beta recording
 - Real-time collaborative editing
 
@@ -58,7 +58,7 @@ p1083r15p1117r15p1164r12p1185r12p1233r13p1282r13p1303r13p1372r13p1392r14p1505r15
 | 14 | Finish | Magenta | `#FF00FF` | `0xE3` |
 | 15 | Foot Only | Orange | `#FFB600` | `0xF4` |
 
-Route-specific roles (42-45) exist but are out of scope for v0.3.0 (boulders
+Route-specific roles (42-45) exist but are out of scope for v0.1.4 (boulders
 only).
 
 ### 2.3 Placement Resolution Chain
@@ -761,7 +761,7 @@ Grade: V6 (7A)          ← consensus (or setter grade if < 3 votes)
 Web-of-Trust filtering: only count grade votes from users within 2 hops of the
 viewer's NIP-02 follow graph. Users with 0 connections have weight 0.
 
-For v0.3.0, start with simple deduplication (one vote per pubkey) and add WoT
+For v0.1.4, start with simple deduplication (one vote per pubkey) and add WoT
 weighting in a later release.
 
 ---
@@ -1053,7 +1053,7 @@ fun convertFrames(auroraFrames: String, mapping: Map<Int, Int>): String {
 ## 13. Dependencies
 
 ```kotlin
-// No new dependencies required for v0.3.0 beyond what v0.2.0 adds.
+// No new dependencies required for v0.1.4 beyond what v0.1.3 adds.
 // All required libraries are already in the project:
 //
 // - com.vitorpamplona.quartz:quartz-android (Nostr, NIP-44, signing)
