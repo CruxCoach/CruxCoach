@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-04-23
+
+### Added
+- Encrypted cloud backup over Nostr — opt-in during onboarding or later in Settings. Your climbing data is encrypted on your device and uploaded to Blossom servers; only you can decrypt it with your Nostr key.
+- Restore a backup on a new device — during onboarding, choose "Restore backup" and import the Nostr key you used before. CruxCoach briefly restarts and then pulls your data automatically.
+- Delete remote backups from Settings — "Delete remote backups…" as an explicit destructive action, with a confirmation dialog and caveats spelled out. Local data is not touched.
+- Share via Zapstore — new QR code + shareable link in Settings → Share app, for pointing new users at the recommended app store.
+- Copy buttons for the online-share URL, offline-share password, and offline-share download URL — no more retyping.
+- Automatic NIP-65 relay discovery — CruxCoach now picks up the Nostr relays you've published as "yours" and uses them instead of just the three built-in defaults. Fully invisible, no settings to manage.
+
+### Changed
+- Onboarding redesigned — down from five steps to three: welcome + board-database download in one screen, privacy + backup in one coherent screen, Kilter import as an optional last step with a prominent "Skip" button.
+- Share buttons renamed for consistency: "Share online", "Share offline", "Share via Zapstore", "Share via apps".
+
+### Notes
+- After restoring a backup on a new device, you need to log in to your Kilter account once more in Settings. Kilter tokens are intentionally not part of the backup so a leaked Nostr key can't also hand over your Kilter account.
+
 ## [0.1.2] - 2026-04-22
 
 ### Added
