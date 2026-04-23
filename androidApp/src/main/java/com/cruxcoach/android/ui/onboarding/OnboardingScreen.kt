@@ -2,6 +2,7 @@ package com.cruxcoach.android.ui.onboarding
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -25,6 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -99,9 +101,19 @@ fun OnboardingScreen(
                     }
                 }
                 OnboardingStep.PRIVACY -> {
+                    // Block "Weiter" when the user picked RESTORE but hasn't
+                    // actually imported a key yet — otherwise the choice
+                    // silently degrades into FRESH on completeOnboarding,
+                    // which is the opposite of what they asked for.
+                    val restoreIncomplete = state.backupOptIn &&
+                        state.backupChoice == BackupChoice.RESTORE &&
+                        !state.hasNostrKey &&
+                        !state.restoreSucceeded
                     Button(
                         onClick = { viewModel.nextStep() },
-                        enabled = !state.isCheckingForBackup && !state.restoreInProgress,
+                        enabled = !state.isCheckingForBackup &&
+                            !state.restoreInProgress &&
+                            !restoreIncomplete,
                         modifier = Modifier.weight(1f).testTag("onboarding_next_button"),
                         colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
                     ) {
@@ -231,15 +243,11 @@ private fun BoardSetupStep(state: OnboardingState, onNavigateToSync: () -> Unit)
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Box(
-                modifier = Modifier
-                    .size(56.dp)
-                    .clip(CircleShape)
-                    .background(OrangeAccent),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text("CC", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = DarkBackground)
-            }
+            Image(
+                painter = painterResource(id = R.mipmap.ic_launcher_round),
+                contentDescription = null,
+                modifier = Modifier.size(56.dp),
+            )
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     stringResource(R.string.onboarding_welcome),
@@ -510,11 +518,21 @@ private fun RestoreSubSection(state: OnboardingState, viewModel: OnboardingViewM
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error,
             )
-            !state.hasNostrKey -> OutlinedButton(
-                onClick = { viewModel.requestKeyImport() },
-                modifier = Modifier.testTag("onboarding_backup_import_key"),
-            ) {
-                Text(stringResource(R.string.onboarding_backup_import_key_button))
+            !state.hasNostrKey -> Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                // Filled (not outlined) because this is now a required
+                // action: "Weiter" is disabled until it's been completed.
+                Button(
+                    onClick = { viewModel.requestKeyImport() },
+                    modifier = Modifier.testTag("onboarding_backup_import_key"),
+                    colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
+                ) {
+                    Text(stringResource(R.string.onboarding_backup_import_key_button))
+                }
+                Text(
+                    stringResource(R.string.onboarding_backup_restore_waiting_for_key),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
             else -> {
                 // Key present, check not yet attempted (rare race) — no UI.

@@ -4,7 +4,7 @@
 
     <!-- Onboarding -->
     <string name="onboarding_welcome">Welcome to CruxCoach</string>
-    <string name="onboarding_welcome_subtitle">Your companion for Kilter Board bouldering. Browse climbs, control your board and share sessions with friends.</string>
+    <string name="onboarding_welcome_subtitle">Open source Kilter Board app — browse climbs, light up the board, track sessions.</string>
     <string name="onboarding_privacy_title">How do you want to use CruxCoach?</string>
     <string name="onboarding_privacy_subtitle">Choose which features should be active. You can change everything anytime in settings.</string>
     <string name="onboarding_privacy_ble_title">Board sharing nearby</string>
@@ -13,7 +13,7 @@
     <string name="onboarding_privacy_community_desc">Crash reports, app announcements and developer chat — all encrypted, no account needed.</string>
     <string name="onboarding_privacy_hint">No personal data leaves your device. All communication is end-to-end encrypted.</string>
     <string name="onboarding_lets_go">Let\'s go</string>
-    <string name="onboarding_board_setup_title">Load the climb database</string>
+    <string name="onboarding_board_setup_title">Load the climbs</string>
     <string name="onboarding_board_setup_subtitle">Without it the app stays empty. Everything else is adjustable later in settings.</string>
     <string name="onboarding_board_skip_hint">You can skip both steps and set them up anytime in settings.</string>
     <string name="onboarding_board_sync">Sync board data</string>
@@ -1425,6 +1425,7 @@
     <string name="onboarding_backup_restore_checking">Looking for a backup…</string>
     <string name="onboarding_backup_restore_success">Backup restored.</string>
     <string name="onboarding_backup_restore_none_for_key">No backup found for this key. Relays may be offline — try again later in settings.</string>
+    <string name="onboarding_backup_restore_waiting_for_key">Import your Nostr key to continue, or switch back to "Start fresh".</string>
     <string name="onboarding_restart_confirm_title">Import Nostr key</string>
     <string name="onboarding_restart_confirm_body">CruxCoach will briefly restart after the import to switch the local encryption to your key. Onboarding continues automatically with the restore.</string>
     <string name="onboarding_kilter_step_title">Kilter logbook</string>

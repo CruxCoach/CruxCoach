@@ -248,7 +248,22 @@ class OnboardingViewModel @Inject constructor(
     }
 
     fun setBackupChoice(choice: BackupChoice) {
-        _state.update { it.copy(backupChoice = choice, noBackupFoundForKey = false) }
+        _state.update { state ->
+            // Surface "no backup for this key" immediately when the user
+            // switches to RESTORE after an initial FRESH-path check already
+            // ran and came back empty — otherwise the UI would fall through
+            // to the else-branch in RestoreSubSection and show nothing, which
+            // looks like "the button did nothing".
+            val noBackupAfterSwitch = choice == BackupChoice.RESTORE &&
+                state.hasNostrKey &&
+                state.backupCheckAttempted &&
+                state.pendingRestore == null &&
+                !state.restoreSucceeded
+            state.copy(
+                backupChoice = choice,
+                noBackupFoundForKey = noBackupAfterSwitch,
+            )
+        }
     }
 
     /** Shows the "App will restart" confirm dialog before navigating to KeyImport. */
