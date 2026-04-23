@@ -248,20 +248,20 @@ class OnboardingViewModel @Inject constructor(
     }
 
     fun setBackupChoice(choice: BackupChoice) {
+        // noBackupFoundForKey is a pure derivation from the existing state —
+        // it's true iff we already ran a check against the current key and
+        // it came back empty. The UI surfaces it as *context* above the
+        // import button (not as a dead-end branch), so seeing it does not
+        // block the user from importing a different key.
         _state.update { state ->
-            // Surface "no backup for this key" immediately when the user
-            // switches to RESTORE after an initial FRESH-path check already
-            // ran and came back empty — otherwise the UI would fall through
-            // to the else-branch in RestoreSubSection and show nothing, which
-            // looks like "the button did nothing".
-            val noBackupAfterSwitch = choice == BackupChoice.RESTORE &&
+            val derivedNoBackup = choice == BackupChoice.RESTORE &&
                 state.hasNostrKey &&
                 state.backupCheckAttempted &&
                 state.pendingRestore == null &&
                 !state.restoreSucceeded
             state.copy(
                 backupChoice = choice,
-                noBackupFoundForKey = noBackupAfterSwitch,
+                noBackupFoundForKey = derivedNoBackup,
             )
         }
     }

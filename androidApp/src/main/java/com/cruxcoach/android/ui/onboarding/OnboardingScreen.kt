@@ -529,14 +529,20 @@ private fun RestoreSubSection(state: OnboardingState, viewModel: OnboardingViewM
                     color = SuccessGreen,
                 )
             }
-            state.noBackupFoundForKey -> Text(
-                stringResource(R.string.onboarding_backup_restore_none_for_key),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error,
-            )
-            !state.hasNostrKey -> Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                // Filled (not outlined) because this is now a required
-                // action: "Weiter" is disabled until it's been completed.
+            // Default path: always offer the key-import action, because
+            // "Backup wiederherstellen" means "bring a key from another
+            // device". A prior empty check against the *current* key gets
+            // surfaced as a small context line above the button, but the
+            // button itself stays the primary action — user can always
+            // import a different key.
+            else -> Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (state.noBackupFoundForKey) {
+                    Text(
+                        stringResource(R.string.onboarding_backup_restore_none_for_key),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 Button(
                     onClick = { viewModel.requestKeyImport() },
                     modifier = Modifier.testTag("onboarding_backup_import_key"),
@@ -549,9 +555,6 @@ private fun RestoreSubSection(state: OnboardingState, viewModel: OnboardingViewM
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-            }
-            else -> {
-                // Key present, check not yet attempted (rare race) — no UI.
             }
         }
     }

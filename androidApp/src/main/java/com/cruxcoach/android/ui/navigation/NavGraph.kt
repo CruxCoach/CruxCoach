@@ -433,11 +433,14 @@ fun CruxCoachNavHost(
 
             composable(Routes.BOARD_SYNC) {
                 BoardSyncScreen(
-                    onSyncComplete = {
-                        navController.navigate(Routes.BOARD_BROWSER) {
-                            popUpTo(Routes.BOARD_SYNC) { inclusive = true }
-                        }
-                    },
+                    // popBackStack instead of navigate-to-BoardBrowser: the
+                    // BoardSync screen is reached from two very different
+                    // places — Settings (where "Go to browser" makes sense
+                    // but isn't critical) and the Onboarding Step 1 (where
+                    // a hard jump to BoardBrowser would silently skip the
+                    // remaining onboarding steps). Unconditional popBackStack
+                    // returns the user to whichever screen launched them.
+                    onSyncComplete = { navController.popBackStack() },
                     onNavigateBack = { navController.popBackStack() },
                     onNavigateToBugReport = { title, desc ->
                         navController.navigate(Routes.bugReport(title, desc))

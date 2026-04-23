@@ -688,7 +688,7 @@
     <string name="board_sync_wifi_settings">WLAN-Einstellungen</string>
     <string name="board_sync_no_network_banner">Kein Netzwerk verfügbar</string>
     <string name="board_sync_no_wifi_banner">Kein WLAN — Online-Download nur über WLAN möglich</string>
-    <string name="board_sync_to_browser">Zum Browser</string>
+    <string name="board_sync_to_browser">Fertig</string>
     <string name="board_sync_db_title">Kilter Board-Datenbank</string>
     <string name="board_sync_db_description">Lädt die aktuelle Kilter Board Climb-Datenbank herunter (~30 MB). WLAN empfohlen.</string>
     <string name="board_sync_db_synced">Datenbank synchronisiert</string>
@@ -1426,12 +1426,12 @@
     <string name="onboarding_backup_import_key_button">Nostr-Schlüssel importieren →</string>
     <string name="onboarding_backup_restore_checking">Suche nach Backup…</string>
     <string name="onboarding_backup_restore_success">Backup wiederhergestellt.</string>
-    <string name="onboarding_backup_restore_none_for_key">Mit diesem Schlüssel wurde kein Backup gefunden. Relais eventuell offline — später in den Einstellungen erneut versuchen.</string>
+    <string name="onboarding_backup_restore_none_for_key">Mit deinem aktuellen Schlüssel wurde kein Backup gefunden.</string>
     <string name="onboarding_backup_restore_waiting_for_key">Importiere deinen Nostr-Schlüssel, um fortzufahren, oder wechsle zurück zu „Neu starten".</string>
     <string name="onboarding_restart_confirm_title">Nostr-Schlüssel importieren</string>
     <string name="onboarding_restart_confirm_body">CruxCoach startet nach dem Import kurz neu, um die lokale Verschlüsselung auf deinen Schlüssel umzustellen. Das Onboarding setzt danach automatisch mit der Wiederherstellung fort.</string>
     <string name="onboarding_kilter_step_title">Kilter-Logbook</string>
-    <string name="onboarding_kilter_step_subtitle">Optional: Deine Sends und Versuche von kilterboardapp.com übernehmen. Auch später in den Einstellungen möglich.</string>
+    <string name="onboarding_kilter_step_subtitle">Optional: Deine Sends und Versuche aus der offiziellen Kilter Board App übernehmen. Auch später in den Einstellungen möglich.</string>
     <string name="onboarding_kilter_skip_hint">Optionaler Schritt. Überspringen schließt das Onboarding ab — der Kilter-Import ist immer in den Einstellungen erreichbar.</string>
 
     <!-- Clipboard -->

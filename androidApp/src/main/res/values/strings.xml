@@ -645,7 +645,7 @@
     <string name="board_sync_wifi_settings">WiFi settings</string>
     <string name="board_sync_no_network_banner">No network available</string>
     <string name="board_sync_no_wifi_banner">No WiFi — Online download only available over WiFi</string>
-    <string name="board_sync_to_browser">Go to browser</string>
+    <string name="board_sync_to_browser">Done</string>
     <string name="board_sync_db_title">Kilter Board Database</string>
     <string name="board_sync_db_description">Downloads the current Kilter Board climb database (~30 MB). WiFi recommended.</string>
     <string name="board_sync_db_synced">Database synced</string>
@@ -1424,12 +1424,12 @@
     <string name="onboarding_backup_import_key_button">Import Nostr key →</string>
     <string name="onboarding_backup_restore_checking">Looking for a backup…</string>
     <string name="onboarding_backup_restore_success">Backup restored.</string>
-    <string name="onboarding_backup_restore_none_for_key">No backup found for this key. Relays may be offline — try again later in settings.</string>
+    <string name="onboarding_backup_restore_none_for_key">No backup was found for your current key.</string>
     <string name="onboarding_backup_restore_waiting_for_key">Import your Nostr key to continue, or switch back to "Start fresh".</string>
     <string name="onboarding_restart_confirm_title">Import Nostr key</string>
     <string name="onboarding_restart_confirm_body">CruxCoach will briefly restart after the import to switch the local encryption to your key. Onboarding continues automatically with the restore.</string>
     <string name="onboarding_kilter_step_title">Kilter logbook</string>
-    <string name="onboarding_kilter_step_subtitle">Optional: pull your sends and attempts from kilterboardapp.com. You can do this later in settings.</string>
+    <string name="onboarding_kilter_step_subtitle">Optional: pull your sends and attempts from the official Kilter Board app. You can do this later in settings.</string>
     <string name="onboarding_kilter_skip_hint">Optional step. Skip to finish onboarding — Kilter import is always available in settings.</string>
 
     <!-- Clipboard -->
