@@ -26,18 +26,39 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+/**
+ * New 3-step onboarding:
+ *  - BOARD_SETUP  — welcome header + the one must-have action (Board-DB download).
+ *  - PRIVACY      — privacy + backup + (inline) backup-restore choice in a single screen.
+ *  - KILTER       — optional Kilter-logbook import, prominent skip.
+ */
 enum class OnboardingStep {
-    WELCOME, PRIVACY, BOARD_SETUP, NOSTR_KEY, NOSTR_BACKUP
+    BOARD_SETUP, PRIVACY, KILTER
 }
 
+/**
+ * User choice under the Backup toggle in the Privacy step.
+ *
+ *  - [FRESH]: a new Nostr key is generated lazily; today's local data
+ *    becomes the first snapshot.
+ *  - [RESTORE]: the user brings a key from another device. Selecting this
+ *    reveals a "Schlüssel importieren" button that navigates to the
+ *    existing [com.cruxcoach.android.ui.settings.KeyImportScreen]; the
+ *    onboarding persists a restore-intent marker, then lets the
+ *    KeyImport-driven app restart happen. On the next cold start
+ *    onboarding lands back on [OnboardingStep.PRIVACY] and auto-triggers
+ *    [BackupRepository.checkForBackup].
+ */
+enum class BackupChoice { FRESH, RESTORE }
+
 data class OnboardingState(
-    val currentStep: OnboardingStep = OnboardingStep.WELCOME,
+    val currentStep: OnboardingStep = OnboardingStep.BOARD_SETUP,
 
     // Privacy preferences
     val bleSharing: Boolean = true,
     val communityFeatures: Boolean = true,
 
-    // Kilter login (inline in board setup step)
+    // Kilter login (inline in kilter step)
     val kilterEmail: String = "",
     val kilterPassword: String = "",
     val kilterLoginError: String? = null,
@@ -52,12 +73,16 @@ data class OnboardingState(
 
     // FEAT-002: Nostr backup onboarding
     val hasNostrKey: Boolean = false,
+    val backupOptIn: Boolean = false,
+    val backupChoice: BackupChoice = BackupChoice.FRESH,
     val isCheckingForBackup: Boolean = false,
     val backupCheckAttempted: Boolean = false,
     val pendingRestore: BackupInfo? = null,
     val restoreInProgress: Boolean = false,
     val restoreFailed: Boolean = false,
-    val backupOptIn: Boolean = false,
+    val restoreSucceeded: Boolean = false,
+    val noBackupFoundForKey: Boolean = false,
+    val showRestartConfirm: Boolean = false,
 
     val isSaving: Boolean = false,
     val error: String? = null
@@ -91,27 +116,39 @@ class OnboardingViewModel @Inject constructor(
                 _state.update { it.copy(boardDataImported = syncState.alreadyImported) }
             }
         }
+        // Resume the restore flow if the user came back from KeyImportScreen
+        // via app-restart. The marker is only set right before that navigation
+        // and is cleared after the restore attempt resolves.
+        viewModelScope.launch {
+            if (backupPreferences.isBackupRestoreIntent()) {
+                _state.update {
+                    it.copy(
+                        currentStep = OnboardingStep.PRIVACY,
+                        backupOptIn = true,
+                        backupChoice = BackupChoice.RESTORE,
+                        hasNostrKey = keyStore.hasKey(),
+                    )
+                }
+                triggerBackupCheckIfNeeded()
+            }
+        }
     }
 
     fun nextStep() {
         val next = when (_state.value.currentStep) {
-            OnboardingStep.WELCOME -> OnboardingStep.PRIVACY
-            OnboardingStep.PRIVACY -> OnboardingStep.BOARD_SETUP
-            OnboardingStep.BOARD_SETUP -> OnboardingStep.NOSTR_KEY
-            OnboardingStep.NOSTR_KEY -> OnboardingStep.NOSTR_BACKUP
-            OnboardingStep.NOSTR_BACKUP -> return
+            OnboardingStep.BOARD_SETUP -> OnboardingStep.PRIVACY
+            OnboardingStep.PRIVACY -> OnboardingStep.KILTER
+            OnboardingStep.KILTER -> return
         }
         _state.update { it.copy(currentStep = next) }
-        if (next == OnboardingStep.NOSTR_KEY) onNostrKeyStepEntered()
+        if (next == OnboardingStep.PRIVACY) triggerBackupCheckIfNeeded()
     }
 
     fun previousStep() {
         val prev = when (_state.value.currentStep) {
-            OnboardingStep.WELCOME -> return
-            OnboardingStep.PRIVACY -> OnboardingStep.WELCOME
-            OnboardingStep.BOARD_SETUP -> OnboardingStep.PRIVACY
-            OnboardingStep.NOSTR_KEY -> OnboardingStep.BOARD_SETUP
-            OnboardingStep.NOSTR_BACKUP -> OnboardingStep.NOSTR_KEY
+            OnboardingStep.BOARD_SETUP -> return
+            OnboardingStep.PRIVACY -> OnboardingStep.BOARD_SETUP
+            OnboardingStep.KILTER -> OnboardingStep.PRIVACY
         }
         _state.update { it.copy(currentStep = prev) }
     }
@@ -203,20 +240,51 @@ class OnboardingViewModel @Inject constructor(
         }
     }
 
-    // ─── FEAT-002 onboarding actions ───────────────────────────────────────
+    // ─── FEAT-002 backup ────────────────────────────────────────────────
+
+    fun setBackupOptIn(enabled: Boolean) {
+        _state.update { it.copy(backupOptIn = enabled) }
+        if (enabled) triggerBackupCheckIfNeeded()
+    }
+
+    fun setBackupChoice(choice: BackupChoice) {
+        _state.update { it.copy(backupChoice = choice, noBackupFoundForKey = false) }
+    }
+
+    /** Shows the "App will restart" confirm dialog before navigating to KeyImport. */
+    fun requestKeyImport() {
+        _state.update { it.copy(showRestartConfirm = true) }
+    }
+
+    fun dismissRestartConfirm() {
+        _state.update { it.copy(showRestartConfirm = false) }
+    }
 
     /**
-     * On entering the NOSTR_KEY step: if the user already has a Nostr key
-     * (typically an app-update scenario — EncryptedSharedPreferences survives
-     * updates but not uninstalls), we run [BackupRepository.checkForBackup]
-     * silently. A hit surfaces the restore dialog; a miss or absent key is
-     * silent — the spec (§8.2) is explicit that negative outcomes don't get
-     * UI, only the user-initiated Settings button does.
+     * Persist the restore-intent marker and tell the caller it's safe to
+     * navigate to the KeyImport route. Navigation itself is a UI concern.
      */
-    private fun onNostrKeyStepEntered() {
+    fun confirmKeyImportNavigation(navigate: () -> Unit) {
+        viewModelScope.launch {
+            backupPreferences.setBackupRestoreIntent(true)
+            _state.update { it.copy(showRestartConfirm = false) }
+            navigate()
+        }
+    }
+
+    /**
+     * Triggers [BackupRepository.checkForBackup] if we have a key and
+     * haven't tried this session. A hit populates [OnboardingState.pendingRestore]
+     * which the UI turns into the restore dialog.
+     */
+    private fun triggerBackupCheckIfNeeded() {
         val s = _state.value
-        if (!keyStore.hasKey() || s.backupCheckAttempted) return
-        _state.update { it.copy(isCheckingForBackup = true) }
+        if (!keyStore.hasKey()) {
+            _state.update { it.copy(hasNostrKey = false) }
+            return
+        }
+        if (s.backupCheckAttempted || s.isCheckingForBackup) return
+        _state.update { it.copy(hasNostrKey = true, isCheckingForBackup = true) }
         viewModelScope.launch {
             val info = runCatching { backupRepository.checkForBackup() }
                 .onFailure { Log.w(TAG, "checkForBackup during onboarding failed", it) }
@@ -224,9 +292,15 @@ class OnboardingViewModel @Inject constructor(
             _state.update {
                 it.copy(
                     isCheckingForBackup = false,
-                    pendingRestore = info,
                     backupCheckAttempted = true,
+                    pendingRestore = info,
+                    noBackupFoundForKey = info == null && it.backupChoice == BackupChoice.RESTORE,
                 )
+            }
+            // If we arrived here via restart-resume and find nothing, clear
+            // the marker so we don't loop forever.
+            if (info == null && backupPreferences.isBackupRestoreIntent()) {
+                backupPreferences.setBackupRestoreIntent(false)
             }
         }
     }
@@ -237,13 +311,15 @@ class OnboardingViewModel @Inject constructor(
         viewModelScope.launch {
             val result = runCatching { backupRepository.restore(info) }
             if (result.isSuccess) {
-                // A successful restore implies the user wants backup enabled.
                 backupPreferences.setBackupEnabled(true)
+                backupPreferences.setBackupRestoreIntent(false)
                 _state.update {
                     it.copy(
                         restoreInProgress = false,
                         pendingRestore = null,
+                        restoreSucceeded = true,
                         backupOptIn = true,
+                        backupChoice = BackupChoice.RESTORE,
                     )
                 }
             } else {
@@ -260,18 +336,17 @@ class OnboardingViewModel @Inject constructor(
     }
 
     fun dismissOnboardingRestore() {
-        _state.update { it.copy(pendingRestore = null) }
+        viewModelScope.launch {
+            backupPreferences.setBackupRestoreIntent(false)
+            _state.update { it.copy(pendingRestore = null) }
+        }
     }
 
     fun consumeRestoreFailure() {
         _state.update { it.copy(restoreFailed = false) }
     }
 
-    fun setBackupOptIn(enabled: Boolean) {
-        _state.update { it.copy(backupOptIn = enabled) }
-    }
-
-    // ────────────────────────────────────────────────────────────────────────
+    // ────────────────────────────────────────────────────────────────────
 
     fun completeOnboarding(onComplete: () -> Unit) {
         val s = _state.value
@@ -283,11 +358,12 @@ class OnboardingViewModel @Inject constructor(
                 userPreferences.setAllowRemoteDisconnect(s.bleSharing)
                 userPreferences.setCrashReportOptIn(s.communityFeatures)
                 userPreferences.setAnnouncementsEnabled(s.communityFeatures)
-                // FEAT-002: persist backup opt-in and kick off the scheduler.
-                // Defaults to daily when the user opted in; the user can change
-                // the interval in Settings.
+                // FEAT-002: persist backup opt-in + schedule worker. RESTORE
+                // path has already set backupEnabled=true via confirmRestore,
+                // so the check here is the user's explicit toggle state.
                 backupPreferences.setBackupEnabled(s.backupOptIn)
                 backupPreferences.setBackupOnboardingSeen(true)
+                backupPreferences.setBackupRestoreIntent(false)
                 BackupSyncWorker.schedule(
                     appContext,
                     enabled = s.backupOptIn && backupPreferences.isBackupFeatureEnabled(),

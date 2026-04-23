@@ -13,8 +13,8 @@
     <string name="onboarding_privacy_community_desc">Crash reports, app announcements and developer chat — all encrypted, no account needed.</string>
     <string name="onboarding_privacy_hint">No personal data leaves your device. All communication is end-to-end encrypted.</string>
     <string name="onboarding_lets_go">Let\'s go</string>
-    <string name="onboarding_board_setup_title">Board &amp; logbook setup</string>
-    <string name="onboarding_board_setup_subtitle">Download the climb database and optionally import your Kilter logbook.</string>
+    <string name="onboarding_board_setup_title">Load the climb database</string>
+    <string name="onboarding_board_setup_subtitle">Without it the app stays empty. Everything else is adjustable later in settings.</string>
     <string name="onboarding_board_skip_hint">You can skip both steps and set them up anytime in settings.</string>
     <string name="onboarding_board_sync">Sync board data</string>
     <string name="onboarding_board_db_title">Board database</string>
@@ -1415,4 +1415,19 @@
     <string name="onboarding_nostr_backup_title">Backup your data</string>
     <string name="onboarding_nostr_backup_body">Encrypted backup on Blossom servers, decryptable only with your Nostr key. Default: off — you can enable it any time in Settings.</string>
     <string name="onboarding_restore_dialog_body">A backup was found (%1$s).\n\nRestoring it will replace any local data with the contents of the backup.</string>
+
+    <!-- FEAT-002: onboarding backup choice (3-step onboarding) -->
+    <string name="onboarding_backup_choice_fresh_title">Start fresh</string>
+    <string name="onboarding_backup_choice_fresh_desc">A new Nostr key is generated. Your current local data becomes the first backup.</string>
+    <string name="onboarding_backup_choice_restore_title">Restore a backup</string>
+    <string name="onboarding_backup_choice_restore_desc">I have a backup from another device. Import the Nostr key I used there.</string>
+    <string name="onboarding_backup_import_key_button">Import Nostr key →</string>
+    <string name="onboarding_backup_restore_checking">Looking for a backup…</string>
+    <string name="onboarding_backup_restore_success">Backup restored.</string>
+    <string name="onboarding_backup_restore_none_for_key">No backup found for this key. Relays may be offline — try again later in settings.</string>
+    <string name="onboarding_restart_confirm_title">Import Nostr key</string>
+    <string name="onboarding_restart_confirm_body">CruxCoach will briefly restart after the import to switch the local encryption to your key. Onboarding continues automatically with the restore.</string>
+    <string name="onboarding_kilter_step_title">Kilter logbook</string>
+    <string name="onboarding_kilter_step_subtitle">Optional: pull your sends and attempts from kilterboardapp.com. You can do this later in settings.</string>
+    <string name="onboarding_kilter_skip_hint">Optional step. Skip to finish onboarding — Kilter import is always available in settings.</string>
 </resources>

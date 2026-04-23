@@ -61,6 +61,24 @@ class BackupPreferences @Inject constructor(
         dataStore.edit { it[Keys.BACKUP_ONBOARDING_SEEN] = seen }
     }
 
+    /**
+     * Marker that survives the app-restart triggered by
+     * [com.cruxcoach.android.ui.settings.KeyImportScreen] after a successful
+     * import. Set by the onboarding right before navigating to KeyImport;
+     * read on the next cold start so onboarding knows to jump back to the
+     * Privacy step with the "restore" radio pre-selected and auto-trigger
+     * `checkForBackup`. Always cleared after it's acted on.
+     */
+    suspend fun isBackupRestoreIntent(): Boolean =
+        dataStore.data.first()[Keys.BACKUP_RESTORE_INTENT] ?: false
+
+    suspend fun setBackupRestoreIntent(intent: Boolean) {
+        dataStore.edit {
+            if (intent) it[Keys.BACKUP_RESTORE_INTENT] = true
+            else it.remove(Keys.BACKUP_RESTORE_INTENT)
+        }
+    }
+
     // ---- DataKey: NIP-44-wrapped ciphertext (hex-encoded raw bytes wrap) ----
 
     suspend fun getWrappedDataKey(): String? =
@@ -156,6 +174,7 @@ class BackupPreferences @Inject constructor(
         val BACKUP_ENABLED = booleanPreferencesKey("backup_enabled")
         val BACKUP_FEATURE_ENABLED = booleanPreferencesKey("backup_feature_enabled")
         val BACKUP_ONBOARDING_SEEN = booleanPreferencesKey("backup_onboarding_seen")
+        val BACKUP_RESTORE_INTENT = booleanPreferencesKey("backup_restore_intent")
         val WRAPPED_DATA_KEY = stringPreferencesKey("backup_wrapped_data_key")
         val PREVIOUS_BLOB_SHA256 = stringPreferencesKey("backup_previous_blob_sha256")
         val DEVICE_ID = stringPreferencesKey("backup_device_id")

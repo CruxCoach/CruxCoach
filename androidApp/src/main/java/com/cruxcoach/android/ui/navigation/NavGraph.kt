@@ -251,7 +251,8 @@ fun CruxCoachNavHost(
                             popUpTo(Routes.ONBOARDING) { inclusive = true }
                         }
                     },
-                    onNavigateToSync = { navController.navigate(Routes.BOARD_SYNC) }
+                    onNavigateToSync = { navController.navigate(Routes.BOARD_SYNC) },
+                    onNavigateToKeyImport = { navController.navigate(Routes.KEY_IMPORT) },
                 )
             }
 

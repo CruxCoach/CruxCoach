@@ -1,9 +1,11 @@
 package com.cruxcoach.android.ui.onboarding
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -13,6 +15,7 @@ import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Forum
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.automirrored.filled.Login
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -38,36 +41,33 @@ import com.cruxcoach.android.ui.theme.*
 fun OnboardingScreen(
     onComplete: () -> Unit,
     onNavigateToSync: () -> Unit = {},
-    viewModel: OnboardingViewModel = hiltViewModel()
+    onNavigateToKeyImport: () -> Unit = {},
+    viewModel: OnboardingViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
     Column(modifier = Modifier.fillMaxSize()) {
-        // Progress indicator
-        if (state.currentStep != OnboardingStep.WELCOME) {
-            val steps = OnboardingStep.entries
-            val currentIdx = steps.indexOf(state.currentStep)
-            LinearProgressIndicator(
-                progress = { currentIdx.toFloat() / (steps.size - 1) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                color = OrangeAccent,
-                trackColor = MaterialTheme.colorScheme.surfaceVariant
-            )
-        }
+        // Honest 3-step progress bar.
+        val steps = OnboardingStep.entries
+        val currentIdx = steps.indexOf(state.currentStep)
+        LinearProgressIndicator(
+            progress = { (currentIdx + 1).toFloat() / steps.size },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(4.dp),
+            color = OrangeAccent,
+            trackColor = MaterialTheme.colorScheme.surfaceVariant,
+        )
 
         AnimatedContent(
             targetState = state.currentStep,
             modifier = Modifier.weight(1f),
-            label = "onboarding_step"
+            label = "onboarding_step",
         ) { step ->
             when (step) {
-                OnboardingStep.WELCOME -> WelcomeStep()
+                OnboardingStep.BOARD_SETUP -> BoardSetupStep(state, onNavigateToSync)
                 OnboardingStep.PRIVACY -> PrivacyStep(state, viewModel)
-                OnboardingStep.BOARD_SETUP -> BoardSetupStep(state, viewModel, onNavigateToSync)
-                OnboardingStep.NOSTR_KEY -> NostrKeyStep(state)
-                OnboardingStep.NOSTR_BACKUP -> NostrBackupStep(state, viewModel)
+                OnboardingStep.KILTER -> KilterStep(state, viewModel)
             }
         }
 
@@ -76,66 +76,43 @@ fun OnboardingScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            if (state.currentStep != OnboardingStep.WELCOME) {
+            if (state.currentStep != OnboardingStep.BOARD_SETUP) {
                 OutlinedButton(
                     onClick = { viewModel.previousStep() },
-                    modifier = Modifier.weight(1f).testTag("onboarding_back_button")
+                    modifier = Modifier.weight(1f).testTag("onboarding_back_button"),
+                    enabled = !state.restoreInProgress && !state.isSaving,
                 ) {
                     Text(stringResource(R.string.action_back))
                 }
             }
 
             when (state.currentStep) {
-                OnboardingStep.WELCOME -> {
-                    Button(
-                        onClick = { viewModel.nextStep() },
-                        modifier = Modifier.weight(1f).testTag("onboarding_next_button"),
-                        colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent)
-                    ) {
-                        Text(stringResource(R.string.onboarding_lets_go))
-                    }
-                }
-                OnboardingStep.PRIVACY -> {
-                    TextButton(
-                        onClick = { viewModel.nextStep() },
-                        modifier = Modifier.testTag("onboarding_skip_button")
-                    ) {
-                        Text(stringResource(R.string.action_skip))
-                    }
-                    Button(
-                        onClick = { viewModel.nextStep() },
-                        modifier = Modifier.weight(1f).testTag("onboarding_next_button"),
-                        colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent)
-                    ) {
-                        Text(stringResource(R.string.action_next))
-                    }
-                }
                 OnboardingStep.BOARD_SETUP -> {
                     Button(
                         onClick = { viewModel.nextStep() },
                         modifier = Modifier.weight(1f).testTag("onboarding_next_button"),
-                        colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent)
+                        colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
                     ) {
                         Text(stringResource(R.string.action_next))
                     }
                 }
-                OnboardingStep.NOSTR_KEY -> {
+                OnboardingStep.PRIVACY -> {
                     Button(
                         onClick = { viewModel.nextStep() },
                         enabled = !state.isCheckingForBackup && !state.restoreInProgress,
                         modifier = Modifier.weight(1f).testTag("onboarding_next_button"),
-                        colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent)
+                        colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
                     ) {
                         Text(stringResource(R.string.action_next))
                     }
                 }
-                OnboardingStep.NOSTR_BACKUP -> {
+                OnboardingStep.KILTER -> {
                     TextButton(
                         onClick = { viewModel.completeOnboarding(onComplete) },
                         enabled = !state.isSaving,
-                        modifier = Modifier.testTag("onboarding_skip_button")
+                        modifier = Modifier.testTag("onboarding_skip_button"),
                     ) {
                         Text(stringResource(R.string.action_skip))
                     }
@@ -143,13 +120,13 @@ fun OnboardingScreen(
                         onClick = { viewModel.completeOnboarding(onComplete) },
                         enabled = !state.isSaving,
                         modifier = Modifier.weight(1f).testTag("onboarding_finish_button"),
-                        colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent)
+                        colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
                     ) {
                         if (state.isSaving) {
                             CircularProgressIndicator(
                                 modifier = Modifier.size(20.dp),
                                 color = MaterialTheme.colorScheme.onPrimary,
-                                strokeWidth = 2.dp
+                                strokeWidth = 2.dp,
                             )
                         } else {
                             Text(stringResource(R.string.action_done))
@@ -164,13 +141,36 @@ fun OnboardingScreen(
                 text = state.error ?: "",
                 color = ErrorRed,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                style = MaterialTheme.typography.bodySmall
+                style = MaterialTheme.typography.bodySmall,
             )
         }
     }
 
-    // FEAT-002 restore intercept during onboarding. Dialog lives above the
-    // main Column so it overlays any step.
+    // Pre-restart confirm dialog (RESTORE path only).
+    if (state.showRestartConfirm) {
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissRestartConfirm() },
+            title = { Text(stringResource(R.string.onboarding_restart_confirm_title)) },
+            text = { Text(stringResource(R.string.onboarding_restart_confirm_body)) },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.confirmKeyImportNavigation(onNavigateToKeyImport)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
+                ) {
+                    Text(stringResource(R.string.action_next))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.dismissRestartConfirm() }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            },
+        )
+    }
+
+    // Restore-found dialog overlays everything.
     state.pendingRestore?.let { info ->
         val sizeKb = info.pointer.size / 1024
         AlertDialog(
@@ -215,114 +215,112 @@ fun OnboardingScreen(
     }
 }
 
+// ─── Step 1: Board setup (with inline welcome header) ─────────────────────
+
 @Composable
-private fun NostrKeyStep(state: OnboardingState) {
+private fun BoardSetupStep(state: OnboardingState, onNavigateToSync: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 32.dp, vertical = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
-        Text(
-            stringResource(R.string.onboarding_nostr_key_title),
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold,
-        )
-        Text(
-            stringResource(R.string.onboarding_nostr_key_body),
-            style = MaterialTheme.typography.bodyMedium,
-        )
-        if (state.isCheckingForBackup) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(18.dp),
-                    strokeWidth = 2.dp,
-                )
-                Spacer(modifier = Modifier.width(12.dp))
+        // Compact welcome header (no longer a standalone step).
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .clip(CircleShape)
+                    .background(OrangeAccent),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("CC", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = DarkBackground)
+            }
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    stringResource(R.string.onboarding_nostr_key_checking),
+                    stringResource(R.string.onboarding_welcome),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    stringResource(R.string.onboarding_welcome_subtitle),
                     style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-        } else if (!state.hasNostrKey) {
-            Text(
-                stringResource(R.string.onboarding_nostr_key_hint_import_later),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
-    }
-}
 
-@Composable
-private fun NostrBackupStep(state: OnboardingState, viewModel: OnboardingViewModel) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 32.dp, vertical = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
         Text(
-            stringResource(R.string.onboarding_nostr_backup_title),
-            style = MaterialTheme.typography.headlineSmall,
+            stringResource(R.string.onboarding_board_setup_title),
+            style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
         )
         Text(
-            stringResource(R.string.onboarding_nostr_backup_body),
+            stringResource(R.string.onboarding_board_setup_subtitle),
             style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Row(
+
+        // The only must-have card on this step.
+        Card(
             modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+            ),
+            shape = RoundedCornerShape(16.dp),
         ) {
-            Text(
-                stringResource(R.string.settings_backup_enable),
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            Switch(
-                checked = state.backupOptIn,
-                onCheckedChange = { viewModel.setBackupOptIn(it) },
-                modifier = Modifier.testTag("onboarding_backup_optin_switch"),
-            )
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Icon(Icons.Default.CloudSync, null, tint = OrangeAccent, modifier = Modifier.size(40.dp))
+                Text(
+                    stringResource(R.string.onboarding_board_db_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                )
+                Text(
+                    stringResource(R.string.onboarding_board_db_subtitle),
+                    style = MaterialTheme.typography.bodySmall,
+                    textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (state.boardDataImported) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.padding(vertical = 4.dp),
+                    ) {
+                        Icon(Icons.Default.CheckCircle, null, tint = SuccessGreen, modifier = Modifier.size(20.dp))
+                        Text(
+                            stringResource(R.string.onboarding_board_db_imported),
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = SuccessGreen,
+                        )
+                    }
+                } else {
+                    Button(
+                        onClick = onNavigateToSync,
+                        modifier = Modifier.fillMaxWidth().testTag("onboarding_sync_button"),
+                        colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
+                        shape = RoundedCornerShape(12.dp),
+                    ) {
+                        Text(stringResource(R.string.onboarding_board_sync), fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
         }
     }
 }
 
-@Composable
-private fun WelcomeStep() {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(32.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Box(
-            modifier = Modifier
-                .size(80.dp)
-                .clip(CircleShape)
-                .background(OrangeAccent),
-            contentAlignment = Alignment.Center
-        ) {
-            Text("CC", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = DarkBackground)
-        }
-        Spacer(modifier = Modifier.height(24.dp))
-        Text(
-            stringResource(R.string.onboarding_welcome),
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold,
-            textAlign = TextAlign.Center
-        )
-        Spacer(modifier = Modifier.height(12.dp))
-        Text(
-            stringResource(R.string.onboarding_welcome_subtitle),
-            style = MaterialTheme.typography.bodyLarge,
-            textAlign = TextAlign.Center,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    }
-}
+// ─── Step 2: Privacy + backup + inline restore ────────────────────────────
 
 @Composable
 private fun PrivacyStep(state: OnboardingState, viewModel: OnboardingViewModel) {
@@ -331,51 +329,196 @@ private fun PrivacyStep(state: OnboardingState, viewModel: OnboardingViewModel) 
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Text(
             stringResource(R.string.onboarding_privacy_title),
             style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold
+            fontWeight = FontWeight.Bold,
         )
-
         Text(
             stringResource(R.string.onboarding_privacy_subtitle),
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
-        // BLE Sharing
         PrivacyToggleCard(
             icon = { Icon(Icons.Default.Bluetooth, null, tint = OrangeAccent, modifier = Modifier.size(32.dp)) },
             title = stringResource(R.string.onboarding_privacy_ble_title),
             description = stringResource(R.string.onboarding_privacy_ble_desc),
             checked = state.bleSharing,
             onCheckedChange = { viewModel.updateBleSharing(it) },
-            testTag = "onboarding_ble_switch"
+            testTag = "onboarding_ble_switch",
         )
 
-        // Community & Feedback (Nostr-based: crash reports, announcements, dev chat)
+        BackupCard(state, viewModel)
+
         PrivacyToggleCard(
             icon = { Icon(Icons.Default.Forum, null, tint = OrangeAccent, modifier = Modifier.size(32.dp)) },
             title = stringResource(R.string.onboarding_privacy_community_title),
             description = stringResource(R.string.onboarding_privacy_community_desc),
             checked = state.communityFeatures,
             onCheckedChange = { viewModel.updateCommunityFeatures(it) },
-            testTag = "onboarding_community_switch"
+            testTag = "onboarding_community_switch",
         )
 
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = InfoBlue.copy(alpha = 0.1f)),
-            shape = RoundedCornerShape(12.dp)
+            shape = RoundedCornerShape(12.dp),
         ) {
             Text(
                 stringResource(R.string.onboarding_privacy_hint),
                 modifier = Modifier.padding(12.dp),
                 style = MaterialTheme.typography.bodySmall,
-                color = InfoBlue
+                color = InfoBlue,
             )
+        }
+    }
+}
+
+@Composable
+private fun BackupCard(state: OnboardingState, viewModel: OnboardingViewModel) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+        ),
+        shape = RoundedCornerShape(16.dp),
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Icon(Icons.Default.Lock, null, tint = OrangeAccent, modifier = Modifier.size(32.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        stringResource(R.string.settings_backup_title),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        stringResource(R.string.settings_backup_description),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(
+                    checked = state.backupOptIn,
+                    onCheckedChange = { viewModel.setBackupOptIn(it) },
+                    modifier = Modifier.testTag("onboarding_backup_switch"),
+                    colors = SwitchDefaults.colors(checkedTrackColor = OrangeAccent),
+                )
+            }
+
+            AnimatedVisibility(visible = state.backupOptIn) {
+                Column(
+                    modifier = Modifier.padding(top = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    HorizontalDivider()
+
+                    BackupChoiceRow(
+                        selected = state.backupChoice == BackupChoice.FRESH,
+                        title = stringResource(R.string.onboarding_backup_choice_fresh_title),
+                        description = stringResource(R.string.onboarding_backup_choice_fresh_desc),
+                        onSelect = { viewModel.setBackupChoice(BackupChoice.FRESH) },
+                        testTag = "onboarding_backup_choice_fresh",
+                    )
+
+                    BackupChoiceRow(
+                        selected = state.backupChoice == BackupChoice.RESTORE,
+                        title = stringResource(R.string.onboarding_backup_choice_restore_title),
+                        description = stringResource(R.string.onboarding_backup_choice_restore_desc),
+                        onSelect = { viewModel.setBackupChoice(BackupChoice.RESTORE) },
+                        testTag = "onboarding_backup_choice_restore",
+                    )
+
+                    if (state.backupChoice == BackupChoice.RESTORE) {
+                        RestoreSubSection(state, viewModel)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BackupChoiceRow(
+    selected: Boolean,
+    title: String,
+    description: String,
+    onSelect: () -> Unit,
+    testTag: String,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .selectable(selected = selected, onClick = onSelect)
+            .testTag(testTag),
+        verticalAlignment = Alignment.Top,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        RadioButton(
+            selected = selected,
+            onClick = onSelect,
+            colors = RadioButtonDefaults.colors(selectedColor = OrangeAccent),
+        )
+        Column(modifier = Modifier.padding(top = 12.dp)) {
+            Text(title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+            Text(
+                description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun RestoreSubSection(state: OnboardingState, viewModel: OnboardingViewModel) {
+    Column(
+        modifier = Modifier.padding(start = 36.dp),  // align under radio label
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        when {
+            state.isCheckingForBackup -> Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                Text(
+                    stringResource(R.string.onboarding_backup_restore_checking),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            state.restoreSucceeded -> Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(Icons.Default.CheckCircle, null, tint = SuccessGreen, modifier = Modifier.size(18.dp))
+                Text(
+                    stringResource(R.string.onboarding_backup_restore_success),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = SuccessGreen,
+                )
+            }
+            state.noBackupFoundForKey -> Text(
+                stringResource(R.string.onboarding_backup_restore_none_for_key),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+            !state.hasNostrKey -> OutlinedButton(
+                onClick = { viewModel.requestKeyImport() },
+                modifier = Modifier.testTag("onboarding_backup_import_key"),
+            ) {
+                Text(stringResource(R.string.onboarding_backup_import_key_button))
+            }
+            else -> {
+                // Key present, check not yet attempted (rare race) — no UI.
+            }
         }
     }
 }
@@ -387,153 +530,97 @@ private fun PrivacyToggleCard(
     description: String,
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
-    testTag: String
+    testTag: String,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
         ),
-        shape = RoundedCornerShape(16.dp)
+        shape = RoundedCornerShape(16.dp),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             icon()
             Column(modifier = Modifier.weight(1f)) {
                 Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                Text(description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
             Switch(
                 checked = checked,
                 onCheckedChange = onCheckedChange,
                 modifier = Modifier.testTag(testTag),
-                colors = SwitchDefaults.colors(checkedTrackColor = OrangeAccent)
+                colors = SwitchDefaults.colors(checkedTrackColor = OrangeAccent),
             )
         }
     }
 }
 
+// ─── Step 3: Kilter (optional) ────────────────────────────────────────────
+
 @Composable
-private fun BoardSetupStep(
-    state: OnboardingState,
-    viewModel: OnboardingViewModel,
-    onNavigateToSync: () -> Unit
-) {
+private fun KilterStep(state: OnboardingState, viewModel: OnboardingViewModel) {
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Text(
-            stringResource(R.string.onboarding_board_setup_title),
+            stringResource(R.string.onboarding_kilter_step_title),
             style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold
+            fontWeight = FontWeight.Bold,
         )
-
         Text(
-            stringResource(R.string.onboarding_board_setup_subtitle),
+            stringResource(R.string.onboarding_kilter_step_subtitle),
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
-        // Card 1: Board-Daten laden
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
             ),
-            shape = RoundedCornerShape(16.dp)
+            shape = RoundedCornerShape(16.dp),
         ) {
             Column(
                 modifier = Modifier.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Icon(Icons.Default.CloudSync, null, tint = OrangeAccent, modifier = Modifier.size(40.dp))
-                Text(
-                    stringResource(R.string.onboarding_board_db_title),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center
-                )
-                Text(
-                    stringResource(R.string.onboarding_board_db_subtitle),
-                    style = MaterialTheme.typography.bodySmall,
-                    textAlign = TextAlign.Center,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                if (state.boardDataImported) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.padding(vertical = 4.dp)
-                    ) {
-                        Icon(Icons.Default.CheckCircle, null, tint = SuccessGreen, modifier = Modifier.size(20.dp))
-                        Text(
-                            stringResource(R.string.onboarding_board_db_imported),
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = SuccessGreen
-                        )
-                    }
-                } else {
-                    Button(
-                        onClick = onNavigateToSync,
-                        modifier = Modifier.fillMaxWidth().testTag("onboarding_sync_button"),
-                        colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Text(stringResource(R.string.onboarding_board_sync), fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-        }
-
-        // Card 2: Kilter Logbook importieren
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-            ),
-            shape = RoundedCornerShape(16.dp)
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Icon(Icons.AutoMirrored.Filled.Login, null, tint = OrangeAccent, modifier = Modifier.size(28.dp))
                     Text(
                         stringResource(R.string.onboarding_kilter_title),
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
                     )
                 }
 
                 Text(
                     stringResource(R.string.onboarding_kilter_desc),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
 
                 if (state.kilterImportResult != null) {
-                    // Import done
                     KilterImportDoneContent(state)
                 } else if (state.kilterConnected && state.kilterImportPreview != null) {
-                    // Logged in, show preview + import buttons
                     KilterPreviewContent(state, viewModel)
                 } else {
-                    // Login form
                     KilterLoginContent(state, viewModel)
                 }
             }
@@ -542,13 +629,13 @@ private fun BoardSetupStep(
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = InfoBlue.copy(alpha = 0.1f)),
-            shape = RoundedCornerShape(12.dp)
+            shape = RoundedCornerShape(12.dp),
         ) {
             Text(
-                stringResource(R.string.onboarding_board_skip_hint),
+                stringResource(R.string.onboarding_kilter_skip_hint),
                 modifier = Modifier.padding(12.dp),
                 style = MaterialTheme.typography.bodySmall,
-                color = InfoBlue
+                color = InfoBlue,
             )
         }
     }
@@ -564,9 +651,9 @@ private fun KilterLoginContent(state: OnboardingState, viewModel: OnboardingView
         singleLine = true,
         keyboardOptions = KeyboardOptions(
             keyboardType = KeyboardType.Email,
-            imeAction = ImeAction.Next
+            imeAction = ImeAction.Next,
         ),
-        enabled = !state.isKilterLoggingIn
+        enabled = !state.isKilterLoggingIn,
     )
 
     OutlinedTextField(
@@ -578,16 +665,16 @@ private fun KilterLoginContent(state: OnboardingState, viewModel: OnboardingView
         visualTransformation = PasswordVisualTransformation(),
         keyboardOptions = KeyboardOptions(
             keyboardType = KeyboardType.Password,
-            imeAction = ImeAction.Done
+            imeAction = ImeAction.Done,
         ),
-        enabled = !state.isKilterLoggingIn
+        enabled = !state.isKilterLoggingIn,
     )
 
     if (state.kilterLoginError != null) {
         Text(
             state.kilterLoginError,
             style = MaterialTheme.typography.bodySmall,
-            color = ErrorRed
+            color = ErrorRed,
         )
     }
 
@@ -596,13 +683,13 @@ private fun KilterLoginContent(state: OnboardingState, viewModel: OnboardingView
         enabled = state.kilterEmail.isNotBlank() && state.kilterPassword.isNotBlank() && !state.isKilterLoggingIn,
         modifier = Modifier.fillMaxWidth().testTag("onboarding_kilter_login"),
         colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
-        shape = RoundedCornerShape(12.dp)
+        shape = RoundedCornerShape(12.dp),
     ) {
         if (state.isKilterLoggingIn) {
             CircularProgressIndicator(
                 modifier = Modifier.size(20.dp),
                 color = MaterialTheme.colorScheme.onPrimary,
-                strokeWidth = 2.dp
+                strokeWidth = 2.dp,
             )
         } else {
             Text(stringResource(R.string.kilter_login_button))
@@ -612,7 +699,7 @@ private fun KilterLoginContent(state: OnboardingState, viewModel: OnboardingView
     Text(
         stringResource(R.string.onboarding_kilter_credentials_hint),
         style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
 }
 
@@ -622,14 +709,14 @@ private fun KilterPreviewContent(state: OnboardingState, viewModel: OnboardingVi
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Icon(Icons.Default.CheckCircle, null, tint = SuccessGreen, modifier = Modifier.size(20.dp))
         Text(
             stringResource(R.string.onboarding_kilter_logged_in, state.kilterUsername),
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.SemiBold,
-            color = SuccessGreen
+            color = SuccessGreen,
         )
     }
 
@@ -639,24 +726,24 @@ private fun KilterPreviewContent(state: OnboardingState, viewModel: OnboardingVi
             preview.totalLogs,
             preview.newAscents,
             preview.newBids,
-            preview.duplicateCount
+            preview.duplicateCount,
         ),
-        style = MaterialTheme.typography.bodySmall
+        style = MaterialTheme.typography.bodySmall,
     )
 
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         OutlinedButton(
             onClick = { viewModel.kilterImportOneTime() },
             enabled = !state.isKilterImporting,
             modifier = Modifier.weight(1f),
-            shape = RoundedCornerShape(12.dp)
+            shape = RoundedCornerShape(12.dp),
         ) {
             Text(
                 stringResource(R.string.onboarding_kilter_import_once),
-                style = MaterialTheme.typography.labelMedium
+                style = MaterialTheme.typography.labelMedium,
             )
         }
         Button(
@@ -664,18 +751,18 @@ private fun KilterPreviewContent(state: OnboardingState, viewModel: OnboardingVi
             enabled = !state.isKilterImporting,
             modifier = Modifier.weight(1f),
             colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
-            shape = RoundedCornerShape(12.dp)
+            shape = RoundedCornerShape(12.dp),
         ) {
             if (state.isKilterImporting) {
                 CircularProgressIndicator(
                     modifier = Modifier.size(16.dp),
                     color = MaterialTheme.colorScheme.onPrimary,
-                    strokeWidth = 2.dp
+                    strokeWidth = 2.dp,
                 )
             } else {
                 Text(
                     stringResource(R.string.onboarding_kilter_import_sync),
-                    style = MaterialTheme.typography.labelMedium
+                    style = MaterialTheme.typography.labelMedium,
                 )
             }
         }
@@ -689,20 +776,20 @@ private fun KilterImportDoneContent(state: OnboardingState) {
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Icon(
             Icons.Default.CheckCircle,
             null,
             tint = if (isError) ErrorRed else SuccessGreen,
-            modifier = Modifier.size(20.dp)
+            modifier = Modifier.size(20.dp),
         )
         Text(
             if (isError) stringResource(R.string.onboarding_kilter_import_error, result)
             else stringResource(R.string.onboarding_kilter_import_success, result.toInt()),
             style = MaterialTheme.typography.bodyMedium,
             color = if (isError) ErrorRed else SuccessGreen,
-            fontWeight = FontWeight.SemiBold
+            fontWeight = FontWeight.SemiBold,
         )
     }
 }

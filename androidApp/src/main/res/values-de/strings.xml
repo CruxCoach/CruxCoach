@@ -13,8 +13,8 @@
     <string name="onboarding_privacy_community_desc">Crash-Berichte, App-Ankündigungen und Entwickler-Chat — alles verschlüsselt und ohne Account.</string>
     <string name="onboarding_privacy_hint">Keine persönlichen Daten verlassen dein Gerät. Alle Kommunikation ist Ende-zu-Ende verschlüsselt.</string>
     <string name="onboarding_lets_go">Los geht\'s</string>
-    <string name="onboarding_board_setup_title">Board &amp; Logbook einrichten</string>
-    <string name="onboarding_board_setup_subtitle">Lade die Climb-Datenbank und importiere optional dein Kilter-Logbook.</string>
+    <string name="onboarding_board_setup_title">Kletter-Datenbank laden</string>
+    <string name="onboarding_board_setup_subtitle">Ohne die Datenbank bleibt die App leer. Alles andere kannst du später in den Einstellungen anpassen.</string>
     <string name="onboarding_board_skip_hint">Du kannst beide Schritte überspringen und jederzeit in den Einstellungen nachholen.</string>
     <string name="onboarding_board_sync">Board-Daten synchronisieren</string>
     <string name="onboarding_board_db_title">Board-Datenbank</string>
@@ -1417,4 +1417,19 @@
     <string name="onboarding_nostr_backup_title">Backup deiner Daten</string>
     <string name="onboarding_nostr_backup_body">Verschlüsseltes Backup auf Blossom-Servern, nur mit deinem Nostr-Key entschlüsselbar. Voreinstellung: aus — jederzeit in den Einstellungen aktivierbar.</string>
     <string name="onboarding_restore_dialog_body">Ein Backup wurde gefunden (%1$s).\n\nWiederherstellen ersetzt deine lokalen Daten durch den Inhalt des Backups.</string>
+
+    <!-- FEAT-002: Onboarding Backup-Wahl (3-Step-Onboarding) -->
+    <string name="onboarding_backup_choice_fresh_title">Neu starten</string>
+    <string name="onboarding_backup_choice_fresh_desc">Ein neuer Nostr-Schlüssel wird erzeugt. Deine aktuellen lokalen Daten werden das erste Backup.</string>
+    <string name="onboarding_backup_choice_restore_title">Backup wiederherstellen</string>
+    <string name="onboarding_backup_choice_restore_desc">Ich habe ein Backup von einem anderen Gerät. Importiere den dort verwendeten Nostr-Schlüssel.</string>
+    <string name="onboarding_backup_import_key_button">Nostr-Schlüssel importieren →</string>
+    <string name="onboarding_backup_restore_checking">Suche nach Backup…</string>
+    <string name="onboarding_backup_restore_success">Backup wiederhergestellt.</string>
+    <string name="onboarding_backup_restore_none_for_key">Mit diesem Schlüssel wurde kein Backup gefunden. Relais eventuell offline — später in den Einstellungen erneut versuchen.</string>
+    <string name="onboarding_restart_confirm_title">Nostr-Schlüssel importieren</string>
+    <string name="onboarding_restart_confirm_body">CruxCoach startet nach dem Import kurz neu, um die lokale Verschlüsselung auf deinen Schlüssel umzustellen. Das Onboarding setzt danach automatisch mit der Wiederherstellung fort.</string>
+    <string name="onboarding_kilter_step_title">Kilter-Logbook</string>
+    <string name="onboarding_kilter_step_subtitle">Optional: Deine Sends und Versuche von kilterboardapp.com übernehmen. Auch später in den Einstellungen möglich.</string>
+    <string name="onboarding_kilter_skip_hint">Optionaler Schritt. Überspringen schließt das Onboarding ab — der Kilter-Import ist immer in den Einstellungen erreichbar.</string>
 </resources>
