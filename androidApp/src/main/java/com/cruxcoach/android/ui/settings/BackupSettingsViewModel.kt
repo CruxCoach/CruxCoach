@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.Instant
@@ -40,7 +41,8 @@ data class BackupSettingsState(
     sealed interface Snackbar {
         data object NoBackupFound : Snackbar
         data object RestoreFailed : Snackbar
-        data object BackupQueued : Snackbar
+        data object BackupSucceeded : Snackbar
+        data object BackupFailed : Snackbar
         data object RemoteBackupsDeleted : Snackbar
     }
 }
@@ -97,10 +99,25 @@ class BackupSettingsViewModel @Inject constructor(
         viewModelScope.launch {
             _state.update { it.copy(isRunningOneShot = true) }
             BackupSyncWorker.runOnce(appContext)
+            // Observe WorkManager's unique one-shot work until it reaches a
+            // terminal state, then reflect the outcome in the UI. Without
+            // this the user only ever saw "Backup eingeplant" (queued) and
+            // never found out whether the backup actually completed.
+            val wm = androidx.work.WorkManager.getInstance(appContext)
+            val terminal = wm.getWorkInfosForUniqueWorkFlow(BackupSyncWorker.WORK_NAME_ONESHOT)
+                .mapNotNull { it.lastOrNull() }
+                .first { it.state.isFinished }
+            val snackbar = when (terminal.state) {
+                androidx.work.WorkInfo.State.SUCCEEDED ->
+                    BackupSettingsState.Snackbar.BackupSucceeded
+                else -> BackupSettingsState.Snackbar.BackupFailed
+            }
+            val latestLastSync = preferences.lastBackupSync.first()
             _state.update {
                 it.copy(
                     isRunningOneShot = false,
-                    snackbar = BackupSettingsState.Snackbar.BackupQueued,
+                    lastBackupIso = latestLastSync?.toIso8601(),
+                    snackbar = snackbar,
                 )
             }
         }

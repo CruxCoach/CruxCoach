@@ -1399,7 +1399,8 @@
     <string name="settings_backup_restore_cancel">Cancel</string>
     <string name="settings_backup_no_backup_found">No backup found. Relays may be offline — try again later.</string>
     <string name="settings_backup_restore_failed">Backup could not be restored.</string>
-    <string name="settings_backup_queued">Backup queued.</string>
+    <string name="settings_backup_succeeded">Backup created.</string>
+    <string name="settings_backup_failed">Backup failed. Check your connection and try again.</string>
     <string name="settings_backup_delete_remote">Delete remote backups…</string>
     <string name="settings_backup_delete_remote_dialog_title">Delete remote backups?</string>
     <string name="settings_backup_delete_remote_dialog_body">This will request deletion of your backup events and blobs from relays and Blossom servers. Be aware:\n\n• Deletion is best-effort. Not all relays/servers honour it.\n• After this, you cannot restore your backup on another device.\n• Local data is not affected.</string>
