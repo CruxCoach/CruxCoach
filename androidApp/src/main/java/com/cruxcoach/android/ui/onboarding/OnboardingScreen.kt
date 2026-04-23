@@ -25,6 +25,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -243,11 +244,26 @@ private fun BoardSetupStep(state: OnboardingState, onNavigateToSync: () -> Unit)
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Image(
-                painter = painterResource(id = R.mipmap.ic_launcher_round),
-                contentDescription = null,
-                modifier = Modifier.size(56.dp),
-            )
+            // Can't use R.mipmap.ic_launcher{,_round} directly — those
+            // resolve to an <adaptive-icon> XML on Android 8+, which
+            // Compose's painterResource refuses ("Only VectorDrawables
+            // and rasterized asset types are supported") and crashes.
+            // Compose the same visual here: black circle background (the
+            // adaptive icon's <background>) + the foreground PNG sized
+            // generously to compensate for the adaptive-icon safe zone.
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .clip(CircleShape)
+                    .background(Color.Black),
+                contentAlignment = Alignment.Center,
+            ) {
+                Image(
+                    painter = painterResource(id = R.mipmap.ic_launcher_foreground),
+                    contentDescription = null,
+                    modifier = Modifier.size(84.dp),
+                )
+            }
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     stringResource(R.string.onboarding_welcome),
