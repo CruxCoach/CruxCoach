@@ -393,6 +393,20 @@ object AppModule {
         }
     }
 
+    // --- Coroutine dispatchers ---
+
+    /**
+     * Exposed so classes that create their own CoroutineScope (e.g.
+     * [com.cruxcoach.android.updater.UpdaterRepository]) can have the
+     * dispatcher swapped out in tests without the scope being hard-coded
+     * against [kotlinx.coroutines.Dispatchers.IO].
+     */
+    @Provides
+    @Singleton
+    @Named("io")
+    fun provideIoDispatcher(): kotlinx.coroutines.CoroutineDispatcher =
+        kotlinx.coroutines.Dispatchers.IO
+
     // --- Nostr Communication ---
 
     @Provides
