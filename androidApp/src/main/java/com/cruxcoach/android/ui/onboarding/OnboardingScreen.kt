@@ -102,19 +102,21 @@ fun OnboardingScreen(
                     }
                 }
                 OnboardingStep.PRIVACY -> {
-                    // Block "Weiter" whenever the user picked RESTORE but
-                    // hasn't completed a restore yet — regardless of whether
-                    // they had a pre-existing key. An existing key (upgrade
-                    // scenario or `adb install -r`) whose check came back
-                    // empty must NOT silently pass through, because the
-                    // user's stated intent was RESTORE; letting them past
-                    // without a restore means the worker silently generates
-                    // a fresh backup, the opposite of what they asked for.
-                    // They must either import a different key, complete a
-                    // restore, or switch to "Neu starten".
+                    // Gate "Weiter" when the user picked RESTORE and hasn't
+                    // taken any terminal action yet. Terminal actions are:
+                    //  (a) a successful restore, OR
+                    //  (b) the auto-check came back empty after a signed-in
+                    //      account — the user has seen "no backup for this
+                    //      account" and can knowingly proceed, which will
+                    //      create a fresh backup on the next sync.
+                    // Without (b) a user who signs in via Amber and has no
+                    // pre-existing backup is stuck: nothing to restore, no
+                    // import to redo, and Next disabled — they'd have to
+                    // switch back to "Neu starten" which is confusing.
                     val restoreIncomplete = state.backupOptIn &&
                         state.backupChoice == BackupChoice.RESTORE &&
-                        !state.restoreSucceeded
+                        !state.restoreSucceeded &&
+                        !state.noBackupFoundForKey
                     Button(
                         onClick = { viewModel.nextStep() },
                         enabled = !state.isCheckingForBackup &&

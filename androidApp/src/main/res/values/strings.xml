@@ -1424,7 +1424,7 @@
     <string name="onboarding_backup_import_key_button">Import Nostr key →</string>
     <string name="onboarding_backup_restore_checking">Looking for a backup…</string>
     <string name="onboarding_backup_restore_success">Backup restored.</string>
-    <string name="onboarding_backup_restore_none_for_key">No backup was found for your current key.</string>
+    <string name="onboarding_backup_restore_none_for_key">No backup was found for this account. You can still continue — a fresh backup will be created on the next sync.</string>
     <string name="onboarding_backup_restore_waiting_for_key">Import your Nostr key to continue, or switch back to "Start fresh".</string>
     <string name="onboarding_restart_confirm_title">Import Nostr key</string>
     <string name="onboarding_restart_confirm_body">CruxCoach will briefly restart after the import to switch the local encryption to your key. Onboarding continues automatically with the restore.</string>

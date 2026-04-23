@@ -102,7 +102,12 @@ class MainActivity : AppCompatActivity() {
         val contentReady = mutableStateOf(false)
         installSplashScreen().setKeepOnScreenCondition { !contentReady.value }
 
-        val isIdentitySwitch = intent?.getBooleanExtra("identity_switch", false) == true
+        // Identity-switch splash only on the initial launch, not on config
+        // changes. The Intent extra persists on the Activity so a rotation
+        // (which re-runs onCreate with savedInstanceState != null) would
+        // otherwise replay the "Switching account…" overlay every time.
+        val isIdentitySwitch = savedInstanceState == null &&
+            intent?.getBooleanExtra("identity_switch", false) == true
 
         PerfLogger.trace("super.onCreate") { super.onCreate(savedInstanceState) }
         if (savedInstanceState == null) {

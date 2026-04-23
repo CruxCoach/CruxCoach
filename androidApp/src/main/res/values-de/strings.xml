@@ -1426,7 +1426,7 @@
     <string name="onboarding_backup_import_key_button">Nostr-Schlüssel importieren →</string>
     <string name="onboarding_backup_restore_checking">Suche nach Backup…</string>
     <string name="onboarding_backup_restore_success">Backup wiederhergestellt.</string>
-    <string name="onboarding_backup_restore_none_for_key">Mit deinem aktuellen Schlüssel wurde kein Backup gefunden.</string>
+    <string name="onboarding_backup_restore_none_for_key">Für diesen Account wurde kein Backup gefunden. Du kannst trotzdem weiter — beim nächsten Sync wird ein neues Backup erstellt.</string>
     <string name="onboarding_backup_restore_waiting_for_key">Importiere deinen Nostr-Schlüssel, um fortzufahren, oder wechsle zurück zu „Neu starten".</string>
     <string name="onboarding_restart_confirm_title">Nostr-Schlüssel importieren</string>
     <string name="onboarding_restart_confirm_body">CruxCoach startet nach dem Import kurz neu, um die lokale Verschlüsselung auf deinen Schlüssel umzustellen. Das Onboarding setzt danach automatisch mit der Wiederherstellung fort.</string>
