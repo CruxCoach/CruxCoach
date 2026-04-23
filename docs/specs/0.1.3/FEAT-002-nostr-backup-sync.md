@@ -714,8 +714,31 @@ see FEAT-001 §6.4), Step 2 proceeds with defaults-only.
 
 ### 8.2 Detection
 
-Triggers during onboarding when the user imports a Nostr key (via Amber or
-manual entry).
+`checkForBackup` runs automatically on every successful Nostr-key import and
+can be invoked manually from Settings. The three trigger points:
+
+| Trigger | When | Outcome on hit |
+|---------|------|----------------|
+| Onboarding key-import step (§12.1, `OnboardingStep.NOSTR_KEY`) | User chooses "Amber verbinden" or "nsec eingeben" during first-run onboarding | Restore dialog pre-empts the subsequent `NOSTR_BACKUP` step; on successful restore, `backupEnabled` is set to `true` implicitly and the backup step is skipped |
+| Settings → `KeyImportScreen` | User imports an existing key later (e.g. skipped import at onboarding, or re-imports after reinstall) | Restore dialog appears on top of the settings screen after import completes |
+| Settings → Backup section → "Backup wiederherstellen" button (§12.2) | Any time the user has an imported key, regardless of local-data state | Restore dialog appears with a destructive-action warning if local data exists |
+
+All three paths call the same `checkForBackup(signer)` helper and show the
+same dialog (§8.3). The user cannot tell which trigger fired — the UI is
+identical.
+
+While the check is running (up to the 10 s timeout), the UI shows **no
+spinner and no placeholder**. Rationale: negative outcomes ("no backup
+found", "relays offline", "wrong key entered") are indistinguishable to
+the user and all have the same next step — proceed with a fresh install.
+Surfacing a spinner would train the user to wait, and a "no backup found"
+message implies certainty we don't have (relays may have been offline,
+not empty). The silent-on-miss default is intentional.
+
+One exception: the explicit Settings button (trigger #3). Because the user
+pressed a button, they deserve feedback. On miss, the button emits a
+snackbar — *"Kein Backup gefunden. Relais eventuell offline — später
+erneut versuchen."* On hit, the normal restore dialog appears.
 
 ```kotlin
 suspend fun checkForBackup(signer: NostrSigner): BackupInfo? {
@@ -989,43 +1012,83 @@ distinction is load-bearing:
 
 ## 12. UI / UX
 
-### 12.1 Onboarding: Backup Opt-In
+### 12.1 Onboarding: Key-Import + Backup Opt-In
 
 Existing onboarding is a linear state machine in `OnboardingViewModel` with
 three steps (`OnboardingStep.WELCOME`, `PRIVACY`, `BOARD_SETUP`). FEAT-002
-adds one step at the end:
+adds two steps at the end:
 
 ```kotlin
-enum class OnboardingStep { WELCOME, PRIVACY, BOARD_SETUP, NOSTR_BACKUP }
+enum class OnboardingStep {
+    WELCOME, PRIVACY, BOARD_SETUP,
+    NOSTR_KEY,      // NEW — offer to bring an existing key (§12.1.1)
+    NOSTR_BACKUP,   // NEW — opt-in toggle (§12.1.2)
+}
 ```
 
-`NOSTR_BACKUP` is inserted after `BOARD_SETUP` because the Nostr key is
-materialized lazily by `NostrKeyStore.getOrCreateKeyPair()`. When the user
-reaches this step with the toggle set to **On**, the ViewModel:
+#### 12.1.1 `NOSTR_KEY` — Bring an existing key (optional)
 
-1. Triggers `NostrKeyStore.getOrCreateKeyPair()` — generates the key if
-   needed (local key path). For `SignerMode.AMBER`, the Amber permission
-   intent (see §10.1) is launched inline; the user cannot proceed past this
-   step until Amber responds (grant or deny). On deny, the toggle reverts
-   to **Off** and the user can continue.
+The app has no way to *detect* that the user has a pre-existing Nostr key;
+this step is the one place it can ask. Three visible choices:
+
+```
+┌─────────────────────────────────────────┐
+│         Nostr-Schlüssel                 │
+│                                         │
+│  Falls du schon einen Nostr-Key hast,   │
+│  kannst du ihn hier verbinden und       │
+│  deine Daten von einem anderen Gerät    │
+│  wiederherstellen.                      │
+│                                         │
+│  [ Amber verbinden ]                    │
+│  [ nsec manuell eingeben ]              │
+│  [ Überspringen — später entscheiden ]  │
+└─────────────────────────────────────────┘
+```
+
+- **"Überspringen"** (default) — no key is touched. The step advances to
+  `NOSTR_BACKUP` immediately. The user can still bring a key later via
+  Settings → `KeyImportScreen`.
+- **"Amber verbinden"** — launches the Amber permission intent (§10.1).
+  On grant, `NostrKeyStore` records the imported pubkey + `SignerMode.AMBER`.
+  On deny, falls back to "Überspringen" (with a dismissable hint).
+- **"nsec manuell eingeben"** — opens an inline nsec-entry field. Same
+  validation path as `KeyImportScreen`.
+
+**Successful key import** (Amber or nsec) immediately kicks off
+`checkForBackup` in the background while the user sees a brief "Suche
+Backup …" state on the step. Within 10 s the step resolves to one of:
+
+- **Backup gefunden** → Restore dialog (§8.3) is shown as a pre-empt. The
+  user chooses:
+  - *Wiederherstellen* → run the restore pipeline (§8.4); on success,
+    `backupEnabled = true` and the `NOSTR_BACKUP` step is skipped entirely
+    (the user clearly wanted backups).
+  - *Überspringen* → proceed to `NOSTR_BACKUP` normally. The user can
+    re-trigger restore from Settings (§12.2) later.
+- **Kein Backup gefunden** (or timeout) → proceed to `NOSTR_BACKUP`
+  normally. No negative UI message — the user presumably knows whether
+  they ever set up backup before.
+
+#### 12.1.2 `NOSTR_BACKUP` — Opt-in toggle
+
+Shown unless already implied by a successful onboarding-time restore.
+When the user reaches this step with the toggle set to **On**, the ViewModel:
+
+1. Ensures a Nostr key exists — if the user skipped `NOSTR_KEY`, calls
+   `NostrKeyStore.getOrCreateKeyPair()` now (local-key path). For
+   `SignerMode.AMBER`, the Amber permission intent is launched inline; the
+   user cannot proceed past this step until Amber responds. On deny, the
+   toggle reverts to **Off** and the user can continue.
 2. Writes `backupEnabled = true` + `backupInterval = DAILY` to
    `UserPreferences`.
 3. Schedules the periodic `BackupSyncWorker` (§7.2) — first run happens
    opportunistically when `NetworkType.CONNECTED` is satisfied.
 
 When the toggle is **Off** (default), no Nostr key is generated by this
-step; the key is still generated lazily on the first Nostr-dependent feature
-use (DMs, announcements, etc.). This keeps the default install footprint
+step. The key is generated lazily on the first Nostr-dependent feature
+use (DMs, announcements, etc.) — the default install footprint is
 unchanged for users who never opt into backup.
-
-Restore flow interception: if the user imports an existing Nostr key via
-Amber or manual entry on a fresh install (happens *before* onboarding or
-from the `KeyImportScreen` later), the `checkForBackup` query from §8.1
-runs and — if a backup is found — the restore dialog (§8.3) pre-empts the
-`NOSTR_BACKUP` onboarding step. A successful restore sets
-`backupEnabled = true` implicitly (the user clearly wants backups since
-they just restored one); a dismissed restore dialog proceeds to the
-normal opt-in step.
 
 ```
 ┌─────────────────────────────────────────┐
@@ -1049,7 +1112,7 @@ If the user enables backup, the interval defaults to "Taeglich".
 If the user dismisses with backup disabled, the opt-in is not re-prompted
 automatically. They can enable it later in Settings (§12.2). The
 `backup_onboarding_seen` flag in DataStore-Preferences prevents
-re-showing the step on subsequent app launches.
+re-showing either step on subsequent app launches.
 
 ### 12.2 Settings Screen
 
@@ -1062,11 +1125,57 @@ Einstellungen
     ├── Blossom-Server (2 konfiguriert)
     │   ├── blossom.primal.net ✅
     │   └── blossom.nostr.build ✅
-    └── Jetzt sichern [Button]
+    ├── Jetzt sichern [Button]
+    └── Backup wiederherstellen [Button]   ← visible whenever signed-in
 ```
 
-When toggle = off: interval, status, servers, and button are hidden.
-When interval = "Manuell": no automatic schedule, only "Jetzt sichern" button.
+**Toggle = off:** interval, status, servers, and the "Jetzt sichern" button
+are hidden. The "Backup wiederherstellen" button stays visible whenever a
+Nostr key exists (i.e. `NostrKeyStore.hasKey()` is `true`) — it is the only
+way for a user who dismissed the onboarding restore prompt to come back
+and try again later.
+
+**Interval = "Manuell":** no automatic schedule, only the "Jetzt sichern"
+button is active.
+
+#### "Backup wiederherstellen" behavior
+
+Tapping the button runs `checkForBackup(signer)` exactly as the onboarding
+path does. Because the user is now inside Settings — likely with local
+data already present — the restore dialog (§8.3) is augmented with a
+destructive-action warning when the secure DB is non-empty:
+
+```
+┌─────────────────────────────────────────┐
+│        Backup wiederherstellen          │
+│                                         │
+│  Stand: 12.04.2026, 18:30 Uhr           │
+│  Größe: 94 KB                           │
+│                                         │
+│  ⚠  Deine aktuellen lokalen Daten       │
+│     (3 Sessions, 47 Sends, …) werden    │
+│     durch das Backup **überschrieben**. │
+│                                         │
+│  Enthaltene Daten:                      │
+│    - Board-Sends & Versuche             │
+│    - …                                  │
+│                                         │
+│  [ Wiederherstellen ]  [ Abbrechen ]    │
+└─────────────────────────────────────────┘
+```
+
+The warning line is generated by counting rows across the categories the
+backup brings (same enum as §9). If the secure DB is empty, the warning
+line is omitted and the dialog matches §8.3 exactly.
+
+On miss (no pointer/key event found within 10 s timeout), the button
+emits a snackbar *"Kein Backup gefunden. Relais eventuell offline — später
+erneut versuchen."* — the one case where we surface a negative outcome,
+because the user asked.
+
+A check in flight disables the button and shows an inline "Prüfe …"
+label on it; a second tap is ignored until the first check completes
+or times out.
 
 ### 12.3 Status Banner
 
@@ -1188,6 +1297,9 @@ throughout.
 | `RestoreQueryAllAmberTest` | Amber user, fresh install, no local d-tag cache → restore queries all Kind 30078 by pubkey (no d-tag filter); correctly identifies CruxCoach events by decrypted `version` field; handles ≤10 noise events |
 | `RestoreHmacLocalKeyTest` | Local-key user, HMAC path → `checkForBackup` filters on exact d-tag, finds pointer + key, decrypts pointer metadata |
 | `RestoreSha256MismatchTest` | Blossom serves wrong bytes → `verifySha256` throws; next server in list attempted; final failure surfaces `BackupException` |
+| `RestoreTriggerPointsTest` | All three trigger points (onboarding NOSTR_KEY step, Settings KeyImportScreen post-import, Settings "Backup wiederherstellen" button) converge on the same `checkForBackup(signer)` call and the same restore dialog. Negative outcomes differ: onboarding/key-import paths stay silent, Settings-button path emits the "Kein Backup gefunden" snackbar |
+| `RestoreDestructiveWarningTest` | Settings-button path with non-empty secure DB → dialog includes the row-count warning line; empty secure DB → warning omitted; row count is correct across categories |
+| `RestoreImplicitOptInTest` | Onboarding-time restore success → `backupEnabled = true` and `NOSTR_BACKUP` step is skipped; onboarding-time "Überspringen" on found backup → `NOSTR_BACKUP` step shows normally |
 | `BlossomContentTypePreflightTest` | Server responds 415 on first upload → retry with `application/x-cruxcoach-backup` content-type; server now accepts → cached as `rejected_octet`; second cycle same server → skip preflight |
 | `BlobCleanupTest` | After successful pointer publish, DELETE is issued for previous sha to all configured servers; DELETE failure is silent (not retried); missing `previous_sha256` → no DELETE issued |
 | `KeyCacheCorruptionTest` | Corrupt wrapped dataKey in DataStore → `getOrCreateDataKey()` re-fetches key event from relays, unwraps, overwrites cache; no user-visible error |
@@ -1250,9 +1362,9 @@ BackupSync: event=<event-name> key1=<val1> key2=<val2>
 | `backup_cleanup` | `Log.d` | `previousShaPresent`, `serversCleaned` | after blob cleanup step |
 | `backup_healthcheck` | `Log.d` | `serversMissing`, `reuploaded` | after health check |
 | `backup_done` | `Log.d` | `totalDurationMs` | pipeline success |
-| `restore_check_start` | `Log.d` | `signerMode` | `checkForBackup` entry |
-| `restore_check_hit` | `Log.d` | `sizeKb`, `ageHours` | backup found |
-| `restore_check_miss` | `Log.d` | `reason={no-pointer|no-key|timeout}` | nothing to restore |
+| `restore_check_start` | `Log.d` | `signerMode`, `trigger={onboarding|settings_import|settings_button}` | `checkForBackup` entry |
+| `restore_check_hit` | `Log.d` | `sizeKb`, `ageHours`, `trigger` | backup found |
+| `restore_check_miss` | `Log.d` | `reason={no-pointer|no-key|timeout}`, `trigger` | nothing to restore |
 | `restore_download_ok` | `Log.d` | `sha256Prefix`, `durationMs` | blob downloaded + verified |
 | `restore_download_failed` | `Log.w` | `serversTried`, `lastError` | restore aborts |
 | `restore_done` | `Log.d` | `rowsImported`, `durationMs` | restore pipeline success |
