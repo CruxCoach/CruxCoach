@@ -1,7 +1,9 @@
 # Feature Spec: Nostr Encrypted Backup & Sync (v0.1.3)
 
-> **Status:** Ready for implementation — all design decisions resolved (§16).
-> **Depends on:** FEAT-001 (Nostr Relay Discovery / NIP-65) for the resolved relay pool.
+> **Status:** Ready for implementation — design decisions resolved (§16), concrete
+> classes + test plan + rollout specified (§17–§20).
+> **Depends on:** FEAT-001 (Nostr Relay Discovery / NIP-65) — consumes the pool
+> contract from FEAT-001 §8 (`writeRelays()`, `readRelays()`, `onRelaysChanged()`).
 
 ## 1. Overview
 
@@ -68,7 +70,7 @@ backup of the secure database using Blossom blob storage and Nostr relay pointer
 | Blossom discovery | Kind 10063 + hardcoded defaults | Read user's Blossom server list if available, fallback to blossom.primal.net + blossom.nostr.build |
 | Privacy | HMAC d-tags, no labels | D-tags derived via HMAC-SHA256(HKDF-derived key, identifier) — opaque to observers. No `com.cruxcoach` labels. Content NIP-44 encrypted |
 | Blob encryption | AES-256-GCM (dataKey) | Operates on raw bytes — no String/Base64 conversion needed. Hardware-accelerated on ARM. javax.crypto built-in |
-| Key management | Random dataKey wrapped via NIP-44 | O(1) Amber calls regardless of data size. DataKey cached locally as NIP-44-wrapped blob in SharedPreferences |
+| Key management | Random dataKey wrapped via NIP-44 | O(1) Amber calls regardless of data size. DataKey cached locally as NIP-44-wrapped blob in DataStore-Preferences |
 | Compression | gzip | ~5:1 ratio for real data (UUIDs, timestamps, varied strings). `java.util.zip` built-in, zero APK overhead |
 | Backup model | Full snapshot (serialize all → upload) | No dirty tracking, no per-row flags, no incremental sync. Estimated ~800 lines Kotlin for production quality |
 | Sync trigger | WorkManager periodic (daily/weekly/manual) | Same pattern as board sync (`SyncInterval` enum). Opt-in, default off |
@@ -141,7 +143,7 @@ Instead, Amber users derive d-tags via Schnorr signature:
    kind=0, created_at=0, content="cruxcoach/backup/v1", tags=[]
 2. Request Amber to sign it (sign_event permission, already granted)
 3. d_tag = hex(SHA-256(signature))
-4. Cache the d-tag locally (SharedPreferences) — compute once, reuse forever
+4. Cache the d-tag locally (DataStore-Preferences) — compute once, reuse forever
 ```
 
 The cached d-tag drives every subsequent write on the same device (step 4).
@@ -239,7 +241,7 @@ SETUP (once, on first backup):
   dataKey = SecureRandom(32 bytes)
   wrappedKey = signer.nip44Encrypt(hex(dataKey), signer.pubKey)  // 1 Amber call
   publish(Kind 30078, d="cruxcoach/key/v1", content=wrappedKey)
-  cache wrappedKey in SharedPreferences (already NIP-44 encrypted, no ESP needed)
+  cache wrappedKey in DataStore-Preferences (already NIP-44 encrypted, no ESP needed)
 ```
 
 After setup, the dataKey is cached locally. No further Amber calls needed for
@@ -429,7 +431,7 @@ suspend fun downloadBlob(sha256: String, servers: List<String>): ByteArray {
         try {
             return httpClient.get("$server/$sha256").body<ByteArray>()
         } catch (e: Exception) {
-            Timber.w(e, "Blossom download failed from $server, trying next")
+            Log.w(TAG, "Blossom download failed from $server, trying next", e)
         }
     }
     throw BackupException("Blob $sha256 not found on any server")
@@ -468,7 +470,7 @@ suspend fun healthCheckBlob(sha256: String, servers: List<String>, signer: Nostr
         try {
             val response = httpClient.head("$server/$sha256")
             if (response.status == HttpStatusCode.NotFound) {
-                Timber.w("Blob $sha256 missing from $server, re-uploading")
+                Log.w(TAG, "Blob $sha256 missing from $server, re-uploading")
                 reUploadBlob(sha256, server, signer)
             }
         } catch (_: Exception) { /* server unreachable, skip */ }
@@ -488,7 +490,7 @@ free uploads to media types (images, audio, video). Encrypted backup blobs are
 **Runtime preflight (BUD-06), not a ship-blocker.** Before the first upload
 to any configured server, send `HEAD /upload` with
 `X-Content-Type: application/octet-stream`. Cache the per-server result
-(`accepted` / `rejected_octet` / `incompatible`) in SharedPreferences.
+(`accepted` / `rejected_octet` / `incompatible`) in DataStore-Preferences.
 Servers that reject `application/octet-stream` are retried with
 `application/x-cruxcoach-backup` as a Content-Type hint; if that also fails,
 the server is marked `incompatible` and upload proceeds on the remaining
@@ -556,7 +558,7 @@ class BackupSyncWorker @AssistedInject constructor(
             backupRepository.performFullBackup()
             Result.success()
         } catch (e: Exception) {
-            Timber.w(e, "Backup failed")
+            Log.w(TAG, "Backup failed", e)
             Result.retry()
         }
     }
@@ -641,7 +643,7 @@ suspend fun performFullBackup() {
 
     // 7. ONLY NOW publish pointer event on ALL write relays (fire-and-forget)
     val writeRelays = fetchWriteRelays(signer.pubKey)
-    val previousSha256 = getCurrentPointerSha256()  // reads local SharedPreferences
+    val previousSha256 = getCurrentPointerSha256()  // reads DataStore-Preferences
     publishPointerEvent(sha256, encrypted.size, blossomServers, writeRelays)
     setCurrentPointerSha256(sha256)                 // atomic, after publish succeeds
 
@@ -657,14 +659,14 @@ suspend fun performFullBackup() {
 ```
 
 **`getCurrentPointerSha256()` source.** The previous blob's SHA-256 is read
-from local SharedPreferences (key: `backup_current_pointer_sha256`), written
-atomically in step 7 after each successful pointer publish. This gives cleanup
-zero extra round-trips — no relay fetch, no Blossom HEAD walk. On fresh install
-(cache miss), the function returns `null` and step 8 is a no-op; the single
-orphaned blob left behind on the old server is reconciled at its server's
-retention policy or by the next health-check cycle if the user adds that
-server back. The cache is the authority because it always reflects *this
-device's* last write.
+from DataStore-Preferences (key: `PreferenceKeys.BACKUP_CURRENT_POINTER_SHA256`,
+a `stringPreferencesKey`), written atomically in step 7 after each successful
+pointer publish. This gives cleanup zero extra round-trips — no relay fetch,
+no Blossom HEAD walk. On fresh install (cache miss), the function returns
+`null` and step 8 is a no-op; the single orphaned blob left behind on the
+old server is reconciled at its server's retention policy or by the next
+health-check cycle if the user adds that server back. The cache is the
+authority because it always reflects *this device's* last write.
 
 ### 7.4 Manual Sync
 
@@ -856,6 +858,23 @@ data class Backup(
 )
 ```
 
+### Schema version — no bump for FEAT-002
+
+`Backup.version` stays at `2`, matching the format already used by the
+existing JSON export/import. FEAT-002 does not change the serialization
+shape — it only adds a new *transport* (Blossom blob + Nostr pointer event)
+for the same JSON. The two versioning numbers in this spec are independent:
+
+| Field | Location | Current value | Semantics |
+|-------|----------|---------------|-----------|
+| `Backup.version` | `CruxCoachBackup.Backup` (payload) | `2` | Bumps when schema fields change |
+| Pointer `"version"` | §3.2 decrypted pointer envelope | `1` | Bumps when pointer metadata fields change |
+
+Both can evolve independently — a new pointer metadata field (e.g., multi-blob
+support) is a pointer-version bump with `Backup.version` unchanged. Adding
+a new table to the backup is a payload-version bump with pointer-version
+unchanged.
+
 ### Tables backed up (12 of 16 secure DB tables)
 
 | Table | Export class | Typical row size | Backed up? |
@@ -930,37 +949,40 @@ tables. The backup serializes everything as-is.
 
 ### 11.2 DataKey Cache
 
-The NIP-44-wrapped dataKey (ciphertext) is cached in regular SharedPreferences.
+The NIP-44-wrapped dataKey (ciphertext) is cached in DataStore-Preferences
+(same instance as `UserPreferences`, under `PreferenceKeys.BACKUP_WRAPPED_DATA_KEY`).
 The encryption is already handled by NIP-44 — wrapping it again in
 EncryptedSharedPreferences (ESP) would add a redundant layer with known
 corruption bugs (Samsung S24 / Android 14 Tink keyset corruption causing
-`KeyStoreException` crash loops). Plain SharedPreferences storing an already-
-encrypted blob is simpler and more reliable.
+`KeyStoreException` crash loops). DataStore-Preferences storing an
+already-encrypted blob is simpler and more reliable, and matches the existing
+project convention (`UserPreferences` lives in the same store).
 
 On cache miss or corruption, the app re-fetches the key event from relays
 and unwraps via `signer.nip44Decrypt` (1 Amber call). This makes the local
 cache a performance optimization, not a single point of failure.
 
-The d-tags (HMAC-derived) are also cached in SharedPreferences alongside
-the wrapped dataKey for Amber users where derivation requires a sign_event
-call.
+The d-tags (HMAC-derived or Schnorr-derived) are also cached in DataStore-Preferences
+alongside the wrapped dataKey for Amber users where derivation requires a
+sign_event call (§3.1).
 
 **Scope of this rule — only applies to self-encrypted ciphertext blobs.**
 This "no ESP" decision is specific to data that is *already* encrypted by an
 external mechanism (NIP-44, AES-GCM with a well-protected key, etc.). It does
 NOT apply to plaintext credentials such as OAuth bearer tokens. `KilterTokenStore`
-(FEAT-003 §12.1) correctly uses ESP because its stored data — Kilter
-access/refresh tokens — is plaintext and needs ESP as the at-rest encryption
-boundary. Different threat model, different storage choice. A future refactor
-must not harmonize the two paths under a single "SecureStorage" abstraction —
-the distinction is load-bearing:
+correctly uses ESP because its stored data — Kilter access/refresh tokens —
+is plaintext and needs ESP as the at-rest encryption boundary. Likewise,
+`NostrKeyStore` uses ESP for the user's private key (plaintext nsec).
+Different threat model, different storage choice. A future refactor must
+not harmonize the paths under a single "SecureStorage" abstraction — the
+distinction is load-bearing:
 
-| | Backup dataKey (here) | Kilter tokens (FEAT-003) |
+| | Backup dataKey (here) | Kilter tokens / Nostr nsec |
 |---|---|---|
-| Stored data | NIP-44 ciphertext | Plaintext OAuth tokens |
+| Stored data | NIP-44 ciphertext | Plaintext credential |
 | Self-protection | Yes, inside the blob | None |
 | ESP role if added | Redundant 2nd layer | **The** encryption boundary |
-| Corruption recovery | Re-fetch from relays | User re-login |
+| Corruption recovery | Re-fetch from relays | User re-login / key regen |
 | ESP risk/benefit | Risk > benefit → avoid | Risk < benefit → use |
 
 ---
@@ -969,8 +991,41 @@ the distinction is load-bearing:
 
 ### 12.1 Onboarding: Backup Opt-In
 
-During onboarding (after Nostr key setup), a single screen asks whether to
-enable backup. Default: **off**.
+Existing onboarding is a linear state machine in `OnboardingViewModel` with
+three steps (`OnboardingStep.WELCOME`, `PRIVACY`, `BOARD_SETUP`). FEAT-002
+adds one step at the end:
+
+```kotlin
+enum class OnboardingStep { WELCOME, PRIVACY, BOARD_SETUP, NOSTR_BACKUP }
+```
+
+`NOSTR_BACKUP` is inserted after `BOARD_SETUP` because the Nostr key is
+materialized lazily by `NostrKeyStore.getOrCreateKeyPair()`. When the user
+reaches this step with the toggle set to **On**, the ViewModel:
+
+1. Triggers `NostrKeyStore.getOrCreateKeyPair()` — generates the key if
+   needed (local key path). For `SignerMode.AMBER`, the Amber permission
+   intent (see §10.1) is launched inline; the user cannot proceed past this
+   step until Amber responds (grant or deny). On deny, the toggle reverts
+   to **Off** and the user can continue.
+2. Writes `backupEnabled = true` + `backupInterval = DAILY` to
+   `UserPreferences`.
+3. Schedules the periodic `BackupSyncWorker` (§7.2) — first run happens
+   opportunistically when `NetworkType.CONNECTED` is satisfied.
+
+When the toggle is **Off** (default), no Nostr key is generated by this
+step; the key is still generated lazily on the first Nostr-dependent feature
+use (DMs, announcements, etc.). This keeps the default install footprint
+unchanged for users who never opt into backup.
+
+Restore flow interception: if the user imports an existing Nostr key via
+Amber or manual entry on a fresh install (happens *before* onboarding or
+from the `KeyImportScreen` later), the `checkForBackup` query from §8.1
+runs and — if a backup is found — the restore dialog (§8.3) pre-empts the
+`NOSTR_BACKUP` onboarding step. A successful restore sets
+`backupEnabled = true` implicitly (the user clearly wants backups since
+they just restored one); a dismissed restore dialog proceeds to the
+normal opt-in step.
 
 ```
 ┌─────────────────────────────────────────┐
@@ -990,6 +1045,11 @@ enable backup. Default: **off**.
 ```
 
 If the user enables backup, the interval defaults to "Taeglich".
+
+If the user dismisses with backup disabled, the opt-in is not re-prompted
+automatically. They can enable it later in Settings (§12.2). The
+`backup_onboarding_seen` flag in DataStore-Preferences prevents
+re-showing the step on subsequent app launches.
 
 ### 12.2 Settings Screen
 
@@ -1035,7 +1095,7 @@ Never shown during normal operation.
 ### 13.2 Key Loss Protection
 
 Two layers:
-1. **Local cache** in plain SharedPreferences (NIP-44-wrapped ciphertext,
+1. **Local cache** in DataStore-Preferences (NIP-44-wrapped ciphertext,
    self-protecting — see §11.2; survives app updates, not uninstall)
 2. **Multi-relay redundancy** (key event on 3+ relays)
 
@@ -1090,8 +1150,262 @@ APK size impact: Zero. All dependencies are already bundled.
 | Label tags | Removed entirely | `com.cruxcoach` labels leak app identity to relay operators and indexers |
 | Relay discovery | Delegated to FEAT-001 | Single source of truth across all Nostr features. FEAT-002 consumes the resolved pool; no backup-specific bootstrap logic |
 | NIP-70 `["-"]` tag | Not used | Relays without NIP-70 support silently reject events containing it. Content is already NIP-44 encrypted and d-tags are HMAC-obfuscated — marginal privacy benefit doesn't justify relay compatibility risk |
-| EncryptedSharedPreferences | Not used | ESP is deprecated (security-crypto 1.1.0-alpha07), has known Tink keyset corruption bugs on Samsung S24/Android 14. NIP-44-wrapped key blob in plain SharedPreferences is simpler and more reliable |
+| EncryptedSharedPreferences | Not used | ESP is deprecated (security-crypto 1.1.0-alpha07), has known Tink keyset corruption bugs on Samsung S24/Android 14. NIP-44-wrapped key blob in DataStore-Preferences (same store as `UserPreferences`) is simpler and more reliable. See §11.2 for the scope-boundary of this rule |
 | Multi-device backup | Not supported in v0.1.3 | Single-device only. Two devices backing up simultaneously create orphaned blobs. Future: per-device d-tags (`cruxcoach/backup/{device-uuid}`) |
 | DataKey rotation | Not in v0.1.3 | Mathematically safe for this volume (NIST 2^64-block limit). Optional annual rotation can be added later |
 | Blossom content-type | Runtime BUD-06 preflight, cached per server, self-healing | Dev-time compatibility matrix is fragile (servers change policies). On first upload per server, HEAD-probe `/upload` with `X-Content-Type: application/octet-stream`; cache result. On 415, retry with `application/x-cruxcoach-backup`; if still rejected, mark `incompatible` and skip. Re-probe once per backup cycle to recover. No Blossom endpoint list is frozen at ship time |
-| Previous blob SHA-256 source | Local SharedPreferences, written atomically after each successful pointer publish | Zero extra round-trips during cleanup — no relay fetch, no HEAD walk. On fresh install (cache miss), cleanup is a no-op; the one orphaned blob is reconciled by server retention or next health-check. The cache is authoritative because it always reflects *this* device's last write |
+| Previous blob SHA-256 source | DataStore-Preferences, written atomically after each successful pointer publish | Zero extra round-trips during cleanup — no relay fetch, no HEAD walk. On fresh install (cache miss), cleanup is a no-op; the one orphaned blob is reconciled by server retention or next health-check. The cache is authoritative because it always reflects *this* device's last write |
+
+---
+
+## 17. Test Plan
+
+All tests live under
+`androidApp/src/test/java/com/cruxcoach/android/nostr/backup/`. JUnit4 +
+`kotlinx-coroutines-test` + MockK, matching the style of
+`UserPreferencesAnnouncementCategoryTest.kt`.
+
+### 17.1 Pure-function unit tests
+
+| Test class | Coverage |
+|------------|----------|
+| `BackupCryptoTest` | AES-256-GCM round-trip; `decrypt(encrypt(x)) == x`; different IV per `encrypt` call; tampered ciphertext throws; tampered IV throws; wrong key throws; empty-input handling |
+| `BackupCompressionTest` | gzip round-trip on small / medium / realistic payloads; decompress rejects non-gzip bytes; compression ratio sanity check (JSON → <50% size) |
+| `HkdfSha256Test` | RFC 5869 test vectors (Test Case 1: SHA-256 basic; Test Case 2: longer inputs; Test Case 3: zero-length salt); 32-byte output length; domain-separation via different `info` |
+| `DTagDeriverTest` | HMAC path is deterministic for same nsec; different nsec → different d-tag; output is 64 hex chars; Schnorr-path returns cached value on second call (via fake signer); restore path returns null if no cache + Amber |
+| `BackupPointerSerializationTest` | `BackupPointer` JSON round-trip; unknown future fields tolerated; malformed JSON throws with clear message |
+
+### 17.2 Integration tests (Fakes)
+
+`FakeNostrSigner`, `FakeBlossomServer` (using OkHttp `MockWebServer`),
+`FakeNostrRelayPool`. No real network, no real DataStore — in-memory fakes
+throughout.
+
+| Test class | Scenario |
+|------------|----------|
+| `BackupPipelineTest` | End-to-end `performFullBackup` with 3 Blossom servers; all accept → sha256 correctly recorded; 2 accept + 1 reject (415) → pipeline continues; all reject → throws `BackupException`, pointer NOT published, previous pointer sha unchanged |
+| `PointerOrderingInvariantTest` | **Critical**: simulate Blossom-verify failure after successful upload → assert pointer event is never published; previous pointer sha remains the stored value from prior backup |
+| `RestoreQueryAllAmberTest` | Amber user, fresh install, no local d-tag cache → restore queries all Kind 30078 by pubkey (no d-tag filter); correctly identifies CruxCoach events by decrypted `version` field; handles ≤10 noise events |
+| `RestoreHmacLocalKeyTest` | Local-key user, HMAC path → `checkForBackup` filters on exact d-tag, finds pointer + key, decrypts pointer metadata |
+| `RestoreSha256MismatchTest` | Blossom serves wrong bytes → `verifySha256` throws; next server in list attempted; final failure surfaces `BackupException` |
+| `BlossomContentTypePreflightTest` | Server responds 415 on first upload → retry with `application/x-cruxcoach-backup` content-type; server now accepts → cached as `rejected_octet`; second cycle same server → skip preflight |
+| `BlobCleanupTest` | After successful pointer publish, DELETE is issued for previous sha to all configured servers; DELETE failure is silent (not retried); missing `previous_sha256` → no DELETE issued |
+| `KeyCacheCorruptionTest` | Corrupt wrapped dataKey in DataStore → `getOrCreateDataKey()` re-fetches key event from relays, unwraps, overwrites cache; no user-visible error |
+
+### 17.3 BackupSyncWorker behavior
+
+`BackupSyncWorkerTest` using `WorkManagerTestInitHelper`:
+
+- `Result.success` on clean run
+- `Result.retry` on `BackupException`
+- `Result.retry` on `NetworkException`
+- `Result.failure` only when dataKey is unrecoverable AND user opted out
+  (never during normal operation — retry is always safer)
+- Exponential backoff respected (30 min initial)
+
+### 17.4 Opt-out flow
+
+`BackupOptOutTest`:
+
+- Flip `backupEnabled` to `false` → WorkManager cancels `backup_sync_periodic`
+- Opt-out with "delete remote data" flag → Kind 5 deletion events published
+  for pointer + key d-tags; Blossom DELETE issued for last-known sha
+- Opt-out without deletion flag → local cache cleared, remote data untouched
+- Re-enable after passive opt-out → next cycle reuses existing dataKey if
+  local cache survived, otherwise unwraps from surviving key event
+
+### 17.5 Out of scope for unit tests
+
+- Real Amber IPC — covered only by manual device testing during release QA
+- Real Blossom servers — manual smoke test against `blossom.primal.net` +
+  `blossom.nostr.build` during release QA
+- Actual WorkManager scheduling over real system alarms (covered only by
+  instrumented tests, optional for this release)
+
+---
+
+## 18. Telemetry
+
+Matching FEAT-001's style: no analytics library, structured `Log` events
+with a stable tag and key/value payload.
+
+Tag: `TAG = "BackupSync"`. Shape:
+
+```
+BackupSync: event=<event-name> key1=<val1> key2=<val2>
+```
+
+### 18.1 Events
+
+| Event | Level | Fields | Emitted by |
+|-------|-------|--------|------------|
+| `backup_scheduled` | `Log.d` | `interval={DAILY|WEEKLY}` | `BackupSyncWorker.schedule` |
+| `backup_cancelled` | `Log.d` | `reason={disabled|manual}` | `BackupSyncWorker.schedule` |
+| `backup_start` | `Log.d` | `trigger={periodic|manual}`, `signerMode={LOCAL|AMBER}` | `performFullBackup` entry |
+| `backup_upload_ok` | `Log.d` | `serversOk`, `serversTotal`, `sizeKb`, `durationMs` | after Blossom upload step |
+| `backup_upload_partial` | `Log.w` | `serversOk`, `serversTotal`, `sizeKb` | if >=1 but not all servers accepted |
+| `backup_upload_failed` | `Log.w` | `serversTotal`, `lastError` | all servers rejected → `Result.retry` |
+| `backup_verify_failed` | `Log.w` | `serversTotal` | HEAD-verify found blob nowhere → `Result.retry` |
+| `backup_pointer_published` | `Log.d` | `writeRelayCount` | after pointer event publish |
+| `backup_cleanup` | `Log.d` | `previousShaPresent`, `serversCleaned` | after blob cleanup step |
+| `backup_healthcheck` | `Log.d` | `serversMissing`, `reuploaded` | after health check |
+| `backup_done` | `Log.d` | `totalDurationMs` | pipeline success |
+| `restore_check_start` | `Log.d` | `signerMode` | `checkForBackup` entry |
+| `restore_check_hit` | `Log.d` | `sizeKb`, `ageHours` | backup found |
+| `restore_check_miss` | `Log.d` | `reason={no-pointer|no-key|timeout}` | nothing to restore |
+| `restore_download_ok` | `Log.d` | `sha256Prefix`, `durationMs` | blob downloaded + verified |
+| `restore_download_failed` | `Log.w` | `serversTried`, `lastError` | restore aborts |
+| `restore_done` | `Log.d` | `rowsImported`, `durationMs` | restore pipeline success |
+| `content_type_probe` | `Log.d` | `server`, `result={accepted|rejected_octet|incompatible}` | BUD-06 preflight |
+| `key_cache_miss` | `Log.w` | `reason={empty|corrupt}` | dataKey unwrap fallback |
+| `killswitch_off` | `Log.i` | — | logged once per process if flag is false |
+
+### 18.2 PII stance
+
+No event payload contains backup content, full SHA-256 values, or relay
+URLs. Sizes are rounded to the nearest KB. `sha256Prefix` is the first
+8 hex chars — enough to correlate events for the same backup cycle without
+identifying the user across logs.
+
+### 18.3 Derived measurements
+
+From logs alone:
+- Backup success rate: `backup_done / backup_start`
+- Upload partial rate: `backup_upload_partial / backup_upload_ok+partial`
+- Restore success rate: `restore_done / restore_check_hit`
+- Amber vs local key split (from `signerMode` field)
+- Median upload duration (from `backup_upload_ok.durationMs`)
+
+---
+
+## 19. Rollout & Kill-Switch
+
+### 19.1 Feature flag
+
+```kotlin
+// In PreferenceKeys:
+val BACKUP_FEATURE_ENABLED = booleanPreferencesKey("backup_feature_enabled")
+```
+
+Default: `true`. Exposed via `UserPreferences.backupFeatureEnabled: Flow<Boolean>`
+with setter `setBackupFeatureEnabled(enabled: Boolean)`. Distinct from the
+user-facing `backupEnabled` toggle (§7.1) — that is the user's choice, this
+is the dev-side kill-switch.
+
+When `backupFeatureEnabled = false`:
+- `BackupSyncWorker.schedule` short-circuits and cancels any existing work
+- `NOSTR_BACKUP` onboarding step is skipped (treated as already-seen)
+- Settings section (§12.2) is hidden entirely
+- In-flight `performFullBackup` calls throw `BackupFeatureDisabled` and
+  return `Result.failure` (no retry — the feature is gone)
+
+Re-enabling the flag does not automatically resume backups — the user's
+`backupEnabled` toggle is authoritative for scheduling.
+
+### 19.2 Rollout sequence
+
+- **0.1.3-dev.\*** CI prereleases: flag `true`, internal testing across
+  Amber and local-key paths
+- **0.1.3 stable**: flag `true`; monitored via telemetry (§18)
+- Metrics-to-watch during first week: backup success rate, Amber-path
+  failure rate, pointer-vs-blob ordering invariant holds (if `backup_verify_failed`
+  ever co-occurs with `backup_pointer_published` in the same cycle, that's
+  a priority-1 bug)
+
+No staged percentage rollout (Zapstore doesn't offer rings; user base is small).
+
+### 19.3 Kill-switch triggers
+
+Conditions that warrant flipping the flag off via a 0.1.3.x patch:
+- NIP-44 decryption failure rate climbs due to a Quartz regression
+- Blossom upload consistently fails for >50% of users (server-side change)
+- SHA-256 mismatch appears in real user logs (indicates blob integrity bug)
+- Pipeline ordering invariant violated (pointer published without verified
+  blob — see §17.2)
+
+Mitigation paths:
+1. Ship 0.1.3.x with flag default `false` — quickest rollback
+2. Developer DM users the "turn off backup" guidance via DevContact
+3. Ship 0.1.3.y with the problem fix and flag back to `true`
+
+---
+
+## 20. Opt-Out Lifecycle
+
+When the user flips `backupEnabled` from **on** to **off** in Settings
+(§12.2), FEAT-002 handles two distinct scenarios:
+
+### 20.1 Passive opt-out (default)
+
+Settings toggle flip alone, no further confirmation:
+
+1. `BackupSyncWorker.schedule(enabled = false)` cancels `backup_sync_periodic`
+2. `backupEnabled = false` persisted to DataStore
+3. Local caches (wrapped dataKey, d-tag, previous-blob-sha) are **kept**
+4. Remote data (blob + pointer + key events) is **kept**
+5. Emits `backup_cancelled reason=disabled`
+
+Rationale: re-enabling is a single toggle and must be seamless. Users often
+disable backups temporarily (low data plan, travel, etc.) and expect to
+resume without losing history. Preserving the remote data makes re-enable
+a no-op plus one fresh cycle.
+
+### 20.2 Active opt-out — "Delete remote backups"
+
+Settings offers a destructive second action, hidden behind a confirmation
+dialog: *"Alle Remote-Backups löschen"*. Flow:
+
+```kotlin
+suspend fun deleteRemoteBackups() {
+    // 1. Publish Kind 5 deletion events for pointer + key d-tags
+    val backupDTag = getCachedBackupDTag() ?: return   // nothing to delete
+    val keyDTag = getCachedKeyDTag() ?: return
+
+    val deletion = Event(
+        kind = 5,
+        tags = listOf(
+            listOf("e", lastPointerEventId ?: ""),
+            listOf("e", lastKeyEventId ?: ""),
+            listOf("k", "30078"),
+        ),
+        content = "backup opt-out",
+    )
+    pool.writeRelays().forEach { pool.sendEvent(deletion.signedBy(signer)) }
+
+    // 2. DELETE blob from all configured Blossom servers
+    val previousSha = getCurrentPointerSha256()
+    if (previousSha != null) {
+        cleanupPreviousBlob(previousSha, fetchBlossomServers(signer.pubKey), signer)
+    }
+
+    // 3. Clear local caches
+    clearWrappedDataKey()
+    clearDTagCache()
+    clearPreviousPointerSha()
+
+    // 4. Disable feature (same as passive opt-out)
+    userPreferences.setBackupEnabled(false)
+}
+```
+
+Caveats the confirmation dialog must surface:
+- Kind 5 deletion is a *request*, not a guarantee — relays that don't honor
+  NIP-09 keep the events until their own retention policy expires
+- Blossom `DELETE` is best-effort; blobs the user uploaded to servers not in
+  the current list (e.g. after server-list changes) are unreachable here
+- Once deleted, restore on a new device is impossible — the user must have
+  already exported a local JSON backup if they want a safety net
+
+Emits `backup_cancelled reason=manual` plus one `backup_cleanup` event per
+server-and-kind touched.
+
+### 20.3 Re-enable after opt-out
+
+After passive opt-out, toggle-on restores scheduling. The next worker run
+reuses the cached wrapped dataKey, derives the same d-tags, and publishes
+a fresh pointer + blob. Restore history is preserved.
+
+After active opt-out, toggle-on requires a fresh setup: new dataKey, new
+wrap, new first upload. The previous pointer event (if not actually deleted
+by relays) still exists but has no referenced blob; the next cycle
+overwrites it via the replaceable-event semantics of Kind 30078.
