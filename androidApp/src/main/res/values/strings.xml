@@ -1400,4 +1400,19 @@
     <string name="settings_backup_no_backup_found">No backup found. Relays may be offline — try again later.</string>
     <string name="settings_backup_restore_failed">Backup could not be restored.</string>
     <string name="settings_backup_queued">Backup queued.</string>
+    <string name="settings_backup_delete_remote">Delete remote backups…</string>
+    <string name="settings_backup_delete_remote_dialog_title">Delete remote backups?</string>
+    <string name="settings_backup_delete_remote_dialog_body">This will request deletion of your backup events and blobs from relays and Blossom servers. Be aware:\n\n• Deletion is best-effort. Not all relays/servers honour it.\n• After this, you cannot restore your backup on another device.\n• Local data is not affected.</string>
+    <string name="settings_backup_delete_remote_confirm">Delete</string>
+    <string name="settings_backup_delete_remote_in_progress">Deleting…</string>
+    <string name="settings_backup_delete_remote_done">Deletion requested. Best-effort — some relays may retain a copy.</string>
+
+    <!-- FEAT-002: Nostr backup onboarding -->
+    <string name="onboarding_nostr_key_title">Nostr identity</string>
+    <string name="onboarding_nostr_key_body">CruxCoach uses a Nostr key for optional backups, direct messages and community features. A key will be generated automatically when you need one.</string>
+    <string name="onboarding_nostr_key_checking">Looking for an existing backup…</string>
+    <string name="onboarding_nostr_key_hint_import_later">Already have a Nostr key? You can import it later in Settings → Nostr key.</string>
+    <string name="onboarding_nostr_backup_title">Backup your data</string>
+    <string name="onboarding_nostr_backup_body">Encrypted backup on Blossom servers, decryptable only with your Nostr key. Default: off — you can enable it any time in Settings.</string>
+    <string name="onboarding_restore_dialog_body">A backup was found (%1$s).\n\nRestoring it will replace any local data with the contents of the backup.</string>
 </resources>

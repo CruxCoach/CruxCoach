@@ -265,6 +265,7 @@ fun SettingsScreen(
                         onSetInterval = { backupViewModel.setInterval(it) },
                         onRunBackupNow = { backupViewModel.runBackupNow() },
                         onTriggerRestore = { backupViewModel.triggerManualRestore() },
+                        onRequestDeleteRemote = { backupViewModel.requestDeleteRemoteBackups() },
                     )
                 }
             }
@@ -346,11 +347,18 @@ fun SettingsScreen(
             onDismiss = { backupViewModel.dismissRestoreDialog() },
         )
     }
+    if (backupState.showDeleteRemoteConfirm) {
+        DeleteRemoteBackupsDialog(
+            onConfirm = { backupViewModel.confirmDeleteRemoteBackups() },
+            onDismiss = { backupViewModel.dismissDeleteRemoteConfirm() },
+        )
+    }
     backupState.snackbar?.let { snackbar ->
         val messageRes = when (snackbar) {
             BackupSettingsState.Snackbar.NoBackupFound -> R.string.settings_backup_no_backup_found
             BackupSettingsState.Snackbar.RestoreFailed -> R.string.settings_backup_restore_failed
             BackupSettingsState.Snackbar.BackupQueued -> R.string.settings_backup_queued
+            BackupSettingsState.Snackbar.RemoteBackupsDeleted -> R.string.settings_backup_delete_remote_done
         }
         AlertDialog(
             onDismissRequest = { backupViewModel.consumeSnackbar() },

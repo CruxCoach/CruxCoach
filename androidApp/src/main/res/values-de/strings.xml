@@ -1402,4 +1402,19 @@
     <string name="settings_backup_no_backup_found">Kein Backup gefunden. Relais eventuell offline — später erneut versuchen.</string>
     <string name="settings_backup_restore_failed">Backup konnte nicht wiederhergestellt werden.</string>
     <string name="settings_backup_queued">Backup eingeplant.</string>
+    <string name="settings_backup_delete_remote">Remote-Backups löschen…</string>
+    <string name="settings_backup_delete_remote_dialog_title">Remote-Backups löschen?</string>
+    <string name="settings_backup_delete_remote_dialog_body">Dies fordert die Löschung deiner Backup-Events und -Blobs von Relais und Blossom-Servern an. Beachte:\n\n• Die Löschung ist Best-Effort. Nicht alle Relais/Server honorieren sie.\n• Danach kannst du dein Backup nicht mehr auf einem anderen Gerät wiederherstellen.\n• Lokale Daten bleiben unangetastet.</string>
+    <string name="settings_backup_delete_remote_confirm">Löschen</string>
+    <string name="settings_backup_delete_remote_in_progress">Lösche…</string>
+    <string name="settings_backup_delete_remote_done">Löschung angefordert. Best-Effort — einige Relais könnten eine Kopie behalten.</string>
+
+    <!-- FEAT-002: Nostr Backup Onboarding -->
+    <string name="onboarding_nostr_key_title">Nostr-Identität</string>
+    <string name="onboarding_nostr_key_body">CruxCoach nutzt einen Nostr-Key für optionales Backup, Direct Messages und Community-Features. Ein Key wird automatisch erzeugt, wenn du ihn brauchst.</string>
+    <string name="onboarding_nostr_key_checking">Suche nach einem vorhandenen Backup…</string>
+    <string name="onboarding_nostr_key_hint_import_later">Du hast schon einen Nostr-Key? Du kannst ihn später unter Einstellungen → Nostr-Schlüssel importieren.</string>
+    <string name="onboarding_nostr_backup_title">Backup deiner Daten</string>
+    <string name="onboarding_nostr_backup_body">Verschlüsseltes Backup auf Blossom-Servern, nur mit deinem Nostr-Key entschlüsselbar. Voreinstellung: aus — jederzeit in den Einstellungen aktivierbar.</string>
+    <string name="onboarding_restore_dialog_body">Ein Backup wurde gefunden (%1$s).\n\nWiederherstellen ersetzt deine lokalen Daten durch den Inhalt des Backups.</string>
 </resources>

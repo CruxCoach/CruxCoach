@@ -32,6 +32,7 @@ internal fun BackupSettingsSection(
     onSetInterval: (SyncInterval) -> Unit,
     onRunBackupNow: () -> Unit,
     onTriggerRestore: () -> Unit,
+    onRequestDeleteRemote: () -> Unit = {},
 ) {
     if (!state.featureEnabled) return
 
@@ -124,8 +125,55 @@ internal fun BackupSettingsSection(
                     },
                 )
             }
+
+            // FEAT-002 §20.2 active opt-out. Shown only when there is
+            // plausibly something to delete (= a key exists); gated further
+            // by a confirmation dialog.
+            Spacer(Modifier.height(8.dp))
+            TextButton(
+                onClick = onRequestDeleteRemote,
+                enabled = !state.isDeletingRemote,
+            ) {
+                Text(
+                    stringResource(
+                        if (state.isDeletingRemote) {
+                            R.string.settings_backup_delete_remote_in_progress
+                        } else {
+                            R.string.settings_backup_delete_remote
+                        },
+                    ),
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
         }
     }
+}
+
+@Composable
+internal fun DeleteRemoteBackupsDialog(
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.settings_backup_delete_remote_dialog_title)) },
+        text = { Text(stringResource(R.string.settings_backup_delete_remote_dialog_body)) },
+        confirmButton = {
+            Button(
+                onClick = onConfirm,
+                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.error,
+                ),
+            ) {
+                Text(stringResource(R.string.settings_backup_delete_remote_confirm))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.settings_backup_restore_cancel))
+            }
+        },
+    )
 }
 
 @Composable

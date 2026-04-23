@@ -66,6 +66,8 @@ fun OnboardingScreen(
                 OnboardingStep.WELCOME -> WelcomeStep()
                 OnboardingStep.PRIVACY -> PrivacyStep(state, viewModel)
                 OnboardingStep.BOARD_SETUP -> BoardSetupStep(state, viewModel, onNavigateToSync)
+                OnboardingStep.NOSTR_KEY -> NostrKeyStep(state)
+                OnboardingStep.NOSTR_BACKUP -> NostrBackupStep(state, viewModel)
             }
         }
 
@@ -111,6 +113,25 @@ fun OnboardingScreen(
                     }
                 }
                 OnboardingStep.BOARD_SETUP -> {
+                    Button(
+                        onClick = { viewModel.nextStep() },
+                        modifier = Modifier.weight(1f).testTag("onboarding_next_button"),
+                        colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent)
+                    ) {
+                        Text(stringResource(R.string.action_next))
+                    }
+                }
+                OnboardingStep.NOSTR_KEY -> {
+                    Button(
+                        onClick = { viewModel.nextStep() },
+                        enabled = !state.isCheckingForBackup && !state.restoreInProgress,
+                        modifier = Modifier.weight(1f).testTag("onboarding_next_button"),
+                        colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent)
+                    ) {
+                        Text(stringResource(R.string.action_next))
+                    }
+                }
+                OnboardingStep.NOSTR_BACKUP -> {
                     TextButton(
                         onClick = { viewModel.completeOnboarding(onComplete) },
                         enabled = !state.isSaving,
@@ -144,6 +165,125 @@ fun OnboardingScreen(
                 color = ErrorRed,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                 style = MaterialTheme.typography.bodySmall
+            )
+        }
+    }
+
+    // FEAT-002 restore intercept during onboarding. Dialog lives above the
+    // main Column so it overlays any step.
+    state.pendingRestore?.let { info ->
+        val sizeKb = info.pointer.size / 1024
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissOnboardingRestore() },
+            title = { Text(stringResource(R.string.settings_backup_restore_dialog_title)) },
+            text = {
+                Text(
+                    stringResource(
+                        R.string.onboarding_restore_dialog_body,
+                        if (sizeKb < 1024) "$sizeKb KB" else "${sizeKb / 1024} MB",
+                    ),
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = { viewModel.confirmOnboardingRestore() },
+                    enabled = !state.restoreInProgress,
+                ) {
+                    Text(stringResource(R.string.settings_backup_restore_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { viewModel.dismissOnboardingRestore() },
+                    enabled = !state.restoreInProgress,
+                ) {
+                    Text(stringResource(R.string.settings_backup_restore_cancel))
+                }
+            },
+        )
+    }
+    if (state.restoreFailed) {
+        AlertDialog(
+            onDismissRequest = { viewModel.consumeRestoreFailure() },
+            text = { Text(stringResource(R.string.settings_backup_restore_failed)) },
+            confirmButton = {
+                TextButton(onClick = { viewModel.consumeRestoreFailure() }) {
+                    Text(stringResource(R.string.settings_backup_restore_cancel))
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun NostrKeyStep(state: OnboardingState) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 32.dp, vertical = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Text(
+            stringResource(R.string.onboarding_nostr_key_title),
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold,
+        )
+        Text(
+            stringResource(R.string.onboarding_nostr_key_body),
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        if (state.isCheckingForBackup) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(18.dp),
+                    strokeWidth = 2.dp,
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    stringResource(R.string.onboarding_nostr_key_checking),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        } else if (!state.hasNostrKey) {
+            Text(
+                stringResource(R.string.onboarding_nostr_key_hint_import_later),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun NostrBackupStep(state: OnboardingState, viewModel: OnboardingViewModel) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 32.dp, vertical = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Text(
+            stringResource(R.string.onboarding_nostr_backup_title),
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold,
+        )
+        Text(
+            stringResource(R.string.onboarding_nostr_backup_body),
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(
+                stringResource(R.string.settings_backup_enable),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Switch(
+                checked = state.backupOptIn,
+                onCheckedChange = { viewModel.setBackupOptIn(it) },
+                modifier = Modifier.testTag("onboarding_backup_optin_switch"),
             )
         }
     }

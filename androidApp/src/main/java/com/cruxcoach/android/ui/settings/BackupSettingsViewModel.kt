@@ -34,11 +34,14 @@ data class BackupSettingsState(
     val isCheckingForBackup: Boolean = false,
     val pendingRestore: BackupInfo? = null,
     val snackbar: Snackbar? = null,
+    val showDeleteRemoteConfirm: Boolean = false,
+    val isDeletingRemote: Boolean = false,
 ) {
     sealed interface Snackbar {
         data object NoBackupFound : Snackbar
         data object RestoreFailed : Snackbar
         data object BackupQueued : Snackbar
+        data object RemoteBackupsDeleted : Snackbar
     }
 }
 
@@ -155,6 +158,38 @@ class BackupSettingsViewModel @Inject constructor(
 
     fun consumeSnackbar() {
         _state.update { it.copy(snackbar = null) }
+    }
+
+    // ─── Active opt-out — FEAT-002 §20.2 ────────────────────────────────
+
+    fun requestDeleteRemoteBackups() {
+        _state.update { it.copy(showDeleteRemoteConfirm = true) }
+    }
+
+    fun dismissDeleteRemoteConfirm() {
+        _state.update { it.copy(showDeleteRemoteConfirm = false) }
+    }
+
+    fun confirmDeleteRemoteBackups() {
+        viewModelScope.launch {
+            _state.update { it.copy(showDeleteRemoteConfirm = false, isDeletingRemote = true) }
+            runCatching { backupRepository.deleteRemoteBackups() }
+                // deleteRemoteBackups is best-effort and does not throw on
+                // partial failures; we surface the same snackbar either way.
+            BackupSyncWorker.schedule(
+                appContext,
+                enabled = false,
+                interval = _state.value.interval,
+            )
+            _state.update {
+                it.copy(
+                    isDeletingRemote = false,
+                    backupEnabled = false,
+                    lastBackupIso = null,
+                    snackbar = BackupSettingsState.Snackbar.RemoteBackupsDeleted,
+                )
+            }
+        }
     }
 
     private fun Long.toIso8601(): String {
