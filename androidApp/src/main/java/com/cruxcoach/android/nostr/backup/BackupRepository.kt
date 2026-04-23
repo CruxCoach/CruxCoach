@@ -307,25 +307,85 @@ class BackupRepository @Inject constructor(
 
     // ------------------------------------------------------------ dataKey ops
 
+    /**
+     * Resolve the symmetric data-encryption key used for the Blossom blob.
+     * Three-tiered recovery so a partially-persisted or otherwise corrupt
+     * local cache doesn't silently brick every future backup attempt:
+     *
+     *  1. Unwrap from local preferences (happy path).
+     *  2. If that fails, clear the bad blob and re-fetch the authoritative
+     *     Kind 30078 key event from relays; the local cache was a copy of
+     *     that event's content to begin with, so in practice this recovers
+     *     every scenario where only the local state is bad (App-Crash
+     *     between generate + persist, DataStore migration glitch, …).
+     *  3. If the relay copy is also missing / undecryptable, generate a
+     *     fresh dataKey, publish the new key event, and clear the pointer
+     *     stash — any prior Blossom blob becomes orphaned but a new backup
+     *     can succeed from this point on.
+     */
     private suspend fun getOrCreateDataKey(): ByteArray {
         preferences.getWrappedDataKey()?.let { wrapped ->
-            return try {
-                val hex = nip44DecryptToSelf(wrapped)
-                hex.hexToByteArray().also {
-                    require(it.size == 32) { "Unwrapped dataKey is not 32 bytes" }
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "event=key_cache_miss reason=corrupt", e)
-                throw e   // pipeline will retry; a future refactor may re-fetch from relays
+            runCatching { unwrapDataKey(wrapped) }.getOrNull()?.let { return it }
+            Log.w(TAG, "event=key_cache_miss reason=corrupt")
+            preferences.setWrappedDataKey(null)
+        }
+
+        runCatching { fetchWrappedKeyFromRelays() }.getOrNull()?.let { wrapped ->
+            runCatching { unwrapDataKey(wrapped) }.getOrNull()?.let { dk ->
+                Log.i(TAG, "event=key_cache_recover source=relays")
+                preferences.setWrappedDataKey(wrapped)
+                return dk
             }
         }
-        // First-time setup
+
+        Log.w(TAG, "event=key_cache_regenerate reason=unrecoverable")
+        preferences.setPreviousBlobSha256(null)
         val fresh = BackupCrypto.generateKey()
         val freshHex = fresh.toHexString()
         val wrapped = nip44EncryptToSelf(freshHex)
         preferences.setWrappedDataKey(wrapped)
         publishKeyEvent(wrapped)
         return fresh
+    }
+
+    private suspend fun unwrapDataKey(wrapped: String): ByteArray {
+        val hex = nip44DecryptToSelf(wrapped)
+        val bytes = hex.hexToByteArray()
+        require(bytes.size == 32) { "Unwrapped dataKey is not 32 bytes" }
+        return bytes
+    }
+
+    /**
+     * Re-fetch the current user's Kind 30078 key event. LOCAL-signer users
+     * can derive the d-tag HMAC and query surgically; Amber users don't
+     * hold the private key, so we fall back to "query all parameterized
+     * events for this pubkey and shape-match the key event".
+     */
+    private suspend fun fetchWrappedKeyFromRelays(timeoutMs: Long = 10_000L): String? {
+        val pubkey = nostrSigner.getPublicKeyHex()
+        val event = when (nostrSigner.getStoredSignerMode()) {
+            SignerMode.LOCAL -> {
+                val keyDTag = dTagDeriver.derive(BackupPreferences.IDENTIFIER_KEY)
+                val filter = buildJsonObject {
+                    put("kinds", buildJsonArray { add(JsonPrimitive(KIND_REPLACEABLE_PARAMETERIZED)) })
+                    put("authors", buildJsonArray { add(JsonPrimitive(pubkey)) })
+                    put("#d", buildJsonArray { add(JsonPrimitive(keyDTag)) })
+                }
+                queryAllValid(filter.toString(), timeoutMs)
+                    .firstOrNull { it.tagValue("d") == keyDTag }
+            }
+            SignerMode.AMBER -> {
+                val filter = buildJsonObject {
+                    put("kinds", buildJsonArray { add(JsonPrimitive(KIND_REPLACEABLE_PARAMETERIZED)) })
+                    put("authors", buildJsonArray { add(JsonPrimitive(pubkey)) })
+                }
+                queryAllValid(filter.toString(), timeoutMs).firstOrNull { ev ->
+                    val decrypted = runCatching { nip44DecryptToSelf(ev.content) }.getOrNull()
+                    decrypted != null && decrypted.looksLikeHexBytes(expectedBytes = 32)
+                }
+            }
+        }
+        return event?.content
     }
 
     private suspend fun publishKeyEvent(wrappedDataKey: String) {

@@ -365,8 +365,11 @@ fun SettingsScreen(
                 stringResource(R.string.settings_backup_restore_failed)
             BackupSettingsState.Snackbar.BackupSucceeded ->
                 stringResource(R.string.settings_backup_succeeded)
-            BackupSettingsState.Snackbar.BackupFailed ->
-                stringResource(R.string.settings_backup_failed)
+            is BackupSettingsState.Snackbar.BackupFailed ->
+                if (snackbar.detail.isNullOrBlank())
+                    stringResource(R.string.settings_backup_failed)
+                else
+                    stringResource(R.string.settings_backup_failed_detail, snackbar.detail)
             BackupSettingsState.Snackbar.RemoteBackupsDeleted ->
                 stringResource(R.string.settings_backup_delete_remote_done)
         }

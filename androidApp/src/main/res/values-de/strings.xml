@@ -1399,6 +1399,7 @@
     <string name="settings_backup_restore_failed">Backup konnte nicht wiederhergestellt werden.</string>
     <string name="settings_backup_succeeded">Backup erstellt.</string>
     <string name="settings_backup_failed">Backup fehlgeschlagen. Prüfe deine Verbindung und versuche es erneut.</string>
+    <string name="settings_backup_failed_detail">Backup fehlgeschlagen: %1$s</string>
     <string name="settings_backup_delete_remote">Remote-Backups löschen…</string>
     <string name="settings_backup_delete_remote_dialog_title">Remote-Backups löschen?</string>
     <string name="settings_backup_delete_remote_dialog_body">Dies fordert die Löschung deiner Backup-Events und -Blobs von Relais und Blossom-Servern an. Beachte:\n\n• Die Löschung ist Best-Effort. Nicht alle Relais/Server honorieren sie.\n• Danach kannst du dein Backup nicht mehr auf einem anderen Gerät wiederherstellen.\n• Lokale Daten bleiben unangetastet.</string>

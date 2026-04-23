@@ -55,18 +55,23 @@ class BackupSyncWorker @AssistedInject constructor(
             // surface the error. Periodic runs return RETRY so the
             // WorkManager backoff kicks in for transient failures.
             Log.w(TAG, "event=backup_done_${if (isManual) "failure" else "retry"} reason=${e.message}", e)
-            if (isManual) Result.failure() else Result.retry()
+            if (isManual) Result.failure(errorData(e)) else Result.retry()
         } catch (e: Exception) {
             Log.w(TAG, "event=backup_done_${if (isManual) "failure" else "retry"}_exception", e)
-            if (isManual) Result.failure() else Result.retry()
+            if (isManual) Result.failure(errorData(e)) else Result.retry()
         }
     }
+
+    private fun errorData(e: Throwable) = workDataOf(
+        KEY_ERROR to (e.message ?: e.javaClass.simpleName),
+    )
 
     companion object {
         private const val TAG = "BackupSync"
         const val WORK_NAME_PERIODIC = "backup_sync_periodic"
         const val WORK_NAME_ONESHOT = "backup_sync_oneshot"
         private const val KEY_IS_MANUAL = "is_manual"
+        const val KEY_ERROR = "error"
 
         /** Schedule / cancel the periodic backup worker based on current settings. */
         fun schedule(context: Context, enabled: Boolean, interval: SyncInterval) {

@@ -47,7 +47,14 @@ data class BackupSettingsState(
         data class CheckError(val detail: String) : Snackbar
         data object RestoreFailed : Snackbar
         data object BackupSucceeded : Snackbar
-        data object BackupFailed : Snackbar
+        /**
+         * [detail] is the message of the exception that tripped the worker
+         * ([BackupException] reason, or the `simpleName` for an unexpected
+         * throwable). Always non-null from [BackupSyncWorker], but kept
+         * nullable so older in-flight WorkInfo payloads without outputData
+         * degrade gracefully to a generic message.
+         */
+        data class BackupFailed(val detail: String?) : Snackbar
         data object RemoteBackupsDeleted : Snackbar
     }
 }
@@ -115,7 +122,9 @@ class BackupSettingsViewModel @Inject constructor(
             val snackbar = when (terminal.state) {
                 androidx.work.WorkInfo.State.SUCCEEDED ->
                     BackupSettingsState.Snackbar.BackupSucceeded
-                else -> BackupSettingsState.Snackbar.BackupFailed
+                else -> BackupSettingsState.Snackbar.BackupFailed(
+                    detail = terminal.outputData.getString(BackupSyncWorker.KEY_ERROR),
+                )
             }
             val latestLastSync = preferences.lastBackupSync.first()
             _state.update {
