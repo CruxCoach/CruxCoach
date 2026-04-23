@@ -4,7 +4,7 @@
 
     <!-- Onboarding -->
     <string name="onboarding_welcome">Willkommen bei CruxCoach</string>
-    <string name="onboarding_welcome_subtitle">Open-Source-App für dein Kilter Board — Routen finden, Board ansteuern, Sessions mitschreiben.</string>
+    <string name="onboarding_welcome_subtitle">Open-Source-App für dein Kilter Board — Routen finden, Board ansteuern, Sessions loggen.</string>
     <string name="onboarding_privacy_title">Wie möchtest du CruxCoach nutzen?</string>
     <string name="onboarding_privacy_subtitle">Wähle aus, welche Funktionen aktiv sein sollen. Du kannst alles jederzeit in den Einstellungen ändern.</string>
     <string name="onboarding_privacy_ble_title">Board-Sharing in der Nähe</string>

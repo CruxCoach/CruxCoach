@@ -4,7 +4,7 @@
 
     <!-- Onboarding -->
     <string name="onboarding_welcome">Welcome to CruxCoach</string>
-    <string name="onboarding_welcome_subtitle">Open source Kilter Board app — browse climbs, light up the board, track sessions.</string>
+    <string name="onboarding_welcome_subtitle">Open source Kilter Board app — browse climbs, light up the board, log sessions.</string>
     <string name="onboarding_privacy_title">How do you want to use CruxCoach?</string>
     <string name="onboarding_privacy_subtitle">Choose which features should be active. You can change everything anytime in settings.</string>
     <string name="onboarding_privacy_ble_title">Board sharing nearby</string>
