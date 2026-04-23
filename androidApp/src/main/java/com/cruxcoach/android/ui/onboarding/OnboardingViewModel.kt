@@ -6,7 +6,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.data.SyncInterval
 import com.cruxcoach.android.data.UserPreferences
-import com.cruxcoach.android.data.BoardSyncManager
 import com.cruxcoach.android.data.kilter.KilterApiClient
 import com.cruxcoach.android.data.kilter.KilterAuthResult
 import com.cruxcoach.android.data.kilter.KilterImportPreview
@@ -69,8 +68,6 @@ data class OnboardingState(
     val isKilterImporting: Boolean = false,
     val kilterImportResult: String? = null,
 
-    val boardDataImported: Boolean = false,
-
     // FEAT-002: Nostr backup onboarding
     val hasNostrKey: Boolean = false,
     val backupOptIn: Boolean = false,
@@ -95,7 +92,6 @@ class OnboardingViewModel @Inject constructor(
     private val kilterApiClient: KilterApiClient,
     private val kilterTokenStore: KilterTokenStore,
     private val kilterSyncEngine: KilterSyncEngine,
-    private val boardSyncManager: BoardSyncManager,
     private val keyStore: NostrKeyStore,
     private val backupPreferences: BackupPreferences,
     private val backupRepository: BackupRepository,
@@ -111,11 +107,6 @@ class OnboardingViewModel @Inject constructor(
     val state: StateFlow<OnboardingState> = _state.asStateFlow()
 
     init {
-        viewModelScope.launch {
-            boardSyncManager.state.collect { syncState ->
-                _state.update { it.copy(boardDataImported = syncState.alreadyImported) }
-            }
-        }
         // Resume the restore flow if the user came back from KeyImportScreen
         // via app-restart. The marker is only set right before that navigation
         // and is cleared after the restore attempt resolves.

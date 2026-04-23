@@ -38,8 +38,12 @@ internal fun BoardModelSelectionDialog(
         text = {
             if (isEmpty) {
                 Text(
-                    "Die Board-Datenbank ist noch nicht synchronisiert. " +
-                        "Starte den Sync, danach kannst du dein Board-Modell auswählen.",
+                    if (onNavigateToSync != null)
+                        "Die Board-Datenbank ist noch nicht synchronisiert. " +
+                            "Starte den Sync, danach kannst du dein Board-Modell auswählen."
+                    else
+                        "Die Board-Datenbank ist noch nicht synchronisiert. " +
+                            "Starte den Sync unten auf diesem Screen, danach kannst du dein Board-Modell auswählen.",
                     style = MaterialTheme.typography.bodyMedium
                 )
             } else {
@@ -86,20 +90,19 @@ internal fun BoardModelSelectionDialog(
             }
         },
         confirmButton = {
-            if (isEmpty) {
-                Button(
+            when {
+                isEmpty && onNavigateToSync != null -> Button(
                     onClick = {
                         onDismiss()
-                        onNavigateToSync?.invoke()
+                        onNavigateToSync.invoke()
                     },
-                    enabled = onNavigateToSync != null,
                     colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Text("Sync starten", fontWeight = FontWeight.Bold)
                 }
-            } else {
-                Button(
+                isEmpty -> TextButton(onClick = onDismiss) { Text("Schließen") }
+                else -> Button(
                     onClick = { onConfirm(currentSelection) },
                     colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
                     shape = RoundedCornerShape(12.dp)
@@ -108,10 +111,8 @@ internal fun BoardModelSelectionDialog(
                 }
             }
         },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Abbrechen")
-            }
+        dismissButton = if (isEmpty && onNavigateToSync == null) null else {
+            { TextButton(onClick = onDismiss) { Text("Abbrechen") } }
         }
     )
 }

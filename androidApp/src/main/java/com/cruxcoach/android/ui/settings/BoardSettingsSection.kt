@@ -70,23 +70,13 @@ internal fun DisplaySection(
 @Composable
 internal fun BoardSyncSection(
     syncInterval: SyncInterval,
-    lastSyncTimestamp: String?,
     onSyncIntervalChange: (SyncInterval) -> Unit,
-    onNavigateToSync: () -> Unit
 ) {
     Text(
         stringResource(R.string.settings_board_data_title),
         style = MaterialTheme.typography.titleMedium,
         fontWeight = FontWeight.Bold
     )
-
-    lastSyncTimestamp?.let {
-        Text(
-            stringResource(R.string.settings_board_last_sync, it),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    }
 
     // Auto-sync interval picker
     Text(stringResource(R.string.settings_board_auto_download), style = MaterialTheme.typography.bodyMedium)
@@ -112,14 +102,9 @@ internal fun BoardSyncSection(
         }
     }
 
-    Button(
-        onClick = onNavigateToSync,
-        modifier = Modifier.fillMaxWidth().testTag("settings_sync_button"),
-        colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
-        shape = RoundedCornerShape(12.dp)
-    ) {
-        Text(stringResource(R.string.settings_board_sync_button), fontWeight = FontWeight.Bold)
-    }
+    // Actual download card (progress, re-sync, errors, board-model picker)
+    // lives below this section in SettingsScreen, embedded inline via
+    // BoardSyncInlineCard — no separate screen navigation.
 }
 
 @Composable

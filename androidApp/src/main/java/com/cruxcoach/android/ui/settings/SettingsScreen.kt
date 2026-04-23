@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.cruxcoach.android.ui.board.sync.BoardSyncInlineCard
 import com.cruxcoach.android.ui.common.RestTimerBannerSlot
 import com.cruxcoach.android.ui.common.SyncStatusBannerSlot
 import com.cruxcoach.android.ui.common.BleStatusArea
@@ -39,7 +40,6 @@ fun SettingsScreen(
     onNavigateBack: () -> Unit,
     onNavigateToProfile: () -> Unit,
     onNavigateToAppShare: () -> Unit,
-    onNavigateToSync: () -> Unit,
     onNavigateToImport: () -> Unit = {},
     onNavigateToExport: () -> Unit = {},
     onNavigateToChat: () -> Unit = {},
@@ -120,6 +120,9 @@ fun SettingsScreen(
         LaunchedEffect(Unit) { viewModel.loadProductSizes() }
 
         if (showBoardModelDialog) {
+            // No onNavigateToSync — the sync card lives in the Data section
+            // on this very screen, so the dialog's DB-empty branch falls
+            // back to "Schließen"; the user scrolls to the sync card.
             BoardModelSelectionDialog(
                 productSizes = state.productSizes,
                 selectedId = state.boardProductSizeId,
@@ -129,10 +132,6 @@ fun SettingsScreen(
                     showBoardModelDialog = false
                 },
                 onDismiss = { showBoardModelDialog = false },
-                onNavigateToSync = {
-                    showBoardModelDialog = false
-                    onNavigateToSync()
-                }
             )
         }
 
@@ -240,10 +239,11 @@ fun SettingsScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     BoardSyncSection(
                         syncInterval = state.syncInterval,
-                        lastSyncTimestamp = state.lastSyncTimestamp,
                         onSyncIntervalChange = { viewModel.updateSyncInterval(it) },
-                        onNavigateToSync = onNavigateToSync
                     )
+                    // Inline sync card: download, progress, re-sync, model
+                    // selection — no navigation hop to a dedicated screen.
+                    BoardSyncInlineCard()
                     HorizontalDivider()
                     DataManagementSection(
                         showDeleteBoardDataDialog = state.showDeleteBoardDataDialog,

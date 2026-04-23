@@ -16,10 +16,6 @@
     <string name="onboarding_board_setup_title">Routen laden</string>
     <string name="onboarding_board_setup_subtitle">Ohne die Datenbank bleibt die App leer. Alles andere kannst du später in den Einstellungen anpassen.</string>
     <string name="onboarding_board_skip_hint">Du kannst beide Schritte überspringen und jederzeit in den Einstellungen nachholen.</string>
-    <string name="onboarding_board_sync">Board-Daten synchronisieren</string>
-    <string name="onboarding_board_db_title">Board-Datenbank</string>
-    <string name="onboarding_board_db_subtitle">Climbs, Bewertungen und Statistiken für dein Kilter Board.</string>
-    <string name="onboarding_board_db_imported">Board-Datenbank bereits geladen</string>
     <string name="onboarding_kilter_title">Kilter Logbook importieren</string>
     <string name="onboarding_kilter_desc">Hast du einen Kilter Account? Importiere deine Begehungen und Projekte.</string>
     <string name="onboarding_kilter_credentials_hint">Deine Zugangsdaten werden nur für den Import verwendet und können danach verworfen werden.</string>
@@ -105,8 +101,6 @@
     <!-- Settings: Board Data -->
     <string name="settings_board_data_title">Board-Daten</string>
     <string name="settings_board_type">Board-Typ:</string>
-    <string name="settings_board_last_sync">Letzter Sync: %s</string>
-    <string name="settings_board_sync_button">Datenbank aktualisieren</string>
     <string name="settings_board_auto_download">Automatischer Download (WLAN):</string>
     <string name="settings_board_auto_download_desc">Lädt die komplette Board-Datenbank (~30 MB) im Hintergrund über WLAN herunter.</string>
 

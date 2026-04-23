@@ -14,7 +14,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.automirrored.filled.Login
@@ -33,17 +32,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.cruxcoach.android.R
+import com.cruxcoach.android.ui.board.sync.BoardSyncInlineCard
 import com.cruxcoach.android.ui.theme.*
 
 @Composable
 fun OnboardingScreen(
     onComplete: () -> Unit,
-    onNavigateToSync: () -> Unit = {},
     onNavigateToKeyImport: () -> Unit = {},
     viewModel: OnboardingViewModel = hiltViewModel(),
 ) {
@@ -68,7 +66,7 @@ fun OnboardingScreen(
             label = "onboarding_step",
         ) { step ->
             when (step) {
-                OnboardingStep.BOARD_SETUP -> BoardSetupStep(state, onNavigateToSync)
+                OnboardingStep.BOARD_SETUP -> BoardSetupStep()
                 OnboardingStep.PRIVACY -> PrivacyStep(state, viewModel)
                 OnboardingStep.KILTER -> KilterStep(state, viewModel)
             }
@@ -238,7 +236,7 @@ fun OnboardingScreen(
 // ─── Step 1: Board setup (with inline welcome header) ─────────────────────
 
 @Composable
-private fun BoardSetupStep(state: OnboardingState, onNavigateToSync: () -> Unit) {
+private fun BoardSetupStep() {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -296,58 +294,10 @@ private fun BoardSetupStep(state: OnboardingState, onNavigateToSync: () -> Unit)
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
-        // The only must-have card on this step.
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-            ),
-            shape = RoundedCornerShape(16.dp),
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Icon(Icons.Default.CloudSync, null, tint = OrangeAccent, modifier = Modifier.size(40.dp))
-                Text(
-                    stringResource(R.string.onboarding_board_db_title),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center,
-                )
-                Text(
-                    stringResource(R.string.onboarding_board_db_subtitle),
-                    style = MaterialTheme.typography.bodySmall,
-                    textAlign = TextAlign.Center,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                if (state.boardDataImported) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.padding(vertical = 4.dp),
-                    ) {
-                        Icon(Icons.Default.CheckCircle, null, tint = SuccessGreen, modifier = Modifier.size(20.dp))
-                        Text(
-                            stringResource(R.string.onboarding_board_db_imported),
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = SuccessGreen,
-                        )
-                    }
-                } else {
-                    Button(
-                        onClick = onNavigateToSync,
-                        modifier = Modifier.fillMaxWidth().testTag("onboarding_sync_button"),
-                        colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
-                        shape = RoundedCornerShape(12.dp),
-                    ) {
-                        Text(stringResource(R.string.onboarding_board_sync), fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-        }
+        // Inline sync card — no navigation hop. Handles "Jetzt laden",
+        // progress checklist, already-synced state, error + model-select
+        // dialogs without leaving the onboarding step.
+        BoardSyncInlineCard(modifier = Modifier.fillMaxWidth())
     }
 }
 

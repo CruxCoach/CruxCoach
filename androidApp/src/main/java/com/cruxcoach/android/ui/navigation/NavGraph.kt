@@ -251,7 +251,6 @@ fun CruxCoachNavHost(
                             popUpTo(Routes.ONBOARDING) { inclusive = true }
                         }
                     },
-                    onNavigateToSync = { navController.navigate(Routes.BOARD_SYNC) },
                     onNavigateToKeyImport = { navController.navigate(Routes.KEY_IMPORT) },
                 )
             }
@@ -476,7 +475,6 @@ fun CruxCoachNavHost(
                     onNavigateBack = { navController.popBackStack() },
                     onNavigateToProfile = { navController.navigate(Routes.PROFILE_ASSESSMENT) },
                     onNavigateToAppShare = { navController.navigate(Routes.APP_SHARE) },
-                    onNavigateToSync = { navController.navigate(Routes.BOARD_SYNC) },
                     onNavigateToImport = { navController.navigate(Routes.DATA_IMPORT) },
                     onNavigateToExport = { navController.navigate(Routes.DATA_EXPORT) },
                     onNavigateToChat = { navController.navigate(Routes.DEV_CHAT) },
