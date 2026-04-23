@@ -48,6 +48,18 @@ class NostrRelayPool @Inject constructor(
         }
     )
 
+    /**
+     * The resolved relay list, pushed here by
+     * [com.cruxcoach.android.nostr.relaydiscovery.RelayListResolver]. Starts as
+     * `NostrConfig.DEFAULT_RELAYS` so the pool is usable before discovery runs
+     * (or at all, if the feature flag is off). Never null, never empty.
+     *
+     * Reads and writes are volatile only — updates are single-writer (the
+     * resolver) and consumers read a snapshot each op, so no lock is needed.
+     */
+    @Volatile
+    private var resolvedRelays: List<RelayConfig> = NostrConfig.DEFAULT_RELAYS
+
     private inner class RelayConnection(val url: String) {
         // @Volatile: ws is written from the OkHttp WebSocketListener dispatcher
         // (onFailure / onClosed) and read from sender coroutines — visibility
@@ -232,10 +244,47 @@ class NostrRelayPool @Inject constructor(
         return connections.computeIfAbsent(url) { RelayConnection(it) }
     }
 
+    /**
+     * Relays marked write-enabled in the current resolved list. Safe to call
+     * on any thread — reads a `@Volatile` snapshot.
+     */
+    fun writeRelays(): List<RelayConfig> = resolvedRelays.filter { it.write }
+
+    /** Relays marked read-enabled in the current resolved list. */
+    fun readRelays(): List<RelayConfig> = resolvedRelays.filter { it.read }
+
+    /**
+     * Called by the relay-list resolver when the resolved set changes.
+     *
+     * Dropped URLs have their WebSocket connections hard-closed (any in-flight
+     * subscriptions on them are dropped). New URLs are connected lazily on the
+     * next [sendEvent]/[subscribe]. Stable URLs keep their existing connection
+     * and subscription ids.
+     *
+     * Idempotent: calling with the same content as the current resolved list
+     * is a no-op (the resolver also skip-checks, but the pool defends in
+     * depth in case other callers reach this method).
+     */
+    fun onRelaysChanged(resolved: List<RelayConfig>) {
+        if (resolved.isEmpty()) {
+            Log.w(TAG, "onRelaysChanged called with empty list — ignored")
+            return
+        }
+        val previousUrls = resolvedRelays.map { it.url }.toSet()
+        val newUrls = resolved.map { it.url }.toSet()
+        val dropped = previousUrls - newUrls
+        resolvedRelays = resolved
+        if (dropped.isNotEmpty()) {
+            dropped.forEach { url ->
+                connections.remove(url)?.close()
+            }
+        }
+    }
+
     suspend fun sendEvent(event: Event): Boolean {
         val eventJson = event.toJson()
         val eventId = extractEventId(eventJson) ?: return false
-        val relays = NostrConfig.DEFAULT_RELAYS.filter { it.write }
+        val relays = writeRelays()
         val results = coroutineScope {
             relays.map { relay ->
                 async {
@@ -267,7 +316,7 @@ class NostrRelayPool @Inject constructor(
         closeOnEose: Boolean = false
     ): Flow<String> = callbackFlow {
         val subId = java.util.UUID.randomUUID().toString()
-        val readRelays = NostrConfig.DEFAULT_RELAYS.filter { it.read }
+        val readRelays = readRelays()
         val flow = MutableSharedFlow<String>(extraBufferCapacity = 256)
         val eoseCount = java.util.concurrent.atomic.AtomicInteger(0)
         val relayCount = readRelays.size
@@ -327,7 +376,7 @@ class NostrRelayPool @Inject constructor(
         connections.values.forEach { conn ->
             conn.resetReconnect()
         }
-        val readRelays = NostrConfig.DEFAULT_RELAYS.filter { it.read }
+        val readRelays = readRelays()
         readRelays.forEach { relay ->
             val conn = connections[relay.url] ?: return@forEach
             scope.launch {

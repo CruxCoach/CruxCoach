@@ -1,7 +1,9 @@
 # Feature Spec: Nostr Relay Discovery (NIP-65) (v0.1.3)
 
-> **Status:** Ready for implementation — design decisions resolved (§6), concrete
-> API surface defined (§7–§8), error handling / tests / rollout specified (§9–§13).
+> **Status:** Implementation — code landed; the full test matrix from §10
+> (parser, merge, cache, resolver, pool contract) is green. Remaining QA:
+> manual smoke test against `purplepag.es` / `relay.nostr.band` on a device
+> build, and post-release telemetry observation (§13).
 > **Prerequisite for:** FEAT-002 (Nostr Backup & Sync) — consumes the pool
 > contract defined in §8.
 
@@ -178,12 +180,18 @@ Refactor strategy: invert the dependency. Consumers already take
 `NostrRelayPool`; we only change how the pool itself is constructed and when
 it refreshes its relay list. Consumer code should need zero or minimal edits.
 
-### 4.1 Pool Observability — Pull + Explicit Drop Hook
+### 4.1 Pool Observability — Push + Explicit Drop Hook
 
 `NostrRelayPool` today reads `NostrConfig.DEFAULT_RELAYS` directly on
 every `sendEvent` / `subscribe` / `reconnectAll` call. The refactor
-replaces those reads with a pull from the resolver, plus a one-way
-notification for dropped relays. Exact contract is in §8.
+replaces those reads with a `@Volatile`-cached snapshot that the
+resolver pushes via `pool.onRelaysChanged(...)`, plus a one-way
+notification for dropped relays.
+
+Push instead of pull: the pool does **not** take the resolver as a
+dependency. This keeps `writeRelays()` / `readRelays()` non-suspend
+(no cache read on every op) and avoids the circular-DI question that a
+pull model would raise. Exact contract is in §8.
 
 ---
 
@@ -409,10 +417,21 @@ class RelayListResolver @Inject constructor(
     private val fetcher: Nip65RelayListFetcher,
     private val cache: RelayListCache,
     private val pool: NostrRelayPool,
-    private val keyStore: NostrKeyStore,
-    private val clock: Clock = Clock.System,
-    @ApplicationScope private val appScope: CoroutineScope,
-) {
+    private val pubkeyProvider: PubkeyProvider,
+    private val userPreferences: UserPreferences,
+    @Named("relayDiscovery") private val appScope: CoroutineScope,
+    private val clock: () -> Long = System::currentTimeMillis,
+) : NostrKeyStore.KeyChangeListener {
+
+    /**
+     * Abstracts pubkey retrieval so the resolver can be unit-tested without
+     * loading Quartz's `KeyPair` class (built for JDK 21; test JVM is 17).
+     * Returns hex pubkey or null when no key provisioned yet.
+     */
+    fun interface PubkeyProvider {
+        fun currentPubkeyHex(): String?
+    }
+
     /**
      * Snapshot of the current resolved pool. Returns immediately from cache
      * (or defaults on first call). Triggers a background refresh if the
@@ -439,16 +458,30 @@ the additive-union merge (§2 Core Decisions), tags each entry with its
 `RelaySource`, invokes `pool.onRelaysChanged(...)` when the resolved set
 actually changes, and writes the new cache entry.
 
+Note on listener wiring: `keyStore.addKeyChangeListener(resolver)` is
+called by `AppModule` after the resolver is constructed, not from the
+resolver's `init` block. Reason: running this side effect during
+construction would require tests to provide a non-trivial `NostrKeyStore`
+mock (its internal `listeners` list is a real `val` and isn't stubbed by
+MockK on a final class). Keeping the registration outside `init` lets
+the resolver be unit-tested against a pure `PubkeyProvider` fake.
+
 ### 7.4 DI Wiring (`AppModule.kt`)
 
-`RelayListResolver` is constructed by Hilt (constructor-injected deps).
-`NostrRelayPool` gains a constructor param for `RelayListResolver`. The
-resolver is injected with `@ApplicationScope CoroutineScope` so background
-refresh jobs outlive any specific ViewModel.
-
-First-launch bootstrap hook: `CruxCoachApp.onCreate()` calls
-`resolver.refreshAsync()` once to populate the cache without blocking app
-startup. `Application.onCreate` is the single trigger point.
+- `Nip65RelayListFetcher`, `RelayListCache`, `RelayListResolver` are
+  `@Singleton`-provided. Hilt constructs them from their `@Inject`
+  constructors; `AppModule` only binds the `@Named("relayDiscovery")`
+  `CoroutineScope` (SupervisorJob + IO), the `PubkeyProvider` lambda
+  (reads from `NostrKeyStore`), and the `RelayListResolver` itself so
+  the post-construction `keyStore.addKeyChangeListener(resolver)` runs
+  in one place.
+- `NostrRelayPool` is unchanged at the DI level — it does not take the
+  resolver as a constructor param (§4.1 rationale).
+- First-launch bootstrap hook: `CruxCoachApp.onCreate()` calls
+  `resolver.refreshAsync()` once to populate the cache without blocking
+  app startup. It runs before `NostrPushCoordinator.start()` so the
+  initial subscription lands on the resolved relays when discovery wins
+  the race, or `DEFAULT_RELAYS` otherwise.
 
 ---
 
@@ -460,17 +493,16 @@ FEAT-002 and any later Nostr feature depend on.
 ```kotlin
 class NostrRelayPool @Inject constructor(
     @Named("nostr") private val okHttpClient: OkHttpClient,
-    private val resolver: RelayListResolver,
 ) {
-    /** Relays marked write-enabled after NIP-65 merge. Snapshot, not Flow. */
-    suspend fun writeRelays(): List<RelayConfig>
+    /** Relays marked write-enabled in the current resolved snapshot. */
+    fun writeRelays(): List<RelayConfig>
 
-    /** Relays marked read-enabled after NIP-65 merge. Snapshot, not Flow. */
-    suspend fun readRelays(): List<RelayConfig>
+    /** Relays marked read-enabled in the current resolved snapshot. */
+    fun readRelays(): List<RelayConfig>
 
     /**
      * Called by [RelayListResolver] when the resolved list changes. Dropped
-     * URLs get their WebSocket connections closed; new URLs are lazily
+     * URLs get their WebSocket connections hard-closed; new URLs are lazily
      * connected on the next sendEvent/subscribe; stable URLs keep running.
      */
     fun onRelaysChanged(resolved: List<RelayConfig>)
@@ -483,10 +515,13 @@ class NostrRelayPool @Inject constructor(
 }
 ```
 
-- `writeRelays()` / `readRelays()` delegate to `resolver.current()` and
-  apply the operation-type filter (§6.2). They never perform I/O beyond
-  the resolver's cache read.
-- `onRelaysChanged` is idempotent: calling with the same list is a no-op.
+- `writeRelays()` / `readRelays()` read a `@Volatile`-held snapshot that
+  starts as `NostrConfig.DEFAULT_RELAYS` and is updated by
+  `onRelaysChanged`. Non-suspend: the op-hot-path pays no I/O cost and
+  no circular-DI appears because the pool does **not** depend on the
+  resolver.
+- `onRelaysChanged` is idempotent: calling with the same URL set is a no-op.
+  Empty lists are ignored (the pool never drops into "zero relays").
 - FEAT-002 consumes `writeRelays()` for fire-and-forget broadcast and
   `readRelays()` for the restore query-all path.
 

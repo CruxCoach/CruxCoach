@@ -153,6 +153,10 @@ object PreferenceKeys {
     val ANNOUNCEMENT_CAT_TIP = booleanPreferencesKey("announcement_cat_tip")
     val ANNOUNCEMENT_CAT_GENERAL = booleanPreferencesKey("announcement_cat_general")
     val APP_LAUNCH_COUNT = intPreferencesKey("app_launch_count")
+
+    // FEAT-001: NIP-65 relay discovery
+    val NIP65_DISCOVERY_ENABLED = booleanPreferencesKey("nip65_discovery_enabled")
+    val NIP65_RESOLVED_RELAYS = stringPreferencesKey("nip65_resolved_relays")
 }
 
 /**
@@ -647,5 +651,22 @@ class UserPreferences(
             val current = it[PreferenceKeys.APP_LAUNCH_COUNT] ?: 0
             it[PreferenceKeys.APP_LAUNCH_COUNT] = current + 1
         }
+    }
+
+    /**
+     * FEAT-001 kill-switch. Default `true`. When `false`, the resolver
+     * short-circuits to `NostrConfig.DEFAULT_RELAYS` and no bootstrap fetch
+     * runs. Not surfaced in the settings UI in 0.1.3 — flipped via dev
+     * guidance or a follow-up patch if a bootstrap relay misbehaves.
+     */
+    val nip65DiscoveryEnabled: Flow<Boolean> = dataStore.data.map {
+        it[PreferenceKeys.NIP65_DISCOVERY_ENABLED] ?: true
+    }
+
+    suspend fun isNip65DiscoveryEnabled(): Boolean =
+        dataStore.data.first()[PreferenceKeys.NIP65_DISCOVERY_ENABLED] ?: true
+
+    suspend fun setNip65DiscoveryEnabled(enabled: Boolean) {
+        dataStore.edit { it[PreferenceKeys.NIP65_DISCOVERY_ENABLED] = enabled }
     }
 }

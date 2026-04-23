@@ -53,6 +53,9 @@ class CruxCoachApp : Application(), Configuration.Provider {
     @Inject
     lateinit var updaterCoordinator: dagger.Lazy<com.cruxcoach.android.updater.UpdaterCoordinator>
 
+    @Inject
+    lateinit var relayListResolver: dagger.Lazy<com.cruxcoach.android.nostr.relaydiscovery.RelayListResolver>
+
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override val workManagerConfiguration: Configuration
@@ -93,6 +96,17 @@ class CruxCoachApp : Application(), Configuration.Provider {
         PerfLogger.trace("ApkShareHelper.cleanupCache") { ApkShareHelper.cleanupCache(this) }
         PerfLogger.trace("TrainingReminderWorker.schedule") { TrainingReminderWorker.schedule(this) }
         PerfLogger.trace("NotificationPollWorker.schedule") { NotificationPollWorker.schedule(this) }
+
+        // FEAT-001: NIP-65 relay discovery — opportunistic refresh on app
+        // start so the next sendEvent/subscribe can see the resolved pool.
+        // Never blocks: refreshAsync returns immediately and the background
+        // coroutine populates the pool once the cache read / bootstrap fetch
+        // completes. This must run BEFORE NostrPushCoordinator.start so the
+        // initial subscription lands on the resolved relays when discovery
+        // wins the race, or DEFAULT_RELAYS otherwise.
+        PerfLogger.trace("RelayListResolver.refreshAsync") {
+            relayListResolver.get().refreshAsync()
+        }
 
         // Persistent relay subscription (app-scoped, no foreground service).
         // Delivers gift-wrapped DMs with sub-3-second latency while the
