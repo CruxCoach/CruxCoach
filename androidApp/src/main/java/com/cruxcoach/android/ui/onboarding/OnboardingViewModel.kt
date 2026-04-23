@@ -301,14 +301,20 @@ class OnboardingViewModel @Inject constructor(
         if (s.backupCheckAttempted || s.isCheckingForBackup) return
         _state.update { it.copy(hasNostrKey = true, isCheckingForBackup = true) }
         viewModelScope.launch {
-            val info = runCatching { backupRepository.checkForBackup() }
+            val outcome = runCatching { backupRepository.checkForBackup() }
                 .onFailure { Log.w(TAG, "checkForBackup during onboarding failed", it) }
-                .getOrNull()
+                .getOrElse { com.cruxcoach.android.nostr.backup.CheckOutcome.Fetch(it.message ?: "error") }
+            val info = (outcome as? com.cruxcoach.android.nostr.backup.CheckOutcome.Found)?.info
             _state.update {
                 it.copy(
                     isCheckingForBackup = false,
                     backupCheckAttempted = true,
                     pendingRestore = info,
+                    // noBackupFoundForKey flips on for *any* terminal non-hit
+                    // (NotFound, DecryptFailed, Fetch error) while in RESTORE
+                    // mode — it's the "you can continue, a fresh backup will
+                    // be created" hint, and none of the non-hit cases should
+                    // leave the user stuck on a disabled Next button.
                     noBackupFoundForKey = info == null && it.backupChoice == BackupChoice.RESTORE,
                 )
             }

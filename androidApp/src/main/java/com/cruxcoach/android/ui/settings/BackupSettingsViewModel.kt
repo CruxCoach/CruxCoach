@@ -39,7 +39,12 @@ data class BackupSettingsState(
     val isDeletingRemote: Boolean = false,
 ) {
     sealed interface Snackbar {
+        /** checkForBackup returned NotFound — relays answered or timed out with no matching events. */
         data object NoBackupFound : Snackbar
+        /** checkForBackup returned DecryptFailed — pointer was there, key didn't fit. */
+        data object CheckDecryptFailed : Snackbar
+        /** checkForBackup threw / returned Fetch — surface the detail. */
+        data class CheckError(val detail: String) : Snackbar
         data object RestoreFailed : Snackbar
         data object BackupSucceeded : Snackbar
         data object BackupFailed : Snackbar
@@ -128,12 +133,22 @@ class BackupSettingsViewModel @Inject constructor(
         if (existing.isCheckingForBackup) return
         viewModelScope.launch {
             _state.update { it.copy(isCheckingForBackup = true) }
-            val info = runCatching { backupRepository.checkForBackup() }.getOrNull()
+            val outcome = runCatching { backupRepository.checkForBackup() }
+                .getOrElse { com.cruxcoach.android.nostr.backup.CheckOutcome.Fetch(it.message ?: "error") }
+            val info = (outcome as? com.cruxcoach.android.nostr.backup.CheckOutcome.Found)?.info
             _state.update {
                 it.copy(
                     isCheckingForBackup = false,
                     pendingRestore = info,
-                    snackbar = if (info == null) BackupSettingsState.Snackbar.NoBackupFound else it.snackbar,
+                    snackbar = when (outcome) {
+                        is com.cruxcoach.android.nostr.backup.CheckOutcome.Found -> it.snackbar
+                        com.cruxcoach.android.nostr.backup.CheckOutcome.NotFound ->
+                            BackupSettingsState.Snackbar.NoBackupFound
+                        com.cruxcoach.android.nostr.backup.CheckOutcome.DecryptFailed ->
+                            BackupSettingsState.Snackbar.CheckDecryptFailed
+                        is com.cruxcoach.android.nostr.backup.CheckOutcome.Fetch ->
+                            BackupSettingsState.Snackbar.CheckError(outcome.message)
+                    },
                 )
             }
         }

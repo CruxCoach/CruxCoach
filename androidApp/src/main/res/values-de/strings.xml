@@ -1399,7 +1399,9 @@
     <string name="settings_backup_restore_dialog_body">Größe: %1$s.\nDeine lokalen Daten werden durch das Backup überschrieben.</string>
     <string name="settings_backup_restore_confirm">Wiederherstellen</string>
     <string name="settings_backup_restore_cancel">Abbrechen</string>
-    <string name="settings_backup_no_backup_found">Kein Backup gefunden. Relais eventuell offline — später erneut versuchen.</string>
+    <string name="settings_backup_no_backup_found">Für diesen Account wurde kein Backup gefunden. Falls eines existieren sollte, prüfe deine Netzwerkverbindung und versuche es später erneut — Relais könnten nicht erreichbar sein.</string>
+    <string name="settings_backup_check_decrypt_failed">Ein Backup wurde auf den Relais gefunden, aber nicht entschlüsselt — der Schlüssel passt anscheinend nicht.</string>
+    <string name="settings_backup_check_error">Fehler beim Suchen nach einem Backup: %1$s</string>
     <string name="settings_backup_restore_failed">Backup konnte nicht wiederhergestellt werden.</string>
     <string name="settings_backup_succeeded">Backup erstellt.</string>
     <string name="settings_backup_failed">Backup fehlgeschlagen. Prüfe deine Verbindung und versuche es erneut.</string>

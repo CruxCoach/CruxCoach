@@ -354,12 +354,21 @@ fun SettingsScreen(
         )
     }
     backupState.snackbar?.let { snackbar ->
-        val messageRes = when (snackbar) {
-            BackupSettingsState.Snackbar.NoBackupFound -> R.string.settings_backup_no_backup_found
-            BackupSettingsState.Snackbar.RestoreFailed -> R.string.settings_backup_restore_failed
-            BackupSettingsState.Snackbar.BackupSucceeded -> R.string.settings_backup_succeeded
-            BackupSettingsState.Snackbar.BackupFailed -> R.string.settings_backup_failed
-            BackupSettingsState.Snackbar.RemoteBackupsDeleted -> R.string.settings_backup_delete_remote_done
+        val message: String = when (snackbar) {
+            BackupSettingsState.Snackbar.NoBackupFound ->
+                stringResource(R.string.settings_backup_no_backup_found)
+            BackupSettingsState.Snackbar.CheckDecryptFailed ->
+                stringResource(R.string.settings_backup_check_decrypt_failed)
+            is BackupSettingsState.Snackbar.CheckError ->
+                stringResource(R.string.settings_backup_check_error, snackbar.detail)
+            BackupSettingsState.Snackbar.RestoreFailed ->
+                stringResource(R.string.settings_backup_restore_failed)
+            BackupSettingsState.Snackbar.BackupSucceeded ->
+                stringResource(R.string.settings_backup_succeeded)
+            BackupSettingsState.Snackbar.BackupFailed ->
+                stringResource(R.string.settings_backup_failed)
+            BackupSettingsState.Snackbar.RemoteBackupsDeleted ->
+                stringResource(R.string.settings_backup_delete_remote_done)
         }
         AlertDialog(
             onDismissRequest = { backupViewModel.consumeSnackbar() },
@@ -368,7 +377,7 @@ fun SettingsScreen(
                     Text(stringResource(R.string.settings_backup_restore_cancel))
                 }
             },
-            text = { Text(stringResource(messageRes)) },
+            text = { Text(message) },
         )
     }
 }

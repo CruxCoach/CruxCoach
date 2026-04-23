@@ -1397,7 +1397,9 @@
     <string name="settings_backup_restore_dialog_body">Size: %1$s.\nYour local data will be overwritten by the backup.</string>
     <string name="settings_backup_restore_confirm">Restore</string>
     <string name="settings_backup_restore_cancel">Cancel</string>
-    <string name="settings_backup_no_backup_found">No backup found. Relays may be offline — try again later.</string>
+    <string name="settings_backup_no_backup_found">No backup found for this account. If one should exist, check your network connection and try again later — relays may be unreachable.</string>
+    <string name="settings_backup_check_decrypt_failed">A backup was found on the relays, but it could not be decrypted — the key doesn\'t seem to match.</string>
+    <string name="settings_backup_check_error">Error while looking for a backup: %1$s</string>
     <string name="settings_backup_restore_failed">Backup could not be restored.</string>
     <string name="settings_backup_succeeded">Backup created.</string>
     <string name="settings_backup_failed">Backup failed. Check your connection and try again.</string>

@@ -143,30 +143,49 @@ class BackupRepository @Inject constructor(
         )
     }
 
-    /** Restore-dialog detection. Returns `null` if no backup could be found. */
-    suspend fun checkForBackup(timeoutMs: Long = 10_000L): BackupInfo? {
+    /**
+     * Restore-dialog detection. The sealed [CheckOutcome] type distinguishes
+     * "no events returned" (NotFound — could be either relays unreachable or
+     * no backup for this account; indistinguishable from the client side
+     * without a relay-level probe) from "events returned but un-decryptable"
+     * (DecryptFailed — wrong key imported) and from "network/crypto threw
+     * during fetch" (Fetch). Callers can surface a specific error message
+     * to the user instead of a generic "nothing happened".
+     */
+    suspend fun checkForBackup(timeoutMs: Long = 10_000L): CheckOutcome {
         Log.d(TAG, "event=restore_check_start signerMode=${nostrSigner.getStoredSignerMode().name}")
         val pubkey = nostrSigner.getPublicKeyHex()
         val mode = nostrSigner.getStoredSignerMode()
 
-        val (pointerEvent, keyEvent) = when (mode) {
-            SignerMode.LOCAL -> fetchByDTagHmac(pubkey, timeoutMs) ?: return missLog("no-pointer")
-            SignerMode.AMBER -> fetchByQueryAllAmber(pubkey, timeoutMs) ?: return missLog("no-pointer")
+        val fetched = try {
+            when (mode) {
+                SignerMode.LOCAL -> fetchByDTagHmac(pubkey, timeoutMs)
+                SignerMode.AMBER -> fetchByQueryAllAmber(pubkey, timeoutMs)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "event=restore_check_miss reason=fetch-error", e)
+            return CheckOutcome.Fetch(e.message ?: "fetch failed")
         }
 
-        // Decrypt pointer
+        val (pointerEvent, keyEvent) = fetched ?: run {
+            Log.d(TAG, "event=restore_check_miss reason=no-pointer")
+            return CheckOutcome.NotFound
+        }
+
         val pointer = try {
             decryptPointer(pointerEvent.content, pubkey)
         } catch (e: Exception) {
-            Log.w(TAG, "event=restore_check_miss reason=no-pointer", e)
-            return null
+            Log.w(TAG, "event=restore_check_miss reason=decrypt-failed", e)
+            return CheckOutcome.DecryptFailed
         }
 
         Log.d(
             TAG,
             "event=restore_check_hit sizeKb=${pointer.size / 1024} ageHours=${(System.currentTimeMillis() / 1000 - pointer.updatedAt) / 3600}",
         )
-        return BackupInfo(pointer = pointer, pointerEvent = pointerEvent, keyEvent = keyEvent)
+        return CheckOutcome.Found(
+            BackupInfo(pointer = pointer, pointerEvent = pointerEvent, keyEvent = keyEvent),
+        )
     }
 
     /**
@@ -432,11 +451,6 @@ class BackupRepository @Inject constructor(
         return JSON.decodeFromString(BackupPointer.serializer(), plaintext)
     }
 
-    private fun missLog(reason: String): BackupInfo? {
-        Log.d(TAG, "event=restore_check_miss reason=$reason")
-        return null
-    }
-
     // ----------------------------------------------------------------- utils
 
     private fun ByteArray.sha256Hex(): String =
@@ -469,6 +483,21 @@ data class BackupInfo(
     val pointerEvent: MinimalEvent,
     val keyEvent: MinimalEvent,
 )
+
+/**
+ * Outcome of [BackupRepository.checkForBackup]. Gives callers enough
+ * signal to render a specific error message instead of a generic
+ * "nothing happened" snackbar.
+ */
+sealed class CheckOutcome {
+    data class Found(val info: BackupInfo) : CheckOutcome()
+    /** No matching events returned. Either no backup for this account, or all relays silent. */
+    data object NotFound : CheckOutcome()
+    /** Pointer event was found on a relay but could not be decrypted — typically a key mismatch. */
+    data object DecryptFailed : CheckOutcome()
+    /** Subscribe / fetch threw before we could evaluate results. */
+    data class Fetch(val message: String) : CheckOutcome()
+}
 
 class BackupException(message: String, cause: Throwable? = null) : Exception(message, cause)
 
