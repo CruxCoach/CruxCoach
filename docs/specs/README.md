@@ -32,7 +32,7 @@ CruxCoach feature specifications, grouped by release.
 | Spec | Title | Status | Depends on |
 |------|-------|--------|------------|
 | [FEAT-001](0.1.3/FEAT-001-nostr-relay-discovery.md) | Nostr Relay Discovery (NIP-65) | Implementation | — |
-| [FEAT-002](0.1.3/FEAT-002-nostr-backup-sync.md) | Nostr Encrypted Backup & Sync | Ready | FEAT-001 |
+| [FEAT-002](0.1.3/FEAT-002-nostr-backup-sync.md) | Nostr Encrypted Backup & Sync | Implementation | FEAT-001 |
 
 ### v0.1.4 — Climb Creator
 

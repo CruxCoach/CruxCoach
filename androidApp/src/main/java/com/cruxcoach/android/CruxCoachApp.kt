@@ -56,6 +56,9 @@ class CruxCoachApp : Application(), Configuration.Provider {
     @Inject
     lateinit var relayListResolver: dagger.Lazy<com.cruxcoach.android.nostr.relaydiscovery.RelayListResolver>
 
+    @Inject
+    lateinit var backupPreferences: dagger.Lazy<com.cruxcoach.android.nostr.backup.BackupPreferences>
+
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override val workManagerConfiguration: Configuration
@@ -181,6 +184,18 @@ class CruxCoachApp : Application(), Configuration.Provider {
             // Schedule periodic sync worker (needs DataStore read — fine to be last)
             val interval = userPreferences.syncInterval.first()
             BoardSyncWorker.schedule(this@CruxCoachApp, interval)
+
+            // FEAT-002: reconcile the backup worker with persisted prefs on
+            // every app start — catches cases where the user flipped the
+            // toggle + killed the app before WorkManager committed the
+            // schedule change.
+            val backupPrefs = backupPreferences.get()
+            val backupEnabled = backupPrefs.isBackupEnabled() && backupPrefs.isBackupFeatureEnabled()
+            com.cruxcoach.android.nostr.backup.BackupSyncWorker.schedule(
+                this@CruxCoachApp,
+                enabled = backupEnabled,
+                interval = interval,
+            )
             PerfLogger.logCoroutine("appScope", "singleton-init + sync DONE")
         }
 

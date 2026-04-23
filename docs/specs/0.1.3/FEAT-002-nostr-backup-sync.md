@@ -1,9 +1,17 @@
 # Feature Spec: Nostr Encrypted Backup & Sync (v0.1.3)
 
-> **Status:** Ready for implementation — design decisions resolved (§16), concrete
-> classes + test plan + rollout specified (§17–§20).
-> **Depends on:** FEAT-001 (Nostr Relay Discovery / NIP-65) — consumes the pool
-> contract from FEAT-001 §8 (`writeRelays()`, `readRelays()`, `onRelaysChanged()`).
+> **Status:** Implementation — core pipeline, Settings UI (opt-in + "Jetzt
+> sichern" + "Backup wiederherstellen" with intercept dialog), worker
+> scheduling, and crypto-primitive tests (HKDF RFC 5869 vectors, AES-GCM
+> round-trip + tamper, gzip, pointer serialization) have all landed. Not
+> yet implemented in 0.1.3 (follow-ups): onboarding `NOSTR_KEY` +
+> `NOSTR_BACKUP` steps, destructive "Alle Remote-Backups löschen" button
+> in Settings (the `BackupRepository.deleteRemoteBackups()` entry point
+> is wired but not surfaced yet), device-installed integration smoke
+> test against real Blossom servers.
+> **Depends on:** FEAT-001 (Nostr Relay Discovery / NIP-65) — consumes the
+> pool contract from FEAT-001 §8 (`writeRelays()`, `readRelays()`,
+> `onRelaysChanged()`).
 
 ## 1. Overview
 

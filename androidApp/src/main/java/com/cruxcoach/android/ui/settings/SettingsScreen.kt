@@ -49,9 +49,11 @@ fun SettingsScreen(
     onNavigateToCrashReports: () -> Unit = {},
     onNavigateToKeyManagement: () -> Unit = {},
     onDonateClick: () -> Unit = {},
-    viewModel: SettingsViewModel = hiltViewModel()
+    viewModel: SettingsViewModel = hiltViewModel(),
+    backupViewModel: BackupSettingsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val backupState by backupViewModel.state.collectAsStateWithLifecycle()
 
     // Hoisted to top level (not inside Scaffold content) so they survive the
     // isLoading guard and are restored by the NavBackStackEntry SavedStateHolder
@@ -256,6 +258,14 @@ fun SettingsScreen(
                         onDeleteBoardData = { viewModel.deleteBoardData() },
                         onDeleteUserBoardData = { viewModel.deleteUserBoardData() }
                     )
+                    HorizontalDivider()
+                    BackupSettingsSection(
+                        state = backupState,
+                        onSetBackupEnabled = { backupViewModel.setBackupEnabled(it) },
+                        onSetInterval = { backupViewModel.setInterval(it) },
+                        onRunBackupNow = { backupViewModel.runBackupNow() },
+                        onTriggerRestore = { backupViewModel.triggerManualRestore() },
+                    )
                 }
             }
 
@@ -325,6 +335,32 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
         }
+    }
+
+    // FEAT-002: Restore confirmation + negative-outcome dialogs rendered
+    // outside the Scaffold content so they overlay the full screen.
+    backupState.pendingRestore?.let { info ->
+        BackupRestoreDialog(
+            info = info,
+            onConfirm = { backupViewModel.confirmRestore() },
+            onDismiss = { backupViewModel.dismissRestoreDialog() },
+        )
+    }
+    backupState.snackbar?.let { snackbar ->
+        val messageRes = when (snackbar) {
+            BackupSettingsState.Snackbar.NoBackupFound -> R.string.settings_backup_no_backup_found
+            BackupSettingsState.Snackbar.RestoreFailed -> R.string.settings_backup_restore_failed
+            BackupSettingsState.Snackbar.BackupQueued -> R.string.settings_backup_queued
+        }
+        AlertDialog(
+            onDismissRequest = { backupViewModel.consumeSnackbar() },
+            confirmButton = {
+                TextButton(onClick = { backupViewModel.consumeSnackbar() }) {
+                    Text(stringResource(R.string.settings_backup_restore_cancel))
+                }
+            },
+            text = { Text(stringResource(messageRes)) },
+        )
     }
 }
 

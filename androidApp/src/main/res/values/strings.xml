@@ -1381,4 +1381,23 @@
     <string name="key_import_password_label">ncryptsec password</string>
     <string name="key_import_decrypt_button">Decrypt</string>
     <string name="identity_switch_title">Switching account…</string>
+
+    <!-- FEAT-002: Nostr backup -->
+    <string name="settings_backup_title">Nostr backup</string>
+    <string name="settings_backup_description">Encrypted backup of your climbing data on Blossom servers. Only you can decrypt it.</string>
+    <string name="settings_backup_enable">Enable backup</string>
+    <string name="settings_backup_needs_key">A Nostr key is required. It will be generated on first use.</string>
+    <string name="settings_backup_interval">Interval</string>
+    <string name="settings_backup_last_sync">Last backup: %s</string>
+    <string name="settings_backup_never_synced">No backup yet</string>
+    <string name="settings_backup_run_now">Back up now</string>
+    <string name="settings_backup_restore">Restore backup</string>
+    <string name="settings_backup_restore_checking">Checking…</string>
+    <string name="settings_backup_restore_dialog_title">Backup found</string>
+    <string name="settings_backup_restore_dialog_body">Size: %1$s.\nYour local data will be overwritten by the backup.</string>
+    <string name="settings_backup_restore_confirm">Restore</string>
+    <string name="settings_backup_restore_cancel">Cancel</string>
+    <string name="settings_backup_no_backup_found">No backup found. Relays may be offline — try again later.</string>
+    <string name="settings_backup_restore_failed">Backup could not be restored.</string>
+    <string name="settings_backup_queued">Backup queued.</string>
 </resources>
