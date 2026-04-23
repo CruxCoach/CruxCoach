@@ -13,6 +13,7 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import androidx.work.workDataOf
 import com.cruxcoach.android.data.SyncInterval
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
@@ -37,6 +38,7 @@ class BackupSyncWorker @AssistedInject constructor(
 ) : CoroutineWorker(appContext, workerParams) {
 
     override suspend fun doWork(): Result {
+        val isManual = inputData.getBoolean(KEY_IS_MANUAL, false)
         if (!preferences.isBackupFeatureEnabled()) {
             Log.i(TAG, "event=killswitch_off")
             return Result.failure()
@@ -48,11 +50,15 @@ class BackupSyncWorker @AssistedInject constructor(
             backupRepository.performFullBackup()
             Result.success()
         } catch (e: BackupException) {
-            Log.w(TAG, "event=backup_done_retry", e)
-            Result.retry()
+            // Manual trigger (user tapped "Jetzt sichern") returns FAILURE
+            // immediately so the UI observer sees a terminal state and can
+            // surface the error. Periodic runs return RETRY so the
+            // WorkManager backoff kicks in for transient failures.
+            Log.w(TAG, "event=backup_done_${if (isManual) "failure" else "retry"} reason=${e.message}", e)
+            if (isManual) Result.failure() else Result.retry()
         } catch (e: Exception) {
-            Log.w(TAG, "event=backup_done_retry_exception", e)
-            Result.retry()
+            Log.w(TAG, "event=backup_done_${if (isManual) "failure" else "retry"}_exception", e)
+            if (isManual) Result.failure() else Result.retry()
         }
     }
 
@@ -60,6 +66,7 @@ class BackupSyncWorker @AssistedInject constructor(
         private const val TAG = "BackupSync"
         const val WORK_NAME_PERIODIC = "backup_sync_periodic"
         const val WORK_NAME_ONESHOT = "backup_sync_oneshot"
+        private const val KEY_IS_MANUAL = "is_manual"
 
         /** Schedule / cancel the periodic backup worker based on current settings. */
         fun schedule(context: Context, enabled: Boolean, interval: SyncInterval) {
@@ -100,10 +107,17 @@ class BackupSyncWorker @AssistedInject constructor(
                         .setRequiredNetworkType(NetworkType.CONNECTED)
                         .build(),
                 )
+                // is_manual signals doWork to return FAILURE (not RETRY) on
+                // error — so the Settings observer sees a terminal state and
+                // can surface "Backup fehlgeschlagen" immediately instead
+                // of leaving the UI stuck in a retry loop.
+                .setInputData(workDataOf(KEY_IS_MANUAL to true))
                 .build()
             WorkManager.getInstance(context).enqueueUniqueWork(
                 WORK_NAME_ONESHOT,
-                ExistingWorkPolicy.KEEP,
+                // REPLACE (not KEEP) so a stale enqueued run from a prior
+                // tap can't block the fresh one.
+                ExistingWorkPolicy.REPLACE,
                 request,
             )
         }

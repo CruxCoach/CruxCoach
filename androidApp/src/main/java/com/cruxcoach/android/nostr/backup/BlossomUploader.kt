@@ -66,9 +66,23 @@ class BlossomUploader @Inject constructor(
     suspend fun upload(blob: ByteArray, servers: List<String>): List<UploadResult> = coroutineScope {
         require(servers.isNotEmpty()) { "No Blossom servers configured" }
         val sha256 = sha256Hex(blob)
-        servers.map { server ->
+        val results = servers.map { server ->
             async(Dispatchers.IO) { uploadToSingle(server, blob, sha256) }
         }.awaitAll()
+        // Per-server failure logging — otherwise the only thing that reaches
+        // logcat is the aggregated "upload failed on all N servers" from the
+        // BackupRepository, which makes remote debugging (415 vs 401 vs I/O
+        // timeout) essentially impossible. Successful uploads stay silent.
+        results.forEach { r ->
+            if (!r.accepted) {
+                Log.w(
+                    TAG,
+                    "event=upload_server_failed server=${r.server.shortHost()}" +
+                        " httpStatus=${r.httpStatus} error=${r.error ?: "unknown"}",
+                )
+            }
+        }
+        results
     }
 
     private suspend fun uploadToSingle(server: String, blob: ByteArray, sha256Hex: String): UploadResult {
