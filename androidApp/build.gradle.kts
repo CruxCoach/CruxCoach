@@ -58,6 +58,12 @@ android {
             "\"${localProps.getProperty("UPDATER_REPO_OWNER", "CruxCoach")}\"")
         buildConfigField("String", "UPDATER_REPO_NAME",
             "\"${localProps.getProperty("UPDATER_REPO_NAME", "CruxCoach")}\"")
+
+        // Zapstore app-listing URL shown as a share QR / link in the
+        // Settings → "Share app" section. Forks override via
+        // local.properties to point at their own Zapstore namespace.
+        buildConfigField("String", "ZAPSTORE_APP_URL",
+            "\"${localProps.getProperty("ZAPSTORE_APP_URL", "https://zapstore.dev/apps/com.cruxcoach.android")}\"")
     }
 
     externalNativeBuild {

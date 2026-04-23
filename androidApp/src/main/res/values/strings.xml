@@ -183,12 +183,12 @@
     <string name="settings_share_title">Share app</string>
     <string name="settings_share_desc">Share CruxCoach APK with others (without user data).</string>
     <string name="board_filter_title">Filters</string>
-    <string name="settings_share_via_apps">Via apps</string>
-    <string name="settings_share_online">Online</string>
-    <string name="settings_share_online_hide">Hide online</string>
+    <string name="settings_share_via_apps">Share via apps</string>
+    <string name="settings_share_online">Share online</string>
+    <string name="settings_share_online_hide">Hide online QR</string>
     <string name="settings_share_online_desc">Scan the QR code to download the app online from the release page.</string>
     <string name="settings_share_online_hint">Scan to open the APK download.</string>
-    <string name="settings_share_local">Offline</string>
+    <string name="settings_share_local">Share offline</string>
     <string name="settings_share_local_desc">Share the app locally via WiFi hotspot. No internet needed.</string>
     <string name="settings_share_stop">Stop</string>
     <string name="settings_share_network">Network: %s</string>
@@ -1430,4 +1430,16 @@
     <string name="onboarding_kilter_step_title">Kilter logbook</string>
     <string name="onboarding_kilter_step_subtitle">Optional: pull your sends and attempts from kilterboardapp.com. You can do this later in settings.</string>
     <string name="onboarding_kilter_skip_hint">Optional step. Skip to finish onboarding — Kilter import is always available in settings.</string>
+
+    <!-- Clipboard -->
+    <string name="action_copy">Copy</string>
+    <string name="settings_share_copied_url">Download URL copied.</string>
+    <string name="settings_share_copied_password">Password copied.</string>
+
+    <!-- Zapstore share -->
+    <string name="settings_share_zapstore">Share via Zapstore</string>
+    <string name="settings_share_zapstore_hide">Hide Zapstore QR</string>
+    <string name="settings_share_zapstore_desc">Recommended app store for CruxCoach — verifiable builds, Nostr-native.</string>
+    <string name="settings_share_zapstore_hint">Scan the QR or send the link. Zapstore opens automatically if installed.</string>
+    <string name="cd_zapstore_share_qr">Zapstore share QR code</string>
 </resources>

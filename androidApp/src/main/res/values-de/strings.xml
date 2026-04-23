@@ -183,12 +183,12 @@
     <string name="settings_share_title">App teilen</string>
     <string name="settings_share_desc">CruxCoach APK mit anderen teilen (ohne Nutzerdaten).</string>
     <string name="board_filter_title">Filter</string>
-    <string name="settings_share_via_apps">Über Apps</string>
-    <string name="settings_share_online">Online</string>
-    <string name="settings_share_online_hide">Online ausblenden</string>
+    <string name="settings_share_via_apps">Über Apps teilen</string>
+    <string name="settings_share_online">Online teilen</string>
+    <string name="settings_share_online_hide">Online-QR ausblenden</string>
     <string name="settings_share_online_desc">QR-Code scannen, um die App online von der Release-Seite herunterzuladen.</string>
     <string name="settings_share_online_hint">Scannen, um den APK-Download zu öffnen.</string>
-    <string name="settings_share_local">Offline</string>
+    <string name="settings_share_local">Offline teilen</string>
     <string name="settings_share_local_desc">App lokal per WiFi-Hotspot teilen. Kein Internet nötig.</string>
     <string name="settings_share_stop">Stoppen</string>
     <string name="settings_share_network">Netzwerk: %s</string>
@@ -1432,4 +1432,16 @@
     <string name="onboarding_kilter_step_title">Kilter-Logbook</string>
     <string name="onboarding_kilter_step_subtitle">Optional: Deine Sends und Versuche von kilterboardapp.com übernehmen. Auch später in den Einstellungen möglich.</string>
     <string name="onboarding_kilter_skip_hint">Optionaler Schritt. Überspringen schließt das Onboarding ab — der Kilter-Import ist immer in den Einstellungen erreichbar.</string>
+
+    <!-- Clipboard -->
+    <string name="action_copy">Kopieren</string>
+    <string name="settings_share_copied_url">Download-URL kopiert.</string>
+    <string name="settings_share_copied_password">Passwort kopiert.</string>
+
+    <!-- Zapstore share -->
+    <string name="settings_share_zapstore">Über Zapstore teilen</string>
+    <string name="settings_share_zapstore_hide">Zapstore-QR ausblenden</string>
+    <string name="settings_share_zapstore_desc">Empfohlener App-Store für CruxCoach — verifizierbare Builds, Nostr-nativ.</string>
+    <string name="settings_share_zapstore_hint">QR scannen oder Link senden. Zapstore öffnet automatisch, falls installiert.</string>
+    <string name="cd_zapstore_share_qr">Zapstore-Share-QR-Code</string>
 </resources>
