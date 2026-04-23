@@ -1,7 +1,11 @@
 package com.cruxcoach.android.ui.settings
 
 import android.app.Activity
+import android.content.Intent
+import android.net.Uri
 import android.view.WindowManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -44,6 +48,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
+import com.cruxcoach.android.nostr.AmberIntegration
 import com.cruxcoach.android.ui.theme.OrangeAccent
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -72,6 +77,20 @@ fun KeyImportScreen(
         }
     }
 
+    // Amber ActivityResult launcher — returns the pubkey in the "signature"
+    // extra (NIP-55 get_public_key), which NostrSigner.normalizeToHex then
+    // converts from npub into the hex format the keystore expects.
+    val amberLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val pubkey = result.data?.getStringExtra("signature") ?: return@rememberLauncherForActivityResult
+            val packageName = result.data?.getStringExtra("package") ?: AmberIntegration.AMBER_PACKAGE
+            viewModel.onAmberLoginSuccess(pubkey, packageName)
+        }
+    }
+    var showAmberNotInstalled by remember { mutableStateOf(false) }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -96,6 +115,30 @@ fun KeyImportScreen(
                 text = stringResource(R.string.key_import_prompt),
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Medium
+            )
+
+            // Amber shortcut — preferred path for users who already use a
+            // hardware/external signer. Doesn't touch the text field below;
+            // on success the view model handles switchToAmber + restart.
+            Button(
+                onClick = {
+                    if (AmberIntegration.isInstalled(context)) {
+                        amberLauncher.launch(AmberIntegration.buildGetPubkeyIntent())
+                    } else {
+                        showAmberNotInstalled = true
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
+                shape = RoundedCornerShape(12.dp),
+            ) {
+                Text(stringResource(R.string.key_import_amber_button), fontWeight = FontWeight.Bold)
+            }
+
+            Text(
+                stringResource(R.string.key_import_or),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
             OutlinedTextField(
@@ -155,6 +198,33 @@ fun KeyImportScreen(
                 )
             }
         }
+    }
+
+    // Amber not installed dialog — same behaviour as KeyManagementScreen,
+    // but inline here so users who tapped "Import key" from onboarding can
+    // still discover that Amber is the recommended route.
+    if (showAmberNotInstalled) {
+        AlertDialog(
+            onDismissRequest = { showAmberNotInstalled = false },
+            title = { Text(stringResource(R.string.key_import_amber_not_installed_title)) },
+            text = { Text(stringResource(R.string.key_import_amber_not_installed_body)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showAmberNotInstalled = false
+                    val url = "https://zapstore.dev/apps/${AmberIntegration.AMBER_PACKAGE}"
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    runCatching { context.startActivity(intent) }
+                }) {
+                    Text(stringResource(R.string.key_import_amber_get))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAmberNotInstalled = false }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            },
+        )
     }
 
     // Password dialog for ncryptsec

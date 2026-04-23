@@ -102,13 +102,18 @@ fun OnboardingScreen(
                     }
                 }
                 OnboardingStep.PRIVACY -> {
-                    // Block "Weiter" when the user picked RESTORE but hasn't
-                    // actually imported a key yet — otherwise the choice
-                    // silently degrades into FRESH on completeOnboarding,
-                    // which is the opposite of what they asked for.
+                    // Block "Weiter" whenever the user picked RESTORE but
+                    // hasn't completed a restore yet — regardless of whether
+                    // they had a pre-existing key. An existing key (upgrade
+                    // scenario or `adb install -r`) whose check came back
+                    // empty must NOT silently pass through, because the
+                    // user's stated intent was RESTORE; letting them past
+                    // without a restore means the worker silently generates
+                    // a fresh backup, the opposite of what they asked for.
+                    // They must either import a different key, complete a
+                    // restore, or switch to "Neu starten".
                     val restoreIncomplete = state.backupOptIn &&
                         state.backupChoice == BackupChoice.RESTORE &&
-                        !state.hasNostrKey &&
                         !state.restoreSucceeded
                     Button(
                         onClick = { viewModel.nextStep() },

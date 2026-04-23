@@ -1436,6 +1436,13 @@
 
     <!-- Clipboard -->
     <string name="action_copy">Kopieren</string>
+
+    <!-- Key-import: Amber-Shortcut + Nicht-installiert-Dialog -->
+    <string name="key_import_amber_button">Mit Amber verbinden</string>
+    <string name="key_import_or">oder Schlüssel manuell eingeben:</string>
+    <string name="key_import_amber_not_installed_title">Amber nicht installiert</string>
+    <string name="key_import_amber_not_installed_body">Amber ist eine separate App, die deinen Nostr-Schlüssel sicher verwahrt. Installiere sie und komm zurück, um dich zu verbinden.</string>
+    <string name="key_import_amber_get">Amber installieren</string>
     <string name="settings_share_copied_url">Download-URL kopiert.</string>
     <string name="settings_share_copied_password">Passwort kopiert.</string>
 

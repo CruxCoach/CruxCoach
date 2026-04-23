@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.R
 import com.cruxcoach.android.data.NostrMessageRepository
 import com.cruxcoach.android.data.UserPreferences
+import com.cruxcoach.android.nostr.AmberIntegration
 import com.cruxcoach.android.nostr.NostrConfig
 import com.cruxcoach.android.nostr.NostrKeyStore
 import com.cruxcoach.android.nostr.NostrSigner
@@ -143,6 +144,42 @@ class KeyImportViewModel @Inject constructor(
 
     fun dismissError() {
         _state.update { it.copy(error = null) }
+    }
+
+    // ── Amber flow ───────────────────────────────────────────────
+
+    /**
+     * Handle the Amber ActivityResult: normalize the returned pubkey (Amber
+     * returns npub; our store expects hex), persist the signer-mode config,
+     * switch the signer, purge foreign-identity message rows, and require
+     * an app restart so SQLCipher re-derives its key from the new pubkey.
+     */
+    fun onAmberLoginSuccess(pubkeyInput: String, packageName: String?) {
+        viewModelScope.launch {
+            val pubkeyHex = NostrSigner.normalizeToHex(pubkeyInput) ?: run {
+                _state.update {
+                    it.copy(error = context.getString(R.string.key_import_format_unknown))
+                }
+                return@launch
+            }
+            val pkg = packageName ?: AmberIntegration.AMBER_PACKAGE
+            withContext(Dispatchers.IO) {
+                try {
+                    nostrSigner.saveAmberConfig(pubkeyHex, pkg)
+                    nostrSigner.switchToAmber(pubkeyHex, pkg, context.contentResolver)
+                    messageRepository.deleteForeignIdentityRows(pubkeyHex, NostrConfig.DEV_PUBKEY)
+                    userPreferences.setNostrSyncCursor(0L)
+                    // Amber is inherently "backed up" (key lives in Amber).
+                    userPreferences.setKeyBackedUp(true)
+                    _state.update { it.copy(requireRestart = true) }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Amber import failed", e)
+                    _state.update {
+                        it.copy(error = context.getString(R.string.key_import_failed, e.message ?: ""))
+                    }
+                }
+            }
+        }
     }
 
     // ── Private helpers ──────────────────────────────────────────
