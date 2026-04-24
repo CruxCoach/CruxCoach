@@ -107,23 +107,30 @@ class BackupSettingsViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Run an on-demand backup inline on [viewModelScope] instead of handing
+     * it to WorkManager. This lives on the Settings screen, so a real
+     * foreground Activity is always available — the Amber NIP-55 approval
+     * dialog can attach to it, which is the only way users who haven't
+     * granted "always approve" in Amber can actually complete a backup. A
+     * WorkManager worker has no Activity context and throws
+     * "No activity to launch from." the moment Amber needs confirmation.
+     *
+     * Trade-off: if the user navigates away mid-upload, the coroutine
+     * gets cancelled and the blob upload is abandoned. That's acceptable
+     * — Amber also can't pop its dialog once the Activity is gone — and
+     * the next periodic run (or another "Jetzt sichern") will retry from
+     * scratch.
+     */
     fun runBackupNow() {
         viewModelScope.launch {
             _state.update { it.copy(isRunningOneShot = true) }
-            BackupSyncWorker.runOnce(appContext)
-            // Observe WorkManager's unique one-shot work until it reaches a
-            // terminal state, then reflect the outcome in the UI. Without
-            // this the user only ever saw "Backup eingeplant" (queued) and
-            // never found out whether the backup actually completed.
-            val wm = androidx.work.WorkManager.getInstance(appContext)
-            val terminal = wm.getWorkInfosForUniqueWorkFlow(BackupSyncWorker.WORK_NAME_ONESHOT)
-                .mapNotNull { it.lastOrNull() }
-                .first { it.state.isFinished }
-            val snackbar = when (terminal.state) {
-                androidx.work.WorkInfo.State.SUCCEEDED ->
-                    BackupSettingsState.Snackbar.BackupSucceeded
-                else -> BackupSettingsState.Snackbar.BackupFailed(
-                    detail = terminal.outputData.getString(BackupSyncWorker.KEY_ERROR),
+            val outcome = runCatching { backupRepository.performFullBackup(trigger = "manual") }
+            val snackbar = if (outcome.isSuccess) {
+                BackupSettingsState.Snackbar.BackupSucceeded
+            } else {
+                BackupSettingsState.Snackbar.BackupFailed(
+                    detail = outcome.exceptionOrNull()?.message,
                 )
             }
             val latestLastSync = preferences.lastBackupSync.first()

@@ -97,6 +97,23 @@ class MainActivity : AppCompatActivity() {
         if (granted) updaterRepository.get().reNotifyPendingUpdateIfAny()
     }
 
+    // Amber approval dialogs (Intent-based NIP-55 path). Registered as a
+    // StartActivityForResult contract up-front; wired into NostrSigner at
+    // onStart / unwired at onStop so background Amber-signing attempts
+    // fail fast instead of silently losing the response. The callback
+    // pipes every result Intent back to Quartz's signer, which resumes
+    // the suspended sign/encrypt/decrypt call.
+    private val amberSignerLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        nostrSigner.get().deliverAmberResponse(result.data ?: Intent())
+    }
+
+    private val amberForegroundCallback: (Intent) -> Unit = { intent ->
+        runCatching { amberSignerLauncher.launch(intent) }
+            .onFailure { android.util.Log.w("MainActivity", "amberSignerLauncher.launch failed", it) }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         PerfLogger.milestone("MainActivity.onCreate START")
         val contentReady = mutableStateOf(false)
@@ -284,6 +301,16 @@ class MainActivity : AppCompatActivity() {
         pendingDeepLink.value = safeNavigateToRoute(intent)
             ?: extractBoardDbDeepLink(intent)
         handleUpdaterExtras(intent)
+    }
+
+    override fun onStart() {
+        super.onStart()
+        nostrSigner.get().registerAmberForegroundLauncher(amberForegroundCallback)
+    }
+
+    override fun onStop() {
+        nostrSigner.get().unregisterAmberForegroundLauncher(amberForegroundCallback)
+        super.onStop()
     }
 
     private fun handleUpdaterExtras(intent: Intent?) {
