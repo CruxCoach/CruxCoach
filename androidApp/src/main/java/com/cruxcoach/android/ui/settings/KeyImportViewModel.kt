@@ -12,6 +12,7 @@ import com.cruxcoach.android.nostr.NostrConfig
 import com.cruxcoach.android.nostr.NostrKeyStore
 import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.android.nostr.backup.BackupPreferences
+import com.cruxcoach.android.nostr.relaydiscovery.RelayListCache
 import com.vitorpamplona.quartz.nip01Core.core.hexToByteArray
 import com.vitorpamplona.quartz.nip01Core.core.toHexKey
 import com.vitorpamplona.quartz.nip01Core.crypto.KeyPair
@@ -53,6 +54,7 @@ class KeyImportViewModel @Inject constructor(
     private val userPreferences: UserPreferences,
     private val messageRepository: NostrMessageRepository,
     private val backupPreferences: BackupPreferences,
+    private val relayListCache: RelayListCache,
     @param:ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -135,6 +137,12 @@ class KeyImportViewModel @Inject constructor(
                     // (breaking enumeration resistance) and the self-heal
                     // chain would mask misleading "last backup" timestamps.
                     backupPreferences.clearAllIdentityState()
+                    // FEAT-001 NIP-65 cache is a single shared DataStore
+                    // entry (not per-pubkey); stale relay URLs from the
+                    // previous identity would otherwise stay active for
+                    // up to the 24h TTL and route the new identity's
+                    // Nostr publishes through the old one's relays.
+                    relayListCache.clear()
 
                     pendingPassword = null
                     _state.update { it.copy(showConfirmDialog = false, requireRestart = true) }
@@ -179,6 +187,7 @@ class KeyImportViewModel @Inject constructor(
                     messageRepository.deleteForeignIdentityRows(pubkeyHex, NostrConfig.DEV_PUBKEY)
                     userPreferences.setNostrSyncCursor(0L)
                     backupPreferences.clearAllIdentityState()
+                    relayListCache.clear()
                     // Amber is inherently "backed up" (key lives in Amber).
                     userPreferences.setKeyBackedUp(true)
                     _state.update { it.copy(requireRestart = true) }
