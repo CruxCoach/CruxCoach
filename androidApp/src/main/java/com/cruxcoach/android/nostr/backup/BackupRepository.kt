@@ -565,7 +565,16 @@ class BackupRepository @Inject constructor(
         // decryptable match is automatically the newest — happy-case
         // stays at two Amber approval prompts, but rollback attempts
         // no longer win just by arriving first on the wire.
-        val sorted = events.sortedByDescending { it.createdAt }
+        //
+        // Cap the number of decrypt attempts. Under well-behaved relays
+        // the happy case spends 2 Amber prompts. A hostile relay can
+        // fan out a large set of decoy events (passing the Schnorr gate
+        // because they're just replayed real user events, or freshly
+        // forged fillers) and drive Amber into a prompt-storm before
+        // the user reaches the real pointer/key. Eight attempts is
+        // enough headroom for legitimate duplicates while refusing the
+        // flood pattern.
+        val sorted = events.sortedByDescending { it.createdAt }.take(MAX_AMBER_DECRYPT_ATTEMPTS)
         var pointer: MinimalEvent? = null
         var keyEv: MinimalEvent? = null
         for (ev in sorted) {
@@ -654,6 +663,12 @@ class BackupRepository @Inject constructor(
         // relays that evict older replaceable-parameterized events don't
         // leave the only restore anchor stranded.
         private const val KEY_EVENT_REFRESH_INTERVAL_SEC = 30L * 24L * 60L * 60L
+        // Amber prompts once per decrypt call; a hostile relay can fan out
+        // a large set of lookalike events and drive the user into a prompt
+        // storm. Cap the Amber-path decrypt attempts at a value that
+        // comfortably absorbs legitimate duplicates (two replaceable d-tag
+        // events per relay × a few relays) while refusing the flood.
+        private const val MAX_AMBER_DECRYPT_ATTEMPTS = 8
         // Tiny slack over the pointer-declared blob size — covers
         // framing rounding between ciphertext bytes and HTTP content-
         // length without letting a hostile server pad gigabytes past
