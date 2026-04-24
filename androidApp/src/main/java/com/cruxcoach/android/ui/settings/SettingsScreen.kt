@@ -234,6 +234,15 @@ fun SettingsScreen(
             HorizontalDivider()
 
             // Section 3: Datenverwaltung
+            //
+            // Ordering reflects how the user thinks about their data, not
+            // our internal implementation split:
+            //   1. Board sync  — public community data (unrelated concern).
+            //   2. Nostr backup — primary backup flow; opt-in, ongoing.
+            //   3. Import / Export — manual backup variant (file-based).
+            //   4. Delete Board / User data — destructive, parked at the
+            //      bottom so the user scrolls PAST both backup variants
+            //      before encountering it.
             CollapsibleHeader(stringResource(R.string.settings_section_data), dataExpanded) { dataExpanded = !dataExpanded }
             AnimatedVisibility(visible = dataExpanded) {
                 Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -245,20 +254,6 @@ fun SettingsScreen(
                     // selection — no navigation hop to a dedicated screen.
                     BoardSyncInlineCard()
                     HorizontalDivider()
-                    DataManagementSection(
-                        showDeleteBoardDataDialog = state.showDeleteBoardDataDialog,
-                        showDeleteUserDataDialog = state.showDeleteUserDataDialog,
-                        deleteSuccess = state.deleteSuccess,
-                        onNavigateToImport = onNavigateToImport,
-                        onNavigateToExport = onNavigateToExport,
-                        onShowDeleteBoardDataDialog = { viewModel.showDeleteBoardDataDialog() },
-                        onShowDeleteUserDataDialog = { viewModel.showDeleteUserDataDialog() },
-                        onDismissDeleteDialog = { viewModel.dismissDeleteDialog() },
-                        onDismissDeleteSuccess = { viewModel.dismissDeleteSuccess() },
-                        onDeleteBoardData = { viewModel.deleteBoardData() },
-                        onDeleteUserBoardData = { viewModel.deleteUserBoardData() }
-                    )
-                    HorizontalDivider()
                     BackupSettingsSection(
                         state = backupState,
                         onSetBackupEnabled = { backupViewModel.setBackupEnabled(it) },
@@ -266,6 +261,23 @@ fun SettingsScreen(
                         onRunBackupNow = { backupViewModel.runBackupNow() },
                         onTriggerRestore = { backupViewModel.triggerManualRestore() },
                         onRequestDeleteRemote = { backupViewModel.requestDeleteRemoteBackups() },
+                    )
+                    HorizontalDivider()
+                    DataImportExportSection(
+                        deleteSuccess = state.deleteSuccess,
+                        onNavigateToImport = onNavigateToImport,
+                        onNavigateToExport = onNavigateToExport,
+                        onDismissDeleteSuccess = { viewModel.dismissDeleteSuccess() },
+                    )
+                    HorizontalDivider()
+                    DataDeletionSection(
+                        showDeleteBoardDataDialog = state.showDeleteBoardDataDialog,
+                        showDeleteUserDataDialog = state.showDeleteUserDataDialog,
+                        onShowDeleteBoardDataDialog = { viewModel.showDeleteBoardDataDialog() },
+                        onShowDeleteUserDataDialog = { viewModel.showDeleteUserDataDialog() },
+                        onDismissDeleteDialog = { viewModel.dismissDeleteDialog() },
+                        onDeleteBoardData = { viewModel.deleteBoardData() },
+                        onDeleteUserBoardData = { viewModel.deleteUserBoardData() },
                     )
                 }
             }

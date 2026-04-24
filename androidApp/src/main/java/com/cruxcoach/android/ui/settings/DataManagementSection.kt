@@ -24,19 +24,19 @@ import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.theme.SuccessGreen
 
+/**
+ * File-based import / export — the "manual backup" variant that sits
+ * next to the Nostr-driven BackupSettingsSection. Split off from the
+ * original DataManagementSection so Import + Export can live near
+ * the other backup UI while the destructive Delete actions stay at
+ * the very bottom of the settings panel.
+ */
 @Composable
-internal fun DataManagementSection(
-    showDeleteBoardDataDialog: Boolean,
-    showDeleteUserDataDialog: Boolean,
+internal fun DataImportExportSection(
     deleteSuccess: String?,
     onNavigateToImport: () -> Unit,
     onNavigateToExport: () -> Unit,
-    onShowDeleteBoardDataDialog: () -> Unit,
-    onShowDeleteUserDataDialog: () -> Unit,
-    onDismissDeleteDialog: () -> Unit,
     onDismissDeleteSuccess: () -> Unit,
-    onDeleteBoardData: () -> Unit,
-    onDeleteUserBoardData: () -> Unit
 ) {
     // Import banner
     Card(
@@ -100,7 +100,11 @@ internal fun DataManagementSection(
 
     Spacer(modifier = Modifier.height(12.dp))
 
-    // Success banner
+    // Success banner — shown for both Import/Export results and Delete
+    // completions. Kept in the Import/Export section so the feedback
+    // is near the action the user just took; a successful delete does
+    // surface through this same state but is rare enough that putting
+    // it up here is fine.
     deleteSuccess?.let { message ->
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -120,7 +124,23 @@ internal fun DataManagementSection(
             }
         }
     }
+}
 
+/**
+ * Destructive actions — deliberately the last item in the data panel
+ * so a user scrolling past the backup options isn't one miss-tap away
+ * from wiping their logbook.
+ */
+@Composable
+internal fun DataDeletionSection(
+    showDeleteBoardDataDialog: Boolean,
+    showDeleteUserDataDialog: Boolean,
+    onShowDeleteBoardDataDialog: () -> Unit,
+    onShowDeleteUserDataDialog: () -> Unit,
+    onDismissDeleteDialog: () -> Unit,
+    onDeleteBoardData: () -> Unit,
+    onDeleteUserBoardData: () -> Unit,
+) {
     // Delete board data
     OutlinedButton(
         onClick = onShowDeleteBoardDataDialog,
