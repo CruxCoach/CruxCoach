@@ -1366,6 +1366,8 @@
     <string name="key_import_prompt">Füge deinen privaten Schlüssel ein:</string>
     <string name="key_import_label">Schlüssel</string>
     <string name="key_import_supported_formats">Unterstützt: nsec, ncryptsec, hex, 12/24 Wörter</string>
+    <string name="key_import_reveal">Schlüssel anzeigen</string>
+    <string name="key_import_hide">Schlüssel ausblenden</string>
     <string name="key_import_detected">Erkannt: %1$s</string>
     <string name="key_import_button">Importieren</string>
     <string name="key_import_success_toast">Schlüssel importiert</string>

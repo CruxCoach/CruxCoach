@@ -1363,6 +1363,8 @@
     <string name="key_import_prompt">Paste your private key:</string>
     <string name="key_import_label">Key</string>
     <string name="key_import_supported_formats">Supported: nsec, ncryptsec, hex, 12/24 words</string>
+    <string name="key_import_reveal">Show key</string>
+    <string name="key_import_hide">Hide key</string>
     <string name="key_import_detected">Detected: %1$s</string>
     <string name="key_import_button">Import</string>
     <string name="key_import_success_toast">Key imported</string>
