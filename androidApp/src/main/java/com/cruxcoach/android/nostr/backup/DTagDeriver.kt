@@ -68,10 +68,22 @@ class DTagDeriver @Inject constructor(
             info = HKDF_INFO.toByteArray(),
             outputLen = 32,
         )
-        val mac = Mac.getInstance("HmacSHA256")
-        mac.init(SecretKeySpec(hmacKey, "HmacSHA256"))
-        val digest = mac.doFinal(identifier.toByteArray(Charsets.UTF_8))
-        return digest.toHexString()
+        // Zero the master-key-derived buffers as soon as the MAC key
+        // has been consumed. The JVM hex String we loaded from
+        // SharedPreferences is inherently immutable + GC-governed (no
+        // good way to zero that here), but at least the mutable
+        // ByteArray copies don't linger on the heap for the next
+        // memory scrape.
+        try {
+            val mac = Mac.getInstance("HmacSHA256")
+            val keySpec = SecretKeySpec(hmacKey, "HmacSHA256")
+            mac.init(keySpec)
+            val digest = mac.doFinal(identifier.toByteArray(Charsets.UTF_8))
+            return digest.toHexString()
+        } finally {
+            privKey.fill(0)
+            hmacKey.fill(0)
+        }
     }
 
     /**
