@@ -200,6 +200,24 @@ internal fun RestTimerSection(
         }
     }
 
+    Spacer(modifier = Modifier.height(4.dp))
+    // Shared DurationStepper — same component the BLE auto-disconnect
+    // uses. Lets the user pick odd values like 1m 47s that aren't on
+    // the preset row without opening a separate dialog.
+    Text(
+        stringResource(R.string.settings_duration_precise_label),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    DurationStepper(
+        seconds = restTimer.durationSeconds,
+        onChange = onDurationChange,
+        minSeconds = 5,
+        maxSeconds = 30 * 60,
+        minuteLabel = stringResource(R.string.settings_duration_minutes_label),
+        secondLabel = stringResource(R.string.settings_duration_seconds_label),
+    )
+
     // Auto-start toggle
     Row(
         modifier = Modifier.fillMaxWidth(),

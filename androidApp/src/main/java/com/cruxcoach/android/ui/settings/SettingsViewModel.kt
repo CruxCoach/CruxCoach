@@ -79,7 +79,7 @@ data class SettingsState(
     val lastSyncTimestamp: String? = null,
     val hasAssessment: Boolean = false,
     val ledColors: LedHoldColors = LedHoldColors(),
-    val bleAutoDisconnectMinutes: Int = 1,
+    val bleAutoDisconnectSeconds: Int = 60,
     val isSaving: Boolean = false,
     val saveSuccess: Boolean = false,
     val error: String? = null,
@@ -139,7 +139,7 @@ class SettingsViewModel @Inject constructor(
                 val interval = userPreferences.syncInterval.first()
                 val lastSync = userPreferences.lastSyncTimestamp.first()
                 val scale = userPreferences.gradeScale.first()
-                val autoDisconnect = userPreferences.bleAutoDisconnectMinutes.first()
+                val autoDisconnect = userPreferences.bleAutoDisconnectSeconds.first()
                 val ledColors = userPreferences.ledHoldColors.first()
                 val frameSpeed = userPreferences.routeFrameSpeed.first()
                 val useSetterSpeed = userPreferences.routeUseSetterSpeed.first()
@@ -190,7 +190,7 @@ class SettingsViewModel @Inject constructor(
                     lastSyncTimestamp = lastSync,
                     hasAssessment = hasAssessment,
                     ledColors = ledColors,
-                    bleAutoDisconnectMinutes = autoDisconnect,
+                    bleAutoDisconnectSeconds = autoDisconnect,
                     profile = profileForm,
                     routePlayback = RoutePlaybackSettings(
                         frameSpeed = frameSpeed,
@@ -406,11 +406,11 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { userPreferences.setKeepScreenOn(enabled) }
     }
 
-    fun updateBleAutoDisconnect(minutes: Int) {
-        _state.update { it.copy(bleAutoDisconnectMinutes = minutes) }
-        bleConnection.autoDisconnectMinutes = minutes
+    fun updateBleAutoDisconnect(seconds: Int) {
+        _state.update { it.copy(bleAutoDisconnectSeconds = seconds) }
+        bleConnection.autoDisconnectSeconds = seconds
         viewModelScope.launch {
-            userPreferences.setBleAutoDisconnectMinutes(minutes)
+            userPreferences.setBleAutoDisconnectSeconds(seconds)
         }
     }
 

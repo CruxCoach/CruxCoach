@@ -113,6 +113,9 @@
     <string name="settings_ble_disconnect_10min">10 min</string>
     <string name="settings_ble_disconnect_15min">15 min</string>
     <string name="settings_ble_disconnect_30min">30 min</string>
+    <string name="settings_duration_precise_label">Or set exactly:</string>
+    <string name="settings_duration_minutes_label">Minutes</string>
+    <string name="settings_duration_seconds_label">Seconds</string>
     <string name="settings_ble_keep_screen_on">Keep screen on</string>
     <string name="settings_ble_keep_screen_on_desc">Screen stays on in board screens so you don\'t have to unlock constantly.</string>
 

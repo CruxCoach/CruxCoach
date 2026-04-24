@@ -113,6 +113,9 @@
     <string name="settings_ble_disconnect_10min">10 Min</string>
     <string name="settings_ble_disconnect_15min">15 Min</string>
     <string name="settings_ble_disconnect_30min">30 Min</string>
+    <string name="settings_duration_precise_label">Oder genau einstellen:</string>
+    <string name="settings_duration_minutes_label">Minuten</string>
+    <string name="settings_duration_seconds_label">Sekunden</string>
     <string name="settings_ble_keep_screen_on">Bildschirm anlassen</string>
     <string name="settings_ble_keep_screen_on_desc">Bildschirm bleibt auf Board-Screens an, damit du nicht ständig entsperren musst.</string>
 

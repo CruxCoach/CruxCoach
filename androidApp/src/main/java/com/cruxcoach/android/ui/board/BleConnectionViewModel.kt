@@ -106,9 +106,9 @@ class BleConnectionViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
-            bleConnection.autoDisconnectMinutes = userPreferences.bleAutoDisconnectMinutes.first()
-            userPreferences.bleAutoDisconnectMinutes.collect { minutes ->
-                bleConnection.autoDisconnectMinutes = minutes
+            bleConnection.autoDisconnectSeconds = userPreferences.bleAutoDisconnectSeconds.first()
+            userPreferences.bleAutoDisconnectSeconds.collect { seconds ->
+                bleConnection.autoDisconnectSeconds = seconds
             }
         }
         viewModelScope.launch {

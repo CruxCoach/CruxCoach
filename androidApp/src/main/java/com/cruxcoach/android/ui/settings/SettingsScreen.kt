@@ -170,7 +170,7 @@ fun SettingsScreen(
                     )
                     HorizontalDivider()
                     BleAutoDisconnectSection(
-                        bleAutoDisconnectMinutes = state.bleAutoDisconnectMinutes,
+                        bleAutoDisconnectSeconds = state.bleAutoDisconnectSeconds,
                         keepScreenOn = state.keepScreenOn,
                         onAutoDisconnectChange = { viewModel.updateBleAutoDisconnect(it) },
                         onKeepScreenOnChange = { viewModel.updateKeepScreenOn(it) }

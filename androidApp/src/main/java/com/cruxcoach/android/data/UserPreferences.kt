@@ -120,6 +120,10 @@ object PreferenceKeys {
     val LED_COLOR_FINISH = intPreferencesKey("led_color_finish")
     val LED_COLOR_FOOT = intPreferencesKey("led_color_foot")
     val BLE_AUTO_DISCONNECT_MINUTES = intPreferencesKey("ble_auto_disconnect_minutes")
+    // Seconds-precision successor to BLE_AUTO_DISCONNECT_MINUTES. Read
+    // by bleAutoDisconnectSeconds, which transparently migrates the
+    // older minutes key on first read if the new key is absent.
+    val BLE_AUTO_DISCONNECT_SECONDS = intPreferencesKey("ble_auto_disconnect_seconds")
     val BOARD_ANGLE = intPreferencesKey("board_angle")
     val BOARD_MIN_GRADE = intPreferencesKey("board_min_grade")
     val BOARD_MAX_GRADE = intPreferencesKey("board_max_grade")
@@ -313,13 +317,22 @@ class UserPreferences(
         }
     }
 
-    val bleAutoDisconnectMinutes: Flow<Int> = dataStore.data.map { prefs ->
-        prefs[PreferenceKeys.BLE_AUTO_DISCONNECT_MINUTES] ?: 1
+    /**
+     * BLE idle-disconnect timeout in seconds. New storage key since
+     * 0.1.3; old installs had whole-minute granularity under
+     * [PreferenceKeys.BLE_AUTO_DISCONNECT_MINUTES]. The fallback read
+     * multiplies the legacy value by 60 so upgrading users keep their
+     * chosen timeout to the second — the next write lands in the new
+     * seconds key and the legacy entry eventually becomes dead bytes.
+     */
+    val bleAutoDisconnectSeconds: Flow<Int> = dataStore.data.map { prefs ->
+        prefs[PreferenceKeys.BLE_AUTO_DISCONNECT_SECONDS]
+            ?: ((prefs[PreferenceKeys.BLE_AUTO_DISCONNECT_MINUTES] ?: 1) * 60)
     }
 
-    suspend fun setBleAutoDisconnectMinutes(minutes: Int) {
+    suspend fun setBleAutoDisconnectSeconds(seconds: Int) {
         dataStore.edit { prefs ->
-            prefs[PreferenceKeys.BLE_AUTO_DISCONNECT_MINUTES] = minutes
+            prefs[PreferenceKeys.BLE_AUTO_DISCONNECT_SECONDS] = seconds
         }
     }
 

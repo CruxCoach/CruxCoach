@@ -137,7 +137,7 @@ internal fun BoardModelSection(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun BleAutoDisconnectSection(
-    bleAutoDisconnectMinutes: Int,
+    bleAutoDisconnectSeconds: Int,
     keepScreenOn: Boolean,
     onAutoDisconnectChange: (Int) -> Unit,
     onKeepScreenOnChange: (Boolean) -> Unit
@@ -154,13 +154,14 @@ internal fun BleAutoDisconnectSection(
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
 
+    // Presets in seconds — the common "whole-minute" values plus Off.
     val options = listOf(
         0 to stringResource(R.string.settings_ble_disconnect_off),
-        1 to stringResource(R.string.settings_ble_disconnect_1min),
-        5 to stringResource(R.string.settings_ble_disconnect_5min),
-        10 to stringResource(R.string.settings_ble_disconnect_10min),
-        15 to stringResource(R.string.settings_ble_disconnect_15min),
-        30 to stringResource(R.string.settings_ble_disconnect_30min)
+        60 to stringResource(R.string.settings_ble_disconnect_1min),
+        300 to stringResource(R.string.settings_ble_disconnect_5min),
+        600 to stringResource(R.string.settings_ble_disconnect_10min),
+        900 to stringResource(R.string.settings_ble_disconnect_15min),
+        1800 to stringResource(R.string.settings_ble_disconnect_30min)
     )
 
     FlowRow(
@@ -168,10 +169,10 @@ internal fun BleAutoDisconnectSection(
         verticalArrangement = Arrangement.spacedBy(4.dp),
         modifier = Modifier.testTag("settings_ble_auto_disconnect")
     ) {
-        options.forEach { (minutes, label) ->
+        options.forEach { (seconds, label) ->
             FilterChip(
-                selected = bleAutoDisconnectMinutes == minutes,
-                onClick = { onAutoDisconnectChange(minutes) },
+                selected = bleAutoDisconnectSeconds == seconds,
+                onClick = { onAutoDisconnectChange(seconds) },
                 label = { Text(label) },
                 colors = FilterChipDefaults.filterChipColors(
                     selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
@@ -180,6 +181,26 @@ internal fun BleAutoDisconnectSection(
             )
         }
     }
+
+    Spacer(modifier = Modifier.height(8.dp))
+    // Fine-grain stepper for values the presets don't cover (e.g. 90s,
+    // 2m 30s). Shares the shared DurationStepper composable with the
+    // rest-timer section so both "pick a duration" settings behave the
+    // same way. max 60 min matches the longest preset × 2 — any value
+    // above is almost certainly a typo.
+    Text(
+        stringResource(R.string.settings_duration_precise_label),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    DurationStepper(
+        seconds = bleAutoDisconnectSeconds,
+        onChange = onAutoDisconnectChange,
+        minSeconds = 0,
+        maxSeconds = 3600,
+        minuteLabel = stringResource(R.string.settings_duration_minutes_label),
+        secondLabel = stringResource(R.string.settings_duration_seconds_label),
+    )
 
     Spacer(modifier = Modifier.height(8.dp))
 
