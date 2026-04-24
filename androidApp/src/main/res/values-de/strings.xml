@@ -1408,8 +1408,12 @@
     <string name="settings_backup_delete_remote_dialog_body">Dies fordert die Löschung deiner Backup-Events und -Blobs von Relais und Blossom-Servern an. Beachte:\n\n• Die Löschung ist Best-Effort. Nicht alle Relais/Server honorieren sie.\n• Danach kannst du dein Backup nicht mehr auf einem anderen Gerät wiederherstellen.\n• Lokale Daten bleiben unangetastet.</string>
     <string name="settings_backup_delete_remote_confirm">Löschen</string>
     <string name="settings_backup_delete_remote_in_progress">Lösche…</string>
-    <string name="settings_backup_delete_remote_done">Löschung angefordert. Best-Effort — einige Relais könnten eine Kopie behalten.</string>
-    <string name="settings_backup_delete_remote_partial">Lokaler State gelöscht, aber die Remote-Löschung war nur teilweise erfolgreich (%1$s). Einige Server behalten eventuell noch eine Kopie.</string>
+    <string name="settings_backup_delete_remote_done_header">Remote-Backups gelöscht.</string>
+    <string name="settings_backup_delete_remote_partial_header">Remote-Backups nur teilweise gelöscht.</string>
+    <string name="settings_backup_delete_remote_relays_line">Relais: %1$d / %2$d haben das Delete-Event bestätigt.</string>
+    <string name="settings_backup_delete_remote_blossom_line">Blossom-Server: %1$d / %2$d haben den Blob gelöscht.</string>
+    <string name="settings_backup_delete_remote_no_blob">Kein Blossom-Blob erfasst (nichts zu löschen dort).</string>
+    <string name="settings_backup_delete_remote_caveat">Protokoll-Hinweis: Nostr-Relais und Blossom-CDNs können Events vor dem Löschen replizieren oder cachen. Dritt-Mirror, auf die du nie geschrieben hast, behalten eventuell eine Kopie. Vollständige Gewissheit bekommst du nur durch Verifizierung deiner pubkey in einem anderen Nostr-Client.</string>
 
     <!-- FEAT-002: Nostr Backup Onboarding -->
     <string name="onboarding_nostr_key_title">Nostr-Identität</string>

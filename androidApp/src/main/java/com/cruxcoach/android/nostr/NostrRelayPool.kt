@@ -282,8 +282,21 @@ class NostrRelayPool @Inject constructor(
     }
 
     suspend fun sendEvent(event: Event): Boolean {
+        val (_, accepted) = sendEventWithStats(event)
+        return accepted > 0
+    }
+
+    /**
+     * Publish [event] to every configured write relay and report
+     * (attempted, accepted). Used by delete flows that need to tell
+     * the user how many relays actually acknowledged — a single
+     * Boolean "did any accept" is fine for fire-and-forget writes but
+     * hides a 1-of-5 outcome from the user when they explicitly asked
+     * for full removal.
+     */
+    suspend fun sendEventWithStats(event: Event): Pair<Int, Int> {
         val eventJson = event.toJson()
-        val eventId = extractEventId(eventJson) ?: return false
+        val eventId = extractEventId(eventJson) ?: return 0 to 0
         val relays = writeRelays()
         val results = coroutineScope {
             relays.map { relay ->
@@ -297,7 +310,7 @@ class NostrRelayPool @Inject constructor(
                 }
             }.map { it.await() }
         }
-        return results.any { it }
+        return relays.size to results.count { it }
     }
 
     /**

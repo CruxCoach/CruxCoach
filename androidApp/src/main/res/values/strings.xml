@@ -1406,8 +1406,12 @@
     <string name="settings_backup_delete_remote_dialog_body">This will request deletion of your backup events and blobs from relays and Blossom servers. Be aware:\n\n• Deletion is best-effort. Not all relays/servers honour it.\n• After this, you cannot restore your backup on another device.\n• Local data is not affected.</string>
     <string name="settings_backup_delete_remote_confirm">Delete</string>
     <string name="settings_backup_delete_remote_in_progress">Deleting…</string>
-    <string name="settings_backup_delete_remote_done">Deletion requested. Best-effort — some relays may retain a copy.</string>
-    <string name="settings_backup_delete_remote_partial">Local state cleared, but remote deletion was only partial (%1$s). Some servers may still hold a copy.</string>
+    <string name="settings_backup_delete_remote_done_header">Remote backups deleted.</string>
+    <string name="settings_backup_delete_remote_partial_header">Remote backups partially deleted.</string>
+    <string name="settings_backup_delete_remote_relays_line">Relays: %1$d / %2$d accepted the deletion event.</string>
+    <string name="settings_backup_delete_remote_blossom_line">Blossom servers: %1$d / %2$d confirmed blob deletion.</string>
+    <string name="settings_backup_delete_remote_no_blob">No Blossom blob on record (nothing to delete there).</string>
+    <string name="settings_backup_delete_remote_caveat">Protocol caveat: Nostr relays and Blossom CDNs can propagate or cache events before deletion. Third-party mirrors you never wrote to may still hold a copy — verify with a separate Nostr client against your published pubkey if you want full certainty.</string>
 
     <!-- FEAT-002: Nostr backup onboarding -->
     <string name="onboarding_nostr_key_title">Nostr identity</string>

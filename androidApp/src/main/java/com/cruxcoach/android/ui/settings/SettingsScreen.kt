@@ -370,10 +370,39 @@ fun SettingsScreen(
                     stringResource(R.string.settings_backup_failed)
                 else
                     stringResource(R.string.settings_backup_failed_detail, snackbar.detail)
-            BackupSettingsState.Snackbar.RemoteBackupsDeleted ->
-                stringResource(R.string.settings_backup_delete_remote_done)
-            is BackupSettingsState.Snackbar.RemoteBackupsDeletedPartial ->
-                stringResource(R.string.settings_backup_delete_remote_partial, snackbar.detail)
+            is BackupSettingsState.Snackbar.RemoteBackupsDeleted -> {
+                // Compose a multi-line report: how many relays /
+                // Blossom servers ack'd the deletion, plus the honest
+                // Nostr-deletion caveat that third-party mirrors may
+                // still retain copies.
+                val ok = snackbar.notes.isEmpty() &&
+                    snackbar.relaysAttempted > 0 &&
+                    snackbar.relaysAccepted == snackbar.relaysAttempted &&
+                    (snackbar.blossomAttempted == 0 ||
+                        snackbar.blossomAccepted == snackbar.blossomAttempted)
+                val header = stringResource(
+                    if (ok) R.string.settings_backup_delete_remote_done_header
+                    else R.string.settings_backup_delete_remote_partial_header,
+                )
+                val relayLine = stringResource(
+                    R.string.settings_backup_delete_remote_relays_line,
+                    snackbar.relaysAccepted,
+                    snackbar.relaysAttempted,
+                )
+                val blossomLine = if (snackbar.blossomAttempted == 0) {
+                    stringResource(R.string.settings_backup_delete_remote_no_blob)
+                } else {
+                    stringResource(
+                        R.string.settings_backup_delete_remote_blossom_line,
+                        snackbar.blossomAccepted,
+                        snackbar.blossomAttempted,
+                    )
+                }
+                val caveat = stringResource(R.string.settings_backup_delete_remote_caveat)
+                val notesBlock = if (snackbar.notes.isEmpty()) "" else
+                    "\n\n" + snackbar.notes.joinToString("\n") { "• $it" }
+                "$header\n\n$relayLine\n$blossomLine\n\n$caveat$notesBlock"
+            }
         }
         AlertDialog(
             onDismissRequest = { backupViewModel.consumeSnackbar() },

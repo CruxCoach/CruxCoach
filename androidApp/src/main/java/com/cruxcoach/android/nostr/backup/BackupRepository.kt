@@ -372,32 +372,55 @@ class BackupRepository @Inject constructor(
             problems += "dtag derivation"
         }
 
+        var relaysAttempted = 0
+        var relaysAccepted = 0
         if (backupDTag != null && keyDTag != null) {
-            val r = runCatching { publishDeletionForDTags(pubkey, listOf(backupDTag, keyDTag)) }
-            if (r.isFailure) problems += "relay deletion publish"
+            val r = runCatching {
+                publishDeletionForDTagsWithStats(pubkey, listOf(backupDTag, keyDTag))
+            }
+            if (r.isSuccess) {
+                val (att, acc) = r.getOrNull() ?: (0 to 0)
+                relaysAttempted = att
+                relaysAccepted = acc
+                if (att == 0) problems += "no write relays configured"
+                else if (acc == 0) problems += "no relay accepted the deletion"
+                else if (acc < att) problems += "$acc of $att relays accepted"
+            } else {
+                problems += "relay deletion publish threw"
+            }
         }
 
+        var blossomAttempted = 0
+        var blossomAccepted = 0
         preferences.getPreviousBlobSha256()?.let { sha ->
             val servers = runCatching { discoverBlossomServers(pubkey) }
                 .getOrDefault(BlossomUploader.DEFAULT_SERVERS)
             val outcome = uploader.delete(sha, servers)
+            blossomAttempted = outcome.attempted
+            blossomAccepted = outcome.succeeded
             when {
                 outcome.authFailed -> problems += "blossom auth"
                 outcome.fullyFailed() -> problems += "every blossom server refused"
                 outcome.partiallySucceeded() ->
-                    problems += "some blossom servers refused (${outcome.succeeded}/${outcome.attempted})"
+                    problems += "${outcome.succeeded} of ${outcome.attempted} blossom servers succeeded"
             }
         }
 
         // Clear local state regardless: the user explicitly asked for
         // opt-out, so we forget everything we can locally even if the
-        // remote delete was only partial. The UI will still surface the
-        // partial-success state so the user knows to re-try later.
+        // remote delete was only partial. The UI still surfaces the
+        // structured counts so the user knows to re-try later if it
+        // fell short.
         preferences.clearAllIdentityState()
         preferences.setBackupEnabled(false)
 
-        return if (problems.isEmpty()) DeleteRemoteOutcome.Success
-        else DeleteRemoteOutcome.Partial(problems.joinToString(", "))
+        return DeleteRemoteOutcome(
+            relaysAttempted = relaysAttempted,
+            relaysAccepted = relaysAccepted,
+            blossomAttempted = blossomAttempted,
+            blossomAccepted = blossomAccepted,
+            notes = problems.toList(),
+        )
     }
 
     // ------------------------------------------------------------ pointer ops
@@ -419,6 +442,27 @@ class BackupRepository @Inject constructor(
         } else {
             Log.w(TAG, "event=backup_pointer_publish_failed")
         }
+    }
+
+    /** [Pair] of `(relaysAttempted, relaysAccepted)` — surfaces both counts
+     *  to the caller instead of the generic "any accepted" boolean that
+     *  [pool.sendEvent] returns.
+     */
+    private suspend fun publishDeletionForDTagsWithStats(
+        pubkey: String,
+        dTags: List<String>,
+    ): Pair<Int, Int> {
+        val tags = mutableListOf<Array<String>>().apply {
+            dTags.forEach { dTag -> add(arrayOf("a", "$KIND_REPLACEABLE_PARAMETERIZED:$pubkey:$dTag")) }
+            add(arrayOf("k", KIND_REPLACEABLE_PARAMETERIZED.toString()))
+        }
+        val event = nostrSigner.signer.sign<com.vitorpamplona.quartz.nip01Core.core.Event>(
+            createdAt = System.currentTimeMillis() / 1000,
+            kind = KIND_DELETION,
+            tags = tags.toTypedArray(),
+            content = "backup opt-out",
+        )
+        return pool.sendEventWithStats(event)
     }
 
     private suspend fun publishDeletionForDTags(pubkey: String, dTags: List<String>) {
@@ -717,13 +761,24 @@ data class BackupInfo(
 )
 
 /**
- * Outcome of [BackupRepository.deleteRemoteBackups]. Lets the UI
- * distinguish "remote copy is fully gone" from "we did our best but
- * some servers held on" instead of always claiming success.
+ * Structured per-leg outcome of [BackupRepository.deleteRemoteBackups].
+ * The UI renders the four counts plus the human-readable [notes] so the
+ * user sees exactly how thorough the removal was — "3/3 relays, 2/2
+ * Blossom servers acknowledged" vs "2/3 relays, 0/2 Blossom". Keeps
+ * the honest Nostr-deletion caveat (third-party mirrors / CDN caches
+ * may still hold copies) up to the caller's copy.
  */
-sealed class DeleteRemoteOutcome {
-    data object Success : DeleteRemoteOutcome()
-    data class Partial(val details: String) : DeleteRemoteOutcome()
+data class DeleteRemoteOutcome(
+    val relaysAttempted: Int,
+    val relaysAccepted: Int,
+    val blossomAttempted: Int,
+    val blossomAccepted: Int,
+    val notes: List<String>,
+) {
+    /** True only when every attempted leg ack'd and nothing was noted. */
+    fun isFullSuccess(): Boolean = notes.isEmpty() &&
+        relaysAttempted > 0 && relaysAccepted == relaysAttempted &&
+        (blossomAttempted == 0 || blossomAccepted == blossomAttempted)
 }
 
 /**

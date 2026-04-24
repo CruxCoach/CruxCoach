@@ -55,9 +55,21 @@ data class BackupSettingsState(
          * degrade gracefully to a generic message.
          */
         data class BackupFailed(val detail: String?) : Snackbar
-        data object RemoteBackupsDeleted : Snackbar
-        /** Opt-out ran but at least one leg (relay publish / Blossom delete) refused. */
-        data class RemoteBackupsDeletedPartial(val detail: String) : Snackbar
+        /**
+         * Active opt-out completed. Carries per-leg stats so the UI
+         * can show the user exactly how many relays / Blossom servers
+         * ack'd the deletion — a single "done" was misleading when
+         * 0/N accepted. `notes` lists any non-fatal problems (zero
+         * relays configured, partial Blossom, etc.); empty list +
+         * matching attempted/accepted counts is full success.
+         */
+        data class RemoteBackupsDeleted(
+            val relaysAttempted: Int,
+            val relaysAccepted: Int,
+            val blossomAttempted: Int,
+            val blossomAccepted: Int,
+            val notes: List<String>,
+        ) : Snackbar
     }
 }
 
@@ -224,9 +236,13 @@ class BackupSettingsViewModel @Inject constructor(
         viewModelScope.launch {
             _state.update { it.copy(showDeleteRemoteConfirm = false, isDeletingRemote = true) }
             val outcome = runCatching { backupRepository.deleteRemoteBackups() }
-                .getOrElse {
-                    com.cruxcoach.android.nostr.backup.DeleteRemoteOutcome.Partial(
-                        "unexpected error: ${it.javaClass.simpleName}",
+                .getOrElse { throwable ->
+                    com.cruxcoach.android.nostr.backup.DeleteRemoteOutcome(
+                        relaysAttempted = 0,
+                        relaysAccepted = 0,
+                        blossomAttempted = 0,
+                        blossomAccepted = 0,
+                        notes = listOf("unexpected error: ${throwable.javaClass.simpleName}"),
                     )
                 }
             BackupSyncWorker.schedule(
@@ -239,12 +255,13 @@ class BackupSettingsViewModel @Inject constructor(
                     isDeletingRemote = false,
                     backupEnabled = false,
                     lastBackupIso = null,
-                    snackbar = when (outcome) {
-                        com.cruxcoach.android.nostr.backup.DeleteRemoteOutcome.Success ->
-                            BackupSettingsState.Snackbar.RemoteBackupsDeleted
-                        is com.cruxcoach.android.nostr.backup.DeleteRemoteOutcome.Partial ->
-                            BackupSettingsState.Snackbar.RemoteBackupsDeletedPartial(outcome.details)
-                    },
+                    snackbar = BackupSettingsState.Snackbar.RemoteBackupsDeleted(
+                        relaysAttempted = outcome.relaysAttempted,
+                        relaysAccepted = outcome.relaysAccepted,
+                        blossomAttempted = outcome.blossomAttempted,
+                        blossomAccepted = outcome.blossomAccepted,
+                        notes = outcome.notes,
+                    ),
                 )
             }
         }
