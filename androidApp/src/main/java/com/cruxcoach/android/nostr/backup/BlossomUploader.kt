@@ -172,13 +172,29 @@ class BlossomUploader @Inject constructor(
     }
 
     /**
-     * Downloads the blob with the given [sha256Hex] from the first server in
-     * [servers] that answers. Throws [IOException] only if every server
-     * fails. Does NOT verify the SHA-256 — the caller must hash and check
-     * against the pointer to match FEAT-002's integrity contract.
+     * Download the blob with the given [sha256Hex] from the first server in
+     * [servers] that answers, streaming into memory with two defenses
+     * against a hostile / misconfigured host:
+     *
+     *  1. A hard byte cap of [maxBytes] — derived by the caller from the
+     *     signed pointer's declared size plus a small framing slack.
+     *     Without it, `resp.body.bytes()` would buffer an arbitrarily
+     *     large response, so a hostile server could OOM the app before
+     *     the SHA-256 integrity check even ran.
+     *  2. SHA-256 is hashed while the stream drains and compared to the
+     *     expected [sha256Hex] at EOF. Stream aborts on mismatch or
+     *     over-cap with the partially-read buffer discarded.
+     *
+     * Throws [IOException] if every server fails, or if a single server
+     * violated the size / hash contract.
      */
-    suspend fun download(sha256Hex: String, servers: List<String>): ByteArray = withContext(Dispatchers.IO) {
+    suspend fun download(
+        sha256Hex: String,
+        servers: List<String>,
+        maxBytes: Long,
+    ): ByteArray = withContext(Dispatchers.IO) {
         require(servers.isNotEmpty()) { "No Blossom servers configured" }
+        require(maxBytes > 0) { "maxBytes must be positive" }
         var lastError: Throwable? = null
         for (server in servers) {
             try {
@@ -189,11 +205,43 @@ class BlossomUploader @Inject constructor(
                         lastError = IOException("HTTP ${resp.code} from ${server.shortHost()}")
                         return@use
                     }
-                    val body = resp.body?.bytes() ?: run {
+                    val body = resp.body ?: run {
                         lastError = IOException("Empty body from ${server.shortHost()}")
                         return@use
                     }
-                    return@withContext body
+                    val digest = java.security.MessageDigest.getInstance("SHA-256")
+                    val out = java.io.ByteArrayOutputStream()
+                    val buf = ByteArray(8192)
+                    var total = 0L
+                    try {
+                        body.byteStream().use { input ->
+                            while (true) {
+                                val read = input.read(buf)
+                                if (read == -1) break
+                                total += read
+                                if (total > maxBytes) {
+                                    throw IOException(
+                                        "blob exceeded declared size ($total > $maxBytes) from ${server.shortHost()}",
+                                    )
+                                }
+                                digest.update(buf, 0, read)
+                                out.write(buf, 0, read)
+                            }
+                        }
+                    } catch (e: IOException) {
+                        lastError = e
+                        Log.w(TAG, "event=download_server_failed server=${server.shortHost()}", e)
+                        return@use
+                    }
+                    val actualHash = digest.digest().joinToString("") { "%02x".format(it) }
+                    if (actualHash != sha256Hex) {
+                        lastError = IOException(
+                            "sha256 mismatch from ${server.shortHost()}: expected ${sha256Hex.take(8)}…, got ${actualHash.take(8)}…",
+                        )
+                        Log.w(TAG, "event=download_server_failed server=${server.shortHost()} reason=sha_mismatch")
+                        return@use
+                    }
+                    return@withContext out.toByteArray()
                 }
             } catch (e: Exception) {
                 lastError = e

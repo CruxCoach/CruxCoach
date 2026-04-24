@@ -280,16 +280,21 @@ class BackupRepository @Inject constructor(
         val dataKey = dataKeyHex.hexToByteArray()
         require(dataKey.size == 32) { "Unwrapped dataKey is not 32 bytes" }
 
-        // 2 — download + verify + decrypt
+        // 2 — download + verify + decrypt, every stage size-capped so a
+        // hostile Blossom server cannot OOM the app before the integrity
+        // check runs. The uploader streams the body while hashing it and
+        // refuses anything over pointer.size + slack; the decompressor
+        // refuses anything over MAX_PLAINTEXT_BYTES on its output.
         val servers = pointer.servers
-        val ciphertext = uploader.download(pointer.sha256, servers)
-        val actualSha = ciphertext.sha256Hex()
-        if (actualSha != pointer.sha256) {
-            Log.w(TAG, "event=restore_download_failed reason=sha_mismatch")
-            throw BackupException("Blob SHA-256 mismatch (expected ${pointer.sha256.take(8)}..., got ${actualSha.take(8)}...)")
-        }
+        val ciphertext = uploader.download(
+            sha256Hex = pointer.sha256,
+            servers = servers,
+            maxBytes = pointer.size + DOWNLOAD_SLACK_BYTES,
+        )
         val compressed = BackupCrypto.decrypt(ciphertext, dataKey)
-        val json = BackupCompression.decompress(compressed).toString(Charsets.UTF_8)
+        val json = BackupCompression
+            .decompress(compressed, maxBytes = MAX_PLAINTEXT_BYTES)
+            .toString(Charsets.UTF_8)
 
         // 3 — import into local DB
         val importResult = CruxCoachBackup.import(
@@ -623,6 +628,17 @@ class BackupRepository @Inject constructor(
         // relays that evict older replaceable-parameterized events don't
         // leave the only restore anchor stranded.
         private const val KEY_EVENT_REFRESH_INTERVAL_SEC = 30L * 24L * 60L * 60L
+        // Tiny slack over the pointer-declared blob size — covers
+        // framing rounding between ciphertext bytes and HTTP content-
+        // length without letting a hostile server pad gigabytes past
+        // the declared size.
+        private const val DOWNLOAD_SLACK_BYTES = 1024L
+        // Hard ceiling on the decompressed backup plaintext. Realistic
+        // backups land at ~500 KB after gzip even for 2-year power
+        // users; 64 MB plaintext (≈13 MB gzip at the ~5:1 ratio)
+        // covers ~20 years of daily Kilter logs while refusing any
+        // gzip-bomb payload that would otherwise OOM the restore.
+        private const val MAX_PLAINTEXT_BYTES = 64 * 1024 * 1024
         private val JSON = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     }
 }

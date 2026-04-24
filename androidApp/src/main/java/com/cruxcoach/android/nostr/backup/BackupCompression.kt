@@ -22,6 +22,34 @@ internal object BackupCompression {
         return bos.toByteArray()
     }
 
-    fun decompress(compressed: ByteArray): ByteArray =
-        GZIPInputStream(ByteArrayInputStream(compressed)).use { it.readBytes() }
+    /**
+     * Decompress gzip back to plaintext, hard-capped at [maxBytes] to block
+     * decompression bombs (small gzip → gigabytes of plaintext → OOM).
+     * The restore path calls this with a generous cap (~64 MB, many times
+     * any realistic backup's plaintext size) so legitimate backups still
+     * round-trip while a crafted bomb is refused before it blows the heap.
+     *
+     * Throws [BackupException] as soon as the running byte count crosses
+     * the cap — the partially-written buffer is discarded, not returned.
+     */
+    fun decompress(compressed: ByteArray, maxBytes: Int): ByteArray {
+        require(maxBytes > 0) { "maxBytes must be positive" }
+        val out = ByteArrayOutputStream()
+        val buffer = ByteArray(8192)
+        GZIPInputStream(ByteArrayInputStream(compressed)).use { input ->
+            var total = 0L
+            while (true) {
+                val read = input.read(buffer)
+                if (read == -1) break
+                total += read
+                if (total > maxBytes) {
+                    throw BackupException(
+                        "Gzip output exceeded $maxBytes bytes (decompression bomb?)",
+                    )
+                }
+                out.write(buffer, 0, read)
+            }
+        }
+        return out.toByteArray()
+    }
 }
