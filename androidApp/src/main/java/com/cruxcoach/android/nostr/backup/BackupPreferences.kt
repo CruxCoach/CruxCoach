@@ -119,9 +119,16 @@ class BackupPreferences @Inject constructor(
         }
     }
 
-    // ---- BUD-06 content-type preflight cache (server URL → result) ----
+    // ---- BUD-06 content-type cache (server URL → preferred MIME) ----
+    //
+    // INCOMPATIBLE was intentionally removed: it existed to "skip forever"
+    // a server that failed a standalone HEAD preflight, but the preflight
+    // itself was broken (401 without Nostr auth) and created a permanent
+    // deadlock. Old on-disk entries with value INCOMPATIBLE deserialize to
+    // null via the runCatching in [getContentTypeProbe], which makes the
+    // upload path re-discover compatibility against the real PUT.
 
-    enum class ContentTypeProbe { ACCEPTED, REJECTED_OCTET, INCOMPATIBLE }
+    enum class ContentTypeProbe { ACCEPTED, REJECTED_OCTET }
 
     suspend fun getContentTypeProbe(server: String): ContentTypeProbe? {
         val raw = dataStore.data.first()[contentTypeKey(server)] ?: return null
@@ -162,6 +169,13 @@ class BackupPreferences @Inject constructor(
             prefs.remove(dTagKey(IDENTIFIER_KEY))
             prefs.remove(Keys.PREVIOUS_BLOB_SHA256)
             prefs.remove(Keys.LAST_BACKUP_SYNC)
+            // Also drop the per-server content-type hints: a different
+            // identity may hit different servers, and stale hints from a
+            // buggy earlier build (see ContentTypeProbe doc) are worth
+            // tossing whenever we otherwise reset identity state.
+            prefs.asMap().keys
+                .filter { it.name.startsWith("backup_ct_") }
+                .forEach { prefs.remove(it) }
             // Intentionally NOT cleared: BACKUP_ENABLED, BACKUP_FEATURE_ENABLED,
             // BACKUP_ONBOARDING_SEEN, DEVICE_ID — these survive identity changes.
         }

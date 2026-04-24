@@ -85,33 +85,60 @@ class BlossomUploader @Inject constructor(
         results
     }
 
+    /**
+     * Attempts the actual PUT /upload. Discovers content-type compatibility
+     * in-band instead of with a separate HEAD preflight — the previous
+     * BUD-06 HEAD probe is effectively a stripped-down upload request with
+     * no Nostr Authorization header, which both major Blossom servers
+     * (blossom.nostr.build, blossom.primal.net) reject with 401 → the old
+     * code then cached every well-behaved server as INCOMPATIBLE and
+     * refused to upload there ever again. Doing the content-type fallback
+     * against the real authorised PUT removes the false-positive path
+     * entirely: if octet-stream is rejected with 415, retry once with the
+     * CruxCoach alt MIME; remember which type worked so the next upload
+     * picks it first.
+     */
     private suspend fun uploadToSingle(server: String, blob: ByteArray, sha256Hex: String): UploadResult {
-        val probe = preferences.getContentTypeProbe(server) ?: run {
-            val fresh = probeContentType(server)
-            preferences.setContentTypeProbe(server, fresh)
-            Log.d(TAG, "event=content_type_probe server=${server.shortHost()} result=${fresh.name}")
-            fresh
-        }
-        if (probe == BackupPreferences.ContentTypeProbe.INCOMPATIBLE) {
-            return UploadResult(server, accepted = false, httpStatus = 0, error = "incompatible")
-        }
-
         val authHeader = try {
             blossomAuthHeader(action = "upload", sha256 = sha256Hex)
         } catch (e: Exception) {
             return UploadResult(server, accepted = false, httpStatus = 0, error = "auth: ${e.message}")
         }
 
-        val contentType = when (probe) {
+        val hint = preferences.getContentTypeProbe(server)
+        val firstType = when (hint) {
             BackupPreferences.ContentTypeProbe.REJECTED_OCTET -> CONTENT_TYPE_ALT
             else -> CONTENT_TYPE_OCTET
         }
+        val first = attemptUpload(server, blob, authHeader, firstType)
+        if (first.accepted) {
+            if (hint != BackupPreferences.ContentTypeProbe.ACCEPTED && firstType == CONTENT_TYPE_OCTET) {
+                preferences.setContentTypeProbe(server, BackupPreferences.ContentTypeProbe.ACCEPTED)
+            }
+            return first
+        }
+        // Only 415 (Unsupported Media Type) warrants a content-type retry.
+        // Other failures (auth, network, 5xx) are not fixable by swapping MIME.
+        if (first.httpStatus != 415 || firstType != CONTENT_TYPE_OCTET) return first
+
+        val second = attemptUpload(server, blob, authHeader, CONTENT_TYPE_ALT)
+        if (second.accepted) {
+            preferences.setContentTypeProbe(server, BackupPreferences.ContentTypeProbe.REJECTED_OCTET)
+        }
+        return second
+    }
+
+    private fun attemptUpload(
+        server: String,
+        blob: ByteArray,
+        authHeader: String,
+        contentType: String,
+    ): UploadResult {
         val request = Request.Builder()
             .url(server.trimEnd('/') + "/upload")
             .put(blob.toRequestBody(contentType.toMediaType()))
             .header("Authorization", authHeader)
             .build()
-
         return try {
             okHttpClient.newCall(request).execute().use { resp -> parseUploadResponse(server, resp) }
         } catch (e: IOException) {
@@ -123,44 +150,8 @@ class BlossomUploader @Inject constructor(
         if (response.isSuccessful) {
             return UploadResult(server, accepted = true, httpStatus = response.code)
         }
-        // 415 → may be a content-type incompatibility we can retry later
         val error = response.body?.string()?.take(200) ?: response.message
         return UploadResult(server, accepted = false, httpStatus = response.code, error = error)
-    }
-
-    /**
-     * BUD-06 preflight: HEAD /upload with a content-type hint. If the server
-     * accepts `application/octet-stream`, remember that. If it rejects with
-     * 415, retry with the CruxCoach-specific Content-Type next upload. If
-     * it rejects both, mark the server incompatible and skip.
-     */
-    private suspend fun probeContentType(server: String): BackupPreferences.ContentTypeProbe = withContext(Dispatchers.IO) {
-        val urlBase = server.trimEnd('/') + "/upload"
-
-        val octetOk = headProbe(urlBase, CONTENT_TYPE_OCTET)
-        if (octetOk) return@withContext BackupPreferences.ContentTypeProbe.ACCEPTED
-        val altOk = headProbe(urlBase, CONTENT_TYPE_ALT)
-        if (altOk) return@withContext BackupPreferences.ContentTypeProbe.REJECTED_OCTET
-        return@withContext BackupPreferences.ContentTypeProbe.INCOMPATIBLE
-    }
-
-    private fun headProbe(url: String, contentType: String): Boolean {
-        val request = Request.Builder()
-            .url(url)
-            .head()
-            .header("X-Content-Type", contentType)
-            .build()
-        return try {
-            okHttpClient.newCall(request).execute().use { resp ->
-                // Servers that support BUD-06 return 2xx for an accepted type
-                // and 415 for a rejected one. Treat 404 / 405 as "server
-                // does not support preflight" → optimistically assume the
-                // default octet type works.
-                resp.code in 200..299 || resp.code == 404 || resp.code == 405
-            }
-        } catch (_: Exception) {
-            false
-        }
     }
 
     /**
