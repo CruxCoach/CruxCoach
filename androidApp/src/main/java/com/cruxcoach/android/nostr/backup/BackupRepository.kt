@@ -227,6 +227,31 @@ class BackupRepository @Inject constructor(
             return CheckOutcome.DecryptFailed
         }
 
+        // Timestamp-monotonicity sanity check (M1): if this device has a
+        // recorded last-successful-backup time, every pointer we accept
+        // must be at least that new. The max-by-createdAt pick above
+        // already defends against multi-event relay ambiguity, but this
+        // check catches the harder case where every configured relay
+        // conspires to withhold newer events — we detect the rollback
+        // from our own local state instead of relying on what relays
+        // show us. Skipped when lastBackupSync is absent (fresh install,
+        // post-identity-switch, or genuine first restore).
+        val lastLocalBackup = preferences.lastBackupSync.first()
+        if (lastLocalBackup != null && pointerEvent.createdAt < lastLocalBackup) {
+            val ageBehind = lastLocalBackup - pointerEvent.createdAt
+            Log.w(
+                TAG,
+                "event=restore_check_miss reason=stale-pointer" +
+                    " eventCreatedAt=${pointerEvent.createdAt}" +
+                    " lastLocalBackup=$lastLocalBackup" +
+                    " secondsBehind=$ageBehind",
+            )
+            return CheckOutcome.Fetch(
+                "Backup on relays is older than this device's last backup " +
+                    "(${ageBehind / 3600}h behind) — possible relay rollback or outage",
+            )
+        }
+
         Log.d(
             TAG,
             "event=restore_check_hit bytes=${pointer.size} ageHours=${(System.currentTimeMillis() / 1000 - pointer.updatedAt) / 3600}",
@@ -482,8 +507,15 @@ class BackupRepository @Inject constructor(
             })
         }
         val events = queryAllValid(filter.toString(), timeoutMs)
-        val pointer = events.firstOrNull { ev -> ev.tagValue("d") == backupDTag } ?: return null
-        val keyEv = events.firstOrNull { ev -> ev.tagValue("d") == keyDTag } ?: return null
+        // Pick the newest event per d-tag, not the first one any relay
+        // happened to deliver. A hostile relay (or an out-of-date one
+        // in a multi-relay pool) could otherwise force restore onto a
+        // prior backup by serving an older-but-still-signed event
+        // before the current one — a classic replaceable-event rollback.
+        val pointer = events.filter { it.tagValue("d") == backupDTag }
+            .maxByOrNull { it.createdAt } ?: return null
+        val keyEv = events.filter { it.tagValue("d") == keyDTag }
+            .maxByOrNull { it.createdAt } ?: return null
         return pointer to keyEv
     }
 
@@ -498,10 +530,14 @@ class BackupRepository @Inject constructor(
         val events = queryAllValid(filter.toString(), timeoutMs)
         // The key event's content is valid hex (NIP-44 v2 base64 payload).
         // The pointer's decrypted content is a JSON BackupPointer with a
-        // `version` field. Check each candidate for either shape.
+        // `version` field. Sort by createdAt DESC first so the earliest
+        // decryptable match is automatically the newest — happy-case
+        // stays at two Amber approval prompts, but rollback attempts
+        // no longer win just by arriving first on the wire.
+        val sorted = events.sortedByDescending { it.createdAt }
         var pointer: MinimalEvent? = null
         var keyEv: MinimalEvent? = null
-        for (ev in events) {
+        for (ev in sorted) {
             if (pointer == null) {
                 val decrypted = runCatching { decryptPointer(ev.content, pubkey) }.getOrNull()
                 if (decrypted != null) {
