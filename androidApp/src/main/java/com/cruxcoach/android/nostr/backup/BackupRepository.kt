@@ -12,6 +12,7 @@ import com.cruxcoach.data.repository.PersonalBoardRepository
 import com.cruxcoach.data.repository.PlanRepository
 import com.cruxcoach.data.repository.UserRepository
 import com.cruxcoach.data.repository.WorkoutRepository
+import com.vitorpamplona.quartz.nip01Core.crypto.verifySignature
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.filterNot
 import kotlinx.coroutines.flow.first
@@ -633,19 +634,29 @@ data class MinimalEvent(
         tags.filter { it.size >= 2 && it[0] == "server" }.map { it[1].trimEnd('/') }
 
     companion object {
+        /**
+         * Parse + Schnorr-verify a raw Nostr event JSON. Returns `null`
+         * for any parse, kind, or signature failure so [queryAllValid]
+         * transparently drops forged/garbled events in its
+         * `mapNotNull`. Running verification here (the single ingress
+         * for every relay-sourced event in FEAT-002) means no caller
+         * can accidentally skip the check.
+         */
         fun fromJson(json: String): MinimalEvent? = try {
-            val obj = Json.parseToJsonElement(json).jsonObject
-            MinimalEvent(
-                id = (obj["id"] as JsonPrimitive).content,
-                pubkey = (obj["pubkey"] as JsonPrimitive).content,
-                kind = (obj["kind"] as JsonPrimitive).long.toInt(),
-                createdAt = (obj["created_at"] as JsonPrimitive).long,
-                tags = (obj["tags"] as JsonArray).map { tagElem ->
-                    (tagElem as JsonArray).map { (it as JsonPrimitive).content }
-                },
-                content = (obj["content"] as JsonPrimitive).content,
-                sig = (obj["sig"] as JsonPrimitive).content,
-            )
+            val event = com.vitorpamplona.quartz.nip01Core.core.Event.fromJson(json)
+            if (!event.verifySignature()) {
+                null
+            } else {
+                MinimalEvent(
+                    id = event.id,
+                    pubkey = event.pubKey,
+                    kind = event.kind,
+                    createdAt = event.createdAt,
+                    tags = event.tags.map { it.toList() },
+                    content = event.content,
+                    sig = event.sig,
+                )
+            }
         } catch (_: Exception) {
             null
         }

@@ -14,6 +14,8 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.long
+import com.vitorpamplona.quartz.nip01Core.core.Event
+import com.vitorpamplona.quartz.nip01Core.crypto.verifySignature
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -31,8 +33,11 @@ import javax.inject.Singleton
  * Invariants:
  *  - Never throws out of [fetch]. Network, parse, and timeout failures return
  *    `null` — the caller falls back to defaults.
- *  - Defense in depth: the relay enforces Schnorr signature validity before
- *    delivering; [fetch] additionally requires `event.pubkey == pubkey`.
+ *  - Every accepted event is Schnorr-verified client-side (pubkey-match +
+ *    full signature check via Quartz) before any field is read. Bootstrap
+ *    relays are actively hostile in the threat model: a forged Kind 10002
+ *    would redirect every subsequent Nostr fetch (backup pointer, key
+ *    event, announcements, …) to attacker-controlled relays.
  *  - Deliberately bypasses [com.cruxcoach.android.nostr.NostrRelayPool] —
  *    the pool's relay list is what this fetcher resolves, so going through
  *    it would be a dependency cycle.
@@ -147,9 +152,25 @@ class Nip65RelayListFetcher @Inject constructor(
             when (arr[0].jsonPrimitive.content) {
                 "EVENT" -> {
                     if (arr.size < 3) return false
-                    val eventObj = arr[2].jsonObject
-                    val parsed = parseKind10002(eventObj)
-                    if (parsed != null && parsed.pubkey == expectedPubkey) onEvent(parsed)
+                    val eventElement = arr[2]
+                    // Schnorr-verify before trusting any field. Re-using
+                    // Quartz's canonical id derivation means a relay that
+                    // reshuffles JSON whitespace won't break a real sig —
+                    // only an actually forged event fails here.
+                    val verified = try {
+                        val quartzEvent = Event.fromJson(eventElement.toString())
+                        quartzEvent.pubKey == expectedPubkey &&
+                            quartzEvent.kind == 10002 &&
+                            quartzEvent.verifySignature()
+                    } catch (_: Exception) {
+                        false
+                    }
+                    if (!verified) {
+                        Log.w(TAG, "event=sig_reject author=${expectedPubkey.take(8)}")
+                        return false
+                    }
+                    val parsed = parseKind10002(eventElement.jsonObject)
+                    if (parsed != null) onEvent(parsed)
                     false
                 }
                 "EOSE", "CLOSED" -> true
