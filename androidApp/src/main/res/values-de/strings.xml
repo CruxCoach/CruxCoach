@@ -1409,6 +1409,7 @@
     <string name="settings_backup_delete_remote_confirm">Löschen</string>
     <string name="settings_backup_delete_remote_in_progress">Lösche…</string>
     <string name="settings_backup_delete_remote_done">Löschung angefordert. Best-Effort — einige Relais könnten eine Kopie behalten.</string>
+    <string name="settings_backup_delete_remote_partial">Lokaler State gelöscht, aber die Remote-Löschung war nur teilweise erfolgreich (%1$s). Einige Server behalten eventuell noch eine Kopie.</string>
 
     <!-- FEAT-002: Nostr Backup Onboarding -->
     <string name="onboarding_nostr_key_title">Nostr-Identität</string>

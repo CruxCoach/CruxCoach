@@ -292,36 +292,59 @@ class BlossomUploader @Inject constructor(
     }
 
     /**
-     * DELETE /{sha256} on every server. Best-effort — failures are logged,
-     * never thrown. Used for blob cleanup after pointer publish (§7.3 step 8)
-     * and for active opt-out (§20.2).
+     * DELETE /{sha256} on every server. Best-effort on network errors —
+     * individual server failures are logged, never thrown. Returns a
+     * [DeleteOutcome] so callers can distinguish "auth failed entirely"
+     * (no server was even attempted) from "some servers accepted"
+     * (partial success) from "every server rejected" (full failure);
+     * used by the active opt-out flow to fail-closed instead of silently
+     * claiming success when no remote copy was actually deleted.
      */
-    suspend fun delete(sha256Hex: String, servers: List<String>): Unit = withContext(Dispatchers.IO) {
-        val authHeader = try {
-            blossomAuthHeader(action = "delete", sha256 = sha256Hex)
-        } catch (e: Exception) {
-            Log.w(TAG, "event=delete_auth_failed", e)
-            return@withContext
-        }
-        for (server in servers) {
-            try {
-                val request = Request.Builder()
-                    .url(server.trimEnd('/') + "/$sha256Hex")
-                    .delete()
-                    .header("Authorization", authHeader)
-                    .build()
-                okHttpClient.newCall(request).execute().use { resp ->
-                    if (!resp.isSuccessful) {
-                        Log.d(
-                            TAG,
-                            "event=delete_non2xx server=${server.shortHost()} code=${resp.code}",
-                        )
-                    }
-                }
-            } catch (_: Exception) {
-                // best-effort; ignore
+    suspend fun delete(sha256Hex: String, servers: List<String>): DeleteOutcome =
+        withContext(Dispatchers.IO) {
+            val authHeader = try {
+                blossomAuthHeader(action = "delete", sha256 = sha256Hex)
+            } catch (e: Exception) {
+                Log.w(TAG, "event=delete_auth_failed", e)
+                return@withContext DeleteOutcome(
+                    attempted = 0,
+                    succeeded = 0,
+                    authFailed = true,
+                )
             }
+            var ok = 0
+            for (server in servers) {
+                try {
+                    val request = Request.Builder()
+                        .url(server.trimEnd('/') + "/$sha256Hex")
+                        .delete()
+                        .header("Authorization", authHeader)
+                        .build()
+                    okHttpClient.newCall(request).execute().use { resp ->
+                        if (resp.isSuccessful) {
+                            ok += 1
+                        } else {
+                            Log.d(
+                                TAG,
+                                "event=delete_non2xx server=${server.shortHost()} code=${resp.code}",
+                            )
+                        }
+                    }
+                } catch (_: Exception) {
+                    // best-effort; ignore
+                }
+            }
+            DeleteOutcome(attempted = servers.size, succeeded = ok, authFailed = false)
         }
+
+    data class DeleteOutcome(
+        val attempted: Int,
+        val succeeded: Int,
+        val authFailed: Boolean,
+    ) {
+        fun fullySucceeded(): Boolean = !authFailed && attempted > 0 && succeeded == attempted
+        fun partiallySucceeded(): Boolean = !authFailed && succeeded in 1 until attempted
+        fun fullyFailed(): Boolean = authFailed || (attempted > 0 && succeeded == 0)
     }
 
     /**

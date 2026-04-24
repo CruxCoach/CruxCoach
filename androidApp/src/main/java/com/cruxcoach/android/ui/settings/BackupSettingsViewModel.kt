@@ -56,6 +56,8 @@ data class BackupSettingsState(
          */
         data class BackupFailed(val detail: String?) : Snackbar
         data object RemoteBackupsDeleted : Snackbar
+        /** Opt-out ran but at least one leg (relay publish / Blossom delete) refused. */
+        data class RemoteBackupsDeletedPartial(val detail: String) : Snackbar
     }
 }
 
@@ -221,9 +223,12 @@ class BackupSettingsViewModel @Inject constructor(
     fun confirmDeleteRemoteBackups() {
         viewModelScope.launch {
             _state.update { it.copy(showDeleteRemoteConfirm = false, isDeletingRemote = true) }
-            runCatching { backupRepository.deleteRemoteBackups() }
-                // deleteRemoteBackups is best-effort and does not throw on
-                // partial failures; we surface the same snackbar either way.
+            val outcome = runCatching { backupRepository.deleteRemoteBackups() }
+                .getOrElse {
+                    com.cruxcoach.android.nostr.backup.DeleteRemoteOutcome.Partial(
+                        "unexpected error: ${it.javaClass.simpleName}",
+                    )
+                }
             BackupSyncWorker.schedule(
                 appContext,
                 enabled = false,
@@ -234,7 +239,12 @@ class BackupSettingsViewModel @Inject constructor(
                     isDeletingRemote = false,
                     backupEnabled = false,
                     lastBackupIso = null,
-                    snackbar = BackupSettingsState.Snackbar.RemoteBackupsDeleted,
+                    snackbar = when (outcome) {
+                        com.cruxcoach.android.nostr.backup.DeleteRemoteOutcome.Success ->
+                            BackupSettingsState.Snackbar.RemoteBackupsDeleted
+                        is com.cruxcoach.android.nostr.backup.DeleteRemoteOutcome.Partial ->
+                            BackupSettingsState.Snackbar.RemoteBackupsDeletedPartial(outcome.details)
+                    },
                 )
             }
         }

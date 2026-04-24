@@ -372,6 +372,8 @@ fun SettingsScreen(
                     stringResource(R.string.settings_backup_failed_detail, snackbar.detail)
             BackupSettingsState.Snackbar.RemoteBackupsDeleted ->
                 stringResource(R.string.settings_backup_delete_remote_done)
+            is BackupSettingsState.Snackbar.RemoteBackupsDeletedPartial ->
+                stringResource(R.string.settings_backup_delete_remote_partial, snackbar.detail)
         }
         AlertDialog(
             onDismissRequest = { backupViewModel.consumeSnackbar() },

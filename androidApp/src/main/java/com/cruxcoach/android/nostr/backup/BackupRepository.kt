@@ -353,25 +353,48 @@ class BackupRepository @Inject constructor(
     /**
      * Active opt-out: publishes Kind 5 deletion events for the pointer +
      * key, deletes the current blob from every Blossom server, and clears
-     * local identity-scoped state (§20.2). Best-effort — relays / servers
-     * that ignore the deletion keep a copy.
+     * local identity-scoped state (§20.2). Still best-effort on the
+     * relay / Blossom side — servers that ignore the delete keep their
+     * copy — but the caller now gets a structured [DeleteRemoteOutcome]
+     * instead of an unconditional success signal, so the UI can say
+     * "deletion published, but no Blossom server acknowledged" rather
+     * than "remote backups deleted" when nothing was actually removed.
      */
-    suspend fun deleteRemoteBackups() {
+    suspend fun deleteRemoteBackups(): DeleteRemoteOutcome {
+        val problems = mutableListOf<String>()
         val pubkey = nostrSigner.getPublicKeyHex()
         val backupDTag = runCatching { dTagDeriver.derive(BackupPreferences.IDENTIFIER_BACKUP) }.getOrNull()
         val keyDTag = runCatching { dTagDeriver.derive(BackupPreferences.IDENTIFIER_KEY) }.getOrNull()
+        if (backupDTag == null || keyDTag == null) {
+            problems += "dtag derivation"
+        }
 
         if (backupDTag != null && keyDTag != null) {
-            runCatching { publishDeletionForDTags(pubkey, listOf(backupDTag, keyDTag)) }
+            val r = runCatching { publishDeletionForDTags(pubkey, listOf(backupDTag, keyDTag)) }
+            if (r.isFailure) problems += "relay deletion publish"
         }
 
         preferences.getPreviousBlobSha256()?.let { sha ->
-            val servers = runCatching { discoverBlossomServers(pubkey) }.getOrDefault(BlossomUploader.DEFAULT_SERVERS)
-            uploader.delete(sha, servers)
+            val servers = runCatching { discoverBlossomServers(pubkey) }
+                .getOrDefault(BlossomUploader.DEFAULT_SERVERS)
+            val outcome = uploader.delete(sha, servers)
+            when {
+                outcome.authFailed -> problems += "blossom auth"
+                outcome.fullyFailed() -> problems += "every blossom server refused"
+                outcome.partiallySucceeded() ->
+                    problems += "some blossom servers refused (${outcome.succeeded}/${outcome.attempted})"
+            }
         }
 
+        // Clear local state regardless: the user explicitly asked for
+        // opt-out, so we forget everything we can locally even if the
+        // remote delete was only partial. The UI will still surface the
+        // partial-success state so the user knows to re-try later.
         preferences.clearAllIdentityState()
         preferences.setBackupEnabled(false)
+
+        return if (problems.isEmpty()) DeleteRemoteOutcome.Success
+        else DeleteRemoteOutcome.Partial(problems.joinToString(", "))
     }
 
     // ------------------------------------------------------------ pointer ops
@@ -689,6 +712,16 @@ data class BackupInfo(
     val pointerEvent: MinimalEvent,
     val keyEvent: MinimalEvent,
 )
+
+/**
+ * Outcome of [BackupRepository.deleteRemoteBackups]. Lets the UI
+ * distinguish "remote copy is fully gone" from "we did our best but
+ * some servers held on" instead of always claiming success.
+ */
+sealed class DeleteRemoteOutcome {
+    data object Success : DeleteRemoteOutcome()
+    data class Partial(val details: String) : DeleteRemoteOutcome()
+}
 
 /**
  * Outcome of [BackupRepository.checkForBackup]. Gives callers enough
