@@ -1,5 +1,7 @@
 package com.cruxcoach.android.nostr.relaydiscovery
 
+import com.cruxcoach.android.nostr.UrlValidation
+
 /**
  * A parsed NIP-65 relay-list event (Kind 10002).
  *
@@ -62,14 +64,19 @@ internal object Nip65TagParser {
         return seen.values.toList()
     }
 
-    /** Accept only wss://. Strip trailing slash so equality works across variants. */
+    /**
+     * Normalize the raw tag value to a canonical `wss://…` form, or
+     * return `null` if it isn't a plausible relay URL. Scheme, length
+     * and whitespace rules are delegated to [UrlValidation] so the
+     * same bar applies to Kind 10002 (here), Kind 10063 Blossom
+     * servers, and Kind 30078 backup-pointer server lists.
+     */
     private fun normalizeWss(url: String): String? {
         if (!url.startsWith("wss://", ignoreCase = true)) return null
-        val withoutScheme = url.substring("wss://".length)
-        if (withoutScheme.isBlank()) return null
-        val trimmed = url.trimEnd('/')
-        // Keep the scheme lowercase; preserve host/path case since some relays
-        // are path-sensitive (rare but possible).
-        return "wss://" + trimmed.substring("wss://".length)
+        // Lowercase the scheme but preserve host + path casing (some
+        // relays route on path case).
+        val canonical = "wss://" + url.substring("wss://".length)
+        val trimmed = canonical.trimEnd('/')
+        return if (UrlValidation.isValidRelay(trimmed)) trimmed else null
     }
 }

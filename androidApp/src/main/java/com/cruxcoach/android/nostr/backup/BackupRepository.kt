@@ -285,7 +285,14 @@ class BackupRepository @Inject constructor(
         // check runs. The uploader streams the body while hashing it and
         // refuses anything over pointer.size + slack; the decompressor
         // refuses anything over MAX_PLAINTEXT_BYTES on its output.
-        val servers = pointer.servers
+        // Pre-filter pointer.servers through the shared URL gate — if a
+        // historical backup was published while the user's nsec was
+        // briefly compromised, the pointer could still list attacker
+        // URLs; we never dial them regardless of their Schnorr pedigree.
+        val servers = pointer.servers.filter { com.cruxcoach.android.nostr.UrlValidation.isValidBlossom(it) }
+        if (servers.isEmpty()) {
+            throw BackupException("Backup pointer lists no usable https Blossom servers")
+        }
         val ciphertext = uploader.download(
             sha256Hex = pointer.sha256,
             servers = servers,
@@ -682,8 +689,20 @@ data class MinimalEvent(
     fun tagValue(name: String): String? =
         tags.firstOrNull { it.size >= 2 && it[0] == name }?.get(1)
 
+    /**
+     * Extract `["server", url]` tag values from a Kind 10063 Blossom
+     * server-list event, dropping any entry that doesn't pass the
+     * shared scheme + length + whitespace gate. The filter is the
+     * same one that gates Kind 10002 relay URLs, so every URL the
+     * app dials — regardless of provenance — shares a single allow
+     * rule.
+     */
     fun extractServerTags(): List<String> =
-        tags.filter { it.size >= 2 && it[0] == "server" }.map { it[1].trimEnd('/') }
+        tags.asSequence()
+            .filter { it.size >= 2 && it[0] == "server" }
+            .map { it[1].trimEnd('/') }
+            .filter { com.cruxcoach.android.nostr.UrlValidation.isValidBlossom(it) }
+            .toList()
 
     companion object {
         /**
