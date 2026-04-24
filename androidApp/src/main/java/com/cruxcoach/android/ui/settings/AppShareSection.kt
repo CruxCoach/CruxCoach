@@ -11,6 +11,7 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -60,6 +61,53 @@ private fun CopyIconButton(onClick: () -> Unit, contentDescription: String) {
             contentDescription = contentDescription,
             tint = OrangeAccent,
             modifier = Modifier.size(18.dp),
+        )
+    }
+}
+
+/**
+ * Full-width "URL + copy icon" row. Long URLs used to push the trailing
+ * [CopyIconButton] out of the viewport in a naked [Row] (no weight on
+ * the Text, no fillMaxWidth on the Row). Wrapping both into this helper
+ * keeps the icon visible, makes the whole row clickable so the user
+ * doesn't have to target the 36 dp icon, and shares a single path to
+ * the clipboard + confirmation toast.
+ */
+@Composable
+private fun CopyableUrlRow(
+    url: String,
+    clipLabel: String,
+    toastMessage: String,
+    textStyle: androidx.compose.ui.text.TextStyle = MaterialTheme.typography.bodySmall,
+    textColor: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurfaceVariant,
+    fontWeight: FontWeight = FontWeight.Normal,
+) {
+    val context = LocalContext.current
+    val onCopy = {
+        copyToClipboard(
+            context = context,
+            label = clipLabel,
+            text = url,
+            toastMessage = toastMessage,
+        )
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onCopy),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            url,
+            modifier = Modifier.weight(1f),
+            style = textStyle,
+            color = textColor,
+            fontWeight = fontWeight,
+            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+        )
+        CopyIconButton(
+            onClick = onCopy,
+            contentDescription = stringResource(R.string.action_copy),
         )
     }
 }
@@ -377,25 +425,14 @@ private fun AppShareActiveCard(
                 )
             }
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    downloadUrl,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = OrangeAccent,
-                )
-                CopyIconButton(
-                    onClick = {
-                        copyToClipboard(
-                            context = context,
-                            label = "CruxCoach download URL",
-                            text = downloadUrl,
-                            toastMessage = context.getString(R.string.settings_share_copied_url),
-                        )
-                    },
-                    contentDescription = stringResource(R.string.action_copy),
-                )
-            }
+            CopyableUrlRow(
+                url = downloadUrl,
+                clipLabel = "CruxCoach download URL",
+                toastMessage = stringResource(R.string.settings_share_copied_url),
+                textStyle = MaterialTheme.typography.titleMedium,
+                textColor = OrangeAccent,
+                fontWeight = FontWeight.Bold,
+            )
 
             Spacer(modifier = Modifier.height(4.dp))
             OutlinedButton(
@@ -413,7 +450,6 @@ private fun ZapstoreShareCard(
     qrBitmap: Bitmap,
     zapstoreUrl: String,
 ) {
-    val context = LocalContext.current
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
@@ -434,25 +470,11 @@ private fun ZapstoreShareCard(
                 contentDescription = stringResource(R.string.cd_zapstore_share_qr),
                 modifier = Modifier.size(220.dp),
             )
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    zapstoreUrl,
-                    style = MaterialTheme.typography.bodySmall,
-                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                CopyIconButton(
-                    onClick = {
-                        copyToClipboard(
-                            context = context,
-                            label = "CruxCoach Zapstore URL",
-                            text = zapstoreUrl,
-                            toastMessage = context.getString(R.string.settings_share_copied_url),
-                        )
-                    },
-                    contentDescription = stringResource(R.string.action_copy),
-                )
-            }
+            CopyableUrlRow(
+                url = zapstoreUrl,
+                clipLabel = "CruxCoach Zapstore URL",
+                toastMessage = stringResource(R.string.settings_share_copied_url),
+            )
         }
     }
 }
@@ -462,7 +484,6 @@ private fun ReleaseDownloadCard(
     qrBitmap: Bitmap,
     downloadUrl: String,
 ) {
-    val context = LocalContext.current
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
@@ -483,25 +504,12 @@ private fun ReleaseDownloadCard(
                 contentDescription = stringResource(R.string.cd_release_download_qr),
                 modifier = Modifier.size(220.dp),
             )
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    downloadUrl,
-                    style = MaterialTheme.typography.bodySmall,
-                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                CopyIconButton(
-                    onClick = {
-                        copyToClipboard(
-                            context = context,
-                            label = "CruxCoach release URL",
-                            text = downloadUrl,
-                            toastMessage = context.getString(R.string.settings_share_copied_url),
-                        )
-                    },
-                    contentDescription = stringResource(R.string.action_copy),
-                )
-            }
+            CopyableUrlRow(
+                url = downloadUrl,
+                clipLabel = "CruxCoach release URL",
+                toastMessage = stringResource(R.string.settings_share_copied_url),
+            )
         }
     }
 }
+
