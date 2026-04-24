@@ -478,7 +478,18 @@ fun BoardBrowserScreen(
                 // Stable lambda references — avoid new closures per item per recomposition.
                 // Using viewModel.state.value at click time ensures fresh data.
                 val onSetterClick = remember<(String) -> Unit>(viewModel) {
-                    { setter -> viewModel.updateSearchQuery(setter) }
+                    { setter ->
+                        // Surfacing the search bar together with the query
+                        // is the point of the click: the setter name now
+                        // lives in the filter, so hiding the bar hides the
+                        // active filter too. Opening the bar whenever we
+                        // set a query makes the active scope self-evident
+                        // and gives the user the Clear-icon affordance
+                        // right next to the query instead of one lupe
+                        // click away.
+                        viewModel.updateSearchQuery(setter)
+                        searchVisible = true
+                    }
                 }
                 val onClimbClick = remember<(String) -> Unit>(viewModel, onNavigateToClimb) {
                     { uuid ->
