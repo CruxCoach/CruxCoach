@@ -121,11 +121,11 @@ class BackupRepository @Inject constructor(
             throw BackupException(detail)
         }
         if (ok < total) {
-            Log.w(TAG, "event=backup_upload_partial serversOk=$ok serversTotal=$total sizeKb=${ciphertext.size / 1024}")
+            Log.w(TAG, "event=backup_upload_partial serversOk=$ok serversTotal=$total bytes=${ciphertext.size}")
         } else {
             Log.d(
                 TAG,
-                "event=backup_upload_ok serversOk=$ok serversTotal=$total sizeKb=${ciphertext.size / 1024} durationMs=${System.currentTimeMillis() - started}",
+                "event=backup_upload_ok serversOk=$ok serversTotal=$total bytes=${ciphertext.size} durationMs=${System.currentTimeMillis() - started}",
             )
         }
 
@@ -153,6 +153,17 @@ class BackupRepository @Inject constructor(
         // 8 — cleanup previous blob (best-effort)
         previousSha?.let { stale -> uploader.delete(stale, servers) }
 
+        // 8b — keep the Kind-30078 key event from aging off the relays.
+        // The pointer is republished on every backup (so it stays fresh
+        // by construction) but the key event is only written once on
+        // first-time setup or on local-cache regeneration. Replaceable-
+        // parameterized events can still be evicted by relays over time,
+        // which would make restore unrecoverable even with the nsec if
+        // the local cache is also gone. Republish on a slow cadence so
+        // the cost stays negligible (one extra Amber popup every ~30 d
+        // without always-approve; nothing for local signers).
+        refreshKeyEventIfStale()
+
         // 9 — record success
         val now = System.currentTimeMillis() / 1000
         preferences.setLastBackupSync(now)
@@ -160,6 +171,23 @@ class BackupRepository @Inject constructor(
             TAG,
             "event=backup_done totalDurationMs=${System.currentTimeMillis() - started}",
         )
+    }
+
+    private suspend fun refreshKeyEventIfStale() {
+        val lastPublish = preferences.getLastKeyEventPublish() ?: 0L
+        val nowEpoch = System.currentTimeMillis() / 1000
+        if (nowEpoch - lastPublish < KEY_EVENT_REFRESH_INTERVAL_SEC) return
+        val wrapped = preferences.getWrappedDataKey() ?: return
+        runCatching { publishKeyEvent(wrapped) }
+            .onSuccess {
+                preferences.setLastKeyEventPublish(nowEpoch)
+                Log.d(TAG, "event=key_event_refreshed")
+            }
+            .onFailure { e ->
+                // Not fatal — blob + pointer are already durable; we'll
+                // try again on the next backup.
+                Log.w(TAG, "event=key_event_refresh_failed reason=${e.message}", e)
+            }
     }
 
     /**
@@ -200,7 +228,7 @@ class BackupRepository @Inject constructor(
 
         Log.d(
             TAG,
-            "event=restore_check_hit sizeKb=${pointer.size / 1024} ageHours=${(System.currentTimeMillis() / 1000 - pointer.updatedAt) / 3600}",
+            "event=restore_check_hit bytes=${pointer.size} ageHours=${(System.currentTimeMillis() / 1000 - pointer.updatedAt) / 3600}",
         )
         return CheckOutcome.Found(
             BackupInfo(pointer = pointer, pointerEvent = pointerEvent, keyEvent = keyEvent),
@@ -364,6 +392,7 @@ class BackupRepository @Inject constructor(
         val wrapped = nip44EncryptToSelf(freshHex)
         preferences.setWrappedDataKey(wrapped)
         publishKeyEvent(wrapped)
+        preferences.setLastKeyEventPublish(System.currentTimeMillis() / 1000)
         return fresh
     }
 
@@ -553,6 +582,10 @@ class BackupRepository @Inject constructor(
         private const val KIND_REPLACEABLE_PARAMETERIZED = 30078
         private const val KIND_BLOSSOM_SERVER_LIST = 10063
         private const val KIND_DELETION = 5
+        // Refresh the Kind-30078 key event roughly every 30 days so
+        // relays that evict older replaceable-parameterized events don't
+        // leave the only restore anchor stranded.
+        private const val KEY_EVENT_REFRESH_INTERVAL_SEC = 30L * 24L * 60L * 60L
         private val JSON = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     }
 }

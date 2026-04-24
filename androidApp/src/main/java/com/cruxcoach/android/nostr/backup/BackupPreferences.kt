@@ -160,6 +160,25 @@ class BackupPreferences @Inject constructor(
         }
     }
 
+    // ---- Last Kind-30078 key-event publish (epoch seconds) ----
+    //
+    // The wrapped-dataKey key event is the single-point-of-failure for
+    // restore: if every relay evicts it AND local state is lost (factory
+    // reset, uninstall without backup of DataStore), a user can't
+    // recover their Blossom blobs even with their nsec. The pointer
+    // event gets republished on every backup, so it stays "fresh" on
+    // relays — we track the last key-event publish timestamp separately
+    // so we can refresh the key event on a much longer cadence (see
+    // BackupRepository.performFullBackup) without paying an Amber popup
+    // per backup.
+
+    suspend fun getLastKeyEventPublish(): Long? =
+        dataStore.data.first()[Keys.LAST_KEY_EVENT_PUBLISH]
+
+    suspend fun setLastKeyEventPublish(epochSeconds: Long) {
+        dataStore.edit { it[Keys.LAST_KEY_EVENT_PUBLISH] = epochSeconds }
+    }
+
     // ---- Clear identity-scoped state on logout / key switch ----
 
     suspend fun clearAllIdentityState() {
@@ -169,6 +188,7 @@ class BackupPreferences @Inject constructor(
             prefs.remove(dTagKey(IDENTIFIER_KEY))
             prefs.remove(Keys.PREVIOUS_BLOB_SHA256)
             prefs.remove(Keys.LAST_BACKUP_SYNC)
+            prefs.remove(Keys.LAST_KEY_EVENT_PUBLISH)
             // Also drop the per-server content-type hints: a different
             // identity may hit different servers, and stale hints from a
             // buggy earlier build (see ContentTypeProbe doc) are worth
@@ -193,6 +213,7 @@ class BackupPreferences @Inject constructor(
         val PREVIOUS_BLOB_SHA256 = stringPreferencesKey("backup_previous_blob_sha256")
         val DEVICE_ID = stringPreferencesKey("backup_device_id")
         val LAST_BACKUP_SYNC = androidx.datastore.preferences.core.longPreferencesKey("backup_last_sync")
+        val LAST_KEY_EVENT_PUBLISH = androidx.datastore.preferences.core.longPreferencesKey("backup_last_key_publish")
     }
 
     companion object {
