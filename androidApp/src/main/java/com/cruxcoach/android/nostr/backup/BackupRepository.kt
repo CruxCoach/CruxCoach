@@ -63,12 +63,12 @@ class BackupRepository @Inject constructor(
      * cannot guarantee the blob-before-pointer invariant; the worker
      * translates this into a retry.
      */
-    suspend fun performFullBackup() {
+    suspend fun performFullBackup(trigger: String = "manual") {
         val pubkey = nostrSigner.getPublicKeyHex()
         val deviceId = preferences.getOrCreateDeviceId()
         Log.d(
             TAG,
-            "event=backup_start trigger=periodic signerMode=${nostrSigner.getStoredSignerMode().name}",
+            "event=backup_start trigger=$trigger signerMode=${nostrSigner.getStoredSignerMode().name}",
         )
 
         // 1-3 — serialize + compress + encrypt
@@ -99,7 +99,26 @@ class BackupRepository @Inject constructor(
         val total = servers.size
         if (ok == 0) {
             Log.w(TAG, "event=backup_upload_failed serversTotal=$total")
-            throw BackupException("Blob upload failed on all $total servers")
+            // Surface a specific failure reason when every server died for
+            // the same structural reason — most commonly an Amber signer
+            // that can't launch its approval activity from a background
+            // worker. Without this, the user sees "Blob upload failed on
+            // all 2 servers" and has no way to tell it's an Amber
+            // permission issue, not a Blossom outage.
+            val authErrors = uploadResults.mapNotNull { r ->
+                r.error?.takeIf { it.startsWith("auth:") }
+            }
+            val detail = when {
+                authErrors.size == total && authErrors.any { it.contains("No activity to launch") } ->
+                    // Backup always runs via WorkManager (no foreground
+                    // Activity), so Amber's Intent-based approval dialog
+                    // has nothing to launch onto. The only self-service
+                    // fix is the user granting auto-approve in Amber.
+                    "Amber needs to be set to \"always approve\" for CruxCoach's signing operations. Open Amber → CruxCoach and enable automatic approval, otherwise background backup can't sign."
+                authErrors.size == total -> authErrors.first()
+                else -> "Blob upload failed on all $total servers"
+            }
+            throw BackupException(detail)
         }
         if (ok < total) {
             Log.w(TAG, "event=backup_upload_partial serversOk=$ok serversTotal=$total sizeKb=${ciphertext.size / 1024}")

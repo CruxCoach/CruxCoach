@@ -47,7 +47,7 @@ class BackupSyncWorker @AssistedInject constructor(
             return Result.success()   // nothing to do; schedule will cancel the periodic
         }
         return try {
-            backupRepository.performFullBackup()
+            backupRepository.performFullBackup(trigger = if (isManual) "manual" else "periodic")
             Result.success()
         } catch (e: BackupException) {
             // Manual trigger (user tapped "Jetzt sichern") returns FAILURE
