@@ -152,7 +152,10 @@ class BackupRepository @Inject constructor(
         preferences.setPreviousBlobSha256(sha256)
 
         // 8 — cleanup previous blob (best-effort)
-        previousSha?.let { stale -> uploader.delete(stale, servers) }
+        previousSha?.let { stale ->
+            uploader.delete(stale, servers)
+            Log.d(TAG, "event=backup_cleanup previousShaPresent=true serversCleaned=${servers.size}")
+        } ?: Log.d(TAG, "event=backup_cleanup previousShaPresent=false serversCleaned=0")
 
         // 8b — keep the Kind-30078 key event from aging off the relays.
         // The pointer is republished on every backup (so it stays fresh
@@ -252,8 +255,19 @@ class BackupRepository @Inject constructor(
         // from our own local state instead of relying on what relays
         // show us. Skipped when lastBackupSync is absent (fresh install,
         // post-identity-switch, or genuine first restore).
+        //
+        // Tolerance window: LAST_BACKUP_SYNC is written AFTER the pointer
+        // publish + blob verify + cleanup, so it's typically a few
+        // seconds ahead of pointerEvent.createdAt for the very pointer
+        // we're checking — the "delete logbook then restore my fresh
+        // backup" flow would otherwise trip on its own freshly-published
+        // event. A 5-minute grace absorbs that drift + any reasonable
+        // clock skew while still catching rollback attacks (which
+        // serve events hours-to-weeks in the past).
         val lastLocalBackup = preferences.lastBackupSync.first()
-        if (lastLocalBackup != null && pointerEvent.createdAt < lastLocalBackup) {
+        if (lastLocalBackup != null &&
+            pointerEvent.createdAt < lastLocalBackup - STALE_POINTER_TOLERANCE_SEC
+        ) {
             val ageBehind = lastLocalBackup - pointerEvent.createdAt
             Log.w(
                 TAG,
@@ -313,6 +327,10 @@ class BackupRepository @Inject constructor(
             sha256Hex = pointer.sha256,
             servers = servers,
             maxBytes = pointer.size + DOWNLOAD_SLACK_BYTES,
+        )
+        Log.d(
+            TAG,
+            "event=restore_download_ok sha256Prefix=${pointer.sha256.take(8)} bytes=${ciphertext.size} durationMs=${System.currentTimeMillis() - started}",
         )
         val compressed = BackupCrypto.decrypt(ciphertext, dataKey)
         val json = BackupCompression
@@ -739,6 +757,13 @@ class BackupRepository @Inject constructor(
         // comfortably absorbs legitimate duplicates (two replaceable d-tag
         // events per relay × a few relays) while refusing the flood.
         private const val MAX_AMBER_DECRYPT_ATTEMPTS = 8
+        // M1 tolerance window: accept pointer events up to this far
+        // behind LAST_BACKUP_SYNC. LAST_BACKUP_SYNC is recorded after
+        // the pointer publish + blob verify + cleanup, so the pointer
+        // we just published is routinely a few seconds older on paper.
+        // 5 minutes safely absorbs that drift + any clock skew; a real
+        // rollback attack serves events hours or days stale.
+        private const val STALE_POINTER_TOLERANCE_SEC = 5L * 60L
         // Tiny slack over the pointer-declared blob size — covers
         // framing rounding between ciphertext bytes and HTTP content-
         // length without letting a hostile server pad gigabytes past
