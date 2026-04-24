@@ -17,6 +17,7 @@ import com.cruxcoach.android.nostr.NostrConfig
 import com.cruxcoach.android.nostr.NostrKeyStore
 import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.android.nostr.SignerMode
+import com.cruxcoach.android.nostr.backup.BackupPreferences
 import com.vitorpamplona.quartz.nip01Core.core.hexToByteArray
 import com.vitorpamplona.quartz.nip01Core.core.toHexKey
 import com.vitorpamplona.quartz.nip19Bech32.Nip19Parser
@@ -64,6 +65,7 @@ class KeyManagementViewModel @Inject constructor(
     private val nostrSigner: NostrSigner,
     private val userPreferences: UserPreferences,
     private val messageRepository: NostrMessageRepository,
+    private val backupPreferences: BackupPreferences,
     @param:ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -213,6 +215,10 @@ class KeyManagementViewModel @Inject constructor(
             withContext(Dispatchers.IO) {
                 messageRepository.deleteForeignIdentityRows(pubkeyHex, NostrConfig.DEV_PUBKEY)
                 userPreferences.setNostrSyncCursor(0L)
+                // FEAT-002 state (wrapped dataKey, d-tag cache, previous
+                // blob sha, timestamps) is identity-scoped — reset so the
+                // new Amber pubkey doesn't publish under the old d-tag.
+                backupPreferences.clearAllIdentityState()
             }
 
             val displayNpub = try {
@@ -249,6 +255,7 @@ class KeyManagementViewModel @Inject constructor(
                 val newPubkey = nostrSigner.getPublicKeyHex()
                 messageRepository.deleteForeignIdentityRows(newPubkey, NostrConfig.DEV_PUBKEY)
                 userPreferences.setNostrSyncCursor(0L)
+                backupPreferences.clearAllIdentityState()
             }
 
             _state.update { it.copy(requireRestart = true) }

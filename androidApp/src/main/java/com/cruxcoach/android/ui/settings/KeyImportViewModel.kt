@@ -11,6 +11,7 @@ import com.cruxcoach.android.nostr.AmberIntegration
 import com.cruxcoach.android.nostr.NostrConfig
 import com.cruxcoach.android.nostr.NostrKeyStore
 import com.cruxcoach.android.nostr.NostrSigner
+import com.cruxcoach.android.nostr.backup.BackupPreferences
 import com.vitorpamplona.quartz.nip01Core.core.hexToByteArray
 import com.vitorpamplona.quartz.nip01Core.core.toHexKey
 import com.vitorpamplona.quartz.nip01Core.crypto.KeyPair
@@ -51,6 +52,7 @@ class KeyImportViewModel @Inject constructor(
     private val nostrSigner: NostrSigner,
     private val userPreferences: UserPreferences,
     private val messageRepository: NostrMessageRepository,
+    private val backupPreferences: BackupPreferences,
     @param:ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -126,6 +128,13 @@ class KeyImportViewModel @Inject constructor(
                     val newPubkey = nostrSigner.getPublicKeyHex()
                     messageRepository.deleteForeignIdentityRows(newPubkey, NostrConfig.DEV_PUBKEY)
                     userPreferences.setNostrSyncCursor(0L)
+                    // Drop FEAT-002 backup state that belongs to the previous
+                    // identity: wrapped dataKey, d-tag HMAC cache, previous
+                    // blob SHA, and timestamps. Without this, the new
+                    // identity would publish pointers under the old d-tag
+                    // (breaking enumeration resistance) and the self-heal
+                    // chain would mask misleading "last backup" timestamps.
+                    backupPreferences.clearAllIdentityState()
 
                     pendingPassword = null
                     _state.update { it.copy(showConfirmDialog = false, requireRestart = true) }
@@ -169,6 +178,7 @@ class KeyImportViewModel @Inject constructor(
                     nostrSigner.switchToAmber(pubkeyHex, pkg, context.contentResolver)
                     messageRepository.deleteForeignIdentityRows(pubkeyHex, NostrConfig.DEV_PUBKEY)
                     userPreferences.setNostrSyncCursor(0L)
+                    backupPreferences.clearAllIdentityState()
                     // Amber is inherently "backed up" (key lives in Amber).
                     userPreferences.setKeyBackedUp(true)
                     _state.update { it.copy(requireRestart = true) }
