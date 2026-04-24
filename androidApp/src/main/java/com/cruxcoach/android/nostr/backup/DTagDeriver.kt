@@ -24,8 +24,17 @@ import javax.inject.Singleton
  *   query-all needed.
  *
  * - **Amber.** Amber never exposes nsec, so HMAC is unavailable. Instead,
- *   we ask Amber to sign a fixed template event (`kind=0, created_at=0,
- *   content=identifier, tags=[]`) and take `SHA-256(sig)` as the d-tag.
+ *   we ask Amber to sign a fixed template event under kind
+ *   [AMBER_AUX_SIGN_KIND] — an app-specific ephemeral kind the spec
+ *   never uses, with an explicit `["purpose", "cruxcoach-dtag-v1"]`
+ *   tag for domain separation + self-documentation in Amber's approval
+ *   dialog. We take `SHA-256(sig)` as the d-tag.
+ *
+ *   Previously we reused kind 0 (profile metadata), which worked
+ *   mechanically but surfaced as "sign profile metadata event" in
+ *   Amber's approval UI — misleading and semantically wrong because
+ *   the event is neither a real profile nor published anywhere.
+ *
  *   Amber implementations vary on `aux_rand` handling, so determinism
  *   across fresh-install restores is NOT assumed — the Amber restore path
  *   (FEAT-002 §3.1) queries all Kind 30078 by pubkey and matches by
@@ -34,6 +43,13 @@ import javax.inject.Singleton
  *
  * All results are cached in [BackupPreferences] so neither an HMAC call nor
  * an Amber round-trip happens more than once per identifier + install.
+ *
+ * **Migration note**: because [derive] short-circuits on cache hit
+ * (`preferences.getDTag(…)?.let { return it }`), the Amber kind switch
+ * is forward-only. Installs that already cached a kind-0-derived d-tag
+ * keep using it — no orphaned events. Fresh installs and any path that
+ * clears identity state (key import, signer switch, remote-backup
+ * deletion → see `A2` / `clearAllIdentityState`) get the new kind.
  */
 @Singleton
 class DTagDeriver @Inject constructor(
@@ -87,16 +103,22 @@ class DTagDeriver @Inject constructor(
     }
 
     /**
-     * Ask Amber (via the shared [NostrSigner]) to sign a fixed template and
-     * take SHA-256 of the signature. One sign call per identifier + install.
+     * Ask Amber (via the shared [NostrSigner]) to sign a fixed template
+     * and take SHA-256 of the signature. One sign call per identifier +
+     * install. Amber's approval dialog surfaces [AMBER_AUX_SIGN_KIND]
+     * + the `purpose` tag so the user sees "CruxCoach auxiliary sign"
+     * rather than "sign profile metadata event" (the pre-B5a misuse).
      */
     private suspend fun deriveAmber(identifier: String): String {
         val event: Event = try {
             nostrSigner.signer.sign<Event>(
                 createdAt = 0L,
-                kind = 0,
-                tags = emptyArray(),
-                content = identifier,
+                kind = AMBER_AUX_SIGN_KIND,
+                tags = arrayOf(
+                    arrayOf("purpose", AMBER_AUX_PURPOSE),
+                    arrayOf("identifier", identifier),
+                ),
+                content = "",
             )
         } catch (e: Exception) {
             Log.w(TAG, "Amber sign failed during d-tag derivation", e)
@@ -117,5 +139,15 @@ class DTagDeriver @Inject constructor(
         private const val TAG = "DTagDeriver"
         private const val HKDF_SALT = "cruxcoach-dtag-v1"
         private const val HKDF_INFO = "hmac-key"
+        /**
+         * App-specific ephemeral kind reserved for d-tag derivation
+         * sign calls. Ephemeral range (20000-29999) is correct
+         * because the signed event is never published — only its
+         * signature bytes are consumed locally to derive the d-tag.
+         * 27777 is outside every NIP-claimed slot the spec defines
+         * today.
+         */
+        const val AMBER_AUX_SIGN_KIND = 27777
+        private const val AMBER_AUX_PURPOSE = "cruxcoach-dtag-v1"
     }
 }

@@ -31,6 +31,9 @@ object AmberIntegration {
         //  - 30078            FEAT-002 backup pointer + wrapped key
         //  - 24242            Blossom BUD-01 upload / delete auth
         //  - 5                deletion events (active opt-out §20.2)
+        //  - 27777            DTagDeriver.AMBER_AUX_SIGN_KIND — auxiliary
+        //                     signing for d-tag derivation, replaces the
+        //                     pre-B5a misuse of kind 0
         //  - nip44_encrypt/decrypt — pointer + key-event encryption
         val permissions = """[
             {"type":"sign_event","kind":14},
@@ -39,6 +42,7 @@ object AmberIntegration {
             {"type":"sign_event","kind":30078},
             {"type":"sign_event","kind":24242},
             {"type":"sign_event","kind":5},
+            {"type":"sign_event","kind":27777},
             {"type":"nip44_encrypt"},
             {"type":"nip44_decrypt"}
         ]"""
