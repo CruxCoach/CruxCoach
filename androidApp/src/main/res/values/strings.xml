@@ -1428,7 +1428,7 @@
     <string name="onboarding_restart_confirm_body">CruxCoach will briefly restart after the import to switch the local encryption to your key. Onboarding continues automatically with the restore.</string>
     <string name="onboarding_kilter_step_title">Kilter logbook</string>
     <string name="onboarding_kilter_step_subtitle">Optional: pull your sends and attempts from the official Kilter Board app. You can do this later in settings.</string>
-    <string name="onboarding_kilter_skip_hint">Optional step. Skip to finish onboarding — Kilter import is always available in settings.</string>
+    <string name="onboarding_kilter_skip_hint">Optional step. Tap "Done" without connecting — the Kilter import is always available later in settings.</string>
 
     <!-- Clipboard -->
     <string name="action_copy">Copy</string>

@@ -127,13 +127,10 @@ fun OnboardingScreen(
                     }
                 }
                 OnboardingStep.KILTER -> {
-                    TextButton(
-                        onClick = { viewModel.completeOnboarding(onComplete) },
-                        enabled = !state.isSaving,
-                        modifier = Modifier.testTag("onboarding_skip_button"),
-                    ) {
-                        Text(stringResource(R.string.action_skip))
-                    }
+                    // No separate "Überspringen" here — tapping "Fertig"
+                    // without a Kilter connect has the same effect, so the
+                    // extra button was just noise. The Info-Card below
+                    // explains that skipping is the same as pressing Fertig.
                     Button(
                         onClick = { viewModel.completeOnboarding(onComplete) },
                         enabled = !state.isSaving,
