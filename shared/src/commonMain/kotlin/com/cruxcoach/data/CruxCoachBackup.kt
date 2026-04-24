@@ -38,8 +38,17 @@ object CruxCoachBackup {
     private const val MAX_EXTERNAL_ID_LEN = 100
     private const val MAX_DATE_LEN = 40
 
+    // 8-4-4-4-12 canonical — app-generated IDs (UUID.randomUUID().toString()).
     private val UUID_REGEX =
         Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+    // Raw 32-hex — what Aurora/Kilter stores for climb_uuid (and log_uuid):
+    // 32 lowercase hex chars, no hyphens. A backup that carries any
+    // Kilter-synced ascent / bid / climb-list entry will have these in
+    // the climbUuid field, so `requireUuid` must accept both shapes.
+    // Without this, every restore on a device that has ever imported a
+    // Kilter logbook fails at validate() with "ascent.climbUuid not a
+    // UUID" even though the round-trip is lossless.
+    private val UUID_PLAIN_HEX_REGEX = Regex("^[0-9a-fA-F]{32}$")
     private val HEX64_REGEX = Regex("^[0-9a-f]{64}$")
 
     private fun requireLen(name: String, value: String?, max: Int) {
@@ -47,7 +56,9 @@ object CruxCoachBackup {
     }
 
     private fun requireUuid(name: String, value: String) {
-        require(UUID_REGEX.matches(value)) { "invalid backup: $name not a UUID" }
+        require(UUID_REGEX.matches(value) || UUID_PLAIN_HEX_REGEX.matches(value)) {
+            "invalid backup: $name not a UUID"
+        }
     }
 
     private fun requireFinite(name: String, value: Double?) {
