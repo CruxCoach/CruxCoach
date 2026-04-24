@@ -303,7 +303,12 @@ class BackupRepository @Inject constructor(
             .decompress(compressed, maxBytes = MAX_PLAINTEXT_BYTES)
             .toString(Charsets.UTF_8)
 
-        // 3 — import into local DB
+        // 3 — import into local DB. Pin the decrypted payload to the
+        // active signer: NIP-44 already guarantees the caller held the
+        // right private key to decrypt, but an additional envelope-
+        // pubkey check catches bookkeeping bugs (re-imported own old
+        // nsec, mid-flow identity flip before A2 clears ran, etc.)
+        // before any row is written.
         val importResult = CruxCoachBackup.import(
             jsonString = json,
             selectedCategories = CruxCoachBackup.Category.entries.toSet(),
@@ -314,6 +319,7 @@ class BackupRepository @Inject constructor(
             planRepository = planRepository,
             personalBoardRepo = personalBoardRepo,
             transactionRunner = transactionRunner,
+            expectedNostrPubkey = nostrSigner.getPublicKeyHex(),
         )
 
         // 4 — cache dataKey for future backups (self-encrypt via NIP-44)

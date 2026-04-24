@@ -472,9 +472,30 @@ object CruxCoachBackup {
         climbRepository: ClimbRepository,
         planRepository: PlanRepository,
         personalBoardRepo: PersonalBoardRepository,
-        transactionRunner: TransactionRunner
+        transactionRunner: TransactionRunner,
+        /**
+         * Defence-in-depth pubkey-binding. When the caller knows which
+         * Nostr identity the backup MUST belong to (typically the
+         * currently active signer's pubkey), pass it here. If the
+         * decrypted payload carries a different pubkey in its
+         * [Backup.nostrPubkey] envelope field, `import` refuses before
+         * any DB write — catches the "identity mismatch" edge case
+         * that the NIP-44 decrypt layer already makes cryptographically
+         * unlikely, but would otherwise silently import wrong-owner
+         * data if it ever reached this code path. `null` skips the
+         * check (legacy callers and `preview`).
+         */
+        expectedNostrPubkey: String? = null,
     ): ImportResult {
         val backup = json.decodeFromString<Backup>(jsonString).validate()
+        if (expectedNostrPubkey != null && backup.nostrPubkey != null &&
+            backup.nostrPubkey != expectedNostrPubkey
+        ) {
+            throw IllegalArgumentException(
+                "invalid backup: nostrPubkey does not match active signer " +
+                    "(payload ${backup.nostrPubkey.take(8)}…, active ${expectedNostrPubkey.take(8)}…)",
+            )
+        }
 
         return transactionRunner.runInTransaction {
             var result = ImportResult()
