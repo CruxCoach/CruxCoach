@@ -34,9 +34,21 @@ data class Kind10002Event(
  */
 internal object Nip65TagParser {
 
+    /**
+     * Cap on how many relay entries we'll ever accept from a single
+     * Kind 10002 event. Legitimate user relay lists are 2-8 relays;
+     * Noosphere / Damus have advertised >50 in theory but never more
+     * than ~20 in practice. A hostile bootstrap relay could publish a
+     * Kind-10002 with thousands of tags, driving our pool-update
+     * code into large allocations and n² connection churn — this cap
+     * makes the attack a no-op.
+     */
+    private const val MAX_RELAYS = 32
+
     fun parse(tags: List<List<String>>): List<Kind10002Event.RelayMarker> {
         val seen = LinkedHashMap<String, Kind10002Event.RelayMarker>()
         for (tag in tags) {
+            if (seen.size >= MAX_RELAYS) break
             if (tag.size < 2) continue
             if (tag[0] != "r") continue
 

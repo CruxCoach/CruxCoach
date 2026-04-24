@@ -234,7 +234,10 @@ class BackupRepository @Inject constructor(
         }
 
         val pointer = try {
-            decryptPointer(pointerEvent.content, pubkey)
+            decryptPointer(pointerEvent.content, pubkey).also { it.validateOrThrow() }
+        } catch (e: IllegalArgumentException) {
+            Log.w(TAG, "event=restore_check_miss reason=pointer-invalid field=${e.message}", e)
+            return CheckOutcome.Fetch("backup pointer failed validation")
         } catch (e: Exception) {
             Log.w(TAG, "event=restore_check_miss reason=decrypt-failed", e)
             return CheckOutcome.DecryptFailed
@@ -762,13 +765,17 @@ data class MinimalEvent(
      * shared scheme + length + whitespace gate. The filter is the
      * same one that gates Kind 10002 relay URLs, so every URL the
      * app dials — regardless of provenance — shares a single allow
-     * rule.
+     * rule. Cap at 16 distinct entries: legitimate Blossom server
+     * lists are 1–3, so anything larger is either a typo or a
+     * hostile attempt to drive parallel uploads.
      */
     fun extractServerTags(): List<String> =
         tags.asSequence()
             .filter { it.size >= 2 && it[0] == "server" }
             .map { it[1].trimEnd('/') }
             .filter { com.cruxcoach.android.nostr.UrlValidation.isValidBlossom(it) }
+            .distinct()
+            .take(16)
             .toList()
 
     companion object {
