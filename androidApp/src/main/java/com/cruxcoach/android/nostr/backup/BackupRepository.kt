@@ -211,8 +211,21 @@ class BackupRepository @Inject constructor(
                 SignerMode.AMBER -> fetchByQueryAllAmber(pubkey, timeoutMs)
             }
         } catch (e: Exception) {
-            Log.w(TAG, "event=restore_check_miss reason=fetch-error", e)
-            return CheckOutcome.Fetch(e.message ?: "fetch failed")
+            // Categorise the failure before surfacing any detail to the
+            // UI. The raw `e.message` can leak third-party library
+            // internals (OkHttp stack frames, Quartz crypto details,
+            // Amber IPC payload fragments) that aren't actionable for
+            // the user and widen the phishing surface if a hostile
+            // relay manages to nudge a specific error string. Keep the
+            // full exception + message in logcat for dev debugging.
+            Log.w(TAG, "event=restore_check_miss reason=fetch-error originalMessage=${e.message}", e)
+            val detail = when (e) {
+                is java.net.UnknownHostException -> "network unavailable"
+                is kotlinx.serialization.SerializationException -> "relay payload malformed"
+                is java.io.IOException -> "network error"
+                else -> "fetch failed"
+            }
+            return CheckOutcome.Fetch(detail)
         }
 
         val (pointerEvent, keyEvent) = fetched ?: run {
