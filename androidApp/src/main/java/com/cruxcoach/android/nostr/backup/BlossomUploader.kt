@@ -66,8 +66,31 @@ class BlossomUploader @Inject constructor(
     suspend fun upload(blob: ByteArray, servers: List<String>): List<UploadResult> = coroutineScope {
         require(servers.isNotEmpty()) { "No Blossom servers configured" }
         val sha256 = sha256Hex(blob)
+        // Sign the BUD-02 upload auth event exactly once and reuse it
+        // across every server. The auth is bound to the blob's sha256, not
+        // to a specific host, so every server accepts the same signature.
+        // Doing this serially — and before the parallel fan-out — keeps
+        // Amber from receiving N concurrent approval requests for the same
+        // operation; Amber is a user-driven single-dialog signer, and a
+        // second request enqueued 1 ms behind the first almost always
+        // times out waiting for the user to catch up.
+        val sharedAuthHeader = try {
+            blossomAuthHeader(action = "upload", sha256 = sha256)
+        } catch (e: Exception) {
+            return@coroutineScope servers.map { server ->
+                UploadResult(server, accepted = false, httpStatus = 0, error = "auth: ${e.message}")
+            }.also { list ->
+                list.forEach { r ->
+                    Log.w(
+                        TAG,
+                        "event=upload_server_failed server=${r.server.shortHost()}" +
+                            " httpStatus=${r.httpStatus} error=${r.error ?: "unknown"}",
+                    )
+                }
+            }
+        }
         val results = servers.map { server ->
-            async(Dispatchers.IO) { uploadToSingle(server, blob, sha256) }
+            async(Dispatchers.IO) { uploadToSingle(server, blob, sharedAuthHeader) }
         }.awaitAll()
         // Per-server failure logging — otherwise the only thing that reaches
         // logcat is the aggregated "upload failed on all N servers" from the
@@ -98,13 +121,7 @@ class BlossomUploader @Inject constructor(
      * CruxCoach alt MIME; remember which type worked so the next upload
      * picks it first.
      */
-    private suspend fun uploadToSingle(server: String, blob: ByteArray, sha256Hex: String): UploadResult {
-        val authHeader = try {
-            blossomAuthHeader(action = "upload", sha256 = sha256Hex)
-        } catch (e: Exception) {
-            return UploadResult(server, accepted = false, httpStatus = 0, error = "auth: ${e.message}")
-        }
-
+    private suspend fun uploadToSingle(server: String, blob: ByteArray, authHeader: String): UploadResult {
         val hint = preferences.getContentTypeProbe(server)
         val firstType = when (hint) {
             BackupPreferences.ContentTypeProbe.REJECTED_OCTET -> CONTENT_TYPE_ALT

@@ -1385,6 +1385,7 @@
     <string name="settings_backup_last_sync">Last backup: %s</string>
     <string name="settings_backup_never_synced">No backup yet</string>
     <string name="settings_backup_run_now">Back up now</string>
+    <string name="settings_backup_run_now_progress">Backing up…</string>
     <string name="settings_backup_restore">Restore backup</string>
     <string name="settings_backup_restore_checking">Checking…</string>
     <string name="settings_backup_restore_dialog_title">Backup found</string>

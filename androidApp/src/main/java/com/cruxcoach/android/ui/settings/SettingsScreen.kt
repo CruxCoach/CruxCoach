@@ -377,7 +377,7 @@ fun SettingsScreen(
             onDismissRequest = { backupViewModel.consumeSnackbar() },
             confirmButton = {
                 TextButton(onClick = { backupViewModel.consumeSnackbar() }) {
-                    Text(stringResource(R.string.settings_backup_restore_cancel))
+                    Text(stringResource(R.string.action_close))
                 }
             },
             text = { Text(message) },

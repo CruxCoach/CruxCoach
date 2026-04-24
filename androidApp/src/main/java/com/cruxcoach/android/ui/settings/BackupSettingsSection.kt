@@ -7,8 +7,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -107,7 +110,17 @@ internal fun BackupSettingsSection(
                 onClick = onRunBackupNow,
                 enabled = !state.isRunningOneShot,
             ) {
-                Text(stringResource(R.string.settings_backup_run_now))
+                if (state.isRunningOneShot) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        strokeWidth = 2.dp,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.settings_backup_run_now_progress))
+                } else {
+                    Text(stringResource(R.string.settings_backup_run_now))
+                }
             }
         }
 
@@ -117,13 +130,17 @@ internal fun BackupSettingsSection(
                 onClick = onTriggerRestore,
                 enabled = !state.isCheckingForBackup,
             ) {
-                Text(
-                    if (state.isCheckingForBackup) {
-                        stringResource(R.string.settings_backup_restore_checking)
-                    } else {
-                        stringResource(R.string.settings_backup_restore)
-                    },
-                )
+                if (state.isCheckingForBackup) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        color = MaterialTheme.colorScheme.primary,
+                        strokeWidth = 2.dp,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.settings_backup_restore_checking))
+                } else {
+                    Text(stringResource(R.string.settings_backup_restore))
+                }
             }
 
             // FEAT-002 §20.2 active opt-out. Shown only when there is
