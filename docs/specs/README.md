@@ -34,8 +34,9 @@ CruxCoach feature specifications, grouped by release.
 | [FEAT-001](0.1.3/FEAT-001-nostr-relay-discovery.md) | Nostr Relay Discovery (NIP-65) | Implementation | — |
 | [FEAT-002](0.1.3/FEAT-002-nostr-backup-sync.md) | Nostr Encrypted Backup & Sync | Implementation | FEAT-001 |
 
-### v0.1.4 — Climb Creator
+### v0.1.4 — Climb Creator + Aurora migration
 
 | Spec | Title | Status | Depends on |
 |------|-------|--------|------------|
-| [FEAT-003](0.1.4/FEAT-003-climb-creator.md) | Climb Creator & Nostr Community Climbs | Failed | Kilter API re-integration |
+| [FEAT-003](0.1.4/FEAT-003-climb-creator.md) | Climb Creator & Nostr Community Climbs | Skeleton | — |
+| [FEAT-005](0.1.4/FEAT-005-aurora-json-import.md) | Aurora JSON Export Import | Skeleton | FEAT-003 |
