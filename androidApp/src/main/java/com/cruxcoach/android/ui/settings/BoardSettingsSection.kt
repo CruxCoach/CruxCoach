@@ -20,8 +20,10 @@ import com.cruxcoach.android.ui.theme.OrangeAccent
 internal fun DisplaySection(
     gradeScale: GradeScale,
     darkMode: DarkModeSetting,
+    keepScreenOn: Boolean,
     onGradeScaleChange: (GradeScale) -> Unit,
-    onDarkModeChange: (DarkModeSetting) -> Unit
+    onDarkModeChange: (DarkModeSetting) -> Unit,
+    onKeepScreenOnChange: (Boolean) -> Unit,
 ) {
     Text(
         stringResource(R.string.settings_display_appearance),
@@ -64,6 +66,28 @@ internal fun DisplaySection(
                 )
             )
         }
+    }
+
+    Spacer(modifier = Modifier.height(8.dp))
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(stringResource(R.string.settings_ble_keep_screen_on), style = MaterialTheme.typography.bodyMedium)
+            Text(
+                stringResource(R.string.settings_ble_keep_screen_on_desc),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Switch(
+            checked = keepScreenOn,
+            onCheckedChange = onKeepScreenOnChange,
+            colors = SwitchDefaults.colors(checkedTrackColor = OrangeAccent)
+        )
     }
 }
 
@@ -138,10 +162,8 @@ internal fun BoardModelSection(
 @Composable
 internal fun BleAutoDisconnectSection(
     bleAutoDisconnectSeconds: Int,
-    keepScreenOn: Boolean,
     quickBoardSend: Boolean,
     onAutoDisconnectChange: (Int) -> Unit,
-    onKeepScreenOnChange: (Boolean) -> Unit,
     onQuickBoardSendChange: (Boolean) -> Unit,
 ) {
     Text(
@@ -173,28 +195,6 @@ internal fun BleAutoDisconnectSection(
         minuteLabel = stringResource(R.string.settings_duration_minutes_label),
         secondLabel = stringResource(R.string.settings_duration_seconds_label),
     )
-
-    Spacer(modifier = Modifier.height(8.dp))
-
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(stringResource(R.string.settings_ble_keep_screen_on), style = MaterialTheme.typography.bodyMedium)
-            Text(
-                stringResource(R.string.settings_ble_keep_screen_on_desc),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        Switch(
-            checked = keepScreenOn,
-            onCheckedChange = onKeepScreenOnChange,
-            colors = SwitchDefaults.colors(checkedTrackColor = OrangeAccent)
-        )
-    }
 
     Spacer(modifier = Modifier.height(8.dp))
 

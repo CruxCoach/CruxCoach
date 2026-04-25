@@ -154,8 +154,10 @@ fun SettingsScreen(
                     DisplaySection(
                         gradeScale = state.gradeScale,
                         darkMode = state.darkMode,
+                        keepScreenOn = state.keepScreenOn,
                         onGradeScaleChange = { viewModel.updateGradeScale(it) },
-                        onDarkModeChange = { viewModel.updateDarkMode(it) }
+                        onDarkModeChange = { viewModel.updateDarkMode(it) },
+                        onKeepScreenOnChange = { viewModel.updateKeepScreenOn(it) },
                     )
                 }
             }
@@ -173,10 +175,8 @@ fun SettingsScreen(
                     HorizontalDivider()
                     BleAutoDisconnectSection(
                         bleAutoDisconnectSeconds = state.bleAutoDisconnectSeconds,
-                        keepScreenOn = state.keepScreenOn,
                         quickBoardSend = state.quickBoardSend,
                         onAutoDisconnectChange = { viewModel.updateBleAutoDisconnect(it) },
-                        onKeepScreenOnChange = { viewModel.updateKeepScreenOn(it) },
                         onQuickBoardSendChange = { viewModel.updateQuickBoardSend(it) },
                     )
                     HorizontalDivider()
