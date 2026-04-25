@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.cruxcoach.android.BuildConfig
 import com.cruxcoach.android.data.SyncInterval
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.data.kilter.KilterApiClient
@@ -21,6 +22,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -382,6 +384,16 @@ class OnboardingViewModel @Inject constructor(
                     interval = SyncInterval.DAILY,
                 )
                 userPreferences.setOnboardingCompleted(true)
+                // Suppress the "what's new" dialog for features the user
+                // already chose during onboarding — they would otherwise
+                // re-see the FEAT-002 announcement on the very next launch.
+                // Monotonic: never lower an existing higher watermark
+                // (matters in the rare identity-switch + downgrade combo).
+                val existingSeen = userPreferences.lastSeenAppVersionCode.first()
+                val currentVersion = BuildConfig.VERSION_CODE
+                if (existingSeen == null || existingSeen < currentVersion) {
+                    userPreferences.setLastSeenAppVersionCode(currentVersion)
+                }
                 _state.update { it.copy(isSaving = false) }
                 onComplete()
             } catch (e: Exception) {

@@ -1461,4 +1461,11 @@
     <string name="settings_share_zapstore_desc">Empfohlener App-Store für CruxCoach — verifizierbare Builds, Nostr-nativ.</string>
     <string name="settings_share_zapstore_hint">QR scannen oder Link senden. Zapstore öffnet automatisch, falls installiert.</string>
     <string name="cd_zapstore_share_qr">Zapstore-Share-QR-Code</string>
+
+    <!-- "Was ist neu" Upgrade-Dialoge (nur für Update-User) -->
+    <string name="whatsnew_done">Fertig</string>
+    <string name="whatsnew_nostr_backup_title">Neu: Verschlüsselte Backups</string>
+    <string name="whatsnew_nostr_backup_body">Deine Klettereinträge und Notizen können jetzt Ende-zu-Ende verschlüsselt über Nostr gesichert werden — auf jedem Gerät wiederherstellbar. Standardmäßig aus; hier oder jederzeit in Einstellungen → Nostr Backup aktivieren.</string>
+    <string name="whatsnew_nostr_backup_toggle">Backup aktivieren</string>
+    <string name="whatsnew_nostr_backup_consent">Beim ersten Backup wird ein lokaler Nostr-Schlüssel erzeugt, falls noch keiner existiert.</string>
 </resources>

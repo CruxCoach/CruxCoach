@@ -42,6 +42,7 @@ import com.cruxcoach.android.ui.plan.WeekOverviewScreen
 import com.cruxcoach.android.ui.exercises.ExerciseLibraryScreen
 import com.cruxcoach.android.ui.onboarding.OnboardingScreen
 import com.cruxcoach.android.ui.navigation.StartViewModel
+import com.cruxcoach.android.ui.whatsnew.WhatsNewHost
 import com.cruxcoach.android.ui.settings.AppShareScreen
 import com.cruxcoach.android.ui.settings.AssessmentScreen
 import com.cruxcoach.android.ui.settings.ProfileAssessmentScreen
@@ -598,6 +599,10 @@ fun CruxCoachNavHost(
 
         }
     }
+    // Sibling of the Scaffold so the dialog overlays whatever is on screen.
+    // The host's ViewModel keeps the queue empty during fresh-install
+    // onboarding; only upgrading users see anything.
+    WhatsNewHost()
     } // CompositionLocalProvider
 }
 

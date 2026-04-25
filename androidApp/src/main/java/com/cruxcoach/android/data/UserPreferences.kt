@@ -37,6 +37,16 @@ object KeyScopedKeys {
     val AMBER_PUBKEY = stringPreferencesKey("amber_pubkey")
     val AMBER_PACKAGE_NAME = stringPreferencesKey("amber_package_name")
     val ONBOARDING_COMPLETED = booleanPreferencesKey("onboarding_completed")
+
+    // Highest BuildConfig.VERSION_CODE this identity has already
+    // acknowledged "what's new" dialogs for. Per-identity (not global)
+    // because most announced features are per-identity opt-ins (e.g.
+    // FEAT-002 backup): switching identity should re-prompt so the user
+    // can decide independently for the new identity. Null = either fresh
+    // install / fresh identity, or upgrade from a version that predates
+    // this mechanism — the WhatsNewViewModel distinguishes via
+    // ONBOARDING_COMPLETED.
+    val LAST_SEEN_APP_VERSION_CODE = intPreferencesKey("last_seen_app_version_code")
 }
 
 enum class GradeScale(val label: String) {
@@ -664,6 +674,14 @@ class UserPreferences(
             val current = it[PreferenceKeys.APP_LAUNCH_COUNT] ?: 0
             it[PreferenceKeys.APP_LAUNCH_COUNT] = current + 1
         }
+    }
+
+    val lastSeenAppVersionCode: Flow<Int?> = keyScoped.data.map {
+        it[KeyScopedKeys.LAST_SEEN_APP_VERSION_CODE]
+    }
+
+    suspend fun setLastSeenAppVersionCode(versionCode: Int) {
+        keyScoped.edit { it[KeyScopedKeys.LAST_SEEN_APP_VERSION_CODE] = versionCode }
     }
 
     /**
