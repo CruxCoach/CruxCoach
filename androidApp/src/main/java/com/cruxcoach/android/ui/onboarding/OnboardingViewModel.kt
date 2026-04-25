@@ -43,12 +43,14 @@ enum class OnboardingStep {
  *  - [FRESH]: a new Nostr key is generated lazily; today's local data
  *    becomes the first snapshot.
  *  - [RESTORE]: the user brings a key from another device. Selecting this
- *    reveals a "Schlüssel importieren" button that navigates to the
- *    existing [com.cruxcoach.android.ui.settings.KeyImportScreen]; the
- *    onboarding persists a restore-intent marker, then lets the
- *    KeyImport-driven app restart happen. On the next cold start
- *    onboarding lands back on [OnboardingStep.PRIVACY] and auto-triggers
- *    [BackupRepository.checkForBackup].
+ *    reveals a "Schlüssel importieren" button (no backup search runs yet —
+ *    onboarding is shown only to new users, and the only key on the device
+ *    at this point is the auto-generated one, for which no backup can
+ *    exist). The button navigates to [com.cruxcoach.android.ui.settings.KeyImportScreen]
+ *    after persisting a restore-intent marker. On the next cold start
+ *    (after the KeyImport-driven app restart) onboarding lands back on
+ *    [OnboardingStep.PRIVACY] and only *then* triggers
+ *    [BackupRepository.checkForBackup] against the imported key.
  */
 enum class BackupChoice { FRESH, RESTORE }
 
@@ -134,7 +136,6 @@ class OnboardingViewModel @Inject constructor(
             OnboardingStep.KILTER -> return
         }
         _state.update { it.copy(currentStep = next) }
-        if (next == OnboardingStep.PRIVACY) triggerBackupCheckIfNeeded()
     }
 
     fun previousStep() {
@@ -237,7 +238,6 @@ class OnboardingViewModel @Inject constructor(
 
     fun setBackupOptIn(enabled: Boolean) {
         _state.update { it.copy(backupOptIn = enabled) }
-        if (enabled) triggerBackupCheckIfNeeded()
     }
 
     fun setBackupChoice(choice: BackupChoice) {
@@ -284,6 +284,12 @@ class OnboardingViewModel @Inject constructor(
      * Triggers [BackupRepository.checkForBackup] if we have a key and
      * haven't tried this session. A hit populates [OnboardingState.pendingRestore]
      * which the UI turns into the restore dialog.
+     *
+     * Only called from [init] when the restore-intent marker is set, i.e.
+     * after the user came back from [com.cruxcoach.android.ui.settings.KeyImportScreen].
+     * Running this against a freshly-generated key (which is what every new
+     * user has at the start of onboarding) is pointless — there can never be
+     * a backup tied to a key that was never used elsewhere.
      */
     private fun triggerBackupCheckIfNeeded() {
         val s = _state.value
