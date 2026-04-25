@@ -5,6 +5,8 @@ import com.cruxcoach.android.nostr.NostrKeyStore
 import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.android.nostr.SignerMode
 import com.vitorpamplona.quartz.nip01Core.core.Event
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.security.MessageDigest
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
@@ -58,16 +60,29 @@ class DTagDeriver @Inject constructor(
     private val preferences: BackupPreferences,
 ) {
 
+    /**
+     * Serializes the cache check-then-act so two concurrent callers for
+     * the same identifier collapse to a single HMAC / Amber round-trip.
+     * Without it, two backup pipeline branches firing in close succession
+     * (manual + periodic) both miss the cache, both kick off Amber's
+     * approval dialog, and the user sees a double prompt for a derivation
+     * that's documented to happen "at most once per identifier + install".
+     * The lock is per-singleton; cross-identifier callers are serialized
+     * too, but each derive is sub-second on local + bound by Amber's UI
+     * for the AMBER path, so the small added latency is negligible.
+     */
+    private val deriveMutex = Mutex()
+
     /** Returns the hex d-tag for [identifier], caching the first derivation. */
-    suspend fun derive(identifier: String): String {
-        preferences.getDTag(identifier)?.let { return it }
+    suspend fun derive(identifier: String): String = deriveMutex.withLock {
+        preferences.getDTag(identifier)?.let { return@withLock it }
 
         val dTag = when (nostrSigner.getStoredSignerMode()) {
             SignerMode.LOCAL -> deriveLocal(identifier)
             SignerMode.AMBER -> deriveAmber(identifier)
         }
         preferences.setDTag(identifier, dTag)
-        return dTag
+        dTag
     }
 
     /**

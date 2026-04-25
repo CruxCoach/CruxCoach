@@ -89,19 +89,36 @@ class BackupSettingsViewModel @Inject constructor(
     val state: StateFlow<BackupSettingsState> = _state.asStateFlow()
 
     init {
+        // Observe DataStore reactively. Every action that mutates
+        // identity state — confirmDeleteRemoteBackups locally, the
+        // KeyImport/KeyManagement VMs on identity switch, or a
+        // BackupSyncWorker completing in the background — writes to
+        // DataStore. Without a reactive collector those writes only
+        // surfaced the next time this VM was re-created, so the UI
+        // could keep rendering a stale "Letzte Sicherung" line long
+        // after the underlying state was wiped. Collecting the Flows
+        // here means the VM state stays in lockstep with DataStore
+        // no matter who wrote it.
         viewModelScope.launch {
-            val featureEnabled = preferences.isBackupFeatureEnabled()
-            val backupEnabled = preferences.isBackupEnabled()
-            val lastSyncEpoch = preferences.lastBackupSync.first()
-            _state.update {
-                it.copy(
-                    featureEnabled = featureEnabled,
-                    backupEnabled = backupEnabled,
-                    lastBackupIso = lastSyncEpoch?.toIso8601(),
-                    hasNostrKey = keyStore.hasKey(),
-                )
+            preferences.backupFeatureEnabled.collect { featureEnabled ->
+                _state.update { it.copy(featureEnabled = featureEnabled) }
             }
         }
+        viewModelScope.launch {
+            preferences.backupEnabled.collect { enabled ->
+                _state.update { it.copy(backupEnabled = enabled) }
+            }
+        }
+        viewModelScope.launch {
+            preferences.lastBackupSync.collect { epoch ->
+                _state.update { it.copy(lastBackupIso = epoch?.toLocalizedDateTime()) }
+            }
+        }
+        // hasNostrKey is a point-in-time check — the keystore doesn't
+        // expose a Flow, but it only changes on identity switch which
+        // forces an app restart (see A2 flow), so a single read on
+        // init is correct.
+        _state.update { it.copy(hasNostrKey = keyStore.hasKey()) }
     }
 
     fun setBackupEnabled(enabled: Boolean) {
@@ -151,7 +168,7 @@ class BackupSettingsViewModel @Inject constructor(
             _state.update {
                 it.copy(
                     isRunningOneShot = false,
-                    lastBackupIso = latestLastSync?.toIso8601(),
+                    lastBackupIso = latestLastSync?.toLocalizedDateTime(),
                     snackbar = snackbar,
                 )
             }
@@ -196,7 +213,7 @@ class BackupSettingsViewModel @Inject constructor(
                 _state.update {
                     it.copy(
                         backupEnabled = true,
-                        lastBackupIso = lastSyncEpoch?.toIso8601(),
+                        lastBackupIso = lastSyncEpoch?.toLocalizedDateTime(),
                     )
                 }
             } else {
@@ -235,6 +252,19 @@ class BackupSettingsViewModel @Inject constructor(
     fun confirmDeleteRemoteBackups() {
         viewModelScope.launch {
             _state.update { it.copy(showDeleteRemoteConfirm = false, isDeletingRemote = true) }
+            // Cancel the periodic worker BEFORE deleting. The worker
+            // re-publishes pointer + key events on every tick; cancelling
+            // it after deleteRemoteBackups returned could let an in-flight
+            // tick resurrect the events seconds later. Combined with
+            // BackupRepository.pipelineMutex, an already-running worker
+            // run finishes (under the lock) before deleteRemoteBackups
+            // can acquire the same lock — so the deletion always observes
+            // a quiescent pipeline.
+            BackupSyncWorker.schedule(
+                appContext,
+                enabled = false,
+                interval = _state.value.interval,
+            )
             val outcome = runCatching { backupRepository.deleteRemoteBackups() }
                 .getOrElse { throwable ->
                     com.cruxcoach.android.nostr.backup.DeleteRemoteOutcome(
@@ -245,11 +275,6 @@ class BackupSettingsViewModel @Inject constructor(
                         notes = listOf("unexpected error: ${throwable.javaClass.simpleName}"),
                     )
                 }
-            BackupSyncWorker.schedule(
-                appContext,
-                enabled = false,
-                interval = _state.value.interval,
-            )
             _state.update {
                 it.copy(
                     isDeletingRemote = false,
@@ -267,8 +292,21 @@ class BackupSettingsViewModel @Inject constructor(
         }
     }
 
-    private fun Long.toIso8601(): String {
+    /**
+     * Format an epoch-seconds timestamp as a short, locale-aware
+     * date+time. The previous name `toIso8601` was a misnomer — it
+     * always emitted the German `dd.MM.yyyy, HH:mm` shape regardless
+     * of locale and is not the ISO 8601 wire format. The renamed
+     * version uses the system locale's SHORT style so a German user
+     * still sees `25.04.26, 14:32` while an English user sees the
+     * locale-appropriate equivalent (`4/25/26, 2:32 PM`).
+     */
+    private fun Long.toLocalizedDateTime(): String {
         val dt = Instant.ofEpochSecond(this).atZone(ZoneId.systemDefault())
-        return dt.format(DateTimeFormatter.ofPattern("dd.MM.yyyy, HH:mm", Locale.getDefault()))
+        return dt.format(
+            DateTimeFormatter
+                .ofLocalizedDateTime(java.time.format.FormatStyle.SHORT)
+                .withLocale(Locale.getDefault()),
+        )
     }
 }

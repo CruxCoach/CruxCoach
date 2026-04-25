@@ -37,20 +37,41 @@ class BackupSyncWorker @AssistedInject constructor(
 ) : CoroutineWorker(appContext, workerParams) {
 
     override suspend fun doWork(): Result {
-        if (!preferences.isBackupFeatureEnabled()) {
-            Log.i(TAG, "event=killswitch_off")
-            return Result.failure()
-        }
-        if (!preferences.isBackupEnabled()) {
-            return Result.success()   // nothing to do; schedule will cancel the periodic
-        }
         return try {
+            // DataStore reads are inside the try so an IOException (e.g.
+            // disk full / corruption) becomes Result.retry() instead of
+            // Result.failure() — failure is a permanent give-up that never
+            // re-runs, retry honors the WorkManager backoff. Pre-fix the
+            // gate reads happened outside the try and the worker silently
+            // gave up on transient disk hiccups.
+            if (!preferences.isBackupFeatureEnabled()) {
+                Log.i(TAG, "event=killswitch_off")
+                return Result.failure()
+            }
+            if (!preferences.isBackupEnabled()) {
+                // Disabled is a permanent state per this scheduling cycle —
+                // success here lets the existing schedule() cancel logic
+                // remove the periodic run.
+                return Result.success()
+            }
             backupRepository.performFullBackup(trigger = "periodic")
             Result.success()
         } catch (e: BackupException) {
             Log.w(TAG, "event=backup_done_retry reason=${e.message}", e)
             Result.retry()
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            // Coroutine cancellation must always propagate. Catching it as
+            // "just another exception" and returning retry() breaks the
+            // structured-concurrency contract — WorkManager calling stop()
+            // would re-queue the work instead of dropping it. Rethrow so
+            // the framework handles the cancel correctly.
+            throw e
         } catch (e: Exception) {
+            // Programming bugs (NPE, IllegalStateException from a typed
+            // misuse, etc.) get the same retry treatment as transient I/O
+            // failures so a bad release doesn't permanently kill the
+            // periodic backup. The retry storm is bounded by WorkManager's
+            // exponential backoff (30 min × 1.5^n, hard-capped at ~5 h).
             Log.w(TAG, "event=backup_done_retry_exception", e)
             Result.retry()
         }

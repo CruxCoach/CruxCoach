@@ -11,6 +11,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.R
 import com.cruxcoach.android.data.NostrMessageRepository
+import com.cruxcoach.android.data.SyncInterval
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.nostr.AmberIntegration
 import com.cruxcoach.android.nostr.NostrConfig
@@ -18,6 +19,7 @@ import com.cruxcoach.android.nostr.NostrKeyStore
 import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.android.nostr.SignerMode
 import com.cruxcoach.android.nostr.backup.BackupPreferences
+import com.cruxcoach.android.nostr.backup.BackupSyncWorker
 import com.cruxcoach.android.nostr.relaydiscovery.RelayListCache
 import com.vitorpamplona.quartz.nip01Core.core.hexToByteArray
 import com.vitorpamplona.quartz.nip01Core.core.toHexKey
@@ -210,6 +212,11 @@ class KeyManagementViewModel @Inject constructor(
                 return@launch
             }
             val pkg = packageName ?: AmberIntegration.AMBER_PACKAGE
+            // Cancel periodic backup before identity swap so the next
+            // scheduled tick can't fire under the new pubkey while
+            // BackupRepository.pipelineMutex still serializes any
+            // in-flight run from the old identity.
+            BackupSyncWorker.schedule(context, enabled = false, interval = SyncInterval.MANUAL)
             nostrSigner.saveAmberConfig(pubkeyHex, pkg)
             nostrSigner.switchToAmber(pubkeyHex, pkg, context.contentResolver)
 
@@ -254,6 +261,8 @@ class KeyManagementViewModel @Inject constructor(
 
     fun switchToLocalSigner() {
         viewModelScope.launch {
+            // Cancel periodic backup before identity swap (see onAmberLoginSuccess).
+            BackupSyncWorker.schedule(context, enabled = false, interval = SyncInterval.MANUAL)
             nostrSigner.clearAmberConfig()
             nostrSigner.switchToLocal()
 

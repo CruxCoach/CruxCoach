@@ -166,36 +166,50 @@ class CruxCoachApp : Application(), Configuration.Provider {
 
         appScope.launch {
             PerfLogger.logCoroutine("appScope", "singleton-init + sync START")
-            // Create singletons EARLY — resolves BoardDatabase (+ any pending SQLite
-            // migrations) on the IO thread BEFORE the main thread needs them.
-            // This must run before the DataStore read (~350 ms cold) to minimize
-            // the window where the main thread's CompositionLocalProvider could
-            // contend on DoubleCheck locks.
-            //
-            // Note: no startup probe of the WiFi-Direct-share endpoint. The
-            // legitimate receive flow is deep-link driven (cruxcoach://import-board-db
-            // from the hotspot's landing page), gated by a user-visible consent
-            // dialog in BoardSyncScreen. A bare "server exists on 192.168.49.1:4949"
-            // is not a trustworthy import signal — any attacker-controlled AP
-            // can synthesise it.
-            syncManager.get().syncIfStale()
-            // Kilter account: sync (download + upload unsynced) if persistent sync is enabled
-            kilterSyncEngine.get().syncOnAppStartIfEnabled()
-            // Schedule periodic sync worker (needs DataStore read — fine to be last)
-            val interval = userPreferences.syncInterval.first()
-            BoardSyncWorker.schedule(this@CruxCoachApp, interval)
+            // Each step is independently fenced: a transient failure in
+            // syncIfStale or kilterSyncEngine must NOT skip the
+            // BoardSyncWorker / BackupSyncWorker reconciliation that
+            // follows. Pre-fix, this was a single chain — one upstream
+            // throw silently abandoned every later step, leaving the
+            // user with stale schedules until the next app start that
+            // happened not to throw on the way through.
+            runCatching {
+                // Note: no startup probe of the WiFi-Direct-share endpoint. The
+                // legitimate receive flow is deep-link driven (cruxcoach://import-board-db
+                // from the hotspot's landing page), gated by a user-visible consent
+                // dialog in BoardSyncScreen. A bare "server exists on 192.168.49.1:4949"
+                // is not a trustworthy import signal — any attacker-controlled AP
+                // can synthesise it.
+                syncManager.get().syncIfStale()
+            }.onFailure { PerfLogger.logCoroutine("appScope", "syncIfStale failed: ${it.message}") }
+            runCatching {
+                // Kilter account: sync (download + upload unsynced) if persistent sync is enabled
+                kilterSyncEngine.get().syncOnAppStartIfEnabled()
+            }.onFailure { PerfLogger.logCoroutine("appScope", "kilterSync failed: ${it.message}") }
 
-            // FEAT-002: reconcile the backup worker with persisted prefs on
-            // every app start — catches cases where the user flipped the
-            // toggle + killed the app before WorkManager committed the
-            // schedule change.
-            val backupPrefs = backupPreferences.get()
-            val backupEnabled = backupPrefs.isBackupEnabled() && backupPrefs.isBackupFeatureEnabled()
-            com.cruxcoach.android.nostr.backup.BackupSyncWorker.schedule(
-                this@CruxCoachApp,
-                enabled = backupEnabled,
-                interval = interval,
-            )
+            // Reading the interval is the only step that can plausibly
+            // fail before the schedule calls (DataStore I/O); fall back
+            // to MANUAL so reconciliation still runs.
+            val interval = runCatching { userPreferences.syncInterval.first() }
+                .getOrDefault(com.cruxcoach.android.data.SyncInterval.MANUAL)
+
+            runCatching {
+                BoardSyncWorker.schedule(this@CruxCoachApp, interval)
+            }.onFailure { PerfLogger.logCoroutine("appScope", "BoardSyncWorker.schedule failed: ${it.message}") }
+
+            runCatching {
+                // FEAT-002: reconcile the backup worker with persisted prefs on
+                // every app start — catches cases where the user flipped the
+                // toggle + killed the app before WorkManager committed the
+                // schedule change.
+                val backupPrefs = backupPreferences.get()
+                val backupEnabled = backupPrefs.isBackupEnabled() && backupPrefs.isBackupFeatureEnabled()
+                com.cruxcoach.android.nostr.backup.BackupSyncWorker.schedule(
+                    this@CruxCoachApp,
+                    enabled = backupEnabled,
+                    interval = interval,
+                )
+            }.onFailure { PerfLogger.logCoroutine("appScope", "BackupSyncWorker.schedule failed: ${it.message}") }
             PerfLogger.logCoroutine("appScope", "singleton-init + sync DONE")
         }
 

@@ -17,6 +17,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.filterNot
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -60,11 +62,24 @@ class BackupRepository @Inject constructor(
 ) {
 
     /**
+     * Serializes the public mutating entry points so a periodic worker
+     * tick and a manual "Jetzt sichern" can never run concurrently.
+     * Without this, `performFullBackup`'s read-modify-write of
+     * `previousBlobSha256` (read at line ~141, write at ~152) racing
+     * against itself orphaned blobs on Blossom or — worse — pointed
+     * cleanup at the live blob (audit C1/C2). The same lock guards
+     * `restore`, `deleteRemoteBackups`, and `getOrCreateDataKey` so
+     * pipeline state can't be observed mid-mutation by any caller.
+     * `checkForBackup` is read-only and stays outside the lock.
+     */
+    private val pipelineMutex = Mutex()
+
+    /**
      * Complete a backup cycle. Throws [BackupException] if the pipeline
      * cannot guarantee the blob-before-pointer invariant; the worker
      * translates this into a retry.
      */
-    suspend fun performFullBackup(trigger: String = "manual") {
+    suspend fun performFullBackup(trigger: String = "manual") = pipelineMutex.withLock {
         val pubkey = nostrSigner.getPublicKeyHex()
         val deviceId = preferences.getOrCreateDeviceId()
         Log.d(
@@ -90,8 +105,16 @@ class BackupRepository @Inject constructor(
         val ciphertext = BackupCrypto.encrypt(compressed, dataKey)
         val sha256 = ciphertext.sha256Hex()
 
-        // 4 — discover Blossom servers (user's Kind 10063 + defaults)
-        val servers = discoverBlossomServers(pubkey)
+        // 4 — discover Blossom servers (user's Kind 10063 + defaults).
+        // A relay-side fetch failure must NOT abort the backup: the
+        // delete path already falls back to DEFAULT_SERVERS via the
+        // same pattern (~line 414) and the upload path was the only
+        // remaining caller that could explode the whole pipeline on
+        // a transient discovery error. Keep the asymmetric behavior
+        // intentional only for "not yet authenticated" paths, never
+        // for the durable-write hot path.
+        val servers = runCatching { discoverBlossomServers(pubkey) }
+            .getOrDefault(BlossomUploader.DEFAULT_SERVERS)
 
         // 5 — upload
         val started = System.currentTimeMillis()
@@ -296,7 +319,7 @@ class BackupRepository @Inject constructor(
      * On success the caller should flip `backupEnabled = true` and schedule
      * the worker.
      */
-    suspend fun restore(info: BackupInfo) {
+    suspend fun restore(info: BackupInfo) = pipelineMutex.withLock {
         val started = System.currentTimeMillis()
         val pointer = info.pointer
 
@@ -381,7 +404,7 @@ class BackupRepository @Inject constructor(
      * "deletion published, but no Blossom server acknowledged" rather
      * than "remote backups deleted" when nothing was actually removed.
      */
-    suspend fun deleteRemoteBackups(): DeleteRemoteOutcome {
+    suspend fun deleteRemoteBackups(): DeleteRemoteOutcome = pipelineMutex.withLock {
         val problems = mutableListOf<String>()
         val pubkey = nostrSigner.getPublicKeyHex()
         val backupDTag = runCatching { dTagDeriver.derive(BackupPreferences.IDENTIFIER_BACKUP) }.getOrNull()
@@ -432,7 +455,7 @@ class BackupRepository @Inject constructor(
         preferences.clearAllIdentityState()
         preferences.setBackupEnabled(false)
 
-        return DeleteRemoteOutcome(
+        DeleteRemoteOutcome(
             relaysAttempted = relaysAttempted,
             relaysAccepted = relaysAccepted,
             blossomAttempted = blossomAttempted,
@@ -454,12 +477,24 @@ class BackupRepository @Inject constructor(
             tags = tags,
             content = ciphertext,
         )
-        val ok = pool.sendEvent(event)
-        if (ok) {
-            Log.d(TAG, "event=backup_pointer_published writeRelayCount=${pool.writeRelays().size}")
-        } else {
-            Log.w(TAG, "event=backup_pointer_publish_failed")
+        // Use the per-relay-stats variant so we can distinguish "every
+        // relay rejected" (durable backup chain broken — must throw) from
+        // partial accept (still durable on at least one relay). Previously
+        // we logged on `false` and continued, which let `performFullBackup`
+        // advance `previousBlobSha256` and delete the prior blob even when
+        // no relay knew about the new pointer — the user's restore path
+        // could then find no pointer at all (audit C3).
+        val (attempted, accepted) = pool.sendEventWithStats(event)
+        if (accepted == 0) {
+            Log.w(TAG, "event=backup_pointer_publish_failed attempted=$attempted accepted=0")
+            throw BackupException(
+                "Pointer event rejected by every relay ($attempted attempted) — backup not durable",
+            )
         }
+        Log.d(
+            TAG,
+            "event=backup_pointer_published attempted=$attempted accepted=$accepted",
+        )
     }
 
     /** [Pair] of `(relaysAttempted, relaysAccepted)` — surfaces both counts
@@ -531,12 +566,18 @@ class BackupRepository @Inject constructor(
         }
 
         Log.w(TAG, "event=key_cache_regenerate reason=unrecoverable")
-        preferences.setPreviousBlobSha256(null)
         val fresh = BackupCrypto.generateKey()
         val freshHex = fresh.toHexString()
         val wrapped = nip44EncryptToSelf(freshHex)
-        preferences.setWrappedDataKey(wrapped)
+        // Publish FIRST. If `publishKeyEvent` throws (no relay accepted), we
+        // leave local state untouched so the next attempt re-tries from a
+        // clean slate. Persisting the wrapped key locally before publish
+        // would silently mask the failure: subsequent backups would happily
+        // unwrap the locally-cached key and upload blobs that no other
+        // device could ever decrypt because no relay holds the key event.
         publishKeyEvent(wrapped)
+        preferences.setPreviousBlobSha256(null)
+        preferences.setWrappedDataKey(wrapped)
         preferences.setLastKeyEventPublish(System.currentTimeMillis() / 1000)
         return fresh
     }
@@ -590,7 +631,18 @@ class BackupRepository @Inject constructor(
             tags = tags,
             content = wrappedDataKey,
         )
-        pool.sendEvent(event)
+        // Same fix as publishPointerEvent: surface "0 relays accepted" as
+        // an exception so callers don't stamp success when the key event
+        // never landed. Without the throw, restore on a fresh device
+        // could be permanently bricked because no relay holds the key.
+        val (attempted, accepted) = pool.sendEventWithStats(event)
+        if (accepted == 0) {
+            Log.w(TAG, "event=key_event_publish_failed attempted=$attempted accepted=0")
+            throw BackupException(
+                "Key event rejected by every relay ($attempted attempted) — restore not recoverable",
+            )
+        }
+        Log.d(TAG, "event=key_event_published attempted=$attempted accepted=$accepted")
     }
 
     // --------------------------------------------------------------- fetchers

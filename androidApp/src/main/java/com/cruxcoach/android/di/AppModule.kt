@@ -418,6 +418,12 @@ object AppModule {
                 .connectTimeout(10, TimeUnit.SECONDS)
                 .readTimeout(10, TimeUnit.SECONDS)
                 .writeTimeout(10, TimeUnit.SECONDS)
+                // Hard upper bound on a single call. Per-segment timeouts above
+                // reset on every byte received, so a slow-loris server can hold
+                // a connection open indefinitely; callTimeout caps total wall
+                // time. 60s comfortably covers a 13 MB Blossom upload at slow
+                // mobile speeds while bounding the worst case.
+                .callTimeout(60, TimeUnit.SECONDS)
                 .pingInterval(30, TimeUnit.SECONDS)
                 .build()
         }
@@ -769,6 +775,9 @@ object AppModule {
         return OkHttpClient.Builder()
             .connectTimeout(10, TimeUnit.SECONDS)
             .readTimeout(15, TimeUnit.SECONDS)
+            // Wall-clock cap on a single update check / APK download —
+            // bounds slow-loris exposure on the Codeberg release endpoints.
+            .callTimeout(60, TimeUnit.SECONDS)
             .build()
     }
 

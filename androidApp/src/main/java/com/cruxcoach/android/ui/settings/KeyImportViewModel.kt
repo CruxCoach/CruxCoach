@@ -6,12 +6,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.R
 import com.cruxcoach.android.data.NostrMessageRepository
+import com.cruxcoach.android.data.SyncInterval
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.nostr.AmberIntegration
 import com.cruxcoach.android.nostr.NostrConfig
 import com.cruxcoach.android.nostr.NostrKeyStore
 import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.android.nostr.backup.BackupPreferences
+import com.cruxcoach.android.nostr.backup.BackupSyncWorker
 import com.cruxcoach.android.nostr.relaydiscovery.RelayListCache
 import com.vitorpamplona.quartz.nip01Core.core.hexToByteArray
 import com.vitorpamplona.quartz.nip01Core.core.toHexKey
@@ -34,6 +36,24 @@ import javax.inject.Inject
 
 enum class ImportFormat {
     UNKNOWN, NSEC, NCRYPTSEC, HEX, MNEMONIC
+}
+
+private val KEY_IMPORT_HEX_64_REGEX = Regex("^[0-9a-f]{64}$")
+private val KEY_IMPORT_WHITESPACE_REGEX = Regex("\\s+")
+
+/**
+ * Top-level so [KeyImportFormatDetectionTest] can exercise the production
+ * function instead of duplicating it. Pre-fix the test maintained an
+ * inline copy of this branch table; a divergence between copy and
+ * production would have shipped silently because the test only verified
+ * its own copy.
+ */
+internal fun detectKeyImportFormat(input: String): ImportFormat = when {
+    input.startsWith("nsec1") -> ImportFormat.NSEC
+    input.startsWith("ncryptsec1") -> ImportFormat.NCRYPTSEC
+    input.matches(KEY_IMPORT_HEX_64_REGEX) -> ImportFormat.HEX
+    input.split(KEY_IMPORT_WHITESPACE_REGEX).size in 12..24 -> ImportFormat.MNEMONIC
+    else -> ImportFormat.UNKNOWN
 }
 
 data class KeyImportState(
@@ -120,6 +140,15 @@ class KeyImportViewModel @Inject constructor(
                     val privKeyHex = resolvePrivateKeyHex(pendingPassword)
                         ?: return@withContext
 
+                    // Cancel periodic backup BEFORE swapping the signer / clearing
+                    // identity-scoped state. WorkManager only stops the next
+                    // schedule tick — an already-running worker may still finish
+                    // a backup with the OLD pubkey — but combined with
+                    // BackupRepository.pipelineMutex, an in-flight pipeline run
+                    // serializes against this swap and the next worker tick will
+                    // see the new identity (or stay cancelled).
+                    BackupSyncWorker.schedule(context, enabled = false, interval = SyncInterval.MANUAL)
+
                     keyStore.importKey(privKeyHex)
                     nostrSigner.clearAmberConfig()
                     userPreferences.setKeyBackedUp(false)
@@ -182,6 +211,10 @@ class KeyImportViewModel @Inject constructor(
             val pkg = packageName ?: AmberIntegration.AMBER_PACKAGE
             withContext(Dispatchers.IO) {
                 try {
+                    // Cancel periodic backup before identity swap (see confirmImport
+                    // for the full reasoning). Same pattern; same caveats.
+                    BackupSyncWorker.schedule(context, enabled = false, interval = SyncInterval.MANUAL)
+
                     nostrSigner.saveAmberConfig(pubkeyHex, pkg)
                     nostrSigner.switchToAmber(pubkeyHex, pkg, context.contentResolver)
                     messageRepository.deleteForeignIdentityRows(pubkeyHex, NostrConfig.DEV_PUBKEY)
@@ -203,13 +236,7 @@ class KeyImportViewModel @Inject constructor(
 
     // ── Private helpers ──────────────────────────────────────────
 
-    private fun detectFormat(input: String): ImportFormat = when {
-        input.startsWith("nsec1") -> ImportFormat.NSEC
-        input.startsWith("ncryptsec1") -> ImportFormat.NCRYPTSEC
-        input.matches(HEX_64_REGEX) -> ImportFormat.HEX
-        input.split(WHITESPACE_REGEX).size in 12..24 -> ImportFormat.MNEMONIC
-        else -> ImportFormat.UNKNOWN
-    }
+    private fun detectFormat(input: String): ImportFormat = detectKeyImportFormat(input)
 
     /**
      * Derives the private key hex from the current input + optional password,
@@ -266,7 +293,5 @@ class KeyImportViewModel @Inject constructor(
 
     companion object {
         private const val TAG = "KeyImportViewModel"
-        private val HEX_64_REGEX = Regex("^[0-9a-f]{64}$")
-        private val WHITESPACE_REGEX = Regex("\\s+")
     }
 }

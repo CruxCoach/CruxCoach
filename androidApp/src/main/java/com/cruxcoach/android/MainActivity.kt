@@ -111,7 +111,20 @@ class MainActivity : AppCompatActivity() {
 
     private val amberForegroundCallback: (Intent) -> Unit = { intent ->
         runCatching { amberSignerLauncher.launch(intent) }
-            .onFailure { android.util.Log.w("MainActivity", "amberSignerLauncher.launch failed", it) }
+            .onFailure {
+                android.util.Log.w("MainActivity", "amberSignerLauncher.launch failed", it)
+                // Critical: must still call deliverAmberResponse with an
+                // empty Intent. Without this, the suspended Quartz
+                // sign/encrypt/decrypt call inside NostrSignerExternal
+                // never gets a response and the coroutine awaiting it
+                // hangs forever — the user sees a frozen "signing…"
+                // state with no recovery short of force-stop. Empty
+                // Intent surfaces inside Quartz as "no result" → the
+                // sign call propagates a normal failure that the caller
+                // (e.g. BackupRepository) can then surface as a
+                // BackupException retry.
+                nostrSigner.get().deliverAmberResponse(Intent())
+            }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
