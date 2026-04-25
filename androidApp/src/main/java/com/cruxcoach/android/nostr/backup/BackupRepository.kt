@@ -19,7 +19,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -228,7 +227,7 @@ class BackupRepository @Inject constructor(
      * during fetch" (Fetch). Callers can surface a specific error message
      * to the user instead of a generic "nothing happened".
      */
-    suspend fun checkForBackup(timeoutMs: Long = 10_000L): CheckOutcome {
+    suspend fun checkForBackup(timeoutMs: Long = 30_000L): CheckOutcome {
         Log.d(TAG, "event=restore_check_start signerMode=${nostrSigner.getStoredSignerMode().name}")
         val pubkey = nostrSigner.getPublicKeyHex()
         val mode = nostrSigner.getStoredSignerMode()
@@ -307,13 +306,37 @@ class BackupRepository @Inject constructor(
             )
         }
 
+        // Pre-flight HEAD probe: the pointer survives on relays even
+        // after a delete-remote opt-out (relays may ignore the Kind-5
+        // deletion event), but the actual encrypted ciphertext could
+        // already be gone from every Blossom server. Without the probe
+        // we'd say "Found", show the confirm dialog with size +
+        // timestamp, and only fail at restore-time with a generic
+        // "Restore failed" — confusing because the metadata clearly
+        // existed. Pre-filter the pointer's server list through the
+        // shared URL gate (same as restore() does at L344) so we don't
+        // dial pre-compromise URLs.
+        val probeServers = pointer.servers.filter {
+            com.cruxcoach.android.nostr.UrlValidation.isValidBlossom(it)
+        }
+        val info = BackupInfo(pointer = pointer, pointerEvent = pointerEvent, keyEvent = keyEvent)
+        val blobReachable = probeServers.isNotEmpty() &&
+            uploader.verifyExists(pointer.sha256, probeServers)
+        if (!blobReachable) {
+            Log.w(
+                TAG,
+                "event=restore_check_blob_unreachable" +
+                    " sha256Prefix=${pointer.sha256.take(8)}" +
+                    " serversProbed=${probeServers.size}",
+            )
+            return CheckOutcome.BlobUnreachable(info)
+        }
+
         Log.d(
             TAG,
             "event=restore_check_hit bytes=${pointer.size} ageHours=${(System.currentTimeMillis() / 1000 - pointer.updatedAt) / 3600}",
         )
-        return CheckOutcome.Found(
-            BackupInfo(pointer = pointer, pointerEvent = pointerEvent, keyEvent = keyEvent),
-        )
+        return CheckOutcome.Found(info)
     }
 
     /**
@@ -570,6 +593,39 @@ class BackupRepository @Inject constructor(
             }
         }
 
+        // Refuse to regenerate when there is any prior history on this
+        // device. A null result from `fetchWrappedKeyFromRelays` could mean
+        // (a) the relays genuinely don't hold a key event for this identity
+        // — fresh setup or post-clearAllIdentityState — or (b) the relay
+        // subscription timed out / dropped events under load. Pre-fix we
+        // treated both cases the same and regenerated, which (combined
+        // with the new throw-on-publish) replaced the relay's key event
+        // with a fresh one — orphaning the existing Blossom blob from
+        // its decryption key. The old backup became permanently
+        // undecryptable on every device once the new key event won the
+        // replaceable-event race.
+        //
+        // Signal of "prior history on this device": any one of
+        // `lastKeyEventPublish`, `previousBlobSha256`, `lastBackupSync`
+        // is non-null. After clearAllIdentityState all three are null,
+        // so a clean opt-in / fresh-install path still hits the
+        // generate branch below. Pure cache eviction (Android wipes
+        // the encrypted preferences but DataStore survives) keeps the
+        // history fields and routes us to the throw branch.
+        val hasPriorHistory = preferences.getLastKeyEventPublish() != null ||
+            preferences.getPreviousBlobSha256() != null ||
+            preferences.lastBackupSync.first() != null
+        if (hasPriorHistory) {
+            Log.w(
+                TAG,
+                "event=key_cache_regenerate_blocked reason=prior-history-present " +
+                    "lastKeyEventPublish=${preferences.getLastKeyEventPublish() != null} " +
+                    "previousBlobSha=${preferences.getPreviousBlobSha256() != null} " +
+                    "lastBackupSync=${preferences.lastBackupSync.first() != null}",
+            )
+            throw BackupException(BackupErrorReason.KeyFetchAmbiguous)
+        }
+
         Log.w(TAG, "event=key_cache_regenerate reason=unrecoverable")
         val fresh = BackupCrypto.generateKey()
         val freshHex = fresh.toHexString()
@@ -600,7 +656,7 @@ class BackupRepository @Inject constructor(
      * hold the private key, so we fall back to "query all parameterized
      * events for this pubkey and shape-match the key event".
      */
-    private suspend fun fetchWrappedKeyFromRelays(timeoutMs: Long = 10_000L): String? {
+    private suspend fun fetchWrappedKeyFromRelays(timeoutMs: Long = 30_000L): String? {
         val pubkey = nostrSigner.getPublicKeyHex()
         val event = when (nostrSigner.getStoredSignerMode()) {
             SignerMode.LOCAL -> {
@@ -752,13 +808,44 @@ class BackupRepository @Inject constructor(
     }
 
     private suspend fun queryAllValid(filter: String, timeoutMs: Long): List<MinimalEvent> {
-        val flow: Flow<String> = pool.subscribe(filter, closeOnEose = true)
-        // The pool filters EOSE internally when closeOnEose=true; what
-        // reaches us here is already only EVENT payloads. The parse-success
-        // guard below deduplicates any malformed strings.
-        val collected = withTimeoutOrNull(timeoutMs) {
-            flow.toList()
-        } ?: emptyList()
+        // skipDedup=true: NostrRelayPool maintains a process-wide
+        // `seenEventIds` cache shared by every subscriber, used to
+        // collapse duplicate EVENT messages from multiple relays in
+        // live streams. Backup checkForBackup / fetchWrappedKeyFromRelays
+        // are one-shot historical queries — by the time we run, a
+        // long-lived foreground subscription (NostrPushCoordinator,
+        // AnnouncementsViewModel, etc.) may have already seen our own
+        // backup pointer / key event and added their IDs to
+        // `seenEventIds`. The pool would then drop them on our
+        // dedicated subscription too, leaving the flow empty after
+        // 10s → CheckOutcome.NotFound on a backup that is plainly
+        // present on relays. NotificationPollWorker uses the same
+        // skipDedup escape hatch for the same reason.
+        val flow: Flow<String> = pool.subscribe(filter, skipDedup = true, closeOnEose = true)
+        // Collect into a mutable list outside the timeout's cancellation
+        // scope so partial results survive a cancel. Pre-fix we used
+        // `withTimeoutOrNull { flow.toList() }`, which on timeout cancels
+        // the collector — and any EVENT lines arriving in the same
+        // millisecond window get logged as "flow missing or full" by the
+        // pool (subscriber gone) instead of reaching us. With one slow
+        // relay (e.g. damus under load returning EVENTs at +12s) and the
+        // others having already EOSE'd, we'd time out with zero events
+        // even though the data was on the wire. Now: each event hits
+        // `collected` as it arrives, and on timeout we keep whatever we
+        // have. The pool filters EOSE internally when closeOnEose=true;
+        // what reaches us here is already only EVENT payloads. The
+        // parse-success guard below filters any malformed strings.
+        val collected = mutableListOf<String>()
+        try {
+            kotlinx.coroutines.withTimeout(timeoutMs) {
+                flow.collect { collected.add(it) }
+            }
+        } catch (_: kotlinx.coroutines.TimeoutCancellationException) {
+            Log.d(
+                TAG,
+                "event=query_all_valid_timeout collectedSoFar=${collected.size}",
+            )
+        }
         return collected.mapNotNull { MinimalEvent.fromJson(it) }
     }
 
@@ -880,6 +967,19 @@ sealed class CheckOutcome {
     data object DecryptFailed : CheckOutcome()
     /** Subscribe / fetch threw before we could evaluate results. */
     data class Fetch(val message: String) : CheckOutcome()
+    /**
+     * Pointer + key events present on relays, but a HEAD probe of every
+     * Blossom server in the pointer's server list responded as
+     * unreachable / blob-absent. Distinguishes the "Backup gefunden,
+     * Restore failt sofort" sequence from genuinely-Found: the
+     * encrypted ciphertext is gone (e.g. a prior delete-remote opt-out
+     * cleaned Blossom but the Kind-5 deletion never reached the
+     * particular relay we just queried; or no server ever accepted the
+     * upload). HEAD failures can be transient network glitches, so the
+     * UI surfaces this as a specific message and lets the user retry
+     * later — it does not permanently block restore.
+     */
+    data class BlobUnreachable(val info: BackupInfo) : CheckOutcome()
 }
 
 /**

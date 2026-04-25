@@ -373,6 +373,8 @@ fun SettingsScreen(
                 stringResource(R.string.settings_backup_no_backup_found)
             BackupSettingsState.Snackbar.CheckDecryptFailed ->
                 stringResource(R.string.settings_backup_check_decrypt_failed)
+            BackupSettingsState.Snackbar.BlobUnreachable ->
+                stringResource(R.string.settings_backup_blob_unreachable)
             is BackupSettingsState.Snackbar.CheckError ->
                 stringResource(R.string.settings_backup_check_error, snackbar.detail)
             BackupSettingsState.Snackbar.RestoreFailed ->
@@ -490,6 +492,8 @@ private fun localizedBackupErrorReason(reason: BackupErrorReason): String = when
         stringResource(R.string.backup_error_pointer_lists_no_servers)
     is BackupErrorReason.PlaintextSizeCap ->
         stringResource(R.string.backup_error_plaintext_size_cap)
+    BackupErrorReason.KeyFetchAmbiguous ->
+        stringResource(R.string.backup_error_key_fetch_ambiguous)
     // Fall-through `Other` carries an unstructured string that is dev-
     // facing only; route it through the existing generic-detail string
     // so the user sees a localized prefix instead of just the raw text.

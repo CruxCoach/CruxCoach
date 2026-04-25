@@ -46,6 +46,19 @@ sealed class BackupErrorReason {
     /** Decompressed plaintext exceeded the safety cap (gzip-bomb defense). */
     data class PlaintextSizeCap(val maxBytes: Int) : BackupErrorReason()
 
+    /**
+     * Local wrapped-key cache is empty AND the relay query for the
+     * Kind-30078 key event returned no result. We can't tell whether
+     * the relays genuinely don't have a key event (first-time setup,
+     * post-opt-out) or whether the query timed out / network glitched
+     * (transient — relays still have the key). Refuse to auto-
+     * regenerate in this ambiguous case if there is any prior backup
+     * history on this device, because regenerating would publish a
+     * NEW key event, replacing the old one on relays — making the
+     * existing blob undecryptable forever.
+     */
+    data object KeyFetchAmbiguous : BackupErrorReason()
+
     /** Fall-through for unstructured errors. */
     data class Other(val message: String) : BackupErrorReason()
 }
@@ -69,6 +82,9 @@ fun BackupErrorReason.toLogMessage(): String = when (this) {
         "Backup pointer lists no usable https Blossom servers"
     is BackupErrorReason.PlaintextSizeCap ->
         "Gzip output exceeded $maxBytes bytes (decompression bomb?)"
+    BackupErrorReason.KeyFetchAmbiguous ->
+        "Wrapped-key cache empty and relay key event query returned no result; " +
+            "prior backup history present on device → refusing to regenerate"
     is BackupErrorReason.Other -> message
 }
 

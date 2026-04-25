@@ -47,6 +47,15 @@ data class BackupSettingsState(
         data object CheckDecryptFailed : Snackbar
         /** checkForBackup threw / returned Fetch — surface the detail. */
         data class CheckError(val detail: String) : Snackbar
+        /**
+         * checkForBackup returned BlobUnreachable — pointer + key on
+         * relays, but every Blossom server in the pointer's list said
+         * "no" on a HEAD probe. Typical cause: a prior delete-remote
+         * opt-out cleaned Blossom while the pointer event survived on
+         * a slow relay. UI surfaces a specific message; user can retry
+         * later in case the HEAD failure was a transient network blip.
+         */
+        data object BlobUnreachable : Snackbar
         data object RestoreFailed : Snackbar
         data object BackupSucceeded : Snackbar
         /**
@@ -205,6 +214,8 @@ class BackupSettingsViewModel @Inject constructor(
                             BackupSettingsState.Snackbar.CheckDecryptFailed
                         is com.cruxcoach.android.nostr.backup.CheckOutcome.Fetch ->
                             BackupSettingsState.Snackbar.CheckError(outcome.message)
+                        is com.cruxcoach.android.nostr.backup.CheckOutcome.BlobUnreachable ->
+                            BackupSettingsState.Snackbar.BlobUnreachable
                     },
                 )
             }

@@ -154,45 +154,15 @@ internal fun BleAutoDisconnectSection(
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
 
-    // Presets in seconds — the common "whole-minute" values plus Off.
-    val options = listOf(
-        0 to stringResource(R.string.settings_ble_disconnect_off),
-        60 to stringResource(R.string.settings_ble_disconnect_1min),
-        300 to stringResource(R.string.settings_ble_disconnect_5min),
-        600 to stringResource(R.string.settings_ble_disconnect_10min),
-        900 to stringResource(R.string.settings_ble_disconnect_15min),
-        1800 to stringResource(R.string.settings_ble_disconnect_30min)
-    )
-
-    FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-        modifier = Modifier.testTag("settings_ble_auto_disconnect")
-    ) {
-        options.forEach { (seconds, label) ->
-            FilterChip(
-                selected = bleAutoDisconnectSeconds == seconds,
-                onClick = { onAutoDisconnectChange(seconds) },
-                label = { Text(label) },
-                colors = FilterChipDefaults.filterChipColors(
-                    selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
-                    selectedLabelColor = OrangeAccent
-                )
-            )
-        }
-    }
-
     Spacer(modifier = Modifier.height(8.dp))
-    // Fine-grain stepper for values the presets don't cover (e.g. 90s,
-    // 2m 30s). Shares the shared DurationStepper composable with the
-    // rest-timer section so both "pick a duration" settings behave the
-    // same way. max 60 min matches the longest preset × 2 — any value
-    // above is almost certainly a typo.
-    Text(
-        stringResource(R.string.settings_duration_precise_label),
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
+    // Single source of truth for the duration: shared DurationStepper.
+    // The stepper renders its own current value (Min / Sec ± buttons), so
+    // a separate "Or set exactly:" label and a "Duration: …" line above
+    // it would only repeat what's already visible. Keep the title + desc
+    // (settings_ble_auto_disconnect_*) as the user-facing label and let
+    // the stepper own the value display. `0 = off` reachable via
+    // minSeconds = 0; max 60 min matches the longest old preset × 2 —
+    // any larger value is almost certainly a typo.
     DurationStepper(
         seconds = bleAutoDisconnectSeconds,
         onChange = onAutoDisconnectChange,

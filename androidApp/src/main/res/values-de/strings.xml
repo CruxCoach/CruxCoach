@@ -107,13 +107,6 @@
     <!-- Settings: BLE -->
     <string name="settings_ble_auto_disconnect_title">BLE Auto-Disconnect</string>
     <string name="settings_ble_auto_disconnect_desc">Board-Verbindung automatisch trennen nach Inaktivität.</string>
-    <string name="settings_ble_disconnect_off">Aus</string>
-    <string name="settings_ble_disconnect_1min">1 Min</string>
-    <string name="settings_ble_disconnect_5min">5 Min</string>
-    <string name="settings_ble_disconnect_10min">10 Min</string>
-    <string name="settings_ble_disconnect_15min">15 Min</string>
-    <string name="settings_ble_disconnect_30min">30 Min</string>
-    <string name="settings_duration_precise_label">Oder genau einstellen:</string>
     <string name="settings_duration_minutes_label">Minuten</string>
     <string name="settings_duration_seconds_label">Sekunden</string>
     <string name="settings_ble_keep_screen_on">Bildschirm anlassen</string>
@@ -134,14 +127,6 @@
     <!-- Settings: Timer -->
     <string name="settings_timer_title">Pausentimer</string>
     <string name="settings_timer_desc">Timer zwischen Boulder-Versuchen. Startet nach dem Loggen einer Begehung.</string>
-    <string name="settings_timer_duration">Dauer: %s</string>
-    <string name="settings_timer_30s">30s</string>
-    <string name="settings_timer_1min">1 Min</string>
-    <string name="settings_timer_1m30">1:30</string>
-    <string name="settings_timer_2min">2 Min</string>
-    <string name="settings_timer_3min">3 Min</string>
-    <string name="settings_timer_4min">4 Min</string>
-    <string name="settings_timer_5min">5 Min</string>
     <string name="settings_timer_auto_start">Auto-Start</string>
     <string name="settings_timer_auto_start_desc">Timer startet automatisch nach dem Loggen</string>
 
@@ -1405,6 +1390,7 @@
     <string name="settings_backup_restore_confirm">Wiederherstellen</string>
     <string name="settings_backup_restore_cancel">Abbrechen</string>
     <string name="settings_backup_no_backup_found">Für diesen Account wurde kein Backup gefunden. Falls eines existieren sollte, prüfe deine Netzwerkverbindung und versuche es später erneut — Relais könnten nicht erreichbar sein.</string>
+    <string name="settings_backup_blob_unreachable">Backup-Metadaten gefunden, aber der verschlüsselte Inhalt ist auf keinem Blossom-Server mehr verfügbar (möglicherweise durch ein früheres Opt-out gelöscht, oder alle Server sind kurzzeitig offline). Die Metadaten kannst du über „Remote-Backups löschen" entfernen. Bei Verdacht auf ein Netzwerkproblem später erneut versuchen.</string>
     <string name="settings_backup_check_decrypt_failed">Ein Backup wurde auf den Relais gefunden, aber nicht entschlüsselt — der Schlüssel passt anscheinend nicht.</string>
     <string name="settings_backup_check_error">Fehler beim Suchen nach einem Backup: %1$s</string>
     <string name="settings_backup_restore_failed">Backup konnte nicht wiederhergestellt werden.</string>
@@ -1422,6 +1408,7 @@
     <string name="backup_error_data_key_unwrap_failed">Wiederherstellung fehlgeschlagen: Backup-Schlüssel konnte nicht entpackt werden (falsche Identität?).</string>
     <string name="backup_error_pointer_lists_no_servers">Wiederherstellung fehlgeschlagen: Backup verweist auf keine nutzbaren Blossom-Server.</string>
     <string name="backup_error_plaintext_size_cap">Wiederherstellung fehlgeschlagen: Inhalt überschreitet das Sicherheitslimit.</string>
+    <string name="backup_error_key_fetch_ambiguous">Backup fehlgeschlagen: Verschlüsselungs-Schlüssel-Event konnte nicht von den Relays geladen werden. Automatische Neugenerierung verweigert, weil bereits ein älteres Backup auf diesem Gerät existiert — sonst würde es verwaisen. Bitte erneut versuchen, sobald Relays erreichbar sind.</string>
 
     <!-- DeleteRemoteNote — Lokalisierung pro per-leg-Hinweis im Delete-Remote-Dialog. -->
     <string name="delete_remote_note_dtag_derivation_failed">D-Tag für Löschereignis konnte nicht abgeleitet werden.</string>

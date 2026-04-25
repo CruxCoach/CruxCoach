@@ -90,7 +90,7 @@ class BlossomUploader @Inject constructor(
             }
         }
         val results = servers.map { server ->
-            async(Dispatchers.IO) { uploadToSingle(server, blob, sharedAuthHeader) }
+            async(Dispatchers.IO) { uploadToSingle(server, blob, sha256, sharedAuthHeader) }
         }.awaitAll()
         // Per-server failure logging — otherwise the only thing that reaches
         // logcat is the aggregated "upload failed on all N servers" from the
@@ -121,16 +121,22 @@ class BlossomUploader @Inject constructor(
      * CruxCoach alt MIME; remember which type worked so the next upload
      * picks it first.
      */
-    private suspend fun uploadToSingle(server: String, blob: ByteArray, authHeader: String): UploadResult {
+    private suspend fun uploadToSingle(
+        server: String,
+        blob: ByteArray,
+        sha256Hex: String,
+        authHeader: String,
+    ): UploadResult {
         val hint = preferences.getContentTypeProbe(server)
         val firstType = when (hint) {
             BackupPreferences.ContentTypeProbe.REJECTED_OCTET -> CONTENT_TYPE_ALT
             else -> CONTENT_TYPE_OCTET
         }
-        val first = attemptUpload(server, blob, authHeader, firstType)
+        val first = attemptUpload(server, blob, sha256Hex, authHeader, firstType)
         if (first.accepted) {
             if (hint != BackupPreferences.ContentTypeProbe.ACCEPTED && firstType == CONTENT_TYPE_OCTET) {
                 preferences.setContentTypeProbe(server, BackupPreferences.ContentTypeProbe.ACCEPTED)
+                Log.d(TAG, "event=content_type_probe server=${server.shortHost()} result=accepted contentType=$firstType")
             }
             return first
         }
@@ -138,9 +144,10 @@ class BlossomUploader @Inject constructor(
         // Other failures (auth, network, 5xx) are not fixable by swapping MIME.
         if (first.httpStatus != 415 || firstType != CONTENT_TYPE_OCTET) return first
 
-        val second = attemptUpload(server, blob, authHeader, CONTENT_TYPE_ALT)
+        val second = attemptUpload(server, blob, sha256Hex, authHeader, CONTENT_TYPE_ALT)
         if (second.accepted) {
             preferences.setContentTypeProbe(server, BackupPreferences.ContentTypeProbe.REJECTED_OCTET)
+            Log.d(TAG, "event=content_type_probe server=${server.shortHost()} result=rejected_octet fallbackAccepted=$CONTENT_TYPE_ALT")
         }
         return second
     }
@@ -148,6 +155,7 @@ class BlossomUploader @Inject constructor(
     private fun attemptUpload(
         server: String,
         blob: ByteArray,
+        sha256Hex: String,
         authHeader: String,
         contentType: String,
     ): UploadResult {
@@ -155,6 +163,16 @@ class BlossomUploader @Inject constructor(
             .url(server.trimEnd('/') + "/upload")
             .put(blob.toRequestBody(contentType.toMediaType()))
             .header("Authorization", authHeader)
+            // BUD-06 (Upload Requirements): some Blossom servers gate
+            // /upload behind these three headers and reject otherwise.
+            // Verified empirically: nostr.download answers 400 "Missing
+            // X-SHA-256 header" without them and 201 with them. Servers
+            // that don't read these headers (primal, etc.) ignore them
+            // — sending is purely additive. Hex must be lowercase per
+            // spec.
+            .header("X-SHA-256", sha256Hex)
+            .header("X-Content-Length", blob.size.toString())
+            .header("X-Content-Type", contentType)
             .build()
         return try {
             okHttpClient.newCall(request).execute().use { resp -> parseUploadResponse(server, resp) }
@@ -321,8 +339,28 @@ class BlossomUploader @Inject constructor(
                         .header("Authorization", authHeader)
                         .build()
                     okHttpClient.newCall(request).execute().use { resp ->
-                        if (resp.isSuccessful) {
+                        // 404 + 410 count as success: the goal of the delete
+                        // is "this blob is not on the server". A server that
+                        // never accepted the upload (e.g. nostr.build returning
+                        // 415 Unsupported on the original POST) responds 404
+                        // here, and HTTP semantically calls that a failure —
+                        // but for the user's privacy intent the objective is
+                        // already met. Pre-fix the user saw "1 of 2 servers
+                        // acknowledged the deletion" when both were
+                        // effectively clean, just because one had nothing
+                        // to delete. The dev-facing log keeps the distinction
+                        // (`delete_already_absent` vs the actual 2xx success)
+                        // so logcat still surfaces the real-vs-vacuous case.
+                        val effectivelyAbsent = resp.code == 404 || resp.code == 410
+                        if (resp.isSuccessful || effectivelyAbsent) {
                             ok += 1
+                            if (effectivelyAbsent) {
+                                Log.d(
+                                    TAG,
+                                    "event=delete_already_absent " +
+                                        "server=${server.shortHost()} code=${resp.code}",
+                                )
+                            }
                         } else {
                             Log.d(
                                 TAG,
@@ -330,8 +368,20 @@ class BlossomUploader @Inject constructor(
                             )
                         }
                     }
-                } catch (_: Exception) {
-                    // best-effort; ignore
+                } catch (e: Exception) {
+                    // best-effort: a per-server I/O failure shouldn't propagate
+                    // (the active opt-out flow is best-effort by design — see
+                    // FEAT-002 §20.2). Log explicitly so a 0-success outcome
+                    // can be distinguished in logcat between "server returned
+                    // a non-2xx body" (logged via delete_non2xx above) and
+                    // "connection threw before we got a response". Pre-fix
+                    // this catch was silent which made delete-remote
+                    // diagnostics noticeably worse than upload diagnostics.
+                    Log.d(
+                        TAG,
+                        "event=delete_io_exception server=${server.shortHost()} " +
+                            "reason=${e.javaClass.simpleName}: ${e.message}",
+                    )
                 }
             }
             DeleteOutcome(attempted = servers.size, succeeded = ok, authFailed = false)
@@ -405,10 +455,32 @@ class BlossomUploader @Inject constructor(
         private const val CONTENT_TYPE_OCTET = "application/octet-stream"
         private const val CONTENT_TYPE_ALT = "application/x-cruxcoach-backup"
 
-        /** FEAT-002 §5.3 — hardcoded defaults, merged with the user's Kind 10063 list. */
+        /**
+         * FEAT-002 §5.3 — hardcoded defaults, merged with the user's
+         * Kind 10063 list.
+         *
+         * Server selection is driven by empirical end-to-end testing
+         * (fresh test identity, BUD-01 + BUD-06 conformant upload of
+         * an `application/octet-stream` blob, GET-verify, DELETE-cleanup):
+         *
+         * - **blossom.primal.net**: free, accepts arbitrary blobs, fast.
+         * - **nostr.download**: free, requires the BUD-06 headers we
+         *   now send (X-SHA-256, X-Content-Length, X-Content-Type)
+         *   — answered 400 "Missing X-SHA-256" before the headers
+         *   patch, now answers 201.
+         *
+         * Removed (deterministic 415 "File type not allowed" — these
+         * servers are media CDNs that whitelist image/video/audio
+         * MIME types only, so neither `application/octet-stream` nor
+         * the CruxCoach-alt `application/x-cruxcoach-backup` will
+         * ever be accepted, regardless of retries):
+         *
+         * - blossom.nostr.build
+         * - blossom.band (same infrastructure)
+         */
         val DEFAULT_SERVERS: List<String> = listOf(
-            "https://blossom.nostr.build",
             "https://blossom.primal.net",
+            "https://nostr.download",
         )
 
         private val JSON = Json { encodeDefaults = true; prettyPrint = false }
