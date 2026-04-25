@@ -158,7 +158,8 @@ class RelayListResolver @Inject constructor(
         }
         return try {
             deferred.await()
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Log.w(TAG, "event=fetch_fallback_defaults reason=${e.javaClass.simpleName}: ${e.message}")
             defaultsOnly()
         } finally {
             fetchMutex.withLock {
@@ -170,7 +171,8 @@ class RelayListResolver @Inject constructor(
     private suspend fun awaitOrDefaults(deferred: Deferred<ResolvedRelayList>): ResolvedRelayList {
         return try {
             deferred.await()
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Log.w(TAG, "event=join_fallback_defaults reason=${e.javaClass.simpleName}: ${e.message}")
             defaultsOnly()
         }
     }

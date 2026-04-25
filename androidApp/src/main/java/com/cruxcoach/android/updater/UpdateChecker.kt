@@ -28,16 +28,20 @@ class UpdateChecker(
 
     suspend fun maybeCheck(trigger: Trigger): CheckOutcome {
         if (!installSourceGate.selfUpdateAllowed()) {
+            Log.i(TAG, "event=check_skipped trigger=$trigger reason=install_source_gated")
             return CheckOutcome.Skipped(reason = "install_source_gated")
         }
         val snapshot = preferences.snapshot()
         if (!snapshot.autoCheckEnabled && trigger != Trigger.MANUAL) {
+            Log.i(TAG, "event=check_skipped trigger=$trigger reason=auto_check_disabled")
             return CheckOutcome.Skipped(reason = "auto_check_disabled")
         }
         if (trigger != Trigger.MANUAL) {
             val sinceBoot = elapsedRealtimeProvider() - snapshot.lastCheckBootRealtime
             if (snapshot.lastCheckBootRealtime > 0 && sinceBoot < MIN_CHECK_INTERVAL_MS) {
-                return CheckOutcome.Throttled(remainingMs = MIN_CHECK_INTERVAL_MS - sinceBoot)
+                val remaining = MIN_CHECK_INTERVAL_MS - sinceBoot
+                Log.d(TAG, "event=check_throttled trigger=$trigger remainingMs=$remaining")
+                return CheckOutcome.Throttled(remainingMs = remaining)
             }
         }
 
@@ -57,6 +61,7 @@ class UpdateChecker(
                         lastCheckResult = CheckResult.NOT_MODIFIED,
                     )
                 }
+                Log.d(TAG, "event=check_not_modified trigger=$trigger")
                 CheckOutcome.NotModified
             }
             is CodebergReleaseClient.Result.Error -> {
@@ -86,6 +91,7 @@ class UpdateChecker(
                             lastCheckResult = if (anyStable) CheckResult.NO_UPDATE else CheckResult.NO_UPDATE_STABLE,
                         )
                     }
+                    Log.i(TAG, "event=check_no_update trigger=$trigger anyStable=$anyStable")
                     return CheckOutcome.NoUpdate
                 }
 
@@ -97,6 +103,7 @@ class UpdateChecker(
                             lastErrorAtEpochMs = nowMs(),
                         )
                     }
+                    Log.w(TAG, "event=check_error trigger=$trigger reason=release_malformed tag=${chosen.tagName}")
                     return CheckOutcome.Error("release_malformed")
                 }
 
@@ -109,6 +116,7 @@ class UpdateChecker(
                             lastErrorAtEpochMs = nowMs(),
                         )
                     }
+                    Log.w(TAG, "event=check_error trigger=$trigger reason=sha256_asset_fetch_failed")
                     return CheckOutcome.Error("sha256_asset_fetch_failed")
                 }
                 val infoWithSha = info.copy(apkSha256 = resolvedSha)
@@ -130,6 +138,7 @@ class UpdateChecker(
                         pipelineStage = PipelineStage.PENDING_DOWNLOAD,
                     )
                 }
+                Log.i(TAG, "event=update_available trigger=$trigger tag=${infoWithSha.tagName} apkSize=${infoWithSha.apkSizeBytes}")
                 CheckOutcome.Update(infoWithSha)
             }
         }

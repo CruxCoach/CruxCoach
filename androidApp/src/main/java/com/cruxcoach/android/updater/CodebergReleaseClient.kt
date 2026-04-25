@@ -1,5 +1,6 @@
 package com.cruxcoach.android.updater
 
+import android.util.Log
 import com.cruxcoach.android.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -43,10 +44,14 @@ class CodebergReleaseClient(
                         val parsed = JSON.decodeFromString<List<CodebergRelease>>(body)
                         Result.Success(parsed, newEtag)
                     }
-                    else -> Result.Error("HTTP ${resp.code}")
+                    else -> {
+                        Log.w(TAG, "event=fetchReleases_http_error code=${resp.code} url=$url")
+                        Result.Error("HTTP ${resp.code}")
+                    }
                 }
             }
         } catch (e: Exception) {
+            Log.w(TAG, "event=fetchReleases_failed url=$url", e)
             Result.Error(e.message ?: e.javaClass.simpleName)
         }
     }
@@ -63,11 +68,15 @@ class CodebergReleaseClient(
             .build()
         try {
             httpClient.newCall(request).execute().use { resp ->
-                if (!resp.isSuccessful) return@withContext null
+                if (!resp.isSuccessful) {
+                    Log.w(TAG, "event=fetchSha256_http_error code=${resp.code} url=$url")
+                    return@withContext null
+                }
                 val body = resp.body?.string().orEmpty().trim()
                 Regex("[0-9a-fA-F]{64}").find(body)?.value?.lowercase()
             }
         } catch (e: Exception) {
+            Log.w(TAG, "event=fetchSha256_failed url=$url", e)
             null
         }
     }
@@ -79,6 +88,7 @@ class CodebergReleaseClient(
     }
 
     companion object {
+        private const val TAG = "CodebergReleaseClient"
         internal val JSON = Json {
             ignoreUnknownKeys = true
             coerceInputValues = true
