@@ -131,4 +131,40 @@ class Nip65RelayListParserTest {
         val result = Nip65TagParser.parse(tags)
         assertEquals(1, result.size)
     }
+
+    // ── MAX_RELAYS=32 cap (B7 parse-boundary defense) ────────────────────────
+    // A hostile bootstrap relay could publish a Kind 10002 event with
+    // thousands of `r` tags. Without the cap the parser allocates a
+    // thousand-entry list and every downstream pool-update path runs
+    // O(n²). These tests pin the cap at 32 so a future "let's relax it"
+    // refactor surfaces as a test failure that needs an explicit choice,
+    // not a silent regression.
+
+    @Test
+    fun `accepts up to 32 distinct relays`() {
+        val tags = (1..32).map { listOf("r", "wss://relay$it.example.com") }
+        val result = Nip65TagParser.parse(tags)
+        assertEquals(32, result.size)
+    }
+
+    @Test
+    fun `caps oversized list at 32 entries (drops the rest)`() {
+        val tags = (1..50).map { listOf("r", "wss://relay$it.example.com") }
+        val result = Nip65TagParser.parse(tags)
+        assertEquals(32, result.size)
+        // First 32 are kept (input order preserved), entries 33+ silently dropped.
+        assertEquals("wss://relay1.example.com", result.first().url)
+        assertEquals("wss://relay32.example.com", result.last().url)
+    }
+
+    @Test
+    fun `cap counts deduplicated entries, not raw tag count`() {
+        // 30 distinct relays + 5 duplicates of the first → 30 kept; the
+        // duplicates don't eat into the cap. This protects the legitimate
+        // user from a misbehaving relay padding their list with copies.
+        val tags = (1..30).map { listOf("r", "wss://relay$it.example.com") } +
+            List(5) { listOf("r", "wss://relay1.example.com") }
+        val result = Nip65TagParser.parse(tags)
+        assertEquals(30, result.size)
+    }
 }
