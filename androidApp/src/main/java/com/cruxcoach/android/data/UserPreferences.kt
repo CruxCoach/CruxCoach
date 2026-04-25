@@ -54,10 +54,14 @@ enum class GradeScale(val label: String) {
     FRENCH("Fontainebleau")
 }
 
-enum class SyncInterval(val label: String) {
-    DAILY("Taeglich"),
-    WEEKLY("Woechentlich"),
-    MANUAL("Manuell")
+enum class SyncInterval(@androidx.annotation.StringRes val labelRes: Int) {
+    // labelRes points to a localized string resource so both the German
+    // and English (system-fallback) locales render correctly. Pre-fix
+    // these were hardcoded German ("Taeglich"/"Woechentlich"/"Manuell")
+    // shown verbatim to every user regardless of locale.
+    DAILY(com.cruxcoach.android.R.string.sync_interval_daily),
+    WEEKLY(com.cruxcoach.android.R.string.sync_interval_weekly),
+    MANUAL(com.cruxcoach.android.R.string.sync_interval_manual),
 }
 
 enum class DarkModeSetting(val label: String) {

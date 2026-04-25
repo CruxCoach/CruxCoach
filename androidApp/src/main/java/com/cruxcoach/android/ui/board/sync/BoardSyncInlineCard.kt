@@ -411,11 +411,16 @@ private fun SyncProgressChecklist(
         }
         val climbDetail = if (step is ImportStep.ImportClimbs && step.total > 0) {
             if (step.scanned == 0) {
-                "%,d Climbs…".format(step.total)
+                stringResource(R.string.board_sync_detail_climbs_count, step.total)
             } else {
                 val isDelta = step.scanned != step.inserted
-                if (isDelta) "%,d / %,d  (%,d neu)".format(step.scanned, step.total, step.inserted)
-                else "%,d / %,d".format(step.scanned, step.total)
+                if (isDelta) stringResource(
+                    R.string.board_sync_detail_progress_with_new,
+                    step.scanned, step.total, step.inserted,
+                )
+                else stringResource(
+                    R.string.board_sync_detail_progress, step.scanned, step.total,
+                )
             }
         } else if (step is ImportStep.Done) {
             "%,d".format(step.climbs)
@@ -433,11 +438,16 @@ private fun SyncProgressChecklist(
         }
         val statDetail = if (step is ImportStep.ImportStats && step.total > 0) {
             if (step.scanned == 0) {
-                "%,d Stats…".format(step.total)
+                stringResource(R.string.board_sync_detail_stats_count, step.total)
             } else {
                 val isDelta = step.scanned != step.inserted
-                if (isDelta) "%,d / %,d  (%,d neu)".format(step.scanned, step.total, step.inserted)
-                else "%,d / %,d".format(step.scanned, step.total)
+                if (isDelta) stringResource(
+                    R.string.board_sync_detail_progress_with_new,
+                    step.scanned, step.total, step.inserted,
+                )
+                else stringResource(
+                    R.string.board_sync_detail_progress, step.scanned, step.total,
+                )
             }
         } else if (step is ImportStep.Done) {
             "%,d".format(step.stats)
@@ -456,7 +466,7 @@ private fun SyncProgressChecklist(
         val layoutDetail = if (step is ImportStep.ImportLayout && step.count > 0) {
             "%,d".format(step.count)
         } else if (step is ImportStep.Done) {
-            "%,d Placements".format(step.placements)
+            stringResource(R.string.board_sync_detail_placements_count, step.placements)
         } else null
         SyncStepRow(stringResource(R.string.board_sync_step_import_layout), layoutStatus, layoutDetail)
 
@@ -470,7 +480,7 @@ private fun SyncProgressChecklist(
 
         if (step is ImportStep.Done && step.nomatchCount > 0) {
             Text(
-                "NM: %,d".format(step.nomatchCount),
+                stringResource(R.string.board_sync_detail_nomatch, step.nomatchCount),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -549,12 +559,22 @@ private fun SyncStepRow(
     }
 }
 
+/**
+ * Render an ISO-8601 timestamp string as a short, locale-aware date+time.
+ * The previous implementation hand-concatenated `dd.MM.yyyy, HH:mm`
+ * unconditionally, which is the German format but was also shown to
+ * English-locale users. SHORT-style formatting gives `25.04.26, 14:32`
+ * for `de`, `4/25/26, 2:32 PM` for `en-US`, etc.
+ */
 private fun formatTimestamp(iso: String): String {
     return try {
-        val parts = iso.split("T")
-        val dateParts = parts[0].split("-")
-        val time = parts.getOrElse(1) { "00:00" }.take(5)
-        "${dateParts[2]}.${dateParts[1]}.${dateParts[0]}, $time"
+        java.time.Instant.parse(iso)
+            .atZone(java.time.ZoneId.systemDefault())
+            .format(
+                java.time.format.DateTimeFormatter
+                    .ofLocalizedDateTime(java.time.format.FormatStyle.SHORT)
+                    .withLocale(java.util.Locale.getDefault()),
+            )
     } catch (_: Exception) {
         iso
     }

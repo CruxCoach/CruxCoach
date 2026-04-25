@@ -53,6 +53,29 @@ internal fun BackupSettingsSection(
 
         Spacer(Modifier.height(12.dp))
 
+        // Explicit status line — stays visible regardless of
+        // backupEnabled, so the user never has to infer state from
+        // "the section went blank after I clicked delete". Covers
+        // every combination of (hasKey × enabled × hasLastSync).
+        val statusText = when {
+            !state.hasNostrKey -> stringResource(R.string.settings_backup_status_no_key)
+            !state.backupEnabled && state.lastBackupIso == null ->
+                stringResource(R.string.settings_backup_status_disabled_no_history)
+            !state.backupEnabled && state.lastBackupIso != null ->
+                stringResource(R.string.settings_backup_status_disabled_with_history, state.lastBackupIso!!)
+            state.backupEnabled && state.lastBackupIso == null ->
+                stringResource(R.string.settings_backup_status_enabled_no_backup)
+            else ->
+                stringResource(R.string.settings_backup_status_enabled_with_backup, state.lastBackupIso!!)
+        }
+        Text(
+            statusText,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
+        Spacer(Modifier.height(12.dp))
+
         // Toggle row
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -89,22 +112,15 @@ internal fun BackupSettingsSection(
                     FilterChip(
                         selected = state.interval == interval,
                         onClick = { onSetInterval(interval) },
-                        label = { Text(interval.label) },
+                        label = { Text(stringResource(interval.labelRes)) },
                     )
                 }
             }
 
-            Spacer(Modifier.height(8.dp))
-            state.lastBackupIso?.let {
-                Text(
-                    stringResource(R.string.settings_backup_last_sync, it),
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            } ?: Text(
-                stringResource(R.string.settings_backup_never_synced),
-                style = MaterialTheme.typography.bodySmall,
-            )
-
+            // "Letzte Sicherung" / "Noch keine Sicherung" has moved up
+            // into the always-visible status line above the toggle, so
+            // we don't duplicate it here. Inside-this-block, go
+            // straight to the actionable button.
             Spacer(Modifier.height(12.dp))
             Button(
                 onClick = onRunBackupNow,

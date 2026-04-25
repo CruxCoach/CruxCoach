@@ -1388,6 +1388,11 @@
     <string name="settings_backup_needs_key">A Nostr key is required. It will be generated on first use.</string>
     <string name="settings_backup_interval">Interval</string>
     <string name="settings_backup_last_sync">Last backup: %s</string>
+    <string name="settings_backup_status_no_key">Backup requires a Nostr key.</string>
+    <string name="settings_backup_status_disabled_no_history">Backup disabled — no data stored on relays.</string>
+    <string name="settings_backup_status_disabled_with_history">Backup disabled. A previous backup from %1$s may still exist on relays.</string>
+    <string name="settings_backup_status_enabled_no_backup">Backup enabled — no sync yet.</string>
+    <string name="settings_backup_status_enabled_with_backup">Backup enabled — last sync %1$s.</string>
     <string name="settings_backup_never_synced">No backup yet</string>
     <string name="settings_backup_run_now">Back up now</string>
     <string name="settings_backup_run_now_progress">Backing up…</string>
@@ -1459,6 +1464,30 @@
     <string name="settings_share_zapstore_desc">Recommended app store for CruxCoach — verifiable builds, Nostr-native.</string>
     <string name="settings_share_zapstore_hint">Scan the QR or send the link. Zapstore opens automatically if installed.</string>
     <string name="cd_zapstore_share_qr">Zapstore share QR code</string>
+
+    <!-- Sync interval enum labels (FilterChip text in Backup + Board settings) -->
+    <string name="sync_interval_daily">Daily</string>
+    <string name="sync_interval_weekly">Weekly</string>
+    <string name="sync_interval_manual">Manual</string>
+
+    <!-- BoardModelSelectionDialog (was hardcoded German until 0.1.3) -->
+    <string name="board_model_dialog_title_missing">Board data missing</string>
+    <string name="board_model_dialog_title_pick">Which Kilter board do you have?</string>
+    <string name="board_model_dialog_body_missing_with_sync">The board database has not been synced yet. Start the sync; afterward you can pick your board model.</string>
+    <string name="board_model_dialog_body_missing_inline">The board database has not been synced yet. Start the sync below on this screen; afterward you can pick your board model.</string>
+    <string name="board_model_dialog_hint">The selection determines which holds and LEDs are shown.</string>
+    <string name="board_model_dialog_start_sync">Start sync</string>
+    <string name="board_model_dialog_close">Close</string>
+    <string name="board_model_dialog_confirm">Confirm</string>
+    <string name="board_model_dialog_cancel">Cancel</string>
+
+    <!-- BoardSyncInlineCard step detail labels (was mixed EN/DE) -->
+    <string name="board_sync_detail_climbs_count">%,d Climbs…</string>
+    <string name="board_sync_detail_progress_with_new">%1$,d / %2$,d  (%3$,d new)</string>
+    <string name="board_sync_detail_progress">%1$,d / %2$,d</string>
+    <string name="board_sync_detail_stats_count">%,d Stats…</string>
+    <string name="board_sync_detail_placements_count">%,d Placements</string>
+    <string name="board_sync_detail_nomatch">NM: %,d</string>
 
     <!-- "What's new" upgrade dialogs (only shown to upgrading users) -->
     <string name="whatsnew_done">Done</string>

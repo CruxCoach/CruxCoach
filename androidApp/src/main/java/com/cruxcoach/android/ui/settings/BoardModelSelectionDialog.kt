@@ -9,9 +9,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.data.repository.BoardSize
 
@@ -30,8 +32,8 @@ internal fun BoardModelSelectionDialog(
         onDismissRequest = onDismiss,
         title = {
             Text(
-                if (isEmpty) "Board-Daten fehlen"
-                else "Welches Kilter Board hast du?",
+                if (isEmpty) stringResource(R.string.board_model_dialog_title_missing)
+                else stringResource(R.string.board_model_dialog_title_pick),
                 fontWeight = FontWeight.Bold
             )
         },
@@ -39,11 +41,9 @@ internal fun BoardModelSelectionDialog(
             if (isEmpty) {
                 Text(
                     if (onNavigateToSync != null)
-                        "Die Board-Datenbank ist noch nicht synchronisiert. " +
-                            "Starte den Sync, danach kannst du dein Board-Modell auswählen."
+                        stringResource(R.string.board_model_dialog_body_missing_with_sync)
                     else
-                        "Die Board-Datenbank ist noch nicht synchronisiert. " +
-                            "Starte den Sync unten auf diesem Screen, danach kannst du dein Board-Modell auswählen.",
+                        stringResource(R.string.board_model_dialog_body_missing_inline),
                     style = MaterialTheme.typography.bodyMedium
                 )
             } else {
@@ -82,7 +82,7 @@ internal fun BoardModelSelectionDialog(
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        "Die Auswahl bestimmt welche Griffe und LEDs angezeigt werden.",
+                        stringResource(R.string.board_model_dialog_hint),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -99,20 +99,32 @@ internal fun BoardModelSelectionDialog(
                     colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Text("Sync starten", fontWeight = FontWeight.Bold)
+                    Text(
+                        stringResource(R.string.board_model_dialog_start_sync),
+                        fontWeight = FontWeight.Bold,
+                    )
                 }
-                isEmpty -> TextButton(onClick = onDismiss) { Text("Schließen") }
+                isEmpty -> TextButton(onClick = onDismiss) {
+                    Text(stringResource(R.string.board_model_dialog_close))
+                }
                 else -> Button(
                     onClick = { onConfirm(currentSelection) },
                     colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Text("Bestätigen", fontWeight = FontWeight.Bold)
+                    Text(
+                        stringResource(R.string.board_model_dialog_confirm),
+                        fontWeight = FontWeight.Bold,
+                    )
                 }
             }
         },
         dismissButton = if (isEmpty && onNavigateToSync == null) null else {
-            { TextButton(onClick = onDismiss) { Text("Abbrechen") } }
+            {
+                TextButton(onClick = onDismiss) {
+                    Text(stringResource(R.string.board_model_dialog_cancel))
+                }
+            }
         }
     )
 }

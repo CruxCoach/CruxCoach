@@ -93,7 +93,7 @@ internal fun BoardSyncSection(
             FilterChip(
                 selected = syncInterval == interval,
                 onClick = { onSyncIntervalChange(interval) },
-                label = { Text(interval.label) },
+                label = { Text(stringResource(interval.labelRes)) },
                 colors = FilterChipDefaults.filterChipColors(
                     selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
                     selectedLabelColor = OrangeAccent

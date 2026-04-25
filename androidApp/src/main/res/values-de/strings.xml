@@ -1390,6 +1390,11 @@
     <string name="settings_backup_needs_key">Ein Nostr-Schlüssel wird benötigt. Er wird bei der ersten Nutzung erzeugt.</string>
     <string name="settings_backup_interval">Intervall</string>
     <string name="settings_backup_last_sync">Letzte Sicherung: %s</string>
+    <string name="settings_backup_status_no_key">Backup benötigt einen Nostr-Schlüssel.</string>
+    <string name="settings_backup_status_disabled_no_history">Backup deaktiviert — keine Daten auf Relais hinterlegt.</string>
+    <string name="settings_backup_status_disabled_with_history">Backup deaktiviert. Eine ältere Sicherung vom %1$s könnte auf Relais noch existieren.</string>
+    <string name="settings_backup_status_enabled_no_backup">Backup aktiv — noch nicht gesichert.</string>
+    <string name="settings_backup_status_enabled_with_backup">Backup aktiv — letzte Sicherung %1$s.</string>
     <string name="settings_backup_never_synced">Noch keine Sicherung</string>
     <string name="settings_backup_run_now">Jetzt sichern</string>
     <string name="settings_backup_run_now_progress">Backup läuft…</string>
@@ -1461,6 +1466,30 @@
     <string name="settings_share_zapstore_desc">Empfohlener App-Store für CruxCoach — verifizierbare Builds, Nostr-nativ.</string>
     <string name="settings_share_zapstore_hint">QR scannen oder Link senden. Zapstore öffnet automatisch, falls installiert.</string>
     <string name="cd_zapstore_share_qr">Zapstore-Share-QR-Code</string>
+
+    <!-- Sync-Intervall-Enum-Labels (FilterChip in Backup- + Board-Einstellungen) -->
+    <string name="sync_interval_daily">Täglich</string>
+    <string name="sync_interval_weekly">Wöchentlich</string>
+    <string name="sync_interval_manual">Manuell</string>
+
+    <!-- BoardModelSelectionDialog (war bis 0.1.3 hardcodiert) -->
+    <string name="board_model_dialog_title_missing">Board-Daten fehlen</string>
+    <string name="board_model_dialog_title_pick">Welches Kilter Board hast du?</string>
+    <string name="board_model_dialog_body_missing_with_sync">Die Board-Datenbank ist noch nicht synchronisiert. Starte den Sync, danach kannst du dein Board-Modell auswählen.</string>
+    <string name="board_model_dialog_body_missing_inline">Die Board-Datenbank ist noch nicht synchronisiert. Starte den Sync unten auf diesem Screen, danach kannst du dein Board-Modell auswählen.</string>
+    <string name="board_model_dialog_hint">Die Auswahl bestimmt welche Griffe und LEDs angezeigt werden.</string>
+    <string name="board_model_dialog_start_sync">Sync starten</string>
+    <string name="board_model_dialog_close">Schließen</string>
+    <string name="board_model_dialog_confirm">Bestätigen</string>
+    <string name="board_model_dialog_cancel">Abbrechen</string>
+
+    <!-- BoardSyncInlineCard Schritt-Detail-Labels (war gemischt DE/EN) -->
+    <string name="board_sync_detail_climbs_count">%,d Climbs…</string>
+    <string name="board_sync_detail_progress_with_new">%1$,d / %2$,d  (%3$,d neu)</string>
+    <string name="board_sync_detail_progress">%1$,d / %2$,d</string>
+    <string name="board_sync_detail_stats_count">%,d Stats…</string>
+    <string name="board_sync_detail_placements_count">%,d Placements</string>
+    <string name="board_sync_detail_nomatch">NM: %,d</string>
 
     <!-- "Was ist neu" Upgrade-Dialoge (nur für Update-User) -->
     <string name="whatsnew_done">Fertig</string>
