@@ -174,6 +174,14 @@ class CruxCoachApp : Application(), Configuration.Provider {
             // user with stale schedules until the next app start that
             // happened not to throw on the way through.
             runCatching {
+                // Recover from a partial-import state left by a previous run
+                // that was killed mid-sync (restartApp during identity-switch,
+                // OOM, force-stop). Must run before syncIfStale because the
+                // partial state still reports isImported=true, so syncIfStale
+                // would not otherwise touch it.
+                syncManager.get().recoverPartialImportIfNeeded()
+            }.onFailure { PerfLogger.logCoroutine("appScope", "recoverPartialImport failed: ${it.message}") }
+            runCatching {
                 // Note: no startup probe of the WiFi-Direct-share endpoint. The
                 // legitimate receive flow is deep-link driven (cruxcoach://import-board-db
                 // from the hotspot's landing page), gated by a user-visible consent
