@@ -43,9 +43,7 @@ internal object BackupCompression {
                 if (read == -1) break
                 total += read
                 if (total > maxBytes) {
-                    throw BackupException(
-                        "Gzip output exceeded $maxBytes bytes (decompression bomb?)",
-                    )
+                    throw BackupException(BackupErrorReason.PlaintextSizeCap(maxBytes = maxBytes))
                 }
                 out.write(buffer, 0, read)
             }

@@ -1409,6 +1409,28 @@
     <string name="settings_backup_succeeded">Backup created.</string>
     <string name="settings_backup_failed">Backup failed. Check your connection and try again.</string>
     <string name="settings_backup_failed_detail">Backup failed: %1$s</string>
+
+    <!-- BackupErrorReason — localized one per BackupException reason. -->
+    <string name="backup_error_blob_upload_failed">Backup failed: no Blossom server accepted the encrypted blob (%1$d attempted).</string>
+    <string name="backup_error_blob_upload_failed_with_detail">Backup failed: no Blossom server accepted the encrypted blob (%1$d attempted, %2$s).</string>
+    <string name="backup_error_amber_needs_auto_approve">Backup failed: Amber needs to be set to "always approve" for CruxCoach. Open Amber → CruxCoach and enable automatic approval, otherwise background backup cannot sign.</string>
+    <string name="backup_error_blob_not_visible">Backup failed: server accepted the upload but the blob is not visible afterward (%1$d servers checked).</string>
+    <string name="backup_error_pointer_not_durable">Backup failed: pointer event rejected by every relay (%1$d attempted). Blob is uploaded but not announced — please retry once relays are reachable.</string>
+    <string name="backup_error_key_event_not_durable">Backup failed: key event rejected by every relay (%1$d attempted). Without it the backup cannot be restored on another device — please retry once relays are reachable.</string>
+    <string name="backup_error_data_key_unwrap_failed">Restore failed: backup key could not be unwrapped (wrong identity?).</string>
+    <string name="backup_error_pointer_lists_no_servers">Restore failed: backup references no usable Blossom servers.</string>
+    <string name="backup_error_plaintext_size_cap">Restore failed: payload exceeds the safety limit.</string>
+
+    <!-- DeleteRemoteNote — localized one per per-leg note in the delete-remote dialog. -->
+    <string name="delete_remote_note_dtag_derivation_failed">Could not derive d-tag for deletion event.</string>
+    <string name="delete_remote_note_no_write_relays">No write relays configured.</string>
+    <string name="delete_remote_note_no_relay_accepted">No relay accepted the deletion event.</string>
+    <string name="delete_remote_note_partial_relay_accept">Only %1$d of %2$d relays accepted the deletion.</string>
+    <string name="delete_remote_note_relay_publish_threw">Relay deletion event could not be published.</string>
+    <string name="delete_remote_note_blossom_auth_failed">Blossom server rejected the auth signature.</string>
+    <string name="delete_remote_note_blossom_fully_rejected">Every Blossom server refused the deletion.</string>
+    <string name="delete_remote_note_blossom_partial">Only %1$d of %2$d Blossom servers acknowledged the deletion.</string>
+    <string name="delete_remote_note_unexpected_error">Unexpected error: %1$s</string>
     <string name="settings_backup_delete_remote">Delete remote backups…</string>
     <string name="settings_backup_delete_remote_dialog_title">Delete remote backups?</string>
     <string name="settings_backup_delete_remote_dialog_body">This will request deletion of your backup events and blobs from relays and Blossom servers. Be aware:\n\n• Deletion is best-effort. Not all relays/servers honour it.\n• After this, you cannot restore your backup on another device.\n• Local data is not affected.</string>

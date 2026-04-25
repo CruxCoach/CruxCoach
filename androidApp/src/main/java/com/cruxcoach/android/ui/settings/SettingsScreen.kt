@@ -25,6 +25,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.cruxcoach.android.nostr.backup.BackupErrorReason
+import com.cruxcoach.android.nostr.backup.DeleteRemoteNote
 import com.cruxcoach.android.ui.board.sync.BoardSyncInlineCard
 import com.cruxcoach.android.ui.common.RestTimerBannerSlot
 import com.cruxcoach.android.ui.common.SyncStatusBannerSlot
@@ -378,10 +380,8 @@ fun SettingsScreen(
             BackupSettingsState.Snackbar.BackupSucceeded ->
                 stringResource(R.string.settings_backup_succeeded)
             is BackupSettingsState.Snackbar.BackupFailed ->
-                if (snackbar.detail.isNullOrBlank())
-                    stringResource(R.string.settings_backup_failed)
-                else
-                    stringResource(R.string.settings_backup_failed_detail, snackbar.detail)
+                snackbar.reason?.let { localizedBackupErrorReason(it) }
+                    ?: stringResource(R.string.settings_backup_failed)
             is BackupSettingsState.Snackbar.RemoteBackupsDeleted -> {
                 // Compose a multi-line report: how many relays /
                 // Blossom servers ack'd the deletion, plus the honest
@@ -411,8 +411,13 @@ fun SettingsScreen(
                     )
                 }
                 val caveat = stringResource(R.string.settings_backup_delete_remote_caveat)
-                val notesBlock = if (snackbar.notes.isEmpty()) "" else
-                    "\n\n" + snackbar.notes.joinToString("\n") { "• $it" }
+                // Resolve each note's localized text BEFORE joinToString —
+                // joinToString's transform lambda is not a @Composable
+                // scope, so stringResource(...) calls inside it would fail
+                // to compile.
+                val localizedNotes = snackbar.notes.map { localizedDeleteRemoteNote(it) }
+                val notesBlock = if (localizedNotes.isEmpty()) "" else
+                    "\n\n" + localizedNotes.joinToString("\n") { "• $it" }
                 "$header\n\n$relayLine\n$blossomLine\n\n$caveat$notesBlock"
             }
         }
@@ -453,4 +458,64 @@ private fun CollapsibleHeader(
             tint = OrangeAccent
         )
     }
+}
+
+/**
+ * Map a [BackupErrorReason] to its locale-aware user-facing string.
+ * The dev-facing English form is in `BackupException.message` (logcat /
+ * crash reports); this composable owns the user-visible text.
+ */
+@Composable
+private fun localizedBackupErrorReason(reason: BackupErrorReason): String = when (reason) {
+    is BackupErrorReason.BlobUploadFailed -> if (reason.authDetail.isNullOrBlank()) {
+        stringResource(R.string.backup_error_blob_upload_failed, reason.total)
+    } else {
+        stringResource(
+            R.string.backup_error_blob_upload_failed_with_detail,
+            reason.total,
+            reason.authDetail,
+        )
+    }
+    BackupErrorReason.AmberNeedsAutoApprove ->
+        stringResource(R.string.backup_error_amber_needs_auto_approve)
+    is BackupErrorReason.BlobNotVisibleAfterUpload ->
+        stringResource(R.string.backup_error_blob_not_visible, reason.total)
+    is BackupErrorReason.PointerEventNotDurable ->
+        stringResource(R.string.backup_error_pointer_not_durable, reason.attempted)
+    is BackupErrorReason.KeyEventNotDurable ->
+        stringResource(R.string.backup_error_key_event_not_durable, reason.attempted)
+    BackupErrorReason.DataKeyUnwrapFailed ->
+        stringResource(R.string.backup_error_data_key_unwrap_failed)
+    BackupErrorReason.PointerListsNoUsableServers ->
+        stringResource(R.string.backup_error_pointer_lists_no_servers)
+    is BackupErrorReason.PlaintextSizeCap ->
+        stringResource(R.string.backup_error_plaintext_size_cap)
+    // Fall-through `Other` carries an unstructured string that is dev-
+    // facing only; route it through the existing generic-detail string
+    // so the user sees a localized prefix instead of just the raw text.
+    is BackupErrorReason.Other ->
+        stringResource(R.string.settings_backup_failed_detail, reason.message)
+}
+
+/** Map a [DeleteRemoteNote] to its locale-aware bullet text in the opt-out report dialog. */
+@Composable
+private fun localizedDeleteRemoteNote(note: DeleteRemoteNote): String = when (note) {
+    DeleteRemoteNote.DTagDerivationFailed ->
+        stringResource(R.string.delete_remote_note_dtag_derivation_failed)
+    DeleteRemoteNote.NoWriteRelays ->
+        stringResource(R.string.delete_remote_note_no_write_relays)
+    DeleteRemoteNote.NoRelayAcceptedDeletion ->
+        stringResource(R.string.delete_remote_note_no_relay_accepted)
+    is DeleteRemoteNote.PartialRelayAccept ->
+        stringResource(R.string.delete_remote_note_partial_relay_accept, note.accepted, note.attempted)
+    DeleteRemoteNote.RelayPublishThrew ->
+        stringResource(R.string.delete_remote_note_relay_publish_threw)
+    DeleteRemoteNote.BlossomAuthFailed ->
+        stringResource(R.string.delete_remote_note_blossom_auth_failed)
+    DeleteRemoteNote.BlossomFullyRejected ->
+        stringResource(R.string.delete_remote_note_blossom_fully_rejected)
+    is DeleteRemoteNote.BlossomPartial ->
+        stringResource(R.string.delete_remote_note_blossom_partial, note.accepted, note.attempted)
+    is DeleteRemoteNote.UnexpectedError ->
+        stringResource(R.string.delete_remote_note_unexpected_error, note.type)
 }

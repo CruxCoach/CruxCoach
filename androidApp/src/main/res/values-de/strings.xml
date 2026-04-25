@@ -1411,6 +1411,28 @@
     <string name="settings_backup_succeeded">Backup erstellt.</string>
     <string name="settings_backup_failed">Backup fehlgeschlagen. Prüfe deine Verbindung und versuche es erneut.</string>
     <string name="settings_backup_failed_detail">Backup fehlgeschlagen: %1$s</string>
+
+    <!-- BackupErrorReason — Lokalisierung pro BackupException-Reason. -->
+    <string name="backup_error_blob_upload_failed">Backup fehlgeschlagen: Kein Blossom-Server hat den verschlüsselten Blob akzeptiert (%1$d versucht).</string>
+    <string name="backup_error_blob_upload_failed_with_detail">Backup fehlgeschlagen: Kein Blossom-Server hat den verschlüsselten Blob akzeptiert (%1$d versucht, %2$s).</string>
+    <string name="backup_error_amber_needs_auto_approve">Backup fehlgeschlagen: Amber muss auf „automatisch zustimmen" gestellt sein. Öffne Amber → CruxCoach und aktiviere die automatische Zustimmung, sonst kann das Hintergrund-Backup nicht signieren.</string>
+    <string name="backup_error_blob_not_visible">Backup fehlgeschlagen: Server hat den Upload angenommen, aber der Blob ist anschließend nicht sichtbar (%1$d Server geprüft).</string>
+    <string name="backup_error_pointer_not_durable">Backup fehlgeschlagen: Pointer-Event wurde von keinem Relay angenommen (%1$d versucht). Der Blob ist hochgeladen aber nicht angekündigt — bitte erneut versuchen, sobald Relays erreichbar sind.</string>
+    <string name="backup_error_key_event_not_durable">Backup fehlgeschlagen: Key-Event wurde von keinem Relay angenommen (%1$d versucht). Ohne es kann das Backup auf keinem anderen Gerät wiederhergestellt werden — bitte erneut versuchen, sobald Relays erreichbar sind.</string>
+    <string name="backup_error_data_key_unwrap_failed">Wiederherstellung fehlgeschlagen: Backup-Schlüssel konnte nicht entpackt werden (falsche Identität?).</string>
+    <string name="backup_error_pointer_lists_no_servers">Wiederherstellung fehlgeschlagen: Backup verweist auf keine nutzbaren Blossom-Server.</string>
+    <string name="backup_error_plaintext_size_cap">Wiederherstellung fehlgeschlagen: Inhalt überschreitet das Sicherheitslimit.</string>
+
+    <!-- DeleteRemoteNote — Lokalisierung pro per-leg-Hinweis im Delete-Remote-Dialog. -->
+    <string name="delete_remote_note_dtag_derivation_failed">D-Tag für Löschereignis konnte nicht abgeleitet werden.</string>
+    <string name="delete_remote_note_no_write_relays">Keine Schreib-Relays konfiguriert.</string>
+    <string name="delete_remote_note_no_relay_accepted">Kein Relay hat das Löschereignis angenommen.</string>
+    <string name="delete_remote_note_partial_relay_accept">Nur %1$d von %2$d Relays haben die Löschung angenommen.</string>
+    <string name="delete_remote_note_relay_publish_threw">Relay-Löschereignis konnte nicht veröffentlicht werden.</string>
+    <string name="delete_remote_note_blossom_auth_failed">Blossom-Server hat die Auth-Signatur abgelehnt.</string>
+    <string name="delete_remote_note_blossom_fully_rejected">Alle Blossom-Server haben die Löschung abgelehnt.</string>
+    <string name="delete_remote_note_blossom_partial">Nur %1$d von %2$d Blossom-Servern haben die Löschung bestätigt.</string>
+    <string name="delete_remote_note_unexpected_error">Unerwarteter Fehler: %1$s</string>
     <string name="settings_backup_delete_remote">Remote-Backups löschen…</string>
     <string name="settings_backup_delete_remote_dialog_title">Remote-Backups löschen?</string>
     <string name="settings_backup_delete_remote_dialog_body">Dies fordert die Löschung deiner Backup-Events und -Blobs von Relais und Blossom-Servern an. Beachte:\n\n• Die Löschung ist Best-Effort. Nicht alle Relais/Server honorieren sie.\n• Danach kannst du dein Backup nicht mehr auf einem anderen Gerät wiederherstellen.\n• Lokale Daten bleiben unangetastet.</string>

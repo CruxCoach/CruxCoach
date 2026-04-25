@@ -126,23 +126,25 @@ class BackupRepository @Inject constructor(
             // Surface a specific failure reason when every server died for
             // the same structural reason — most commonly an Amber signer
             // that can't launch its approval activity from a background
-            // worker. Without this, the user sees "Blob upload failed on
-            // all 2 servers" and has no way to tell it's an Amber
-            // permission issue, not a Blossom outage.
+            // worker. Without this, the user sees a generic upload-failed
+            // and has no way to tell it's an Amber permission issue.
+            //
+            // Backup always runs via WorkManager (no foreground Activity),
+            // so Amber's Intent-based approval dialog has nothing to
+            // launch onto. The only self-service fix is the user granting
+            // auto-approve in Amber.
             val authErrors = uploadResults.mapNotNull { r ->
                 r.error?.takeIf { it.startsWith("auth:") }
             }
-            val detail = when {
+            val reason = when {
                 authErrors.size == total && authErrors.any { it.contains("No activity to launch") } ->
-                    // Backup always runs via WorkManager (no foreground
-                    // Activity), so Amber's Intent-based approval dialog
-                    // has nothing to launch onto. The only self-service
-                    // fix is the user granting auto-approve in Amber.
-                    "Amber needs to be set to \"always approve\" for CruxCoach's signing operations. Open Amber → CruxCoach and enable automatic approval, otherwise background backup can't sign."
-                authErrors.size == total -> authErrors.first()
-                else -> "Blob upload failed on all $total servers"
+                    BackupErrorReason.AmberNeedsAutoApprove
+                authErrors.size == total ->
+                    BackupErrorReason.BlobUploadFailed(total = total, authDetail = authErrors.first())
+                else ->
+                    BackupErrorReason.BlobUploadFailed(total = total, authDetail = null)
             }
-            throw BackupException(detail)
+            throw BackupException(reason)
         }
         if (ok < total) {
             Log.w(TAG, "event=backup_upload_partial serversOk=$ok serversTotal=$total bytes=${ciphertext.size}")
@@ -157,7 +159,7 @@ class BackupRepository @Inject constructor(
         val verified = uploader.verifyExists(sha256, servers)
         if (!verified) {
             Log.w(TAG, "event=backup_verify_failed serversTotal=$total")
-            throw BackupException("Blob not visible on any server after upload")
+            throw BackupException(BackupErrorReason.BlobNotVisibleAfterUpload(total = total))
         }
 
         // 7 — ONLY NOW publish pointer event
@@ -328,7 +330,7 @@ class BackupRepository @Inject constructor(
         val dataKeyHex = try {
             nip44DecryptToSelf(wrappedHex)
         } catch (e: Exception) {
-            throw BackupException("dataKey unwrap failed", e)
+            throw BackupException(BackupErrorReason.DataKeyUnwrapFailed, cause = e)
         }
         val dataKey = dataKeyHex.hexToByteArray()
         require(dataKey.size == 32) { "Unwrapped dataKey is not 32 bytes" }
@@ -344,7 +346,7 @@ class BackupRepository @Inject constructor(
         // URLs; we never dial them regardless of their Schnorr pedigree.
         val servers = pointer.servers.filter { com.cruxcoach.android.nostr.UrlValidation.isValidBlossom(it) }
         if (servers.isEmpty()) {
-            throw BackupException("Backup pointer lists no usable https Blossom servers")
+            throw BackupException(BackupErrorReason.PointerListsNoUsableServers)
         }
         val ciphertext = uploader.download(
             sha256Hex = pointer.sha256,
@@ -405,12 +407,12 @@ class BackupRepository @Inject constructor(
      * than "remote backups deleted" when nothing was actually removed.
      */
     suspend fun deleteRemoteBackups(): DeleteRemoteOutcome = pipelineMutex.withLock {
-        val problems = mutableListOf<String>()
+        val notes = mutableListOf<DeleteRemoteNote>()
         val pubkey = nostrSigner.getPublicKeyHex()
         val backupDTag = runCatching { dTagDeriver.derive(BackupPreferences.IDENTIFIER_BACKUP) }.getOrNull()
         val keyDTag = runCatching { dTagDeriver.derive(BackupPreferences.IDENTIFIER_KEY) }.getOrNull()
         if (backupDTag == null || keyDTag == null) {
-            problems += "dtag derivation"
+            notes += DeleteRemoteNote.DTagDerivationFailed
         }
 
         var relaysAttempted = 0
@@ -423,11 +425,13 @@ class BackupRepository @Inject constructor(
                 val (att, acc) = r.getOrNull() ?: (0 to 0)
                 relaysAttempted = att
                 relaysAccepted = acc
-                if (att == 0) problems += "no write relays configured"
-                else if (acc == 0) problems += "no relay accepted the deletion"
-                else if (acc < att) problems += "$acc of $att relays accepted"
+                when {
+                    att == 0 -> notes += DeleteRemoteNote.NoWriteRelays
+                    acc == 0 -> notes += DeleteRemoteNote.NoRelayAcceptedDeletion
+                    acc < att -> notes += DeleteRemoteNote.PartialRelayAccept(accepted = acc, attempted = att)
+                }
             } else {
-                problems += "relay deletion publish threw"
+                notes += DeleteRemoteNote.RelayPublishThrew
             }
         }
 
@@ -440,10 +444,13 @@ class BackupRepository @Inject constructor(
             blossomAttempted = outcome.attempted
             blossomAccepted = outcome.succeeded
             when {
-                outcome.authFailed -> problems += "blossom auth"
-                outcome.fullyFailed() -> problems += "every blossom server refused"
+                outcome.authFailed -> notes += DeleteRemoteNote.BlossomAuthFailed
+                outcome.fullyFailed() -> notes += DeleteRemoteNote.BlossomFullyRejected
                 outcome.partiallySucceeded() ->
-                    problems += "${outcome.succeeded} of ${outcome.attempted} blossom servers succeeded"
+                    notes += DeleteRemoteNote.BlossomPartial(
+                        accepted = outcome.succeeded,
+                        attempted = outcome.attempted,
+                    )
             }
         }
 
@@ -460,7 +467,7 @@ class BackupRepository @Inject constructor(
             relaysAccepted = relaysAccepted,
             blossomAttempted = blossomAttempted,
             blossomAccepted = blossomAccepted,
-            notes = problems.toList(),
+            notes = notes.toList(),
         )
     }
 
@@ -487,9 +494,7 @@ class BackupRepository @Inject constructor(
         val (attempted, accepted) = pool.sendEventWithStats(event)
         if (accepted == 0) {
             Log.w(TAG, "event=backup_pointer_publish_failed attempted=$attempted accepted=0")
-            throw BackupException(
-                "Pointer event rejected by every relay ($attempted attempted) — backup not durable",
-            )
+            throw BackupException(BackupErrorReason.PointerEventNotDurable(attempted = attempted))
         }
         Log.d(
             TAG,
@@ -638,9 +643,7 @@ class BackupRepository @Inject constructor(
         val (attempted, accepted) = pool.sendEventWithStats(event)
         if (accepted == 0) {
             Log.w(TAG, "event=key_event_publish_failed attempted=$attempted accepted=0")
-            throw BackupException(
-                "Key event rejected by every relay ($attempted attempted) — restore not recoverable",
-            )
+            throw BackupException(BackupErrorReason.KeyEventNotDurable(attempted = attempted))
         }
         Log.d(TAG, "event=key_event_published attempted=$attempted accepted=$accepted")
     }
@@ -850,7 +853,13 @@ data class DeleteRemoteOutcome(
     val relaysAccepted: Int,
     val blossomAttempted: Int,
     val blossomAccepted: Int,
-    val notes: List<String>,
+    /**
+     * Per-leg notes describing partial / failure modes. Each note is
+     * mapped to a localized `stringResource(...)` by the UI; the type
+     * is intentionally a structured enum (not List<String>) so a
+     * German-locale user no longer sees English diagnostic bullets.
+     */
+    val notes: List<DeleteRemoteNote>,
 ) {
     /** True only when every attempted leg ack'd and nothing was noted. */
     fun isFullSuccess(): Boolean = notes.isEmpty() &&
@@ -873,7 +882,23 @@ sealed class CheckOutcome {
     data class Fetch(val message: String) : CheckOutcome()
 }
 
-class BackupException(message: String, cause: Throwable? = null) : Exception(message, cause)
+/**
+ * Carries a structured [BackupErrorReason] that the UI maps to a
+ * localized `stringResource(...)`. The `message` (used by logcat /
+ * `runCatching.exceptionOrNull()?.message` fallbacks) is the dev-facing
+ * English form derived via [toLogMessage] — never shown to end users.
+ *
+ * The legacy `(String, Throwable?)` constructor is kept for rare call
+ * sites that still pass a raw string (e.g. unit tests, future generic
+ * paths); it lifts the message into [BackupErrorReason.Other].
+ */
+class BackupException(
+    val reason: BackupErrorReason,
+    cause: Throwable? = null,
+) : Exception(reason.toLogMessage(), cause) {
+    constructor(message: String, cause: Throwable? = null)
+        : this(BackupErrorReason.Other(message), cause)
+}
 
 /**
  * Tiny JSON → event projection so [BackupRepository] doesn't need to drag

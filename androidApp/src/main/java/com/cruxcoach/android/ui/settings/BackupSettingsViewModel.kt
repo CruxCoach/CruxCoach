@@ -5,11 +5,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.data.SyncInterval
 import com.cruxcoach.android.nostr.NostrKeyStore
+import com.cruxcoach.android.nostr.backup.BackupErrorReason
 import com.cruxcoach.android.nostr.backup.BackupException
 import com.cruxcoach.android.nostr.backup.BackupInfo
 import com.cruxcoach.android.nostr.backup.BackupPreferences
 import com.cruxcoach.android.nostr.backup.BackupRepository
 import com.cruxcoach.android.nostr.backup.BackupSyncWorker
+import com.cruxcoach.android.nostr.backup.DeleteRemoteNote
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -48,27 +50,29 @@ data class BackupSettingsState(
         data object RestoreFailed : Snackbar
         data object BackupSucceeded : Snackbar
         /**
-         * [detail] is the message of the exception that tripped the worker
-         * ([BackupException] reason, or the `simpleName` for an unexpected
-         * throwable). Always non-null from [BackupSyncWorker], but kept
-         * nullable so older in-flight WorkInfo payloads without outputData
-         * degrade gracefully to a generic message.
+         * [reason] is the structured BackupException reason — the UI
+         * maps it to a localized `stringResource(...)`. Null when the
+         * underlying throwable is not a [BackupException] (e.g. NPE);
+         * the UI falls back to the generic `settings_backup_failed`
+         * string in that case so we never surface raw English from
+         * a third-party library.
          */
-        data class BackupFailed(val detail: String?) : Snackbar
+        data class BackupFailed(val reason: BackupErrorReason?) : Snackbar
         /**
          * Active opt-out completed. Carries per-leg stats so the UI
          * can show the user exactly how many relays / Blossom servers
          * ack'd the deletion — a single "done" was misleading when
-         * 0/N accepted. `notes` lists any non-fatal problems (zero
-         * relays configured, partial Blossom, etc.); empty list +
-         * matching attempted/accepted counts is full success.
+         * 0/N accepted. [notes] lists any non-fatal problems as
+         * structured enum cases (the UI maps each to a localized
+         * `stringResource(...)`); empty list + matching attempted /
+         * accepted counts is full success.
          */
         data class RemoteBackupsDeleted(
             val relaysAttempted: Int,
             val relaysAccepted: Int,
             val blossomAttempted: Int,
             val blossomAccepted: Int,
-            val notes: List<String>,
+            val notes: List<DeleteRemoteNote>,
         ) : Snackbar
     }
 }
@@ -160,8 +164,14 @@ class BackupSettingsViewModel @Inject constructor(
             val snackbar = if (outcome.isSuccess) {
                 BackupSettingsState.Snackbar.BackupSucceeded
             } else {
+                // BackupException carries a structured BackupErrorReason
+                // that the UI maps to a localized string. Anything else
+                // (NPE, IOException, etc.) falls through with reason=null
+                // → UI shows the generic "Backup failed" string instead
+                // of a raw English exception message.
+                val ex = outcome.exceptionOrNull()
                 BackupSettingsState.Snackbar.BackupFailed(
-                    detail = outcome.exceptionOrNull()?.message,
+                    reason = (ex as? BackupException)?.reason,
                 )
             }
             val latestLastSync = preferences.lastBackupSync.first()
@@ -272,7 +282,9 @@ class BackupSettingsViewModel @Inject constructor(
                         relaysAccepted = 0,
                         blossomAttempted = 0,
                         blossomAccepted = 0,
-                        notes = listOf("unexpected error: ${throwable.javaClass.simpleName}"),
+                        notes = listOf(
+                            DeleteRemoteNote.UnexpectedError(type = throwable.javaClass.simpleName),
+                        ),
                     )
                 }
             _state.update {
