@@ -158,6 +158,13 @@ object PreferenceKeys {
     val ALLOW_REMOTE_DISCONNECT = booleanPreferencesKey("allow_remote_disconnect")
     val EASTER_ANIMATIONS_UNLOCKED = booleanPreferencesKey("easter_animations_unlocked")
     val KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
+    /**
+     * Quick-Send-Mode: when true, tapping the BLE icon in the climb-detail
+     * screen runs a one-shot macro (scan → auto-connect-if-single → send →
+     * disconnect) instead of opening the connection sheet. Default off so
+     * upgraders see no behavior change until they opt in via Settings.
+     */
+    val QUICK_BOARD_SEND = booleanPreferencesKey("quick_board_send")
     val DARK_MODE = stringPreferencesKey("dark_mode")
     val SESSION_DISPLAY_NAME = stringPreferencesKey("session_display_name")
     val LAST_CLIMB_UUID = stringPreferencesKey("last_climb_uuid")
@@ -463,6 +470,14 @@ class UserPreferences(
 
     suspend fun setKeepScreenOn(enabled: Boolean) {
         dataStore.edit { it[PreferenceKeys.KEEP_SCREEN_ON] = enabled }
+    }
+
+    val quickBoardSend: Flow<Boolean> = dataStore.data.map {
+        it[PreferenceKeys.QUICK_BOARD_SEND] ?: false
+    }
+
+    suspend fun setQuickBoardSend(enabled: Boolean) {
+        dataStore.edit { it[PreferenceKeys.QUICK_BOARD_SEND] = enabled }
     }
 
     suspend fun isOnboardingCompleted(): Boolean =

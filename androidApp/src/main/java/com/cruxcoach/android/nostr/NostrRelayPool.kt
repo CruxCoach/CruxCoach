@@ -131,6 +131,31 @@ class NostrRelayPool @Inject constructor(
                     "OK" -> {
                         val eventId = arr[1].jsonPrimitive.content
                         val accepted = arr[2].jsonPrimitive.boolean
+                        // NIP-01 OK frame format: ["OK", event_id, accepted,
+                        // <reason>]. Capture the optional reason so we can
+                        // distinguish "rejected with reason" from "silently
+                        // dropped". Some relays additionally return OK true
+                        // with an informational reason ("duplicate:",
+                        // "ephemeral:") — keep that visible at debug level
+                        // so a 1-of-3-accepted result has a per-relay
+                        // explanation in logcat instead of looking like an
+                        // app-side bug.
+                        val reason = arr.getOrNull(3)?.let { el ->
+                            runCatching { el.jsonPrimitive.content }.getOrNull()
+                        }.orEmpty()
+                        if (!accepted) {
+                            Log.w(
+                                TAG,
+                                "event=relay_ok_false url=$url eventIdPrefix=${eventId.take(8)} " +
+                                    "reason=${if (reason.isEmpty()) "<none>" else reason}",
+                            )
+                        } else if (reason.isNotEmpty()) {
+                            Log.d(
+                                TAG,
+                                "event=relay_ok_true_with_reason url=$url " +
+                                    "eventIdPrefix=${eventId.take(8)} reason=$reason",
+                            )
+                        }
                         pendingOks.remove(eventId)?.complete(accepted)
                     }
                     "EVENT" -> {
@@ -155,11 +180,26 @@ class NostrRelayPool @Inject constructor(
             val deferred = CompletableDeferred<Boolean>()
             pendingOks[eventId] = deferred
             val msg = "[\"EVENT\",$eventJson]"
-            ws?.send(msg) ?: return false
+            if (ws?.send(msg) != true) {
+                // ws was null or send queued failed — distinguishable from
+                // a relay-side OK false in logcat (no `relay_ok_false` will
+                // follow this line).
+                Log.w(
+                    TAG,
+                    "event=relay_send_failed url=$url eventIdPrefix=${eventId.take(8)} reason=ws-not-ready",
+                )
+                pendingOks.remove(eventId)
+                return false
+            }
             return try {
                 withTimeout(NostrConfig.RELAY_TIMEOUT_MS) { deferred.await() }
             } catch (e: Exception) {
                 pendingOks.remove(eventId)
+                Log.w(
+                    TAG,
+                    "event=relay_send_timeout url=$url eventIdPrefix=${eventId.take(8)} " +
+                        "reason=${e.javaClass.simpleName}",
+                )
                 false
             }
         }

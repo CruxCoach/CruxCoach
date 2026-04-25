@@ -111,6 +111,20 @@
     <string name="settings_duration_seconds_label">Seconds</string>
     <string name="settings_ble_keep_screen_on">Keep screen on</string>
     <string name="settings_ble_keep_screen_on_desc">Screen stays on in board screens so you don\'t have to unlock constantly.</string>
+    <string name="settings_ble_quick_send">Quick-Send mode</string>
+    <string name="settings_ble_quick_send_desc">Tapping the BLE icon in a climb detail auto-connects (or asks if multiple boards are nearby), sends the climb, and disconnects right after.</string>
+
+    <!-- BLE Quick-Send macro status messages -->
+    <string name="ble_quick_send_scanning">Searching for board…</string>
+    <string name="ble_quick_send_connecting">Connecting to %s…</string>
+    <string name="ble_quick_send_sending">Sending climb…</string>
+    <string name="ble_quick_send_disconnecting">Disconnecting…</string>
+    <string name="ble_quick_send_done">Climb sent — board disconnected.</string>
+    <string name="ble_quick_send_no_boards">No board found nearby. Make sure the board is powered on and Bluetooth is enabled.</string>
+    <string name="ble_quick_send_connect_failed">Could not connect to the board. Try again.</string>
+    <string name="ble_quick_send_send_failed">Climb could not be sent — board disconnected.</string>
+    <string name="ble_quick_send_bluetooth_off">Bluetooth is off. Enable it and try again.</string>
+    <string name="ble_quick_send_no_permissions">Bluetooth permissions are missing. Open Settings and grant them.</string>
 
     <!-- Settings: LED Colors -->
     <string name="settings_led_title">LED colors</string>

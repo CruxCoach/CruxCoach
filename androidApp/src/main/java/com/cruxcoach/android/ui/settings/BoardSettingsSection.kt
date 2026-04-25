@@ -139,8 +139,10 @@ internal fun BoardModelSection(
 internal fun BleAutoDisconnectSection(
     bleAutoDisconnectSeconds: Int,
     keepScreenOn: Boolean,
+    quickBoardSend: Boolean,
     onAutoDisconnectChange: (Int) -> Unit,
-    onKeepScreenOnChange: (Boolean) -> Unit
+    onKeepScreenOnChange: (Boolean) -> Unit,
+    onQuickBoardSendChange: (Boolean) -> Unit,
 ) {
     Text(
         stringResource(R.string.settings_ble_auto_disconnect_title),
@@ -190,6 +192,28 @@ internal fun BleAutoDisconnectSection(
         Switch(
             checked = keepScreenOn,
             onCheckedChange = onKeepScreenOnChange,
+            colors = SwitchDefaults.colors(checkedTrackColor = OrangeAccent)
+        )
+    }
+
+    Spacer(modifier = Modifier.height(8.dp))
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(stringResource(R.string.settings_ble_quick_send), style = MaterialTheme.typography.bodyMedium)
+            Text(
+                stringResource(R.string.settings_ble_quick_send_desc),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Switch(
+            checked = quickBoardSend,
+            onCheckedChange = onQuickBoardSendChange,
             colors = SwitchDefaults.colors(checkedTrackColor = OrangeAccent)
         )
     }

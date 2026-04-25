@@ -174,8 +174,10 @@ fun SettingsScreen(
                     BleAutoDisconnectSection(
                         bleAutoDisconnectSeconds = state.bleAutoDisconnectSeconds,
                         keepScreenOn = state.keepScreenOn,
+                        quickBoardSend = state.quickBoardSend,
                         onAutoDisconnectChange = { viewModel.updateBleAutoDisconnect(it) },
-                        onKeepScreenOnChange = { viewModel.updateKeepScreenOn(it) }
+                        onKeepScreenOnChange = { viewModel.updateKeepScreenOn(it) },
+                        onQuickBoardSendChange = { viewModel.updateQuickBoardSend(it) },
                     )
                     HorizontalDivider()
                     ClimbSharingSection(
