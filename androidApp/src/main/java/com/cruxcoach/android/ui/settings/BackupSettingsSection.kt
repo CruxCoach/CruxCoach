@@ -38,7 +38,6 @@ internal fun BackupSettingsSection(
     onTriggerRestore: () -> Unit,
     onRequestDeleteRemote: () -> Unit = {},
     onNavigateToKeyManagement: () -> Unit = {},
-    onAcknowledgeKeyBackup: () -> Unit = {},
 ) {
     if (!state.featureEnabled) return
 
@@ -117,7 +116,6 @@ internal fun BackupSettingsSection(
             BackupKeyWarningCard(
                 signerMode = state.signerMode,
                 onOpenAccount = onNavigateToKeyManagement,
-                onAcknowledge = onAcknowledgeKeyBackup,
             )
         }
 

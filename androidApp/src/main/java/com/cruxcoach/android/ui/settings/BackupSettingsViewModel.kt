@@ -162,9 +162,6 @@ class BackupSettingsViewModel @Inject constructor(
         }
     }
 
-    fun acknowledgeKeyBackup() {
-        viewModelScope.launch { userPreferences.setKeyBackedUp(true) }
-    }
 
     fun setBackupEnabled(enabled: Boolean) {
         viewModelScope.launch {
