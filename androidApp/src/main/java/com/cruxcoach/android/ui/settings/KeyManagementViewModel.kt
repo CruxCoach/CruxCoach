@@ -149,6 +149,21 @@ class KeyManagementViewModel @Inject constructor(
         copySecretToClipboard(nsec)
     }
 
+    /**
+     * User-initiated "I've stored my key somewhere safe" flag flip.
+     * Same flag set implicitly by [createBackup] (NIP-49 ncryptsec
+     * generation) and by [com.cruxcoach.android.ui.settings.BackupSettingsViewModel.acknowledgeKeyBackup]
+     * — acknowledging in any one surface hides the warning in all of
+     * them, since the underlying truth ("key is stored elsewhere") is
+     * the same regardless of which screen the user came through.
+     */
+    fun acknowledgeKeyBackup() {
+        viewModelScope.launch {
+            userPreferences.setKeyBackedUp(true)
+            _state.update { it.copy(keyBackedUp = true) }
+        }
+    }
+
     // ── Backup flow ──────────────────────────────────────────────
 
     fun requestBackup() {

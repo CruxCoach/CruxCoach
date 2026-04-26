@@ -253,6 +253,12 @@ fun CruxCoachNavHost(
                         }
                     },
                     onNavigateToKeyImport = { navController.navigate(Routes.KEY_IMPORT) },
+                    // KeyManagementScreen as a forward push (not a popUpTo).
+                    // Onboarding's NavBackStackEntry stays on the stack, so
+                    // hitting back from KeyManagementScreen returns the user
+                    // to the same onboarding step they were on (state +
+                    // ViewModel preserved via the survived BackStackEntry).
+                    onNavigateToKeyManagement = { navController.navigate(Routes.KEY_MANAGEMENT) },
                 )
             }
 

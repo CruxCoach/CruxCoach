@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -127,8 +128,11 @@ fun KeyManagementScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Backup reminder
+            // Backup reminder. Same UserPreferences.keyBackedUp flag as
+            // the Cloud-Backup section's BackupKeyWarningCard, so
+            // acknowledging here also hides the warning there.
             if (!state.keyBackedUp && state.signerMode == SignerMode.LOCAL) {
+                var showAckDialog by remember { mutableStateOf(false) }
                 Card(
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.errorContainer
@@ -136,27 +140,54 @@ fun KeyManagementScreen(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Row(
+                    Column(
                         modifier = Modifier.padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Icon(
-                            Icons.Default.Warning,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.error
-                        )
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                stringResource(R.string.key_label_not_backed_up),
-                                fontWeight = FontWeight.Bold
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Icon(
+                                Icons.Default.Warning,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error
                             )
-                            Text(
-                                stringResource(R.string.key_label_not_backed_up_desc),
-                                style = MaterialTheme.typography.bodySmall
-                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    stringResource(R.string.key_label_not_backed_up),
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    stringResource(R.string.key_label_not_backed_up_desc),
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                        }
+                        TextButton(onClick = { showAckDialog = true }) {
+                            Text(stringResource(R.string.backup_key_warning_acknowledged))
                         }
                     }
+                }
+                if (showAckDialog) {
+                    AlertDialog(
+                        onDismissRequest = { showAckDialog = false },
+                        title = { Text(stringResource(R.string.backup_key_warning_ack_dialog_title)) },
+                        text = { Text(stringResource(R.string.backup_key_warning_ack_dialog_body)) },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                showAckDialog = false
+                                viewModel.acknowledgeKeyBackup()
+                            }) {
+                                Text(stringResource(R.string.backup_key_warning_ack_confirm))
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showAckDialog = false }) {
+                                Text(stringResource(R.string.backup_key_warning_ack_cancel))
+                            }
+                        },
+                    )
                 }
             }
 

@@ -1389,7 +1389,6 @@
     <string name="settings_backup_needs_key">Ein Account-Schlüssel wird benötigt. Er wird beim ersten Backup automatisch erzeugt.</string>
     <string name="settings_backup_interval">Intervall</string>
     <string name="settings_backup_last_sync">Letzte Sicherung: %s</string>
-    <string name="settings_backup_info_how">Auf deinem Gerät verschlüsselt — mit demselben Schlüssel wie dein CruxCoach Account — und dann gespiegelt über das offene Nostr-Netzwerk und Blossom-Speicherserver. Kein einzelner Anbieter hält deine Daten, kein zentraler Account kann gesperrt werden. Du sicherst deinen Account-Schlüssel einmal — das schützt beides: Identität und dieses Backup.</string>
     <string name="settings_backup_status_no_key">Backup benötigt deinen Account-Schlüssel.</string>
     <string name="settings_backup_status_disabled_no_history">Backup deaktiviert — keine Daten online gespeichert.</string>
     <string name="settings_backup_status_disabled_with_history">Backup deaktiviert. Ein älteres Backup vom %1$s kann online noch existieren.</string>
@@ -1419,15 +1418,10 @@
          Body-Varianten: lokaler Schlüssel (= im Passwort-Manager sichern) vs. Amber
          (= Amber selbst sichern). -->
     <string name="backup_key_warning_title">Sichere deinen CruxCoach-Account-Schlüssel</string>
-    <string name="backup_key_warning_body_local">Das ist derselbe Schlüssel wie dein CruxCoach Account: er identifiziert dich auf Nostr UND verschlüsselt dein Cloud-Backup. Wenn du dieses Gerät verlierst, ohne ihn vorher zu sichern, sind sowohl dein Account als auch dein Backup verloren — auch wir können sie nicht wiederherstellen. Sichere ihn einmal an einem sicheren Ort (z.B. Passwort-Manager) — das schützt beides.</string>
+    <string name="backup_key_warning_body_local">Derselbe Schlüssel wie dein CruxCoach Account: identifiziert dich auf Nostr und verschlüsselt dein Cloud-Backup. Ohne ihn ist beides verloren wenn du dieses Gerät verlierst — auch wir können sie nicht wiederherstellen. Speichere ihn an einem sicheren Ort (z.B. Passwort-Manager).</string>
     <string name="backup_key_warning_body_amber">Dein CruxCoach-Account-Schlüssel liegt in Amber und verschlüsselt dein Cloud-Backup. Ohne ein eigenes Amber-Backup geht der Schlüssel mit deinem Telefon verloren — und sowohl Account als auch Cloud-Backup sind nicht mehr wiederherstellbar. Stelle sicher, dass Ambers Backup eingerichtet ist.</string>
     <string name="backup_key_warning_view_account">Zum CruxCoach Account</string>
     <string name="backup_key_warning_acknowledged">Schlüssel ist gesichert</string>
-    <string name="backup_key_warning_copy_key">Account-Schlüssel kopieren</string>
-    <string name="backup_key_warning_copy_dialog_title">Account-Schlüssel kopieren?</string>
-    <string name="backup_key_warning_copy_dialog_body">Dein Schlüssel wird in die Zwischenablage kopiert. Speichere ihn an einem sicheren Ort (z.B. Passwort-Manager).</string>
-    <string name="backup_key_warning_copy_dialog_confirm">Jetzt kopieren</string>
-    <string name="backup_key_warning_copied_snackbar">Account-Schlüssel kopiert. Speichere ihn an einem sicheren Ort.</string>
     <string name="backup_key_warning_ack_dialog_title">Backup-Schlüssel gesichert?</string>
     <string name="backup_key_warning_ack_dialog_body">Mit „Bestätigen" sagst du zu, dass du deinen Schlüssel an einem Ort außerhalb dieses Geräts gespeichert hast — Passwort-Manager, Amber-Backup, Zettel, etc. Wir können ihn nicht wiederherstellen, wenn du dieses Gerät verlierst, ohne ihn vorher gesichert zu haben. Lokale Daten auf diesem Gerät sind nicht betroffen.</string>
     <string name="backup_key_warning_ack_confirm">Bestätigen</string>
@@ -1548,5 +1542,5 @@
     <string name="whatsnew_nostr_backup_title">Neu: Verschlüsseltes Cloud-Backup</string>
     <string name="whatsnew_nostr_backup_body">Deine Klettereinträge und Notizen können jetzt auf deinem Gerät verschlüsselt und online auf mehreren öffentlichen Servern gespeichert werden — auf jedem Gerät wiederherstellbar. Standardmäßig aus; hier aktivieren oder jederzeit in Einstellungen → Verschlüsseltes Cloud-Backup.</string>
     <string name="whatsnew_nostr_backup_toggle">Backup aktivieren</string>
-    <string name="whatsnew_nostr_backup_consent">Auf diesem Gerät wird ein CruxCoach-Account-Schlüssel erzeugt (falls noch nicht vorhanden). Derselbe Schlüssel identifiziert dich auf Nostr und verschlüsselt dein Cloud-Backup — du sicherst ihn einmal, beides geschützt. Backups laufen nicht automatisch — du startest sie selbst in den Einstellungen.</string>
+    <string name="whatsnew_nostr_backup_consent">Auf diesem Gerät wird ein CruxCoach-Account-Schlüssel erzeugt (falls noch nicht vorhanden). Backups laufen nicht automatisch — du startest sie selbst in den Einstellungen.</string>
 </resources>

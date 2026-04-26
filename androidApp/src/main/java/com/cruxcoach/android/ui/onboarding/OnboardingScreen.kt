@@ -46,6 +46,7 @@ import com.cruxcoach.android.ui.theme.*
 fun OnboardingScreen(
     onComplete: () -> Unit,
     onNavigateToKeyImport: () -> Unit = {},
+    onNavigateToKeyManagement: () -> Unit = {},
     viewModel: OnboardingViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -70,7 +71,7 @@ fun OnboardingScreen(
         ) { step ->
             when (step) {
                 OnboardingStep.BOARD_SETUP -> BoardSetupStep()
-                OnboardingStep.PRIVACY -> PrivacyStep(state, viewModel)
+                OnboardingStep.PRIVACY -> PrivacyStep(state, viewModel, onNavigateToKeyManagement)
                 OnboardingStep.KILTER -> KilterStep(state, viewModel)
             }
         }
@@ -304,7 +305,11 @@ private fun BoardSetupStep() {
 // ─── Step 2: Privacy + backup + inline restore ────────────────────────────
 
 @Composable
-private fun PrivacyStep(state: OnboardingState, viewModel: OnboardingViewModel) {
+private fun PrivacyStep(
+    state: OnboardingState,
+    viewModel: OnboardingViewModel,
+    onNavigateToKeyManagement: () -> Unit = {},
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -332,7 +337,7 @@ private fun PrivacyStep(state: OnboardingState, viewModel: OnboardingViewModel) 
             testTag = "onboarding_ble_switch",
         )
 
-        BackupCard(state, viewModel)
+        BackupCard(state, viewModel, onNavigateToKeyManagement)
 
         PrivacyToggleCard(
             icon = { Icon(Icons.Default.Forum, null, tint = OrangeAccent, modifier = Modifier.size(32.dp)) },
@@ -359,7 +364,11 @@ private fun PrivacyStep(state: OnboardingState, viewModel: OnboardingViewModel) 
 }
 
 @Composable
-private fun BackupCard(state: OnboardingState, viewModel: OnboardingViewModel) {
+private fun BackupCard(
+    state: OnboardingState,
+    viewModel: OnboardingViewModel,
+    onNavigateToKeyManagement: () -> Unit = {},
+) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -455,26 +464,20 @@ private fun BackupCard(state: OnboardingState, viewModel: OnboardingViewModel) {
                     // and we don't want to derail the linear flow with
                     // navigation hops; the post-onboarding hint points to
                     // Settings → CruxCoach Account where the key lives.
-                    val context = androidx.compose.ui.platform.LocalContext.current
                     BackupKeyWarningCard(
                         // SignerMode is always LOCAL during fresh-install
                         // onboarding — Amber-pair only happens later in
                         // Settings. RESTORE-via-Amber is a deeper edge
                         // case still represented as LOCAL here.
                         signerMode = SignerMode.LOCAL,
-                        onCopyNsec = {
-                            val nsec = viewModel.getNsecForBackup()
-                            if (nsec != null) {
-                                com.cruxcoach.android.ui.settings.copyToClipboard(
-                                    context, nsec, "nsec", sensitive = true,
-                                )
-                                android.widget.Toast.makeText(
-                                    context,
-                                    R.string.backup_key_warning_copied_snackbar,
-                                    android.widget.Toast.LENGTH_LONG,
-                                ).show()
-                            }
-                        },
+                        onOpenAccount = onNavigateToKeyManagement,
+                        // Onboarding ViewModel is NavBackStackEntry-scoped
+                        // so its state survives the navigation hop to
+                        // KeyManagementScreen — the user lands back on
+                        // the privacy step (not skipped to the next
+                        // step) when they hit back. Keep the post-
+                        // onboarding hint as a follow-up since the user
+                        // may also choose to defer the save action.
                         showPostOnboardingHint = true,
                     )
                 }

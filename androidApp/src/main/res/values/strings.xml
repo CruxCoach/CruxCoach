@@ -1387,7 +1387,6 @@
     <string name="settings_backup_needs_key">An account key is needed. It is generated automatically on first backup.</string>
     <string name="settings_backup_interval">Interval</string>
     <string name="settings_backup_last_sync">Last backup: %s</string>
-    <string name="settings_backup_info_how">Encrypted on your device with the same key as your CruxCoach Account, then mirrored across the open Nostr network and Blossom storage servers — no single provider has your data, no central account can be locked. Saving your account key once protects both your identity and this backup.</string>
     <string name="settings_backup_status_no_key">Backup needs your account key.</string>
     <string name="settings_backup_status_disabled_no_history">Backup disabled — no data stored online.</string>
     <string name="settings_backup_status_disabled_with_history">Backup disabled. A previous backup from %1$s may still exist online.</string>
@@ -1417,15 +1416,10 @@
          Two body variants: local key (= save in password manager) vs Amber
          (= back up Amber itself). -->
     <string name="backup_key_warning_title">Save your CruxCoach Account key</string>
-    <string name="backup_key_warning_body_local">This is the same key as your CruxCoach Account: it identifies you on Nostr AND encrypts your cloud backup. If you lose this device without saving it elsewhere, both your account and your backup are gone — even we can\'t recover them. Save it once, somewhere safe (e.g. a password manager) — that protects both.</string>
+    <string name="backup_key_warning_body_local">Same key as your CruxCoach Account: identifies you on Nostr and encrypts your cloud backup. Without it, both are gone if you lose this device — even we can\'t recover them. Save it somewhere safe (e.g. a password manager).</string>
     <string name="backup_key_warning_body_amber">Your CruxCoach Account key is held by Amber and encrypts your cloud backup. Without Amber\'s own backup, the key is lost when you lose your phone — and both your account and your cloud backup become unrecoverable. Make sure Amber\'s backup is set up.</string>
     <string name="backup_key_warning_view_account">Open CruxCoach Account</string>
     <string name="backup_key_warning_acknowledged">I\'ve saved my key</string>
-    <string name="backup_key_warning_copy_key">Copy account key</string>
-    <string name="backup_key_warning_copy_dialog_title">Copy your account key?</string>
-    <string name="backup_key_warning_copy_dialog_body">Your key will be copied to the clipboard. Save it somewhere safe (e.g. a password manager).</string>
-    <string name="backup_key_warning_copy_dialog_confirm">Copy now</string>
-    <string name="backup_key_warning_copied_snackbar">Account key copied. Save it somewhere safe.</string>
     <string name="backup_key_warning_ack_dialog_title">Backup key saved?</string>
     <string name="backup_key_warning_ack_dialog_body">By tapping Confirm you state that you have stored your key somewhere outside this device — a password manager, Amber\'s backup, paper, etc. We have no way to recover it if you lose this device without saving it. Local data on this phone is not affected.</string>
     <string name="backup_key_warning_ack_confirm">Confirm</string>
@@ -1546,5 +1540,5 @@
     <string name="whatsnew_nostr_backup_title">New: Encrypted cloud backup</string>
     <string name="whatsnew_nostr_backup_body">Your climbs and notes can now be encrypted on this device and stored online across several public servers — restore them on any device. Off by default; enable here, or anytime in Settings → Encrypted cloud backup.</string>
     <string name="whatsnew_nostr_backup_toggle">Enable backup</string>
-    <string name="whatsnew_nostr_backup_consent">A CruxCoach Account key is created on this device if you don\'t already have one. The same key identifies you on Nostr and encrypts your cloud backup, so saving it once protects both. Backups don\'t run automatically — you start them yourself in Settings.</string>
+    <string name="whatsnew_nostr_backup_consent">A CruxCoach Account key is created on this device if you don\'t already have one. Backups don\'t run automatically — you start them yourself in Settings.</string>
 </resources>

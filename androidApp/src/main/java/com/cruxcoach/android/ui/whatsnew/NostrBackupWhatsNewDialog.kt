@@ -34,8 +34,6 @@ import com.cruxcoach.android.nostr.SignerMode
 import com.cruxcoach.android.nostr.backup.BackupPreferences
 import com.cruxcoach.android.nostr.backup.BackupSyncWorker
 import com.cruxcoach.android.ui.common.BackupKeyWarningCard
-import com.vitorpamplona.quartz.nip01Core.core.hexToByteArray
-import com.vitorpamplona.quartz.nip19Bech32.toNsec
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -86,21 +84,6 @@ class NostrBackupWhatsNewViewModel @Inject constructor(
     }
 
     /**
-     * In-place "copy backup key" action for the warning card. Creates
-     * the local key + flips the signer to LOCAL on first call so the
-     * copy works mid-dialog instead of only after [confirm] runs.
-     * Returns null only if key generation itself fails.
-     */
-    fun getNsecForBackup(): String? {
-        if (!keyStore.hasKey()) {
-            keyStore.getOrCreateKeyPair()
-            signer.switchToLocal()
-        }
-        val hex = keyStore.getPrivateKeyHex() ?: return null
-        return hex.hexToByteArray().toNsec()
-    }
-
-    /**
      * Persist the user's choice and dismiss. If the toggle is off, this
      * is a pure no-op besides the dismiss callback. If on, we create a
      * local Nostr key (only if one doesn't already exist), enable the
@@ -137,7 +120,6 @@ internal fun NostrBackupWhatsNewDialog(
     vm: NostrBackupWhatsNewViewModel = hiltViewModel(),
 ) {
     val state by vm.state.collectAsState()
-    val context = androidx.compose.ui.platform.LocalContext.current
 
     AlertDialog(
         // Treat back / scrim taps the same as confirm: the user has
@@ -212,22 +194,12 @@ internal fun NostrBackupWhatsNewDialog(
                     // user can copy their key in one trip.
                     BackupKeyWarningCard(
                         signerMode = SignerMode.LOCAL,
-                        onCopyNsec = {
-                            val nsec = vm.getNsecForBackup()
-                            if (nsec != null) {
-                                com.cruxcoach.android.ui.settings.copyToClipboard(
-                                    context, nsec, "nsec", sensitive = true,
-                                )
-                                android.widget.Toast.makeText(
-                                    context,
-                                    R.string.backup_key_warning_copied_snackbar,
-                                    android.widget.Toast.LENGTH_LONG,
-                                ).show()
-                            }
-                        },
                         onOpenAccount = {
                             // confirm() persists toggle+freq, then
                             // dismisses → onDismiss → host navigates.
+                            // The user has already explicitly toggled
+                            // backup ON to see this card; their choice
+                            // is final.
                             vm.confirm {
                                 onDismiss()
                                 onNavigateToKeyManagement()

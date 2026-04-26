@@ -14,8 +14,6 @@ import com.cruxcoach.android.data.kilter.KilterSyncEngine
 import com.cruxcoach.android.data.kilter.KilterTokenStore
 import com.cruxcoach.android.nostr.NostrKeyStore
 import com.cruxcoach.android.nostr.backup.BackupInfo
-import com.vitorpamplona.quartz.nip01Core.core.hexToByteArray
-import com.vitorpamplona.quartz.nip19Bech32.toNsec
 import com.cruxcoach.android.nostr.backup.BackupPreferences
 import com.cruxcoach.android.nostr.backup.BackupRepository
 import com.cruxcoach.android.nostr.backup.BackupSyncWorker
@@ -249,27 +247,6 @@ class OnboardingViewModel @Inject constructor(
 
     fun setBackupFrequency(interval: SyncInterval) {
         _state.update { it.copy(backupFrequency = interval) }
-    }
-
-    /**
-     * Returns the user's local backup key (nsec) for the in-place
-     * "Schlüssel kopieren" action in the warning card. Creates the key
-     * lazily if it doesn't exist yet — onboarding may reach the warning
-     * card before the post-onboarding key-init path. Fresh-install signer
-     * mode is LOCAL by default, so we don't need to invoke
-     * [com.cruxcoach.android.nostr.NostrSigner.switchToLocal].
-     *
-     * Returns null only in the rare case where the keystore has no key
-     * AND key generation fails — callers should treat null as "no copy
-     * action available" rather than retrying.
-     */
-    fun getNsecForBackup(): String? {
-        if (!keyStore.hasKey()) {
-            keyStore.getOrCreateKeyPair()
-            _state.update { it.copy(hasNostrKey = true) }
-        }
-        val hex = keyStore.getPrivateKeyHex() ?: return null
-        return hex.hexToByteArray().toNsec()
     }
 
     fun setBackupChoice(choice: BackupChoice) {

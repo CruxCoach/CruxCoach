@@ -39,7 +39,6 @@ internal fun BackupSettingsSection(
     onRequestDeleteRemote: () -> Unit = {},
     onNavigateToKeyManagement: () -> Unit = {},
     onAcknowledgeKeyBackup: () -> Unit = {},
-    onCopyNsec: (() -> Unit)? = null,
 ) {
     if (!state.featureEnabled) return
 
@@ -53,17 +52,6 @@ internal fun BackupSettingsSection(
         Text(
             stringResource(R.string.settings_backup_description),
             style = MaterialTheme.typography.bodySmall,
-        )
-
-        Spacer(Modifier.height(6.dp))
-        // Concise "how does this work" line — names the underlying tech
-        // (Nostr + Blossom) so technically-curious users see what's behind
-        // the friendly "Cloud-Backup" label without overwhelming the
-        // mainstream user.
-        Text(
-            stringResource(R.string.settings_backup_info_how),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
         Spacer(Modifier.height(12.dp))
@@ -128,7 +116,6 @@ internal fun BackupSettingsSection(
             Spacer(Modifier.height(12.dp))
             BackupKeyWarningCard(
                 signerMode = state.signerMode,
-                onCopyNsec = onCopyNsec,
                 onOpenAccount = onNavigateToKeyManagement,
                 onAcknowledge = onAcknowledgeKeyBackup,
             )
