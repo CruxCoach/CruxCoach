@@ -1423,7 +1423,7 @@
     <string name="backup_key_warning_acknowledged">I\'ve saved my key</string>
     <string name="backup_key_warning_copy_key">Copy backup key</string>
     <string name="backup_key_warning_copy_dialog_title">Copy your backup key?</string>
-    <string name="backup_key_warning_copy_dialog_body">Your private key (nsec) will be placed on the clipboard. Switch directly to your password manager (Bitwarden, 1Password, KeePass, …) and paste it there. Anyone who reads your clipboard while it sits there can impersonate your account, so do this quickly and clear the clipboard afterwards.</string>
+    <string name="backup_key_warning_copy_dialog_body">Your key will be copied to the clipboard. Save it somewhere safe (e.g. a password manager).</string>
     <string name="backup_key_warning_copy_dialog_confirm">Copy now</string>
     <string name="backup_key_warning_copied_snackbar">Backup key copied. Paste it into your password manager now.</string>
     <string name="backup_key_warning_ack_dialog_title">Backup key saved?</string>

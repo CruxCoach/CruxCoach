@@ -1425,7 +1425,7 @@
     <string name="backup_key_warning_acknowledged">Schlüssel ist gesichert</string>
     <string name="backup_key_warning_copy_key">Backup-Schlüssel kopieren</string>
     <string name="backup_key_warning_copy_dialog_title">Backup-Schlüssel kopieren?</string>
-    <string name="backup_key_warning_copy_dialog_body">Dein privater Schlüssel (nsec) wird in die Zwischenablage gelegt. Wechsle direkt zu deinem Passwort-Manager (Bitwarden, 1Password, KeePass, …) und füge ihn dort ein. Jede App, die dein Clipboard lesen kann, sieht den Schlüssel solange er dort liegt — also sei schnell und leere die Zwischenablage danach.</string>
+    <string name="backup_key_warning_copy_dialog_body">Dein Schlüssel wird in die Zwischenablage kopiert. Speichere ihn an einem sicheren Ort (z.B. Passwort-Manager).</string>
     <string name="backup_key_warning_copy_dialog_confirm">Jetzt kopieren</string>
     <string name="backup_key_warning_copied_snackbar">Backup-Schlüssel kopiert. Füge ihn jetzt in deinen Passwort-Manager ein.</string>
     <string name="backup_key_warning_ack_dialog_title">Backup-Schlüssel gesichert?</string>
