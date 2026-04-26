@@ -1419,7 +1419,7 @@
          Body-Varianten: lokaler Schlüssel (= im Passwort-Manager sichern) vs. Amber
          (= Amber selbst sichern). -->
     <string name="backup_key_warning_title">Sichere deinen Backup-Schlüssel</string>
-    <string name="backup_key_warning_body_local">Dein Backup ist mit einem Schlüssel verschlüsselt, der nur auf diesem Gerät liegt. Ohne ihn kann dein Backup auf keinem anderen Telefon wiederhergestellt werden — auch wir können dir nicht helfen. Speichere ihn in einem Passwort-Manager (z.B. Bitwarden, 1Password, KeePass).</string>
+    <string name="backup_key_warning_body_local">Dein Backup ist mit einem Schlüssel verschlüsselt, der nur auf diesem Gerät liegt. Ohne ihn kann dein Backup auf keinem anderen Telefon wiederhergestellt werden — auch wir können dir nicht helfen. Speichere ihn an einem sicheren Ort (z.B. Passwort-Manager).</string>
     <string name="backup_key_warning_body_amber">Dein Backup ist mit dem Schlüssel verschlüsselt, den Amber für CruxCoach verwaltet. Ohne ein eigenes Amber-Backup geht der Schlüssel mit deinem Telefon verloren — und dein Cloud-Backup ist nicht wiederherstellbar. Stelle sicher, dass Ambers Backup eingerichtet ist.</string>
     <string name="backup_key_warning_view_account">Zum CruxCoach Account</string>
     <string name="backup_key_warning_acknowledged">Schlüssel ist gesichert</string>

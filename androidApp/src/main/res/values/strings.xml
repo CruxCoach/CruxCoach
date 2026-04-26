@@ -1417,7 +1417,7 @@
          Two body variants: local key (= save in password manager) vs Amber
          (= back up Amber itself). -->
     <string name="backup_key_warning_title">Save your backup key</string>
-    <string name="backup_key_warning_body_local">Your backup is encrypted with a key that only lives on this device. Without it, your backup cannot be restored on another phone — not even by us. Save it in a password manager (e.g. Bitwarden, 1Password, KeePass).</string>
+    <string name="backup_key_warning_body_local">Your backup is encrypted with a key that only lives on this device. Without it, your backup cannot be restored on another phone — not even by us. Save it somewhere safe (e.g. a password manager).</string>
     <string name="backup_key_warning_body_amber">Your backup is encrypted with the key Amber holds for CruxCoach. Without Amber\'s own backup, the key is lost when you lose your phone — and your cloud backup cannot be restored. Make sure Amber\'s backup is set up.</string>
     <string name="backup_key_warning_view_account">Open CruxCoach Account</string>
     <string name="backup_key_warning_acknowledged">I\'ve saved my key</string>
