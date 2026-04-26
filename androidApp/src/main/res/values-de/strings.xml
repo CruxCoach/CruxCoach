@@ -1318,6 +1318,8 @@
     <string name="key_section_nsec">Privater Schlüssel</string>
     <string name="key_label_nsec_hidden">Zum Schutz ausgeblendet.</string>
     <string name="key_button_copy_nsec">nsec kopieren</string>
+    <string name="key_button_import_nsec">nsec importieren</string>
+    <string name="key_label_nsec_save_reminder">Sichere diesen Schlüssel an einem sicheren Ort — sowohl dein Account als auch dein Cloud-Backup können nur damit auf einem anderen Gerät wiederhergestellt werden. Ohne ihn ist beides verloren wenn du dieses Telefon verlierst.</string>
     <string name="key_label_nsec_warning">Teile deinen privaten Schlüssel niemals. Wer ihn hat, kontrolliert deinen Account dauerhaft.</string>
     <string name="key_section_recommended">Empfohlen</string>
     <string name="key_label_use_amber">Amber Signer verwenden</string>
@@ -1327,7 +1329,6 @@
     <string name="key_button_disconnect_amber">Zu lokalem Schlüssel wechseln</string>
     <string name="key_label_local_key_inactive">Lokaler Schlüssel (inaktiv)</string>
     <string name="key_label_active_identity">Aktiver Account</string>
-    <string name="key_button_import">Account importieren (nsec/Mnemonic)</string>
 
     <!-- Key Management: Dialogs -->
     <string name="key_dialog_nsec_title">Privater Schlüssel</string>

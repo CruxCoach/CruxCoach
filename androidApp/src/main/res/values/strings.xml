@@ -1272,6 +1272,8 @@
     <string name="key_section_nsec">Private key</string>
     <string name="key_label_nsec_hidden">Hidden for protection.</string>
     <string name="key_button_copy_nsec">Copy nsec</string>
+    <string name="key_button_import_nsec">Import nsec</string>
+    <string name="key_label_nsec_save_reminder">Save this key somewhere safe — your account AND cloud backup can only be restored on another device with it. Without it, both are gone if you lose this phone.</string>
     <string name="key_label_nsec_warning">Never share your private key. Whoever has it controls your account permanently.</string>
     <string name="key_section_recommended">Recommended</string>
     <string name="key_label_use_amber">Use Amber Signer</string>
@@ -1281,7 +1283,6 @@
     <string name="key_button_disconnect_amber">Switch to local key</string>
     <string name="key_label_local_key_inactive">Local key (inactive)</string>
     <string name="key_label_active_identity">Active account</string>
-    <string name="key_button_import">Import account (nsec/Mnemonic)</string>
 
     <!-- Key Management: Dialogs -->
     <string name="key_dialog_nsec_title">Private key</string>

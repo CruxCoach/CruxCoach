@@ -220,6 +220,7 @@ fun KeyManagementScreen(
                             }
                         )
                     },
+                    onImportNsec = onNavigateToImport,
                 )
 
                 // Warning text
@@ -248,27 +249,10 @@ fun KeyManagementScreen(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Import link
-            TextButton(
-                onClick = onNavigateToImport,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        stringResource(R.string.key_button_import),
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Icon(
-                        Icons.AutoMirrored.Filled.ArrowForward,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-            }
+            // Import lives inside NsecSection now (paired with Copy nsec).
+            // Amber users who want to import a different account: tap
+            // "Switch to local key" first → NsecSection appears with the
+            // Import option.
         }
     }
 
@@ -476,11 +460,20 @@ private fun NpubSection(
 @Composable
 private fun NsecSection(
     onCopyNsec: () -> Unit,
+    onImportNsec: () -> Unit,
 ) {
     Text(
         text = stringResource(R.string.key_section_nsec),
         style = MaterialTheme.typography.titleSmall,
         fontWeight = FontWeight.Bold
+    )
+    // Recovery reminder — surfaces the dual-purpose role of the nsec
+    // (account + cloud backup recovery) right next to the export/import
+    // affordances, so it's hard to miss the "save this somewhere" intent.
+    Text(
+        text = stringResource(R.string.key_label_nsec_save_reminder),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
     )
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -502,17 +495,29 @@ private fun NsecSection(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            OutlinedButton(
-                onClick = onCopyNsec,
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp)
             ) {
-                Icon(
-                    Icons.Default.Lock,
-                    contentDescription = null,
-                    modifier = Modifier.size(16.dp)
-                )
-                Text(" " + stringResource(R.string.key_button_copy_nsec), maxLines = 1)
+                OutlinedButton(
+                    onClick = onCopyNsec,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Lock,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Text(" " + stringResource(R.string.key_button_copy_nsec), maxLines = 1)
+                }
+                OutlinedButton(
+                    onClick = onImportNsec,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(stringResource(R.string.key_button_import_nsec), maxLines = 1)
+                }
             }
         }
     }
