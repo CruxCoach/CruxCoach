@@ -76,6 +76,11 @@ data class OnboardingState(
     val hasNostrKey: Boolean = false,
     val backupOptIn: Boolean = false,
     val backupChoice: BackupChoice = BackupChoice.FRESH,
+    /** Backup cadence the user picked while still in onboarding. Default
+     *  MANUAL — keeps the toggle-on UX free of background-job surprises;
+     *  user can pick DAILY/WEEKLY here so they don't have to find Settings
+     *  later. Used by [completeOnboarding] when scheduling the worker. */
+    val backupFrequency: SyncInterval = SyncInterval.MANUAL,
     val isCheckingForBackup: Boolean = false,
     val backupCheckAttempted: Boolean = false,
     val pendingRestore: BackupInfo? = null,
@@ -240,6 +245,10 @@ class OnboardingViewModel @Inject constructor(
         _state.update { it.copy(backupOptIn = enabled) }
     }
 
+    fun setBackupFrequency(interval: SyncInterval) {
+        _state.update { it.copy(backupFrequency = interval) }
+    }
+
     fun setBackupChoice(choice: BackupChoice) {
         // noBackupFoundForKey is a pure derivation from the existing state —
         // it's true iff we already ran a check against the current key and
@@ -387,14 +396,15 @@ class OnboardingViewModel @Inject constructor(
                 BackupSyncWorker.schedule(
                     appContext,
                     enabled = s.backupOptIn && backupPreferences.isBackupFeatureEnabled(),
-                    // MANUAL by default: enabling the feature does not start
-                    // any background work and does not run a first backup
-                    // either — the next backup runs only when the user taps
-                    // "Back up now" in Settings, and they choose any
-                    // automatic cadence there. Aligns with the privacy-first
-                    // philosophy: no surprise background activity from a
-                    // single toggle.
-                    interval = SyncInterval.MANUAL,
+                    // Cadence picked in the backup step. Defaults to MANUAL
+                    // so the toggle-on flow runs no background work unless
+                    // the user explicitly opts into a schedule — but they
+                    // can pick DAILY/WEEKLY right here in onboarding instead
+                    // of having to find Settings later. Aligns with the
+                    // privacy-first philosophy: no surprise background
+                    // activity from a single toggle, but no forced trip
+                    // through Settings either.
+                    interval = s.backupFrequency,
                 )
                 userPreferences.setOnboardingCompleted(true)
                 // Suppress the "what's new" dialog for features the user

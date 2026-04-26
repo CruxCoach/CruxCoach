@@ -1413,6 +1413,27 @@
     <string name="settings_backup_failed">Backup fehlgeschlagen. Prüfe deine Verbindung und versuche es erneut.</string>
     <string name="settings_backup_failed_detail">Backup fehlgeschlagen: %1$s</string>
 
+    <!-- Backup-Schlüssel-Warnungskarte — erscheint in Settings, Onboarding und What\'s New,
+         immer wenn der User Cloud-Backup gerade aktiviert (oder bereits aktiv hat), um
+         daran zu erinnern, dass ohne Schlüssel keine Wiederherstellung möglich ist. Zwei
+         Body-Varianten: lokaler Schlüssel (= im Passwort-Manager sichern) vs. Amber
+         (= Amber selbst sichern). -->
+    <string name="backup_key_warning_title">Sichere deinen Backup-Schlüssel</string>
+    <string name="backup_key_warning_body_local">Dein Backup ist mit einem Schlüssel verschlüsselt, der nur auf diesem Gerät liegt. Ohne ihn kann dein Backup auf keinem anderen Telefon wiederhergestellt werden — auch wir können dir nicht helfen. Speichere ihn in einem Passwort-Manager (z.B. Bitwarden, 1Password, KeePass).</string>
+    <string name="backup_key_warning_body_amber">Dein Backup ist mit dem Schlüssel verschlüsselt, den Amber für CruxCoach verwaltet. Ohne ein eigenes Amber-Backup geht der Schlüssel mit deinem Telefon verloren — und dein Cloud-Backup ist nicht wiederherstellbar. Stelle sicher, dass Ambers Backup eingerichtet ist.</string>
+    <string name="backup_key_warning_view_account">Zum CruxCoach Account</string>
+    <string name="backup_key_warning_acknowledged">Schlüssel ist gesichert</string>
+    <string name="backup_key_warning_ack_dialog_title">Backup-Schlüssel gesichert?</string>
+    <string name="backup_key_warning_ack_dialog_body">Mit „Bestätigen" sagst du zu, dass du deinen Schlüssel an einem Ort außerhalb dieses Geräts gespeichert hast — Passwort-Manager, Amber-Backup, Zettel, etc. Wir können ihn nicht wiederherstellen, wenn du dieses Gerät verlierst, ohne ihn vorher gesichert zu haben. Lokale Daten auf diesem Gerät sind nicht betroffen.</string>
+    <string name="backup_key_warning_ack_confirm">Bestätigen</string>
+    <string name="backup_key_warning_ack_cancel">Noch nicht</string>
+    <string name="backup_key_warning_post_onboarding_hint">Nach Abschluss des Onboardings findest du deinen Schlüssel unter Einstellungen → CruxCoach Account.</string>
+
+    <!-- Onboarding-Frequenzpicker (zusätzlich zum Toggle). Lässt den User direkt
+         eine Kadenz wählen, statt nach dem Aktivieren in den Einstellungen zu suchen.
+         Default ist MANUAL — die Labels recyceln SyncInterval.labelRes. -->
+    <string name="onboarding_backup_frequency_label">Wie oft?</string>
+
     <!-- BackupErrorReason — Lokalisierung pro BackupException-Reason. -->
     <string name="backup_error_blob_upload_failed">Backup fehlgeschlagen: Kein Speicher-Server hat das verschlüsselte Backup akzeptiert (%1$d versucht).</string>
     <string name="backup_error_blob_upload_failed_with_detail">Backup fehlgeschlagen: Kein Speicher-Server hat das verschlüsselte Backup akzeptiert (%1$d versucht, %2$s).</string>

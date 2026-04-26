@@ -36,7 +36,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.cruxcoach.android.R
+import com.cruxcoach.android.data.SyncInterval
+import com.cruxcoach.android.nostr.SignerMode
 import com.cruxcoach.android.ui.board.sync.BoardSyncInlineCard
+import com.cruxcoach.android.ui.common.BackupKeyWarningCard
 import com.cruxcoach.android.ui.theme.*
 
 @Composable
@@ -416,6 +419,50 @@ private fun BackupCard(state: OnboardingState, viewModel: OnboardingViewModel) {
                     if (state.backupChoice == BackupChoice.RESTORE) {
                         RestoreSubSection(state, viewModel)
                     }
+
+                    HorizontalDivider()
+
+                    // Frequency picker — onboarding lets the user choose
+                    // MANUAL / DAILY / WEEKLY right away instead of forcing
+                    // a trip through Settings after enabling. Default MANUAL
+                    // (set on the OnboardingState) keeps the toggle-on flow
+                    // surprise-free; pick a non-MANUAL here only if the user
+                    // explicitly opts into a schedule.
+                    Text(
+                        stringResource(R.string.onboarding_backup_frequency_label),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        SyncInterval.entries.forEach { interval ->
+                            FilterChip(
+                                selected = state.backupFrequency == interval,
+                                onClick = { viewModel.setBackupFrequency(interval) },
+                                label = { Text(stringResource(interval.labelRes)) },
+                            )
+                        }
+                    }
+
+                    // Backup-key warning — surfaces the single biggest
+                    // footgun of the cloud-backup feature ("you lose your
+                    // phone without saving the key, your backup is
+                    // permanently inaccessible") right at the moment the
+                    // user is enabling it. Buttons are intentionally null
+                    // here: during onboarding the key may not yet exist
+                    // and we don't want to derail the linear flow with
+                    // navigation hops; the post-onboarding hint points to
+                    // Settings → CruxCoach Account where the key lives.
+                    BackupKeyWarningCard(
+                        // SignerMode is always LOCAL during fresh-install
+                        // onboarding — Amber-pair only happens later in
+                        // Settings. RESTORE-via-Amber is a deeper edge
+                        // case still represented as LOCAL here.
+                        signerMode = SignerMode.LOCAL,
+                        showPostOnboardingHint = true,
+                    )
                 }
             }
         }

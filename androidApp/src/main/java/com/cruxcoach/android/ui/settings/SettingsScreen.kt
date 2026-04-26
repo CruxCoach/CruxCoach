@@ -265,6 +265,8 @@ fun SettingsScreen(
                         onRunBackupNow = { backupViewModel.runBackupNow() },
                         onTriggerRestore = { backupViewModel.triggerManualRestore() },
                         onRequestDeleteRemote = { backupViewModel.requestDeleteRemoteBackups() },
+                        onNavigateToKeyManagement = onNavigateToKeyManagement,
+                        onAcknowledgeKeyBackup = { backupViewModel.acknowledgeKeyBackup() },
                     )
                     HorizontalDivider()
                     DataImportExportSection(

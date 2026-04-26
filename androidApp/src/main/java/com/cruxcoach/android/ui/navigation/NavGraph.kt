@@ -602,7 +602,9 @@ fun CruxCoachNavHost(
     // Sibling of the Scaffold so the dialog overlays whatever is on screen.
     // The host's ViewModel keeps the queue empty during fresh-install
     // onboarding; only upgrading users see anything.
-    WhatsNewHost()
+    WhatsNewHost(
+        onNavigateToKeyManagement = { navController.navigate(Routes.KEY_MANAGEMENT) },
+    )
     } // CompositionLocalProvider
 }
 

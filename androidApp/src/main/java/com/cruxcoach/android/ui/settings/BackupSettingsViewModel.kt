@@ -4,7 +4,10 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.data.SyncInterval
+import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.nostr.NostrKeyStore
+import com.cruxcoach.android.nostr.NostrSigner
+import com.cruxcoach.android.nostr.SignerMode
 import com.cruxcoach.android.nostr.backup.BackupErrorReason
 import com.cruxcoach.android.nostr.backup.BackupException
 import com.cruxcoach.android.nostr.backup.BackupInfo
@@ -33,6 +36,15 @@ data class BackupSettingsState(
     val interval: SyncInterval = SyncInterval.DAILY,
     val lastBackupIso: String? = null,
     val hasNostrKey: Boolean = false,
+    /** Mirrors [com.cruxcoach.android.data.UserPreferences.keyBackedUp]. The
+     *  Settings cloud-backup section surfaces a persistent
+     *  [com.cruxcoach.android.ui.common.BackupKeyWarningCard] until the user
+     *  acknowledges they have stored their key somewhere outside this device. */
+    val keyBackedUp: Boolean = false,
+    /** [SignerMode.LOCAL] = nsec lives in this device's keystore →
+     *  recommend a password manager; [SignerMode.AMBER] = key delegated
+     *  to Amber → recommend Amber's own backup. */
+    val signerMode: SignerMode = SignerMode.LOCAL,
     val isRunningOneShot: Boolean = false,
     val isCheckingForBackup: Boolean = false,
     val pendingRestore: BackupInfo? = null,
@@ -96,6 +108,8 @@ class BackupSettingsViewModel @Inject constructor(
     private val preferences: BackupPreferences,
     private val backupRepository: BackupRepository,
     private val keyStore: NostrKeyStore,
+    private val userPreferences: UserPreferences,
+    private val signer: NostrSigner,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(BackupSettingsState())
@@ -131,7 +145,25 @@ class BackupSettingsViewModel @Inject constructor(
         // expose a Flow, but it only changes on identity switch which
         // forces an app restart (see A2 flow), so a single read on
         // init is correct.
-        _state.update { it.copy(hasNostrKey = keyStore.hasKey()) }
+        _state.update {
+            it.copy(
+                hasNostrKey = keyStore.hasKey(),
+                signerMode = signer.getStoredSignerMode(),
+            )
+        }
+        // keyBackedUp can be flipped by either KeyManagementScreen's
+        // existing "Mark as backed up" flow or the Cloud-Backup section's
+        // own warning-card "Schlüssel ist gesichert" button — both write
+        // the same per-identity flag, so collect it reactively.
+        viewModelScope.launch {
+            userPreferences.keyBackedUp.collect { acked ->
+                _state.update { it.copy(keyBackedUp = acked) }
+            }
+        }
+    }
+
+    fun acknowledgeKeyBackup() {
+        viewModelScope.launch { userPreferences.setKeyBackedUp(true) }
     }
 
     fun setBackupEnabled(enabled: Boolean) {

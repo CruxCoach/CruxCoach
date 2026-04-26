@@ -115,6 +115,7 @@ class WhatsNewViewModel @Inject constructor(
  */
 @Composable
 fun WhatsNewHost(
+    onNavigateToKeyManagement: () -> Unit = {},
     vm: WhatsNewViewModel = hiltViewModel(),
 ) {
     val pending by vm.pending.collectAsState()
@@ -122,7 +123,10 @@ fun WhatsNewHost(
 
     when (current.id) {
         WhatsNewItems.NOSTR_BACKUP.id ->
-            NostrBackupWhatsNewDialog(onDismiss = { vm.dismissCurrent() })
+            NostrBackupWhatsNewDialog(
+                onDismiss = { vm.dismissCurrent() },
+                onNavigateToKeyManagement = onNavigateToKeyManagement,
+            )
         else -> {
             // Unknown id (shouldn't happen unless registry/dispatch
             // diverge). Drop silently so the queue can advance.

@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.R
 import com.cruxcoach.android.data.SyncInterval
 import com.cruxcoach.android.nostr.backup.BackupInfo
+import com.cruxcoach.android.ui.common.BackupKeyWarningCard
 
 @Composable
 internal fun BackupSettingsSection(
@@ -36,6 +37,8 @@ internal fun BackupSettingsSection(
     onRunBackupNow: () -> Unit,
     onTriggerRestore: () -> Unit,
     onRequestDeleteRemote: () -> Unit = {},
+    onNavigateToKeyManagement: () -> Unit = {},
+    onAcknowledgeKeyBackup: () -> Unit = {},
 ) {
     if (!state.featureEnabled) return
 
@@ -109,6 +112,23 @@ internal fun BackupSettingsSection(
                 stringResource(R.string.settings_backup_needs_key),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error,
+            )
+        }
+
+        // Persistent backup-key warning card. Shown whenever the user has
+        // enabled the cloud backup but hasn't acknowledged saving the key
+        // somewhere safe (= the existing UserPreferences.keyBackedUp flag,
+        // shared with KeyManagementScreen's "Mark as backed up" flow).
+        // "Open Account" navigates to KeyManagementScreen for the actual
+        // show + copy. "Schlüssel ist gesichert" raises an explicit
+        // confirm-dialog before flipping the flag — defeats accidental
+        // taps and makes the user-responsibility moment explicit.
+        if (state.backupEnabled && !state.keyBackedUp) {
+            Spacer(Modifier.height(12.dp))
+            BackupKeyWarningCard(
+                signerMode = state.signerMode,
+                onOpenAccount = onNavigateToKeyManagement,
+                onAcknowledge = onAcknowledgeKeyBackup,
             )
         }
 
