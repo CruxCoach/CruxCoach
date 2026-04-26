@@ -455,12 +455,26 @@ private fun BackupCard(state: OnboardingState, viewModel: OnboardingViewModel) {
                     // and we don't want to derail the linear flow with
                     // navigation hops; the post-onboarding hint points to
                     // Settings → CruxCoach Account where the key lives.
+                    val context = androidx.compose.ui.platform.LocalContext.current
                     BackupKeyWarningCard(
                         // SignerMode is always LOCAL during fresh-install
                         // onboarding — Amber-pair only happens later in
                         // Settings. RESTORE-via-Amber is a deeper edge
                         // case still represented as LOCAL here.
                         signerMode = SignerMode.LOCAL,
+                        onCopyNsec = {
+                            val nsec = viewModel.getNsecForBackup()
+                            if (nsec != null) {
+                                com.cruxcoach.android.ui.settings.copyToClipboard(
+                                    context, nsec, "nsec", sensitive = true,
+                                )
+                                android.widget.Toast.makeText(
+                                    context,
+                                    R.string.backup_key_warning_copied_snackbar,
+                                    android.widget.Toast.LENGTH_LONG,
+                                ).show()
+                            }
+                        },
                         showPostOnboardingHint = true,
                     )
                 }

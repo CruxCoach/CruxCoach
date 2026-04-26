@@ -258,6 +258,7 @@ fun SettingsScreen(
                     // selection — no navigation hop to a dedicated screen.
                     BoardSyncInlineCard()
                     HorizontalDivider()
+                    val context = androidx.compose.ui.platform.LocalContext.current
                     BackupSettingsSection(
                         state = backupState,
                         onSetBackupEnabled = { backupViewModel.setBackupEnabled(it) },
@@ -267,6 +268,17 @@ fun SettingsScreen(
                         onRequestDeleteRemote = { backupViewModel.requestDeleteRemoteBackups() },
                         onNavigateToKeyManagement = onNavigateToKeyManagement,
                         onAcknowledgeKeyBackup = { backupViewModel.acknowledgeKeyBackup() },
+                        onCopyNsec = {
+                            val nsec = backupViewModel.getNsecForBackup()
+                            if (nsec != null) {
+                                copyToClipboard(context, nsec, "nsec", sensitive = true)
+                                android.widget.Toast.makeText(
+                                    context,
+                                    R.string.backup_key_warning_copied_snackbar,
+                                    android.widget.Toast.LENGTH_LONG,
+                                ).show()
+                            }
+                        },
                     )
                     HorizontalDivider()
                     DataImportExportSection(

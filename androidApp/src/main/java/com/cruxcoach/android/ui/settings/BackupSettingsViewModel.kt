@@ -9,6 +9,8 @@ import com.cruxcoach.android.nostr.NostrKeyStore
 import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.android.nostr.SignerMode
 import com.cruxcoach.android.nostr.backup.BackupErrorReason
+import com.vitorpamplona.quartz.nip01Core.core.hexToByteArray
+import com.vitorpamplona.quartz.nip19Bech32.toNsec
 import com.cruxcoach.android.nostr.backup.BackupException
 import com.cruxcoach.android.nostr.backup.BackupInfo
 import com.cruxcoach.android.nostr.backup.BackupPreferences
@@ -164,6 +166,20 @@ class BackupSettingsViewModel @Inject constructor(
 
     fun acknowledgeKeyBackup() {
         viewModelScope.launch { userPreferences.setKeyBackedUp(true) }
+    }
+
+    /**
+     * In-place "copy backup key" action for the warning card. By the time
+     * the user reaches Settings → Cloud-Backup, the key already exists
+     * (onboarding or what's-new ensured this), so we don't need eager
+     * creation here — just read + encode. Returns null only in pathological
+     * states (no key, e.g. user disabled and is about to re-enable in a
+     * different flow); callers should treat null as "no copy action
+     * available".
+     */
+    fun getNsecForBackup(): String? {
+        val hex = keyStore.getPrivateKeyHex() ?: return null
+        return hex.hexToByteArray().toNsec()
     }
 
     fun setBackupEnabled(enabled: Boolean) {
