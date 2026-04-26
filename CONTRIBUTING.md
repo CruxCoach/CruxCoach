@@ -162,6 +162,7 @@ following keys to `local.properties` — no source edits required:
 | `UPDATER_API_BASE` | Forgejo/Gitea API root that the in-app auto-updater polls for new releases | `https://codeberg.org/api/v1` |
 | `UPDATER_REPO_OWNER` | Repository owner used by the auto-updater and the "Online" app-share QR code | `CruxCoach` |
 | `UPDATER_REPO_NAME` | Repository name used by the auto-updater and the app-share QR code; also drives the expected APK filename `<repo>-<tag>.apk` | `CruxCoach` |
+| `ZAPSTORE_APP_URL` | Zapstore listing URL surfaced as a QR code + shareable link in *Settings → Share via Zapstore* | `https://zapstore.dev/apps/com.cruxcoach.android` |
 
 The auto-updater is disabled automatically on Zapstore installs (Zapstore
 handles updates itself). Forks whose APKs are distributed through other

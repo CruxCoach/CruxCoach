@@ -40,3 +40,9 @@
 # UPDATER_API_BASE=https://codeberg.org/api/v1
 # UPDATER_REPO_OWNER=yourhandle
 # UPDATER_REPO_NAME=YourFork
+
+# ─── Share via Zapstore (optional — defaults to upstream listing) ───
+# QR code + shareable link surfaced in Settings → Share via Zapstore.
+# Forks publishing to their own Zapstore namespace should override this
+# so the in-app share button doesn't drive their users to upstream.
+# ZAPSTORE_APP_URL=https://zapstore.dev/apps/com.yourfork.android
