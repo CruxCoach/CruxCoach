@@ -27,7 +27,6 @@ import com.vitorpamplona.quartz.nip19Bech32.Nip19Parser
 import com.vitorpamplona.quartz.nip19Bech32.entities.NPub
 import com.vitorpamplona.quartz.nip19Bech32.toNpub
 import com.vitorpamplona.quartz.nip19Bech32.toNsec
-import com.vitorpamplona.quartz.nip49PrivKeyEnc.Nip49
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -50,9 +49,6 @@ data class KeyManagementState(
     val isAmberInstalled: Boolean = false,
     val keyBackedUp: Boolean = false,
     val showNsecWarningDialog: Boolean = false,
-    val showBackupDialog: Boolean = false,
-    val showBackupResultDialog: Boolean = false,
-    val ncryptsecResult: String? = null,
     val showAmberNotInstalledDialog: Boolean = false,
     val showAmberSuccessDialog: Boolean = false,
     val showNoSecurityDialog: Boolean = false,
@@ -151,60 +147,15 @@ class KeyManagementViewModel @Inject constructor(
 
     /**
      * User-initiated "I've stored my key somewhere safe" flag flip.
-     * Same flag set implicitly by [createBackup] (NIP-49 ncryptsec
-     * generation) and by [com.cruxcoach.android.ui.settings.BackupSettingsViewModel.acknowledgeKeyBackup]
-     * — acknowledging in any one surface hides the warning in all of
-     * them, since the underlying truth ("key is stored elsewhere") is
-     * the same regardless of which screen the user came through.
+     * Same UserPreferences.keyBackedUp flag the BackupKeyWarningCard
+     * in Settings → Cloud-Backup queries — acknowledging here makes
+     * both warnings disappear at once.
      */
     fun acknowledgeKeyBackup() {
         viewModelScope.launch {
             userPreferences.setKeyBackedUp(true)
             _state.update { it.copy(keyBackedUp = true) }
         }
-    }
-
-    // ── Backup flow ──────────────────────────────────────────────
-
-    fun requestBackup() {
-        _state.update { it.copy(showBackupDialog = true) }
-    }
-
-    fun dismissBackupDialog() {
-        _state.update { it.copy(showBackupDialog = false) }
-    }
-
-    fun createBackup(password: String) {
-        _state.update { it.copy(showBackupDialog = false) }
-        viewModelScope.launch {
-            withContext(Dispatchers.IO) {
-                try {
-                    val privKeyHex = keyStore.getPrivateKeyHex() ?: return@withContext
-                    val ncryptsec = Nip49().encrypt(privKeyHex, password)
-                    userPreferences.setKeyBackedUp(true)
-                    _state.update {
-                        it.copy(
-                            ncryptsecResult = ncryptsec,
-                            showBackupResultDialog = true,
-                            keyBackedUp = true
-                        )
-                    }
-                } catch (e: Exception) {
-                    _state.update {
-                        it.copy(error = context.getString(R.string.key_backup_failed, e.message ?: ""))
-                    }
-                }
-            }
-        }
-    }
-
-    fun dismissBackupResult() {
-        _state.update { it.copy(showBackupResultDialog = false, ncryptsecResult = null) }
-    }
-
-    fun copyNcryptsec() {
-        val ncryptsec = _state.value.ncryptsecResult ?: return
-        copySecretToClipboard(ncryptsec)
     }
 
     // ── Amber flow ───────────────────────────────────────────────

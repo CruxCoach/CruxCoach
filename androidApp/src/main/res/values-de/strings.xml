@@ -1297,7 +1297,6 @@
 
     <!-- Key Management -->
     <string name="key_public_key_copied">Öffentlicher Schlüssel kopiert</string>
-    <string name="key_backup_failed">Backup fehlgeschlagen: %1$s</string>
     <string name="key_secret_copied_clipboard_clear">Schlüssel kopiert. Zwischenablage wird in %1$ds geleert.</string>
     <string name="key_import_format_unknown">Format nicht erkannt. Unterstützt: nsec, ncryptsec, hex, 12/24 Wörter.</string>
     <string name="key_import_failed">Import fehlgeschlagen: %1$s</string>
@@ -1319,7 +1318,6 @@
     <string name="key_section_nsec">Privater Schlüssel</string>
     <string name="key_label_nsec_hidden">Zum Schutz ausgeblendet.</string>
     <string name="key_button_copy_nsec">nsec kopieren</string>
-    <string name="key_button_create_backup">Backup erstellen</string>
     <string name="key_label_nsec_warning">Teile deinen privaten Schlüssel niemals. Wer ihn hat, kontrolliert deinen Account dauerhaft.</string>
     <string name="key_section_recommended">Empfohlen</string>
     <string name="key_label_use_amber">Amber Signer verwenden</string>
@@ -1335,16 +1333,6 @@
     <string name="key_dialog_nsec_title">Privater Schlüssel</string>
     <string name="key_dialog_nsec_text">Dieser Schlüssel kontrolliert deinen gesamten CruxCoach Account. Wenn jemand ihn sieht, kann er sich als du ausgeben. Die Zwischenablage wird nach 60 Sekunden geleert.</string>
     <string name="key_dialog_nsec_confirm">Ich verstehe, kopieren</string>
-    <string name="key_dialog_backup_title">Verschlüsseltes Backup erstellen</string>
-    <string name="key_dialog_backup_text">Dein privater Schlüssel wird mit deinem Passwort verschlüsselt (ncryptsec-Format). Ohne dieses Passwort kann der Schlüssel nicht wiederhergestellt werden – wähle ein starkes Passwort und bewahre es sicher auf.</string>
-    <string name="key_label_password">Passwort</string>
-    <string name="key_label_password_confirm">Passwort bestätigen</string>
-    <string name="key_label_password_too_short">Mindestens 8 Zeichen</string>
-    <string name="key_label_password_mismatch">Passwörter stimmen nicht überein</string>
-    <string name="key_dialog_backup_result_title">Backup erstellt</string>
-    <string name="key_dialog_backup_result_text">Speichere den QR-Code oder ncryptsec-Text an einem sicheren Ort (z.\u00A0B. Passwort-Manager oder Ausdruck). Zum Wiederherstellen: Einstellungen → Schlüssel importieren → ncryptsec einfügen → Passwort eingeben.</string>
-    <string name="key_label_qr_content_desc">ncryptsec QR Code</string>
-    <string name="key_button_copy_ncryptsec">ncryptsec kopieren</string>
     <string name="key_dialog_biometric_title">Bildschirmsperre erforderlich</string>
     <string name="key_dialog_biometric_text">Richte zuerst eine Bildschirmsperre ein (PIN, Muster oder Fingerabdruck), um deinen Schlüssel zu schützen.</string>
     <string name="key_button_open_settings">Zu den Einstellungen</string>

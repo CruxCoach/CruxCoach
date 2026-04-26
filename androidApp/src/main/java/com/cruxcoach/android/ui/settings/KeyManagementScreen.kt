@@ -75,7 +75,6 @@ fun KeyManagementScreen(
     val context = LocalContext.current
 
     var showNsecWarning by remember { mutableStateOf(false) }
-    var showBackupPassword by remember { mutableStateOf(false) }
     var showBiometricUnavailable by remember { mutableStateOf(false) }
     var showNoSecurityWarning by remember { mutableStateOf(false) }
     var noSecurityPendingAction by remember { mutableStateOf<(() -> Unit)?>(null) }
@@ -221,17 +220,6 @@ fun KeyManagementScreen(
                             }
                         )
                     },
-                    onCreateBackup = {
-                        requestBiometric(
-                            context = context,
-                            onSuccess = { showBackupPassword = true },
-                            onUnavailable = { showBiometricUnavailable = true },
-                            onNoHardware = {
-                                noSecurityPendingAction = { showBackupPassword = true }
-                                showNoSecurityWarning = true
-                            }
-                        )
-                    }
                 )
 
                 // Warning text
@@ -292,39 +280,6 @@ fun KeyManagementScreen(
                 showNsecWarning = false
                 viewModel.confirmNsecCopy()
             }
-        )
-    }
-
-    if (showBackupPassword) {
-        BackupPasswordDialog(
-            onDismiss = { showBackupPassword = false },
-            onConfirm = { password ->
-                showBackupPassword = false
-                viewModel.createBackup(password)
-            }
-        )
-    }
-
-    val backupResult = state.ncryptsecResult
-    if (backupResult != null) {
-        val qrBitmap = remember(backupResult) {
-            try {
-                ApkShareHelper.generateQrBitmap(backupResult)
-            } catch (e: Exception) {
-                null
-            }
-        }
-        // Recycle security-sensitive QR bitmap when dialog is dismissed
-        androidx.compose.runtime.DisposableEffect(backupResult) {
-            onDispose { qrBitmap?.recycle() }
-        }
-        BackupResultDialog(
-            ncryptsec = backupResult,
-            qrBitmap = qrBitmap,
-            onCopy = {
-                viewModel.copyNcryptsec()
-            },
-            onDismiss = { viewModel.dismissBackupResult() }
         )
     }
 
@@ -521,7 +476,6 @@ private fun NpubSection(
 @Composable
 private fun NsecSection(
     onCopyNsec: () -> Unit,
-    onCreateBackup: () -> Unit
 ) {
     Text(
         text = stringResource(R.string.key_section_nsec),
@@ -548,30 +502,17 @@ private fun NsecSection(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxWidth()
+            OutlinedButton(
+                onClick = onCopyNsec,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp)
             ) {
-                OutlinedButton(
-                    onClick = onCopyNsec,
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Icon(
-                        Icons.Default.Lock,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Text(" " + stringResource(R.string.key_button_copy_nsec), maxLines = 1)
-                }
-                Button(
-                    onClick = onCreateBackup,
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent)
-                ) {
-                    Text(stringResource(R.string.key_button_create_backup), maxLines = 1, fontWeight = FontWeight.Bold)
-                }
+                Icon(
+                    Icons.Default.Lock,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp)
+                )
+                Text(" " + stringResource(R.string.key_button_copy_nsec), maxLines = 1)
             }
         }
     }

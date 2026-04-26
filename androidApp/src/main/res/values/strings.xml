@@ -1251,7 +1251,6 @@
 
     <!-- Key Management -->
     <string name="key_public_key_copied">Public key copied</string>
-    <string name="key_backup_failed">Backup failed: %1$s</string>
     <string name="key_secret_copied_clipboard_clear">Key copied. Clipboard will be cleared in %1$ds.</string>
     <string name="key_import_format_unknown">Format not recognized. Supported: nsec, ncryptsec, hex, 12/24 words.</string>
     <string name="key_import_failed">Import failed: %1$s</string>
@@ -1273,7 +1272,6 @@
     <string name="key_section_nsec">Private key</string>
     <string name="key_label_nsec_hidden">Hidden for protection.</string>
     <string name="key_button_copy_nsec">Copy nsec</string>
-    <string name="key_button_create_backup">Create backup</string>
     <string name="key_label_nsec_warning">Never share your private key. Whoever has it controls your account permanently.</string>
     <string name="key_section_recommended">Recommended</string>
     <string name="key_label_use_amber">Use Amber Signer</string>
@@ -1289,16 +1287,6 @@
     <string name="key_dialog_nsec_title">Private key</string>
     <string name="key_dialog_nsec_text">This key controls your entire CruxCoach account. If anyone sees it, they can permanently impersonate you. The clipboard will be cleared after 60 seconds.</string>
     <string name="key_dialog_nsec_confirm">I understand, copy</string>
-    <string name="key_dialog_backup_title">Create encrypted backup</string>
-    <string name="key_dialog_backup_text">Your private key will be encrypted with your password (ncryptsec format). Without this password the key cannot be restored – choose a strong password and keep it safe.</string>
-    <string name="key_label_password">Password</string>
-    <string name="key_label_password_confirm">Confirm password</string>
-    <string name="key_label_password_too_short">At least 8 characters</string>
-    <string name="key_label_password_mismatch">Passwords do not match</string>
-    <string name="key_dialog_backup_result_title">Backup created</string>
-    <string name="key_dialog_backup_result_text">Save the QR code or ncryptsec text in a secure location (e.g. password manager or printout). To restore: Settings → Import key → paste ncryptsec → enter password.</string>
-    <string name="key_label_qr_content_desc">ncryptsec QR Code</string>
-    <string name="key_button_copy_ncryptsec">Copy ncryptsec</string>
     <string name="key_dialog_biometric_title">Screen lock required</string>
     <string name="key_dialog_biometric_text">First set up a screen lock (PIN, pattern or fingerprint) to protect your key.</string>
     <string name="key_button_open_settings">Go to settings</string>
