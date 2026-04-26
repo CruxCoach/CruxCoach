@@ -62,8 +62,12 @@ The following are out of scope:
 
 ### Encrypted Cloud Backup (FEAT-002, 0.1.3+)
 - **Opt-in only.** Off by default; enabled per-identity via the onboarding flow, the *what's new* upgrade dialog, or *Settings → Encrypted cloud backup*.
-- **Encryption keys never leave the device.** The data-encryption key is wrapped with a key derived from the user's Nostr private key via HKDF-SHA-256, encrypted via AES-256-GCM, and announced to relays as a Kind-30078 replaceable event. Only a holder of the matching Nostr key can unwrap and decrypt.
-- **Storage layout.** Encrypted blob on [Blossom](https://github.com/hzrd149/blossom) servers (content-addressed via SHA-256, BUD-06 headers), pointer event on the user's Nostr write-relays (NIP-65 discovered).
+- **Three-layer envelope, all gated by your Nostr key:**
+  1. *Blob* — `gzip(SQLCipher database)` encrypted with a per-backup random 32-byte data key via **AES-256-GCM**, uploaded to [Blossom](https://github.com/hzrd149/blossom) storage servers (SHA-256 content-addressed, BUD-06 headers). The dataKey itself never reaches a server.
+  2. *Backup pointer* — Kind-30078 (NIP-78 replaceable parameterized) Nostr event signed by your key. Content is NIP-44-v2-self-encrypted JSON listing the blob's SHA-256 and the Blossom servers holding it. d-tag `cruxcoach/backup/v1`. Published to your NIP-65 write-relays.
+  3. *DataKey wrap* — Kind-30078 Nostr event signed by your key. Content is NIP-44-v2-self-encrypted, holding the dataKey hex. d-tag `cruxcoach/key/v1`.
+- **NIP-44 v2 envelope.** Per-conversation key derived from ECDH(nsec, recipient pubkey) → HKDF-SHA-256 → ChaCha20 stream cipher + HMAC-SHA-256 (encrypt-then-MAC). For *self-encryption* the recipient is the user's own pubkey, so only the holder of the same nsec can re-derive the shared secret and decrypt the wrapped dataKey.
+- **Only your Nostr private key unlocks the chain.** Restore on a new device fetches both events from relays, NIP-44-decrypts them to recover (pointer, dataKey), downloads the blob from any listed Blossom server, verifies SHA-256, and AES-256-GCM-decrypts. No additional password, no server-side decryption help.
 - **Remote persistence is one-way.** Cloud backups survive every local-only action — app uninstall, *Clear app data*, identity switch (Local ↔ Amber), board-data deletion. The only path that touches remote is *Settings → Delete remote backups…*, gated by an explicit confirmation dialog with caveats spelled out.
 - **No backdoor.** The maintainer cannot decrypt your backup, recover your key, or access your account by any technical means built into the app.
 
