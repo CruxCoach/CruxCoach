@@ -1315,7 +1315,8 @@
     <string name="key_section_npub">Öffentlicher Schlüssel (npub)</string>
     <string name="key_button_copy_npub">npub kopieren</string>
     <string name="key_toast_npub_copied">npub kopiert</string>
-    <string name="key_section_nsec">Privater Schlüssel</string>
+    <string name="key_section_nsec">Privater Schlüssel (nsec)</string>
+    <string name="key_label_npub_recovery_note">Optional — wird nur genutzt, um deine Identität auf Nostr zu teilen. Nicht nötig, um Account oder Cloud-Backup wiederherzustellen.</string>
     <string name="key_label_nsec_hidden">Zum Schutz ausgeblendet.</string>
     <string name="key_button_copy_nsec">nsec kopieren</string>
     <string name="key_button_import_nsec">nsec importieren</string>
@@ -1379,7 +1380,6 @@
     <string name="settings_backup_interval">Intervall</string>
     <string name="settings_backup_last_sync">Letzte Sicherung: %s</string>
     <string name="settings_backup_status_no_key">Backup benötigt deinen Account-Schlüssel.</string>
-    <string name="settings_backup_account_link">Nutzt deinen CruxCoach-Account-Schlüssel — anzeigen + verwalten</string>
     <string name="settings_backup_status_disabled_no_history">Backup deaktiviert — keine Daten online gespeichert.</string>
     <string name="settings_backup_status_disabled_with_history">Backup deaktiviert. Ein älteres Backup vom %1$s kann online noch existieren.</string>
     <string name="settings_backup_status_enabled_no_backup">Backup aktiv — noch nicht gesichert.</string>

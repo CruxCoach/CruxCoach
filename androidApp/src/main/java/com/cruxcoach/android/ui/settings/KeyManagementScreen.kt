@@ -199,17 +199,10 @@ fun KeyManagementScreen(
                 amberPubkeyDisplay = state.amberPubkeyDisplay
             )
 
-            // npub section
-            NpubSection(
-                npub = state.npubDisplay,
-                isInactive = state.signerMode == SignerMode.AMBER,
-                onCopy = {
-                    copyToClipboard(context, state.npubFull, "npub", sensitive = false)
-                    Toast.makeText(context, context.getString(R.string.key_toast_npub_copied), Toast.LENGTH_SHORT).show()
-                }
-            )
-
-            // nsec section (only for local signer)
+            // nsec section (only for local signer) — placed above
+            // npub because saving the nsec is the actual recovery
+            // story for both account and cloud backup. npub is
+            // optional + identity-sharing-only and lives below.
             if (state.signerMode == SignerMode.LOCAL) {
                 NsecSection(
                     onCopyNsec = {
@@ -251,6 +244,25 @@ fun KeyManagementScreen(
             )
 
             Spacer(modifier = Modifier.height(8.dp))
+
+            // npub section — moved to the bottom because it is *not*
+            // part of the recovery story (the nsec is). Surfaces the
+            // public key for users who want to share their identity on
+            // Nostr but de-emphasises it visually so the recovery focus
+            // stays on the nsec block above.
+            NpubSection(
+                npub = state.npubDisplay,
+                isInactive = state.signerMode == SignerMode.AMBER,
+                onCopy = {
+                    copyToClipboard(context, state.npubFull, "npub", sensitive = false)
+                    Toast.makeText(context, context.getString(R.string.key_toast_npub_copied), Toast.LENGTH_SHORT).show()
+                }
+            )
+            Text(
+                text = stringResource(R.string.key_label_npub_recovery_note),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
 
             // Import lives inside NsecSection now (paired with Copy nsec).
             // Amber users who want to import a different account: tap
