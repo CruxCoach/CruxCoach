@@ -11,7 +11,7 @@
     <string name="onboarding_privacy_ble_desc">Share climbs with people at the board and use session mode for group bouldering.</string>
     <string name="onboarding_privacy_community_title">Community &amp; feedback</string>
     <string name="onboarding_privacy_community_desc">Crash reports, app announcements and developer chat — all encrypted, no account needed.</string>
-    <string name="onboarding_privacy_hint">No personal data leaves your device. All communication is end-to-end encrypted.</string>
+    <string name="onboarding_privacy_hint">Your personal data stays on this device by default. The optional cloud backup uploads only an end-to-end encrypted copy that only you can decrypt.</string>
     <string name="onboarding_lets_go">Let\'s go</string>
     <string name="onboarding_board_setup_title">Load the climbs</string>
     <string name="onboarding_board_setup_subtitle">Without it the app stays empty. Everything else is adjustable later in settings.</string>

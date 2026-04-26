@@ -11,7 +11,7 @@
     <string name="onboarding_privacy_ble_desc">Teile Climbs mit Leuten am Board und nutze den Session-Modus zum gemeinsamen Bouldern.</string>
     <string name="onboarding_privacy_community_title">Community &amp; Feedback</string>
     <string name="onboarding_privacy_community_desc">Crash-Berichte, App-Ankündigungen und Entwickler-Chat — alles verschlüsselt und ohne Account.</string>
-    <string name="onboarding_privacy_hint">Keine persönlichen Daten verlassen dein Gerät. Alle Kommunikation ist Ende-zu-Ende verschlüsselt.</string>
+    <string name="onboarding_privacy_hint">Deine persönlichen Daten bleiben standardmäßig auf diesem Gerät. Das optionale Cloud-Backup lädt nur eine Ende-zu-Ende verschlüsselte Kopie hoch — nur du kannst sie entschlüsseln.</string>
     <string name="onboarding_lets_go">Los geht\'s</string>
     <string name="onboarding_board_setup_title">Routen laden</string>
     <string name="onboarding_board_setup_subtitle">Ohne die Datenbank bleibt die App leer. Alles andere kannst du später in den Einstellungen anpassen.</string>
