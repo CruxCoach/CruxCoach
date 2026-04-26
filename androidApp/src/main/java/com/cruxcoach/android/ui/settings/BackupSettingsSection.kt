@@ -1,5 +1,8 @@
 package com.cruxcoach.android.ui.settings
 
+import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -13,6 +16,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
@@ -52,6 +56,34 @@ internal fun BackupSettingsSection(
             stringResource(R.string.settings_backup_description),
             style = MaterialTheme.typography.bodySmall,
         )
+
+        Spacer(Modifier.height(8.dp))
+        // Persistent link to KeyManagementScreen so the user always sees
+        // — regardless of backupEnabled / keyBackedUp state — that the
+        // cloud backup is gated by the same account key, and where to
+        // view / save / manage it. The BackupKeyWarningCard below covers
+        // the "you haven't acked it yet" case more loudly; this link is
+        // the always-on baseline reminder of the connection.
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onNavigateToKeyManagement)
+                .padding(vertical = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                stringResource(R.string.settings_backup_account_link),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Icon(
+                Icons.AutoMirrored.Filled.ArrowForward,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+                tint = MaterialTheme.colorScheme.primary,
+            )
+        }
 
         Spacer(Modifier.height(12.dp))
 

@@ -1307,8 +1307,8 @@
     <string name="key_section_nostr_intro">Dein CruxCoach Account funktioniert grundlegend anders als herkömmliche Accounts: Statt E-Mail und Passwort bei einer Firma zu hinterlegen, besitzt du einen kryptographischen Schlüssel. Dieser Schlüssel ist dein Account — wer ihn hat, hat Zugang. Kein Unternehmen kann deinen Account sperren, löschen oder deine Daten einsehen. Nachrichten an den Entwickler sind Ende-zu-Ende-verschlüsselt. Dafür liegt die Verantwortung bei dir: Geht der Schlüssel verloren, kann ihn niemand zurücksetzen. Technisch basiert dein Account auf dem offenen Nostr-Protokoll.</string>
     <string name="key_section_description">Hier kannst du deinen Account sichern, auf ein neues Gerät übertragen oder die externe Signer-App Amber verwenden.</string>
     <string name="key_button_manage">Account verwalten</string>
-    <string name="key_label_not_backed_up">Account nicht gesichert</string>
-    <string name="key_label_not_backed_up_desc">Bei Geräteverlust ist dein Account weg.</string>
+    <string name="key_label_not_backed_up">Sichere deinen Account-Schlüssel</string>
+    <string name="key_label_not_backed_up_desc">Ohne ihn kann weder dein Account noch dein Cloud-Backup wiederhergestellt werden, wenn du dieses Gerät verlierst.</string>
     <string name="key_label_login_method">Login-Methode:</string>
     <string name="key_label_login_local">Lokaler Schlüssel</string>
     <string name="key_label_login_amber">Amber Signer</string>
@@ -1379,6 +1379,7 @@
     <string name="settings_backup_interval">Intervall</string>
     <string name="settings_backup_last_sync">Letzte Sicherung: %s</string>
     <string name="settings_backup_status_no_key">Backup benötigt deinen Account-Schlüssel.</string>
+    <string name="settings_backup_account_link">Nutzt deinen CruxCoach-Account-Schlüssel — anzeigen + verwalten</string>
     <string name="settings_backup_status_disabled_no_history">Backup deaktiviert — keine Daten online gespeichert.</string>
     <string name="settings_backup_status_disabled_with_history">Backup deaktiviert. Ein älteres Backup vom %1$s kann online noch existieren.</string>
     <string name="settings_backup_status_enabled_no_backup">Backup aktiv — noch nicht gesichert.</string>
@@ -1410,7 +1411,7 @@
     <string name="backup_key_warning_body_local">Derselbe Schlüssel wie dein CruxCoach Account: identifiziert dich auf Nostr und verschlüsselt dein Cloud-Backup. Ohne ihn ist beides verloren wenn du dieses Gerät verlierst — auch wir können sie nicht wiederherstellen. Speichere ihn an einem sicheren Ort (z.B. Passwort-Manager).</string>
     <string name="backup_key_warning_body_amber">Dein CruxCoach-Account-Schlüssel liegt in Amber und verschlüsselt dein Cloud-Backup. Ohne ein eigenes Amber-Backup geht der Schlüssel mit deinem Telefon verloren — und sowohl Account als auch Cloud-Backup sind nicht mehr wiederherstellbar. Stelle sicher, dass Ambers Backup eingerichtet ist.</string>
     <string name="backup_key_warning_view_account">Zum CruxCoach Account</string>
-    <string name="backup_key_warning_acknowledged">Schlüssel ist gesichert</string>
+    <string name="backup_key_warning_acknowledged">Habe Schlüssel gesichert</string>
     <string name="backup_key_warning_ack_dialog_title">Backup-Schlüssel gesichert?</string>
     <string name="backup_key_warning_ack_dialog_body">Mit „Bestätigen" sagst du zu, dass du deinen Schlüssel an einem Ort außerhalb dieses Geräts gespeichert hast — Passwort-Manager, Amber-Backup, Zettel, etc. Wir können ihn nicht wiederherstellen, wenn du dieses Gerät verlierst, ohne ihn vorher gesichert zu haben. Lokale Daten auf diesem Gerät sind nicht betroffen.</string>
     <string name="backup_key_warning_ack_confirm">Bestätigen</string>
@@ -1487,11 +1488,6 @@
     <string name="action_copy">Kopieren</string>
 
     <!-- Key-import: Amber-Shortcut + Nicht-installiert-Dialog -->
-    <string name="key_import_amber_button">Mit Amber verbinden</string>
-    <string name="key_import_or">oder Schlüssel manuell eingeben:</string>
-    <string name="key_import_amber_not_installed_title">Amber nicht installiert</string>
-    <string name="key_import_amber_not_installed_body">Amber ist eine separate App, die deinen Nostr-Schlüssel sicher verwahrt. Installiere sie und komm zurück, um dich zu verbinden.</string>
-    <string name="key_import_amber_get">Amber installieren</string>
     <string name="settings_share_copied_url">Download-URL kopiert.</string>
     <string name="settings_share_copied_password">Passwort kopiert.</string>
 

@@ -163,7 +163,10 @@ fun KeyManagementScreen(
                                 )
                             }
                         }
-                        TextButton(onClick = { showAckDialog = true }) {
+                        OutlinedButton(
+                            onClick = { showAckDialog = true },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
                             Text(stringResource(R.string.backup_key_warning_acknowledged))
                         }
                     }

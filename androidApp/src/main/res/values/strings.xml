@@ -1261,8 +1261,8 @@
     <string name="key_section_nostr_intro">Your CruxCoach account works fundamentally different from traditional accounts: Instead of registering with an email and password at a company, you own a cryptographic key. This key is your account — whoever holds it has access. No company can lock, delete, or read your data. Messages to the developer are end-to-end encrypted. The trade-off: you are responsible for your key. If lost, nobody can reset it for you. Technically, your account is built on the open Nostr protocol.</string>
     <string name="key_section_description">Back up your account, transfer it to a new device, or use the external signer app Amber.</string>
     <string name="key_button_manage">Manage account</string>
-    <string name="key_label_not_backed_up">Account not backed up</string>
-    <string name="key_label_not_backed_up_desc">If you lose your device, your account is gone.</string>
+    <string name="key_label_not_backed_up">Save your account key</string>
+    <string name="key_label_not_backed_up_desc">Without it, neither your account nor your cloud backup can be restored if you lose this device.</string>
     <string name="key_label_login_method">Login method:</string>
     <string name="key_label_login_local">Local key</string>
     <string name="key_label_login_amber">Amber Signer</string>
@@ -1377,6 +1377,7 @@
     <string name="settings_backup_interval">Interval</string>
     <string name="settings_backup_last_sync">Last backup: %s</string>
     <string name="settings_backup_status_no_key">Backup needs your account key.</string>
+    <string name="settings_backup_account_link">Uses your CruxCoach Account key — view + manage</string>
     <string name="settings_backup_status_disabled_no_history">Backup disabled — no data stored online.</string>
     <string name="settings_backup_status_disabled_with_history">Backup disabled. A previous backup from %1$s may still exist online.</string>
     <string name="settings_backup_status_enabled_no_backup">Backup enabled — no sync yet.</string>
@@ -1485,11 +1486,6 @@
     <string name="action_copy">Copy</string>
 
     <!-- Key-import: Amber shortcut + not-installed dialog -->
-    <string name="key_import_amber_button">Connect with Amber</string>
-    <string name="key_import_or">or enter your key manually:</string>
-    <string name="key_import_amber_not_installed_title">Amber not installed</string>
-    <string name="key_import_amber_not_installed_body">Amber is a separate app that keeps your Nostr key secure. Install it and come back to connect.</string>
-    <string name="key_import_amber_get">Get Amber</string>
     <string name="settings_share_copied_url">Download URL copied.</string>
     <string name="settings_share_copied_password">Password copied.</string>
 
