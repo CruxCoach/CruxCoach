@@ -1380,16 +1380,17 @@
     <string name="key_import_decrypt_button">Decrypt</string>
     <string name="identity_switch_title">Switching account…</string>
 
-    <!-- FEAT-002: Nostr backup -->
-    <string name="settings_backup_title">Nostr backup</string>
-    <string name="settings_backup_description">Encrypted backup of your climbing data on Blossom servers. Only you can decrypt it.</string>
+    <!-- FEAT-002: Encrypted cloud backup (technically Nostr + Blossom underneath) -->
+    <string name="settings_backup_title">Encrypted cloud backup</string>
+    <string name="settings_backup_description">Encrypted on your device, then stored across several public servers. Only you can decrypt it.</string>
     <string name="settings_backup_enable">Enable backup</string>
-    <string name="settings_backup_needs_key">A Nostr key is required. It will be generated on first use.</string>
+    <string name="settings_backup_needs_key">A backup key is needed. It is generated automatically on first backup.</string>
     <string name="settings_backup_interval">Interval</string>
     <string name="settings_backup_last_sync">Last backup: %s</string>
-    <string name="settings_backup_status_no_key">Backup requires a Nostr key.</string>
-    <string name="settings_backup_status_disabled_no_history">Backup disabled — no data stored on relays.</string>
-    <string name="settings_backup_status_disabled_with_history">Backup disabled. A previous backup from %1$s may still exist on relays.</string>
+    <string name="settings_backup_info_how">Encrypted on your device with a key only you hold, then mirrored across the open Nostr network and Blossom storage servers — no single provider has your data, no central account can be locked.</string>
+    <string name="settings_backup_status_no_key">Backup needs a backup key.</string>
+    <string name="settings_backup_status_disabled_no_history">Backup disabled — no data stored online.</string>
+    <string name="settings_backup_status_disabled_with_history">Backup disabled. A previous backup from %1$s may still exist online.</string>
     <string name="settings_backup_status_enabled_no_backup">Backup enabled — no sync yet.</string>
     <string name="settings_backup_status_enabled_with_backup">Backup enabled — last sync %1$s.</string>
     <string name="settings_backup_never_synced">No backup yet</string>
@@ -1401,9 +1402,9 @@
     <string name="settings_backup_restore_dialog_body">Size: %1$s.\nYour local data will be overwritten by the backup.</string>
     <string name="settings_backup_restore_confirm">Restore</string>
     <string name="settings_backup_restore_cancel">Cancel</string>
-    <string name="settings_backup_no_backup_found">No backup found for this account. If one should exist, check your network connection and try again later — relays may be unreachable.</string>
-    <string name="settings_backup_blob_unreachable">Backup metadata found, but the encrypted content is no longer reachable on any Blossom server (possibly deleted via a previous opt-out, or all servers are temporarily down). The metadata can be removed via "Delete remote backups". Try again later if this looks like a network issue.</string>
-    <string name="settings_backup_check_decrypt_failed">A backup was found on the relays, but it could not be decrypted — the key doesn\'t seem to match.</string>
+    <string name="settings_backup_no_backup_found">No backup found for this account. If one should exist, check your network connection and try again later — backup servers may be temporarily unreachable.</string>
+    <string name="settings_backup_blob_unreachable">Backup info found, but the encrypted backup data is no longer available on any storage server (possibly deleted via a previous opt-out, or all servers are temporarily down). The info can be removed via "Delete remote backups". Try again later if this looks like a network issue.</string>
+    <string name="settings_backup_check_decrypt_failed">A backup was found, but it could not be decrypted — the key doesn\'t seem to match.</string>
     <string name="settings_backup_check_error">Error while looking for a backup: %1$s</string>
     <string name="settings_backup_restore_failed">Backup could not be restored.</string>
     <string name="settings_backup_succeeded">Backup created.</string>
@@ -1411,51 +1412,53 @@
     <string name="settings_backup_failed_detail">Backup failed: %1$s</string>
 
     <!-- BackupErrorReason — localized one per BackupException reason. -->
-    <string name="backup_error_blob_upload_failed">Backup failed: no Blossom server accepted the encrypted blob (%1$d attempted).</string>
-    <string name="backup_error_blob_upload_failed_with_detail">Backup failed: no Blossom server accepted the encrypted blob (%1$d attempted, %2$s).</string>
+    <string name="backup_error_blob_upload_failed">Backup failed: no storage server accepted the encrypted backup (%1$d attempted).</string>
+    <string name="backup_error_blob_upload_failed_with_detail">Backup failed: no storage server accepted the encrypted backup (%1$d attempted, %2$s).</string>
     <string name="backup_error_amber_needs_auto_approve">Backup failed: Amber needs to be set to "always approve" for CruxCoach. Open Amber → CruxCoach and enable automatic approval, otherwise background backup cannot sign.</string>
-    <string name="backup_error_blob_not_visible">Backup failed: server accepted the upload but the blob is not visible afterward (%1$d servers checked).</string>
-    <string name="backup_error_pointer_not_durable">Backup failed: pointer event rejected by every relay (%1$d attempted). Blob is uploaded but not announced — please retry once relays are reachable.</string>
-    <string name="backup_error_key_event_not_durable">Backup failed: key event rejected by every relay (%1$d attempted). Without it the backup cannot be restored on another device — please retry once relays are reachable.</string>
+    <string name="backup_error_blob_not_visible">Backup failed: server accepted the upload but the data is not visible afterward (%1$d servers checked).</string>
+    <string name="backup_error_pointer_not_durable">Backup failed: backup index rejected by every server (%1$d attempted). The data was uploaded but not announced — please retry once the servers are reachable.</string>
+    <string name="backup_error_key_event_not_durable">Backup failed: encryption-key info rejected by every server (%1$d attempted). Without it the backup cannot be restored on another device — please retry once the servers are reachable.</string>
     <string name="backup_error_data_key_unwrap_failed">Restore failed: backup key could not be unwrapped (wrong identity?).</string>
-    <string name="backup_error_pointer_lists_no_servers">Restore failed: backup references no usable Blossom servers.</string>
+    <string name="backup_error_pointer_lists_no_servers">Restore failed: backup references no usable storage servers.</string>
     <string name="backup_error_plaintext_size_cap">Restore failed: payload exceeds the safety limit.</string>
-    <string name="backup_error_key_fetch_ambiguous">Backup failed: could not fetch the encryption-key event from relays. Auto-regeneration was refused because a previous backup exists on this device — that would orphan it. Retry once relays are reachable.</string>
+    <string name="backup_error_key_fetch_ambiguous">Backup failed: could not fetch the encryption-key info from the servers. Auto-regeneration was refused because a previous backup exists on this device — that would orphan it. Retry once the servers are reachable.</string>
 
     <!-- DeleteRemoteNote — localized one per per-leg note in the delete-remote dialog. -->
-    <string name="delete_remote_note_dtag_derivation_failed">Could not derive d-tag for deletion event.</string>
-    <string name="delete_remote_note_no_write_relays">No write relays configured.</string>
-    <string name="delete_remote_note_no_relay_accepted">No relay accepted the deletion event.</string>
-    <string name="delete_remote_note_partial_relay_accept">Only %1$d of %2$d relays accepted the deletion.</string>
-    <string name="delete_remote_note_relay_publish_threw">Relay deletion event could not be published.</string>
-    <string name="delete_remote_note_blossom_auth_failed">Blossom server rejected the auth signature.</string>
-    <string name="delete_remote_note_blossom_fully_rejected">Every Blossom server refused the deletion.</string>
-    <string name="delete_remote_note_blossom_partial">Only %1$d of %2$d Blossom servers acknowledged the deletion.</string>
+    <string name="delete_remote_note_dtag_derivation_failed">Could not prepare the deletion request.</string>
+    <string name="delete_remote_note_no_write_relays">No outgoing servers configured.</string>
+    <string name="delete_remote_note_no_relay_accepted">No index server accepted the deletion request.</string>
+    <string name="delete_remote_note_partial_relay_accept">Only %1$d of %2$d index servers accepted the deletion.</string>
+    <string name="delete_remote_note_relay_publish_threw">Deletion request could not be sent to the index servers.</string>
+    <string name="delete_remote_note_blossom_auth_failed">Storage server rejected the auth signature.</string>
+    <string name="delete_remote_note_blossom_fully_rejected">Every storage server refused the deletion.</string>
+    <string name="delete_remote_note_blossom_partial">Only %1$d of %2$d storage servers acknowledged the deletion.</string>
     <string name="delete_remote_note_unexpected_error">Unexpected error: %1$s</string>
     <string name="settings_backup_delete_remote">Delete remote backups…</string>
     <string name="settings_backup_delete_remote_dialog_title">Delete remote backups?</string>
-    <string name="settings_backup_delete_remote_dialog_body">This will request deletion of your backup events and blobs from relays and Blossom servers. Be aware:\n\n• Deletion is best-effort. Not all relays/servers honour it.\n• After this, you cannot restore your backup on another device.\n• Local data is not affected.</string>
+    <string name="settings_backup_delete_remote_dialog_body">This will request deletion of your backup info and encrypted backup data from the public servers. Be aware:\n\n• Deletion is best-effort. Not every server honours it.\n• After this, you cannot restore your backup on another device.\n• Local data is not affected.</string>
     <string name="settings_backup_delete_remote_confirm">Delete</string>
     <string name="settings_backup_delete_remote_in_progress">Deleting…</string>
     <string name="settings_backup_delete_remote_done_header">Remote backups deleted.</string>
     <string name="settings_backup_delete_remote_partial_header">Remote backups partially deleted.</string>
-    <string name="settings_backup_delete_remote_relays_line">Relays: %1$d / %2$d accepted the deletion event.</string>
-    <string name="settings_backup_delete_remote_blossom_line">Blossom servers: %1$d / %2$d confirmed blob deletion.</string>
-    <string name="settings_backup_delete_remote_no_blob">No Blossom blob on record (nothing to delete there).</string>
-    <string name="settings_backup_delete_remote_caveat">Protocol caveat: Nostr relays and Blossom CDNs can propagate or cache events before deletion. Third-party mirrors you never wrote to may still hold a copy — verify with a separate Nostr client against your published pubkey if you want full certainty.</string>
+    <string name="settings_backup_delete_remote_relays_line">Index servers: %1$d / %2$d accepted the deletion.</string>
+    <string name="settings_backup_delete_remote_blossom_line">Storage servers: %1$d / %2$d confirmed deletion.</string>
+    <string name="settings_backup_delete_remote_no_blob">No backup data on record (nothing to delete there).</string>
+    <string name="settings_backup_delete_remote_caveat">Note: backup servers (Nostr relays + Blossom CDNs under the hood) can propagate or cache content before deletion. Third-party mirrors you never wrote to may still hold a copy — for full certainty, check with a Nostr client against your published pubkey.</string>
 
-    <!-- FEAT-002: Nostr backup onboarding -->
+    <!-- FEAT-002: Encrypted cloud backup onboarding (key-related strings keep
+         Nostr terminology because they're about your decentralized identity,
+         not specifically about backup). -->
     <string name="onboarding_nostr_key_title">Nostr identity</string>
     <string name="onboarding_nostr_key_body">CruxCoach uses a Nostr key for optional backups, direct messages and community features. A key will be generated automatically when you need one.</string>
     <string name="onboarding_nostr_key_checking">Looking for an existing backup…</string>
     <string name="onboarding_nostr_key_hint_import_later">Already have a Nostr key? You can import it later in Settings → Nostr key.</string>
     <string name="onboarding_nostr_backup_title">Backup your data</string>
-    <string name="onboarding_nostr_backup_body">Encrypted backup on Blossom servers, decryptable only with your Nostr key. Default: off — you can enable it any time in Settings.</string>
+    <string name="onboarding_nostr_backup_body">Encrypted on your device, then stored online across several public servers. Only you can decrypt it. Default: off — you can enable it any time in Settings.</string>
     <string name="onboarding_restore_dialog_body">A backup was found (%1$s).\n\nRestoring it will replace any local data with the contents of the backup.</string>
 
     <!-- FEAT-002: onboarding backup choice (3-step onboarding) -->
     <string name="onboarding_backup_choice_fresh_title">Start fresh</string>
-    <string name="onboarding_backup_choice_fresh_desc">A new Nostr key is generated. Your current local data becomes the first backup.</string>
+    <string name="onboarding_backup_choice_fresh_desc">A new backup key is generated on this device. Your current local data becomes the first backup.</string>
     <string name="onboarding_backup_choice_restore_title">Restore a backup</string>
     <string name="onboarding_backup_choice_restore_desc">I have a backup from another device. Import the Nostr key I used there.</string>
     <string name="onboarding_backup_import_key_button">Import Nostr key →</string>
@@ -1514,8 +1517,8 @@
 
     <!-- "What's new" upgrade dialogs (only shown to upgrading users) -->
     <string name="whatsnew_done">Done</string>
-    <string name="whatsnew_nostr_backup_title">New: Encrypted backups</string>
-    <string name="whatsnew_nostr_backup_body">Your climbs and notes can now be encrypted end-to-end and synced over Nostr — restore them on any device. Off by default; enable here, or anytime in Settings → Nostr backup.</string>
+    <string name="whatsnew_nostr_backup_title">New: Encrypted cloud backup</string>
+    <string name="whatsnew_nostr_backup_body">Your climbs and notes can now be encrypted on this device and stored online across several public servers — restore them on any device. Off by default; enable here, or anytime in Settings → Encrypted cloud backup.</string>
     <string name="whatsnew_nostr_backup_toggle">Enable backup</string>
-    <string name="whatsnew_nostr_backup_consent">A local Nostr key will be created on first backup if you don\'t already have one.</string>
+    <string name="whatsnew_nostr_backup_consent">A backup key is created on this device if you don\'t already have one. Backups don\'t run automatically — you start them yourself in Settings.</string>
 </resources>

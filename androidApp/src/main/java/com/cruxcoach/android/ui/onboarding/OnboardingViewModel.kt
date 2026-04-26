@@ -72,7 +72,7 @@ data class OnboardingState(
     val isKilterImporting: Boolean = false,
     val kilterImportResult: String? = null,
 
-    // FEAT-002: Nostr backup onboarding
+    // FEAT-002: encrypted cloud backup onboarding (Nostr + Blossom internally)
     val hasNostrKey: Boolean = false,
     val backupOptIn: Boolean = false,
     val backupChoice: BackupChoice = BackupChoice.FRESH,
@@ -387,7 +387,14 @@ class OnboardingViewModel @Inject constructor(
                 BackupSyncWorker.schedule(
                     appContext,
                     enabled = s.backupOptIn && backupPreferences.isBackupFeatureEnabled(),
-                    interval = SyncInterval.DAILY,
+                    // MANUAL by default: enabling the feature does not start
+                    // any background work and does not run a first backup
+                    // either — the next backup runs only when the user taps
+                    // "Back up now" in Settings, and they choose any
+                    // automatic cadence there. Aligns with the privacy-first
+                    // philosophy: no surprise background activity from a
+                    // single toggle.
+                    interval = SyncInterval.MANUAL,
                 )
                 userPreferences.setOnboardingCompleted(true)
                 // Suppress the "what's new" dialog for features the user

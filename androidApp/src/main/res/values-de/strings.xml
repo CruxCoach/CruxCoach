@@ -1382,16 +1382,17 @@
     <string name="key_import_password_label">ncryptsec Passwort</string>
     <string name="key_import_decrypt_button">Entschlüsseln</string>
 
-    <!-- FEAT-002: Nostr Backup -->
-    <string name="settings_backup_title">Nostr Backup</string>
-    <string name="settings_backup_description">Verschlüsseltes Backup deiner Kletterdaten auf Blossom-Servern. Nur du kannst es entschlüsseln.</string>
+    <!-- FEAT-002: Verschlüsseltes Cloud-Backup (Nostr + Blossom unter der Haube) -->
+    <string name="settings_backup_title">Verschlüsseltes Cloud-Backup</string>
+    <string name="settings_backup_description">Auf deinem Gerät verschlüsselt, danach auf mehreren öffentlichen Servern gespeichert. Nur du kannst es entschlüsseln.</string>
     <string name="settings_backup_enable">Backup aktivieren</string>
-    <string name="settings_backup_needs_key">Ein Nostr-Schlüssel wird benötigt. Er wird bei der ersten Nutzung erzeugt.</string>
+    <string name="settings_backup_needs_key">Ein Backup-Schlüssel wird benötigt. Er wird beim ersten Backup automatisch erzeugt.</string>
     <string name="settings_backup_interval">Intervall</string>
     <string name="settings_backup_last_sync">Letzte Sicherung: %s</string>
-    <string name="settings_backup_status_no_key">Backup benötigt einen Nostr-Schlüssel.</string>
-    <string name="settings_backup_status_disabled_no_history">Backup deaktiviert — keine Daten auf Relais hinterlegt.</string>
-    <string name="settings_backup_status_disabled_with_history">Backup deaktiviert. Eine ältere Sicherung vom %1$s könnte auf Relais noch existieren.</string>
+    <string name="settings_backup_info_how">Auf deinem Gerät verschlüsselt mit einem Schlüssel, den nur du hast — und dann gespiegelt über das offene Nostr-Netzwerk und Blossom-Speicherserver. Kein einzelner Anbieter hält deine Daten, kein zentraler Account kann gesperrt werden.</string>
+    <string name="settings_backup_status_no_key">Backup benötigt einen Backup-Schlüssel.</string>
+    <string name="settings_backup_status_disabled_no_history">Backup deaktiviert — keine Daten online gespeichert.</string>
+    <string name="settings_backup_status_disabled_with_history">Backup deaktiviert. Ein älteres Backup vom %1$s kann online noch existieren.</string>
     <string name="settings_backup_status_enabled_no_backup">Backup aktiv — noch nicht gesichert.</string>
     <string name="settings_backup_status_enabled_with_backup">Backup aktiv — letzte Sicherung %1$s.</string>
     <string name="settings_backup_never_synced">Noch keine Sicherung</string>
@@ -1403,9 +1404,9 @@
     <string name="settings_backup_restore_dialog_body">Größe: %1$s.\nDeine lokalen Daten werden durch das Backup überschrieben.</string>
     <string name="settings_backup_restore_confirm">Wiederherstellen</string>
     <string name="settings_backup_restore_cancel">Abbrechen</string>
-    <string name="settings_backup_no_backup_found">Für diesen Account wurde kein Backup gefunden. Falls eines existieren sollte, prüfe deine Netzwerkverbindung und versuche es später erneut — Relais könnten nicht erreichbar sein.</string>
-    <string name="settings_backup_blob_unreachable">Backup-Metadaten gefunden, aber der verschlüsselte Inhalt ist auf keinem Blossom-Server mehr verfügbar (möglicherweise durch ein früheres Opt-out gelöscht, oder alle Server sind kurzzeitig offline). Die Metadaten kannst du über „Remote-Backups löschen" entfernen. Bei Verdacht auf ein Netzwerkproblem später erneut versuchen.</string>
-    <string name="settings_backup_check_decrypt_failed">Ein Backup wurde auf den Relais gefunden, aber nicht entschlüsselt — der Schlüssel passt anscheinend nicht.</string>
+    <string name="settings_backup_no_backup_found">Für diesen Account wurde kein Backup gefunden. Falls eines existieren sollte, prüfe deine Netzwerkverbindung und versuche es später erneut — die Backup-Server könnten kurzzeitig nicht erreichbar sein.</string>
+    <string name="settings_backup_blob_unreachable">Backup-Info gefunden, aber die verschlüsselten Backup-Daten sind auf keinem Speicher-Server mehr verfügbar (möglicherweise durch ein früheres Opt-out gelöscht, oder alle Server sind kurzzeitig offline). Die Info kannst du über „Remote-Backups löschen" entfernen. Bei Verdacht auf ein Netzwerkproblem später erneut versuchen.</string>
+    <string name="settings_backup_check_decrypt_failed">Ein Backup wurde gefunden, aber nicht entschlüsselt — der Schlüssel passt anscheinend nicht.</string>
     <string name="settings_backup_check_error">Fehler beim Suchen nach einem Backup: %1$s</string>
     <string name="settings_backup_restore_failed">Backup konnte nicht wiederhergestellt werden.</string>
     <string name="settings_backup_succeeded">Backup erstellt.</string>
@@ -1413,51 +1414,53 @@
     <string name="settings_backup_failed_detail">Backup fehlgeschlagen: %1$s</string>
 
     <!-- BackupErrorReason — Lokalisierung pro BackupException-Reason. -->
-    <string name="backup_error_blob_upload_failed">Backup fehlgeschlagen: Kein Blossom-Server hat den verschlüsselten Blob akzeptiert (%1$d versucht).</string>
-    <string name="backup_error_blob_upload_failed_with_detail">Backup fehlgeschlagen: Kein Blossom-Server hat den verschlüsselten Blob akzeptiert (%1$d versucht, %2$s).</string>
+    <string name="backup_error_blob_upload_failed">Backup fehlgeschlagen: Kein Speicher-Server hat das verschlüsselte Backup akzeptiert (%1$d versucht).</string>
+    <string name="backup_error_blob_upload_failed_with_detail">Backup fehlgeschlagen: Kein Speicher-Server hat das verschlüsselte Backup akzeptiert (%1$d versucht, %2$s).</string>
     <string name="backup_error_amber_needs_auto_approve">Backup fehlgeschlagen: Amber muss auf „automatisch zustimmen" gestellt sein. Öffne Amber → CruxCoach und aktiviere die automatische Zustimmung, sonst kann das Hintergrund-Backup nicht signieren.</string>
-    <string name="backup_error_blob_not_visible">Backup fehlgeschlagen: Server hat den Upload angenommen, aber der Blob ist anschließend nicht sichtbar (%1$d Server geprüft).</string>
-    <string name="backup_error_pointer_not_durable">Backup fehlgeschlagen: Pointer-Event wurde von keinem Relay angenommen (%1$d versucht). Der Blob ist hochgeladen aber nicht angekündigt — bitte erneut versuchen, sobald Relays erreichbar sind.</string>
-    <string name="backup_error_key_event_not_durable">Backup fehlgeschlagen: Key-Event wurde von keinem Relay angenommen (%1$d versucht). Ohne es kann das Backup auf keinem anderen Gerät wiederhergestellt werden — bitte erneut versuchen, sobald Relays erreichbar sind.</string>
+    <string name="backup_error_blob_not_visible">Backup fehlgeschlagen: Server hat den Upload angenommen, aber die Daten sind anschließend nicht sichtbar (%1$d Server geprüft).</string>
+    <string name="backup_error_pointer_not_durable">Backup fehlgeschlagen: Backup-Index wurde von keinem Server angenommen (%1$d versucht). Die Daten sind hochgeladen aber nicht angekündigt — bitte erneut versuchen, sobald die Server erreichbar sind.</string>
+    <string name="backup_error_key_event_not_durable">Backup fehlgeschlagen: Verschlüsselungs-Schlüssel-Info wurde von keinem Server angenommen (%1$d versucht). Ohne sie kann das Backup auf keinem anderen Gerät wiederhergestellt werden — bitte erneut versuchen, sobald die Server erreichbar sind.</string>
     <string name="backup_error_data_key_unwrap_failed">Wiederherstellung fehlgeschlagen: Backup-Schlüssel konnte nicht entpackt werden (falsche Identität?).</string>
-    <string name="backup_error_pointer_lists_no_servers">Wiederherstellung fehlgeschlagen: Backup verweist auf keine nutzbaren Blossom-Server.</string>
+    <string name="backup_error_pointer_lists_no_servers">Wiederherstellung fehlgeschlagen: Backup verweist auf keine nutzbaren Speicher-Server.</string>
     <string name="backup_error_plaintext_size_cap">Wiederherstellung fehlgeschlagen: Inhalt überschreitet das Sicherheitslimit.</string>
-    <string name="backup_error_key_fetch_ambiguous">Backup fehlgeschlagen: Verschlüsselungs-Schlüssel-Event konnte nicht von den Relays geladen werden. Automatische Neugenerierung verweigert, weil bereits ein älteres Backup auf diesem Gerät existiert — sonst würde es verwaisen. Bitte erneut versuchen, sobald Relays erreichbar sind.</string>
+    <string name="backup_error_key_fetch_ambiguous">Backup fehlgeschlagen: Verschlüsselungs-Schlüssel-Info konnte nicht von den Servern geladen werden. Automatische Neugenerierung verweigert, weil bereits ein älteres Backup auf diesem Gerät existiert — sonst würde es verwaisen. Bitte erneut versuchen, sobald die Server erreichbar sind.</string>
 
     <!-- DeleteRemoteNote — Lokalisierung pro per-leg-Hinweis im Delete-Remote-Dialog. -->
-    <string name="delete_remote_note_dtag_derivation_failed">D-Tag für Löschereignis konnte nicht abgeleitet werden.</string>
-    <string name="delete_remote_note_no_write_relays">Keine Schreib-Relays konfiguriert.</string>
-    <string name="delete_remote_note_no_relay_accepted">Kein Relay hat das Löschereignis angenommen.</string>
-    <string name="delete_remote_note_partial_relay_accept">Nur %1$d von %2$d Relays haben die Löschung angenommen.</string>
-    <string name="delete_remote_note_relay_publish_threw">Relay-Löschereignis konnte nicht veröffentlicht werden.</string>
-    <string name="delete_remote_note_blossom_auth_failed">Blossom-Server hat die Auth-Signatur abgelehnt.</string>
-    <string name="delete_remote_note_blossom_fully_rejected">Alle Blossom-Server haben die Löschung abgelehnt.</string>
-    <string name="delete_remote_note_blossom_partial">Nur %1$d von %2$d Blossom-Servern haben die Löschung bestätigt.</string>
+    <string name="delete_remote_note_dtag_derivation_failed">Löschanfrage konnte nicht vorbereitet werden.</string>
+    <string name="delete_remote_note_no_write_relays">Keine ausgehenden Server konfiguriert.</string>
+    <string name="delete_remote_note_no_relay_accepted">Kein Index-Server hat die Löschanfrage angenommen.</string>
+    <string name="delete_remote_note_partial_relay_accept">Nur %1$d von %2$d Index-Servern haben die Löschung angenommen.</string>
+    <string name="delete_remote_note_relay_publish_threw">Löschanfrage konnte nicht an die Index-Server gesendet werden.</string>
+    <string name="delete_remote_note_blossom_auth_failed">Speicher-Server hat die Auth-Signatur abgelehnt.</string>
+    <string name="delete_remote_note_blossom_fully_rejected">Alle Speicher-Server haben die Löschung abgelehnt.</string>
+    <string name="delete_remote_note_blossom_partial">Nur %1$d von %2$d Speicher-Servern haben die Löschung bestätigt.</string>
     <string name="delete_remote_note_unexpected_error">Unerwarteter Fehler: %1$s</string>
     <string name="settings_backup_delete_remote">Remote-Backups löschen…</string>
     <string name="settings_backup_delete_remote_dialog_title">Remote-Backups löschen?</string>
-    <string name="settings_backup_delete_remote_dialog_body">Dies fordert die Löschung deiner Backup-Events und -Blobs von Relais und Blossom-Servern an. Beachte:\n\n• Die Löschung ist Best-Effort. Nicht alle Relais/Server honorieren sie.\n• Danach kannst du dein Backup nicht mehr auf einem anderen Gerät wiederherstellen.\n• Lokale Daten bleiben unangetastet.</string>
+    <string name="settings_backup_delete_remote_dialog_body">Dies fordert die Löschung deiner Backup-Info und der verschlüsselten Backup-Daten von den öffentlichen Servern an. Beachte:\n\n• Die Löschung ist Best-Effort. Nicht jeder Server honoriert sie.\n• Danach kannst du dein Backup nicht mehr auf einem anderen Gerät wiederherstellen.\n• Lokale Daten bleiben unangetastet.</string>
     <string name="settings_backup_delete_remote_confirm">Löschen</string>
     <string name="settings_backup_delete_remote_in_progress">Lösche…</string>
     <string name="settings_backup_delete_remote_done_header">Remote-Backups gelöscht.</string>
     <string name="settings_backup_delete_remote_partial_header">Remote-Backups nur teilweise gelöscht.</string>
-    <string name="settings_backup_delete_remote_relays_line">Relais: %1$d / %2$d haben das Delete-Event bestätigt.</string>
-    <string name="settings_backup_delete_remote_blossom_line">Blossom-Server: %1$d / %2$d haben den Blob gelöscht.</string>
-    <string name="settings_backup_delete_remote_no_blob">Kein Blossom-Blob erfasst (nichts zu löschen dort).</string>
-    <string name="settings_backup_delete_remote_caveat">Protokoll-Hinweis: Nostr-Relais und Blossom-CDNs können Events vor dem Löschen replizieren oder cachen. Dritt-Mirror, auf die du nie geschrieben hast, behalten eventuell eine Kopie. Vollständige Gewissheit bekommst du nur durch Verifizierung deiner pubkey in einem anderen Nostr-Client.</string>
+    <string name="settings_backup_delete_remote_relays_line">Index-Server: %1$d / %2$d haben die Löschung bestätigt.</string>
+    <string name="settings_backup_delete_remote_blossom_line">Speicher-Server: %1$d / %2$d haben die Löschung bestätigt.</string>
+    <string name="settings_backup_delete_remote_no_blob">Keine Backup-Daten erfasst (nichts zu löschen dort).</string>
+    <string name="settings_backup_delete_remote_caveat">Hinweis: Backup-Server (Nostr-Relais + Blossom-CDNs unter der Haube) können Inhalte vor dem Löschen replizieren oder cachen. Dritt-Mirror, auf die du nie geschrieben hast, behalten eventuell eine Kopie. Vollständige Gewissheit bekommst du nur durch Verifizierung deiner pubkey in einem anderen Nostr-Client.</string>
 
-    <!-- FEAT-002: Nostr Backup Onboarding -->
+    <!-- FEAT-002: Verschlüsseltes Cloud-Backup Onboarding (Schlüssel-Strings
+         behalten Nostr-Branding, weil sie zur dezentralen Identität gehören —
+         nicht spezifisch zum Backup-Feature). -->
     <string name="onboarding_nostr_key_title">Nostr-Identität</string>
     <string name="onboarding_nostr_key_body">CruxCoach nutzt einen Nostr-Key für optionales Backup, Direct Messages und Community-Features. Ein Key wird automatisch erzeugt, wenn du ihn brauchst.</string>
     <string name="onboarding_nostr_key_checking">Suche nach einem vorhandenen Backup…</string>
     <string name="onboarding_nostr_key_hint_import_later">Du hast schon einen Nostr-Key? Du kannst ihn später unter Einstellungen → Nostr-Schlüssel importieren.</string>
     <string name="onboarding_nostr_backup_title">Backup deiner Daten</string>
-    <string name="onboarding_nostr_backup_body">Verschlüsseltes Backup auf Blossom-Servern, nur mit deinem Nostr-Key entschlüsselbar. Voreinstellung: aus — jederzeit in den Einstellungen aktivierbar.</string>
+    <string name="onboarding_nostr_backup_body">Auf deinem Gerät verschlüsselt, danach online auf mehreren öffentlichen Servern gespeichert. Nur du kannst es entschlüsseln. Voreinstellung: aus — jederzeit in den Einstellungen aktivierbar.</string>
     <string name="onboarding_restore_dialog_body">Ein Backup wurde gefunden (%1$s).\n\nWiederherstellen ersetzt deine lokalen Daten durch den Inhalt des Backups.</string>
 
     <!-- FEAT-002: Onboarding Backup-Wahl (3-Step-Onboarding) -->
     <string name="onboarding_backup_choice_fresh_title">Neu starten</string>
-    <string name="onboarding_backup_choice_fresh_desc">Ein neuer Nostr-Schlüssel wird erzeugt. Deine aktuellen lokalen Daten werden das erste Backup.</string>
+    <string name="onboarding_backup_choice_fresh_desc">Ein neuer Backup-Schlüssel wird auf diesem Gerät erzeugt. Deine aktuellen lokalen Daten werden das erste Backup.</string>
     <string name="onboarding_backup_choice_restore_title">Backup wiederherstellen</string>
     <string name="onboarding_backup_choice_restore_desc">Ich habe ein Backup von einem anderen Gerät. Importiere den dort verwendeten Nostr-Schlüssel.</string>
     <string name="onboarding_backup_import_key_button">Nostr-Schlüssel importieren →</string>
@@ -1516,8 +1519,8 @@
 
     <!-- "Was ist neu" Upgrade-Dialoge (nur für Update-User) -->
     <string name="whatsnew_done">Fertig</string>
-    <string name="whatsnew_nostr_backup_title">Neu: Verschlüsselte Backups</string>
-    <string name="whatsnew_nostr_backup_body">Deine Klettereinträge und Notizen können jetzt Ende-zu-Ende verschlüsselt über Nostr gesichert werden — auf jedem Gerät wiederherstellbar. Standardmäßig aus; hier oder jederzeit in Einstellungen → Nostr Backup aktivieren.</string>
+    <string name="whatsnew_nostr_backup_title">Neu: Verschlüsseltes Cloud-Backup</string>
+    <string name="whatsnew_nostr_backup_body">Deine Klettereinträge und Notizen können jetzt auf deinem Gerät verschlüsselt und online auf mehreren öffentlichen Servern gespeichert werden — auf jedem Gerät wiederherstellbar. Standardmäßig aus; hier aktivieren oder jederzeit in Einstellungen → Verschlüsseltes Cloud-Backup.</string>
     <string name="whatsnew_nostr_backup_toggle">Backup aktivieren</string>
-    <string name="whatsnew_nostr_backup_consent">Beim ersten Backup wird ein lokaler Nostr-Schlüssel erzeugt, falls noch keiner existiert.</string>
+    <string name="whatsnew_nostr_backup_consent">Auf diesem Gerät wird ein Backup-Schlüssel erzeugt (falls noch nicht vorhanden). Backups laufen nicht automatisch — du startest sie selbst in den Einstellungen.</string>
 </resources>

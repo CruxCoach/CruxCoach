@@ -15,7 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - "What's new" upgrade dialog announces the encrypted-backups feature when you upgrade from a previous version (skipped on fresh installs and per-identity).
 - Smarter BLE board connect — when only one Kilter Board is in range, CruxCoach connects automatically after a short scan. Two or more boards still show the picker.
 - **Quick-Send mode** (Settings → Board → "Schnell-Senden") — when on, tapping the BLE icon in a climb's detail view runs the full macro: scan, auto-connect (or pick if multiple), send the climb, and disconnect — no manual connection sheet, no manual disconnect.
-- Always-visible status line in *Settings → Nostr backup* covers all five states (no key / disabled / disabled-with-history / enabled-no-backup / enabled-with-last-sync), so the section never goes blank after a delete.
+- Always-visible status line in *Settings → Encrypted cloud backup* covers all five states (no key / disabled / disabled-with-history / enabled-no-backup / enabled-with-last-sync), so the section never goes blank after a delete.
 - Share via Zapstore — new QR code + shareable link in Settings → Share app, for pointing new users at the recommended app store.
 - Copy buttons for the online-share URL, offline-share password, and offline-share download URL — no more retyping.
 - Automatic NIP-65 relay discovery — CruxCoach now picks up the Nostr relays you've published as "yours" and uses them instead of just the three built-in defaults. Fully invisible, no settings to manage.
@@ -30,6 +30,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - All-locale dates throughout — *last sync* / onboarding board-sync timestamps now follow the system locale (`25.04.26, 14:32` in German, `4/25/26, 2:32 PM` in English) instead of the hardcoded German format.
 - *SyncInterval* chips, the *Board model* dialog, and the board-sync inline card no longer show hardcoded German labels in English locale.
 - Share buttons renamed for consistency: "Share online", "Share offline", "Share via Zapstore", "Share via apps".
+- The backup feature is now called *Encrypted cloud backup* / *Verschlüsseltes Cloud-Backup* throughout the UI (settings, onboarding, "what's new" dialog, error messages, restore + delete-remote flows). The underlying tech (Nostr + Blossom) is named explicitly in a single concise *how does this work* line in Settings, instead of bleeding through every status string. No functional change — same encryption, same servers, friendlier vocabulary for non-Nostr users.
+- Backup default is now **manual** when you enable the feature for the first time (during onboarding or via the "what's new" dialog). No automatic first backup, no scheduled background runs. You start the first backup yourself via *Settings → Back up now*, and choose a daily/weekly cadence there if you want one. Existing users on a daily/weekly schedule keep their setting.
 
 ### Fixed
 - Backup pipeline is now serialized — periodic and manual *Jetzt sichern* runs can no longer race and orphan a Blossom blob or mis-target the cleanup delete.

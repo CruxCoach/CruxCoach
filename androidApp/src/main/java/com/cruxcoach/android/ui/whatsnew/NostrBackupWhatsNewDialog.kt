@@ -84,10 +84,14 @@ class NostrBackupWhatsNewViewModel @Inject constructor(
                 signer.switchToLocal()
             }
             backupPreferences.setBackupEnabled(true)
+            // MANUAL by default — see OnboardingViewModel.completeOnboarding
+            // for the rationale. Toggle-on enables the feature but does not
+            // start any background work or run a first backup; the user
+            // initiates backups from Settings → Back up now.
             BackupSyncWorker.schedule(
                 appContext,
                 enabled = true,
-                interval = SyncInterval.DAILY,
+                interval = SyncInterval.MANUAL,
             )
             _state.update { it.copy(saving = false) }
             onDone()

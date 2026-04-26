@@ -51,6 +51,17 @@ internal fun BackupSettingsSection(
             style = MaterialTheme.typography.bodySmall,
         )
 
+        Spacer(Modifier.height(6.dp))
+        // Concise "how does this work" line — names the underlying tech
+        // (Nostr + Blossom) so technically-curious users see what's behind
+        // the friendly "Cloud-Backup" label without overwhelming the
+        // mainstream user.
+        Text(
+            stringResource(R.string.settings_backup_info_how),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
         Spacer(Modifier.height(12.dp))
 
         // Explicit status line — stays visible regardless of

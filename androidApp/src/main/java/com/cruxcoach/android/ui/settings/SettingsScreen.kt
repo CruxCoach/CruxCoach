@@ -242,7 +242,7 @@ fun SettingsScreen(
             // Ordering reflects how the user thinks about their data, not
             // our internal implementation split:
             //   1. Board sync  — public community data (unrelated concern).
-            //   2. Nostr backup — primary backup flow; opt-in, ongoing.
+            //   2. Encrypted cloud backup (Nostr+Blossom internally) — primary backup flow; opt-in, ongoing.
             //   3. Import / Export — manual backup variant (file-based).
             //   4. Delete Board / User data — destructive, parked at the
             //      bottom so the user scrolls PAST both backup variants
