@@ -6,11 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## [0.1.3] - 2026-04-25
+## [0.1.3] - 2026-04-26
 
 ### Added
-- Encrypted cloud backup over Nostr — opt-in during onboarding or later in Settings. Your climbing data is encrypted on your device and uploaded to Blossom servers; only you can decrypt it with your Nostr key.
-- Restore a backup on a new device — during onboarding, choose "Restore backup" and import the Nostr key you used before. CruxCoach briefly restarts and then pulls your data automatically.
+- **Encrypted cloud backup** — opt-in during onboarding or later in Settings. Your climbing data is encrypted on your device and stored across multiple public servers (Nostr + Blossom). Only you can decrypt it.
+- **Restore a backup on a new device** — during onboarding, choose "Restore backup" and import your CruxCoach Account key. CruxCoach briefly restarts and then pulls your data automatically.
 - Delete remote backups from Settings — "Delete remote backups…" as an explicit destructive action, with a confirmation dialog and caveats spelled out. Local data is not touched.
 - "What's new" upgrade dialog announces the encrypted-backups feature when you upgrade from a previous version (skipped on fresh installs and per-identity).
 - Smarter BLE board connect — when only one Kilter Board is in range, CruxCoach connects automatically after a short scan. Two or more boards still show the picker.
@@ -19,6 +19,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Share via Zapstore — new QR code + shareable link in Settings → Share app, for pointing new users at the recommended app store.
 - Copy buttons for the online-share URL, offline-share password, and offline-share download URL — no more retyping.
 - Automatic NIP-65 relay discovery — CruxCoach now picks up the Nostr relays you've published as "yours" and uses them instead of just the three built-in defaults. Fully invisible, no settings to manage.
+- **Prominent "save your account key" warning** wherever you enable Cloud-Backup (onboarding, *what's new*, settings) and on *Settings → CruxCoach Account*. The same key protects both your CruxCoach Account and your cloud backup, so saving it once covers both — without it, both are gone if you lose this device. *CruxCoach Account* is now the single canonical place to view, copy, and confirm "I've saved my key".
+- **Backup-frequency picker in onboarding + What's new** — pick *manual* / *daily* / *weekly* right when you enable Cloud-Backup, no need to go through Settings afterwards.
 
 ### Changed
 - Onboarding redesigned — down from five steps to three: welcome + board-database download in one screen, privacy + backup in one coherent screen, Kilter import as an optional last step with a prominent "Skip" button.
@@ -34,6 +36,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Backup default is now **manual** when you enable the feature for the first time (during onboarding or via the "what's new" dialog). No automatic first backup, no scheduled background runs. You start the first backup yourself via *Settings → Back up now*, and choose a daily/weekly cadence there if you want one. Existing users on a daily/weekly schedule keep their setting.
 
 ### Fixed
+- **Empty BoardBrowser after an interrupted onboarding** — if a process kill (e.g. an Amber-pair restart while the board database was still importing) interrupted the import mid-flight, the next app start now detects the half-imported state and runs a recovery sync automatically. Pre-fix, the BoardBrowser would show zero holds until you manually tapped *Sync now*.
 - Backup pipeline is now serialized — periodic and manual *Jetzt sichern* runs can no longer race and orphan a Blossom blob or mis-target the cleanup delete.
 - *Backup gefunden* but restore immediately fails: pre-flight HEAD probe in *Backup wiederherstellen* checks that at least one Blossom server still holds the encrypted content before showing the confirm dialog. If every server reports the blob missing (e.g. after a previous opt-out), the snackbar explains it instead of showing a generic restore-failed.
 - Restore reliability under slow relays — the backup-pointer fetch now keeps the events that arrived before a slow third relay timed out, instead of dropping all of them. Timeout raised from 10 s to 30 s.
