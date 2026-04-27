@@ -8,7 +8,7 @@ ALTER TABLE aurora_ascent     RENAME TO ascents;
 ALTER TABLE aurora_bid        RENAME TO bids;
 ALTER TABLE Announcement      RENAME TO announcements;
 ALTER TABLE Assessment        RENAME TO assessments;
-ALTER TABLE BodyStat          RENAME TO body_stats;
+ALTER TABLE body_stat         RENAME TO body_stats;
 ALTER TABLE ClimbLog          RENAME TO climb_logs;
 ALTER TABLE NostrMessage      RENAME TO nostr_messages;
 ALTER TABLE NostrProfile      RENAME TO nostr_profiles;
