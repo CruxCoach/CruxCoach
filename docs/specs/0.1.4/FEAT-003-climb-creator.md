@@ -1067,9 +1067,6 @@ fun convertFrames(auroraFrames: String, mapping: Map<Int, Int>): String {
 
 ## 14. Open Questions
 
-- **Boardsesh API integration:** Use Boardsesh's public REST API as a third
-  publishing channel? Compatible data format (same Aurora frames), Apache 2.0
-  license. Contact (redacted) via Discord.
 - **Climb editing:** Can a setter modify holds after publishing? Nostr
   replaceable events support this natively. But what about existing ascent
   events referencing the old version?
