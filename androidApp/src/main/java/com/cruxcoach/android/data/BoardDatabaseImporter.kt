@@ -26,6 +26,28 @@ class BoardDatabaseImporter(
     companion object {
         private const val BATCH_SIZE = 500
         private const val BULK_BATCH_SIZE = 10_000
+
+        // Hot-path indexes for the climbs table — dropped before bulk
+        // import + recreated afterwards. Must stay byte-equivalent (modulo
+        // `IF NOT EXISTS`) to DatabaseFactory.HOT_PATH_INDEX_DDL —
+        // HotPathIndexDriftTest asserts both sets agree.
+        internal val CLIMB_INDEXES = arrayOf(
+            "idx_climbs_listed" to
+                    "CREATE INDEX idx_climbs_listed ON climbs(is_listed)",
+            "idx_climbs_frames_count" to
+                    "CREATE INDEX idx_climbs_frames_count ON climbs(is_listed, frames_count, uuid)"
+        )
+
+        internal val STAT_INDEXES = arrayOf(
+            "idx_climb_stats_angle" to
+                    "CREATE INDEX idx_climb_stats_angle ON climb_stats(angle)",
+            "idx_climb_stats_browse" to
+                    "CREATE INDEX idx_climb_stats_browse ON climb_stats(angle, difficulty_average, quality_average, ascensionist_count, benchmark_difficulty, climb_uuid)",
+            "idx_climb_stats_by_popularity" to
+                    "CREATE INDEX idx_climb_stats_by_popularity ON climb_stats(angle, ascensionist_count, difficulty_average, climb_uuid)",
+            "idx_climb_stats_count_cover" to
+                    "CREATE INDEX idx_climb_stats_count_cover ON climb_stats(angle, ascensionist_count, difficulty_average, benchmark_difficulty, climb_uuid)"
+        )
     }
 
     /** Returns true if board data has already been imported (including layout data). */
@@ -639,28 +661,8 @@ class BoardDatabaseImporter(
     }
 
     // ── Index management for bulk import performance ────────────────
-
-    private val CLIMB_INDEXES = arrayOf(
-        "idx_climbs_listed" to
-                "CREATE INDEX idx_climbs_listed ON climbs(is_listed)",
-        "idx_climbs_frames_count" to
-                "CREATE INDEX idx_climbs_frames_count ON climbs(is_listed, frames_count, uuid)"
-    )
-
-    private val STAT_INDEXES = arrayOf(
-        "idx_climb_stats_angle" to
-                "CREATE INDEX idx_climb_stats_angle ON climb_stats(angle)",
-        "idx_climb_stats_browse" to
-                """CREATE INDEX idx_climb_stats_browse ON climb_stats(
-                   angle, difficulty_average, quality_average, ascensionist_count,
-                   benchmark_difficulty, climb_uuid)""",
-        "idx_climb_stats_by_popularity" to
-                """CREATE INDEX idx_climb_stats_by_popularity ON climb_stats(
-                   angle, ascensionist_count, difficulty_average, climb_uuid)""",
-        "idx_climb_stats_count_cover" to
-                """CREATE INDEX idx_climb_stats_count_cover ON climb_stats(
-                   angle, ascensionist_count, difficulty_average, benchmark_difficulty, climb_uuid)"""
-    )
+    // Index DDLs live in the companion object at the top of the class so
+    // they can also be referenced by HotPathIndexDriftTest.
 
     private fun dropIndexes(db: SQLiteDatabase, indexes: Array<Pair<String, String>>) {
         for ((name, _) in indexes) db.execSQL("DROP INDEX IF EXISTS $name")
