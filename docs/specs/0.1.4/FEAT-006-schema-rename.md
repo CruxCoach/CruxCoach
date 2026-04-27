@@ -50,6 +50,9 @@ This spec consolidates all CruxCoach tables onto a single convention:
   snake_case (`aurora_climb` → `climbs`, `NostrMessage` → `nostr_messages`)
 - Drop the `aurora_*` and PascalCase prefix from index names + SQLDelight
   query files (filenames + content) + Kotlin string references
+- Sweep Kotlin sources for `Aurora`-mentions that no longer fit
+  ("Aurora API"-flavored comments, dead-URL fields in `AuroraBoard.kt`,
+  Aurora-prefixed BLE classes, "Aurora difficulty" comments) — see §3.5
 - Forward-only migration that preserves every row of every table —
   pure `ALTER TABLE … RENAME TO`, no rebuild dance, no column drops
 - Zero change to wire formats: Cloud Backup envelope (FEAT-002), manual
@@ -203,6 +206,128 @@ idx_climb_list_entry_list / idx_climb_list_entry_climb → idx_climb_list_entrie
 idx_nostr_message_type / idx_nostr_message_created / idx_nostr_message_reply / idx_nostr_msg_type_dir → idx_nostr_messages_*
 idx_payment_event_recipient / idx_payment_event_ref → idx_payment_events_*
 ```
+
+## 3.5 Aurora-Mention Cleanup — Kotlin sources beyond `aurora_*` tables
+
+Audit conducted 2026-04-27 against the full source tree. Findings split
+into:
+
+- **Aurora references that are still semantically correct** and stay
+  (e.g. comments noting that the BLE GATT shape was originally Aurora's,
+  it still applies)
+- **Aurora references that have gone stale** (Aurora API died 2026-03-26;
+  comments and class names that reference it lie about provenance)
+- **One enum with mostly-dead fields** (`AuroraBoard.kt`)
+
+### 3.5.1 BLE-class file renames
+
+The Aurora-prefixed BLE classes are referenced by `Board*`-prefixed
+domain code (`BoardBleConnection` would join `BoardConstants`,
+`BoardRepository`, `BoardClimbParser`, `BoardDatabaseImporter`,
+`BoardSyncManager`). Drop the legacy "Aurora" since CruxCoach is
+Kilter-only at the product level, the protocol identity is preserved
+in inline doc-comments.
+
+| Today                       | Target                       |
+| --------------------------- | ---------------------------- |
+| `AuroraBleConnection.kt`    | `BoardBleConnection.kt`      |
+| `AuroraBleScanner.kt`       | `BoardBleScanner.kt`         |
+| `AuroraBleUuids.kt`         | `BoardBleUuids.kt`           |
+| `AuroraPacketEncoder.kt`    | `BoardPacketEncoder.kt`      |
+| `AuroraPacketEncoderTest.kt`| `BoardPacketEncoderTest.kt`  |
+
+Class names + KDoc comments inside follow (`class AuroraBleConnection`
+→ `class BoardBleConnection`, etc.). One short sentence per class
+preserved in the KDoc explaining the BLE shape originated with Aurora's
+ecosystem (Kilter / Tension / Decoy / Spire all speak it) — that's
+useful provenance for anyone digging into the protocol later.
+
+### 3.5.2 `AuroraBoard.kt` enum — drop dead fields, rename class
+
+Audit (2026-04-27): of 6 fields, only 2 are actually referenced.
+
+| Field          | References (non-self)              | Action |
+| -------------- | ---------------------------------- | ------ |
+| `productId`    | 1 (`BoardRepositoryImpl:216`)      | KEEP   |
+| `appPackage`   | 2 (`ApkDownloader:57, :135`)       | KEEP   |
+| `apiUrl`       | 0 — value `https://kilterboardapp.com` is a dead Aurora URL | DROP   |
+| `imageUrl`     | 0 — value `https://api.kilterboardapp.com` was Aurora's image CDN | DROP |
+| `hostBase`     | 0                                  | DROP   |
+| `displayName`  | 0                                  | DROP   |
+
+Action:
+- Drop the 4 unused fields
+- Rename `AuroraBoard` → `SupportedBoard` (file + class)
+- Update both call-sites (`BoardRepositoryImpl`, `ApkDownloader`)
+
+### 3.5.3 Pattern-constant renames in `BoardClimbParser` / `FramesBinaryCodec`
+
+These two files parse **two distinct frame formats** (delta-encoded vs
+range-encoded) and use the constants `AURORA_PATTERN` and
+`KILTER_PATTERN` to discriminate. Both labels are misleading —
+"Aurora" is dead-API-flavored, "Kilter" collides with the broader
+`Kilter*` API-client code. Rename to format-semantic names:
+
+| Today              | Target            | Format meaning                                   |
+| ------------------ | ----------------- | ------------------------------------------------ |
+| `AURORA_PATTERN`   | `DELTA_PATTERN`   | `p{placementId}r{roleId}` — Aurora-era / Blossom DB |
+| `KILTER_PATTERN`   | `RANGE_PATTERN`   | `h{holdPlacementId}p{ptid}[s{n}][e{n}]` — Kilter REST `climbConcat` |
+
+Rename also reaches inline comments using "Aurora frame format" /
+"Kilter frame format" — replace with "delta-format frames" /
+"range-format frames" respectively.
+
+Affected files:
+- `shared/.../BoardClimbParser.kt` (lines 9, 44, 61, 66, 76, 92, 131)
+- `shared/.../FramesBinaryCodec.kt` (lines 4, 25–27, 65)
+- `shared/.../HoldHeatmapComputer.kt` (line 50)
+
+### 3.5.4 Comment-only rewrites (Kilter explicit where it's Kilter-specific)
+
+Single-line touch-ups, one occurrence each:
+
+| File                                    | Today                                                          | Target                                                      |
+| --------------------------------------- | -------------------------------------------------------------- | ----------------------------------------------------------- |
+| `Rgb332Palette.kt:9`                    | "color palette for Aurora Climbing board LEDs"                | "color palette for Kilter Board LEDs"                       |
+| `BoardEasterAnimations.kt:11`           | "LED animation patterns for Aurora Climbing boards"            | "LED animation patterns for Kilter Boards"                  |
+| `KilterGradeMapper.kt:6, 94`            | "Maps Aurora/Kilter difficulty integers" / "to Aurora difficulty value" | "Maps Kilter difficulty integers (10–34)" / "to Kilter difficulty value" |
+| `Color.kt:36`                           | "Converts Aurora difficulty_average → V-Grade number"          | "Converts Kilter difficulty_average → V-Grade number"       |
+| `GradeDisplayHelper.kt:55, 76`          | "Aurora difficulty_average" / "Aurora difficulty"              | "Kilter difficulty_average" / "Kilter difficulty"           |
+| `BoardStatsComputer.kt:38`              | "Grade band thresholds (Aurora difficulty values)"             | "Grade band thresholds (Kilter difficulty values)"          |
+| `CruxCoachBackup.kt:44`                 | "what Aurora/Kilter stores for climb_uuid"                     | "what Kilter stores for climb_uuid"                         |
+| `CruxCoachBackupValidationTest.kt:84`   | "Kilter/Aurora climb_uuid format"                              | "Kilter climb_uuid format"                                  |
+| `BoardConstants.kt:5`                   | "Aurora API product_id for Kilter Board"                       | "Product ID 1 = Kilter Board Original (Aurora-era numbering, preserved in Blossom)" |
+| `BoardDatabaseImporter.kt:18, 383`      | "raw Aurora schema (climbs, climb_stats, …)"                   | "Kilter board schema (Aurora-style: climbs, climb_stats, placements)" |
+| `ApkDownloader.kt:17, 122, 125`         | "Aurora board APKs (via APKPure)"                              | "Kilter Board legacy APKs (via APKPure)"                    |
+
+### 3.5.5 Aurora references that **stay** (semantically load-bearing)
+
+Not touched by this cleanup:
+
+- KDoc inside the renamed BLE classes saying "BLE GATT shape originally
+  introduced by Aurora Climbing's board ecosystem" (one sentence, useful
+  provenance hint for protocol RE)
+- "Aurora-style" as an adjective for the delta-format wire shape, where
+  it disambiguates from "Kilter-API-style" range format (kept in
+  comments and CONTRIBUTING after rename)
+- `com.auroraclimbing.kilterboard` package literal in `ApkDownloader`
+  (that's the actual APKPure package ID; renaming would break the
+  download URL)
+
+### 3.5.6 User-facing strings
+
+Two strings imply Tension support that does not exist:
+
+| File                                  | Today                                                                                | Target                                                              |
+| ------------------------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------- |
+| `values/strings.xml:395`              | "Sync the Kilter/Tension Board database to search climbs."                          | "Sync the Kilter Board database to search climbs."                  |
+| `values/strings.xml:619`              | "Sync the Kilter/Tension board database to search climbs and display them on the board." | "Sync the Kilter Board database to search climbs and display them on the board." |
+| `values-de/strings.xml:395`           | "Synchronisiere die Kilter/Tension Board-Datenbank, um Climbs zu suchen."           | "Synchronisiere die Kilter Board-Datenbank, um Climbs zu suchen."   |
+| `values-de/strings.xml:662`           | "Synchronisiere die Kilter/Tension Board-Datenbank, um Climbs zu suchen und auf dem Board anzuzeigen." | "Synchronisiere die Kilter Board-Datenbank, um Climbs zu suchen und auf dem Board anzuzeigen." |
+
+`Equipment.TENSION_BOARD` enum value in `Enums.kt` stays — that's a
+workout-equipment tag for training-plan UI (independent of which
+climbing-board CruxCoach connects to).
 
 ## 4. Scope: Columns
 
@@ -418,17 +543,45 @@ the SQLDelight-generated layer.
 Audit pattern at PR time:
 
 ```bash
-# Hardcoded SQL strings in Kotlin (should be ZERO after refactor)
+# 1. Hardcoded SQL strings in Kotlin (should be ZERO after refactor)
 git grep -nE 'aurora_(climb|climb_stat|placement|hole|led|product_size|board_image|beta_link|sync_state|ascent|bid)' \
   -- '*.kt' '*.kts' '*.gradle' '*.pro' \
   | grep -v 'sqldelight/'   # generated files exempt
 
-# Hardcoded references to PascalCase table names in raw SQL
+# 2. Hardcoded references to PascalCase table names in raw SQL
 git grep -nE 'FROM (Announcement|Assessment|BodyStat|ClimbLog|NostrMessage|NostrProfile|PaymentEvent|TrainingPlan|TrainingSession|UserProfile|WorkoutLog)\b' \
   -- '*.kt'
+
+# 3. Renamed BLE classes — old names should disappear from imports/usages
+git grep -nE 'AuroraBle(Connection|Scanner|Uuids)|AuroraPacketEncoder' \
+  -- '*.kt' '*.kts'
+
+# 4. Renamed AuroraBoard enum + its dropped fields
+git grep -nE 'AuroraBoard\b|\.apiUrl\b|\.imageUrl\b|\.hostBase\b|\.displayName\b' \
+  -- '*.kt' '*.kts' \
+  | grep -v 'AuroraBoard\.kt'   # remove if file already gone
+
+# 5. Renamed pattern constants
+git grep -nE 'AURORA_PATTERN|KILTER_PATTERN' -- '*.kt'
 ```
 
-Both must produce zero hits before the refactor PR is merged.
+All five must produce zero hits before the refactor PR is merged.
+
+### 6.2.1 Aurora-mention sweep (comments + KDoc)
+
+Comments listed in §3.5.4 are not caught by the SQL/identifier audits
+above. Manual pass + sentinel grep:
+
+```bash
+# Aurora-mention sweep — all hits get a manual review pass
+git grep -nE 'Aurora\b|aurora\b' \
+  -- '*.kt' '*.xml' \
+  | grep -vE '(/build/|sqldelight-generated/|com\.auroraclimbing\.kilterboard|"Aurora-style"|BLE GATT shape originally)'
+```
+
+Expected non-zero hits after refactor: only the kept references in
+§3.5.5 (BLE provenance KDoc, "Aurora-style" disambiguator, the legacy
+APKPure package literal).
 
 ### 6.3 Test fixtures
 
@@ -730,6 +883,13 @@ time. Recorded for traceability:
   reverse-engineering source-of-truth; the public CruxCoach repo
   doesn't surface RE artefacts.
 
+- **§3.5 — Aurora-Mention scope:** Variant A (Board*-prefix) for BLE
+  class renames, Option 1 (DELTA_PATTERN / RANGE_PATTERN) for
+  format-pattern constants, "Kilter Board legacy APKs (via APKPure)"
+  for ApkDownloader comments. Cat-3 references that are still
+  load-bearing (BLE protocol provenance KDoc, "Aurora-style"
+  disambiguator, APKPure package literal) stay — see §3.5.5.
+
 - **§5.4 — `is_deleted` drop strategy:** Option B (leave column in
   place). No column drops in this rename. Deferred to 0.2.0+ if a
   minSdk bump or co-located column-rename ever justifies the rebuild
@@ -739,10 +899,13 @@ time. Recorded for traceability:
 
 Ordered for a clean PR:
 
-- [ ] Branch `feat/0.1.4-release` from `dev`
+**Phase 1 — Schema rename (§3.1–§3.4)**
+- [x] Branch `feat/0.1.4-release` from `dev` (created 2026-04-27 at `ecb503d`)
 - [ ] Add new SQLDelight migration files (one per DB module)
 - [ ] Update `.sq` schema definitions (CREATE TABLE statements + index
-  CREATEs use new names)
+  CREATEs use new names; rename files per §3.1, §3.2)
+- [ ] Migration also runs `UPDATE sync_states SET table_name = '<new>'
+  WHERE table_name = '<old>'` for each rename (Q-B)
 - [ ] Run `./gradlew generateSqlDelightInterface` — fix all generated
   Kotlin call-site failures
 - [ ] Update `.sq` query files (`SELECT FROM old`, `INSERT INTO old` →
@@ -750,14 +913,38 @@ Ordered for a clean PR:
 - [ ] Run `./gradlew generateSqlDelightInterface` again — should be
   green
 - [ ] Run `./gradlew :shared:verifyMigrations` — must pass
-- [ ] Audit Kotlin code with §6.2 grep commands — must produce ZERO
-  hits
+
+**Phase 2 — Code-level Aurora cleanup (§3.5)**
+- [ ] Rename BLE class files + classes (§3.5.1):
+      `AuroraBleConnection` → `BoardBleConnection`,
+      `AuroraBleScanner` → `BoardBleScanner`,
+      `AuroraBleUuids` → `BoardBleUuids`,
+      `AuroraPacketEncoder` → `BoardPacketEncoder` (+ test)
+- [ ] Rename `AuroraBoard.kt` → `SupportedBoard.kt`; drop dead fields
+      `apiUrl`, `imageUrl`, `hostBase`, `displayName` (§3.5.2)
+- [ ] Update both call-sites: `BoardRepositoryImpl:216`,
+      `ApkDownloader:57,135`
+- [ ] Rename pattern constants in `BoardClimbParser` + `FramesBinaryCodec`:
+      `AURORA_PATTERN` → `DELTA_PATTERN`, `KILTER_PATTERN` → `RANGE_PATTERN`
+      (§3.5.3); also update inline format-name comments
+- [ ] Apply comment-only rewrites per §3.5.4 (11 single-line touch-ups)
+- [ ] Apply user-facing string fixes per §3.5.6 (4 strings, EN + DE)
+
+**Phase 3 — Audit gates**
+- [ ] Audit Kotlin code with §6.2 grep commands 1–5 — all must produce
+      ZERO hits
+- [ ] Aurora-mention sweep (§6.2.1) — only the 3 known load-bearing
+      references (§3.5.5) should remain
+
+**Phase 4 — Tests**
 - [ ] Update test fakes (`FakeBoardRepository`, etc.)
 - [ ] Add `SchemaRenameMigrationTest` (§8.1)
 - [ ] Add `BackupRenameRoundTripTest` (§8.2)
 - [ ] Add `ManualExportRoundTripTest` (§8.3)
 - [ ] (Optional) Add `BoardDatabaseImporterRenameTest` (§8.4)
 - [ ] Run full `./gradlew test` — all green
+
+**Phase 5 — Smoke + Release**
 - [ ] Build release APK (`./gradlew :androidApp:assembleRelease`)
 - [ ] Side-load on Test-Device with real user data (§8.5)
 - [ ] Walk through smoke checklist
