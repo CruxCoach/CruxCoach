@@ -16,7 +16,27 @@ data class ClimbEditorState(
     val description: String = "",
     val setterGradeId: Int? = null,                  // 10..34, see KilterGradeMapper
     val angle: Int? = null,                          // 20..70 in 5° steps
+    /**
+     * Active brush role for paint-mode taps. When non-null, tapping an
+     * empty hold paints that role; tapping a hold already in that role
+     * removes it (toggle). When null (default), tap-to-cycle is used.
+     * Set via the chip toolbar at the top of the editor.
+     */
+    val activeBrush: Int? = null,
 )
+
+/**
+ * Apply the active brush to a hold:
+ * - Hold not selected → assign brush role
+ * - Hold has the brush role already → remove it (toggle)
+ * - Hold has a different role → replace with brush role
+ *
+ * Returns the new role for the hold (null = remove).
+ */
+fun paintWithBrush(currentRole: Int?, brush: Int): Int? = when (currentRole) {
+    brush -> null         // toggle off
+    else -> brush         // assign or replace
+}
 
 /**
  * Cycle the role of a single hold on short-tap. The order matches how

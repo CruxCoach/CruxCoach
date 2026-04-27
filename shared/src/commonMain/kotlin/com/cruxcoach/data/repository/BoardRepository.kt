@@ -300,8 +300,21 @@ data class CommunityClimbRow(
 
 /** Climb-creation + community-climb queries (FEAT-003). */
 interface CommunityClimbQueries {
-    /** Insert a freshly-created local climb (source='local', sync_status='draft'). */
+    /** Insert or upsert a local climb draft (source='local'). Re-saving an
+     *  already-loaded draft replaces the row in place (same uuid). */
     fun insertLocalDraft(draft: LocalClimbDraft, layoutId: Long, angle: Long, setterGradeId: Int?)
+    /** Delete a local draft (drafts user explicitly discards). */
+    fun deleteLocalClimb(uuid: String)
+    /**
+     * Returns (placement_id → normalized 0..1 frequency) for boulders at the
+     * given layout+angle, optionally weighted by climbs that contain ALL
+     * `seedHolds`. Used by the editor heatmap overlay.
+     *
+     * - When `seedHolds` is empty → general popularity heatmap.
+     * - When `seedHolds` has entries → only counts climbs that include
+     *   every seed hold; surfaces "what holds typically follow these".
+     */
+    fun computeEditorHeatmap(layoutId: Long, angle: Long, seedHolds: Set<Int>): Map<Int, Float>
     /** Upsert a community climb received from Nostr. */
     fun upsertCommunityClimb(
         uuid: String,

@@ -339,6 +339,57 @@ class BoardRepositoryImpl(
 
     // ── Community-climb support (FEAT-003) ──────────────────────
 
+    override fun deleteLocalClimb(uuid: String) {
+        q.deleteLocalClimb(uuid)
+    }
+
+    override fun computeEditorHeatmap(
+        layoutId: Long,
+        angle: Long,
+        seedHolds: Set<Int>,
+    ): Map<Int, Float> {
+        val rows = q.getFramesForLayoutAndAngle(layoutId, angle).executeAsList()
+        if (rows.isEmpty()) return emptyMap()
+
+        val placementCounts = HashMap<Int, Int>(rows.size * 2)
+        var matchedClimbs = 0
+
+        for (row in rows) {
+            val placements = parsePlacementIds(row.frames)
+            // Seed-hold filter: only count climbs whose first frame contains
+            // every seed hold. Empty seedHolds → counts every climb (general
+            // popularity heatmap).
+            if (seedHolds.isNotEmpty() && !placements.containsAll(seedHolds)) continue
+            matchedClimbs++
+            for (pid in placements) {
+                placementCounts[pid] = (placementCounts[pid] ?: 0) + 1
+            }
+        }
+        if (matchedClimbs == 0) return emptyMap()
+
+        // Strip seed holds from the heat map — the editor renders them in
+        // their role colour already, no need to highlight them again.
+        for (pid in seedHolds) placementCounts.remove(pid)
+
+        val maxCount = placementCounts.values.maxOrNull() ?: return emptyMap()
+        if (maxCount == 0) return emptyMap()
+        val maxCountF = maxCount.toFloat()
+        return placementCounts.mapValues { (_, count) -> count / maxCountF }
+    }
+
+    /** Extract placement IDs from a delta-format frames string's first
+     *  frame (`p{id}r{role}p{id}r{role}…` before the first comma). */
+    private fun parsePlacementIds(frames: String): Set<Int> {
+        val firstFrame = frames.substringBefore(',')
+        if (firstFrame.isBlank()) return emptySet()
+        val ids = HashSet<Int>(8)
+        val pattern = Regex("""p(\d+)r\d+""")
+        for (m in pattern.findAll(firstFrame)) {
+            m.groupValues[1].toIntOrNull()?.let { ids.add(it) }
+        }
+        return ids
+    }
+
     override fun insertLocalDraft(
         draft: LocalClimbDraft,
         layoutId: Long,

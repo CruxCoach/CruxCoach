@@ -480,11 +480,11 @@ WHERE l.product_size_id = ?;
 
 -- ═══ FEAT-003 Community-climb queries ═══
 
--- Insert a freshly-created local climb (source='local', sync_status='draft').
--- Also writes a default climb_stats row at the chosen angle so the climb
--- shows up in the browse VIEW immediately.
+-- Insert/upsert a local climb draft (source='local'). When the editor
+-- loads a draft and saves again, we INSERT OR REPLACE on the same uuid
+-- so the row is updated in place (no orphan + no PK collision).
 insertLocalDraft:
-INSERT INTO climbs(uuid, layout_id, setter_username, name, frames,
+INSERT OR REPLACE INTO climbs(uuid, layout_id, setter_username, name, frames,
     frames_count, is_listed, edge_left, edge_right, edge_bottom, edge_top, created_at,
     description, is_nomatch, frames_pace, hsm, move_count,
     source, created_by_pubkey, frames_hash, sync_status)
@@ -492,6 +492,31 @@ VALUES (?, ?, ?, ?, ?,
     1, 1, NULL, NULL, NULL, NULL, ?,
     ?, 0, 0, 0, ?,
     'local', ?, ?, 'draft');
+
+-- Delete a local-only climb (drafts user explicitly discards). Also
+-- removes its climb_stats row to keep the browse VIEW consistent. Use
+-- only for climbs the current pubkey owns; published Nostr climbs are
+-- replaceable events, not delete-able locally.
+deleteLocalClimb {
+    DELETE FROM climb_stats WHERE climb_uuid = :uuid;
+    DELETE FROM climbs WHERE uuid = :uuid AND source = 'local';
+}
+
+-- Hold-frequency lookup for the editor's heatmap overlay. Returns
+-- (placement_id, occurrence_count) pairs across all listed climbs at the
+-- given layout + angle. The Kotlin side aggregates frames text → hold IDs
+-- and normalises to 0..1 — kept out of SQL because the frames format
+-- (delta-encoded `p{id}r{role},`) needs the regex-style parser to be
+-- canonical.
+getFramesForLayoutAndAngle:
+SELECT c.uuid, c.frames
+FROM climbs c
+INNER JOIN climb_stats cs ON c.uuid = cs.climb_uuid
+WHERE c.layout_id = :layoutId
+  AND cs.angle = :angle
+  AND c.is_listed = 1
+  AND c.frames_count = 1
+  AND LENGTH(c.frames) > 0;
 
 -- Upsert a community climb received from Nostr (source='nostr').
 upsertCommunityClimb:
