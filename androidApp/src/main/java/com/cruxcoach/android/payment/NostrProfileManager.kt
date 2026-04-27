@@ -75,8 +75,16 @@ class NostrProfileManager @Inject constructor(
     private suspend fun fetchProfileFromRelays(pubkey: String): NostrProfileData? {
         return try {
             val filter = """{"kinds":[0],"authors":["$pubkey"],"limit":1}"""
+            // skipDedup=true: this is a one-shot historical query, not a
+            // live stream. NostrRelayPool's `seenEventIds` cache is shared
+            // across every subscriber in the process; on the second
+            // fetchProfile call for the same pubkey the kind:0 event ID
+            // would already be present from the first call, causing
+            // firstOrNull() to silently return null and the cached
+            // profile to never refresh after the first hit. Same pattern
+            // as BackupRepository.queryAllValid and NotificationPollWorker.
             val eventJson = withTimeout(NostrConfig.RELAY_TIMEOUT_MS) {
-                relayPool.subscribe(filter).firstOrNull()
+                relayPool.subscribe(filter, skipDedup = true).firstOrNull()
             } ?: return null
 
             parseAndCacheProfile(pubkey, eventJson)

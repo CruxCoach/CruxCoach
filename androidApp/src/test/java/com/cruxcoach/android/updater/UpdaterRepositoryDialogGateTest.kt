@@ -61,6 +61,10 @@ class UpdaterRepositoryDialogGateTest {
         installer = installer,
         notifier = notifier,
         installSourceGate = installSourceGate,
+        // Inject the test dispatcher so requestDownloadDialog's internal
+        // `scope.launch { ... }` completes synchronously before the
+        // following assertion reads `downloadDialogRequested.value`.
+        ioDispatcher = dispatcher,
     )
 
     private fun stubStage(stage: PipelineStage) {

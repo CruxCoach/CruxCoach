@@ -8,6 +8,7 @@ import androidx.security.crypto.MasterKey
 import com.vitorpamplona.quartz.nip01Core.crypto.KeyPair
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
+import java.util.concurrent.CopyOnWriteArrayList
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -16,6 +17,31 @@ class NostrKeyStore @Inject constructor(
     @param:ApplicationContext private val context: Context
 ) {
     private val prefs: SharedPreferences by lazy { openOrRecreatePrefs() }
+
+    /** Observers that need to react to identity changes (e.g. FEAT-001 relay-list resolver). */
+    fun interface KeyChangeListener {
+        fun onKeyChanged()
+    }
+
+    private val listeners = CopyOnWriteArrayList<KeyChangeListener>()
+
+    fun addKeyChangeListener(listener: KeyChangeListener) {
+        listeners.add(listener)
+    }
+
+    fun removeKeyChangeListener(listener: KeyChangeListener) {
+        listeners.remove(listener)
+    }
+
+    private fun notifyKeyChanged() {
+        for (listener in listeners) {
+            try {
+                listener.onKeyChanged()
+            } catch (e: Exception) {
+                Log.w(TAG, "KeyChangeListener threw; continuing", e)
+            }
+        }
+    }
 
     /**
      * Opens the encrypted prefs with retry logic. The androidx.security.crypto
@@ -97,6 +123,8 @@ class NostrKeyStore @Inject constructor(
         }
         val keyPair = KeyPair()
         prefs.edit().putString(KEY_PRIVATE, keyPair.privKey!!.toHexString()).apply()
+        // Fresh identity — listeners (e.g. FEAT-001 resolver) must refresh.
+        notifyKeyChanged()
         return keyPair
     }
 
@@ -113,10 +141,12 @@ class NostrKeyStore @Inject constructor(
 
     fun importKey(privKeyHex: String) {
         prefs.edit().putString(KEY_PRIVATE, privKeyHex).apply()
+        notifyKeyChanged()
     }
 
     fun deleteKey() {
         prefs.edit().remove(KEY_PRIVATE).apply()
+        notifyKeyChanged()
     }
 
     fun wasIdentityReset(): Boolean {

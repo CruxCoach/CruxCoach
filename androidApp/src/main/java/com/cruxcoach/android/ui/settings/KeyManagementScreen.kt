@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -74,7 +75,6 @@ fun KeyManagementScreen(
     val context = LocalContext.current
 
     var showNsecWarning by remember { mutableStateOf(false) }
-    var showBackupPassword by remember { mutableStateOf(false) }
     var showBiometricUnavailable by remember { mutableStateOf(false) }
     var showNoSecurityWarning by remember { mutableStateOf(false) }
     var noSecurityPendingAction by remember { mutableStateOf<(() -> Unit)?>(null) }
@@ -127,8 +127,11 @@ fun KeyManagementScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Backup reminder
+            // Backup reminder. Same UserPreferences.keyBackedUp flag as
+            // the Cloud-Backup section's BackupKeyWarningCard, so
+            // acknowledging here also hides the warning there.
             if (!state.keyBackedUp && state.signerMode == SignerMode.LOCAL) {
+                var showAckDialog by remember { mutableStateOf(false) }
                 Card(
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.errorContainer
@@ -136,27 +139,57 @@ fun KeyManagementScreen(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Row(
+                    Column(
                         modifier = Modifier.padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Icon(
-                            Icons.Default.Warning,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.error
-                        )
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                stringResource(R.string.key_label_not_backed_up),
-                                fontWeight = FontWeight.Bold
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Icon(
+                                Icons.Default.Warning,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error
                             )
-                            Text(
-                                stringResource(R.string.key_label_not_backed_up_desc),
-                                style = MaterialTheme.typography.bodySmall
-                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    stringResource(R.string.key_label_not_backed_up),
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    stringResource(R.string.key_label_not_backed_up_desc),
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                        }
+                        OutlinedButton(
+                            onClick = { showAckDialog = true },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(stringResource(R.string.backup_key_warning_acknowledged))
                         }
                     }
+                }
+                if (showAckDialog) {
+                    AlertDialog(
+                        onDismissRequest = { showAckDialog = false },
+                        title = { Text(stringResource(R.string.backup_key_warning_ack_dialog_title)) },
+                        text = { Text(stringResource(R.string.backup_key_warning_ack_dialog_body)) },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                showAckDialog = false
+                                viewModel.acknowledgeKeyBackup()
+                            }) {
+                                Text(stringResource(R.string.backup_key_warning_ack_confirm))
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showAckDialog = false }) {
+                                Text(stringResource(R.string.backup_key_warning_ack_cancel))
+                            }
+                        },
+                    )
                 }
             }
 
@@ -166,17 +199,10 @@ fun KeyManagementScreen(
                 amberPubkeyDisplay = state.amberPubkeyDisplay
             )
 
-            // npub section
-            NpubSection(
-                npub = state.npubDisplay,
-                isInactive = state.signerMode == SignerMode.AMBER,
-                onCopy = {
-                    copyToClipboard(context, state.npubFull, "npub", sensitive = false)
-                    Toast.makeText(context, context.getString(R.string.key_toast_npub_copied), Toast.LENGTH_SHORT).show()
-                }
-            )
-
-            // nsec section (only for local signer)
+            // nsec section (only for local signer) — placed above
+            // npub because saving the nsec is the actual recovery
+            // story for both account and cloud backup. npub is
+            // optional + identity-sharing-only and lives below.
             if (state.signerMode == SignerMode.LOCAL) {
                 NsecSection(
                     onCopyNsec = {
@@ -190,17 +216,7 @@ fun KeyManagementScreen(
                             }
                         )
                     },
-                    onCreateBackup = {
-                        requestBiometric(
-                            context = context,
-                            onSuccess = { showBackupPassword = true },
-                            onUnavailable = { showBiometricUnavailable = true },
-                            onNoHardware = {
-                                noSecurityPendingAction = { showBackupPassword = true }
-                                showNoSecurityWarning = true
-                            }
-                        )
-                    }
+                    onImportNsec = onNavigateToImport,
                 )
 
                 // Warning text
@@ -229,27 +245,29 @@ fun KeyManagementScreen(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Import link
-            TextButton(
-                onClick = onNavigateToImport,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        stringResource(R.string.key_button_import),
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Icon(
-                        Icons.AutoMirrored.Filled.ArrowForward,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
-                    )
+            // npub section — moved to the bottom because it is *not*
+            // part of the recovery story (the nsec is). Surfaces the
+            // public key for users who want to share their identity on
+            // Nostr but de-emphasises it visually so the recovery focus
+            // stays on the nsec block above.
+            NpubSection(
+                npub = state.npubDisplay,
+                isInactive = state.signerMode == SignerMode.AMBER,
+                onCopy = {
+                    copyToClipboard(context, state.npubFull, "npub", sensitive = false)
+                    Toast.makeText(context, context.getString(R.string.key_toast_npub_copied), Toast.LENGTH_SHORT).show()
                 }
-            }
+            )
+            Text(
+                text = stringResource(R.string.key_label_npub_recovery_note),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            // Import lives inside NsecSection now (paired with Copy nsec).
+            // Amber users who want to import a different account: tap
+            // "Switch to local key" first → NsecSection appears with the
+            // Import option.
         }
     }
 
@@ -261,39 +279,6 @@ fun KeyManagementScreen(
                 showNsecWarning = false
                 viewModel.confirmNsecCopy()
             }
-        )
-    }
-
-    if (showBackupPassword) {
-        BackupPasswordDialog(
-            onDismiss = { showBackupPassword = false },
-            onConfirm = { password ->
-                showBackupPassword = false
-                viewModel.createBackup(password)
-            }
-        )
-    }
-
-    val backupResult = state.ncryptsecResult
-    if (backupResult != null) {
-        val qrBitmap = remember(backupResult) {
-            try {
-                ApkShareHelper.generateQrBitmap(backupResult)
-            } catch (e: Exception) {
-                null
-            }
-        }
-        // Recycle security-sensitive QR bitmap when dialog is dismissed
-        androidx.compose.runtime.DisposableEffect(backupResult) {
-            onDispose { qrBitmap?.recycle() }
-        }
-        BackupResultDialog(
-            ncryptsec = backupResult,
-            qrBitmap = qrBitmap,
-            onCopy = {
-                viewModel.copyNcryptsec()
-            },
-            onDismiss = { viewModel.dismissBackupResult() }
         )
     }
 
@@ -490,12 +475,20 @@ private fun NpubSection(
 @Composable
 private fun NsecSection(
     onCopyNsec: () -> Unit,
-    onCreateBackup: () -> Unit
+    onImportNsec: () -> Unit,
 ) {
     Text(
         text = stringResource(R.string.key_section_nsec),
         style = MaterialTheme.typography.titleSmall,
         fontWeight = FontWeight.Bold
+    )
+    // Recovery reminder — surfaces the dual-purpose role of the nsec
+    // (account + cloud backup recovery) right next to the export/import
+    // affordances, so it's hard to miss the "save this somewhere" intent.
+    Text(
+        text = stringResource(R.string.key_label_nsec_save_reminder),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
     )
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -519,7 +512,7 @@ private fun NsecSection(
             )
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
             ) {
                 OutlinedButton(
                     onClick = onCopyNsec,
@@ -533,13 +526,12 @@ private fun NsecSection(
                     )
                     Text(" " + stringResource(R.string.key_button_copy_nsec), maxLines = 1)
                 }
-                Button(
-                    onClick = onCreateBackup,
+                OutlinedButton(
+                    onClick = onImportNsec,
                     modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent)
+                    shape = RoundedCornerShape(12.dp)
                 ) {
-                    Text(stringResource(R.string.key_button_create_backup), maxLines = 1, fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.key_button_import_nsec), maxLines = 1)
                 }
             }
         }

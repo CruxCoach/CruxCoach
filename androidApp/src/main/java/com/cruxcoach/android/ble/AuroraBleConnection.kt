@@ -75,7 +75,7 @@ class AuroraBleConnection(private val context: Context) {
     private var connectionTimeoutJob: Job? = null
     private var closeSafetyJob: Job? = null
     private var connectJob: Job? = null
-    var autoDisconnectMinutes: Int = 0
+    var autoDisconnectSeconds: Int = 0
     /** When true, the idle timer is suppressed (e.g. during an active shared session). */
     var suppressAutoDisconnect: Boolean = false
 
@@ -111,10 +111,10 @@ class AuroraBleConnection(private val context: Context) {
     private fun resetIdleTimer() {
         disconnectJob?.cancel()
         if (suppressAutoDisconnect) return
-        val minutes = autoDisconnectMinutes
-        if (minutes > 0 && _connectionState.value != ConnectionState.DISCONNECTED) {
+        val seconds = autoDisconnectSeconds
+        if (seconds > 0 && _connectionState.value != ConnectionState.DISCONNECTED) {
             disconnectJob = scope.launch {
-                delay(minutes * 60_000L)
+                delay(seconds * 1_000L)
                 disconnect()
             }
         }

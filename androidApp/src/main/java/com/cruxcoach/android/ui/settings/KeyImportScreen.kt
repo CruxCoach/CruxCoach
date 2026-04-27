@@ -1,7 +1,11 @@
 package com.cruxcoach.android.ui.settings
 
 import android.app.Activity
+import android.content.Intent
+import android.net.Uri
 import android.view.WindowManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -14,6 +18,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -39,7 +45,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -98,6 +108,20 @@ fun KeyImportScreen(
                 fontWeight = FontWeight.Medium
             )
 
+            // Amber path is intentionally not surfaced here — Amber is its
+            // own setup flow under Settings → CruxCoach Account →
+            // "Recommended". The import screen is for the nsec / mnemonic /
+            // hex / ncryptsec text path only, so the user doesn't see two
+            // overlapping ways to switch to Amber.
+
+            // Masked by default — the field accepts nsec / mnemonic /
+            // hex / ncryptsec, all of which are high-value secrets the
+            // user should not have to expose on-screen while typing.
+            // Hold the eye icon to reveal for verification; switching
+            // the keyboard to Password + disabling autocorrect keeps
+            // the IME from learning the value into its dictionary or
+            // auto-capitalizing.
+            var revealKey by remember { mutableStateOf(false) }
             OutlinedTextField(
                 value = state.input,
                 onValueChange = { viewModel.updateInput(it) },
@@ -106,6 +130,22 @@ fun KeyImportScreen(
                     .fillMaxWidth()
                     .height(140.dp),
                 shape = RoundedCornerShape(12.dp),
+                visualTransformation = if (revealKey) VisualTransformation.None else PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Password,
+                    autoCorrect = false,
+                    capitalization = KeyboardCapitalization.None,
+                ),
+                trailingIcon = {
+                    IconButton(onClick = { revealKey = !revealKey }) {
+                        Icon(
+                            imageVector = if (revealKey) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                            contentDescription = stringResource(
+                                if (revealKey) R.string.key_import_hide else R.string.key_import_reveal
+                            ),
+                        )
+                    }
+                },
                 supportingText = {
                     Text(
                         text = stringResource(R.string.key_import_supported_formats),

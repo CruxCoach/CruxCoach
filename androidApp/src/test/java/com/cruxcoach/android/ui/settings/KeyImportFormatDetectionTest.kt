@@ -4,24 +4,15 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
- * Tests for key import format detection logic.
- *
- * The ViewModel's detectFormat() is private, so we test the same regex/prefix
- * logic directly to verify all five format branches.
+ * Tests for key import format detection logic. Calls the production
+ * top-level [detectKeyImportFormat] directly — pre-0.1.3 this file kept
+ * an inline copy of the same branch table, so a divergence between
+ * test mirror and production would have shipped without anything
+ * failing. Real coverage requires testing the production code.
  */
 class KeyImportFormatDetectionTest {
 
-    private val HEX_64_REGEX = Regex("^[0-9a-f]{64}$")
-    private val WHITESPACE_REGEX = Regex("\\s+")
-
-    /** Mirrors KeyImportViewModel.detectFormat() exactly. */
-    private fun detectFormat(input: String): ImportFormat = when {
-        input.startsWith("nsec1") -> ImportFormat.NSEC
-        input.startsWith("ncryptsec1") -> ImportFormat.NCRYPTSEC
-        input.matches(HEX_64_REGEX) -> ImportFormat.HEX
-        input.split(WHITESPACE_REGEX).size in 12..24 -> ImportFormat.MNEMONIC
-        else -> ImportFormat.UNKNOWN
-    }
+    private fun detectFormat(input: String): ImportFormat = detectKeyImportFormat(input)
 
     // ── nsec ─────────────────────────────────────────────────────
 

@@ -1,10 +1,34 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    Cloud-backup / device-transfer exclusion list. Any identity-linkable
+    or credential-bearing state lives here so a restored APK starts
+    fresh with whatever identity the new user imports, rather than
+    silently leaking a prior Nostr account across a Google-Drive
+    restore onto a different device.
+-->
 <full-backup-content>
+    <!-- EncryptedSharedPreferences holding the nsec (Keystore-wrapped;
+         cannot decrypt on a different device anyway, but excluding
+         avoids dead bytes + any future export-attack surface). -->
     <exclude domain="sharedpref" path="nostr_secure_prefs.xml"/>
+    <!-- Plain SharedPreferences for nsec-related flags
+         (e.g. identity_reset) — low-sensitivity individually, but
+         still identity-scoped state. -->
+    <exclude domain="sharedpref" path="nostr_flags.xml"/>
+    <!-- SQLCipher salt / key-derivation state. -->
     <exclude domain="sharedpref" path="sqlcipher_prefs.xml"/>
-    <!-- Kilter OAuth tokens: Keystore-wrapped, but the master key never leaves
-         the device anyway, so the backed-up ciphertext would be undecryptable
-         on a restore target. Excluding the file avoids shipping dead bytes and
-         prevents confusion when a user restores across devices. -->
+    <!-- Kilter OAuth tokens, per-pubkey-prefixed, EncryptedSharedPrefs. -->
     <exclude domain="sharedpref" path="kilter_secure_prefs.xml"/>
+    <!-- Amber signer config: pubkey hex + Amber package name. Would
+         cross-device-leak the user's npub on a Google-Drive restore. -->
+    <exclude domain="sharedpref" path="amber_config.xml"/>
+
+    <!-- DataStore files under filesDir/datastore/ — holds FEAT-002
+         BackupPreferences (wrapped dataKey, d-tag HMACs, previous-blob
+         SHA, last-sync timestamps, device id), UserPreferences,
+         NIP65_RESOLVED_RELAYS cache, updater state, and the per-pubkey
+         keyScoped files. Excluding the whole subdir is the simplest
+         forward-compatible catch-all — every new DataStore we add is
+         covered automatically. -->
+    <exclude domain="file" path="datastore"/>
 </full-backup-content>

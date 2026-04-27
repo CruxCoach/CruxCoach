@@ -11,19 +11,22 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.R
 import com.cruxcoach.android.data.NostrMessageRepository
+import com.cruxcoach.android.data.SyncInterval
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.nostr.AmberIntegration
 import com.cruxcoach.android.nostr.NostrConfig
 import com.cruxcoach.android.nostr.NostrKeyStore
 import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.android.nostr.SignerMode
+import com.cruxcoach.android.nostr.backup.BackupPreferences
+import com.cruxcoach.android.nostr.backup.BackupSyncWorker
+import com.cruxcoach.android.nostr.relaydiscovery.RelayListCache
 import com.vitorpamplona.quartz.nip01Core.core.hexToByteArray
 import com.vitorpamplona.quartz.nip01Core.core.toHexKey
 import com.vitorpamplona.quartz.nip19Bech32.Nip19Parser
 import com.vitorpamplona.quartz.nip19Bech32.entities.NPub
 import com.vitorpamplona.quartz.nip19Bech32.toNpub
 import com.vitorpamplona.quartz.nip19Bech32.toNsec
-import com.vitorpamplona.quartz.nip49PrivKeyEnc.Nip49
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -46,9 +49,6 @@ data class KeyManagementState(
     val isAmberInstalled: Boolean = false,
     val keyBackedUp: Boolean = false,
     val showNsecWarningDialog: Boolean = false,
-    val showBackupDialog: Boolean = false,
-    val showBackupResultDialog: Boolean = false,
-    val ncryptsecResult: String? = null,
     val showAmberNotInstalledDialog: Boolean = false,
     val showAmberSuccessDialog: Boolean = false,
     val showNoSecurityDialog: Boolean = false,
@@ -64,6 +64,8 @@ class KeyManagementViewModel @Inject constructor(
     private val nostrSigner: NostrSigner,
     private val userPreferences: UserPreferences,
     private val messageRepository: NostrMessageRepository,
+    private val backupPreferences: BackupPreferences,
+    private val relayListCache: RelayListCache,
     @param:ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -143,47 +145,17 @@ class KeyManagementViewModel @Inject constructor(
         copySecretToClipboard(nsec)
     }
 
-    // ── Backup flow ──────────────────────────────────────────────
-
-    fun requestBackup() {
-        _state.update { it.copy(showBackupDialog = true) }
-    }
-
-    fun dismissBackupDialog() {
-        _state.update { it.copy(showBackupDialog = false) }
-    }
-
-    fun createBackup(password: String) {
-        _state.update { it.copy(showBackupDialog = false) }
+    /**
+     * User-initiated "I've stored my key somewhere safe" flag flip.
+     * Same UserPreferences.keyBackedUp flag the BackupKeyWarningCard
+     * in Settings → Cloud-Backup queries — acknowledging here makes
+     * both warnings disappear at once.
+     */
+    fun acknowledgeKeyBackup() {
         viewModelScope.launch {
-            withContext(Dispatchers.IO) {
-                try {
-                    val privKeyHex = keyStore.getPrivateKeyHex() ?: return@withContext
-                    val ncryptsec = Nip49().encrypt(privKeyHex, password)
-                    userPreferences.setKeyBackedUp(true)
-                    _state.update {
-                        it.copy(
-                            ncryptsecResult = ncryptsec,
-                            showBackupResultDialog = true,
-                            keyBackedUp = true
-                        )
-                    }
-                } catch (e: Exception) {
-                    _state.update {
-                        it.copy(error = context.getString(R.string.key_backup_failed, e.message ?: ""))
-                    }
-                }
-            }
+            userPreferences.setKeyBackedUp(true)
+            _state.update { it.copy(keyBackedUp = true) }
         }
-    }
-
-    fun dismissBackupResult() {
-        _state.update { it.copy(showBackupResultDialog = false, ncryptsecResult = null) }
-    }
-
-    fun copyNcryptsec() {
-        val ncryptsec = _state.value.ncryptsecResult ?: return
-        copySecretToClipboard(ncryptsec)
     }
 
     // ── Amber flow ───────────────────────────────────────────────
@@ -206,6 +178,11 @@ class KeyManagementViewModel @Inject constructor(
                 return@launch
             }
             val pkg = packageName ?: AmberIntegration.AMBER_PACKAGE
+            // Cancel periodic backup before identity swap so the next
+            // scheduled tick can't fire under the new pubkey while
+            // BackupRepository.pipelineMutex still serializes any
+            // in-flight run from the old identity.
+            BackupSyncWorker.schedule(context, enabled = false, interval = SyncInterval.MANUAL)
             nostrSigner.saveAmberConfig(pubkeyHex, pkg)
             nostrSigner.switchToAmber(pubkeyHex, pkg, context.contentResolver)
 
@@ -213,6 +190,14 @@ class KeyManagementViewModel @Inject constructor(
             withContext(Dispatchers.IO) {
                 messageRepository.deleteForeignIdentityRows(pubkeyHex, NostrConfig.DEV_PUBKEY)
                 userPreferences.setNostrSyncCursor(0L)
+                // FEAT-002 state (wrapped dataKey, d-tag cache, previous
+                // blob sha, timestamps) is identity-scoped — reset so the
+                // new Amber pubkey doesn't publish under the old d-tag.
+                backupPreferences.clearAllIdentityState()
+                // FEAT-001 NIP-65 cache is global DataStore; stale relays
+                // would route new pubkey's publishes to old identity's
+                // relays until the 24h TTL ticks.
+                relayListCache.clear()
             }
 
             val displayNpub = try {
@@ -242,6 +227,8 @@ class KeyManagementViewModel @Inject constructor(
 
     fun switchToLocalSigner() {
         viewModelScope.launch {
+            // Cancel periodic backup before identity swap (see onAmberLoginSuccess).
+            BackupSyncWorker.schedule(context, enabled = false, interval = SyncInterval.MANUAL)
             nostrSigner.clearAmberConfig()
             nostrSigner.switchToLocal()
 
@@ -249,6 +236,8 @@ class KeyManagementViewModel @Inject constructor(
                 val newPubkey = nostrSigner.getPublicKeyHex()
                 messageRepository.deleteForeignIdentityRows(newPubkey, NostrConfig.DEV_PUBKEY)
                 userPreferences.setNostrSyncCursor(0L)
+                backupPreferences.clearAllIdentityState()
+                relayListCache.clear()
             }
 
             _state.update { it.copy(requireRestart = true) }

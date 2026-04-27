@@ -4,22 +4,18 @@
 
     <!-- Onboarding -->
     <string name="onboarding_welcome">Welcome to CruxCoach</string>
-    <string name="onboarding_welcome_subtitle">Your companion for Kilter Board bouldering. Browse climbs, control your board and share sessions with friends.</string>
+    <string name="onboarding_welcome_subtitle">Open source Kilter Board app — browse climbs, light up the board, log sessions.</string>
     <string name="onboarding_privacy_title">How do you want to use CruxCoach?</string>
     <string name="onboarding_privacy_subtitle">Choose which features should be active. You can change everything anytime in settings.</string>
     <string name="onboarding_privacy_ble_title">Board sharing nearby</string>
     <string name="onboarding_privacy_ble_desc">Share climbs with people at the board and use session mode for group bouldering.</string>
     <string name="onboarding_privacy_community_title">Community &amp; feedback</string>
     <string name="onboarding_privacy_community_desc">Crash reports, app announcements and developer chat — all encrypted, no account needed.</string>
-    <string name="onboarding_privacy_hint">No personal data leaves your device. All communication is end-to-end encrypted.</string>
+    <string name="onboarding_privacy_hint">Your personal data stays on this device by default. The optional cloud backup uploads only an end-to-end encrypted copy that only you can decrypt.</string>
     <string name="onboarding_lets_go">Let\'s go</string>
-    <string name="onboarding_board_setup_title">Board &amp; logbook setup</string>
-    <string name="onboarding_board_setup_subtitle">Download the climb database and optionally import your Kilter logbook.</string>
+    <string name="onboarding_board_setup_title">Load the climbs</string>
+    <string name="onboarding_board_setup_subtitle">Without it the app stays empty. Everything else is adjustable later in settings.</string>
     <string name="onboarding_board_skip_hint">You can skip both steps and set them up anytime in settings.</string>
-    <string name="onboarding_board_sync">Sync board data</string>
-    <string name="onboarding_board_db_title">Board database</string>
-    <string name="onboarding_board_db_subtitle">Climbs, ratings and stats for your Kilter Board.</string>
-    <string name="onboarding_board_db_imported">Board database already loaded</string>
     <string name="onboarding_kilter_title">Import Kilter logbook</string>
     <string name="onboarding_kilter_desc">Have a Kilter account? Import your ascents and projects.</string>
     <string name="onboarding_kilter_credentials_hint">Your credentials are only used for the import and can be discarded afterwards.</string>
@@ -105,22 +101,30 @@
     <!-- Settings: Board Data -->
     <string name="settings_board_data_title">Board data</string>
     <string name="settings_board_type">Board type:</string>
-    <string name="settings_board_last_sync">Last sync: %s</string>
-    <string name="settings_board_sync_button">Update database</string>
     <string name="settings_board_auto_download">Automatic download (WiFi):</string>
     <string name="settings_board_auto_download_desc">Downloads the complete board database (~30 MB) in the background over WiFi.</string>
 
     <!-- Settings: BLE -->
     <string name="settings_ble_auto_disconnect_title">BLE Auto-Disconnect</string>
     <string name="settings_ble_auto_disconnect_desc">Automatically disconnect board connection after inactivity.</string>
-    <string name="settings_ble_disconnect_off">Off</string>
-    <string name="settings_ble_disconnect_1min">1 min</string>
-    <string name="settings_ble_disconnect_5min">5 min</string>
-    <string name="settings_ble_disconnect_10min">10 min</string>
-    <string name="settings_ble_disconnect_15min">15 min</string>
-    <string name="settings_ble_disconnect_30min">30 min</string>
+    <string name="settings_duration_minutes_label">Minutes</string>
+    <string name="settings_duration_seconds_label">Seconds</string>
     <string name="settings_ble_keep_screen_on">Keep screen on</string>
     <string name="settings_ble_keep_screen_on_desc">Screen stays on in board screens so you don\'t have to unlock constantly.</string>
+    <string name="settings_ble_quick_send">Quick-Send mode</string>
+    <string name="settings_ble_quick_send_desc">Tapping the BLE icon in a climb detail auto-connects (or asks if multiple boards are nearby), sends the climb, and disconnects right after.</string>
+
+    <!-- BLE Quick-Send macro status messages -->
+    <string name="ble_quick_send_scanning">Searching for board…</string>
+    <string name="ble_quick_send_connecting">Connecting to %s…</string>
+    <string name="ble_quick_send_sending">Sending climb…</string>
+    <string name="ble_quick_send_disconnecting">Disconnecting…</string>
+    <string name="ble_quick_send_done">Climb sent — board disconnected.</string>
+    <string name="ble_quick_send_no_boards">No board found nearby. Make sure the board is powered on and Bluetooth is enabled.</string>
+    <string name="ble_quick_send_connect_failed">Could not connect to the board. Try again.</string>
+    <string name="ble_quick_send_send_failed">Climb could not be sent — board disconnected.</string>
+    <string name="ble_quick_send_bluetooth_off">Bluetooth is off. Enable it and try again.</string>
+    <string name="ble_quick_send_no_permissions">Bluetooth permissions are missing. Open Settings and grant them.</string>
 
     <!-- Settings: LED Colors -->
     <string name="settings_led_title">LED colors</string>
@@ -137,14 +141,6 @@
     <!-- Settings: Timer -->
     <string name="settings_timer_title">Rest timer</string>
     <string name="settings_timer_desc">Timer between boulder attempts. Starts after logging an ascent.</string>
-    <string name="settings_timer_duration">Duration: %s</string>
-    <string name="settings_timer_30s">30s</string>
-    <string name="settings_timer_1min">1 min</string>
-    <string name="settings_timer_1m30">1:30</string>
-    <string name="settings_timer_2min">2 min</string>
-    <string name="settings_timer_3min">3 min</string>
-    <string name="settings_timer_4min">4 min</string>
-    <string name="settings_timer_5min">5 min</string>
     <string name="settings_timer_auto_start">Auto-start</string>
     <string name="settings_timer_auto_start_desc">Timer starts automatically after logging</string>
 
@@ -183,12 +179,12 @@
     <string name="settings_share_title">Share app</string>
     <string name="settings_share_desc">Share CruxCoach APK with others (without user data).</string>
     <string name="board_filter_title">Filters</string>
-    <string name="settings_share_via_apps">Via apps</string>
-    <string name="settings_share_online">Online</string>
-    <string name="settings_share_online_hide">Hide online</string>
+    <string name="settings_share_via_apps">Share via apps</string>
+    <string name="settings_share_online">Share online</string>
+    <string name="settings_share_online_hide">Hide online QR</string>
     <string name="settings_share_online_desc">Scan the QR code to download the app online from the release page.</string>
     <string name="settings_share_online_hint">Scan to open the APK download.</string>
-    <string name="settings_share_local">Offline</string>
+    <string name="settings_share_local">Share offline</string>
     <string name="settings_share_local_desc">Share the app locally via WiFi hotspot. No internet needed.</string>
     <string name="settings_share_stop">Stop</string>
     <string name="settings_share_network">Network: %s</string>
@@ -645,7 +641,7 @@
     <string name="board_sync_wifi_settings">WiFi settings</string>
     <string name="board_sync_no_network_banner">No network available</string>
     <string name="board_sync_no_wifi_banner">No WiFi — Online download only available over WiFi</string>
-    <string name="board_sync_to_browser">Go to browser</string>
+    <string name="board_sync_to_browser">Done</string>
     <string name="board_sync_db_title">Kilter Board Database</string>
     <string name="board_sync_db_description">Downloads the current Kilter Board climb database (~30 MB). WiFi recommended.</string>
     <string name="board_sync_db_synced">Database synced</string>
@@ -688,7 +684,7 @@
 
     <string name="board_sync_step_prepare_db">Prepare database</string>
     <string name="board_sync_step_check_update">Checking for update\u2026</string>
-    <string name="board_sync_step_download_apk">Download APK</string>
+    <string name="board_sync_step_download_db">Download climb database</string>
     <string name="board_sync_step_extract_db">Extract database</string>
     <string name="board_sync_step_import_climbs">Import climbs</string>
     <string name="board_sync_step_import_stats">Import statistics</string>
@@ -1255,7 +1251,6 @@
 
     <!-- Key Management -->
     <string name="key_public_key_copied">Public key copied</string>
-    <string name="key_backup_failed">Backup failed: %1$s</string>
     <string name="key_secret_copied_clipboard_clear">Key copied. Clipboard will be cleared in %1$ds.</string>
     <string name="key_import_format_unknown">Format not recognized. Supported: nsec, ncryptsec, hex, 12/24 words.</string>
     <string name="key_import_failed">Import failed: %1$s</string>
@@ -1266,18 +1261,20 @@
     <string name="key_section_nostr_intro">Your CruxCoach account works fundamentally different from traditional accounts: Instead of registering with an email and password at a company, you own a cryptographic key. This key is your account — whoever holds it has access. No company can lock, delete, or read your data. Messages to the developer are end-to-end encrypted. The trade-off: you are responsible for your key. If lost, nobody can reset it for you. Technically, your account is built on the open Nostr protocol.</string>
     <string name="key_section_description">Back up your account, transfer it to a new device, or use the external signer app Amber.</string>
     <string name="key_button_manage">Manage account</string>
-    <string name="key_label_not_backed_up">Account not backed up</string>
-    <string name="key_label_not_backed_up_desc">If you lose your device, your account is gone.</string>
+    <string name="key_label_not_backed_up">Save your account key</string>
+    <string name="key_label_not_backed_up_desc">Without it, neither your account nor your cloud backup can be restored if you lose this device.</string>
     <string name="key_label_login_method">Login method:</string>
     <string name="key_label_login_local">Local key</string>
     <string name="key_label_login_amber">Amber Signer</string>
     <string name="key_section_npub">Public key (npub)</string>
     <string name="key_button_copy_npub">Copy npub</string>
     <string name="key_toast_npub_copied">npub copied</string>
-    <string name="key_section_nsec">Private key</string>
+    <string name="key_section_nsec">Private key (nsec)</string>
+    <string name="key_label_npub_recovery_note">Optional — only used to share your identity on Nostr. Not needed to recover your account or cloud backup.</string>
     <string name="key_label_nsec_hidden">Hidden for protection.</string>
     <string name="key_button_copy_nsec">Copy nsec</string>
-    <string name="key_button_create_backup">Create backup</string>
+    <string name="key_button_import_nsec">Import nsec</string>
+    <string name="key_label_nsec_save_reminder">Save this key somewhere safe — your account AND cloud backup can only be restored on another device with it. Without it, both are gone if you lose this phone.</string>
     <string name="key_label_nsec_warning">Never share your private key. Whoever has it controls your account permanently.</string>
     <string name="key_section_recommended">Recommended</string>
     <string name="key_label_use_amber">Use Amber Signer</string>
@@ -1287,22 +1284,11 @@
     <string name="key_button_disconnect_amber">Switch to local key</string>
     <string name="key_label_local_key_inactive">Local key (inactive)</string>
     <string name="key_label_active_identity">Active account</string>
-    <string name="key_button_import">Import account (nsec/Mnemonic)</string>
 
     <!-- Key Management: Dialogs -->
     <string name="key_dialog_nsec_title">Private key</string>
     <string name="key_dialog_nsec_text">This key controls your entire CruxCoach account. If anyone sees it, they can permanently impersonate you. The clipboard will be cleared after 60 seconds.</string>
     <string name="key_dialog_nsec_confirm">I understand, copy</string>
-    <string name="key_dialog_backup_title">Create encrypted backup</string>
-    <string name="key_dialog_backup_text">Your private key will be encrypted with your password (ncryptsec format). Without this password the key cannot be restored – choose a strong password and keep it safe.</string>
-    <string name="key_label_password">Password</string>
-    <string name="key_label_password_confirm">Confirm password</string>
-    <string name="key_label_password_too_short">At least 8 characters</string>
-    <string name="key_label_password_mismatch">Passwords do not match</string>
-    <string name="key_dialog_backup_result_title">Backup created</string>
-    <string name="key_dialog_backup_result_text">Save the QR code or ncryptsec text in a secure location (e.g. password manager or printout). To restore: Settings → Import key → paste ncryptsec → enter password.</string>
-    <string name="key_label_qr_content_desc">ncryptsec QR Code</string>
-    <string name="key_button_copy_ncryptsec">Copy ncryptsec</string>
     <string name="key_dialog_biometric_title">Screen lock required</string>
     <string name="key_dialog_biometric_text">First set up a screen lock (PIN, pattern or fingerprint) to protect your key.</string>
     <string name="key_button_open_settings">Go to settings</string>
@@ -1369,6 +1355,8 @@
     <string name="key_import_prompt">Paste your private key:</string>
     <string name="key_import_label">Key</string>
     <string name="key_import_supported_formats">Supported: nsec, ncryptsec, hex, 12/24 words</string>
+    <string name="key_import_reveal">Show key</string>
+    <string name="key_import_hide">Hide key</string>
     <string name="key_import_detected">Detected: %1$s</string>
     <string name="key_import_button">Import</string>
     <string name="key_import_success_toast">Key imported</string>
@@ -1381,4 +1369,161 @@
     <string name="key_import_password_label">ncryptsec password</string>
     <string name="key_import_decrypt_button">Decrypt</string>
     <string name="identity_switch_title">Switching account…</string>
+
+    <!-- FEAT-002: Encrypted cloud backup (technically Nostr + Blossom underneath) -->
+    <string name="settings_backup_title">Encrypted cloud backup</string>
+    <string name="settings_backup_description">Encrypted on your device, then stored across several public servers. Only you can decrypt it.</string>
+    <string name="settings_backup_enable">Enable backup</string>
+    <string name="settings_backup_needs_key">An account key is needed. It is generated automatically on first backup.</string>
+    <string name="settings_backup_interval">Interval</string>
+    <string name="settings_backup_last_sync">Last backup: %s</string>
+    <string name="settings_backup_status_no_key">Backup needs your account key.</string>
+    <string name="settings_backup_status_disabled_no_history">Backup disabled — no data stored online.</string>
+    <string name="settings_backup_status_disabled_with_history">Backup disabled. A previous backup from %1$s may still exist online.</string>
+    <string name="settings_backup_status_enabled_no_backup">Backup enabled — no sync yet.</string>
+    <string name="settings_backup_status_enabled_with_backup">Backup enabled — last sync %1$s.</string>
+    <string name="settings_backup_never_synced">No backup yet</string>
+    <string name="settings_backup_run_now">Back up now</string>
+    <string name="settings_backup_run_now_progress">Backing up…</string>
+    <string name="settings_backup_restore">Restore backup</string>
+    <string name="settings_backup_restore_checking">Checking…</string>
+    <string name="settings_backup_restore_dialog_title">Backup found</string>
+    <string name="settings_backup_restore_dialog_body">Size: %1$s.\nYour local data will be overwritten by the backup.</string>
+    <string name="settings_backup_restore_confirm">Restore</string>
+    <string name="settings_backup_restore_cancel">Cancel</string>
+    <string name="settings_backup_no_backup_found">No backup found for this account. If one should exist, check your network connection and try again later — backup servers may be temporarily unreachable.</string>
+    <string name="settings_backup_blob_unreachable">Backup info found, but the encrypted backup data is no longer available on any storage server (possibly deleted via a previous opt-out, or all servers are temporarily down). The info can be removed via "Delete remote backups". Try again later if this looks like a network issue.</string>
+    <string name="settings_backup_check_decrypt_failed">A backup was found, but it could not be decrypted — the key doesn\'t seem to match.</string>
+    <string name="settings_backup_check_error">Error while looking for a backup: %1$s</string>
+    <string name="settings_backup_restore_failed">Backup could not be restored.</string>
+    <string name="settings_backup_succeeded">Backup created.</string>
+    <string name="settings_backup_failed">Backup failed. Check your connection and try again.</string>
+    <string name="settings_backup_failed_detail">Backup failed: %1$s</string>
+
+    <!-- Backup-key warning card — surfaced in Settings, Onboarding, and What's New
+         whenever the user has just enabled (or has enabled) Cloud-Backup, to
+         remind them that without their key the backup cannot be restored.
+         Two body variants: local key (= save in password manager) vs Amber
+         (= back up Amber itself). -->
+    <string name="backup_key_warning_title">Save your CruxCoach Account key</string>
+    <string name="backup_key_warning_body_local">Same key as your CruxCoach Account: identifies you on Nostr and encrypts your cloud backup. Without it, both are gone if you lose this device — even we can\'t recover them. Save it somewhere safe (e.g. a password manager).</string>
+    <string name="backup_key_warning_body_amber">Your CruxCoach Account key is held by Amber and encrypts your cloud backup. Without Amber\'s own backup, the key is lost when you lose your phone — and both your account and your cloud backup become unrecoverable. Make sure Amber\'s backup is set up.</string>
+    <string name="backup_key_warning_view_account">Open CruxCoach Account</string>
+    <string name="backup_key_warning_acknowledged">I\'ve saved my key</string>
+    <string name="backup_key_warning_ack_dialog_title">Backup key saved?</string>
+    <string name="backup_key_warning_ack_dialog_body">By tapping Confirm you state that you have stored your key somewhere outside this device — a password manager, Amber\'s backup, paper, etc. We have no way to recover it if you lose this device without saving it. Local data on this phone is not affected.</string>
+    <string name="backup_key_warning_ack_confirm">Confirm</string>
+    <string name="backup_key_warning_ack_cancel">Not yet</string>
+    <string name="backup_key_warning_post_onboarding_hint">After onboarding finishes, you\'ll find your key under Settings → CruxCoach Account.</string>
+
+    <!-- Onboarding-only frequency picker (in addition to the toggle). Lets the
+         user pick a cadence right away instead of having to dig into Settings
+         after enabling. Defaults to MANUAL — labels reuse SyncInterval.labelRes. -->
+    <string name="onboarding_backup_frequency_label">How often?</string>
+
+    <!-- BackupErrorReason — localized one per BackupException reason. -->
+    <string name="backup_error_blob_upload_failed">Backup failed: no storage server accepted the encrypted backup (%1$d attempted).</string>
+    <string name="backup_error_blob_upload_failed_with_detail">Backup failed: no storage server accepted the encrypted backup (%1$d attempted, %2$s).</string>
+    <string name="backup_error_amber_needs_auto_approve">Backup failed: Amber needs to be set to "always approve" for CruxCoach. Open Amber → CruxCoach and enable automatic approval, otherwise background backup cannot sign.</string>
+    <string name="backup_error_blob_not_visible">Backup failed: server accepted the upload but the data is not visible afterward (%1$d servers checked).</string>
+    <string name="backup_error_pointer_not_durable">Backup failed: backup index rejected by every server (%1$d attempted). The data was uploaded but not announced — please retry once the servers are reachable.</string>
+    <string name="backup_error_key_event_not_durable">Backup failed: encryption-key info rejected by every server (%1$d attempted). Without it the backup cannot be restored on another device — please retry once the servers are reachable.</string>
+    <string name="backup_error_data_key_unwrap_failed">Restore failed: backup key could not be unwrapped (wrong identity?).</string>
+    <string name="backup_error_pointer_lists_no_servers">Restore failed: backup references no usable storage servers.</string>
+    <string name="backup_error_plaintext_size_cap">Restore failed: payload exceeds the safety limit.</string>
+    <string name="backup_error_key_fetch_ambiguous">Backup failed: could not fetch the encryption-key info from the servers. Auto-regeneration was refused because a previous backup exists on this device — that would orphan it. Retry once the servers are reachable.</string>
+
+    <!-- DeleteRemoteNote — localized one per per-leg note in the delete-remote dialog. -->
+    <string name="delete_remote_note_dtag_derivation_failed">Could not prepare the deletion request.</string>
+    <string name="delete_remote_note_no_write_relays">No outgoing servers configured.</string>
+    <string name="delete_remote_note_no_relay_accepted">No index server accepted the deletion request.</string>
+    <string name="delete_remote_note_partial_relay_accept">Only %1$d of %2$d index servers accepted the deletion.</string>
+    <string name="delete_remote_note_relay_publish_threw">Deletion request could not be sent to the index servers.</string>
+    <string name="delete_remote_note_blossom_auth_failed">Storage server rejected the auth signature.</string>
+    <string name="delete_remote_note_blossom_fully_rejected">Every storage server refused the deletion.</string>
+    <string name="delete_remote_note_blossom_partial">Only %1$d of %2$d storage servers acknowledged the deletion.</string>
+    <string name="delete_remote_note_unexpected_error">Unexpected error: %1$s</string>
+    <string name="settings_backup_delete_remote">Delete remote backups…</string>
+    <string name="settings_backup_delete_remote_dialog_title">Delete remote backups?</string>
+    <string name="settings_backup_delete_remote_dialog_body">This will request deletion of your backup info and encrypted backup data from the public servers. Be aware:\n\n• Deletion is best-effort. Not every server honours it.\n• After this, you cannot restore your backup on another device.\n• Local data is not affected.</string>
+    <string name="settings_backup_delete_remote_confirm">Delete</string>
+    <string name="settings_backup_delete_remote_in_progress">Deleting…</string>
+    <string name="settings_backup_delete_remote_done_header">Remote backups deleted.</string>
+    <string name="settings_backup_delete_remote_partial_header">Remote backups partially deleted.</string>
+    <string name="settings_backup_delete_remote_relays_line">Index servers: %1$d / %2$d accepted the deletion.</string>
+    <string name="settings_backup_delete_remote_blossom_line">Storage servers: %1$d / %2$d confirmed deletion.</string>
+    <string name="settings_backup_delete_remote_no_blob">No backup data on record (nothing to delete there).</string>
+    <string name="settings_backup_delete_remote_caveat">Note: backup servers (Nostr relays + Blossom CDNs under the hood) can propagate or cache content before deletion. Third-party mirrors you never wrote to may still hold a copy — for full certainty, check with a Nostr client against your published pubkey.</string>
+
+    <!-- FEAT-002: Encrypted cloud backup onboarding (key-related strings keep
+         Nostr terminology because they're about your decentralized identity,
+         not specifically about backup). -->
+    <string name="onboarding_nostr_key_title">Nostr identity</string>
+    <string name="onboarding_nostr_key_body">CruxCoach uses a Nostr key for optional backups, direct messages and community features. A key will be generated automatically when you need one.</string>
+    <string name="onboarding_nostr_key_checking">Looking for an existing backup…</string>
+    <string name="onboarding_nostr_key_hint_import_later">Already have a Nostr key? You can import it later in Settings → Nostr key.</string>
+    <string name="onboarding_nostr_backup_title">Backup your data</string>
+    <string name="onboarding_nostr_backup_body">Encrypted on your device, then stored online across several public servers. Only you can decrypt it. Default: off — you can enable it any time in Settings.</string>
+    <string name="onboarding_restore_dialog_body">A backup was found (%1$s).\n\nRestoring it will replace any local data with the contents of the backup.</string>
+
+    <!-- FEAT-002: onboarding backup choice (3-step onboarding) -->
+    <string name="onboarding_backup_choice_fresh_title">Start fresh</string>
+    <string name="onboarding_backup_choice_fresh_desc">A new CruxCoach Account key is generated on this device. Your current local data becomes the first backup.</string>
+    <string name="onboarding_backup_choice_restore_title">Restore a backup</string>
+    <string name="onboarding_backup_choice_restore_desc">I have a backup from another device. Import the Nostr key I used there.</string>
+    <string name="onboarding_backup_import_key_button">Import Nostr key →</string>
+    <string name="onboarding_backup_restore_checking">Looking for a backup…</string>
+    <string name="onboarding_backup_restore_success">Backup restored.</string>
+    <string name="onboarding_backup_restore_none_for_key">No backup was found for this account. You can still continue — a fresh backup will be created on the next sync.</string>
+    <string name="onboarding_backup_restore_waiting_for_key">Import your Nostr key to continue, or switch back to "Start fresh".</string>
+    <string name="onboarding_restart_confirm_title">Import Nostr key</string>
+    <string name="onboarding_restart_confirm_body">CruxCoach will briefly restart after the import to switch the local encryption to your key. Onboarding continues automatically with the restore.</string>
+    <string name="onboarding_kilter_step_title">Kilter logbook</string>
+    <string name="onboarding_kilter_step_subtitle">Optional: pull your sends and attempts from the official Kilter Board app. You can do this later in settings.</string>
+    <string name="onboarding_kilter_skip_hint">Optional step. Tap "Done" without connecting — the Kilter import is always available later in settings.</string>
+
+    <!-- Clipboard -->
+    <string name="action_copy">Copy</string>
+
+    <!-- Key-import: Amber shortcut + not-installed dialog -->
+    <string name="settings_share_copied_url">Download URL copied.</string>
+    <string name="settings_share_copied_password">Password copied.</string>
+
+    <!-- Zapstore share -->
+    <string name="settings_share_zapstore">Share via Zapstore</string>
+    <string name="settings_share_zapstore_hide">Hide Zapstore QR</string>
+    <string name="settings_share_zapstore_desc">Recommended app store for CruxCoach — verifiable builds, Nostr-native.</string>
+    <string name="settings_share_zapstore_hint">Scan the QR or send the link. Zapstore opens automatically if installed.</string>
+    <string name="cd_zapstore_share_qr">Zapstore share QR code</string>
+
+    <!-- Sync interval enum labels (FilterChip text in Backup + Board settings) -->
+    <string name="sync_interval_daily">Daily</string>
+    <string name="sync_interval_weekly">Weekly</string>
+    <string name="sync_interval_manual">Manual</string>
+
+    <!-- BoardModelSelectionDialog (was hardcoded German until 0.1.3) -->
+    <string name="board_model_dialog_title_missing">Board data missing</string>
+    <string name="board_model_dialog_title_pick">Which Kilter board do you have?</string>
+    <string name="board_model_dialog_body_missing_with_sync">The board database has not been synced yet. Start the sync; afterward you can pick your board model.</string>
+    <string name="board_model_dialog_body_missing_inline">The board database has not been synced yet. Start the sync below on this screen; afterward you can pick your board model.</string>
+    <string name="board_model_dialog_hint">The selection determines which holds and LEDs are shown.</string>
+    <string name="board_model_dialog_start_sync">Start sync</string>
+    <string name="board_model_dialog_close">Close</string>
+    <string name="board_model_dialog_confirm">Confirm</string>
+    <string name="board_model_dialog_cancel">Cancel</string>
+
+    <!-- BoardSyncInlineCard step detail labels (was mixed EN/DE) -->
+    <string name="board_sync_detail_climbs_count">%,d Climbs…</string>
+    <string name="board_sync_detail_progress_with_new">%1$,d / %2$,d  (%3$,d new)</string>
+    <string name="board_sync_detail_progress">%1$,d / %2$,d</string>
+    <string name="board_sync_detail_stats_count">%,d Stats…</string>
+    <string name="board_sync_detail_placements_count">%,d Placements</string>
+    <string name="board_sync_detail_nomatch">NM: %,d</string>
+
+    <!-- "What's new" upgrade dialogs (only shown to upgrading users) -->
+    <string name="whatsnew_done">Done</string>
+    <string name="whatsnew_nostr_backup_title">New: Encrypted cloud backup</string>
+    <string name="whatsnew_nostr_backup_body">Your climbs and notes can now be encrypted on this device and stored online across several public servers — restore them on any device. Off by default; enable here, or anytime in Settings → Encrypted cloud backup.</string>
+    <string name="whatsnew_nostr_backup_toggle">Enable backup</string>
+    <string name="whatsnew_nostr_backup_consent">A CruxCoach Account key is created on this device if you don\'t already have one. Backups don\'t run automatically — you start them yourself in Settings.</string>
 </resources>
