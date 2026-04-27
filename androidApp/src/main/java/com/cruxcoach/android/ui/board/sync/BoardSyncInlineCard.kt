@@ -401,7 +401,7 @@ private fun SyncProgressChecklist(
         val dlProgress = if (step is ImportStep.DownloadChunk && step.cumulativeTotalBytes > 0) {
             step.cumulativeBytesRead.toFloat() / step.cumulativeTotalBytes.toFloat()
         } else null
-        SyncStepRow(stringResource(R.string.board_sync_step_download_apk), dlStatus, dlDetail, dlProgress)
+        SyncStepRow(stringResource(R.string.board_sync_step_download_db), dlStatus, dlDetail, dlProgress)
 
         val climbIdx = 2
         val climbStatus = when {

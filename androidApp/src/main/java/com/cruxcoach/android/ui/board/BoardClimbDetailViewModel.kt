@@ -242,6 +242,8 @@ class BoardClimbDetailViewModel @Inject constructor(
             bleConnection.connectionState.collect { connState ->
                 val wasDisconnectedOrConnecting = prevConnState == ConnectionState.DISCONNECTED
                     || prevConnState == ConnectionState.CONNECTING
+                val justFinishedSending = prevConnState == ConnectionState.SENDING
+                    && connState == ConnectionState.CONNECTED
                 prevConnState = connState
 
                 _state.update { it.copy(ble = it.ble.copy(connectionState = connState)) }
@@ -251,6 +253,21 @@ class BoardClimbDetailViewModel @Inject constructor(
                     && _state.value.holds.isNotEmpty()
                 ) {
                     sendToBoard()
+                }
+
+                // Quick-Send auto-disconnect for the "manually connected in
+                // BoardBrowser → navigated into climb-detail → first send
+                // fired" path. Boulders only: routes need the connection
+                // alive for subsequent frames during playback, and route-
+                // playback's onFrameChanged also writes through the same
+                // SENDING→CONNECTED edge — disconnecting after frame 0
+                // would strand mid-route.
+                if (justFinishedSending && !_state.value.playback.isRoute) {
+                    val quickSendOn = userPreferences.quickBoardSend.first()
+                    if (quickSendOn) {
+                        Log.i(TAG, "quick-send auto-disconnect after boulder send")
+                        bleConnection.disconnect()
+                    }
                 }
                 // Don't call clearClimb() here -- BleConnectionViewModel.onBoardDisconnected()
                 // handles the transition to LAST_CLIMB advertising.
@@ -330,7 +347,6 @@ class BoardClimbDetailViewModel @Inject constructor(
                         val allFrames = BoardClimbParser.parseMultiFrames(climb.frames)
                         val isRoute = allFrames.size > 1
                         val holds = allFrames.firstOrNull() ?: emptyList()
-
                         val placementMap = PerfLogger.trace("loadClimb.placements") {
                             cachedPlacementMap ?: run {
                                 val map = boardRepository.getAllPlacements().associateBy { it.placementId.toInt() }

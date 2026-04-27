@@ -729,7 +729,7 @@
     <string name="board_sync_step_check_update">Update prüfen\u2026</string>
     <string name="board_sync_step_fetch_manifest">Manifest laden\u2026</string>
     <string name="board_sync_step_download_chunk" formatted="false">%s herunterladen (%d/%d)</string>
-    <string name="board_sync_step_download_apk">APK herunterladen</string>
+    <string name="board_sync_step_download_db">Climb-Datenbank herunterladen</string>
     <string name="board_sync_step_extract_db">Datenbank extrahieren</string>
     <string name="board_sync_step_import_climbs">Climbs importieren</string>
     <string name="board_sync_step_import_stats">Statistiken importieren</string>

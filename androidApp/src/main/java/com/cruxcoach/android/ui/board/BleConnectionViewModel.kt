@@ -337,8 +337,13 @@ class BleConnectionViewModel @Inject constructor(
      * transition when holds are present, and AuroraBleConnection flips its
      * state to SENDING during the actual write. We just observe those state
      * machine edges from here — no new send-callback needed.
+     *
+     * For routes ([isRoute] = true) the macro stops after the connect — only
+     * frame 0 gets auto-sent and the user is expected to start route
+     * playback manually + disconnect when they're done. Auto-disconnecting
+     * after the first frame would strand a multi-frame route mid-playback.
      */
-    fun startQuickSend() {
+    fun startQuickSend(isRoute: Boolean = false) {
         quickSendJob?.cancel()
         quickSendJob = viewModelScope.launch {
             try {
@@ -353,9 +358,16 @@ class BleConnectionViewModel @Inject constructor(
 
                 // Already connected → skip scan/connect. The screen will
                 // tap into existing send pipeline; we only own the
-                // disconnect-after.
+                // disconnect-after (boulders only). Routes bail silently —
+                // the user already sees the green BLE icon, and a
+                // "sent + disconnected" snackbar would be a lie since
+                // we kept the connection alive on purpose.
                 if (bleConnection.connectionState.value == ConnectionState.CONNECTED) {
-                    awaitSendAndDisconnect()
+                    if (isRoute) {
+                        _quickSend.value = QuickSendStatus.Idle
+                    } else {
+                        awaitSendAndDisconnect()
+                    }
                     return@launch
                 }
 
@@ -413,7 +425,17 @@ class BleConnectionViewModel @Inject constructor(
                     return@launch
                 }
 
-                awaitSendAndDisconnect()
+                if (isRoute) {
+                    // Route: connect succeeded, frame 0 will auto-send via
+                    // ClimbDetailVM's CONNECTED-collector — but we don't
+                    // chase the SENDING→CONNECTED→disconnect chain because
+                    // the user still needs the connection alive for the
+                    // remaining frames during playback. Reset to Idle so
+                    // no "sent + disconnected" snackbar fires.
+                    _quickSend.value = QuickSendStatus.Idle
+                } else {
+                    awaitSendAndDisconnect()
+                }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
