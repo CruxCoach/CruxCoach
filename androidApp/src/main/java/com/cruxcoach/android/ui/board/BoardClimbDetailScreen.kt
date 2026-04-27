@@ -269,11 +269,14 @@ fun BoardClimbDetailScreen(
                                 // Quick-Send-Mode setting (Settings → BLE) routes the
                                 // tap through the macro: scan → auto-connect-on-single
                                 // → existing CONNECTED-collector auto-fires send →
-                                // disconnect. Multi-board case escalates back into
-                                // the manual sheet via NeedsManualPick (handled in the
+                                // disconnect (boulders only — routes need the
+                                // connection alive for the remaining frames during
+                                // playback, so the macro stops after connect for
+                                // those). Multi-board case escalates back into the
+                                // manual sheet via NeedsManualPick (handled in the
                                 // LaunchedEffect below).
                                 if (bleConnState.quickBoardSendEnabled) {
-                                    bleConnViewModel.startQuickSend()
+                                    bleConnViewModel.startQuickSend(isRoute = state.playback.isRoute)
                                 } else {
                                     showBleSheet = true
                                 }
