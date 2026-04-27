@@ -269,9 +269,72 @@ data class RawClimbListEntry(
     val addedAt: String
 )
 
+// ── Community-climb support (FEAT-003) ─────────────────────
+
+data class LocalClimbDraft(
+    val uuid: String,
+    val name: String,
+    val description: String,
+    val framesText: String,
+    val framesHash: String,
+    val createdAt: String,
+    val createdByPubkey: String?,
+    val moveCount: Long,
+)
+
+data class CommunityClimbRow(
+    val uuid: String,
+    val name: String,
+    val setterUsername: String?,
+    val description: String,
+    val framesText: String,
+    val source: String,            // 'kilter' | 'nostr' | 'local'
+    val syncStatus: String,         // 'draft' | 'synced' | 'published_nostr' | 'failed'
+    val createdByPubkey: String?,
+    val nostrEventId: String?,
+    val nostrDTag: String?,
+    val framesHash: String?,
+    val createdAt: String?,
+    val moveCount: Long,
+)
+
+/** Climb-creation + community-climb queries (FEAT-003). */
+interface CommunityClimbQueries {
+    /** Insert a freshly-created local climb (source='local', sync_status='draft'). */
+    fun insertLocalDraft(draft: LocalClimbDraft, layoutId: Long, angle: Long, setterGradeId: Int?)
+    /** Upsert a community climb received from Nostr. */
+    fun upsertCommunityClimb(
+        uuid: String,
+        layoutId: Long,
+        setterUsername: String?,
+        name: String,
+        framesText: String,
+        description: String,
+        moveCount: Long,
+        nostrEventId: String,
+        nostrDTag: String,
+        createdByPubkey: String,
+        framesHash: String,
+        createdAt: String,
+        angle: Long,
+        difficultyAverage: Double?,
+        qualityAverage: Double?,
+    )
+    fun markClimbPublishedNostr(uuid: String, nostrEventId: String, nostrDTag: String)
+    fun markClimbPublishFailed(uuid: String)
+    fun getDraftClimbs(): List<CommunityClimbRow>
+    fun getMyClimbs(pubkey: String): List<CommunityClimbRow>
+    fun getCommunityClimbs(): List<CommunityClimbRow>
+    /** Look up an existing climb by frames_hash for duplicate detection. */
+    fun findClimbByFramesHash(framesHash: String, layoutId: Long): CommunityClimbRow?
+    /** Cache the setter-grade entry for a community climb (MVP — no vote aggregation). */
+    fun upsertSetterGrade(climbDTag: String, angle: Long, setterGradeId: Int, lastUpdatedEpochMs: Long)
+}
+
 // ── Composite interface (backward-compatible) ───────────────
 
 interface BoardRepository :
     BoardClimbQueries,
     BoardLayoutQueries,
-    BoardWriteOperations
+    BoardWriteOperations,
+    CommunityClimbQueries

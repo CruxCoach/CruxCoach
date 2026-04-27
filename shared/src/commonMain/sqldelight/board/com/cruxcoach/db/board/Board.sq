@@ -21,7 +21,14 @@ CREATE TABLE climbs (
     hsm INTEGER NOT NULL DEFAULT 0,
     frames BLOB AS kotlin.String NOT NULL,
     is_deleted INTEGER NOT NULL DEFAULT 0,
-    move_count INTEGER NOT NULL DEFAULT 0
+    move_count INTEGER NOT NULL DEFAULT 0,
+    -- FEAT-003 community-climb fields:
+    source TEXT NOT NULL DEFAULT 'kilter',          -- 'kilter' | 'nostr' | 'local'
+    nostr_event_id TEXT,                            -- Kind 30078 event id (set on publish)
+    nostr_d_tag TEXT,                               -- d-tag of the published event
+    created_by_pubkey TEXT,                         -- setter pubkey for nostr/local climbs
+    frames_hash TEXT,                               -- canonical sha256 of frames+layout (dup detection)
+    sync_status TEXT NOT NULL DEFAULT 'synced'      -- 'draft' | 'synced' | 'published_nostr' | 'published_kilter' | 'published_both' | 'failed'
 );
 
 CREATE TABLE climb_stats (
@@ -131,6 +138,26 @@ CREATE INDEX idx_climb_stats_count_cover ON climb_stats(
     angle, ascensionist_count, difficulty_average, benchmark_difficulty, climb_uuid
 );
 
+-- FEAT-003 community-climb indexes
+CREATE INDEX idx_climbs_source ON climbs(source);
+CREATE INDEX idx_climbs_frames_hash ON climbs(frames_hash);
+CREATE INDEX idx_climbs_pubkey ON climbs(created_by_pubkey);
+
+-- FEAT-003 grade consensus cache. MVP only stores setter_grade_id; full
+-- consensus aggregation (vote_count, confidence, trimmed mean) lands when
+-- public ascent-vote events ship in 0.2.0.
+CREATE TABLE community_grade_cache (
+    climb_d_tag TEXT NOT NULL,
+    angle INTEGER NOT NULL,
+    setter_grade_id INTEGER,
+    consensus_average REAL,
+    consensus_grade_id INTEGER,
+    vote_count INTEGER NOT NULL DEFAULT 0,
+    confidence TEXT NOT NULL DEFAULT 'LOW',
+    last_updated INTEGER NOT NULL,
+    PRIMARY KEY (climb_d_tag, angle)
+);
+
 -- Browse VIEW: live join of climb + stats, no frames column (saves ~50MB).
 -- SQLite flattens simple INNER JOIN views into the outer query (no materialization).
 CREATE VIEW climb_browse AS
@@ -138,6 +165,7 @@ SELECT
     c.uuid, c.name, c.setter_username, c.frames_count, c.layout_id,
     COALESCE(c.description, '') AS description,
     c.is_nomatch, c.frames_pace, c.hsm, c.move_count,
+    c.source, c.created_by_pubkey, c.sync_status,
     cs.angle, cs.difficulty_average, cs.quality_average,
     cs.ascensionist_count, cs.benchmark_difficulty
 FROM climbs c
@@ -448,3 +476,79 @@ SELECT p.placement_id, p.x, p.y, l.position AS led_position
 FROM placements p
 JOIN leds l ON p.hole_id = l.hole_id
 WHERE l.product_size_id = ?;
+
+
+-- ═══ FEAT-003 Community-climb queries ═══
+
+-- Insert a freshly-created local climb (source='local', sync_status='draft').
+-- Also writes a default climb_stats row at the chosen angle so the climb
+-- shows up in the browse VIEW immediately.
+insertLocalDraft:
+INSERT INTO climbs(uuid, layout_id, setter_username, name, frames,
+    frames_count, is_listed, edge_left, edge_right, edge_bottom, edge_top, created_at,
+    description, is_nomatch, frames_pace, hsm, move_count,
+    source, created_by_pubkey, frames_hash, sync_status)
+VALUES (?, ?, ?, ?, ?,
+    1, 1, NULL, NULL, NULL, NULL, ?,
+    ?, 0, 0, 0, ?,
+    'local', ?, ?, 'draft');
+
+-- Upsert a community climb received from Nostr (source='nostr').
+upsertCommunityClimb:
+INSERT OR REPLACE INTO climbs(uuid, layout_id, setter_username, name, frames,
+    frames_count, is_listed, edge_left, edge_right, edge_bottom, edge_top, created_at,
+    description, is_nomatch, frames_pace, hsm, move_count,
+    source, nostr_event_id, nostr_d_tag, created_by_pubkey, frames_hash, sync_status)
+VALUES (?, ?, ?, ?, ?,
+    1, 1, NULL, NULL, NULL, NULL, ?,
+    ?, 0, 0, 0, ?,
+    'nostr', ?, ?, ?, ?, 'synced');
+
+-- Flip a draft to "published_nostr" once the relay accepts the event.
+markClimbPublishedNostr:
+UPDATE climbs SET sync_status = 'published_nostr', nostr_event_id = ?, nostr_d_tag = ?
+WHERE uuid = ?;
+
+-- Mark a draft as failed (so the publish queue can retry / surface error).
+markClimbPublishFailed:
+UPDATE climbs SET sync_status = 'failed' WHERE uuid = ?;
+
+-- Drafts waiting to be published (source='local' AND sync_status='draft').
+getDraftClimbs:
+SELECT * FROM climbs
+WHERE source = 'local' AND sync_status IN ('draft', 'failed')
+ORDER BY created_at DESC;
+
+-- All climbs the current user authored (drafts + already-published nostr).
+getMyClimbs:
+SELECT * FROM climbs
+WHERE created_by_pubkey = ?
+ORDER BY created_at DESC;
+
+-- All synced community climbs (source='nostr').
+getCommunityClimbs:
+SELECT * FROM climbs
+WHERE source = 'nostr'
+ORDER BY created_at DESC;
+
+-- Lookup by frames_hash for duplicate detection at publish time.
+findClimbByFramesHash:
+SELECT uuid, name, source, created_by_pubkey FROM climbs
+WHERE frames_hash = ? AND layout_id = ?;
+
+-- Insert/refresh climb_stats for a local climb at a given angle (setter
+-- difficulty + quality not yet aggregated — sets sentinels).
+upsertLocalClimbStat:
+INSERT OR REPLACE INTO climb_stats(climb_uuid, angle, display_difficulty,
+    difficulty_average, quality_average, ascensionist_count, benchmark_difficulty,
+    fa_username, fa_at, official_kilter_difficulty)
+VALUES (?, ?, ?, ?, NULL, 0, NULL, NULL, NULL, NULL);
+
+-- Grade-consensus cache (MVP: setter_grade_id only, vote-aggregation deferred).
+upsertGradeCache:
+INSERT OR REPLACE INTO community_grade_cache(climb_d_tag, angle, setter_grade_id,
+    consensus_average, consensus_grade_id, vote_count, confidence, last_updated)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+
+getGradeCache:
+SELECT * FROM community_grade_cache WHERE climb_d_tag = ? AND angle = ?;

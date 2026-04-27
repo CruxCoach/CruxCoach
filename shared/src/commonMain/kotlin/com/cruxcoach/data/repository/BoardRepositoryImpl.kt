@@ -336,4 +336,156 @@ class BoardRepositoryImpl(
             q.deleteAllBetaLinks()
         }
     }
+
+    // ── Community-climb support (FEAT-003) ──────────────────────
+
+    override fun insertLocalDraft(
+        draft: LocalClimbDraft,
+        layoutId: Long,
+        angle: Long,
+        setterGradeId: Int?,
+    ) {
+        q.transaction {
+            q.insertLocalDraft(
+                uuid = draft.uuid,
+                layout_id = layoutId,
+                setter_username = null,
+                name = draft.name,
+                frames = draft.framesText,
+                created_at = draft.createdAt,
+                description = draft.description,
+                move_count = draft.moveCount,
+                created_by_pubkey = draft.createdByPubkey,
+                frames_hash = draft.framesHash,
+            )
+            // Stub climb_stats so the climb appears in the browse VIEW.
+            // Setter difficulty is the only known signal until vote-aggregation
+            // ships in 0.2.0; quality_average remains NULL.
+            q.upsertLocalClimbStat(
+                climb_uuid = draft.uuid,
+                angle = angle,
+                display_difficulty = setterGradeId?.toDouble(),
+                difficulty_average = setterGradeId?.toDouble(),
+            )
+        }
+    }
+
+    override fun upsertCommunityClimb(
+        uuid: String,
+        layoutId: Long,
+        setterUsername: String?,
+        name: String,
+        framesText: String,
+        description: String,
+        moveCount: Long,
+        nostrEventId: String,
+        nostrDTag: String,
+        createdByPubkey: String,
+        framesHash: String,
+        createdAt: String,
+        angle: Long,
+        difficultyAverage: Double?,
+        qualityAverage: Double?,
+    ) {
+        q.transaction {
+            q.upsertCommunityClimb(
+                uuid = uuid,
+                layout_id = layoutId,
+                setter_username = setterUsername,
+                name = name,
+                frames = framesText,
+                created_at = createdAt,
+                description = description,
+                move_count = moveCount,
+                nostr_event_id = nostrEventId,
+                nostr_d_tag = nostrDTag,
+                created_by_pubkey = createdByPubkey,
+                frames_hash = framesHash,
+            )
+            q.upsertClimbStat(
+                climb_uuid = uuid,
+                angle = angle,
+                display_difficulty = difficultyAverage,
+                difficulty_average = difficultyAverage,
+                quality_average = qualityAverage,
+                ascensionist_count = 0,
+                benchmark_difficulty = null,
+                fa_username = null,
+                fa_at = null,
+                official_kilter_difficulty = null,
+            )
+        }
+    }
+
+    override fun markClimbPublishedNostr(uuid: String, nostrEventId: String, nostrDTag: String) {
+        q.markClimbPublishedNostr(nostr_event_id = nostrEventId, nostr_d_tag = nostrDTag, uuid = uuid)
+    }
+
+    override fun markClimbPublishFailed(uuid: String) {
+        q.markClimbPublishFailed(uuid)
+    }
+
+    override fun getDraftClimbs(): List<CommunityClimbRow> =
+        q.getDraftClimbs().executeAsList().map { it.toCommunityRow() }
+
+    override fun getMyClimbs(pubkey: String): List<CommunityClimbRow> =
+        q.getMyClimbs(pubkey).executeAsList().map { it.toCommunityRow() }
+
+    override fun getCommunityClimbs(): List<CommunityClimbRow> =
+        q.getCommunityClimbs().executeAsList().map { it.toCommunityRow() }
+
+    override fun findClimbByFramesHash(framesHash: String, layoutId: Long): CommunityClimbRow? {
+        val row = q.findClimbByFramesHash(framesHash, layoutId).executeAsOneOrNull() ?: return null
+        // Lightweight projection — we only need uuid + name + source + pubkey for dup-detection
+        return CommunityClimbRow(
+            uuid = row.uuid,
+            name = row.name,
+            setterUsername = null,
+            description = "",
+            framesText = "",
+            source = row.source,
+            syncStatus = "",
+            createdByPubkey = row.created_by_pubkey,
+            nostrEventId = null,
+            nostrDTag = null,
+            framesHash = framesHash,
+            createdAt = null,
+            moveCount = 0,
+        )
+    }
+
+    override fun upsertSetterGrade(
+        climbDTag: String,
+        angle: Long,
+        setterGradeId: Int,
+        lastUpdatedEpochMs: Long,
+    ) {
+        q.upsertGradeCache(
+            climb_d_tag = climbDTag,
+            angle = angle,
+            setter_grade_id = setterGradeId.toLong(),
+            consensus_average = null,
+            consensus_grade_id = null,
+            vote_count = 0,
+            confidence = "LOW",
+            last_updated = lastUpdatedEpochMs,
+        )
+    }
+
+    private fun com.cruxcoach.db.board.Climbs.toCommunityRow(): CommunityClimbRow =
+        CommunityClimbRow(
+            uuid = uuid,
+            name = name,
+            setterUsername = setter_username,
+            description = description,
+            framesText = frames,
+            source = source,
+            syncStatus = sync_status,
+            createdByPubkey = created_by_pubkey,
+            nostrEventId = nostr_event_id,
+            nostrDTag = nostr_d_tag,
+            framesHash = frames_hash,
+            createdAt = created_at,
+            moveCount = move_count,
+        )
 }

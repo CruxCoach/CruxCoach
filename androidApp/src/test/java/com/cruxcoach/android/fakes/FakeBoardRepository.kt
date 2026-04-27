@@ -212,4 +212,14 @@ class FakeBoardRepository : BoardRepository {
     override fun getAllStatKeys(): Map<Pair<String, Long>, Long?> = emptyMap()
     override fun runInTransaction(block: () -> Unit) { block() }
     override fun deleteAllBoardData() { climbs.clear() }
+
+    override fun insertLocalDraft(draft: com.cruxcoach.data.repository.LocalClimbDraft, layoutId: Long, angle: Long, setterGradeId: Int?) {}
+    override fun upsertCommunityClimb(uuid: String, layoutId: Long, setterUsername: String?, name: String, framesText: String, description: String, moveCount: Long, nostrEventId: String, nostrDTag: String, createdByPubkey: String, framesHash: String, createdAt: String, angle: Long, difficultyAverage: Double?, qualityAverage: Double?) {}
+    override fun markClimbPublishedNostr(uuid: String, nostrEventId: String, nostrDTag: String) {}
+    override fun markClimbPublishFailed(uuid: String) {}
+    override fun getDraftClimbs(): List<com.cruxcoach.data.repository.CommunityClimbRow> = emptyList()
+    override fun getMyClimbs(pubkey: String): List<com.cruxcoach.data.repository.CommunityClimbRow> = emptyList()
+    override fun getCommunityClimbs(): List<com.cruxcoach.data.repository.CommunityClimbRow> = emptyList()
+    override fun findClimbByFramesHash(framesHash: String, layoutId: Long): com.cruxcoach.data.repository.CommunityClimbRow? = null
+    override fun upsertSetterGrade(climbDTag: String, angle: Long, setterGradeId: Int, lastUpdatedEpochMs: Long) {}
 }
