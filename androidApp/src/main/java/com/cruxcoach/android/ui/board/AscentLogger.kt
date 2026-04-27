@@ -48,7 +48,7 @@ internal class AscentLogger(
     }
 
     fun updateQuality(quality: Int) {
-        state.update { it.copy(ascent = it.ascent.copy(quality = quality.coerceIn(0, 3))) }
+        state.update { it.copy(ascent = it.ascent.copy(quality = quality.coerceIn(0, 5))) }
     }
 
     fun updateComment(comment: String) {
@@ -131,7 +131,7 @@ internal class AscentLogger(
             editingUuid = ascent.uuid,
             isSend = ascent.isSend,
             bidCount = ascent.bidCount.toInt().coerceAtLeast(1),
-            quality = (ascent.quality?.toInt() ?: 0).coerceIn(0, 3),
+            quality = (ascent.quality?.toInt() ?: 0).coerceIn(0, 5),
             comment = ascent.comment ?: ""
         )) }
     }

@@ -360,7 +360,7 @@ class BoardLogbookViewModel @Inject constructor(
             showEditDialog = true,
             editingAscentUuid = ascent.uuid,
             editBidCount = ascent.bidCount.toInt().coerceAtLeast(1),
-            editQuality = (ascent.quality?.toInt() ?: 0).coerceIn(0, 3),
+            editQuality = (ascent.quality?.toInt() ?: 0).coerceIn(0, 5),
             editComment = ascent.comment ?: ""
         ) }
     }
@@ -374,7 +374,7 @@ class BoardLogbookViewModel @Inject constructor(
     }
 
     fun updateEditQuality(quality: Int) {
-        _state.update { it.copy(editQuality = quality.coerceIn(0, 3)) }
+        _state.update { it.copy(editQuality = quality.coerceIn(0, 5)) }
     }
 
     fun updateEditComment(comment: String) {

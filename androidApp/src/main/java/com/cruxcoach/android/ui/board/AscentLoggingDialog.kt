@@ -112,11 +112,11 @@ internal fun AscentLoggingDialog(
                     ) { Text("+") }
                 }
 
-                // Quality (only for sends, Kilter-compatible 1-3 scale)
+                // Quality (only for sends, Kilter 1-5 stars)
                 if (isSend) {
                     Text(stringResource(R.string.board_ascent_quality), style = MaterialTheme.typography.labelMedium)
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        (1..3).forEach { star ->
+                        (1..5).forEach { star ->
                             IconButton(
                                 onClick = { onQualityChanged(if (quality == star) 0 else star) },
                                 modifier = Modifier.size(36.dp)
