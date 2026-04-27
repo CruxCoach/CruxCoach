@@ -48,10 +48,10 @@ This spec consolidates all CruxCoach tables onto a single convention:
 
 - Rename every `aurora_*` table and every PascalCase table to plural
   snake_case (`aurora_climb` → `climbs`, `NostrMessage` → `nostr_messages`)
-- Drop `aurora_climb.is_deleted` (verified dead column, see §4.1)
 - Drop the `aurora_*` and PascalCase prefix from index names + SQLDelight
-  query files + Kotlin string references
-- Forward-only migration that preserves every row of every table
+  query files (filenames + content) + Kotlin string references
+- Forward-only migration that preserves every row of every table —
+  pure `ALTER TABLE … RENAME TO`, no rebuild dance, no column drops
 - Zero change to wire formats: Cloud Backup envelope (FEAT-002), manual
   JSON export (`CruxCoachBackup`), Aurora JSON import target (FEAT-005),
   Nostr event tags/content (FEAT-003)
@@ -95,9 +95,9 @@ provenance prefixes, and stay.
 
 ### 3.1 Board DB (`shared/.../sqldelight/board/`)
 
-| Today                  | Target           | File-rename: `aurora_*.sq` → ... |
+| Today                  | Target           | File-rename                      |
 | ---------------------- | ---------------- | -------------------------------- |
-| `aurora_climb`         | `climbs`         | `AuroraBoard.sq` → `Climbs.sq` (or split per-table; see §6.1) |
+| `aurora_climb`         | `climbs`         | `AuroraBoard.sq` → `Board.sq`    |
 | `aurora_climb_stat`    | `climb_stats`    | (same file)                      |
 | `aurora_placement`     | `placements`     | (same file)                      |
 | `aurora_hole`          | `holes`          | (same file)                      |
@@ -107,6 +107,19 @@ provenance prefixes, and stay.
 | `aurora_beta_link`     | `beta_links`     | (same file)                      |
 | `aurora_sync_state`    | `sync_states`    | (same file)                      |
 | `board_hold_position`  | `board_hold_positions` | (same file)                |
+
+The `Board.sq` filename keeps the existing single-file-bundles-the-catalog
+pattern; an optional split into per-cluster files (`Climbs.sq`, `Layout.sq`,
+…) is documented in §6.1 — encouraged, not mandated, per Q-D.
+
+**Out of scope in this rename — Aurora-prefixed Kotlin source files.**
+`AuroraBleConnection.kt`, `AuroraBleScanner.kt`, `AuroraBleUuids.kt`,
+`AuroraPacketEncoder.kt`, `AuroraBoard.kt` (the supported-board enum)
+all keep their names. "Aurora" in those files refers to the Aurora-
+Climbing **BLE protocol family** (Kilter / Tension / Decoy / Spire all
+speak the same on-the-wire BLE GATT shape) — that protocol is alive
+and well, and the BLE classes are correctly named. Only the *Aurora API*
+provenance prefix on DB tables is dead and being removed.
 
 ### 3.2 Secure DB (`shared/.../sqldelight/secure/`)
 
@@ -193,13 +206,17 @@ idx_payment_event_recipient / idx_payment_event_ref → idx_payment_events_*
 
 ## 4. Scope: Columns
 
-### 4.1 Drops
+### 4.1 Drops — none in 0.1.4
 
-Verified against current Blossom DB (174,342 rows, 290,891 stat rows, 2026-04-27):
+The only column verified as functionally dead during the 2026-04-27 audit
+was `aurora_climb.is_deleted`. After weighing the SQLite 3.35 minSdk
+constraint (see §5.4), the decision is: **no column drops in 0.1.4**.
 
-| Column                  | Why droppable                                                                                                                     | Status      |
-| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ----------- |
-| `aurora_climb.is_deleted` | Not in Blossom DB schema at all. CruxCoach local cron writes 0 always. UI doesn't read it. Truly dead. | **DROP** (caveat §5.4) |
+| Column                    | Audit verdict                                                                | Decision                |
+| ------------------------- | ---------------------------------------------------------------------------- | ----------------------- |
+| `aurora_climb.is_deleted` | Functionally dead — not in Blossom schema, cron always writes 0, UI ignores | **KEEP** — §5.4 deferred to 0.2.0+ |
+
+§5.2 migration is therefore pure RENAME, no table-rebuild dance needed.
 
 ### 4.2 Originally proposed drops, **REJECTED** after data audit
 
@@ -218,8 +235,9 @@ ORIGINAL Aurora-extracted bundled DB still carries real values:
 These columns hold real Aurora-era data preserved through `build_board_db.py`
 into Blossom and back into CruxCoach via the cron. **Keep all four.**
 
-The schema-diff doc will be amended in a follow-up commit to reflect this
-correction (separate from this spec).
+The audit correction will be recorded in `~/kilter-re/analysis/SCHEMA_DIFF_CRUXCOACH_VS_KILTER.md`
+(private RE workspace, the source-of-truth for that doc). It is NOT
+mirrored into CruxCoach docs — see §13 Q-E.
 
 ### 4.3 Out of scope: column-name renames
 
@@ -323,59 +341,28 @@ do any column rename in this spec (per §4.3), so not relevant.
 Most users on 0.1.4 will be on API < 34. This affects only `is_deleted`
 on `climbs` (§4.1). See §5.4.
 
-### 5.4 `is_deleted` drop strategy
+### 5.4 `is_deleted` drop strategy — DECIDED: leave in place
 
-Two paths:
+**Decision (2026-04-27):** keep the `is_deleted` column on `climbs`. Do
+not drop it in 0.1.4.
 
-**Option A — 12-step rebuild (correct, portable, more risk):**
+Rationale:
+- The column has zero functional impact — nothing reads it, the cron
+  writes 0 unconditionally.
+- Carrying it costs ~4 bytes per row × ~174k rows ≈ 680 KB per
+  user-device-DB. Trivial against a 38-MiB-gzipped catalog.
+- minSdk = 26 → SQLite 3.18 → no `ALTER TABLE DROP COLUMN` (which
+  requires SQLite 3.35 / API 34+). The portable 12-step rebuild
+  (CREATE NEW + INSERT-SELECT + DROP OLD + RENAME) would add 50+ lines
+  of migration SQL with new failure modes (constraint violations,
+  concurrent transaction edge cases) for one cosmetic debt column.
+- A future 0.2.0 spec can pick this up cheaply IF we either bump minSdk
+  to 30+ OR we're already running the rebuild dance for a column rename
+  (`frames_count` → `frame_count` etc.). Until then the column stays.
 
-```sql
-CREATE TABLE climbs_new (
-    uuid TEXT PRIMARY KEY,
-    layout_id INTEGER,
-    setter_username TEXT,
-    name TEXT NOT NULL,
-    frames BLOB AS String NOT NULL,
-    frames_count INTEGER DEFAULT 1,
-    is_listed INTEGER DEFAULT 1,
-    edge_left INTEGER, edge_right INTEGER,
-    edge_bottom INTEGER, edge_top INTEGER,
-    created_at TEXT,
-    description TEXT NOT NULL DEFAULT '',
-    is_nomatch INTEGER DEFAULT 0,
-    frames_pace INTEGER DEFAULT 0,
-    hsm INTEGER DEFAULT 0,
-    move_count INTEGER DEFAULT 0
-    -- is_deleted: GONE
-);
-
-INSERT INTO climbs_new SELECT
-    uuid, layout_id, setter_username, name, frames, frames_count,
-    is_listed, edge_left, edge_right, edge_bottom, edge_top,
-    created_at, description, is_nomatch, frames_pace, hsm, move_count
-FROM climbs;
-
-DROP TABLE climbs;
-ALTER TABLE climbs_new RENAME TO climbs;
-
--- Recreate indexes that were on climbs (auto-dropped with the old table)
-CREATE INDEX idx_climbs_listed ON climbs(is_listed);
-CREATE INDEX idx_climbs_frames_count ON climbs(is_listed, frames_count, uuid);
-```
-
-**Option B — leave `is_deleted` in place (cosmetic-only debt):**
-
-The column has zero functional impact (nothing reads it, cron writes 0).
-Carrying it costs ~4 bytes per row × 174k rows = ~680 KB on a healthy DB.
-Trivial.
-
-**Recommendation: Option B for 0.1.4.** Drop it later in 0.2.0 when
-either (a) we accept minSdk = 30+ (gets us SQLite 3.31), or (b) we're
-already doing a column-rename migration that needs the rebuild dance for
-other reasons. Lower risk now; cheap to do later.
-
-If you disagree, Option A is well-defined and reversible-during-development
-via the SQLDelight verify-migrations golden DB.
+§4.1 status updated: column drop **deferred to 0.2.0+**, not part of
+this spec. The §5.2 migration is therefore pure RENAME — no rebuild
+required.
 
 ### 5.5 SQLCipher consideration
 
@@ -471,11 +458,14 @@ Per the analysis posted to FEAT-006-discussion thread 2026-04-27:
 
 Update:
 - `CONTRIBUTING.md` — naming-convention section (add R1–R4 from §2)
-- `~/kilter-re/analysis/SCHEMA_DIFF_CRUXCOACH_VS_KILTER.md` — note the
-  rename and the Q3 audit-correction (this spec's §4.2)
 - Existing 0.1.4 specs (`FEAT-003`, `FEAT-005`) — update §9.1 and §6
   references that still use `aurora_*` names
 - README / wiki: low-priority, naming is internal
+
+`~/kilter-re/analysis/SCHEMA_DIFF_CRUXCOACH_VS_KILTER.md` lives in the
+private RE workspace, not in the CruxCoach repo. The §4.2 audit
+correction is recorded **only** in the kilter-re doc — not surfaced
+back into CruxCoach (per Q-E decision in §13).
 
 ## 7. Backup, Import, External Compatibility
 
@@ -640,10 +630,10 @@ involves re-encoding column data), spec it then.
 
 ### 9.3 Forward-only is acceptable here
 
-Since the rename is a pure RENAME (no data transformation, no column
-DROP in the recommended Option B path of §5.4), the migration is
-straightforward and unlikely to fail. The strict forward-only stance is
-acceptable.
+Since the rename is a pure `ALTER TABLE … RENAME TO` chain (no data
+transformation, no column drops, no rebuild — see §5.4 decision), the
+migration is straightforward and unlikely to fail. The strict
+forward-only stance is acceptable.
 
 ## 10. PR Sequence
 
@@ -677,7 +667,7 @@ catches the long tail.
 | R1  | Migration silently corrupts data on user device                                       | HIGH     | LOW        | §8.1 unit test + §8.5 real-device smoke + SQLite transaction safety |
 | R2  | Hidden raw SQL string in Kotlin survives find-replace                                 | MED      | MED        | §6.2 grep audit gates the PR (zero hits required)                |
 | R3  | Backup format inadvertently leaks SQL → 0.1.3 backups break on 0.1.4                  | MED      | NEAR-ZERO  | §7.1 verified — wire format is repository-mediated. §8.2 round-trip test confirms |
-| R4  | minSdk 26 lacks `DROP COLUMN` → `is_deleted` drop fails                               | LOW      | n/a        | §5.4 Option B (defer the drop) — recommended path                |
+| R4  | minSdk 26 lacks `DROP COLUMN` → if a column drop is added later, would fail            | n/a      | n/a        | §5.4: no column drops in 0.1.4. R4 is moot for this spec, kept here as a marker for future schema-evolution specs |
 | R5  | Concurrent dev merges during soak break the rename's consistency                      | LOW      | LOW        | §10 sequencing — dev locked to rename-only during soak           |
 | R6  | External tool reads on-device DB                                                      | NONE     | n/a        | Verified maintainer-only access (§7.6)                           |
 | R7  | Some `.sq` query gets the renamed-table name wrong post-refactor                      | LOW      | LOW        | SQLDelight build fails fast on undefined-table reference         |
@@ -710,36 +700,40 @@ Tracked here so they're not forgotten:
   unprefixed, no work needed; preserves backward-compat with all
   CruxCoach versions.
 
-## 13. Open Questions
+## 13. Decisions Recorded
 
-- **Q-A** — Should `BodyStat.sq` be split when renamed to `BodyStats.sq`?
-  Currently 1 table per file; pluralized filename is `BodyStats.sq`.
-  Trivial; no decision blocker. *Default: yes, rename file to match new
-  table.*
+All §13 questions resolved 2026-04-27. None remain open at spec-merge
+time. Recorded for traceability:
 
-- **Q-B** — `aurora_sync_state` table holds `(table_name,
-  last_synchronized_at)` rows. Does the column `table_name` need to be
-  re-mapped during migration? E.g., a row `("aurora_climb",
-  1714000000)` should become `("climbs", 1714000000)` post-migration?
-  Or do we leave the strings as-is and let the next sync replace them?
-  *Default: re-map at migration time via UPDATE statement; no functional
-  difference but keeps semantics clean.*
+- **Q-A — `BodyStat.sq` → `BodyStats.sq` filename rename:** YES
+  (default accepted). One table per file; filename matches table.
 
-- **Q-C** — `BoardSession.sq` filename: rename to `BoardSessions.sq`
-  (matching new table) — yes/no? *Default: yes for consistency; the
-  one-table-per-file pattern ties filename to table name.*
+- **Q-B — `sync_states.table_name` row content rewrite:** YES
+  (default accepted). Migration includes
+  `UPDATE sync_states SET table_name = '<new>' WHERE table_name = '<old>'`
+  for each renamed table. No functional difference (next cron sync
+  would overwrite anyway), but keeps semantics clean during the soak
+  window.
 
-- **Q-D** — Should this spec also recommend adopting a `.sq`
-  one-table-per-file convention going forward? (`AuroraBoard.sq`
-  currently bundles ~10 tables.) *Default: opinion — encourage but don't
-  mandate. Splitting is opt-in and can happen later when the file
-  becomes inconvenient.*
+- **Q-C — `BoardSession.sq` → `BoardSessions.sq` filename rename:** YES
+  (default accepted). Same rationale as Q-A.
 
-- **Q-E** — `kilter_re/.../SCHEMA_DIFF_*.md` correction — does
-  CruxCoach's repo own this doc, or is it kilter-re's? It lives outside
-  the CruxCoach repo. *Default: leave the kilter-re version, but commit
-  the §4.2 audit-correction insight as a paragraph in CruxCoach's
-  CONTRIBUTING under "Naming + schema conventions".*
+- **Q-D — One-table-per-file `.sq` convention:** Encouraged but NOT
+  mandated. `AuroraBoard.sq` (board catalog, ~10 tables) renames to
+  `Board.sq` and stays as a single bundled file in 0.1.4. Per-cluster
+  splits (`Climbs.sq`, `Layout.sq`, `BetaLinks.sq`, `SyncStates.sq`)
+  remain opt-in for a future cleanup.
+
+- **Q-E — Schema-diff doc audit-correction (§4.2 finding) location:**
+  ONLY in `~/kilter-re/analysis/SCHEMA_DIFF_CRUXCOACH_VS_KILTER.md`.
+  No CruxCoach-repo entry. The kilter-re workspace is the
+  reverse-engineering source-of-truth; the public CruxCoach repo
+  doesn't surface RE artefacts.
+
+- **§5.4 — `is_deleted` drop strategy:** Option B (leave column in
+  place). No column drops in this rename. Deferred to 0.2.0+ if a
+  minSdk bump or co-located column-rename ever justifies the rebuild
+  dance. See §4.1 + §5.4 for rationale.
 
 ## 14. Implementation Checklist
 
