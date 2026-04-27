@@ -347,7 +347,6 @@ class BoardClimbDetailViewModel @Inject constructor(
                         val allFrames = BoardClimbParser.parseMultiFrames(climb.frames)
                         val isRoute = allFrames.size > 1
                         val holds = allFrames.firstOrNull() ?: emptyList()
-
                         val placementMap = PerfLogger.trace("loadClimb.placements") {
                             cachedPlacementMap ?: run {
                                 val map = boardRepository.getAllPlacements().associateBy { it.placementId.toInt() }
