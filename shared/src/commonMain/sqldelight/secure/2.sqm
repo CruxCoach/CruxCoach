@@ -1,0 +1,68 @@
+-- Migration from version 2 to 3: drop the `aurora_*` provenance prefix
+-- and snake_case the PascalCase tables (Announcement / NostrMessage /
+-- TrainingSession / etc.) onto the project-wide plural snake_case
+-- convention. See FEAT-006 §3.2, §5.2.
+
+-- ── Tables ──────────────────────────────────────────────────────
+ALTER TABLE aurora_ascent     RENAME TO ascents;
+ALTER TABLE aurora_bid        RENAME TO bids;
+ALTER TABLE Announcement      RENAME TO announcements;
+ALTER TABLE Assessment        RENAME TO assessments;
+ALTER TABLE BodyStat          RENAME TO body_stats;
+ALTER TABLE ClimbLog          RENAME TO climb_logs;
+ALTER TABLE NostrMessage      RENAME TO nostr_messages;
+ALTER TABLE NostrProfile      RENAME TO nostr_profiles;
+ALTER TABLE PaymentEvent      RENAME TO payment_events;
+ALTER TABLE TrainingPlan      RENAME TO training_plans;
+ALTER TABLE TrainingSession   RENAME TO training_sessions;
+ALTER TABLE UserProfile       RENAME TO user_profiles;
+ALTER TABLE WorkoutLog        RENAME TO workout_logs;
+ALTER TABLE board_session     RENAME TO board_sessions;
+ALTER TABLE climb_list        RENAME TO climb_lists;
+ALTER TABLE climb_list_entry  RENAME TO climb_list_entries;
+
+-- ── Indexes — drop old, recreate with new names ─────────────────
+DROP INDEX IF EXISTS idx_announcement_created;
+CREATE INDEX idx_announcements_created ON announcements(created_at);
+
+DROP INDEX IF EXISTS idx_ascent_climb;
+CREATE INDEX idx_ascents_climb ON ascents(climb_uuid);
+
+DROP INDEX IF EXISTS idx_ascent_date;
+CREATE INDEX idx_ascents_date ON ascents(climbed_at);
+
+DROP INDEX IF EXISTS idx_bid_climb;
+CREATE INDEX idx_bids_climb ON bids(climb_uuid);
+
+DROP INDEX IF EXISTS idx_bid_date;
+CREATE INDEX idx_bids_date ON bids(climbed_at);
+
+DROP INDEX IF EXISTS idx_body_stat_date;
+CREATE INDEX idx_body_stats_date ON body_stats(date);
+
+DROP INDEX IF EXISTS idx_body_stat_name_date;
+CREATE INDEX idx_body_stats_name_date ON body_stats(stat_name, date);
+
+DROP INDEX IF EXISTS idx_climb_list_entry_list;
+CREATE INDEX idx_climb_list_entries_list ON climb_list_entries(list_id);
+
+DROP INDEX IF EXISTS idx_climb_list_entry_climb;
+CREATE INDEX idx_climb_list_entries_climb ON climb_list_entries(climb_uuid);
+
+DROP INDEX IF EXISTS idx_nostr_message_type;
+CREATE INDEX idx_nostr_messages_type ON nostr_messages(type);
+
+DROP INDEX IF EXISTS idx_nostr_message_created;
+CREATE INDEX idx_nostr_messages_created ON nostr_messages(created_at);
+
+DROP INDEX IF EXISTS idx_nostr_message_reply;
+CREATE INDEX idx_nostr_messages_reply ON nostr_messages(reply_to_id);
+
+DROP INDEX IF EXISTS idx_nostr_msg_type_dir;
+CREATE INDEX IF NOT EXISTS idx_nostr_messages_type_dir ON nostr_messages(type, direction);
+
+DROP INDEX IF EXISTS idx_payment_event_recipient;
+CREATE INDEX idx_payment_events_recipient ON payment_events(recipient_pubkey);
+
+DROP INDEX IF EXISTS idx_payment_event_ref;
+CREATE INDEX idx_payment_events_ref ON payment_events(event_id);

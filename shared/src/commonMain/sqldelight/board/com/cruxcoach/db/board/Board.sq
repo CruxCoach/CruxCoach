@@ -1,6 +1,9 @@
--- Aurora Climbing Board tables (Kilter, Tension, Grasshopper etc.)
+-- Climbing-board catalog tables.
+-- Schema-shape inherited from Aurora Climbing's original SQLite (climbs,
+-- climb_stats, placements, holes, leds, product_sizes) — that shape is
+-- preserved across Aurora-extracted bundles and the Blossom-mirror cron.
 
-CREATE TABLE aurora_climb (
+CREATE TABLE climbs (
     uuid TEXT NOT NULL PRIMARY KEY,
     layout_id INTEGER NOT NULL,
     setter_username TEXT,
@@ -21,7 +24,7 @@ CREATE TABLE aurora_climb (
     move_count INTEGER NOT NULL DEFAULT 0
 );
 
-CREATE TABLE aurora_climb_stat (
+CREATE TABLE climb_stats (
     climb_uuid TEXT NOT NULL,
     angle INTEGER NOT NULL,
     display_difficulty REAL,
@@ -35,7 +38,7 @@ CREATE TABLE aurora_climb_stat (
     PRIMARY KEY (climb_uuid, angle)
 );
 
-CREATE TABLE board_hold_position (
+CREATE TABLE board_hold_positions (
     hole_id INTEGER NOT NULL,
     product_size_id INTEGER NOT NULL,
     x INTEGER NOT NULL,
@@ -46,7 +49,7 @@ CREATE TABLE board_hold_position (
 );
 
 -- Placement → coordinate mapping (pre-joined from placements + holes)
-CREATE TABLE aurora_placement (
+CREATE TABLE placements (
     placement_id INTEGER NOT NULL PRIMARY KEY,
     hole_id INTEGER NOT NULL,
     set_id INTEGER NOT NULL,
@@ -55,7 +58,7 @@ CREATE TABLE aurora_placement (
 );
 
 -- Board size definitions with edge boundaries for coordinate transformation
-CREATE TABLE aurora_product_size (
+CREATE TABLE product_sizes (
     id INTEGER NOT NULL PRIMARY KEY,
     product_id INTEGER NOT NULL,
     name TEXT NOT NULL,
@@ -67,7 +70,7 @@ CREATE TABLE aurora_product_size (
 );
 
 -- Board images per size+layout+set combination
-CREATE TABLE aurora_board_image (
+CREATE TABLE board_images (
     id INTEGER NOT NULL PRIMARY KEY,
     product_size_id INTEGER NOT NULL,
     layout_id INTEGER NOT NULL,
@@ -75,16 +78,16 @@ CREATE TABLE aurora_board_image (
     image_filename TEXT NOT NULL
 );
 
--- LED position per hole per board size (from Aurora leds table)
-CREATE TABLE aurora_led (
+-- LED position per hole per board size
+CREATE TABLE leds (
     hole_id INTEGER NOT NULL,
     product_size_id INTEGER NOT NULL,
     position INTEGER NOT NULL,
     PRIMARY KEY (hole_id, product_size_id)
 );
 
--- Raw hole coordinates from Aurora API (joined with placements to derive positions)
-CREATE TABLE aurora_hole (
+-- Raw hole coordinates (joined with placements to derive positions)
+CREATE TABLE holes (
     id INTEGER NOT NULL PRIMARY KEY,
     product_size_id INTEGER NOT NULL,
     x INTEGER NOT NULL,
@@ -92,15 +95,15 @@ CREATE TABLE aurora_hole (
     mirrored_hole_id INTEGER
 );
 
-CREATE INDEX idx_aurora_placement_set ON aurora_placement(set_id);
-CREATE INDEX idx_aurora_board_image_size ON aurora_board_image(product_size_id);
+CREATE INDEX idx_placements_set ON placements(set_id);
+CREATE INDEX idx_board_images_size ON board_images(product_size_id);
 
-CREATE TABLE aurora_sync_state (
+CREATE TABLE sync_states (
     table_name TEXT NOT NULL PRIMARY KEY,
     last_synchronized_at TEXT NOT NULL
 );
 
-CREATE TABLE aurora_beta_link (
+CREATE TABLE beta_links (
     id INTEGER NOT NULL PRIMARY KEY,
     climb_uuid TEXT NOT NULL,
     foreign_username TEXT,
@@ -108,23 +111,23 @@ CREATE TABLE aurora_beta_link (
     created_at TEXT
 );
 
-CREATE INDEX idx_aurora_beta_link_climb ON aurora_beta_link(climb_uuid);
-CREATE INDEX idx_aurora_climb_stat_angle ON aurora_climb_stat(angle);
-CREATE INDEX idx_aurora_climb_listed ON aurora_climb(is_listed);
-CREATE INDEX idx_climb_stat_browse ON aurora_climb_stat(
+CREATE INDEX idx_beta_links_climb ON beta_links(climb_uuid);
+CREATE INDEX idx_climb_stats_angle ON climb_stats(angle);
+CREATE INDEX idx_climbs_listed ON climbs(is_listed);
+CREATE INDEX idx_climb_stats_browse ON climb_stats(
     angle, difficulty_average, quality_average, ascensionist_count,
     benchmark_difficulty, climb_uuid
 );
 -- Optimized for default sort (ASCENSIONISTS DESC): angle equality + sort column
 -- lets SQLite scan backward without temp sort for LIMIT queries.
-CREATE INDEX idx_climb_stat_by_popularity ON aurora_climb_stat(
+CREATE INDEX idx_climb_stats_by_popularity ON climb_stats(
     angle, ascensionist_count, difficulty_average, climb_uuid
 );
-CREATE INDEX idx_aurora_climb_frames_count ON aurora_climb(is_listed, frames_count, uuid);
+CREATE INDEX idx_climbs_frames_count ON climbs(is_listed, frames_count, uuid);
 
 -- Covering index for COUNT queries: angle equality → range filters → climb_uuid for JOIN.
 -- Allows SQLite to satisfy countFilteredClimbs entirely from the index (no table lookup).
-CREATE INDEX idx_climb_stat_count_cover ON aurora_climb_stat(
+CREATE INDEX idx_climb_stats_count_cover ON climb_stats(
     angle, ascensionist_count, difficulty_average, benchmark_difficulty, climb_uuid
 );
 
@@ -137,33 +140,33 @@ SELECT
     c.is_nomatch, c.frames_pace, c.hsm, c.move_count,
     cs.angle, cs.difficulty_average, cs.quality_average,
     cs.ascensionist_count, cs.benchmark_difficulty
-FROM aurora_climb c
-INNER JOIN aurora_climb_stat cs ON c.uuid = cs.climb_uuid
+FROM climbs c
+INNER JOIN climb_stats cs ON c.uuid = cs.climb_uuid
 WHERE c.is_listed = 1;
 
 -- Queries
 
 upsertClimb:
-INSERT OR REPLACE INTO aurora_climb(uuid, layout_id, setter_username, name,
+INSERT OR REPLACE INTO climbs(uuid, layout_id, setter_username, name,
     frames_count, is_listed, edge_left, edge_right, edge_bottom, edge_top, created_at,
     description, is_nomatch, frames_pace, hsm, frames, move_count)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 upsertClimbStat:
-INSERT OR REPLACE INTO aurora_climb_stat(climb_uuid, angle, display_difficulty,
+INSERT OR REPLACE INTO climb_stats(climb_uuid, angle, display_difficulty,
     difficulty_average, quality_average, ascensionist_count, benchmark_difficulty,
     fa_username, fa_at, official_kilter_difficulty)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 upsertHoldPosition:
-INSERT OR REPLACE INTO board_hold_position(hole_id, product_size_id, x, y, led_position, placement_id)
+INSERT OR REPLACE INTO board_hold_positions(hole_id, product_size_id, x, y, led_position, placement_id)
 VALUES (?, ?, ?, ?, ?, ?);
 
 upsertSyncState:
-INSERT OR REPLACE INTO aurora_sync_state(table_name, last_synchronized_at) VALUES (?, ?);
+INSERT OR REPLACE INTO sync_states(table_name, last_synchronized_at) VALUES (?, ?);
 
 getSyncState:
-SELECT last_synchronized_at FROM aurora_sync_state WHERE table_name = ?;
+SELECT last_synchronized_at FROM sync_states WHERE table_name = ?;
 
 -- ═══ Browse queries (climb_browse VIEW — JOIN flattened by SQLite) ═══
 
@@ -234,29 +237,29 @@ WHERE uuid IN ?
 getClimbByUuid:
 SELECT c.*, cs.difficulty_average, cs.quality_average, cs.ascensionist_count,
     cs.benchmark_difficulty, cs.fa_username, cs.fa_at
-FROM aurora_climb c
-LEFT JOIN aurora_climb_stat cs ON c.uuid = cs.climb_uuid AND cs.angle = ?
+FROM climbs c
+LEFT JOIN climb_stats cs ON c.uuid = cs.climb_uuid AND cs.angle = ?
 WHERE c.uuid = ?;
 
 countLeds:
-SELECT COUNT(*) FROM aurora_led;
+SELECT COUNT(*) FROM leds;
 
 upsertLed:
-INSERT OR REPLACE INTO aurora_led(hole_id, product_size_id, position) VALUES (?, ?, ?);
+INSERT OR REPLACE INTO leds(hole_id, product_size_id, position) VALUES (?, ?, ?);
 
 getPlacementLedMap:
 SELECT p.placement_id, l.position AS led_position
-FROM aurora_placement p
-JOIN aurora_led l ON p.hole_id = l.hole_id
+FROM placements p
+JOIN leds l ON p.hole_id = l.hole_id
 WHERE l.product_size_id = ?;
 
 countClimbs:
-SELECT COUNT(*) FROM aurora_climb;
+SELECT COUNT(*) FROM climbs;
 
 getClimbCountByAngle:
 SELECT cs.angle, COUNT(*) AS climb_count
-FROM aurora_climb_stat cs
-INNER JOIN aurora_climb c ON c.uuid = cs.climb_uuid
+FROM climb_stats cs
+INNER JOIN climbs c ON c.uuid = cs.climb_uuid
 WHERE c.layout_id = ?
   AND c.is_listed = 1
   AND c.frames_count >= ?
@@ -267,7 +270,7 @@ ORDER BY cs.angle;
 getAnglesForClimb:
 SELECT cs.angle, cs.difficulty_average, cs.quality_average,
     cs.ascensionist_count, cs.benchmark_difficulty
-FROM aurora_climb_stat cs
+FROM climb_stats cs
 WHERE cs.climb_uuid = ?
 ORDER BY cs.angle;
 
@@ -275,8 +278,8 @@ ORDER BY cs.angle;
 -- and filter doesn't need frames_count check (boulder default: frames_count=1).
 countFilteredClimbsFast:
 SELECT COUNT(*)
-FROM aurora_climb_stat cs
-INNER JOIN aurora_climb c ON c.uuid = cs.climb_uuid
+FROM climb_stats cs
+INNER JOIN climbs c ON c.uuid = cs.climb_uuid
 WHERE c.layout_id = ?
   AND cs.angle = ?
   AND cs.difficulty_average >= ? AND cs.difficulty_average <= ?
@@ -286,8 +289,8 @@ WHERE c.layout_id = ?
 
 countFilteredClimbs:
 SELECT COUNT(*)
-FROM aurora_climb_stat cs
-INNER JOIN aurora_climb c ON c.uuid = cs.climb_uuid
+FROM climb_stats cs
+INNER JOIN climbs c ON c.uuid = cs.climb_uuid
 WHERE c.layout_id = ?
   AND cs.angle = ?
   AND c.is_listed = 1
@@ -297,8 +300,8 @@ WHERE c.layout_id = ?
 
 countBenchmarkFilteredClimbs:
 SELECT COUNT(*)
-FROM aurora_climb_stat cs
-INNER JOIN aurora_climb c ON c.uuid = cs.climb_uuid
+FROM climb_stats cs
+INNER JOIN climbs c ON c.uuid = cs.climb_uuid
 WHERE c.layout_id = ?
   AND cs.angle = ?
   AND c.is_listed = 1
@@ -309,8 +312,8 @@ WHERE c.layout_id = ?
 
 countSearchClimbs:
 SELECT COUNT(*)
-FROM aurora_climb c
-INNER JOIN aurora_climb_stat cs ON c.uuid = cs.climb_uuid
+FROM climbs c
+INNER JOIN climb_stats cs ON c.uuid = cs.climb_uuid
 WHERE c.layout_id = ?
   AND (c.name LIKE '%' || ? || '%' OR c.setter_username LIKE '%' || ? || '%')
   AND cs.angle = ?
@@ -319,8 +322,8 @@ WHERE c.layout_id = ?
 
 countBenchmarkSearchClimbs:
 SELECT COUNT(*)
-FROM aurora_climb c
-INNER JOIN aurora_climb_stat cs ON c.uuid = cs.climb_uuid
+FROM climbs c
+INNER JOIN climb_stats cs ON c.uuid = cs.climb_uuid
 WHERE c.layout_id = ?
   AND (c.name LIKE '%' || ? || '%' OR c.setter_username LIKE '%' || ? || '%')
   AND cs.angle = ?
@@ -328,13 +331,13 @@ WHERE c.layout_id = ?
   AND c.frames_count >= ? AND c.frames_count <= ?
   AND cs.benchmark_difficulty > 0;
 
--- ═══ Hold-based search + heatmap queries (query aurora_climb directly) ═══
+-- ═══ Hold-based search + heatmap queries (query climbs directly) ═══
 
 -- Get (uuid, frames) for heatmap computation (Kotlin-side processing).
 getAllFramesForFilter:
 SELECT c.uuid, c.frames
-FROM aurora_climb c
-INNER JOIN aurora_climb_stat cs ON c.uuid = cs.climb_uuid
+FROM climbs c
+INNER JOIN climb_stats cs ON c.uuid = cs.climb_uuid
 WHERE c.layout_id = :layoutId
   AND cs.angle = :angle
   AND c.frames_count >= :minFrames AND c.frames_count <= :maxFrames
@@ -344,105 +347,104 @@ WHERE c.layout_id = :layoutId
 
 -- Placement queries (for board visualization)
 upsertPlacement:
-INSERT OR REPLACE INTO aurora_placement(placement_id, hole_id, set_id, x, y)
+INSERT OR REPLACE INTO placements(placement_id, hole_id, set_id, x, y)
 VALUES (?, ?, ?, ?, ?);
 
 getAllPlacements:
-SELECT * FROM aurora_placement;
+SELECT * FROM placements;
 
 -- Product size queries (for edge boundaries)
 upsertProductSize:
-INSERT OR REPLACE INTO aurora_product_size(id, product_id, name, edge_left, edge_right, edge_bottom, edge_top, image_filename)
+INSERT OR REPLACE INTO product_sizes(id, product_id, name, edge_left, edge_right, edge_bottom, edge_top, image_filename)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?);
 
 getProductSize:
-SELECT * FROM aurora_product_size WHERE id = ?;
+SELECT * FROM product_sizes WHERE id = ?;
 
 getAllProductSizes:
 SELECT id, product_id, name, edge_left, edge_right, edge_bottom, edge_top, image_filename
-FROM aurora_product_size
+FROM product_sizes
 WHERE product_id = :productId
 ORDER BY id;
 
 -- Board image queries
 upsertBoardImage:
-INSERT OR REPLACE INTO aurora_board_image(id, product_size_id, layout_id, set_id, image_filename)
+INSERT OR REPLACE INTO board_images(id, product_size_id, layout_id, set_id, image_filename)
 VALUES (?, ?, ?, ?, ?);
 
 getBoardImages:
-SELECT * FROM aurora_board_image WHERE product_size_id = ? AND layout_id = ?;
+SELECT * FROM board_images WHERE product_size_id = ? AND layout_id = ?;
 
 -- Hole queries (for placement join)
 upsertHole:
-INSERT OR REPLACE INTO aurora_hole(id, product_size_id, x, y, mirrored_hole_id)
+INSERT OR REPLACE INTO holes(id, product_size_id, x, y, mirrored_hole_id)
 VALUES (?, ?, ?, ?, ?);
 
 -- Mirror placement map: originalPlacementId → mirroredPlacementId
 -- Joins placement → hole → mirroredHole → placement (same set_id)
 getMirrorPlacementMap:
 SELECT p1.placement_id AS original_placement_id, p2.placement_id AS mirrored_placement_id
-FROM aurora_placement p1
-JOIN aurora_hole h1 ON p1.hole_id = h1.id
-JOIN aurora_hole h2 ON h1.mirrored_hole_id = h2.id
-JOIN aurora_placement p2 ON p2.hole_id = h2.id AND p2.set_id = p1.set_id
+FROM placements p1
+JOIN holes h1 ON p1.hole_id = h1.id
+JOIN holes h2 ON h1.mirrored_hole_id = h2.id
+JOIN placements p2 ON p2.hole_id = h2.id AND p2.set_id = p1.set_id
 WHERE h1.product_size_id = ?;
 
 -- Delta import helpers: bulk-read existing keys for diff comparison
 getAllClimbUuids:
-SELECT uuid FROM aurora_climb;
+SELECT uuid FROM climbs;
 
 getAllStatKeys:
-SELECT climb_uuid, angle, ascensionist_count FROM aurora_climb_stat;
+SELECT climb_uuid, angle, ascensionist_count FROM climb_stats;
 
 -- Diagnostic: check if a specific climb UUID exists
 climbExistsByUuid:
-SELECT COUNT(*) FROM aurora_climb WHERE uuid = ?;
+SELECT COUNT(*) FROM climbs WHERE uuid = ?;
 
 statExistsByUuid:
-SELECT COUNT(*) FROM aurora_climb_stat WHERE climb_uuid = ?;
+SELECT COUNT(*) FROM climb_stats WHERE climb_uuid = ?;
 
 countStats:
-SELECT COUNT(*) FROM aurora_climb_stat;
+SELECT COUNT(*) FROM climb_stats;
 
 countNomatchClimbs:
-SELECT COUNT(*) FROM aurora_climb WHERE is_nomatch = 1;
+SELECT COUNT(*) FROM climbs WHERE is_nomatch = 1;
 
 -- Bulk delete: public board data (re-downloadable via sync)
 deleteAllClimbs:
-DELETE FROM aurora_climb;
+DELETE FROM climbs;
 
 deleteAllClimbStats:
-DELETE FROM aurora_climb_stat;
+DELETE FROM climb_stats;
 
 deleteAllPlacements:
-DELETE FROM aurora_placement;
+DELETE FROM placements;
 
 deleteAllProductSizes:
-DELETE FROM aurora_product_size;
+DELETE FROM product_sizes;
 
 deleteAllBoardImages:
-DELETE FROM aurora_board_image;
+DELETE FROM board_images;
 
 deleteAllLeds:
-DELETE FROM aurora_led;
+DELETE FROM leds;
 
 deleteAllHoles:
-DELETE FROM aurora_hole;
+DELETE FROM holes;
 
 deleteAllHoldPositions:
-DELETE FROM board_hold_position;
+DELETE FROM board_hold_positions;
 
 deleteAllSyncState:
-DELETE FROM aurora_sync_state;
+DELETE FROM sync_states;
 
 deleteAllBetaLinks:
-DELETE FROM aurora_beta_link;
+DELETE FROM beta_links;
 
 
 -- LED grid with coordinates for animations (joins placement coords + LED positions)
 getAllLedGrid:
 SELECT p.placement_id, p.x, p.y, l.position AS led_position
-FROM aurora_placement p
-JOIN aurora_led l ON p.hole_id = l.hole_id
+FROM placements p
+JOIN leds l ON p.hole_id = l.hole_id
 WHERE l.product_size_id = ?;
-

@@ -1,4 +1,4 @@
-CREATE TABLE UserProfile (
+CREATE TABLE user_profiles (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     age INTEGER NOT NULL,
@@ -17,22 +17,22 @@ CREATE TABLE UserProfile (
 );
 
 insert:
-INSERT INTO UserProfile (name, age, weight_kg, height_cm, ape_index,
+INSERT INTO user_profiles (name, age, weight_kg, height_cm, ape_index,
     max_boulder_grade, max_sport_grade, climbing_years, sessions_per_week,
     available_equipment, injury_history, goals, created_at, updated_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 getById:
-SELECT * FROM UserProfile WHERE id = ?;
+SELECT * FROM user_profiles WHERE id = ?;
 
 getActive:
-SELECT * FROM UserProfile ORDER BY updated_at DESC LIMIT 1;
+SELECT * FROM user_profiles ORDER BY updated_at DESC LIMIT 1;
 
 getAll:
-SELECT * FROM UserProfile ORDER BY updated_at DESC;
+SELECT * FROM user_profiles ORDER BY updated_at DESC;
 
 update:
-UPDATE UserProfile SET
+UPDATE user_profiles SET
     name = ?, age = ?, weight_kg = ?, height_cm = ?, ape_index = ?,
     max_boulder_grade = ?, max_sport_grade = ?, climbing_years = ?,
     sessions_per_week = ?, available_equipment = ?, injury_history = ?,
@@ -40,10 +40,10 @@ UPDATE UserProfile SET
 WHERE id = ?;
 
 deleteById:
-DELETE FROM UserProfile WHERE id = ?;
+DELETE FROM user_profiles WHERE id = ?;
 
 lastInsertRowId:
 SELECT last_insert_rowid();
 
 count:
-SELECT COUNT(*) FROM UserProfile;
+SELECT COUNT(*) FROM user_profiles;

@@ -1,0 +1,17 @@
+CREATE TABLE nostr_profiles (
+    pubkey TEXT NOT NULL PRIMARY KEY,
+    display_name TEXT,
+    lightning_address TEXT,
+    picture_url TEXT,
+    updated_at INTEGER NOT NULL
+);
+
+upsert:
+INSERT OR REPLACE INTO nostr_profiles(pubkey, display_name, lightning_address, picture_url, updated_at)
+VALUES (?, ?, ?, ?, ?);
+
+getByPubkey:
+SELECT * FROM nostr_profiles WHERE pubkey = ?;
+
+getLightningAddress:
+SELECT lightning_address FROM nostr_profiles WHERE pubkey = ?;

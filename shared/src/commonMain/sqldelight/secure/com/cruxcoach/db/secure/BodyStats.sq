@@ -1,0 +1,50 @@
+CREATE TABLE body_stats (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    date TEXT NOT NULL,
+    stat_name TEXT NOT NULL,
+    value REAL NOT NULL,
+    unit TEXT NOT NULL DEFAULT 'kg'
+);
+
+CREATE INDEX idx_body_stats_date ON body_stats(date);
+CREATE INDEX idx_body_stats_name_date ON body_stats(stat_name, date);
+
+insert:
+INSERT INTO body_stats (date, stat_name, value, unit)
+VALUES (?, ?, ?, ?);
+
+getByDate:
+SELECT * FROM body_stats WHERE date = ? ORDER BY stat_name;
+
+getByStatName:
+SELECT * FROM body_stats WHERE stat_name = ? ORDER BY date;
+
+getByStatNameForDateRange:
+SELECT * FROM body_stats WHERE stat_name = ? AND date BETWEEN ? AND ?
+ORDER BY date;
+
+getLatestByStatName:
+SELECT * FROM body_stats WHERE stat_name = ?
+ORDER BY date DESC LIMIT 1;
+
+getAll:
+SELECT * FROM body_stats ORDER BY date DESC, stat_name;
+
+getAllDates:
+SELECT DISTINCT date FROM body_stats ORDER BY date DESC;
+
+getByDateAndStatName:
+SELECT * FROM body_stats WHERE date = ? AND stat_name = ? LIMIT 1;
+
+deleteById:
+DELETE FROM body_stats WHERE id = ?;
+
+deleteByDateAndStatName:
+DELETE FROM body_stats WHERE date = ? AND stat_name = ?;
+
+upsert:
+INSERT OR REPLACE INTO body_stats (id, date, stat_name, value, unit)
+VALUES (
+    (SELECT id FROM body_stats WHERE date = ? AND stat_name = ?),
+    ?, ?, ?, ?
+);

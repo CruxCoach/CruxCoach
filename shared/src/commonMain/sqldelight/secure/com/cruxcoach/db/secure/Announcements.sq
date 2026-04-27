@@ -1,0 +1,30 @@
+CREATE TABLE announcements (
+    id TEXT NOT NULL PRIMARY KEY,
+    content TEXT NOT NULL,
+    category TEXT NOT NULL DEFAULT 'general',
+    priority TEXT NOT NULL DEFAULT 'default',
+    created_at INTEGER NOT NULL,
+    read INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX idx_announcements_created ON announcements(created_at);
+
+insert:
+INSERT OR IGNORE INTO announcements(id, content, category, priority, created_at, read)
+VALUES (?, ?, ?, ?, ?, ?);
+
+getAll:
+SELECT * FROM announcements ORDER BY created_at DESC;
+
+getById:
+SELECT * FROM announcements WHERE id = ?;
+
+getUnreadCount:
+SELECT COUNT(*) FROM announcements WHERE read = 0;
+
+markRead:
+UPDATE announcements SET read = 1 WHERE id = ?;
+
+markAllRead:
+UPDATE announcements SET read = 1 WHERE read = 0;
+

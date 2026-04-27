@@ -1,4 +1,4 @@
-CREATE TABLE ClimbLog (
+CREATE TABLE climb_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     workout_log_id INTEGER,
     date TEXT NOT NULL,
@@ -12,48 +12,48 @@ CREATE TABLE ClimbLog (
     board_angle INTEGER,
     board_climb_external_id TEXT,
     notes TEXT,
-    FOREIGN KEY (workout_log_id) REFERENCES WorkoutLog(id)
+    FOREIGN KEY (workout_log_id) REFERENCES workout_logs(id)
 );
 
 insert:
-INSERT INTO ClimbLog (workout_log_id, date, grade, style, hold_types,
+INSERT INTO climb_logs (workout_log_id, date, grade, style, hold_types,
     attempts, sent, flash, board_type, board_angle,
     board_climb_external_id, notes)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 getById:
-SELECT * FROM ClimbLog WHERE id = ?;
+SELECT * FROM climb_logs WHERE id = ?;
 
 getForWorkout:
-SELECT * FROM ClimbLog WHERE workout_log_id = ? ORDER BY id;
+SELECT * FROM climb_logs WHERE workout_log_id = ? ORDER BY id;
 
 getSendsForDateRange:
-SELECT * FROM ClimbLog WHERE sent = 1 AND date BETWEEN ? AND ?
+SELECT * FROM climb_logs WHERE sent = 1 AND date BETWEEN ? AND ?
 ORDER BY grade DESC;
 
 getGradePyramid:
-SELECT grade, COUNT(*) AS count FROM ClimbLog
+SELECT grade, COUNT(*) AS count FROM climb_logs
 WHERE sent = 1 GROUP BY grade ORDER BY grade;
 
 getFlashRate:
 SELECT grade,
     COUNT(CASE WHEN flash = 1 THEN 1 END) * 100.0 / COUNT(*) AS flash_pct
-FROM ClimbLog WHERE sent = 1
+FROM climb_logs WHERE sent = 1
 GROUP BY grade ORDER BY grade;
 
 getStyleDistribution:
-SELECT style, COUNT(*) AS count FROM ClimbLog
+SELECT style, COUNT(*) AS count FROM climb_logs
 WHERE style IS NOT NULL GROUP BY style;
 
 getRecentHighestGrade:
-SELECT MAX(grade) AS max_grade FROM ClimbLog
+SELECT MAX(grade) AS max_grade FROM climb_logs
 WHERE sent = 1 AND date >= date('now', '-30 days');
 
 getAll:
-SELECT * FROM ClimbLog ORDER BY date DESC;
+SELECT * FROM climb_logs ORDER BY date DESC;
 
 lastInsertRowId:
 SELECT last_insert_rowid();
 
 deleteById:
-DELETE FROM ClimbLog WHERE id = ?;
+DELETE FROM climb_logs WHERE id = ?;

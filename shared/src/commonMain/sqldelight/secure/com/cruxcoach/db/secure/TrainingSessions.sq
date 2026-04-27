@@ -1,4 +1,4 @@
-CREATE TABLE TrainingSession (
+CREATE TABLE training_sessions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     plan_id INTEGER NOT NULL,
     day_of_week INTEGER NOT NULL,
@@ -7,25 +7,25 @@ CREATE TABLE TrainingSession (
     target_duration_min INTEGER NOT NULL,
     target_rpe REAL NOT NULL,
     notes TEXT,
-    FOREIGN KEY (plan_id) REFERENCES TrainingPlan(id)
+    FOREIGN KEY (plan_id) REFERENCES training_plans(id)
 );
 
 insert:
-INSERT INTO TrainingSession (plan_id, day_of_week, session_type,
+INSERT INTO training_sessions (plan_id, day_of_week, session_type,
     exercises, target_duration_min, target_rpe, notes)
 VALUES (?, ?, ?, ?, ?, ?, ?);
 
 getById:
-SELECT * FROM TrainingSession WHERE id = ?;
+SELECT * FROM training_sessions WHERE id = ?;
 
 getForPlan:
-SELECT * FROM TrainingSession WHERE plan_id = ? ORDER BY day_of_week;
+SELECT * FROM training_sessions WHERE plan_id = ? ORDER BY day_of_week;
 
 getForPlanAndDay:
-SELECT * FROM TrainingSession WHERE plan_id = ? AND day_of_week = ?;
+SELECT * FROM training_sessions WHERE plan_id = ? AND day_of_week = ?;
 
 lastInsertRowId:
 SELECT last_insert_rowid();
 
 deleteForPlan:
-DELETE FROM TrainingSession WHERE plan_id = ?;
+DELETE FROM training_sessions WHERE plan_id = ?;

@@ -1,4 +1,4 @@
-CREATE TABLE Assessment (
+CREATE TABLE assessments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
     date TEXT NOT NULL,
@@ -11,26 +11,26 @@ CREATE TABLE Assessment (
     flexibility_score INTEGER DEFAULT 3,
     board_import_summary TEXT,
     notes TEXT,
-    FOREIGN KEY (user_id) REFERENCES UserProfile(id)
+    FOREIGN KEY (user_id) REFERENCES user_profiles(id)
 );
 
 insert:
-INSERT INTO Assessment (user_id, date, max_hang_20mm_kg, max_hang_pct_bw,
+INSERT INTO assessments (user_id, date, max_hang_20mm_kg, max_hang_pct_bw,
     weighted_pullup_kg, pullup_max_reps, push_up_max_reps,
     core_hold_sec, flexibility_score, board_import_summary, notes)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 getById:
-SELECT * FROM Assessment WHERE id = ?;
+SELECT * FROM assessments WHERE id = ?;
 
 getLatestForUser:
-SELECT * FROM Assessment WHERE user_id = ? ORDER BY date DESC LIMIT 1;
+SELECT * FROM assessments WHERE user_id = ? ORDER BY date DESC LIMIT 1;
 
 getAllForUser:
-SELECT * FROM Assessment WHERE user_id = ? ORDER BY date DESC;
+SELECT * FROM assessments WHERE user_id = ? ORDER BY date DESC;
 
 lastInsertRowId:
 SELECT last_insert_rowid();
 
 deleteById:
-DELETE FROM Assessment WHERE id = ?;
+DELETE FROM assessments WHERE id = ?;
