@@ -25,6 +25,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.cruxcoach.android.nostr.backup.BackupErrorReason
+import com.cruxcoach.android.nostr.backup.DeleteRemoteNote
+import com.cruxcoach.android.ui.board.sync.BoardSyncInlineCard
 import com.cruxcoach.android.ui.common.RestTimerBannerSlot
 import com.cruxcoach.android.ui.common.SyncStatusBannerSlot
 import com.cruxcoach.android.ui.common.BleStatusArea
@@ -39,7 +42,6 @@ fun SettingsScreen(
     onNavigateBack: () -> Unit,
     onNavigateToProfile: () -> Unit,
     onNavigateToAppShare: () -> Unit,
-    onNavigateToSync: () -> Unit,
     onNavigateToImport: () -> Unit = {},
     onNavigateToExport: () -> Unit = {},
     onNavigateToChat: () -> Unit = {},
@@ -49,9 +51,11 @@ fun SettingsScreen(
     onNavigateToCrashReports: () -> Unit = {},
     onNavigateToKeyManagement: () -> Unit = {},
     onDonateClick: () -> Unit = {},
-    viewModel: SettingsViewModel = hiltViewModel()
+    viewModel: SettingsViewModel = hiltViewModel(),
+    backupViewModel: BackupSettingsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val backupState by backupViewModel.state.collectAsStateWithLifecycle()
 
     // Hoisted to top level (not inside Scaffold content) so they survive the
     // isLoading guard and are restored by the NavBackStackEntry SavedStateHolder
@@ -118,6 +122,9 @@ fun SettingsScreen(
         LaunchedEffect(Unit) { viewModel.loadProductSizes() }
 
         if (showBoardModelDialog) {
+            // No onNavigateToSync — the sync card lives in the Data section
+            // on this very screen, so the dialog's DB-empty branch falls
+            // back to "Schließen"; the user scrolls to the sync card.
             BoardModelSelectionDialog(
                 productSizes = state.productSizes,
                 selectedId = state.boardProductSizeId,
@@ -127,10 +134,6 @@ fun SettingsScreen(
                     showBoardModelDialog = false
                 },
                 onDismiss = { showBoardModelDialog = false },
-                onNavigateToSync = {
-                    showBoardModelDialog = false
-                    onNavigateToSync()
-                }
             )
         }
 
@@ -151,8 +154,10 @@ fun SettingsScreen(
                     DisplaySection(
                         gradeScale = state.gradeScale,
                         darkMode = state.darkMode,
+                        keepScreenOn = state.keepScreenOn,
                         onGradeScaleChange = { viewModel.updateGradeScale(it) },
-                        onDarkModeChange = { viewModel.updateDarkMode(it) }
+                        onDarkModeChange = { viewModel.updateDarkMode(it) },
+                        onKeepScreenOnChange = { viewModel.updateKeepScreenOn(it) },
                     )
                 }
             }
@@ -169,10 +174,10 @@ fun SettingsScreen(
                     )
                     HorizontalDivider()
                     BleAutoDisconnectSection(
-                        bleAutoDisconnectMinutes = state.bleAutoDisconnectMinutes,
-                        keepScreenOn = state.keepScreenOn,
+                        bleAutoDisconnectSeconds = state.bleAutoDisconnectSeconds,
+                        quickBoardSend = state.quickBoardSend,
                         onAutoDisconnectChange = { viewModel.updateBleAutoDisconnect(it) },
-                        onKeepScreenOnChange = { viewModel.updateKeepScreenOn(it) }
+                        onQuickBoardSendChange = { viewModel.updateQuickBoardSend(it) },
                     )
                     HorizontalDivider()
                     ClimbSharingSection(
@@ -233,28 +238,51 @@ fun SettingsScreen(
             HorizontalDivider()
 
             // Section 3: Datenverwaltung
+            //
+            // Ordering reflects how the user thinks about their data, not
+            // our internal implementation split:
+            //   1. Board sync  — public community data (unrelated concern).
+            //   2. Encrypted cloud backup (Nostr+Blossom internally) — primary backup flow; opt-in, ongoing.
+            //   3. Import / Export — manual backup variant (file-based).
+            //   4. Delete Board / User data — destructive, parked at the
+            //      bottom so the user scrolls PAST both backup variants
+            //      before encountering it.
             CollapsibleHeader(stringResource(R.string.settings_section_data), dataExpanded) { dataExpanded = !dataExpanded }
             AnimatedVisibility(visible = dataExpanded) {
                 Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     BoardSyncSection(
                         syncInterval = state.syncInterval,
-                        lastSyncTimestamp = state.lastSyncTimestamp,
                         onSyncIntervalChange = { viewModel.updateSyncInterval(it) },
-                        onNavigateToSync = onNavigateToSync
+                    )
+                    // Inline sync card: download, progress, re-sync, model
+                    // selection — no navigation hop to a dedicated screen.
+                    BoardSyncInlineCard()
+                    HorizontalDivider()
+                    BackupSettingsSection(
+                        state = backupState,
+                        onSetBackupEnabled = { backupViewModel.setBackupEnabled(it) },
+                        onSetInterval = { backupViewModel.setInterval(it) },
+                        onRunBackupNow = { backupViewModel.runBackupNow() },
+                        onTriggerRestore = { backupViewModel.triggerManualRestore() },
+                        onRequestDeleteRemote = { backupViewModel.requestDeleteRemoteBackups() },
+                        onNavigateToKeyManagement = onNavigateToKeyManagement,
                     )
                     HorizontalDivider()
-                    DataManagementSection(
-                        showDeleteBoardDataDialog = state.showDeleteBoardDataDialog,
-                        showDeleteUserDataDialog = state.showDeleteUserDataDialog,
+                    DataImportExportSection(
                         deleteSuccess = state.deleteSuccess,
                         onNavigateToImport = onNavigateToImport,
                         onNavigateToExport = onNavigateToExport,
+                        onDismissDeleteSuccess = { viewModel.dismissDeleteSuccess() },
+                    )
+                    HorizontalDivider()
+                    DataDeletionSection(
+                        showDeleteBoardDataDialog = state.showDeleteBoardDataDialog,
+                        showDeleteUserDataDialog = state.showDeleteUserDataDialog,
                         onShowDeleteBoardDataDialog = { viewModel.showDeleteBoardDataDialog() },
                         onShowDeleteUserDataDialog = { viewModel.showDeleteUserDataDialog() },
                         onDismissDeleteDialog = { viewModel.dismissDeleteDialog() },
-                        onDismissDeleteSuccess = { viewModel.dismissDeleteSuccess() },
                         onDeleteBoardData = { viewModel.deleteBoardData() },
-                        onDeleteUserBoardData = { viewModel.deleteUserBoardData() }
+                        onDeleteUserBoardData = { viewModel.deleteUserBoardData() },
                     )
                 }
             }
@@ -326,6 +354,88 @@ fun SettingsScreen(
             Spacer(modifier = Modifier.height(16.dp))
         }
     }
+
+    // FEAT-002: Restore confirmation + negative-outcome dialogs rendered
+    // outside the Scaffold content so they overlay the full screen.
+    backupState.pendingRestore?.let { info ->
+        BackupRestoreDialog(
+            info = info,
+            onConfirm = { backupViewModel.confirmRestore() },
+            onDismiss = { backupViewModel.dismissRestoreDialog() },
+        )
+    }
+    if (backupState.showDeleteRemoteConfirm) {
+        DeleteRemoteBackupsDialog(
+            onConfirm = { backupViewModel.confirmDeleteRemoteBackups() },
+            onDismiss = { backupViewModel.dismissDeleteRemoteConfirm() },
+        )
+    }
+    backupState.snackbar?.let { snackbar ->
+        val message: String = when (snackbar) {
+            BackupSettingsState.Snackbar.NoBackupFound ->
+                stringResource(R.string.settings_backup_no_backup_found)
+            BackupSettingsState.Snackbar.CheckDecryptFailed ->
+                stringResource(R.string.settings_backup_check_decrypt_failed)
+            BackupSettingsState.Snackbar.BlobUnreachable ->
+                stringResource(R.string.settings_backup_blob_unreachable)
+            is BackupSettingsState.Snackbar.CheckError ->
+                stringResource(R.string.settings_backup_check_error, snackbar.detail)
+            BackupSettingsState.Snackbar.RestoreFailed ->
+                stringResource(R.string.settings_backup_restore_failed)
+            BackupSettingsState.Snackbar.BackupSucceeded ->
+                stringResource(R.string.settings_backup_succeeded)
+            is BackupSettingsState.Snackbar.BackupFailed ->
+                snackbar.reason?.let { localizedBackupErrorReason(it) }
+                    ?: stringResource(R.string.settings_backup_failed)
+            is BackupSettingsState.Snackbar.RemoteBackupsDeleted -> {
+                // Compose a multi-line report: how many relays /
+                // Blossom servers ack'd the deletion, plus the honest
+                // Nostr-deletion caveat that third-party mirrors may
+                // still retain copies.
+                val ok = snackbar.notes.isEmpty() &&
+                    snackbar.relaysAttempted > 0 &&
+                    snackbar.relaysAccepted == snackbar.relaysAttempted &&
+                    (snackbar.blossomAttempted == 0 ||
+                        snackbar.blossomAccepted == snackbar.blossomAttempted)
+                val header = stringResource(
+                    if (ok) R.string.settings_backup_delete_remote_done_header
+                    else R.string.settings_backup_delete_remote_partial_header,
+                )
+                val relayLine = stringResource(
+                    R.string.settings_backup_delete_remote_relays_line,
+                    snackbar.relaysAccepted,
+                    snackbar.relaysAttempted,
+                )
+                val blossomLine = if (snackbar.blossomAttempted == 0) {
+                    stringResource(R.string.settings_backup_delete_remote_no_blob)
+                } else {
+                    stringResource(
+                        R.string.settings_backup_delete_remote_blossom_line,
+                        snackbar.blossomAccepted,
+                        snackbar.blossomAttempted,
+                    )
+                }
+                val caveat = stringResource(R.string.settings_backup_delete_remote_caveat)
+                // Resolve each note's localized text BEFORE joinToString —
+                // joinToString's transform lambda is not a @Composable
+                // scope, so stringResource(...) calls inside it would fail
+                // to compile.
+                val localizedNotes = snackbar.notes.map { localizedDeleteRemoteNote(it) }
+                val notesBlock = if (localizedNotes.isEmpty()) "" else
+                    "\n\n" + localizedNotes.joinToString("\n") { "• $it" }
+                "$header\n\n$relayLine\n$blossomLine\n\n$caveat$notesBlock"
+            }
+        }
+        AlertDialog(
+            onDismissRequest = { backupViewModel.consumeSnackbar() },
+            confirmButton = {
+                TextButton(onClick = { backupViewModel.consumeSnackbar() }) {
+                    Text(stringResource(R.string.action_close))
+                }
+            },
+            text = { Text(message) },
+        )
+    }
 }
 
 @Composable
@@ -353,4 +463,66 @@ private fun CollapsibleHeader(
             tint = OrangeAccent
         )
     }
+}
+
+/**
+ * Map a [BackupErrorReason] to its locale-aware user-facing string.
+ * The dev-facing English form is in `BackupException.message` (logcat /
+ * crash reports); this composable owns the user-visible text.
+ */
+@Composable
+private fun localizedBackupErrorReason(reason: BackupErrorReason): String = when (reason) {
+    is BackupErrorReason.BlobUploadFailed -> if (reason.authDetail.isNullOrBlank()) {
+        stringResource(R.string.backup_error_blob_upload_failed, reason.total)
+    } else {
+        stringResource(
+            R.string.backup_error_blob_upload_failed_with_detail,
+            reason.total,
+            reason.authDetail,
+        )
+    }
+    BackupErrorReason.AmberNeedsAutoApprove ->
+        stringResource(R.string.backup_error_amber_needs_auto_approve)
+    is BackupErrorReason.BlobNotVisibleAfterUpload ->
+        stringResource(R.string.backup_error_blob_not_visible, reason.total)
+    is BackupErrorReason.PointerEventNotDurable ->
+        stringResource(R.string.backup_error_pointer_not_durable, reason.attempted)
+    is BackupErrorReason.KeyEventNotDurable ->
+        stringResource(R.string.backup_error_key_event_not_durable, reason.attempted)
+    BackupErrorReason.DataKeyUnwrapFailed ->
+        stringResource(R.string.backup_error_data_key_unwrap_failed)
+    BackupErrorReason.PointerListsNoUsableServers ->
+        stringResource(R.string.backup_error_pointer_lists_no_servers)
+    is BackupErrorReason.PlaintextSizeCap ->
+        stringResource(R.string.backup_error_plaintext_size_cap)
+    BackupErrorReason.KeyFetchAmbiguous ->
+        stringResource(R.string.backup_error_key_fetch_ambiguous)
+    // Fall-through `Other` carries an unstructured string that is dev-
+    // facing only; route it through the existing generic-detail string
+    // so the user sees a localized prefix instead of just the raw text.
+    is BackupErrorReason.Other ->
+        stringResource(R.string.settings_backup_failed_detail, reason.message)
+}
+
+/** Map a [DeleteRemoteNote] to its locale-aware bullet text in the opt-out report dialog. */
+@Composable
+private fun localizedDeleteRemoteNote(note: DeleteRemoteNote): String = when (note) {
+    DeleteRemoteNote.DTagDerivationFailed ->
+        stringResource(R.string.delete_remote_note_dtag_derivation_failed)
+    DeleteRemoteNote.NoWriteRelays ->
+        stringResource(R.string.delete_remote_note_no_write_relays)
+    DeleteRemoteNote.NoRelayAcceptedDeletion ->
+        stringResource(R.string.delete_remote_note_no_relay_accepted)
+    is DeleteRemoteNote.PartialRelayAccept ->
+        stringResource(R.string.delete_remote_note_partial_relay_accept, note.accepted, note.attempted)
+    DeleteRemoteNote.RelayPublishThrew ->
+        stringResource(R.string.delete_remote_note_relay_publish_threw)
+    DeleteRemoteNote.BlossomAuthFailed ->
+        stringResource(R.string.delete_remote_note_blossom_auth_failed)
+    DeleteRemoteNote.BlossomFullyRejected ->
+        stringResource(R.string.delete_remote_note_blossom_fully_rejected)
+    is DeleteRemoteNote.BlossomPartial ->
+        stringResource(R.string.delete_remote_note_blossom_partial, note.accepted, note.attempted)
+    is DeleteRemoteNote.UnexpectedError ->
+        stringResource(R.string.delete_remote_note_unexpected_error, note.type)
 }

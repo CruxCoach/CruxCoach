@@ -60,6 +60,22 @@ The following are out of scope:
 - SQLCipher key material is excluded from Android cloud backup and device transfer
 - Nostr keys are excluded from backup
 
+### Encrypted Cloud Backup (FEAT-002, 0.1.3+)
+- **Opt-in only.** Off by default; enabled per-identity via the onboarding flow, the *what's new* upgrade dialog, or *Settings → Encrypted cloud backup*.
+- **Three-layer envelope, all gated by your Nostr key:**
+  1. *Blob* — `gzip(SQLCipher database)` encrypted with a per-backup random 32-byte data key via **AES-256-GCM**, uploaded to [Blossom](https://github.com/hzrd149/blossom) storage servers (SHA-256 content-addressed, BUD-06 headers). The dataKey itself never reaches a server.
+  2. *Backup pointer* — Kind-30078 (NIP-78 replaceable parameterized) Nostr event signed by your key. Content is NIP-44-v2-self-encrypted JSON listing the blob's SHA-256 and the Blossom servers holding it. d-tag `cruxcoach/backup/v1`. Published to your NIP-65 write-relays.
+  3. *DataKey wrap* — Kind-30078 Nostr event signed by your key. Content is NIP-44-v2-self-encrypted, holding the dataKey hex. d-tag `cruxcoach/key/v1`.
+- **NIP-44 v2 envelope.** Per-conversation key derived from ECDH(nsec, recipient pubkey) → HKDF-SHA-256 → ChaCha20 stream cipher + HMAC-SHA-256 (encrypt-then-MAC). For *self-encryption* the recipient is the user's own pubkey, so only the holder of the same nsec can re-derive the shared secret and decrypt the wrapped dataKey.
+- **Only your Nostr private key unlocks the chain.** Restore on a new device fetches both events from relays, NIP-44-decrypts them to recover (pointer, dataKey), downloads the blob from any listed Blossom server, verifies SHA-256, and AES-256-GCM-decrypts. No additional password, no server-side decryption help.
+- **Remote persistence is one-way.** Cloud backups survive every local-only action — app uninstall, *Clear app data*, identity switch (Local ↔ Amber), board-data deletion. The only path that touches remote is *Settings → Delete remote backups…*, gated by an explicit confirmation dialog with caveats spelled out.
+- **No backdoor.** The maintainer cannot decrypt your backup, recover your key, or access your account by any technical means built into the app.
+
+### User Responsibility — Key Storage
+The Nostr key (= the CruxCoach Account key, surfaced in *Settings → CruxCoach Account*) is a **single point of recovery** for both the account and any cloud backup encrypted with it. The app warns about this prominently on every backup-enable surface (onboarding, *what's new*, settings) and on the account screen, with a single canonical place to view + copy the key.
+
+If a user loses their device without having stored the key elsewhere (a password manager, Amber's own backup, paper, etc.), neither their account nor their cloud backup can be restored — by them, by us, or by anyone else. This is by design: there is no centralised account that could be reset, and there is no master key that could decrypt third-party backups.
+
 ---
 
 ## Supported Versions

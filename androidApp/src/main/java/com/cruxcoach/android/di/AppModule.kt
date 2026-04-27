@@ -393,6 +393,20 @@ object AppModule {
         }
     }
 
+    // --- Coroutine dispatchers ---
+
+    /**
+     * Exposed so classes that create their own CoroutineScope (e.g.
+     * [com.cruxcoach.android.updater.UpdaterRepository]) can have the
+     * dispatcher swapped out in tests without the scope being hard-coded
+     * against [kotlinx.coroutines.Dispatchers.IO].
+     */
+    @Provides
+    @Singleton
+    @Named("io")
+    fun provideIoDispatcher(): kotlinx.coroutines.CoroutineDispatcher =
+        kotlinx.coroutines.Dispatchers.IO
+
     // --- Nostr Communication ---
 
     @Provides
@@ -404,6 +418,12 @@ object AppModule {
                 .connectTimeout(10, TimeUnit.SECONDS)
                 .readTimeout(10, TimeUnit.SECONDS)
                 .writeTimeout(10, TimeUnit.SECONDS)
+                // Hard upper bound on a single call. Per-segment timeouts above
+                // reset on every byte received, so a slow-loris server can hold
+                // a connection open indefinitely; callTimeout caps total wall
+                // time. 60s comfortably covers a 13 MB Blossom upload at slow
+                // mobile speeds while bounding the worst case.
+                .callTimeout(60, TimeUnit.SECONDS)
                 .pingInterval(30, TimeUnit.SECONDS)
                 .build()
         }
@@ -427,6 +447,73 @@ object AppModule {
     @Singleton
     fun provideNostrRelayPool(@Named("nostr") okHttpClient: OkHttpClient): NostrRelayPool {
         return PerfLogger.trace("DI: NostrRelayPool") { NostrRelayPool(okHttpClient) }
+    }
+
+    // --- FEAT-001: NIP-65 relay discovery ---
+
+    @Provides
+    @Singleton
+    @Named("relayDiscovery")
+    fun provideRelayDiscoveryScope(): kotlinx.coroutines.CoroutineScope {
+        return kotlinx.coroutines.CoroutineScope(
+            kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO
+        )
+    }
+
+    @Provides
+    @Singleton
+    fun provideNip65RelayListFetcher(
+        @Named("nostr") okHttpClient: OkHttpClient,
+    ): com.cruxcoach.android.nostr.relaydiscovery.Nip65RelayListFetcher {
+        return com.cruxcoach.android.nostr.relaydiscovery.Nip65RelayListFetcher(okHttpClient)
+    }
+
+    @Provides
+    @Singleton
+    fun provideRelayListCache(
+        dataStore: DataStore<Preferences>,
+    ): com.cruxcoach.android.nostr.relaydiscovery.RelayListCache {
+        return com.cruxcoach.android.nostr.relaydiscovery.RelayListCache(dataStore)
+    }
+
+    @Provides
+    @Singleton
+    fun provideRelayListPubkeyProvider(
+        keyStore: NostrKeyStore,
+    ): com.cruxcoach.android.nostr.relaydiscovery.RelayListResolver.PubkeyProvider {
+        return com.cruxcoach.android.nostr.relaydiscovery.RelayListResolver.PubkeyProvider {
+            if (!keyStore.hasKey()) null
+            else keyStore.getOrCreateKeyPair().pubKey
+                .joinToString("") { "%02x".format(it) }
+        }
+    }
+
+    @Provides
+    @Singleton
+    fun provideRelayListResolver(
+        fetcher: com.cruxcoach.android.nostr.relaydiscovery.Nip65RelayListFetcher,
+        cache: com.cruxcoach.android.nostr.relaydiscovery.RelayListCache,
+        pool: NostrRelayPool,
+        pubkeyProvider: com.cruxcoach.android.nostr.relaydiscovery.RelayListResolver.PubkeyProvider,
+        keyStore: NostrKeyStore,
+        userPreferences: UserPreferences,
+        @Named("relayDiscovery") scope: kotlinx.coroutines.CoroutineScope,
+    ): com.cruxcoach.android.nostr.relaydiscovery.RelayListResolver {
+        return PerfLogger.trace("DI: RelayListResolver") {
+            val resolver = com.cruxcoach.android.nostr.relaydiscovery.RelayListResolver(
+                fetcher = fetcher,
+                cache = cache,
+                pool = pool,
+                pubkeyProvider = pubkeyProvider,
+                userPreferences = userPreferences,
+                appScope = scope,
+            )
+            // Listener registration lives outside `init` so tests can mock
+            // the resolver's collaborators without tripping over a real
+            // KeyStore's internal state.
+            keyStore.addKeyChangeListener(resolver)
+            resolver
+        }
     }
 
     @Provides
@@ -688,6 +775,9 @@ object AppModule {
         return OkHttpClient.Builder()
             .connectTimeout(10, TimeUnit.SECONDS)
             .readTimeout(15, TimeUnit.SECONDS)
+            // Wall-clock cap on a single update check / APK download —
+            // bounds slow-loris exposure on the Codeberg release endpoints.
+            .callTimeout(60, TimeUnit.SECONDS)
             .build()
     }
 

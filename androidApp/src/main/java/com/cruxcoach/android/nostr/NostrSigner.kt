@@ -2,6 +2,7 @@ package com.cruxcoach.android.nostr
 
 import android.content.ContentResolver
 import android.content.Context
+import android.content.Intent
 import android.util.Log
 import com.vitorpamplona.quartz.nip01Core.core.toHexKey
 import com.vitorpamplona.quartz.nip01Core.crypto.KeyPair
@@ -78,6 +79,40 @@ class NostrSigner @Inject constructor(
     }
 
     fun isAmberAvailable(): Boolean = AmberIntegration.isInstalled(context)
+
+    // ── Amber foreground approval plumbing ──
+    // Quartz's NostrSignerExternal falls back to an Intent-based approval
+    // dialog when the user hasn't granted "always approve" in Amber. That
+    // dialog needs a real Activity to attach to — a ContentResolver-only
+    // background call throws "No activity to launch from." The app's
+    // foreground Activity wires its ActivityResultLauncher in via
+    // [registerAmberForegroundLauncher] at onStart and unregisters at
+    // onStop. Quartz invokes the registered callback with the Intent to
+    // launch, and the Activity pushes the result back via
+    // [deliverAmberResponse].
+
+    /** True only if the current signer is AMBER and a foreground launcher is wired. */
+    fun hasAmberForegroundActivity(): Boolean = synchronized(signerLock) {
+        (_signer as? NostrSignerExternal)?.hasForegroundActivity() == true
+    }
+
+    fun registerAmberForegroundLauncher(launcher: (Intent) -> Unit) {
+        synchronized(signerLock) {
+            (_signer as? NostrSignerExternal)?.registerForegroundLauncher(launcher)
+        }
+    }
+
+    fun unregisterAmberForegroundLauncher(launcher: (Intent) -> Unit) {
+        synchronized(signerLock) {
+            (_signer as? NostrSignerExternal)?.unregisterForegroundLauncher(launcher)
+        }
+    }
+
+    fun deliverAmberResponse(intent: Intent) {
+        synchronized(signerLock) {
+            (_signer as? NostrSignerExternal)?.newResponse(intent)
+        }
+    }
 
     fun reset() {
         synchronized(signerLock) {

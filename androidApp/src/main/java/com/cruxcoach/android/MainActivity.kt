@@ -97,12 +97,47 @@ class MainActivity : AppCompatActivity() {
         if (granted) updaterRepository.get().reNotifyPendingUpdateIfAny()
     }
 
+    // Amber approval dialogs (Intent-based NIP-55 path). Registered as a
+    // StartActivityForResult contract up-front; wired into NostrSigner at
+    // onStart / unwired at onStop so background Amber-signing attempts
+    // fail fast instead of silently losing the response. The callback
+    // pipes every result Intent back to Quartz's signer, which resumes
+    // the suspended sign/encrypt/decrypt call.
+    private val amberSignerLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        nostrSigner.get().deliverAmberResponse(result.data ?: Intent())
+    }
+
+    private val amberForegroundCallback: (Intent) -> Unit = { intent ->
+        runCatching { amberSignerLauncher.launch(intent) }
+            .onFailure {
+                android.util.Log.w("MainActivity", "amberSignerLauncher.launch failed", it)
+                // Critical: must still call deliverAmberResponse with an
+                // empty Intent. Without this, the suspended Quartz
+                // sign/encrypt/decrypt call inside NostrSignerExternal
+                // never gets a response and the coroutine awaiting it
+                // hangs forever — the user sees a frozen "signing…"
+                // state with no recovery short of force-stop. Empty
+                // Intent surfaces inside Quartz as "no result" → the
+                // sign call propagates a normal failure that the caller
+                // (e.g. BackupRepository) can then surface as a
+                // BackupException retry.
+                nostrSigner.get().deliverAmberResponse(Intent())
+            }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         PerfLogger.milestone("MainActivity.onCreate START")
         val contentReady = mutableStateOf(false)
         installSplashScreen().setKeepOnScreenCondition { !contentReady.value }
 
-        val isIdentitySwitch = intent?.getBooleanExtra("identity_switch", false) == true
+        // Identity-switch splash only on the initial launch, not on config
+        // changes. The Intent extra persists on the Activity so a rotation
+        // (which re-runs onCreate with savedInstanceState != null) would
+        // otherwise replay the "Switching account…" overlay every time.
+        val isIdentitySwitch = savedInstanceState == null &&
+            intent?.getBooleanExtra("identity_switch", false) == true
 
         PerfLogger.trace("super.onCreate") { super.onCreate(savedInstanceState) }
         if (savedInstanceState == null) {
@@ -279,6 +314,16 @@ class MainActivity : AppCompatActivity() {
         pendingDeepLink.value = safeNavigateToRoute(intent)
             ?: extractBoardDbDeepLink(intent)
         handleUpdaterExtras(intent)
+    }
+
+    override fun onStart() {
+        super.onStart()
+        nostrSigner.get().registerAmberForegroundLauncher(amberForegroundCallback)
+    }
+
+    override fun onStop() {
+        nostrSigner.get().unregisterAmberForegroundLauncher(amberForegroundCallback)
+        super.onStop()
     }
 
     private fun handleUpdaterExtras(intent: Intent?) {

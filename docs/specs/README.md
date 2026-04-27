@@ -12,6 +12,7 @@ CruxCoach feature specifications, grouped by release.
   its title. Common values:
   - `Skeleton` — scope and decisions agreed, implementation details TBD
   - `Draft` — design complete, pending engineering review
+  - `Ready` — design complete, API surface + tests + rollout specified, implementation can start
   - `Implementation` — code in progress
   - `Shipped` — merged and released
   - `Failed` — abandoned; kept as a record of the attempted design, do not implement from this
@@ -24,17 +25,18 @@ CruxCoach feature specifications, grouped by release.
 
 | Spec | Title | Status | Depends on |
 |------|-------|--------|------------|
-| [FEAT-004](0.1.2/FEAT-004-auto-update.md) | In-App Update Notification & APK Installer | Implementation | — |
+| [FEAT-004](0.1.2/FEAT-004-auto-update.md) | In-App Update Notification & APK Installer | Shipped | — |
 
 ### v0.1.3 — Nostr relay discovery + encrypted backup
 
 | Spec | Title | Status | Depends on |
 |------|-------|--------|------------|
-| [FEAT-001](0.1.3/FEAT-001-nostr-relay-discovery.md) | Nostr Relay Discovery (NIP-65) | Skeleton | — |
-| [FEAT-002](0.1.3/FEAT-002-nostr-backup-sync.md) | Nostr Encrypted Backup & Sync | Draft | FEAT-001 |
+| [FEAT-001](0.1.3/FEAT-001-nostr-relay-discovery.md) | Nostr Relay Discovery (NIP-65) | Implementation | — |
+| [FEAT-002](0.1.3/FEAT-002-nostr-backup-sync.md) | Nostr Encrypted Backup & Sync | Implementation | FEAT-001 |
 
-### v0.1.4 — Climb Creator
+### v0.1.4 — Climb Creator + Aurora migration
 
 | Spec | Title | Status | Depends on |
 |------|-------|--------|------------|
-| [FEAT-003](0.1.4/FEAT-003-climb-creator.md) | Climb Creator & Nostr Community Climbs | Failed | Kilter API re-integration |
+| [FEAT-003](0.1.4/FEAT-003-climb-creator.md) | Climb Creator & Nostr Community Climbs | Skeleton | — |
+| [FEAT-005](0.1.4/FEAT-005-aurora-json-import.md) | Aurora JSON Export Import | Skeleton | FEAT-003 |

@@ -1,13 +1,18 @@
 ---
-status: failed
+status: skeleton
 ---
 # Feature Spec: Climb Creator & Nostr Community Climbs (v0.1.4)
 
-> **Status:** Failed — superseded by the 2026 Kilter/Aurora split. Aurora
-> API is offline and the new Kilter backend (Keycloak + PowerSync +
-> Flutter) replaces the dual-publishing path this spec was built around.
-> Kept as a record of the attempted design; do not implement from this.
-> **Depends on:** Kilter API re-integration (§12) — independent of v0.1.3 specs.
+> **Status:** Skeleton — revived 2026-04-25. The Kilter API re-integration
+> that this spec depended on (§12) shipped in v0.1.2, so the design is no
+> longer blocked. Sections 1–4 (UX), 6–8 (browse, consensus, moderation),
+> and 10–11 (offline, privacy) carry over unchanged. §5 (dual-publishing)
+> already matches what `KilterApiClient` does today. §9 (schema) needs
+> engineering review before implementation, especially in light of
+> FEAT-005's dependency on the local-climb storage decision.
+> **Depends on:** — (Kilter API re-integration shipped in v0.1.2).
+> **Blocks:** FEAT-005 (Aurora JSON Import) — the imported `climbs[]`
+> array lands in the local-climb storage this spec defines.
 
 ## 1. Overview
 

@@ -6,6 +6,7 @@ import android.content.pm.PackageInstaller
 import android.net.Uri
 import android.util.Log
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -17,6 +18,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import javax.inject.Named
 import javax.inject.Singleton
 
 /**
@@ -37,9 +39,10 @@ class UpdaterRepository @Inject constructor(
     private val installer: ApkInstaller,
     private val notifier: UpdateNotifier,
     private val installSourceGate: InstallSourceGate,
+    @param:Named("io") private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val scope = CoroutineScope(SupervisorJob() + ioDispatcher)
     private var downloadMonitorJob: Job? = null
 
     val state: Flow<UpdaterState> = preferences.state

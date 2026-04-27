@@ -20,8 +20,10 @@ import com.cruxcoach.android.ui.theme.OrangeAccent
 internal fun DisplaySection(
     gradeScale: GradeScale,
     darkMode: DarkModeSetting,
+    keepScreenOn: Boolean,
     onGradeScaleChange: (GradeScale) -> Unit,
-    onDarkModeChange: (DarkModeSetting) -> Unit
+    onDarkModeChange: (DarkModeSetting) -> Unit,
+    onKeepScreenOnChange: (Boolean) -> Unit,
 ) {
     Text(
         stringResource(R.string.settings_display_appearance),
@@ -65,28 +67,40 @@ internal fun DisplaySection(
             )
         }
     }
+
+    Spacer(modifier = Modifier.height(8.dp))
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(stringResource(R.string.settings_ble_keep_screen_on), style = MaterialTheme.typography.bodyMedium)
+            Text(
+                stringResource(R.string.settings_ble_keep_screen_on_desc),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Switch(
+            checked = keepScreenOn,
+            onCheckedChange = onKeepScreenOnChange,
+            colors = SwitchDefaults.colors(checkedTrackColor = OrangeAccent)
+        )
+    }
 }
 
 @Composable
 internal fun BoardSyncSection(
     syncInterval: SyncInterval,
-    lastSyncTimestamp: String?,
     onSyncIntervalChange: (SyncInterval) -> Unit,
-    onNavigateToSync: () -> Unit
 ) {
     Text(
         stringResource(R.string.settings_board_data_title),
         style = MaterialTheme.typography.titleMedium,
         fontWeight = FontWeight.Bold
     )
-
-    lastSyncTimestamp?.let {
-        Text(
-            stringResource(R.string.settings_board_last_sync, it),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    }
 
     // Auto-sync interval picker
     Text(stringResource(R.string.settings_board_auto_download), style = MaterialTheme.typography.bodyMedium)
@@ -103,7 +117,7 @@ internal fun BoardSyncSection(
             FilterChip(
                 selected = syncInterval == interval,
                 onClick = { onSyncIntervalChange(interval) },
-                label = { Text(interval.label) },
+                label = { Text(stringResource(interval.labelRes)) },
                 colors = FilterChipDefaults.filterChipColors(
                     selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
                     selectedLabelColor = OrangeAccent
@@ -112,14 +126,9 @@ internal fun BoardSyncSection(
         }
     }
 
-    Button(
-        onClick = onNavigateToSync,
-        modifier = Modifier.fillMaxWidth().testTag("settings_sync_button"),
-        colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
-        shape = RoundedCornerShape(12.dp)
-    ) {
-        Text(stringResource(R.string.settings_board_sync_button), fontWeight = FontWeight.Bold)
-    }
+    // Actual download card (progress, re-sync, errors, board-model picker)
+    // lives below this section in SettingsScreen, embedded inline via
+    // BoardSyncInlineCard — no separate screen navigation.
 }
 
 @Composable
@@ -152,10 +161,10 @@ internal fun BoardModelSection(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun BleAutoDisconnectSection(
-    bleAutoDisconnectMinutes: Int,
-    keepScreenOn: Boolean,
+    bleAutoDisconnectSeconds: Int,
+    quickBoardSend: Boolean,
     onAutoDisconnectChange: (Int) -> Unit,
-    onKeepScreenOnChange: (Boolean) -> Unit
+    onQuickBoardSendChange: (Boolean) -> Unit,
 ) {
     Text(
         stringResource(R.string.settings_ble_auto_disconnect_title),
@@ -169,32 +178,23 @@ internal fun BleAutoDisconnectSection(
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
 
-    val options = listOf(
-        0 to stringResource(R.string.settings_ble_disconnect_off),
-        1 to stringResource(R.string.settings_ble_disconnect_1min),
-        5 to stringResource(R.string.settings_ble_disconnect_5min),
-        10 to stringResource(R.string.settings_ble_disconnect_10min),
-        15 to stringResource(R.string.settings_ble_disconnect_15min),
-        30 to stringResource(R.string.settings_ble_disconnect_30min)
+    Spacer(modifier = Modifier.height(8.dp))
+    // Single source of truth for the duration: shared DurationStepper.
+    // The stepper renders its own current value (Min / Sec ± buttons), so
+    // a separate "Or set exactly:" label and a "Duration: …" line above
+    // it would only repeat what's already visible. Keep the title + desc
+    // (settings_ble_auto_disconnect_*) as the user-facing label and let
+    // the stepper own the value display. `0 = off` reachable via
+    // minSeconds = 0; max 60 min matches the longest old preset × 2 —
+    // any larger value is almost certainly a typo.
+    DurationStepper(
+        seconds = bleAutoDisconnectSeconds,
+        onChange = onAutoDisconnectChange,
+        minSeconds = 0,
+        maxSeconds = 3600,
+        minuteLabel = stringResource(R.string.settings_duration_minutes_label),
+        secondLabel = stringResource(R.string.settings_duration_seconds_label),
     )
-
-    FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-        modifier = Modifier.testTag("settings_ble_auto_disconnect")
-    ) {
-        options.forEach { (minutes, label) ->
-            FilterChip(
-                selected = bleAutoDisconnectMinutes == minutes,
-                onClick = { onAutoDisconnectChange(minutes) },
-                label = { Text(label) },
-                colors = FilterChipDefaults.filterChipColors(
-                    selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
-                    selectedLabelColor = OrangeAccent
-                )
-            )
-        }
-    }
 
     Spacer(modifier = Modifier.height(8.dp))
 
@@ -204,16 +204,16 @@ internal fun BleAutoDisconnectSection(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text(stringResource(R.string.settings_ble_keep_screen_on), style = MaterialTheme.typography.bodyMedium)
+            Text(stringResource(R.string.settings_ble_quick_send), style = MaterialTheme.typography.bodyMedium)
             Text(
-                stringResource(R.string.settings_ble_keep_screen_on_desc),
+                stringResource(R.string.settings_ble_quick_send_desc),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
         Switch(
-            checked = keepScreenOn,
-            onCheckedChange = onKeepScreenOnChange,
+            checked = quickBoardSend,
+            onCheckedChange = onQuickBoardSendChange,
             colors = SwitchDefaults.colors(checkedTrackColor = OrangeAccent)
         )
     }

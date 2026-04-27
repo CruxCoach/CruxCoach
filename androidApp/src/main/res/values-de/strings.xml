@@ -4,22 +4,18 @@
 
     <!-- Onboarding -->
     <string name="onboarding_welcome">Willkommen bei CruxCoach</string>
-    <string name="onboarding_welcome_subtitle">Dein Companion für Kilter Board Bouldern. Durchsuche Climbs, steuere dein Board und teile Sessions mit Freunden.</string>
+    <string name="onboarding_welcome_subtitle">Open-Source-App für dein Kilter Board — Routen finden, Board ansteuern, Sessions loggen.</string>
     <string name="onboarding_privacy_title">Wie möchtest du CruxCoach nutzen?</string>
     <string name="onboarding_privacy_subtitle">Wähle aus, welche Funktionen aktiv sein sollen. Du kannst alles jederzeit in den Einstellungen ändern.</string>
     <string name="onboarding_privacy_ble_title">Board-Sharing in der Nähe</string>
     <string name="onboarding_privacy_ble_desc">Teile Climbs mit Leuten am Board und nutze den Session-Modus zum gemeinsamen Bouldern.</string>
     <string name="onboarding_privacy_community_title">Community &amp; Feedback</string>
     <string name="onboarding_privacy_community_desc">Crash-Berichte, App-Ankündigungen und Entwickler-Chat — alles verschlüsselt und ohne Account.</string>
-    <string name="onboarding_privacy_hint">Keine persönlichen Daten verlassen dein Gerät. Alle Kommunikation ist Ende-zu-Ende verschlüsselt.</string>
+    <string name="onboarding_privacy_hint">Deine persönlichen Daten bleiben standardmäßig auf diesem Gerät. Das optionale Cloud-Backup lädt nur eine Ende-zu-Ende verschlüsselte Kopie hoch — nur du kannst sie entschlüsseln.</string>
     <string name="onboarding_lets_go">Los geht\'s</string>
-    <string name="onboarding_board_setup_title">Board &amp; Logbook einrichten</string>
-    <string name="onboarding_board_setup_subtitle">Lade die Climb-Datenbank und importiere optional dein Kilter-Logbook.</string>
+    <string name="onboarding_board_setup_title">Routen laden</string>
+    <string name="onboarding_board_setup_subtitle">Ohne die Datenbank bleibt die App leer. Alles andere kannst du später in den Einstellungen anpassen.</string>
     <string name="onboarding_board_skip_hint">Du kannst beide Schritte überspringen und jederzeit in den Einstellungen nachholen.</string>
-    <string name="onboarding_board_sync">Board-Daten synchronisieren</string>
-    <string name="onboarding_board_db_title">Board-Datenbank</string>
-    <string name="onboarding_board_db_subtitle">Climbs, Bewertungen und Statistiken für dein Kilter Board.</string>
-    <string name="onboarding_board_db_imported">Board-Datenbank bereits geladen</string>
     <string name="onboarding_kilter_title">Kilter Logbook importieren</string>
     <string name="onboarding_kilter_desc">Hast du einen Kilter Account? Importiere deine Begehungen und Projekte.</string>
     <string name="onboarding_kilter_credentials_hint">Deine Zugangsdaten werden nur für den Import verwendet und können danach verworfen werden.</string>
@@ -105,22 +101,30 @@
     <!-- Settings: Board Data -->
     <string name="settings_board_data_title">Board-Daten</string>
     <string name="settings_board_type">Board-Typ:</string>
-    <string name="settings_board_last_sync">Letzter Sync: %s</string>
-    <string name="settings_board_sync_button">Datenbank aktualisieren</string>
     <string name="settings_board_auto_download">Automatischer Download (WLAN):</string>
     <string name="settings_board_auto_download_desc">Lädt die komplette Board-Datenbank (~30 MB) im Hintergrund über WLAN herunter.</string>
 
     <!-- Settings: BLE -->
     <string name="settings_ble_auto_disconnect_title">BLE Auto-Disconnect</string>
     <string name="settings_ble_auto_disconnect_desc">Board-Verbindung automatisch trennen nach Inaktivität.</string>
-    <string name="settings_ble_disconnect_off">Aus</string>
-    <string name="settings_ble_disconnect_1min">1 Min</string>
-    <string name="settings_ble_disconnect_5min">5 Min</string>
-    <string name="settings_ble_disconnect_10min">10 Min</string>
-    <string name="settings_ble_disconnect_15min">15 Min</string>
-    <string name="settings_ble_disconnect_30min">30 Min</string>
+    <string name="settings_duration_minutes_label">Minuten</string>
+    <string name="settings_duration_seconds_label">Sekunden</string>
     <string name="settings_ble_keep_screen_on">Bildschirm anlassen</string>
     <string name="settings_ble_keep_screen_on_desc">Bildschirm bleibt auf Board-Screens an, damit du nicht ständig entsperren musst.</string>
+    <string name="settings_ble_quick_send">Schnell-Senden</string>
+    <string name="settings_ble_quick_send_desc">Tippen auf das BLE-Symbol im Climb-Detail verbindet automatisch (bzw. fragt bei mehreren Boards), schickt den Climb und trennt direkt danach.</string>
+
+    <!-- BLE-Schnell-Senden-Status-Meldungen -->
+    <string name="ble_quick_send_scanning">Suche Board…</string>
+    <string name="ble_quick_send_connecting">Verbinde mit %s…</string>
+    <string name="ble_quick_send_sending">Sende Climb…</string>
+    <string name="ble_quick_send_disconnecting">Trenne Verbindung…</string>
+    <string name="ble_quick_send_done">Climb gesendet — Board getrennt.</string>
+    <string name="ble_quick_send_no_boards">Kein Board in der Nähe gefunden. Prüfe, ob das Board eingeschaltet und Bluetooth aktiv ist.</string>
+    <string name="ble_quick_send_connect_failed">Verbindung zum Board fehlgeschlagen. Bitte erneut versuchen.</string>
+    <string name="ble_quick_send_send_failed">Climb konnte nicht gesendet werden — Board getrennt.</string>
+    <string name="ble_quick_send_bluetooth_off">Bluetooth ist aus. Bitte aktivieren und erneut versuchen.</string>
+    <string name="ble_quick_send_no_permissions">Bluetooth-Berechtigungen fehlen. Bitte in den App-Einstellungen erteilen.</string>
 
     <!-- Settings: LED Colors -->
     <string name="settings_led_title">LED-Farben</string>
@@ -137,14 +141,6 @@
     <!-- Settings: Timer -->
     <string name="settings_timer_title">Pausentimer</string>
     <string name="settings_timer_desc">Timer zwischen Boulder-Versuchen. Startet nach dem Loggen einer Begehung.</string>
-    <string name="settings_timer_duration">Dauer: %s</string>
-    <string name="settings_timer_30s">30s</string>
-    <string name="settings_timer_1min">1 Min</string>
-    <string name="settings_timer_1m30">1:30</string>
-    <string name="settings_timer_2min">2 Min</string>
-    <string name="settings_timer_3min">3 Min</string>
-    <string name="settings_timer_4min">4 Min</string>
-    <string name="settings_timer_5min">5 Min</string>
     <string name="settings_timer_auto_start">Auto-Start</string>
     <string name="settings_timer_auto_start_desc">Timer startet automatisch nach dem Loggen</string>
 
@@ -183,12 +179,12 @@
     <string name="settings_share_title">App teilen</string>
     <string name="settings_share_desc">CruxCoach APK mit anderen teilen (ohne Nutzerdaten).</string>
     <string name="board_filter_title">Filter</string>
-    <string name="settings_share_via_apps">Über Apps</string>
-    <string name="settings_share_online">Online</string>
-    <string name="settings_share_online_hide">Online ausblenden</string>
+    <string name="settings_share_via_apps">Über Apps teilen</string>
+    <string name="settings_share_online">Online teilen</string>
+    <string name="settings_share_online_hide">Online-QR ausblenden</string>
     <string name="settings_share_online_desc">QR-Code scannen, um die App online von der Release-Seite herunterzuladen.</string>
     <string name="settings_share_online_hint">Scannen, um den APK-Download zu öffnen.</string>
-    <string name="settings_share_local">Offline</string>
+    <string name="settings_share_local">Offline teilen</string>
     <string name="settings_share_local_desc">App lokal per WiFi-Hotspot teilen. Kein Internet nötig.</string>
     <string name="settings_share_stop">Stoppen</string>
     <string name="settings_share_network">Netzwerk: %s</string>
@@ -688,7 +684,7 @@
     <string name="board_sync_wifi_settings">WLAN-Einstellungen</string>
     <string name="board_sync_no_network_banner">Kein Netzwerk verfügbar</string>
     <string name="board_sync_no_wifi_banner">Kein WLAN — Online-Download nur über WLAN möglich</string>
-    <string name="board_sync_to_browser">Zum Browser</string>
+    <string name="board_sync_to_browser">Fertig</string>
     <string name="board_sync_db_title">Kilter Board-Datenbank</string>
     <string name="board_sync_db_description">Lädt die aktuelle Kilter Board Climb-Datenbank herunter (~30 MB). WLAN empfohlen.</string>
     <string name="board_sync_db_synced">Datenbank synchronisiert</string>
@@ -1301,7 +1297,6 @@
 
     <!-- Key Management -->
     <string name="key_public_key_copied">Öffentlicher Schlüssel kopiert</string>
-    <string name="key_backup_failed">Backup fehlgeschlagen: %1$s</string>
     <string name="key_secret_copied_clipboard_clear">Schlüssel kopiert. Zwischenablage wird in %1$ds geleert.</string>
     <string name="key_import_format_unknown">Format nicht erkannt. Unterstützt: nsec, ncryptsec, hex, 12/24 Wörter.</string>
     <string name="key_import_failed">Import fehlgeschlagen: %1$s</string>
@@ -1312,18 +1307,20 @@
     <string name="key_section_nostr_intro">Dein CruxCoach Account funktioniert grundlegend anders als herkömmliche Accounts: Statt E-Mail und Passwort bei einer Firma zu hinterlegen, besitzt du einen kryptographischen Schlüssel. Dieser Schlüssel ist dein Account — wer ihn hat, hat Zugang. Kein Unternehmen kann deinen Account sperren, löschen oder deine Daten einsehen. Nachrichten an den Entwickler sind Ende-zu-Ende-verschlüsselt. Dafür liegt die Verantwortung bei dir: Geht der Schlüssel verloren, kann ihn niemand zurücksetzen. Technisch basiert dein Account auf dem offenen Nostr-Protokoll.</string>
     <string name="key_section_description">Hier kannst du deinen Account sichern, auf ein neues Gerät übertragen oder die externe Signer-App Amber verwenden.</string>
     <string name="key_button_manage">Account verwalten</string>
-    <string name="key_label_not_backed_up">Account nicht gesichert</string>
-    <string name="key_label_not_backed_up_desc">Bei Geräteverlust ist dein Account weg.</string>
+    <string name="key_label_not_backed_up">Sichere deinen Account-Schlüssel</string>
+    <string name="key_label_not_backed_up_desc">Ohne ihn kann weder dein Account noch dein Cloud-Backup wiederhergestellt werden, wenn du dieses Gerät verlierst.</string>
     <string name="key_label_login_method">Login-Methode:</string>
     <string name="key_label_login_local">Lokaler Schlüssel</string>
     <string name="key_label_login_amber">Amber Signer</string>
     <string name="key_section_npub">Öffentlicher Schlüssel (npub)</string>
     <string name="key_button_copy_npub">npub kopieren</string>
     <string name="key_toast_npub_copied">npub kopiert</string>
-    <string name="key_section_nsec">Privater Schlüssel</string>
+    <string name="key_section_nsec">Privater Schlüssel (nsec)</string>
+    <string name="key_label_npub_recovery_note">Optional — wird nur genutzt, um deine Identität auf Nostr zu teilen. Nicht nötig, um Account oder Cloud-Backup wiederherzustellen.</string>
     <string name="key_label_nsec_hidden">Zum Schutz ausgeblendet.</string>
     <string name="key_button_copy_nsec">nsec kopieren</string>
-    <string name="key_button_create_backup">Backup erstellen</string>
+    <string name="key_button_import_nsec">nsec importieren</string>
+    <string name="key_label_nsec_save_reminder">Sichere diesen Schlüssel an einem sicheren Ort — sowohl dein Account als auch dein Cloud-Backup können nur damit auf einem anderen Gerät wiederhergestellt werden. Ohne ihn ist beides verloren wenn du dieses Telefon verlierst.</string>
     <string name="key_label_nsec_warning">Teile deinen privaten Schlüssel niemals. Wer ihn hat, kontrolliert deinen Account dauerhaft.</string>
     <string name="key_section_recommended">Empfohlen</string>
     <string name="key_label_use_amber">Amber Signer verwenden</string>
@@ -1333,22 +1330,11 @@
     <string name="key_button_disconnect_amber">Zu lokalem Schlüssel wechseln</string>
     <string name="key_label_local_key_inactive">Lokaler Schlüssel (inaktiv)</string>
     <string name="key_label_active_identity">Aktiver Account</string>
-    <string name="key_button_import">Account importieren (nsec/Mnemonic)</string>
 
     <!-- Key Management: Dialogs -->
     <string name="key_dialog_nsec_title">Privater Schlüssel</string>
     <string name="key_dialog_nsec_text">Dieser Schlüssel kontrolliert deinen gesamten CruxCoach Account. Wenn jemand ihn sieht, kann er sich als du ausgeben. Die Zwischenablage wird nach 60 Sekunden geleert.</string>
     <string name="key_dialog_nsec_confirm">Ich verstehe, kopieren</string>
-    <string name="key_dialog_backup_title">Verschlüsseltes Backup erstellen</string>
-    <string name="key_dialog_backup_text">Dein privater Schlüssel wird mit deinem Passwort verschlüsselt (ncryptsec-Format). Ohne dieses Passwort kann der Schlüssel nicht wiederhergestellt werden – wähle ein starkes Passwort und bewahre es sicher auf.</string>
-    <string name="key_label_password">Passwort</string>
-    <string name="key_label_password_confirm">Passwort bestätigen</string>
-    <string name="key_label_password_too_short">Mindestens 8 Zeichen</string>
-    <string name="key_label_password_mismatch">Passwörter stimmen nicht überein</string>
-    <string name="key_dialog_backup_result_title">Backup erstellt</string>
-    <string name="key_dialog_backup_result_text">Speichere den QR-Code oder ncryptsec-Text an einem sicheren Ort (z.\u00A0B. Passwort-Manager oder Ausdruck). Zum Wiederherstellen: Einstellungen → Schlüssel importieren → ncryptsec einfügen → Passwort eingeben.</string>
-    <string name="key_label_qr_content_desc">ncryptsec QR Code</string>
-    <string name="key_button_copy_ncryptsec">ncryptsec kopieren</string>
     <string name="key_dialog_biometric_title">Bildschirmsperre erforderlich</string>
     <string name="key_dialog_biometric_text">Richte zuerst eine Bildschirmsperre ein (PIN, Muster oder Fingerabdruck), um deinen Schlüssel zu schützen.</string>
     <string name="key_button_open_settings">Zu den Einstellungen</string>
@@ -1372,6 +1358,8 @@
     <string name="key_import_prompt">Füge deinen privaten Schlüssel ein:</string>
     <string name="key_import_label">Schlüssel</string>
     <string name="key_import_supported_formats">Unterstützt: nsec, ncryptsec, hex, 12/24 Wörter</string>
+    <string name="key_import_reveal">Schlüssel anzeigen</string>
+    <string name="key_import_hide">Schlüssel ausblenden</string>
     <string name="key_import_detected">Erkannt: %1$s</string>
     <string name="key_import_button">Importieren</string>
     <string name="key_import_success_toast">Schlüssel importiert</string>
@@ -1383,4 +1371,161 @@
     <string name="key_import_password_title">Passwort eingeben</string>
     <string name="key_import_password_label">ncryptsec Passwort</string>
     <string name="key_import_decrypt_button">Entschlüsseln</string>
+
+    <!-- FEAT-002: Verschlüsseltes Cloud-Backup (Nostr + Blossom unter der Haube) -->
+    <string name="settings_backup_title">Verschlüsseltes Cloud-Backup</string>
+    <string name="settings_backup_description">Auf deinem Gerät verschlüsselt, danach auf mehreren öffentlichen Servern gespeichert. Nur du kannst es entschlüsseln.</string>
+    <string name="settings_backup_enable">Backup aktivieren</string>
+    <string name="settings_backup_needs_key">Ein Account-Schlüssel wird benötigt. Er wird beim ersten Backup automatisch erzeugt.</string>
+    <string name="settings_backup_interval">Intervall</string>
+    <string name="settings_backup_last_sync">Letzte Sicherung: %s</string>
+    <string name="settings_backup_status_no_key">Backup benötigt deinen Account-Schlüssel.</string>
+    <string name="settings_backup_status_disabled_no_history">Backup deaktiviert — keine Daten online gespeichert.</string>
+    <string name="settings_backup_status_disabled_with_history">Backup deaktiviert. Ein älteres Backup vom %1$s kann online noch existieren.</string>
+    <string name="settings_backup_status_enabled_no_backup">Backup aktiv — noch nicht gesichert.</string>
+    <string name="settings_backup_status_enabled_with_backup">Backup aktiv — letzte Sicherung %1$s.</string>
+    <string name="settings_backup_never_synced">Noch keine Sicherung</string>
+    <string name="settings_backup_run_now">Jetzt sichern</string>
+    <string name="settings_backup_run_now_progress">Backup läuft…</string>
+    <string name="settings_backup_restore">Backup wiederherstellen</string>
+    <string name="settings_backup_restore_checking">Prüfe…</string>
+    <string name="settings_backup_restore_dialog_title">Backup gefunden</string>
+    <string name="settings_backup_restore_dialog_body">Größe: %1$s.\nDeine lokalen Daten werden durch das Backup überschrieben.</string>
+    <string name="settings_backup_restore_confirm">Wiederherstellen</string>
+    <string name="settings_backup_restore_cancel">Abbrechen</string>
+    <string name="settings_backup_no_backup_found">Für diesen Account wurde kein Backup gefunden. Falls eines existieren sollte, prüfe deine Netzwerkverbindung und versuche es später erneut — die Backup-Server könnten kurzzeitig nicht erreichbar sein.</string>
+    <string name="settings_backup_blob_unreachable">Backup-Info gefunden, aber die verschlüsselten Backup-Daten sind auf keinem Speicher-Server mehr verfügbar (möglicherweise durch ein früheres Opt-out gelöscht, oder alle Server sind kurzzeitig offline). Die Info kannst du über „Remote-Backups löschen" entfernen. Bei Verdacht auf ein Netzwerkproblem später erneut versuchen.</string>
+    <string name="settings_backup_check_decrypt_failed">Ein Backup wurde gefunden, aber nicht entschlüsselt — der Schlüssel passt anscheinend nicht.</string>
+    <string name="settings_backup_check_error">Fehler beim Suchen nach einem Backup: %1$s</string>
+    <string name="settings_backup_restore_failed">Backup konnte nicht wiederhergestellt werden.</string>
+    <string name="settings_backup_succeeded">Backup erstellt.</string>
+    <string name="settings_backup_failed">Backup fehlgeschlagen. Prüfe deine Verbindung und versuche es erneut.</string>
+    <string name="settings_backup_failed_detail">Backup fehlgeschlagen: %1$s</string>
+
+    <!-- Backup-Schlüssel-Warnungskarte — erscheint in Settings, Onboarding und What\'s New,
+         immer wenn der User Cloud-Backup gerade aktiviert (oder bereits aktiv hat), um
+         daran zu erinnern, dass ohne Schlüssel keine Wiederherstellung möglich ist. Zwei
+         Body-Varianten: lokaler Schlüssel (= im Passwort-Manager sichern) vs. Amber
+         (= Amber selbst sichern). -->
+    <string name="backup_key_warning_title">Sichere deinen CruxCoach-Account-Schlüssel</string>
+    <string name="backup_key_warning_body_local">Derselbe Schlüssel wie dein CruxCoach Account: identifiziert dich auf Nostr und verschlüsselt dein Cloud-Backup. Ohne ihn ist beides verloren wenn du dieses Gerät verlierst — auch wir können sie nicht wiederherstellen. Speichere ihn an einem sicheren Ort (z.B. Passwort-Manager).</string>
+    <string name="backup_key_warning_body_amber">Dein CruxCoach-Account-Schlüssel liegt in Amber und verschlüsselt dein Cloud-Backup. Ohne ein eigenes Amber-Backup geht der Schlüssel mit deinem Telefon verloren — und sowohl Account als auch Cloud-Backup sind nicht mehr wiederherstellbar. Stelle sicher, dass Ambers Backup eingerichtet ist.</string>
+    <string name="backup_key_warning_view_account">Zum CruxCoach Account</string>
+    <string name="backup_key_warning_acknowledged">Habe Schlüssel gesichert</string>
+    <string name="backup_key_warning_ack_dialog_title">Backup-Schlüssel gesichert?</string>
+    <string name="backup_key_warning_ack_dialog_body">Mit „Bestätigen" sagst du zu, dass du deinen Schlüssel an einem Ort außerhalb dieses Geräts gespeichert hast — Passwort-Manager, Amber-Backup, Zettel, etc. Wir können ihn nicht wiederherstellen, wenn du dieses Gerät verlierst, ohne ihn vorher gesichert zu haben. Lokale Daten auf diesem Gerät sind nicht betroffen.</string>
+    <string name="backup_key_warning_ack_confirm">Bestätigen</string>
+    <string name="backup_key_warning_ack_cancel">Noch nicht</string>
+    <string name="backup_key_warning_post_onboarding_hint">Nach Abschluss des Onboardings findest du deinen Schlüssel unter Einstellungen → CruxCoach Account.</string>
+
+    <!-- Onboarding-Frequenzpicker (zusätzlich zum Toggle). Lässt den User direkt
+         eine Kadenz wählen, statt nach dem Aktivieren in den Einstellungen zu suchen.
+         Default ist MANUAL — die Labels recyceln SyncInterval.labelRes. -->
+    <string name="onboarding_backup_frequency_label">Wie oft?</string>
+
+    <!-- BackupErrorReason — Lokalisierung pro BackupException-Reason. -->
+    <string name="backup_error_blob_upload_failed">Backup fehlgeschlagen: Kein Speicher-Server hat das verschlüsselte Backup akzeptiert (%1$d versucht).</string>
+    <string name="backup_error_blob_upload_failed_with_detail">Backup fehlgeschlagen: Kein Speicher-Server hat das verschlüsselte Backup akzeptiert (%1$d versucht, %2$s).</string>
+    <string name="backup_error_amber_needs_auto_approve">Backup fehlgeschlagen: Amber muss auf „automatisch zustimmen" gestellt sein. Öffne Amber → CruxCoach und aktiviere die automatische Zustimmung, sonst kann das Hintergrund-Backup nicht signieren.</string>
+    <string name="backup_error_blob_not_visible">Backup fehlgeschlagen: Server hat den Upload angenommen, aber die Daten sind anschließend nicht sichtbar (%1$d Server geprüft).</string>
+    <string name="backup_error_pointer_not_durable">Backup fehlgeschlagen: Backup-Index wurde von keinem Server angenommen (%1$d versucht). Die Daten sind hochgeladen aber nicht angekündigt — bitte erneut versuchen, sobald die Server erreichbar sind.</string>
+    <string name="backup_error_key_event_not_durable">Backup fehlgeschlagen: Verschlüsselungs-Schlüssel-Info wurde von keinem Server angenommen (%1$d versucht). Ohne sie kann das Backup auf keinem anderen Gerät wiederhergestellt werden — bitte erneut versuchen, sobald die Server erreichbar sind.</string>
+    <string name="backup_error_data_key_unwrap_failed">Wiederherstellung fehlgeschlagen: Backup-Schlüssel konnte nicht entpackt werden (falsche Identität?).</string>
+    <string name="backup_error_pointer_lists_no_servers">Wiederherstellung fehlgeschlagen: Backup verweist auf keine nutzbaren Speicher-Server.</string>
+    <string name="backup_error_plaintext_size_cap">Wiederherstellung fehlgeschlagen: Inhalt überschreitet das Sicherheitslimit.</string>
+    <string name="backup_error_key_fetch_ambiguous">Backup fehlgeschlagen: Verschlüsselungs-Schlüssel-Info konnte nicht von den Servern geladen werden. Automatische Neugenerierung verweigert, weil bereits ein älteres Backup auf diesem Gerät existiert — sonst würde es verwaisen. Bitte erneut versuchen, sobald die Server erreichbar sind.</string>
+
+    <!-- DeleteRemoteNote — Lokalisierung pro per-leg-Hinweis im Delete-Remote-Dialog. -->
+    <string name="delete_remote_note_dtag_derivation_failed">Löschanfrage konnte nicht vorbereitet werden.</string>
+    <string name="delete_remote_note_no_write_relays">Keine ausgehenden Server konfiguriert.</string>
+    <string name="delete_remote_note_no_relay_accepted">Kein Index-Server hat die Löschanfrage angenommen.</string>
+    <string name="delete_remote_note_partial_relay_accept">Nur %1$d von %2$d Index-Servern haben die Löschung angenommen.</string>
+    <string name="delete_remote_note_relay_publish_threw">Löschanfrage konnte nicht an die Index-Server gesendet werden.</string>
+    <string name="delete_remote_note_blossom_auth_failed">Speicher-Server hat die Auth-Signatur abgelehnt.</string>
+    <string name="delete_remote_note_blossom_fully_rejected">Alle Speicher-Server haben die Löschung abgelehnt.</string>
+    <string name="delete_remote_note_blossom_partial">Nur %1$d von %2$d Speicher-Servern haben die Löschung bestätigt.</string>
+    <string name="delete_remote_note_unexpected_error">Unerwarteter Fehler: %1$s</string>
+    <string name="settings_backup_delete_remote">Remote-Backups löschen…</string>
+    <string name="settings_backup_delete_remote_dialog_title">Remote-Backups löschen?</string>
+    <string name="settings_backup_delete_remote_dialog_body">Dies fordert die Löschung deiner Backup-Info und der verschlüsselten Backup-Daten von den öffentlichen Servern an. Beachte:\n\n• Die Löschung ist Best-Effort. Nicht jeder Server honoriert sie.\n• Danach kannst du dein Backup nicht mehr auf einem anderen Gerät wiederherstellen.\n• Lokale Daten bleiben unangetastet.</string>
+    <string name="settings_backup_delete_remote_confirm">Löschen</string>
+    <string name="settings_backup_delete_remote_in_progress">Lösche…</string>
+    <string name="settings_backup_delete_remote_done_header">Remote-Backups gelöscht.</string>
+    <string name="settings_backup_delete_remote_partial_header">Remote-Backups nur teilweise gelöscht.</string>
+    <string name="settings_backup_delete_remote_relays_line">Index-Server: %1$d / %2$d haben die Löschung bestätigt.</string>
+    <string name="settings_backup_delete_remote_blossom_line">Speicher-Server: %1$d / %2$d haben die Löschung bestätigt.</string>
+    <string name="settings_backup_delete_remote_no_blob">Keine Backup-Daten erfasst (nichts zu löschen dort).</string>
+    <string name="settings_backup_delete_remote_caveat">Hinweis: Backup-Server (Nostr-Relais + Blossom-CDNs unter der Haube) können Inhalte vor dem Löschen replizieren oder cachen. Dritt-Mirror, auf die du nie geschrieben hast, behalten eventuell eine Kopie. Vollständige Gewissheit bekommst du nur durch Verifizierung deiner pubkey in einem anderen Nostr-Client.</string>
+
+    <!-- FEAT-002: Verschlüsseltes Cloud-Backup Onboarding (Schlüssel-Strings
+         behalten Nostr-Branding, weil sie zur dezentralen Identität gehören —
+         nicht spezifisch zum Backup-Feature). -->
+    <string name="onboarding_nostr_key_title">Nostr-Identität</string>
+    <string name="onboarding_nostr_key_body">CruxCoach nutzt einen Nostr-Key für optionales Backup, Direct Messages und Community-Features. Ein Key wird automatisch erzeugt, wenn du ihn brauchst.</string>
+    <string name="onboarding_nostr_key_checking">Suche nach einem vorhandenen Backup…</string>
+    <string name="onboarding_nostr_key_hint_import_later">Du hast schon einen Nostr-Key? Du kannst ihn später unter Einstellungen → Nostr-Schlüssel importieren.</string>
+    <string name="onboarding_nostr_backup_title">Backup deiner Daten</string>
+    <string name="onboarding_nostr_backup_body">Auf deinem Gerät verschlüsselt, danach online auf mehreren öffentlichen Servern gespeichert. Nur du kannst es entschlüsseln. Voreinstellung: aus — jederzeit in den Einstellungen aktivierbar.</string>
+    <string name="onboarding_restore_dialog_body">Ein Backup wurde gefunden (%1$s).\n\nWiederherstellen ersetzt deine lokalen Daten durch den Inhalt des Backups.</string>
+
+    <!-- FEAT-002: Onboarding Backup-Wahl (3-Step-Onboarding) -->
+    <string name="onboarding_backup_choice_fresh_title">Neu starten</string>
+    <string name="onboarding_backup_choice_fresh_desc">Ein neuer CruxCoach-Account-Schlüssel wird auf diesem Gerät erzeugt. Deine aktuellen lokalen Daten werden das erste Backup.</string>
+    <string name="onboarding_backup_choice_restore_title">Backup wiederherstellen</string>
+    <string name="onboarding_backup_choice_restore_desc">Ich habe ein Backup von einem anderen Gerät. Importiere den dort verwendeten Nostr-Schlüssel.</string>
+    <string name="onboarding_backup_import_key_button">Nostr-Schlüssel importieren →</string>
+    <string name="onboarding_backup_restore_checking">Suche nach Backup…</string>
+    <string name="onboarding_backup_restore_success">Backup wiederhergestellt.</string>
+    <string name="onboarding_backup_restore_none_for_key">Für diesen Account wurde kein Backup gefunden. Du kannst trotzdem weiter — beim nächsten Sync wird ein neues Backup erstellt.</string>
+    <string name="onboarding_backup_restore_waiting_for_key">Importiere deinen Nostr-Schlüssel, um fortzufahren, oder wechsle zurück zu „Neu starten".</string>
+    <string name="onboarding_restart_confirm_title">Nostr-Schlüssel importieren</string>
+    <string name="onboarding_restart_confirm_body">CruxCoach startet nach dem Import kurz neu, um die lokale Verschlüsselung auf deinen Schlüssel umzustellen. Das Onboarding setzt danach automatisch mit der Wiederherstellung fort.</string>
+    <string name="onboarding_kilter_step_title">Kilter-Logbook</string>
+    <string name="onboarding_kilter_step_subtitle">Optional: Deine Sends und Versuche aus der offiziellen Kilter Board App übernehmen. Auch später in den Einstellungen möglich.</string>
+    <string name="onboarding_kilter_skip_hint">Optionaler Schritt. Tippe „Fertig" ohne Anmeldung — der Kilter-Import ist jederzeit in den Einstellungen nachholbar.</string>
+
+    <!-- Clipboard -->
+    <string name="action_copy">Kopieren</string>
+
+    <!-- Key-import: Amber-Shortcut + Nicht-installiert-Dialog -->
+    <string name="settings_share_copied_url">Download-URL kopiert.</string>
+    <string name="settings_share_copied_password">Passwort kopiert.</string>
+
+    <!-- Zapstore share -->
+    <string name="settings_share_zapstore">Über Zapstore teilen</string>
+    <string name="settings_share_zapstore_hide">Zapstore-QR ausblenden</string>
+    <string name="settings_share_zapstore_desc">Empfohlener App-Store für CruxCoach — verifizierbare Builds, Nostr-nativ.</string>
+    <string name="settings_share_zapstore_hint">QR scannen oder Link senden. Zapstore öffnet automatisch, falls installiert.</string>
+    <string name="cd_zapstore_share_qr">Zapstore-Share-QR-Code</string>
+
+    <!-- Sync-Intervall-Enum-Labels (FilterChip in Backup- + Board-Einstellungen) -->
+    <string name="sync_interval_daily">Täglich</string>
+    <string name="sync_interval_weekly">Wöchentlich</string>
+    <string name="sync_interval_manual">Manuell</string>
+
+    <!-- BoardModelSelectionDialog (war bis 0.1.3 hardcodiert) -->
+    <string name="board_model_dialog_title_missing">Board-Daten fehlen</string>
+    <string name="board_model_dialog_title_pick">Welches Kilter Board hast du?</string>
+    <string name="board_model_dialog_body_missing_with_sync">Die Board-Datenbank ist noch nicht synchronisiert. Starte den Sync, danach kannst du dein Board-Modell auswählen.</string>
+    <string name="board_model_dialog_body_missing_inline">Die Board-Datenbank ist noch nicht synchronisiert. Starte den Sync unten auf diesem Screen, danach kannst du dein Board-Modell auswählen.</string>
+    <string name="board_model_dialog_hint">Die Auswahl bestimmt welche Griffe und LEDs angezeigt werden.</string>
+    <string name="board_model_dialog_start_sync">Sync starten</string>
+    <string name="board_model_dialog_close">Schließen</string>
+    <string name="board_model_dialog_confirm">Bestätigen</string>
+    <string name="board_model_dialog_cancel">Abbrechen</string>
+
+    <!-- BoardSyncInlineCard Schritt-Detail-Labels (war gemischt DE/EN) -->
+    <string name="board_sync_detail_climbs_count">%,d Climbs…</string>
+    <string name="board_sync_detail_progress_with_new">%1$,d / %2$,d  (%3$,d neu)</string>
+    <string name="board_sync_detail_progress">%1$,d / %2$,d</string>
+    <string name="board_sync_detail_stats_count">%,d Stats…</string>
+    <string name="board_sync_detail_placements_count">%,d Placements</string>
+    <string name="board_sync_detail_nomatch">NM: %,d</string>
+
+    <!-- "Was ist neu" Upgrade-Dialoge (nur für Update-User) -->
+    <string name="whatsnew_done">Fertig</string>
+    <string name="whatsnew_nostr_backup_title">Neu: Verschlüsseltes Cloud-Backup</string>
+    <string name="whatsnew_nostr_backup_body">Deine Klettereinträge und Notizen können jetzt auf deinem Gerät verschlüsselt und online auf mehreren öffentlichen Servern gespeichert werden — auf jedem Gerät wiederherstellbar. Standardmäßig aus; hier aktivieren oder jederzeit in Einstellungen → Verschlüsseltes Cloud-Backup.</string>
+    <string name="whatsnew_nostr_backup_toggle">Backup aktivieren</string>
+    <string name="whatsnew_nostr_backup_consent">Auf diesem Gerät wird ein CruxCoach-Account-Schlüssel erzeugt (falls noch nicht vorhanden). Backups laufen nicht automatisch — du startest sie selbst in den Einstellungen.</string>
 </resources>

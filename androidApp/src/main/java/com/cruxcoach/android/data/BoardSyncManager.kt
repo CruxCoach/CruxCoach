@@ -77,6 +77,42 @@ class BoardSyncManager(
         ) }
     }
 
+    /**
+     * Recovers from a partial-import state left by a previous run that was
+     * killed mid-sync — e.g. [com.cruxcoach.android.ui.settings.restartApp]
+     * during an identity switch, OOM kill, force-stop, or system reboot
+     * while [BoardDatabaseImporter.importFromChunks] was still running.
+     *
+     * Detection: a successful import always populates both `climb` and
+     * `placement` (climbs are imported first; the meta chunk that owns
+     * placements is imported last). If climb rows exist but the placement
+     * table is empty, the import was interrupted before its meta phase.
+     * In that state [isImported] still returns true (so [syncIfStale] does
+     * nothing) and the BoardBrowser shows zero holds — the user is stuck
+     * unless they manually find "Sync now" in Settings.
+     *
+     * Recovery semantics differ from [syncIfStale]: a broken DB is always
+     * worth fixing, so we bypass the WiFi-only gate (cellular is fine) and
+     * the [SyncInterval.MANUAL] gate. We still require *some* network — no
+     * connectivity at all means we'll retry on the next app start.
+     */
+    fun recoverPartialImportIfNeeded() {
+        scope.launch {
+            val climbCount = boardRepository.getClimbCount()
+            if (climbCount == 0L) return@launch
+            if (boardRepository.getAllPlacements().isNotEmpty()) return@launch
+
+            Log.w(TAG, "Partial board DB detected (climbs=$climbCount, placements=0) — interrupted import; triggering recovery sync")
+
+            if (!isNetworkAvailable(appContext)) {
+                Log.w(TAG, "Recovery needed but no network — will retry on next app start")
+                return@launch
+            }
+
+            startBackgroundSync()
+        }
+    }
+
     fun dismissWifiDialog() {
         _state.update { it.copy(showWifiDialog = false) }
     }

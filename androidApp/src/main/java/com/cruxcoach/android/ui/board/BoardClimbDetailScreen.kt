@@ -188,9 +188,49 @@ fun BoardClimbDetailScreen(
         )
     }
 
+    // Quick-Send macro: surface progress + outcomes as snackbars and escalate
+    // multi-board ambiguity into the existing connection sheet for manual pick.
+    val quickSendStatus by bleConnViewModel.quickSend.collectAsStateWithLifecycle()
+    val snackbarHostState = remember { SnackbarHostState() }
+    LaunchedEffect(quickSendStatus) {
+        val msg = when (val s = quickSendStatus) {
+            QuickSendStatus.Idle -> null
+            QuickSendStatus.Scanning -> context.getString(R.string.ble_quick_send_scanning)
+            is QuickSendStatus.Connecting -> context.getString(R.string.ble_quick_send_connecting, s.boardName)
+            QuickSendStatus.Sending -> context.getString(R.string.ble_quick_send_sending)
+            QuickSendStatus.Disconnecting -> context.getString(R.string.ble_quick_send_disconnecting)
+            QuickSendStatus.Done -> context.getString(R.string.ble_quick_send_done)
+            is QuickSendStatus.NeedsManualPick -> {
+                // Auto-escalate: open the existing connection sheet so the user
+                // picks, then drop the macro. Once they tap a board the sheet
+                // takes over the connect-and-send flow.
+                showBleSheet = true
+                bleConnViewModel.resetQuickSend()
+                null
+            }
+            is QuickSendStatus.Error -> context.getString(
+                when (s.reason) {
+                    QuickSendStatus.ErrorReason.NoBoardsFound -> R.string.ble_quick_send_no_boards
+                    QuickSendStatus.ErrorReason.ConnectFailed -> R.string.ble_quick_send_connect_failed
+                    QuickSendStatus.ErrorReason.SendFailed -> R.string.ble_quick_send_send_failed
+                    QuickSendStatus.ErrorReason.BluetoothOff -> R.string.ble_quick_send_bluetooth_off
+                    QuickSendStatus.ErrorReason.NoPermissions -> R.string.ble_quick_send_no_permissions
+                }
+            )
+        }
+        if (msg != null) snackbarHostState.showSnackbar(msg)
+        // Reset Done/Error to Idle after the snackbar fires so the next tap
+        // starts fresh; transient states (Scanning/Sending/Disconnecting/
+        // Connecting) reset themselves when the macro advances.
+        if (quickSendStatus is QuickSendStatus.Done || quickSendStatus is QuickSendStatus.Error) {
+            bleConnViewModel.resetQuickSend()
+        }
+    }
+
     // Single Scaffold — shared across all pager pages
     val bleConnected = state.ble.connectionState.let { it == ConnectionState.CONNECTED || it == ConnectionState.SENDING }
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             Column {
                 TopAppBar(
@@ -225,7 +265,19 @@ fun BoardClimbDetailScreen(
                             )
                         }
                         IconButton(
-                            onClick = { showBleSheet = true },
+                            onClick = {
+                                // Quick-Send-Mode setting (Settings → BLE) routes the
+                                // tap through the macro: scan → auto-connect-on-single
+                                // → existing CONNECTED-collector auto-fires send →
+                                // disconnect. Multi-board case escalates back into
+                                // the manual sheet via NeedsManualPick (handled in the
+                                // LaunchedEffect below).
+                                if (bleConnState.quickBoardSendEnabled) {
+                                    bleConnViewModel.startQuickSend()
+                                } else {
+                                    showBleSheet = true
+                                }
+                            },
                             modifier = Modifier.testTag("boarddetail_ble_connect_button")
                         ) {
                             Icon(

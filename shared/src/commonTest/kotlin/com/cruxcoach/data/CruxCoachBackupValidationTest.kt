@@ -80,6 +80,18 @@ class CruxCoachBackupValidationTest {
     }
 
     @Test
+    fun accepts_ascent_with_kilter_32hex_climb_uuid() {
+        // Kilter/Aurora climb_uuid format: 32 lowercase hex chars, no
+        // hyphens — the app stores them verbatim in aurora_ascent and
+        // re-serializes them in the backup payload, so the validator
+        // must recognize both 8-4-4-4-12 and raw-hex shapes.
+        val preview = CruxCoachBackup.preview(
+            ascent(climbUuid = "1a2b3c4d5e6f7890abcdef1234567890"),
+        )
+        assertEquals(1, preview.boardAscents)
+    }
+
+    @Test
     fun rejects_ascent_with_negative_angle() {
         assertFailsWith<IllegalArgumentException> {
             CruxCoachBackup.preview(ascent(angle = -1))

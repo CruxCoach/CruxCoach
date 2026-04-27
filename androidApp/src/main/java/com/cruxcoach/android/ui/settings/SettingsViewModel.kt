@@ -79,7 +79,7 @@ data class SettingsState(
     val lastSyncTimestamp: String? = null,
     val hasAssessment: Boolean = false,
     val ledColors: LedHoldColors = LedHoldColors(),
-    val bleAutoDisconnectMinutes: Int = 1,
+    val bleAutoDisconnectSeconds: Int = 60,
     val isSaving: Boolean = false,
     val saveSuccess: Boolean = false,
     val error: String? = null,
@@ -88,6 +88,7 @@ data class SettingsState(
     val restTimer: RestTimerSettings = RestTimerSettings(),
     val climbSharing: ClimbSharingSettings = ClimbSharingSettings(),
     val keepScreenOn: Boolean = false,
+    val quickBoardSend: Boolean = false,
     val easterAnimationsUnlocked: Boolean = false,
     val isAnimating: Boolean = false,
     val crashReportOptIn: Boolean = false,
@@ -139,7 +140,7 @@ class SettingsViewModel @Inject constructor(
                 val interval = userPreferences.syncInterval.first()
                 val lastSync = userPreferences.lastSyncTimestamp.first()
                 val scale = userPreferences.gradeScale.first()
-                val autoDisconnect = userPreferences.bleAutoDisconnectMinutes.first()
+                val autoDisconnect = userPreferences.bleAutoDisconnectSeconds.first()
                 val ledColors = userPreferences.ledHoldColors.first()
                 val frameSpeed = userPreferences.routeFrameSpeed.first()
                 val useSetterSpeed = userPreferences.routeUseSetterSpeed.first()
@@ -152,6 +153,7 @@ class SettingsViewModel @Inject constructor(
                 val remoteDisconnect = userPreferences.allowRemoteDisconnect.first()
                 val easterUnlocked = userPreferences.easterAnimationsUnlocked.first()
                 val keepScreenOn = userPreferences.keepScreenOn.first()
+                val quickBoardSend = userPreferences.quickBoardSend.first()
                 val crashOptIn = userPreferences.crashReportOptIn.first() ?: false
                 val announcementsOn = userPreferences.announcementsEnabled.first()
                 val catRelease = userPreferences.announcementCatRelease.first()
@@ -190,7 +192,7 @@ class SettingsViewModel @Inject constructor(
                     lastSyncTimestamp = lastSync,
                     hasAssessment = hasAssessment,
                     ledColors = ledColors,
-                    bleAutoDisconnectMinutes = autoDisconnect,
+                    bleAutoDisconnectSeconds = autoDisconnect,
                     profile = profileForm,
                     routePlayback = RoutePlaybackSettings(
                         frameSpeed = frameSpeed,
@@ -204,6 +206,7 @@ class SettingsViewModel @Inject constructor(
                         autoStart = timerAutoStart
                     ),
                     keepScreenOn = keepScreenOn,
+                    quickBoardSend = quickBoardSend,
                     easterAnimationsUnlocked = easterUnlocked,
                     climbSharing = ClimbSharingSettings(
                         enabled = sharingEnabled,
@@ -240,6 +243,7 @@ class SettingsViewModel @Inject constructor(
             launch { userPreferences.lastSyncTimestamp.collect { v -> _state.update { it.copy(lastSyncTimestamp = v) } } }
             launch { userPreferences.darkMode.collect { v -> _state.update { it.copy(darkMode = v) } } }
             launch { userPreferences.keepScreenOn.collect { v -> _state.update { it.copy(keepScreenOn = v) } } }
+            launch { userPreferences.quickBoardSend.collect { v -> _state.update { it.copy(quickBoardSend = v) } } }
             launch { userPreferences.nearbyClimbSharing.collect { v -> _state.update { it.copy(climbSharing = it.climbSharing.copy(enabled = v)) } } }
             launch { userPreferences.allowRemoteDisconnect.collect { v -> _state.update { it.copy(climbSharing = it.climbSharing.copy(allowRemoteDisconnect = v)) } } }
             launch { userPreferences.crashReportOptIn.collect { v -> _state.update { it.copy(crashReportOptIn = v ?: false) } } }
@@ -406,11 +410,15 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { userPreferences.setKeepScreenOn(enabled) }
     }
 
-    fun updateBleAutoDisconnect(minutes: Int) {
-        _state.update { it.copy(bleAutoDisconnectMinutes = minutes) }
-        bleConnection.autoDisconnectMinutes = minutes
+    fun updateQuickBoardSend(enabled: Boolean) {
+        viewModelScope.launch { userPreferences.setQuickBoardSend(enabled) }
+    }
+
+    fun updateBleAutoDisconnect(seconds: Int) {
+        _state.update { it.copy(bleAutoDisconnectSeconds = seconds) }
+        bleConnection.autoDisconnectSeconds = seconds
         viewModelScope.launch {
-            userPreferences.setBleAutoDisconnectMinutes(minutes)
+            userPreferences.setBleAutoDisconnectSeconds(seconds)
         }
     }
 

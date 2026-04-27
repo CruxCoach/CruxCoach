@@ -47,12 +47,15 @@ fun BleConnectionSheet(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
-    // Auto-start scan when sheet opens (if permissions granted and BT enabled)
+    // Auto-start scan when sheet opens (if permissions granted and BT enabled).
+    // Use the auto-connect-on-single variant: after a 2 s settling window, if
+    // exactly one board was found, the VM connects without the user tapping
+    // the list entry. 2+ boards leave the list visible for manual pick.
     if (autoStartScan) {
         LaunchedEffect(state.hasPermissions, state.isBluetoothEnabled) {
             if (state.hasPermissions && state.isBluetoothEnabled &&
                 state.connectionState == ConnectionState.DISCONNECTED && !state.isScanning) {
-                viewModel.startScan()
+                viewModel.startScanWithAutoConnect()
             }
         }
     }

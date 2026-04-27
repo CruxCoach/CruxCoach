@@ -60,6 +60,7 @@ Browse climbs, control your Kilter Board via Bluetooth, log ascents, import your
 - **Kilter logbook import** from your Kilter account
 - **Statistics** — grade progression, difficulty trends, favorite angles
 - **Data export/import** as JSON backup
+- **Encrypted cloud backup** *(0.1.3+, opt-in)* — your climbing data encrypted on-device, mirrored across the open Nostr network and Blossom storage servers. The maintainer cannot decrypt it; only your CruxCoach Account key can. Survives app uninstall + device transfer.
 - **App-share QR code** — share CruxCoach with nearby climbers by QR
 - **Reliable notifications** — guided setup for Android battery and autostart restrictions so dev-DMs and sync updates always arrive
 - **In-app auto-updater** — verifiable APK updates with TOFU certificate pinning (auto-disabled on Zapstore installs)
@@ -144,7 +145,9 @@ See [LEGAL.md](LEGAL.md) for our position on interoperability and data usage.
 
 **Personal data** — stored locally in an encrypted SQLCipher database. Encryption keys live in the Android Keystore and never leave the device.
 
-**Your identity** — a Nostr key pair. No central server can lock you out.
+**Optional cloud backup** *(off by default)* — when you turn it on, your data is encrypted on the device with a key derived from your Nostr identity, then mirrored across the open Nostr network and Blossom storage servers. No single provider holds a usable copy. Saving your CruxCoach Account key once is what makes the backup recoverable on any other device — see [SECURITY.md](SECURITY.md#encrypted-cloud-backup-feat-002-013) for the full threat model.
+
+**Your identity** — a Nostr key pair. No central server can lock you out. The same key pair that is your CruxCoach Account encrypts your cloud backup, so saving it once protects both.
 
 ---
 

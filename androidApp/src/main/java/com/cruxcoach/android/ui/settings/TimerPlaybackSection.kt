@@ -159,46 +159,18 @@ internal fun RestTimerSection(
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
 
-    // Duration picker
-    val durationLabel = if (restTimer.durationSeconds >= 60) {
-        val min = restTimer.durationSeconds / 60
-        val sec = restTimer.durationSeconds % 60
-        if (sec > 0) "${min}m ${sec}s" else "${min} Min"
-    } else {
-        "${restTimer.durationSeconds}s"
-    }
-    Text(
-        stringResource(R.string.settings_timer_duration, durationLabel),
-        style = MaterialTheme.typography.bodyMedium
+    Spacer(modifier = Modifier.height(4.dp))
+    // Stepper renders its own current value, so separate "Duration: …"
+    // and "Or set exactly:" lines above it would only repeat what's
+    // already visible — both removed.
+    DurationStepper(
+        seconds = restTimer.durationSeconds,
+        onChange = onDurationChange,
+        minSeconds = 5,
+        maxSeconds = 30 * 60,
+        minuteLabel = stringResource(R.string.settings_duration_minutes_label),
+        secondLabel = stringResource(R.string.settings_duration_seconds_label),
     )
-
-    val options = listOf(
-        30 to stringResource(R.string.settings_timer_30s),
-        60 to stringResource(R.string.settings_timer_1min),
-        90 to stringResource(R.string.settings_timer_1m30),
-        120 to stringResource(R.string.settings_timer_2min),
-        180 to stringResource(R.string.settings_timer_3min),
-        240 to stringResource(R.string.settings_timer_4min),
-        300 to stringResource(R.string.settings_timer_5min)
-    )
-
-    FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-        modifier = Modifier.testTag("settings_rest_timer_duration")
-    ) {
-        options.forEach { (seconds, label) ->
-            FilterChip(
-                selected = restTimer.durationSeconds == seconds,
-                onClick = { onDurationChange(seconds) },
-                label = { Text(label) },
-                colors = FilterChipDefaults.filterChipColors(
-                    selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
-                    selectedLabelColor = OrangeAccent
-                )
-            )
-        }
-    }
 
     // Auto-start toggle
     Row(

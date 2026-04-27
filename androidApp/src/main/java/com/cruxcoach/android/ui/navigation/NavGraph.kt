@@ -42,6 +42,7 @@ import com.cruxcoach.android.ui.plan.WeekOverviewScreen
 import com.cruxcoach.android.ui.exercises.ExerciseLibraryScreen
 import com.cruxcoach.android.ui.onboarding.OnboardingScreen
 import com.cruxcoach.android.ui.navigation.StartViewModel
+import com.cruxcoach.android.ui.whatsnew.WhatsNewHost
 import com.cruxcoach.android.ui.settings.AppShareScreen
 import com.cruxcoach.android.ui.settings.AssessmentScreen
 import com.cruxcoach.android.ui.settings.ProfileAssessmentScreen
@@ -251,7 +252,13 @@ fun CruxCoachNavHost(
                             popUpTo(Routes.ONBOARDING) { inclusive = true }
                         }
                     },
-                    onNavigateToSync = { navController.navigate(Routes.BOARD_SYNC) }
+                    onNavigateToKeyImport = { navController.navigate(Routes.KEY_IMPORT) },
+                    // KeyManagementScreen as a forward push (not a popUpTo).
+                    // Onboarding's NavBackStackEntry stays on the stack, so
+                    // hitting back from KeyManagementScreen returns the user
+                    // to the same onboarding step they were on (state +
+                    // ViewModel preserved via the survived BackStackEntry).
+                    onNavigateToKeyManagement = { navController.navigate(Routes.KEY_MANAGEMENT) },
                 )
             }
 
@@ -432,11 +439,14 @@ fun CruxCoachNavHost(
 
             composable(Routes.BOARD_SYNC) {
                 BoardSyncScreen(
-                    onSyncComplete = {
-                        navController.navigate(Routes.BOARD_BROWSER) {
-                            popUpTo(Routes.BOARD_SYNC) { inclusive = true }
-                        }
-                    },
+                    // popBackStack instead of navigate-to-BoardBrowser: the
+                    // BoardSync screen is reached from two very different
+                    // places — Settings (where "Go to browser" makes sense
+                    // but isn't critical) and the Onboarding Step 1 (where
+                    // a hard jump to BoardBrowser would silently skip the
+                    // remaining onboarding steps). Unconditional popBackStack
+                    // returns the user to whichever screen launched them.
+                    onSyncComplete = { navController.popBackStack() },
                     onNavigateBack = { navController.popBackStack() },
                     onNavigateToBugReport = { title, desc ->
                         navController.navigate(Routes.bugReport(title, desc))
@@ -472,7 +482,6 @@ fun CruxCoachNavHost(
                     onNavigateBack = { navController.popBackStack() },
                     onNavigateToProfile = { navController.navigate(Routes.PROFILE_ASSESSMENT) },
                     onNavigateToAppShare = { navController.navigate(Routes.APP_SHARE) },
-                    onNavigateToSync = { navController.navigate(Routes.BOARD_SYNC) },
                     onNavigateToImport = { navController.navigate(Routes.DATA_IMPORT) },
                     onNavigateToExport = { navController.navigate(Routes.DATA_EXPORT) },
                     onNavigateToChat = { navController.navigate(Routes.DEV_CHAT) },
@@ -596,6 +605,12 @@ fun CruxCoachNavHost(
 
         }
     }
+    // Sibling of the Scaffold so the dialog overlays whatever is on screen.
+    // The host's ViewModel keeps the queue empty during fresh-install
+    // onboarding; only upgrading users see anything.
+    WhatsNewHost(
+        onNavigateToKeyManagement = { navController.navigate(Routes.KEY_MANAGEMENT) },
+    )
     } // CompositionLocalProvider
 }
 

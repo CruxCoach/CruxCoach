@@ -37,6 +37,16 @@ object KeyScopedKeys {
     val AMBER_PUBKEY = stringPreferencesKey("amber_pubkey")
     val AMBER_PACKAGE_NAME = stringPreferencesKey("amber_package_name")
     val ONBOARDING_COMPLETED = booleanPreferencesKey("onboarding_completed")
+
+    // Highest BuildConfig.VERSION_CODE this identity has already
+    // acknowledged "what's new" dialogs for. Per-identity (not global)
+    // because most announced features are per-identity opt-ins (e.g.
+    // FEAT-002 backup): switching identity should re-prompt so the user
+    // can decide independently for the new identity. Null = either fresh
+    // install / fresh identity, or upgrade from a version that predates
+    // this mechanism — the WhatsNewViewModel distinguishes via
+    // ONBOARDING_COMPLETED.
+    val LAST_SEEN_APP_VERSION_CODE = intPreferencesKey("last_seen_app_version_code")
 }
 
 enum class GradeScale(val label: String) {
@@ -44,10 +54,14 @@ enum class GradeScale(val label: String) {
     FRENCH("Fontainebleau")
 }
 
-enum class SyncInterval(val label: String) {
-    DAILY("Taeglich"),
-    WEEKLY("Woechentlich"),
-    MANUAL("Manuell")
+enum class SyncInterval(@androidx.annotation.StringRes val labelRes: Int) {
+    // labelRes points to a localized string resource so both the German
+    // and English (system-fallback) locales render correctly. Pre-fix
+    // these were hardcoded German ("Taeglich"/"Woechentlich"/"Manuell")
+    // shown verbatim to every user regardless of locale.
+    DAILY(com.cruxcoach.android.R.string.sync_interval_daily),
+    WEEKLY(com.cruxcoach.android.R.string.sync_interval_weekly),
+    MANUAL(com.cruxcoach.android.R.string.sync_interval_manual),
 }
 
 enum class DarkModeSetting(val label: String) {
@@ -120,6 +134,10 @@ object PreferenceKeys {
     val LED_COLOR_FINISH = intPreferencesKey("led_color_finish")
     val LED_COLOR_FOOT = intPreferencesKey("led_color_foot")
     val BLE_AUTO_DISCONNECT_MINUTES = intPreferencesKey("ble_auto_disconnect_minutes")
+    // Seconds-precision successor to BLE_AUTO_DISCONNECT_MINUTES. Read
+    // by bleAutoDisconnectSeconds, which transparently migrates the
+    // older minutes key on first read if the new key is absent.
+    val BLE_AUTO_DISCONNECT_SECONDS = intPreferencesKey("ble_auto_disconnect_seconds")
     val BOARD_ANGLE = intPreferencesKey("board_angle")
     val BOARD_MIN_GRADE = intPreferencesKey("board_min_grade")
     val BOARD_MAX_GRADE = intPreferencesKey("board_max_grade")
@@ -140,6 +158,13 @@ object PreferenceKeys {
     val ALLOW_REMOTE_DISCONNECT = booleanPreferencesKey("allow_remote_disconnect")
     val EASTER_ANIMATIONS_UNLOCKED = booleanPreferencesKey("easter_animations_unlocked")
     val KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
+    /**
+     * Quick-Send-Mode: when true, tapping the BLE icon in the climb-detail
+     * screen runs a one-shot macro (scan → auto-connect-if-single → send →
+     * disconnect) instead of opening the connection sheet. Default off so
+     * upgraders see no behavior change until they opt in via Settings.
+     */
+    val QUICK_BOARD_SEND = booleanPreferencesKey("quick_board_send")
     val DARK_MODE = stringPreferencesKey("dark_mode")
     val SESSION_DISPLAY_NAME = stringPreferencesKey("session_display_name")
     val LAST_CLIMB_UUID = stringPreferencesKey("last_climb_uuid")
@@ -153,6 +178,10 @@ object PreferenceKeys {
     val ANNOUNCEMENT_CAT_TIP = booleanPreferencesKey("announcement_cat_tip")
     val ANNOUNCEMENT_CAT_GENERAL = booleanPreferencesKey("announcement_cat_general")
     val APP_LAUNCH_COUNT = intPreferencesKey("app_launch_count")
+
+    // FEAT-001: NIP-65 relay discovery
+    val NIP65_DISCOVERY_ENABLED = booleanPreferencesKey("nip65_discovery_enabled")
+    val NIP65_RESOLVED_RELAYS = stringPreferencesKey("nip65_resolved_relays")
 }
 
 /**
@@ -309,13 +338,22 @@ class UserPreferences(
         }
     }
 
-    val bleAutoDisconnectMinutes: Flow<Int> = dataStore.data.map { prefs ->
-        prefs[PreferenceKeys.BLE_AUTO_DISCONNECT_MINUTES] ?: 1
+    /**
+     * BLE idle-disconnect timeout in seconds. New storage key since
+     * 0.1.3; old installs had whole-minute granularity under
+     * [PreferenceKeys.BLE_AUTO_DISCONNECT_MINUTES]. The fallback read
+     * multiplies the legacy value by 60 so upgrading users keep their
+     * chosen timeout to the second — the next write lands in the new
+     * seconds key and the legacy entry eventually becomes dead bytes.
+     */
+    val bleAutoDisconnectSeconds: Flow<Int> = dataStore.data.map { prefs ->
+        prefs[PreferenceKeys.BLE_AUTO_DISCONNECT_SECONDS]
+            ?: ((prefs[PreferenceKeys.BLE_AUTO_DISCONNECT_MINUTES] ?: 1) * 60)
     }
 
-    suspend fun setBleAutoDisconnectMinutes(minutes: Int) {
+    suspend fun setBleAutoDisconnectSeconds(seconds: Int) {
         dataStore.edit { prefs ->
-            prefs[PreferenceKeys.BLE_AUTO_DISCONNECT_MINUTES] = minutes
+            prefs[PreferenceKeys.BLE_AUTO_DISCONNECT_SECONDS] = seconds
         }
     }
 
@@ -432,6 +470,14 @@ class UserPreferences(
 
     suspend fun setKeepScreenOn(enabled: Boolean) {
         dataStore.edit { it[PreferenceKeys.KEEP_SCREEN_ON] = enabled }
+    }
+
+    val quickBoardSend: Flow<Boolean> = dataStore.data.map {
+        it[PreferenceKeys.QUICK_BOARD_SEND] ?: false
+    }
+
+    suspend fun setQuickBoardSend(enabled: Boolean) {
+        dataStore.edit { it[PreferenceKeys.QUICK_BOARD_SEND] = enabled }
     }
 
     suspend fun isOnboardingCompleted(): Boolean =
@@ -647,5 +693,30 @@ class UserPreferences(
             val current = it[PreferenceKeys.APP_LAUNCH_COUNT] ?: 0
             it[PreferenceKeys.APP_LAUNCH_COUNT] = current + 1
         }
+    }
+
+    val lastSeenAppVersionCode: Flow<Int?> = keyScoped.data.map {
+        it[KeyScopedKeys.LAST_SEEN_APP_VERSION_CODE]
+    }
+
+    suspend fun setLastSeenAppVersionCode(versionCode: Int) {
+        keyScoped.edit { it[KeyScopedKeys.LAST_SEEN_APP_VERSION_CODE] = versionCode }
+    }
+
+    /**
+     * FEAT-001 kill-switch. Default `true`. When `false`, the resolver
+     * short-circuits to `NostrConfig.DEFAULT_RELAYS` and no bootstrap fetch
+     * runs. Not surfaced in the settings UI in 0.1.3 — flipped via dev
+     * guidance or a follow-up patch if a bootstrap relay misbehaves.
+     */
+    val nip65DiscoveryEnabled: Flow<Boolean> = dataStore.data.map {
+        it[PreferenceKeys.NIP65_DISCOVERY_ENABLED] ?: true
+    }
+
+    suspend fun isNip65DiscoveryEnabled(): Boolean =
+        dataStore.data.first()[PreferenceKeys.NIP65_DISCOVERY_ENABLED] ?: true
+
+    suspend fun setNip65DiscoveryEnabled(enabled: Boolean) {
+        dataStore.edit { it[PreferenceKeys.NIP65_DISCOVERY_ENABLED] = enabled }
     }
 }

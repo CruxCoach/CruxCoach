@@ -48,6 +48,18 @@ class NostrRelayPool @Inject constructor(
         }
     )
 
+    /**
+     * The resolved relay list, pushed here by
+     * [com.cruxcoach.android.nostr.relaydiscovery.RelayListResolver]. Starts as
+     * `NostrConfig.DEFAULT_RELAYS` so the pool is usable before discovery runs
+     * (or at all, if the feature flag is off). Never null, never empty.
+     *
+     * Reads and writes are volatile only — updates are single-writer (the
+     * resolver) and consumers read a snapshot each op, so no lock is needed.
+     */
+    @Volatile
+    private var resolvedRelays: List<RelayConfig> = NostrConfig.DEFAULT_RELAYS
+
     private inner class RelayConnection(val url: String) {
         // @Volatile: ws is written from the OkHttp WebSocketListener dispatcher
         // (onFailure / onClosed) and read from sender coroutines — visibility
@@ -119,6 +131,31 @@ class NostrRelayPool @Inject constructor(
                     "OK" -> {
                         val eventId = arr[1].jsonPrimitive.content
                         val accepted = arr[2].jsonPrimitive.boolean
+                        // NIP-01 OK frame format: ["OK", event_id, accepted,
+                        // <reason>]. Capture the optional reason so we can
+                        // distinguish "rejected with reason" from "silently
+                        // dropped". Some relays additionally return OK true
+                        // with an informational reason ("duplicate:",
+                        // "ephemeral:") — keep that visible at debug level
+                        // so a 1-of-3-accepted result has a per-relay
+                        // explanation in logcat instead of looking like an
+                        // app-side bug.
+                        val reason = arr.getOrNull(3)?.let { el ->
+                            runCatching { el.jsonPrimitive.content }.getOrNull()
+                        }.orEmpty()
+                        if (!accepted) {
+                            Log.w(
+                                TAG,
+                                "event=relay_ok_false url=$url eventIdPrefix=${eventId.take(8)} " +
+                                    "reason=${if (reason.isEmpty()) "<none>" else reason}",
+                            )
+                        } else if (reason.isNotEmpty()) {
+                            Log.d(
+                                TAG,
+                                "event=relay_ok_true_with_reason url=$url " +
+                                    "eventIdPrefix=${eventId.take(8)} reason=$reason",
+                            )
+                        }
                         pendingOks.remove(eventId)?.complete(accepted)
                     }
                     "EVENT" -> {
@@ -143,11 +180,26 @@ class NostrRelayPool @Inject constructor(
             val deferred = CompletableDeferred<Boolean>()
             pendingOks[eventId] = deferred
             val msg = "[\"EVENT\",$eventJson]"
-            ws?.send(msg) ?: return false
+            if (ws?.send(msg) != true) {
+                // ws was null or send queued failed — distinguishable from
+                // a relay-side OK false in logcat (no `relay_ok_false` will
+                // follow this line).
+                Log.w(
+                    TAG,
+                    "event=relay_send_failed url=$url eventIdPrefix=${eventId.take(8)} reason=ws-not-ready",
+                )
+                pendingOks.remove(eventId)
+                return false
+            }
             return try {
                 withTimeout(NostrConfig.RELAY_TIMEOUT_MS) { deferred.await() }
             } catch (e: Exception) {
                 pendingOks.remove(eventId)
+                Log.w(
+                    TAG,
+                    "event=relay_send_timeout url=$url eventIdPrefix=${eventId.take(8)} " +
+                        "reason=${e.javaClass.simpleName}",
+                )
                 false
             }
         }
@@ -232,10 +284,60 @@ class NostrRelayPool @Inject constructor(
         return connections.computeIfAbsent(url) { RelayConnection(it) }
     }
 
+    /**
+     * Relays marked write-enabled in the current resolved list. Safe to call
+     * on any thread — reads a `@Volatile` snapshot.
+     */
+    fun writeRelays(): List<RelayConfig> = resolvedRelays.filter { it.write }
+
+    /** Relays marked read-enabled in the current resolved list. */
+    fun readRelays(): List<RelayConfig> = resolvedRelays.filter { it.read }
+
+    /**
+     * Called by the relay-list resolver when the resolved set changes.
+     *
+     * Dropped URLs have their WebSocket connections hard-closed (any in-flight
+     * subscriptions on them are dropped). New URLs are connected lazily on the
+     * next [sendEvent]/[subscribe]. Stable URLs keep their existing connection
+     * and subscription ids.
+     *
+     * Idempotent: calling with the same content as the current resolved list
+     * is a no-op (the resolver also skip-checks, but the pool defends in
+     * depth in case other callers reach this method).
+     */
+    fun onRelaysChanged(resolved: List<RelayConfig>) {
+        if (resolved.isEmpty()) {
+            Log.w(TAG, "onRelaysChanged called with empty list — ignored")
+            return
+        }
+        val previousUrls = resolvedRelays.map { it.url }.toSet()
+        val newUrls = resolved.map { it.url }.toSet()
+        val dropped = previousUrls - newUrls
+        resolvedRelays = resolved
+        if (dropped.isNotEmpty()) {
+            dropped.forEach { url ->
+                connections.remove(url)?.close()
+            }
+        }
+    }
+
     suspend fun sendEvent(event: Event): Boolean {
+        val (_, accepted) = sendEventWithStats(event)
+        return accepted > 0
+    }
+
+    /**
+     * Publish [event] to every configured write relay and report
+     * (attempted, accepted). Used by delete flows that need to tell
+     * the user how many relays actually acknowledged — a single
+     * Boolean "did any accept" is fine for fire-and-forget writes but
+     * hides a 1-of-5 outcome from the user when they explicitly asked
+     * for full removal.
+     */
+    suspend fun sendEventWithStats(event: Event): Pair<Int, Int> {
         val eventJson = event.toJson()
-        val eventId = extractEventId(eventJson) ?: return false
-        val relays = NostrConfig.DEFAULT_RELAYS.filter { it.write }
+        val eventId = extractEventId(eventJson) ?: return 0 to 0
+        val relays = writeRelays()
         val results = coroutineScope {
             relays.map { relay ->
                 async {
@@ -248,7 +350,7 @@ class NostrRelayPool @Inject constructor(
                 }
             }.map { it.await() }
         }
-        return results.any { it }
+        return relays.size to results.count { it }
     }
 
     /**
@@ -267,7 +369,7 @@ class NostrRelayPool @Inject constructor(
         closeOnEose: Boolean = false
     ): Flow<String> = callbackFlow {
         val subId = java.util.UUID.randomUUID().toString()
-        val readRelays = NostrConfig.DEFAULT_RELAYS.filter { it.read }
+        val readRelays = readRelays()
         val flow = MutableSharedFlow<String>(extraBufferCapacity = 256)
         val eoseCount = java.util.concurrent.atomic.AtomicInteger(0)
         val relayCount = readRelays.size
@@ -327,7 +429,7 @@ class NostrRelayPool @Inject constructor(
         connections.values.forEach { conn ->
             conn.resetReconnect()
         }
-        val readRelays = NostrConfig.DEFAULT_RELAYS.filter { it.read }
+        val readRelays = readRelays()
         readRelays.forEach { relay ->
             val conn = connections[relay.url] ?: return@forEach
             scope.launch {

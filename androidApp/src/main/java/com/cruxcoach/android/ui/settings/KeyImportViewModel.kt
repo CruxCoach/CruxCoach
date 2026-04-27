@@ -6,10 +6,15 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.R
 import com.cruxcoach.android.data.NostrMessageRepository
+import com.cruxcoach.android.data.SyncInterval
 import com.cruxcoach.android.data.UserPreferences
+import com.cruxcoach.android.nostr.AmberIntegration
 import com.cruxcoach.android.nostr.NostrConfig
 import com.cruxcoach.android.nostr.NostrKeyStore
 import com.cruxcoach.android.nostr.NostrSigner
+import com.cruxcoach.android.nostr.backup.BackupPreferences
+import com.cruxcoach.android.nostr.backup.BackupSyncWorker
+import com.cruxcoach.android.nostr.relaydiscovery.RelayListCache
 import com.vitorpamplona.quartz.nip01Core.core.hexToByteArray
 import com.vitorpamplona.quartz.nip01Core.core.toHexKey
 import com.vitorpamplona.quartz.nip01Core.crypto.KeyPair
@@ -33,6 +38,24 @@ enum class ImportFormat {
     UNKNOWN, NSEC, NCRYPTSEC, HEX, MNEMONIC
 }
 
+private val KEY_IMPORT_HEX_64_REGEX = Regex("^[0-9a-f]{64}$")
+private val KEY_IMPORT_WHITESPACE_REGEX = Regex("\\s+")
+
+/**
+ * Top-level so [KeyImportFormatDetectionTest] can exercise the production
+ * function instead of duplicating it. Pre-fix the test maintained an
+ * inline copy of this branch table; a divergence between copy and
+ * production would have shipped silently because the test only verified
+ * its own copy.
+ */
+internal fun detectKeyImportFormat(input: String): ImportFormat = when {
+    input.startsWith("nsec1") -> ImportFormat.NSEC
+    input.startsWith("ncryptsec1") -> ImportFormat.NCRYPTSEC
+    input.matches(KEY_IMPORT_HEX_64_REGEX) -> ImportFormat.HEX
+    input.split(KEY_IMPORT_WHITESPACE_REGEX).size in 12..24 -> ImportFormat.MNEMONIC
+    else -> ImportFormat.UNKNOWN
+}
+
 data class KeyImportState(
     val input: String = "",
     val detectedFormat: ImportFormat = ImportFormat.UNKNOWN,
@@ -50,6 +73,8 @@ class KeyImportViewModel @Inject constructor(
     private val nostrSigner: NostrSigner,
     private val userPreferences: UserPreferences,
     private val messageRepository: NostrMessageRepository,
+    private val backupPreferences: BackupPreferences,
+    private val relayListCache: RelayListCache,
     @param:ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -115,6 +140,15 @@ class KeyImportViewModel @Inject constructor(
                     val privKeyHex = resolvePrivateKeyHex(pendingPassword)
                         ?: return@withContext
 
+                    // Cancel periodic backup BEFORE swapping the signer / clearing
+                    // identity-scoped state. WorkManager only stops the next
+                    // schedule tick — an already-running worker may still finish
+                    // a backup with the OLD pubkey — but combined with
+                    // BackupRepository.pipelineMutex, an in-flight pipeline run
+                    // serializes against this swap and the next worker tick will
+                    // see the new identity (or stay cancelled).
+                    BackupSyncWorker.schedule(context, enabled = false, interval = SyncInterval.MANUAL)
+
                     keyStore.importKey(privKeyHex)
                     nostrSigner.clearAmberConfig()
                     userPreferences.setKeyBackedUp(false)
@@ -125,6 +159,19 @@ class KeyImportViewModel @Inject constructor(
                     val newPubkey = nostrSigner.getPublicKeyHex()
                     messageRepository.deleteForeignIdentityRows(newPubkey, NostrConfig.DEV_PUBKEY)
                     userPreferences.setNostrSyncCursor(0L)
+                    // Drop FEAT-002 backup state that belongs to the previous
+                    // identity: wrapped dataKey, d-tag HMAC cache, previous
+                    // blob SHA, and timestamps. Without this, the new
+                    // identity would publish pointers under the old d-tag
+                    // (breaking enumeration resistance) and the self-heal
+                    // chain would mask misleading "last backup" timestamps.
+                    backupPreferences.clearAllIdentityState()
+                    // FEAT-001 NIP-65 cache is a single shared DataStore
+                    // entry (not per-pubkey); stale relay URLs from the
+                    // previous identity would otherwise stay active for
+                    // up to the 24h TTL and route the new identity's
+                    // Nostr publishes through the old one's relays.
+                    relayListCache.clear()
 
                     pendingPassword = null
                     _state.update { it.copy(showConfirmDialog = false, requireRestart = true) }
@@ -145,15 +192,51 @@ class KeyImportViewModel @Inject constructor(
         _state.update { it.copy(error = null) }
     }
 
+    // ── Amber flow ───────────────────────────────────────────────
+
+    /**
+     * Handle the Amber ActivityResult: normalize the returned pubkey (Amber
+     * returns npub; our store expects hex), persist the signer-mode config,
+     * switch the signer, purge foreign-identity message rows, and require
+     * an app restart so SQLCipher re-derives its key from the new pubkey.
+     */
+    fun onAmberLoginSuccess(pubkeyInput: String, packageName: String?) {
+        viewModelScope.launch {
+            val pubkeyHex = NostrSigner.normalizeToHex(pubkeyInput) ?: run {
+                _state.update {
+                    it.copy(error = context.getString(R.string.key_import_format_unknown))
+                }
+                return@launch
+            }
+            val pkg = packageName ?: AmberIntegration.AMBER_PACKAGE
+            withContext(Dispatchers.IO) {
+                try {
+                    // Cancel periodic backup before identity swap (see confirmImport
+                    // for the full reasoning). Same pattern; same caveats.
+                    BackupSyncWorker.schedule(context, enabled = false, interval = SyncInterval.MANUAL)
+
+                    nostrSigner.saveAmberConfig(pubkeyHex, pkg)
+                    nostrSigner.switchToAmber(pubkeyHex, pkg, context.contentResolver)
+                    messageRepository.deleteForeignIdentityRows(pubkeyHex, NostrConfig.DEV_PUBKEY)
+                    userPreferences.setNostrSyncCursor(0L)
+                    backupPreferences.clearAllIdentityState()
+                    relayListCache.clear()
+                    // Amber is inherently "backed up" (key lives in Amber).
+                    userPreferences.setKeyBackedUp(true)
+                    _state.update { it.copy(requireRestart = true) }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Amber import failed", e)
+                    _state.update {
+                        it.copy(error = context.getString(R.string.key_import_failed, e.message ?: ""))
+                    }
+                }
+            }
+        }
+    }
+
     // ── Private helpers ──────────────────────────────────────────
 
-    private fun detectFormat(input: String): ImportFormat = when {
-        input.startsWith("nsec1") -> ImportFormat.NSEC
-        input.startsWith("ncryptsec1") -> ImportFormat.NCRYPTSEC
-        input.matches(HEX_64_REGEX) -> ImportFormat.HEX
-        input.split(WHITESPACE_REGEX).size in 12..24 -> ImportFormat.MNEMONIC
-        else -> ImportFormat.UNKNOWN
-    }
+    private fun detectFormat(input: String): ImportFormat = detectKeyImportFormat(input)
 
     /**
      * Derives the private key hex from the current input + optional password,
@@ -210,7 +293,5 @@ class KeyImportViewModel @Inject constructor(
 
     companion object {
         private const val TAG = "KeyImportViewModel"
-        private val HEX_64_REGEX = Regex("^[0-9a-f]{64}$")
-        private val WHITESPACE_REGEX = Regex("\\s+")
     }
 }
