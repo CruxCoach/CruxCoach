@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.community.ClimbCreatorRepository
+import com.cruxcoach.android.community.EditorAutosave
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.data.repository.BoardImage
 import com.cruxcoach.data.repository.BoardPlacement
@@ -15,6 +16,7 @@ import com.cruxcoach.domain.board.BoardHold
 import com.cruxcoach.domain.community.ClimbEditorState
 import com.cruxcoach.domain.community.ClimbValidation
 import com.cruxcoach.domain.community.cycleHoldRole
+import com.cruxcoach.domain.community.paintWithBrush
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -44,9 +46,21 @@ data class ClimbEditorUiState(
     val canRedo: Boolean = false,
     val validationIssues: List<ClimbValidation.Issue> = emptyList(),
     val duplicateOf: CommunityClimbRow? = null,    // populated when frames_hash matches existing
+    val pendingPublishConfirm: Boolean = false,    // dup-warn dialog gate
     val isPublishing: Boolean = false,
     val publishedUuid: String? = null,             // success terminal — UI navigates back
     val errorMessage: String? = null,
+    /** Loaded-draft uuid — re-saving updates this row in place. */
+    val loadedDraftUuid: String? = null,
+    /** Recovered autosave waiting for the user's restore decision. */
+    val autosaveOffer: EditorAutosave.AutosaveSnapshot? = null,
+    /** Heatmap intensities (placementId → 0..1) for "popular co-occurring holds". */
+    val heatmap: Map<Int, Float> = emptyMap(),
+    /** User-toggled visibility of the heatmap overlay. */
+    val heatmapEnabled: Boolean = false,
+    /** Drafts the user has saved locally; null = not yet loaded. */
+    val drafts: List<CommunityClimbRow>? = null,
+    val draftsSheetOpen: Boolean = false,
 )
 
 @HiltViewModel
@@ -55,6 +69,8 @@ class ClimbEditorViewModel @Inject constructor(
     private val boardRepository: BoardRepository,
     private val userPreferences: UserPreferences,
     private val bleConnection: BoardBleConnection,
+    private val autosave: EditorAutosave,
+    private val savedStateHandle: androidx.lifecycle.SavedStateHandle,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ClimbEditorUiState())
@@ -63,8 +79,60 @@ class ClimbEditorViewModel @Inject constructor(
     private val undoStack = ArrayDeque<ClimbEditorState>()
     private val redoStack = ArrayDeque<ClimbEditorState>()
 
+    /** Debounced autosave job — restarted on every editor mutation. */
+    private var autosaveJob: kotlinx.coroutines.Job? = null
+
+    /** Debounced heatmap-recompute job — restarted on holds change. */
+    private var heatmapJob: kotlinx.coroutines.Job? = null
+
     init {
-        viewModelScope.launch { loadBoardData() }
+        viewModelScope.launch {
+            loadBoardData()
+            handleNavigationArgs()
+        }
+    }
+
+    /**
+     * Read SavedStateHandle for `forkUuid` (Remix from existing climb) and
+     * surface any recovered autosave to the user. Drafts navigate via the
+     * drawer instead so they're not handled here.
+     */
+    private suspend fun handleNavigationArgs() {
+        val forkUuid: String? = savedStateHandle["forkUuid"]
+        if (forkUuid != null) {
+            val source = withContext(Dispatchers.IO) {
+                boardRepository.getMyClimbs("__none__")
+                    .firstOrNull { it.uuid.equals(forkUuid, ignoreCase = true) }
+                    ?: boardRepository.getCommunityClimbs()
+                        .firstOrNull { it.uuid.equals(forkUuid, ignoreCase = true) }
+                    // Final fallback: a raw climb (Kilter source) by uuid via the existing browse query.
+                    ?: boardRepository.getClimbByUuid(forkUuid, angle = 40)?.let { c ->
+                        CommunityClimbRow(
+                            uuid = c.uuid, name = c.name + " Remix", setterUsername = c.setterUsername,
+                            description = c.description, framesText = c.frames, source = "kilter",
+                            syncStatus = "synced", createdByPubkey = null, nostrEventId = null,
+                            nostrDTag = null, framesHash = null, createdAt = null, moveCount = c.storedMoveCount,
+                        )
+                    }
+            }
+            if (source != null) seedFromFork(source)
+        }
+        // Autosave restore offer — only when the editor opens *fresh* (no fork seed).
+        val offer = withContext(Dispatchers.IO) { autosave.load() }
+        if (offer != null && _state.value.editor.selectedHolds.isEmpty()) {
+            _state.update { it.copy(autosaveOffer = offer) }
+        }
+    }
+
+    private fun seedFromFork(source: CommunityClimbRow) {
+        val holds = com.cruxcoach.domain.board.BoardClimbParser.parseFrames(source.framesText)
+            .associate { it.placementId to it.roleId }
+        val seeded = ClimbEditorState(
+            selectedHolds = holds,
+            name = source.name + if (!source.name.endsWith("Remix")) " Remix" else "",
+            description = source.description,
+        )
+        applyEditor(seeded)
     }
 
     private suspend fun loadBoardData() {
@@ -96,14 +164,15 @@ class ClimbEditorViewModel @Inject constructor(
     )
 
     /**
-     * Short tap on a hold → cycle through:
-     *   empty → Start → Griff → Tritt → Top → empty.
-     * Pushes the previous state onto the undo stack and clears redo.
+     * Short tap on a hold:
+     * - **No active brush** → cycle through empty → Start → Griff → Tritt → Top → empty
+     * - **Active brush** → paint the brush role (or toggle off if already that role)
      */
     fun toggleHold(placementId: Int) {
         val cur = _state.value.editor
         val current = cur.selectedHolds[placementId]
-        val next = cycleHoldRole(current)
+        val brush = cur.activeBrush
+        val next = if (brush != null) paintWithBrush(current, brush) else cycleHoldRole(current)
         val newHolds = if (next == null) {
             cur.selectedHolds - placementId
         } else {
@@ -111,6 +180,17 @@ class ClimbEditorViewModel @Inject constructor(
         }
         push(cur.copy(selectedHolds = newHolds))
         viewModelScope.launch { syncLeds() }
+    }
+
+    /**
+     * Set the active brush from a chip-toolbar tap. Tapping the same
+     * chip again deactivates the brush (back to cycle-on-tap).
+     */
+    fun toggleBrush(role: Int) {
+        val cur = _state.value.editor
+        val nextBrush = if (cur.activeBrush == role) null else role
+        // Brush change isn't an undoable edit — just a UI cursor flip.
+        _state.update { it.copy(editor = cur.copy(activeBrush = nextBrush)) }
     }
 
     /**
@@ -157,7 +237,16 @@ class ClimbEditorViewModel @Inject constructor(
         }
         viewModelScope.launch {
             try {
-                val uuid = withContext(Dispatchers.IO) { repository.saveDraft(current) }
+                val uuid = withContext(Dispatchers.IO) {
+                    val existing = _state.value.loadedDraftUuid
+                    if (existing != null) {
+                        repository.updateDraft(existing, current)
+                        existing
+                    } else {
+                        repository.saveDraft(current)
+                    }
+                }
+                autosave.clear()
                 onSaved(uuid)
             } catch (e: Exception) {
                 Log.w(TAG, "saveDraft failed", e)
@@ -167,8 +256,10 @@ class ClimbEditorViewModel @Inject constructor(
     }
 
     /**
-     * Publish — saves a draft first (so the climb is durable even if the
-     * relay round-trip fails) and then pushes the Kind-30078 event.
+     * Publish — first runs duplicate detection. If a duplicate is found,
+     * surface the dialog and pause; the actual publish call is gated on
+     * [confirmPublishWithDuplicate]. If no duplicate, proceeds straight
+     * to save + Nostr push.
      */
     fun publish(sizeLabel: String) {
         val current = _state.value.editor
@@ -177,7 +268,33 @@ class ClimbEditorViewModel @Inject constructor(
             _state.update { it.copy(validationIssues = issues) }
             return
         }
+        viewModelScope.launch {
+            val dup = withContext(Dispatchers.IO) { repository.findDuplicate(current) }
+            // Skip the dialog if the duplicate IS the draft we're updating.
+            val ownLoaded = _state.value.loadedDraftUuid
+            val isSelfReplace = dup != null && dup.uuid == ownLoaded
+            if (dup != null && !isSelfReplace) {
+                _state.update { it.copy(duplicateOf = dup, pendingPublishConfirm = true) }
+                return@launch
+            }
+            doPublish(sizeLabel)
+        }
+    }
+
+    /** User accepted the duplicate-warning dialog → continue publish. */
+    fun confirmPublishWithDuplicate(sizeLabel: String) {
+        _state.update { it.copy(duplicateOf = null, pendingPublishConfirm = false) }
+        doPublish(sizeLabel)
+    }
+
+    /** User declined the duplicate-warning dialog → stay in editor. */
+    fun cancelPublishOnDuplicate() {
+        _state.update { it.copy(duplicateOf = null, pendingPublishConfirm = false) }
+    }
+
+    private fun doPublish(sizeLabel: String) {
         _state.update { it.copy(isPublishing = true, errorMessage = null) }
+        val current = _state.value.editor
         viewModelScope.launch {
             val uuid = try {
                 withContext(Dispatchers.IO) { repository.saveAndPublish(current, sizeLabel) }
@@ -186,7 +303,88 @@ class ClimbEditorViewModel @Inject constructor(
                 _state.update { it.copy(isPublishing = false, errorMessage = e.message ?: "Publish failed") }
                 return@launch
             }
+            autosave.clear()
             _state.update { it.copy(isPublishing = false, publishedUuid = uuid) }
+        }
+    }
+
+    // ── Autosave restore offer ──────────────────────────────────
+
+    fun acceptAutosave() {
+        val offer = _state.value.autosaveOffer ?: return
+        applyEditor(offer.state)
+        _state.update { it.copy(autosaveOffer = null) }
+    }
+
+    fun dismissAutosave() {
+        viewModelScope.launch { autosave.clear() }
+        _state.update { it.copy(autosaveOffer = null) }
+    }
+
+    // ── Drafts drawer ───────────────────────────────────────────
+
+    fun openDraftsSheet() {
+        viewModelScope.launch {
+            val drafts = withContext(Dispatchers.IO) { boardRepository.getDraftClimbs() }
+            _state.update { it.copy(drafts = drafts, draftsSheetOpen = true) }
+        }
+    }
+
+    fun closeDraftsSheet() {
+        _state.update { it.copy(draftsSheetOpen = false) }
+    }
+
+    /**
+     * Load a draft into the editor. The hold map + metadata replace the
+     * current editor state; the loaded uuid is tracked so re-saving
+     * updates the same row in place. Doesn't touch any other drafts.
+     */
+    fun loadDraft(draft: CommunityClimbRow) {
+        val holds = com.cruxcoach.domain.board.BoardClimbParser.parseFrames(draft.framesText)
+            .associate { it.placementId to it.roleId }
+        val seeded = ClimbEditorState(
+            selectedHolds = holds,
+            name = draft.name,
+            description = draft.description,
+        )
+        // Reset undo stacks — we're starting from a fresh draft snapshot.
+        undoStack.clear(); redoStack.clear()
+        _state.update { it.copy(editor = seeded, loadedDraftUuid = draft.uuid, draftsSheetOpen = false, canUndo = false, canRedo = false) }
+        viewModelScope.launch { syncLeds() }
+    }
+
+    fun deleteDraft(uuid: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            boardRepository.deleteLocalClimb(uuid)
+            // Refresh the drawer's list.
+            val drafts = boardRepository.getDraftClimbs()
+            _state.update { s ->
+                val resetLoaded = if (s.loadedDraftUuid == uuid) null else s.loadedDraftUuid
+                s.copy(drafts = drafts, loadedDraftUuid = resetLoaded)
+            }
+        }
+    }
+
+    // ── Heatmap overlay ──────────────────────────────────────────
+
+    fun toggleHeatmap() {
+        val nowEnabled = !_state.value.heatmapEnabled
+        _state.update { it.copy(heatmapEnabled = nowEnabled) }
+        if (nowEnabled) recomputeHeatmap()
+    }
+
+    private fun recomputeHeatmap() {
+        if (!_state.value.heatmapEnabled) return
+        heatmapJob?.cancel()
+        heatmapJob = viewModelScope.launch {
+            kotlinx.coroutines.delay(HEATMAP_DEBOUNCE_MS)
+            val angle = _state.value.editor.angle ?: return@launch
+            val layoutId = userPreferences.boardLayoutId.first().toLong()
+            val seed = _state.value.editor.selectedHolds.keys
+            val map = withContext(Dispatchers.IO) {
+                boardRepository.computeEditorHeatmap(layoutId, angle.toLong(), seed)
+            }
+            _state.update { it.copy(heatmap = map) }
         }
     }
 
@@ -214,6 +412,7 @@ class ClimbEditorViewModel @Inject constructor(
     }
 
     private fun applyEditor(next: ClimbEditorState) {
+        val prevHolds = _state.value.editor.selectedHolds
         _state.update {
             it.copy(
                 editor = next,
@@ -221,6 +420,17 @@ class ClimbEditorViewModel @Inject constructor(
                 canRedo = redoStack.isNotEmpty(),
                 validationIssues = emptyList(),
             )
+        }
+        scheduleAutosave(next)
+        if (next.selectedHolds.keys != prevHolds.keys) recomputeHeatmap()
+    }
+
+    /** Debounced write to DataStore; latest call wins. */
+    private fun scheduleAutosave(next: ClimbEditorState) {
+        autosaveJob?.cancel()
+        autosaveJob = viewModelScope.launch {
+            kotlinx.coroutines.delay(AUTOSAVE_DEBOUNCE_MS)
+            withContext(Dispatchers.IO) { autosave.save(next) }
         }
     }
 
@@ -242,5 +452,7 @@ class ClimbEditorViewModel @Inject constructor(
 
     companion object {
         private const val UNDO_DEPTH = 50
+        private const val AUTOSAVE_DEBOUNCE_MS = 500L
+        private const val HEATMAP_DEBOUNCE_MS = 500L
     }
 }

@@ -308,14 +308,16 @@ internal fun KilterBoardVisualization(
                         }
                     }
 
-                    // Layer 4: Active hold circles (existing behavior)
+                    // Layer 4: Active hold circles (existing behavior — colored ring).
                     if (holds.isNotEmpty()) {
                         val activeHold = activeHoldMap[pid]
                         if (activeHold != null) {
                             val alpha = if (previewMode && currentFrameSet != null) {
                                 if (activeHold.placementId in currentFrameSet) 1.0f else 0.3f
                             } else 1.0f
-                            drawActiveHold(px, py, activeHold.roleId, xScale, ledColors, alpha, solidHoldFill && pid != dragOriginHoldId)
+                            // Drag origin hold is hidden during a long-press move.
+                            val skip = solidHoldFill && pid == dragOriginHoldId
+                            if (!skip) drawActiveHold(px, py, activeHold.roleId, xScale, ledColors, alpha)
                         }
                     }
 
@@ -377,10 +379,10 @@ internal fun KilterBoardVisualization(
 }
 
 /**
- * Draw an active hold. By default the climbdex-style colored ring is used
- * (transparent fill so the board image shows through). When [solidFill]
- * is true the hold is rendered as an opaque role-coloured disc — that's
- * the editor mode where the disc IS the selection indicator.
+ * Draw an active hold — climbdex-style colored ring with a transparent
+ * fill so the board image shows through. The role colour itself is the
+ * "selected" affordance; in editor mode the orange selection ring overlay
+ * (Layer 5) is suppressed via `solidHoldFill = true` on the parent.
  */
 private fun DrawScope.drawActiveHold(
     x: Float,
@@ -389,25 +391,15 @@ private fun DrawScope.drawActiveHold(
     xScale: Float,
     ledColors: LedHoldColors,
     alpha: Float = 1.0f,
-    solidFill: Boolean = false,
 ) {
     val color = holdColorForRole(roleId, ledColors).copy(alpha = alpha)
     val radius = xScale * 4f
-    if (solidFill) {
-        drawCircle(
-            color = color,
-            radius = radius,
-            center = Offset(x, y),
-            style = Fill,
-        )
-    } else {
-        drawCircle(
-            color = color,
-            radius = radius,
-            center = Offset(x, y),
-            style = Stroke(width = xScale * 0.8f),
-        )
-    }
+    drawCircle(
+        color = color,
+        radius = radius,
+        center = Offset(x, y),
+        style = Stroke(width = xScale * 1.2f),
+    )
 }
 
 /** Resolve hold color from user's LED settings via RGB332 palette. */

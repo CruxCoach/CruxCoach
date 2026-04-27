@@ -66,6 +66,40 @@ class ClimbCreatorRepository @Inject constructor(
     }
 
     /**
+     * Re-save an already-loaded draft in place. Same uuid as the loaded
+     * row; INSERT OR REPLACE in the schema handles the upsert. Used by
+     * the editor when the user opens a draft from the drawer + saves
+     * after edits.
+     */
+    suspend fun updateDraft(uuid: String, state: ClimbEditorState) {
+        require(state.angle != null) { "angle is required when updating draft" }
+        val pubkey = runCatching { nostrSigner.getPublicKeyHex() }.getOrNull()
+        val layoutId = userPreferences.boardLayoutId.first().toLong()
+
+        val frames = state.encodeFrames()
+        val moveCount = BoardClimbParser
+            .estimateMoveCount(BoardClimbParser.parseFrames(frames))
+            .toLong()
+        val draft = LocalClimbDraft(
+            uuid = uuid,
+            name = state.name,
+            description = state.description,
+            framesText = frames,
+            framesHash = FramesHash.of(frames, layoutId),
+            createdAt = nowIso(),
+            createdByPubkey = pubkey,
+            moveCount = moveCount,
+        )
+        val angle = state.angle ?: error("angle required")
+        boardRepository.insertLocalDraft(
+            draft = draft,
+            layoutId = layoutId,
+            angle = angle.toLong(),
+            setterGradeId = state.setterGradeId,
+        )
+    }
+
+    /**
      * Look up an existing climb in the local DB by canonical frames_hash.
      * If a climb on the same layout already shares this hash, the editor
      * surfaces a warning before the user publishes a duplicate.

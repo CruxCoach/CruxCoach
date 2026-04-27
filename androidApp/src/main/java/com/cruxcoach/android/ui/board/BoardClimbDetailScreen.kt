@@ -12,6 +12,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.CallSplit
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.ArrowDropDown
@@ -65,6 +66,7 @@ fun BoardClimbDetailScreen(
     onNavigateBack: () -> Unit,
     onNavigateToClimb: ((climbUuid: String, angle: Int) -> Unit)? = null,
     onNavigateToBugReport: (title: String, description: String) -> Unit = { _, _ -> },
+    onNavigateToFork: (climbUuid: String) -> Unit = {},
     viewModel: BoardClimbDetailViewModel = hiltViewModel()
 ) {
     PerfLogger.navMilestone("BoardClimbDetailScreen composing")
@@ -262,6 +264,17 @@ fun BoardClimbDetailScreen(
                                 Icons.AutoMirrored.Filled.PlaylistAdd,
                                 contentDescription = stringResource(R.string.cd_add_to_list),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        IconButton(
+                            onClick = { state.climb?.uuid?.let(onNavigateToFork) },
+                            enabled = state.climb != null,
+                            modifier = Modifier.testTag("boarddetail_fork_button"),
+                        ) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.CallSplit,
+                                contentDescription = stringResource(R.string.climb_creator_remix_action),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                         IconButton(

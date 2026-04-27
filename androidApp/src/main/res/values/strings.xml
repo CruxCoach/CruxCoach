@@ -29,6 +29,24 @@
     <string name="climb_creator_dup_title">A climb with these holds already exists</string>
     <string name="climb_creator_dup_message" formatted="false">Same hold layout as “%s”. Same holds at a different angle/grade are allowed.</string>
     <string name="climb_creator_dup_continue">Keep editing</string>
+    <string name="climb_creator_dup_publish_anyway">Publish anyway</string>
+    <string name="climb_creator_drafts_open">Open drafts</string>
+    <string name="climb_creator_drafts_title">My drafts</string>
+    <string name="climb_creator_drafts_count" formatted="false">%d</string>
+    <string name="climb_creator_drafts_loading">Loading…</string>
+    <string name="climb_creator_drafts_empty">No drafts yet. Save a climb to pick it up later.</string>
+    <string name="climb_creator_drafts_unnamed">Unnamed climb</string>
+    <string name="climb_creator_drafts_holds" formatted="false">%d holds</string>
+    <string name="climb_creator_drafts_delete_title">Delete draft?</string>
+    <string name="climb_creator_drafts_delete_message" formatted="false">“%s” will be permanently removed.</string>
+    <string name="climb_creator_drafts_delete_action">Delete draft</string>
+    <string name="climb_creator_drafts_delete_confirm">Delete</string>
+    <string name="climb_creator_heatmap_toggle">Toggle popular-holds heatmap</string>
+    <string name="climb_creator_autosave_offer_title">Restore previous session?</string>
+    <string name="climb_creator_autosave_offer_message" formatted="false">Unsaved edits from %s.</string>
+    <string name="climb_creator_autosave_offer_restore">Restore</string>
+    <string name="climb_creator_autosave_offer_discard">Discard</string>
+    <string name="climb_creator_remix_action">Remix this climb</string>
 
     <!-- Onboarding -->
     <string name="onboarding_welcome">Welcome to CruxCoach</string>

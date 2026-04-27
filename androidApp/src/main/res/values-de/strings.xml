@@ -27,8 +27,26 @@
     <string name="climb_creator_issue_name_too_long" formatted="false">Name zu lang (max. %d Zeichen).</string>
     <string name="climb_creator_issue_description_too_long" formatted="false">Beschreibung zu lang (max. %d Zeichen).</string>
     <string name="climb_creator_dup_title">Ein Climb mit diesen Holds existiert schon</string>
-    <string name="climb_creator_dup_message" formatted="false">Gleiches Hold-Layout wie „%s". Gleiche Holds in anderem Winkel/Grade sind aber erlaubt.</string>
+    <string name="climb_creator_dup_message" formatted="false">Gleiches Griff-Layout wie „%s". Gleiche Griffe in anderem Winkel/Grade sind aber erlaubt.</string>
     <string name="climb_creator_dup_continue">Weiter bearbeiten</string>
+    <string name="climb_creator_dup_publish_anyway">Trotzdem veröffentlichen</string>
+    <string name="climb_creator_drafts_open">Entwürfe öffnen</string>
+    <string name="climb_creator_drafts_title">Meine Entwürfe</string>
+    <string name="climb_creator_drafts_count" formatted="false">%d</string>
+    <string name="climb_creator_drafts_loading">Lade…</string>
+    <string name="climb_creator_drafts_empty">Noch keine Entwürfe. Speichere einen Climb, um ihn später weiter zu bearbeiten.</string>
+    <string name="climb_creator_drafts_unnamed">Unbenannter Climb</string>
+    <string name="climb_creator_drafts_holds" formatted="false">%d Griffe</string>
+    <string name="climb_creator_drafts_delete_title">Entwurf löschen?</string>
+    <string name="climb_creator_drafts_delete_message" formatted="false">„%s" wird endgültig entfernt.</string>
+    <string name="climb_creator_drafts_delete_action">Entwurf löschen</string>
+    <string name="climb_creator_drafts_delete_confirm">Löschen</string>
+    <string name="climb_creator_heatmap_toggle">Heatmap (häufige Griffe) ein/aus</string>
+    <string name="climb_creator_autosave_offer_title">Vorherige Sitzung wiederherstellen?</string>
+    <string name="climb_creator_autosave_offer_message" formatted="false">Ungespeicherte Änderungen %s.</string>
+    <string name="climb_creator_autosave_offer_restore">Wiederherstellen</string>
+    <string name="climb_creator_autosave_offer_discard">Verwerfen</string>
+    <string name="climb_creator_remix_action">Climb remixen</string>
 
     <!-- Onboarding -->
     <string name="onboarding_welcome">Willkommen bei CruxCoach</string>

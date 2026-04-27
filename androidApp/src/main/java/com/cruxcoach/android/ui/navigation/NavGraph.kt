@@ -94,7 +94,9 @@ object Routes {
     const val BOARD_BROWSER = "board_browser"
     const val BOARD_FILTER = "board_filter"
     const val BOARD_CLIMB_DETAIL = "board_climb_detail/{climbUuid}/{angle}"
-    const val CLIMB_CREATOR = "climb_creator"
+    const val CLIMB_CREATOR = "climb_creator?forkUuid={forkUuid}"
+    fun climbCreator(forkUuid: String? = null): String =
+        if (forkUuid != null) "climb_creator?forkUuid=$forkUuid" else "climb_creator"
     const val BOARD_LOGBOOK = "board_logbook"
     const val BOARD_SYNC = "board_sync"
     const val BOARD_LISTS = "board_lists"
@@ -403,7 +405,16 @@ fun CruxCoachNavHost(
                 )
             }
 
-            composable(Routes.CLIMB_CREATOR) {
+            composable(
+                Routes.CLIMB_CREATOR,
+                arguments = listOf(
+                    androidx.navigation.navArgument("forkUuid") {
+                        type = androidx.navigation.NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    }
+                ),
+            ) {
                 com.cruxcoach.android.ui.board.creator.ClimbEditorScreen(
                     onBack = { navController.popBackStack() },
                     onPublished = { uuid -> navController.popBackStack() }
@@ -439,6 +450,9 @@ fun CruxCoachNavHost(
                         navController.navigate(Routes.boardClimbDetail(uuid, angle)) {
                             popUpTo(Routes.BOARD_CLIMB_DETAIL) { inclusive = true }
                         }
+                    },
+                    onNavigateToFork = { uuid ->
+                        navController.navigate(Routes.climbCreator(forkUuid = uuid))
                     },
                     onNavigateToBugReport = { title, desc ->
                         navController.navigate(Routes.bugReport(title, desc))

@@ -17,7 +17,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Whatshot
+import androidx.compose.material.icons.outlined.Whatshot
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
@@ -99,6 +102,18 @@ fun ClimbEditorScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = viewModel::openDraftsSheet) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.List,
+                            contentDescription = stringResource(R.string.climb_creator_drafts_open),
+                        )
+                    }
+                    IconButton(onClick = viewModel::toggleHeatmap) {
+                        Icon(
+                            if (state.heatmapEnabled) Icons.Filled.Whatshot else Icons.Outlined.Whatshot,
+                            contentDescription = stringResource(R.string.climb_creator_heatmap_toggle),
+                        )
+                    }
                     IconButton(onClick = viewModel::undo, enabled = state.canUndo) {
                         Icon(Icons.AutoMirrored.Filled.Undo, contentDescription = stringResource(R.string.climb_creator_undo))
                     }
@@ -124,6 +139,16 @@ fun ClimbEditorScreen(
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            // Autosave restore offer — appears once on editor open if a
+            // previous unsaved session is still in DataStore.
+            state.autosaveOffer?.let { offer ->
+                AutosaveRestoreBanner(
+                    savedAtEpochMs = offer.savedAtEpochMs,
+                    onAccept = viewModel::acceptAutosave,
+                    onDismiss = viewModel::dismissAutosave,
+                )
+            }
+
             // Live board visualization
             val activeHolds = state.editor.selectedHolds.map { (pid, role) -> BoardHold(pid, role) }
             KilterBoardVisualization(
@@ -131,6 +156,7 @@ fun ClimbEditorScreen(
                 placements = state.placements,
                 boardSize = state.boardSize,
                 boardImages = state.boardImages,
+                heatmapData = if (state.heatmapEnabled) state.heatmap else null,
                 selectedHolds = state.editor.selectedHolds.keys,
                 onHoldTapped = viewModel::toggleHold,
                 onHoldMoved = viewModel::moveHold,
@@ -138,7 +164,11 @@ fun ClimbEditorScreen(
                 modifier = Modifier.fillMaxWidth(),
             )
 
-            HoldCountStatus(state.editor.selectedHolds)
+            HoldCountStatus(
+                holds = state.editor.selectedHolds,
+                activeBrush = state.editor.activeBrush,
+                onBrushTap = viewModel::toggleBrush,
+            )
             ValidationStatus(state.validationIssues)
 
             HorizontalDivider()
@@ -186,51 +216,159 @@ fun ClimbEditorScreen(
         }
     }
 
-    state.duplicateOf?.let { dup ->
-        AlertDialog(
-            onDismissRequest = { /* dismiss via TextButton */ },
-            title = { Text(stringResource(R.string.climb_creator_dup_title)) },
-            text = { Text(stringResource(R.string.climb_creator_dup_message, dup.name)) },
-            confirmButton = {
-                TextButton(onClick = { /* user keeps editing */ }) {
-                    Text(stringResource(R.string.climb_creator_dup_continue))
+    // Duplicate-warning dialog (shown only when triggered as publish-gate).
+    if (state.pendingPublishConfirm) {
+        state.duplicateOf?.let { dup ->
+            AlertDialog(
+                onDismissRequest = viewModel::cancelPublishOnDuplicate,
+                title = { Text(stringResource(R.string.climb_creator_dup_title)) },
+                text = { Text(stringResource(R.string.climb_creator_dup_message, dup.name)) },
+                confirmButton = {
+                    TextButton(onClick = { viewModel.confirmPublishWithDuplicate("12x12") }) {
+                        Text(stringResource(R.string.climb_creator_dup_publish_anyway))
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = viewModel::cancelPublishOnDuplicate) {
+                        Text(stringResource(R.string.climb_creator_dup_continue))
+                    }
+                },
+            )
+        }
+    }
+
+    if (state.draftsSheetOpen) {
+        DraftsDrawer(
+            drafts = state.drafts,
+            onSelect = viewModel::loadDraft,
+            onDelete = viewModel::deleteDraft,
+            onDismiss = viewModel::closeDraftsSheet,
+        )
+    }
+}
+
+/**
+ * Inline banner at the top of the editor offering to restore a previous
+ * unsaved session. Two paths: accept (load into editor) or discard
+ * (clear the autosave from DataStore).
+ */
+@Composable
+private fun AutosaveRestoreBanner(
+    savedAtEpochMs: Long,
+    onAccept: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    androidx.compose.material3.Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.tertiaryContainer,
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    stringResource(R.string.climb_creator_autosave_offer_title),
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                val rel = remember(savedAtEpochMs) {
+                    val seconds = (System.currentTimeMillis() - savedAtEpochMs) / 1000L
+                    when {
+                        seconds < 60 -> "gerade eben"
+                        seconds < 3600 -> "vor ${seconds / 60} min"
+                        seconds < 86400 -> "vor ${seconds / 3600} h"
+                        else -> "vor ${seconds / 86400} t"
+                    }
                 }
-            },
+                Text(
+                    stringResource(R.string.climb_creator_autosave_offer_message, rel),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.climb_creator_autosave_offer_discard))
+            }
+            Button(onClick = onAccept) {
+                Text(stringResource(R.string.climb_creator_autosave_offer_restore))
+            }
+        }
+    }
+}
+
+/**
+ * Hold-count chips that double as brush-selectors. Tapping a chip arms
+ * the brush so subsequent board taps paint that role; tapping again
+ * disarms (back to cycle-on-tap). Active brush has the chip's selected
+ * state visually highlighted.
+ *
+ * The role-coloured leading icon makes the colour mapping explicit so
+ * users don't have to guess which board colour means which role.
+ */
+@Composable
+private fun HoldCountStatus(
+    holds: Map<Int, Int>,
+    activeBrush: Int?,
+    onBrushTap: (role: Int) -> Unit,
+) {
+    val starts = holds.values.count { it == HoldRole.START }
+    val hands = holds.values.count { it == HoldRole.HAND }
+    val feet = holds.values.count { it == HoldRole.FOOT }
+    val finishes = holds.values.count { it == HoldRole.FINISH }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        BrushChip(
+            label = stringResource(R.string.climb_creator_count_start, starts),
+            role = HoldRole.START,
+            roleColor = androidx.compose.ui.graphics.Color(0xFF00DD00),
+            isActive = activeBrush == HoldRole.START,
+            onClick = onBrushTap,
+        )
+        BrushChip(
+            label = stringResource(R.string.climb_creator_count_hand, hands),
+            role = HoldRole.HAND,
+            roleColor = androidx.compose.ui.graphics.Color(0xFF00AAFF),
+            isActive = activeBrush == HoldRole.HAND,
+            onClick = onBrushTap,
+        )
+        BrushChip(
+            label = stringResource(R.string.climb_creator_count_foot, feet),
+            role = HoldRole.FOOT,
+            roleColor = androidx.compose.ui.graphics.Color(0xFFFF8800),
+            isActive = activeBrush == HoldRole.FOOT,
+            onClick = onBrushTap,
+        )
+        BrushChip(
+            label = stringResource(R.string.climb_creator_count_finish, finishes),
+            role = HoldRole.FINISH,
+            roleColor = androidx.compose.ui.graphics.Color(0xFFFF00FF),
+            isActive = activeBrush == HoldRole.FINISH,
+            onClick = onBrushTap,
         )
     }
 }
 
 @Composable
-private fun HoldCountStatus(holds: Map<Int, Int>) {
-    val starts = holds.values.count { it == HoldRole.START }
-    val hands = holds.values.count { it == HoldRole.HAND }
-    val finishes = holds.values.count { it == HoldRole.FINISH }
-    val feet = holds.values.count { it == HoldRole.FOOT }
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        FilterChip(
-            selected = starts > 0,
-            onClick = {},
-            label = { Text(stringResource(R.string.climb_creator_count_start, starts)) },
-        )
-        FilterChip(
-            selected = hands > 0,
-            onClick = {},
-            label = { Text(stringResource(R.string.climb_creator_count_hand, hands)) },
-        )
-        FilterChip(
-            selected = finishes > 0,
-            onClick = {},
-            label = { Text(stringResource(R.string.climb_creator_count_finish, finishes)) },
-        )
-        FilterChip(
-            selected = feet > 0,
-            onClick = {},
-            label = { Text(stringResource(R.string.climb_creator_count_foot, feet)) },
-        )
-    }
+private fun BrushChip(
+    label: String,
+    role: Int,
+    roleColor: androidx.compose.ui.graphics.Color,
+    isActive: Boolean,
+    onClick: (Int) -> Unit,
+) {
+    FilterChip(
+        selected = isActive,
+        onClick = { onClick(role) },
+        label = { Text(label) },
+        leadingIcon = {
+            androidx.compose.foundation.Canvas(Modifier.size(12.dp)) {
+                drawCircle(color = roleColor)
+            }
+        },
+    )
 }
 
 @Composable
