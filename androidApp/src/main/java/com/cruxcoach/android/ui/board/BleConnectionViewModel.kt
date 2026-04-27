@@ -358,10 +358,13 @@ class BleConnectionViewModel @Inject constructor(
 
                 // Already connected → skip scan/connect. The screen will
                 // tap into existing send pipeline; we only own the
-                // disconnect-after (boulders only).
+                // disconnect-after (boulders only). Routes bail silently —
+                // the user already sees the green BLE icon, and a
+                // "sent + disconnected" snackbar would be a lie since
+                // we kept the connection alive on purpose.
                 if (bleConnection.connectionState.value == ConnectionState.CONNECTED) {
                     if (isRoute) {
-                        _quickSend.value = QuickSendStatus.Done
+                        _quickSend.value = QuickSendStatus.Idle
                     } else {
                         awaitSendAndDisconnect()
                     }
@@ -427,8 +430,9 @@ class BleConnectionViewModel @Inject constructor(
                     // ClimbDetailVM's CONNECTED-collector — but we don't
                     // chase the SENDING→CONNECTED→disconnect chain because
                     // the user still needs the connection alive for the
-                    // remaining frames during playback.
-                    _quickSend.value = QuickSendStatus.Done
+                    // remaining frames during playback. Reset to Idle so
+                    // no "sent + disconnected" snackbar fires.
+                    _quickSend.value = QuickSendStatus.Idle
                 } else {
                     awaitSendAndDisconnect()
                 }
