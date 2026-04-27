@@ -684,7 +684,7 @@
 
     <string name="board_sync_step_prepare_db">Prepare database</string>
     <string name="board_sync_step_check_update">Checking for update\u2026</string>
-    <string name="board_sync_step_download_apk">Download APK</string>
+    <string name="board_sync_step_download_db">Download climb database</string>
     <string name="board_sync_step_extract_db">Extract database</string>
     <string name="board_sync_step_import_climbs">Import climbs</string>
     <string name="board_sync_step_import_stats">Import statistics</string>
