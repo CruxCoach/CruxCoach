@@ -96,7 +96,8 @@ class ClimbEditorViewModel @Inject constructor(
     )
 
     /**
-     * Tap a hold → cycle through Start → Hand → Foot → Finish → unset.
+     * Short tap on a hold → cycle through:
+     *   empty → Start → Griff → Tritt → Top → empty.
      * Pushes the previous state onto the undo stack and clears redo.
      */
     fun toggleHold(placementId: Int) {
@@ -109,7 +110,21 @@ class ClimbEditorViewModel @Inject constructor(
             cur.selectedHolds + (placementId to next)
         }
         push(cur.copy(selectedHolds = newHolds))
-        // Best-effort live LED preview if the user is connected.
+        viewModelScope.launch { syncLeds() }
+    }
+
+    /**
+     * Long-press + drag → MOVE the role from one placement to another.
+     * Source loses its role; target gets it. If target already had a
+     * role, it's overwritten by the source's role (the moving hold
+     * "wins"). Drop on the same hold is a no-op.
+     */
+    fun moveHold(fromPlacementId: Int, toPlacementId: Int) {
+        if (fromPlacementId == toPlacementId) return
+        val cur = _state.value.editor
+        val role = cur.selectedHolds[fromPlacementId] ?: return
+        val newHolds = (cur.selectedHolds - fromPlacementId) + (toPlacementId to role)
+        push(cur.copy(selectedHolds = newHolds))
         viewModelScope.launch { syncLeds() }
     }
 

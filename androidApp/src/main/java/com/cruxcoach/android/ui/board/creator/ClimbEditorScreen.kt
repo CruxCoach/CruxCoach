@@ -133,6 +133,8 @@ fun ClimbEditorScreen(
                 boardImages = state.boardImages,
                 selectedHolds = state.editor.selectedHolds.keys,
                 onHoldTapped = viewModel::toggleHold,
+                onHoldMoved = viewModel::moveHold,
+                solidHoldFill = true,
                 modifier = Modifier.fillMaxWidth(),
             )
 

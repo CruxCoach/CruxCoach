@@ -9,6 +9,8 @@ class ClimbEditorStateTest {
 
     @Test
     fun cycleHoldRole_progresses_then_clears() {
+        // Order matches how setters lay out a climb:
+        // empty → Start → Griff (HAND) → Tritt (FOOT) → Top (FINISH) → empty
         assertEquals(HoldRole.START, cycleHoldRole(null))
         assertEquals(HoldRole.HAND, cycleHoldRole(HoldRole.START))
         assertEquals(HoldRole.FOOT, cycleHoldRole(HoldRole.HAND))

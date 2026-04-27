@@ -19,10 +19,11 @@ data class ClimbEditorState(
 )
 
 /**
- * Cycle the role of a single hold:
- *   not selected → START → HAND → FOOT → FINISH → not selected
+ * Cycle the role of a single hold on short-tap. The order matches how
+ * setters typically lay out a climb: pick start holds first, sketch the
+ * hand sequence, mark feet, finalize the top.
  *
- * Matches the official Kilter app (FEAT-003 §3.2).
+ *   not selected → START → HAND (Griff) → FOOT (Tritt) → FINISH (Top) → not selected
  */
 fun cycleHoldRole(currentRole: Int?): Int? = when (currentRole) {
     null -> HoldRole.START

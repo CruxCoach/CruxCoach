@@ -15,14 +15,14 @@
     <string name="climb_creator_save_draft">Als Entwurf speichern</string>
     <string name="climb_creator_publish">Veröffentlichen</string>
     <string name="climb_creator_count_start" formatted="false">Start: %d</string>
-    <string name="climb_creator_count_hand" formatted="false">Hand: %d</string>
-    <string name="climb_creator_count_finish" formatted="false">Finish: %d</string>
-    <string name="climb_creator_count_foot" formatted="false">Foot: %d</string>
+    <string name="climb_creator_count_hand" formatted="false">Griff: %d</string>
+    <string name="climb_creator_count_finish" formatted="false">Top: %d</string>
+    <string name="climb_creator_count_foot" formatted="false">Tritt: %d</string>
     <string name="climb_creator_valid">Alles gesetzt — bereit zum Veröffentlichen.</string>
-    <string name="climb_creator_issue_no_start">Mindestens einen Start-Hold (grün) markieren.</string>
-    <string name="climb_creator_issue_no_finish">Mindestens einen Finish-Hold (magenta) markieren.</string>
-    <string name="climb_creator_issue_too_few_holds">Mindestens 2 Holds insgesamt nötig.</string>
-    <string name="climb_creator_issue_too_many_starts" formatted="false">Zu viele Start-Holds: %d (max. 2).</string>
+    <string name="climb_creator_issue_no_start">Mindestens einen Start-Griff (grün) setzen.</string>
+    <string name="climb_creator_issue_no_finish">Mindestens einen Top-Griff (magenta) setzen.</string>
+    <string name="climb_creator_issue_too_few_holds">Mindestens 2 Griffe insgesamt nötig.</string>
+    <string name="climb_creator_issue_too_many_starts" formatted="false">Zu viele Start-Griffe: %d (max. 2).</string>
     <string name="climb_creator_issue_name_missing">Name ist erforderlich.</string>
     <string name="climb_creator_issue_name_too_long" formatted="false">Name zu lang (max. %d Zeichen).</string>
     <string name="climb_creator_issue_description_too_long" formatted="false">Beschreibung zu lang (max. %d Zeichen).</string>

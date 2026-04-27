@@ -123,6 +123,18 @@ internal fun KilterBoardVisualization(
     // Interactive hold selection
     selectedHolds: Set<Int> = emptySet(),
     onHoldTapped: ((Int) -> Unit)? = null,
+    /**
+     * Editor-specific drag callback. When provided, long-press + drag MOVES
+     * the role from `fromId` to `toId` (atomic). Without this, the
+     * fallback two-tap-cycle behavior runs.
+     */
+    onHoldMoved: ((fromId: Int, toId: Int) -> Unit)? = null,
+    /**
+     * Editor mode: draw active holds as solid role-colored discs instead of
+     * rings, and suppress the orange selection overlay. The role color IS
+     * the selection indicator.
+     */
+    solidHoldFill: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -238,9 +250,16 @@ internal fun KilterBoardVisualization(
                             } while (event.changes.any { it.pressed })
 
                             if (isMoving && currentHold != null && currentHold != originHold) {
-                                // Move: deselect origin, select destination
-                                onHoldTapped(originHold!!)
-                                onHoldTapped(currentHold)
+                                // Move: prefer the atomic onHoldMoved callback when
+                                // the host supplies one (editor mode). Without it,
+                                // fall back to two-tap-cycle which only works
+                                // sensibly for the legacy non-editor browse case.
+                                if (onHoldMoved != null) {
+                                    onHoldMoved(originHold!!, currentHold)
+                                } else {
+                                    onHoldTapped(originHold!!)
+                                    onHoldTapped(currentHold)
+                                }
                             } else if (!isMoving && currentHold != null) {
                                 // New selection
                                 onHoldTapped(currentHold)
@@ -296,13 +315,15 @@ internal fun KilterBoardVisualization(
                             val alpha = if (previewMode && currentFrameSet != null) {
                                 if (activeHold.placementId in currentFrameSet) 1.0f else 0.3f
                             } else 1.0f
-                            drawActiveHold(px, py, activeHold.roleId, xScale, ledColors, alpha)
+                            drawActiveHold(px, py, activeHold.roleId, xScale, ledColors, alpha, solidHoldFill && pid != dragOriginHoldId)
                         }
                     }
 
-                    // Layer 5: Selected hold highlight (thick ring + filled dot)
-                    // Hide origin hold during move-drag (it's being relocated)
-                    if (pid in selectedHolds && pid != dragOriginHoldId) {
+                    // Layer 5: Selected hold highlight (thick orange ring + filled dot).
+                    // Suppressed in `solidHoldFill` (editor) mode — the role-color disc
+                    // already conveys "this hold is selected" without an extra overlay.
+                    // Hide origin hold during move-drag regardless (it's being relocated).
+                    if (!solidHoldFill && pid in selectedHolds && pid != dragOriginHoldId) {
                         drawCircle(
                             color = selectedColor,
                             radius = xScale * 5f,
@@ -317,20 +338,37 @@ internal fun KilterBoardVisualization(
                         )
                     }
 
-                    // Layer 6: Long-press drag preview (larger orange indicator)
+                    // Layer 6: Long-press drag preview. In editor mode, show
+                    // the role-color of the hold being moved as a translucent
+                    // disc at the drop target — gives the user a "where will
+                    // it land + with which role" cue without orange noise.
+                    // In legacy mode (browse), keep the orange indicator.
                     if (dragPreviewHoldId == pid) {
-                        drawCircle(
-                            color = selectedColor,
-                            radius = xScale * 6f,
-                            center = Offset(px, py),
-                            style = Stroke(width = xScale * 1.5f)
-                        )
-                        drawCircle(
-                            color = selectedColor.copy(alpha = 0.3f),
-                            radius = xScale * 4f,
-                            center = Offset(px, py),
-                            style = Fill
-                        )
+                        if (solidHoldFill && dragOriginHoldId != null) {
+                            val movingRole = activeHoldMap[dragOriginHoldId!!]?.roleId
+                            val previewColor = movingRole
+                                ?.let { holdColorForRole(it, ledColors) }
+                                ?: selectedColor
+                            drawCircle(
+                                color = previewColor.copy(alpha = 0.55f),
+                                radius = xScale * 5f,
+                                center = Offset(px, py),
+                                style = Fill,
+                            )
+                        } else {
+                            drawCircle(
+                                color = selectedColor,
+                                radius = xScale * 6f,
+                                center = Offset(px, py),
+                                style = Stroke(width = xScale * 1.5f)
+                            )
+                            drawCircle(
+                                color = selectedColor.copy(alpha = 0.3f),
+                                radius = xScale * 4f,
+                                center = Offset(px, py),
+                                style = Fill
+                            )
+                        }
                     }
                 }
             }
@@ -339,20 +377,37 @@ internal fun KilterBoardVisualization(
 }
 
 /**
- * Draw an active hold with Climbdex-style colored ring.
- * Transparent fill so the board image shows through.
+ * Draw an active hold. By default the climbdex-style colored ring is used
+ * (transparent fill so the board image shows through). When [solidFill]
+ * is true the hold is rendered as an opaque role-coloured disc — that's
+ * the editor mode where the disc IS the selection indicator.
  */
-private fun DrawScope.drawActiveHold(x: Float, y: Float, roleId: Int, xScale: Float, ledColors: LedHoldColors, alpha: Float = 1.0f) {
+private fun DrawScope.drawActiveHold(
+    x: Float,
+    y: Float,
+    roleId: Int,
+    xScale: Float,
+    ledColors: LedHoldColors,
+    alpha: Float = 1.0f,
+    solidFill: Boolean = false,
+) {
     val color = holdColorForRole(roleId, ledColors).copy(alpha = alpha)
     val radius = xScale * 4f
-    val strokeWidth = xScale * 0.8f
-
-    drawCircle(
-        color = color,
-        radius = radius,
-        center = Offset(x, y),
-        style = Stroke(width = strokeWidth)
-    )
+    if (solidFill) {
+        drawCircle(
+            color = color,
+            radius = radius,
+            center = Offset(x, y),
+            style = Fill,
+        )
+    } else {
+        drawCircle(
+            color = color,
+            radius = radius,
+            center = Offset(x, y),
+            style = Stroke(width = xScale * 0.8f),
+        )
+    }
 }
 
 /** Resolve hold color from user's LED settings via RGB332 palette. */
