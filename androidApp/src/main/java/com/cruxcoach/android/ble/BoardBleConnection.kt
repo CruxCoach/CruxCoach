@@ -7,7 +7,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
-import com.cruxcoach.domain.board.AuroraPacketEncoder
+import com.cruxcoach.domain.board.BoardPacketEncoder
 import com.cruxcoach.domain.board.BoardHold
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -43,10 +43,10 @@ enum class ConnectionState {
  *  4. Stop BLE scanners 500ms before connectGatt() (shared radio contention)
  *  5. Always use TRANSPORT_LE, never TRANSPORT_AUTO
  */
-class AuroraBleConnection(private val context: Context) {
+class BoardBleConnection(private val context: Context) {
 
     private companion object {
-        const val TAG = "AuroraBleConnection"
+        const val TAG = "BoardBleConnection"
         const val WRITE_TIMEOUT_MS = 5000L
         const val CLOSE_SAFETY_TIMEOUT_MS = 5000L
         const val CONNECTION_TIMEOUT_MS = 30_000L
@@ -68,7 +68,7 @@ class AuroraBleConnection(private val context: Context) {
 
     private var gatt: BluetoothGatt? = null
     private var writeCharacteristic: BluetoothGattCharacteristic? = null
-    private var encoder: AuroraPacketEncoder = AuroraPacketEncoder(3)
+    private var encoder: BoardPacketEncoder = BoardPacketEncoder(3)
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var disconnectJob: Job? = null
@@ -176,8 +176,8 @@ class AuroraBleConnection(private val context: Context) {
             connectionTimeoutJob = null
 
             if (status == BluetoothGatt.GATT_SUCCESS) {
-                val service = gatt.getService(AuroraBleUuids.DATA_TRANSFER_SERVICE)
-                writeCharacteristic = service?.getCharacteristic(AuroraBleUuids.DATA_TRANSFER_CHAR)
+                val service = gatt.getService(BoardBleUuids.DATA_TRANSFER_SERVICE)
+                writeCharacteristic = service?.getCharacteristic(BoardBleUuids.DATA_TRANSFER_CHAR)
                 if (writeCharacteristic != null) {
                     // NOW the GATT is fully ready — set CONNECTED so downstream
                     // auto-send and advertising see a usable connection.
@@ -274,7 +274,7 @@ class AuroraBleConnection(private val context: Context) {
         gattClosed = false
         _connectionState.value = ConnectionState.CONNECTING
         _connectedBoardName.value = board.displayName
-        encoder = AuroraPacketEncoder(board.apiLevel)
+        encoder = BoardPacketEncoder(board.apiLevel)
 
         // Stop external scanners before GATT connect (radio contention on Android <12)
         onStopScannersForConnect?.invoke()
@@ -421,7 +421,7 @@ class AuroraBleConnection(private val context: Context) {
             val chunks = if (roleColors != null) {
                 val holdPairs = holds.mapNotNull { hold ->
                     val led = placementToLed[hold.placementId] ?: return@mapNotNull null
-                    led to (roleColors[hold.roleId] ?: AuroraPacketEncoder.roleToColor(hold.roleId))
+                    led to (roleColors[hold.roleId] ?: BoardPacketEncoder.roleToColor(hold.roleId))
                 }
                 encoder.encodeClimb(holdPairs)
             } else {

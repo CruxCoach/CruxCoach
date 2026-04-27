@@ -45,8 +45,8 @@ import com.cruxcoach.android.data.SessionQueueManager
 import com.cruxcoach.android.data.SharingConfig
 import com.cruxcoach.android.notification.AppNotificationService
 import com.cruxcoach.android.data.IntensityZoneManager
-import com.cruxcoach.android.ble.AuroraBleConnection
-import com.cruxcoach.android.ble.AuroraBleScanner
+import com.cruxcoach.android.ble.BoardBleConnection
+import com.cruxcoach.android.ble.BoardBleScanner
 import com.cruxcoach.android.ble.ClimbBleAdvertiser
 import com.cruxcoach.android.ble.NearbyClimbScanner
 import com.cruxcoach.android.ble.SessionGattClient
@@ -270,14 +270,14 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideAuroraBleScanner(@ApplicationContext context: Context): AuroraBleScanner {
-        return PerfLogger.trace("DI: AuroraBleScanner") { AuroraBleScanner(context) }
+    fun provideBoardBleScanner(@ApplicationContext context: Context): BoardBleScanner {
+        return PerfLogger.trace("DI: BoardBleScanner") { BoardBleScanner(context) }
     }
 
     @Provides
     @Singleton
-    fun provideAuroraBleConnection(@ApplicationContext context: Context): AuroraBleConnection {
-        return PerfLogger.trace("DI: AuroraBleConnection") { AuroraBleConnection(context) }
+    fun provideBoardBleConnection(@ApplicationContext context: Context): BoardBleConnection {
+        return PerfLogger.trace("DI: BoardBleConnection") { BoardBleConnection(context) }
     }
 
     @Provides
@@ -367,7 +367,7 @@ object AppModule {
     @Provides
     @Singleton
     fun provideSessionQueueManager(
-        bleConnection: AuroraBleConnection,
+        bleConnection: BoardBleConnection,
         boardRepository: BoardRepository,
         climbNameResolver: ClimbNameResolver,
         userPreferences: UserPreferences
@@ -384,7 +384,7 @@ object AppModule {
         gattClient: SessionGattClient,
         advertiser: ClimbBleAdvertiser,
         nearbyScanner: NearbyClimbScanner,
-        bleConnection: AuroraBleConnection,
+        bleConnection: BoardBleConnection,
         boardStateManager: BoardStateManager,
         boardSessionManager: BoardSessionManager
     ): SessionGattBridge {

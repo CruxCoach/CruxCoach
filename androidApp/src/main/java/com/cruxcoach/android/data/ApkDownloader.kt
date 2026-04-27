@@ -4,7 +4,7 @@ import android.content.Context
 import android.util.Base64
 import android.util.Log
 import com.cruxcoach.data.repository.BoardRepository
-import com.cruxcoach.domain.board.AuroraBoard
+import com.cruxcoach.domain.board.SupportedBoard
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
@@ -14,7 +14,7 @@ import java.util.zip.ZipInputStream
 
 /**
  * Handles APK download, version checking, and database extraction from
- * Aurora board APKs (via APKPure).
+ * Kilter Board legacy APKs (via APKPure).
  *
  * Responsibilities:
  * - HEAD request to check for new APK versions
@@ -49,12 +49,12 @@ class ApkDownloader(
      * version is available. The 302 redirect URL contains a base64-encoded
      * path segment with the package name and version code.
      *
-     * Compares against the last known version stored in `aurora_sync_state`.
+     * Compares against the last known version stored in `sync_states`.
      * Returns [UpdateCheck.UpToDate] if the version hasn't changed.
      */
     fun checkForUpdate(): UpdateCheck {
         return try {
-            val url = URL("https://d.apkpure.net/b/APK/${AuroraBoard.KILTER.appPackage}?version=latest")
+            val url = URL("https://d.apkpure.net/b/APK/${SupportedBoard.KILTER.appPackage}?version=latest")
             val conn = url.openConnection() as HttpURLConnection
             conn.requestMethod = "HEAD"
             conn.instanceFollowRedirects = false
@@ -119,10 +119,10 @@ class ApkDownloader(
     // ── Download + extraction ─────────────────────────────────────────
 
     /**
-     * Downloads the Aurora board APK from APKPure and extracts `assets/db.sqlite3`
+     * Downloads the Kilter Board legacy APK from APKPure and extracts `assets/db.sqlite3`
      * into [targetDbFile]. Reports download progress via [onDownloadProgress].
      *
-     * @param board which Aurora board app to download
+     * @param board which Kilter Board variant to download
      * @param targetDbFile where to write the extracted database
      * @param onDownloadProgress callback with (bytesRead, totalBytes)
      */
@@ -132,7 +132,7 @@ class ApkDownloader(
     ) {
         val tempApk = File(context.cacheDir, "aurora_apk_download.zip")
         try {
-            val apkUrl = "https://d.apkpure.net/b/APK/${AuroraBoard.KILTER.appPackage}?version=latest"
+            val apkUrl = "https://d.apkpure.net/b/APK/${SupportedBoard.KILTER.appPackage}?version=latest"
             downloadFile(apkUrl, tempApk, onDownloadProgress)
             extractDatabase(tempApk, targetDbFile)
         } finally {

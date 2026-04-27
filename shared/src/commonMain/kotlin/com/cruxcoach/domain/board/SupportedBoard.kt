@@ -1,17 +1,15 @@
 package com.cruxcoach.domain.board
 
 /**
- * Supported Aurora climbing boards.
- * URL format matches BoardLib: https://{hostBase}.com (no api. subdomain, no /v1 prefix).
- * Image URL uses api. subdomain: https://api.{hostBase}.com/img/
+ * Climbing-board products CruxCoach can talk to. Today: Kilter only.
+ * Adding a new board (Tension, Decoy, Spire) is a matter of appending an
+ * entry — the BLE GATT shape is shared across the Aurora-Climbing
+ * ecosystem, so the encoder/scanner/connection classes need no changes.
  */
-enum class AuroraBoard(
-    val displayName: String,
-    val hostBase: String,
-    val apiUrl: String,
-    val imageUrl: String,
+enum class SupportedBoard(
+    val productId: Long,
+    /** Legacy APK package on APKPure — used by [com.cruxcoach.android.data.ApkDownloader] for offline DB extraction. */
     val appPackage: String,
-    val productId: Long
 ) {
-    KILTER("Kilter", "kilterboardapp", "https://kilterboardapp.com", "https://api.kilterboardapp.com", "com.auroraclimbing.kilterboard", 1L);
+    KILTER(productId = 1L, appPackage = "com.auroraclimbing.kilterboard"),
 }

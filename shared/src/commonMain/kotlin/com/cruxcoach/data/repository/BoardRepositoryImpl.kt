@@ -1,13 +1,13 @@
 package com.cruxcoach.data.repository
 
 import com.cruxcoach.db.board.BoardDatabase
-import com.cruxcoach.domain.board.AuroraBoard
+import com.cruxcoach.domain.board.SupportedBoard
 
 class BoardRepositoryImpl(
     private val database: BoardDatabase
 ) : BoardRepository {
 
-    private val q = database.auroraBoardQueries
+    private val q = database.boardQueries
 
     // ── Row Mappers ────────────────────────────────────────────
 
@@ -20,7 +20,7 @@ class BoardRepositoryImpl(
         benchmarkDifficulty: Double = 0.0,
         faUsername: String? = null, faAt: String? = null,
         moveCount: Long = 0
-    ) = AuroraClimbWithStats(
+    ) = ClimbWithStats(
         uuid = uuid, layoutId = layoutId, setterUsername = setterUsername,
         name = name, frames = frames, framesCount = framesCount,
         difficultyAverage = difficultyAverage, qualityAverage = qualityAverage,
@@ -33,7 +33,7 @@ class BoardRepositoryImpl(
 
     // ── Climb Queries ──────────────────────────────────────────
 
-    /** Maps a climb_browse VIEW row to AuroraClimbWithStats (no frames in VIEW). */
+    /** Maps a climb_browse VIEW row to ClimbWithStats (no frames in VIEW). */
     private fun mapBrowse(it: com.cruxcoach.db.board.Climb_browse) = mapClimb(
         it.uuid, it.layout_id, it.setter_username, it.name, "", it.frames_count,
         it.difficulty_average, it.quality_average, it.ascensionist_count,
@@ -42,7 +42,7 @@ class BoardRepositoryImpl(
         moveCount = it.move_count
     )
 
-    override fun searchClimbsByName(query: String, angle: Int, layoutId: Int, sortField: ClimbSortField, sortDirection: SortDirection, limit: Int, offset: Int, climbType: ClimbTypeFilter): List<AuroraClimbWithStats> {
+    override fun searchClimbsByName(query: String, angle: Int, layoutId: Int, sortField: ClimbSortField, sortDirection: SortDirection, limit: Int, offset: Int, climbType: ClimbTypeFilter): List<ClimbWithStats> {
         val lay = layoutId.toLong()
         val a = angle.toLong()
         val mn = climbType.minFrames()
@@ -59,7 +59,7 @@ class BoardRepositoryImpl(
         }.executeAsList().map { mapBrowse(it) }
     }
 
-    override fun getClimbByUuid(uuid: String, angle: Int): AuroraClimbWithStats? {
+    override fun getClimbByUuid(uuid: String, angle: Int): ClimbWithStats? {
         return q.getClimbByUuid(angle.toLong(), uuid).executeAsOneOrNull()?.let {
             mapClimb(it.uuid, it.layout_id, it.setter_username, it.name, it.frames, it.frames_count, it.difficulty_average, it.quality_average, it.ascensionist_count, it.description, it.is_nomatch, it.frames_pace, it.hsm, benchmarkDifficulty = it.benchmark_difficulty ?: 0.0, faUsername = it.fa_username, faAt = it.fa_at, moveCount = it.move_count)
         }
@@ -69,7 +69,7 @@ class BoardRepositoryImpl(
         angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int,
         sortField: ClimbSortField, sortDirection: SortDirection, limit: Int, offset: Int,
         climbType: ClimbTypeFilter
-    ): List<AuroraClimbWithStats> {
+    ): List<ClimbWithStats> {
         val lay = layoutId.toLong()
         val a = angle.toLong()
         val mn = climbType.minFrames()
@@ -148,7 +148,7 @@ class BoardRepositoryImpl(
     override fun getClimbsByUuids(
         uuids: Collection<String>, angle: Int, layoutId: Int, minDifficulty: Double,
         maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter
-    ): List<AuroraClimbWithStats> {
+    ): List<ClimbWithStats> {
         if (uuids.isEmpty()) return emptyList()
         return q.getClimbsByUuids(
             layoutId.toLong(), uuids, angle.toLong(), climbType.minFrames(), climbType.maxFrames(),
@@ -156,7 +156,7 @@ class BoardRepositoryImpl(
         ).executeAsList().map { mapBrowse(it) }
     }
 
-    override fun getClimbsByUuids(uuids: Collection<String>, angle: Int): List<AuroraClimbWithStats> {
+    override fun getClimbsByUuids(uuids: Collection<String>, angle: Int): List<ClimbWithStats> {
         if (uuids.isEmpty()) return emptyList()
         return q.getClimbsByUuidsSimple(uuids, angle.toLong())
             .executeAsList().map { mapBrowse(it) }
@@ -200,9 +200,9 @@ class BoardRepositoryImpl(
 
     // ── Board Layout Queries ───────────────────────────────────
 
-    override fun getAllPlacements(): List<AuroraPlacement> {
+    override fun getAllPlacements(): List<BoardPlacement> {
         return q.getAllPlacements().executeAsList().map {
-            AuroraPlacement(placementId = it.placement_id, holeId = it.hole_id, setId = it.set_id, x = it.x, y = it.y)
+            BoardPlacement(placementId = it.placement_id, holeId = it.hole_id, setId = it.set_id, x = it.x, y = it.y)
         }
     }
 
@@ -213,7 +213,7 @@ class BoardRepositoryImpl(
     }
 
     override fun getAllProductSizes(): List<BoardSize> {
-        return q.getAllProductSizes(AuroraBoard.KILTER.productId).executeAsList().map {
+        return q.getAllProductSizes(SupportedBoard.KILTER.productId).executeAsList().map {
             BoardSize(it.id, it.product_id, it.name, it.edge_left, it.edge_right, it.edge_bottom, it.edge_top, it.image_filename)
         }
     }

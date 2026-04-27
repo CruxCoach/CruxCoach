@@ -12,7 +12,7 @@ package com.cruxcoach.domain.board
  *   Byte 1: (position >> 8) & 0xFF
  *   Byte 2: color byte (r3<<5 | g3<<2 | b2)
  */
-class AuroraPacketEncoder(private val apiLevel: Int = 3) {
+class BoardPacketEncoder(private val apiLevel: Int = 3) {
 
     companion object {
         const val BLE_MTU = 20

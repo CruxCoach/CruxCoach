@@ -1,15 +1,15 @@
 package com.cruxcoach.board
 
-import com.cruxcoach.domain.board.AuroraPacketEncoder
+import com.cruxcoach.domain.board.BoardPacketEncoder
 import com.cruxcoach.domain.board.BoardHold
 import com.cruxcoach.domain.board.HoldRole
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-class AuroraPacketEncoderTest {
+class BoardPacketEncoderTest {
 
-    private val encoder = AuroraPacketEncoder(apiLevel = 3)
+    private val encoder = BoardPacketEncoder(apiLevel = 3)
 
     @Test
     fun checksumIsOnesComplement() {
@@ -55,27 +55,27 @@ class AuroraPacketEncoderTest {
         val chunks = encoder.encodeClimb(holds)
 
         for (chunk in chunks) {
-            assertTrue(chunk.size <= AuroraPacketEncoder.BLE_MTU,
-                "Chunk size ${chunk.size} exceeds BLE MTU ${AuroraPacketEncoder.BLE_MTU}")
+            assertTrue(chunk.size <= BoardPacketEncoder.BLE_MTU,
+                "Chunk size ${chunk.size} exceeds BLE MTU ${BoardPacketEncoder.BLE_MTU}")
         }
     }
 
     @Test
     fun roleToColorMapsCorrectly() {
-        assertEquals(0x1C, AuroraPacketEncoder.roleToColor(HoldRole.START))  // Green
-        assertEquals(0x1F, AuroraPacketEncoder.roleToColor(HoldRole.HAND))   // Cyan
-        assertEquals(0xE3, AuroraPacketEncoder.roleToColor(HoldRole.FINISH)) // Magenta
-        assertEquals(0xF4, AuroraPacketEncoder.roleToColor(HoldRole.FOOT))   // Orange
+        assertEquals(0x1C, BoardPacketEncoder.roleToColor(HoldRole.START))  // Green
+        assertEquals(0x1F, BoardPacketEncoder.roleToColor(HoldRole.HAND))   // Cyan
+        assertEquals(0xE3, BoardPacketEncoder.roleToColor(HoldRole.FINISH)) // Magenta
+        assertEquals(0xF4, BoardPacketEncoder.roleToColor(HoldRole.FOOT))   // Orange
     }
 
     @Test
     fun encodeColorRgb() {
         // Green: (0,255,0) → r3=0, g3=7, b2=0 → 0b00011100 = 0x1C
-        assertEquals(0x1C, AuroraPacketEncoder.encodeColor(0, 255, 0))
+        assertEquals(0x1C, BoardPacketEncoder.encodeColor(0, 255, 0))
         // Blue: (0,0,255) → r3=0, g3=0, b2=3 → 0b00000011 = 0x03
-        assertEquals(0x03, AuroraPacketEncoder.encodeColor(0, 0, 255))
+        assertEquals(0x03, BoardPacketEncoder.encodeColor(0, 0, 255))
         // Magenta: (255,0,255) → r3=7, g3=0, b2=3 → 0b11100011 = 0xE3
-        assertEquals(0xE3, AuroraPacketEncoder.encodeColor(255, 0, 255))
+        assertEquals(0xE3, BoardPacketEncoder.encodeColor(255, 0, 255))
     }
 
     @Test
@@ -111,7 +111,7 @@ class AuroraPacketEncoderTest {
 
     @Test
     fun api2UsesCorrectPacketType() {
-        val api2Encoder = AuroraPacketEncoder(apiLevel = 2)
+        val api2Encoder = BoardPacketEncoder(apiLevel = 2)
         val chunks = api2Encoder.encodeClimb(listOf(10 to 0x1C))
         val packet = chunks.flatMap { it.toList() }
         assertEquals(0x50.toByte(), packet[4]) // 'P' = API2 only packet

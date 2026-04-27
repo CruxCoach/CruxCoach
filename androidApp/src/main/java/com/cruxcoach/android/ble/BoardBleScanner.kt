@@ -33,10 +33,10 @@ data class DiscoveredBoard(
  * Filters on the Aurora ADVERTISING_SERVICE UUID.
  * Parses board name formats: "BoardName#serial@apiLevel" or "BoardName@apiLevel"
  */
-class AuroraBleScanner(private val context: Context) {
+class BoardBleScanner(private val context: Context) {
 
     companion object {
-        private const val TAG = "AuroraBleScanner"
+        private const val TAG = "BoardBleScanner"
         private const val MAX_REGISTRATION_RETRIES = 3
         private const val REGISTRATION_RETRY_DELAY_MS = 1000L
     }

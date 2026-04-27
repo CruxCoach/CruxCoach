@@ -11,7 +11,7 @@ enum class ClimbTypeFilter {
     fun maxFrames(): Long = when (this) { BOULDER -> 1L; ROUTE -> 999L; ALL -> 999L }
 }
 
-data class AuroraClimbWithStats(
+data class ClimbWithStats(
     val uuid: String,
     val layoutId: Long,
     val setterUsername: String?,
@@ -42,7 +42,7 @@ data class AuroraClimbWithStats(
     }
 }
 
-data class AuroraAscentWithClimb(
+data class AscentWithClimb(
     val uuid: String,
     val userId: Long = 0L,
     val climbUuid: String,
@@ -82,7 +82,7 @@ data class AngleOption(
     val benchmarkDifficulty: Double
 )
 
-data class AuroraPlacement(
+data class BoardPlacement(
     val placementId: Long,
     val holeId: Long,
     val setId: Long,
@@ -109,7 +109,7 @@ data class BoardImage(
     val imageFilename: String
 )
 
-data class AuroraHole(
+data class BoardHole(
     val id: Long,
     val productSizeId: Long,
     val x: Long,
@@ -125,7 +125,7 @@ data class LedGridPoint(
 )
 
 
-data class ClimbList(
+data class Climb_lists(
     val id: Long,
     val name: String,
     val isBuiltin: Boolean,
@@ -133,12 +133,12 @@ data class ClimbList(
     val climbCount: Long
 )
 
-data class ClimbListEntry(
+data class Climb_list_entries(
     val addedAt: String,
-    val climb: AuroraClimbWithStats
+    val climb: ClimbWithStats
 )
 
-data class BoardSession(
+data class Board_sessions(
     val id: Long,
     val startedAt: String,
     val endedAt: String?,
@@ -157,9 +157,9 @@ data class ClimbFrameRow(
 
 /** Climb search, filter, and count queries. All browse/search/count methods require layoutId to scope results to a board type. */
 interface BoardClimbQueries {
-    fun searchClimbsByName(query: String, angle: Int, layoutId: Int, sortField: ClimbSortField = ClimbSortField.QUALITY, sortDirection: SortDirection = SortDirection.DESC, limit: Int = 50, offset: Int = 0, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER): List<AuroraClimbWithStats>
-    fun searchClimbsSorted(angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, sortField: ClimbSortField, sortDirection: SortDirection, limit: Int = 50, offset: Int = 0, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER): List<AuroraClimbWithStats>
-    fun getClimbByUuid(uuid: String, angle: Int): AuroraClimbWithStats?
+    fun searchClimbsByName(query: String, angle: Int, layoutId: Int, sortField: ClimbSortField = ClimbSortField.QUALITY, sortDirection: SortDirection = SortDirection.DESC, limit: Int = 50, offset: Int = 0, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER): List<ClimbWithStats>
+    fun searchClimbsSorted(angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, sortField: ClimbSortField, sortDirection: SortDirection, limit: Int = 50, offset: Int = 0, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER): List<ClimbWithStats>
+    fun getClimbByUuid(uuid: String, angle: Int): ClimbWithStats?
     fun countFilteredClimbsFast(angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int): Long
     fun countFilteredClimbs(angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER): Long
     fun countBenchmarkFilteredClimbs(angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER): Long
@@ -172,9 +172,9 @@ interface BoardClimbQueries {
     fun getClimbCountByAngle(layoutId: Int, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER): List<AngleClimbCount>
     fun getAnglesForClimb(climbUuid: String): List<AngleOption>
     fun countNomatchClimbs(): Long
-    fun getClimbsByUuids(uuids: Collection<String>, angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter): List<AuroraClimbWithStats>
+    fun getClimbsByUuids(uuids: Collection<String>, angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter): List<ClimbWithStats>
     /** Fetch climbs by UUID list at a given angle, no additional filters. */
-    fun getClimbsByUuids(uuids: Collection<String>, angle: Int): List<AuroraClimbWithStats>
+    fun getClimbsByUuids(uuids: Collection<String>, angle: Int): List<ClimbWithStats>
     /** Find climb UUIDs whose frames contain the given placement ID. */
     fun searchClimbUuidsByHold(holdPattern: String, angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter): List<String>
     /** Find climb UUIDs whose frames contain ALL given hold patterns (single DB pass). */
@@ -185,7 +185,7 @@ interface BoardClimbQueries {
 
 /** Board layout, placement, LED, and product-size queries. */
 interface BoardLayoutQueries {
-    fun getAllPlacements(): List<AuroraPlacement>
+    fun getAllPlacements(): List<BoardPlacement>
     fun getProductSize(id: Int): BoardSize?
     fun getAllProductSizes(): List<BoardSize>
     fun getBoardImages(productSizeId: Int, layoutId: Int): List<BoardImage>
