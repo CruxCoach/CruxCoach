@@ -94,6 +94,7 @@ object Routes {
     const val BOARD_BROWSER = "board_browser"
     const val BOARD_FILTER = "board_filter"
     const val BOARD_CLIMB_DETAIL = "board_climb_detail/{climbUuid}/{angle}"
+    const val CLIMB_CREATOR = "climb_creator"
     const val BOARD_LOGBOOK = "board_logbook"
     const val BOARD_SYNC = "board_sync"
     const val BOARD_LISTS = "board_lists"
@@ -397,7 +398,15 @@ fun CruxCoachNavHost(
                     onNavigateToLogbook = { navController.navigate(Routes.BOARD_LOGBOOK) },
                     onNavigateToLists = { navController.navigate(Routes.BOARD_LISTS) },
                     onNavigateToSettings = { navController.navigate(Routes.SETTINGS) },
-                    onNavigateToFilter = { navController.navigate(Routes.BOARD_FILTER) }
+                    onNavigateToFilter = { navController.navigate(Routes.BOARD_FILTER) },
+                    onNavigateToClimbCreator = { navController.navigate(Routes.CLIMB_CREATOR) }
+                )
+            }
+
+            composable(Routes.CLIMB_CREATOR) {
+                com.cruxcoach.android.ui.board.creator.ClimbEditorScreen(
+                    onBack = { navController.popBackStack() },
+                    onPublished = { uuid -> navController.popBackStack() }
                 )
             }
 

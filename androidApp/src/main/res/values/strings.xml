@@ -2,6 +2,34 @@
 <resources xmlns:tools="http://schemas.android.com/tools" tools:locale="en">
     <string name="app_name">CruxCoach</string>
 
+    <!-- Climb Creator (FEAT-003) -->
+    <string name="climb_creator_title">Create climb</string>
+    <string name="climb_creator_open">Create new climb</string>
+    <string name="climb_creator_undo">Undo</string>
+    <string name="climb_creator_redo">Redo</string>
+    <string name="climb_creator_name">Name</string>
+    <string name="climb_creator_description">Description (optional)</string>
+    <string name="climb_creator_grade_label" formatted="false">Setter grade · %d</string>
+    <string name="climb_creator_angle_label">Angle</string>
+    <string name="climb_creator_angle_pick">Pick an angle</string>
+    <string name="climb_creator_save_draft">Save as draft</string>
+    <string name="climb_creator_publish">Publish</string>
+    <string name="climb_creator_count_start" formatted="false">Start: %d</string>
+    <string name="climb_creator_count_hand" formatted="false">Hand: %d</string>
+    <string name="climb_creator_count_finish" formatted="false">Finish: %d</string>
+    <string name="climb_creator_count_foot" formatted="false">Foot: %d</string>
+    <string name="climb_creator_valid">All set — ready to publish.</string>
+    <string name="climb_creator_issue_no_start">Add at least one start hold (green).</string>
+    <string name="climb_creator_issue_no_finish">Add at least one finish hold (magenta).</string>
+    <string name="climb_creator_issue_too_few_holds">Need at least 2 holds in total.</string>
+    <string name="climb_creator_issue_too_many_starts" formatted="false">Too many start holds: %d (max 2).</string>
+    <string name="climb_creator_issue_name_missing">Name is required.</string>
+    <string name="climb_creator_issue_name_too_long" formatted="false">Name too long (max %d chars).</string>
+    <string name="climb_creator_issue_description_too_long" formatted="false">Description too long (max %d chars).</string>
+    <string name="climb_creator_dup_title">A climb with these holds already exists</string>
+    <string name="climb_creator_dup_message" formatted="false">Same hold layout as “%s”. Same holds at a different angle/grade are allowed.</string>
+    <string name="climb_creator_dup_continue">Keep editing</string>
+
     <!-- Onboarding -->
     <string name="onboarding_welcome">Welcome to CruxCoach</string>
     <string name="onboarding_welcome_subtitle">Open source Kilter Board app — browse climbs, light up the board, log sessions.</string>

@@ -10,6 +10,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Create
 import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
@@ -69,6 +70,7 @@ fun BoardBrowserScreen(
     onNavigateToLists: () -> Unit = {},
     onNavigateToSettings: () -> Unit = {},
     onNavigateToFilter: () -> Unit = {},
+    onNavigateToClimbCreator: () -> Unit = {},
     viewModel: BoardBrowserViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -539,23 +541,36 @@ fun BoardBrowserScreen(
             }
         }
     }
-        // Floating search toggle (magnifying glass overlay, bottom-right)
+        // Floating action stack: Search (bottom) + Create-climb (top).
         if (state.hasBoardData) {
-            FloatingActionButton(
-                onClick = { searchVisible = !searchVisible },
-                containerColor = OrangeAccent,
-                contentColor = DarkBackground,
+            androidx.compose.foundation.layout.Column(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(16.dp)
-                    .testTag("board_search_fab")
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalAlignment = Alignment.End,
             ) {
-                Icon(
-                    if (searchVisible) Icons.Default.Clear else Icons.Default.Search,
-                    contentDescription = stringResource(
-                        if (searchVisible) R.string.cd_clear_search else R.string.board_browser_search_hint
+                FloatingActionButton(
+                    onClick = onNavigateToClimbCreator,
+                    containerColor = OrangeAccent,
+                    contentColor = DarkBackground,
+                    modifier = Modifier.testTag("board_create_fab")
+                ) {
+                    Icon(Icons.Default.Create, contentDescription = stringResource(R.string.climb_creator_open))
+                }
+                FloatingActionButton(
+                    onClick = { searchVisible = !searchVisible },
+                    containerColor = OrangeAccent,
+                    contentColor = DarkBackground,
+                    modifier = Modifier.testTag("board_search_fab")
+                ) {
+                    Icon(
+                        if (searchVisible) Icons.Default.Clear else Icons.Default.Search,
+                        contentDescription = stringResource(
+                            if (searchVisible) R.string.cd_clear_search else R.string.board_browser_search_hint
+                        )
                     )
-                )
+                }
             }
         }
     }
