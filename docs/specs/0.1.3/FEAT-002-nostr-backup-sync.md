@@ -1,15 +1,19 @@
 # Feature Spec: Nostr Encrypted Backup & Sync (v0.1.3)
 
-> **Status:** Implementation — core pipeline, Settings UI (opt-in + "Jetzt
-> sichern" + "Backup wiederherstellen" with intercept dialog + active
-> opt-out via confirmation dialog), onboarding `NOSTR_KEY` +
-> `NOSTR_BACKUP` steps (opt-in toggle + silent restore-intercept when a
-> key already exists on device), worker scheduling, and crypto-primitive
+> **Status:** Shipped (v0.1.3) — full pipeline, settings UI (opt-in +
+> "Jetzt sichern" + "Backup wiederherstellen" with intercept dialog +
+> active opt-out via confirmation dialog), onboarding `NOSTR_KEY` +
+> `NOSTR_BACKUP` steps (opt-in toggle + frequency picker + silent
+> restore-intercept when a key already exists on device + post-merge
+> backup-key warning card linking to *Settings → CruxCoach Account* on
+> all backup-enable surfaces), worker scheduling, and crypto-primitive
 > tests (HKDF RFC 5869 vectors, AES-GCM round-trip + tamper, gzip,
-> pointer serialization) have all landed. Deferred to post-release QA:
-> device-installed integration smoke test against real Blossom servers,
-> and an inline nsec-import affordance inside the `NOSTR_KEY` step (0.1.3
-> sends users to Settings → Nostr-Schlüssel for that path).
+> pointer serialization). The renaming sweep ("Nostr backup" →
+> "Encrypted cloud backup", "Nostr key" → "CruxCoach Account key" in
+> user-facing strings) and the Cloud-Backup-vs-Account terminology
+> bridge also landed in 0.1.3. Post-release QA target: device-installed
+> integration smoke test against real Blossom servers (manual,
+> ongoing).
 > **Depends on:** FEAT-001 (Nostr Relay Discovery / NIP-65) — consumes the
 > pool contract from FEAT-001 §8 (`writeRelays()`, `readRelays()`,
 > `onRelaysChanged()`).
