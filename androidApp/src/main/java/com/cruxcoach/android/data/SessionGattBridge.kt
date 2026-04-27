@@ -33,7 +33,7 @@ class SessionGattBridge(
     private val gattClient: SessionGattClient,
     private val advertiser: ClimbBleAdvertiser,
     private val nearbyScanner: NearbyClimbScanner,
-    private val bleConnection: AuroraBleConnection,
+    private val bleConnection: BoardBleConnection,
     private val boardStateManager: BoardStateManager,
     private val boardSessionManager: BoardSessionManager
 ) {

@@ -40,7 +40,7 @@ import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.theme.rgb332ToComposeColor
-import com.cruxcoach.data.repository.AuroraPlacement
+import com.cruxcoach.data.repository.BoardPlacement
 import com.cruxcoach.data.repository.BoardImage
 import com.cruxcoach.data.repository.BoardSize
 import com.cruxcoach.domain.board.BoardHold
@@ -112,7 +112,7 @@ private val HEATMAP_COLORS = listOf(
 @Composable
 internal fun KilterBoardVisualization(
     holds: List<BoardHold>,
-    placements: Map<Int, AuroraPlacement>,
+    placements: Map<Int, BoardPlacement>,
     boardSize: BoardSize?,
     boardImages: List<BoardImage> = emptyList(),
     ledColors: LedHoldColors = LedHoldColors(),

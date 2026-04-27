@@ -3,7 +3,7 @@ package com.cruxcoach.android.ui.board
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.data.repository.PersonalBoardRepository
-import com.cruxcoach.data.repository.ClimbList
+import com.cruxcoach.data.repository.Climb_lists
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -15,7 +15,7 @@ import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 data class BoardListsState(
-    val lists: List<ClimbList> = emptyList(),
+    val lists: List<Climb_lists> = emptyList(),
     val showCreateDialog: Boolean = false,
     val newListName: String = "",
     val deleteConfirmListId: Long? = null

@@ -20,7 +20,7 @@ class NostrProfileManager @Inject constructor(
     private val relayPool: NostrRelayPool,
     private val database: SecureDatabase
 ) {
-    private val profileQueries get() = database.nostrProfileQueries
+    private val profileQueries get() = database.nostrProfilesQueries
 
     suspend fun publishProfile(
         displayName: String?,

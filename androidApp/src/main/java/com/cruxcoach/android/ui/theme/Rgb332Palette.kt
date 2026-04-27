@@ -6,7 +6,7 @@ import androidx.compose.ui.graphics.Color
 import com.cruxcoach.android.R
 
 /**
- * Hardware-safe RGB332 color palette for Aurora Climbing board LEDs.
+ * Hardware-safe RGB332 color palette for Kilter Board LEDs.
  * Each color is encoded as r3<<5 | g3<<2 | b2 (1 byte per pixel).
  *
  * Colors are grouped by [ColorFamily] for organized display in the picker.

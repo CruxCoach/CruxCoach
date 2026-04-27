@@ -8,7 +8,7 @@ import com.cruxcoach.android.data.IntensityZoneManager
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.domain.board.IntensityZones
 import com.cruxcoach.data.repository.BoardRepository
-import com.cruxcoach.data.repository.ClimbListEntry
+import com.cruxcoach.data.repository.Climb_list_entries
 import com.cruxcoach.data.repository.PersonalBoardRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
@@ -25,7 +25,7 @@ data class BoardListDetailState(
     val isLoadingMore: Boolean = false,
     val listId: Long = 0,
     val listName: String = "",
-    val entries: List<ClimbListEntry> = emptyList(),
+    val entries: List<Climb_list_entries> = emptyList(),
     val totalCount: Long = 0,
     val canLoadMore: Boolean = false,
     val angle: Int = 40,
@@ -103,7 +103,7 @@ class BoardListDetailViewModel @Inject constructor(
     }
 
     /** Two-phase: get UUIDs from SecureDB, then climb details from BoardDB. */
-    private fun loadEntries(listId: Long, angle: Int, limit: Int, offset: Int): List<ClimbListEntry> {
+    private fun loadEntries(listId: Long, angle: Int, limit: Int, offset: Int): List<Climb_list_entries> {
         val uuidPairs = personalBoardRepo.getClimbListEntryUuids(listId, limit, offset)
         if (uuidPairs.isEmpty()) return emptyList()
         val uuids = uuidPairs.map { it.first }
@@ -111,7 +111,7 @@ class BoardListDetailViewModel @Inject constructor(
         val climbs = boardRepository.getClimbsByUuids(uuids, angle)
         val climbMap = climbs.associateBy { it.uuid }
         return uuidPairs.mapNotNull { (uuid, addedAt) ->
-            climbMap[uuid]?.let { climb -> ClimbListEntry(addedAt = addedAt, climb = climb) }
+            climbMap[uuid]?.let { climb -> Climb_list_entries(addedAt = addedAt, climb = climb) }
         }
     }
 

@@ -21,7 +21,7 @@ class PersonalBoardRepositoryImpl(
         climbName: String, difficultyAverage: Double?,
         climbFrames: String, framesCount: Long
     ) {
-        database.auroraAscentQueries.insertAscent(
+        database.ascentsQueries.insertAscent(
             uuid = uuid,
             climb_uuid = climbUuid,
             angle = angle,
@@ -45,11 +45,11 @@ class PersonalBoardRepositoryImpl(
     }
 
     override fun deleteAscent(uuid: String) {
-        database.auroraAscentQueries.deleteAscent(uuid)
+        database.ascentsQueries.deleteAscent(uuid)
     }
 
     override fun updateAscent(uuid: String, bidCount: Long, quality: Long?, comment: String?) {
-        database.auroraAscentQueries.updateAscent(
+        database.ascentsQueries.updateAscent(
             bid_count = bidCount,
             quality = quality,
             comment = comment,
@@ -57,9 +57,9 @@ class PersonalBoardRepositoryImpl(
         )
     }
 
-    override fun getUserAscentsAll(): List<AuroraAscentWithClimb> {
-        return database.auroraAscentQueries.getUserAscentsAll().executeAsList().map { row ->
-            AuroraAscentWithClimb(
+    override fun getUserAscentsAll(): List<AscentWithClimb> {
+        return database.ascentsQueries.getUserAscentsAll().executeAsList().map { row ->
+            AscentWithClimb(
                 uuid = row.uuid,
                 climbUuid = row.climb_uuid,
                 angle = row.angle,
@@ -78,9 +78,9 @@ class PersonalBoardRepositoryImpl(
         }
     }
 
-    override fun getUserAscentsBetween(from: String, to: String): List<AuroraAscentWithClimb> {
-        return database.auroraAscentQueries.getUserAscentsBetween(from, to).executeAsList().map { row ->
-            AuroraAscentWithClimb(
+    override fun getUserAscentsBetween(from: String, to: String): List<AscentWithClimb> {
+        return database.ascentsQueries.getUserAscentsBetween(from, to).executeAsList().map { row ->
+            AscentWithClimb(
                 uuid = row.uuid,
                 climbUuid = row.climb_uuid,
                 angle = row.angle,
@@ -100,24 +100,24 @@ class PersonalBoardRepositoryImpl(
     }
 
     override fun getUserSentClimbUuids(): Set<String> {
-        return database.auroraAscentQueries.getUserSentClimbUuids().executeAsList().toSet()
+        return database.ascentsQueries.getUserSentClimbUuids().executeAsList().toSet()
     }
 
     override fun getUserAttemptedClimbUuids(): Set<String> {
-        return database.auroraBidQueries.getUserAttemptedClimbUuids().executeAsList().toSet()
+        return database.bidsQueries.getUserAttemptedClimbUuids().executeAsList().toSet()
     }
 
     override fun getUserSendDifficulties(since: String): List<Double> {
-        return database.auroraAscentQueries.getUserSendDifficulties(since).executeAsList()
+        return database.ascentsQueries.getUserSendDifficulties(since).executeAsList()
             .mapNotNull { it.difficulty_average }
     }
 
-    override fun getUserLogbookPage(limit: Int, offset: Int): List<AuroraAscentWithClimb> {
-        return database.auroraAscentQueries.getUserLogbookPage(
+    override fun getUserLogbookPage(limit: Int, offset: Int): List<AscentWithClimb> {
+        return database.ascentsQueries.getUserLogbookPage(
             limit = limit.toLong(),
             offset = offset.toLong()
         ).executeAsList().map { row ->
-            AuroraAscentWithClimb(
+            AscentWithClimb(
                 uuid = row.uuid,
                 climbUuid = row.climb_uuid,
                 angle = row.angle,
@@ -136,9 +136,9 @@ class PersonalBoardRepositoryImpl(
         }
     }
 
-    override fun getUserLogbookAllLight(): List<AuroraAscentWithClimb> {
-        return database.auroraAscentQueries.getUserLogbookAllLight().executeAsList().map { row ->
-            AuroraAscentWithClimb(
+    override fun getUserLogbookAllLight(): List<AscentWithClimb> {
+        return database.ascentsQueries.getUserLogbookAllLight().executeAsList().map { row ->
+            AscentWithClimb(
                 uuid = row.uuid,
                 climbUuid = row.climb_uuid,
                 angle = row.angle,
@@ -157,9 +157,9 @@ class PersonalBoardRepositoryImpl(
         }
     }
 
-    override fun getUserHistoryForClimb(climbUuid: String): List<AuroraAscentWithClimb> {
-        return database.auroraAscentQueries.getUserHistoryForClimb(climbUuid).executeAsList().map { row ->
-            AuroraAscentWithClimb(
+    override fun getUserHistoryForClimb(climbUuid: String): List<AscentWithClimb> {
+        return database.ascentsQueries.getUserHistoryForClimb(climbUuid).executeAsList().map { row ->
+            AscentWithClimb(
                 uuid = row.uuid,
                 climbUuid = row.climb_uuid,
                 angle = row.angle,
@@ -179,16 +179,16 @@ class PersonalBoardRepositoryImpl(
     }
 
     override fun countUserLogbook(): Long {
-        return database.auroraAscentQueries.countUserLogbook().executeAsOne()
+        return database.ascentsQueries.countUserLogbook().executeAsOne()
     }
 
     override fun getRepeatCounts(): Map<String, Long> {
-        return database.auroraAscentQueries.getRepeatCounts().executeAsList()
+        return database.ascentsQueries.getRepeatCounts().executeAsList()
             .associate { it.climb_uuid to it.repeat_count }
     }
 
     override fun getUnsyncedAscents(): List<RawAscent> {
-        return database.auroraAscentQueries.getUnsyncedAscents().executeAsList().map { row ->
+        return database.ascentsQueries.getUnsyncedAscents().executeAsList().map { row ->
             RawAscent(
                 uuid = row.uuid,
                 climbUuid = row.climb_uuid,
@@ -215,8 +215,8 @@ class PersonalBoardRepositoryImpl(
         // affected by the last statement on the same connection, so any
         // interleaved write between the two would corrupt the result.
         return database.transactionWithResult {
-            database.auroraAscentQueries.markAscentSyncedIfUnchanged(uuid, expectedRowVersion)
-            database.auroraAscentQueries.lastAscentChangeCount().executeAsOne() > 0L
+            database.ascentsQueries.markAscentSyncedIfUnchanged(uuid, expectedRowVersion)
+            database.ascentsQueries.lastAscentChangeCount().executeAsOne() > 0L
         }
     }
 
@@ -229,7 +229,7 @@ class PersonalBoardRepositoryImpl(
         gymUuid: String?, wallUuid: String?, productLayoutUuid: String?,
         climbName: String, difficultyAverage: Double?
     ) {
-        database.auroraBidQueries.insertBid(
+        database.bidsQueries.insertBid(
             uuid = uuid,
             climb_uuid = climbUuid,
             angle = angle,
@@ -247,16 +247,16 @@ class PersonalBoardRepositoryImpl(
     }
 
     override fun deleteBid(uuid: String) {
-        database.auroraBidQueries.deleteBid(uuid)
+        database.bidsQueries.deleteBid(uuid)
     }
 
     override fun getUserBidDifficulties(since: String): List<Double> {
-        return database.auroraBidQueries.getUserBidDifficulties(since).executeAsList()
+        return database.bidsQueries.getUserBidDifficulties(since).executeAsList()
             .mapNotNull { it.difficulty_average }
     }
 
     override fun getUnsyncedBids(): List<RawBid> {
-        return database.auroraBidQueries.getUnsyncedBids().executeAsList().map { row ->
+        return database.bidsQueries.getUnsyncedBids().executeAsList().map { row ->
             RawBid(
                 uuid = row.uuid,
                 climbUuid = row.climb_uuid,
@@ -276,13 +276,13 @@ class PersonalBoardRepositoryImpl(
 
     override fun markBidSyncedIfUnchanged(uuid: String, expectedRowVersion: Long): Boolean {
         return database.transactionWithResult {
-            database.auroraBidQueries.markBidSyncedIfUnchanged(uuid, expectedRowVersion)
-            database.auroraBidQueries.lastBidChangeCount().executeAsOne() > 0L
+            database.bidsQueries.markBidSyncedIfUnchanged(uuid, expectedRowVersion)
+            database.bidsQueries.lastBidChangeCount().executeAsOne() > 0L
         }
     }
 
     override fun getRawBidsForUser(): List<RawBid> {
-        return database.auroraBidQueries.getRawBidsForUser().executeAsList().map { row ->
+        return database.bidsQueries.getRawBidsForUser().executeAsList().map { row ->
             RawBid(
                 uuid = row.uuid,
                 climbUuid = row.climb_uuid,
@@ -310,7 +310,7 @@ class PersonalBoardRepositoryImpl(
         // INSERT + last_insert_rowid() must run in the same transaction so
         // concurrent inserts can't steal the id.
         return database.transactionWithResult {
-            database.boardSessionQueries.insertBoardSession(
+            database.boardSessionsQueries.insertBoardSession(
                 started_at = startedAt,
                 ended_at = endedAt,
                 total_duration_seconds = totalDurationSeconds,
@@ -318,13 +318,13 @@ class PersonalBoardRepositoryImpl(
                 ascent_count = ascentCount,
                 bid_count = bidCount
             )
-            database.boardSessionQueries.getLastInsertedSessionId().executeAsOne()
+            database.boardSessionsQueries.getLastInsertedSessionId().executeAsOne()
         }
     }
 
-    override fun getRecentBoardSessions(limit: Int): List<BoardSession> {
-        return database.boardSessionQueries.getRecentBoardSessions(limit.toLong()).executeAsList().map { row ->
-            BoardSession(
+    override fun getRecentBoardSessions(limit: Int): List<Board_sessions> {
+        return database.boardSessionsQueries.getRecentBoardSessions(limit.toLong()).executeAsList().map { row ->
+            Board_sessions(
                 id = row.id,
                 startedAt = row.started_at,
                 endedAt = row.ended_at,
@@ -336,9 +336,9 @@ class PersonalBoardRepositoryImpl(
         }
     }
 
-    override fun getActiveSession(): BoardSession? {
-        return database.boardSessionQueries.getActiveSession().executeAsOneOrNull()?.let { row ->
-            BoardSession(
+    override fun getActiveSession(): Board_sessions? {
+        return database.boardSessionsQueries.getActiveSession().executeAsOneOrNull()?.let { row ->
+            Board_sessions(
                 id = row.id,
                 startedAt = row.started_at,
                 endedAt = row.ended_at,
@@ -351,7 +351,7 @@ class PersonalBoardRepositoryImpl(
     }
 
     override fun updateActiveSession(id: Long, ascentCount: Long, bidCount: Long, pauseDurationSeconds: Long, totalDurationSeconds: Long) {
-        database.boardSessionQueries.updateActiveSession(
+        database.boardSessionsQueries.updateActiveSession(
             ascent_count = ascentCount,
             bid_count = bidCount,
             pause_duration_seconds = pauseDurationSeconds,
@@ -361,7 +361,7 @@ class PersonalBoardRepositoryImpl(
     }
 
     override fun endBoardSession(id: Long, endedAt: String, totalDurationSeconds: Long, pauseDurationSeconds: Long, ascentCount: Long, bidCount: Long) {
-        database.boardSessionQueries.endBoardSession(
+        database.boardSessionsQueries.endBoardSession(
             ended_at = endedAt,
             total_duration_seconds = totalDurationSeconds,
             pause_duration_seconds = pauseDurationSeconds,
@@ -371,9 +371,9 @@ class PersonalBoardRepositoryImpl(
         )
     }
 
-    override fun getAllBoardSessions(): List<BoardSession> {
-        return database.boardSessionQueries.getAllBoardSessions().executeAsList().map { row ->
-            BoardSession(
+    override fun getAllBoardSessions(): List<Board_sessions> {
+        return database.boardSessionsQueries.getAllBoardSessions().executeAsList().map { row ->
+            Board_sessions(
                 id = row.id,
                 startedAt = row.started_at,
                 endedAt = row.ended_at,
@@ -393,21 +393,21 @@ class PersonalBoardRepositoryImpl(
         // transaction, two rapid callers could both miss the existing list
         // and insert duplicate 'Favoriten' rows.
         val id = database.transactionWithResult {
-            val existing = database.climbListQueries.getBuiltinFavoritesList().executeAsOneOrNull()
+            val existing = database.climbListsQueries.getBuiltinFavoritesList().executeAsOneOrNull()
             if (existing != null) {
                 existing.id
             } else {
-                database.climbListQueries.insertClimbList("Favoriten", 1L, DateTimeUtil.nowIso())
-                database.climbListQueries.getLastInsertedListId().executeAsOne()
+                database.climbListsQueries.insertClimbList("Favoriten", 1L, DateTimeUtil.nowIso())
+                database.climbListsQueries.getLastInsertedListId().executeAsOne()
             }
         }
         cachedFavoritesListId = id
         return id
     }
 
-    override fun getAllClimbLists(): List<ClimbList> {
-        return database.climbListQueries.getAllClimbLists().executeAsList().map { row ->
-            ClimbList(
+    override fun getAllClimbLists(): List<Climb_lists> {
+        return database.climbListsQueries.getAllClimbLists().executeAsList().map { row ->
+            Climb_lists(
                 id = row.id,
                 name = row.name,
                 isBuiltin = row.is_builtin != 0L,
@@ -417,9 +417,9 @@ class PersonalBoardRepositoryImpl(
         }
     }
 
-    override fun getClimbListById(id: Long): ClimbList? {
-        return database.climbListQueries.getClimbListById(id).executeAsOneOrNull()?.let { row ->
-            ClimbList(
+    override fun getClimbListById(id: Long): Climb_lists? {
+        return database.climbListsQueries.getClimbListById(id).executeAsOneOrNull()?.let { row ->
+            Climb_lists(
                 id = row.id,
                 name = row.name,
                 isBuiltin = row.is_builtin != 0L,
@@ -432,31 +432,31 @@ class PersonalBoardRepositoryImpl(
     override fun createClimbList(name: String): Long {
         val now = DateTimeUtil.nowIso()
         return database.transactionWithResult {
-            database.climbListQueries.insertClimbList(name, 0L, now)
-            database.climbListQueries.getLastInsertedListId().executeAsOne()
+            database.climbListsQueries.insertClimbList(name, 0L, now)
+            database.climbListsQueries.getLastInsertedListId().executeAsOne()
         }
     }
 
     override fun renameClimbList(id: Long, name: String) {
-        database.climbListQueries.updateClimbListName(name, id)
+        database.climbListsQueries.updateClimbListName(name, id)
     }
 
     override fun deleteClimbList(id: Long) {
-        database.climbListQueries.deleteClimbListEntries(id)
-        database.climbListQueries.deleteClimbList(id)
+        database.climbListsQueries.deleteClimbListEntries(id)
+        database.climbListsQueries.deleteClimbList(id)
     }
 
     override fun addClimbToList(listId: Long, climbUuid: String) {
         val now = DateTimeUtil.nowIso()
-        database.climbListQueries.insertClimbListEntry(listId, climbUuid, now)
+        database.climbListsQueries.insertClimbListEntry(listId, climbUuid, now)
     }
 
     override fun removeClimbFromList(listId: Long, climbUuid: String) {
-        database.climbListQueries.removeClimbListEntry(listId, climbUuid)
+        database.climbListsQueries.removeClimbListEntry(listId, climbUuid)
     }
 
     override fun getClimbListEntryUuids(listId: Long, limit: Int, offset: Int): List<Pair<String, String>> {
-        return database.climbListQueries.getClimbListEntryUuids(
+        return database.climbListsQueries.getClimbListEntryUuids(
             list_id = listId,
             limit = limit.toLong(),
             offset = offset.toLong()
@@ -464,16 +464,16 @@ class PersonalBoardRepositoryImpl(
     }
 
     override fun countClimbListEntries(listId: Long): Long {
-        return database.climbListQueries.countClimbListEntries(listId).executeAsOne()
+        return database.climbListsQueries.countClimbListEntries(listId).executeAsOne()
     }
 
     override fun getListIdsForClimb(climbUuid: String): Set<Long> {
-        return database.climbListQueries.getListIdsForClimb(climbUuid).executeAsList().toSet()
+        return database.climbListsQueries.getListIdsForClimb(climbUuid).executeAsList().toSet()
     }
 
     override fun isClimbFavorited(climbUuid: String): Boolean {
         val favId = ensureFavoritesListExists()
-        return database.climbListQueries.isClimbInList(favId, climbUuid).executeAsOne() > 0
+        return database.climbListsQueries.isClimbInList(favId, climbUuid).executeAsOne() > 0
     }
 
     override fun toggleFavorite(climbUuid: String): Boolean {
@@ -481,18 +481,18 @@ class PersonalBoardRepositoryImpl(
         // Read-modify-write must be atomic: two rapid taps otherwise both
         // observe the same state and either double-insert or double-delete.
         return database.transactionWithResult {
-            val isFav = database.climbListQueries.isClimbInList(favId, climbUuid).executeAsOne() > 0
+            val isFav = database.climbListsQueries.isClimbInList(favId, climbUuid).executeAsOne() > 0
             if (isFav) {
-                database.climbListQueries.removeClimbListEntry(favId, climbUuid)
+                database.climbListsQueries.removeClimbListEntry(favId, climbUuid)
             } else {
-                database.climbListQueries.insertClimbListEntry(favId, climbUuid, DateTimeUtil.nowIso())
+                database.climbListsQueries.insertClimbListEntry(favId, climbUuid, DateTimeUtil.nowIso())
             }
             !isFav
         }
     }
 
     override fun getClimbListEntriesRaw(): List<RawClimbListEntry> {
-        return database.climbListQueries.getClimbListEntriesRaw().executeAsList().map { row ->
+        return database.climbListsQueries.getClimbListEntriesRaw().executeAsList().map { row ->
             RawClimbListEntry(listId = row.list_id, climbUuid = row.climb_uuid, addedAt = row.added_at)
         }
     }
@@ -500,9 +500,9 @@ class PersonalBoardRepositoryImpl(
     // ── Denormalization refresh ─────────────────────────────────
 
     override fun getAllClimbKeys(): List<Pair<String, Long>> {
-        val ascentKeys = database.auroraAscentQueries.getAllAscentClimbKeys().executeAsList()
+        val ascentKeys = database.ascentsQueries.getAllAscentClimbKeys().executeAsList()
             .map { it.climb_uuid to it.angle }
-        val bidKeys = database.auroraBidQueries.getAllBidClimbKeys().executeAsList()
+        val bidKeys = database.bidsQueries.getAllBidClimbKeys().executeAsList()
             .map { it.climb_uuid to it.angle }
         return (ascentKeys + bidKeys).distinct()
     }
@@ -512,7 +512,7 @@ class PersonalBoardRepositoryImpl(
         climbName: String, difficultyAverage: Double?,
         climbFrames: String, framesCount: Long
     ) {
-        database.auroraAscentQueries.updateAscentDenormalized(
+        database.ascentsQueries.updateAscentDenormalized(
             climb_name = climbName,
             difficulty_average = difficultyAverage,
             climb_frames = climbFrames,
@@ -526,7 +526,7 @@ class PersonalBoardRepositoryImpl(
         climbUuid: String, angle: Long,
         climbName: String, difficultyAverage: Double?
     ) {
-        database.auroraBidQueries.updateBidDenormalized(
+        database.bidsQueries.updateBidDenormalized(
             climb_name = climbName,
             difficulty_average = difficultyAverage,
             climb_uuid = climbUuid,
@@ -538,11 +538,11 @@ class PersonalBoardRepositoryImpl(
 
     override fun deleteAllUserBoardData() {
         database.transaction {
-            database.auroraAscentQueries.deleteAllAscents()
-            database.auroraBidQueries.deleteAllBids()
-            database.boardSessionQueries.deleteAllBoardSessions()
-            database.climbListQueries.deleteAllClimbListEntries()
-            database.climbListQueries.deleteAllClimbLists()
+            database.ascentsQueries.deleteAllAscents()
+            database.bidsQueries.deleteAllBids()
+            database.boardSessionsQueries.deleteAllBoardSessions()
+            database.climbListsQueries.deleteAllClimbListEntries()
+            database.climbListsQueries.deleteAllClimbLists()
         }
         cachedFavoritesListId = null
     }

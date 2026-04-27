@@ -2,7 +2,7 @@ package com.cruxcoach.android.ui.board
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.cruxcoach.android.ble.AuroraBleConnection
+import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.ConnectionState
 import android.util.Log
 import com.cruxcoach.android.ble.NearbySession
@@ -21,7 +21,7 @@ import com.cruxcoach.domain.board.IntensityZone
 import com.cruxcoach.domain.board.IntensityZoneEngine
 import com.cruxcoach.domain.board.IntensityZones
 import com.cruxcoach.domain.board.SessionType
-import com.cruxcoach.data.repository.AuroraClimbWithStats
+import com.cruxcoach.data.repository.ClimbWithStats
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.PersonalBoardRepository
 import com.cruxcoach.data.repository.ClimbSortField
@@ -98,7 +98,7 @@ data class HoldSearchState(
 data class BoardBrowserState(
     val isLoading: Boolean = true,
     val isLoadingMore: Boolean = false,
-    val climbs: List<AuroraClimbWithStats> = emptyList(),
+    val climbs: List<ClimbWithStats> = emptyList(),
     val climbCount: Long = 0,
     val filteredCount: Long = -1,
     val hasBoardData: Boolean = false,
@@ -108,7 +108,7 @@ data class BoardBrowserState(
     val zones: IntensityZones? = null,
     val error: String? = null,
     val easterAnimationsUnlocked: Boolean = false,
-    val placements: Map<Int, com.cruxcoach.data.repository.AuroraPlacement> = emptyMap(),
+    val placements: Map<Int, com.cruxcoach.data.repository.BoardPlacement> = emptyMap(),
     val boardSize: com.cruxcoach.data.repository.BoardSize? = null,
     val boardImages: List<com.cruxcoach.data.repository.BoardImage> = emptyList(),
     val filter: BrowserFilterState = BrowserFilterState(),
@@ -121,7 +121,7 @@ class BoardBrowserViewModel @Inject constructor(
     private val boardRepository: BoardRepository,
     private val personalBoardRepo: PersonalBoardRepository,
     private val userPreferences: UserPreferences,
-    private val bleConnection: AuroraBleConnection,
+    private val bleConnection: BoardBleConnection,
     private val sessionManager: BoardSessionManager,
     private val zoneManager: IntensityZoneManager,
     private val syncManager: BoardSyncManager,
@@ -407,7 +407,7 @@ class BoardBrowserViewModel @Inject constructor(
         }
     }
 
-    private fun applyStatusFilter(climbs: List<AuroraClimbWithStats>, filter: ClimbStatusFilter): List<AuroraClimbWithStats> {
+    private fun applyStatusFilter(climbs: List<ClimbWithStats>, filter: ClimbStatusFilter): List<ClimbWithStats> {
         return when (filter) {
             ClimbStatusFilter.ALL -> climbs
             ClimbStatusFilter.SENT -> climbs.filter { it.uuid in sentUuids }
@@ -417,7 +417,7 @@ class BoardBrowserViewModel @Inject constructor(
         }
     }
 
-    private fun applyBenchmarkFilter(climbs: List<AuroraClimbWithStats>, benchmarkOnly: Boolean): List<AuroraClimbWithStats> {
+    private fun applyBenchmarkFilter(climbs: List<ClimbWithStats>, benchmarkOnly: Boolean): List<ClimbWithStats> {
         return if (benchmarkOnly) climbs.filter { it.benchmarkDifficulty > 0.0 } else climbs
     }
 
@@ -537,7 +537,7 @@ class BoardBrowserViewModel @Inject constructor(
      * For SENT/ATTEMPTED: queries climb_browse directly by UUID set (small, fast).
      * For ALL/NEW/UNSENT: page-scans (high hit rate, most climbs match).
      */
-    private fun fetchFiltered(f: BrowserFilterState, dbOffset: Int): Triple<List<AuroraClimbWithStats>, Int, Boolean> {
+    private fun fetchFiltered(f: BrowserFilterState, dbOffset: Int): Triple<List<ClimbWithStats>, Int, Boolean> {
         // HOLD FILTER: direct UUID query with hold-matched UUIDs
         val hs = _state.value.holdSearch
         if (hs.holdFilterActive && hs.holdFilterUuids.isNotEmpty()) {
@@ -577,7 +577,7 @@ class BoardBrowserViewModel @Inject constructor(
         }
 
         // NEW / UNSENT: page-scan with client-side filtering (high hit rate)
-        val collected = mutableListOf<AuroraClimbWithStats>()
+        val collected = mutableListOf<ClimbWithStats>()
         var currentOffset = dbOffset
         repeat(MAX_STATUS_SCAN_PAGES) {
             val page = fetchPage(f, currentOffset)
@@ -591,10 +591,10 @@ class BoardBrowserViewModel @Inject constructor(
     }
 
     private fun sortInKotlin(
-        climbs: List<AuroraClimbWithStats>, field: ClimbSortField, dir: SortDirection
-    ): List<AuroraClimbWithStats> {
+        climbs: List<ClimbWithStats>, field: ClimbSortField, dir: SortDirection
+    ): List<ClimbWithStats> {
         val comparator = when (field) {
-            ClimbSortField.QUALITY -> compareBy<AuroraClimbWithStats> { it.qualityAverage ?: 0.0 }
+            ClimbSortField.QUALITY -> compareBy<ClimbWithStats> { it.qualityAverage ?: 0.0 }
             ClimbSortField.DIFFICULTY -> compareBy { it.difficultyAverage ?: 0.0 }
             ClimbSortField.ASCENSIONISTS -> compareBy { it.ascensionistCount ?: 0L }
             ClimbSortField.NAME -> compareBy(String.CASE_INSENSITIVE_ORDER) { it.name }
@@ -605,7 +605,7 @@ class BoardBrowserViewModel @Inject constructor(
         else climbs.sortedWith(comparator)
     }
 
-    private fun fetchPage(f: BrowserFilterState, offset: Int): List<AuroraClimbWithStats> {
+    private fun fetchPage(f: BrowserFilterState, offset: Int): List<ClimbWithStats> {
         return if (f.searchQuery.isNotBlank()) {
             PerfLogger.traceQuery("searchClimbsByName(offset=$offset)") {
                 boardRepository.searchClimbsByName(f.searchQuery, f.angle, f.layoutId, f.sortField, f.sortDirection, PAGE_SIZE, offset, f.climbTypeFilter)
@@ -822,7 +822,7 @@ class BoardBrowserViewModel @Inject constructor(
                 if (frames.isEmpty() || frames.all { it.leds.isEmpty() }) {
                     return@launch
                 }
-                val encoder = com.cruxcoach.domain.board.AuroraPacketEncoder(3)
+                val encoder = com.cruxcoach.domain.board.BoardPacketEncoder(3)
                 repeat(3) {
                     for (frame in frames) {
                         val chunks = encoder.encodeClimb(frame.leds)
@@ -873,7 +873,7 @@ class BoardBrowserViewModel @Inject constructor(
 
     fun startSession() = sessionManager.startSession()
 
-    fun endSession(): com.cruxcoach.data.repository.BoardSession? {
+    fun endSession(): com.cruxcoach.data.repository.Board_sessions? {
         val session = sessionManager.endSession()
         if (session != null) {
             viewModelScope.launch {

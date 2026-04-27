@@ -3,7 +3,7 @@ package com.cruxcoach.android.ui.board
 import com.cruxcoach.android.data.BoardSessionManager
 import com.cruxcoach.android.data.IntensityZoneManager
 import com.cruxcoach.android.ui.navigation.ClimbNavigationState
-import com.cruxcoach.data.repository.AuroraAscentWithClimb
+import com.cruxcoach.data.repository.AscentWithClimb
 import com.cruxcoach.data.repository.PersonalBoardRepository
 import com.cruxcoach.util.DateTimeUtil
 import kotlinx.coroutines.CoroutineScope
@@ -125,7 +125,7 @@ internal class AscentLogger(
         }
     }
 
-    fun edit(ascent: AuroraAscentWithClimb) {
+    fun edit(ascent: AscentWithClimb) {
         state.update { it.copy(ascent = AscentFormState(
             showDialog = true,
             editingUuid = ascent.uuid,

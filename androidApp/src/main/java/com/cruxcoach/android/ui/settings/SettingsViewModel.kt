@@ -3,7 +3,7 @@ package com.cruxcoach.android.ui.settings
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.cruxcoach.android.ble.AuroraBleConnection
+import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.ClimbBleAdvertiser
 import com.cruxcoach.android.data.AnnouncementRepository
 import com.cruxcoach.android.data.DarkModeSetting
@@ -113,7 +113,7 @@ class SettingsViewModel @Inject constructor(
     private val personalBoardRepo: PersonalBoardRepository,
     private val syncManager: BoardSyncManager,
     private val userPreferences: UserPreferences,
-    private val bleConnection: AuroraBleConnection,
+    private val bleConnection: BoardBleConnection,
     private val climbAdvertiser: ClimbBleAdvertiser,
     private val announcementRepository: AnnouncementRepository,
     private val queueManager: OfflineQueueManager,
@@ -488,7 +488,7 @@ class SettingsViewModel @Inject constructor(
                 if (grid.isEmpty()) return@launch
                 val frames = BoardEasterAnimations.easterEgg(grid)
                 if (frames.isEmpty() || frames.all { it.leds.isEmpty() }) return@launch
-                val encoder = com.cruxcoach.domain.board.AuroraPacketEncoder(3)
+                val encoder = com.cruxcoach.domain.board.BoardPacketEncoder(3)
                 repeat(3) {
                     for (frame in frames) {
                         val chunks = encoder.encodeClimb(frame.leds)

@@ -140,9 +140,9 @@ class FakeBoardRepository : BoardRepository {
 
     // -- BoardClimbQueries --
 
-    override fun searchClimbsByName(query: String, angle: Int, layoutId: Int, sortField: ClimbSortField, sortDirection: SortDirection, limit: Int, offset: Int, climbType: ClimbTypeFilter): List<AuroraClimbWithStats> = emptyList()
-    override fun searchClimbsSorted(angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, sortField: ClimbSortField, sortDirection: SortDirection, limit: Int, offset: Int, climbType: ClimbTypeFilter): List<AuroraClimbWithStats> = emptyList()
-    override fun getClimbByUuid(uuid: String, angle: Int): AuroraClimbWithStats? = null
+    override fun searchClimbsByName(query: String, angle: Int, layoutId: Int, sortField: ClimbSortField, sortDirection: SortDirection, limit: Int, offset: Int, climbType: ClimbTypeFilter): List<ClimbWithStats> = emptyList()
+    override fun searchClimbsSorted(angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, sortField: ClimbSortField, sortDirection: SortDirection, limit: Int, offset: Int, climbType: ClimbTypeFilter): List<ClimbWithStats> = emptyList()
+    override fun getClimbByUuid(uuid: String, angle: Int): ClimbWithStats? = null
     override fun countFilteredClimbsFast(angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int): Long = 0L
     override fun countFilteredClimbs(angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter): Long = 0L
     override fun countBenchmarkFilteredClimbs(angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter): Long = 0L
@@ -155,15 +155,15 @@ class FakeBoardRepository : BoardRepository {
     override fun getClimbCountByAngle(layoutId: Int, climbType: ClimbTypeFilter): List<AngleClimbCount> = emptyList()
     override fun getAnglesForClimb(climbUuid: String): List<AngleOption> = emptyList()
     override fun countNomatchClimbs(): Long = 0L
-    override fun getClimbsByUuids(uuids: Collection<String>, angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter): List<AuroraClimbWithStats> = emptyList()
-    override fun getClimbsByUuids(uuids: Collection<String>, angle: Int): List<AuroraClimbWithStats> = emptyList()
+    override fun getClimbsByUuids(uuids: Collection<String>, angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter): List<ClimbWithStats> = emptyList()
+    override fun getClimbsByUuids(uuids: Collection<String>, angle: Int): List<ClimbWithStats> = emptyList()
     override fun searchClimbUuidsByHold(holdPattern: String, angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter): List<String> = emptyList()
     override fun searchClimbUuidsByAllHolds(holdPatterns: List<String>, angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter): Set<String> = emptySet()
     override fun getAllFramesForHeatmap(angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter): List<ClimbFrameRow> = emptyList()
 
     // -- BoardLayoutQueries --
 
-    override fun getAllPlacements(): List<AuroraPlacement> = emptyList()
+    override fun getAllPlacements(): List<BoardPlacement> = emptyList()
     override fun getProductSize(id: Int): BoardSize? = null
     override fun getAllProductSizes(): List<BoardSize> = emptyList()
     override fun getBoardImages(productSizeId: Int, layoutId: Int): List<BoardImage> = emptyList()

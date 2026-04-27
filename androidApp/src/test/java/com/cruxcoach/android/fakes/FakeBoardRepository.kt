@@ -2,8 +2,8 @@ package com.cruxcoach.android.fakes
 
 import com.cruxcoach.data.repository.AngleClimbCount
 import com.cruxcoach.data.repository.AngleOption
-import com.cruxcoach.data.repository.AuroraClimbWithStats
-import com.cruxcoach.data.repository.AuroraPlacement
+import com.cruxcoach.data.repository.ClimbWithStats
+import com.cruxcoach.data.repository.BoardPlacement
 import com.cruxcoach.data.repository.BoardImage
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.BoardSize
@@ -20,15 +20,15 @@ import com.cruxcoach.data.repository.SortDirection
  */
 class FakeBoardRepository : BoardRepository {
 
-    val climbs = mutableListOf<AuroraClimbWithStats>()
+    val climbs = mutableListOf<ClimbWithStats>()
 
     // -- Test helpers --
 
-    fun addClimb(climb: AuroraClimbWithStats) {
+    fun addClimb(climb: ClimbWithStats) {
         climbs.add(climb)
     }
 
-    fun addClimbs(vararg climbList: AuroraClimbWithStats) {
+    fun addClimbs(vararg climbList: ClimbWithStats) {
         climbs.addAll(climbList)
     }
 
@@ -38,7 +38,7 @@ class FakeBoardRepository : BoardRepository {
         query: String, angle: Int, layoutId: Int, sortField: ClimbSortField,
         sortDirection: SortDirection, limit: Int, offset: Int,
         climbType: ClimbTypeFilter
-    ): List<AuroraClimbWithStats> {
+    ): List<ClimbWithStats> {
         val filtered = climbs.filter {
             it.name.contains(query, ignoreCase = true) ||
                 it.setterUsername?.contains(query, ignoreCase = true) == true
@@ -51,7 +51,7 @@ class FakeBoardRepository : BoardRepository {
         minAscensionists: Int, sortField: ClimbSortField,
         sortDirection: SortDirection, limit: Int, offset: Int,
         climbType: ClimbTypeFilter
-    ): List<AuroraClimbWithStats> {
+    ): List<ClimbWithStats> {
         val filtered = climbs.filter { climb ->
             val diff = climb.difficultyAverage ?: return@filter false
             diff in minDifficulty..maxDifficulty &&
@@ -60,7 +60,7 @@ class FakeBoardRepository : BoardRepository {
         return filtered.drop(offset).take(limit)
     }
 
-    override fun getClimbByUuid(uuid: String, angle: Int): AuroraClimbWithStats? {
+    override fun getClimbByUuid(uuid: String, angle: Int): ClimbWithStats? {
         return climbs.firstOrNull { it.uuid.equals(uuid, ignoreCase = true) }
     }
 
@@ -124,11 +124,11 @@ class FakeBoardRepository : BoardRepository {
     override fun getClimbsByUuids(
         uuids: Collection<String>, angle: Int, layoutId: Int, minDifficulty: Double,
         maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter
-    ): List<AuroraClimbWithStats> {
+    ): List<ClimbWithStats> {
         return climbs.filter { it.uuid in uuids }
     }
 
-    override fun getClimbsByUuids(uuids: Collection<String>, angle: Int): List<AuroraClimbWithStats> {
+    override fun getClimbsByUuids(uuids: Collection<String>, angle: Int): List<ClimbWithStats> {
         return climbs.filter { it.uuid in uuids }
     }
 
@@ -173,7 +173,7 @@ class FakeBoardRepository : BoardRepository {
 
     // -- BoardLayoutQueries --
 
-    override fun getAllPlacements(): List<AuroraPlacement> = emptyList()
+    override fun getAllPlacements(): List<BoardPlacement> = emptyList()
     override fun getProductSize(id: Int): BoardSize? = null
     override fun getAllProductSizes(): List<BoardSize> = emptyList()
     override fun getBoardImages(productSizeId: Int, layoutId: Int): List<BoardImage> = emptyList()

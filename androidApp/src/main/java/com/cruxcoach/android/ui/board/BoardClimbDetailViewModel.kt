@@ -4,7 +4,7 @@ import android.util.Log
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.cruxcoach.android.ble.AuroraBleConnection
+import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.ClimbBleAdvertiser
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.data.BleShareManager
@@ -15,14 +15,14 @@ import com.cruxcoach.android.data.IntensityZoneManager
 import com.cruxcoach.android.data.LedHoldColors
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.domain.board.IntensityZones
-import com.cruxcoach.data.repository.AuroraAscentWithClimb
-import com.cruxcoach.data.repository.AuroraClimbWithStats
-import com.cruxcoach.data.repository.AuroraPlacement
+import com.cruxcoach.data.repository.AscentWithClimb
+import com.cruxcoach.data.repository.ClimbWithStats
+import com.cruxcoach.data.repository.BoardPlacement
 import com.cruxcoach.data.repository.BoardImage
 import com.cruxcoach.data.repository.AngleOption
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.BoardSize
-import com.cruxcoach.data.repository.ClimbList
+import com.cruxcoach.data.repository.Climb_lists
 import com.cruxcoach.data.repository.PersonalBoardRepository
 import com.cruxcoach.domain.board.BoardClimbParser
 import com.cruxcoach.domain.board.BoardHold
@@ -87,7 +87,7 @@ data class BoardSendState(
 /** Climb list / favorites dialog state. */
 data class ListDialogState(
     val show: Boolean = false,
-    val lists: List<ClimbList> = emptyList(),
+    val lists: List<Climb_lists> = emptyList(),
     val climbInListIds: Set<Long> = emptySet(),
     val newListName: String = ""
 )
@@ -100,12 +100,12 @@ data class NearbySharingState(
 
 data class ClimbDetailState(
     val isLoading: Boolean = true,
-    val climb: AuroraClimbWithStats? = null,
+    val climb: ClimbWithStats? = null,
     val holds: List<BoardHold> = emptyList(),
-    val placements: Map<Int, AuroraPlacement> = emptyMap(),
+    val placements: Map<Int, BoardPlacement> = emptyMap(),
     val boardSize: BoardSize? = null,
     val boardImages: List<BoardImage> = emptyList(),
-    val userAscents: List<AuroraAscentWithClimb> = emptyList(),
+    val userAscents: List<AscentWithClimb> = emptyList(),
     val angle: Int = 40,
     val ledColors: LedHoldColors = LedHoldColors(),
     val gradeScale: GradeScale = GradeScale.V_SCALE,
@@ -129,7 +129,7 @@ class BoardClimbDetailViewModel @Inject constructor(
     private val boardRepository: BoardRepository,
     private val personalBoardRepo: PersonalBoardRepository,
     private val userPreferences: UserPreferences,
-    private val bleConnection: AuroraBleConnection,
+    private val bleConnection: BoardBleConnection,
     private val sessionManager: BoardSessionManager,
     private val zoneManager: IntensityZoneManager,
     private val climbAdvertiser: ClimbBleAdvertiser,
@@ -172,7 +172,7 @@ class BoardClimbDetailViewModel @Inject constructor(
     private var loadJob: Job? = null
     private var mirrorPlacementMap: Map<Int, Int> = emptyMap()
     private var originalAllFrames: List<List<BoardHold>> = emptyList()
-    private var cachedPlacementMap: Map<Int, AuroraPlacement>? = null
+    private var cachedPlacementMap: Map<Int, BoardPlacement>? = null
 
     // --- Delegated controllers ---
 
@@ -486,7 +486,7 @@ class BoardClimbDetailViewModel @Inject constructor(
         _state.update { it.copy(ascent = it.ascent.copy(isBenchmark = value)) }
     }
     fun saveAscent() = ascentLogger.save()
-    fun editAscent(ascent: AuroraAscentWithClimb) = ascentLogger.edit(ascent)
+    fun editAscent(ascent: AscentWithClimb) = ascentLogger.edit(ascent)
     fun requestDeleteAscent(uuid: String) = ascentLogger.requestDelete(uuid)
     fun dismissDeleteConfirm() = ascentLogger.dismissDeleteConfirm()
     fun confirmDeleteAscent() = ascentLogger.confirmDelete()
@@ -546,7 +546,7 @@ class BoardClimbDetailViewModel @Inject constructor(
     }
 
     private fun computeMirrorMapFromPlacements(
-        placements: Map<Int, AuroraPlacement>,
+        placements: Map<Int, BoardPlacement>,
         boardSize: BoardSize?
     ): Map<Int, Int> {
         if (boardSize == null || placements.isEmpty()) return emptyMap()

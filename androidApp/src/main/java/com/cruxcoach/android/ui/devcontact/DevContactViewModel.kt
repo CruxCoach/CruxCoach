@@ -17,7 +17,7 @@ import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.android.nostr.OfflineQueueManager
 import com.cruxcoach.android.nostr.SendResult
 import com.cruxcoach.android.nostr.model.MessageType
-import com.cruxcoach.db.secure.NostrMessage
+import com.cruxcoach.db.secure.Nostr_messages
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -568,7 +568,7 @@ class DevContactViewModel @Inject constructor(
         return com.cruxcoach.android.nostr.DevicePrivacy.generalizedDeviceInfoLine(context)
     }
 
-    private fun NostrMessage.toUiMessage(): UiMessage = UiMessage(
+    private fun Nostr_messages.toUiMessage(): UiMessage = UiMessage(
         id = id,
         content = stripLegacyPadding(content),
         subject = subject,

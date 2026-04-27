@@ -2,7 +2,7 @@ package com.cruxcoach.android.ui.board
 
 import com.cruxcoach.android.fakes.FakeBoardRepository
 import com.cruxcoach.android.fakes.FakePersonalBoardRepository
-import com.cruxcoach.data.repository.AuroraClimbWithStats
+import com.cruxcoach.data.repository.ClimbWithStats
 import com.cruxcoach.data.repository.ClimbSortField
 import com.cruxcoach.data.repository.ClimbTypeFilter
 import com.cruxcoach.data.repository.SortDirection
@@ -27,7 +27,7 @@ class BoardBrowserStatusFilterTest {
         difficulty: Double = 10.0,
         quality: Double = 3.0,
         ascensionists: Long = 100
-    ) = AuroraClimbWithStats(
+    ) = ClimbWithStats(
         uuid = uuid,
         layoutId = 1,
         setterUsername = "setter",
@@ -242,7 +242,7 @@ class BoardBrowserStatusFilterTest {
     fun `sort handles null difficulty gracefully`() {
         val climbs = listOf(
             climb("a", difficulty = 10.0),
-            AuroraClimbWithStats(
+            ClimbWithStats(
                 uuid = "b", layoutId = 1, setterUsername = null, name = "NoDiff",
                 frames = "", framesCount = 1, difficultyAverage = null,
                 qualityAverage = null, ascensionistCount = 0
@@ -285,10 +285,10 @@ class BoardBrowserStatusFilterTest {
     // ── Helper: mirrors the ViewModel's sortInKotlin ─────────────
 
     private fun sortInKotlin(
-        climbs: List<AuroraClimbWithStats>, field: ClimbSortField, dir: SortDirection
-    ): List<AuroraClimbWithStats> {
+        climbs: List<ClimbWithStats>, field: ClimbSortField, dir: SortDirection
+    ): List<ClimbWithStats> {
         val comparator = when (field) {
-            ClimbSortField.QUALITY -> compareBy<AuroraClimbWithStats> { it.qualityAverage ?: 0.0 }
+            ClimbSortField.QUALITY -> compareBy<ClimbWithStats> { it.qualityAverage ?: 0.0 }
             ClimbSortField.DIFFICULTY -> compareBy { it.difficultyAverage ?: 0.0 }
             ClimbSortField.ASCENSIONISTS -> compareBy { it.ascensionistCount ?: 0L }
             ClimbSortField.NAME -> compareBy(String.CASE_INSENSITIVE_ORDER) { it.name }

@@ -392,7 +392,7 @@
     <string name="board_search_placeholder">Climb suchen…</string>
     <string name="board_climbs_found">%d Climbs gefunden</string>
     <string name="board_no_data_title">Keine Board-Daten</string>
-    <string name="board_no_data_hint">Synchronisiere die Kilter/Tension Board-Datenbank, um Climbs zu suchen.</string>
+    <string name="board_no_data_hint">Synchronisiere die Kilter Board-Datenbank, um Climbs zu suchen.</string>
     <string name="board_angle">Winkel</string>
     <string name="board_moves">Züge</string>
     <string name="board_quality">Qualität</string>
@@ -659,7 +659,7 @@
     <string name="board_climb_by_setter">von %s</string>
     <string name="board_climb_moves">%d Züge</string>
     <string name="board_climb_no_data_title">Keine Board-Daten</string>
-    <string name="board_climb_no_data_message">Synchronisiere die Kilter/Tension Board-Datenbank, um Climbs zu suchen und auf dem Board anzuzeigen.</string>
+    <string name="board_climb_no_data_message">Synchronisiere die Kilter Board-Datenbank, um Climbs zu suchen und auf dem Board anzuzeigen.</string>
     <string name="board_sync_title">Board-Daten synchronisieren</string>
 
     <!-- Board: Detail -->

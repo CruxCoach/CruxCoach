@@ -1,6 +1,6 @@
 package com.cruxcoach.android.data
 
-import com.cruxcoach.data.repository.AuroraClimbWithStats
+import com.cruxcoach.data.repository.ClimbWithStats
 import com.cruxcoach.data.repository.BoardRepository
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -45,7 +45,7 @@ class ClimbNameResolver @Inject constructor(
         return ClimbDisplayInfo(climb.name, climb.difficultyAverage)
     }
 
-    private fun resolveClimb(uuid: String, angle: Int): AuroraClimbWithStats? {
+    private fun resolveClimb(uuid: String, angle: Int): ClimbWithStats? {
         boardRepository.getClimbByUuid(uuid, angle)?.let { return it }
         boardRepository.getClimbByUuid(uuid.lowercase(), angle)?.let { return it }
         boardRepository.getClimbByUuid(uuid.uppercase(), angle)?.let { return it }

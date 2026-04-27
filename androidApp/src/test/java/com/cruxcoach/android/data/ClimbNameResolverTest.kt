@@ -1,6 +1,6 @@
 package com.cruxcoach.android.data
 
-import com.cruxcoach.data.repository.AuroraClimbWithStats
+import com.cruxcoach.data.repository.ClimbWithStats
 import com.cruxcoach.data.repository.BoardRepository
 import io.mockk.every
 import io.mockk.mockk
@@ -23,7 +23,7 @@ class ClimbNameResolverTest {
     private val resolver = ClimbNameResolver(repo)
 
     private fun climb(uuid: String, name: String = "Test Climb", diff: Double? = 18.5) =
-        AuroraClimbWithStats(
+        ClimbWithStats(
             uuid = uuid,
             layoutId = 1L,
             setterUsername = "setter",

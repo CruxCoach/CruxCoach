@@ -2,7 +2,7 @@ package com.cruxcoach.android.data
 
 import android.bluetooth.BluetoothDevice
 import android.content.Context
-import com.cruxcoach.android.ble.AuroraBleConnection
+import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.ClimbBleAdvertiser
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.ble.GattCommand
@@ -75,7 +75,7 @@ class SessionGattBridgeMigrationTest {
     private val mockGattClient = mockk<SessionGattClient>(relaxed = true)
     private val mockAdvertiser = mockk<ClimbBleAdvertiser>(relaxed = true)
     private val mockNearbyScanner = mockk<NearbyClimbScanner>(relaxed = true)
-    private val mockBleConnection = mockk<AuroraBleConnection>(relaxed = true)
+    private val mockBleConnection = mockk<BoardBleConnection>(relaxed = true)
     private val mockBoardRepository = mockk<BoardRepository>(relaxed = true)
     private val mockBoardStateManager = mockk<BoardStateManager>(relaxed = true)
     private val mockClimbNameResolver = mockk<ClimbNameResolver>(relaxed = true)
@@ -99,7 +99,7 @@ class SessionGattBridgeMigrationTest {
     private val serverConnectionEventsFlow =
         MutableSharedFlow<GattConnectionEvent>(extraBufferCapacity = 4)
 
-    // Controllable flow for AuroraBleConnection
+    // Controllable flow for BoardBleConnection
     private val bleConnectionStateFlow = MutableStateFlow(ConnectionState.DISCONNECTED)
 
     private lateinit var bridge: SessionGattBridge

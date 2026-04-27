@@ -1,7 +1,7 @@
 package com.cruxcoach.android.data
 
 import com.cruxcoach.db.secure.SecureDatabase
-import com.cruxcoach.db.secure.Announcement
+import com.cruxcoach.db.secure.Announcements
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -9,7 +9,7 @@ import javax.inject.Singleton
 class AnnouncementRepository @Inject constructor(
     private val database: SecureDatabase
 ) {
-    private val queries get() = database.announcementQueries
+    private val queries get() = database.announcementsQueries
 
     fun insert(
         id: String,
@@ -22,9 +22,9 @@ class AnnouncementRepository @Inject constructor(
         queries.insert(id, content, category, priority, createdAt, if (read) 1L else 0L)
     }
 
-    fun getAll(): List<Announcement> = queries.getAll().executeAsList()
+    fun getAll(): List<Announcements> = queries.getAll().executeAsList()
 
-    fun getById(id: String): Announcement? = queries.getById(id).executeAsOneOrNull()
+    fun getById(id: String): Announcements? = queries.getById(id).executeAsOneOrNull()
 
     fun getUnreadCount(): Long = queries.getUnreadCount().executeAsOne()
 

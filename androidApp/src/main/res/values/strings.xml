@@ -392,7 +392,7 @@
     <string name="board_search_placeholder">Search climbs…</string>
     <string name="board_climbs_found">%d climbs found</string>
     <string name="board_no_data_title">No board data</string>
-    <string name="board_no_data_hint">Sync the Kilter/Tension Board database to search climbs.</string>
+    <string name="board_no_data_hint">Sync the Kilter Board database to search climbs.</string>
     <string name="board_angle">Angle</string>
     <string name="board_moves">Moves</string>
     <string name="board_quality">Quality</string>
@@ -616,7 +616,7 @@
     <string name="board_climb_by_setter">by %s</string>
     <string name="board_climb_moves">%d moves</string>
     <string name="board_climb_no_data_title">No board data</string>
-    <string name="board_climb_no_data_message">Sync the Kilter/Tension board database to search climbs and display them on the board.</string>
+    <string name="board_climb_no_data_message">Sync the Kilter Board database to search climbs and display them on the board.</string>
     <string name="board_sync_title">Sync board data</string>
 
     <!-- Board: Detail -->

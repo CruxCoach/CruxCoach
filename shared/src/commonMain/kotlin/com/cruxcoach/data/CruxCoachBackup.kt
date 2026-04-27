@@ -41,7 +41,7 @@ object CruxCoachBackup {
     // 8-4-4-4-12 canonical — app-generated IDs (UUID.randomUUID().toString()).
     private val UUID_REGEX =
         Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
-    // Raw 32-hex — what Aurora/Kilter stores for climb_uuid (and log_uuid):
+    // Raw 32-hex — what Kilter stores for climb_uuid (and log_uuid):
     // 32 lowercase hex chars, no hyphens. A backup that carries any
     // Kilter-synced ascent / bid / climb-list entry will have these in
     // the climbUuid field, so `requireUuid` must accept both shapes.

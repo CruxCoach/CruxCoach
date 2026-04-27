@@ -79,7 +79,7 @@ fun BoardBrowserScreen(
     var searchVisible by remember { mutableStateOf(false) }
     val queueManager = LocalSessionQueueManager.current
     val queueState by queueManager.state.collectAsStateWithLifecycle()
-    var lastEndedSession by remember { mutableStateOf<com.cruxcoach.data.repository.BoardSession?>(null) }
+    var lastEndedSession by remember { mutableStateOf<com.cruxcoach.data.repository.Board_sessions?>(null) }
 
     // Notification permission request (Android 13+)
     val notificationPermissionLauncher = rememberLauncherForActivityResult(

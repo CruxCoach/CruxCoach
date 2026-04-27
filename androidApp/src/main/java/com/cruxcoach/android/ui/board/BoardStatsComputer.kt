@@ -4,7 +4,7 @@ import android.content.Context
 import com.cruxcoach.android.R
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.util.GradeDisplayHelper
-import com.cruxcoach.data.repository.AuroraAscentWithClimb
+import com.cruxcoach.data.repository.AscentWithClimb
 import com.cruxcoach.domain.board.KilterGradeMapper
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -35,14 +35,14 @@ object BoardStatsComputer {
         return context?.getString(MONTH_RES_IDS[month]) ?: MONTH_NAMES_FALLBACK[month]
     }
 
-    // Grade band thresholds (Aurora difficulty values)
+    // Grade band thresholds (Kilter difficulty values)
     // Easy: V0-V2 (diff < 16), Medium: V3-V5 (16..20), Hard: V6-V8 (21..26), Elite: V9+ (27+)
     private const val MEDIUM_THRESHOLD = 16.0
     private const val HARD_THRESHOLD = 21.0
     private const val ELITE_THRESHOLD = 27.0
 
     fun computeStats(
-        ascents: List<AuroraAscentWithClimb>,
+        ascents: List<AscentWithClimb>,
         interval: StatsTimeInterval,
         gradeScale: GradeScale,
         customFrom: LocalDate? = null,
@@ -105,11 +105,11 @@ object BoardStatsComputer {
     }
 
     fun filterByInterval(
-        ascents: List<AuroraAscentWithClimb>,
+        ascents: List<AscentWithClimb>,
         interval: StatsTimeInterval,
         customFrom: LocalDate? = null,
         customTo: LocalDate? = null
-    ): List<AuroraAscentWithClimb> {
+    ): List<AscentWithClimb> {
         // Custom date range overrides interval
         if (customFrom != null && customTo != null) {
             val from = customFrom.toString()
@@ -122,7 +122,7 @@ object BoardStatsComputer {
     }
 
     private fun computeGradePyramid(
-        sends: List<AuroraAscentWithClimb>,
+        sends: List<AscentWithClimb>,
         gradeScale: GradeScale
     ): List<BoardGradePyramidEntry> {
         return sends
@@ -139,7 +139,7 @@ object BoardStatsComputer {
     }
 
     private fun computeAngleDistribution(
-        filtered: List<AuroraAscentWithClimb>
+        filtered: List<AscentWithClimb>
     ): List<AngleDistEntry> {
         return filtered
             .groupBy { it.angle.toInt() }
@@ -148,7 +148,7 @@ object BoardStatsComputer {
     }
 
     fun computeSendsOverTime(
-        ascents: List<AuroraAscentWithClimb>,
+        ascents: List<AscentWithClimb>,
         interval: StatsTimeInterval,
         context: Context? = null
     ): List<TimeBucketEntry> {
@@ -182,7 +182,7 @@ object BoardStatsComputer {
     }
 
     private fun computeActivityMap(
-        filtered: List<AuroraAscentWithClimb>
+        filtered: List<AscentWithClimb>
     ): Map<LocalDate, Int> {
         return filtered.mapNotNull { parseDate(it.climbedAt) }
             .groupBy { it }
@@ -192,8 +192,8 @@ object BoardStatsComputer {
     // --- New extended stats ---
 
     private fun computeGradeOutcomes(
-        sends: List<AuroraAscentWithClimb>,
-        bids: List<AuroraAscentWithClimb>,
+        sends: List<AscentWithClimb>,
+        bids: List<AscentWithClimb>,
         gradeScale: GradeScale
     ): List<GradeOutcomeEntry> {
         // Group all entries by V-Scale grade
@@ -218,7 +218,7 @@ object BoardStatsComputer {
     }
 
     private fun computeOutcomeDistribution(
-        sends: List<AuroraAscentWithClimb>
+        sends: List<AscentWithClimb>
     ): OutcomeDistribution {
         val flashes = sends.count { it.bidCount <= 1L }
         val redpoints = sends.count { it.bidCount > 1L }
@@ -227,7 +227,7 @@ object BoardStatsComputer {
     }
 
     private fun computeWeeklyVolume(
-        filtered: List<AuroraAscentWithClimb>
+        filtered: List<AscentWithClimb>
     ): List<WeeklyVolumeEntry> {
         if (filtered.isEmpty()) return emptyList()
 
@@ -257,7 +257,7 @@ object BoardStatsComputer {
     }
 
     private fun computeGradeProgression(
-        sends: List<AuroraAscentWithClimb>,
+        sends: List<AscentWithClimb>,
         interval: StatsTimeInterval,
         context: Context? = null
     ): List<GradeProgressionPoint> {
@@ -285,7 +285,7 @@ object BoardStatsComputer {
     }
 
     private fun computeUniqueClimbsByGrade(
-        sends: List<AuroraAscentWithClimb>,
+        sends: List<AscentWithClimb>,
         gradeScale: GradeScale
     ): List<UniqueClimbEntry> {
         return sends
@@ -304,7 +304,7 @@ object BoardStatsComputer {
     }
 
     private fun computePeriodComparison(
-        allAscents: List<AuroraAscentWithClimb>,
+        allAscents: List<AscentWithClimb>,
         interval: StatsTimeInterval,
         gradeScale: GradeScale,
         context: Context? = null
@@ -348,7 +348,7 @@ object BoardStatsComputer {
     }
 
     private fun computePersonalRecords(
-        allAscents: List<AuroraAscentWithClimb>,
+        allAscents: List<AscentWithClimb>,
         gradeScale: GradeScale
     ): PersonalRecords {
         val sends = allAscents.filter { it.isSend }

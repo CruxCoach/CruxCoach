@@ -2,7 +2,7 @@ package com.cruxcoach.android.ui.board
 
 import com.cruxcoach.android.fakes.FakeBoardRepository
 import com.cruxcoach.android.ui.navigation.ClimbNavigationState
-import com.cruxcoach.data.repository.AuroraClimbWithStats
+import com.cruxcoach.data.repository.ClimbWithStats
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -26,7 +26,7 @@ class SetterFilterTest {
         setter: String? = "defaultSetter",
         difficulty: Double = 10.0,
         ascensionists: Long = 100
-    ) = AuroraClimbWithStats(
+    ) = ClimbWithStats(
         uuid = uuid,
         layoutId = 1,
         setterUsername = setter,

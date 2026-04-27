@@ -31,7 +31,7 @@ import com.cruxcoach.android.ui.common.BleStatusArea
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.*
-import com.cruxcoach.data.repository.ClimbList
+import com.cruxcoach.data.repository.Climb_lists
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -160,7 +160,7 @@ fun BoardListsScreen(
 
 @Composable
 private fun ListCard(
-    list: ClimbList,
+    list: Climb_lists,
     onClick: () -> Unit,
     onDelete: (() -> Unit)?
 ) {

@@ -23,12 +23,12 @@ import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.*
 import com.cruxcoach.android.util.GradeDisplayHelper
-import com.cruxcoach.data.repository.AuroraClimbWithStats
+import com.cruxcoach.data.repository.ClimbWithStats
 import com.cruxcoach.domain.board.IntensityZones
 
 @Composable
 internal fun ClimbCard(
-    climb: AuroraClimbWithStats,
+    climb: ClimbWithStats,
     gradeScale: GradeScale = GradeScale.V_SCALE,
     zones: IntensityZones? = null,
     onSetterClick: ((String) -> Unit)? = null,

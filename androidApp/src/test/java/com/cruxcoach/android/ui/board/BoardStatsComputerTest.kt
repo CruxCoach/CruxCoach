@@ -1,7 +1,7 @@
 package com.cruxcoach.android.ui.board
 
 import com.cruxcoach.android.data.GradeScale
-import com.cruxcoach.data.repository.AuroraAscentWithClimb
+import com.cruxcoach.data.repository.AscentWithClimb
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -33,7 +33,7 @@ class BoardStatsComputerTest {
         bidCount: Long = 1L,
         difficulty: Double? = 18.5,
         framesCount: Long = 1L,
-    ) = AuroraAscentWithClimb(
+    ) = AscentWithClimb(
         uuid = uuid,
         userId = 0L,
         climbUuid = climbUuid,

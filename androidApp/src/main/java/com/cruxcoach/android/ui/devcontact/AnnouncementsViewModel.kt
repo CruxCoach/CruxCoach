@@ -7,7 +7,7 @@ import com.cruxcoach.android.data.AnnouncementRepository
 import com.cruxcoach.android.nostr.NostrConfig
 import com.cruxcoach.android.nostr.NostrRelayPool
 import com.cruxcoach.android.notification.AnnouncementTagParser
-import com.cruxcoach.db.secure.Announcement
+import com.cruxcoach.db.secure.Announcements
 import com.vitorpamplona.quartz.nip01Core.core.Event
 import com.vitorpamplona.quartz.nip01Core.crypto.verifySignature
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -113,7 +113,7 @@ class AnnouncementsViewModel @Inject constructor(
         }
     }
 
-    private fun Announcement.toUi(): UiAnnouncement {
+    private fun Announcements.toUi(): UiAnnouncement {
         val lang = Locale.getDefault().language
         return UiAnnouncement(
             id = id,

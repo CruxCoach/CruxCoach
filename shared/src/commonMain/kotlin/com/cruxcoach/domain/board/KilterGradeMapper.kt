@@ -3,7 +3,7 @@ package com.cruxcoach.domain.board
 import kotlin.math.abs
 
 /**
- * Maps Aurora/Kilter difficulty integers to V-Scale and Font grades.
+ * Maps Kilter difficulty integers (10–34) to V-Scale and Font grades.
  * Grade mappings match the official difficulty_grades table from the Kilter Board app.
  *
  * Display uses ROUND(difficulty_average) → lookup, matching Kilter's SQL:
@@ -91,7 +91,7 @@ object KilterGradeMapper {
     }
 
     /**
-     * Map unified grade index (0..22) to Aurora difficulty value.
+     * Map unified grade index (0..22) to Kilter difficulty value.
      * Each value is the exact integer difficulty from the Kilter DB difficulty_grades table.
      */
     private val INDEX_TO_DIFFICULTY = doubleArrayOf(

@@ -6,7 +6,7 @@ import com.cruxcoach.android.ble.NearbyClimb
 import com.cruxcoach.android.data.BoardSessionState
 import com.cruxcoach.android.data.BoardSyncState
 import com.cruxcoach.android.data.RestTimerState
-import com.cruxcoach.data.repository.BoardSession
+import com.cruxcoach.data.repository.Board_sessions
 import com.cruxcoach.domain.board.IntensityZones
 import com.cruxcoach.domain.board.IntensityZoneEngine
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -17,7 +17,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * Minimal fake for AuroraBleConnection.
+ * Minimal fake for BoardBleConnection.
  * Exposes StateFlows with default disconnected values.
  */
 class FakeBleConnection {
@@ -30,7 +30,7 @@ class FakeBleConnection {
 }
 
 /**
- * Minimal fake for AuroraBleScanner.
+ * Minimal fake for BoardBleScanner.
  */
 class FakeBleScanner {
     val discoveredBoards = MutableStateFlow<List<DiscoveredBoard>>(emptyList())
@@ -79,7 +79,7 @@ class FakeSessionManager {
         state.value = state.value.copy(isActive = true)
     }
 
-    fun endSession(): BoardSession? {
+    fun endSession(): Board_sessions? {
         state.value = BoardSessionState()
         return null
     }

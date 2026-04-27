@@ -2,7 +2,7 @@ package com.cruxcoach.data
 
 import app.cash.sqldelight.ColumnAdapter
 import app.cash.sqldelight.db.SqlDriver
-import com.cruxcoach.db.board.Aurora_climb
+import com.cruxcoach.db.board.Climbs
 import com.cruxcoach.db.board.BoardDatabase
 import com.cruxcoach.db.secure.SecureDatabase
 import com.cruxcoach.domain.board.FramesBinaryCodec
@@ -24,7 +24,7 @@ fun createBoardDatabase(driverFactory: BoardDriverFactory): BoardDatabase {
     val driver = driverFactory.createDriver()
     return BoardDatabase(
         driver = driver,
-        aurora_climbAdapter = Aurora_climb.Adapter(framesAdapter = framesAdapter)
+        climbsAdapter = Climbs.Adapter(framesAdapter = framesAdapter)
     )
 }
 

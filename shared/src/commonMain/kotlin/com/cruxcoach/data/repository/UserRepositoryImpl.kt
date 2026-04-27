@@ -12,8 +12,8 @@ class UserRepositoryImpl(
 ) : UserRepository {
 
     private val json = Json { ignoreUnknownKeys = true }
-    private val profileQueries = database.userProfileQueries
-    private val assessmentQueries = database.assessmentQueries
+    private val profileQueries = database.userProfilesQueries
+    private val assessmentsQueries = database.assessmentsQueries
 
     override fun getActiveProfile(): UserProfile? {
         return profileQueries.getActive().executeAsOneOrNull()?.toDomain()
@@ -74,8 +74,8 @@ class UserRepositoryImpl(
     }
 
     override fun insertAssessment(assessment: Assessment): Long {
-        return assessmentQueries.transactionWithResult {
-            assessmentQueries.insert(
+        return assessmentsQueries.transactionWithResult {
+            assessmentsQueries.insert(
                 user_id = assessment.userId,
                 date = assessment.date,
                 max_hang_20mm_kg = assessment.maxHang20mmKg,
@@ -88,19 +88,19 @@ class UserRepositoryImpl(
                 board_import_summary = assessment.boardImportSummary,
                 notes = assessment.notes
             )
-            assessmentQueries.lastInsertRowId().executeAsOne()
+            assessmentsQueries.lastInsertRowId().executeAsOne()
         }
     }
 
     override fun getLatestAssessment(userId: Long): Assessment? {
-        return assessmentQueries.getLatestForUser(userId).executeAsOneOrNull()?.toDomain()
+        return assessmentsQueries.getLatestForUser(userId).executeAsOneOrNull()?.toDomain()
     }
 
     override fun getAllAssessments(userId: Long): List<Assessment> {
-        return assessmentQueries.getAllForUser(userId).executeAsList().map { it.toDomain() }
+        return assessmentsQueries.getAllForUser(userId).executeAsList().map { it.toDomain() }
     }
 
-    private fun com.cruxcoach.db.secure.UserProfile.toDomain(): UserProfile {
+    private fun com.cruxcoach.db.secure.User_profiles.toDomain(): UserProfile {
         return UserProfile(
             id = id,
             name = name,
@@ -120,7 +120,7 @@ class UserRepositoryImpl(
         )
     }
 
-    private fun com.cruxcoach.db.secure.Assessment.toDomain(): Assessment {
+    private fun com.cruxcoach.db.secure.Assessments.toDomain(): Assessment {
         return Assessment(
             id = id,
             userId = user_id,

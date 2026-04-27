@@ -1,7 +1,7 @@
 package com.cruxcoach.android.ui.board
 
 import com.cruxcoach.android.fakes.FakeBoardRepository
-import com.cruxcoach.data.repository.AuroraClimbWithStats
+import com.cruxcoach.data.repository.ClimbWithStats
 import com.cruxcoach.data.repository.ClimbTypeFilter
 import com.cruxcoach.domain.board.HoldHeatmapComputer
 import com.cruxcoach.domain.board.HoldRole
@@ -26,7 +26,7 @@ class HoldSearchIntegrationTest {
         frames: String,
         difficulty: Double = 10.0,
         ascensionists: Long = 50
-    ) = AuroraClimbWithStats(
+    ) = ClimbWithStats(
         uuid = uuid,
         layoutId = 1,
         setterUsername = "setter",

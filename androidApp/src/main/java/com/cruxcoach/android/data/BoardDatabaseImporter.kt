@@ -15,7 +15,7 @@ import java.io.FileOutputStream
  * - **Online legacy** ([downloadAndImport]): Delegates APK download and DB extraction
  *   to [ApkDownloader], then imports the extracted file.
  *
- * All produce temp SQLite files with the raw Aurora schema (climbs, climb_stats,
+ * All produce temp SQLite files with the Kilter board schema (Aurora-style: climbs, climb_stats,
  * placements, holes, etc.), then bulk-insert into SQLDelight.
  */
 class BoardDatabaseImporter(
@@ -312,7 +312,7 @@ class BoardDatabaseImporter(
 
     /**
      * Detect whether a source DB uses the Kilter schema (`climbs`, `climb_stats`)
-     * or the CruxCoach schema (`aurora_climb`, `aurora_climb_stat`).
+     * or the legacy CruxCoach schema (`aurora_climb`, `aurora_climb_stat`) — kept for backward-compat with old kilter_board.bin extracts.
      * CruxCoach's own `cruxcoach.db` is served during local WiFi share.
      */
     private fun hasTable(db: SQLiteDatabase, table: String): Boolean {
@@ -344,13 +344,13 @@ class BoardDatabaseImporter(
         val db = openTargetDb()
         try {
             val stmt = db.compileStatement(
-                "UPDATE aurora_climb SET move_count = ? WHERE uuid = ?"
+                "UPDATE climbs SET move_count = ? WHERE uuid = ?"
             )
             // Process in batches to avoid CursorWindow overflow on older APIs
             var lastUuid = ""
             while (true) {
                 val cursor = db.rawQuery(
-                    """SELECT uuid, frames FROM aurora_climb
+                    """SELECT uuid, frames FROM climbs
                        WHERE move_count = 0 AND frames_count = 1 AND uuid > ?
                        ORDER BY uuid LIMIT $BULK_BATCH_SIZE""",
                     arrayOf(lastUuid)
@@ -380,7 +380,7 @@ class BoardDatabaseImporter(
         }
     }
 
-    // ── Table import methods (raw Aurora schema) ─────────────────────
+    // ── Table import methods (Kilter board / Aurora-style schema) ───
 
     /**
      * Bulk-import climbs from a chunk SQLite file using ATTACH DATABASE.
@@ -397,7 +397,7 @@ class BoardDatabaseImporter(
         try {
             targetDb.execSQL("ATTACH DATABASE ? AS src", arrayOf(chunkPath))
             val total = queryLong(targetDb, "SELECT COUNT(*) FROM src.$srcTable WHERE is_listed = 1").toInt()
-            val countBefore = queryLong(targetDb, "SELECT COUNT(*) FROM aurora_climb")
+            val countBefore = queryLong(targetDb, "SELECT COUNT(*) FROM climbs")
             onProgress?.invoke(0, 0, total)
 
             // Copy move_count when the source has it (CruxCoach backups always,
@@ -419,7 +419,7 @@ class BoardDatabaseImporter(
                 targetDb.beginTransaction()
                 try {
                     targetDb.execSQL("""
-                        INSERT OR REPLACE INTO aurora_climb(
+                        INSERT OR REPLACE INTO climbs(
                             uuid, layout_id, setter_username, name, frames,
                             frames_count, is_listed, edge_left, edge_right,
                             edge_bottom, edge_top, created_at,
@@ -445,7 +445,7 @@ class BoardDatabaseImporter(
                 batchStart = batchEnd + 1
             }
 
-            val countAfter = queryLong(targetDb, "SELECT COUNT(*) FROM aurora_climb")
+            val countAfter = queryLong(targetDb, "SELECT COUNT(*) FROM climbs")
             val inserted = (countAfter - countBefore).toInt()
             onProgress?.invoke(inserted, total, total)
             targetDb.execSQL("DETACH DATABASE src")
@@ -523,7 +523,7 @@ class BoardDatabaseImporter(
         try {
             targetDb.execSQL("ATTACH DATABASE ? AS src", arrayOf(chunkPath))
             val total = queryLong(targetDb, "SELECT COUNT(*) FROM src.$srcTable").toInt()
-            val countBefore = queryLong(targetDb, "SELECT COUNT(*) FROM aurora_climb_stat")
+            val countBefore = queryLong(targetDb, "SELECT COUNT(*) FROM climb_stats")
             onProgress?.invoke(0, 0, total)
 
             // Import in batches by rowid range (avoids OFFSET scanning and CursorWindow issues on older APIs)
@@ -536,7 +536,7 @@ class BoardDatabaseImporter(
                 targetDb.beginTransaction()
                 try {
                     targetDb.execSQL("""
-                        INSERT OR REPLACE INTO aurora_climb_stat(
+                        INSERT OR REPLACE INTO climb_stats(
                             climb_uuid, angle, display_difficulty, difficulty_average,
                             quality_average, ascensionist_count, benchmark_difficulty,
                             fa_username, fa_at)
@@ -558,7 +558,7 @@ class BoardDatabaseImporter(
                 batchStart = batchEnd + 1
             }
 
-            val countAfter = queryLong(targetDb, "SELECT COUNT(*) FROM aurora_climb_stat")
+            val countAfter = queryLong(targetDb, "SELECT COUNT(*) FROM climb_stats")
             val inserted = (countAfter - countBefore).toInt()
             onProgress?.invoke(inserted, total, total)
             targetDb.execSQL("DETACH DATABASE src")
@@ -641,24 +641,24 @@ class BoardDatabaseImporter(
     // ── Index management for bulk import performance ────────────────
 
     private val CLIMB_INDEXES = arrayOf(
-        "idx_aurora_climb_listed" to
-                "CREATE INDEX idx_aurora_climb_listed ON aurora_climb(is_listed)",
-        "idx_aurora_climb_frames_count" to
-                "CREATE INDEX idx_aurora_climb_frames_count ON aurora_climb(is_listed, frames_count, uuid)"
+        "idx_climbs_listed" to
+                "CREATE INDEX idx_climbs_listed ON climbs(is_listed)",
+        "idx_climbs_frames_count" to
+                "CREATE INDEX idx_climbs_frames_count ON climbs(is_listed, frames_count, uuid)"
     )
 
     private val STAT_INDEXES = arrayOf(
-        "idx_aurora_climb_stat_angle" to
-                "CREATE INDEX idx_aurora_climb_stat_angle ON aurora_climb_stat(angle)",
-        "idx_climb_stat_browse" to
-                """CREATE INDEX idx_climb_stat_browse ON aurora_climb_stat(
+        "idx_climb_stats_angle" to
+                "CREATE INDEX idx_climb_stats_angle ON climb_stats(angle)",
+        "idx_climb_stats_browse" to
+                """CREATE INDEX idx_climb_stats_browse ON climb_stats(
                    angle, difficulty_average, quality_average, ascensionist_count,
                    benchmark_difficulty, climb_uuid)""",
-        "idx_climb_stat_by_popularity" to
-                """CREATE INDEX idx_climb_stat_by_popularity ON aurora_climb_stat(
+        "idx_climb_stats_by_popularity" to
+                """CREATE INDEX idx_climb_stats_by_popularity ON climb_stats(
                    angle, ascensionist_count, difficulty_average, climb_uuid)""",
-        "idx_climb_stat_count_cover" to
-                """CREATE INDEX idx_climb_stat_count_cover ON aurora_climb_stat(
+        "idx_climb_stats_count_cover" to
+                """CREATE INDEX idx_climb_stats_count_cover ON climb_stats(
                    angle, ascensionist_count, difficulty_average, benchmark_difficulty, climb_uuid)"""
     )
 

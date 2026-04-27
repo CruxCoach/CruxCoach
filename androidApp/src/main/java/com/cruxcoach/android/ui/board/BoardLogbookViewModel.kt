@@ -6,7 +6,7 @@ import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.data.IntensityZoneManager
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.domain.board.IntensityZones
-import com.cruxcoach.data.repository.AuroraAscentWithClimb
+import com.cruxcoach.data.repository.AscentWithClimb
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.PersonalBoardRepository
 import android.content.Context
@@ -76,7 +76,7 @@ data class BoardLogbookStats(
 data class BoardLogbookState(
     val isLoading: Boolean = true,
     val isLoadingMore: Boolean = false,
-    val ascents: List<AuroraAscentWithClimb> = emptyList(),
+    val ascents: List<AscentWithClimb> = emptyList(),
     val totalCount: Long = 0,
     val canLoadMore: Boolean = false,
     val gradeScale: GradeScale = GradeScale.V_SCALE,
@@ -108,7 +108,7 @@ data class BoardLogbookState(
     // ("Meine Sends"); other modes pull frames from the board DB so the
     // user can switch between own / global / role views without leaving
     // their stats screen.
-    val placements: Map<Int, com.cruxcoach.data.repository.AuroraPlacement> = emptyMap(),
+    val placements: Map<Int, com.cruxcoach.data.repository.BoardPlacement> = emptyMap(),
     val boardSize: com.cruxcoach.data.repository.BoardSize? = null,
     val boardImages: List<com.cruxcoach.data.repository.BoardImage> = emptyList(),
     val heatmapMode: HeatmapMode = HeatmapMode.PERSONAL,
@@ -128,7 +128,7 @@ class BoardLogbookViewModel @Inject constructor(
     private val _state = MutableStateFlow(BoardLogbookState())
     val state: StateFlow<BoardLogbookState> = _state.asStateFlow()
 
-    private var allAscents: List<AuroraAscentWithClimb> = emptyList()
+    private var allAscents: List<AscentWithClimb> = emptyList()
 
     companion object {
         private const val PAGE_SIZE = 50
@@ -236,7 +236,7 @@ class BoardLogbookViewModel @Inject constructor(
      * (e.g. Kilter sync ran before board sync), fill them from BoardDB
      * and persist the fix so it doesn't recur.
      */
-    private fun repairMissingDenormalized(entries: MutableList<AuroraAscentWithClimb>) {
+    private fun repairMissingDenormalized(entries: MutableList<AscentWithClimb>) {
         for (i in entries.indices) {
             val entry = entries[i]
             if (entry.climbName.isNotBlank() && entry.difficultyAverage != null) continue
@@ -355,7 +355,7 @@ class BoardLogbookViewModel @Inject constructor(
 
     // --- Single edit ---
 
-    fun editAscent(ascent: AuroraAscentWithClimb) {
+    fun editAscent(ascent: AscentWithClimb) {
         _state.update { it.copy(
             showEditDialog = true,
             editingAscentUuid = ascent.uuid,
