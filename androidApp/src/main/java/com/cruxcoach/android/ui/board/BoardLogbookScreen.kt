@@ -197,15 +197,6 @@ fun BoardLogbookScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxSize().padding(padding)
                 ) {
-                    // Summary header
-                    item(key = "header") {
-                        Text(
-                            stringResource(R.string.board_logbook_ascent_count, state.totalCount),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
                     // Stats interval selector
                     item(key = "interval") {
                         StatsIntervalChips(
