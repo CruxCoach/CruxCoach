@@ -577,17 +577,15 @@ VALUES (?, ?, ?, ?, ?,
     'nostr', ?, ?, ?, ?, 'synced', 'cruxcoach');
 
 -- Flip a draft to "published_nostr" once the relay accepts the event.
--- `nostr_publish_via` records whether the climb was signed by the user
--- ('self') or by the CruxCoach service on their behalf ('cruxcoach' —
--- bundled fallback). Stays as a single mutator so callers can't forget
--- to set the via field.
+-- `nostr_publish_via` and `kilter_publish_via` columns remain in the
+-- schema (migration safety, future-reserved) but are no longer
+-- populated — there's only ever one identity now: the user's own.
 markClimbPublishedNostr:
 UPDATE climbs SET
     sync_status = 'published_nostr',
     nostr_event_id = ?,
     nostr_d_tag = ?,
-    created_by_pubkey = ?,
-    nostr_publish_via = ?
+    created_by_pubkey = ?
 WHERE uuid = ?;
 
 -- Mark a draft as failed (so the publish queue can retry / surface error).

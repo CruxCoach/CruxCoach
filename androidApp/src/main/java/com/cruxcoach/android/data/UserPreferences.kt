@@ -36,12 +36,6 @@ object KeyScopedKeys {
     // Climb-publishing flags (separate from ascent push so users can opt
     // in/out independently — and so non-Kilter-users don't get pinged).
     val KILTER_CLIMB_PUBLISH_ENABLED = booleanPreferencesKey("kilter_climb_publish_enabled")
-    val KILTER_BUNDLED_FALLBACK_ENABLED = booleanPreferencesKey("kilter_bundled_fallback_enabled")
-    // Nostr signing identity. When true, the bundled CruxCoach service
-    // signs Kind-30078 climb events on the user's behalf with its shared
-    // key — supporting the "anonymous via CruxCoach" mode where the user
-    // doesn't want their npub publicly attached to setter attribution.
-    val NOSTR_BUNDLED_SIGNING_ENABLED = booleanPreferencesKey("nostr_bundled_signing_enabled")
     // Cursor for the live community-climb Nostr subscription. Holds the
     // largest event.created_at we've persisted; subsequent subscribes use
     // it as the `since` filter so we don't re-process the historical tail.
@@ -315,27 +309,6 @@ class UserPreferences(
         prefs[KeyScopedKeys.KILTER_CLIMB_PUBLISH_ENABLED] ?: true
     }
 
-    /**
-     * Whether to fall back to the CruxCoach-bundled Kilter account when the
-     * user is not logged into Kilter. Default `false` — opt-in because the
-     * Kilter-side `setter_uuid` would be the CruxCoach service account
-     * (with a "via CruxCoach" attribution suffix), not the user.
-     */
-    val kilterBundledFallbackEnabled: Flow<Boolean> = keyScoped.data.map { prefs ->
-        prefs[KeyScopedKeys.KILTER_BUNDLED_FALLBACK_ENABLED] ?: false
-    }
-
-    /**
-     * Whether to sign Nostr climb events via the CruxCoach bundled
-     * service instead of the user's own NostrSigner. Default `false` —
-     * privacy-conscious users opt in; the cost is that climbs are then
-     * attributed to the CruxCoach service pubkey, with the user's npub
-     * preserved (optionally) in the event content as a side-channel.
-     */
-    val nostrBundledSigningEnabled: Flow<Boolean> = keyScoped.data.map { prefs ->
-        prefs[KeyScopedKeys.NOSTR_BUNDLED_SIGNING_ENABLED] ?: false
-    }
-
     suspend fun setKilterSyncEnabled(enabled: Boolean) {
         keyScoped.edit { prefs -> prefs[KeyScopedKeys.KILTER_SYNC_ENABLED] = enabled }
     }
@@ -346,14 +319,6 @@ class UserPreferences(
 
     suspend fun setKilterClimbPublishEnabled(enabled: Boolean) {
         keyScoped.edit { prefs -> prefs[KeyScopedKeys.KILTER_CLIMB_PUBLISH_ENABLED] = enabled }
-    }
-
-    suspend fun setKilterBundledFallbackEnabled(enabled: Boolean) {
-        keyScoped.edit { prefs -> prefs[KeyScopedKeys.KILTER_BUNDLED_FALLBACK_ENABLED] = enabled }
-    }
-
-    suspend fun setNostrBundledSigningEnabled(enabled: Boolean) {
-        keyScoped.edit { prefs -> prefs[KeyScopedKeys.NOSTR_BUNDLED_SIGNING_ENABLED] = enabled }
     }
 
     /**

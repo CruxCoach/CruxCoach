@@ -654,13 +654,11 @@ class BoardRepositoryImpl(
         nostrEventId: String,
         nostrDTag: String,
         pubkey: String,
-        via: String,
     ) {
         q.markClimbPublishedNostr(
             nostr_event_id = nostrEventId,
             nostr_d_tag = nostrDTag,
             created_by_pubkey = pubkey,
-            nostr_publish_via = via,
             uuid = uuid,
         )
     }

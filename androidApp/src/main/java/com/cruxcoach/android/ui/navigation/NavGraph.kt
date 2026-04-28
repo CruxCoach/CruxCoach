@@ -417,7 +417,11 @@ fun CruxCoachNavHost(
             ) {
                 com.cruxcoach.android.ui.board.creator.ClimbEditorScreen(
                     onBack = { navController.popBackStack() },
-                    onPublished = { uuid -> navController.popBackStack() }
+                    onPublished = { uuid -> navController.popBackStack() },
+                    onNavigateToKilterSettings = {
+                        navController.popBackStack()
+                        navController.navigate(Routes.SETTINGS)
+                    },
                 )
             }
 

@@ -1,5 +1,6 @@
 package com.cruxcoach.android.ui.settings
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -36,15 +37,10 @@ data class KilterAccountState(
     val showDisconnectConfirm: Boolean = false,
     val resultMessage: String? = null,
     /** Master toggle: should newly created CruxCoach climbs be pushed to
-     *  the official Kilter DB? Default true. Independent of ascent push. */
+     *  the official Kilter DB via the user's own account? Default true.
+     *  Greyed out when the user isn't connected; tapping then nudges
+     *  them through the Kilter login flow. */
     val climbPublishEnabled: Boolean = true,
-    /** Fallback: if the user has no Kilter account, publish via the
-     *  CruxCoach-shared service account (bundled). Default false. */
-    val bundledFallbackEnabled: Boolean = false,
-    /** Identity choice for Nostr publishing. When true, the bundled
-     *  CruxCoach service signs Kind-30078 climb events with its shared
-     *  key instead of the user's own NostrSigner. Default false. */
-    val nostrBundledSigningEnabled: Boolean = false,
 )
 
 @Composable
@@ -61,8 +57,6 @@ internal fun KilterAccountSection(
     onSyncNow: () -> Unit,
     onPushEnabledChanged: (Boolean) -> Unit,
     onClimbPublishEnabledChanged: (Boolean) -> Unit,
-    onBundledFallbackEnabledChanged: (Boolean) -> Unit,
-    onNostrBundledSigningEnabledChanged: (Boolean) -> Unit,
     onDisconnect: () -> Unit,
     onShowDisconnectConfirm: () -> Unit,
     onDismissDisconnectConfirm: () -> Unit,
@@ -73,10 +67,12 @@ internal fun KilterAccountSection(
             username = state.username,
             lastSync = state.lastSync,
             pushEnabled = state.pushEnabled,
+            climbPublishEnabled = state.climbPublishEnabled,
             sessionExpired = state.sessionExpired,
             isSyncing = state.isSyncing,
             onSyncNow = onSyncNow,
             onPushEnabledChanged = onPushEnabledChanged,
+            onClimbPublishEnabledChanged = onClimbPublishEnabledChanged,
             onReLogin = onShowLogin,
             onDisconnect = onShowDisconnectConfirm
         )
@@ -92,21 +88,11 @@ internal fun KilterAccountSection(
             shape = RoundedCornerShape(12.dp),
             colors = ButtonDefaults.outlinedButtonColors(contentColor = OrangeAccent)
         ) { Text(stringResource(R.string.kilter_connect_button)) }
-    }
 
-    // Climb-publishing settings — always visible, regardless of connection
-    // state. The bundled fallback only matters when not connected, but
-    // letting users see + toggle it ahead of time keeps the UX
-    // discoverable.
-    KilterClimbPublishCard(
-        isConnected = state.isConnected,
-        publishEnabled = state.climbPublishEnabled,
-        bundledFallbackEnabled = state.bundledFallbackEnabled,
-        nostrBundledSigningEnabled = state.nostrBundledSigningEnabled,
-        onPublishEnabledChanged = onClimbPublishEnabledChanged,
-        onBundledFallbackEnabledChanged = onBundledFallbackEnabledChanged,
-        onNostrBundledSigningEnabledChanged = onNostrBundledSigningEnabledChanged,
-    )
+        // Greyed-out climb-publish toggle: discoverable but inert until
+        // the user connects. Tapping the row jumps to the login flow.
+        DisconnectedClimbPublishHint(onConnect = onShowLogin)
+    }
 
     // Result message (success/error)
     state.resultMessage?.let { msg ->
@@ -332,10 +318,12 @@ private fun KilterConnectedCard(
     username: String,
     lastSync: String?,
     pushEnabled: Boolean,
+    climbPublishEnabled: Boolean,
     sessionExpired: Boolean,
     isSyncing: Boolean,
     onSyncNow: () -> Unit,
     onPushEnabledChanged: (Boolean) -> Unit,
+    onClimbPublishEnabledChanged: (Boolean) -> Unit,
     onReLogin: () -> Unit,
     onDisconnect: () -> Unit
 ) {
@@ -404,6 +392,32 @@ private fun KilterConnectedCard(
                 )
             }
 
+            // Climb-publish toggle: also lives here, alongside the
+            // ascent-push toggle, since both are "what should we mirror
+            // to the connected Kilter account" choices.
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        stringResource(R.string.kilter_climb_publish_label),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Text(
+                        stringResource(R.string.kilter_climb_publish_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = climbPublishEnabled,
+                    onCheckedChange = onClimbPublishEnabledChanged,
+                    colors = SwitchDefaults.colors(checkedTrackColor = OrangeAccent)
+                )
+            }
+
             OutlinedButton(
                 onClick = onSyncNow,
                 modifier = Modifier.fillMaxWidth(),
@@ -438,123 +452,46 @@ private fun KilterConnectedCard(
 }
 
 /**
- * Settings card for the Kilter climb-publishing flow.
- *
- * Two switches:
- *  - "Climbs auch zu Kilter veröffentlichen" — master toggle. When off,
- *    CruxCoach climbs go only to the Nostr/Blossom community DB, never
- *    to the official Kilter server.
- *  - "Über CruxCoach-Account, wenn nicht angemeldet" — only relevant
- *    when the user has no Kilter login. Lets the bundled fallback path
- *    publish on their behalf via a CruxCoach service account.
- *    Disabled (greyed) when the user is connected to Kilter, since the
- *    self-path is then strictly preferred and the bundled fallback
- *    would never trigger anyway.
+ * Greyed-out hint shown when the user has no Kilter connection — keeps
+ * the climb-publish toggle discoverable without lying about its effect.
+ * Tapping the row opens the Kilter login flow.
  */
 @Composable
-private fun KilterClimbPublishCard(
-    isConnected: Boolean,
-    publishEnabled: Boolean,
-    bundledFallbackEnabled: Boolean,
-    nostrBundledSigningEnabled: Boolean,
-    onPublishEnabledChanged: (Boolean) -> Unit,
-    onBundledFallbackEnabledChanged: (Boolean) -> Unit,
-    onNostrBundledSigningEnabledChanged: (Boolean) -> Unit,
-) {
+private fun DisconnectedClimbPublishHint(onConnect: () -> Unit) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onConnect() },
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
         )
     ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                stringResource(R.string.kilter_climb_publish_title),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    stringResource(R.string.kilter_climb_publish_label),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    stringResource(R.string.kilter_climb_publish_disconnected_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Switch(
+                checked = false,
+                onCheckedChange = null,
+                enabled = false,
+                colors = SwitchDefaults.colors(checkedTrackColor = OrangeAccent)
             )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        stringResource(R.string.kilter_climb_publish_label),
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Text(
-                        stringResource(R.string.kilter_climb_publish_desc),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Switch(
-                    checked = publishEnabled,
-                    onCheckedChange = onPublishEnabledChanged,
-                    colors = SwitchDefaults.colors(checkedTrackColor = OrangeAccent)
-                )
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        stringResource(R.string.kilter_bundled_fallback_label),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = if (publishEnabled && !isConnected) {
-                            MaterialTheme.colorScheme.onSurface
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        }
-                    )
-                    Text(
-                        stringResource(R.string.kilter_bundled_fallback_desc),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Switch(
-                    checked = bundledFallbackEnabled,
-                    onCheckedChange = onBundledFallbackEnabledChanged,
-                    enabled = publishEnabled,
-                    colors = SwitchDefaults.colors(checkedTrackColor = OrangeAccent)
-                )
-            }
-
-            // Third switch: Nostr signing identity. Independent of the
-            // Kilter switches above — toggleable on its own. Both bundled
-            // switches together = Mode C (fully anonymous via CruxCoach).
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        stringResource(R.string.nostr_bundled_signing_label),
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    Text(
-                        stringResource(R.string.nostr_bundled_signing_desc),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Switch(
-                    checked = nostrBundledSigningEnabled,
-                    onCheckedChange = onNostrBundledSigningEnabledChanged,
-                    colors = SwitchDefaults.colors(checkedTrackColor = OrangeAccent)
-                )
-            }
         }
     }
 }

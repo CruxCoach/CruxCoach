@@ -5,169 +5,59 @@ import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.BoardSize
 import com.cruxcoach.domain.community.ClimbEditorState
-import com.vitorpamplona.quartz.nip01Core.core.Event
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.first
 
 /**
- * Orchestrates the Kilter-side publish for CruxCoach-authored climbs.
+ * Posts CruxCoach-authored climbs to Kilter's official server DB via the
+ * user's own account. Each post uses the same `climb_uuid` that the
+ * Nostr Kind-30078 event already carries, so when the daily Kilter-API
+ * harvest re-pulls the climb our Blossom blob deduplicates by uuid.
  *
- * Decides between three paths in order:
+ * Failures are persisted to `kilter_status` / `kilter_error` and picked
+ * up by [KilterPublishRetryWorker] every 6 hours. The user-visible
+ * publish flow doesn't fail on Kilter errors — Nostr is the source of
+ * truth and was already accepted by the time this runs.
  *
- * 1. **Self** — user is logged into Kilter → POST directly via
- *    [KilterApiClient.publishClimb]. Kilter `setter_uuid` is the user's
- *    own UUID, so attribution is clean.
- * 2. **Bundled** — user not logged in BUT enabled the bundled fallback
- *    in settings → POST to [CruxCoachBundledPublishClient] in
- *    `KilterOnly` mode. Kilter's `setter_uuid` is the CruxCoach service
- *    account; the user's npub is preserved in the description.
- * 3. **Skip** — neither path is available (user opted out, or no Kilter
- *    account + bundled fallback off). The climb stays Nostr-only;
- *    `kilter_status` stays NULL.
- *
- * Failures don't propagate up to the publisher — we mark the row with
- * `kilter_status='failed'` and `kilter_error=<reason>` so the retry
- * worker (later FEAT) can pick them up. The Nostr publish has already
- * succeeded by the time this runs, so the user sees a published climb;
- * the Kilter half is best-effort.
+ * Self-account-only by design: when the user has no Kilter login,
+ * climbs stay Nostr/Blossom-only. There's no shared CruxCoach service
+ * account doing it on their behalf — that would be the textbook
+ * Kilter-anti-abuse trigger and a Trademark/ToS minefield. Users who
+ * want their climbs in the Kilter app connect their own account.
  */
 @Singleton
 class KilterClimbPublisher @Inject constructor(
     private val apiClient: KilterApiClient,
     private val tokenStore: KilterTokenStore,
-    private val bundledClient: CruxCoachBundledPublishClient,
     private val userPreferences: UserPreferences,
     private val boardRepository: BoardRepository,
 ) {
     /**
-     * Publish (or attempt to publish) a CruxCoach-authored climb to Kilter.
-     *
-     * - `nostrEvent` is the already-signed Kind 30078 event for the climb.
-     *   Used by the bundled path (the service verifies the signature) and
-     *   gives us a stable handle even if local state mutates.
-     * - `boardSize` is the active board's edge metadata. Required by Kilter's
-     *   create-climb payload; we don't ship without it.
-     *
-     * Returns the chosen path's outcome — useful for tests and for
-     * surfacing a Snackbar to the user. Side effects on the climbs row
-     * are already applied by the time this returns.
+     * Publish to Kilter via the user's own account. Returns an [Outcome]
+     * for tests / Snackbar hints; side effects on the climbs row are
+     * already applied by the time this returns.
      */
     suspend fun publish(
         uuid: String,
         layoutId: Long,
         state: ClimbEditorState,
-        sizeLabel: String,
         boardSize: BoardSize?,
-        nostrEvent: Event,
         framesClimbConcat: String,
     ): Outcome {
         if (!userPreferences.kilterClimbPublishEnabled.first()) {
-            // User explicitly opted out — leave kilter_status NULL.
-            return Outcome.Skipped(reason = "user-opted-out")
+            return Outcome.Skipped("user-opted-out")
         }
         if (boardSize == null) {
-            return Outcome.Skipped(reason = "no-board-size")
+            return Outcome.Skipped("no-board-size")
         }
-
-        boardRepository.markKilterPublishPending(uuid)
-        val productName = productNameFor(layoutId)
-
-        // Path 1: user has a Kilter account → publish via their account.
         val hasOwnToken = tokenStore.getAccessToken() != null &&
             tokenStore.getUserUuid()?.isNotBlank() == true
-        if (hasOwnToken) {
-            val r = apiClient.publishClimb(
-                climbUuid = uuid,
-                name = state.name,
-                description = state.description,
-                framesClimbConcat = framesClimbConcat,
-                productName = productName,
-                edgeLeft = boardSize.edgeLeft.toInt(),
-                edgeRight = boardSize.edgeRight.toInt(),
-                edgeBottom = boardSize.edgeBottom.toInt(),
-                edgeTop = boardSize.edgeTop.toInt(),
-            )
-            recordOutcome(uuid, via = "self", result = r)?.let { return it }
-            // PermanentError or NotAuthenticated falls through to bundled
-            // (the user's token might've expired and the bundled path is
-            // a sensible fallback if they enabled it).
+        if (!hasOwnToken) {
+            // No login → stay Nostr-only. Caller decides whether to
+            // surface a "connect Kilter to mirror" hint in the UI.
+            return Outcome.Skipped("no-kilter-login")
         }
-
-        // Path 2: bundled fallback (only if user opted in). Mode
-        // KilterOnly — the user signed Nostr locally, the service just
-        // submits to Kilter on their behalf.
-        if (userPreferences.kilterBundledFallbackEnabled.first()) {
-            val r = bundledClient.publish(
-                mode = CruxCoachBundledPublishClient.Mode.KilterOnly,
-                signedEvent = nostrEvent,
-                rawClimb = null,
-                clientAttestation = clientAttestation(),
-            )
-            recordBundledOutcome(uuid, via = "cruxcoach", result = r)?.let { return it }
-        }
-
-        // Both paths exhausted — neither succeeded.
-        boardRepository.markKilterPublishFailed(uuid, "no-kilter-path-available")
-        return Outcome.Failed("Nicht angemeldet bei Kilter und Bundled-Pfad deaktiviert")
-    }
-
-    /** Translate a [KilterPublishResult] into status-flag updates + an [Outcome].
-     *  Returns null only when the result was non-success and the orchestrator
-     *  should consider the next path. */
-    private fun recordOutcome(
-        uuid: String,
-        via: String,
-        result: KilterPublishResult,
-    ): Outcome? = when (result) {
-        is KilterPublishResult.Success -> {
-            boardRepository.markKilterPublishSynced(
-                uuid = uuid,
-                via = via,
-                syncedAtEpochSeconds = System.currentTimeMillis() / 1000,
-            )
-            Outcome.Synced(via = via)
-        }
-        is KilterPublishResult.NotAuthenticated -> {
-            // Don't persist a "failed" status here — the caller may have a
-            // fallback path. If it doesn't, the catch-all at the end of
-            // publish() flips the row to failed.
-            Log.i(TAG, "Kilter publish via=$via not authenticated; trying next path")
-            null
-        }
-        is KilterPublishResult.TransientError -> {
-            boardRepository.markKilterPublishFailed(uuid, "via=$via transient: ${result.message}")
-            Outcome.Failed("Übertragung fehlgeschlagen — Versuch wird wiederholt")
-        }
-        is KilterPublishResult.PermanentError -> {
-            // Server-side rejection — don't fall through to bundled (same
-            // payload would just get rejected again). Mark + return.
-            boardRepository.markKilterPublishFailed(
-                uuid,
-                "via=$via http=${result.httpCode}: ${result.message.take(200)}",
-            )
-            Outcome.Failed("Kilter hat den Climb abgelehnt (${result.httpCode})")
-        }
-    }
-
-    /**
-     * Self-only publish — used by callers that already routed Nostr
-     * through the bundled service (Mode D) and don't want the Kilter
-     * orchestrator to consider the bundled-Kilter fallback. Mirrors the
-     * "Path 1" branch of [publish] without the fallback to bundled.
-     */
-    suspend fun publishSelfOnly(
-        uuid: String,
-        layoutId: Long,
-        state: ClimbEditorState,
-        boardSize: BoardSize?,
-        framesClimbConcat: String,
-    ): Outcome {
-        if (!userPreferences.kilterClimbPublishEnabled.first()) return Outcome.Skipped("user-opted-out")
-        if (boardSize == null) return Outcome.Skipped("no-board-size")
-        val hasOwnToken = tokenStore.getAccessToken() != null &&
-            tokenStore.getUserUuid()?.isNotBlank() == true
-        if (!hasOwnToken) return Outcome.Skipped("no-kilter-login")
 
         boardRepository.markKilterPublishPending(uuid)
         val r = apiClient.publishClimb(
@@ -181,81 +71,47 @@ class KilterClimbPublisher @Inject constructor(
             edgeBottom = boardSize.edgeBottom.toInt(),
             edgeTop = boardSize.edgeTop.toInt(),
         )
-        return recordOutcome(uuid, via = "self", result = r)
-            ?: Outcome.Failed("Kilter authentication missing")
-    }
-
-    /** Translate a [BundledPublishResult] (Kilter-side only) into status-flag
-     *  updates + an [Outcome]. Mirrors [recordOutcome] but with the bundled
-     *  result type that carries Kilter status fields. */
-    private fun recordBundledOutcome(
-        uuid: String,
-        via: String,
-        result: BundledPublishResult,
-    ): Outcome? = when (result) {
-        is BundledPublishResult.Success -> {
-            if (result.kilterStatus == "rejected") {
-                boardRepository.markKilterPublishFailed(
-                    uuid,
-                    "via=$via rejected: ${result.kilterError ?: "no detail"}",
-                )
-                Outcome.Failed("Kilter hat den Climb über CruxCoach abgelehnt")
-            } else {
+        return when (r) {
+            is KilterPublishResult.Success -> {
                 boardRepository.markKilterPublishSynced(
                     uuid = uuid,
-                    via = via,
+                    via = "self",
                     syncedAtEpochSeconds = System.currentTimeMillis() / 1000,
                 )
-                Outcome.Synced(via = via)
+                Outcome.Synced
             }
-        }
-        is BundledPublishResult.TransientError -> {
-            boardRepository.markKilterPublishFailed(uuid, "via=$via transient: ${result.message}")
-            Outcome.Failed("Übertragung fehlgeschlagen — Versuch wird wiederholt")
-        }
-        is BundledPublishResult.PermanentError -> {
-            boardRepository.markKilterPublishFailed(
-                uuid,
-                "via=$via http=${result.httpCode}: ${result.message.take(200)}",
-            )
-            Outcome.Failed("CruxCoach-Service hat den Climb abgelehnt (${result.httpCode})")
+            is KilterPublishResult.NotAuthenticated -> {
+                Log.i(TAG, "publish via=self: token expired mid-call; deferring to retry worker")
+                boardRepository.markKilterPublishFailed(uuid, "token expired")
+                Outcome.Failed("Kilter-Sitzung abgelaufen — wird später wiederholt")
+            }
+            is KilterPublishResult.TransientError -> {
+                boardRepository.markKilterPublishFailed(uuid, "transient: ${r.message}")
+                Outcome.Failed("Übertragung fehlgeschlagen — Versuch wird wiederholt")
+            }
+            is KilterPublishResult.PermanentError -> {
+                boardRepository.markKilterPublishFailed(
+                    uuid,
+                    "http=${r.httpCode}: ${r.message.take(200)}",
+                )
+                Outcome.Failed("Kilter hat den Climb abgelehnt (${r.httpCode})")
+            }
         }
     }
 
     /**
-     * Stable handle the bundled service uses for per-app rate-limiting.
-     * For now: device's hardware-derived install-id (re-stable across
-     * app restarts, changes only when the user reinstalls). The future
-     * server-side decides whether this is enough or wants something
-     * stricter (PoW, attestation API).
-     */
-    private fun clientAttestation(): String =
-        // Stub: deterministic placeholder until the server defines the
-        // actual attestation contract. The Nostr signature in the request
-        // is the real auth handle either way; this is just a Bloom/quota
-        // hint.
-        "placeholder-v1"
-
-    /**
-     * Best-effort layout_id → Kilter product_name mapping.
-     *
-     * Most CruxCoach users are on the Kilter Original (the only Kilter
-     * board with a meaningful community DB). Other layouts fall through
-     * to the same default — Kilter's server-side validates `product_name`
-     * against the products table, and rejecting at that layer is cheaper
-     * than maintaining a full mapping client-side.
-     *
-     * Future: pull product_name from the synced products bucket once we
-     * mirror it locally. For v1, the constant is sufficient.
+     * Best-effort layout_id → Kilter product_name mapping. Most CruxCoach
+     * users are on the Kilter Original; other layouts fall through to
+     * the same default and let Kilter's server-side validate.
      */
     private fun productNameFor(layoutId: Long): String = "Kilter Board Original"
 
     sealed class Outcome {
-        /** Kilter accepted the climb via the named path ('self' or 'cruxcoach'). */
-        data class Synced(val via: String) : Outcome()
-        /** Both paths failed; row marked `kilter_status='failed'`. */
+        /** Kilter accepted the climb. */
+        data object Synced : Outcome()
+        /** Self-publish failed; row marked `kilter_status='failed'`. */
         data class Failed(val message: String) : Outcome()
-        /** Path not attempted (user opted out, or required state missing). */
+        /** Path not attempted (user opted out, no board size, no login). */
         data class Skipped(val reason: String) : Outcome()
     }
 

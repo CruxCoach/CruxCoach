@@ -77,13 +77,33 @@ import com.cruxcoach.domain.community.ClimbValidation
 fun ClimbEditorScreen(
     onBack: () -> Unit,
     onPublished: (uuid: String) -> Unit,
+    onNavigateToKilterSettings: () -> Unit = {},
     viewModel: ClimbEditorViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    LaunchedEffect(state.publishedUuid) {
-        state.publishedUuid?.let { onPublished(it) }
+    val nudgeMessage = stringResource(R.string.climb_creator_kilter_connect_nudge)
+    val nudgeAction = stringResource(R.string.climb_creator_kilter_connect_action)
+
+    LaunchedEffect(state.publishedUuid, state.showKilterConnectNudge) {
+        val uuid = state.publishedUuid ?: return@LaunchedEffect
+        if (state.showKilterConnectNudge) {
+            // Show the Snackbar BEFORE leaving the screen so the user has
+            // a chance to act on it. After dismiss/timeout (or action),
+            // navigate to the published-detail like the normal flow.
+            val result = snackbarHostState.showSnackbar(
+                message = nudgeMessage,
+                actionLabel = nudgeAction,
+                duration = androidx.compose.material3.SnackbarDuration.Long,
+            )
+            viewModel.clearKilterConnectNudge()
+            if (result == androidx.compose.material3.SnackbarResult.ActionPerformed) {
+                onNavigateToKilterSettings()
+                return@LaunchedEffect
+            }
+        }
+        onPublished(uuid)
     }
     LaunchedEffect(state.errorMessage) {
         state.errorMessage?.let { msg ->

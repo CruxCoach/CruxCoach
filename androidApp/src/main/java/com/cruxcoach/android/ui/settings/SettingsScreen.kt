@@ -228,8 +228,6 @@ fun SettingsScreen(
                         onSyncNow = { viewModel.kilterSyncNow() },
                         onPushEnabledChanged = { viewModel.setKilterPushEnabled(it) },
                         onClimbPublishEnabledChanged = { viewModel.setKilterClimbPublishEnabled(it) },
-                        onBundledFallbackEnabledChanged = { viewModel.setKilterBundledFallbackEnabled(it) },
-                        onNostrBundledSigningEnabledChanged = { viewModel.setNostrBundledSigningEnabled(it) },
                         onDisconnect = { viewModel.kilterDisconnect() },
                         onShowDisconnectConfirm = { viewModel.showKilterDisconnectConfirm() },
                         onDismissDisconnectConfirm = { viewModel.dismissKilterDisconnectConfirm() },

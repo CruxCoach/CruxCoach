@@ -111,13 +111,26 @@ class ClimbCreatorRepository @Inject constructor(
         return boardRepository.findClimbByFramesHash(hash, layoutId)
     }
 
-    /** Save a draft + immediately try to publish to Nostr. */
-    suspend fun saveAndPublish(state: ClimbEditorState, sizeLabel: String): String {
+    /**
+     * Save a draft + publish to Nostr (mandatory). Best-effort Kilter
+     * push happens inline; the returned [PublishOutcome] tells the
+     * editor whether to nudge the user toward connecting their Kilter
+     * account when the climb went out only over Nostr.
+     */
+    suspend fun saveAndPublish(state: ClimbEditorState, sizeLabel: String): PublishOutcome {
         val uuid = saveDraft(state)
         val layoutId = userPreferences.boardLayoutId.first().toLong()
-        publisher.publish(uuid = uuid, layoutId = layoutId, state = state, sizeLabel = sizeLabel)
-        return uuid
+        val result = publisher.publish(uuid = uuid, layoutId = layoutId, state = state, sizeLabel = sizeLabel)
+        return PublishOutcome(
+            uuid = uuid,
+            nudgeToConnectKilter = result.nudgeToConnectKilter,
+        )
     }
+
+    data class PublishOutcome(
+        val uuid: String,
+        val nudgeToConnectKilter: Boolean,
+    )
 
     private fun nowIso(): String {
         // 2026-04-27T17:00:00Z — keep it timezone-agnostic so we don't

@@ -49,6 +49,11 @@ data class ClimbEditorUiState(
     val pendingPublishConfirm: Boolean = false,    // dup-warn dialog gate
     val isPublishing: Boolean = false,
     val publishedUuid: String? = null,             // success terminal — UI navigates back
+    /** Set true after a successful publish that didn't reach Kilter
+     *  because the user has no connection. The screen reads it once,
+     *  shows a "verbinde Kilter"-Snackbar with a [Verbinden]-Action,
+     *  and clears it via [clearKilterConnectNudge]. */
+    val showKilterConnectNudge: Boolean = false,
     val errorMessage: String? = null,
     /** Loaded-draft uuid — re-saving updates this row in place. */
     val loadedDraftUuid: String? = null,
@@ -313,7 +318,7 @@ class ClimbEditorViewModel @Inject constructor(
         _state.update { it.copy(isPublishing = true, errorMessage = null) }
         val current = _state.value.editor
         viewModelScope.launch {
-            val uuid = try {
+            val outcome = try {
                 withContext(Dispatchers.IO) { repository.saveAndPublish(current, sizeLabel) }
             } catch (e: Exception) {
                 Log.w(TAG, "publish failed", e)
@@ -321,8 +326,18 @@ class ClimbEditorViewModel @Inject constructor(
                 return@launch
             }
             autosave.clear()
-            _state.update { it.copy(isPublishing = false, publishedUuid = uuid) }
+            _state.update {
+                it.copy(
+                    isPublishing = false,
+                    publishedUuid = outcome.uuid,
+                    showKilterConnectNudge = outcome.nudgeToConnectKilter,
+                )
+            }
         }
+    }
+
+    fun clearKilterConnectNudge() {
+        _state.update { it.copy(showKilterConnectNudge = false) }
     }
 
     // ── Autosave restore offer ──────────────────────────────────
