@@ -29,7 +29,11 @@ data class ClimbWithStats(
     val faUsername: String? = null,
     val faAt: String? = null,
     /** Pre-computed move count from DB. 0 = not yet computed (fallback to live parse). */
-    val storedMoveCount: Long = 0
+    val storedMoveCount: Long = 0,
+    /** Provenance: 'cruxcoach' (set via the CruxCoach editor) | 'kilter' (set via
+     *  the official Kilter app, pulled by us via the API harvest). Defaults to
+     *  'kilter' to keep older code paths neutral. */
+    val origin: String = "kilter",
 ) {
     /** True when this climb is a multi-frame route (not a boulder). */
     val isRoute: Boolean get() = framesCount > 1

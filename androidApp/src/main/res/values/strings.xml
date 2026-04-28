@@ -477,6 +477,9 @@
     <string name="board_filter_status_attempted">Attempted</string>
     <string name="board_filter_status_sent">Sent</string>
     <string name="board_filter_status_unsent">Open</string>
+    <string name="board_filter_origin">Origin</string>
+    <string name="board_filter_origin_cruxcoach">CruxCoach setters</string>
+    <string name="board_filter_origin_kilter">Kilter (official)</string>
     <string name="board_filter_type">Type</string>
     <string name="board_filter_type_boulder">Boulder</string>
     <string name="board_filter_type_routes">Routes</string>

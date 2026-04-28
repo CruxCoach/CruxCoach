@@ -280,6 +280,39 @@ fun BoardFilterScreen(
                     modifier = Modifier.height(32.dp)
                 )
 
+                // Provenance filter — schema column `origin`. CruxCoach
+                // climbs are the ones authored via this app's editor;
+                // Kilter climbs come from the official Kilter app and
+                // were pulled by our daily mirror.
+                Text(
+                    stringResource(R.string.board_filter_origin),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.horizontalScroll(rememberScrollState())
+                ) {
+                    val originOptions = listOf(
+                        OriginFilter.ALL to stringResource(R.string.board_filter_all),
+                        OriginFilter.CRUXCOACH to stringResource(R.string.board_filter_origin_cruxcoach),
+                        OriginFilter.KILTER to stringResource(R.string.board_filter_origin_kilter),
+                    )
+                    originOptions.forEach { (filter, label) ->
+                        FilterChip(
+                            selected = state.filter.originFilter == filter,
+                            onClick = { viewModel.updateOriginFilter(filter) },
+                            label = { Text(label, style = MaterialTheme.typography.labelSmall) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
+                                selectedLabelColor = OrangeAccent
+                            ),
+                            modifier = Modifier.height(32.dp)
+                        )
+                    }
+                }
+
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically

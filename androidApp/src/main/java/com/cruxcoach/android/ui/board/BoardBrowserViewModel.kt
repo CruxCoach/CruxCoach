@@ -55,6 +55,9 @@ import javax.inject.Inject
 
 enum class ClimbStatusFilter { ALL, SENT, ATTEMPTED, NEW, UNSENT }
 
+/** Provenance filter — corresponds to the `origin` column on `climbs`. */
+enum class OriginFilter { ALL, CRUXCOACH, KILTER }
+
 @Deprecated("Use EnhancedSessionSummary", replaceWith = ReplaceWith("EnhancedSessionSummary"))
 data class SessionZoneSummary(
     val warmupCount: Int = 0,
@@ -76,7 +79,8 @@ data class BrowserFilterState(
     val sortDirection: SortDirection = SortDirection.DESC,
     val statusFilter: ClimbStatusFilter = ClimbStatusFilter.ALL,
     val climbTypeFilter: ClimbTypeFilter = ClimbTypeFilter.BOULDER,
-    val benchmarkOnly: Boolean = false
+    val benchmarkOnly: Boolean = false,
+    val originFilter: OriginFilter = OriginFilter.ALL,
 )
 
 data class BrowserBleState(
@@ -394,6 +398,12 @@ class BoardBrowserViewModel @Inject constructor(
         searchClimbs()
     }
 
+    fun updateOriginFilter(filter: OriginFilter) {
+        _state.update { it.copy(filter = it.filter.copy(originFilter = filter)) }
+        persistFilters()
+        searchClimbs()
+    }
+
     private suspend fun ensureStatusLoaded() {
         if (!statusLoaded) {
             sentUuids = PerfLogger.traceQuery("getUserSentClimbUuids") {
@@ -419,6 +429,14 @@ class BoardBrowserViewModel @Inject constructor(
 
     private fun applyBenchmarkFilter(climbs: List<ClimbWithStats>, benchmarkOnly: Boolean): List<ClimbWithStats> {
         return if (benchmarkOnly) climbs.filter { it.benchmarkDifficulty > 0.0 } else climbs
+    }
+
+    private fun applyOriginFilter(climbs: List<ClimbWithStats>, filter: OriginFilter): List<ClimbWithStats> {
+        return when (filter) {
+            OriginFilter.ALL -> climbs
+            OriginFilter.CRUXCOACH -> climbs.filter { it.origin == "cruxcoach" }
+            OriginFilter.KILTER -> climbs.filter { it.origin == "kilter" }
+        }
     }
 
     private var firstContentReported = false
@@ -548,7 +566,7 @@ class BoardBrowserViewModel @Inject constructor(
             val all = boardRepository.getClimbsByUuids(
                 hs.holdFilterUuids, f.angle, f.layoutId, minDiff, maxDiff, f.minAscensionists, f.climbTypeFilter
             )
-            val filtered = applyBenchmarkFilter(applyStatusFilter(all, f.statusFilter), f.benchmarkOnly)
+            val filtered = applyOriginFilter(applyBenchmarkFilter(applyStatusFilter(all, f.statusFilter), f.benchmarkOnly), f.originFilter)
             val sorted = sortInKotlin(filtered, f.sortField, f.sortDirection)
             return Triple(sorted.take(PAGE_SIZE), sorted.size, sorted.size <= PAGE_SIZE)
         }
@@ -564,7 +582,7 @@ class BoardBrowserViewModel @Inject constructor(
             val all = boardRepository.getClimbsByUuids(
                 uuids, f.angle, f.layoutId, minDiff, maxDiff, f.minAscensionists, f.climbTypeFilter
             )
-            val filtered = applyBenchmarkFilter(all, f.benchmarkOnly)
+            val filtered = applyOriginFilter(applyBenchmarkFilter(all, f.benchmarkOnly), f.originFilter)
             val sorted = sortInKotlin(filtered, f.sortField, f.sortDirection)
             return Triple(sorted.take(PAGE_SIZE), sorted.size, sorted.size <= PAGE_SIZE)
         }
@@ -572,7 +590,7 @@ class BoardBrowserViewModel @Inject constructor(
         // ALL: no client-side filtering needed (except benchmark)
         if (f.statusFilter == ClimbStatusFilter.ALL) {
             val rawPage = fetchPage(f, dbOffset)
-            val filtered = applyBenchmarkFilter(rawPage, f.benchmarkOnly)
+            val filtered = applyOriginFilter(applyBenchmarkFilter(rawPage, f.benchmarkOnly), f.originFilter)
             return Triple(filtered, dbOffset + rawPage.size, rawPage.size < PAGE_SIZE)
         }
 
@@ -583,7 +601,7 @@ class BoardBrowserViewModel @Inject constructor(
             val page = fetchPage(f, currentOffset)
             if (page.isEmpty()) return Triple(collected, currentOffset, true)
             currentOffset += page.size
-            collected.addAll(applyBenchmarkFilter(applyStatusFilter(page, f.statusFilter), f.benchmarkOnly))
+            collected.addAll(applyOriginFilter(applyBenchmarkFilter(applyStatusFilter(page, f.statusFilter), f.benchmarkOnly), f.originFilter))
             if (collected.size >= PAGE_SIZE) return Triple(collected.take(PAGE_SIZE), currentOffset, false)
             if (page.size < PAGE_SIZE) return Triple(collected, currentOffset, true)
         }

@@ -19,7 +19,8 @@ class BoardRepositoryImpl(
         isNomatch: Long, framesPace: Long, hsm: Long,
         benchmarkDifficulty: Double = 0.0,
         faUsername: String? = null, faAt: String? = null,
-        moveCount: Long = 0
+        moveCount: Long = 0,
+        origin: String = "kilter",
     ) = ClimbWithStats(
         uuid = uuid, layoutId = layoutId, setterUsername = setterUsername,
         name = name, frames = frames, framesCount = framesCount,
@@ -28,7 +29,8 @@ class BoardRepositoryImpl(
         isNomatch = isNomatch != 0L, framesPace = framesPace, hsm = hsm,
         benchmarkDifficulty = benchmarkDifficulty,
         faUsername = faUsername, faAt = faAt,
-        storedMoveCount = moveCount
+        storedMoveCount = moveCount,
+        origin = origin,
     )
 
     // ── Climb Queries ──────────────────────────────────────────
@@ -39,7 +41,8 @@ class BoardRepositoryImpl(
         it.difficulty_average, it.quality_average, it.ascensionist_count,
         it.description, it.is_nomatch, it.frames_pace, it.hsm,
         benchmarkDifficulty = it.benchmark_difficulty ?: 0.0,
-        moveCount = it.move_count
+        moveCount = it.move_count,
+        origin = it.origin,
     )
 
     override fun searchClimbsByName(query: String, angle: Int, layoutId: Int, sortField: ClimbSortField, sortDirection: SortDirection, limit: Int, offset: Int, climbType: ClimbTypeFilter): List<ClimbWithStats> {
