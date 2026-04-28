@@ -34,6 +34,10 @@ data class ClimbWithStats(
      *  the official Kilter app, pulled by us via the API harvest). Defaults to
      *  'kilter' to keep older code paths neutral. */
     val origin: String = "kilter",
+    /** Kilter publish lifecycle: NULL | 'pending' | 'synced' | 'failed'. Only
+     *  meaningful for `origin == 'cruxcoach'` rows — for native Kilter climbs
+     *  the field is irrelevant (they're inherently on Kilter). */
+    val kilterStatus: String? = null,
 ) {
     /** True when this climb is a multi-frame route (not a boulder). */
     val isRoute: Boolean get() = framesCount > 1
@@ -309,6 +313,14 @@ interface CommunityClimbQueries {
     fun insertLocalDraft(draft: LocalClimbDraft, layoutId: Long, angle: Long, setterGradeId: Int?)
     /** Delete a local draft (drafts user explicitly discards). */
     fun deleteLocalClimb(uuid: String)
+    /**
+     * Returns the local row's stored `created_at` ISO string (or null if
+     * the climb isn't in the DB yet). Used by the Channel-B subscriber
+     * to skip re-broadcasted old events that would overwrite a newer
+     * state — replaceable Kind-30078 events on relays don't enforce
+     * ordering on receive, so the client has to.
+     */
+    fun getClimbCreatedAt(uuid: String): String?
     /**
      * Returns (placement_id → normalized 0..1 frequency) for boulders at the
      * given layout+angle, optionally weighted by climbs that contain ALL

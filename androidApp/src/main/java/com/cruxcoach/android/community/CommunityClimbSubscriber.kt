@@ -108,6 +108,21 @@ class CommunityClimbSubscriber @Inject constructor(
         val grade = parsedClimb.setterGradeId ?: return
         val angle = parsedClimb.angle ?: return
 
+        // Stale-event protection: replaceable Kind-30078 events can arrive
+        // out of order if the user's main key republished, then a backup
+        // restore replays the older copy on a different relay. Compare
+        // event.created_at against whatever we already have for this uuid.
+        val incomingIso = epochToIso(parsedClimb.createdAt)
+        val existingIso = boardRepository.getClimbCreatedAt(parsedClimb.uuid)
+        if (existingIso != null && existingIso > incomingIso) {
+            Log.i(
+                TAG,
+                "skip stale event uuid=${parsedClimb.uuid} " +
+                    "incoming=$incomingIso existing=$existingIso",
+            )
+            return
+        }
+
         val moveCount = computeMoveCount(parsedClimb.framesText)
 
         try {
@@ -123,7 +138,7 @@ class CommunityClimbSubscriber @Inject constructor(
                 nostrDTag = parsedClimb.dTag,
                 createdByPubkey = parsedClimb.pubkey,
                 framesHash = parsedClimb.framesHash,
-                createdAt = epochToIso(parsedClimb.createdAt),
+                createdAt = incomingIso,
                 angle = angle.toLong(),
                 difficultyAverage = grade.toDouble(),
                 qualityAverage = null,

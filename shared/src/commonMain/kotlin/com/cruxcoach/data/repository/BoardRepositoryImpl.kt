@@ -21,6 +21,7 @@ class BoardRepositoryImpl(
         faUsername: String? = null, faAt: String? = null,
         moveCount: Long = 0,
         origin: String = "kilter",
+        kilterStatus: String? = null,
     ) = ClimbWithStats(
         uuid = uuid, layoutId = layoutId, setterUsername = setterUsername,
         name = name, frames = frames, framesCount = framesCount,
@@ -31,6 +32,7 @@ class BoardRepositoryImpl(
         faUsername = faUsername, faAt = faAt,
         storedMoveCount = moveCount,
         origin = origin,
+        kilterStatus = kilterStatus,
     )
 
     // ── Climb Queries ──────────────────────────────────────────
@@ -43,6 +45,7 @@ class BoardRepositoryImpl(
         benchmarkDifficulty = it.benchmark_difficulty ?: 0.0,
         moveCount = it.move_count,
         origin = it.origin,
+        kilterStatus = it.kilter_status,
     )
 
     override fun searchClimbsByName(query: String, angle: Int, layoutId: Int, sortField: ClimbSortField, sortDirection: SortDirection, limit: Int, offset: Int, climbType: ClimbTypeFilter): List<ClimbWithStats> {
@@ -64,7 +67,7 @@ class BoardRepositoryImpl(
 
     override fun getClimbByUuid(uuid: String, angle: Int): ClimbWithStats? {
         return q.getClimbByUuid(angle.toLong(), uuid).executeAsOneOrNull()?.let {
-            mapClimb(it.uuid, it.layout_id, it.setter_username, it.name, it.frames, it.frames_count, it.difficulty_average, it.quality_average, it.ascensionist_count, it.description, it.is_nomatch, it.frames_pace, it.hsm, benchmarkDifficulty = it.benchmark_difficulty ?: 0.0, faUsername = it.fa_username, faAt = it.fa_at, moveCount = it.move_count)
+            mapClimb(it.uuid, it.layout_id, it.setter_username, it.name, it.frames, it.frames_count, it.difficulty_average, it.quality_average, it.ascensionist_count, it.description, it.is_nomatch, it.frames_pace, it.hsm, benchmarkDifficulty = it.benchmark_difficulty ?: 0.0, faUsername = it.fa_username, faAt = it.fa_at, moveCount = it.move_count, origin = it.origin, kilterStatus = it.kilter_status)
         }
     }
 
@@ -391,6 +394,9 @@ class BoardRepositoryImpl(
     override fun deleteLocalClimb(uuid: String) {
         q.deleteLocalClimb(uuid)
     }
+
+    override fun getClimbCreatedAt(uuid: String): String? =
+        q.getClimbCreatedAt(uuid).executeAsOneOrNull()?.created_at
 
     /**
      * Heatmap fast-path: parsed placements + roles per (layoutId, angle).

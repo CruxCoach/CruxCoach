@@ -176,7 +176,7 @@ SELECT
     c.uuid, c.name, c.setter_username, c.frames_count, c.layout_id,
     COALESCE(c.description, '') AS description,
     c.is_nomatch, c.frames_pace, c.hsm, c.move_count,
-    c.source, c.created_by_pubkey, c.sync_status, c.origin,
+    c.source, c.created_by_pubkey, c.sync_status, c.origin, c.kilter_status,
     cs.angle, cs.difficulty_average, cs.quality_average,
     cs.ascensionist_count, cs.benchmark_difficulty
 FROM climbs c
@@ -188,6 +188,12 @@ WHERE c.is_listed = 1;
 -- Existence probe used by [upsertClimb] (the Kotlin-side transaction).
 existsClimb:
 SELECT 1 FROM climbs WHERE uuid = ? LIMIT 1;
+
+-- Returns the local row's `created_at` for stale-event protection in
+-- the Nostr live subscriber. Used to avoid letting a re-broadcasted
+-- old event overwrite a newer state.
+getClimbCreatedAt:
+SELECT created_at FROM climbs WHERE uuid = ? LIMIT 1;
 
 -- Insert-only path: used by the upsert transaction when no row with
 -- this uuid exists. Default column values cover source ('kilter'),

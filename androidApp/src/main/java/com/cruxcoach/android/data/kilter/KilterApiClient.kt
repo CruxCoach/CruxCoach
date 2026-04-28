@@ -463,7 +463,23 @@ class KilterApiClient @Inject constructor(
             .build()
 
         try {
-            val response = httpClient.newCall(request).execute()
+            var response = httpClient.newCall(request).execute()
+            // 401 from a publishClimb means our access token expired
+            // since `ensureValidToken` last checked (window race). Try
+            // exactly one silent refresh + retry — same pattern as the
+            // ascent fetch/upload path. If it still fails, surface
+            // NotAuthenticated so the orchestrator can defer.
+            if (response.code == 401) {
+                response.close()
+                val refreshed = if (refreshAccessToken()) tokenStore.getAccessToken() else null
+                if (refreshed != null) {
+                    Log.i(TAG, "publishClimb 401 → refreshed + retrying once")
+                    val retryRequest = request.newBuilder()
+                        .header("Authorization", "Bearer $refreshed")
+                        .build()
+                    response = httpClient.newCall(retryRequest).execute()
+                }
+            }
             if (response.isSuccessful) {
                 Log.i(TAG, "publishClimb ok uuid=$climbUuid setter=$setterUuid")
                 return@withContext KilterPublishResult.Success(climbUuid)

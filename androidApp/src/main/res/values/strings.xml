@@ -50,6 +50,8 @@
     <string name="climb_creator_remix_action">Remix this climb</string>
     <string name="climb_creator_kilter_connect_nudge">Climb published (CruxCoach only) — connect Kilter so it also appears in the Kilter app.</string>
     <string name="climb_creator_kilter_connect_action">Connect</string>
+    <string name="climb_detail_badge_on_kilter">On Kilter</string>
+    <string name="climb_detail_badge_cruxcoach_only">CruxCoach community only</string>
 
     <!-- Onboarding -->
     <string name="onboarding_welcome">Welcome to CruxCoach</string>

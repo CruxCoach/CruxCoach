@@ -470,6 +470,34 @@ private fun ClimbDetailPageContent(
                                         }
                                     )
                                 }
+                                // Provenance + Kilter-mirror badge — only shown for
+                                // CruxCoach-authored climbs. For native Kilter rows
+                                // the info is tautological (they're inherently on
+                                // Kilter), so we suppress the chip there.
+                                if (climb.origin == "cruxcoach") {
+                                    Spacer(Modifier.size(4.dp))
+                                    val badgeText = if (climb.kilterStatus == "synced") {
+                                        stringResource(R.string.climb_detail_badge_on_kilter)
+                                    } else {
+                                        stringResource(R.string.climb_detail_badge_cruxcoach_only)
+                                    }
+                                    val badgeColor = if (climb.kilterStatus == "synced") {
+                                        OrangeAccent
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    }
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = badgeColor.copy(alpha = 0.15f),
+                                    ) {
+                                        Text(
+                                            badgeText,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = badgeColor,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                        )
+                                    }
+                                }
                             }
                             Column(
                                 horizontalAlignment = Alignment.End,
