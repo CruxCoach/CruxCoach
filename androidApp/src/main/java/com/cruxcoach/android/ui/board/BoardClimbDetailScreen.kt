@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.BluetoothConnected
 import androidx.compose.material.icons.filled.CellTower
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Timer
@@ -67,6 +68,7 @@ fun BoardClimbDetailScreen(
     onNavigateToClimb: ((climbUuid: String, angle: Int) -> Unit)? = null,
     onNavigateToBugReport: (title: String, description: String) -> Unit = { _, _ -> },
     onNavigateToFork: (climbUuid: String) -> Unit = {},
+    onNavigateToEdit: (climbUuid: String) -> Unit = {},
     viewModel: BoardClimbDetailViewModel = hiltViewModel()
 ) {
     PerfLogger.navMilestone("BoardClimbDetailScreen composing")
@@ -276,6 +278,25 @@ fun BoardClimbDetailScreen(
                                 contentDescription = stringResource(R.string.climb_creator_remix_action),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
+                        }
+                        // Edit-this-climb: only the original setter sees it.
+                        // origin must be 'cruxcoach' (we can re-publish those
+                        // via Replaceable Kind 30078) AND the climb's
+                        // created_by_pubkey must match our local key.
+                        val canEdit = state.climb?.origin == "cruxcoach" &&
+                            state.climb?.createdByPubkey != null &&
+                            state.climb?.createdByPubkey == state.currentUserPubkey
+                        if (canEdit) {
+                            IconButton(
+                                onClick = { state.climb?.uuid?.let(onNavigateToEdit) },
+                                modifier = Modifier.testTag("boarddetail_edit_button"),
+                            ) {
+                                Icon(
+                                    Icons.Default.Edit,
+                                    contentDescription = stringResource(R.string.climb_creator_edit_action),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
                         }
                         IconButton(
                             onClick = {

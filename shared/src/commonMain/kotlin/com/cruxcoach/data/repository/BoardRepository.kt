@@ -38,6 +38,10 @@ data class ClimbWithStats(
      *  meaningful for `origin == 'cruxcoach'` rows — for native Kilter climbs
      *  the field is irrelevant (they're inherently on Kilter). */
     val kilterStatus: String? = null,
+    /** Setter pubkey for CruxCoach-authored climbs (Nostr hex pubkey). NULL for
+     *  native Kilter rows. Used to gate the Edit-this-climb action: only the
+     *  original setter sees it. */
+    val createdByPubkey: String? = null,
 ) {
     /** True when this climb is a multi-frame route (not a boulder). */
     val isRoute: Boolean get() = framesCount > 1

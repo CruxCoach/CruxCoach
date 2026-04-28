@@ -94,9 +94,14 @@ object Routes {
     const val BOARD_BROWSER = "board_browser"
     const val BOARD_FILTER = "board_filter"
     const val BOARD_CLIMB_DETAIL = "board_climb_detail/{climbUuid}/{angle}"
-    const val CLIMB_CREATOR = "climb_creator?forkUuid={forkUuid}"
-    fun climbCreator(forkUuid: String? = null): String =
-        if (forkUuid != null) "climb_creator?forkUuid=$forkUuid" else "climb_creator"
+    const val CLIMB_CREATOR = "climb_creator?forkUuid={forkUuid}&editUuid={editUuid}"
+    fun climbCreator(forkUuid: String? = null, editUuid: String? = null): String {
+        val qs = buildList {
+            forkUuid?.let { add("forkUuid=$it") }
+            editUuid?.let { add("editUuid=$it") }
+        }
+        return if (qs.isEmpty()) "climb_creator" else "climb_creator?${qs.joinToString("&")}"
+    }
     const val BOARD_LOGBOOK = "board_logbook"
     const val BOARD_SYNC = "board_sync"
     const val BOARD_LISTS = "board_lists"
@@ -412,7 +417,12 @@ fun CruxCoachNavHost(
                         type = androidx.navigation.NavType.StringType
                         nullable = true
                         defaultValue = null
-                    }
+                    },
+                    androidx.navigation.navArgument("editUuid") {
+                        type = androidx.navigation.NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
                 ),
             ) {
                 com.cruxcoach.android.ui.board.creator.ClimbEditorScreen(
@@ -457,6 +467,9 @@ fun CruxCoachNavHost(
                     },
                     onNavigateToFork = { uuid ->
                         navController.navigate(Routes.climbCreator(forkUuid = uuid))
+                    },
+                    onNavigateToEdit = { uuid ->
+                        navController.navigate(Routes.climbCreator(editUuid = uuid))
                     },
                     onNavigateToBugReport = { title, desc ->
                         navController.navigate(Routes.bugReport(title, desc))

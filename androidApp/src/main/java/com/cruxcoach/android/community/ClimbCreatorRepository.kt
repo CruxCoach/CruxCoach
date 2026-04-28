@@ -116,9 +116,22 @@ class ClimbCreatorRepository @Inject constructor(
      * push happens inline; the returned [PublishOutcome] tells the
      * editor whether to nudge the user toward connecting their Kilter
      * account when the climb went out only over Nostr.
+     *
+     * When [existingUuid] is non-null, the row is re-saved in place and
+     * the same uuid is re-used for the Nostr d-tag. The relay treats this
+     * as a replaceable update of the original (Kind 30078, NIP-78).
      */
-    suspend fun saveAndPublish(state: ClimbEditorState, sizeLabel: String): PublishOutcome {
-        val uuid = saveDraft(state)
+    suspend fun saveAndPublish(
+        state: ClimbEditorState,
+        sizeLabel: String,
+        existingUuid: String? = null,
+    ): PublishOutcome {
+        val uuid = if (existingUuid != null) {
+            updateDraft(existingUuid, state)
+            existingUuid
+        } else {
+            saveDraft(state)
+        }
         val layoutId = userPreferences.boardLayoutId.first().toLong()
         val result = publisher.publish(uuid = uuid, layoutId = layoutId, state = state, sizeLabel = sizeLabel)
         return PublishOutcome(

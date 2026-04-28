@@ -22,6 +22,7 @@ class BoardRepositoryImpl(
         moveCount: Long = 0,
         origin: String = "kilter",
         kilterStatus: String? = null,
+        createdByPubkey: String? = null,
     ) = ClimbWithStats(
         uuid = uuid, layoutId = layoutId, setterUsername = setterUsername,
         name = name, frames = frames, framesCount = framesCount,
@@ -33,6 +34,7 @@ class BoardRepositoryImpl(
         storedMoveCount = moveCount,
         origin = origin,
         kilterStatus = kilterStatus,
+        createdByPubkey = createdByPubkey,
     )
 
     // ── Climb Queries ──────────────────────────────────────────
@@ -67,7 +69,7 @@ class BoardRepositoryImpl(
 
     override fun getClimbByUuid(uuid: String, angle: Int): ClimbWithStats? {
         return q.getClimbByUuid(angle.toLong(), uuid).executeAsOneOrNull()?.let {
-            mapClimb(it.uuid, it.layout_id, it.setter_username, it.name, it.frames, it.frames_count, it.difficulty_average, it.quality_average, it.ascensionist_count, it.description, it.is_nomatch, it.frames_pace, it.hsm, benchmarkDifficulty = it.benchmark_difficulty ?: 0.0, faUsername = it.fa_username, faAt = it.fa_at, moveCount = it.move_count, origin = it.origin, kilterStatus = it.kilter_status)
+            mapClimb(it.uuid, it.layout_id, it.setter_username, it.name, it.frames, it.frames_count, it.difficulty_average, it.quality_average, it.ascensionist_count, it.description, it.is_nomatch, it.frames_pace, it.hsm, benchmarkDifficulty = it.benchmark_difficulty ?: 0.0, faUsername = it.fa_username, faAt = it.fa_at, moveCount = it.move_count, origin = it.origin, kilterStatus = it.kilter_status, createdByPubkey = it.created_by_pubkey)
         }
     }
 

@@ -106,13 +106,23 @@ class ClimbEditorViewModel @Inject constructor(
     }
 
     /**
-     * Read SavedStateHandle for `forkUuid` (Remix from existing climb) and
-     * surface any recovered autosave to the user. Drafts navigate via the
-     * drawer instead so they're not handled here.
+     * Read SavedStateHandle for `forkUuid` (Remix from existing climb) /
+     * `editUuid` (edit your own published climb), and surface any
+     * recovered autosave to the user. Drafts navigate via the drawer
+     * instead so they're not handled here.
      */
     private suspend fun handleNavigationArgs() {
+        val editUuid: String? = savedStateHandle["editUuid"]
         val forkUuid: String? = savedStateHandle["forkUuid"]
-        if (forkUuid != null) {
+        if (editUuid != null) {
+            val source = withContext(Dispatchers.IO) {
+                boardRepository.getMyClimbs("__none__")
+                    .firstOrNull { it.uuid.equals(editUuid, ignoreCase = true) }
+                    ?: boardRepository.getCommunityClimbs()
+                        .firstOrNull { it.uuid.equals(editUuid, ignoreCase = true) }
+            }
+            if (source != null) seedFromEdit(source)
+        } else if (forkUuid != null) {
             val source = withContext(Dispatchers.IO) {
                 boardRepository.getMyClimbs("__none__")
                     .firstOrNull { it.uuid.equals(forkUuid, ignoreCase = true) }
@@ -130,7 +140,7 @@ class ClimbEditorViewModel @Inject constructor(
             }
             if (source != null) seedFromFork(source)
         }
-        // Autosave restore offer — only when the editor opens *fresh* (no fork seed).
+        // Autosave restore offer — only when the editor opens *fresh* (no fork/edit seed).
         val offer = withContext(Dispatchers.IO) { autosave.load() }
         if (offer != null && _state.value.editor.selectedHolds.isEmpty()) {
             _state.update { it.copy(autosaveOffer = offer) }
@@ -146,6 +156,25 @@ class ClimbEditorViewModel @Inject constructor(
             description = source.description,
         )
         applyEditor(seeded)
+    }
+
+    /**
+     * Edit-in-place: same uuid, no "Remix" suffix. Re-publish via
+     * [doPublish] re-uses [ClimbEditorUiState.loadedDraftUuid] which
+     * keeps the Nostr d-tag stable so the relay replaces the original
+     * Kind-30078 event instead of duplicating it.
+     */
+    private fun seedFromEdit(source: CommunityClimbRow) {
+        val holds = com.cruxcoach.domain.board.BoardClimbParser.parseFrames(source.framesText)
+            .associate { it.placementId to it.roleId }
+        val seeded = ClimbEditorState(
+            selectedHolds = holds,
+            name = source.name,
+            description = source.description,
+        )
+        undoStack.clear(); redoStack.clear()
+        _state.update { it.copy(editor = seeded, loadedDraftUuid = source.uuid, canUndo = false, canRedo = false) }
+        viewModelScope.launch { syncLeds() }
     }
 
     private suspend fun loadBoardData() {
@@ -317,9 +346,12 @@ class ClimbEditorViewModel @Inject constructor(
     private fun doPublish(sizeLabel: String) {
         _state.update { it.copy(isPublishing = true, errorMessage = null) }
         val current = _state.value.editor
+        val existingUuid = _state.value.loadedDraftUuid
         viewModelScope.launch {
             val outcome = try {
-                withContext(Dispatchers.IO) { repository.saveAndPublish(current, sizeLabel) }
+                withContext(Dispatchers.IO) {
+                    repository.saveAndPublish(current, sizeLabel, existingUuid = existingUuid)
+                }
             } catch (e: Exception) {
                 Log.w(TAG, "publish failed", e)
                 _state.update { it.copy(isPublishing = false, errorMessage = e.message ?: "Publish failed") }

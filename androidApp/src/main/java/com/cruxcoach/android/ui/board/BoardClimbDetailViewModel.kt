@@ -120,7 +120,10 @@ data class ClimbDetailState(
     val playback: PlaybackState = PlaybackState(),
     val ble: BoardSendState = BoardSendState(),
     val listDialog: ListDialogState = ListDialogState(),
-    val nearby: NearbySharingState = NearbySharingState()
+    val nearby: NearbySharingState = NearbySharingState(),
+    /** Hex pubkey of the local NostrSigner. Used by the UI to gate
+     *  edit-this-climb actions to the original setter only. */
+    val currentUserPubkey: String? = null,
 )
 
 @HiltViewModel
@@ -136,6 +139,7 @@ class BoardClimbDetailViewModel @Inject constructor(
     private val sessionQueueManager: com.cruxcoach.android.data.SessionQueueManager,
     private val bleShareManager: BleShareManager,
     private val kilterSyncEngine: com.cruxcoach.android.data.kilter.KilterSyncEngine,
+    private val nostrSigner: com.cruxcoach.android.nostr.NostrSigner,
     val climbNavState: com.cruxcoach.android.ui.navigation.ClimbNavigationState,
     @param:ApplicationContext private val context: Context
 ) : ViewModel() {
@@ -218,10 +222,12 @@ class BoardClimbDetailViewModel @Inject constructor(
                 val loop = userPreferences.routeAutoLoop.first()
                 val restDuration = userPreferences.restTimerDurationSeconds.first()
                 val restAutoStart = userPreferences.restTimerAutoStart.first()
+                val pubkey = runCatching { nostrSigner.getPublicKeyHex() }.getOrNull()
                 _state.update { it.copy(
                     playback = it.playback.copy(speedSec = speed, isLooping = loop),
                     restTimerTotalSeconds = restDuration,
-                    restTimerAutoStart = restAutoStart
+                    restTimerAutoStart = restAutoStart,
+                    currentUserPubkey = pubkey,
                 ) }
             }
         }
