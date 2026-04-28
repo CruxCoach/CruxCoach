@@ -343,6 +343,20 @@ interface CommunityClimbQueries {
     )
     fun markClimbPublishedNostr(uuid: String, nostrEventId: String, nostrDTag: String)
     fun markClimbPublishFailed(uuid: String)
+
+    // ── Kilter-side publish lifecycle (independent of Nostr sync_status) ──
+    /** Mark a climb as enqueued for Kilter publish. Sets `kilter_status='pending'`. */
+    fun markKilterPublishPending(uuid: String)
+    /**
+     * Mark a climb as accepted by Kilter. `via` is 'self' (user account) or
+     * 'cruxcoach' (bundled fallback). `syncedAtEpochSeconds` is the moment
+     * Kilter accepted; useful for the "veröffentlicht am" UI badge.
+     */
+    fun markKilterPublishSynced(uuid: String, via: String, syncedAtEpochSeconds: Long)
+    /** Mark a climb's Kilter publish as failed; `error` captures the last reason. */
+    fun markKilterPublishFailed(uuid: String, error: String)
+    /** Climbs with `origin='cruxcoach'`, Nostr-published, awaiting Kilter sync. */
+    fun getClimbsAwaitingKilterRetry(): List<CommunityClimbRow>
     fun getDraftClimbs(): List<CommunityClimbRow>
     fun getMyClimbs(pubkey: String): List<CommunityClimbRow>
     fun getCommunityClimbs(): List<CommunityClimbRow>

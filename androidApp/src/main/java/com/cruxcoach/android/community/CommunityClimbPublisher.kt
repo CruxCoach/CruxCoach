@@ -1,15 +1,19 @@
 package com.cruxcoach.android.community
 
 import android.util.Log
+import com.cruxcoach.android.data.UserPreferences
+import com.cruxcoach.android.data.kilter.KilterClimbPublisher
 import com.cruxcoach.android.nostr.NostrRelayPool
 import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.data.repository.BoardRepository
+import com.cruxcoach.domain.board.BoardClimbParser
 import com.cruxcoach.domain.community.ClimbEditorState
 import com.cruxcoach.domain.community.buildCommunityClimbEvent
 import com.cruxcoach.domain.community.encodeFrames
 import com.vitorpamplona.quartz.nip01Core.core.Event
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.flow.first
 
 private const val TAG = "ClimbPublisher"
 private const val KIND_REPLACEABLE_PARAMETERIZED = 30078
@@ -29,6 +33,8 @@ class CommunityClimbPublisher @Inject constructor(
     private val nostrSigner: NostrSigner,
     private val pool: NostrRelayPool,
     private val boardRepository: BoardRepository,
+    private val kilterPublisher: KilterClimbPublisher,
+    private val userPreferences: UserPreferences,
 ) {
     /**
      * Publish a freshly-saved local draft. Returns the published event's
@@ -79,7 +85,45 @@ class CommunityClimbPublisher @Inject constructor(
             nostrEventId = event.id,
             nostrDTag = payload.dTag,
         )
+
+        // Best-effort Kilter mirror. Runs after Nostr success so the Nostr
+        // path is the source of truth — Kilter publishing failures don't
+        // unwind the published Nostr event. The orchestrator decides which
+        // path (self / bundled / skip) and updates kilter_status flags
+        // accordingly. Doesn't throw — a failed Kilter mirror is queued
+        // for retry, the climb is still considered "published".
+        runCatching {
+            val boardSize = withBoardSize(layoutId)
+            val framesClimbConcat = BoardClimbParser.encodeClimbConcat(
+                state.selectedHolds.entries
+                    .sortedBy { it.key }
+                    .map { com.cruxcoach.domain.board.BoardHold(it.key, it.value) }
+            )
+            kilterPublisher.publish(
+                uuid = uuid,
+                layoutId = layoutId,
+                state = state,
+                sizeLabel = sizeLabel,
+                boardSize = boardSize,
+                nostrEvent = event,
+                framesClimbConcat = framesClimbConcat,
+            )
+        }.onFailure { Log.w(TAG, "kilter publish orchestration threw — recoverable", it) }
+
         return event.id
+    }
+
+    /** Resolve the active board size for the layout. Returns null if
+     *  the device hasn't synced board metadata yet — the Kilter publish
+     *  is then skipped (we can't fill `edge_*` fields without it). */
+    private suspend fun withBoardSize(layoutId: Long): com.cruxcoach.data.repository.BoardSize? {
+        // Pull the user's current board product size; the layout id
+        // selected in the editor is already filtered through the same
+        // setting, so they're consistent. We don't know the per-layout
+        // dimensions from layoutId alone — userPreferences.boardProductSizeId
+        // is the authoritative pointer.
+        val sizeId = userPreferences.boardProductSizeId.first()
+        return runCatching { boardRepository.getProductSize(sizeId) }.getOrNull()
     }
 
     /** Convenience: drain all `sync_status='draft'` climbs and publish each. */

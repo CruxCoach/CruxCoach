@@ -611,6 +611,25 @@ class BoardRepositoryImpl(
         q.markClimbPublishFailed(uuid)
     }
 
+    override fun markKilterPublishPending(uuid: String) {
+        q.markKilterPublishPending(uuid)
+    }
+
+    override fun markKilterPublishSynced(uuid: String, via: String, syncedAtEpochSeconds: Long) {
+        q.markKilterPublishSynced(
+            kilter_synced_at = syncedAtEpochSeconds,
+            kilter_publish_via = via,
+            uuid = uuid,
+        )
+    }
+
+    override fun markKilterPublishFailed(uuid: String, error: String) {
+        q.markKilterPublishFailed(kilter_error = error, uuid = uuid)
+    }
+
+    override fun getClimbsAwaitingKilterRetry(): List<CommunityClimbRow> =
+        q.getClimbsAwaitingKilterRetry().executeAsList().map { it.toCommunityRow() }
+
     override fun getDraftClimbs(): List<CommunityClimbRow> =
         q.getDraftClimbs().executeAsList().map { it.toCommunityRow() }
 

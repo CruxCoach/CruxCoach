@@ -57,6 +57,54 @@ private data class CustomWallRequest(
     val serialNumber: String? = null
 )
 
+/**
+ * Wire shape for `POST /api/climbs/create-climb/transaction`.
+ *
+ * Snake-cased fields match the column names from the FINDINGS.md schema
+ * dump. The endpoint name suggests Kilter wraps the climb + climb-stats
+ * inserts in a single PowerSync-style transaction; for v1 we ship just
+ * the climb half — stats get aggregated server-side from ratings/logs.
+ */
+@Serializable
+private data class CreateClimbTransaction(
+    val climb: ClimbCreatePayload,
+)
+
+@Serializable
+private data class ClimbCreatePayload(
+    val climb_uuid: String,
+    val setter_uuid: String,
+    val name: String,
+    val description: String,
+    val frames: String,                    // climbConcat-format `h{id}p{ref}…`
+    val product_name: String,              // e.g. "Kilter Board Original"
+    val is_listed: Boolean = true,
+    val is_draft: Boolean = false,
+    val frames_count: Int = 1,
+    val frames_pace: Int = 0,
+    val hsm: Int = 0,
+    val edge_left: Int,
+    val edge_right: Int,
+    val edge_bottom: Int,
+    val edge_top: Int,
+    val created_at: String,
+    val updated_at: String,
+)
+
+/** Outcome of a Kilter publish. Distinct from a generic Result so callers
+ *  can react to the auth-missing case (offer login UI) vs. transient errors
+ *  (queue retry) vs. permanent rejections (e.g. uuid conflict). */
+sealed class KilterPublishResult {
+    /** Kilter accepted the climb. `climbUuid` echoes what we sent. */
+    data class Success(val climbUuid: String) : KilterPublishResult()
+    /** No valid token — user needs to log in (or the bundled path applies). */
+    object NotAuthenticated : KilterPublishResult()
+    /** Network/server error; retry candidate. `message` carries the body. */
+    data class TransientError(val message: String) : KilterPublishResult()
+    /** Server rejected the payload (4xx); usually a content/validation issue. */
+    data class PermanentError(val message: String, val httpCode: Int) : KilterPublishResult()
+}
+
 @Serializable
 private data class KilterTokenResponse(
     @SerialName("access_token") val accessToken: String,
@@ -356,6 +404,80 @@ class KilterApiClient @Inject constructor(
         } catch (e: Exception) {
             Log.w(TAG, "Custom wall registration error — using local context", e)
             localContext
+        }
+    }
+
+    /**
+     * Publish a CruxCoach-authored climb to Kilter's official server DB.
+     *
+     * Endpoint per RE: `POST /api/climbs/create-climb/transaction`. The
+     * `setter_uuid` is read from the cached Keycloak token (sub-claim);
+     * the `climb_uuid` is the same UUID we already generated in the
+     * editor and pinned in the Nostr Kind 30078 event, so the row stays
+     * deduplicated when the daily Kilter-API harvester pulls it back.
+     *
+     * Idempotent: re-calling with the same climb_uuid is a server-side
+     * no-op (Kilter treats duplicate UUID as already-exists). The caller
+     * doesn't need to track "did this attempt actually create or just
+     * idempotency-replay" for status flags — both count as success.
+     */
+    suspend fun publishClimb(
+        climbUuid: String,
+        name: String,
+        description: String,
+        framesClimbConcat: String,
+        productName: String,
+        edgeLeft: Int,
+        edgeRight: Int,
+        edgeBottom: Int,
+        edgeTop: Int,
+    ): KilterPublishResult = withContext(Dispatchers.IO) {
+        val token = ensureValidToken()
+            ?: return@withContext KilterPublishResult.NotAuthenticated
+        val setterUuid = tokenStore.getUserUuid()?.takeIf { it.isNotBlank() }
+            ?: return@withContext KilterPublishResult.NotAuthenticated
+
+        val nowIso = java.time.Instant.now().toString()
+        val payload = CreateClimbTransaction(
+            climb = ClimbCreatePayload(
+                climb_uuid = climbUuid,
+                setter_uuid = setterUuid,
+                name = name,
+                description = description,
+                frames = framesClimbConcat,
+                product_name = productName,
+                edge_left = edgeLeft,
+                edge_right = edgeRight,
+                edge_bottom = edgeBottom,
+                edge_top = edgeTop,
+                created_at = nowIso,
+                updated_at = nowIso,
+            )
+        )
+        val body = json.encodeToString(CreateClimbTransaction.serializer(), payload)
+            .toRequestBody("application/json".toMediaType())
+        val request = Request.Builder()
+            .url("$API_BASE/climbs/create-climb/transaction")
+            .addHeader("Authorization", "Bearer $token")
+            .post(body)
+            .build()
+
+        try {
+            val response = httpClient.newCall(request).execute()
+            if (response.isSuccessful) {
+                Log.i(TAG, "publishClimb ok uuid=$climbUuid setter=$setterUuid")
+                return@withContext KilterPublishResult.Success(climbUuid)
+            }
+            val responseBody = response.body?.string().orEmpty()
+            Log.w(TAG, "publishClimb HTTP ${response.code}: $responseBody")
+            return@withContext when (response.code) {
+                401, 403 -> KilterPublishResult.NotAuthenticated
+                in 400..499 -> KilterPublishResult.PermanentError(responseBody, response.code)
+                else -> KilterPublishResult.TransientError("HTTP ${response.code}: $responseBody")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "publishClimb exception uuid=$climbUuid", e)
+            return@withContext KilterPublishResult.TransientError(e.message ?: "network error")
         }
     }
 

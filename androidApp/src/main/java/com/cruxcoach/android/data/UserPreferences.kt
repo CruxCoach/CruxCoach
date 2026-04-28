@@ -33,6 +33,10 @@ object KeyScopedKeys {
     val KILTER_SYNC_ENABLED = booleanPreferencesKey("kilter_sync_enabled")
     val KILTER_PUSH_ENABLED = booleanPreferencesKey("kilter_push_enabled")
     val KILTER_LAST_SYNC = stringPreferencesKey("kilter_last_sync")
+    // Climb-publishing flags (separate from ascent push so users can opt
+    // in/out independently — and so non-Kilter-users don't get pinged).
+    val KILTER_CLIMB_PUBLISH_ENABLED = booleanPreferencesKey("kilter_climb_publish_enabled")
+    val KILTER_BUNDLED_FALLBACK_ENABLED = booleanPreferencesKey("kilter_bundled_fallback_enabled")
     val SIGNER_MODE = stringPreferencesKey("signer_mode")
     val AMBER_PUBKEY = stringPreferencesKey("amber_pubkey")
     val AMBER_PACKAGE_NAME = stringPreferencesKey("amber_package_name")
@@ -292,12 +296,40 @@ class UserPreferences(
         prefs[KeyScopedKeys.KILTER_LAST_SYNC]
     }
 
+    /**
+     * Whether to push newly created CruxCoach climbs into the official
+     * Kilter database. Default `true` — the design goal is that every
+     * CruxCoach-set climb also lives on Kilter (via the user's account
+     * if logged in, or via the bundled fallback if enabled).
+     */
+    val kilterClimbPublishEnabled: Flow<Boolean> = keyScoped.data.map { prefs ->
+        prefs[KeyScopedKeys.KILTER_CLIMB_PUBLISH_ENABLED] ?: true
+    }
+
+    /**
+     * Whether to fall back to the CruxCoach-bundled Kilter account when the
+     * user is not logged into Kilter. Default `false` — opt-in because the
+     * Kilter-side `setter_uuid` would be the CruxCoach service account
+     * (with a "via CruxCoach" attribution suffix), not the user.
+     */
+    val kilterBundledFallbackEnabled: Flow<Boolean> = keyScoped.data.map { prefs ->
+        prefs[KeyScopedKeys.KILTER_BUNDLED_FALLBACK_ENABLED] ?: false
+    }
+
     suspend fun setKilterSyncEnabled(enabled: Boolean) {
         keyScoped.edit { prefs -> prefs[KeyScopedKeys.KILTER_SYNC_ENABLED] = enabled }
     }
 
     suspend fun setKilterPushEnabled(enabled: Boolean) {
         keyScoped.edit { prefs -> prefs[KeyScopedKeys.KILTER_PUSH_ENABLED] = enabled }
+    }
+
+    suspend fun setKilterClimbPublishEnabled(enabled: Boolean) {
+        keyScoped.edit { prefs -> prefs[KeyScopedKeys.KILTER_CLIMB_PUBLISH_ENABLED] = enabled }
+    }
+
+    suspend fun setKilterBundledFallbackEnabled(enabled: Boolean) {
+        keyScoped.edit { prefs -> prefs[KeyScopedKeys.KILTER_BUNDLED_FALLBACK_ENABLED] = enabled }
     }
 
     suspend fun setKilterLastSync(timestamp: String?) {
