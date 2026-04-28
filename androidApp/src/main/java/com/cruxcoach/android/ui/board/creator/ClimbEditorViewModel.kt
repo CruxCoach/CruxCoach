@@ -394,7 +394,11 @@ class ClimbEditorViewModel @Inject constructor(
             val angle = _state.value.editor.angle ?: return@launch
             val layoutId = userPreferences.boardLayoutId.first().toLong()
             val seed = _state.value.editor.selectedHolds.keys
-            val map = withContext(Dispatchers.IO) {
+            // Default dispatcher — the cold path does a single SQL read
+            // (cached SQLDelight prepared stmt) followed by a CPU-bound
+            // parse/aggregate over the cached IntArray[]. Hot path is pure
+            // CPU. Default's pool fits better than IO here.
+            val map = withContext(Dispatchers.Default) {
                 boardRepository.computeEditorHeatmap(layoutId, angle.toLong(), seed)
             }
             _state.update { it.copy(heatmap = map) }

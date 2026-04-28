@@ -343,23 +343,45 @@ class BoardRepositoryImpl(
         q.deleteLocalClimb(uuid)
     }
 
+    /**
+     * Heatmap fast-path: parsed placements per (layoutId, angle).
+     *
+     * The expensive part of computing the heatmap is reading every climb's
+     * `frames` for the active layout/angle and extracting placement IDs.
+     * Layout/angle don't change while the user edits, so we parse once and
+     * reuse the IntArray-of-placements across every recompute. Cuts the
+     * per-tap latency from "scan SQL + regex 50k strings" to "iterate a
+     * cached IntArray[]".
+     *
+     * Cache invalidates implicitly when the key changes (next layout or
+     * angle re-builds it). New climbs synced mid-session won't appear in
+     * the heatmap until the editor reopens — acceptable trade-off.
+     */
+    private class HeatmapCache(
+        val layoutId: Long,
+        val angle: Long,
+        val climbPlacements: Array<IntArray>,
+    )
+
+    @Volatile
+    private var heatmapCache: HeatmapCache? = null
+
     override fun computeEditorHeatmap(
         layoutId: Long,
         angle: Long,
         seedHolds: Set<Int>,
     ): Map<Int, Float> {
-        val rows = q.getFramesForLayoutAndAngle(layoutId, angle).executeAsList()
-        if (rows.isEmpty()) return emptyMap()
+        val cache = ensureHeatmapCache(layoutId, angle) ?: return emptyMap()
 
-        val placementCounts = HashMap<Int, Int>(rows.size * 2)
+        // Most calls have empty seedHolds (general popularity); allocate a
+        // bool[] of seed-membership only when actually filtering.
+        val seedAsArray: IntArray? = if (seedHolds.isEmpty()) null else seedHolds.toIntArray()
+
+        val placementCounts = HashMap<Int, Int>(cache.climbPlacements.size.coerceAtMost(2048))
         var matchedClimbs = 0
 
-        for (row in rows) {
-            val placements = parsePlacementIds(row.frames)
-            // Seed-hold filter: only count climbs whose first frame contains
-            // every seed hold. Empty seedHolds → counts every climb (general
-            // popularity heatmap).
-            if (seedHolds.isNotEmpty() && !placements.containsAll(seedHolds)) continue
+        for (placements in cache.climbPlacements) {
+            if (seedAsArray != null && !placementsContainAll(placements, seedAsArray)) continue
             matchedClimbs++
             for (pid in placements) {
                 placementCounts[pid] = (placementCounts[pid] ?: 0) + 1
@@ -367,9 +389,11 @@ class BoardRepositoryImpl(
         }
         if (matchedClimbs == 0) return emptyMap()
 
-        // Strip seed holds from the heat map — the editor renders them in
-        // their role colour already, no need to highlight them again.
-        for (pid in seedHolds) placementCounts.remove(pid)
+        // Strip seed holds — the editor already renders them in their role
+        // colour, so a heatmap halo on top is just noise.
+        if (seedAsArray != null) {
+            for (pid in seedAsArray) placementCounts.remove(pid)
+        }
 
         val maxCount = placementCounts.values.maxOrNull() ?: return emptyMap()
         if (maxCount == 0) return emptyMap()
@@ -377,16 +401,81 @@ class BoardRepositoryImpl(
         return placementCounts.mapValues { (_, count) -> count / maxCountF }
     }
 
-    /** Extract placement IDs from a frames string. Delegates to
-     *  BoardClimbParser, which handles both Aurora delta-format
-     *  (`p{id}r{role}…`) and Kilter range-format (`h{id}p{ref}…`). */
-    private fun parsePlacementIds(frames: String): Set<Int> {
-        if (frames.isBlank()) return emptySet()
-        val holds = com.cruxcoach.domain.board.BoardClimbParser.parseFrames(frames)
-        if (holds.isEmpty()) return emptySet()
-        val ids = HashSet<Int>(holds.size)
-        for (h in holds) ids.add(h.placementId)
-        return ids
+    private fun ensureHeatmapCache(layoutId: Long, angle: Long): HeatmapCache? {
+        val existing = heatmapCache
+        if (existing != null && existing.layoutId == layoutId && existing.angle == angle) {
+            return existing
+        }
+        // Lock-free; double rebuild on a race is harmless (idempotent),
+        // and racing rebuilds for the same key are extremely unlikely
+        // since the editor only fires one heatmap job at a time.
+        val rows = q.getFramesForLayoutAndAngle(layoutId, angle).executeAsList()
+        if (rows.isEmpty()) {
+            heatmapCache = null
+            return null
+        }
+        val parsed = Array(rows.size) { i -> extractPlacementIdsFast(rows[i].frames) }
+        val cache = HeatmapCache(layoutId, angle, parsed)
+        heatmapCache = cache
+        return cache
+    }
+
+    /**
+     * Fast inline parser for placement IDs in a frames string.
+     *
+     * Handles both Aurora delta (`p{id}r{role}…`) and Kilter range
+     * (`h{id}p{ref}[s{n}][e{n}]…`). Single pass, no regex, no autoboxing.
+     * Used only on the heatmap hot path — for general parsing,
+     * BoardClimbParser is still the canonical entry point.
+     */
+    private fun extractPlacementIdsFast(frames: String): IntArray {
+        if (frames.isEmpty()) return EMPTY_INT_ARRAY
+        // First-frame-only — the editor cares about static frames; for
+        // multi-frame routes we'd already filter on `frames_count = 1` in SQL.
+        val end = frames.indexOf(',').let { if (it < 0) frames.length else it }
+        if (end == 0) return EMPTY_INT_ARRAY
+        // Detect format from the first character. `h` = Kilter range, else Aurora delta.
+        val marker = if (frames[0] == 'h') 'h' else 'p'
+        // Reasonable upper bound — most boulders have ≤ 30 holds; grow if needed.
+        var buf = IntArray(32)
+        var size = 0
+        var i = 0
+        while (i < end) {
+            if (frames[i] == marker) {
+                i++
+                var n = 0
+                var consumed = false
+                while (i < end) {
+                    val c = frames[i]
+                    if (c < '0' || c > '9') break
+                    n = n * 10 + (c.code - '0'.code)
+                    i++
+                    consumed = true
+                }
+                if (consumed) {
+                    if (size == buf.size) buf = buf.copyOf(buf.size * 2)
+                    buf[size++] = n
+                }
+            } else {
+                i++
+            }
+        }
+        return if (size == buf.size) buf else buf.copyOf(size)
+    }
+
+    private fun placementsContainAll(placements: IntArray, seed: IntArray): Boolean {
+        for (s in seed) {
+            var found = false
+            for (p in placements) {
+                if (p == s) { found = true; break }
+            }
+            if (!found) return false
+        }
+        return true
+    }
+
+    private companion object {
+        private val EMPTY_INT_ARRAY = IntArray(0)
     }
 
     override fun insertLocalDraft(
