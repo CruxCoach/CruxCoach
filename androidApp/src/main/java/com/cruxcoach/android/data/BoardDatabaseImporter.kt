@@ -431,9 +431,28 @@ class BoardDatabaseImporter(
             }
             val moveCountExpr = if (hasMoveCount) "COALESCE(move_count, 0)" else "0"
 
-            // Import in batches by rowid range (avoids OFFSET scanning and CursorWindow issues on older APIs)
-            val minRowid = queryLong(targetDb, "SELECT MIN(rowid) FROM src.$srcTable WHERE is_listed = 1")
-            val maxRowid = queryLong(targetDb, "SELECT MAX(rowid) FROM src.$srcTable WHERE is_listed = 1")
+            // Two-step bulk merge per batch:
+            //
+            //   Step 1 — INSERT OR IGNORE: adds rows whose uuid isn't yet
+            //   in target. Existing rows are skipped, so CruxCoach-side
+            //   metadata (origin, source, sync_status, nostr_*, kilter_*,
+            //   created_by_pubkey, frames_hash) is preserved.
+            //
+            //   Step 2 — UPDATE … SET (cols) = (SELECT cols FROM src):
+            //   refreshes Kilter-authoritative fields on rows that exist
+            //   in both. Tuple-update-from-select is supported on
+            //   SQLite ≥3.15 (Android API 26+, our minSdk). The SET list
+            //   intentionally excludes every CruxCoach column so they
+            //   survive the refresh.
+            //
+            // Includes is_listed in the UPDATE set + lets the UPDATE
+            // batch include unlisted rows (so the cron's tombstone-sync
+            // — `UPDATE blob.climbs SET is_listed = 0 WHERE …` — actually
+            // propagates to client-side defaults that filter is_listed=1).
+            // The INSERT path stays is_listed=1 only (no point inserting
+            // tombstones for climbs we don't have).
+            val minRowid = queryLong(targetDb, "SELECT MIN(rowid) FROM src.$srcTable")
+            val maxRowid = queryLong(targetDb, "SELECT MAX(rowid) FROM src.$srcTable")
             var batchStart = minRowid
             var scanned = 0
             while (batchStart <= maxRowid) {
@@ -441,7 +460,7 @@ class BoardDatabaseImporter(
                 targetDb.beginTransaction()
                 try {
                     targetDb.execSQL("""
-                        INSERT OR REPLACE INTO climbs(
+                        INSERT OR IGNORE INTO climbs(
                             uuid, layout_id, setter_username, name, frames,
                             frames_count, is_listed, edge_left, edge_right,
                             edge_bottom, edge_top, created_at,
@@ -454,6 +473,25 @@ class BoardDatabaseImporter(
                                $moveCountExpr
                         FROM src.$srcTable
                         WHERE is_listed = 1 AND rowid BETWEEN $batchStart AND $batchEnd
+                    """)
+                    targetDb.execSQL("""
+                        UPDATE climbs SET
+                            (layout_id, setter_username, name, frames,
+                             frames_count, is_listed, edge_left, edge_right,
+                             edge_bottom, edge_top, created_at, description,
+                             is_nomatch, frames_pace, hsm, move_count)
+                            = (SELECT layout_id, setter_username, name, frames,
+                                      frames_count, is_listed, edge_left, edge_right,
+                                      edge_bottom, edge_top, created_at,
+                                      COALESCE(description, ''), COALESCE(is_nomatch, 0),
+                                      COALESCE(frames_pace, 0), COALESCE(hsm, 0),
+                                      $moveCountExpr
+                               FROM src.$srcTable
+                               WHERE src.$srcTable.uuid = climbs.uuid)
+                        WHERE uuid IN (
+                            SELECT uuid FROM src.$srcTable
+                            WHERE rowid BETWEEN $batchStart AND $batchEnd
+                        )
                     """)
                     targetDb.setTransactionSuccessful()
                 } finally {
