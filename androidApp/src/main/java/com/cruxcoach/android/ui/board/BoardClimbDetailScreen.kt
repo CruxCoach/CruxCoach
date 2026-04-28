@@ -236,7 +236,7 @@ fun BoardClimbDetailScreen(
         topBar = {
             Column {
                 TopAppBar(
-                    title = { Text(stringResource(R.string.board_detail_title)) },
+                    title = {},
                     navigationIcon = {
                         IconButton(
                             onClick = onNavigateBack,
