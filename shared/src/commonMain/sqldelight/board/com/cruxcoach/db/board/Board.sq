@@ -23,12 +23,18 @@ CREATE TABLE climbs (
     is_deleted INTEGER NOT NULL DEFAULT 0,
     move_count INTEGER NOT NULL DEFAULT 0,
     -- FEAT-003 community-climb fields:
-    source TEXT NOT NULL DEFAULT 'kilter',          -- 'kilter' | 'nostr' | 'local'
+    source TEXT NOT NULL DEFAULT 'kilter',          -- 'kilter' | 'nostr' | 'local' (data origin, mutable)
     nostr_event_id TEXT,                            -- Kind 30078 event id (set on publish)
     nostr_d_tag TEXT,                               -- d-tag of the published event
     created_by_pubkey TEXT,                         -- setter pubkey for nostr/local climbs
     frames_hash TEXT,                               -- canonical sha256 of frames+layout (dup detection)
-    sync_status TEXT NOT NULL DEFAULT 'synced'      -- 'draft' | 'synced' | 'published_nostr' | 'published_kilter' | 'published_both' | 'failed'
+    sync_status TEXT NOT NULL DEFAULT 'synced',     -- 'draft' | 'synced' | 'published_nostr' | 'published_kilter' | 'published_both' | 'failed'
+    -- v0.1.5 provenance + Kilter publish status:
+    origin TEXT NOT NULL DEFAULT 'kilter',          -- 'cruxcoach' | 'kilter' (immutable, where authored)
+    kilter_status TEXT,                             -- NULL | 'pending' | 'synced' | 'failed'
+    kilter_synced_at INTEGER,                       -- epoch seconds, set when Kilter accepts
+    kilter_publish_via TEXT,                        -- 'self' (user account) | 'cruxcoach' (bundled)
+    kilter_error TEXT                               -- last Kilter publish failure message
 );
 
 CREATE TABLE climb_stats (
@@ -142,6 +148,8 @@ CREATE INDEX idx_climb_stats_count_cover ON climb_stats(
 CREATE INDEX idx_climbs_source ON climbs(source);
 CREATE INDEX idx_climbs_frames_hash ON climbs(frames_hash);
 CREATE INDEX idx_climbs_pubkey ON climbs(created_by_pubkey);
+CREATE INDEX idx_climbs_origin ON climbs(origin);
+CREATE INDEX idx_climbs_kilter_status ON climbs(kilter_status);
 
 -- FEAT-003 grade consensus cache. MVP only stores setter_grade_id; full
 -- consensus aggregation (vote_count, confidence, trimmed mean) lands when
@@ -487,11 +495,11 @@ insertLocalDraft:
 INSERT OR REPLACE INTO climbs(uuid, layout_id, setter_username, name, frames,
     frames_count, is_listed, edge_left, edge_right, edge_bottom, edge_top, created_at,
     description, is_nomatch, frames_pace, hsm, move_count,
-    source, created_by_pubkey, frames_hash, sync_status)
+    source, created_by_pubkey, frames_hash, sync_status, origin)
 VALUES (?, ?, ?, ?, ?,
     1, 1, NULL, NULL, NULL, NULL, ?,
     ?, 0, 0, 0, ?,
-    'local', ?, ?, 'draft');
+    'local', ?, ?, 'draft', 'cruxcoach');
 
 -- Delete a local-only climb (drafts user explicitly discards). Also
 -- removes its climb_stats row to keep the browse VIEW consistent. Use
@@ -518,16 +526,18 @@ WHERE c.layout_id = :layoutId
   AND c.frames_count = 1
   AND LENGTH(c.frames) > 0;
 
--- Upsert a community climb received from Nostr (source='nostr').
+-- Upsert a community climb received from Nostr (source='nostr'). These
+-- are CruxCoach-origin by definition — only our editor publishes events
+-- in the com.cruxcoach.climb namespace, so origin is hardcoded.
 upsertCommunityClimb:
 INSERT OR REPLACE INTO climbs(uuid, layout_id, setter_username, name, frames,
     frames_count, is_listed, edge_left, edge_right, edge_bottom, edge_top, created_at,
     description, is_nomatch, frames_pace, hsm, move_count,
-    source, nostr_event_id, nostr_d_tag, created_by_pubkey, frames_hash, sync_status)
+    source, nostr_event_id, nostr_d_tag, created_by_pubkey, frames_hash, sync_status, origin)
 VALUES (?, ?, ?, ?, ?,
     1, 1, NULL, NULL, NULL, NULL, ?,
     ?, 0, 0, 0, ?,
-    'nostr', ?, ?, ?, ?, 'synced');
+    'nostr', ?, ?, ?, ?, 'synced', 'cruxcoach');
 
 -- Flip a draft to "published_nostr" once the relay accepts the event.
 markClimbPublishedNostr:
@@ -537,6 +547,34 @@ WHERE uuid = ?;
 -- Mark a draft as failed (so the publish queue can retry / surface error).
 markClimbPublishFailed:
 UPDATE climbs SET sync_status = 'failed' WHERE uuid = ?;
+
+-- Kilter-side publish lifecycle. Separate from sync_status because the
+-- Kilter API push is a parallel best-effort path: a climb can be live
+-- on Nostr (sync_status='published_nostr') while still pending or failed
+-- on the Kilter side. Used by the future Kilter-direct-publish FEAT and
+-- by the bundled-account fallback service.
+markKilterPublishPending:
+UPDATE climbs SET kilter_status = 'pending', kilter_error = NULL WHERE uuid = ?;
+
+markKilterPublishSynced:
+UPDATE climbs SET kilter_status = 'synced',
+                  kilter_synced_at = ?,
+                  kilter_publish_via = ?,
+                  kilter_error = NULL
+WHERE uuid = ?;
+
+markKilterPublishFailed:
+UPDATE climbs SET kilter_status = 'failed', kilter_error = ? WHERE uuid = ?;
+
+-- Climbs that need a Kilter retry: cruxcoach-origin, not yet on Kilter
+-- (NULL or 'failed') and Nostr-published (so we know the user finalized
+-- their publish). Used by the retry queue.
+getClimbsAwaitingKilterRetry:
+SELECT * FROM climbs
+WHERE origin = 'cruxcoach'
+  AND sync_status = 'published_nostr'
+  AND (kilter_status IS NULL OR kilter_status = 'failed')
+ORDER BY created_at ASC;
 
 -- Drafts waiting to be published (source='local' AND sync_status='draft').
 getDraftClimbs:
