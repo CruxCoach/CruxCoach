@@ -42,6 +42,10 @@ object KeyScopedKeys {
     // key — supporting the "anonymous via CruxCoach" mode where the user
     // doesn't want their npub publicly attached to setter attribution.
     val NOSTR_BUNDLED_SIGNING_ENABLED = booleanPreferencesKey("nostr_bundled_signing_enabled")
+    // Cursor for the live community-climb Nostr subscription. Holds the
+    // largest event.created_at we've persisted; subsequent subscribes use
+    // it as the `since` filter so we don't re-process the historical tail.
+    val COMMUNITY_CLIMB_SINCE = longPreferencesKey("community_climb_since")
     val SIGNER_MODE = stringPreferencesKey("signer_mode")
     val AMBER_PUBKEY = stringPreferencesKey("amber_pubkey")
     val AMBER_PACKAGE_NAME = stringPreferencesKey("amber_package_name")
@@ -350,6 +354,19 @@ class UserPreferences(
 
     suspend fun setNostrBundledSigningEnabled(enabled: Boolean) {
         keyScoped.edit { prefs -> prefs[KeyScopedKeys.NOSTR_BUNDLED_SIGNING_ENABLED] = enabled }
+    }
+
+    /**
+     * Cursor for the live community-climb Nostr subscription. Returns
+     * `null` until the first event has landed, then the max
+     * `event.created_at` (epoch seconds) we've successfully upserted.
+     */
+    val communityClimbSince: Flow<Long?> = keyScoped.data.map { prefs ->
+        prefs[KeyScopedKeys.COMMUNITY_CLIMB_SINCE]
+    }
+
+    suspend fun setCommunityClimbSince(epochSeconds: Long) {
+        keyScoped.edit { prefs -> prefs[KeyScopedKeys.COMMUNITY_CLIMB_SINCE] = epochSeconds }
     }
 
     suspend fun setKilterLastSync(timestamp: String?) {

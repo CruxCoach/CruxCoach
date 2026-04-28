@@ -59,6 +59,9 @@ class CruxCoachApp : Application(), Configuration.Provider {
     @Inject
     lateinit var backupPreferences: dagger.Lazy<com.cruxcoach.android.nostr.backup.BackupPreferences>
 
+    @Inject
+    lateinit var communityClimbSubscriber: dagger.Lazy<com.cruxcoach.android.community.CommunityClimbSubscriber>
+
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override val workManagerConfiguration: Configuration
@@ -212,6 +215,16 @@ class CruxCoachApp : Application(), Configuration.Provider {
             runCatching {
                 com.cruxcoach.android.data.kilter.KilterPublishRetryWorker.schedule(this@CruxCoachApp)
             }.onFailure { PerfLogger.logCoroutine("appScope", "KilterPublishRetryWorker.schedule failed: ${it.message}") }
+
+            // Channel B: live Nostr subscription for community climbs.
+            // Closes the latency gap between two daily Blossom snapshots —
+            // climbs other users publish appear in the local DB within
+            // seconds of being relayed, not on the next blob refresh.
+            // Idempotent; the subscriber re-uses the existing relay pool
+            // and self-restarts on connection drops.
+            runCatching {
+                communityClimbSubscriber.get().start(appScope)
+            }.onFailure { PerfLogger.logCoroutine("appScope", "CommunityClimbSubscriber.start failed: ${it.message}") }
 
             runCatching {
                 // FEAT-002: reconcile the backup worker with persisted prefs on
