@@ -205,6 +205,14 @@ class CruxCoachApp : Application(), Configuration.Provider {
                 BoardSyncWorker.schedule(this@CruxCoachApp, interval)
             }.onFailure { PerfLogger.logCoroutine("appScope", "BoardSyncWorker.schedule failed: ${it.message}") }
 
+            // Kilter publish retry — drains rows where the direct push
+            // failed (network blip, server hiccup, token expiry). Idempotent;
+            // safe to schedule unconditionally, the worker self-skips when
+            // the user has no Kilter token or disabled climb publishing.
+            runCatching {
+                com.cruxcoach.android.data.kilter.KilterPublishRetryWorker.schedule(this@CruxCoachApp)
+            }.onFailure { PerfLogger.logCoroutine("appScope", "KilterPublishRetryWorker.schedule failed: ${it.message}") }
+
             runCatching {
                 // FEAT-002: reconcile the backup worker with persisted prefs on
                 // every app start — catches cases where the user flipped the

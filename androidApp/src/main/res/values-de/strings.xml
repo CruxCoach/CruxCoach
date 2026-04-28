@@ -751,6 +751,11 @@
     <string name="kilter_sync_now">Jetzt synchronisieren</string>
     <string name="kilter_push_label">Zu Kilter hochladen</string>
     <string name="kilter_push_desc">Lokale Begehungen auch nach Kilter hochladen</string>
+    <string name="kilter_climb_publish_title">Climbs zu Kilter</string>
+    <string name="kilter_climb_publish_label">Climbs auch zu Kilter veröffentlichen</string>
+    <string name="kilter_climb_publish_desc">Neue CruxCoach-Climbs zusätzlich in die offizielle Kilter-Datenbank schicken, damit sie auch in der Kilter-App auftauchen.</string>
+    <string name="kilter_bundled_fallback_label">Über CruxCoach-Account, wenn nicht angemeldet</string>
+    <string name="kilter_bundled_fallback_desc">Falls du keinen Kilter-Login hast: Veröffentlichung über den CruxCoach-Service-Account. Der Original-Setter (dein npub) bleibt in der Beschreibung erhalten.</string>
     <string name="kilter_session_expired">Sitzung abgelaufen — bitte neu anmelden</string>
     <string name="kilter_relogin_button">Neu anmelden</string>
     <string name="kilter_disconnect">Verbindung trennen</string>

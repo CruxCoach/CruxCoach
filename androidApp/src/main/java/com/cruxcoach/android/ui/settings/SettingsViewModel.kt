@@ -225,7 +225,9 @@ class SettingsViewModel @Inject constructor(
                             userPreferences.kilterSyncEnabled.first(),
                         username = kilterTokenStore.getUsername() ?: "",
                         lastSync = userPreferences.kilterLastSync.first(),
-                        pushEnabled = userPreferences.kilterPushEnabled.first()
+                        pushEnabled = userPreferences.kilterPushEnabled.first(),
+                        climbPublishEnabled = userPreferences.kilterClimbPublishEnabled.first(),
+                        bundledFallbackEnabled = userPreferences.kilterBundledFallbackEnabled.first(),
                     )
                 )
             }
@@ -657,6 +659,16 @@ class SettingsViewModel @Inject constructor(
 
     fun dismissKilterDisconnectConfirm() {
         _state.update { it.copy(kilterAccount = it.kilterAccount.copy(showDisconnectConfirm = false)) }
+    }
+
+    fun setKilterClimbPublishEnabled(enabled: Boolean) {
+        _state.update { it.copy(kilterAccount = it.kilterAccount.copy(climbPublishEnabled = enabled)) }
+        viewModelScope.launch { userPreferences.setKilterClimbPublishEnabled(enabled) }
+    }
+
+    fun setKilterBundledFallbackEnabled(enabled: Boolean) {
+        _state.update { it.copy(kilterAccount = it.kilterAccount.copy(bundledFallbackEnabled = enabled)) }
+        viewModelScope.launch { userPreferences.setKilterBundledFallbackEnabled(enabled) }
     }
 
     fun setKilterPushEnabled(enabled: Boolean) {
