@@ -16,7 +16,6 @@ import com.cruxcoach.data.repository.CommunityClimbRow
 import com.cruxcoach.domain.board.BoardHold
 import com.cruxcoach.domain.community.ClimbEditorState
 import com.cruxcoach.domain.community.ClimbValidation
-import com.cruxcoach.domain.community.cycleHoldRole
 import com.cruxcoach.domain.community.paintWithBrush
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
@@ -177,14 +176,16 @@ class ClimbEditorViewModel @Inject constructor(
 
     /**
      * Short tap on a hold:
-     * - **No active brush** → cycle through empty → Start → Griff → Tritt → Top → empty
      * - **Active brush** → paint the brush role (or toggle off if already that role)
+     * - **No active brush** → remove the hold (no-op on empty holds). Drag-
+     *   and-drop continues to work via `moveHold`; long-press starts a drag
+     *   regardless of brush state.
      */
     fun toggleHold(placementId: Int) {
         val cur = _state.value.editor
         val current = cur.selectedHolds[placementId]
         val brush = cur.activeBrush
-        val next = if (brush != null) paintWithBrush(current, brush) else cycleHoldRole(current)
+        val next = if (brush != null) paintWithBrush(current, brush) else null
         val newHolds = if (next == null) {
             cur.selectedHolds - placementId
         } else {
@@ -196,23 +197,13 @@ class ClimbEditorViewModel @Inject constructor(
 
     /**
      * Set the active brush from a chip-toolbar tap. Tapping the same
-     * chip again deactivates the brush (back to cycle-on-tap).
+     * chip again deactivates the brush — taps then delete on hit.
      */
     fun toggleBrush(role: Int) {
         val cur = _state.value.editor
         val nextBrush = if (cur.activeBrush == role) null else role
         // Brush change isn't an undoable edit — just a UI cursor flip.
         _state.update { it.copy(editor = cur.copy(activeBrush = nextBrush)) }
-    }
-
-    /**
-     * Toggle the eraser brush. Active eraser turns every tap into a
-     * "remove this hold" — useful when the user wants to delete several
-     * holds in a row without dragging or cycling. Tapping the chip again
-     * disarms the eraser.
-     */
-    fun toggleEraserBrush() {
-        toggleBrush(com.cruxcoach.domain.community.ERASE_BRUSH)
     }
 
     /**

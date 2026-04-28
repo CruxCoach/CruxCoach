@@ -47,8 +47,6 @@
     <string name="climb_creator_autosave_offer_restore">Wiederherstellen</string>
     <string name="climb_creator_autosave_offer_discard">Verwerfen</string>
     <string name="climb_creator_remix_action">Climb remixen</string>
-    <string name="climb_creator_eraser_label">Löschen</string>
-    <string name="climb_creator_eraser_action">Lösch-Pinsel — auf Griff tippen, um Markierung zu entfernen</string>
 
     <!-- Onboarding -->
     <string name="onboarding_welcome">Willkommen bei CruxCoach</string>

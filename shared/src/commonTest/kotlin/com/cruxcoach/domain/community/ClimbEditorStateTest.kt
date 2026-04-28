@@ -8,14 +8,13 @@ import kotlin.test.assertNull
 class ClimbEditorStateTest {
 
     @Test
-    fun cycleHoldRole_progresses_then_clears() {
-        // Order matches how setters lay out a climb:
-        // empty → Start → Griff (HAND) → Tritt (FOOT) → Top (FINISH) → empty
-        assertEquals(HoldRole.START, cycleHoldRole(null))
-        assertEquals(HoldRole.HAND, cycleHoldRole(HoldRole.START))
-        assertEquals(HoldRole.FOOT, cycleHoldRole(HoldRole.HAND))
-        assertEquals(HoldRole.FINISH, cycleHoldRole(HoldRole.FOOT))
-        assertNull(cycleHoldRole(HoldRole.FINISH))
+    fun paintWithBrush_assigns_replaces_and_toggles_off() {
+        // Empty hold + brush → assign that role
+        assertEquals(HoldRole.START, paintWithBrush(currentRole = null, brush = HoldRole.START))
+        // Hold with different role + brush → replace with brush
+        assertEquals(HoldRole.HAND, paintWithBrush(currentRole = HoldRole.START, brush = HoldRole.HAND))
+        // Hold with same role + brush → toggle off (returns null)
+        assertNull(paintWithBrush(currentRole = HoldRole.HAND, brush = HoldRole.HAND))
     }
 
     @Test

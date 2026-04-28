@@ -19,7 +19,6 @@ import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Whatshot
 import androidx.compose.material.icons.outlined.Whatshot
 import androidx.compose.material3.AlertDialog
@@ -172,7 +171,6 @@ fun ClimbEditorScreen(
                 activeBrush = state.editor.activeBrush,
                 ledColors = state.ledColors,
                 onBrushTap = viewModel::toggleBrush,
-                onEraserTap = viewModel::toggleEraserBrush,
             )
             ValidationStatus(state.validationIssues)
 
@@ -317,7 +315,6 @@ private fun HoldCountStatus(
     activeBrush: Int?,
     ledColors: com.cruxcoach.android.data.LedHoldColors,
     onBrushTap: (role: Int) -> Unit,
-    onEraserTap: () -> Unit,
 ) {
     val starts = holds.values.count { it == HoldRole.START }
     val hands = holds.values.count { it == HoldRole.HAND }
@@ -355,10 +352,6 @@ private fun HoldCountStatus(
             isActive = activeBrush == HoldRole.FINISH,
             onClick = onBrushTap,
         )
-        EraserChip(
-            isActive = activeBrush == com.cruxcoach.domain.community.ERASE_BRUSH,
-            onClick = onEraserTap,
-        )
     }
 }
 
@@ -378,22 +371,6 @@ private fun BrushChip(
             androidx.compose.foundation.Canvas(Modifier.size(12.dp)) {
                 drawCircle(color = roleColor)
             }
-        },
-    )
-}
-
-@Composable
-private fun EraserChip(isActive: Boolean, onClick: () -> Unit) {
-    FilterChip(
-        selected = isActive,
-        onClick = onClick,
-        label = { Text(stringResource(R.string.climb_creator_eraser_label)) },
-        leadingIcon = {
-            Icon(
-                Icons.Filled.DeleteOutline,
-                contentDescription = stringResource(R.string.climb_creator_eraser_action),
-                modifier = Modifier.size(16.dp),
-            )
         },
     )
 }

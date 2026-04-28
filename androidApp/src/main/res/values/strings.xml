@@ -47,8 +47,6 @@
     <string name="climb_creator_autosave_offer_restore">Restore</string>
     <string name="climb_creator_autosave_offer_discard">Discard</string>
     <string name="climb_creator_remix_action">Remix this climb</string>
-    <string name="climb_creator_eraser_label">Erase</string>
-    <string name="climb_creator_eraser_action">Eraser brush — tap a hold to remove its role</string>
 
     <!-- Onboarding -->
     <string name="onboarding_welcome">Welcome to CruxCoach</string>
