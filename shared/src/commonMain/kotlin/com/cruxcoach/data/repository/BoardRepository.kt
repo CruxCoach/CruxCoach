@@ -313,8 +313,16 @@ interface CommunityClimbQueries {
      * - When `seedHolds` is empty → general popularity heatmap.
      * - When `seedHolds` has entries → only counts climbs that include
      *   every seed hold; surfaces "what holds typically follow these".
+     * - When `targetRole` is non-null → only placements with that role
+     *   in the source climb are counted (role-aware suggestions for the
+     *   user's currently active brush). When null → all roles aggregated.
      */
-    fun computeEditorHeatmap(layoutId: Long, angle: Long, seedHolds: Set<Int>): Map<Int, Float>
+    fun computeEditorHeatmap(
+        layoutId: Long,
+        angle: Long,
+        seedHolds: Set<Int>,
+        targetRole: Int? = null,
+    ): Map<Int, Float>
     /** Upsert a community climb received from Nostr. */
     fun upsertCommunityClimb(
         uuid: String,

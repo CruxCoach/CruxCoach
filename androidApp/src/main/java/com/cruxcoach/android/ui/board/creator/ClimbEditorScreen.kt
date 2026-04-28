@@ -180,7 +180,6 @@ fun ClimbEditorScreen(
                 ledColors = state.ledColors,
                 onBrushTap = viewModel::toggleBrush,
             )
-            ValidationStatus(state.validationIssues)
 
             HorizontalDivider()
 
@@ -212,6 +211,11 @@ fun ClimbEditorScreen(
 
             Spacer(Modifier.height(8.dp))
 
+            // Validation status sits right above the action buttons so the
+            // user reads the failing rule and the disabled Publish in one
+            // glance — no scrolling up to figure out why it's locked.
+            ValidationStatus(state.validationIssues)
+
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(
                     onClick = { viewModel.saveAsDraft(onPublished) },
@@ -219,8 +223,11 @@ fun ClimbEditorScreen(
                     modifier = Modifier.weight(1f),
                 ) { Text(stringResource(R.string.climb_creator_save_draft)) }
                 Button(
+                    // Drafts can be saved with any state, but Publish needs
+                    // every Kilter must-have satisfied (name, frames, role
+                    // counts) before the climb leaves the device.
                     onClick = { viewModel.publish(sizeLabel = "12x12") },
-                    enabled = !state.isPublishing,
+                    enabled = !state.isPublishing && state.validationIssues.isEmpty(),
                     modifier = Modifier.weight(1f),
                 ) { Text(stringResource(R.string.climb_creator_publish)) }
             }

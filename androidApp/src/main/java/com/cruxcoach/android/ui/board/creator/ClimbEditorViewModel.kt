@@ -204,6 +204,10 @@ class ClimbEditorViewModel @Inject constructor(
         val nextBrush = if (cur.activeBrush == role) null else role
         // Brush change isn't an undoable edit — just a UI cursor flip.
         _state.update { it.copy(editor = cur.copy(activeBrush = nextBrush)) }
+        // Heatmap is brush-aware: switching brush changes which role's
+        // placements are highlighted. Recompute against the cached parse,
+        // so this is essentially free.
+        recomputeHeatmap()
     }
 
     /**
@@ -394,12 +398,18 @@ class ClimbEditorViewModel @Inject constructor(
             val angle = _state.value.editor.angle ?: return@launch
             val layoutId = userPreferences.boardLayoutId.first().toLong()
             val seed = _state.value.editor.selectedHolds.keys
+            // Brush-aware: when the user has a brush picked, the heatmap
+            // suggests popular placements *for that role* among matching
+            // climbs. With no brush (eraser/review), fall back to a
+            // role-agnostic popularity view so the heatmap still gives
+            // useful "where does this layout live" cues.
+            val targetRole = _state.value.editor.activeBrush
             // Default dispatcher — the cold path does a single SQL read
             // (cached SQLDelight prepared stmt) followed by a CPU-bound
             // parse/aggregate over the cached IntArray[]. Hot path is pure
             // CPU. Default's pool fits better than IO here.
             val map = withContext(Dispatchers.Default) {
-                boardRepository.computeEditorHeatmap(layoutId, angle.toLong(), seed)
+                boardRepository.computeEditorHeatmap(layoutId, angle.toLong(), seed, targetRole)
             }
             _state.update { it.copy(heatmap = map) }
         }

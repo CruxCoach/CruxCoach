@@ -344,23 +344,21 @@ class BoardRepositoryImpl(
     }
 
     /**
-     * Heatmap fast-path: parsed placements per (layoutId, angle).
+     * Heatmap fast-path: parsed placements + roles per (layoutId, angle).
      *
-     * The expensive part of computing the heatmap is reading every climb's
-     * `frames` for the active layout/angle and extracting placement IDs.
-     * Layout/angle don't change while the user edits, so we parse once and
-     * reuse the IntArray-of-placements across every recompute. Cuts the
-     * per-tap latency from "scan SQL + regex 50k strings" to "iterate a
-     * cached IntArray[]".
+     * `climbPlacements[i]` and `climbRoles[i]` are parallel IntArrays for
+     * the i-th source climb (j-th placement at index j has role at the
+     * same j in the role array). Layout/angle don't change while the user
+     * edits, so we parse once and reuse across every recompute.
      *
-     * Cache invalidates implicitly when the key changes (next layout or
-     * angle re-builds it). New climbs synced mid-session won't appear in
-     * the heatmap until the editor reopens — acceptable trade-off.
+     * Cache invalidates implicitly when the key changes; new climbs synced
+     * mid-session won't appear until the editor reopens — acceptable.
      */
     private class HeatmapCache(
         val layoutId: Long,
         val angle: Long,
         val climbPlacements: Array<IntArray>,
+        val climbRoles: Array<IntArray>,
     )
 
     @Volatile
@@ -370,20 +368,28 @@ class BoardRepositoryImpl(
         layoutId: Long,
         angle: Long,
         seedHolds: Set<Int>,
+        targetRole: Int?,
     ): Map<Int, Float> {
         val cache = ensureHeatmapCache(layoutId, angle) ?: return emptyMap()
 
-        // Most calls have empty seedHolds (general popularity); allocate a
-        // bool[] of seed-membership only when actually filtering.
+        // Most calls have empty seedHolds (general popularity); only build
+        // the IntArray when we'd actually filter.
         val seedAsArray: IntArray? = if (seedHolds.isEmpty()) null else seedHolds.toIntArray()
 
         val placementCounts = HashMap<Int, Int>(cache.climbPlacements.size.coerceAtMost(2048))
         var matchedClimbs = 0
 
-        for (placements in cache.climbPlacements) {
+        for (i in cache.climbPlacements.indices) {
+            val placements = cache.climbPlacements[i]
             if (seedAsArray != null && !placementsContainAll(placements, seedAsArray)) continue
             matchedClimbs++
-            for (pid in placements) {
+            val roles = cache.climbRoles[i]
+            for (j in placements.indices) {
+                // Role-aware mode: the heatmap suggests "where do role-X
+                // holds usually go in climbs that already contain my seed?"
+                // Skip placements whose source-climb role doesn't match.
+                if (targetRole != null && roles[j] != targetRole) continue
+                val pid = placements[j]
                 placementCounts[pid] = (placementCounts[pid] ?: 0) + 1
             }
         }
@@ -414,53 +420,93 @@ class BoardRepositoryImpl(
             heatmapCache = null
             return null
         }
-        val parsed = Array(rows.size) { i -> extractPlacementIdsFast(rows[i].frames) }
-        val cache = HeatmapCache(layoutId, angle, parsed)
+        val placements = arrayOfNulls<IntArray>(rows.size)
+        val roles = arrayOfNulls<IntArray>(rows.size)
+        for (i in rows.indices) {
+            val (p, r) = extractPlacementsAndRolesFast(rows[i].frames)
+            placements[i] = p
+            roles[i] = r
+        }
+        @Suppress("UNCHECKED_CAST")
+        val cache = HeatmapCache(
+            layoutId,
+            angle,
+            placements as Array<IntArray>,
+            roles as Array<IntArray>,
+        )
         heatmapCache = cache
         return cache
     }
 
     /**
-     * Fast inline parser for placement IDs in a frames string.
+     * Fast inline parser for (placementId, roleId) pairs in a frames string.
      *
      * Handles both Aurora delta (`p{id}r{role}…`) and Kilter range
      * (`h{id}p{ref}[s{n}][e{n}]…`). Single pass, no regex, no autoboxing.
-     * Used only on the heatmap hot path — for general parsing,
-     * BoardClimbParser is still the canonical entry point.
+     * Returns parallel IntArrays; index j in both is the same hold.
+     * Used only on the heatmap hot path — BoardClimbParser stays the
+     * canonical parser everywhere else.
      */
-    private fun extractPlacementIdsFast(frames: String): IntArray {
-        if (frames.isEmpty()) return EMPTY_INT_ARRAY
-        // First-frame-only — the editor cares about static frames; for
-        // multi-frame routes we'd already filter on `frames_count = 1` in SQL.
+    private fun extractPlacementsAndRolesFast(frames: String): Pair<IntArray, IntArray> {
+        if (frames.isEmpty()) return EMPTY_PAIR
+        // First-frame-only — `frames_count = 1` is enforced by the SQL.
         val end = frames.indexOf(',').let { if (it < 0) frames.length else it }
-        if (end == 0) return EMPTY_INT_ARRAY
-        // Detect format from the first character. `h` = Kilter range, else Aurora delta.
-        val marker = if (frames[0] == 'h') 'h' else 'p'
-        // Reasonable upper bound — most boulders have ≤ 30 holds; grow if needed.
-        var buf = IntArray(32)
+        if (end == 0) return EMPTY_PAIR
+        // Detect format from the first character.
+        val isRange = frames[0] == 'h'
+        val placementMarker = if (isRange) 'h' else 'p'
+        val roleMarker = if (isRange) 'p' else 'r'
+
+        var pBuf = IntArray(32)
+        var rBuf = IntArray(32)
         var size = 0
         var i = 0
+
         while (i < end) {
-            if (frames[i] == marker) {
-                i++
-                var n = 0
-                var consumed = false
-                while (i < end) {
-                    val c = frames[i]
-                    if (c < '0' || c > '9') break
-                    n = n * 10 + (c.code - '0'.code)
-                    i++
-                    consumed = true
-                }
-                if (consumed) {
-                    if (size == buf.size) buf = buf.copyOf(buf.size * 2)
-                    buf[size++] = n
-                }
-            } else {
-                i++
+            if (frames[i] != placementMarker) { i++; continue }
+            i++
+            var pid = 0
+            var pidConsumed = false
+            while (i < end) {
+                val c = frames[i]
+                if (c < '0' || c > '9') break
+                pid = pid * 10 + (c.code - '0'.code)
+                i++; pidConsumed = true
             }
+            if (!pidConsumed) continue
+            // Role marker must immediately follow the placement digits.
+            if (i >= end || frames[i] != roleMarker) continue
+            i++
+            var role = 0
+            var roleConsumed = false
+            while (i < end) {
+                val c = frames[i]
+                if (c < '0' || c > '9') break
+                role = role * 10 + (c.code - '0'.code)
+                i++; roleConsumed = true
+            }
+            if (!roleConsumed) continue
+            // Normalize route-specific roles 42-45 → 12-15.
+            val normalized = when (role) {
+                42 -> 12; 43 -> 13; 44 -> 14; 45 -> 15
+                else -> role
+            }
+            if (size == pBuf.size) {
+                pBuf = pBuf.copyOf(pBuf.size * 2)
+                rBuf = rBuf.copyOf(rBuf.size * 2)
+            }
+            pBuf[size] = pid
+            rBuf[size] = normalized
+            size++
+            // Optional Kilter `s{n}`/`e{n}` decorations are skipped naturally:
+            // the outer loop only consumes characters until the next
+            // placementMarker, so any non-marker chars just advance i.
         }
-        return if (size == buf.size) buf else buf.copyOf(size)
+
+        if (size == 0) return EMPTY_PAIR
+        val p = if (size == pBuf.size) pBuf else pBuf.copyOf(size)
+        val r = if (size == rBuf.size) rBuf else rBuf.copyOf(size)
+        return p to r
     }
 
     private fun placementsContainAll(placements: IntArray, seed: IntArray): Boolean {
@@ -476,6 +522,7 @@ class BoardRepositoryImpl(
 
     private companion object {
         private val EMPTY_INT_ARRAY = IntArray(0)
+        private val EMPTY_PAIR: Pair<IntArray, IntArray> = EMPTY_INT_ARRAY to EMPTY_INT_ARRAY
     }
 
     override fun insertLocalDraft(
