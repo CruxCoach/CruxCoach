@@ -528,10 +528,24 @@ object AppModule {
     @Singleton
     @Named("kilter")
     fun provideKilterOkHttpClient(): OkHttpClient {
+        // Identifiable User-Agent so Kilter operators can:
+        //   - tell our traffic apart from random scrapers
+        //   - reach us if something looks off (URL in the UA string)
+        //   - whitelist us if we're well-behaved
+        // Spoofing the official Kilter app's UA would be a Trademark
+        // + ToS issue; using a clear, honest one is the safer call.
+        val versionName = com.cruxcoach.android.BuildConfig.VERSION_NAME
+        val ua = "CruxCoach/$versionName (https://cruxcoach.org)"
         return OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(15, TimeUnit.SECONDS)
+            .addInterceptor { chain ->
+                val req = chain.request().newBuilder()
+                    .header("User-Agent", ua)
+                    .build()
+                chain.proceed(req)
+            }
             .build()
     }
 
