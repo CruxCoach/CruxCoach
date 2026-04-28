@@ -13,6 +13,7 @@ object ClimbValidation {
         data object NoFinishHold : Issue()
         data object TooFewHolds : Issue()
         data class TooManyStarts(val count: Int) : Issue()
+        data class TooManyFinishes(val count: Int) : Issue()
         data object NameMissing : Issue()
         data class NameTooLong(val length: Int) : Issue()
         data class DescriptionTooLong(val length: Int) : Issue()
@@ -20,8 +21,13 @@ object ClimbValidation {
 
     const val NAME_MAX_LENGTH = 100
     const val DESCRIPTION_MAX_LENGTH = 500
-    const val MIN_HOLDS_TOTAL = 2
+    // Start + Finish + at least one mid-route hold — the lightest sensible
+    // boulder. Kilter's create-climb requires `frames` to be non-empty;
+    // their UI also won't let you save with only a start and a top, so we
+    // mirror that "1 hand/foot in between" expectation here.
+    const val MIN_HOLDS_TOTAL = 3
     const val MAX_START_HOLDS = 2
+    const val MAX_FINISH_HOLDS = 2
 
     fun validate(
         holds: Map<Int, Int>,
@@ -37,6 +43,7 @@ object ClimbValidation {
         if (starts == 0) issues += Issue.NoStartHold
         if (starts > MAX_START_HOLDS) issues += Issue.TooManyStarts(starts)
         if (finishes == 0) issues += Issue.NoFinishHold
+        if (finishes > MAX_FINISH_HOLDS) issues += Issue.TooManyFinishes(finishes)
         if (total < MIN_HOLDS_TOTAL) issues += Issue.TooFewHolds
 
         if (name.isBlank()) issues += Issue.NameMissing

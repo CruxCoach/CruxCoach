@@ -112,6 +112,14 @@ fun ClimbEditorScreen(
                         Icon(
                             if (state.heatmapEnabled) Icons.Filled.Whatshot else Icons.Outlined.Whatshot,
                             contentDescription = stringResource(R.string.climb_creator_heatmap_toggle),
+                            // Bright tint when active, muted when off — gives
+                            // the outline-only icon a clearly "disabled" read
+                            // and avoids the look-alike between the two states.
+                            tint = if (state.heatmapEnabled) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
                         )
                     }
                     IconButton(onClick = viewModel::undo, enabled = state.canUndo) {
@@ -390,8 +398,9 @@ private fun ValidationStatus(issues: List<ClimbValidation.Issue>) {
             val msg = when (issue) {
                 ClimbValidation.Issue.NoStartHold -> stringResource(R.string.climb_creator_issue_no_start)
                 ClimbValidation.Issue.NoFinishHold -> stringResource(R.string.climb_creator_issue_no_finish)
-                ClimbValidation.Issue.TooFewHolds -> stringResource(R.string.climb_creator_issue_too_few_holds)
+                ClimbValidation.Issue.TooFewHolds -> stringResource(R.string.climb_creator_issue_too_few_holds, ClimbValidation.MIN_HOLDS_TOTAL)
                 is ClimbValidation.Issue.TooManyStarts -> stringResource(R.string.climb_creator_issue_too_many_starts, issue.count)
+                is ClimbValidation.Issue.TooManyFinishes -> stringResource(R.string.climb_creator_issue_too_many_finishes, issue.count)
                 ClimbValidation.Issue.NameMissing -> stringResource(R.string.climb_creator_issue_name_missing)
                 is ClimbValidation.Issue.NameTooLong -> stringResource(R.string.climb_creator_issue_name_too_long, ClimbValidation.NAME_MAX_LENGTH)
                 is ClimbValidation.Issue.DescriptionTooLong -> stringResource(R.string.climb_creator_issue_description_too_long, ClimbValidation.DESCRIPTION_MAX_LENGTH)
@@ -407,16 +416,19 @@ private fun ValidationStatus(issues: List<ClimbValidation.Issue>) {
 
 @Composable
 private fun GradeSlider(gradeId: Int?, onChange: (Int?) -> Unit) {
+    val effective = gradeId ?: 20
+    val vGrade = com.cruxcoach.domain.board.KilterGradeMapper.difficultyToVScale(effective)
+    val font = com.cruxcoach.domain.board.KilterGradeMapper.difficultyToFont(effective.toDouble())
     Column {
         Text(
-            stringResource(R.string.climb_creator_grade_label, gradeId ?: 20),
+            stringResource(R.string.climb_creator_grade_label, vGrade, font),
             style = MaterialTheme.typography.labelMedium,
         )
         Slider(
-            value = (gradeId ?: 20).toFloat(),
+            value = effective.toFloat(),
             onValueChange = { onChange(it.toInt()) },
-            valueRange = 10f..34f,
-            steps = 23,
+            valueRange = 10f..33f,
+            steps = 22,
         )
     }
 }

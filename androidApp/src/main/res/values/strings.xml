@@ -9,7 +9,7 @@
     <string name="climb_creator_redo">Redo</string>
     <string name="climb_creator_name">Name</string>
     <string name="climb_creator_description">Description (optional)</string>
-    <string name="climb_creator_grade_label" formatted="false">Setter grade · %d</string>
+    <string name="climb_creator_grade_label" formatted="false">Setter grade · %1$s (%2$s)</string>
     <string name="climb_creator_angle_label">Angle</string>
     <string name="climb_creator_angle_pick">Pick an angle</string>
     <string name="climb_creator_save_draft">Save as draft</string>
@@ -21,8 +21,9 @@
     <string name="climb_creator_valid">All set — ready to publish.</string>
     <string name="climb_creator_issue_no_start">Add at least one start hold (green).</string>
     <string name="climb_creator_issue_no_finish">Add at least one finish hold (magenta).</string>
-    <string name="climb_creator_issue_too_few_holds">Need at least 2 holds in total.</string>
+    <string name="climb_creator_issue_too_few_holds" formatted="false">Need at least %d holds (start + finish + at least one in between).</string>
     <string name="climb_creator_issue_too_many_starts" formatted="false">Too many start holds: %d (max 2).</string>
+    <string name="climb_creator_issue_too_many_finishes" formatted="false">Too many finish holds: %d (max 2).</string>
     <string name="climb_creator_issue_name_missing">Name is required.</string>
     <string name="climb_creator_issue_name_too_long" formatted="false">Name too long (max %d chars).</string>
     <string name="climb_creator_issue_description_too_long" formatted="false">Description too long (max %d chars).</string>

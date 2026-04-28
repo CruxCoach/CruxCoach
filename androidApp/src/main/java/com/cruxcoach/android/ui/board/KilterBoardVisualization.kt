@@ -365,24 +365,29 @@ internal fun KilterBoardVisualization(
 
                     val pid = placement.placementId.toInt()
 
-                    // Layer 3: Heatmap circles (filled, semi-transparent)
+                    // Layer 3: Heatmap markers — small tinted dots that
+                    // hint at popularity without obscuring the hold image.
+                    // Skip very faint placements so the board doesn't get
+                    // washed out by every climb that ever used the layout.
                     if (heatmapData != null) {
                         val intensity = heatmapData[pid]
-                        if (intensity != null && intensity > 0f) {
+                        if (intensity != null && intensity >= 0.15f) {
                             val heatColor = heatmapColor(intensity)
-                            // Larger blurred circle for glow effect
+                            // Soft halo — barely visible at low intensity,
+                            // brighter for hot holds. Stays smaller than
+                            // the hold so the photo still reads through.
                             drawCircle(
-                                color = heatColor.copy(alpha = 0.45f),
-                                radius = xScale * 7f,
-                                center = Offset(px, py),
-                                style = Fill
-                            )
-                            // Inner solid circle
-                            drawCircle(
-                                color = heatColor.copy(alpha = 0.85f),
+                                color = heatColor.copy(alpha = 0.18f + 0.20f * intensity),
                                 radius = xScale * 4.5f,
                                 center = Offset(px, py),
-                                style = Fill
+                                style = Fill,
+                            )
+                            // Tiny core dot — the actual "this is hot" marker.
+                            drawCircle(
+                                color = heatColor.copy(alpha = 0.55f + 0.30f * intensity),
+                                radius = xScale * 1.8f,
+                                center = Offset(px, py),
+                                style = Fill,
                             )
                         }
                     }

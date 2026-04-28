@@ -426,12 +426,19 @@ class ClimbEditorViewModel @Inject constructor(
 
     private fun applyEditor(next: ClimbEditorState) {
         val prevHolds = _state.value.editor.selectedHolds
+        // Live validation — the publish-ready banner stays accurate as the
+        // user types/taps instead of only updating on the publish click.
+        val issues = ClimbValidation.validate(
+            holds = next.selectedHolds,
+            name = next.name,
+            description = next.description,
+        )
         _state.update {
             it.copy(
                 editor = next,
                 canUndo = undoStack.isNotEmpty(),
                 canRedo = redoStack.isNotEmpty(),
-                validationIssues = emptyList(),
+                validationIssues = issues,
             )
         }
         scheduleAutosave(next)

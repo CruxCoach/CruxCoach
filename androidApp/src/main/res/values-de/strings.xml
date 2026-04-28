@@ -9,7 +9,7 @@
     <string name="climb_creator_redo">Wiederherstellen</string>
     <string name="climb_creator_name">Name</string>
     <string name="climb_creator_description">Beschreibung (optional)</string>
-    <string name="climb_creator_grade_label" formatted="false">Setter-Grade · %d</string>
+    <string name="climb_creator_grade_label" formatted="false">Setter-Grade · %1$s (%2$s)</string>
     <string name="climb_creator_angle_label">Winkel</string>
     <string name="climb_creator_angle_pick">Winkel wählen</string>
     <string name="climb_creator_save_draft">Als Entwurf speichern</string>
@@ -21,8 +21,9 @@
     <string name="climb_creator_valid">Alles gesetzt — bereit zum Veröffentlichen.</string>
     <string name="climb_creator_issue_no_start">Mindestens einen Start-Griff (grün) setzen.</string>
     <string name="climb_creator_issue_no_finish">Mindestens einen Top-Griff (magenta) setzen.</string>
-    <string name="climb_creator_issue_too_few_holds">Mindestens 2 Griffe insgesamt nötig.</string>
+    <string name="climb_creator_issue_too_few_holds" formatted="false">Mindestens %d Griffe nötig (Start + Top + min. ein Griff dazwischen).</string>
     <string name="climb_creator_issue_too_many_starts" formatted="false">Zu viele Start-Griffe: %d (max. 2).</string>
+    <string name="climb_creator_issue_too_many_finishes" formatted="false">Zu viele Top-Griffe: %d (max. 2).</string>
     <string name="climb_creator_issue_name_missing">Name ist erforderlich.</string>
     <string name="climb_creator_issue_name_too_long" formatted="false">Name zu lang (max. %d Zeichen).</string>
     <string name="climb_creator_issue_description_too_long" formatted="false">Beschreibung zu lang (max. %d Zeichen).</string>
