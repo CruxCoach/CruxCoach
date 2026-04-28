@@ -182,11 +182,45 @@ WHERE c.is_listed = 1;
 
 -- Queries
 
-upsertClimb:
-INSERT OR REPLACE INTO climbs(uuid, layout_id, setter_username, name,
+-- Existence probe used by [upsertClimb] (the Kotlin-side transaction).
+existsClimb:
+SELECT 1 FROM climbs WHERE uuid = ? LIMIT 1;
+
+-- Insert-only path: used by the upsert transaction when no row with
+-- this uuid exists. Default column values cover source ('kilter'),
+-- origin ('kilter'), and the Nostr/Kilter status fields (NULL).
+insertClimbRow:
+INSERT INTO climbs(uuid, layout_id, setter_username, name,
     frames_count, is_listed, edge_left, edge_right, edge_bottom, edge_top, created_at,
     description, is_nomatch, frames_pace, hsm, frames, move_count)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+-- Update-only path: refreshes the columns Kilter is authoritative for
+-- (name, frames, edges, …). Intentionally does NOT touch the CruxCoach
+-- side: source, origin, nostr_event_id, nostr_d_tag, created_by_pubkey,
+-- frames_hash, sync_status, kilter_status, kilter_synced_at,
+-- kilter_publish_via, kilter_error. A CruxCoach-published climb that
+-- got pulled back via the Kilter API harvest keeps its provenance +
+-- Nostr linkage + Kilter publish status across blob refreshes.
+updateClimbBlobFields:
+UPDATE climbs SET
+    layout_id = ?,
+    setter_username = ?,
+    name = ?,
+    frames_count = ?,
+    is_listed = ?,
+    edge_left = ?,
+    edge_right = ?,
+    edge_bottom = ?,
+    edge_top = ?,
+    created_at = ?,
+    description = ?,
+    is_nomatch = ?,
+    frames_pace = ?,
+    hsm = ?,
+    frames = ?,
+    move_count = ?
+WHERE uuid = ?;
 
 upsertClimbStat:
 INSERT OR REPLACE INTO climb_stats(climb_uuid, angle, display_difficulty,

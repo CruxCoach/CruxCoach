@@ -255,9 +255,55 @@ class BoardRepositoryImpl(
         description: String, isNomatch: Long, framesPace: Long, hsm: Long,
         moveCount: Long
     ) {
-        q.upsertClimb(uuid, layoutId, setter, name, framesCount,
-            isListed, edgeLeft, edgeRight, edgeBottom, edgeTop, createdAt,
-            description, isNomatch, framesPace, hsm, frames, moveCount)
+        // Two-step transaction so the Kilter-side blob refresh doesn't
+        // wipe CruxCoach-side metadata (origin, nostr_event_id,
+        // kilter_status, …). Existing row → UPDATE only the
+        // Kilter-authoritative columns. New row → INSERT with column
+        // defaults (source='kilter', origin='kilter', kilter_status NULL).
+        q.transaction {
+            val exists = q.existsClimb(uuid).executeAsOneOrNull() != null
+            if (exists) {
+                q.updateClimbBlobFields(
+                    layout_id = layoutId,
+                    setter_username = setter,
+                    name = name,
+                    frames_count = framesCount,
+                    is_listed = isListed,
+                    edge_left = edgeLeft,
+                    edge_right = edgeRight,
+                    edge_bottom = edgeBottom,
+                    edge_top = edgeTop,
+                    created_at = createdAt,
+                    description = description,
+                    is_nomatch = isNomatch,
+                    frames_pace = framesPace,
+                    hsm = hsm,
+                    frames = frames,
+                    move_count = moveCount,
+                    uuid = uuid,
+                )
+            } else {
+                q.insertClimbRow(
+                    uuid = uuid,
+                    layout_id = layoutId,
+                    setter_username = setter,
+                    name = name,
+                    frames_count = framesCount,
+                    is_listed = isListed,
+                    edge_left = edgeLeft,
+                    edge_right = edgeRight,
+                    edge_bottom = edgeBottom,
+                    edge_top = edgeTop,
+                    created_at = createdAt,
+                    description = description,
+                    is_nomatch = isNomatch,
+                    frames_pace = framesPace,
+                    hsm = hsm,
+                    frames = frames,
+                    move_count = moveCount,
+                )
+            }
+        }
     }
 
     override fun upsertClimbStat(
