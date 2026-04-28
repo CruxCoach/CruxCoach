@@ -19,6 +19,7 @@ import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Whatshot
 import androidx.compose.material.icons.outlined.Whatshot
 import androidx.compose.material3.AlertDialog
@@ -160,14 +161,18 @@ fun ClimbEditorScreen(
                 selectedHolds = state.editor.selectedHolds.keys,
                 onHoldTapped = viewModel::toggleHold,
                 onHoldMoved = viewModel::moveHold,
+                ledColors = state.ledColors,
                 solidHoldFill = true,
+                allowZoom = true,
                 modifier = Modifier.fillMaxWidth(),
             )
 
             HoldCountStatus(
                 holds = state.editor.selectedHolds,
                 activeBrush = state.editor.activeBrush,
+                ledColors = state.ledColors,
                 onBrushTap = viewModel::toggleBrush,
+                onEraserTap = viewModel::toggleEraserBrush,
             )
             ValidationStatus(state.validationIssues)
 
@@ -310,7 +315,9 @@ private fun AutosaveRestoreBanner(
 private fun HoldCountStatus(
     holds: Map<Int, Int>,
     activeBrush: Int?,
+    ledColors: com.cruxcoach.android.data.LedHoldColors,
     onBrushTap: (role: Int) -> Unit,
+    onEraserTap: () -> Unit,
 ) {
     val starts = holds.values.count { it == HoldRole.START }
     val hands = holds.values.count { it == HoldRole.HAND }
@@ -323,30 +330,34 @@ private fun HoldCountStatus(
         BrushChip(
             label = stringResource(R.string.climb_creator_count_start, starts),
             role = HoldRole.START,
-            roleColor = androidx.compose.ui.graphics.Color(0xFF00DD00),
+            roleColor = com.cruxcoach.android.ui.theme.rgb332ToComposeColor(ledColors.start),
             isActive = activeBrush == HoldRole.START,
             onClick = onBrushTap,
         )
         BrushChip(
             label = stringResource(R.string.climb_creator_count_hand, hands),
             role = HoldRole.HAND,
-            roleColor = androidx.compose.ui.graphics.Color(0xFF00AAFF),
+            roleColor = com.cruxcoach.android.ui.theme.rgb332ToComposeColor(ledColors.hand),
             isActive = activeBrush == HoldRole.HAND,
             onClick = onBrushTap,
         )
         BrushChip(
             label = stringResource(R.string.climb_creator_count_foot, feet),
             role = HoldRole.FOOT,
-            roleColor = androidx.compose.ui.graphics.Color(0xFFFF8800),
+            roleColor = com.cruxcoach.android.ui.theme.rgb332ToComposeColor(ledColors.foot),
             isActive = activeBrush == HoldRole.FOOT,
             onClick = onBrushTap,
         )
         BrushChip(
             label = stringResource(R.string.climb_creator_count_finish, finishes),
             role = HoldRole.FINISH,
-            roleColor = androidx.compose.ui.graphics.Color(0xFFFF00FF),
+            roleColor = com.cruxcoach.android.ui.theme.rgb332ToComposeColor(ledColors.finish),
             isActive = activeBrush == HoldRole.FINISH,
             onClick = onBrushTap,
+        )
+        EraserChip(
+            isActive = activeBrush == com.cruxcoach.domain.community.ERASE_BRUSH,
+            onClick = onEraserTap,
         )
     }
 }
@@ -367,6 +378,22 @@ private fun BrushChip(
             androidx.compose.foundation.Canvas(Modifier.size(12.dp)) {
                 drawCircle(color = roleColor)
             }
+        },
+    )
+}
+
+@Composable
+private fun EraserChip(isActive: Boolean, onClick: () -> Unit) {
+    FilterChip(
+        selected = isActive,
+        onClick = onClick,
+        label = { Text(stringResource(R.string.climb_creator_eraser_label)) },
+        leadingIcon = {
+            Icon(
+                Icons.Filled.DeleteOutline,
+                contentDescription = stringResource(R.string.climb_creator_eraser_action),
+                modifier = Modifier.size(16.dp),
+            )
         },
     )
 }

@@ -377,16 +377,15 @@ class BoardRepositoryImpl(
         return placementCounts.mapValues { (_, count) -> count / maxCountF }
     }
 
-    /** Extract placement IDs from a delta-format frames string's first
-     *  frame (`p{id}r{role}p{id}r{role}…` before the first comma). */
+    /** Extract placement IDs from a frames string. Delegates to
+     *  BoardClimbParser, which handles both Aurora delta-format
+     *  (`p{id}r{role}…`) and Kilter range-format (`h{id}p{ref}…`). */
     private fun parsePlacementIds(frames: String): Set<Int> {
-        val firstFrame = frames.substringBefore(',')
-        if (firstFrame.isBlank()) return emptySet()
-        val ids = HashSet<Int>(8)
-        val pattern = Regex("""p(\d+)r\d+""")
-        for (m in pattern.findAll(firstFrame)) {
-            m.groupValues[1].toIntOrNull()?.let { ids.add(it) }
-        }
+        if (frames.isBlank()) return emptySet()
+        val holds = com.cruxcoach.domain.board.BoardClimbParser.parseFrames(frames)
+        if (holds.isEmpty()) return emptySet()
+        val ids = HashSet<Int>(holds.size)
+        for (h in holds) ids.add(h.placementId)
         return ids
     }
 

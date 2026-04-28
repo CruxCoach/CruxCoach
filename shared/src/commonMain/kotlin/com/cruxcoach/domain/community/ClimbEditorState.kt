@@ -26,16 +26,26 @@ data class ClimbEditorState(
 )
 
 /**
+ * Sentinel brush mode for the eraser chip. When `activeBrush == ERASE_BRUSH`
+ * a tap removes the hold's role unconditionally (no cycle, no paint).
+ * Picked outside the legal HoldRole range (12-15, 42-45) so it can never
+ * collide with a real role.
+ */
+const val ERASE_BRUSH: Int = -1
+
+/**
  * Apply the active brush to a hold:
+ * - Brush is the eraser → always remove (null)
  * - Hold not selected → assign brush role
  * - Hold has the brush role already → remove it (toggle)
  * - Hold has a different role → replace with brush role
  *
  * Returns the new role for the hold (null = remove).
  */
-fun paintWithBrush(currentRole: Int?, brush: Int): Int? = when (currentRole) {
-    brush -> null         // toggle off
-    else -> brush         // assign or replace
+fun paintWithBrush(currentRole: Int?, brush: Int): Int? = when {
+    brush == ERASE_BRUSH -> null
+    currentRole == brush -> null
+    else -> brush
 }
 
 /**

@@ -5,6 +5,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
@@ -31,6 +33,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -135,6 +138,12 @@ internal fun KilterBoardVisualization(
      * the selection indicator.
      */
     solidHoldFill: Boolean = false,
+    /**
+     * Two-finger pinch-to-zoom + pan. Single-finger taps and long-press
+     * drags continue to work; tap positions are inverse-transformed so the
+     * editor can hit the visually-tapped hold even when zoomed in.
+     */
+    allowZoom: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -154,6 +163,39 @@ internal fun KilterBoardVisualization(
     val sizeId = boardSize?.id ?: 10L
     val hasBundledImage = sizeId in BUNDLED_BOARD_SIZES
 
+    // Two-finger zoom/pan state. Kept at composable scope so taps in the
+    // child pointerInput can inverse-transform their positions to canvas
+    // space — the touch grid stays accurate at any zoom level.
+    var zoomScale by remember { mutableStateOf(1f) }
+    var zoomOffset by remember { mutableStateOf(Offset.Zero) }
+    val zoomState by rememberUpdatedState(zoomScale to zoomOffset)
+
+    val zoomModifier: Modifier = if (allowZoom) {
+        Modifier.pointerInput(Unit) {
+            awaitEachGesture {
+                awaitFirstDown(requireUnconsumed = false)
+                do {
+                    val event = awaitPointerEvent()
+                    val pressed = event.changes.count { it.pressed }
+                    if (pressed >= 2) {
+                        val zoom = event.calculateZoom()
+                        val pan = event.calculatePan()
+                        if (zoom != 1f) {
+                            zoomScale = (zoomScale * zoom).coerceIn(1f, 4f)
+                        }
+                        if (pan != Offset.Zero) {
+                            zoomOffset += pan
+                        }
+                        // Reset translation when fully zoomed out so the
+                        // board snaps back to its centered home position.
+                        if (zoomScale <= 1.001f) zoomOffset = Offset.Zero
+                        event.changes.forEach { it.consume() }
+                    }
+                } while (event.changes.any { it.pressed })
+            }
+        }
+    } else Modifier
+
     Card(
         modifier = modifier,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
@@ -163,6 +205,7 @@ internal fun KilterBoardVisualization(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(aspectRatio)
+                .then(zoomModifier)
         ) {
             // Layer 1: Board image — loaded from bundled WebP asset
             val assetManager = context.assets
@@ -177,11 +220,22 @@ internal fun KilterBoardVisualization(
                 }
             }
 
+            // graphicsLayer applies the zoom/pan transform to both the
+            // board photo and the holds canvas so they stay aligned.
+            val zoomLayer: Modifier = if (allowZoom) {
+                Modifier.graphicsLayer(
+                    scaleX = zoomScale,
+                    scaleY = zoomScale,
+                    translationX = zoomOffset.x,
+                    translationY = zoomOffset.y,
+                )
+            } else Modifier
+
             boardBitmap?.let { bitmap ->
                 Image(
                     bitmap = bitmap,
                     contentDescription = stringResource(R.string.cd_board_image),
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxSize().then(zoomLayer),
                     contentScale = ContentScale.Fit
                 )
             }
@@ -202,7 +256,25 @@ internal fun KilterBoardVisualization(
             // Touch handler (only when interactive)
             val touchModifier = if (onHoldTapped != null) {
                 Modifier.pointerInput(placements, boardSize) {
+                    // Inverse the screen-space tap by the active zoom/pan
+                    // transform so findNearest works in canvas-space (which
+                    // is where the placements live). Pivot defaults to the
+                    // center of the composable for graphicsLayer.
+                    val toCanvasSpace: (Offset) -> Offset = { screen ->
+                        val (s, off) = zoomState
+                        if (!allowZoom || s == 1f) {
+                            screen
+                        } else {
+                            val pivotX = size.width / 2f
+                            val pivotY = size.height / 2f
+                            Offset(
+                                x = (screen.x - pivotX - off.x) / s + pivotX,
+                                y = (screen.y - pivotY - off.y) / s + pivotY,
+                            )
+                        }
+                    }
                     val findNearest: (Offset) -> Int? = { offset ->
+                        val pos = toCanvasSpace(offset)
                         val xS = size.width.toFloat() / boardWidth
                         val yS = size.height.toFloat() / boardHeight
                         val tapRadius = xS * 6f
@@ -212,8 +284,8 @@ internal fun KilterBoardVisualization(
                             val px = (placement.x.toFloat() - edgeLeft) * xS
                             val py = size.height - (placement.y.toFloat() - edgeBottom) * yS
                             val dist = kotlin.math.sqrt(
-                                (offset.x - px) * (offset.x - px) +
-                                (offset.y - py) * (offset.y - py)
+                                (pos.x - px) * (pos.x - px) +
+                                (pos.y - py) * (pos.y - py)
                             )
                             if (dist < tapRadius && dist < nearestDist) {
                                 nearestDist = dist
@@ -230,7 +302,7 @@ internal fun KilterBoardVisualization(
                         }
 
                         if (upOrNull != null) {
-                            // Short tap → toggle hold
+                            // Short tap → toggle hold.
                             findNearest(down.position)?.let { onHoldTapped(it) }
                         } else {
                             // Long press → show preview, allow drag
@@ -242,6 +314,13 @@ internal fun KilterBoardVisualization(
 
                             do {
                                 val event = awaitPointerEvent()
+                                // Hand off to the zoom/pan handler if a
+                                // second finger lands during the drag.
+                                if (event.changes.count { it.pressed } >= 2) {
+                                    dragPreviewHoldId = null
+                                    dragOriginHoldId = null
+                                    return@awaitEachGesture
+                                }
                                 event.changes.forEach { it.consume() }
                                 val pos = event.changes.firstOrNull()?.position ?: break
                                 val newHold = findNearest(pos)
@@ -272,7 +351,7 @@ internal fun KilterBoardVisualization(
                 }
             } else Modifier
 
-            Canvas(modifier = Modifier.fillMaxSize().then(touchModifier)) {
+            Canvas(modifier = Modifier.fillMaxSize().then(touchModifier).then(zoomLayer)) {
                 if (placements.isEmpty()) return@Canvas
 
                 val xScale = size.width / boardWidth

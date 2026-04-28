@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.community.ClimbCreatorRepository
 import com.cruxcoach.android.community.EditorAutosave
+import com.cruxcoach.android.data.LedHoldColors
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.data.repository.BoardImage
 import com.cruxcoach.data.repository.BoardPlacement
@@ -61,6 +62,9 @@ data class ClimbEditorUiState(
     /** Drafts the user has saved locally; null = not yet loaded. */
     val drafts: List<CommunityClimbRow>? = null,
     val draftsSheetOpen: Boolean = false,
+    /** User-configured LED colors — drives both the board rendering and
+     *  the brush-chip tints so they always match what the LEDs show. */
+    val ledColors: LedHoldColors = LedHoldColors(),
 )
 
 @HiltViewModel
@@ -89,6 +93,11 @@ class ClimbEditorViewModel @Inject constructor(
         viewModelScope.launch {
             loadBoardData()
             handleNavigationArgs()
+        }
+        viewModelScope.launch {
+            userPreferences.ledHoldColors.collect { colors ->
+                _state.update { it.copy(ledColors = colors) }
+            }
         }
     }
 
@@ -138,6 +147,7 @@ class ClimbEditorViewModel @Inject constructor(
     private suspend fun loadBoardData() {
         val sizeId = userPreferences.boardProductSizeId.first()
         val layoutId = userPreferences.boardLayoutId.first()
+        val defaultAngle = userPreferences.boardAngle.first()
         val (size, placements, images, ledMap) = withContext(Dispatchers.IO) {
             val size = boardRepository.getProductSize(sizeId)
             val placements = boardRepository.getAllPlacements().associateBy { it.placementId.toInt() }
@@ -146,12 +156,14 @@ class ClimbEditorViewModel @Inject constructor(
             BoardLoad(size, placements, images, led)
         }
         _state.update {
+            val seedAngle = it.editor.angle ?: defaultAngle
             it.copy(
                 isLoading = false,
                 boardSize = size,
                 placements = placements,
                 boardImages = images,
                 placementToLed = ledMap,
+                editor = it.editor.copy(angle = seedAngle),
             )
         }
     }
@@ -191,6 +203,16 @@ class ClimbEditorViewModel @Inject constructor(
         val nextBrush = if (cur.activeBrush == role) null else role
         // Brush change isn't an undoable edit — just a UI cursor flip.
         _state.update { it.copy(editor = cur.copy(activeBrush = nextBrush)) }
+    }
+
+    /**
+     * Toggle the eraser brush. Active eraser turns every tap into a
+     * "remove this hold" — useful when the user wants to delete several
+     * holds in a row without dragging or cycling. Tapping the chip again
+     * disarms the eraser.
+     */
+    fun toggleEraserBrush() {
+        toggleBrush(com.cruxcoach.domain.community.ERASE_BRUSH)
     }
 
     /**
