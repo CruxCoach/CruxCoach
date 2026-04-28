@@ -1,0 +1,15 @@
+-- Migration from version 5 to 6: per-network publish-via flag for Nostr.
+--
+-- Rationale: kilter_publish_via tracks 'self' vs 'cruxcoach' for Kilter
+-- pushes (added in 4.sqm). For the three-identity-mode publish design we
+-- need the same distinction for Nostr — when the user opts into the
+-- bundled fallback for Nostr signing, the Kind 30078 event is signed by
+-- the CruxCoach service key instead of their own.
+--
+-- 'self' (default for any climb that went through local nostrSigner)
+-- 'cruxcoach' (bundled service signed on the user's behalf, shared key)
+-- NULL until the row has a successful Nostr publish.
+
+ALTER TABLE climbs ADD COLUMN nostr_publish_via TEXT;
+
+CREATE INDEX idx_climbs_nostr_via ON climbs(nostr_publish_via);

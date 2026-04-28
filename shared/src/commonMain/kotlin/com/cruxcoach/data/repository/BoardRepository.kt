@@ -341,7 +341,22 @@ interface CommunityClimbQueries {
         difficultyAverage: Double?,
         qualityAverage: Double?,
     )
-    fun markClimbPublishedNostr(uuid: String, nostrEventId: String, nostrDTag: String)
+    /**
+     * Flip a draft to "published_nostr" after the relay accepts the event.
+     *
+     * `via` is 'self' (the user signed via their own NostrSigner) or
+     * 'cruxcoach' (the bundled-publish service signed with its shared
+     * key on the user's behalf). `pubkey` carries either the user's own
+     * hex pubkey or the service's; persisted so "my climbs" filters
+     * always have a stable creator handle.
+     */
+    fun markClimbPublishedNostr(
+        uuid: String,
+        nostrEventId: String,
+        nostrDTag: String,
+        pubkey: String,
+        via: String,
+    )
     fun markClimbPublishFailed(uuid: String)
 
     // ── Kilter-side publish lifecycle (independent of Nostr sync_status) ──

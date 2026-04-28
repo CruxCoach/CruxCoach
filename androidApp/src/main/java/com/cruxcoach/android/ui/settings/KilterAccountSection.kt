@@ -41,6 +41,10 @@ data class KilterAccountState(
     /** Fallback: if the user has no Kilter account, publish via the
      *  CruxCoach-shared service account (bundled). Default false. */
     val bundledFallbackEnabled: Boolean = false,
+    /** Identity choice for Nostr publishing. When true, the bundled
+     *  CruxCoach service signs Kind-30078 climb events with its shared
+     *  key instead of the user's own NostrSigner. Default false. */
+    val nostrBundledSigningEnabled: Boolean = false,
 )
 
 @Composable
@@ -58,6 +62,7 @@ internal fun KilterAccountSection(
     onPushEnabledChanged: (Boolean) -> Unit,
     onClimbPublishEnabledChanged: (Boolean) -> Unit,
     onBundledFallbackEnabledChanged: (Boolean) -> Unit,
+    onNostrBundledSigningEnabledChanged: (Boolean) -> Unit,
     onDisconnect: () -> Unit,
     onShowDisconnectConfirm: () -> Unit,
     onDismissDisconnectConfirm: () -> Unit,
@@ -97,8 +102,10 @@ internal fun KilterAccountSection(
         isConnected = state.isConnected,
         publishEnabled = state.climbPublishEnabled,
         bundledFallbackEnabled = state.bundledFallbackEnabled,
+        nostrBundledSigningEnabled = state.nostrBundledSigningEnabled,
         onPublishEnabledChanged = onClimbPublishEnabledChanged,
         onBundledFallbackEnabledChanged = onBundledFallbackEnabledChanged,
+        onNostrBundledSigningEnabledChanged = onNostrBundledSigningEnabledChanged,
     )
 
     // Result message (success/error)
@@ -449,8 +456,10 @@ private fun KilterClimbPublishCard(
     isConnected: Boolean,
     publishEnabled: Boolean,
     bundledFallbackEnabled: Boolean,
+    nostrBundledSigningEnabled: Boolean,
     onPublishEnabledChanged: (Boolean) -> Unit,
     onBundledFallbackEnabledChanged: (Boolean) -> Unit,
+    onNostrBundledSigningEnabledChanged: (Boolean) -> Unit,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -517,6 +526,32 @@ private fun KilterClimbPublishCard(
                     checked = bundledFallbackEnabled,
                     onCheckedChange = onBundledFallbackEnabledChanged,
                     enabled = publishEnabled,
+                    colors = SwitchDefaults.colors(checkedTrackColor = OrangeAccent)
+                )
+            }
+
+            // Third switch: Nostr signing identity. Independent of the
+            // Kilter switches above — toggleable on its own. Both bundled
+            // switches together = Mode C (fully anonymous via CruxCoach).
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        stringResource(R.string.nostr_bundled_signing_label),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Text(
+                        stringResource(R.string.nostr_bundled_signing_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = nostrBundledSigningEnabled,
+                    onCheckedChange = onNostrBundledSigningEnabledChanged,
                     colors = SwitchDefaults.colors(checkedTrackColor = OrangeAccent)
                 )
             }

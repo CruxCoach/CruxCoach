@@ -649,8 +649,20 @@ class BoardRepositoryImpl(
         }
     }
 
-    override fun markClimbPublishedNostr(uuid: String, nostrEventId: String, nostrDTag: String) {
-        q.markClimbPublishedNostr(nostr_event_id = nostrEventId, nostr_d_tag = nostrDTag, uuid = uuid)
+    override fun markClimbPublishedNostr(
+        uuid: String,
+        nostrEventId: String,
+        nostrDTag: String,
+        pubkey: String,
+        via: String,
+    ) {
+        q.markClimbPublishedNostr(
+            nostr_event_id = nostrEventId,
+            nostr_d_tag = nostrDTag,
+            created_by_pubkey = pubkey,
+            nostr_publish_via = via,
+            uuid = uuid,
+        )
     }
 
     override fun markClimbPublishFailed(uuid: String) {

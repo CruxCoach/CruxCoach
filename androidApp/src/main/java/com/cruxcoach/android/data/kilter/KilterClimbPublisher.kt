@@ -19,9 +19,9 @@ import kotlinx.coroutines.flow.first
  *    [KilterApiClient.publishClimb]. Kilter `setter_uuid` is the user's
  *    own UUID, so attribution is clean.
  * 2. **Bundled** — user not logged in BUT enabled the bundled fallback
- *    in settings → POST to [CruxCoachBundledKilterClient]. Kilter's
- *    `setter_uuid` is the CruxCoach service account; the user's npub
- *    is preserved in the description.
+ *    in settings → POST to [CruxCoachBundledPublishClient] in
+ *    `KilterOnly` mode. Kilter's `setter_uuid` is the CruxCoach service
+ *    account; the user's npub is preserved in the description.
  * 3. **Skip** — neither path is available (user opted out, or no Kilter
  *    account + bundled fallback off). The climb stays Nostr-only;
  *    `kilter_status` stays NULL.
@@ -36,7 +36,7 @@ import kotlinx.coroutines.flow.first
 class KilterClimbPublisher @Inject constructor(
     private val apiClient: KilterApiClient,
     private val tokenStore: KilterTokenStore,
-    private val bundledClient: CruxCoachBundledKilterClient,
+    private val bundledClient: CruxCoachBundledPublishClient,
     private val userPreferences: UserPreferences,
     private val boardRepository: BoardRepository,
 ) {
@@ -94,18 +94,17 @@ class KilterClimbPublisher @Inject constructor(
             // a sensible fallback if they enabled it).
         }
 
-        // Path 2: bundled fallback (only if user opted in).
+        // Path 2: bundled fallback (only if user opted in). Mode
+        // KilterOnly — the user signed Nostr locally, the service just
+        // submits to Kilter on their behalf.
         if (userPreferences.kilterBundledFallbackEnabled.first()) {
-            val r = bundledClient.publishClimb(
+            val r = bundledClient.publish(
+                mode = CruxCoachBundledPublishClient.Mode.KilterOnly,
                 signedEvent = nostrEvent,
-                layoutId = layoutId,
-                sizeLabel = sizeLabel,
-                edgeLeft = boardSize.edgeLeft.toInt(),
-                edgeRight = boardSize.edgeRight.toInt(),
-                edgeBottom = boardSize.edgeBottom.toInt(),
-                edgeTop = boardSize.edgeTop.toInt(),
+                rawClimb = null,
+                clientAttestation = clientAttestation(),
             )
-            recordOutcome(uuid, via = "cruxcoach", result = r)?.let { return it }
+            recordBundledOutcome(uuid, via = "cruxcoach", result = r)?.let { return it }
         }
 
         // Both paths exhausted — neither succeeded.
@@ -150,6 +149,92 @@ class KilterClimbPublisher @Inject constructor(
             Outcome.Failed("Kilter hat den Climb abgelehnt (${result.httpCode})")
         }
     }
+
+    /**
+     * Self-only publish — used by callers that already routed Nostr
+     * through the bundled service (Mode D) and don't want the Kilter
+     * orchestrator to consider the bundled-Kilter fallback. Mirrors the
+     * "Path 1" branch of [publish] without the fallback to bundled.
+     */
+    suspend fun publishSelfOnly(
+        uuid: String,
+        layoutId: Long,
+        state: ClimbEditorState,
+        boardSize: BoardSize?,
+        framesClimbConcat: String,
+    ): Outcome {
+        if (!userPreferences.kilterClimbPublishEnabled.first()) return Outcome.Skipped("user-opted-out")
+        if (boardSize == null) return Outcome.Skipped("no-board-size")
+        val hasOwnToken = tokenStore.getAccessToken() != null &&
+            tokenStore.getUserUuid()?.isNotBlank() == true
+        if (!hasOwnToken) return Outcome.Skipped("no-kilter-login")
+
+        boardRepository.markKilterPublishPending(uuid)
+        val r = apiClient.publishClimb(
+            climbUuid = uuid,
+            name = state.name,
+            description = state.description,
+            framesClimbConcat = framesClimbConcat,
+            productName = productNameFor(layoutId),
+            edgeLeft = boardSize.edgeLeft.toInt(),
+            edgeRight = boardSize.edgeRight.toInt(),
+            edgeBottom = boardSize.edgeBottom.toInt(),
+            edgeTop = boardSize.edgeTop.toInt(),
+        )
+        return recordOutcome(uuid, via = "self", result = r)
+            ?: Outcome.Failed("Kilter authentication missing")
+    }
+
+    /** Translate a [BundledPublishResult] (Kilter-side only) into status-flag
+     *  updates + an [Outcome]. Mirrors [recordOutcome] but with the bundled
+     *  result type that carries Kilter status fields. */
+    private fun recordBundledOutcome(
+        uuid: String,
+        via: String,
+        result: BundledPublishResult,
+    ): Outcome? = when (result) {
+        is BundledPublishResult.Success -> {
+            if (result.kilterStatus == "rejected") {
+                boardRepository.markKilterPublishFailed(
+                    uuid,
+                    "via=$via rejected: ${result.kilterError ?: "no detail"}",
+                )
+                Outcome.Failed("Kilter hat den Climb über CruxCoach abgelehnt")
+            } else {
+                boardRepository.markKilterPublishSynced(
+                    uuid = uuid,
+                    via = via,
+                    syncedAtEpochSeconds = System.currentTimeMillis() / 1000,
+                )
+                Outcome.Synced(via = via)
+            }
+        }
+        is BundledPublishResult.TransientError -> {
+            boardRepository.markKilterPublishFailed(uuid, "via=$via transient: ${result.message}")
+            Outcome.Failed("Übertragung fehlgeschlagen — Versuch wird wiederholt")
+        }
+        is BundledPublishResult.PermanentError -> {
+            boardRepository.markKilterPublishFailed(
+                uuid,
+                "via=$via http=${result.httpCode}: ${result.message.take(200)}",
+            )
+            Outcome.Failed("CruxCoach-Service hat den Climb abgelehnt (${result.httpCode})")
+        }
+    }
+
+    /**
+     * Stable handle the bundled service uses for per-app rate-limiting.
+     * For now: device's hardware-derived install-id (re-stable across
+     * app restarts, changes only when the user reinstalls). The future
+     * server-side decides whether this is enough or wants something
+     * stricter (PoW, attestation API).
+     */
+    private fun clientAttestation(): String =
+        // Stub: deterministic placeholder until the server defines the
+        // actual attestation contract. The Nostr signature in the request
+        // is the real auth handle either way; this is just a Bloom/quota
+        // hint.
+        "placeholder-v1"
 
     /**
      * Best-effort layout_id → Kilter product_name mapping.

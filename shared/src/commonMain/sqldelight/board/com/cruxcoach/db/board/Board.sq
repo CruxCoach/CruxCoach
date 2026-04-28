@@ -34,7 +34,9 @@ CREATE TABLE climbs (
     kilter_status TEXT,                             -- NULL | 'pending' | 'synced' | 'failed'
     kilter_synced_at INTEGER,                       -- epoch seconds, set when Kilter accepts
     kilter_publish_via TEXT,                        -- 'self' (user account) | 'cruxcoach' (bundled)
-    kilter_error TEXT                               -- last Kilter publish failure message
+    kilter_error TEXT,                              -- last Kilter publish failure message
+    -- v0.1.6 per-network identity tracking for Nostr
+    nostr_publish_via TEXT                          -- 'self' | 'cruxcoach' (bundled signing key)
 );
 
 CREATE TABLE climb_stats (
@@ -150,6 +152,7 @@ CREATE INDEX idx_climbs_frames_hash ON climbs(frames_hash);
 CREATE INDEX idx_climbs_pubkey ON climbs(created_by_pubkey);
 CREATE INDEX idx_climbs_origin ON climbs(origin);
 CREATE INDEX idx_climbs_kilter_status ON climbs(kilter_status);
+CREATE INDEX idx_climbs_nostr_via ON climbs(nostr_publish_via);
 
 -- FEAT-003 grade consensus cache. MVP only stores setter_grade_id; full
 -- consensus aggregation (vote_count, confidence, trimmed mean) lands when
@@ -574,8 +577,17 @@ VALUES (?, ?, ?, ?, ?,
     'nostr', ?, ?, ?, ?, 'synced', 'cruxcoach');
 
 -- Flip a draft to "published_nostr" once the relay accepts the event.
+-- `nostr_publish_via` records whether the climb was signed by the user
+-- ('self') or by the CruxCoach service on their behalf ('cruxcoach' —
+-- bundled fallback). Stays as a single mutator so callers can't forget
+-- to set the via field.
 markClimbPublishedNostr:
-UPDATE climbs SET sync_status = 'published_nostr', nostr_event_id = ?, nostr_d_tag = ?
+UPDATE climbs SET
+    sync_status = 'published_nostr',
+    nostr_event_id = ?,
+    nostr_d_tag = ?,
+    created_by_pubkey = ?,
+    nostr_publish_via = ?
 WHERE uuid = ?;
 
 -- Mark a draft as failed (so the publish queue can retry / surface error).

@@ -228,6 +228,7 @@ class SettingsViewModel @Inject constructor(
                         pushEnabled = userPreferences.kilterPushEnabled.first(),
                         climbPublishEnabled = userPreferences.kilterClimbPublishEnabled.first(),
                         bundledFallbackEnabled = userPreferences.kilterBundledFallbackEnabled.first(),
+                        nostrBundledSigningEnabled = userPreferences.nostrBundledSigningEnabled.first(),
                     )
                 )
             }
@@ -669,6 +670,11 @@ class SettingsViewModel @Inject constructor(
     fun setKilterBundledFallbackEnabled(enabled: Boolean) {
         _state.update { it.copy(kilterAccount = it.kilterAccount.copy(bundledFallbackEnabled = enabled)) }
         viewModelScope.launch { userPreferences.setKilterBundledFallbackEnabled(enabled) }
+    }
+
+    fun setNostrBundledSigningEnabled(enabled: Boolean) {
+        _state.update { it.copy(kilterAccount = it.kilterAccount.copy(nostrBundledSigningEnabled = enabled)) }
+        viewModelScope.launch { userPreferences.setNostrBundledSigningEnabled(enabled) }
     }
 
     fun setKilterPushEnabled(enabled: Boolean) {
