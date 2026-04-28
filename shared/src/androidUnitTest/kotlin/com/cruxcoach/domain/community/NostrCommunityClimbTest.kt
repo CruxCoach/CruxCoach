@@ -3,6 +3,7 @@ package com.cruxcoach.domain.community
 import com.cruxcoach.domain.board.HoldRole
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 class NostrCommunityClimbTest {
@@ -80,5 +81,31 @@ class NostrCommunityClimbTest {
         assertEquals(a.content, b.content)
         assertEquals(a.dTag, b.dTag)
         assertEquals(a.tags, b.tags)
+    }
+
+    @Test
+    fun edit_with_same_uuid_keeps_d_tag_stable() {
+        // Replaceable Kind-30078 events rely on (pubkey, kind, d-tag) being
+        // stable across edits — if the d-tag drifts, the relay stores duplicates.
+        val original = buildCommunityClimbEvent(
+            pubkey = pubkey, createdAt = 1714000000L, uuid = uuid,
+            layoutId = 1L, sizeLabel = "12x12",
+            state = state.copy(name = "First Name"),
+        )
+        val edited = buildCommunityClimbEvent(
+            pubkey = pubkey, createdAt = 1714999999L, uuid = uuid,
+            layoutId = 1L, sizeLabel = "12x12",
+            state = state.copy(name = "Edited Name", description = "new desc"),
+        )
+        assertEquals(original.dTag, edited.dTag)
+        assertNotEquals(original.content, edited.content)
+    }
+
+    @Test
+    fun different_authors_yield_different_d_tags_for_same_uuid() {
+        val mine = buildCommunityClimbEvent(pubkey, 1L, uuid, 1L, "12x12", state)
+        val theirsPubkey = "fedcba9876".padEnd(64, 'f')
+        val theirs = buildCommunityClimbEvent(theirsPubkey, 1L, uuid, 1L, "12x12", state)
+        assertNotEquals(mine.dTag, theirs.dTag)
     }
 }
