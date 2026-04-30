@@ -2,7 +2,7 @@
 
 Open-source Kilter Board climbing app for Android.
 
-Browse climbs, control your Kilter Board via Bluetooth, log ascents, import your Kilter logbook, and track your progress — no third-party cloud services, full control over your data.
+Browse climbs, control your Kilter Board via Bluetooth, log ascents, import your Kilter logbook, and track your progress — no Google services, no tracking, full control over your data.
 
 ## 📲 Get the app
 
@@ -154,6 +154,8 @@ See [LEGAL.md](LEGAL.md) for our position on interoperability and data usage.
 ## Contributing
 
 We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for bug reporting, dev setup, coding standards, and PR guidelines.
+
+The primary repository is on [Codeberg](https://codeberg.org/CruxCoach/CruxCoach); a read-only mirror is maintained at [github.com/CruxCoach/CruxCoach](https://github.com/CruxCoach/CruxCoach) for discoverability. **Please open issues and pull requests on Codeberg** — the GitHub side is not actively monitored.
 
 For the active feature roadmap and per-release specifications, see [`docs/specs/`](docs/specs/).
 
