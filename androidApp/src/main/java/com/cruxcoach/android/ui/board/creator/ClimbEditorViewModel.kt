@@ -310,6 +310,17 @@ class ClimbEditorViewModel @Inject constructor(
                     }
                 }
                 autosave.clear()
+                // Refresh the drafts list so the drawer shows the new
+                // entry immediately (was stale if the drawer was already
+                // open, and required close+reopen to repopulate). Plus
+                // pin loadedDraftUuid so a follow-up "Save" updates this
+                // row in place instead of creating a duplicate.
+                val drafts = withContext(Dispatchers.IO) {
+                    boardRepository.getDraftClimbs()
+                }
+                _state.update { s ->
+                    s.copy(drafts = drafts, loadedDraftUuid = uuid)
+                }
                 onSaved(uuid)
             } catch (e: Exception) {
                 Log.w(TAG, "saveDraft failed", e)
