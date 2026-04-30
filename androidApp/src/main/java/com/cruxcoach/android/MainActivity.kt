@@ -143,6 +143,7 @@ class MainActivity : AppCompatActivity() {
         if (savedInstanceState == null) {
             pendingDeepLink.value = safeNavigateToRoute(intent)
                 ?: extractBoardDbDeepLink(intent)
+                ?: extractClimbAppLink(intent)
             handleUpdaterExtras(intent)
         }
         // userPreferences injected via Hilt
@@ -313,6 +314,7 @@ class MainActivity : AppCompatActivity() {
         super.onNewIntent(intent)
         pendingDeepLink.value = safeNavigateToRoute(intent)
             ?: extractBoardDbDeepLink(intent)
+            ?: extractClimbAppLink(intent)
         handleUpdaterExtras(intent)
     }
 
@@ -377,6 +379,51 @@ class MainActivity : AppCompatActivity() {
             return null
         }
         return "board_sync?localDbUrl=${android.net.Uri.encode(url)}"
+    }
+
+    /**
+     * Extract a climb deep-link from `https://cruxcoach.org/c/<naddr>`. The
+     * naddr is NIP-19 bech32 carrying (kind, pubkey, dTag); CruxCoach climb
+     * d-tags follow the shape `cruxcoach:climb:<pubkey-prefix>:<uuid>`. We
+     * pull the uuid out and route to the existing climb-detail screen at
+     * the user's preferred angle (the angle isn't part of the link by
+     * design — climbs are angle-agnostic at the data layer; the detail
+     * screen lets the user switch).
+     *
+     * Returns null when the URL doesn't match our shape, when the naddr is
+     * unparseable, or when the dTag doesn't look like a CruxCoach climb.
+     * In all of those cases we fall through to the normal launcher path
+     * (no deep link applied) rather than opening a "broken link" screen.
+     */
+    private fun extractClimbAppLink(intent: Intent?): String? {
+        val data = intent?.data ?: return null
+        if (data.scheme != "https" || data.host != "cruxcoach.org") return null
+        val segments = data.pathSegments
+        if (segments.size < 2 || segments[0] != "c") return null
+        val naddr = segments[1].takeIf { it.startsWith("naddr1") } ?: return null
+
+        val nAddress = runCatching {
+            com.vitorpamplona.quartz.nip19Bech32.Nip19Parser.parseAll(naddr)
+                .filterIsInstance<com.vitorpamplona.quartz.nip19Bech32.entities.NAddress>()
+                .firstOrNull()
+        }.getOrNull() ?: return null
+        if (nAddress.kind != 30078) return null
+
+        // Expected dTag: "cruxcoach:climb:<pubkey-prefix-8>:<uuid>"
+        val dParts = nAddress.dTag.split(":")
+        if (dParts.size < 4 || dParts[0] != "cruxcoach" || dParts[1] != "climb") {
+            android.util.Log.w("MainActivity", "App link dTag doesn't look like cruxcoach climb: ${nAddress.dTag}")
+            return null
+        }
+        val uuid = dParts.last()
+        if (uuid.isBlank()) return null
+
+        // Angle: best-effort lookup at runtime would require Hilt-injected
+        // prefs reachable from the deep-link helper. Default to 40 (the
+        // user-preferences default) — the detail screen exposes an angle
+        // selector if the user wants a different angle.
+        val angle = 40
+        return "board_climb_detail/$uuid/$angle"
     }
 
     private fun isAllowedLocalImportUrl(rawUrl: String): Boolean {

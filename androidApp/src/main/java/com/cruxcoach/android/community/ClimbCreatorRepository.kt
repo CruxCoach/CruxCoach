@@ -165,6 +165,7 @@ class ClimbCreatorRepository @Inject constructor(
         state: ClimbEditorState,
         sizeLabel: String,
         existingUuid: String? = null,
+        autoNote: CommunityClimbPublisher.AutoNoteSpec? = null,
     ): PublishOutcome {
         val isEdit = existingUuid != null
         val uuid = if (isEdit) {
@@ -180,6 +181,7 @@ class ClimbCreatorRepository @Inject constructor(
             state = state,
             sizeLabel = sizeLabel,
             isEdit = isEdit,
+            autoNote = autoNote,
         )
         return PublishOutcome(
             uuid = uuid,

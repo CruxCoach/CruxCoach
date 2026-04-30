@@ -4,22 +4,29 @@ import android.util.Log
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.data.kilter.KilterClimbPublisher
 import com.cruxcoach.android.data.kilter.KilterTokenStore
+import com.cruxcoach.android.nostr.NostrConfig
 import com.cruxcoach.android.nostr.NostrRelayPool
 import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.BoardSize
 import com.cruxcoach.domain.board.BoardClimbParser
+import com.cruxcoach.domain.community.AutoNoteTemplate
 import com.cruxcoach.domain.community.ClimbBounds
 import com.cruxcoach.domain.community.ClimbEditorState
 import com.cruxcoach.domain.community.buildCommunityClimbEvent
 import com.cruxcoach.domain.community.encodeFrames
 import com.vitorpamplona.quartz.nip01Core.core.Event
+import com.vitorpamplona.quartz.nip01Core.core.hexToByteArray
+import com.vitorpamplona.quartz.nip19Bech32.entities.NAddress
+import com.vitorpamplona.quartz.nip19Bech32.toNpub
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.first
 
 private const val TAG = "ClimbPublisher"
 private const val KIND_REPLACEABLE_PARAMETERIZED = 30078
+private const val KIND_TEXT_NOTE = 1
+private const val APP_LINK_BASE = "https://cruxcoach.org/c/"
 
 /**
  * Publishes a CruxCoach-authored climb. Two destinations, both signed
@@ -50,6 +57,12 @@ class CommunityClimbPublisher @Inject constructor(
 ) {
     /** Outcome of the overall publish. Kilter side is captured here so
      *  callers can decide whether to nudge the user about connecting. */
+    /** Inputs the editor passes through when the user opted to also post
+     *  a Kind-1 note alongside the Kind-30078 climb event. The template
+     *  comes from the resolved string resource (locale-aware), so this
+     *  layer doesn't depend on Android resources. */
+    data class AutoNoteSpec(val template: String)
+
     data class Result(
         val nostrEventId: String,
         /**
@@ -67,6 +80,7 @@ class CommunityClimbPublisher @Inject constructor(
         state: ClimbEditorState,
         sizeLabel: String,
         isEdit: Boolean = false,
+        autoNote: AutoNoteSpec? = null,
     ): Result {
         val pubkey = nostrSigner.getPublicKeyHex()
         val createdAt = System.currentTimeMillis() / 1000
@@ -102,6 +116,16 @@ class CommunityClimbPublisher @Inject constructor(
             nostrDTag = payload.dTag,
             pubkey = pubkey,
         )
+
+        // Auto-Note: optional public Kind-1 announcement linking to the
+        // climb. Best-effort — failure here is logged but doesn't fail
+        // the overall publish (the climb is already on relays via the
+        // 30078 above; the user can re-share manually). Runs after the
+        // mandatory Kind-30078 succeeded so the naddr is durable.
+        if (autoNote != null) {
+            runCatching { publishKind1Note(payload.dTag, pubkey, state.name, autoNote) }
+                .onFailure { Log.w(TAG, "auto-note publish threw — recoverable", it) }
+        }
 
         // Step 2: Kilter — best-effort via the user's own account.
         // Detect "connected but publishing the climb still went only to
@@ -199,6 +223,57 @@ class CommunityClimbPublisher @Inject constructor(
      * to no `bounds` tag in the Nostr event; subscribers handle that
      * gracefully).
      */
+    /**
+     * Build + send the Kind-1 announcement. Encodes the just-published
+     * climb as NIP-19 `naddr1…` (replaceable-event reference — survives
+     * future edits because the d-tag is stable). The template's
+     * `{npub_cruxcoach}` resolves to [NostrConfig.DEV_PUBKEY] (the
+     * maintainer-bound brand pubkey baked into the build); a `p`-tag
+     * pointing at it makes the mention surface in Amethyst's notifications
+     * for the maintainer account, which doubles as a reach-multiplier for
+     * CruxCoach climbs.
+     */
+    private suspend fun publishKind1Note(
+        dTag: String,
+        authorPubkeyHex: String,
+        climbName: String,
+        spec: AutoNoteSpec,
+    ) {
+        val naddr = NAddress.create(
+            kind = KIND_REPLACEABLE_PARAMETERIZED,
+            pubKeyHex = authorPubkeyHex,
+            dTag = dTag,
+            relays = emptyList(),
+        )
+        val cruxcoachNpub = NostrConfig.DEV_PUBKEY.hexToByteArray().toNpub()
+        val content = AutoNoteTemplate.render(
+            template = spec.template,
+            vars = mapOf(
+                "name" to climbName,
+                "naddr" to naddr,
+                "npub_cruxcoach" to cruxcoachNpub,
+                "cruxcoach_url" to "$APP_LINK_BASE$naddr",
+            ),
+        )
+        // Tags: explicit hashtags (so #-search hits) + p-tag for the
+        // mention (NIP-10 / Amethyst surfaces this as a reply-mention in
+        // the recipient's notifications). The naddr embed in `content`
+        // covers the climb-link side.
+        val tags: Array<Array<String>> = arrayOf(
+            arrayOf("p", NostrConfig.DEV_PUBKEY),
+            arrayOf("t", "kilterboard"),
+            arrayOf("t", "climbing"),
+        )
+        val noteEvent = nostrSigner.signer.sign<Event>(
+            createdAt = System.currentTimeMillis() / 1000,
+            kind = KIND_TEXT_NOTE,
+            tags = tags,
+            content = content,
+        )
+        val (attempted, accepted) = pool.sendEventWithStats(noteEvent)
+        Log.i(TAG, "auto-note attempted=$attempted accepted=$accepted")
+    }
+
     private fun computeBounds(state: ClimbEditorState): ClimbBounds? {
         val ids = state.selectedHolds.keys
         if (ids.isEmpty()) return null

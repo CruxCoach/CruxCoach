@@ -687,6 +687,14 @@ SELECT * FROM climbs
 WHERE source = 'local' AND sync_status IN ('draft', 'failed')
 ORDER BY created_at DESC;
 
+-- Single-row stats lookup for the editor's draft-restore path. Drafts have
+-- exactly one climb_stats row (one angle); LIMIT 1 is defensive against
+-- legacy data shapes. display_difficulty carries the setter grade for
+-- local drafts (see upsertLocalClimbStat). Returns NULL for both columns
+-- when the climb has no stats row yet.
+getClimbStatsForUuid:
+SELECT angle, display_difficulty FROM climb_stats WHERE climb_uuid = ? LIMIT 1;
+
 -- All climbs the current user authored (drafts + already-published nostr).
 getMyClimbs:
 SELECT * FROM climbs

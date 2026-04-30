@@ -17,6 +17,12 @@ object ClimbValidation {
         data object NameMissing : Issue()
         data class NameTooLong(val length: Int) : Issue()
         data class DescriptionTooLong(val length: Int) : Issue()
+        // Angle is required at every persistence step (saveDraft / publish):
+        // ClimbCreatorRepository + buildCommunityClimbEvent both `require` it
+        // and throw an English IllegalArgumentException when missing. Surfacing
+        // the gap as a validation Issue keeps the failure inside the localised
+        // bottom-bar instead of a raw exception message.
+        data object AngleMissing : Issue()
     }
 
     const val NAME_MAX_LENGTH = 100
@@ -33,6 +39,7 @@ object ClimbValidation {
         holds: Map<Int, Int>,
         name: String,
         description: String,
+        angle: Int? = null,
     ): List<Issue> {
         val issues = mutableListOf<Issue>()
 
@@ -50,6 +57,8 @@ object ClimbValidation {
         if (name.length > NAME_MAX_LENGTH) issues += Issue.NameTooLong(name.length)
         if (description.length > DESCRIPTION_MAX_LENGTH) issues += Issue.DescriptionTooLong(description.length)
 
+        if (angle == null) issues += Issue.AngleMissing
+
         return issues
     }
 
@@ -57,5 +66,6 @@ object ClimbValidation {
         holds: Map<Int, Int>,
         name: String,
         description: String,
-    ): Boolean = validate(holds, name, description).isEmpty()
+        angle: Int? = null,
+    ): Boolean = validate(holds, name, description, angle).isEmpty()
 }

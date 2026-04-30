@@ -2,6 +2,7 @@ package com.cruxcoach.android.ui.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.data.kilter.KilterTokenStore
 import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.android.payment.NostrProfileManager
@@ -11,6 +12,7 @@ import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -38,6 +40,9 @@ data class NostrProfileEditState(
      *  override each other. */
     val kilterUsername: String? = null,
     val errorMessage: String? = null,
+    /** Auto-Note global default — drives the editor's per-publish
+     *  checkbox vorbelegung. Stored in [UserPreferences]. */
+    val autoNoteEnabled: Boolean = false,
 )
 
 @HiltViewModel
@@ -46,6 +51,7 @@ class NostrProfileViewModel @Inject constructor(
     private val nostrSigner: NostrSigner,
     private val kilterTokenStore: KilterTokenStore,
     private val boardRepository: BoardRepository,
+    private val userPreferences: UserPreferences,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(NostrProfileEditState())
@@ -53,6 +59,15 @@ class NostrProfileViewModel @Inject constructor(
 
     init {
         load()
+        viewModelScope.launch {
+            val initial = userPreferences.autoNoteEnabled.first()
+            _state.update { it.copy(autoNoteEnabled = initial) }
+        }
+    }
+
+    fun setAutoNoteEnabled(enabled: Boolean) {
+        _state.update { it.copy(autoNoteEnabled = enabled) }
+        viewModelScope.launch { userPreferences.setAutoNoteEnabled(enabled) }
     }
 
     private fun load() {

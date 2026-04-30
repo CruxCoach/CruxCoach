@@ -224,6 +224,7 @@ class FakeBoardRepository : BoardRepository {
     override fun getDraftClimbs(): List<CommunityClimbRow> = emptyList()
     override fun getMyClimbs(pubkey: String): List<CommunityClimbRow> = emptyList()
     override fun getCommunityClimbs(): List<CommunityClimbRow> = emptyList()
+    override fun getClimbStatsForUuid(uuid: String): Pair<Int, Int?>? = null
     override fun findClimbByFramesHash(framesHash: String, layoutId: Long): CommunityClimbRow? = null
     override fun upsertSetterGrade(climbDTag: String, angle: Long, setterGradeId: Int, lastUpdatedEpochMs: Long) {}
 }

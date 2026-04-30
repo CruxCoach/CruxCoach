@@ -756,6 +756,11 @@ class BoardRepositoryImpl(
     override fun getCommunityClimbs(): List<CommunityClimbRow> =
         q.getCommunityClimbs().executeAsList().map { it.toCommunityRow() }
 
+    override fun getClimbStatsForUuid(uuid: String): Pair<Int, Int?>? {
+        val row = q.getClimbStatsForUuid(uuid).executeAsOneOrNull() ?: return null
+        return row.angle.toInt() to row.display_difficulty?.toInt()
+    }
+
     override fun findClimbByFramesHash(framesHash: String, layoutId: Long): CommunityClimbRow? {
         val row = q.findClimbByFramesHash(framesHash, layoutId).executeAsOneOrNull() ?: return null
         // Lightweight projection — we only need uuid + name + source + pubkey for dup-detection

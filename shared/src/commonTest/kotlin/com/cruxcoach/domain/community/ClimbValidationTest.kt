@@ -14,7 +14,13 @@ class ClimbValidationTest {
 
     @Test
     fun valid_climb_passes() {
-        assertTrue(ClimbValidation.isValid(goodHolds, name = "Pump 540°", description = ""))
+        assertTrue(ClimbValidation.isValid(goodHolds, name = "Pump 540°", description = "", angle = 40))
+    }
+
+    @Test
+    fun missing_angle_fails() {
+        val issues = ClimbValidation.validate(goodHolds, name = "ok", description = "", angle = null)
+        assertTrue(ClimbValidation.Issue.AngleMissing in issues)
     }
 
     @Test

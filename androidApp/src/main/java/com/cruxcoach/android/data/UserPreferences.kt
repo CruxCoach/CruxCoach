@@ -165,6 +165,10 @@ object PreferenceKeys {
     val BOARD_CLIMB_TYPE = stringPreferencesKey("board_climb_type")
     val BOARD_BENCHMARK_ONLY = booleanPreferencesKey("board_benchmark_only")
     val ROUTE_FRAME_SPEED = floatPreferencesKey("route_frame_speed_f")
+    // Auto-Note: when true, publishing a Kind-30078 climb also sends a
+    // public Kind-1 note linking to it. Default false; the editor exposes
+    // a per-publish checkbox that's pre-populated from this flag.
+    val AUTO_NOTE_ENABLED = booleanPreferencesKey("auto_note_enabled")
     val ROUTE_USE_SETTER_SPEED = booleanPreferencesKey("route_use_setter_speed")
     val ROUTE_COUNTDOWN = booleanPreferencesKey("route_countdown")
     val ROUTE_COUNTDOWN_SECONDS = intPreferencesKey("route_countdown_seconds")
@@ -454,6 +458,12 @@ class UserPreferences(
     val boardStatusFilter: Flow<String> = dataStore.data.map { it[PreferenceKeys.BOARD_STATUS_FILTER] ?: "ALL" }
     val boardClimbType: Flow<String> = dataStore.data.map { it[PreferenceKeys.BOARD_CLIMB_TYPE] ?: "BOULDER" }
     val boardBenchmarkOnly: Flow<Boolean> = dataStore.data.map { it[PreferenceKeys.BOARD_BENCHMARK_ONLY] ?: false }
+
+    /** Auto-Note global default (off). */
+    val autoNoteEnabled: Flow<Boolean> = dataStore.data.map { it[PreferenceKeys.AUTO_NOTE_ENABLED] ?: false }
+    suspend fun setAutoNoteEnabled(enabled: Boolean) {
+        dataStore.edit { prefs -> prefs[PreferenceKeys.AUTO_NOTE_ENABLED] = enabled }
+    }
 
     suspend fun setBoardFilters(
         angle: Int, minGrade: Int, maxGrade: Int, minAscensionists: Int,

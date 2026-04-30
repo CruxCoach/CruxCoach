@@ -27,6 +27,12 @@
     <string name="climb_creator_issue_name_missing">Name ist erforderlich.</string>
     <string name="climb_creator_issue_name_too_long" formatted="false">Name zu lang (max. %d Zeichen).</string>
     <string name="climb_creator_issue_description_too_long" formatted="false">Beschreibung zu lang (max. %d Zeichen).</string>
+    <string name="climb_creator_issue_angle_missing">Brett-Winkel wählen.</string>
+    <string name="climb_creator_draft_saved">Entwurf gespeichert.</string>
+    <string name="climb_creator_also_post_note">Auch als Note (Kind 1) posten</string>
+    <string name="auto_note_default_template">Ich habe einen neuen Boulder auf nostr:{npub_cruxcoach} veröffentlicht: „{name}“\n\n#kilterboard #climbing\n\n{cruxcoach_url}\nnostr:{naddr}</string>
+    <string name="auto_note_setting_title">Auto-Note beim Veröffentlichen</string>
+    <string name="auto_note_setting_body">Wenn aktiv, wird beim Veröffentlichen eines Climbs zusätzlich ein öffentlicher Kind-1-Post abgesetzt, der auf den Climb verlinkt. Default aus; pro Climb eine Checkbox im Editor zum Überschreiben.</string>
     <string name="climb_creator_dup_title">Ein Climb mit diesen Holds existiert schon</string>
     <string name="climb_creator_dup_message" formatted="false">Gleiches Griff-Layout wie „%s". Gleiche Griffe in anderem Winkel/Grade sind aber erlaubt.</string>
     <string name="climb_creator_dup_continue">Weiter bearbeiten</string>

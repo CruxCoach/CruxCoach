@@ -454,6 +454,12 @@ interface CommunityClimbQueries {
     fun getDraftClimbs(): List<CommunityClimbRow>
     fun getMyClimbs(pubkey: String): List<CommunityClimbRow>
     fun getCommunityClimbs(): List<CommunityClimbRow>
+    /** Single-row stats lookup used by the editor when restoring a draft.
+     *  Returns null when the climb has no stats row at all. The pair is
+     *  (angle, setterGradeId) — for local drafts these match what
+     *  upsertLocalClimbStat persisted; both null means the row predates
+     *  having stats and the editor falls back to its default angle. */
+    fun getClimbStatsForUuid(uuid: String): Pair<Int, Int?>?
     /** Look up an existing climb by frames_hash for duplicate detection. */
     fun findClimbByFramesHash(framesHash: String, layoutId: Long): CommunityClimbRow?
     /** Cache the setter-grade entry for a community climb (MVP — no vote aggregation). */

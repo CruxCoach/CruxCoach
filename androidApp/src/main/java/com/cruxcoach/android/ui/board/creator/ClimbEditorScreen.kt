@@ -47,7 +47,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -86,6 +88,9 @@ fun ClimbEditorScreen(
 
     val nudgeMessage = stringResource(R.string.climb_creator_kilter_connect_nudge)
     val nudgeAction = stringResource(R.string.climb_creator_kilter_connect_action)
+    val draftSavedMessage = stringResource(R.string.climb_creator_draft_saved)
+    val autoNoteTemplate = stringResource(R.string.auto_note_default_template)
+    val coroutineScope = rememberCoroutineScope()
 
     LaunchedEffect(state.publishedUuid, state.showKilterConnectNudge) {
         val uuid = state.publishedUuid ?: return@LaunchedEffect
@@ -237,9 +242,34 @@ fun ClimbEditorScreen(
             // glance — no scrolling up to figure out why it's locked.
             ValidationStatus(state.validationIssues)
 
+            // Auto-Note opt-in for this publish. Vorbelegt aus
+            // userPreferences.autoNoteEnabled (siehe VM init); per-publish
+            // Override ändert nur den lokalen Editor-State.
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                androidx.compose.material3.Checkbox(
+                    checked = state.alsoPostNote,
+                    onCheckedChange = { viewModel.setAlsoPostNote(it) },
+                )
+                Text(
+                    stringResource(R.string.climb_creator_also_post_note),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(
-                    onClick = { viewModel.saveAsDraft(onPublished) },
+                    // Save-as-draft stays in the editor: the user can keep
+                    // tweaking and the now-loaded draft gets re-saved in
+                    // place via loadedDraftUuid. Previously this passed
+                    // `onPublished` which popped the back stack — that's
+                    // the publish flow, not the draft flow.
+                    onClick = {
+                        viewModel.saveAsDraft { _ ->
+                            coroutineScope.launch {
+                                snackbarHostState.showSnackbar(draftSavedMessage)
+                            }
+                        }
+                    },
                     enabled = !state.isPublishing,
                     modifier = Modifier.weight(1f),
                 ) { Text(stringResource(R.string.climb_creator_save_draft)) }
@@ -247,7 +277,7 @@ fun ClimbEditorScreen(
                     // Drafts can be saved with any state, but Publish needs
                     // every Kilter must-have satisfied (name, frames, role
                     // counts) before the climb leaves the device.
-                    onClick = { viewModel.publish(sizeLabel = "12x12") },
+                    onClick = { viewModel.publish(sizeLabel = "12x12", autoNoteTemplate = autoNoteTemplate) },
                     enabled = !state.isPublishing && state.validationIssues.isEmpty(),
                     modifier = Modifier.weight(1f),
                 ) { Text(stringResource(R.string.climb_creator_publish)) }
@@ -263,7 +293,7 @@ fun ClimbEditorScreen(
                 title = { Text(stringResource(R.string.climb_creator_dup_title)) },
                 text = { Text(stringResource(R.string.climb_creator_dup_message, dup.name)) },
                 confirmButton = {
-                    TextButton(onClick = { viewModel.confirmPublishWithDuplicate("12x12") }) {
+                    TextButton(onClick = { viewModel.confirmPublishWithDuplicate("12x12", autoNoteTemplate) }) {
                         Text(stringResource(R.string.climb_creator_dup_publish_anyway))
                     }
                 },
@@ -278,7 +308,7 @@ fun ClimbEditorScreen(
 
     if (state.pendingProfileHint) {
         AlertDialog(
-            onDismissRequest = { viewModel.dismissProfileHintAndPublish("12x12") },
+            onDismissRequest = { viewModel.dismissProfileHintAndPublish("12x12", autoNoteTemplate) },
             title = { Text(stringResource(R.string.profile_hint_dialog_title)) },
             text = { Text(stringResource(R.string.profile_hint_dialog_body)) },
             confirmButton = {
@@ -287,7 +317,7 @@ fun ClimbEditorScreen(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { viewModel.dismissProfileHintAndPublish("12x12") }) {
+                TextButton(onClick = { viewModel.dismissProfileHintAndPublish("12x12", autoNoteTemplate) }) {
                     Text(stringResource(R.string.profile_hint_dialog_later))
                 }
             },
@@ -457,6 +487,7 @@ private fun ValidationStatus(issues: List<ClimbValidation.Issue>) {
                 ClimbValidation.Issue.NameMissing -> stringResource(R.string.climb_creator_issue_name_missing)
                 is ClimbValidation.Issue.NameTooLong -> stringResource(R.string.climb_creator_issue_name_too_long, ClimbValidation.NAME_MAX_LENGTH)
                 is ClimbValidation.Issue.DescriptionTooLong -> stringResource(R.string.climb_creator_issue_description_too_long, ClimbValidation.DESCRIPTION_MAX_LENGTH)
+                ClimbValidation.Issue.AngleMissing -> stringResource(R.string.climb_creator_issue_angle_missing)
             }
             Text(
                 "• $msg",

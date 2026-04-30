@@ -78,6 +78,11 @@ data class ClimbEditorUiState(
     /** One-shot flag: UI navigates to the profile editor and clears it
      *  via [acknowledgeProfileSetupNavigated]. */
     val profileSetupRequested: Boolean = false,
+    /** Per-publish "also post a public Kind-1 note" toggle. Initialised
+     *  from the global [UserPreferences.autoNoteEnabled] when the editor
+     *  opens; the user can flip it for a single publish without
+     *  affecting the global default. */
+    val alsoPostNote: Boolean = false,
 )
 
 @HiltViewModel
@@ -113,6 +118,14 @@ class ClimbEditorViewModel @Inject constructor(
             userPreferences.ledHoldColors.collect { colors ->
                 _state.update { it.copy(ledColors = colors) }
             }
+        }
+        // Seed the per-publish auto-note toggle from the global default
+        // once on init. Subsequent global flips don't fight the user's
+        // per-session override; they only matter the next time the
+        // editor opens.
+        viewModelScope.launch {
+            val initial = userPreferences.autoNoteEnabled.first()
+            _state.update { it.copy(alsoPostNote = initial) }
         }
     }
 
@@ -176,13 +189,17 @@ class ClimbEditorViewModel @Inject constructor(
      * keeps the Nostr d-tag stable so the relay replaces the original
      * Kind-30078 event instead of duplicating it.
      */
-    private fun seedFromEdit(source: CommunityClimbRow) {
+    private suspend fun seedFromEdit(source: CommunityClimbRow) {
         val holds = com.cruxcoach.domain.board.BoardClimbParser.parseFrames(source.framesText)
             .associate { it.placementId to it.roleId }
+        val stats = withContext(Dispatchers.IO) { boardRepository.getClimbStatsForUuid(source.uuid) }
+        val currentAngle = _state.value.editor.angle
         val seeded = ClimbEditorState(
             selectedHolds = holds,
             name = source.name,
             description = source.description,
+            angle = stats?.first ?: currentAngle,
+            setterGradeId = stats?.second,
         )
         undoStack.clear(); redoStack.clear()
         _state.update { it.copy(editor = seeded, loadedDraftUuid = source.uuid, canUndo = false, canRedo = false) }
@@ -275,6 +292,9 @@ class ClimbEditorViewModel @Inject constructor(
     fun setDescription(desc: String) = mutate { copy(description = desc) }
     fun setSetterGradeId(gradeId: Int?) = mutate { copy(setterGradeId = gradeId) }
     fun setAngle(angle: Int?) = mutate { copy(angle = angle) }
+    fun setAlsoPostNote(value: Boolean) {
+        _state.update { it.copy(alsoPostNote = value) }
+    }
 
     fun undo() {
         val previous = undoStack.removeLastOrNull() ?: return
@@ -293,7 +313,9 @@ class ClimbEditorViewModel @Inject constructor(
     /** Save as draft — always succeeds locally, no Nostr roundtrip. */
     fun saveAsDraft(onSaved: (String) -> Unit) {
         val current = _state.value.editor
-        val issues = ClimbValidation.validate(current.selectedHolds, current.name, current.description)
+        val issues = ClimbValidation.validate(
+            current.selectedHolds, current.name, current.description, current.angle,
+        )
         if (issues.isNotEmpty()) {
             _state.update { it.copy(validationIssues = issues) }
             return
@@ -335,9 +357,11 @@ class ClimbEditorViewModel @Inject constructor(
      * [confirmPublishWithDuplicate]. If no duplicate, proceeds straight
      * to save + Nostr push.
      */
-    fun publish(sizeLabel: String) {
+    fun publish(sizeLabel: String, autoNoteTemplate: String? = null) {
         val current = _state.value.editor
-        val issues = ClimbValidation.validate(current.selectedHolds, current.name, current.description)
+        val issues = ClimbValidation.validate(
+            current.selectedHolds, current.name, current.description, current.angle,
+        )
         if (issues.isNotEmpty()) {
             _state.update { it.copy(validationIssues = issues) }
             return
@@ -357,7 +381,7 @@ class ClimbEditorViewModel @Inject constructor(
                 _state.update { it.copy(pendingProfileHint = true) }
                 return@launch
             }
-            doPublish(sizeLabel)
+            doPublish(sizeLabel, autoNoteTemplate)
         }
     }
 
@@ -387,11 +411,11 @@ class ClimbEditorViewModel @Inject constructor(
 
     /** User chose "skip" — record dismissal so the hint doesn't fire
      *  again for this identity, then proceed with publish. */
-    fun dismissProfileHintAndPublish(sizeLabel: String) {
+    fun dismissProfileHintAndPublish(sizeLabel: String, autoNoteTemplate: String? = null) {
         viewModelScope.launch {
             userPreferences.setProfileHintDismissed(true)
             _state.update { it.copy(pendingProfileHint = false) }
-            doPublish(sizeLabel)
+            doPublish(sizeLabel, autoNoteTemplate)
         }
     }
 
@@ -402,9 +426,9 @@ class ClimbEditorViewModel @Inject constructor(
     }
 
     /** User accepted the duplicate-warning dialog → continue publish. */
-    fun confirmPublishWithDuplicate(sizeLabel: String) {
+    fun confirmPublishWithDuplicate(sizeLabel: String, autoNoteTemplate: String? = null) {
         _state.update { it.copy(duplicateOf = null, pendingPublishConfirm = false) }
-        doPublish(sizeLabel)
+        doPublish(sizeLabel, autoNoteTemplate)
     }
 
     /** User declined the duplicate-warning dialog → stay in editor. */
@@ -412,14 +436,21 @@ class ClimbEditorViewModel @Inject constructor(
         _state.update { it.copy(duplicateOf = null, pendingPublishConfirm = false) }
     }
 
-    private fun doPublish(sizeLabel: String) {
+    private fun doPublish(sizeLabel: String, autoNoteTemplate: String? = null) {
         _state.update { it.copy(isPublishing = true, errorMessage = null) }
         val current = _state.value.editor
         val existingUuid = _state.value.loadedDraftUuid
+        // Resolve the auto-note spec once at the publish-edge so the
+        // repository + publisher don't need to know about ViewModel
+        // state. Empty/null template + disabled toggle both collapse to
+        // null (= skip Kind-1).
+        val noteSpec = if (_state.value.alsoPostNote && !autoNoteTemplate.isNullOrBlank()) {
+            com.cruxcoach.android.community.CommunityClimbPublisher.AutoNoteSpec(autoNoteTemplate)
+        } else null
         viewModelScope.launch {
             val outcome = try {
                 withContext(Dispatchers.IO) {
-                    repository.saveAndPublish(current, sizeLabel, existingUuid = existingUuid)
+                    repository.saveAndPublish(current, sizeLabel, existingUuid = existingUuid, autoNote = noteSpec)
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "publish failed", e)
@@ -471,19 +502,39 @@ class ClimbEditorViewModel @Inject constructor(
      * Load a draft into the editor. The hold map + metadata replace the
      * current editor state; the loaded uuid is tracked so re-saving
      * updates the same row in place. Doesn't touch any other drafts.
+     *
+     * `angle` and `setterGradeId` are pulled from `climb_stats` (a
+     * separate row from `climbs`); without them the restored draft would
+     * arrive with `angle=null`, the bottom-bar would falsely report
+     * "ready to publish", and the next save would crash through the
+     * IllegalArgumentException path with an English message.
      */
     fun loadDraft(draft: CommunityClimbRow) {
-        val holds = com.cruxcoach.domain.board.BoardClimbParser.parseFrames(draft.framesText)
-            .associate { it.placementId to it.roleId }
-        val seeded = ClimbEditorState(
-            selectedHolds = holds,
-            name = draft.name,
-            description = draft.description,
-        )
-        // Reset undo stacks — we're starting from a fresh draft snapshot.
-        undoStack.clear(); redoStack.clear()
-        _state.update { it.copy(editor = seeded, loadedDraftUuid = draft.uuid, draftsSheetOpen = false, canUndo = false, canRedo = false) }
-        viewModelScope.launch { syncLeds() }
+        viewModelScope.launch {
+            val holds = com.cruxcoach.domain.board.BoardClimbParser.parseFrames(draft.framesText)
+                .associate { it.placementId to it.roleId }
+            val stats = withContext(Dispatchers.IO) { boardRepository.getClimbStatsForUuid(draft.uuid) }
+            val currentAngle = _state.value.editor.angle
+            val seeded = ClimbEditorState(
+                selectedHolds = holds,
+                name = draft.name,
+                description = draft.description,
+                angle = stats?.first ?: currentAngle,
+                setterGradeId = stats?.second,
+            )
+            // Reset undo stacks — we're starting from a fresh draft snapshot.
+            undoStack.clear(); redoStack.clear()
+            _state.update {
+                it.copy(
+                    editor = seeded,
+                    loadedDraftUuid = draft.uuid,
+                    draftsSheetOpen = false,
+                    canUndo = false,
+                    canRedo = false,
+                )
+            }
+            syncLeds()
+        }
     }
 
     fun deleteDraft(uuid: String) {
@@ -562,6 +613,7 @@ class ClimbEditorViewModel @Inject constructor(
             holds = next.selectedHolds,
             name = next.name,
             description = next.description,
+            angle = next.angle,
         )
         _state.update {
             it.copy(
