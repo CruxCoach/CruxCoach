@@ -431,6 +431,75 @@ class KilterApiClient @Inject constructor(
         edgeRight: Int,
         edgeBottom: Int,
         edgeTop: Int,
+    ): KilterPublishResult = submitClimb(
+        endpointPath = "create-climb/transaction",
+        op = "publishClimb",
+        climbUuid = climbUuid,
+        name = name,
+        description = description,
+        framesClimbConcat = framesClimbConcat,
+        productName = productName,
+        edgeLeft = edgeLeft,
+        edgeRight = edgeRight,
+        edgeBottom = edgeBottom,
+        edgeTop = edgeTop,
+    )
+
+    /**
+     * Update an already-published climb on Kilter. Endpoint per RE:
+     * `POST /api/climbs/update-climb/transaction` (string-dump line
+     * 18976 of `~/kilter-re/analysis/libapp-strings.txt`, also the
+     * `updateCreateClimbTransaction` Dart function).
+     *
+     * Same payload shape as create — Kilter's UI only lets the setter
+     * trigger this for `is_draft=1` climbs, but the API does not visibly
+     * gate against published rows, so we use it for the edit-flow of
+     * a CruxCoach climb that was previously synced. If Kilter rejects
+     * it (4xx for "published cannot be edited" or similar), the caller
+     * marks the climb `kilter_status='diverged'` so the retry worker
+     * stops poking it.
+     */
+    suspend fun updateClimb(
+        climbUuid: String,
+        name: String,
+        description: String,
+        framesClimbConcat: String,
+        productName: String,
+        edgeLeft: Int,
+        edgeRight: Int,
+        edgeBottom: Int,
+        edgeTop: Int,
+    ): KilterPublishResult = submitClimb(
+        endpointPath = "update-climb/transaction",
+        op = "updateClimb",
+        climbUuid = climbUuid,
+        name = name,
+        description = description,
+        framesClimbConcat = framesClimbConcat,
+        productName = productName,
+        edgeLeft = edgeLeft,
+        edgeRight = edgeRight,
+        edgeBottom = edgeBottom,
+        edgeTop = edgeTop,
+    )
+
+    /**
+     * Shared transport for both create and update flows — same payload,
+     * same auth, same error mapping; only the endpoint path differs. `op`
+     * is a label for log lines so the two flows stay distinguishable.
+     */
+    private suspend fun submitClimb(
+        endpointPath: String,
+        op: String,
+        climbUuid: String,
+        name: String,
+        description: String,
+        framesClimbConcat: String,
+        productName: String,
+        edgeLeft: Int,
+        edgeRight: Int,
+        edgeBottom: Int,
+        edgeTop: Int,
     ): KilterPublishResult = withContext(Dispatchers.IO) {
         val token = ensureValidToken()
             ?: return@withContext KilterPublishResult.NotAuthenticated
@@ -457,23 +526,23 @@ class KilterApiClient @Inject constructor(
         val body = json.encodeToString(CreateClimbTransaction.serializer(), payload)
             .toRequestBody("application/json".toMediaType())
         val request = Request.Builder()
-            .url("$API_BASE/climbs/create-climb/transaction")
+            .url("$API_BASE/climbs/$endpointPath")
             .addHeader("Authorization", "Bearer $token")
             .post(body)
             .build()
 
         try {
             var response = httpClient.newCall(request).execute()
-            // 401 from a publishClimb means our access token expired
-            // since `ensureValidToken` last checked (window race). Try
-            // exactly one silent refresh + retry — same pattern as the
-            // ascent fetch/upload path. If it still fails, surface
-            // NotAuthenticated so the orchestrator can defer.
+            // 401 means our access token expired since `ensureValidToken`
+            // last checked (window race). Try exactly one silent refresh
+            // + retry — same pattern as the ascent fetch/upload path. If
+            // it still fails, surface NotAuthenticated so the orchestrator
+            // can defer.
             if (response.code == 401) {
                 response.close()
                 val refreshed = if (refreshAccessToken()) tokenStore.getAccessToken() else null
                 if (refreshed != null) {
-                    Log.i(TAG, "publishClimb 401 → refreshed + retrying once")
+                    Log.i(TAG, "$op 401 → refreshed + retrying once")
                     val retryRequest = request.newBuilder()
                         .header("Authorization", "Bearer $refreshed")
                         .build()
@@ -481,18 +550,18 @@ class KilterApiClient @Inject constructor(
                 }
             }
             if (response.isSuccessful) {
-                Log.i(TAG, "publishClimb ok uuid=$climbUuid setter=$setterUuid")
+                Log.i(TAG, "$op ok uuid=$climbUuid setter=$setterUuid")
                 return@withContext KilterPublishResult.Success(climbUuid)
             }
             val responseBody = response.body?.string().orEmpty()
-            Log.w(TAG, "publishClimb HTTP ${response.code}: $responseBody")
+            Log.w(TAG, "$op HTTP ${response.code}: $responseBody")
             return@withContext when (response.code) {
                 401, 403 -> KilterPublishResult.NotAuthenticated
                 in 400..499 -> KilterPublishResult.PermanentError(responseBody, response.code)
                 else -> KilterPublishResult.TransientError("HTTP ${response.code}: $responseBody")
             }
         } catch (e: Exception) {
-            Log.e(TAG, "publishClimb exception uuid=$climbUuid", e)
+            Log.e(TAG, "$op exception uuid=$climbUuid", e)
             return@withContext KilterPublishResult.TransientError(e.message ?: "network error")
         }
     }

@@ -44,6 +44,14 @@ data class NostrCommunityClimb(
  * caller is responsible for actual signing + relay publish — this just
  * shapes the payload deterministically (so frames_hash + d-tag are
  * reproducible across re-publishes).
+ *
+ * `bounds` is optional. When provided, it lands as the `["bounds",
+ * "L,R,B,T"]` tag; consumers (live sub + cron) parse it back into
+ * `edge_left/right/bottom/top` so per-board-size browse compatibility
+ * filtering works for CruxCoach climbs the same way it does for Kilter
+ * climbs. Pass null when the editor cannot resolve placement coordinates
+ * (extremely unlikely once layout data is loaded — gates against weird
+ * race conditions).
  */
 fun buildCommunityClimbEvent(
     pubkey: String,
@@ -52,6 +60,7 @@ fun buildCommunityClimbEvent(
     layoutId: Long,
     sizeLabel: String,
     state: ClimbEditorState,
+    bounds: ClimbBounds? = null,
 ): NostrCommunityClimb {
     require(state.angle != null) { "angle is required at publish time" }
 
@@ -70,6 +79,7 @@ fun buildCommunityClimbEvent(
         listOf("frames_hash", "sha256:$framesHash"),
         listOf("layout_id", layoutId.toString()),
     )
+    bounds?.let { tags += listOf("bounds", it.encode()) }
     state.setterGradeId?.let { grade ->
         // Per spec §4.5 the angle goes alongside the grade so multi-angle
         // climbs can carry a setter grade per angle. v0.1.4 publishes a

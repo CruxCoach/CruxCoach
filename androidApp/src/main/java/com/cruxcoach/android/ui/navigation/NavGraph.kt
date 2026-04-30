@@ -122,6 +122,10 @@ object Routes {
     const val ANNOUNCEMENTS = "announcements"
     const val KEY_MANAGEMENT = "key_management"
     const val KEY_IMPORT = "key_import"
+    const val NOSTR_PROFILE = "nostr_profile"
+    const val SETTER_DETAIL = "setter_detail/{setterPubkey}"
+    fun setterDetail(pubkey: String) = "setter_detail/$pubkey"
+    const val SETTERS_LIST = "setters_list"
     const val MESSAGE_THREAD = "message_thread/{eventId}"
     fun sessionDetail(sessionId: Long) = "session_detail/$sessionId"
     fun activeWorkout(sessionId: Long) = "active_workout/$sessionId"
@@ -432,6 +436,9 @@ fun CruxCoachNavHost(
                         navController.popBackStack()
                         navController.navigate(Routes.SETTINGS)
                     },
+                    onNavigateToNostrProfile = {
+                        navController.navigate(Routes.NOSTR_PROFILE)
+                    },
                 )
             }
 
@@ -473,7 +480,10 @@ fun CruxCoachNavHost(
                     },
                     onNavigateToBugReport = { title, desc ->
                         navController.navigate(Routes.bugReport(title, desc))
-                    }
+                    },
+                    onNavigateToSetter = { pubkey ->
+                        navController.navigate(Routes.setterDetail(pubkey))
+                    },
                 )
             }
 
@@ -499,7 +509,10 @@ fun CruxCoachNavHost(
                     onNavigateBack = { navController.popBackStack() },
                     onNavigateToListDetail = { listId ->
                         navController.navigate(Routes.boardListDetail(listId))
-                    }
+                    },
+                    onNavigateToSetters = {
+                        navController.navigate(Routes.SETTERS_LIST)
+                    },
                 )
             }
 
@@ -530,6 +543,7 @@ fun CruxCoachNavHost(
                     onNavigateToFeatureRequests = { navController.navigate(Routes.FEATURE_REQUEST_LIST) },
                     onNavigateToCrashReports = { navController.navigate(Routes.CRASH_REPORT_LIST) },
                     onNavigateToKeyManagement = { navController.navigate(Routes.KEY_MANAGEMENT) },
+                    onNavigateToNostrProfile = { navController.navigate(Routes.NOSTR_PROFILE) },
                     onDonateClick = {
                         paymentViewModel.initForDonation(NostrConfig.DEV_PUBKEY)
                         showPaymentSheet = true
@@ -640,6 +654,35 @@ fun CruxCoachNavHost(
             composable(Routes.KEY_IMPORT) {
                 KeyImportScreen(
                     onNavigateBack = { navController.popBackStack() }
+                )
+            }
+
+            composable(Routes.NOSTR_PROFILE) {
+                com.cruxcoach.android.ui.settings.NostrProfileScreen(
+                    onNavigateBack = { navController.popBackStack() }
+                )
+            }
+
+            composable(
+                Routes.SETTER_DETAIL,
+                arguments = listOf(
+                    androidx.navigation.navArgument("setterPubkey") { type = androidx.navigation.NavType.StringType }
+                ),
+            ) {
+                com.cruxcoach.android.ui.community.SetterDetailScreen(
+                    onNavigateBack = { navController.popBackStack() },
+                    onClimbClick = { uuid, angle ->
+                        navController.navigate(Routes.boardClimbDetail(uuid, angle))
+                    },
+                )
+            }
+
+            composable(Routes.SETTERS_LIST) {
+                com.cruxcoach.android.ui.community.SettersListScreen(
+                    onNavigateBack = { navController.popBackStack() },
+                    onSetterClick = { pubkey ->
+                        navController.navigate(Routes.setterDetail(pubkey))
+                    },
                 )
             }
 

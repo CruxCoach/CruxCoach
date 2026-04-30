@@ -257,7 +257,8 @@ internal fun AssessmentSection(
 
 @Composable
 internal fun AccountKeysSection(
-    onNavigateToKeyManagement: () -> Unit
+    onNavigateToKeyManagement: () -> Unit,
+    onNavigateToNostrProfile: () -> Unit = {},
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -278,6 +279,13 @@ internal fun AccountKeysSection(
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
+    OutlinedButton(
+        onClick = onNavigateToNostrProfile,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Text(stringResource(R.string.nostr_profile_settings_label))
+    }
     OutlinedButton(
         onClick = onNavigateToKeyManagement,
         modifier = Modifier.fillMaxWidth(),

@@ -9,6 +9,7 @@ import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.BoardSize
 import com.cruxcoach.domain.board.BoardClimbParser
+import com.cruxcoach.domain.community.ClimbBounds
 import com.cruxcoach.domain.community.ClimbEditorState
 import com.cruxcoach.domain.community.buildCommunityClimbEvent
 import com.cruxcoach.domain.community.encodeFrames
@@ -65,12 +66,14 @@ class CommunityClimbPublisher @Inject constructor(
         layoutId: Long,
         state: ClimbEditorState,
         sizeLabel: String,
+        isEdit: Boolean = false,
     ): Result {
         val pubkey = nostrSigner.getPublicKeyHex()
         val createdAt = System.currentTimeMillis() / 1000
 
         // Step 1: Nostr — mandatory. Failure throws; the user can retry
         // from the editor.
+        val bounds = computeBounds(state)
         val payload = buildCommunityClimbEvent(
             pubkey = pubkey,
             createdAt = createdAt,
@@ -78,6 +81,7 @@ class CommunityClimbPublisher @Inject constructor(
             layoutId = layoutId,
             sizeLabel = sizeLabel,
             state = state,
+            bounds = bounds,
         )
         val tags: Array<Array<String>> = payload.tags.map { it.toTypedArray() }.toTypedArray()
         val event = nostrSigner.signer.sign<Event>(
@@ -116,13 +120,30 @@ class CommunityClimbPublisher @Inject constructor(
                     .map { com.cruxcoach.domain.board.BoardHold(it.key, it.value) }
             )
             runCatching {
-                val outcome = kilterPublisher.publish(
-                    uuid = uuid,
-                    layoutId = layoutId,
-                    state = state,
-                    boardSize = boardSize,
-                    framesClimbConcat = framesClimbConcat,
-                )
+                // Edit branches into update-climb/transaction. We only
+                // route to update when the row was previously synced —
+                // an edit on a row that never made it to Kilter (e.g.
+                // user wasn't connected before) is functionally a fresh
+                // create, and create-climb/transaction is idempotent on
+                // climb_uuid anyway.
+                val priorKilterStatus = boardRepository.getKilterPublishState(uuid)?.status
+                val outcome = if (isEdit && priorKilterStatus == "synced") {
+                    kilterPublisher.update(
+                        uuid = uuid,
+                        layoutId = layoutId,
+                        state = state,
+                        boardSize = boardSize,
+                        framesClimbConcat = framesClimbConcat,
+                    )
+                } else {
+                    kilterPublisher.publish(
+                        uuid = uuid,
+                        layoutId = layoutId,
+                        state = state,
+                        boardSize = boardSize,
+                        framesClimbConcat = framesClimbConcat,
+                    )
+                }
                 if (outcome is KilterClimbPublisher.Outcome.Skipped &&
                     outcome.reason == "no-kilter-login" &&
                     !hasKilterToken
@@ -168,5 +189,25 @@ class CommunityClimbPublisher @Inject constructor(
     private fun parseHolds(framesText: String): Map<Int, Int> {
         val holds = com.cruxcoach.domain.board.BoardClimbParser.parseFrames(framesText)
         return holds.associate { it.placementId to it.roleId }
+    }
+
+    /**
+     * Resolve placement coords for the editor's selected holds → bounding
+     * box. Mirrors ClimbCreatorRepository.computeBounds — same single
+     * source of truth for what `bounds` means at publish time. Returns
+     * null when placements aren't loaded yet (publish path falls through
+     * to no `bounds` tag in the Nostr event; subscribers handle that
+     * gracefully).
+     */
+    private fun computeBounds(state: ClimbEditorState): ClimbBounds? {
+        val ids = state.selectedHolds.keys
+        if (ids.isEmpty()) return null
+        val all = runCatching { boardRepository.getAllPlacements() }.getOrNull().orEmpty()
+        if (all.isEmpty()) return null
+        val coords = all.asSequence()
+            .filter { it.placementId.toInt() in ids }
+            .map { it.x.toInt() to it.y.toInt() }
+            .toList()
+        return ClimbBounds.fromCoords(coords)
     }
 }

@@ -98,6 +98,22 @@ data class NearbySharingState(
     val debugInfo: String = ""
 )
 
+/**
+ * Display data for the climb's setter, resolved through the
+ * `display_name → setter_username → npub:short` fallback chain. Only
+ * populated for climbs with `origin='cruxcoach'`; Kilter-Original climbs
+ * keep the existing setter_username display path (no Kind 0 lookup).
+ */
+data class SetterProfile(
+    /** Resolved display name — display_name from Kind 0, else setter_username,
+     *  else `npub:<short>` derived from pubkey. Always non-blank. */
+    val displayName: String,
+    /** Optional avatar URL from Kind 0 `picture` field. */
+    val pictureUrl: String?,
+    /** True for `origin='cruxcoach'` climbs — UI shows the "CruxCoach" badge. */
+    val isCommunity: Boolean,
+)
+
 data class ClimbDetailState(
     val isLoading: Boolean = true,
     val climb: ClimbWithStats? = null,
@@ -124,6 +140,11 @@ data class ClimbDetailState(
     /** Hex pubkey of the local NostrSigner. Used by the UI to gate
      *  edit-this-climb actions to the original setter only. */
     val currentUserPubkey: String? = null,
+    /** Setter display info — null for non-CruxCoach climbs. Populated
+     *  asynchronously after [climb] loads (Kind 0 lookup via
+     *  NostrProfileManager). Composables must not block on this — fall
+     *  back to the climb's `setterUsername` while loading. */
+    val setterProfile: SetterProfile? = null,
 )
 
 @HiltViewModel
@@ -140,6 +161,7 @@ class BoardClimbDetailViewModel @Inject constructor(
     private val bleShareManager: BleShareManager,
     private val kilterSyncEngine: com.cruxcoach.android.data.kilter.KilterSyncEngine,
     private val nostrSigner: com.cruxcoach.android.nostr.NostrSigner,
+    private val nostrProfileManager: com.cruxcoach.android.payment.NostrProfileManager,
     val climbNavState: com.cruxcoach.android.ui.navigation.ClimbNavigationState,
     @param:ApplicationContext private val context: Context
 ) : ViewModel() {
@@ -396,6 +418,12 @@ class BoardClimbDetailViewModel @Inject constructor(
                                 angle = angle,
                                 isFavorited = isFavorited,
                                 availableAngles = angles,
+                                // Seed setter profile synchronously with the
+                                // local fallback (`setter_username` from the
+                                // blob, or the npub-short stub). Async Kind 0
+                                // lookup overwrites it below if richer data
+                                // is available on relays.
+                                setterProfile = seedSetterProfile(climb),
                                 playback = s.playback.copy(
                                     allFrames = allFrames,
                                     currentFrameIndex = 0,
@@ -409,6 +437,12 @@ class BoardClimbDetailViewModel @Inject constructor(
                         PerfLogger.navMilestone("loadClimb complete ($uuid)")
                         if (advertise) sendController.updateNearbyAdvertising(uuid, angle)
                         if (sendController.isConnected()) sendController.sendToBoard()
+                        // Fire-and-forget Kind 0 lookup. Doesn't block UI;
+                        // updates state when the relay responds (or skips
+                        // silently if not). Only relevant for community
+                        // climbs — Kilter-Original climbs already have
+                        // setter_username populated from the API.
+                        loadSetterProfileFromNostr(climb)
                     } else {
                         _state.update { it.copy(isLoading = false, error = context.getString(R.string.error_climb_not_found, uuid, angle)) }
                     }
@@ -417,6 +451,59 @@ class BoardClimbDetailViewModel @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 _state.update { it.copy(isLoading = false, error = e.message) }
+            }
+        }
+    }
+
+    /**
+     * Build a [SetterProfile] using only the locally-known data. For
+     * Kilter-Original climbs this returns null (existing setter_username
+     * display path is enough). For CruxCoach climbs this falls back to
+     * `setter_username` from the row, or the `npub:<short>` stub if even
+     * that is missing.
+     */
+    private fun seedSetterProfile(climb: ClimbWithStats): SetterProfile? {
+        if (climb.origin != "cruxcoach") return null
+        val setterUsername = climb.setterUsername?.takeIf { it.isNotBlank() }
+        val pubkey = climb.createdByPubkey
+        val displayName = setterUsername
+            ?: pubkey?.let { "npub:${it.take(16)}" }
+            ?: "Unbekannt"
+        return SetterProfile(
+            displayName = displayName,
+            pictureUrl = null,
+            isCommunity = true,
+        )
+    }
+
+    /**
+     * Async Kind-0 lookup for the climb's setter, lazy-loaded into the
+     * detail screen. No-op for non-community climbs and for climbs
+     * without a [createdByPubkey] (Kilter-imported rows). When the
+     * profile resolves, [SetterProfile.displayName] is rebuilt with the
+     * `display_name → setter_username → npub:short` fallback chain and
+     * `pictureUrl` populated if the setter has set a `picture` field
+     * in their Kind 0 metadata.
+     */
+    private fun loadSetterProfileFromNostr(climb: ClimbWithStats) {
+        val pubkey = climb.createdByPubkey?.takeIf { it.isNotBlank() } ?: return
+        if (climb.origin != "cruxcoach") return
+        viewModelScope.launch {
+            val profile = runCatching { nostrProfileManager.getProfile(pubkey) }.getOrNull()
+                ?: return@launch
+            // Only update if we got something more specific than what's
+            // already shown — avoids triggering a stutter when the cache
+            // returns the same data we seeded with.
+            val newDisplayName = profile.displayName?.takeIf { it.isNotBlank() }
+                ?: climb.setterUsername?.takeIf { it.isNotBlank() }
+                ?: "npub:${pubkey.take(16)}"
+            _state.update { s ->
+                if (s.climb?.uuid != climb.uuid) return@update s   // user navigated away
+                s.copy(setterProfile = SetterProfile(
+                    displayName = newDisplayName,
+                    pictureUrl = profile.pictureUrl?.takeIf { it.isNotBlank() },
+                    isCommunity = true,
+                ))
             }
         }
     }
@@ -660,6 +747,12 @@ class BoardClimbDetailViewModel @Inject constructor(
         sessionManager.dismissRestTimerFinished()
     }
 
+    /** @deprecated The setter-link click no longer applies a browse filter
+     *  — it navigates to [SetterDetailScreen] instead. The browser still
+     *  honours `pendingSetterFilter` if some future code wants to set it,
+     *  but the climb-detail-by-setter row stopped using it as of Plan 8.
+     *  Left in place for binary compat with the existing nav-state field. */
+    @Deprecated("Use SetterDetailScreen via onNavigateToSetter instead.")
     fun requestSetterFilter(setter: String) {
         climbNavState.pendingSetterFilter = setter
     }

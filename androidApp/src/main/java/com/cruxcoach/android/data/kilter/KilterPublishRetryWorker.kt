@@ -81,17 +81,38 @@ class KilterPublishRetryWorker @AssistedInject constructor(
                 boardRepository.markKilterPublishFailed(row.uuid, "frames empty on retry")
                 continue
             }
-            val result = apiClient.publishClimb(
-                climbUuid = row.uuid,
-                name = row.name,
-                description = row.description,
-                framesClimbConcat = climbConcat,
-                productName = "Kilter Board Original",
-                edgeLeft = boardSize.edgeLeft.toInt(),
-                edgeRight = boardSize.edgeRight.toInt(),
-                edgeBottom = boardSize.edgeBottom.toInt(),
-                edgeTop = boardSize.edgeTop.toInt(),
-            )
+            // Pick endpoint by prior-sync state. A row with kilterSyncedAt
+            // set was previously accepted by Kilter; a subsequent retry
+            // means the user edited it (kilter_status got reset to
+            // 'failed' in the publish path). Use update-climb in that
+            // case. A row that was never synced gets create-climb (the
+            // initial publish never landed).
+            val isUpdate = row.kilterSyncedAt != null
+            val result = if (isUpdate) {
+                apiClient.updateClimb(
+                    climbUuid = row.uuid,
+                    name = row.name,
+                    description = row.description,
+                    framesClimbConcat = climbConcat,
+                    productName = "Kilter Board Original",
+                    edgeLeft = boardSize.edgeLeft.toInt(),
+                    edgeRight = boardSize.edgeRight.toInt(),
+                    edgeBottom = boardSize.edgeBottom.toInt(),
+                    edgeTop = boardSize.edgeTop.toInt(),
+                )
+            } else {
+                apiClient.publishClimb(
+                    climbUuid = row.uuid,
+                    name = row.name,
+                    description = row.description,
+                    framesClimbConcat = climbConcat,
+                    productName = "Kilter Board Original",
+                    edgeLeft = boardSize.edgeLeft.toInt(),
+                    edgeRight = boardSize.edgeRight.toInt(),
+                    edgeBottom = boardSize.edgeBottom.toInt(),
+                    edgeTop = boardSize.edgeTop.toInt(),
+                )
+            }
             when (result) {
                 is KilterPublishResult.Success -> {
                     boardRepository.markKilterPublishSynced(
@@ -109,10 +130,19 @@ class KilterPublishRetryWorker @AssistedInject constructor(
                     boardRepository.markKilterPublishFailed(row.uuid, "retry transient: ${result.message}")
                 }
                 is KilterPublishResult.PermanentError -> {
-                    boardRepository.markKilterPublishFailed(
-                        row.uuid,
-                        "retry http=${result.httpCode}: ${result.message.take(200)}",
-                    )
+                    // For UPDATE flow a 4xx is the diverged-signal: the
+                    // server won't accept this edit. Stop retrying.
+                    if (isUpdate) {
+                        boardRepository.markKilterPublishDiverged(
+                            row.uuid,
+                            "retry http=${result.httpCode}: ${result.message.take(200)}",
+                        )
+                    } else {
+                        boardRepository.markKilterPublishFailed(
+                            row.uuid,
+                            "retry http=${result.httpCode}: ${result.message.take(200)}",
+                        )
+                    }
                 }
             }
         }

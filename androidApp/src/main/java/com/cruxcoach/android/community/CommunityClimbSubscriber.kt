@@ -3,9 +3,11 @@ package com.cruxcoach.android.community
 import android.util.Log
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.nostr.NostrRelayPool
+import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.domain.board.BoardClimbParser
 import com.cruxcoach.domain.board.HoldRole
+import com.cruxcoach.domain.community.ClimbBounds
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
@@ -50,7 +52,19 @@ class CommunityClimbSubscriber @Inject constructor(
     private val pool: NostrRelayPool,
     private val boardRepository: BoardRepository,
     private val userPreferences: UserPreferences,
+    private val nostrSigner: NostrSigner,
+    private val nostrProfileManager: com.cruxcoach.android.payment.NostrProfileManager,
 ) {
+
+    /**
+     * Set of pubkeys whose Kind 0 we've already resolved (or attempted)
+     * during this process lifetime. Process-scoped so we don't spam
+     * relays when a setter publishes 50 climbs in a burst — only the
+     * first event triggers a fetch, the rest hit this in-memory guard.
+     * The persistent cache lives in `nostr_profiles`; this is just a
+     * de-duper in front of it.
+     */
+    private val pubkeysResolvedThisRun = mutableSetOf<String>()
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
     private var job: Job? = null
 
@@ -62,8 +76,33 @@ class CommunityClimbSubscriber @Inject constructor(
             // prefs + connect; not strictly required, just avoids racing
             // the very first connection-open.
             delay(STARTUP_GRACE_MS)
+            seedCursorFromManifestIfFirstRun()
             runSubscriptionLoop()
         }
+    }
+
+    /**
+     * On a fresh install (or wiped prefs), seed the live-sub cursor with
+     * the Blossom-manifest's `created_at`. Rationale: the cron already
+     * merges all CruxCoach community climbs older than `manifest.created_at`
+     * into the blob, so the live sub doesn't need to re-fetch them from
+     * relays. This shrinks the cold-start delta from "all of history" to
+     * "~24 h since last cron run", which is the difference between a
+     * 100 MB Nostr-burst and ~50 KB.
+     *
+     * Skipped when:
+     *  - cursor is already set (we've persisted at least one event)
+     *  - no Blossom manifest fetched yet (rare — first launch before
+     *    initial sync; the cron-snapshot pathway hasn't kicked in either,
+     *    so a full backfill is the right thing)
+     */
+    private suspend fun seedCursorFromManifestIfFirstRun() {
+        val cursor = userPreferences.communityClimbSince.first()
+        if (cursor != null && cursor > 0) return
+        val manifestEpoch = userPreferences.blossomManifestCreatedAt.first() ?: return
+        if (manifestEpoch <= 0) return
+        Log.i(TAG, "seeding cursor from blossom manifest: $manifestEpoch")
+        userPreferences.setCommunityClimbSince(manifestEpoch)
     }
 
     fun stop() {
@@ -102,6 +141,24 @@ class CommunityClimbSubscriber @Inject constructor(
             return
         }
         val parsedClimb = runCatching { ParsedClimb.from(parsed) }.getOrNull() ?: return
+
+        // Self-filter: skip events we authored ourselves. Relays echo
+        // every event back to all subscribers including the publisher,
+        // and our own climbs already live in the local DB with the
+        // correct `source='local'`, `sync_status='published_nostr'`,
+        // `kilter_status=…` flags set by the publish path. Letting
+        // upsertCommunityClimb (INSERT OR REPLACE) write over them
+        // would clobber kilter_status / kilter_synced_at and remove the
+        // climb from the KilterPublishRetryWorker's filter set
+        // (`sync_status='published_nostr'` flips to 'synced'). For other
+        // users' events this isn't a problem — their cruxcoach metadata
+        // never existed locally.
+        val ownPubkey = runCatching { nostrSigner.getPublicKeyHex() }.getOrNull()
+        if (ownPubkey != null && parsedClimb.pubkey == ownPubkey) {
+            Log.d(TAG, "skip own event uuid=${parsedClimb.uuid}")
+            return
+        }
+
         // Skip ungraded events — per the "no synthetic stats" rule, we
         // don't want to manufacture NULL-difficulty rows that pollute
         // default browse.
@@ -129,7 +186,13 @@ class CommunityClimbSubscriber @Inject constructor(
             boardRepository.upsertCommunityClimb(
                 uuid = parsedClimb.uuid,
                 layoutId = parsedClimb.layoutId,
-                setterUsername = null,
+                // Display stub mirrors the cron-side merge format
+                // (`merge_cruxcoach_climbs` in update_board_db.py): same
+                // 16-hex-char prefix means a Blossom blob refresh produces
+                // no diff with what the live sub already wrote. When Plan 3
+                // adds Kind-0 lookup the UI takes the real display_name,
+                // this column is the persistent fallback.
+                setterUsername = "npub:${parsedClimb.pubkey.take(16)}",
                 name = parsedClimb.name,
                 framesText = parsedClimb.framesText,
                 description = parsedClimb.description,
@@ -142,6 +205,7 @@ class CommunityClimbSubscriber @Inject constructor(
                 angle = angle.toLong(),
                 difficultyAverage = grade.toDouble(),
                 qualityAverage = null,
+                bounds = parsedClimb.bounds,
             )
         } catch (e: Exception) {
             Log.w(TAG, "upsertCommunityClimb failed for uuid=${parsedClimb.uuid}", e)
@@ -154,6 +218,40 @@ class CommunityClimbSubscriber @Inject constructor(
         val current = userPreferences.communityClimbSince.first() ?: 0L
         if (parsedClimb.createdAt > current) {
             userPreferences.setCommunityClimbSince(parsedClimb.createdAt)
+        }
+
+        // Lazy Kind-0 resolution for the setter. Cache-first via
+        // NostrProfileManager: the first event from a new pubkey triggers
+        // a relay fetch, subsequent events for the same pubkey hit the
+        // local profileQueries cache. The in-memory `pubkeysResolvedThisRun`
+        // guard keeps us from even invoking getProfile (which would hit
+        // SQLDelight) on tight bursts. Fire-and-forget on the same scope
+        // — failures don't affect climb display, just leave the npub stub.
+        resolveSetterDisplayName(parsedClimb.pubkey)
+    }
+
+    /**
+     * Async fetch of Kind 0 for [pubkey] and bulk-update of every
+     * community climb's `setter_username`. No-op when the pubkey was
+     * already resolved this process lifetime, when no profile is found,
+     * or when the profile lacks a non-blank display_name.
+     */
+    private fun resolveSetterDisplayName(pubkey: String) {
+        if (!pubkeysResolvedThisRun.add(pubkey)) return
+        // Use the same job's coroutine scope so we don't accumulate
+        // orphan coroutines if the subscriber is stopped. job is the
+        // top-level subscription; we fork a child that survives the
+        // current event handler frame but stops with the subscriber.
+        val parent = job ?: return
+        kotlinx.coroutines.CoroutineScope(parent).launch {
+            val profile = runCatching { nostrProfileManager.getProfile(pubkey) }.getOrNull()
+            val displayName = profile?.displayName?.takeIf { it.isNotBlank() } ?: return@launch
+            runCatching {
+                boardRepository.updateSetterUsernameForPubkey(
+                    pubkey = pubkey,
+                    displayName = displayName,
+                )
+            }.onFailure { Log.w(TAG, "setter rename for $pubkey failed", it) }
         }
     }
 
@@ -178,6 +276,7 @@ class CommunityClimbSubscriber @Inject constructor(
         val layoutId: Long,
         val setterGradeId: Int?,
         val angle: Int?,
+        val bounds: ClimbBounds?,
     ) {
         companion object {
             fun from(event: JsonObject): ParsedClimb {
@@ -195,6 +294,7 @@ class CommunityClimbSubscriber @Inject constructor(
                 var layoutId: Long? = null
                 var setterGradeId: Int? = null
                 var angle: Int? = null
+                var bounds: ClimbBounds? = null
                 var foundLabel = false
 
                 for (tagElem in tagsJson) {
@@ -206,6 +306,10 @@ class CommunityClimbSubscriber @Inject constructor(
                         "frames" -> framesText = tag[1]
                         "frames_hash" -> framesHashRaw = tag[1]
                         "layout_id" -> layoutId = tag[1].toLongOrNull()
+                        // Optional Plan-2 tag: "L,R,B,T". Malformed values
+                        // decode to null and we fall back to NULL edge_*
+                        // (matches pre-Plan-2 events that have no tag).
+                        "bounds" -> bounds = ClimbBounds.decode(tag[1])
                         "setter_grade" -> {
                             setterGradeId = tag[1].toIntOrNull()
                             if (tag.size >= 3) angle = tag[2].toIntOrNull()
@@ -245,6 +349,7 @@ class CommunityClimbSubscriber @Inject constructor(
                     layoutId = layoutId!!,
                     setterGradeId = setterGradeId,
                     angle = angle,
+                    bounds = bounds,
                 )
             }
 

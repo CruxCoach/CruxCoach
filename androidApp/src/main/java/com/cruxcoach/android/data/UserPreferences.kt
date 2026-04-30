@@ -40,6 +40,16 @@ object KeyScopedKeys {
     // largest event.created_at we've persisted; subsequent subscribes use
     // it as the `since` filter so we don't re-process the historical tail.
     val COMMUNITY_CLIMB_SINCE = longPreferencesKey("community_climb_since")
+    // Last seen Blossom-manifest `created_at` (epoch seconds). Written by
+    // BoardSyncManager on every successful manifest fetch. Used by
+    // CommunityClimbSubscriber to seed its cursor on first run so a fresh
+    // install doesn't pull the entire historical Nostr tail (the cron has
+    // already merged everything older into the blob).
+    val BLOSSOM_MANIFEST_CREATED_AT = longPreferencesKey("blossom_manifest_created_at")
+    // True once the user has seen + dismissed the "set up your profile?"
+    // dialog that fires on first publish without a Kind-0 profile. Per-
+    // identity (key-scoped) so a re-imported nsec gets the prompt again.
+    val PROFILE_HINT_DISMISSED = booleanPreferencesKey("profile_hint_dismissed")
     val SIGNER_MODE = stringPreferencesKey("signer_mode")
     val AMBER_PUBKEY = stringPreferencesKey("amber_pubkey")
     val AMBER_PACKAGE_NAME = stringPreferencesKey("amber_package_name")
@@ -332,6 +342,30 @@ class UserPreferences(
 
     suspend fun setCommunityClimbSince(epochSeconds: Long) {
         keyScoped.edit { prefs -> prefs[KeyScopedKeys.COMMUNITY_CLIMB_SINCE] = epochSeconds }
+    }
+
+    /**
+     * Last `created_at` of a successfully-fetched Blossom manifest. Written
+     * by BoardSyncManager. Read once by CommunityClimbSubscriber to seed
+     * the live-sub cursor on a fresh install — see start() in that class.
+     */
+    val blossomManifestCreatedAt: Flow<Long?> = keyScoped.data.map { prefs ->
+        prefs[KeyScopedKeys.BLOSSOM_MANIFEST_CREATED_AT]
+    }
+
+    suspend fun setBlossomManifestCreatedAt(epochSeconds: Long) {
+        keyScoped.edit { prefs -> prefs[KeyScopedKeys.BLOSSOM_MANIFEST_CREATED_AT] = epochSeconds }
+    }
+
+    /** Whether the first-publish "set up your profile?" hint has been
+     *  shown + dismissed for the current identity. Default false (= will
+     *  show on next publish without a profile). */
+    val profileHintDismissed: Flow<Boolean> = keyScoped.data.map { prefs ->
+        prefs[KeyScopedKeys.PROFILE_HINT_DISMISSED] ?: false
+    }
+
+    suspend fun setProfileHintDismissed(value: Boolean) {
+        keyScoped.edit { prefs -> prefs[KeyScopedKeys.PROFILE_HINT_DISMISSED] = value }
     }
 
     suspend fun setKilterLastSync(timestamp: String?) {

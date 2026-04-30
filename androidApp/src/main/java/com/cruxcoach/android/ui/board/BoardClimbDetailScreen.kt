@@ -69,6 +69,7 @@ fun BoardClimbDetailScreen(
     onNavigateToBugReport: (title: String, description: String) -> Unit = { _, _ -> },
     onNavigateToFork: (climbUuid: String) -> Unit = {},
     onNavigateToEdit: (climbUuid: String) -> Unit = {},
+    onNavigateToSetter: (pubkey: String) -> Unit = {},
     viewModel: BoardClimbDetailViewModel = hiltViewModel()
 ) {
     PerfLogger.navMilestone("BoardClimbDetailScreen composing")
@@ -405,7 +406,8 @@ fun BoardClimbDetailScreen(
                     isSharingEnabled = isSharingEnabled,
                     viewModel = viewModel,
                     onNavigateBack = onNavigateBack,
-                    onNavigateToBugReport = onNavigateToBugReport
+                    onNavigateToBugReport = onNavigateToBugReport,
+                    onNavigateToSetter = onNavigateToSetter,
                 )
             }
         } else {
@@ -415,6 +417,7 @@ fun BoardClimbDetailScreen(
                 viewModel = viewModel,
                 onNavigateBack = onNavigateBack,
                 onNavigateToBugReport = onNavigateToBugReport,
+                onNavigateToSetter = onNavigateToSetter,
                 modifier = Modifier.padding(padding)
             )
         }
@@ -429,6 +432,7 @@ private fun ClimbDetailPageContent(
     viewModel: BoardClimbDetailViewModel,
     onNavigateBack: () -> Unit,
     onNavigateToBugReport: (title: String, description: String) -> Unit = { _, _ -> },
+    onNavigateToSetter: (pubkey: String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -478,17 +482,28 @@ private fun ClimbDetailPageContent(
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(climb.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                                climb.setterUsername?.let { setter ->
+                                // Setter line. Click behaviour:
+                                //  - cruxcoach-origin + has pubkey → navigate
+                                //    to SetterDetailScreen (Plan 8)
+                                //  - else (Kilter-origin or pubkey missing) →
+                                //    no click (use the search bar to filter
+                                //    by setter name)
+                                val setterDisplay = state.setterProfile?.displayName
+                                    ?: climb.setterUsername
+                                val setterPubkey = climb.createdByPubkey?.takeIf { it.isNotBlank() }
+                                setterDisplay?.takeIf { it.isNotBlank() }?.let { setter ->
+                                    val isClickable = climb.origin == "cruxcoach" && setterPubkey != null
                                     Text(
                                         stringResource(R.string.board_detail_by_setter, setter),
                                         style = MaterialTheme.typography.bodyMedium.copy(
-                                            textDecoration = TextDecoration.Underline
+                                            textDecoration = if (isClickable) TextDecoration.Underline else TextDecoration.None
                                         ),
-                                        color = OrangeAccent,
-                                        modifier = Modifier.clickable {
-                                            viewModel.requestSetterFilter(setter)
-                                            onNavigateBack()
-                                        }
+                                        color = if (isClickable) OrangeAccent else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = if (isClickable) {
+                                            Modifier.clickable {
+                                                onNavigateToSetter(setterPubkey!!)
+                                            }
+                                        } else Modifier
                                     )
                                 }
                                 // Provenance + Kilter-mirror badge — only shown for
@@ -497,15 +512,20 @@ private fun ClimbDetailPageContent(
                                 // Kilter), so we suppress the chip there.
                                 if (climb.origin == "cruxcoach") {
                                     Spacer(Modifier.size(4.dp))
-                                    val badgeText = if (climb.kilterStatus == "synced") {
-                                        stringResource(R.string.climb_detail_badge_on_kilter)
-                                    } else {
-                                        stringResource(R.string.climb_detail_badge_cruxcoach_only)
+                                    // Three states: synced = both Nostr +
+                                    // Kilter; diverged = local edit Kilter
+                                    // refused (older version still on
+                                    // Kilter); else (NULL/pending/failed)
+                                    // = community-only.
+                                    val badgeText = when (climb.kilterStatus) {
+                                        "synced" -> stringResource(R.string.climb_detail_badge_on_kilter)
+                                        "diverged" -> stringResource(R.string.climb_detail_badge_kilter_diverged)
+                                        else -> stringResource(R.string.climb_detail_badge_cruxcoach_only)
                                     }
-                                    val badgeColor = if (climb.kilterStatus == "synced") {
-                                        OrangeAccent
-                                    } else {
-                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    val badgeColor = when (climb.kilterStatus) {
+                                        "synced" -> OrangeAccent
+                                        "diverged" -> MaterialTheme.colorScheme.tertiary
+                                        else -> MaterialTheme.colorScheme.onSurfaceVariant
                                     }
                                     Surface(
                                         shape = RoundedCornerShape(8.dp),

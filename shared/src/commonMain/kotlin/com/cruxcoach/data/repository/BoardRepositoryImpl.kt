@@ -587,14 +587,19 @@ class BoardRepositoryImpl(
         layoutId: Long,
         angle: Long,
         setterGradeId: Int?,
+        bounds: com.cruxcoach.domain.community.ClimbBounds?,
     ) {
         q.transaction {
             q.insertLocalDraft(
                 uuid = draft.uuid,
                 layout_id = layoutId,
-                setter_username = null,
+                setter_username = draft.setterUsername,
                 name = draft.name,
                 frames = draft.framesText,
+                edge_left = bounds?.left?.toLong(),
+                edge_right = bounds?.right?.toLong(),
+                edge_bottom = bounds?.bottom?.toLong(),
+                edge_top = bounds?.top?.toLong(),
                 created_at = draft.createdAt,
                 description = draft.description,
                 move_count = draft.moveCount,
@@ -629,6 +634,7 @@ class BoardRepositoryImpl(
         angle: Long,
         difficultyAverage: Double?,
         qualityAverage: Double?,
+        bounds: com.cruxcoach.domain.community.ClimbBounds?,
     ) {
         q.transaction {
             q.upsertCommunityClimb(
@@ -637,6 +643,10 @@ class BoardRepositoryImpl(
                 setter_username = setterUsername,
                 name = name,
                 frames = framesText,
+                edge_left = bounds?.left?.toLong(),
+                edge_right = bounds?.right?.toLong(),
+                edge_bottom = bounds?.bottom?.toLong(),
+                edge_top = bounds?.top?.toLong(),
                 created_at = createdAt,
                 description = description,
                 move_count = moveCount,
@@ -678,6 +688,42 @@ class BoardRepositoryImpl(
         q.markClimbPublishFailed(uuid)
     }
 
+    override fun getKilterPublishState(uuid: String): KilterPublishState? {
+        val row = q.getKilterPublishState(uuid).executeAsOneOrNull() ?: return null
+        return KilterPublishState(
+            status = row.kilter_status,
+            syncedAtEpochSeconds = row.kilter_synced_at,
+        )
+    }
+
+    override fun updateSetterUsernameForPubkey(pubkey: String, displayName: String) {
+        q.updateSetterUsernameForPubkey(setter_username = displayName, created_by_pubkey = pubkey)
+    }
+
+    override fun getClimbsByPubkey(pubkey: String): List<SetterClimbEntry> {
+        return q.getClimbsByPubkey(pubkey).executeAsList().map { row ->
+            SetterClimbEntry(
+                uuid = row.uuid,
+                name = row.name,
+                angle = row.angle.toInt(),
+                difficultyAverage = row.difficulty_average,
+                qualityAverage = row.quality_average,
+                ascensionistCount = row.ascensionist_count ?: 0L,
+            )
+        }
+    }
+
+    override fun getCommunitySetterStats(): List<SetterStat> {
+        return q.getCommunitySetterStats().executeAsList().mapNotNull { row ->
+            val pubkey = row.created_by_pubkey ?: return@mapNotNull null
+            SetterStat(
+                pubkey = pubkey,
+                displayName = row.setter_username,
+                climbCount = row.climb_count,
+            )
+        }
+    }
+
     override fun markKilterPublishPending(uuid: String) {
         q.markKilterPublishPending(uuid)
     }
@@ -692,6 +738,10 @@ class BoardRepositoryImpl(
 
     override fun markKilterPublishFailed(uuid: String, error: String) {
         q.markKilterPublishFailed(kilter_error = error, uuid = uuid)
+    }
+
+    override fun markKilterPublishDiverged(uuid: String, error: String) {
+        q.markKilterPublishDiverged(kilter_error = error, uuid = uuid)
     }
 
     override fun getClimbsAwaitingKilterRetry(): List<CommunityClimbRow> =
@@ -723,6 +773,7 @@ class BoardRepositoryImpl(
             framesHash = framesHash,
             createdAt = null,
             moveCount = 0,
+            kilterSyncedAt = null,
         )
     }
 
@@ -759,5 +810,6 @@ class BoardRepositoryImpl(
             framesHash = frames_hash,
             createdAt = created_at,
             moveCount = move_count,
+            kilterSyncedAt = kilter_synced_at,
         )
 }

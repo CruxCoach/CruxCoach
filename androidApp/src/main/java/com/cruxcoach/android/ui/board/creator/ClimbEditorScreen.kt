@@ -78,6 +78,7 @@ fun ClimbEditorScreen(
     onBack: () -> Unit,
     onPublished: (uuid: String) -> Unit,
     onNavigateToKilterSettings: () -> Unit = {},
+    onNavigateToNostrProfile: () -> Unit = {},
     viewModel: ClimbEditorViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -272,6 +273,31 @@ fun ClimbEditorScreen(
                     }
                 },
             )
+        }
+    }
+
+    if (state.pendingProfileHint) {
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissProfileHintAndPublish("12x12") },
+            title = { Text(stringResource(R.string.profile_hint_dialog_title)) },
+            text = { Text(stringResource(R.string.profile_hint_dialog_body)) },
+            confirmButton = {
+                TextButton(onClick = viewModel::acceptProfileHint) {
+                    Text(stringResource(R.string.profile_hint_dialog_setup))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.dismissProfileHintAndPublish("12x12") }) {
+                    Text(stringResource(R.string.profile_hint_dialog_later))
+                }
+            },
+        )
+    }
+
+    LaunchedEffect(state.profileSetupRequested) {
+        if (state.profileSetupRequested) {
+            viewModel.acknowledgeProfileSetupNavigated()
+            onNavigateToNostrProfile()
         }
     }
 

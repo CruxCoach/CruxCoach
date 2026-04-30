@@ -50,6 +50,7 @@ fun SettingsScreen(
     onNavigateToFeatureRequests: () -> Unit = {},
     onNavigateToCrashReports: () -> Unit = {},
     onNavigateToKeyManagement: () -> Unit = {},
+    onNavigateToNostrProfile: () -> Unit = {},
     onDonateClick: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
     backupViewModel: BackupSettingsViewModel = hiltViewModel(),
@@ -336,7 +337,10 @@ fun SettingsScreen(
             CollapsibleHeader(stringResource(R.string.key_section_account_keys), accountExpanded) { accountExpanded = !accountExpanded }
             AnimatedVisibility(visible = accountExpanded) {
                 Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    AccountKeysSection(onNavigateToKeyManagement = onNavigateToKeyManagement)
+                    AccountKeysSection(
+                        onNavigateToKeyManagement = onNavigateToKeyManagement,
+                        onNavigateToNostrProfile = onNavigateToNostrProfile,
+                    )
                 }
             }
 

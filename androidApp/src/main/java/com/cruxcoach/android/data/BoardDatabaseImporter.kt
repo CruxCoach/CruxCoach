@@ -425,11 +425,26 @@ class BoardDatabaseImporter(
             // Copy move_count when the source has it (CruxCoach backups always,
             // Blossom chunks from 2026-04-21+). Old chunks without the column
             // fall back to 0 and backfillMoveCounts() computes it post-import.
-            val hasMoveCount = rawDb.rawQuery("PRAGMA table_info($srcTable)", null).use { c ->
-                generateSequence { if (c.moveToNext()) c.getString(1) else null }
-                    .any { it == "move_count" }
+            val srcCols = rawDb.rawQuery("PRAGMA table_info($srcTable)", null).use { c ->
+                buildSet { while (c.moveToNext()) add(c.getString(1)) }
             }
+            val hasMoveCount = "move_count" in srcCols
             val moveCountExpr = if (hasMoveCount) "COALESCE(move_count, 0)" else "0"
+            // origin column landed in Blossom chunks once the cron started
+            // emitting it (cruxcoach-blossom-sync 2026-04-29+). Old chunks
+            // without it fall back to the schema default 'kilter' on the
+            // target side. Note: the UPDATE pass below intentionally does
+            // NOT touch origin — locally-set 'cruxcoach' (e.g. via
+            // CommunityClimbSubscriber on a row the cron later refreshes)
+            // must survive a Blossom blob refresh.
+            val hasOrigin = "origin" in srcCols
+            val originExpr = if (hasOrigin) "COALESCE(origin, 'kilter')" else "'kilter'"
+            // Plan C: cron writes created_by_pubkey for cruxcoach-origin
+            // climbs so the SettersListScreen + profile-resolution chain
+            // works for fresh installs. Defensive — pre-Plan-C blobs
+            // don't have it.
+            val hasCreatedByPubkey = "created_by_pubkey" in srcCols
+            val pubkeyExpr = if (hasCreatedByPubkey) "created_by_pubkey" else "NULL"
 
             // Two-step bulk merge per batch:
             //
@@ -464,16 +479,27 @@ class BoardDatabaseImporter(
                             uuid, layout_id, setter_username, name, frames,
                             frames_count, is_listed, edge_left, edge_right,
                             edge_bottom, edge_top, created_at,
-                            description, is_nomatch, frames_pace, hsm, move_count)
+                            description, is_nomatch, frames_pace, hsm, move_count,
+                            origin, created_by_pubkey)
                         SELECT uuid, layout_id, setter_username, name, frames,
                                frames_count, is_listed, edge_left, edge_right,
                                edge_bottom, edge_top, created_at,
                                COALESCE(description, ''), COALESCE(is_nomatch, 0),
                                COALESCE(frames_pace, 0), COALESCE(hsm, 0),
-                               $moveCountExpr
+                               $moveCountExpr,
+                               $originExpr,
+                               $pubkeyExpr
                         FROM src.$srcTable
                         WHERE is_listed = 1 AND rowid BETWEEN $batchStart AND $batchEnd
                     """)
+                    // Content refresh — only for origin='kilter' rows.
+                    // Climbs authored via CruxCoach (origin='cruxcoach')
+                    // have Nostr as their source of truth: either the
+                    // CommunityClimbSubscriber has the latest, or the
+                    // user's own publish path wrote it directly. Either
+                    // way, the Blossom blob is at best as fresh as those
+                    // sources, often staler. Don't let a daily blob
+                    // refresh roll back an in-flight Nostr edit.
                     targetDb.execSQL("""
                         UPDATE climbs SET
                             (layout_id, setter_username, name, frames,
@@ -488,11 +514,100 @@ class BoardDatabaseImporter(
                                       $moveCountExpr
                                FROM src.$srcTable
                                WHERE src.$srcTable.uuid = climbs.uuid)
-                        WHERE uuid IN (
+                        WHERE origin = 'kilter'
+                          AND uuid IN (
                             SELECT uuid FROM src.$srcTable
                             WHERE rowid BETWEEN $batchStart AND $batchEnd
-                        )
+                          )
                     """)
+                    // Tombstone propagation for cruxcoach-origin climbs.
+                    // We don't refresh content (above), but we DO want
+                    // is_listed=0 to flow through if a cruxcoach climb
+                    // got unlisted (e.g. NIP-09 deletion the cron tracked,
+                    // or a Kilter-side unlist for a hybrid climb). Only
+                    // flips to 0 — never re-lists what the user has
+                    // chosen to hide locally.
+                    targetDb.execSQL("""
+                        UPDATE climbs SET is_listed = 0
+                        WHERE origin = 'cruxcoach'
+                          AND is_listed = 1
+                          AND uuid IN (
+                            SELECT uuid FROM src.$srcTable
+                            WHERE rowid BETWEEN $batchStart AND $batchEnd
+                              AND is_listed = 0
+                          )
+                    """)
+                    // Setter-username propagation for cruxcoach-origin
+                    // climbs. Per Plan C, the cron runs Kind-0
+                    // resolution on every tick and writes the resolved
+                    // display_name into the blob's setter_username.
+                    // That value beats whatever the live sub wrote
+                    // locally because: (a) the cron's resolution path
+                    // is the same as the live sub's (both fetch Kind 0),
+                    // (b) the cron sees profile renames even without a
+                    // new climb event (sweep pass).
+                    //
+                    // COALESCE preserves the local value when the source
+                    // is NULL (defensive — shouldn't happen with cron
+                    // patches active, but stale blob bytes could).
+                    //
+                    // This is the ONE column we let the import flow touch
+                    // on cruxcoach rows. Frames/name/description remain
+                    // protected (above) — they're climb content, not
+                    // identity, and Nostr is their authoritative source
+                    // through the live sub.
+                    targetDb.execSQL("""
+                        UPDATE climbs SET setter_username = COALESCE(
+                            (SELECT setter_username FROM src.$srcTable
+                             WHERE src.$srcTable.uuid = climbs.uuid),
+                            climbs.setter_username
+                        )
+                        WHERE origin = 'cruxcoach'
+                          AND uuid IN (
+                            SELECT uuid FROM src.$srcTable
+                            WHERE rowid BETWEEN $batchStart AND $batchEnd
+                          )
+                    """)
+                    // Origin upgrade pass — asymmetric on purpose. We only
+                    // ever flip 'kilter' → 'cruxcoach' (the cron sub
+                    // discovered the climb on Nostr and annotated the
+                    // blob); never 'cruxcoach' → 'kilter'. A locally-set
+                    // 'cruxcoach' (e.g. CommunityClimbSubscriber wrote it
+                    // before a Blossom refresh) survives. Skipped entirely
+                    // when the source schema lacks `origin` (pre-2026-04-29
+                    // chunks).
+                    if (hasOrigin) {
+                        targetDb.execSQL("""
+                            UPDATE climbs SET origin = 'cruxcoach'
+                            WHERE origin != 'cruxcoach'
+                              AND uuid IN (
+                                SELECT uuid FROM src.$srcTable
+                                WHERE rowid BETWEEN $batchStart AND $batchEnd
+                                  AND origin = 'cruxcoach'
+                              )
+                        """)
+                    }
+                    // Pubkey backfill — only fills NULL locally, never
+                    // overwrites. Useful for hybrid climbs that came in
+                    // via Kilter API first (no pubkey), then later got
+                    // their pubkey written by the cron after seeing the
+                    // matching Nostr event. Symmetric semantics with the
+                    // origin-upgrade pass above: blob-fills-gap, never
+                    // overrides.
+                    if (hasCreatedByPubkey) {
+                        targetDb.execSQL("""
+                            UPDATE climbs SET created_by_pubkey = (
+                                SELECT created_by_pubkey FROM src.$srcTable
+                                WHERE src.$srcTable.uuid = climbs.uuid
+                            )
+                            WHERE created_by_pubkey IS NULL
+                              AND uuid IN (
+                                SELECT uuid FROM src.$srcTable
+                                WHERE rowid BETWEEN $batchStart AND $batchEnd
+                                  AND created_by_pubkey IS NOT NULL
+                              )
+                        """)
+                    }
                     targetDb.setTransactionSuccessful()
                 } finally {
                     targetDb.endTransaction()
@@ -519,7 +634,11 @@ class BoardDatabaseImporter(
         }
     }
 
-    /** Row-by-row fallback for when ATTACH is not available (e.g. in-memory DB). */
+    /** Row-by-row fallback for when ATTACH is not available (e.g. in-memory DB).
+     *  Origin propagation from the source is not wired here — this path is
+     *  exercised only for in-memory DBs in tests, where origin is irrelevant.
+     *  Real-device imports go through the ATTACH path above which honours
+     *  the source's `origin` column. */
     private fun importClimbsLegacy(
         rawDb: SQLiteDatabase,
         existingUuids: Set<String>? = null,

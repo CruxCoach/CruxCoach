@@ -69,6 +69,15 @@ data class ClimbEditorUiState(
     /** User-configured LED colors — drives both the board rendering and
      *  the brush-chip tints so they always match what the LEDs show. */
     val ledColors: LedHoldColors = LedHoldColors(),
+    /** True when publish is paused awaiting the "set up profile?" hint
+     *  decision. UI shows a dialog → either navigates to the profile
+     *  screen (`profileSetupRequested`) or dismisses (continues publish).
+     *  Mutually exclusive with [pendingPublishConfirm] in practice — dup
+     *  check runs first, profile hint second. */
+    val pendingProfileHint: Boolean = false,
+    /** One-shot flag: UI navigates to the profile editor and clears it
+     *  via [acknowledgeProfileSetupNavigated]. */
+    val profileSetupRequested: Boolean = false,
 )
 
 @HiltViewModel
@@ -79,6 +88,8 @@ class ClimbEditorViewModel @Inject constructor(
     private val bleConnection: BoardBleConnection,
     private val autosave: EditorAutosave,
     private val savedStateHandle: androidx.lifecycle.SavedStateHandle,
+    private val nostrSigner: com.cruxcoach.android.nostr.NostrSigner,
+    private val nostrProfileManager: com.cruxcoach.android.payment.NostrProfileManager,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ClimbEditorUiState())
@@ -135,6 +146,7 @@ class ClimbEditorViewModel @Inject constructor(
                             description = c.description, framesText = c.frames, source = "kilter",
                             syncStatus = "synced", createdByPubkey = null, nostrEventId = null,
                             nostrDTag = null, framesHash = null, createdAt = null, moveCount = c.storedMoveCount,
+                            kilterSyncedAt = null,
                         )
                     }
             }
@@ -328,8 +340,54 @@ class ClimbEditorViewModel @Inject constructor(
                 _state.update { it.copy(duplicateOf = dup, pendingPublishConfirm = true) }
                 return@launch
             }
+            // Profile-Hint: only on first publish without a Kind 0
+            // profile and with hint not yet dismissed for this identity.
+            if (shouldShowProfileHint()) {
+                _state.update { it.copy(pendingProfileHint = true) }
+                return@launch
+            }
             doPublish(sizeLabel)
         }
+    }
+
+    /** True when the user has no Kind 0 profile yet and hasn't dismissed
+     *  the hint. Cheap check (cache-only) — never blocks the publish path
+     *  on a relay round-trip. */
+    private suspend fun shouldShowProfileHint(): Boolean {
+        if (userPreferences.profileHintDismissed.first()) return false
+        val pubkey = runCatching { nostrSigner.getPublicKeyHex() }.getOrNull() ?: return false
+        // getProfile reads the local cache first; a missing profile only
+        // triggers a relay fetch, which we tolerate (~few hundred ms,
+        // happens at most once per identity-lifetime). If it fails, we
+        // err on the side of not interrupting the publish.
+        val profile = runCatching { nostrProfileManager.getProfile(pubkey) }.getOrNull()
+        return profile?.displayName.isNullOrBlank()
+    }
+
+    /** User chose "set up profile" — navigate flag for the screen, no
+     *  publish. Editor state is preserved; user comes back, taps publish
+     *  again, and the hint won't fire (profile now set). */
+    fun acceptProfileHint() {
+        viewModelScope.launch {
+            userPreferences.setProfileHintDismissed(true)
+            _state.update { it.copy(pendingProfileHint = false, profileSetupRequested = true) }
+        }
+    }
+
+    /** User chose "skip" — record dismissal so the hint doesn't fire
+     *  again for this identity, then proceed with publish. */
+    fun dismissProfileHintAndPublish(sizeLabel: String) {
+        viewModelScope.launch {
+            userPreferences.setProfileHintDismissed(true)
+            _state.update { it.copy(pendingProfileHint = false) }
+            doPublish(sizeLabel)
+        }
+    }
+
+    /** Screen calls this after navigating to the profile editor so the
+     *  one-shot flag clears. */
+    fun acknowledgeProfileSetupNavigated() {
+        _state.update { it.copy(profileSetupRequested = false) }
     }
 
     /** User accepted the duplicate-warning dialog → continue publish. */

@@ -2,8 +2,10 @@ package com.cruxcoach.android.community
 
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.nostr.NostrSigner
+import com.cruxcoach.android.payment.NostrProfileManager
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.LocalClimbDraft
+import com.cruxcoach.domain.community.ClimbBounds
 import com.cruxcoach.domain.community.ClimbEditorState
 import com.cruxcoach.domain.community.FramesHash
 import com.cruxcoach.domain.community.encodeFrames
@@ -25,6 +27,7 @@ class ClimbCreatorRepository @Inject constructor(
     private val publisher: CommunityClimbPublisher,
     private val userPreferences: UserPreferences,
     private val nostrSigner: NostrSigner,
+    private val nostrProfileManager: NostrProfileManager,
 ) {
     /**
      * Persist editor state as a local draft. Generates a fresh UUIDv4 +
@@ -54,13 +57,16 @@ class ClimbCreatorRepository @Inject constructor(
             createdAt = nowIso(),
             createdByPubkey = pubkey,
             moveCount = moveCount,
+            setterUsername = resolveOwnSetterUsername(pubkey),
         )
         val angle = state.angle ?: error("angle required")
+        val bounds = computeBounds(state)
         boardRepository.insertLocalDraft(
             draft = draft,
             layoutId = layoutId,
             angle = angle.toLong(),
             setterGradeId = state.setterGradeId,
+            bounds = bounds,
         )
         return uuid
     }
@@ -89,14 +95,48 @@ class ClimbCreatorRepository @Inject constructor(
             createdAt = nowIso(),
             createdByPubkey = pubkey,
             moveCount = moveCount,
+            setterUsername = resolveOwnSetterUsername(pubkey),
         )
         val angle = state.angle ?: error("angle required")
+        val bounds = computeBounds(state)
         boardRepository.insertLocalDraft(
             draft = draft,
             layoutId = layoutId,
             angle = angle.toLong(),
             setterGradeId = state.setterGradeId,
+            bounds = bounds,
         )
+    }
+
+    /**
+     * Resolve placement coords for the editor's selected holds and reduce
+     * to a [ClimbBounds]. Skipped (returns null) when no placement records
+     * are loaded yet — happens only in tests / cold-boot races. NULL
+     * edge_* on the persisted row matches pre-Plan-2 behaviour, so callers
+     * cope.
+     */
+    /**
+     * Resolve the user's Kind-0 display_name (cached if present, else
+     * fetched once). Returns null when no profile exists — Browse falls
+     * back to `npub:<short>`. Failures are swallowed: a missing profile
+     * is the empty case, not an error.
+     */
+    private suspend fun resolveOwnSetterUsername(pubkey: String?): String? {
+        if (pubkey.isNullOrBlank()) return null
+        val profile = runCatching { nostrProfileManager.getProfile(pubkey) }.getOrNull()
+        return profile?.displayName?.takeIf { it.isNotBlank() }
+    }
+
+    private fun computeBounds(state: ClimbEditorState): ClimbBounds? {
+        val ids = state.selectedHolds.keys
+        if (ids.isEmpty()) return null
+        val all = runCatching { boardRepository.getAllPlacements() }.getOrNull().orEmpty()
+        if (all.isEmpty()) return null
+        val coords = all.asSequence()
+            .filter { it.placementId.toInt() in ids }
+            .map { it.x.toInt() to it.y.toInt() }
+            .toList()
+        return ClimbBounds.fromCoords(coords)
     }
 
     /**
@@ -126,14 +166,21 @@ class ClimbCreatorRepository @Inject constructor(
         sizeLabel: String,
         existingUuid: String? = null,
     ): PublishOutcome {
-        val uuid = if (existingUuid != null) {
-            updateDraft(existingUuid, state)
+        val isEdit = existingUuid != null
+        val uuid = if (isEdit) {
+            updateDraft(existingUuid!!, state)
             existingUuid
         } else {
             saveDraft(state)
         }
         val layoutId = userPreferences.boardLayoutId.first().toLong()
-        val result = publisher.publish(uuid = uuid, layoutId = layoutId, state = state, sizeLabel = sizeLabel)
+        val result = publisher.publish(
+            uuid = uuid,
+            layoutId = layoutId,
+            state = state,
+            sizeLabel = sizeLabel,
+            isEdit = isEdit,
+        )
         return PublishOutcome(
             uuid = uuid,
             nudgeToConnectKilter = result.nudgeToConnectKilter,

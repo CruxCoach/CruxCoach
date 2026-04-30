@@ -22,17 +22,28 @@ class NostrProfileManager @Inject constructor(
 ) {
     private val profileQueries get() = database.nostrProfilesQueries
 
+    /**
+     * Publish a Kind 0 metadata event with the given fields and refresh
+     * the local cache so subsequent [getProfile] calls see the new
+     * values without a relay round-trip. `about` is now a parameter
+     * (was hardcoded to "CruxCoach User"); pass null/empty to omit.
+     *
+     * Returns the [NostrProfileData] that was published (= what the
+     * cache now holds). Returns null if signing or relay submission
+     * threw — caller should treat that as "publish failed, retry".
+     */
     suspend fun publishProfile(
         displayName: String?,
         lightningAddress: String?,
-        picture: String?
-    ) {
-        try {
+        picture: String?,
+        about: String? = null,
+    ): NostrProfileData? {
+        return try {
             val content = JSONObject().apply {
-                displayName?.let { put("name", it) }
-                lightningAddress?.let { put("lud16", it) }
-                picture?.let { put("picture", it) }
-                put("about", "CruxCoach User")
+                displayName?.takeIf { it.isNotBlank() }?.let { put("name", it) }
+                lightningAddress?.takeIf { it.isNotBlank() }?.let { put("lud16", it) }
+                picture?.takeIf { it.isNotBlank() }?.let { put("picture", it) }
+                about?.takeIf { it.isNotBlank() }?.let { put("about", it) }
             }.toString()
 
             val event = eventBuilder.buildSignedEvent(
@@ -41,8 +52,24 @@ class NostrProfileManager @Inject constructor(
                 tags = emptyList()
             )
             relayPool.sendEvent(event)
+
+            val ownPubkey = event.pubKey
+            profileQueries.upsert(
+                pubkey = ownPubkey,
+                display_name = displayName?.takeIf { it.isNotBlank() },
+                lightning_address = lightningAddress?.takeIf { it.isNotBlank() },
+                picture_url = picture?.takeIf { it.isNotBlank() },
+                updated_at = System.currentTimeMillis() / 1000
+            )
+            NostrProfileData(
+                pubkey = ownPubkey,
+                displayName = displayName?.takeIf { it.isNotBlank() },
+                lightningAddress = lightningAddress?.takeIf { it.isNotBlank() },
+                pictureUrl = picture?.takeIf { it.isNotBlank() },
+            )
         } catch (e: Exception) {
             Log.e(TAG, "Failed to publish profile", e)
+            null
         }
     }
 

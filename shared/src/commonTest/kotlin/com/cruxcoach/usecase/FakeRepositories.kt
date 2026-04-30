@@ -205,16 +205,21 @@ class FakeBoardRepository : BoardRepository {
 
     // -- CommunityClimbQueries (FEAT-003) --
 
-    override fun insertLocalDraft(draft: LocalClimbDraft, layoutId: Long, angle: Long, setterGradeId: Int?) {}
+    override fun insertLocalDraft(draft: LocalClimbDraft, layoutId: Long, angle: Long, setterGradeId: Int?, bounds: com.cruxcoach.domain.community.ClimbBounds?) {}
     override fun deleteLocalClimb(uuid: String) {}
     override fun getClimbCreatedAt(uuid: String): String? = null
     override fun computeEditorHeatmap(layoutId: Long, angle: Long, seedHolds: Set<Int>, targetRole: Int?): Map<Int, Float> = emptyMap()
-    override fun upsertCommunityClimb(uuid: String, layoutId: Long, setterUsername: String?, name: String, framesText: String, description: String, moveCount: Long, nostrEventId: String, nostrDTag: String, createdByPubkey: String, framesHash: String, createdAt: String, angle: Long, difficultyAverage: Double?, qualityAverage: Double?) {}
+    override fun upsertCommunityClimb(uuid: String, layoutId: Long, setterUsername: String?, name: String, framesText: String, description: String, moveCount: Long, nostrEventId: String, nostrDTag: String, createdByPubkey: String, framesHash: String, createdAt: String, angle: Long, difficultyAverage: Double?, qualityAverage: Double?, bounds: com.cruxcoach.domain.community.ClimbBounds?) {}
     override fun markClimbPublishedNostr(uuid: String, nostrEventId: String, nostrDTag: String, pubkey: String) {}
     override fun markClimbPublishFailed(uuid: String) {}
     override fun markKilterPublishPending(uuid: String) {}
     override fun markKilterPublishSynced(uuid: String, via: String, syncedAtEpochSeconds: Long) {}
     override fun markKilterPublishFailed(uuid: String, error: String) {}
+    override fun markKilterPublishDiverged(uuid: String, error: String) {}
+    override fun getKilterPublishState(uuid: String): com.cruxcoach.data.repository.KilterPublishState? = null
+    override fun updateSetterUsernameForPubkey(pubkey: String, displayName: String) {}
+    override fun getClimbsByPubkey(pubkey: String): List<com.cruxcoach.data.repository.SetterClimbEntry> = emptyList()
+    override fun getCommunitySetterStats(): List<com.cruxcoach.data.repository.SetterStat> = emptyList()
     override fun getClimbsAwaitingKilterRetry(): List<CommunityClimbRow> = emptyList()
     override fun getDraftClimbs(): List<CommunityClimbRow> = emptyList()
     override fun getMyClimbs(pubkey: String): List<CommunityClimbRow> = emptyList()

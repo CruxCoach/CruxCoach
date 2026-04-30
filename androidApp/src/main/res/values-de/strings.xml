@@ -53,6 +53,44 @@
     <string name="climb_creator_edit_action">Climb bearbeiten</string>
     <string name="climb_detail_badge_on_kilter">Auf Kilter</string>
     <string name="climb_detail_badge_cruxcoach_only">Nur CruxCoach-Community</string>
+    <string name="climb_detail_badge_kilter_diverged">Nur hier bearbeitet, auf Kilter Originalversion</string>
+
+    <!-- Nostr-Profil-Editor (Einstellungen) -->
+    <string name="nostr_profile_title">Mein Nostr-Profil</string>
+    <string name="nostr_profile_settings_label">Nostr-Profil</string>
+    <string name="nostr_profile_settings_summary">Anzeigename, Profilbild, Lightning-Adresse</string>
+    <string name="nostr_profile_explainer">Andere CruxCoach-Nutzer sehen dieses Profil neben deinen Community-Climbs. Ohne Profil siehst du nur eine kurze Hex-npub.</string>
+    <string name="nostr_profile_display_name">Anzeigename</string>
+    <string name="nostr_profile_display_name_hint">Wird neben deinen Climbs als Setter angezeigt.</string>
+    <string name="nostr_profile_about">Über mich</string>
+    <string name="nostr_profile_about_hint">Optional. Kurze Bio.</string>
+    <string name="nostr_profile_lightning">Lightning-Adresse</string>
+    <string name="nostr_profile_lightning_hint">Optional. Format: name@domain — andere können dich damit zappen.</string>
+    <string name="nostr_profile_picture">Profilbild-URL</string>
+    <string name="nostr_profile_picture_hint">Optional. Direkter Bild-Link — aktuell wird nur dein Anzeigename gerendert.</string>
+    <string name="nostr_profile_save">Profil speichern</string>
+    <string name="nostr_profile_saving">Wird gespeichert…</string>
+    <string name="nostr_profile_import_from_kilter">Kilter-Username übernehmen</string>
+    <string name="nostr_profile_kilter_divergence_hint">Dein Kilter-Username (\"%1$s\") bleibt in der Kilter-App unverändert. Dieses Profil gilt nur für CruxCoach + Nostr.</string>
+
+    <!-- Setter-Detail / Liste (Community) -->
+    <string name="setter_detail_title_fallback">Setter</string>
+    <string name="setter_detail_climb_count">%1$d Climbs</string>
+    <string name="setter_detail_no_climbs">Keine Climbs dieses Setters in deinem lokalen Katalog.</string>
+    <string name="setter_detail_climb_meta">%1$d° · %2$.1f · ⭐%3$.1f · %4$d Begehungen</string>
+    <string name="setters_list_title">CruxCoach-Setter</string>
+    <string name="setters_list_empty">Noch keine CruxCoach-Community-Climbs. Schau später wieder rein oder leg selbst los.</string>
+    <string name="setters_list_count">%1$d Climbs</string>
+    <string name="setters_list_browse_button">Setter durchstöbern</string>
+    <string name="board_lists_community_banner_title">CruxCoach-Community</string>
+    <string name="board_lists_community_banner_subtitle">Setter und ihre Climbs entdecken</string>
+    <string name="board_lists_section_title">Deine Listen</string>
+
+    <!-- Profil-Hinweis vor erstem Publish -->
+    <string name="profile_hint_dialog_title">Profil einrichten?</string>
+    <string name="profile_hint_dialog_body">Dein Climb wird für alle sichtbar. Ohne Profil sehen andere nur eine kurze Kennung (npub:abc…). Ein Anzeigename ist in einer Minute eingerichtet.</string>
+    <string name="profile_hint_dialog_setup">Profil einrichten</string>
+    <string name="profile_hint_dialog_later">Jetzt nicht</string>
 
     <!-- Onboarding -->
     <string name="onboarding_welcome">Willkommen bei CruxCoach</string>

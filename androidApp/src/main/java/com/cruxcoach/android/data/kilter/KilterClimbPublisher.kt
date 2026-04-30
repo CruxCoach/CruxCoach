@@ -44,6 +44,46 @@ class KilterClimbPublisher @Inject constructor(
         state: ClimbEditorState,
         boardSize: BoardSize?,
         framesClimbConcat: String,
+    ): Outcome = submit(
+        op = Op.CREATE,
+        uuid = uuid,
+        layoutId = layoutId,
+        state = state,
+        boardSize = boardSize,
+        framesClimbConcat = framesClimbConcat,
+    )
+
+    /**
+     * Update an already-Kilter-synced climb after a CruxCoach edit.
+     * Calls `update-climb/transaction` instead of `create-climb/`. If
+     * Kilter's UI semantics rule out updates on published rows the
+     * server returns 4xx; we map that to `kilter_status='diverged'` so
+     * the retry worker drops the row and the UI surfaces a banner.
+     */
+    suspend fun update(
+        uuid: String,
+        layoutId: Long,
+        state: ClimbEditorState,
+        boardSize: BoardSize?,
+        framesClimbConcat: String,
+    ): Outcome = submit(
+        op = Op.UPDATE,
+        uuid = uuid,
+        layoutId = layoutId,
+        state = state,
+        boardSize = boardSize,
+        framesClimbConcat = framesClimbConcat,
+    )
+
+    private enum class Op { CREATE, UPDATE }
+
+    private suspend fun submit(
+        op: Op,
+        uuid: String,
+        layoutId: Long,
+        state: ClimbEditorState,
+        boardSize: BoardSize?,
+        framesClimbConcat: String,
     ): Outcome {
         if (!userPreferences.kilterClimbPublishEnabled.first()) {
             return Outcome.Skipped("user-opted-out")
@@ -60,17 +100,30 @@ class KilterClimbPublisher @Inject constructor(
         }
 
         boardRepository.markKilterPublishPending(uuid)
-        val r = apiClient.publishClimb(
-            climbUuid = uuid,
-            name = state.name,
-            description = state.description,
-            framesClimbConcat = framesClimbConcat,
-            productName = productNameFor(layoutId),
-            edgeLeft = boardSize.edgeLeft.toInt(),
-            edgeRight = boardSize.edgeRight.toInt(),
-            edgeBottom = boardSize.edgeBottom.toInt(),
-            edgeTop = boardSize.edgeTop.toInt(),
-        )
+        val r = when (op) {
+            Op.CREATE -> apiClient.publishClimb(
+                climbUuid = uuid,
+                name = state.name,
+                description = state.description,
+                framesClimbConcat = framesClimbConcat,
+                productName = productNameFor(layoutId),
+                edgeLeft = boardSize.edgeLeft.toInt(),
+                edgeRight = boardSize.edgeRight.toInt(),
+                edgeBottom = boardSize.edgeBottom.toInt(),
+                edgeTop = boardSize.edgeTop.toInt(),
+            )
+            Op.UPDATE -> apiClient.updateClimb(
+                climbUuid = uuid,
+                name = state.name,
+                description = state.description,
+                framesClimbConcat = framesClimbConcat,
+                productName = productNameFor(layoutId),
+                edgeLeft = boardSize.edgeLeft.toInt(),
+                edgeRight = boardSize.edgeRight.toInt(),
+                edgeBottom = boardSize.edgeBottom.toInt(),
+                edgeTop = boardSize.edgeTop.toInt(),
+            )
+        }
         return when (r) {
             is KilterPublishResult.Success -> {
                 boardRepository.markKilterPublishSynced(
@@ -81,7 +134,7 @@ class KilterClimbPublisher @Inject constructor(
                 Outcome.Synced
             }
             is KilterPublishResult.NotAuthenticated -> {
-                Log.i(TAG, "publish via=self: token expired mid-call; deferring to retry worker")
+                Log.i(TAG, "$op via=self: token expired mid-call; deferring to retry worker")
                 boardRepository.markKilterPublishFailed(uuid, "token expired")
                 Outcome.Failed("Kilter-Sitzung abgelaufen — wird später wiederholt")
             }
@@ -90,11 +143,23 @@ class KilterClimbPublisher @Inject constructor(
                 Outcome.Failed("Übertragung fehlgeschlagen — Versuch wird wiederholt")
             }
             is KilterPublishResult.PermanentError -> {
-                boardRepository.markKilterPublishFailed(
-                    uuid,
-                    "http=${r.httpCode}: ${r.message.take(200)}",
-                )
-                Outcome.Failed("Kilter hat den Climb abgelehnt (${r.httpCode})")
+                // For UPDATE on an already-published row a 4xx most likely
+                // means Kilter refuses edits at this layer. Mark
+                // 'diverged' (no further retries, banner in UI) instead
+                // of 'failed' (which the worker keeps poking).
+                if (op == Op.UPDATE) {
+                    boardRepository.markKilterPublishDiverged(
+                        uuid,
+                        "http=${r.httpCode}: ${r.message.take(200)}",
+                    )
+                    Outcome.Diverged("Kilter erlaubt keine Änderung am bereits veröffentlichten Climb (${r.httpCode})")
+                } else {
+                    boardRepository.markKilterPublishFailed(
+                        uuid,
+                        "http=${r.httpCode}: ${r.message.take(200)}",
+                    )
+                    Outcome.Failed("Kilter hat den Climb abgelehnt (${r.httpCode})")
+                }
             }
         }
     }
@@ -111,6 +176,10 @@ class KilterClimbPublisher @Inject constructor(
         data object Synced : Outcome()
         /** Self-publish failed; row marked `kilter_status='failed'`. */
         data class Failed(val message: String) : Outcome()
+        /** Update was rejected by Kilter for semantic reasons (cannot
+         *  edit published row). Row marked `kilter_status='diverged'`,
+         *  retry worker won't poke it again. */
+        data class Diverged(val message: String) : Outcome()
         /** Path not attempted (user opted out, no board size, no login). */
         data class Skipped(val reason: String) : Outcome()
     }

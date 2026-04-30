@@ -292,6 +292,37 @@ data class LocalClimbDraft(
     val createdAt: String,
     val createdByPubkey: String?,
     val moveCount: Long,
+    /** Setter display string seeded from the local user's Kind 0 profile.
+     *  Null when the user has no profile yet — Browse falls back to
+     *  `npub:<short>` via the same path it uses for foreign climbs. */
+    val setterUsername: String? = null,
+)
+
+/** Aggregate row for the SettersListScreen — one per unique pubkey. */
+data class SetterStat(
+    val pubkey: String,
+    val displayName: String?,    // setter_username column — already resolved by Plan C
+    val climbCount: Long,
+)
+
+/** A single climb in the SetterDetailScreen's list — only the fields the
+ *  list row needs. Keeps it light + lets us include `angle` (which the
+ *  full ClimbWithStats doesn't carry, since the regular browse filters
+ *  by a global angle). */
+data class SetterClimbEntry(
+    val uuid: String,
+    val name: String,
+    val angle: Int,
+    val difficultyAverage: Double?,
+    val qualityAverage: Double?,
+    val ascensionistCount: Long,
+)
+
+/** Snapshot of a climb's Kilter publish-state — drives the create-vs-update
+ *  decision on edit publishes. */
+data class KilterPublishState(
+    val status: String?,        // NULL | 'pending' | 'synced' | 'failed' | 'diverged'
+    val syncedAtEpochSeconds: Long?,
 )
 
 data class CommunityClimbRow(
@@ -308,13 +339,26 @@ data class CommunityClimbRow(
     val framesHash: String?,
     val createdAt: String?,
     val moveCount: Long,
+    /** Set when Kilter accepted the climb at least once. Used by the
+     *  retry worker to pick between create and update endpoints. */
+    val kilterSyncedAt: Long?,
 )
 
 /** Climb-creation + community-climb queries (FEAT-003). */
 interface CommunityClimbQueries {
     /** Insert or upsert a local climb draft (source='local'). Re-saving an
-     *  already-loaded draft replaces the row in place (same uuid). */
-    fun insertLocalDraft(draft: LocalClimbDraft, layoutId: Long, angle: Long, setterGradeId: Int?)
+     *  already-loaded draft replaces the row in place (same uuid).
+     *  `bounds` is the bounding box of the selected holds; pass null when
+     *  it can't be derived (placements not loaded yet). When null the
+     *  edge_* columns stay NULL — browse compatibility filters treat
+     *  "fits all sizes" in that case. */
+    fun insertLocalDraft(
+        draft: LocalClimbDraft,
+        layoutId: Long,
+        angle: Long,
+        setterGradeId: Int?,
+        bounds: com.cruxcoach.domain.community.ClimbBounds?,
+    )
     /** Delete a local draft (drafts user explicitly discards). */
     fun deleteLocalClimb(uuid: String)
     /**
@@ -343,7 +387,9 @@ interface CommunityClimbQueries {
         seedHolds: Set<Int>,
         targetRole: Int? = null,
     ): Map<Int, Float>
-    /** Upsert a community climb received from Nostr. */
+    /** Upsert a community climb received from Nostr. `bounds` comes from
+     *  the optional `bounds` Nostr-tag — null when the event predates Plan
+     *  2 or the publisher couldn't derive coordinates. */
     fun upsertCommunityClimb(
         uuid: String,
         layoutId: Long,
@@ -360,6 +406,7 @@ interface CommunityClimbQueries {
         angle: Long,
         difficultyAverage: Double?,
         qualityAverage: Double?,
+        bounds: com.cruxcoach.domain.community.ClimbBounds?,
     )
     /**
      * Flip a draft to "published_nostr" after the relay accepts the event.
@@ -376,6 +423,20 @@ interface CommunityClimbQueries {
 
     // ── Kilter-side publish lifecycle (independent of Nostr sync_status) ──
     /** Mark a climb as enqueued for Kilter publish. Sets `kilter_status='pending'`. */
+    /** Read just the Kilter publish-state. Null when the climb isn't in
+     *  the local DB. */
+    fun getKilterPublishState(uuid: String): KilterPublishState?
+    /** Bulk-rename setter_username on every CruxCoach community climb
+     *  authored by [pubkey]. Used by both: profile-editor save (own
+     *  pubkey) and the live subscriber (foreign pubkeys, after Kind 0
+     *  resolves). The query semantics are identical for either case. */
+    fun updateSetterUsernameForPubkey(pubkey: String, displayName: String)
+    /** All climbs authored by [pubkey] (CruxCoach setter detail). Each
+     *  entry carries its angle — same climb at multiple angles becomes
+     *  multiple entries, matching the climb_stats row layout. */
+    fun getClimbsByPubkey(pubkey: String): List<SetterClimbEntry>
+    /** Distinct cruxcoach setters with their climb-count, ordered desc. */
+    fun getCommunitySetterStats(): List<SetterStat>
     fun markKilterPublishPending(uuid: String)
     /**
      * Mark a climb as accepted by Kilter. `via` is 'self' (user account) or
@@ -385,6 +446,9 @@ interface CommunityClimbQueries {
     fun markKilterPublishSynced(uuid: String, via: String, syncedAtEpochSeconds: Long)
     /** Mark a climb's Kilter publish as failed; `error` captures the last reason. */
     fun markKilterPublishFailed(uuid: String, error: String)
+    /** Server explicitly rejected an update on an already-published climb.
+     *  Distinct from `'failed'` — the retry worker stops poking it. */
+    fun markKilterPublishDiverged(uuid: String, error: String)
     /** Climbs with `origin='cruxcoach'`, Nostr-published, awaiting Kilter sync. */
     fun getClimbsAwaitingKilterRetry(): List<CommunityClimbRow>
     fun getDraftClimbs(): List<CommunityClimbRow>

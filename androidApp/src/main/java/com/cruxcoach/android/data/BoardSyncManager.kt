@@ -161,6 +161,7 @@ class BoardSyncManager(
             Log.d(TAG, "Data stale, checking Blossom manifest...")
             try {
                 val manifest = blossomSyncManager.fetchManifest()
+                userPreferences.setBlossomManifestCreatedAt(manifest.createdAt)
                 val changedChunks = blossomSyncManager.getChangedChunks(manifest)
                 if (changedChunks.isEmpty()) {
                     Log.d(TAG, "All chunks up to date — skipping auto-sync")
@@ -311,6 +312,10 @@ class BoardSyncManager(
         _state.update { it.copy(importStep = ImportStep.FetchingManifest) }
         Log.d(TAG, "Fetching Blossom manifest...")
         val manifest = blossomSyncManager.fetchManifest()
+        // Persist manifest timestamp so CommunityClimbSubscriber can seed
+        // its cursor on first run — avoids pulling the entire historical
+        // Nostr tail when the cron has already merged it into the blob.
+        userPreferences.setBlossomManifestCreatedAt(manifest.createdAt)
         Log.d(TAG, "Manifest fetched: ${manifest.chunks.size} chunks")
 
         // 2. Determine which chunks need downloading

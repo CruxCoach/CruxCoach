@@ -31,7 +31,7 @@ CREATE TABLE climbs (
     sync_status TEXT NOT NULL DEFAULT 'synced',     -- 'draft' | 'synced' | 'published_nostr' | 'published_kilter' | 'published_both' | 'failed'
     -- v0.1.5 provenance + Kilter publish status:
     origin TEXT NOT NULL DEFAULT 'kilter',          -- 'cruxcoach' | 'kilter' (immutable, where authored)
-    kilter_status TEXT,                             -- NULL | 'pending' | 'synced' | 'failed'
+    kilter_status TEXT,                             -- NULL | 'pending' | 'synced' | 'failed' | 'diverged'
     kilter_synced_at INTEGER,                       -- epoch seconds, set when Kilter accepts
     kilter_publish_via TEXT,                        -- 'self' (user account) | 'cruxcoach' (bundled)
     kilter_error TEXT,                              -- last Kilter publish failure message
@@ -534,13 +534,16 @@ WHERE l.product_size_id = ?;
 -- Insert/upsert a local climb draft (source='local'). When the editor
 -- loads a draft and saves again, we INSERT OR REPLACE on the same uuid
 -- so the row is updated in place (no orphan + no PK collision).
+-- edge_* are the climb's bounding box derived from selected hold
+-- coordinates (see ClimbBounds.fromCoords); pass NULL when the editor
+-- can't resolve placement coords (rare race during layout-data load).
 insertLocalDraft:
 INSERT OR REPLACE INTO climbs(uuid, layout_id, setter_username, name, frames,
     frames_count, is_listed, edge_left, edge_right, edge_bottom, edge_top, created_at,
     description, is_nomatch, frames_pace, hsm, move_count,
     source, created_by_pubkey, frames_hash, sync_status, origin)
 VALUES (?, ?, ?, ?, ?,
-    1, 1, NULL, NULL, NULL, NULL, ?,
+    1, 1, ?, ?, ?, ?, ?,
     ?, 0, 0, 0, ?,
     'local', ?, ?, 'draft', 'cruxcoach');
 
@@ -572,13 +575,15 @@ WHERE c.layout_id = :layoutId
 -- Upsert a community climb received from Nostr (source='nostr'). These
 -- are CruxCoach-origin by definition — only our editor publishes events
 -- in the com.cruxcoach.climb namespace, so origin is hardcoded.
+-- edge_* come from the optional `bounds` tag on the Kind-30078 event;
+-- pass NULL when the event predates Plan 2 (no bounds tag).
 upsertCommunityClimb:
 INSERT OR REPLACE INTO climbs(uuid, layout_id, setter_username, name, frames,
     frames_count, is_listed, edge_left, edge_right, edge_bottom, edge_top, created_at,
     description, is_nomatch, frames_pace, hsm, move_count,
     source, nostr_event_id, nostr_d_tag, created_by_pubkey, frames_hash, sync_status, origin)
 VALUES (?, ?, ?, ?, ?,
-    1, 1, NULL, NULL, NULL, NULL, ?,
+    1, 1, ?, ?, ?, ?, ?,
     ?, 0, 0, 0, ?,
     'nostr', ?, ?, ?, ?, 'synced', 'cruxcoach');
 
@@ -598,6 +603,48 @@ WHERE uuid = ?;
 markClimbPublishFailed:
 UPDATE climbs SET sync_status = 'failed' WHERE uuid = ?;
 
+-- Read just the Kilter publish-state for a climb. Returns null if the
+-- climb isn't in the local DB. Used by CommunityClimbPublisher to decide
+-- between create-climb and update-climb on edit publish.
+getKilterPublishState:
+SELECT kilter_status, kilter_synced_at FROM climbs WHERE uuid = ?;
+
+-- All climbs authored by a given pubkey (any source). Used by the
+-- SetterDetailScreen to show every climb the setter has created in the
+-- local catalog. Pulls from climb_browse so we get the same projection
+-- the regular browse uses (no frames, but everything UI-list needs).
+-- Sort: newest first, fallback to name-asc when created_at is NULL.
+getClimbsByPubkey:
+SELECT * FROM climb_browse
+WHERE created_by_pubkey = ?
+ORDER BY name ASC;
+
+-- Setter-list aggregate: distinct pubkeys with a climb count + their
+-- current resolved setter_username. Drives the SettersListScreen.
+-- Filter on origin='cruxcoach' so only community setters appear, not
+-- every Kilter-API-imported username with a coincidentally non-null
+-- pubkey field.
+getCommunitySetterStats:
+SELECT created_by_pubkey, setter_username, COUNT(*) AS climb_count
+FROM climbs
+WHERE origin = 'cruxcoach'
+  AND created_by_pubkey IS NOT NULL
+  AND is_listed = 1
+GROUP BY created_by_pubkey
+ORDER BY climb_count DESC, setter_username ASC;
+
+-- Bulk-update the setter_username on every CruxCoach climb authored by
+-- the given pubkey. Two callers:
+--   1. NostrProfileManager.publishProfile — propagates the local user's
+--      new display_name to their own community climbs after profile save
+--   2. CommunityClimbSubscriber — after a climb event lands, fetches the
+--      setter's Kind 0 (cache-first) and writes the display_name back
+--      so the browse list shows pretty names without per-row lookups
+-- Only touches `setter_username` — every CruxCoach-side column stays put.
+updateSetterUsernameForPubkey:
+UPDATE climbs SET setter_username = ?
+WHERE created_by_pubkey = ? AND origin = 'cruxcoach';
+
 -- Kilter-side publish lifecycle. Separate from sync_status because the
 -- Kilter API push is a parallel best-effort path: a climb can be live
 -- on Nostr (sync_status='published_nostr') while still pending or failed
@@ -615,6 +662,14 @@ WHERE uuid = ?;
 
 markKilterPublishFailed:
 UPDATE climbs SET kilter_status = 'failed', kilter_error = ? WHERE uuid = ?;
+
+-- Mark a climb whose update Kilter rejected (e.g. because UI semantics
+-- forbid editing already-published climbs). Distinct from 'failed' so
+-- the retry worker doesn't re-poke the row endlessly. UI shows a
+-- "diverged" banner: locally + on Nostr the new version, on Kilter the
+-- original.
+markKilterPublishDiverged:
+UPDATE climbs SET kilter_status = 'diverged', kilter_error = ? WHERE uuid = ?;
 
 -- Climbs that need a Kilter retry: cruxcoach-origin, not yet on Kilter
 -- (NULL or 'failed') and Nostr-published (so we know the user finalized
