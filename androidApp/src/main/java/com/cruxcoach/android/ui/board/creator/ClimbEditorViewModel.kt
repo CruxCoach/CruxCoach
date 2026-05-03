@@ -387,6 +387,27 @@ class ClimbEditorViewModel @Inject constructor(
             _state.update { it.copy(validationIssues = issues) }
             return
         }
+        // Atomic claim: a second tap arriving while the first publish's
+        // findDuplicate / shouldShowProfileHint coroutine is in flight
+        // would otherwise enter publish() again before doPublish flipped
+        // isPublishing — launching a parallel saveAndPublish (duplicate
+        // Nostr events, duplicate Kilter API calls, race on
+        // loadedDraftUuid). StateFlow.update is the CAS primitive: if
+        // current.isPublishing is true the second caller leaves it as-is
+        // and we bail; the first caller flips it before launching.
+        var claimed = false
+        _state.update { s ->
+            if (s.isPublishing) {
+                claimed = false; s
+            } else {
+                claimed = true
+                s.copy(isPublishing = true, errorMessage = null)
+            }
+        }
+        if (!claimed) {
+            Log.d(TAG, "publish ignored — already in flight")
+            return
+        }
         viewModelScope.launch {
             val dup = withContext(Dispatchers.IO) { repository.findDuplicate(current) }
             // Skip the dialog if the duplicate IS the draft we're updating.
@@ -422,11 +443,18 @@ class ClimbEditorViewModel @Inject constructor(
 
     /** User chose "set up profile" — navigate flag for the screen, no
      *  publish. Editor state is preserved; user comes back, taps publish
-     *  again, and the hint won't fire (profile now set). */
+     *  again, and the hint won't fire (profile now set). Releases the
+     *  isPublishing claim so the user can re-tap publish later. */
     fun acceptProfileHint() {
         viewModelScope.launch {
             userPreferences.setProfileHintDismissed(true)
-            _state.update { it.copy(pendingProfileHint = false, profileSetupRequested = true) }
+            _state.update {
+                it.copy(
+                    pendingProfileHint = false,
+                    profileSetupRequested = true,
+                    isPublishing = false,
+                )
+            }
         }
     }
 
@@ -452,9 +480,12 @@ class ClimbEditorViewModel @Inject constructor(
         doPublish(sizeLabel, autoNoteTemplate)
     }
 
-    /** User declined the duplicate-warning dialog → stay in editor. */
+    /** User declined the duplicate-warning dialog → stay in editor.
+     *  Releases the isPublishing claim taken by publish(). */
     fun cancelPublishOnDuplicate() {
-        _state.update { it.copy(duplicateOf = null, pendingPublishConfirm = false) }
+        _state.update {
+            it.copy(duplicateOf = null, pendingPublishConfirm = false, isPublishing = false)
+        }
     }
 
     private fun doPublish(sizeLabel: String, autoNoteTemplate: String? = null) {

@@ -241,7 +241,17 @@ class KilterPublishRetryWorker @AssistedInject constructor(
         }
 
         /** Manual one-shot trigger — useful right after the user toggles
-         *  the publish setting on, or after restoring connectivity. */
+         *  the publish setting on, or after restoring connectivity.
+         *
+         *  Shares [WORK_NAME] with the periodic worker so WorkManager
+         *  enforces single-runner semantics across both trigger paths.
+         *  Pre-fix runOnce used a distinct unique name
+         *  (`${WORK_NAME}_oneshot`), so a `runOnce` fired while the
+         *  periodic batch was mid-flight could double-publish the same
+         *  rows. APPEND_OR_REPLACE means: if a worker is already running
+         *  the oneshot is queued behind it; if nothing's running it
+         *  starts immediately; if a previous oneshot is queued, we
+         *  replace it (no need to drain the same queue twice). */
         fun runOnce(context: Context) {
             val request = androidx.work.OneTimeWorkRequestBuilder<KilterPublishRetryWorker>()
                 .setConstraints(
@@ -251,8 +261,8 @@ class KilterPublishRetryWorker @AssistedInject constructor(
                 )
                 .build()
             WorkManager.getInstance(context).enqueueUniqueWork(
-                "${WORK_NAME}_oneshot",
-                androidx.work.ExistingWorkPolicy.REPLACE,
+                WORK_NAME,
+                androidx.work.ExistingWorkPolicy.APPEND_OR_REPLACE,
                 request,
             )
         }

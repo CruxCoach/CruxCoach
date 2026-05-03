@@ -7,7 +7,6 @@ import com.cruxcoach.android.nostr.NostrRelayPool
 import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.domain.board.BoardClimbParser
-import com.cruxcoach.domain.board.HoldRole
 import com.cruxcoach.domain.community.ClimbBounds
 import com.vitorpamplona.quartz.nip01Core.core.Event
 import com.vitorpamplona.quartz.nip01Core.crypto.verifySignature
@@ -315,7 +314,7 @@ class CommunityClimbSubscriber @Inject constructor(
         // event.created_at against whatever we already have for this uuid.
         val incomingIso = epochToIso(parsedClimb.createdAt)
         val existingIso = boardRepository.getClimbCreatedAt(parsedClimb.uuid)
-        if (existingIso != null && existingIso > incomingIso) {
+        if (existingIso != null && isExistingNewer(existingIso, parsedClimb.createdAt)) {
             Log.i(
                 TAG,
                 "skip stale event uuid=${parsedClimb.uuid} " +
@@ -415,12 +414,43 @@ class CommunityClimbSubscriber @Inject constructor(
     }
 
     private fun computeMoveCount(framesText: String): Int {
+        // Delegate to the shared estimator so the publisher's
+        // (handHolds - startCount) formula and the subscriber's match.
+        // Pre-fix the subscriber counted START + HAND, the publisher
+        // counted HAND + FINISH, so the same climb got different
+        // move_count values depending on which path persisted it.
+        // Result: browse sort-by-moves and "X moves" badges were
+        // inconsistent across rows. The publisher's formula is the
+        // climbing-semantics-correct one — starts are already on the
+        // wall so a "move" is each subsequent hand-hold.
         val holds = runCatching { BoardClimbParser.parseFrames(framesText) }.getOrNull() ?: return 0
-        return holds.count { it.roleId == HoldRole.HAND || it.roleId == HoldRole.START }
+        return BoardClimbParser.estimateMoveCount(holds)
     }
 
     private fun epochToIso(epochSeconds: Long): String =
         java.time.Instant.ofEpochSecond(epochSeconds).toString()
+
+    /**
+     * True when the locally-stored ISO timestamp is strictly newer than
+     * the incoming Nostr event's `created_at` (epoch seconds).
+     *
+     * Pre-fix this used `existingIso > incomingIso` (String lex compare),
+     * which is wrong when the two strings differ in fractional-second
+     * precision: `"…00:00:00.000Z" < "…00:00:00Z"` lex-compares because
+     * `.` (0x2E) is below `Z` (0x5A), so a milli-precision timestamp
+     * stored from a Kilter-import path would mis-compare against a
+     * second-precision Instant.toString() the subscriber generates —
+     * stale-event protection then rejects fresh edits as if they were
+     * older. Parsing both sides to Instant fixes the precision mismatch
+     * and gracefully tolerates non-ISO existing values (treat as "no
+     * stale signal" → don't reject).
+     */
+    @VisibleForTesting
+    internal fun isExistingNewer(existingIso: String, incomingEpochSeconds: Long): Boolean {
+        val existingInstant = runCatching { java.time.Instant.parse(existingIso) }.getOrNull()
+            ?: return false
+        return existingInstant.epochSecond > incomingEpochSeconds
+    }
 
     private data class ParsedClimb(
         val eventId: String,
