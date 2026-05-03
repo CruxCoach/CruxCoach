@@ -1,6 +1,7 @@
 package com.cruxcoach.android.ui.settings
 
 import android.content.Context
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.ble.BoardBleConnection
@@ -532,9 +533,14 @@ class SettingsViewModel @Inject constructor(
     fun deleteUserBoardData() {
         _state.update { it.copy(showDeleteUserDataDialog = false) }
         viewModelScope.launch {
+            // Audit-trail: log the destructive action with a timestamp so a
+            // user reporting "my logbook is empty" can be triaged via logcat
+            // without DB forensics.
+            Log.i(TAG, "destructive: deleteAllUserBoardData() requested at ${System.currentTimeMillis() / 1000}")
             withContext(Dispatchers.IO) {
                 personalBoardRepo.deleteAllUserBoardData()
             }
+            Log.i(TAG, "destructive: deleteAllUserBoardData() done")
             _state.update { it.copy(deleteSuccess = context.getString(R.string.settings_delete_logbook_success)) }
         }
     }
@@ -663,6 +669,14 @@ class SettingsViewModel @Inject constructor(
     fun setKilterClimbPublishEnabled(enabled: Boolean) {
         _state.update { it.copy(kilterAccount = it.kilterAccount.copy(climbPublishEnabled = enabled)) }
         viewModelScope.launch { userPreferences.setKilterClimbPublishEnabled(enabled) }
+        // Drain the retry queue immediately when the user enables the
+        // toggle — without this, climbs published while opted-out wait up
+        // to 6h for the next periodic tick. WorkManager.runOnce() is
+        // network-gated so it harmlessly defers until connectivity if
+        // we're offline at this moment.
+        if (enabled) {
+            com.cruxcoach.android.data.kilter.KilterPublishRetryWorker.runOnce(context)
+        }
     }
 
     fun setKilterPushEnabled(enabled: Boolean) {
@@ -672,14 +686,23 @@ class SettingsViewModel @Inject constructor(
 
     fun kilterDisconnect() {
         viewModelScope.launch {
+            // Audit-trail: log the disconnect with a timestamp so post-hoc
+            // triage of "I lost my Kilter login" or "my pending publishes
+            // disappeared" reports can be matched against logcat.
+            Log.i(TAG, "destructive: kilterDisconnect() requested at ${System.currentTimeMillis() / 1000}")
             kilterApiClient.revokeRefreshToken()
             kilterTokenStore.clear()
             userPreferences.setKilterSyncEnabled(false)
             _state.update { it.copy(kilterAccount = KilterAccountState()) }
+            Log.i(TAG, "destructive: kilterDisconnect() done — token cleared, sync disabled")
         }
     }
 
     fun dismissKilterResult() {
         _state.update { it.copy(kilterAccount = it.kilterAccount.copy(resultMessage = null)) }
+    }
+
+    private companion object {
+        const val TAG = "SettingsVM"
     }
 }
