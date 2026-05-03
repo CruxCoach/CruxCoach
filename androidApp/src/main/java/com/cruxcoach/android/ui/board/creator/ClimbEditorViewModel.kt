@@ -106,6 +106,10 @@ class ClimbEditorViewModel @Inject constructor(
 
     /** Debounced autosave job — restarted on every editor mutation. */
     private var autosaveJob: kotlinx.coroutines.Job? = null
+    /** Session-scoped counter of consecutive autosave write failures.
+     *  Drives a future user-visible "autosave is broken — save manually"
+     *  Snackbar; for now it lives in the log line for triage. */
+    private var autosaveFailures: Int = 0
 
     /** Debounced heatmap-recompute job — restarted on holds change. */
     private var heatmapJob: kotlinx.coroutines.Job? = null
@@ -409,21 +413,42 @@ class ClimbEditorViewModel @Inject constructor(
             return
         }
         viewModelScope.launch {
-            val dup = withContext(Dispatchers.IO) { repository.findDuplicate(current) }
-            // Skip the dialog if the duplicate IS the draft we're updating.
-            val ownLoaded = _state.value.loadedDraftUuid
-            val isSelfReplace = dup != null && dup.uuid == ownLoaded
-            if (dup != null && !isSelfReplace) {
-                _state.update { it.copy(duplicateOf = dup, pendingPublishConfirm = true) }
-                return@launch
+            // findDuplicate hits SQLDelight (frames-hash index lookup);
+            // shouldShowProfileHint hits DataStore + maybe a relay.
+            // Either can throw under DB lock contention / mid-migration
+            // / corrupted prefs. Pre-fix the throw escaped the coroutine
+            // silently — the publish button stayed in `isPublishing=true`
+            // forever (CAS-claimed, never released), the UI showed an
+            // indefinite spinner, no Snackbar, and the user could only
+            // recover by killing the app. Catch + release the claim +
+            // surface the existing localized publish-failed Snackbar.
+            try {
+                val dup = withContext(Dispatchers.IO) { repository.findDuplicate(current) }
+                // Skip the dialog if the duplicate IS the draft we're updating.
+                val ownLoaded = _state.value.loadedDraftUuid
+                val isSelfReplace = dup != null && dup.uuid == ownLoaded
+                if (dup != null && !isSelfReplace) {
+                    _state.update { it.copy(duplicateOf = dup, pendingPublishConfirm = true) }
+                    return@launch
+                }
+                // Profile-Hint: only on first publish without a Kind 0
+                // profile and with hint not yet dismissed for this identity.
+                if (shouldShowProfileHint()) {
+                    _state.update { it.copy(pendingProfileHint = true) }
+                    return@launch
+                }
+                doPublish(sizeLabel, autoNoteTemplate)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "publish pre-flight failed", e)
+                _state.update {
+                    it.copy(
+                        isPublishing = false,
+                        errorMessage = appContext.getString(com.cruxcoach.android.R.string.climb_creator_publish_failed),
+                    )
+                }
             }
-            // Profile-Hint: only on first publish without a Kind 0
-            // profile and with hint not yet dismissed for this identity.
-            if (shouldShowProfileHint()) {
-                _state.update { it.copy(pendingProfileHint = true) }
-                return@launch
-            }
-            doPublish(sizeLabel, autoNoteTemplate)
         }
     }
 
@@ -705,12 +730,29 @@ class ClimbEditorViewModel @Inject constructor(
         if (next.selectedHolds.keys != prevHolds.keys) recomputeHeatmap()
     }
 
-    /** Debounced write to DataStore; latest call wins. */
+    /** Debounced write to DataStore; latest call wins.
+     *
+     *  Pre-fix the autosave write was un-guarded — a DataStore failure
+     *  (disk-full, file corruption, permission revoked) would crash the
+     *  coroutine silently. The user kept editing, no autosave was being
+     *  written, and the next reopen offered no restore even though they
+     *  were typing actively. Now we catch + log + bump a session-scoped
+     *  failure counter; the recover UI doesn't yet surface the warning
+     *  (deferred — needs UX), but the log line is enough to triage from
+     *  a bug report.
+     */
     private fun scheduleAutosave(next: ClimbEditorState) {
         autosaveJob?.cancel()
         autosaveJob = viewModelScope.launch {
             kotlinx.coroutines.delay(AUTOSAVE_DEBOUNCE_MS)
-            withContext(Dispatchers.IO) { autosave.save(next) }
+            try {
+                withContext(Dispatchers.IO) { autosave.save(next) }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                autosaveFailures++
+                Log.w(TAG, "autosave write failed (session-failures=$autosaveFailures)", e)
+            }
         }
     }
 

@@ -189,9 +189,24 @@ class CommunityClimbPublisher @Inject constructor(
         return runCatching { boardRepository.getProductSize(sizeId) }.getOrNull()
     }
 
-    /** Convenience: drain all `sync_status='draft'` climbs and publish each. */
+    /** Convenience: drain all `sync_status='draft'` climbs and publish each.
+     *
+     *  - The pre-loop `getDraftClimbs()` is now wrapped: a SQLite read
+     *    failure (lock contention, schema mid-migration) used to abort
+     *    the batch with no published count. Now it's logged + the batch
+     *    short-circuits to "0 published" so the caller still gets a
+     *    sensible answer.
+     *  - The per-row catch widens from `Exception` to `Throwable` so an
+     *    `Error` subclass (e.g. OutOfMemoryError from BoardClimbParser
+     *    on a corrupted hex string) doesn't skip the catch and propagate
+     *    out — single-row failure shouldn't poison the whole batch.
+     *    CancellationException is re-thrown explicitly so cooperative
+     *    cancellation still works.
+     */
     suspend fun publishAllPending(sizeLabel: String, layoutId: Long): Int {
-        val drafts = boardRepository.getDraftClimbs()
+        val drafts = runCatching { boardRepository.getDraftClimbs() }
+            .onFailure { Log.w(TAG, "publishAllPending: getDraftClimbs failed; batch aborted", it) }
+            .getOrElse { return 0 }
         var published = 0
         for (row in drafts) {
             val state = ClimbEditorState(
@@ -204,7 +219,9 @@ class CommunityClimbPublisher @Inject constructor(
             try {
                 publish(row.uuid, layoutId, state, sizeLabel)
                 published++
-            } catch (e: Exception) {
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Throwable) {
                 Log.w(TAG, "draft publish failed uuid=${row.uuid}", e)
             }
         }
