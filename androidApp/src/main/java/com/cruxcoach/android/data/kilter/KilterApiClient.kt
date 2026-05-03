@@ -156,12 +156,32 @@ class KilterApiClient @Inject constructor(
     private val json = Json { ignoreUnknownKeys = true }
     private val refreshMutex = Mutex()
 
+    // Client-side login throttle. Per-email exponential backoff in
+    // process memory only — survives the in-app retry pattern but not
+    // a process-kill (acceptable: an attacker that can restart the
+    // process can also wipe other forms of state). Defends against
+    // accidental brute-force from a stuck-finger user *and* against
+    // Wi-Fi-local helper apps that try to lock the user out of their
+    // Keycloak account by triggering N rapid 401s.
+    private val authBackoff = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    private val authFailures = java.util.concurrent.ConcurrentHashMap<String, Int>()
+
     /**
      * Authenticate with Kilter Keycloak using password grant.
      * Extracts user UUID and username from JWT claims.
      */
     suspend fun authenticate(email: String, password: String): KilterAuthResult =
         withContext(Dispatchers.IO) {
+            val throttleKey = email.lowercase().trim()
+            val nextAllowed = authBackoff[throttleKey] ?: 0L
+            val now = System.currentTimeMillis()
+            if (now < nextAllowed) {
+                val waitSec = ((nextAllowed - now) / 1000L).coerceAtLeast(1)
+                Log.w(TAG, "auth throttled for ${throttleKey.take(3)}*** waitSec=$waitSec")
+                return@withContext KilterAuthResult.Error(
+                    "Zu viele Anmeldeversuche — bitte ${waitSec}s warten."
+                )
+            }
             try {
                 val body = FormBody.Builder()
                     .add("grant_type", "password")
@@ -177,6 +197,7 @@ class KilterApiClient @Inject constructor(
                 if (!response.isSuccessful) {
                     val errorBody = response.body?.string() ?: ""
                     Log.w(TAG, "Auth failed: HTTP ${response.code}, $errorBody")
+                    bumpAuthBackoff(throttleKey)
                     return@withContext KilterAuthResult.Error(
                         if (response.code == 401) "Ungültige Zugangsdaten"
                         else "Anmeldung fehlgeschlagen (HTTP ${response.code})"
@@ -184,13 +205,20 @@ class KilterApiClient @Inject constructor(
                 }
 
                 val responseBody = response.body?.string()
-                    ?: return@withContext KilterAuthResult.Error("Leere Antwort vom Server")
+                    ?: run {
+                        bumpAuthBackoff(throttleKey)
+                        return@withContext KilterAuthResult.Error("Leere Antwort vom Server")
+                    }
                 val tokenResponse = json.decodeFromString<KilterTokenResponse>(responseBody)
 
                 // Extract user UUID and username from JWT access token
                 val claims = parseJwtClaims(tokenResponse.accessToken)
                 val userUuid = claims["sub"] ?: ""
                 val username = claims["preferred_username"] ?: email
+
+                // Successful login → clear the backoff state for this email.
+                authFailures.remove(throttleKey)
+                authBackoff.remove(throttleKey)
 
                 KilterAuthResult.Success(
                     userUuid = userUuid,
@@ -203,9 +231,26 @@ class KilterApiClient @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Auth error", e)
+                bumpAuthBackoff(throttleKey)
                 KilterAuthResult.Error("Verbindung fehlgeschlagen: ${e.message}")
             }
         }
+
+    /**
+     * Record a failed authentication attempt for [emailKey] and compute
+     * the next-allowed timestamp using exponential backoff capped at
+     * 5 minutes. The cap matches the typical Keycloak per-account
+     * brute-force lockout window — we want to be at least as cautious
+     * as the server side without locking the user out of their own
+     * account longer than necessary.
+     */
+    private fun bumpAuthBackoff(emailKey: String) {
+        val attempts = (authFailures[emailKey] ?: 0) + 1
+        authFailures[emailKey] = attempts
+        // 1s, 2s, 4s, 8s, 16s, 32s, 64s, 128s, 256s → cap at 300s.
+        val backoffMs = (1000L * (1L shl (attempts - 1).coerceAtMost(8))).coerceAtMost(300_000L)
+        authBackoff[emailKey] = System.currentTimeMillis() + backoffMs
+    }
 
     /**
      * Refresh the access token using the offline refresh token.

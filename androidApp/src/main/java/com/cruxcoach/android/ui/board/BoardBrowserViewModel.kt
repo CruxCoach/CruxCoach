@@ -849,6 +849,15 @@ class BoardBrowserViewModel @Inject constructor(
                     }
                 }
                 bleConnection.clearBoard()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Pre-fix any throw from the BLE-emit loop / SQL read /
+                // packet encoder skipped the catch (only had try/finally)
+                // and propagated to the parent scope. The finally still
+                // ran the animating flag down, but the parent scope was
+                // poisoned with the uncaught exception.
+                android.util.Log.w("BoardBrowserVM", "easter animation failed", e)
             } finally {
                 _isAnimating.value = false
             }
@@ -859,7 +868,10 @@ class BoardBrowserViewModel @Inject constructor(
         animationJob?.cancel()
         animationJob = null
         _isAnimating.value = false
-        viewModelScope.launch { bleConnection.clearBoard() }
+        viewModelScope.launch {
+            runCatching { bleConnection.clearBoard() }
+                .onFailure { android.util.Log.w("BoardBrowserVM", "stopAnimation clearBoard failed", it) }
+        }
     }
 
     // --- Queue sharing ---

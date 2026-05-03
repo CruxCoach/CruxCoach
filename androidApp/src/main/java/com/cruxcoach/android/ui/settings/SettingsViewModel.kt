@@ -499,6 +499,13 @@ class SettingsViewModel @Inject constructor(
                     }
                 }
                 bleConnection.clearBoard()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Mirrors the BoardBrowserViewModel.playEasterAnimation
+                // fix — pre-fix a BLE / SQL / encoder throw skipped the
+                // try/finally's catch arm and poisoned the parent scope.
+                Log.w(TAG, "easter animation failed", e)
             } finally {
                 _state.update { it.copy(isAnimating = false) }
             }

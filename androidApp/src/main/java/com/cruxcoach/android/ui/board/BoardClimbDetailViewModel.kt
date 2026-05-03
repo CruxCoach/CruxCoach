@@ -238,72 +238,111 @@ class BoardClimbDetailViewModel @Inject constructor(
 
     init {
         PerfLogger.navMilestone("BoardClimbDetailVM.init start")
+        // Each init-coroutine is wrapped in try/catch so a DataStore
+        // read failure or a flow-collection throw on one stream doesn't
+        // silently kill the entire VM init and leave subsequent flow
+        // updates lost. Pre-fix the audit observed: the connection-state
+        // collect calls userPreferences.quickBoardSend.first() inside
+        // its body — a DataStore throw there would die the collect and
+        // every later BLE state-change would go unnoticed.
         viewModelScope.launch(Dispatchers.IO) {
-            PerfLogger.traceSuspend("VM.init prefs") {
-                val speed = userPreferences.routeFrameSpeed.first()
-                val loop = userPreferences.routeAutoLoop.first()
-                val restDuration = userPreferences.restTimerDurationSeconds.first()
-                val restAutoStart = userPreferences.restTimerAutoStart.first()
-                val pubkey = runCatching { nostrSigner.getPublicKeyHex() }.getOrNull()
-                _state.update { it.copy(
-                    playback = it.playback.copy(speedSec = speed, isLooping = loop),
-                    restTimerTotalSeconds = restDuration,
-                    restTimerAutoStart = restAutoStart,
-                    currentUserPubkey = pubkey,
-                ) }
-            }
-        }
-        viewModelScope.launch {
-            userPreferences.gradeScale.collect { scale ->
-                _state.update { it.copy(gradeScale = scale) }
-            }
-        }
-        viewModelScope.launch {
-            userPreferences.ledHoldColors.collect { colors ->
-                _state.update { it.copy(ledColors = colors) }
-            }
-        }
-        viewModelScope.launch {
-            // Track previous state to only auto-send on genuine first-connect,
-            // not on SENDING->CONNECTED transitions (which caused a send loop on Android 9).
-            var prevConnState = bleConnection.connectionState.value
-            bleConnection.connectionState.collect { connState ->
-                val wasDisconnectedOrConnecting = prevConnState == ConnectionState.DISCONNECTED
-                    || prevConnState == ConnectionState.CONNECTING
-                val justFinishedSending = prevConnState == ConnectionState.SENDING
-                    && connState == ConnectionState.CONNECTED
-                prevConnState = connState
-
-                _state.update { it.copy(ble = it.ble.copy(connectionState = connState)) }
-
-                if (connState == ConnectionState.CONNECTED
-                    && wasDisconnectedOrConnecting
-                    && _state.value.holds.isNotEmpty()
-                ) {
-                    sendToBoard()
+            try {
+                PerfLogger.traceSuspend("VM.init prefs") {
+                    val speed = userPreferences.routeFrameSpeed.first()
+                    val loop = userPreferences.routeAutoLoop.first()
+                    val restDuration = userPreferences.restTimerDurationSeconds.first()
+                    val restAutoStart = userPreferences.restTimerAutoStart.first()
+                    val pubkey = runCatching { nostrSigner.getPublicKeyHex() }.getOrNull()
+                    _state.update { it.copy(
+                        playback = it.playback.copy(speedSec = speed, isLooping = loop),
+                        restTimerTotalSeconds = restDuration,
+                        restTimerAutoStart = restAutoStart,
+                        currentUserPubkey = pubkey,
+                    ) }
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "init prefs read failed; sticking with defaults", e)
+            }
+        }
+        viewModelScope.launch {
+            try {
+                userPreferences.gradeScale.collect { scale ->
+                    _state.update { it.copy(gradeScale = scale) }
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "gradeScale collect terminated", e)
+            }
+        }
+        viewModelScope.launch {
+            try {
+                userPreferences.ledHoldColors.collect { colors ->
+                    _state.update { it.copy(ledColors = colors) }
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "ledHoldColors collect terminated", e)
+            }
+        }
+        viewModelScope.launch {
+            try {
+                // Track previous state to only auto-send on genuine first-connect,
+                // not on SENDING->CONNECTED transitions (which caused a send loop on Android 9).
+                var prevConnState = bleConnection.connectionState.value
+                bleConnection.connectionState.collect { connState ->
+                    val wasDisconnectedOrConnecting = prevConnState == ConnectionState.DISCONNECTED
+                        || prevConnState == ConnectionState.CONNECTING
+                    val justFinishedSending = prevConnState == ConnectionState.SENDING
+                        && connState == ConnectionState.CONNECTED
+                    prevConnState = connState
 
-                // Quick-Send auto-disconnect for the "manually connected in
-                // BoardBrowser → navigated into climb-detail → first send
-                // fired" path. Boulders only: routes need the connection
-                // alive for subsequent frames during playback, and route-
-                // playback's onFrameChanged also writes through the same
-                // SENDING→CONNECTED edge — disconnecting after frame 0
-                // would strand mid-route.
-                if (justFinishedSending && !_state.value.playback.isRoute) {
-                    val quickSendOn = userPreferences.quickBoardSend.first()
-                    if (quickSendOn) {
-                        Log.i(TAG, "quick-send auto-disconnect after boulder send")
-                        bleConnection.disconnect()
+                    _state.update { it.copy(ble = it.ble.copy(connectionState = connState)) }
+
+                    if (connState == ConnectionState.CONNECTED
+                        && wasDisconnectedOrConnecting
+                        && _state.value.holds.isNotEmpty()
+                    ) {
+                        sendToBoard()
                     }
+
+                    // Quick-Send auto-disconnect for the "manually connected in
+                    // BoardBrowser → navigated into climb-detail → first send
+                    // fired" path. Boulders only: routes need the connection
+                    // alive for subsequent frames during playback, and route-
+                    // playback's onFrameChanged also writes through the same
+                    // SENDING→CONNECTED edge — disconnecting after frame 0
+                    // would strand mid-route.
+                    if (justFinishedSending && !_state.value.playback.isRoute) {
+                        val quickSendOn = runCatching {
+                            userPreferences.quickBoardSend.first()
+                        }.getOrDefault(false)
+                        if (quickSendOn) {
+                            Log.i(TAG, "quick-send auto-disconnect after boulder send")
+                            bleConnection.disconnect()
+                        }
+                    }
+                    // Don't call clearClimb() here -- BleConnectionViewModel.onBoardDisconnected()
+                    // handles the transition to LAST_CLIMB advertising.
                 }
-                // Don't call clearClimb() here -- BleConnectionViewModel.onBoardDisconnected()
-                // handles the transition to LAST_CLIMB advertising.
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "BLE connectionState collect terminated", e)
             }
         }
         viewModelScope.launch {
-            zoneManager.zones.collect { zones ->
-                _state.update { it.copy(zones = zones) }
+            try {
+                zoneManager.zones.collect { zones ->
+                    _state.update { it.copy(zones = zones) }
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "zones collect terminated", e)
             }
         }
         loadClimb(currentClimbUuid, currentAngle)
@@ -603,10 +642,21 @@ class BoardClimbDetailViewModel @Inject constructor(
 
     fun toggleFavorite() {
         viewModelScope.launch {
-            val newState = withContext(Dispatchers.IO) {
-                personalBoardRepo.toggleFavorite(currentClimbUuid)
+            try {
+                val newState = withContext(Dispatchers.IO) {
+                    personalBoardRepo.toggleFavorite(currentClimbUuid)
+                }
+                _state.update { it.copy(isFavorited = newState) }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // SQLite lock contention with the import worker / mid-
+                // migration / disk-full would otherwise leave the heart
+                // icon in the wrong state and silently kill the
+                // coroutine. Log + leave the previous favorite-state
+                // visible (no UI flip).
+                Log.w(TAG, "toggleFavorite failed", e)
             }
-            _state.update { it.copy(isFavorited = newState) }
         }
     }
 
@@ -659,43 +709,61 @@ class BoardClimbDetailViewModel @Inject constructor(
 
     fun showAddToListDialog() {
         viewModelScope.launch {
-            val lists = withContext(Dispatchers.IO) {
-                personalBoardRepo.ensureFavoritesListExists()
-                personalBoardRepo.getAllClimbLists()
+            try {
+                val lists = withContext(Dispatchers.IO) {
+                    personalBoardRepo.ensureFavoritesListExists()
+                    personalBoardRepo.getAllClimbLists()
+                }
+                val inListIds = withContext(Dispatchers.IO) {
+                    personalBoardRepo.getListIdsForClimb(currentClimbUuid)
+                }
+                _state.update { it.copy(listDialog = ListDialogState(
+                    show = true, lists = lists, climbInListIds = inListIds
+                )) }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "showAddToListDialog failed", e)
             }
-            val inListIds = withContext(Dispatchers.IO) {
-                personalBoardRepo.getListIdsForClimb(currentClimbUuid)
-            }
-            _state.update { it.copy(listDialog = ListDialogState(
-                show = true, lists = lists, climbInListIds = inListIds
-            )) }
         }
     }
 
     fun dismissAddToListDialog() {
         _state.update { it.copy(listDialog = it.listDialog.copy(show = false)) }
         viewModelScope.launch {
-            val isFav = withContext(Dispatchers.IO) { personalBoardRepo.isClimbFavorited(currentClimbUuid) }
-            _state.update { it.copy(isFavorited = isFav) }
+            try {
+                val isFav = withContext(Dispatchers.IO) { personalBoardRepo.isClimbFavorited(currentClimbUuid) }
+                _state.update { it.copy(isFavorited = isFav) }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "dismissAddToListDialog favorite-refresh failed", e)
+            }
         }
     }
 
     fun toggleClimbInList(listId: Long) {
         viewModelScope.launch {
-            val currentlyIn = _state.value.listDialog.climbInListIds.contains(listId)
-            withContext(Dispatchers.IO) {
-                if (currentlyIn) {
-                    personalBoardRepo.removeClimbFromList(listId, currentClimbUuid)
-                } else {
-                    personalBoardRepo.addClimbToList(listId, currentClimbUuid)
+            try {
+                val currentlyIn = _state.value.listDialog.climbInListIds.contains(listId)
+                withContext(Dispatchers.IO) {
+                    if (currentlyIn) {
+                        personalBoardRepo.removeClimbFromList(listId, currentClimbUuid)
+                    } else {
+                        personalBoardRepo.addClimbToList(listId, currentClimbUuid)
+                    }
                 }
+                val newIds = if (currentlyIn) {
+                    _state.value.listDialog.climbInListIds - listId
+                } else {
+                    _state.value.listDialog.climbInListIds + listId
+                }
+                _state.update { it.copy(listDialog = it.listDialog.copy(climbInListIds = newIds)) }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "toggleClimbInList listId=$listId failed", e)
             }
-            val newIds = if (currentlyIn) {
-                _state.value.listDialog.climbInListIds - listId
-            } else {
-                _state.value.listDialog.climbInListIds + listId
-            }
-            _state.update { it.copy(listDialog = it.listDialog.copy(climbInListIds = newIds)) }
         }
     }
 
@@ -713,17 +781,23 @@ class BoardClimbDetailViewModel @Inject constructor(
             return
         }
         viewModelScope.launch {
-            val newListId = withContext(Dispatchers.IO) {
-                val id = personalBoardRepo.createClimbList(name)
-                personalBoardRepo.addClimbToList(id, currentClimbUuid)
-                id
+            try {
+                val newListId = withContext(Dispatchers.IO) {
+                    val id = personalBoardRepo.createClimbList(name)
+                    personalBoardRepo.addClimbToList(id, currentClimbUuid)
+                    id
+                }
+                val updatedLists = withContext(Dispatchers.IO) { personalBoardRepo.getAllClimbLists() }
+                _state.update { it.copy(listDialog = it.listDialog.copy(
+                    lists = updatedLists,
+                    climbInListIds = it.listDialog.climbInListIds + newListId,
+                    newListName = ""
+                )) }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "createNewListAndAdd failed name=$name", e)
             }
-            val updatedLists = withContext(Dispatchers.IO) { personalBoardRepo.getAllClimbLists() }
-            _state.update { it.copy(listDialog = it.listDialog.copy(
-                lists = updatedLists,
-                climbInListIds = it.listDialog.climbInListIds + newListId,
-                newListName = ""
-            )) }
         }
     }
 
