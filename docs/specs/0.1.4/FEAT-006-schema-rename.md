@@ -4,11 +4,11 @@ status: skeleton
 # Feature Spec: Schema Naming Cleanup (v0.1.4)
 
 > **Status:** Skeleton — drafted 2026-04-27. Decisions collected during the
-> 0.1.3 release post-mortem (Aurora API died 2026-03-26; the `aurora_*` table
-> prefix has been semantically wrong for ~5 weeks). Sections 1–7 (design)
-> and 8–11 (rollout) are agreed. §4 column drop scope and §5 migration
-> mechanics need a final pass against the actual SQLDelight migration
-> setup before implementation.
+> 0.1.3 release post-mortem (the Aurora API was retired on 2026-03-26; the
+> `aurora_*` table prefix has been semantically wrong for ~5 weeks).
+> Sections 1–7 (design) and 8–11 (rollout) are agreed. §4 column drop scope
+> and §5 migration mechanics need a final pass against the actual
+> SQLDelight migration setup before implementation.
 > **Depends on:** —
 > **Blocks:** FEAT-003 (Climb Creator), FEAT-005 (Aurora JSON Import). Both
 > write into the renamed tables; merging this first means their code is
@@ -26,11 +26,10 @@ CruxCoach's local database carries three coexisting naming conventions:
 
 Three issues:
 
-1. **`aurora_*` prefix is misleading.** Aurora Climbing took its API offline
-   on 2026-03-26 (cease-and-desist over Kilter trademark/logo). All board
-   data flows through the new Kilter API now (Keycloak + REST `/climbs/curated`)
-   and the Blossom mirror cron — never Aurora. The prefix lies about
-   provenance.
+1. **`aurora_*` prefix is misleading.** The Aurora API was retired on
+   2026-03-26. All board data flows through the Kilter API (Keycloak +
+   REST `/climbs/curated`) and the Blossom mirror cron now — never the
+   former Aurora pipeline. The prefix lies about provenance.
 2. **Three conventions in one project add cognitive friction.** Every
    contributor has to remember "is this a `aurora_*` table, a snake_case
    plain table, or a PascalCase table?". Solo-maintainer reality: this
@@ -345,10 +344,10 @@ constraint (see §5.4), the decision is: **no column drops in 0.1.4**.
 
 ### 4.2 Originally proposed drops, **REJECTED** after data audit
 
-The schema-diff doc (`~/kilter-re/analysis/SCHEMA_DIFF_CRUXCOACH_VS_KILTER.md`)
-flagged five columns as redundant. Four of them are NOT redundant — the
-audit was based on the Kilter-API-merge output only, missing that the
-ORIGINAL Aurora-extracted bundled DB still carries real values:
+An internal schema-diff review flagged five columns as redundant. Four
+of them are NOT redundant — the review was based on the Kilter-API-merge
+output only, missing that the ORIGINAL Aurora-extracted bundled DB still
+carries real values:
 
 | Column                              | Schema-diff claim   | Verified reality (Blossom DB 2026-04-27)                              |
 | ----------------------------------- | ------------------- | ---------------------------------------------------------------------- |
@@ -360,9 +359,8 @@ ORIGINAL Aurora-extracted bundled DB still carries real values:
 These columns hold real Aurora-era data preserved through `build_board_db.py`
 into Blossom and back into CruxCoach via the cron. **Keep all four.**
 
-The audit correction will be recorded in `~/kilter-re/analysis/SCHEMA_DIFF_CRUXCOACH_VS_KILTER.md`
-(private RE workspace, the source-of-truth for that doc). It is NOT
-mirrored into CruxCoach docs — see §13 Q-E.
+The data-audit correction is recorded only in the project's internal
+review notes; it is not mirrored into CruxCoach docs — see §13 Q-E.
 
 ### 4.3 Out of scope: column-name renames
 
@@ -615,10 +613,8 @@ Update:
   references that still use `aurora_*` names
 - README / wiki: low-priority, naming is internal
 
-`~/kilter-re/analysis/SCHEMA_DIFF_CRUXCOACH_VS_KILTER.md` lives in the
-private RE workspace, not in the CruxCoach repo. The §4.2 audit
-correction is recorded **only** in the kilter-re doc — not surfaced
-back into CruxCoach (per Q-E decision in §13).
+The §4.2 audit correction is recorded only in the project's internal
+data-audit notes, not in the CruxCoach repo (per Q-E decision in §13).
 
 ## 7. Backup, Import, External Compatibility
 
@@ -878,10 +874,8 @@ time. Recorded for traceability:
   remain opt-in for a future cleanup.
 
 - **Q-E — Schema-diff doc audit-correction (§4.2 finding) location:**
-  ONLY in `~/kilter-re/analysis/SCHEMA_DIFF_CRUXCOACH_VS_KILTER.md`.
-  No CruxCoach-repo entry. The kilter-re workspace is the
-  reverse-engineering source-of-truth; the public CruxCoach repo
-  doesn't surface RE artefacts.
+  Kept in the project's internal data-audit notes only. No CruxCoach-repo
+  entry; the public repo doesn't surface internal review artefacts.
 
 - **§3.5 — Aurora-Mention scope:** Variant A (Board*-prefix) for BLE
   class renames, Option 1 (DELTA_PATTERN / RANGE_PATTERN) for

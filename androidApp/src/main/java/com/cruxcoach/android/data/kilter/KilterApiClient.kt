@@ -60,10 +60,11 @@ private data class CustomWallRequest(
 /**
  * Wire shape for `POST /api/climbs/create-climb/transaction`.
  *
- * Snake-cased fields match the column names from the FINDINGS.md schema
- * dump. The endpoint name suggests Kilter wraps the climb + climb-stats
- * inserts in a single PowerSync-style transaction; for v1 we ship just
- * the climb half — stats get aggregated server-side from ratings/logs.
+ * Snake-cased fields mirror the column names of the `climbs` table in
+ * the Aurora board catalog. The endpoint name suggests the upstream
+ * server wraps the climb + climb-stats inserts in a single PowerSync-style
+ * transaction; for v1 we ship just the climb half — stats get aggregated
+ * server-side from ratings/logs.
  */
 @Serializable
 private data class CreateClimbTransaction(
@@ -446,15 +447,13 @@ class KilterApiClient @Inject constructor(
     )
 
     /**
-     * Update an already-published climb on Kilter. Endpoint per RE:
-     * `POST /api/climbs/update-climb/transaction` (string-dump line
-     * 18976 of `~/kilter-re/analysis/libapp-strings.txt`, also the
-     * `updateCreateClimbTransaction` Dart function).
+     * Update an already-published climb on the upstream Aurora API:
+     * `POST /api/climbs/update-climb/transaction`.
      *
-     * Same payload shape as create — Kilter's UI only lets the setter
+     * Same payload shape as create. The upstream UI only lets the setter
      * trigger this for `is_draft=1` climbs, but the API does not visibly
      * gate against published rows, so we use it for the edit-flow of
-     * a CruxCoach climb that was previously synced. If Kilter rejects
+     * a CruxCoach climb that was previously synced. If the API rejects
      * it (4xx for "published cannot be edited" or similar), the caller
      * marks the climb `kilter_status='diverged'` so the retry worker
      * stops poking it.

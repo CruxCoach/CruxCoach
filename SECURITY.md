@@ -34,6 +34,15 @@ The following are in scope:
 - BLE protocol vulnerabilities that could affect connected devices
 - Data exfiltration via backup, export, or sync
 - Android component exposure (exported activities, content providers)
+- **Community-publishing chain (0.1.4+)** — Climb Creator, Kind-30078
+  community-climb events, Kind-1 Auto-Note announcements, and the Kilter
+  API self-account write path. In particular: signature/identity
+  spoofing of other users' published climbs; bypass of the
+  one-author-per-uuid guard on incoming events; injection or replay
+  attacks on the Auto-Note Kind-1 template; Kilter access-token leakage
+  from `KilterApiClient` or its retry worker; abuse vectors that let an
+  attacker forge or modify a community climb under another user's
+  identity.
 
 The following are out of scope:
 
@@ -41,6 +50,9 @@ The following are out of scope:
 - Social engineering attacks
 - Denial of service against Nostr relays (not our infrastructure)
 - Issues in third-party dependencies (report these upstream, but let us know)
+- Spam / abuse of public Nostr relays at the protocol layer (relay
+  operators' responsibility); but client-side amplification or
+  rate-limit-bypass bugs in CruxCoach are in scope.
 
 ---
 
@@ -70,6 +82,31 @@ The following are out of scope:
 - **Only your Nostr private key unlocks the chain.** Restore on a new device fetches both events from relays, NIP-44-decrypts them to recover (pointer, dataKey), downloads the blob from any listed Blossom server, verifies SHA-256, and AES-256-GCM-decrypts. No additional password, no server-side decryption help.
 - **Remote persistence is one-way.** Cloud backups survive every local-only action — app uninstall, *Clear app data*, identity switch (Local ↔ Amber), board-data deletion. The only path that touches remote is *Settings → Delete remote backups…*, gated by an explicit confirmation dialog with caveats spelled out.
 - **No backdoor.** The maintainer cannot decrypt your backup, recover your key, or access your account by any technical means built into the app.
+
+### Community Publishing (FEAT-003, 0.1.4+)
+- **Opt-in publish.** Climbs you create in the Climb Creator are public on
+  Nostr only when you tap *Publish*. Drafts and unpublished work stay
+  local. Auto-Note Kind-1 announcements are off by default; toggle in
+  *Settings → Climb Creator*. Kilter API push is off by default; toggle
+  in *Settings → Kilter publish*.
+- **Identity.** Community-climb events are signed with your existing
+  CruxCoach Account key (the same key used for cloud backup). Once
+  published, an event with that signature on a relay is permanent —
+  relays do not delete on request.
+- **Ingest is verified.** Every incoming Kind-30078 community-climb event
+  is parsed via Quartz `Event.fromJson` (recomputes the canonical event
+  id) and rejected unless `verifySignature()` passes. Events whose d-tag
+  prefix or content `pubkey_prefix` field claims a different author than
+  the signed pubkey are dropped. A uuid already owned by author A
+  cannot be overwritten by an event from author B (first-author wins).
+  Without these guards a relay (or MITM on a non-TLS connection) could
+  spoof events under any pubkey or clobber legitimate climbs.
+- **Kilter API push.** When enabled, the CruxCoach app authenticates to
+  the Kilter API with the user's own Kilter credentials and submits the
+  climb as if the user did it from the Kilter app. The access token is
+  held in `EncryptedSharedPreferences` (Android Keystore-backed). Push
+  failures retry on a 6-hour periodic worker; the token is refreshed on
+  401/expired-token responses.
 
 ### User Responsibility — Key Storage
 The Nostr key (= the CruxCoach Account key, surfaced in *Settings → CruxCoach Account*) is a **single point of recovery** for both the account and any cloud backup encrypted with it. The app warns about this prominently on every backup-enable surface (onboarding, *what's new*, settings) and on the account screen, with a single canonical place to view + copy the key.

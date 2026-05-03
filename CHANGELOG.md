@@ -6,6 +6,41 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- **Climb Creator** — set your own climbs on the board image, save drafts, publish to other CruxCoach users via Nostr (Kind-30078), and optionally push the climb to your own Kilter account so it shows up in the Kilter app too. Heatmap shows where popular hand/start/finish holds typically go for the current layout + angle. Frames are validated before publish (start/finish constraints, no duplicate frames). Drafts drawer + autosave so a kill or accidental back-press never costs you in-progress work.
+- **Community climbs in BoardBrowser** — climbs other CruxCoach users have published on Nostr now appear next to the Kilter catalog. The new origin filter chip lets you filter to *CruxCoach*, *Kilter*, or *All*.
+- **Setter detail + setters list** — see who in the CruxCoach community has been publishing climbs and tap through to their list. A community badge on each climb's detail screen links to the setter.
+- **Auto-Note (optional)** — when you publish a community climb you can also fire a Kind-1 note to your relays announcing the climb. Off by default; toggle in *Settings → Climb Creator*. Angle is required at publish time so the announcement carries the route's grade + angle.
+- **Edit my published climb** — load any climb you previously published into the Climb Creator, edit it, and re-publish. The Nostr d-tag stays stable across edits so the original event is replaced (not duplicated); the Kilter side does an UPDATE if the climb was previously synced there.
+- **Live Nostr subscription for community climbs** — climbs published while you're online appear immediately, not after the next daily Blossom snapshot. Bursts of relay echoes (your own published events) are filtered.
+- **Kilter publish (opt-in)** — *Settings → Kilter publish* toggles whether your community climbs are also pushed to your own Kilter account via the Kilter API. Periodic 6-hour retry worker drains transient failures.
+- **On-Kilter badge** — when a community climb is also synced to Kilter, the climb-detail view shows a badge so you know it's findable in the Kilter app too.
+- **Nostr profile editor** in *Settings* — set the display name and picture other CruxCoach users see next to your community climbs. Without this, your climbs show up under `npub:<hex>...` instead of a real name.
+- **Stale-event protection** for community-climb ingest — old replays of your own (or someone else's) events arriving on a different relay can no longer rewind a freshly-edited climb.
+
+### Changed
+- **Internal table naming cleaned up** — board database now uses unprefixed plural names (`climbs`, `climb_stats`, `placements`, …) instead of the historical `aurora_*` prefix. In-app schema migration runs once on first launch; no user action required.
+- **BLE class names** dropped the Aurora prefix in favour of `Board*`. Internal refactor only.
+- **Logbook detail** removed the "X Begehungen" / "Climb Details" toolbar headers — they were redundant with the screen content.
+- **Quality rating** in Climb-Detail accepts 1–5 stars (was 1–3) — Kilter migrated to a 5-star scale.
+
+### Fixed
+- **Empty climb_browse view after schema upgrade** — the recreated VIEW now correctly carries the new origin + kilter_status columns, so the BoardBrowser query stops returning zero hits after first launch on 0.1.4.
+- **CruxCoach metadata preserved across Kilter blob refreshes** — when the daily Kilter sync re-imports the catalog, your community climbs' Nostr provenance, frames_hash, sync_status, and Kilter-publish flags are no longer overwritten with defaults.
+- **Tombstones propagate** — climbs deleted upstream are now correctly marked `is_deleted=1` locally instead of being silently re-inserted on the next bulk import.
+- **Hot-path index self-heal** — index drift after the table rename auto-recovers without requiring a sync.
+- **Climb-creator UX** — empty-brush tap now deletes the hold (no more eraser chip), drag-to-move works, German climbing terms throughout, V-scale grade slider has live validation.
+- **Heatmap performance** — parsed frames cached + fast IntArray parser; no more frame drops on layouts with hundreds of climbs.
+- **Saving a draft** correctly refreshes the drafts list and pins the draft's UUID so re-opening the editor lands you back on the same draft.
+
+### Security
+- **Community-climb signature verification** — every incoming Kind-30078 event is parsed through Quartz `Event.fromJson` (recomputes canonical event id) and verified with `verifySignature()` before persisting. Mirrors the existing pattern at NostrProfileManager / BlossomSyncManager / BackupRepository.
+- **Author-uuid guard** — incoming events whose d-tag prefix or content `pubkey_prefix` field claims a different author than the signed pubkey are dropped, and a UUID already owned by author A cannot be overwritten by an event from author B (first-author wins). Without these guards a relay (or MITM on a non-TLS connection) could spoof events under any pubkey or clobber legitimate climbs via INSERT-OR-REPLACE on the uuid alone.
+
+### Notes
+- This is the first release that publishes user-authored climbs publicly on Nostr (when you tap *Publish* in the Climb Creator). Auto-Note Kind-1 is opt-in. Kilter API push is opt-in. Identity defaults to your existing CruxCoach Account key (the one used for cloud backup).
+- `SECURITY.md` has been updated with the new attack surface (community-publishing chain, Kilter API self-account writes, Auto-Note Kind-1).
+
 ## [0.1.3] - 2026-04-26
 
 ### Added
