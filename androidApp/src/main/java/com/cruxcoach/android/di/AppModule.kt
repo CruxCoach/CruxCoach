@@ -535,7 +535,9 @@ object AppModule {
         // Spoofing the official Kilter app's UA would be a Trademark
         // + ToS issue; using a clear, honest one is the safer call.
         val versionName = com.cruxcoach.android.BuildConfig.VERSION_NAME
-        val ua = "CruxCoach/$versionName (https://cruxcoach.org)"
+        val product = com.cruxcoach.android.BuildConfig.USER_AGENT_PRODUCT
+        val host = com.cruxcoach.android.BuildConfig.APP_LINK_HOST
+        val ua = "$product/$versionName (https://$host)"
         return OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)

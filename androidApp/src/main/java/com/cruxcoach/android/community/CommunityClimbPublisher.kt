@@ -26,7 +26,8 @@ import kotlinx.coroutines.flow.first
 private const val TAG = "ClimbPublisher"
 private const val KIND_REPLACEABLE_PARAMETERIZED = 30078
 private const val KIND_TEXT_NOTE = 1
-private const val APP_LINK_BASE = "https://cruxcoach.org/c/"
+private val APP_LINK_BASE: String =
+    "https://${com.cruxcoach.android.BuildConfig.APP_LINK_HOST}/c/"
 
 /**
  * Publishes a CruxCoach-authored climb. Two destinations, both signed
@@ -255,15 +256,22 @@ class CommunityClimbPublisher @Inject constructor(
                 "cruxcoach_url" to "$APP_LINK_BASE$naddr",
             ),
         )
-        // Tags: explicit hashtags (so #-search hits) + p-tag for the
+        // Tags: explicit hashtags (so #-search hits) + optional p-tag
         // mention (NIP-10 / Amethyst surfaces this as a reply-mention in
         // the recipient's notifications). The naddr embed in `content`
-        // covers the climb-link side.
-        val tags: Array<Array<String>> = arrayOf(
-            arrayOf("p", NostrConfig.DEV_PUBKEY),
+        // covers the climb-link side. The maintainer-mention is gated by
+        // BuildConfig.AUTO_NOTE_PTAG_MAINTAINER so forks default to off
+        // — every fork install would otherwise unconditionally amplify
+        // whoever the fork's MAINTAINER_PUBKEY resolves to (see OSR
+        // trademark-branding/003).
+        val tagList = mutableListOf(
             arrayOf("t", "kilterboard"),
             arrayOf("t", "climbing"),
         )
+        if (com.cruxcoach.android.BuildConfig.AUTO_NOTE_PTAG_MAINTAINER) {
+            tagList.add(0, arrayOf("p", NostrConfig.DEV_PUBKEY))
+        }
+        val tags: Array<Array<String>> = tagList.toTypedArray()
         val noteEvent = nostrSigner.signer.sign<Event>(
             createdAt = System.currentTimeMillis() / 1000,
             kind = KIND_TEXT_NOTE,

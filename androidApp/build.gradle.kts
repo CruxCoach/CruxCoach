@@ -64,6 +64,28 @@ android {
         // local.properties to point at their own Zapstore namespace.
         buildConfigField("String", "ZAPSTORE_APP_URL",
             "\"${localProps.getProperty("ZAPSTORE_APP_URL", "https://zapstore.dev/apps/com.cruxcoach.android")}\"")
+
+        // Brand-bound constants used in outgoing HTTP traffic, App Links,
+        // and the Kind-1 Auto-Note publish path. Forks override via
+        // local.properties so they can present as their own brand on the
+        // wire (User-Agent visible to Kilter operators, host of any
+        // shareable climb URL, p-tag amplification on auto-Note).
+        val appLinkHost = localProps.getProperty("APP_LINK_HOST", "cruxcoach.org")
+        buildConfigField("String", "USER_AGENT_PRODUCT",
+            "\"${localProps.getProperty("USER_AGENT_PRODUCT", "CruxCoach")}\"")
+        buildConfigField("String", "APP_LINK_HOST",
+            "\"$appLinkHost\"")
+        // Auto-Note p-tag mention of MAINTAINER_PUBKEY. Default true for
+        // upstream (the maintainer self-mention is a known growth-hack
+        // for upstream installs); forks set false so their users don't
+        // accidentally amplify whoever the fork's MAINTAINER_PUBKEY
+        // resolves to.
+        buildConfigField("Boolean", "AUTO_NOTE_PTAG_MAINTAINER",
+            localProps.getProperty("AUTO_NOTE_PTAG_MAINTAINER", "true"))
+        // Mirror the App Link host into a manifest placeholder so the
+        // <intent-filter><data android:host=…> entry stays in lockstep
+        // with what BuildConfig.APP_LINK_HOST tells the runtime parser.
+        manifestPlaceholders["appLinkHost"] = appLinkHost
     }
 
     externalNativeBuild {

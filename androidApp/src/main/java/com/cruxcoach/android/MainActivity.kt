@@ -382,13 +382,18 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Extract a climb deep-link from `https://cruxcoach.org/c/<naddr>`. The
-     * naddr is NIP-19 bech32 carrying (kind, pubkey, dTag); CruxCoach climb
-     * d-tags follow the shape `cruxcoach:climb:<pubkey-prefix>:<uuid>`. We
-     * pull the uuid out and route to the existing climb-detail screen at
-     * the user's preferred angle (the angle isn't part of the link by
-     * design — climbs are angle-agnostic at the data layer; the detail
-     * screen lets the user switch).
+     * Extract a climb deep-link from `https://<APP_LINK_HOST>/c/<naddr>`.
+     * The naddr is NIP-19 bech32 carrying (kind, pubkey, dTag);
+     * CruxCoach climb d-tags follow the shape
+     * `cruxcoach:climb:<pubkey-prefix>:<uuid>`. We pull the uuid out and
+     * route to the existing climb-detail screen at the user's preferred
+     * angle (the angle isn't part of the link by design — climbs are
+     * angle-agnostic at the data layer; the detail screen lets the user
+     * switch).
+     *
+     * The host is read from BuildConfig.APP_LINK_HOST so forks override
+     * via local.properties (the same value drives the manifest's
+     * intent-filter and the publisher's URL builder).
      *
      * Returns null when the URL doesn't match our shape, when the naddr is
      * unparseable, or when the dTag doesn't look like a CruxCoach climb.
@@ -397,7 +402,7 @@ class MainActivity : AppCompatActivity() {
      */
     private fun extractClimbAppLink(intent: Intent?): String? {
         val data = intent?.data ?: return null
-        if (data.scheme != "https" || data.host != "cruxcoach.org") return null
+        if (data.scheme != "https" || data.host != BuildConfig.APP_LINK_HOST) return null
         val segments = data.pathSegments
         if (segments.size < 2 || segments[0] != "c") return null
         val naddr = segments[1].takeIf { it.startsWith("naddr1") } ?: return null
