@@ -279,7 +279,18 @@ class CommunityClimbPublisher @Inject constructor(
             content = content,
         )
         val (attempted, accepted) = pool.sendEventWithStats(noteEvent)
-        Log.i(TAG, "auto-note attempted=$attempted accepted=$accepted")
+        if (accepted == 0 && attempted > 0) {
+            // The Kind-30078 climb was already accepted by the time we
+            // got here, so the user sees "published!" — but the auto-note
+            // didn't reach any relay. Promote to WARN so a logcat scan
+            // catches the divergence; the audit's full UX fix
+            // (graceful-degradation/010) requires plumbing
+            // autoNotePublished=false back to the editor and is tracked
+            // as a follow-up.
+            Log.w(TAG, "auto-note rejected by all relays attempted=$attempted")
+        } else {
+            Log.i(TAG, "auto-note attempted=$attempted accepted=$accepted")
+        }
     }
 
     private fun computeBounds(state: ClimbEditorState): ClimbBounds? {

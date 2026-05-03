@@ -679,15 +679,29 @@ UPDATE climbs SET kilter_status = 'failed', kilter_error = ? WHERE uuid = ?;
 markKilterPublishDiverged:
 UPDATE climbs SET kilter_status = 'diverged', kilter_error = ? WHERE uuid = ?;
 
+-- Terminal-failure state for the CREATE flow when Kilter rejects the
+-- payload with a 4xx (validation, content-policy, account-state). Same
+-- intent as 'diverged' but for the create path: stop retrying. Without
+-- this, 4xx-rejected climbs stayed in the retry queue forever because
+-- the queue's WHERE clause matches `kilter_status='failed'`.
+markKilterPublishRejected:
+UPDATE climbs SET kilter_status = 'rejected', kilter_error = ? WHERE uuid = ?;
+
 -- Climbs that need a Kilter retry: cruxcoach-origin, not yet on Kilter
 -- (NULL or 'failed') and Nostr-published (so we know the user finalized
 -- their publish). Used by the retry queue.
+-- Drained by KilterPublishRetryWorker every 6h. LIMIT bounds the batch
+-- so a Kilter outage that builds up a queue of dozens-to-hundreds of
+-- pending climbs doesn't fire the full backlog at the API in one tick
+-- — the worker re-runs and chips at the queue across multiple ticks
+-- instead.
 getClimbsAwaitingKilterRetry:
 SELECT * FROM climbs
 WHERE origin = 'cruxcoach'
   AND sync_status = 'published_nostr'
   AND (kilter_status IS NULL OR kilter_status = 'failed')
-ORDER BY created_at ASC;
+ORDER BY created_at ASC
+LIMIT 25;
 
 -- Drafts waiting to be published (source='local' AND sync_status='draft').
 getDraftClimbs:

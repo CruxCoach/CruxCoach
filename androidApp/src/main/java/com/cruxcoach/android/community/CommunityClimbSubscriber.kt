@@ -11,13 +11,17 @@ import com.cruxcoach.domain.board.HoldRole
 import com.cruxcoach.domain.community.ClimbBounds
 import com.vitorpamplona.quartz.nip01Core.core.Event
 import com.vitorpamplona.quartz.nip01Core.crypto.verifySignature
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -62,8 +66,21 @@ class CommunityClimbSubscriber @Inject constructor(
      * first event triggers a fetch, the rest hit this in-memory guard.
      * The persistent cache lives in `nostr_profiles`; this is just a
      * de-duper in front of it.
+     *
+     * Bounded at MAX_RESOLVED_PUBKEYS to defend against a hostile relay
+     * that fans a stream of distinct-pubkey events at the subscriber —
+     * without the cap the set would grow unboundedly across the process
+     * lifetime. ConcurrentHashMap.newKeySet() is JVM-atomic for
+     * add/contains, so concurrent setter-resolution coroutines fired
+     * from a relay backlog burst can't race the de-duper.
      */
-    private val pubkeysResolvedThisRun = mutableSetOf<String>()
+    private val pubkeysResolvedThisRun: MutableSet<String> = ConcurrentHashMap.newKeySet()
+
+    /** Serializes the read-modify-write on the COMMUNITY_CLIMB_SINCE
+     *  cursor. handleEvent is called from a single relay-collect coroutine
+     *  in production, but a future fan-out / parallel collect would race
+     *  on the cursor's "max(current, incoming)" semantics. */
+    private val cursorMutex = Mutex()
     private var job: Job? = null
 
     /** Idempotent — calling twice is a no-op. */
@@ -125,6 +142,12 @@ class CommunityClimbSubscriber @Inject constructor(
                 // collect returned without throwing → relay flow ended cleanly
                 // (rare). Brief backoff before re-subscribing.
                 delay(BACKOFF_MS)
+            } catch (e: CancellationException) {
+                // stop() / parent-scope cancellation. Don't log "re-subscribing"
+                // — the loop is going away. Re-throw so the outer launch
+                // exits cleanly instead of queueing another delay() that
+                // would only re-raise the cancellation.
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "subscription terminated; re-subscribing", e)
                 delay(BACKOFF_MS)
@@ -139,6 +162,15 @@ class CommunityClimbSubscriber @Inject constructor(
 
     @VisibleForTesting
     internal suspend fun handleEvent(eventJson: String) {
+        // Hard size cap on the raw event payload before we even parse it.
+        // The largest legitimate climb event is ~6 KB (≈84 holds × ~12
+        // chars per p/r token + name + description + tag overhead);
+        // anything beyond MAX_EVENT_BYTES is either misuse or a relay-side
+        // amplification attempt.
+        if (eventJson.length > MAX_EVENT_BYTES) {
+            Log.w(TAG, "skip oversize event bytes=${eventJson.length}")
+            return
+        }
         // Relay is untrusted (NIP-01): parse via Quartz which recomputes
         // the canonical event id, kind-check, and Schnorr-verify before
         // trusting any field. Mirrors NostrProfileManager.parseAndCacheProfile
@@ -228,6 +260,49 @@ class CommunityClimbSubscriber @Inject constructor(
             return
         }
 
+        // Size caps mirror the locally-enforced ClimbValidation limits so
+        // a misbehaving relay or malicious publisher can't bypass them
+        // by signing events directly. Without these the local DB row size
+        // is bounded only by the relay's MAX_MESSAGE_SIZE.
+        if (parsedClimb.name.length > com.cruxcoach.domain.community.ClimbValidation.NAME_MAX_LENGTH) {
+            Log.w(TAG, "skip event name too long uuid=${parsedClimb.uuid} len=${parsedClimb.name.length}")
+            return
+        }
+        if (parsedClimb.description.length > com.cruxcoach.domain.community.ClimbValidation.DESCRIPTION_MAX_LENGTH) {
+            Log.w(TAG, "skip event description too long uuid=${parsedClimb.uuid} len=${parsedClimb.description.length}")
+            return
+        }
+        // Holds-count cap. parseFrames is run again later via
+        // computeMoveCount; this early gate prevents a multi-thousand-hold
+        // payload from even reaching that path.
+        val parsedHolds = runCatching {
+            BoardClimbParser.parseFrames(parsedClimb.framesText)
+        }.getOrElse { emptyList() }
+        if (parsedHolds.size > com.cruxcoach.domain.community.ClimbValidation.MAX_HOLDS_TOTAL) {
+            Log.w(TAG, "skip event with too many holds uuid=${parsedClimb.uuid} count=${parsedHolds.size}")
+            return
+        }
+        // Frames-hash verification: recompute the canonical hash and
+        // compare against what the publisher claimed. A signed event
+        // with an invalid hash is either tampered-on-the-wire or a buggy
+        // publisher; either way we don't want it polluting the local
+        // duplicate-detection index. Tolerate empty hash (older events
+        // pre-FEAT-003 §4.3) — the publisher always sets it for new
+        // events so absence is forward-compat only.
+        if (parsedClimb.framesHash.isNotEmpty()) {
+            val expected = com.cruxcoach.domain.community.FramesHash.of(
+                parsedClimb.framesText, parsedClimb.layoutId,
+            )
+            if (expected != parsedClimb.framesHash) {
+                Log.w(
+                    TAG,
+                    "skip event with frames_hash mismatch uuid=${parsedClimb.uuid} " +
+                        "expected=${expected.take(12)} got=${parsedClimb.framesHash.take(12)}",
+                )
+                return
+            }
+        }
+
         // Skip ungraded events — per the "no synthetic stats" rule, we
         // don't want to manufacture NULL-difficulty rows that pollute
         // default browse.
@@ -282,11 +357,16 @@ class CommunityClimbSubscriber @Inject constructor(
         }
 
         // Advance cursor only after a successful upsert. Use the event's
-        // own created_at; relays may stream out of order so we max() rather
-        // than blindly overwrite (a stale event could rewind us).
-        val current = userPreferences.communityClimbSince.first() ?: 0L
-        if (parsedClimb.createdAt > current) {
-            userPreferences.setCommunityClimbSince(parsedClimb.createdAt)
+        // own created_at; relays may stream out of order so we max()
+        // rather than blindly overwrite (a stale event could rewind us).
+        // The Mutex serializes the read-modify-write so two events that
+        // race for the cursor can't both observe the old value and both
+        // write — the second one would have rolled the cursor backwards.
+        cursorMutex.withLock {
+            val current = userPreferences.communityClimbSince.first() ?: 0L
+            if (parsedClimb.createdAt > current) {
+                userPreferences.setCommunityClimbSince(parsedClimb.createdAt)
+            }
         }
 
         // Lazy Kind-0 resolution for the setter. Cache-first via
@@ -307,6 +387,16 @@ class CommunityClimbSubscriber @Inject constructor(
      */
     private fun resolveSetterDisplayName(pubkey: String) {
         if (!pubkeysResolvedThisRun.add(pubkey)) return
+        // Cap memory + relay-fetch fan-out: when the de-duper hits the
+        // cap a hostile relay flooding distinct pubkeys can't keep
+        // growing the set. We fall through to "always re-resolve past
+        // this point" — getProfile's own profileQueries cache still
+        // de-duplicates persistent storage, so the worst case is a
+        // single redundant relay fetch, not unbounded memory.
+        if (pubkeysResolvedThisRun.size > MAX_RESOLVED_PUBKEYS) {
+            pubkeysResolvedThisRun.clear()
+            Log.w(TAG, "pubkeysResolvedThisRun capacity exceeded; cleared (cap=$MAX_RESOLVED_PUBKEYS)")
+        }
         // Use the same job's coroutine scope so we don't accumulate
         // orphan coroutines if the subscriber is stopped. job is the
         // top-level subscription; we fork a child that survives the
@@ -431,6 +521,16 @@ class CommunityClimbSubscriber @Inject constructor(
         const val STARTUP_GRACE_MS = 2_000L
         const val BACKOFF_MS = 5_000L
         const val KIND_30078 = 30078
+        // Hard cap on raw event JSON size. ~16 KB covers the largest
+        // legitimate climb (~84 holds + 100-char name + 500-char
+        // description + tag overhead ≈ 6 KB) with comfortable headroom
+        // for future schema additions, while bounding the cost of
+        // parsing a hostile payload.
+        const val MAX_EVENT_BYTES = 16 * 1024
+        // Cap the in-memory pubkey-resolved de-duper. Real users see
+        // ~200 unique authors over months; 4096 is plenty of headroom
+        // and keeps a hostile relay from growing the set unboundedly.
+        const val MAX_RESOLVED_PUBKEYS = 4096
 
         /** d-tag prefix that the publisher embeds for [pubkey] (FEAT-003 §4.2). */
         fun communityClimbDTagPrefix(pubkey: String): String =

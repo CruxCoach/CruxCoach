@@ -51,7 +51,17 @@ class NostrProfileManager @Inject constructor(
                 content = content,
                 tags = emptyList()
             )
-            relayPool.sendEvent(event)
+            // Use sendEventWithStats so we can fail-closed when zero
+            // relays accepted: previously the local profileQueries cache
+            // got upserted regardless of relay outcome, so a "0/N
+            // accepted" result diverged silently from what other clients
+            // actually saw. Now the caller sees null and surfaces the
+            // localized publish-failed Snackbar.
+            val (attempted, accepted) = relayPool.sendEventWithStats(event)
+            if (accepted == 0 && attempted > 0) {
+                Log.w(TAG, "publishProfile: zero relays accepted attempted=$attempted — abort cache write")
+                return null
+            }
 
             val ownPubkey = event.pubKey
             profileQueries.upsert(

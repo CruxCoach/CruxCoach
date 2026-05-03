@@ -146,11 +146,19 @@ class KilterClimbPublisher @Inject constructor(
                 boardRepository.markKilterPublishFailed(uuid, "transient: ${r.message}")
                 Outcome.Failed(appContext.getString(R.string.kilter_publish_transient))
             }
+            is KilterPublishResult.RateLimited -> {
+                // Same UI surface as transient — the retry worker handles
+                // the actual backoff. mark "rate-limited:" so logcat /
+                // kilter_error column distinguishes it.
+                boardRepository.markKilterPublishFailed(uuid, "rate-limited: ${r.message}")
+                Outcome.Failed(appContext.getString(R.string.kilter_publish_transient))
+            }
             is KilterPublishResult.PermanentError -> {
                 // For UPDATE on an already-published row a 4xx most likely
                 // means Kilter refuses edits at this layer. Mark
-                // 'diverged' (no further retries, banner in UI) instead
-                // of 'failed' (which the worker keeps poking).
+                // 'diverged' (no further retries, banner in UI). For
+                // CREATE a 4xx is a terminal 'rejected' — payload-level
+                // refusal that no amount of retry will fix.
                 if (op == Op.UPDATE) {
                     boardRepository.markKilterPublishDiverged(
                         uuid,
@@ -160,7 +168,7 @@ class KilterClimbPublisher @Inject constructor(
                         appContext.getString(R.string.kilter_publish_diverged_with_code, r.httpCode),
                     )
                 } else {
-                    boardRepository.markKilterPublishFailed(
+                    boardRepository.markKilterPublishRejected(
                         uuid,
                         "http=${r.httpCode}: ${r.message.take(200)}",
                     )

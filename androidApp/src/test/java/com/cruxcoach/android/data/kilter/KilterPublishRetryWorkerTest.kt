@@ -184,9 +184,11 @@ class KilterPublishRetryWorkerTest {
         val result = worker().doWork()
 
         assertTrue(result is ListenableWorker.Result.Success, "expected success after permanent, got $result")
+        // CREATE 4xx terminal → 'rejected' (drops out of retry queue).
         coVerify(exactly = 1) {
-            repo.markKilterPublishFailed("c1", match { it.contains("http=422") })
+            repo.markKilterPublishRejected("c1", match { it.contains("http=422") })
         }
+        coVerify(exactly = 0) { repo.markKilterPublishFailed(any(), any()) }
         coVerify(exactly = 0) { repo.markKilterPublishDiverged(any(), any()) }
     }
 

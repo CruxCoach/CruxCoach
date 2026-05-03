@@ -12,6 +12,7 @@ object ClimbValidation {
         data object NoStartHold : Issue()
         data object NoFinishHold : Issue()
         data object TooFewHolds : Issue()
+        data class TooManyHolds(val count: Int) : Issue()
         data class TooManyStarts(val count: Int) : Issue()
         data class TooManyFinishes(val count: Int) : Issue()
         data object NameMissing : Issue()
@@ -34,6 +35,15 @@ object ClimbValidation {
     const val MIN_HOLDS_TOTAL = 3
     const val MAX_START_HOLDS = 2
     const val MAX_FINISH_HOLDS = 2
+    /**
+     * Hard cap on the total number of holds in a published climb. Matches
+     * the BoardPacketEncoder.MAX_HOLDS_PER_PACKET (84) above which the
+     * BLE protocol can't transmit the climb in one frame anyway.
+     * Without this a malicious or buggy publisher could push a
+     * multi-thousand-hold "climb" — relay traffic + DB row size + frames
+     * tag length all unbounded.
+     */
+    const val MAX_HOLDS_TOTAL = 84
 
     fun validate(
         holds: Map<Int, Int>,
@@ -52,6 +62,7 @@ object ClimbValidation {
         if (finishes == 0) issues += Issue.NoFinishHold
         if (finishes > MAX_FINISH_HOLDS) issues += Issue.TooManyFinishes(finishes)
         if (total < MIN_HOLDS_TOTAL) issues += Issue.TooFewHolds
+        if (total > MAX_HOLDS_TOTAL) issues += Issue.TooManyHolds(total)
 
         if (name.isBlank()) issues += Issue.NameMissing
         if (name.length > NAME_MAX_LENGTH) issues += Issue.NameTooLong(name.length)

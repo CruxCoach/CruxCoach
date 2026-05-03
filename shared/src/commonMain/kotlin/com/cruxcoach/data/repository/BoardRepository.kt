@@ -458,6 +458,11 @@ interface CommunityClimbQueries {
     /** Server explicitly rejected an update on an already-published climb.
      *  Distinct from `'failed'` — the retry worker stops poking it. */
     fun markKilterPublishDiverged(uuid: String, error: String)
+    /** Server rejected the *create* payload with a 4xx (validation,
+     *  content-policy, account-state). Terminal — the retry worker stops
+     *  poking it. Without this, 4xx CREATEs would stay in the retry queue
+     *  forever because the queue criterion matches `kilter_status='failed'`. */
+    fun markKilterPublishRejected(uuid: String, error: String)
     /** Climbs with `origin='cruxcoach'`, Nostr-published, awaiting Kilter sync. */
     fun getClimbsAwaitingKilterRetry(): List<CommunityClimbRow>
     fun getDraftClimbs(): List<CommunityClimbRow>

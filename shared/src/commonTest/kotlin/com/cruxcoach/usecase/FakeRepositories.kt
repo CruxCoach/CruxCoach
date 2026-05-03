@@ -217,6 +217,7 @@ class FakeBoardRepository : BoardRepository {
     override fun markKilterPublishSynced(uuid: String, via: String, syncedAtEpochSeconds: Long) {}
     override fun markKilterPublishFailed(uuid: String, error: String) {}
     override fun markKilterPublishDiverged(uuid: String, error: String) {}
+    override fun markKilterPublishRejected(uuid: String, error: String) {}
     override fun getKilterPublishState(uuid: String): com.cruxcoach.data.repository.KilterPublishState? = null
     override fun updateSetterUsernameForPubkey(pubkey: String, displayName: String) {}
     override fun getClimbsByPubkey(pubkey: String): List<com.cruxcoach.data.repository.SetterClimbEntry> = emptyList()

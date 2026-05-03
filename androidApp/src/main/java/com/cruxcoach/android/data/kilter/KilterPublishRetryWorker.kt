@@ -148,6 +148,18 @@ class KilterPublishRetryWorker @AssistedInject constructor(
                     Log.w(TAG, "row transient uuid=${row.uuid}: ${result.message.take(200)}")
                     boardRepository.markKilterPublishFailed(row.uuid, "retry transient: ${result.message}")
                 }
+                is KilterPublishResult.RateLimited -> {
+                    transient++
+                    Log.w(
+                        TAG,
+                        "row rate-limited uuid=${row.uuid} " +
+                            "retryAfter=${result.retryAfterSeconds ?: "n/a"}",
+                    )
+                    boardRepository.markKilterPublishFailed(
+                        row.uuid,
+                        "retry rate-limited (retry-after=${result.retryAfterSeconds ?: "n/a"}): ${result.message}",
+                    )
+                }
                 is KilterPublishResult.PermanentError -> {
                     permanent++
                     Log.w(
@@ -156,14 +168,19 @@ class KilterPublishRetryWorker @AssistedInject constructor(
                             result.message.take(200),
                     )
                     // For UPDATE flow a 4xx is the diverged-signal: the
-                    // server won't accept this edit. Stop retrying.
+                    // server won't accept this edit. For CREATE a 4xx
+                    // means the payload itself is rejected (validation,
+                    // content-policy, account state). Both are terminal:
+                    // 'diverged' for update, 'rejected' for create. Pre-fix
+                    // CREATE 4xx fell back to 'failed' which kept the row
+                    // in the retry queue forever — this stops that.
                     if (isUpdate) {
                         boardRepository.markKilterPublishDiverged(
                             row.uuid,
                             "retry http=${result.httpCode}: ${result.message.take(200)}",
                         )
                     } else {
-                        boardRepository.markKilterPublishFailed(
+                        boardRepository.markKilterPublishRejected(
                             row.uuid,
                             "retry http=${result.httpCode}: ${result.message.take(200)}",
                         )

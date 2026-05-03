@@ -1,6 +1,7 @@
 package com.cruxcoach.android.data.kilter
 
 import android.util.Log
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -104,6 +105,13 @@ sealed class KilterPublishResult {
     data class TransientError(val message: String) : KilterPublishResult()
     /** Server rejected the payload (4xx); usually a content/validation issue. */
     data class PermanentError(val message: String, val httpCode: Int) : KilterPublishResult()
+    /**
+     * Server returned 429 Too Many Requests. Distinct from PermanentError
+     * because the right action is "back off and retry later", not "stop
+     * retrying". `retryAfterSeconds` is the parsed `Retry-After` header
+     * value (null if missing/unparseable).
+     */
+    data class RateLimited(val retryAfterSeconds: Long?, val message: String) : KilterPublishResult()
 }
 
 @Serializable
@@ -191,6 +199,8 @@ class KilterApiClient @Inject constructor(
                     refreshToken = tokenResponse.refreshToken,
                     expiresIn = tokenResponse.expiresIn
                 )
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Auth error", e)
                 KilterAuthResult.Error("Verbindung fehlgeschlagen: ${e.message}")
@@ -227,6 +237,8 @@ class KilterApiClient @Inject constructor(
                     return@withContext true
                 }
                 Log.w(TAG, "Token refresh failed: HTTP ${response.code}")
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Token refresh error", e)
             }
@@ -257,6 +269,8 @@ class KilterApiClient @Inject constructor(
             val ok = response.isSuccessful
             if (!ok) Log.w(TAG, "Logout HTTP ${response.code}")
             ok
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.w(TAG, "Logout call failed — continuing with local clear", e)
             false
@@ -292,6 +306,8 @@ class KilterApiClient @Inject constructor(
                 json.decodeFromString<KilterLogsResponse>(body).logs
             }
             Result.success(logs)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "fetchLogs failed", e)
             Result.failure(e)
@@ -324,6 +340,8 @@ class KilterApiClient @Inject constructor(
                 )
             }
             Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "uploadLogs failed", e)
             Result.failure(e)
@@ -402,6 +420,8 @@ class KilterApiClient @Inject constructor(
                 Log.w(TAG, "Custom wall server registration failed (HTTP ${response.code}) — using local context")
             }
             localContext
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.w(TAG, "Custom wall registration error — using local context", e)
             localContext
@@ -549,16 +569,33 @@ class KilterApiClient @Inject constructor(
                 }
             }
             if (response.isSuccessful) {
-                Log.i(TAG, "$op ok uuid=$climbUuid setter=$setterUuid")
+                // Don't include setter_uuid (the user's Kilter account
+                // identifier): it's a stable PII handle that bug-report
+                // logcat dumps would otherwise leak. The climb_uuid is
+                // public on Nostr already so it's safe to log.
+                Log.i(TAG, "$op ok uuid=$climbUuid")
                 return@withContext KilterPublishResult.Success(climbUuid)
             }
             val responseBody = response.body?.string().orEmpty()
             Log.w(TAG, "$op HTTP ${response.code}: $responseBody")
             return@withContext when (response.code) {
                 401, 403 -> KilterPublishResult.NotAuthenticated
+                429 -> {
+                    // Retry-After per RFC 7231: integer seconds OR HTTP-date.
+                    // We only parse the integer form; date-form falls back
+                    // to null and the caller picks a default backoff.
+                    val raw = response.header("Retry-After")?.trim()
+                    val seconds = raw?.toLongOrNull()?.coerceAtLeast(0)
+                    KilterPublishResult.RateLimited(
+                        retryAfterSeconds = seconds,
+                        message = "HTTP 429${if (raw != null) " retry-after=$raw" else ""}",
+                    )
+                }
                 in 400..499 -> KilterPublishResult.PermanentError(responseBody, response.code)
                 else -> KilterPublishResult.TransientError("HTTP ${response.code}: $responseBody")
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "$op exception uuid=$climbUuid", e)
             return@withContext KilterPublishResult.TransientError(e.message ?: "network error")

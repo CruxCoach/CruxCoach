@@ -164,9 +164,12 @@ class KilterClimbPublisherTest {
 
         assertTrue(outcome is KilterClimbPublisher.Outcome.Failed,
             "expected Failed (CREATE 4xx), got $outcome")
+        // CREATE 4xx → 'rejected' terminal state (not 'failed', which
+        // would keep the row in the retry queue forever).
         coVerify(exactly = 1) {
-            repo.markKilterPublishFailed(uuid, match { it.contains("http=422") })
+            repo.markKilterPublishRejected(uuid, match { it.contains("http=422") })
         }
+        coVerify(exactly = 0) { repo.markKilterPublishFailed(any(), any()) }
         coVerify(exactly = 0) { repo.markKilterPublishDiverged(any(), any()) }
     }
 

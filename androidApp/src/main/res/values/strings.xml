@@ -22,6 +22,7 @@
     <string name="climb_creator_issue_no_start">Add at least one start hold (green).</string>
     <string name="climb_creator_issue_no_finish">Add at least one finish hold (magenta).</string>
     <string name="climb_creator_issue_too_few_holds" formatted="false">Need at least %d holds (start + finish + at least one in between).</string>
+    <string name="climb_creator_issue_too_many_holds" formatted="false">Too many holds: max %d.</string>
     <string name="climb_creator_issue_too_many_starts" formatted="false">Too many start holds: %d (max 2).</string>
     <string name="climb_creator_issue_too_many_finishes" formatted="false">Too many finish holds: %d (max 2).</string>
     <string name="climb_creator_issue_name_missing">Name is required.</string>

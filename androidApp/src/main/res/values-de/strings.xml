@@ -22,6 +22,7 @@
     <string name="climb_creator_issue_no_start">Mindestens einen Start-Griff (grün) setzen.</string>
     <string name="climb_creator_issue_no_finish">Mindestens einen Top-Griff (magenta) setzen.</string>
     <string name="climb_creator_issue_too_few_holds" formatted="false">Mindestens %d Griffe nötig (Start + Top + min. ein Griff dazwischen).</string>
+    <string name="climb_creator_issue_too_many_holds" formatted="false">Zu viele Griffe: max. %d.</string>
     <string name="climb_creator_issue_too_many_starts" formatted="false">Zu viele Start-Griffe: %d (max. 2).</string>
     <string name="climb_creator_issue_too_many_finishes" formatted="false">Zu viele Top-Griffe: %d (max. 2).</string>
     <string name="climb_creator_issue_name_missing">Name ist erforderlich.</string>

@@ -473,6 +473,7 @@ private fun ValidationStatus(issues: List<ClimbValidation.Issue>) {
                 ClimbValidation.Issue.NoStartHold -> stringResource(R.string.climb_creator_issue_no_start)
                 ClimbValidation.Issue.NoFinishHold -> stringResource(R.string.climb_creator_issue_no_finish)
                 ClimbValidation.Issue.TooFewHolds -> stringResource(R.string.climb_creator_issue_too_few_holds, ClimbValidation.MIN_HOLDS_TOTAL)
+                is ClimbValidation.Issue.TooManyHolds -> stringResource(R.string.climb_creator_issue_too_many_holds, ClimbValidation.MAX_HOLDS_TOTAL)
                 is ClimbValidation.Issue.TooManyStarts -> stringResource(R.string.climb_creator_issue_too_many_starts, issue.count)
                 is ClimbValidation.Issue.TooManyFinishes -> stringResource(R.string.climb_creator_issue_too_many_finishes, issue.count)
                 ClimbValidation.Issue.NameMissing -> stringResource(R.string.climb_creator_issue_name_missing)

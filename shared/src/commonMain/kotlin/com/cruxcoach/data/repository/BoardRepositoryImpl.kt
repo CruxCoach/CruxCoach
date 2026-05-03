@@ -747,6 +747,10 @@ class BoardRepositoryImpl(
         q.markKilterPublishDiverged(kilter_error = error, uuid = uuid)
     }
 
+    override fun markKilterPublishRejected(uuid: String, error: String) {
+        q.markKilterPublishRejected(kilter_error = error, uuid = uuid)
+    }
+
     override fun getClimbsAwaitingKilterRetry(): List<CommunityClimbRow> =
         q.getClimbsAwaitingKilterRetry().executeAsList().map { it.toCommunityRow() }
 
