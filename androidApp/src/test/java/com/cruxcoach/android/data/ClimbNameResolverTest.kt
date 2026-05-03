@@ -1,6 +1,6 @@
 package com.cruxcoach.android.data
 
-import com.cruxcoach.data.repository.ClimbWithStats
+import com.cruxcoach.android.fakes.TestClimb
 import com.cruxcoach.data.repository.BoardRepository
 import io.mockk.every
 import io.mockk.mockk
@@ -23,17 +23,7 @@ class ClimbNameResolverTest {
     private val resolver = ClimbNameResolver(repo)
 
     private fun climb(uuid: String, name: String = "Test Climb", diff: Double? = 18.5) =
-        ClimbWithStats(
-            uuid = uuid,
-            layoutId = 1L,
-            setterUsername = "setter",
-            name = name,
-            frames = "p1079r12p1080r15",
-            framesCount = 1L,
-            difficultyAverage = diff,
-            qualityAverage = 3.0,
-            ascensionistCount = 42L,
-        )
+        TestClimb.stats(uuid = uuid, name = name, difficulty = diff, ascensionists = 42L)
 
     @Test
     fun `raw uuid hit returns immediately without fallbacks`() {

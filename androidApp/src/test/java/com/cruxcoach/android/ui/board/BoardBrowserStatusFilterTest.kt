@@ -2,6 +2,7 @@ package com.cruxcoach.android.ui.board
 
 import com.cruxcoach.android.fakes.FakeBoardRepository
 import com.cruxcoach.android.fakes.FakePersonalBoardRepository
+import com.cruxcoach.android.fakes.TestClimb
 import com.cruxcoach.data.repository.ClimbWithStats
 import com.cruxcoach.data.repository.ClimbSortField
 import com.cruxcoach.data.repository.ClimbTypeFilter
@@ -26,17 +27,15 @@ class BoardBrowserStatusFilterTest {
         name: String = "Climb $uuid",
         difficulty: Double = 10.0,
         quality: Double = 3.0,
-        ascensionists: Long = 100
-    ) = ClimbWithStats(
-        uuid = uuid,
-        layoutId = 1,
-        setterUsername = "setter",
-        name = name,
+        ascensionists: Long = 100,
+    ): ClimbWithStats = TestClimb.stats(
+        uuid = uuid, name = name, difficulty = difficulty,
+        quality = quality, ascensionists = ascensionists,
+        // Preserve this file's pre-dedupe defaults (empty frames was a
+        // quirk that several status-filter assertions implicitly relied
+        // on — keep it explicit instead of inheriting TestClimb's
+        // shared default).
         frames = "",
-        framesCount = 1,
-        difficultyAverage = difficulty,
-        qualityAverage = quality,
-        ascensionistCount = ascensionists
     )
 
     // ── getClimbsByUuids in FakeBoardRepository ──────────────────

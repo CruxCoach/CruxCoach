@@ -1,6 +1,7 @@
 package com.cruxcoach.android.ui.board
 
 import com.cruxcoach.android.fakes.FakeBoardRepository
+import com.cruxcoach.android.fakes.TestClimb
 import com.cruxcoach.data.repository.ClimbWithStats
 import com.cruxcoach.data.repository.ClimbTypeFilter
 import com.cruxcoach.domain.board.HoldHeatmapComputer
@@ -25,17 +26,10 @@ class HoldSearchIntegrationTest {
         uuid: String,
         frames: String,
         difficulty: Double = 10.0,
-        ascensionists: Long = 50
-    ) = ClimbWithStats(
-        uuid = uuid,
-        layoutId = 1,
-        setterUsername = "setter",
-        name = "Climb $uuid",
-        frames = frames,
-        framesCount = 1,
-        difficultyAverage = difficulty,
-        qualityAverage = 3.0,
-        ascensionistCount = ascensionists
+        ascensionists: Long = 50,
+    ): ClimbWithStats = TestClimb.stats(
+        uuid = uuid, frames = frames, difficulty = difficulty,
+        ascensionists = ascensionists,
     )
 
     private fun frames(vararg holds: Pair<Int, Int>): String =

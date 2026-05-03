@@ -1,6 +1,7 @@
 package com.cruxcoach.android.ui.board
 
 import com.cruxcoach.android.fakes.FakeBoardRepository
+import com.cruxcoach.android.fakes.TestClimb
 import com.cruxcoach.android.ui.navigation.ClimbNavigationState
 import com.cruxcoach.data.repository.ClimbWithStats
 import kotlin.test.Test
@@ -25,17 +26,10 @@ class SetterFilterTest {
         name: String = "Climb $uuid",
         setter: String? = "defaultSetter",
         difficulty: Double = 10.0,
-        ascensionists: Long = 100
-    ) = ClimbWithStats(
-        uuid = uuid,
-        layoutId = 1,
-        setterUsername = setter,
-        name = name,
-        frames = "",
-        framesCount = 1,
-        difficultyAverage = difficulty,
-        qualityAverage = 3.0,
-        ascensionistCount = ascensionists
+        ascensionists: Long = 100,
+    ): ClimbWithStats = TestClimb.stats(
+        uuid = uuid, name = name, setterUsername = setter,
+        difficulty = difficulty, ascensionists = ascensionists, frames = "",
     )
 
     // ── ClimbNavigationState pendingSetterFilter ──────────────
