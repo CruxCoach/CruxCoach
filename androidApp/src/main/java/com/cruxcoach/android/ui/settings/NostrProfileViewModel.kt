@@ -146,12 +146,23 @@ class NostrProfileViewModel @Inject constructor(
             // Propagate the new display_name to the user's own community
             // climbs so the browse list updates instantly. Only the
             // setter_username column changes — provenance fields stay.
+            // The Nostr publish has already succeeded by this point, so
+            // a SQL failure here is non-fatal: the user's profile is
+            // public on relays, the browse-list rename will happen on
+            // the next sync. But the silent runCatching pre-fix hid
+            // disk-full / lock-contention bugs forever — log them.
             val newDisplayName = result.displayName?.takeIf { it.isNotBlank() }
             if (newDisplayName != null) {
                 runCatching {
                     boardRepository.updateSetterUsernameForPubkey(
                         pubkey = result.pubkey,
                         displayName = newDisplayName,
+                    )
+                }.onFailure {
+                    android.util.Log.w(
+                        "NostrProfileVM",
+                        "post-publish bulk rename failed (browse will catch up on next sync)",
+                        it,
                     )
                 }
             }

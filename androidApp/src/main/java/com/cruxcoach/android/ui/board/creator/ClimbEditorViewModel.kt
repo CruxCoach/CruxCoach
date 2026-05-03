@@ -469,10 +469,19 @@ class ClimbEditorViewModel @Inject constructor(
     /** User chose "set up profile" — navigate flag for the screen, no
      *  publish. Editor state is preserved; user comes back, taps publish
      *  again, and the hint won't fire (profile now set). Releases the
-     *  isPublishing claim so the user can re-tap publish later. */
+     *  isPublishing claim so the user can re-tap publish later.
+     *
+     *  setProfileHintDismissed is a DataStore write; pre-fix a write
+     *  failure escaped the coroutine silently and the dialog stayed open
+     *  with no path forward (the navigate flag never flipped). Catch +
+     *  log + still update UI state so the user isn't trapped — worst case
+     *  the hint will fire again next time, which is a recoverable UX
+     *  glitch instead of a stuck dialog.
+     */
     fun acceptProfileHint() {
         viewModelScope.launch {
-            userPreferences.setProfileHintDismissed(true)
+            runCatching { userPreferences.setProfileHintDismissed(true) }
+                .onFailure { Log.w(TAG, "setProfileHintDismissed failed", it) }
             _state.update {
                 it.copy(
                     pendingProfileHint = false,
@@ -484,10 +493,13 @@ class ClimbEditorViewModel @Inject constructor(
     }
 
     /** User chose "skip" — record dismissal so the hint doesn't fire
-     *  again for this identity, then proceed with publish. */
+     *  again for this identity, then proceed with publish. Same
+     *  guarantee as [acceptProfileHint]: a DataStore write failure
+     *  doesn't strand the user on the dialog. */
     fun dismissProfileHintAndPublish(sizeLabel: String, autoNoteTemplate: String? = null) {
         viewModelScope.launch {
-            userPreferences.setProfileHintDismissed(true)
+            runCatching { userPreferences.setProfileHintDismissed(true) }
+                .onFailure { Log.w(TAG, "setProfileHintDismissed failed", it) }
             _state.update { it.copy(pendingProfileHint = false) }
             doPublish(sizeLabel, autoNoteTemplate)
         }
@@ -666,22 +678,34 @@ class ClimbEditorViewModel @Inject constructor(
         heatmapJob = viewModelScope.launch {
             kotlinx.coroutines.delay(HEATMAP_DEBOUNCE_MS)
             val angle = _state.value.editor.angle ?: return@launch
-            val layoutId = userPreferences.boardLayoutId.first().toLong()
-            val seed = _state.value.editor.selectedHolds.keys
-            // Brush-aware: when the user has a brush picked, the heatmap
-            // suggests popular placements *for that role* among matching
-            // climbs. With no brush (eraser/review), fall back to a
-            // role-agnostic popularity view so the heatmap still gives
-            // useful "where does this layout live" cues.
-            val targetRole = _state.value.editor.activeBrush
-            // Default dispatcher — the cold path does a single SQL read
-            // (cached SQLDelight prepared stmt) followed by a CPU-bound
-            // parse/aggregate over the cached IntArray[]. Hot path is pure
-            // CPU. Default's pool fits better than IO here.
-            val map = withContext(Dispatchers.Default) {
-                boardRepository.computeEditorHeatmap(layoutId, angle.toLong(), seed, targetRole)
+            try {
+                val layoutId = userPreferences.boardLayoutId.first().toLong()
+                val seed = _state.value.editor.selectedHolds.keys
+                // Brush-aware: when the user has a brush picked, the heatmap
+                // suggests popular placements *for that role* among matching
+                // climbs. With no brush (eraser/review), fall back to a
+                // role-agnostic popularity view so the heatmap still gives
+                // useful "where does this layout live" cues.
+                val targetRole = _state.value.editor.activeBrush
+                // Default dispatcher — the cold path does a single SQL read
+                // (cached SQLDelight prepared stmt) followed by a CPU-bound
+                // parse/aggregate over the cached IntArray[]. Hot path is pure
+                // CPU. Default's pool fits better than IO here.
+                val map = withContext(Dispatchers.Default) {
+                    boardRepository.computeEditorHeatmap(layoutId, angle.toLong(), seed, targetRole)
+                }
+                _state.update { it.copy(heatmap = map) }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Heatmap is a non-essential overlay — a SQL throw or
+                // parser error during recompute shouldn't crash the
+                // editor or fail the publish. Pre-fix the throw escaped
+                // the coroutine silently and the overlay just stayed
+                // stale until the next hold-change. Log for triage,
+                // leave the previous heatmap visible.
+                Log.w(TAG, "heatmap recompute failed", e)
             }
-            _state.update { it.copy(heatmap = map) }
         }
     }
 
