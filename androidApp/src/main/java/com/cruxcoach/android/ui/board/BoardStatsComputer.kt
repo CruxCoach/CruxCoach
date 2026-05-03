@@ -6,6 +6,7 @@ import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.util.GradeDisplayHelper
 import com.cruxcoach.data.repository.AscentWithClimb
 import com.cruxcoach.domain.board.KilterGradeMapper
+import java.time.Clock
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
@@ -47,9 +48,10 @@ object BoardStatsComputer {
         gradeScale: GradeScale,
         customFrom: LocalDate? = null,
         customTo: LocalDate? = null,
-        context: Context? = null
+        context: Context? = null,
+        clock: Clock = Clock.systemDefaultZone(),
     ): BoardLogbookStats {
-        val filtered = filterByInterval(ascents, interval, customFrom, customTo)
+        val filtered = filterByInterval(ascents, interval, customFrom, customTo, clock)
         if (filtered.isEmpty()) return BoardLogbookStats()
 
         val sends = filtered.filter { it.isSend }
@@ -77,8 +79,8 @@ object BoardStatsComputer {
         val weeklyVolume = computeWeeklyVolume(filtered)
         val gradeProgression = computeGradeProgression(sends, interval, context)
         val uniqueClimbsByGrade = computeUniqueClimbsByGrade(sends, gradeScale)
-        val periodComparison = computePeriodComparison(ascents, interval, gradeScale, context)
-        val personalRecords = computePersonalRecords(ascents, gradeScale)
+        val periodComparison = computePeriodComparison(ascents, interval, gradeScale, context, clock)
+        val personalRecords = computePersonalRecords(ascents, gradeScale, clock)
 
         return BoardLogbookStats(
             hardestGrade = hardestGrade,
@@ -108,7 +110,8 @@ object BoardStatsComputer {
         ascents: List<AscentWithClimb>,
         interval: StatsTimeInterval,
         customFrom: LocalDate? = null,
-        customTo: LocalDate? = null
+        customTo: LocalDate? = null,
+        clock: Clock = Clock.systemDefaultZone(),
     ): List<AscentWithClimb> {
         // Custom date range overrides interval
         if (customFrom != null && customTo != null) {
@@ -117,7 +120,7 @@ object BoardStatsComputer {
             return ascents.filter { it.climbedAt.take(10) in from..to }
         }
         val cutoffDays = interval.days ?: return ascents
-        val cutoff = LocalDate.now().minusDays(cutoffDays.toLong()).toString()
+        val cutoff = LocalDate.now(clock).minusDays(cutoffDays.toLong()).toString()
         return ascents.filter { it.climbedAt.take(10) >= cutoff }
     }
 
@@ -307,10 +310,11 @@ object BoardStatsComputer {
         allAscents: List<AscentWithClimb>,
         interval: StatsTimeInterval,
         gradeScale: GradeScale,
-        context: Context? = null
+        context: Context? = null,
+        clock: Clock = Clock.systemDefaultZone(),
     ): PeriodComparison? {
         val days = interval.days ?: return null // No comparison for "ALL"
-        val now = LocalDate.now()
+        val now = LocalDate.now(clock)
         val currentStart = now.minusDays(days.toLong())
         val previousStart = currentStart.minusDays(days.toLong())
 
@@ -349,7 +353,8 @@ object BoardStatsComputer {
 
     private fun computePersonalRecords(
         allAscents: List<AscentWithClimb>,
-        gradeScale: GradeScale
+        gradeScale: GradeScale,
+        clock: Clock = Clock.systemDefaultZone(),
     ): PersonalRecords {
         val sends = allAscents.filter { it.isSend }
         if (sends.isEmpty()) return PersonalRecords()
@@ -369,7 +374,7 @@ object BoardStatsComputer {
 
         // Streaks (consecutive days with at least one send)
         val sendDates = sendsByDay.keys.mapNotNull { parseDate(it) }.sorted()
-        val (currentStreak, longestStreak) = computeStreaks(sendDates)
+        val (currentStreak, longestStreak) = computeStreaks(sendDates, clock)
 
         return PersonalRecords(
             hardestFlashGrade = hardestFlashGrade,
@@ -381,12 +386,15 @@ object BoardStatsComputer {
         )
     }
 
-    private fun computeStreaks(sortedDates: List<LocalDate>): Pair<Int, Int> {
+    private fun computeStreaks(
+        sortedDates: List<LocalDate>,
+        clock: Clock = Clock.systemDefaultZone(),
+    ): Pair<Int, Int> {
         if (sortedDates.isEmpty()) return 0 to 0
 
         var longest = 1
         var current = 1
-        val today = LocalDate.now()
+        val today = LocalDate.now(clock)
 
         for (i in 1 until sortedDates.size) {
             if (ChronoUnit.DAYS.between(sortedDates[i - 1], sortedDates[i]) == 1L) {

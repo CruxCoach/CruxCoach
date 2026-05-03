@@ -230,7 +230,7 @@ class SessionGattBridgeMigrationTest {
      * nearbySessions, and migration filters it out correctly.
      */
     @Test
-    fun `migration promotes to host when only old host session is visible`() = runTest {
+    fun `migration promotes to host when only old host session is visible`() = runTest(testDispatcher.scheduler) {
         val hostDevice = mockDevice("AA:BB:CC:DD:EE:01")
         val hostSessionId = 12345
 
@@ -261,7 +261,7 @@ class SessionGattBridgeMigrationTest {
      * the participant must join it instead of self-promoting.
      */
     @Test
-    fun `migration joins new host session instead of self-promoting`() = runTest {
+    fun `migration joins new host session instead of self-promoting`() = runTest(testDispatcher.scheduler) {
         val oldHostDevice = mockDevice("AA:BB:CC:DD:EE:01")
         val oldHostSessionId = 11111
 
@@ -304,7 +304,7 @@ class SessionGattBridgeMigrationTest {
      * stranded with an error. Migration must be retried so a successor host can emerge.
      */
     @Test
-    fun `failed migration join does not produce error and keeps queue intact`() = runTest {
+    fun `failed migration join does not produce error and keeps queue intact`() = runTest(testDispatcher.scheduler) {
         val hostDevice = mockDevice("AA:BB:CC:DD:EE:01")
         val hostSessionId = 99999
 
@@ -338,7 +338,7 @@ class SessionGattBridgeMigrationTest {
      * immediately rather than waiting and self-promoting to host with nothing to play.
      */
     @Test
-    fun `migration ends queue immediately when queue is empty`() = runTest {
+    fun `migration ends queue immediately when queue is empty`() = runTest(testDispatcher.scheduler) {
         val hostDevice = mockDevice("AA:BB:CC:DD:EE:01")
         nearbySessionsFlow.value = listOf(makeSession(55555, "AA:BB:CC:DD:EE:01", hostDevice))
 
@@ -367,7 +367,7 @@ class SessionGattBridgeMigrationTest {
      * when X is the only nearby session across multiple retries.
      */
     @Test
-    fun `subsequent migration retries also filter the session that was last tried`() = runTest {
+    fun `subsequent migration retries also filter the session that was last tried`() = runTest(testDispatcher.scheduler) {
         val hostDevice = mockDevice("AA:BB:CC:DD:EE:01")
         val hostSessionId = 77777
 

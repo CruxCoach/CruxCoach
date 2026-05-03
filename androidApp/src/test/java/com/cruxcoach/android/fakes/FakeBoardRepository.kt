@@ -61,7 +61,15 @@ class FakeBoardRepository : BoardRepository {
     }
 
     override fun getClimbByUuid(uuid: String, angle: Int): ClimbWithStats? {
-        return climbs.firstOrNull { it.uuid.equals(uuid, ignoreCase = true) }
+        // Production SQL `WHERE c.uuid = ?` is case-sensitive (no
+        // COLLATE NOCASE on the climbs table). The fake must match that
+        // — otherwise tests pass on case-folded input that production
+        // would silently fail to resolve. ClimbNameResolver explicitly
+        // depends on this case-sensitivity to verify its UUID-shape
+        // fallback ladder; using a mock there isolated this test class
+        // from the bug, but other consumers of the fake would silently
+        // mask UUID-case regressions.
+        return climbs.firstOrNull { it.uuid == uuid }
     }
 
     override fun countFilteredClimbs(

@@ -282,19 +282,11 @@ class BoardBrowserStatusFilterTest {
         assertEquals(sentUuids.size.toLong(), sentClimbs.size.toLong())
     }
 
-    // ── Helper: mirrors the ViewModel's sortInKotlin ─────────────
+    // ── Helper: delegates to the production sort so any drift in the
+    //     ViewModel's sort logic is caught by these tests instead of
+    //     hidden behind a copy. ────────────────────────────────────
 
     private fun sortInKotlin(
         climbs: List<ClimbWithStats>, field: ClimbSortField, dir: SortDirection
-    ): List<ClimbWithStats> {
-        val comparator = when (field) {
-            ClimbSortField.QUALITY -> compareBy<ClimbWithStats> { it.qualityAverage ?: 0.0 }
-            ClimbSortField.DIFFICULTY -> compareBy { it.difficultyAverage ?: 0.0 }
-            ClimbSortField.ASCENSIONISTS -> compareBy { it.ascensionistCount ?: 0L }
-            ClimbSortField.NAME -> compareBy(String.CASE_INSENSITIVE_ORDER) { it.name }
-            else -> compareBy { it.ascensionistCount ?: 0L }
-        }
-        return if (dir == SortDirection.DESC) climbs.sortedWith(comparator.reversed())
-        else climbs.sortedWith(comparator)
-    }
+    ): List<ClimbWithStats> = boardBrowserSortInKotlin(climbs, field, dir)
 }

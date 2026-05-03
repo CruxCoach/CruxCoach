@@ -621,18 +621,7 @@ class BoardBrowserViewModel @Inject constructor(
 
     private fun sortInKotlin(
         climbs: List<ClimbWithStats>, field: ClimbSortField, dir: SortDirection
-    ): List<ClimbWithStats> {
-        val comparator = when (field) {
-            ClimbSortField.QUALITY -> compareBy<ClimbWithStats> { it.qualityAverage ?: 0.0 }
-            ClimbSortField.DIFFICULTY -> compareBy { it.difficultyAverage ?: 0.0 }
-            ClimbSortField.ASCENSIONISTS -> compareBy { it.ascensionistCount ?: 0L }
-            ClimbSortField.NAME -> compareBy(String.CASE_INSENSITIVE_ORDER) { it.name }
-            ClimbSortField.BENCHMARK_DIFFICULTY -> compareBy { it.benchmarkDifficulty }
-            else -> compareBy { it.ascensionistCount ?: 0L }
-        }
-        return if (dir == SortDirection.DESC) climbs.sortedWith(comparator.reversed())
-        else climbs.sortedWith(comparator)
-    }
+    ): List<ClimbWithStats> = boardBrowserSortInKotlin(climbs, field, dir)
 
     private fun fetchPage(f: BrowserFilterState, offset: Int): List<ClimbWithStats> {
         return if (f.searchQuery.isNotBlank()) {
