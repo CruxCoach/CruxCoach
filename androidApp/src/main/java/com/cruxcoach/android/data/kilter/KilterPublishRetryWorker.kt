@@ -50,27 +50,36 @@ class KilterPublishRetryWorker @AssistedInject constructor(
 
     override suspend fun doWork(): androidx.work.ListenableWorker.Result {
         if (!userPreferences.kilterClimbPublishEnabled.first()) {
+            Log.i(TAG, "skip: user opt-out (kilterClimbPublishEnabled=false)")
             return androidx.work.ListenableWorker.Result.success()
         }
         // No Kilter login → can't retry the self path. Bundled retry isn't
         // supported (see class kdoc). Nothing to do.
         if (tokenStore.getAccessToken() == null) {
+            Log.i(TAG, "skip: no kilter access token")
             return androidx.work.ListenableWorker.Result.success()
         }
+
+        Log.i(TAG, "worker start (publishEnabled=true, hasToken=true)")
 
         val rows = runCatching { boardRepository.getClimbsAwaitingKilterRetry() }
             .getOrElse {
                 Log.w(TAG, "could not list retry candidates", it)
                 return androidx.work.ListenableWorker.Result.retry()
             }
-        if (rows.isEmpty()) return androidx.work.ListenableWorker.Result.success()
+        if (rows.isEmpty()) {
+            Log.i(TAG, "no candidates")
+            return androidx.work.ListenableWorker.Result.success()
+        }
 
         val sizeId = userPreferences.boardProductSizeId.first()
         val boardSize = runCatching { boardRepository.getProductSize(sizeId) }.getOrNull()
             ?: return androidx.work.ListenableWorker.Result.retry()  // come back when board metadata is loaded
 
         var attempted = 0
+        var ok = 0
         var transient = 0
+        var permanent = 0
         for (row in rows) {
             attempted++
             val climbConcat = BoardClimbParser.encodeClimbConcat(
@@ -115,6 +124,8 @@ class KilterPublishRetryWorker @AssistedInject constructor(
             }
             when (result) {
                 is KilterPublishResult.Success -> {
+                    ok++
+                    Log.i(TAG, "row ok uuid=${row.uuid} via=${if (isUpdate) "update" else "create"}")
                     boardRepository.markKilterPublishSynced(
                         uuid = row.uuid,
                         via = "self",
@@ -127,9 +138,16 @@ class KilterPublishRetryWorker @AssistedInject constructor(
                 }
                 is KilterPublishResult.TransientError -> {
                     transient++
+                    Log.w(TAG, "row transient uuid=${row.uuid}: ${result.message.take(200)}")
                     boardRepository.markKilterPublishFailed(row.uuid, "retry transient: ${result.message}")
                 }
                 is KilterPublishResult.PermanentError -> {
+                    permanent++
+                    Log.w(
+                        TAG,
+                        "row permanent uuid=${row.uuid} http=${result.httpCode} update=$isUpdate: " +
+                            result.message.take(200),
+                    )
                     // For UPDATE flow a 4xx is the diverged-signal: the
                     // server won't accept this edit. Stop retrying.
                     if (isUpdate) {
@@ -147,7 +165,7 @@ class KilterPublishRetryWorker @AssistedInject constructor(
             }
         }
 
-        Log.i(TAG, "retry batch done — attempted=$attempted transient=$transient")
+        Log.i(TAG, "retry batch done — attempted=$attempted ok=$ok transient=$transient permanent=$permanent")
         // If everything was transient, ask WorkManager to retry the batch
         // sooner than the next scheduled tick (still subject to backoff).
         return if (transient > 0 && transient == attempted) {

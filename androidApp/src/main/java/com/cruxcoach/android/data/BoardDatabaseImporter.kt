@@ -2,6 +2,7 @@ package com.cruxcoach.android.data
 
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
+import android.util.Log
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.domain.board.BoardClimbParser
 import java.io.File
@@ -24,6 +25,7 @@ class BoardDatabaseImporter(
     private val apkDownloader: ApkDownloader
 ) {
     companion object {
+        private const val TAG = "BoardImporter"
         private const val BATCH_SIZE = 500
         private const val BULK_BATCH_SIZE = 10_000
 
@@ -174,6 +176,11 @@ class BoardDatabaseImporter(
         val statCount = boardRepository.getStatCount()
         val placementCount = boardRepository.getAllPlacements().size
         val nomatchCount = boardRepository.countNomatchClimbs()
+        Log.i(
+            TAG,
+            "importFromChunks done: climbs=$climbCount stats=$statCount " +
+                "placements=$placementCount nomatch=$nomatchCount",
+        )
         onProgress?.invoke(ImportStep.Done(climbCount.toInt(), statCount.toInt(), placementCount, nomatchCount.toInt()))
     }
 
@@ -627,7 +634,7 @@ class BoardDatabaseImporter(
             return inserted
         } catch (e: Exception) {
             try { targetDb.execSQL("DETACH DATABASE src") } catch (_: Exception) {}
-            // Fallback to legacy row-by-row import
+            Log.w(TAG, "ATTACH-import failed for climbs; falling back to legacy row-by-row", e)
             return importClimbsLegacy(rawDb, existingUuids, onProgress)
         } finally {
             targetDb.close()
@@ -744,6 +751,7 @@ class BoardDatabaseImporter(
             return inserted
         } catch (e: Exception) {
             try { targetDb.execSQL("DETACH DATABASE src") } catch (_: Exception) {}
+            Log.w(TAG, "ATTACH-import failed for climb_stats; falling back to legacy row-by-row", e)
             return importClimbStatsLegacy(rawDb, existingStats, onProgress)
         } finally {
             targetDb.close()
