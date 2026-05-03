@@ -1,10 +1,13 @@
 package com.cruxcoach.android.data.kilter
 
+import android.content.Context
 import android.util.Log
+import com.cruxcoach.android.R
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.BoardSize
 import com.cruxcoach.domain.community.ClimbEditorState
+import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.first
@@ -28,6 +31,7 @@ import kotlinx.coroutines.flow.first
  */
 @Singleton
 class KilterClimbPublisher @Inject constructor(
+    @ApplicationContext private val appContext: Context,
     private val apiClient: KilterApiClient,
     private val tokenStore: KilterTokenStore,
     private val userPreferences: UserPreferences,
@@ -136,11 +140,11 @@ class KilterClimbPublisher @Inject constructor(
             is KilterPublishResult.NotAuthenticated -> {
                 Log.i(TAG, "$op via=self: token expired mid-call; deferring to retry worker")
                 boardRepository.markKilterPublishFailed(uuid, "token expired")
-                Outcome.Failed("Kilter-Sitzung abgelaufen — wird später wiederholt")
+                Outcome.Failed(appContext.getString(R.string.kilter_publish_session_expired))
             }
             is KilterPublishResult.TransientError -> {
                 boardRepository.markKilterPublishFailed(uuid, "transient: ${r.message}")
-                Outcome.Failed("Übertragung fehlgeschlagen — Versuch wird wiederholt")
+                Outcome.Failed(appContext.getString(R.string.kilter_publish_transient))
             }
             is KilterPublishResult.PermanentError -> {
                 // For UPDATE on an already-published row a 4xx most likely
@@ -152,13 +156,17 @@ class KilterClimbPublisher @Inject constructor(
                         uuid,
                         "http=${r.httpCode}: ${r.message.take(200)}",
                     )
-                    Outcome.Diverged("Kilter erlaubt keine Änderung am bereits veröffentlichten Climb (${r.httpCode})")
+                    Outcome.Diverged(
+                        appContext.getString(R.string.kilter_publish_diverged_with_code, r.httpCode),
+                    )
                 } else {
                     boardRepository.markKilterPublishFailed(
                         uuid,
                         "http=${r.httpCode}: ${r.message.take(200)}",
                     )
-                    Outcome.Failed("Kilter hat den Climb abgelehnt (${r.httpCode})")
+                    Outcome.Failed(
+                        appContext.getString(R.string.kilter_publish_rejected_with_code, r.httpCode),
+                    )
                 }
             }
         }

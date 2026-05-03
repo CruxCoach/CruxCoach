@@ -53,6 +53,18 @@
     <string name="climb_creator_autosave_offer_message" formatted="false">Ungespeicherte Änderungen %s.</string>
     <string name="climb_creator_autosave_offer_restore">Wiederherstellen</string>
     <string name="climb_creator_autosave_offer_discard">Verwerfen</string>
+
+    <!-- Relative-time labels (Climb Creator + Drafts drawer) -->
+    <string name="relative_time_just_now">gerade eben</string>
+    <string name="relative_time_minutes_ago" formatted="false">vor %1$d min</string>
+    <string name="relative_time_hours_ago" formatted="false">vor %1$d h</string>
+    <string name="relative_time_days_ago" formatted="false">vor %1$d t</string>
+    <string name="climb_creator_save_failed">Entwurf konnte nicht gespeichert werden. Bitte versuche es erneut.</string>
+    <string name="climb_creator_publish_failed">Veröffentlichen fehlgeschlagen. Bitte versuche es erneut.</string>
+    <string name="kilter_publish_session_expired">Kilter-Sitzung abgelaufen — wird später wiederholt.</string>
+    <string name="kilter_publish_transient">Übertragung fehlgeschlagen — Versuch wird wiederholt.</string>
+    <string name="kilter_publish_diverged_with_code" formatted="false">Kilter erlaubt keine Änderung am bereits veröffentlichten Climb (%1$d).</string>
+    <string name="kilter_publish_rejected_with_code" formatted="false">Kilter hat den Climb abgelehnt (%1$d).</string>
     <string name="climb_creator_remix_action">Climb remixen</string>
     <string name="climb_creator_kilter_connect_nudge">Climb veröffentlicht (nur CruxCoach) — verbinde Kilter, damit er auch in der Kilter-App erscheint.</string>
     <string name="climb_creator_kilter_connect_action">Verbinden</string>
@@ -76,6 +88,8 @@
     <string name="nostr_profile_picture_hint">Optional. Direkter Bild-Link — aktuell wird nur dein Anzeigename gerendert.</string>
     <string name="nostr_profile_save">Profil speichern</string>
     <string name="nostr_profile_saving">Wird gespeichert…</string>
+    <string name="nostr_profile_saved_toast">Profil gespeichert</string>
+    <string name="nostr_profile_save_failed">Konnte Profil nicht senden. Versuche es nochmal.</string>
     <string name="nostr_profile_import_from_kilter">Kilter-Username übernehmen</string>
     <string name="nostr_profile_kilter_divergence_hint">Dein Kilter-Username (\"%1$s\") bleibt in der Kilter-App unverändert. Dieses Profil gilt nur für CruxCoach + Nostr.</string>
 

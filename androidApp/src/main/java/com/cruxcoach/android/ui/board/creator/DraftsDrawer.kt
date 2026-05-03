@@ -155,7 +155,7 @@ private fun DraftRow(
                     if (createdAt != null) {
                         AssistChip(
                             onClick = onSelect,
-                            label = { Text(formatRelative(createdAt)) },
+                            label = { Text(relativeTimeLabel(createdAt)) },
                             colors = AssistChipDefaults.assistChipColors(),
                         )
                     }
@@ -171,20 +171,3 @@ private fun DraftRow(
     }
 }
 
-/** Best-effort relative timestamp ("vor 2 h" / "gestern" / ISO date fallback). */
-private fun formatRelative(iso: String): String {
-    return try {
-        val instant = java.time.Instant.parse(iso)
-        val now = java.time.Instant.now()
-        val seconds = java.time.Duration.between(instant, now).seconds
-        when {
-            seconds < 60 -> "gerade eben"
-            seconds < 3600 -> "vor ${seconds / 60} min"
-            seconds < 86400 -> "vor ${seconds / 3600} h"
-            seconds < 7 * 86400 -> "vor ${seconds / 86400} t"
-            else -> instant.toString().take(10)
-        }
-    } catch (_: Exception) {
-        iso.take(10)
-    }
-}

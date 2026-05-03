@@ -1,13 +1,16 @@
 package com.cruxcoach.android.ui.settings
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.cruxcoach.android.R
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.data.kilter.KilterTokenStore
 import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.android.payment.NostrProfileManager
 import com.cruxcoach.data.repository.BoardRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -47,6 +50,7 @@ data class NostrProfileEditState(
 
 @HiltViewModel
 class NostrProfileViewModel @Inject constructor(
+    @ApplicationContext private val appContext: Context,
     private val nostrProfileManager: NostrProfileManager,
     private val nostrSigner: NostrSigner,
     private val kilterTokenStore: KilterTokenStore,
@@ -131,7 +135,12 @@ class NostrProfileViewModel @Inject constructor(
                 about = s.about.trim(),
             )
             if (result == null) {
-                _state.update { it.copy(isSaving = false, errorMessage = "Konnte Profil nicht senden. Versuche es nochmal.") }
+                _state.update {
+                    it.copy(
+                        isSaving = false,
+                        errorMessage = appContext.getString(R.string.nostr_profile_save_failed),
+                    )
+                }
                 return@launch
             }
             // Propagate the new display_name to the user's own community

@@ -53,6 +53,18 @@
     <string name="climb_creator_autosave_offer_message" formatted="false">Unsaved edits from %s.</string>
     <string name="climb_creator_autosave_offer_restore">Restore</string>
     <string name="climb_creator_autosave_offer_discard">Discard</string>
+
+    <!-- Relative-time labels (Climb Creator + Drafts drawer) -->
+    <string name="relative_time_just_now">Just now</string>
+    <string name="relative_time_minutes_ago" formatted="false">%1$d min ago</string>
+    <string name="relative_time_hours_ago" formatted="false">%1$d h ago</string>
+    <string name="relative_time_days_ago" formatted="false">%1$d d ago</string>
+    <string name="climb_creator_save_failed">Couldn\'t save the draft. Please try again.</string>
+    <string name="climb_creator_publish_failed">Couldn\'t publish. Please try again.</string>
+    <string name="kilter_publish_session_expired">Your Kilter session expired — we\'ll retry later.</string>
+    <string name="kilter_publish_transient">Couldn\'t reach Kilter — we\'ll retry shortly.</string>
+    <string name="kilter_publish_diverged_with_code" formatted="false">Kilter doesn\'t allow editing this already-published climb (%1$d).</string>
+    <string name="kilter_publish_rejected_with_code" formatted="false">Kilter rejected the climb (%1$d).</string>
     <string name="climb_creator_remix_action">Remix this climb</string>
     <string name="climb_creator_kilter_connect_nudge">Climb published (CruxCoach only) — connect Kilter so it also appears in the Kilter app.</string>
     <string name="climb_creator_kilter_connect_action">Connect</string>
@@ -76,6 +88,8 @@
     <string name="nostr_profile_picture_hint">Optional. Direct image URL — currently only your display name is rendered.</string>
     <string name="nostr_profile_save">Save profile</string>
     <string name="nostr_profile_saving">Saving…</string>
+    <string name="nostr_profile_saved_toast">Profile saved</string>
+    <string name="nostr_profile_save_failed">Could not publish your profile. Please try again.</string>
     <string name="nostr_profile_import_from_kilter">Use my Kilter username</string>
     <string name="nostr_profile_kilter_divergence_hint">Your Kilter username (\"%1$s\") stays unchanged on the Kilter app. This profile applies only to CruxCoach + Nostr.</string>
 

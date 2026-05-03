@@ -87,6 +87,7 @@ data class ClimbEditorUiState(
 
 @HiltViewModel
 class ClimbEditorViewModel @Inject constructor(
+    @dagger.hilt.android.qualifiers.ApplicationContext private val appContext: android.content.Context,
     private val repository: ClimbCreatorRepository,
     private val boardRepository: BoardRepository,
     private val userPreferences: UserPreferences,
@@ -346,7 +347,9 @@ class ClimbEditorViewModel @Inject constructor(
                 onSaved(uuid)
             } catch (e: Exception) {
                 Log.w(TAG, "saveDraft failed", e)
-                _state.update { it.copy(errorMessage = e.message ?: "Save failed") }
+                _state.update {
+                    it.copy(errorMessage = appContext.getString(com.cruxcoach.android.R.string.climb_creator_save_failed))
+                }
             }
         }
     }
@@ -454,7 +457,12 @@ class ClimbEditorViewModel @Inject constructor(
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "publish failed", e)
-                _state.update { it.copy(isPublishing = false, errorMessage = e.message ?: "Publish failed") }
+                _state.update {
+                    it.copy(
+                        isPublishing = false,
+                        errorMessage = appContext.getString(com.cruxcoach.android.R.string.climb_creator_publish_failed),
+                    )
+                }
                 return@launch
             }
             autosave.clear()

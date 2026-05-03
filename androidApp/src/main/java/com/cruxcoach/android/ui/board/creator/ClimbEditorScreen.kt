@@ -367,17 +367,8 @@ private fun AutosaveRestoreBanner(
                     stringResource(R.string.climb_creator_autosave_offer_title),
                     style = MaterialTheme.typography.titleSmall,
                 )
-                val rel = remember(savedAtEpochMs) {
-                    val seconds = (System.currentTimeMillis() - savedAtEpochMs) / 1000L
-                    when {
-                        seconds < 60 -> "gerade eben"
-                        seconds < 3600 -> "vor ${seconds / 60} min"
-                        seconds < 86400 -> "vor ${seconds / 3600} h"
-                        else -> "vor ${seconds / 86400} t"
-                    }
-                }
                 Text(
-                    stringResource(R.string.climb_creator_autosave_offer_message, rel),
+                    stringResource(R.string.climb_creator_autosave_offer_message, relativeTimeLabel(savedAtEpochMs)),
                     style = MaterialTheme.typography.bodySmall,
                 )
             }

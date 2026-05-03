@@ -50,11 +50,10 @@ fun NostrProfileScreen(
     val state by viewModel.state.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
+    val savedToast = stringResource(R.string.nostr_profile_saved_toast)
     LaunchedEffect(state.justSaved) {
         if (state.justSaved) {
-            snackbarHostState.showSnackbar(
-                message = "Profil gespeichert",
-            )
+            snackbarHostState.showSnackbar(message = savedToast)
         }
     }
     LaunchedEffect(state.errorMessage) {
