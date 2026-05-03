@@ -61,6 +61,9 @@
     <string name="relative_time_days_ago" formatted="false">%1$d d ago</string>
     <string name="climb_creator_save_failed">Couldn\'t save the draft. Please try again.</string>
     <string name="climb_creator_publish_failed">Couldn\'t publish. Please try again.</string>
+    <string name="climb_creator_drafts_load_failed">Couldn\'t load your drafts. Please try again.</string>
+    <string name="climb_creator_drafts_delete_failed">Couldn\'t delete the draft. Please try again.</string>
+    <string name="climb_creator_load_failed">Couldn\'t open the editor. Please try again.</string>
     <string name="kilter_publish_session_expired">Your Kilter session expired — we\'ll retry later.</string>
     <string name="kilter_publish_transient">Couldn\'t reach Kilter — we\'ll retry shortly.</string>
     <string name="kilter_publish_diverged_with_code" formatted="false">Kilter doesn\'t allow editing this already-published climb (%1$d).</string>

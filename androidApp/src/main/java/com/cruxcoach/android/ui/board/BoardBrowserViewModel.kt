@@ -171,38 +171,49 @@ class BoardBrowserViewModel @Inject constructor(
     init {
         PerfLogger.milestone("BoardBrowserVM.init START")
         viewModelScope.launch {
-            // Single DataStore read instead of 10 sequential .first() calls
-            val snap = PerfLogger.traceSuspend("BoardBrowserVM.prefs (batch)") {
-                userPreferences.getBoardFilterSnapshot()
-            }
-            val sortField = try { ClimbSortField.valueOf(snap.sortField) } catch (_: Exception) { ClimbSortField.ASCENSIONISTS }
-            val sortDir = try { SortDirection.valueOf(snap.sortDirection) } catch (_: Exception) { SortDirection.DESC }
-            val statusFilter = try { ClimbStatusFilter.valueOf(snap.statusFilter) } catch (_: Exception) { ClimbStatusFilter.ALL }
-            val climbType = try { ClimbTypeFilter.valueOf(snap.climbType) } catch (_: Exception) { ClimbTypeFilter.BOULDER }
-            PerfLogger.milestone("BoardBrowserVM prefs loaded (batch)")
-
-            _state.update { it.copy(
-                gradeScale = snap.gradeScale,
-                filter = it.filter.copy(
-                    angle = snap.angle, layoutId = snap.layoutId,
-                    minGradeIndex = snap.minGrade, maxGradeIndex = snap.maxGrade,
-                    minAscensionists = snap.minAscensionists, sortField = sortField, sortDirection = sortDir,
-                    statusFilter = statusFilter, climbTypeFilter = climbType,
-                    benchmarkOnly = snap.benchmarkOnly
-                )
-            ) }
-            filtersLoaded = true
-            PerfLogger.milestone("BoardBrowserVM filters applied, calling refreshBoardData")
-            refreshBoardData()
-            // Eagerly load status UUIDs in background (non-blocking)
-            launch(Dispatchers.IO) {
-                PerfLogger.traceSuspend("ensureStatusLoaded") { ensureStatusLoaded() }
-            }
-            // Live updates for grade scale changes
-            launch {
-                userPreferences.gradeScale.collect { s ->
-                    _state.update { it.copy(gradeScale = s) }
+            // Without try/catch a DataStore read failure would leave
+            // isLoading=true forever (the spinner never resolves and
+            // refreshBoardData is never called). Catch + log + flip
+            // isLoading=false so the BoardBrowser at least shows an
+            // empty list instead of an indefinite spinner; the user
+            // can pull-to-refresh to retry.
+            try {
+                // Single DataStore read instead of 10 sequential .first() calls
+                val snap = PerfLogger.traceSuspend("BoardBrowserVM.prefs (batch)") {
+                    userPreferences.getBoardFilterSnapshot()
                 }
+                val sortField = try { ClimbSortField.valueOf(snap.sortField) } catch (_: Exception) { ClimbSortField.ASCENSIONISTS }
+                val sortDir = try { SortDirection.valueOf(snap.sortDirection) } catch (_: Exception) { SortDirection.DESC }
+                val statusFilter = try { ClimbStatusFilter.valueOf(snap.statusFilter) } catch (_: Exception) { ClimbStatusFilter.ALL }
+                val climbType = try { ClimbTypeFilter.valueOf(snap.climbType) } catch (_: Exception) { ClimbTypeFilter.BOULDER }
+                PerfLogger.milestone("BoardBrowserVM prefs loaded (batch)")
+
+                _state.update { it.copy(
+                    gradeScale = snap.gradeScale,
+                    filter = it.filter.copy(
+                        angle = snap.angle, layoutId = snap.layoutId,
+                        minGradeIndex = snap.minGrade, maxGradeIndex = snap.maxGrade,
+                        minAscensionists = snap.minAscensionists, sortField = sortField, sortDirection = sortDir,
+                        statusFilter = statusFilter, climbTypeFilter = climbType,
+                        benchmarkOnly = snap.benchmarkOnly
+                    )
+                ) }
+                filtersLoaded = true
+                PerfLogger.milestone("BoardBrowserVM filters applied, calling refreshBoardData")
+                refreshBoardData()
+                // Eagerly load status UUIDs in background (non-blocking)
+                launch(Dispatchers.IO) {
+                    PerfLogger.traceSuspend("ensureStatusLoaded") { ensureStatusLoaded() }
+                }
+                // Live updates for grade scale changes
+                launch {
+                    userPreferences.gradeScale.collect { s ->
+                        _state.update { it.copy(gradeScale = s) }
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("BoardBrowserVM", "init failed; rendering empty list", e)
+                _state.update { it.copy(isLoading = false) }
             }
         }
         // Combine peripheral state into a single atomic update.

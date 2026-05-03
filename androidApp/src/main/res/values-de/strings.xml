@@ -61,6 +61,9 @@
     <string name="relative_time_days_ago" formatted="false">vor %1$d t</string>
     <string name="climb_creator_save_failed">Entwurf konnte nicht gespeichert werden. Bitte versuche es erneut.</string>
     <string name="climb_creator_publish_failed">Veröffentlichen fehlgeschlagen. Bitte versuche es erneut.</string>
+    <string name="climb_creator_drafts_load_failed">Entwürfe konnten nicht geladen werden. Bitte versuche es erneut.</string>
+    <string name="climb_creator_drafts_delete_failed">Entwurf konnte nicht gelöscht werden. Bitte versuche es erneut.</string>
+    <string name="climb_creator_load_failed">Editor konnte nicht geöffnet werden. Bitte versuche es erneut.</string>
     <string name="kilter_publish_session_expired">Kilter-Sitzung abgelaufen — wird später wiederholt.</string>
     <string name="kilter_publish_transient">Übertragung fehlgeschlagen — Versuch wird wiederholt.</string>
     <string name="kilter_publish_diverged_with_code" formatted="false">Kilter erlaubt keine Änderung am bereits veröffentlichten Climb (%1$d).</string>

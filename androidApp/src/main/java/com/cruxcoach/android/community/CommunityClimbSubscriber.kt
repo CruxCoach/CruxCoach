@@ -74,7 +74,13 @@ class CommunityClimbSubscriber @Inject constructor(
             // prefs + connect; not strictly required, just avoids racing
             // the very first connection-open.
             delay(STARTUP_GRACE_MS)
-            seedCursorFromManifestIfFirstRun()
+            // seedCursor is best-effort: if the prefs/manifest read throws
+            // (DataStore I/O, corrupted prefs) we'd lose the live sub for
+            // the rest of the session. Catch + log + fall through to
+            // runSubscriptionLoop so the worst case is "we re-sync 24h of
+            // events" instead of "subscription never starts".
+            runCatching { seedCursorFromManifestIfFirstRun() }
+                .onFailure { Log.w(TAG, "seedCursorFromManifestIfFirstRun failed; continuing without seed", it) }
             runSubscriptionLoop()
         }
     }
@@ -165,7 +171,9 @@ class CommunityClimbSubscriber @Inject constructor(
         // (`sync_status='published_nostr'` flips to 'synced'). For other
         // users' events this isn't a problem — their cruxcoach metadata
         // never existed locally.
-        val ownPubkey = runCatching { nostrSigner.getPublicKeyHex() }.getOrNull()
+        val ownPubkey = runCatching { nostrSigner.getPublicKeyHex() }
+            .onFailure { Log.w(TAG, "own pubkey resolve failed — self-filter disabled this event", it) }
+            .getOrNull()
         if (ownPubkey != null && parsedClimb.pubkey == ownPubkey) {
             Log.d(TAG, "skip own event uuid=${parsedClimb.uuid}")
             return

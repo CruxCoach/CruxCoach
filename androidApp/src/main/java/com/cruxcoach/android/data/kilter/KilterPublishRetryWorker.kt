@@ -80,8 +80,15 @@ class KilterPublishRetryWorker @AssistedInject constructor(
         var ok = 0
         var transient = 0
         var permanent = 0
+        var rowErrors = 0
         for (row in rows) {
             attempted++
+            // Per-row try/catch: a single throw (parseFrames on corrupted
+            // hex, SQLite lock during a mark-* call, OkHttp socket-close)
+            // must not abort the rest of the batch — the next 6-hour tick
+            // would otherwise be the soonest any other queued row gets
+            // retried.
+            try {
             val climbConcat = BoardClimbParser.encodeClimbConcat(
                 BoardClimbParser.parseFrames(row.framesText)
             )
@@ -163,9 +170,20 @@ class KilterPublishRetryWorker @AssistedInject constructor(
                     }
                 }
             }
+            } catch (e: Exception) {
+                rowErrors++
+                Log.w(TAG, "row threw uuid=${row.uuid}; continuing batch", e)
+                runCatching {
+                    boardRepository.markKilterPublishFailed(row.uuid, "row threw: ${e.message?.take(200)}")
+                }
+            }
         }
 
-        Log.i(TAG, "retry batch done — attempted=$attempted ok=$ok transient=$transient permanent=$permanent")
+        Log.i(
+            TAG,
+            "retry batch done — attempted=$attempted ok=$ok transient=$transient " +
+                "permanent=$permanent rowErrors=$rowErrors",
+        )
         // If everything was transient, ask WorkManager to retry the batch
         // sooner than the next scheduled tick (still subject to backoff).
         return if (transient > 0 && transient == attempted) {

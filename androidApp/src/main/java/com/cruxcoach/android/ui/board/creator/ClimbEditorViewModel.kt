@@ -112,8 +112,23 @@ class ClimbEditorViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            loadBoardData()
-            handleNavigationArgs()
+            // Without try/catch here a SQLite/DataStore read failure would
+            // leave isLoading=true forever and the screen would show an
+            // indefinite spinner. Flip isLoading=false + surface a generic
+            // error so the user sees a Snackbar and can retry by reopening
+            // the editor instead of being stuck.
+            try {
+                loadBoardData()
+                handleNavigationArgs()
+            } catch (e: Exception) {
+                Log.w(TAG, "ClimbEditor init load failed", e)
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        errorMessage = appContext.getString(com.cruxcoach.android.R.string.climb_creator_load_failed),
+                    )
+                }
+            }
         }
         viewModelScope.launch {
             userPreferences.ledHoldColors.collect { colors ->
@@ -125,8 +140,11 @@ class ClimbEditorViewModel @Inject constructor(
         // per-session override; they only matter the next time the
         // editor opens.
         viewModelScope.launch {
-            val initial = userPreferences.autoNoteEnabled.first()
-            _state.update { it.copy(alsoPostNote = initial) }
+            runCatching { userPreferences.autoNoteEnabled.first() }
+                .onFailure { Log.w(TAG, "autoNoteEnabled read failed; default=false", it) }
+                .getOrNull()?.let { initial ->
+                    _state.update { it.copy(alsoPostNote = initial) }
+                }
         }
     }
 
@@ -497,8 +515,15 @@ class ClimbEditorViewModel @Inject constructor(
 
     fun openDraftsSheet() {
         viewModelScope.launch {
-            val drafts = withContext(Dispatchers.IO) { boardRepository.getDraftClimbs() }
-            _state.update { it.copy(drafts = drafts, draftsSheetOpen = true) }
+            try {
+                val drafts = withContext(Dispatchers.IO) { boardRepository.getDraftClimbs() }
+                _state.update { it.copy(drafts = drafts, draftsSheetOpen = true) }
+            } catch (e: Exception) {
+                Log.w(TAG, "openDraftsSheet failed", e)
+                _state.update {
+                    it.copy(errorMessage = appContext.getString(com.cruxcoach.android.R.string.climb_creator_drafts_load_failed))
+                }
+            }
         }
     }
 
@@ -519,40 +544,54 @@ class ClimbEditorViewModel @Inject constructor(
      */
     fun loadDraft(draft: CommunityClimbRow) {
         viewModelScope.launch {
-            val holds = com.cruxcoach.domain.board.BoardClimbParser.parseFrames(draft.framesText)
-                .associate { it.placementId to it.roleId }
-            val stats = withContext(Dispatchers.IO) { boardRepository.getClimbStatsForUuid(draft.uuid) }
-            val currentAngle = _state.value.editor.angle
-            val seeded = ClimbEditorState(
-                selectedHolds = holds,
-                name = draft.name,
-                description = draft.description,
-                angle = stats?.first ?: currentAngle,
-                setterGradeId = stats?.second,
-            )
-            // Reset undo stacks — we're starting from a fresh draft snapshot.
-            undoStack.clear(); redoStack.clear()
-            _state.update {
-                it.copy(
-                    editor = seeded,
-                    loadedDraftUuid = draft.uuid,
-                    draftsSheetOpen = false,
-                    canUndo = false,
-                    canRedo = false,
+            try {
+                val holds = com.cruxcoach.domain.board.BoardClimbParser.parseFrames(draft.framesText)
+                    .associate { it.placementId to it.roleId }
+                val stats = withContext(Dispatchers.IO) { boardRepository.getClimbStatsForUuid(draft.uuid) }
+                val currentAngle = _state.value.editor.angle
+                val seeded = ClimbEditorState(
+                    selectedHolds = holds,
+                    name = draft.name,
+                    description = draft.description,
+                    angle = stats?.first ?: currentAngle,
+                    setterGradeId = stats?.second,
                 )
+                // Reset undo stacks — we're starting from a fresh draft snapshot.
+                undoStack.clear(); redoStack.clear()
+                _state.update {
+                    it.copy(
+                        editor = seeded,
+                        loadedDraftUuid = draft.uuid,
+                        draftsSheetOpen = false,
+                        canUndo = false,
+                        canRedo = false,
+                    )
+                }
+                syncLeds()
+            } catch (e: Exception) {
+                Log.w(TAG, "loadDraft failed for uuid=${draft.uuid}", e)
+                _state.update {
+                    it.copy(errorMessage = appContext.getString(com.cruxcoach.android.R.string.climb_creator_drafts_load_failed))
+                }
             }
-            syncLeds()
         }
     }
 
     fun deleteDraft(uuid: String) {
         viewModelScope.launch(Dispatchers.IO) {
-            boardRepository.deleteLocalClimb(uuid)
-            // Refresh the drawer's list.
-            val drafts = boardRepository.getDraftClimbs()
-            _state.update { s ->
-                val resetLoaded = if (s.loadedDraftUuid == uuid) null else s.loadedDraftUuid
-                s.copy(drafts = drafts, loadedDraftUuid = resetLoaded)
+            try {
+                boardRepository.deleteLocalClimb(uuid)
+                // Refresh the drawer's list.
+                val drafts = boardRepository.getDraftClimbs()
+                _state.update { s ->
+                    val resetLoaded = if (s.loadedDraftUuid == uuid) null else s.loadedDraftUuid
+                    s.copy(drafts = drafts, loadedDraftUuid = resetLoaded)
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "deleteDraft failed for uuid=$uuid", e)
+                _state.update {
+                    it.copy(errorMessage = appContext.getString(com.cruxcoach.android.R.string.climb_creator_drafts_delete_failed))
+                }
             }
         }
     }
