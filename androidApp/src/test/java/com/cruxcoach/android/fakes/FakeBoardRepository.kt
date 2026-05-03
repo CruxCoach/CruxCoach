@@ -1,5 +1,6 @@
 package com.cruxcoach.android.fakes
 
+import com.cruxcoach.android.ui.board.boardBrowserSortInKotlin
 import com.cruxcoach.data.repository.AngleClimbCount
 import com.cruxcoach.data.repository.AngleOption
 import com.cruxcoach.data.repository.ClimbWithStats
@@ -12,6 +13,14 @@ import com.cruxcoach.data.repository.ClimbSortField
 import com.cruxcoach.data.repository.ClimbTypeFilter
 import com.cruxcoach.data.repository.LedGridPoint
 import com.cruxcoach.data.repository.SortDirection
+
+/** Mirrors the production SQL `framesCount` predicate for ClimbTypeFilter:
+ *  BOULDER = single frame, ROUTE = multi-frame, ALL = both. */
+private fun ClimbWithStats.matchesClimbType(filter: ClimbTypeFilter): Boolean = when (filter) {
+    ClimbTypeFilter.BOULDER -> framesCount == 1L
+    ClimbTypeFilter.ROUTE -> framesCount > 1L
+    ClimbTypeFilter.ALL -> true
+}
 
 /**
  * In-memory fake of [BoardRepository] for ViewModel unit tests.
@@ -40,10 +49,12 @@ class FakeBoardRepository : BoardRepository {
         climbType: ClimbTypeFilter
     ): List<ClimbWithStats> {
         val filtered = climbs.filter {
-            it.name.contains(query, ignoreCase = true) ||
-                it.setterUsername?.contains(query, ignoreCase = true) == true
+            (it.name.contains(query, ignoreCase = true) ||
+                it.setterUsername?.contains(query, ignoreCase = true) == true) &&
+                it.matchesClimbType(climbType)
         }
-        return filtered.drop(offset).take(limit)
+        val sorted = boardBrowserSortInKotlin(filtered, sortField, sortDirection)
+        return sorted.drop(offset).take(limit)
     }
 
     override fun searchClimbsSorted(
@@ -55,9 +66,14 @@ class FakeBoardRepository : BoardRepository {
         val filtered = climbs.filter { climb ->
             val diff = climb.difficultyAverage ?: return@filter false
             diff in minDifficulty..maxDifficulty &&
-                (climb.ascensionistCount ?: 0) >= minAscensionists
+                (climb.ascensionistCount ?: 0) >= minAscensionists &&
+                climb.matchesClimbType(climbType)
         }
-        return filtered.drop(offset).take(limit)
+        // Mirror production SQL `ORDER BY <sortField> <sortDirection>`.
+        // The fake previously returned insertion order, which silently
+        // hid bugs in pagination + sort-direction handling.
+        val sorted = boardBrowserSortInKotlin(filtered, sortField, sortDirection)
+        return sorted.drop(offset).take(limit)
     }
 
     override fun getClimbByUuid(uuid: String, angle: Int): ClimbWithStats? {
@@ -79,7 +95,8 @@ class FakeBoardRepository : BoardRepository {
         return climbs.count { climb ->
             val diff = climb.difficultyAverage ?: return@count false
             diff in minDifficulty..maxDifficulty &&
-                (climb.ascensionistCount ?: 0) >= minAscensionists
+                (climb.ascensionistCount ?: 0) >= minAscensionists &&
+                climb.matchesClimbType(climbType)
         }.toLong()
     }
 
@@ -101,14 +118,16 @@ class FakeBoardRepository : BoardRepository {
             val diff = climb.difficultyAverage ?: return@count false
             diff in minDifficulty..maxDifficulty &&
                 (climb.ascensionistCount ?: 0) >= minAscensionists &&
-                climb.benchmarkDifficulty > 0.0
+                climb.benchmarkDifficulty > 0.0 &&
+                climb.matchesClimbType(climbType)
         }.toLong()
     }
 
     override fun countSearchClimbs(query: String, angle: Int, layoutId: Int, climbType: ClimbTypeFilter): Long {
         return climbs.count {
-            it.name.contains(query, ignoreCase = true) ||
-                it.setterUsername?.contains(query, ignoreCase = true) == true
+            (it.name.contains(query, ignoreCase = true) ||
+                it.setterUsername?.contains(query, ignoreCase = true) == true) &&
+                it.matchesClimbType(climbType)
         }.toLong()
     }
 
@@ -116,7 +135,8 @@ class FakeBoardRepository : BoardRepository {
         return climbs.count {
             (it.name.contains(query, ignoreCase = true) ||
                 it.setterUsername?.contains(query, ignoreCase = true) == true) &&
-                it.benchmarkDifficulty > 0.0
+                it.benchmarkDifficulty > 0.0 &&
+                it.matchesClimbType(climbType)
         }.toLong()
     }
 
@@ -133,7 +153,18 @@ class FakeBoardRepository : BoardRepository {
         uuids: Collection<String>, angle: Int, layoutId: Int, minDifficulty: Double,
         maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter
     ): List<ClimbWithStats> {
-        return climbs.filter { it.uuid in uuids }
+        // Mirror the production SQL — narrows the uuid set by the same
+        // difficulty/ascensionist/climbType predicates that the browser
+        // applies elsewhere. Pre-fix the fake silently returned every
+        // climb whose uuid matched, masking out-of-range bugs the
+        // SENT/ATTEMPTED browser filters would catch in production.
+        return climbs.filter { climb ->
+            if (climb.uuid !in uuids) return@filter false
+            val diff = climb.difficultyAverage
+            (diff == null || diff in minDifficulty..maxDifficulty) &&
+                (climb.ascensionistCount ?: 0) >= minAscensionists &&
+                climb.matchesClimbType(climbType)
+        }
     }
 
     override fun getClimbsByUuids(uuids: Collection<String>, angle: Int): List<ClimbWithStats> {

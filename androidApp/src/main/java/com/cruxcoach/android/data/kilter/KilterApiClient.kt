@@ -575,24 +575,38 @@ class KilterApiClient @Inject constructor(
      * Extract claims from a JWT by base64-decoding the payload segment.
      * No signature verification needed — we trust the Keycloak server response.
      */
-    private fun parseJwtClaims(jwt: String): Map<String, String> {
-        return try {
-            val parts = jwt.split(".")
-            if (parts.size != 3) return emptyMap()
-            val payload = String(
-                android.util.Base64.decode(parts[1], android.util.Base64.URL_SAFE or android.util.Base64.NO_PADDING),
-                Charsets.UTF_8
-            )
-            val element = json.parseToJsonElement(payload)
-            element.let { el ->
-                val obj = el as? kotlinx.serialization.json.JsonObject ?: return emptyMap()
-                obj.entries.associate { (k, v) ->
-                    k to (v as? kotlinx.serialization.json.JsonPrimitive)?.content.orEmpty()
-                }
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "JWT parse failed", e)
-            emptyMap()
-        }
+    private fun parseJwtClaims(jwt: String): Map<String, String> = try {
+        parseJwtClaimsPure(jwt, json)
+    } catch (e: Exception) {
+        Log.w(TAG, "JWT parse failed", e)
+        emptyMap()
+    }
+}
+
+/**
+ * Pure JWT-claims parser, extracted from [KilterApiClient.parseJwtClaims]
+ * so JVM unit tests can exercise it without an Android-stub Base64. Uses
+ * [java.util.Base64] (URL-safe decoder, padding-tolerant per the Java
+ * spec) which is available on the project's minSdk 26.
+ *
+ * Returns an empty map for any malformed input — unchanged behavior from
+ * the wrapping `parseJwtClaims`. Throws on `IllegalArgumentException`
+ * from Base64 / kotlinx.serialization so callers can decide what to do
+ * (the in-class wrapper catches + logs).
+ */
+internal fun parseJwtClaimsPure(
+    jwt: String,
+    json: kotlinx.serialization.json.Json,
+): Map<String, String> {
+    val parts = jwt.split(".")
+    if (parts.size != 3) return emptyMap()
+    val payload = String(
+        java.util.Base64.getUrlDecoder().decode(parts[1]),
+        Charsets.UTF_8,
+    )
+    val element = json.parseToJsonElement(payload)
+    val obj = element as? kotlinx.serialization.json.JsonObject ?: return emptyMap()
+    return obj.entries.associate { (k, v) ->
+        k to (v as? kotlinx.serialization.json.JsonPrimitive)?.content.orEmpty()
     }
 }

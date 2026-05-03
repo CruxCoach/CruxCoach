@@ -108,4 +108,78 @@ class NostrCommunityClimbTest {
         val theirs = buildCommunityClimbEvent(theirsPubkey, 1L, uuid, 1L, "12x12", state)
         assertNotEquals(mine.dTag, theirs.dTag)
     }
+
+    // ── jsonString escape coverage (testing/edge-cases/001) ───────────
+    // The hand-rolled escaper at NostrCommunityClimb.jsonString handles
+    // 7 paths: " \ \n \r \t \b \f and control chars below 0x20. The
+    // earlier "Description with \"quotes\"" assertion only exercised the
+    // first one. A regression in any other branch (e.g. missing escape
+    // for backslash, or off-by-one on the \uXXXX padding) would silently
+    // break re-publish identity — relays content-hash the event and a
+    // single-byte content drift produces a duplicate instead of an edit.
+
+    @Test
+    fun content_escapes_backslash_in_description() {
+        val ev = buildCommunityClimbEvent(
+            pubkey = pubkey, createdAt = 1714000000L, uuid = uuid,
+            layoutId = 1L, sizeLabel = "12x12",
+            state = state.copy(description = "C:\\path\\to\\route"),
+        )
+        assertTrue(
+            ev.content.contains("\"description\":\"C:\\\\path\\\\to\\\\route\""),
+            "expected backslash to render as \\\\ in content: ${ev.content}",
+        )
+    }
+
+    @Test
+    fun content_escapes_newline_carriage_return_and_tab() {
+        val ev = buildCommunityClimbEvent(
+            pubkey = pubkey, createdAt = 1714000000L, uuid = uuid,
+            layoutId = 1L, sizeLabel = "12x12",
+            state = state.copy(description = "line1\nline2\rline3\tcol"),
+        )
+        // Each control whitespace must surface as a JSON escape sequence,
+        // not as the literal byte (which would invalidate the content
+        // string).
+        assertTrue(ev.content.contains("\"description\":\"line1\\nline2\\rline3\\tcol\""),
+            "expected \\n \\r \\t escapes in content: ${ev.content}")
+    }
+
+    @Test
+    fun content_escapes_backspace_and_form_feed() {
+        val ev = buildCommunityClimbEvent(
+            pubkey = pubkey, createdAt = 1714000000L, uuid = uuid,
+            layoutId = 1L, sizeLabel = "12x12",
+            state = state.copy(description = "x\bzzy"),
+        )
+        assertTrue(ev.content.contains("\"description\":\"x\\bzz\\fy\""),
+            "expected \\b and \\f escapes in content: ${ev.content}")
+    }
+
+    @Test
+    fun content_emits_unicode_escape_for_control_chars_below_0x20() {
+        // Pick a control char that has no dedicated short escape: 0x01.
+        val ev = buildCommunityClimbEvent(
+            pubkey = pubkey, createdAt = 1714000000L, uuid = uuid,
+            layoutId = 1L, sizeLabel = "12x12",
+            state = state.copy(description = "ab"),
+        )
+        assertTrue(
+            ev.content.contains("\"description\":\"a\\u0001b\""),
+            "expected \\u0001 escape (lowercase, 4-digit, padded) in content: ${ev.content}",
+        )
+    }
+
+    @Test
+    fun content_escapes_apply_to_name_field_too() {
+        // jsonString is shared between name and description; catching a
+        // regression that only updated one of the two callsites.
+        val ev = buildCommunityClimbEvent(
+            pubkey = pubkey, createdAt = 1714000000L, uuid = uuid,
+            layoutId = 1L, sizeLabel = "12x12",
+            state = state.copy(name = "Slab\nProject", description = ""),
+        )
+        assertTrue(ev.content.contains("\"name\":\"Slab\\nProject\""),
+            "name field should also be JSON-escaped: ${ev.content}")
+    }
 }
