@@ -195,6 +195,14 @@ SELECT 1 FROM climbs WHERE uuid = ? LIMIT 1;
 getClimbCreatedAt:
 SELECT created_at FROM climbs WHERE uuid = ? LIMIT 1;
 
+-- Returns the local row's `created_by_pubkey` so the live subscriber can
+-- reject incoming Kind-30078 events whose signed pubkey differs from
+-- whoever already owns this uuid. Without this guard a second author
+-- with a colliding uuid silently overwrites the first author's row
+-- (INSERT OR REPLACE keyed on uuid alone).
+getClimbAuthorPubkey:
+SELECT created_by_pubkey FROM climbs WHERE uuid = ? LIMIT 1;
+
 -- Insert-only path: used by the upsert transaction when no row with
 -- this uuid exists. Default column values cover source ('kilter'),
 -- origin ('kilter'), and the Nostr/Kilter status fields (NULL).

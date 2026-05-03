@@ -1,6 +1,7 @@
 package com.cruxcoach.android.community
 
 import android.util.Log
+import androidx.annotation.VisibleForTesting
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.nostr.NostrRelayPool
 import com.cruxcoach.android.nostr.NostrSigner
@@ -8,6 +9,8 @@ import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.domain.board.BoardClimbParser
 import com.cruxcoach.domain.board.HoldRole
 import com.cruxcoach.domain.community.ClimbBounds
+import com.vitorpamplona.quartz.nip01Core.core.Event
+import com.vitorpamplona.quartz.nip01Core.crypto.verifySignature
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
@@ -16,14 +19,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import kotlinx.serialization.json.longOrNull
 
 /**
  * Live Nostr Channel B subscription for community-climb events.
@@ -65,7 +64,6 @@ class CommunityClimbSubscriber @Inject constructor(
      * de-duper in front of it.
      */
     private val pubkeysResolvedThisRun = mutableSetOf<String>()
-    private val json = Json { ignoreUnknownKeys = true; isLenient = true }
     private var job: Job? = null
 
     /** Idempotent — calling twice is a no-op. */
@@ -133,14 +131,28 @@ class CommunityClimbSubscriber @Inject constructor(
         return """{"kinds":[30078],"#L":["$NAMESPACE_LABEL"]$sinceClause}"""
     }
 
-    private suspend fun handleEvent(eventJson: String) {
-        val parsed = runCatching {
-            json.parseToJsonElement(eventJson).jsonObject
-        }.getOrElse {
+    @VisibleForTesting
+    internal suspend fun handleEvent(eventJson: String) {
+        // Relay is untrusted (NIP-01): parse via Quartz which recomputes
+        // the canonical event id, kind-check, and Schnorr-verify before
+        // trusting any field. Mirrors NostrProfileManager.parseAndCacheProfile
+        // and BlossomSyncManager. Without these checks any relay (or MITM
+        // on a non-TLS connection) can hand us forged events with
+        // arbitrary `pubkey` and content.
+        val event = runCatching { Event.fromJson(eventJson) }.getOrElse {
             Log.w(TAG, "failed to parse event JSON")
             return
         }
-        val parsedClimb = runCatching { ParsedClimb.from(parsed) }.getOrNull() ?: return
+        if (event.kind != KIND_30078) {
+            Log.w(TAG, "skip non-30078 event kind=${event.kind}")
+            return
+        }
+        if (!event.verifySignature()) {
+            Log.w(TAG, "skip event with invalid signature id=${event.id}")
+            return
+        }
+
+        val parsedClimb = runCatching { ParsedClimb.from(event) }.getOrNull() ?: return
 
         // Self-filter: skip events we authored ourselves. Relays echo
         // every event back to all subscribers including the publisher,
@@ -156,6 +168,55 @@ class CommunityClimbSubscriber @Inject constructor(
         val ownPubkey = runCatching { nostrSigner.getPublicKeyHex() }.getOrNull()
         if (ownPubkey != null && parsedClimb.pubkey == ownPubkey) {
             Log.d(TAG, "skip own event uuid=${parsedClimb.uuid}")
+            return
+        }
+
+        // D-tag prefix must encode the same author as the signed pubkey
+        // (FEAT-003 §4.2: d-tag = "cruxcoach:climb:<pubkey-prefix-8>:<uuid>").
+        // The wire format already enforces author-isolation, but the
+        // ingest path has to re-check it so an attacker who legitimately
+        // signs with their own keypair cannot claim someone else's d-tag
+        // namespace.
+        if (!CommunityClimbValidation.dTagAuthorMatches(parsedClimb.dTag, parsedClimb.pubkey)) {
+            Log.w(
+                TAG,
+                "skip d-tag/pubkey mismatch uuid=${parsedClimb.uuid} " +
+                    "dtag=${parsedClimb.dTag} pubkey=${parsedClimb.pubkey.take(8)}",
+            )
+            return
+        }
+
+        // Defense-in-depth: content.pubkey_prefix (when present, per spec
+        // §4.2) must match the signed pubkey. The publisher always sets
+        // this field; absence is tolerated for forward-compat with older
+        // events but a present-and-mismatched value is a tampering signal.
+        if (!CommunityClimbValidation.contentPubkeyPrefixMatches(
+                parsedClimb.contentPubkeyPrefix, parsedClimb.pubkey,
+            )
+        ) {
+            Log.w(
+                TAG,
+                "skip content.pubkey_prefix mismatch uuid=${parsedClimb.uuid} " +
+                    "content_prefix=${parsedClimb.contentPubkeyPrefix} pubkey=${parsedClimb.pubkey.take(8)}",
+            )
+            return
+        }
+
+        // One author per uuid: even with valid signatures, a second author
+        // with a colliding uuid would silently overwrite the first via
+        // INSERT OR REPLACE (uuid is the sole primary key on `climbs`).
+        // First-author wins; subsequent events from a different pubkey
+        // are dropped at the door so the local DB stays consistent with
+        // the relay-side (pubkey,kind,d-tag) namespacing.
+        val existingAuthor = runCatching {
+            boardRepository.getClimbAuthorPubkey(parsedClimb.uuid)
+        }.getOrNull()
+        if (!CommunityClimbValidation.authorOwnershipMatches(existingAuthor, parsedClimb.pubkey)) {
+            Log.w(
+                TAG,
+                "skip cross-author event uuid=${parsedClimb.uuid} " +
+                    "existing=${existingAuthor!!.take(8)} incoming=${parsedClimb.pubkey.take(8)}",
+            )
             return
         }
 
@@ -277,17 +338,10 @@ class CommunityClimbSubscriber @Inject constructor(
         val setterGradeId: Int?,
         val angle: Int?,
         val bounds: ClimbBounds?,
+        val contentPubkeyPrefix: String?,
     ) {
         companion object {
-            fun from(event: JsonObject): ParsedClimb {
-                val eventId = event["id"]?.jsonPrimitive?.contentOrNull
-                    ?: error("event id missing")
-                val pubkey = event["pubkey"]?.jsonPrimitive?.contentOrNull
-                    ?: error("event pubkey missing")
-                val createdAt = event["created_at"]?.jsonPrimitive?.longOrNull
-                    ?: error("event created_at missing")
-                val tagsJson = event["tags"]?.jsonArray ?: JsonArray(emptyList())
-
+            fun from(event: Event): ParsedClimb {
                 var dTag: String? = null
                 var framesText: String? = null
                 var framesHashRaw: String? = null
@@ -297,8 +351,7 @@ class CommunityClimbSubscriber @Inject constructor(
                 var bounds: ClimbBounds? = null
                 var foundLabel = false
 
-                for (tagElem in tagsJson) {
-                    val tag = tagElem.jsonArray.mapNotNull { it.jsonPrimitive.contentOrNull }
+                for (tag in event.tags) {
                     if (tag.size < 2) continue
                     when (tag[0]) {
                         "d" -> dTag = tag[1]
@@ -323,7 +376,7 @@ class CommunityClimbSubscriber @Inject constructor(
 
                 val contentObj = runCatching {
                     Json { ignoreUnknownKeys = true; isLenient = true }
-                        .parseToJsonElement(event["content"]?.jsonPrimitive?.contentOrNull ?: "{}")
+                        .parseToJsonElement(event.content.ifBlank { "{}" })
                         .jsonObject
                 }.getOrNull() ?: JsonObject(emptyMap())
                 val uuid = contentObj["uuid"]?.jsonPrimitive?.contentOrNull
@@ -331,15 +384,16 @@ class CommunityClimbSubscriber @Inject constructor(
                     ?: error("uuid not derivable from event")
                 val name = contentObj["name"]?.jsonPrimitive?.contentOrNull.orEmpty()
                 val description = contentObj["description"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                val contentPubkeyPrefix = contentObj["pubkey_prefix"]?.jsonPrimitive?.contentOrNull
 
                 // frames_hash arrives as "sha256:<hex>" — strip the prefix
                 // before persisting (our column stores the hex only).
                 val framesHash = framesHashRaw?.removePrefix("sha256:") ?: ""
 
                 return ParsedClimb(
-                    eventId = eventId,
-                    pubkey = pubkey,
-                    createdAt = createdAt,
+                    eventId = event.id,
+                    pubkey = event.pubKey,
+                    createdAt = event.createdAt,
                     dTag = dTag!!,
                     uuid = uuid,
                     name = name,
@@ -350,6 +404,7 @@ class CommunityClimbSubscriber @Inject constructor(
                     setterGradeId = setterGradeId,
                     angle = angle,
                     bounds = bounds,
+                    contentPubkeyPrefix = contentPubkeyPrefix,
                 )
             }
 
@@ -367,5 +422,49 @@ class CommunityClimbSubscriber @Inject constructor(
         const val NAMESPACE_LABEL = "com.cruxcoach.climb"
         const val STARTUP_GRACE_MS = 2_000L
         const val BACKOFF_MS = 5_000L
+        const val KIND_30078 = 30078
+
+        /** d-tag prefix that the publisher embeds for [pubkey] (FEAT-003 §4.2). */
+        fun communityClimbDTagPrefix(pubkey: String): String =
+            CommunityClimbValidation.expectedDTagPrefix(pubkey)
     }
+}
+
+/**
+ * Pure validation helpers for Kind-30078 community-climb events. Extracted
+ * out of [CommunityClimbSubscriber] so JVM-only unit tests can exercise the
+ * d-tag and content-prefix guards without loading Quartz's `Event` class
+ * (which is compiled against Java 21 and unavailable on the project's
+ * Java-17 test runtime).
+ */
+internal object CommunityClimbValidation {
+    /** d-tag pattern: `cruxcoach:climb:<pubkey-prefix-8>:<uuid>` (FEAT-003 §4.2). */
+    fun expectedDTagPrefix(pubkey: String): String =
+        "cruxcoach:climb:${pubkey.take(8)}:"
+
+    /**
+     * True when the d-tag's embedded author matches the signed pubkey.
+     * Catches d-tag tampering even when the Schnorr signature is valid
+     * (e.g. an attacker who legitimately holds some keypair tries to
+     * claim a victim's d-tag namespace).
+     */
+    fun dTagAuthorMatches(dTag: String, signedPubkey: String): Boolean =
+        dTag.startsWith(expectedDTagPrefix(signedPubkey))
+
+    /**
+     * True when [contentPrefix] is absent (older events) or matches the
+     * signed pubkey. Defence-in-depth on the same property the d-tag
+     * encodes; a present-and-mismatched value is a tampering signal.
+     */
+    fun contentPubkeyPrefixMatches(contentPrefix: String?, signedPubkey: String): Boolean =
+        contentPrefix == null || contentPrefix == signedPubkey.take(8)
+
+    /**
+     * True when no row exists yet for this uuid, or the existing owner
+     * matches the incoming signed pubkey. False means a different author
+     * already owns this uuid and the incoming event must be dropped to
+     * prevent INSERT-OR-REPLACE-on-uuid-alone clobbering.
+     */
+    fun authorOwnershipMatches(existingPubkey: String?, signedPubkey: String): Boolean =
+        existingPubkey == null || existingPubkey == signedPubkey
 }

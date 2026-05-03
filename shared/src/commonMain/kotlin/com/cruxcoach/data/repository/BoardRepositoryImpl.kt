@@ -400,6 +400,9 @@ class BoardRepositoryImpl(
     override fun getClimbCreatedAt(uuid: String): String? =
         q.getClimbCreatedAt(uuid).executeAsOneOrNull()?.created_at
 
+    override fun getClimbAuthorPubkey(uuid: String): String? =
+        q.getClimbAuthorPubkey(uuid).executeAsOneOrNull()?.created_by_pubkey
+
     /**
      * Heatmap fast-path: parsed placements + roles per (layoutId, angle).
      *

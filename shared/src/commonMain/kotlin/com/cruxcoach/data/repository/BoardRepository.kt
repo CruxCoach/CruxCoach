@@ -370,6 +370,15 @@ interface CommunityClimbQueries {
      */
     fun getClimbCreatedAt(uuid: String): String?
     /**
+     * Returns the local row's stored `created_by_pubkey` (or null if no
+     * row, or if the row has no Nostr provenance). Used by the Channel-B
+     * subscriber to enforce one-author-per-uuid: an incoming event whose
+     * signed pubkey differs from the existing owner is rejected before
+     * upsert, blocking the cross-author overwrite path that the
+     * uuid-only primary key on `climbs` would otherwise allow.
+     */
+    fun getClimbAuthorPubkey(uuid: String): String?
+    /**
      * Returns (placement_id → normalized 0..1 frequency) for boulders at the
      * given layout+angle, optionally weighted by climbs that contain ALL
      * `seedHolds`. Used by the editor heatmap overlay.
