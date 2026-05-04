@@ -97,13 +97,24 @@ class KilterPublishRetryWorker @AssistedInject constructor(
                 boardRepository.markKilterPublishFailed(row.uuid, "frames empty on retry")
                 continue
             }
-            // Pick endpoint by prior-sync state. A row with kilterSyncedAt
-            // set was previously accepted by Kilter; a subsequent retry
-            // means the user edited it (kilter_status got reset to
-            // 'failed' in the publish path). Use update-climb in that
-            // case. A row that was never synced gets create-climb (the
-            // initial publish never landed).
-            val isUpdate = row.kilterSyncedAt != null
+            // Atomic CAS-claim: prevents racing the editor's
+            // CommunityClimbPublisher.publish path. If a manual publish
+            // is mid-flight for this uuid the worker skips the row;
+            // it'll get re-queued on the next tick if the publish ended
+            // in 'failed'/NULL.
+            val claim = boardRepository.claimKilterPublishSlot(row.uuid)
+            if (claim is com.cruxcoach.data.repository.KilterClaim.Lost) {
+                Log.i(TAG, "row claim lost — another flow is publishing uuid=${row.uuid}; skip")
+                continue
+            }
+            // Pick endpoint by the claim's pre-state — same column the
+            // SELECT-snapshot `row.kilterSyncedAt` carries, but read
+            // inside the CAS transaction so it's authoritative against
+            // any racing UPDATE between getClimbsAwaitingKilterRetry
+            // and now. A row with kilter_synced_at set was previously
+            // accepted by Kilter (use update-climb); otherwise CREATE.
+            val isUpdate = (claim as com.cruxcoach.data.repository.KilterClaim.Won)
+                .previouslySyncedAtEpochSeconds != null
             val result = if (isUpdate) {
                 apiClient.updateClimb(
                     climbUuid = row.uuid,

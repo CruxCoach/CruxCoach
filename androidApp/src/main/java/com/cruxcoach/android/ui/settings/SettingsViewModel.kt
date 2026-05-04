@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.cruxcoach.android.data.kilter.localized
 import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.ClimbBleAdvertiser
 import com.cruxcoach.android.data.AnnouncementRepository
@@ -598,8 +599,9 @@ class SettingsViewModel @Inject constructor(
                     )) }
                 }
                 is com.cruxcoach.android.data.kilter.KilterAuthResult.Error -> {
+                    val msg = result.localized(context)
                     _state.update { it.copy(kilterAccount = it.kilterAccount.copy(
-                        isLoggingIn = false, loginError = result.message
+                        isLoggingIn = false, loginError = msg
                     )) }
                 }
             }

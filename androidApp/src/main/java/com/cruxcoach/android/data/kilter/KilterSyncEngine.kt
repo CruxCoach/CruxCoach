@@ -249,7 +249,12 @@ class KilterSyncEngine @Inject constructor(
             Result.success(KilterSyncReport(downloaded, uploaded))
         } catch (e: Exception) {
             Log.e(TAG, "Sync failed", e)
-            if (e.message?.contains("Nicht angemeldet") == true) {
+            // Pre-fix this pattern-matched on `e.message?.contains("Nicht
+            // angemeldet")` — brittle to any i18n change of the (now
+            // typed) error. KilterApiClient throws KilterApiException
+            // with a typed reason, so we can dispatch on that directly.
+            if (e is KilterApiException &&
+                e.reason == KilterAuthResult.Error.Reason.NotAuthenticated) {
                 _sessionExpired.value = true
             }
             Result.failure(e)

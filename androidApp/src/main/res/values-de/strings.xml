@@ -65,6 +65,16 @@
     <string name="climb_creator_drafts_load_failed">Entwürfe konnten nicht geladen werden. Bitte versuche es erneut.</string>
     <string name="climb_creator_drafts_delete_failed">Entwurf konnte nicht gelöscht werden. Bitte versuche es erneut.</string>
     <string name="climb_creator_load_failed">Editor konnte nicht geöffnet werden. Bitte versuche es erneut.</string>
+    <!-- Kilter authentication errors (KilterAuthResult.Error.Reason → user-visible) -->
+    <string name="kilter_auth_invalid_credentials">Ungültige Zugangsdaten.</string>
+    <string name="kilter_auth_empty_response">Kilter hat eine leere Antwort geliefert. Bitte versuche es erneut.</string>
+    <string name="kilter_auth_network_error">Verbindung zu Kilter fehlgeschlagen. Bitte prüfe deine Verbindung.</string>
+    <string name="kilter_auth_throttled" formatted="false">Zu viele Anmeldeversuche — bitte später erneut versuchen.</string>
+    <string name="kilter_auth_throttled_with_seconds" formatted="false">Zu viele Anmeldeversuche — bitte %1$d Sekunden warten.</string>
+    <string name="kilter_auth_not_authenticated">Nicht bei Kilter angemeldet.</string>
+    <string name="kilter_auth_invalid_jwt">Kilter hat ein unerwartetes Token geliefert. Bitte erneut versuchen.</string>
+    <string name="kilter_auth_http_failure" formatted="false">Anmeldung fehlgeschlagen (HTTP %1$d).</string>
+
     <string name="kilter_publish_session_expired">Kilter-Sitzung abgelaufen — wird später wiederholt.</string>
     <string name="kilter_publish_transient">Übertragung fehlgeschlagen — Versuch wird wiederholt.</string>
     <string name="kilter_publish_diverged_with_code" formatted="false">Kilter erlaubt keine Änderung am bereits veröffentlichten Climb (%1$d).</string>

@@ -135,8 +135,46 @@ sealed class KilterAuthResult {
         val expiresIn: Long
     ) : KilterAuthResult()
 
-    data class Error(val message: String) : KilterAuthResult()
+    /**
+     * Typed authentication failure. `reason` is the canonical category
+     * (the UI layer maps it to a localized R.string); `httpCode` and
+     * `throttleSec` carry context for reasons that need it; `cause` is
+     * a free-form diagnostic string for logcat (never user-visible).
+     *
+     * Pre-fix this carried a single hardcoded German message that the
+     * UI surfaced verbatim (English-locale users saw German text), and
+     * KilterSyncEngine pattern-matched on the text — see audit findings
+     * error-handling/error-messages/001 + unhandled-errors/011.
+     */
+    data class Error(
+        val reason: Reason,
+        val httpCode: Int? = null,
+        val throttleSec: Long? = null,
+        val cause: String? = null,
+    ) : KilterAuthResult() {
+        sealed interface Reason {
+            data object InvalidCredentials : Reason
+            data object EmptyResponse : Reason
+            data object NetworkError : Reason
+            data object Throttled : Reason
+            data object NotAuthenticated : Reason
+            data object InvalidJwt : Reason
+            data object HttpFailure : Reason
+        }
+    }
 }
+
+/**
+ * Typed exception thrown by [KilterApiClient] non-auth methods that
+ * return [Result] (fetchLogs / uploadLogs / submitClimb wrappers).
+ * Lets [KilterSyncEngine] dispatch on `reason` instead of pattern-
+ * matching on `e.message` — pre-fix the latter was brittle to any
+ * i18n change of the embedded German strings.
+ */
+class KilterApiException(
+    val reason: KilterAuthResult.Error.Reason,
+    message: String,
+) : Exception(message)
 
 // --- API Client ---
 
@@ -147,10 +185,25 @@ class KilterApiClient @Inject constructor(
 ) {
     private companion object {
         const val TAG = "KilterApiClient"
-        const val TOKEN_URL = "https://idp.kiltergrips.com/realms/kilter/protocol/openid-connect/token"
-        const val LOGOUT_URL = "https://idp.kiltergrips.com/realms/kilter/protocol/openid-connect/logout"
-        const val API_BASE = "https://portal.kiltergrips.com/api"
+        const val PROD_TOKEN_URL = "https://idp.kiltergrips.com/realms/kilter/protocol/openid-connect/token"
+        const val PROD_LOGOUT_URL = "https://idp.kiltergrips.com/realms/kilter/protocol/openid-connect/logout"
+        const val PROD_API_BASE = "https://portal.kiltergrips.com/api"
         const val CLIENT_ID = "kilter"
+    }
+
+    // URL endpoints — `var` so unit tests can swap them for a
+    // MockWebServer base URL via [setEndpointsForTesting]. Production
+    // never mutates these; the @VisibleForTesting accessor below is
+    // the only writer.
+    private var tokenUrl: String = PROD_TOKEN_URL
+    private var logoutUrl: String = PROD_LOGOUT_URL
+    private var apiBase: String = PROD_API_BASE
+
+    @androidx.annotation.VisibleForTesting
+    internal fun setEndpointsForTesting(base: String) {
+        tokenUrl = "$base/realms/kilter/protocol/openid-connect/token"
+        logoutUrl = "$base/realms/kilter/protocol/openid-connect/logout"
+        apiBase = "$base/api"
     }
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -179,7 +232,8 @@ class KilterApiClient @Inject constructor(
                 val waitSec = ((nextAllowed - now) / 1000L).coerceAtLeast(1)
                 Log.w(TAG, "auth throttled for ${throttleKey.take(3)}*** waitSec=$waitSec")
                 return@withContext KilterAuthResult.Error(
-                    "Zu viele Anmeldeversuche — bitte ${waitSec}s warten."
+                    reason = KilterAuthResult.Error.Reason.Throttled,
+                    throttleSec = waitSec,
                 )
             }
             try {
@@ -191,7 +245,7 @@ class KilterApiClient @Inject constructor(
                     .add("scope", "openid offline_access")
                     .build()
 
-                val request = Request.Builder().url(TOKEN_URL).post(body).build()
+                val request = Request.Builder().url(tokenUrl).post(body).build()
                 val response = httpClient.newCall(request).execute()
 
                 if (!response.isSuccessful) {
@@ -199,21 +253,38 @@ class KilterApiClient @Inject constructor(
                     Log.w(TAG, "Auth failed: HTTP ${response.code}, $errorBody")
                     bumpAuthBackoff(throttleKey)
                     return@withContext KilterAuthResult.Error(
-                        if (response.code == 401) "Ungültige Zugangsdaten"
-                        else "Anmeldung fehlgeschlagen (HTTP ${response.code})"
+                        reason = if (response.code == 401)
+                            KilterAuthResult.Error.Reason.InvalidCredentials
+                        else KilterAuthResult.Error.Reason.HttpFailure,
+                        httpCode = response.code,
+                        cause = errorBody.take(200),
                     )
                 }
 
                 val responseBody = response.body?.string()
                     ?: run {
                         bumpAuthBackoff(throttleKey)
-                        return@withContext KilterAuthResult.Error("Leere Antwort vom Server")
+                        return@withContext KilterAuthResult.Error(
+                            reason = KilterAuthResult.Error.Reason.EmptyResponse,
+                        )
                     }
                 val tokenResponse = json.decodeFromString<KilterTokenResponse>(responseBody)
 
-                // Extract user UUID and username from JWT access token
-                val claims = parseJwtClaims(tokenResponse.accessToken)
-                val userUuid = claims["sub"] ?: ""
+                // Extract user UUID and username from JWT access token.
+                // Pre-fix parseJwtClaims silently returned an empty map on
+                // parse failure, which left userUuid="" — the user looked
+                // logged in to the app but every subsequent API call would
+                // fail obscurely. Now we surface InvalidJwt as a typed
+                // error so the login UI shows a meaningful message.
+                val claims = parseJwtClaimsOrNull(tokenResponse.accessToken)
+                val userUuid = claims?.get("sub")
+                if (claims == null || userUuid.isNullOrBlank()) {
+                    bumpAuthBackoff(throttleKey)
+                    return@withContext KilterAuthResult.Error(
+                        reason = KilterAuthResult.Error.Reason.InvalidJwt,
+                        cause = "missing sub claim",
+                    )
+                }
                 val username = claims["preferred_username"] ?: email
 
                 // Successful login → clear the backoff state for this email.
@@ -232,7 +303,10 @@ class KilterApiClient @Inject constructor(
             } catch (e: Exception) {
                 Log.e(TAG, "Auth error", e)
                 bumpAuthBackoff(throttleKey)
-                KilterAuthResult.Error("Verbindung fehlgeschlagen: ${e.message}")
+                KilterAuthResult.Error(
+                    reason = KilterAuthResult.Error.Reason.NetworkError,
+                    cause = e.message?.take(200),
+                )
             }
         }
 
@@ -269,7 +343,7 @@ class KilterApiClient @Inject constructor(
                     .add("refresh_token", refreshToken)
                     .build()
 
-                val request = Request.Builder().url(TOKEN_URL).post(body).build()
+                val request = Request.Builder().url(tokenUrl).post(body).build()
                 val response = httpClient.newCall(request).execute()
 
                 if (response.isSuccessful) {
@@ -308,7 +382,7 @@ class KilterApiClient @Inject constructor(
                 .add("client_id", CLIENT_ID)
                 .add("refresh_token", refreshToken)
                 .build()
-            val request = Request.Builder().url(LOGOUT_URL).post(body).build()
+            val request = Request.Builder().url(logoutUrl).post(body).build()
             val response = httpClient.newCall(request).execute()
             response.close()
             val ok = response.isSuccessful
@@ -327,11 +401,11 @@ class KilterApiClient @Inject constructor(
      */
     suspend fun fetchLogs(): Result<List<KilterLog>> = withContext(Dispatchers.IO) {
         val token = ensureValidToken()
-            ?: return@withContext Result.failure(Exception("Nicht angemeldet"))
+            ?: return@withContext Result.failure(KilterApiException(KilterAuthResult.Error.Reason.NotAuthenticated, "no valid token"))
 
         try {
             val request = Request.Builder()
-                .url("$API_BASE/logs")
+                .url("$apiBase/logs")
                 .addHeader("Authorization", "Bearer $token")
                 .build()
             val response = httpClient.newCall(request).execute()
@@ -366,14 +440,14 @@ class KilterApiClient @Inject constructor(
         if (logs.isEmpty()) return@withContext Result.success(Unit)
 
         val token = ensureValidToken()
-            ?: return@withContext Result.failure(Exception("Nicht angemeldet"))
+            ?: return@withContext Result.failure(KilterApiException(KilterAuthResult.Error.Reason.NotAuthenticated, "no valid token"))
 
         try {
             val payload = json.encodeToString(logs)
             val requestBody = payload.toRequestBody("application/json".toMediaType())
 
             val request = Request.Builder()
-                .url("$API_BASE/logs/bulk")
+                .url("$apiBase/logs/bulk")
                 .addHeader("Authorization", "Bearer $token")
                 .post(requestBody)
                 .build()
@@ -452,7 +526,7 @@ class KilterApiClient @Inject constructor(
                 productLayoutUuid = productLayoutUuid
             ))
             val request = Request.Builder()
-                .url("$API_BASE/walls/custom-wall")
+                .url("$apiBase/walls/custom-wall")
                 .addHeader("Authorization", "Bearer $token")
                 .post(body.toRequestBody("application/json".toMediaType()))
                 .build()
@@ -590,7 +664,7 @@ class KilterApiClient @Inject constructor(
         val body = json.encodeToString(CreateClimbTransaction.serializer(), payload)
             .toRequestBody("application/json".toMediaType())
         val request = Request.Builder()
-            .url("$API_BASE/climbs/$endpointPath")
+            .url("$apiBase/climbs/$endpointPath")
             .addHeader("Authorization", "Bearer $token")
             .post(body)
             .build()
@@ -657,11 +731,18 @@ class KilterApiClient @Inject constructor(
      * Extract claims from a JWT by base64-decoding the payload segment.
      * No signature verification needed — we trust the Keycloak server response.
      */
-    private fun parseJwtClaims(jwt: String): Map<String, String> = try {
+    /**
+     * Returns parsed JWT claims, or null if the token is malformed.
+     * Pre-fix this returned an empty map on any parse failure, which
+     * collapsed cleanly into `claims["sub"] ?: ""` — userUuid="" became
+     * indistinguishable from a successful login with a missing claim.
+     * Returning null lets callers surface an InvalidJwt error.
+     */
+    private fun parseJwtClaimsOrNull(jwt: String): Map<String, String>? = try {
         parseJwtClaimsPure(jwt, json)
     } catch (e: Exception) {
         Log.w(TAG, "JWT parse failed", e)
-        emptyMap()
+        null
     }
 }
 

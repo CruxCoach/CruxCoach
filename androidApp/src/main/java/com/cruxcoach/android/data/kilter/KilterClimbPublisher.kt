@@ -103,9 +103,22 @@ class KilterClimbPublisher @Inject constructor(
             return Outcome.Skipped("no-kilter-login")
         }
 
-        boardRepository.markKilterPublishPending(uuid)
-        val r = when (op) {
-            Op.CREATE -> apiClient.publishClimb(
+        // Atomic CAS-claim of the publish slot — replaces the pre-fix
+        // markKilterPublishPending + caller-supplied op. The CAS prevents
+        // a race with KilterPublishRetryWorker (or a future second
+        // trigger-path) where two flows would each read kilter_status
+        // independently and both attempt the API call. The claim's
+        // pre-state `previouslySyncedAtEpochSeconds` is the authoritative
+        // CREATE-vs-UPDATE signal — caller's Op is now informational only.
+        val claim = boardRepository.claimKilterPublishSlot(uuid)
+        if (claim is com.cruxcoach.data.repository.KilterClaim.Lost) {
+            Log.i(TAG, "$op via=self: claim lost (another flow holds slot for $uuid); skip")
+            return Outcome.Skipped("slot-busy")
+        }
+        val isUpdate = (claim as com.cruxcoach.data.repository.KilterClaim.Won)
+            .previouslySyncedAtEpochSeconds != null
+        val r = if (isUpdate) {
+            apiClient.updateClimb(
                 climbUuid = uuid,
                 name = state.name,
                 description = state.description,
@@ -116,7 +129,8 @@ class KilterClimbPublisher @Inject constructor(
                 edgeBottom = boardSize.edgeBottom.toInt(),
                 edgeTop = boardSize.edgeTop.toInt(),
             )
-            Op.UPDATE -> apiClient.updateClimb(
+        } else {
+            apiClient.publishClimb(
                 climbUuid = uuid,
                 name = state.name,
                 description = state.description,
@@ -128,55 +142,82 @@ class KilterClimbPublisher @Inject constructor(
                 edgeTop = boardSize.edgeTop.toInt(),
             )
         }
-        return when (r) {
-            is KilterPublishResult.Success -> {
-                boardRepository.markKilterPublishSynced(
-                    uuid = uuid,
-                    via = "self",
-                    syncedAtEpochSeconds = System.currentTimeMillis() / 1000,
-                )
-                Outcome.Synced
-            }
-            is KilterPublishResult.NotAuthenticated -> {
-                Log.i(TAG, "$op via=self: token expired mid-call; deferring to retry worker")
-                boardRepository.markKilterPublishFailed(uuid, "token expired")
-                Outcome.Failed(appContext.getString(R.string.kilter_publish_session_expired))
-            }
-            is KilterPublishResult.TransientError -> {
-                boardRepository.markKilterPublishFailed(uuid, "transient: ${r.message}")
-                Outcome.Failed(appContext.getString(R.string.kilter_publish_transient))
-            }
-            is KilterPublishResult.RateLimited -> {
-                // Same UI surface as transient — the retry worker handles
-                // the actual backoff. mark "rate-limited:" so logcat /
-                // kilter_error column distinguishes it.
-                boardRepository.markKilterPublishFailed(uuid, "rate-limited: ${r.message}")
-                Outcome.Failed(appContext.getString(R.string.kilter_publish_transient))
-            }
-            is KilterPublishResult.PermanentError -> {
-                // For UPDATE on an already-published row a 4xx most likely
-                // means Kilter refuses edits at this layer. Mark
-                // 'diverged' (no further retries, banner in UI). For
-                // CREATE a 4xx is a terminal 'rejected' — payload-level
-                // refusal that no amount of retry will fix.
-                if (op == Op.UPDATE) {
-                    boardRepository.markKilterPublishDiverged(
-                        uuid,
-                        "http=${r.httpCode}: ${r.message.take(200)}",
+        // Wrap the post-API mark sequence in try/catch: a SQLite throw
+        // here (lock contention, disk-full, mid-migration) used to leave
+        // the row stuck in 'pending' forever — the retry worker's
+        // queue-criterion only matches NULL/'failed', so a 'pending'
+        // row was a permanent stranding. Catch + best-effort downgrade
+        // to 'failed' so the next retry tick re-attempts (or surfaces
+        // the failure cleanly).
+        return try {
+            when (r) {
+                is KilterPublishResult.Success -> {
+                    boardRepository.markKilterPublishSynced(
+                        uuid = uuid,
+                        via = "self",
+                        syncedAtEpochSeconds = System.currentTimeMillis() / 1000,
                     )
-                    Outcome.Diverged(
-                        appContext.getString(R.string.kilter_publish_diverged_with_code, r.httpCode),
-                    )
-                } else {
-                    boardRepository.markKilterPublishRejected(
-                        uuid,
-                        "http=${r.httpCode}: ${r.message.take(200)}",
-                    )
-                    Outcome.Failed(
-                        appContext.getString(R.string.kilter_publish_rejected_with_code, r.httpCode),
-                    )
+                    Outcome.Synced
+                }
+                is KilterPublishResult.NotAuthenticated -> {
+                    Log.i(TAG, "$op via=self: token expired mid-call; deferring to retry worker")
+                    boardRepository.markKilterPublishFailed(uuid, "token expired")
+                    Outcome.Failed(appContext.getString(R.string.kilter_publish_session_expired))
+                }
+                is KilterPublishResult.TransientError -> {
+                    boardRepository.markKilterPublishFailed(uuid, "transient: ${r.message}")
+                    Outcome.Failed(appContext.getString(R.string.kilter_publish_transient))
+                }
+                is KilterPublishResult.RateLimited -> {
+                    // Same UI surface as transient — the retry worker handles
+                    // the actual backoff. mark "rate-limited:" so logcat /
+                    // kilter_error column distinguishes it.
+                    boardRepository.markKilterPublishFailed(uuid, "rate-limited: ${r.message}")
+                    Outcome.Failed(appContext.getString(R.string.kilter_publish_transient))
+                }
+                is KilterPublishResult.PermanentError -> {
+                    // For UPDATE on an already-published row a 4xx most likely
+                    // means Kilter refuses edits at this layer. Mark
+                    // 'diverged' (no further retries, banner in UI). For
+                    // CREATE a 4xx is a terminal 'rejected' — payload-level
+                    // refusal that no amount of retry will fix. The branch
+                    // is keyed off the CAS-claim's pre-state, not the
+                    // caller's Op argument (the Op is informational now;
+                    // see the claim comment above).
+                    if (isUpdate) {
+                        boardRepository.markKilterPublishDiverged(
+                            uuid,
+                            "http=${r.httpCode}: ${r.message.take(200)}",
+                        )
+                        Outcome.Diverged(
+                            appContext.getString(R.string.kilter_publish_diverged_with_code, r.httpCode),
+                        )
+                    } else {
+                        boardRepository.markKilterPublishRejected(
+                            uuid,
+                            "http=${r.httpCode}: ${r.message.take(200)}",
+                        )
+                        Outcome.Failed(
+                            appContext.getString(R.string.kilter_publish_rejected_with_code, r.httpCode),
+                        )
+                    }
                 }
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "$op via=self: post-API mark threw for uuid=$uuid; downgrading to 'failed'", e)
+            // Best-effort: try to leave the row in a state the retry
+            // worker can pick up. If even this throws there's nothing
+            // more we can do — the row stays in 'pending' but it's
+            // logged for triage.
+            runCatching {
+                boardRepository.markKilterPublishFailed(
+                    uuid,
+                    "post-api mark threw: ${e.message?.take(200) ?: e::class.simpleName}",
+                )
+            }.onFailure { Log.w(TAG, "downgrade-to-failed also threw for uuid=$uuid", it) }
+            Outcome.Failed(appContext.getString(R.string.kilter_publish_transient))
         }
     }
 

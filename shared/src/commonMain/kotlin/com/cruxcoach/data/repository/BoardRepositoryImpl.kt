@@ -751,6 +751,20 @@ class BoardRepositoryImpl(
         q.markKilterPublishRejected(kilter_error = error, uuid = uuid)
     }
 
+    override fun claimKilterPublishSlot(uuid: String): KilterClaim {
+        // Read kilter_synced_at BEFORE the CAS so the caller can pick
+        // CREATE vs UPDATE based on the pre-claim state. Both reads
+        // happen inside the transaction so they're consistent with
+        // the row state the CAS observes.
+        return q.transactionWithResult {
+            val priorSyncedAt = q.getKilterPublishState(uuid).executeAsOneOrNull()
+                ?.kilter_synced_at
+            q.claimKilterPublishSlot(uuid)
+            val claimed = q.lastClimbsChangeCount().executeAsOne() > 0L
+            if (claimed) KilterClaim.Won(priorSyncedAt) else KilterClaim.Lost
+        }
+    }
+
     override fun getClimbsAwaitingKilterRetry(): List<CommunityClimbRow> =
         q.getClimbsAwaitingKilterRetry().executeAsList().map { it.toCommunityRow() }
 

@@ -732,6 +732,31 @@ UPDATE climbs SET kilter_status = 'diverged', kilter_error = ? WHERE uuid = ?;
 markKilterPublishRejected:
 UPDATE climbs SET kilter_status = 'rejected', kilter_error = ? WHERE uuid = ?;
 
+-- Atomic CAS-style claim of the Kilter publish slot for a climb.
+-- Transitions kilter_status from NULL/'failed' to 'pending' and clears
+-- any stale kilter_error in one statement. Combined with
+-- [lastClimbsChangeCount] inside a transactionWithResult the caller
+-- can tell "I won the race" (changes() = 1) from "someone else has
+-- the slot" (0). Without this CAS, two flows (CommunityClimbPublisher
+-- mid-publish + KilterPublishRetryWorker) could both read
+-- `kilter_status` independently, both decide to publish, and Kilter
+-- saw two API calls per climb. Restricted to origin='cruxcoach' rows
+-- so we never accidentally claim a generic Kilter-imported climb.
+claimKilterPublishSlot:
+UPDATE climbs
+   SET kilter_status = 'pending', kilter_error = NULL
+ WHERE uuid = ?
+   AND origin = 'cruxcoach'
+   AND (kilter_status IS NULL OR kilter_status = 'failed');
+
+-- Companion to [claimKilterPublishSlot]. Returns 1 if the previous
+-- statement on this connection updated a row, 0 if it no-opped (the
+-- claim was lost to another flow). MUST be read inside the same
+-- transactionWithResult as the claim — `changes()` is per-connection
+-- and observes only the previous statement.
+lastClimbsChangeCount:
+SELECT changes();
+
 -- Climbs that need a Kilter retry: cruxcoach-origin, not yet on Kilter
 -- (NULL or 'failed') and Nostr-published (so we know the user finalized
 -- their publish). Used by the retry queue.

@@ -4,6 +4,7 @@ import android.content.Context
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.BoardSize
+import com.cruxcoach.data.repository.KilterClaim
 import com.cruxcoach.domain.community.ClimbEditorState
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -68,6 +69,10 @@ class KilterClimbPublisherTest {
         every { prefs.kilterClimbPublishEnabled } returns MutableStateFlow(true)
         every { tokenStore.getAccessToken() } returns "valid-token"
         every { tokenStore.getUserUuid() } returns "user-uuid"
+        // Default: claim succeeds with no prior sync (CREATE branch).
+        // Tests can override to KilterClaim.Lost for slot-busy path or
+        // to Won(syncedAtEpochSeconds) for the UPDATE branch.
+        every { repo.claimKilterPublishSlot(any()) } returns KilterClaim.Won(previouslySyncedAtEpochSeconds = null)
         publisher = KilterClimbPublisher(ctx, apiClient, tokenStore, prefs, repo)
     }
 
@@ -79,7 +84,18 @@ class KilterClimbPublisherTest {
         val outcome = publisher.publish(uuid, layoutId, state, boardSize, framesConcat)
         assertEquals(KilterClimbPublisher.Outcome.Skipped("user-opted-out"), outcome)
         coVerify(exactly = 0) { apiClient.publishClimb(any(), any(), any(), any(), any(), any(), any(), any(), any()) }
-        coVerify(exactly = 0) { repo.markKilterPublishPending(any()) }
+        // Slot-claim should not happen either when user opted out.
+        coVerify(exactly = 0) { repo.claimKilterPublishSlot(any()) }
+    }
+
+    @Test
+    fun publish_returns_skipped_when_slot_claim_lost() = runTest {
+        every { repo.claimKilterPublishSlot(uuid) } returns KilterClaim.Lost
+        val outcome = publisher.publish(uuid, layoutId, state, boardSize, framesConcat)
+        assertEquals(KilterClimbPublisher.Outcome.Skipped("slot-busy"), outcome)
+        // No API call when another flow holds the slot.
+        coVerify(exactly = 0) { apiClient.publishClimb(any(), any(), any(), any(), any(), any(), any(), any(), any()) }
+        coVerify(exactly = 0) { apiClient.updateClimb(any(), any(), any(), any(), any(), any(), any(), any(), any()) }
     }
 
     @Test
@@ -115,8 +131,10 @@ class KilterClimbPublisherTest {
         val outcome = publisher.publish(uuid, layoutId, state, boardSize, framesConcat)
 
         assertEquals(KilterClimbPublisher.Outcome.Synced, outcome)
-        // Pending → Synced markers are applied in order.
-        coVerify(exactly = 1) { repo.markKilterPublishPending(uuid) }
+        // CAS-claim transitions the slot to 'pending'; markKilterPublishSynced
+        // closes it. Pre-fix the publisher called markKilterPublishPending
+        // explicitly — it's now subsumed by claimKilterPublishSlot.
+        coVerify(exactly = 1) { repo.claimKilterPublishSlot(uuid) }
         coVerify(exactly = 1) {
             repo.markKilterPublishSynced(
                 uuid = uuid, via = "self", syncedAtEpochSeconds = any(),
@@ -174,9 +192,14 @@ class KilterClimbPublisherTest {
     }
 
     // ── Diverged path (UPDATE 4xx) ──────────────────────────────────
+    // The UPDATE/CREATE branch is now driven by KilterClaim.Won
+    // .previouslySyncedAtEpochSeconds (non-null = previously Kilter-synced
+    // → use update-climb), not by which entry-point publisher.publish vs
+    // publisher.update the caller invoked.
 
     @Test
     fun update_returns_diverged_on_permanent_error() = runTest {
+        every { repo.claimKilterPublishSlot(uuid) } returns KilterClaim.Won(previouslySyncedAtEpochSeconds = 100L)
         coEvery {
             apiClient.updateClimb(any(), any(), any(), any(), any(), any(), any(), any(), any())
         } returns KilterPublishResult.PermanentError("cannot edit", httpCode = 409)
@@ -193,6 +216,7 @@ class KilterClimbPublisherTest {
 
     @Test
     fun update_marks_synced_on_success() = runTest {
+        every { repo.claimKilterPublishSlot(uuid) } returns KilterClaim.Won(previouslySyncedAtEpochSeconds = 100L)
         coEvery {
             apiClient.updateClimb(any(), any(), any(), any(), any(), any(), any(), any(), any())
         } returns KilterPublishResult.Success(uuid)
@@ -206,7 +230,8 @@ class KilterClimbPublisherTest {
     }
 
     @Test
-    fun publish_uses_create_endpoint_not_update() = runTest {
+    fun no_prior_sync_uses_create_endpoint() = runTest {
+        // Default claim returns Won(null) → CREATE branch.
         coEvery {
             apiClient.publishClimb(any(), any(), any(), any(), any(), any(), any(), any(), any())
         } returns KilterPublishResult.Success(uuid)
@@ -218,12 +243,16 @@ class KilterClimbPublisherTest {
     }
 
     @Test
-    fun update_uses_update_endpoint_not_create() = runTest {
+    fun previously_synced_uses_update_endpoint_even_via_publish_entrypoint() = runTest {
+        // Claim says "this uuid was synced before" → UPDATE branch fires
+        // even though the call entered via publisher.publish() (not
+        // publisher.update()). Caller-supplied entrypoint is informational.
+        every { repo.claimKilterPublishSlot(uuid) } returns KilterClaim.Won(previouslySyncedAtEpochSeconds = 999L)
         coEvery {
             apiClient.updateClimb(any(), any(), any(), any(), any(), any(), any(), any(), any())
         } returns KilterPublishResult.Success(uuid)
 
-        publisher.update(uuid, layoutId, state, boardSize, framesConcat)
+        publisher.publish(uuid, layoutId, state, boardSize, framesConcat)
 
         coVerify(exactly = 1) { apiClient.updateClimb(climbUuid = uuid, name = any(), description = any(), framesClimbConcat = any(), productName = any(), edgeLeft = any(), edgeRight = any(), edgeBottom = any(), edgeTop = any()) }
         coVerify(exactly = 0) { apiClient.publishClimb(any(), any(), any(), any(), any(), any(), any(), any(), any()) }

@@ -325,6 +325,21 @@ data class KilterPublishState(
     val syncedAtEpochSeconds: Long?,
 )
 
+/** Outcome of [BoardRepository.claimKilterPublishSlot]. */
+sealed class KilterClaim {
+    /** Slot was empty (`kilter_status` was NULL or 'failed') and is now
+     *  marked `'pending'` for the calling flow. `previouslySyncedAtEpochSeconds`
+     *  carries the row's `kilter_synced_at` from BEFORE the claim — non-null
+     *  means "we previously synced this climb on Kilter; use UPDATE-climb",
+     *  null means "first publish; use CREATE-climb". */
+    data class Won(val previouslySyncedAtEpochSeconds: Long?) : KilterClaim()
+    /** Another flow already holds the slot, or the row is in a terminal
+     *  state ('synced' / 'rejected' / 'diverged'). Caller should skip
+     *  this row — the current owner will mark a result or the row is
+     *  already finished. */
+    data object Lost : KilterClaim()
+}
+
 data class CommunityClimbRow(
     val uuid: String,
     val name: String,
@@ -463,6 +478,23 @@ interface CommunityClimbQueries {
      *  poking it. Without this, 4xx CREATEs would stay in the retry queue
      *  forever because the queue criterion matches `kilter_status='failed'`. */
     fun markKilterPublishRejected(uuid: String, error: String)
+
+    /**
+     * Atomic CAS claim of the Kilter publish slot. Transitions
+     * `kilter_status` from `NULL`/`'failed'` to `'pending'` for an
+     * origin='cruxcoach' row.
+     *
+     * Returns `KilterClaim.Won` (with the row's pre-claim
+     * `kilter_synced_at` so the caller can pick CREATE vs UPDATE) when
+     * the claim succeeded, `KilterClaim.Lost` when another flow already
+     * holds the slot or the row isn't claimable.
+     *
+     * Replaces the read-then-decide pattern in CommunityClimbPublisher
+     * + KilterPublishRetryWorker that could let two flows both attempt
+     * to publish the same climb (TOCTOU between the
+     * `getKilterPublishState` read and the API call).
+     */
+    fun claimKilterPublishSlot(uuid: String): KilterClaim
     /** Climbs with `origin='cruxcoach'`, Nostr-published, awaiting Kilter sync. */
     fun getClimbsAwaitingKilterRetry(): List<CommunityClimbRow>
     fun getDraftClimbs(): List<CommunityClimbRow>

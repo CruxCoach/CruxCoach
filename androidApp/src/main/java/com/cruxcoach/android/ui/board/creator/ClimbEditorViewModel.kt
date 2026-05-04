@@ -54,6 +54,16 @@ data class ClimbEditorUiState(
      *  shows a "verbinde Kilter"-Snackbar with a [Verbinden]-Action,
      *  and clears it via [clearKilterConnectNudge]. */
     val showKilterConnectNudge: Boolean = false,
+    /** Editor-visible Kilter-side publish outcome. Distinct from
+     *  [showKilterConnectNudge] (which fires only when the user has no
+     *  Kilter login at all): this carries the actual outcome — synced /
+     *  diverged / failed / skipped — when Kilter publishing was
+     *  attempted. The screen reads it as a follow-up Snackbar variant
+     *  after the success terminal, then clears via
+     *  [clearKilterPublishOutcome]. Pre-fix every non-Skipped(no-login)
+     *  outcome was silent and the user navigated away thinking both
+     *  destinations succeeded (audit health-monitoring/011). */
+    val kilterPublishOutcome: com.cruxcoach.android.data.kilter.KilterClimbPublisher.Outcome? = null,
     val errorMessage: String? = null,
     /** Loaded-draft uuid — re-saving updates this row in place. */
     val loadedDraftUuid: String? = null,
@@ -557,6 +567,7 @@ class ClimbEditorViewModel @Inject constructor(
                     isPublishing = false,
                     publishedUuid = outcome.uuid,
                     showKilterConnectNudge = outcome.nudgeToConnectKilter,
+                    kilterPublishOutcome = outcome.kilterOutcome,
                 )
             }
         }
@@ -564,6 +575,12 @@ class ClimbEditorViewModel @Inject constructor(
 
     fun clearKilterConnectNudge() {
         _state.update { it.copy(showKilterConnectNudge = false) }
+    }
+
+    /** Screen calls this after rendering the kilter-side outcome
+     *  Snackbar so it doesn't fire again on rotation/recomposition. */
+    fun clearKilterPublishOutcome() {
+        _state.update { it.copy(kilterPublishOutcome = null) }
     }
 
     // ── Autosave restore offer ──────────────────────────────────

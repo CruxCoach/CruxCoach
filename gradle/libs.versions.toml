@@ -81,6 +81,8 @@ quartz-android = { group = "com.vitorpamplona.quartz", name = "quartz-android", 
 
 # OkHttp (WebSocket for Nostr relay communication)
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
+# OkHttp MockWebServer — used in unit tests to fake the Kilter Keycloak / API endpoints.
+okhttp-mockwebserver = { group = "com.squareup.okhttp3", name = "mockwebserver", version.ref = "okhttp" }
 
 # Encrypted SharedPreferences
 security-crypto = { group = "androidx.security", name = "security-crypto", version.ref = "security-crypto" }

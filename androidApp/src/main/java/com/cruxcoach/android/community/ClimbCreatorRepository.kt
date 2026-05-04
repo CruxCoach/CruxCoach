@@ -186,12 +186,18 @@ class ClimbCreatorRepository @Inject constructor(
         return PublishOutcome(
             uuid = uuid,
             nudgeToConnectKilter = result.nudgeToConnectKilter,
+            kilterOutcome = result.kilterOutcome,
         )
     }
 
     data class PublishOutcome(
         val uuid: String,
         val nudgeToConnectKilter: Boolean,
+        /** Editor-visible Kilter publish outcome. Null = Kilter wasn't
+         *  attempted (publish disabled, no token, orchestration threw).
+         *  See [CommunityClimbPublisher.Result.kilterOutcome] for the
+         *  semantics. */
+        val kilterOutcome: com.cruxcoach.android.data.kilter.KilterClimbPublisher.Outcome? = null,
     )
 
     private fun nowIso(): String {

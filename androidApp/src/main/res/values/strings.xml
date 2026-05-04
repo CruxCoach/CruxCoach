@@ -65,6 +65,16 @@
     <string name="climb_creator_drafts_load_failed">Couldn\'t load your drafts. Please try again.</string>
     <string name="climb_creator_drafts_delete_failed">Couldn\'t delete the draft. Please try again.</string>
     <string name="climb_creator_load_failed">Couldn\'t open the editor. Please try again.</string>
+    <!-- Kilter authentication errors (KilterAuthResult.Error.Reason → user-visible) -->
+    <string name="kilter_auth_invalid_credentials">Wrong email or password.</string>
+    <string name="kilter_auth_empty_response">Kilter returned an empty response. Please try again.</string>
+    <string name="kilter_auth_network_error">Couldn\'t reach Kilter. Check your connection and try again.</string>
+    <string name="kilter_auth_throttled" formatted="false">Too many login attempts — please try again later.</string>
+    <string name="kilter_auth_throttled_with_seconds" formatted="false">Too many login attempts — please wait %1$d seconds.</string>
+    <string name="kilter_auth_not_authenticated">Not signed in to Kilter.</string>
+    <string name="kilter_auth_invalid_jwt">Kilter returned an unexpected token. Please try again.</string>
+    <string name="kilter_auth_http_failure" formatted="false">Login failed (HTTP %1$d).</string>
+
     <string name="kilter_publish_session_expired">Your Kilter session expired — we\'ll retry later.</string>
     <string name="kilter_publish_transient">Couldn\'t reach Kilter — we\'ll retry shortly.</string>
     <string name="kilter_publish_diverged_with_code" formatted="false">Kilter doesn\'t allow editing this already-published climb (%1$d).</string>

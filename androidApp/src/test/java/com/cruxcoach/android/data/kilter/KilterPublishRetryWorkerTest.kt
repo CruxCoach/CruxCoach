@@ -7,6 +7,7 @@ import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.BoardSize
 import com.cruxcoach.data.repository.CommunityClimbRow
+import com.cruxcoach.data.repository.KilterClaim
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -86,6 +87,10 @@ class KilterPublishRetryWorkerTest {
         every { tokenStore.getAccessToken() } returns "valid-token"
         every { repo.getProductSize(1) } returns boardSize
         every { repo.getClimbsAwaitingKilterRetry() } returns emptyList()
+        // Default claim succeeds with no prior sync (CREATE branch).
+        // Tests can override per-row to KilterClaim.Lost (slot busy) or
+        // Won(syncedAt=non-null) (UPDATE branch).
+        every { repo.claimKilterPublishSlot(any()) } returns KilterClaim.Won(previouslySyncedAtEpochSeconds = null)
     }
 
     // ── Early-return gating ─────────────────────────────────────────
@@ -158,8 +163,12 @@ class KilterPublishRetryWorkerTest {
 
     @Test
     fun permanent_error_on_update_row_is_marked_diverged() = runTest {
-        // kilterSyncedAt non-null → row was previously synced → use UPDATE
+        // CAS-claim returns Won(non-null syncedAt) → UPDATE branch.
+        // The row.kilterSyncedAt SELECT-snapshot is informational; the
+        // worker now reads the authoritative value inside the same
+        // transaction as the claim.
         every { repo.getClimbsAwaitingKilterRetry() } returns listOf(row("c1", kilterSyncedAt = 100L))
+        every { repo.claimKilterPublishSlot("c1") } returns KilterClaim.Won(previouslySyncedAtEpochSeconds = 100L)
         coEvery {
             apiClient.updateClimb(any(), any(), any(), any(), any(), any(), any(), any(), any())
         } returns KilterPublishResult.PermanentError("nope", httpCode = 409)

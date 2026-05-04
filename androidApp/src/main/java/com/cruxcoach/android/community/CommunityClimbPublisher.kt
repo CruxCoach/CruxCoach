@@ -73,6 +73,20 @@ class CommunityClimbPublisher @Inject constructor(
          * to show the "connect Kilter to also publish there" Snackbar.
          */
         val nudgeToConnectKilter: Boolean,
+        /**
+         * Outcome of the Kilter side of the publish, when the user has
+         * Kilter publishing enabled AND a token. Null if Kilter wasn't
+         * attempted (publish disabled, no token, or kilter orchestration
+         * itself threw — in which case the editor sees "Kilter side
+         * skipped, recoverable"). Lets the editor decide whether to
+         * surface "synced/diverged/failed" Snackbar variants alongside
+         * the existing connect-Kilter nudge. Pre-fix the editor
+         * collapsed every non-Skipped("no-kilter-login") outcome into
+         * a silent "✓ veröffentlicht" — the user navigated away
+         * believing both destinations had succeeded (audit
+         * health-monitoring/011).
+         */
+        val kilterOutcome: KilterClimbPublisher.Outcome? = null,
     )
 
     suspend fun publish(
@@ -136,6 +150,7 @@ class CommunityClimbPublisher @Inject constructor(
         val publishToKilter = userPreferences.kilterClimbPublishEnabled.first()
         val hasKilterToken = kilterTokenStore.getAccessToken() != null
         var nudgeToConnect = false
+        var kilterOutcome: KilterClimbPublisher.Outcome? = null
 
         if (publishToKilter) {
             val boardSize = activeBoardSize()
@@ -169,6 +184,7 @@ class CommunityClimbPublisher @Inject constructor(
                         framesClimbConcat = framesClimbConcat,
                     )
                 }
+                kilterOutcome = outcome
                 if (outcome is KilterClimbPublisher.Outcome.Skipped &&
                     outcome.reason == "no-kilter-login" &&
                     !hasKilterToken
@@ -181,6 +197,7 @@ class CommunityClimbPublisher @Inject constructor(
         return Result(
             nostrEventId = event.id,
             nudgeToConnectKilter = nudgeToConnect,
+            kilterOutcome = kilterOutcome,
         )
     }
 

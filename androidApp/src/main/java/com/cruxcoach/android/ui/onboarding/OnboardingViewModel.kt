@@ -12,6 +12,7 @@ import com.cruxcoach.android.data.kilter.KilterAuthResult
 import com.cruxcoach.android.data.kilter.KilterImportPreview
 import com.cruxcoach.android.data.kilter.KilterSyncEngine
 import com.cruxcoach.android.data.kilter.KilterTokenStore
+import com.cruxcoach.android.data.kilter.localized
 import com.cruxcoach.android.nostr.NostrKeyStore
 import com.cruxcoach.android.nostr.backup.BackupInfo
 import com.cruxcoach.android.nostr.backup.BackupPreferences
@@ -199,7 +200,7 @@ class OnboardingViewModel @Inject constructor(
                 }
                 is KilterAuthResult.Error -> {
                     _state.update {
-                        it.copy(isKilterLoggingIn = false, kilterLoginError = result.message)
+                        it.copy(isKilterLoggingIn = false, kilterLoginError = result.localized(appContext))
                     }
                 }
             }

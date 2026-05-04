@@ -17,7 +17,11 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -82,9 +86,35 @@ class CommunityClimbSubscriber @Inject constructor(
     private val cursorMutex = Mutex()
     private var job: Job? = null
 
+    /**
+     * Live observable of the subscriber's health. Pre-fix the only
+     * "is it alive" signal was log lines — a stuck loop, a tight
+     * failure burst, or a never-started subscription all looked
+     * identical from outside. Now the runSubscriptionLoop publishes
+     * its state here so a future Settings/diagnostics surface (and
+     * tests) can read it directly.
+     */
+    private val _health = MutableStateFlow(SubscriberHealth())
+    val health: StateFlow<SubscriberHealth> = _health.asStateFlow()
+
+    data class SubscriberHealth(
+        /** True after [start]; false after [stop] (or before start). */
+        val running: Boolean = false,
+        /** Wall-clock ms when the most recent Kind-30078 event was
+         *  delivered to handleEvent. Null = never received. */
+        val lastEventAtMs: Long? = null,
+        /** Number of times the relay-collect threw consecutively without
+         *  a successful event in between. Resets to 0 on event delivery. */
+        val failureStreak: Int = 0,
+        /** Cause-class name of the last collect throw (no message — that
+         *  could carry user data). Null when the streak is 0. */
+        val lastErrorClass: String? = null,
+    )
+
     /** Idempotent — calling twice is a no-op. */
     fun start(scope: CoroutineScope) {
         if (job?.isActive == true) return
+        _health.update { it.copy(running = true) }
         job = scope.launch {
             // Tiny startup delay so the relay pool has time to read user
             // prefs + connect; not strictly required, just avoids racing
@@ -97,7 +127,13 @@ class CommunityClimbSubscriber @Inject constructor(
             // events" instead of "subscription never starts".
             runCatching { seedCursorFromManifestIfFirstRun() }
                 .onFailure { Log.w(TAG, "seedCursorFromManifestIfFirstRun failed; continuing without seed", it) }
-            runSubscriptionLoop()
+            try {
+                runSubscriptionLoop()
+            } finally {
+                // Either stop() cancelled us, or the loop genuinely
+                // exited (shouldn't — it's a `while(true)`).
+                _health.update { it.copy(running = false) }
+            }
         }
     }
 
@@ -131,15 +167,36 @@ class CommunityClimbSubscriber @Inject constructor(
     }
 
     private suspend fun runSubscriptionLoop() {
+        // Backoff index — escalates on each consecutive failure, resets
+        // to 0 after a successful collect (i.e. relay flow stayed alive
+        // long enough to emit at least one event or close cleanly).
+        // Pre-fix the loop slept a flat 5 s after every failure — a
+        // permanently-broken upstream (parser exception, NIP version
+        // mismatch, hostile relay) caused 12 wakeups/minute indefinitely,
+        // burning battery + relay budget.
+        var failureStreak = 0
         while (true) {
             val since = userPreferences.communityClimbSince.first()
             val filter = buildFilter(since)
             try {
                 pool.subscribe(filter, skipDedup = false, closeOnEose = false).collect { eventJson ->
                     handleEvent(eventJson)
+                    // Reset the backoff streak on each successful event
+                    // delivery — relay is healthy. Also stamp lastEventAtMs
+                    // for the liveness observable.
+                    failureStreak = 0
+                    _health.update {
+                        it.copy(
+                            lastEventAtMs = System.currentTimeMillis(),
+                            failureStreak = 0,
+                            lastErrorClass = null,
+                        )
+                    }
                 }
                 // collect returned without throwing → relay flow ended cleanly
                 // (rare). Brief backoff before re-subscribing.
+                failureStreak = 0
+                _health.update { it.copy(failureStreak = 0, lastErrorClass = null) }
                 delay(BACKOFF_MS)
             } catch (e: CancellationException) {
                 // stop() / parent-scope cancellation. Don't log "re-subscribing"
@@ -148,8 +205,22 @@ class CommunityClimbSubscriber @Inject constructor(
                 // would only re-raise the cancellation.
                 throw e
             } catch (e: Exception) {
-                Log.w(TAG, "subscription terminated; re-subscribing", e)
-                delay(BACKOFF_MS)
+                val waitMs = BACKOFF_LADDER_MS[
+                    failureStreak.coerceAtMost(BACKOFF_LADDER_MS.lastIndex)
+                ]
+                Log.w(
+                    TAG,
+                    "subscription terminated streak=$failureStreak waitMs=$waitMs; re-subscribing",
+                    e,
+                )
+                failureStreak++
+                _health.update {
+                    it.copy(
+                        failureStreak = failureStreak,
+                        lastErrorClass = e::class.simpleName,
+                    )
+                }
+                delay(waitMs)
             }
         }
     }
@@ -550,6 +621,14 @@ class CommunityClimbSubscriber @Inject constructor(
         const val NAMESPACE_LABEL = "com.cruxcoach.climb"
         const val STARTUP_GRACE_MS = 2_000L
         const val BACKOFF_MS = 5_000L
+        // Exponential backoff ladder for the runSubscriptionLoop's
+        // re-subscribe path. Index = failureStreak (clamped to last).
+        // 1s → 2s → 5s → 15s → 60s → cap. A truly broken upstream now
+        // sleeps minutes between attempts instead of hammering the
+        // relay every 5s.
+        val BACKOFF_LADDER_MS = longArrayOf(
+            1_000L, 2_000L, 5_000L, 15_000L, 60_000L, 60_000L,
+        )
         const val KIND_30078 = 30078
         // Hard cap on raw event JSON size. ~16 KB covers the largest
         // legitimate climb (~84 holds + 100-char name + 500-char

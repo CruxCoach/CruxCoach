@@ -126,6 +126,23 @@ android {
         unitTests.isReturnDefaultValues = true
     }
 
+    // Pin OkHttp on the *unit-test* classpath to 4.12.0 so MockWebServer 4.12
+    // resolves the `okhttp3.internal.Util` it expects. Production keeps the
+    // 5.3.2 that quartz-android transitively pulls — only the test runtime
+    // needs the older internals layout. The 5.x-only artifacts (okhttp-android,
+    // okhttp-coroutines) are excluded from test classpaths so they don't drag
+    // 5.x .class files in alongside the forced 4.12 okhttp jar.
+    configurations.matching {
+        it.name.endsWith("UnitTestRuntimeClasspath") ||
+        it.name.endsWith("UnitTestCompileClasspath")
+    }.configureEach {
+        resolutionStrategy {
+            force("com.squareup.okhttp3:okhttp:4.12.0")
+        }
+        exclude(group = "com.squareup.okhttp3", module = "okhttp-android")
+        exclude(group = "com.squareup.okhttp3", module = "okhttp-coroutines")
+    }
+
     buildTypes {
         release {
             signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
@@ -230,4 +247,11 @@ dependencies {
     testImplementation(libs.mockk)
     // JDBC SQLite driver for real-SQL repository races / TOCTOU regression tests
     testImplementation(libs.sqldelight.sqlite.driver)
+    // MockWebServer for KilterApiClient HTTP-error-mapping tests.
+    // Pulls okhttp explicitly on the test classpath so okhttp3.internal.*
+    // is resolvable at test runtime (mockwebserver depends on internals
+    // that the production-only `implementation(okhttp)` doesn't expose
+    // here through the ASM-transformed test runtime).
+    testImplementation(libs.okhttp)
+    testImplementation(libs.okhttp.mockwebserver)
 }
