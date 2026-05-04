@@ -50,6 +50,7 @@ import com.cruxcoach.android.ui.common.LocalSessionQueueManager
 import com.cruxcoach.android.ui.common.RestTimerBannerSlot
 import com.cruxcoach.android.ui.common.BleStatusArea
 import com.cruxcoach.android.ui.common.SyncStatusBannerSlot
+import com.cruxcoach.android.ui.board.sync.BoardSyncInlineCard
 import com.cruxcoach.android.ui.theme.*
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.util.GradeDisplayHelper
@@ -335,7 +336,21 @@ fun BoardBrowserScreen(
                 CircularProgressIndicator(color = OrangeAccent)
             }
         } else if (!state.hasBoardData) {
-            NoBoardDataCard(onSyncClick = onNavigateToSync)
+            // Render the same inline sync UI the onboarding flow uses,
+            // instead of a static "go to settings" hint. The user can
+            // kick off the first Blossom sync, watch the import-step
+            // checklist, and resolve network/wifi prompts without
+            // leaving the browser. The empty-data state is the only
+            // path that ever reaches this branch — once the catalog
+            // is populated, the LazyColumn below takes over.
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp),
+            ) {
+                BoardSyncInlineCard(modifier = Modifier.fillMaxWidth())
+            }
         } else {
             // 2-button action bar (Session + Zufall) — only visible when no session is active
             if (!isSessionActive && !queueState.isActive && !queueState.isConnecting) {

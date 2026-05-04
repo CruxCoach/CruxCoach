@@ -840,8 +840,7 @@
     <string name="kilter_sync_now">Jetzt synchronisieren</string>
     <string name="kilter_push_label">Zu Kilter hochladen</string>
     <string name="kilter_push_desc">Lokale Begehungen auch nach Kilter hochladen</string>
-    <string name="kilter_climb_publish_label">Climbs auch zu Kilter veröffentlichen</string>
-    <string name="kilter_climb_publish_desc">Neue CruxCoach-Climbs zusätzlich in die offizielle Kilter-Datenbank schicken, damit sie auch in der Kilter-App auftauchen.</string>
+    <string name="kilter_climb_publish_label">Eigene Climbs auf Kilter veröffentlichen</string>
     <string name="kilter_climb_publish_disconnected_hint">Verbinde deinen Kilter-Account, um Climbs auch dort zu spiegeln.</string>
     <string name="kilter_publish_queue_title">Veröffentlichungs-Warteschlange</string>
     <string name="kilter_publish_queue_pending" formatted="false">%1$d Climbs warten auf Kilter-Sync</string>

@@ -797,8 +797,7 @@
     <string name="kilter_sync_now">Sync now</string>
     <string name="kilter_push_label">Upload to Kilter</string>
     <string name="kilter_push_desc">Also upload local ascents to your Kilter account</string>
-    <string name="kilter_climb_publish_label">Also publish climbs to Kilter</string>
-    <string name="kilter_climb_publish_desc">Mirror new CruxCoach-set climbs to the official Kilter database so they appear in the Kilter app.</string>
+    <string name="kilter_climb_publish_label">Publish own climbs to Kilter</string>
     <string name="kilter_climb_publish_disconnected_hint">Connect your Kilter account to mirror your climbs there.</string>
     <string name="kilter_publish_queue_title">Publish queue</string>
     <string name="kilter_publish_queue_pending" formatted="false">%1$d climbs awaiting Kilter sync</string>
