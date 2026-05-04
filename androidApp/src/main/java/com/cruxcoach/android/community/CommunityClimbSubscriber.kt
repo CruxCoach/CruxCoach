@@ -79,6 +79,16 @@ class CommunityClimbSubscriber @Inject constructor(
      */
     private val pubkeysResolvedThisRun: MutableSet<String> = ConcurrentHashMap.newKeySet()
 
+    /** Negative-cache TTL marker: pubkey → wall-clock millis of the last
+     *  *attempt* (success or failure). On a failure-only resolve, the
+     *  pubkey lives here instead of [pubkeysResolvedThisRun], so a
+     *  follow-up event for the same pubkey retries after
+     *  [RESOLVE_RETRY_TTL_MS]. ConcurrentHashMap is sufficient — the
+     *  put-on-attempt + remove-on-success isn't strictly atomic, but
+     *  losing a remove just means one extra relay fetch on the next
+     *  event, never a stranded pubkey. */
+    private val resolveAttemptedAtMs = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
     /** Serializes the read-modify-write on the COMMUNITY_CLIMB_SINCE
      *  cursor. handleEvent is called from a single relay-collect coroutine
      *  in production, but a future fan-out / parallel collect would race
@@ -452,11 +462,22 @@ class CommunityClimbSubscriber @Inject constructor(
     /**
      * Async fetch of Kind 0 for [pubkey] and bulk-update of every
      * community climb's `setter_username`. No-op when the pubkey was
-     * already resolved this process lifetime, when no profile is found,
-     * or when the profile lacks a non-blank display_name.
+     * already successfully resolved this process lifetime, when no
+     * profile is found, or when the profile lacks a non-blank display_name.
+     *
+     * Negative-cache window via [resolveAttemptedAtMs]: a failed fetch
+     * marks "tried at T" rather than "resolved" so subsequent events for
+     * the same pubkey re-attempt after [RESOLVE_RETRY_TTL_MS], without
+     * spamming the relay if Kind 0 is genuinely absent. Pre-fix the
+     * `add(pubkey)` ran before the relay fetch, so a transient timeout
+     * permanently stranded the npub-stub for that pubkey until process
+     * restart.
      */
     private fun resolveSetterDisplayName(pubkey: String) {
-        if (!pubkeysResolvedThisRun.add(pubkey)) return
+        if (pubkey in pubkeysResolvedThisRun) return
+        val now = System.currentTimeMillis()
+        val lastAttempt = resolveAttemptedAtMs[pubkey]
+        if (lastAttempt != null && now - lastAttempt < RESOLVE_RETRY_TTL_MS) return
         // Cap memory + relay-fetch fan-out: when the de-duper hits the
         // cap a hostile relay flooding distinct pubkeys can't keep
         // growing the set. We fall through to "always re-resolve past
@@ -465,8 +486,10 @@ class CommunityClimbSubscriber @Inject constructor(
         // single redundant relay fetch, not unbounded memory.
         if (pubkeysResolvedThisRun.size > MAX_RESOLVED_PUBKEYS) {
             pubkeysResolvedThisRun.clear()
+            resolveAttemptedAtMs.clear()
             Log.w(TAG, "pubkeysResolvedThisRun capacity exceeded; cleared (cap=$MAX_RESOLVED_PUBKEYS)")
         }
+        resolveAttemptedAtMs[pubkey] = now
         // Use the same job's coroutine scope so we don't accumulate
         // orphan coroutines if the subscriber is stopped. job is the
         // top-level subscription; we fork a child that survives the
@@ -474,7 +497,17 @@ class CommunityClimbSubscriber @Inject constructor(
         val parent = job ?: return
         kotlinx.coroutines.CoroutineScope(parent).launch {
             val profile = runCatching { nostrProfileManager.getProfile(pubkey) }.getOrNull()
-            val displayName = profile?.displayName?.takeIf { it.isNotBlank() } ?: return@launch
+            if (profile == null) {
+                // Failed fetch — leave only the negative-cache TTL marker
+                // so the next event for this pubkey retries after the TTL.
+                return@launch
+            }
+            // Successful fetch — promote to the durable resolved set so
+            // subsequent events skip the cache check entirely (and we drop
+            // the TTL marker since it's superseded).
+            pubkeysResolvedThisRun.add(pubkey)
+            resolveAttemptedAtMs.remove(pubkey)
+            val displayName = profile.displayName?.takeIf { it.isNotBlank() } ?: return@launch
             runCatching {
                 boardRepository.updateSetterUsernameForPubkey(
                     pubkey = pubkey,
@@ -645,6 +678,13 @@ class CommunityClimbSubscriber @Inject constructor(
         // ~200 unique authors over months; 4096 is plenty of headroom
         // and keeps a hostile relay from growing the set unboundedly.
         const val MAX_RESOLVED_PUBKEYS = 4096
+        // Negative-cache TTL on a *failed* setter resolve attempt. After
+        // this window the next event from the same pubkey retries the
+        // Kind-0 relay fetch. 30 min strikes the right balance between
+        // recovering quickly from a transient relay timeout and not
+        // hammering relays for a setter who genuinely never published a
+        // Kind 0 (in which case the npub stub is the correct steady state).
+        const val RESOLVE_RETRY_TTL_MS = 30L * 60L * 1000L
 
         /** d-tag prefix that the publisher embeds for [pubkey] (FEAT-003 §4.2). */
         fun communityClimbDTagPrefix(pubkey: String): String =
@@ -689,4 +729,40 @@ internal object CommunityClimbValidation {
      */
     fun authorOwnershipMatches(existingPubkey: String?, signedPubkey: String): Boolean =
         existingPubkey == null || existingPubkey == signedPubkey
+
+    // ── Skip-matrix helpers (extracted for unit testability) ─────────
+
+    /** Hard cap on raw event JSON size. Mirrors [CommunityClimbSubscriber.MAX_EVENT_BYTES]. */
+    const val MAX_EVENT_BYTES = 16 * 1024
+
+    /** Hard cap on `name` field length. Matches FEAT-003 §4.4 ingest rule. */
+    const val MAX_NAME_LENGTH = 100
+
+    /** Hard cap on `description` field length. Matches FEAT-003 §4.4 ingest rule. */
+    const val MAX_DESCRIPTION_LENGTH = 500
+
+    /** Hard cap on number of selected holds. Mirrors the publisher's
+     *  MAX_HOLDS_TOTAL guard so a malicious event can't push a 10k-placement
+     *  payload through. */
+    const val MAX_HOLDS = 200
+
+    /** True when the raw event JSON length is acceptable. */
+    fun eventSizeAcceptable(byteLength: Int): Boolean = byteLength in 0..MAX_EVENT_BYTES
+
+    /** True when the climb name length is acceptable. */
+    fun nameLengthAcceptable(length: Int): Boolean = length in 0..MAX_NAME_LENGTH
+
+    /** True when the climb description length is acceptable. */
+    fun descriptionLengthAcceptable(length: Int): Boolean = length in 0..MAX_DESCRIPTION_LENGTH
+
+    /** True when the parsed-holds count is acceptable. */
+    fun holdsCountAcceptable(count: Int): Boolean = count in 0..MAX_HOLDS
+
+    /** True when the event kind matches the expected Kind-30078 (parameterized replaceable). */
+    fun kindAcceptable(kind: Int): Boolean = kind == 30078
+
+    /** True when the incoming event is from the local user — used for the
+     *  self-echo skip (relay echoes our own publishes back to us). */
+    fun isOwnEvent(eventPubkey: String, localPubkey: String?): Boolean =
+        localPubkey != null && eventPubkey == localPubkey
 }

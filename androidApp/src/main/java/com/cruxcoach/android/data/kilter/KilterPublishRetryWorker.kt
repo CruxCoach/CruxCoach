@@ -147,6 +147,9 @@ class KilterPublishRetryWorker @AssistedInject constructor(
                     edgeTop = boardSize.edgeTop.toInt(),
                 )
             }
+            val opEnum = if (isUpdate) com.cruxcoach.data.repository.KilterPublishOp.UPDATE
+                         else com.cruxcoach.data.repository.KilterPublishOp.CREATE
+            val attemptedAt = System.currentTimeMillis()
             when (result) {
                 is KilterPublishResult.Success -> {
                     ok++
@@ -154,17 +157,23 @@ class KilterPublishRetryWorker @AssistedInject constructor(
                     boardRepository.markKilterPublishSynced(
                         uuid = row.uuid,
                         via = "self",
-                        syncedAtEpochSeconds = System.currentTimeMillis() / 1000,
+                        syncedAtEpochSeconds = attemptedAt / 1000,
                     )
+                    recordAttempt(row.uuid, attemptedAt, opEnum,
+                        com.cruxcoach.data.repository.KilterPublishOutcomeKind.SUCCESS, null, null)
                 }
                 is KilterPublishResult.NotAuthenticated -> {
                     Log.i(TAG, "auth missing mid-batch — abort, will resume next run")
+                    recordAttempt(row.uuid, attemptedAt, opEnum,
+                        com.cruxcoach.data.repository.KilterPublishOutcomeKind.AUTH, null, "token expired")
                     return androidx.work.ListenableWorker.Result.success()
                 }
                 is KilterPublishResult.TransientError -> {
                     transient++
                     Log.w(TAG, "row transient uuid=${row.uuid}: ${result.message.take(200)}")
                     boardRepository.markKilterPublishFailed(row.uuid, "retry transient: ${result.message}")
+                    recordAttempt(row.uuid, attemptedAt, opEnum,
+                        com.cruxcoach.data.repository.KilterPublishOutcomeKind.TRANSIENT, null, result.message)
                 }
                 is KilterPublishResult.RateLimited -> {
                     transient++
@@ -177,6 +186,8 @@ class KilterPublishRetryWorker @AssistedInject constructor(
                         row.uuid,
                         "retry rate-limited (retry-after=${result.retryAfterSeconds ?: "n/a"}): ${result.message}",
                     )
+                    recordAttempt(row.uuid, attemptedAt, opEnum,
+                        com.cruxcoach.data.repository.KilterPublishOutcomeKind.RATE_LIMITED, 429, result.message)
                 }
                 is KilterPublishResult.PermanentError -> {
                     permanent++
@@ -203,6 +214,9 @@ class KilterPublishRetryWorker @AssistedInject constructor(
                             "retry http=${result.httpCode}: ${result.message.take(200)}",
                         )
                     }
+                    recordAttempt(row.uuid, attemptedAt, opEnum,
+                        com.cruxcoach.data.repository.KilterPublishOutcomeKind.PERMANENT,
+                        result.httpCode, result.message)
                 }
             }
             } catch (e: Exception) {
@@ -226,6 +240,27 @@ class KilterPublishRetryWorker @AssistedInject constructor(
         } else {
             androidx.work.ListenableWorker.Result.success()
         }
+    }
+
+    private fun recordAttempt(
+        uuid: String,
+        attemptedAtMs: Long,
+        op: com.cruxcoach.data.repository.KilterPublishOp,
+        outcome: com.cruxcoach.data.repository.KilterPublishOutcomeKind,
+        httpCode: Int?,
+        errorExcerpt: String?,
+    ) {
+        runCatching {
+            boardRepository.recordKilterPublishAttempt(
+                climbUuid = uuid,
+                attemptedAtMs = attemptedAtMs,
+                op = op,
+                via = "self",
+                outcome = outcome,
+                httpCode = httpCode,
+                errorExcerpt = errorExcerpt?.take(200),
+            )
+        }.onFailure { Log.w(TAG, "recordKilterPublishAttempt threw for uuid=$uuid", it) }
     }
 
     companion object {

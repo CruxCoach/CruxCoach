@@ -67,6 +67,7 @@
     <string name="relative_time_days_ago" formatted="false">vor %1$d t</string>
     <string name="climb_creator_save_failed">Entwurf konnte nicht gespeichert werden. Bitte versuche es erneut.</string>
     <string name="climb_creator_publish_failed">Veröffentlichen fehlgeschlagen. Bitte versuche es erneut.</string>
+    <string name="climb_creator_publish_failed_will_retry">Kein Relay hat den Climb angenommen — der Entwurf bleibt gespeichert und CruxCoach versucht es im Hintergrund weiter.</string>
     <string name="climb_creator_drafts_load_failed">Entwürfe konnten nicht geladen werden. Bitte versuche es erneut.</string>
     <string name="climb_creator_drafts_delete_failed">Entwurf konnte nicht gelöscht werden. Bitte versuche es erneut.</string>
     <string name="climb_creator_load_failed">Editor konnte nicht geöffnet werden. Bitte versuche es erneut.</string>
@@ -116,6 +117,8 @@
     <string name="setter_detail_title_fallback">Setter</string>
     <string name="setter_detail_climb_count">%1$d Climbs</string>
     <string name="setter_detail_no_climbs">Keine Climbs dieses Setters in deinem lokalen Katalog.</string>
+    <string name="setter_detail_load_failed">Climbs konnten nicht geladen werden.</string>
+    <string name="setters_list_load_failed">Setter-Liste konnte nicht geladen werden.</string>
     <string name="setter_detail_climb_meta">%1$d° · %2$.1f · ⭐%3$.1f · %4$d Begehungen</string>
     <string name="setters_list_title">CruxCoach-Setter</string>
     <string name="setters_list_empty">Noch keine CruxCoach-Community-Climbs. Schau später wieder rein oder leg selbst los.</string>
@@ -168,6 +171,8 @@
     <string name="action_save">Speichern</string>
     <string name="action_delete">Löschen</string>
     <string name="action_back">Zurück</string>
+    <string name="screen_error_boundary_title">Da ist etwas schiefgegangen</string>
+    <string name="screen_error_boundary_body" formatted="false">Der Screen „%1$s" hat einen unerwarteten Fehler — der Rest der App ist weiter benutzbar. Gehe zurück und versuche es erneut.</string>
     <string name="action_refresh">Aktualisieren</string>
     <string name="action_done">Fertig</string>
     <string name="action_share">Freigeben</string>
@@ -839,6 +844,11 @@
     <string name="kilter_climb_publish_label">Climbs auch zu Kilter veröffentlichen</string>
     <string name="kilter_climb_publish_desc">Neue CruxCoach-Climbs zusätzlich in die offizielle Kilter-Datenbank schicken, damit sie auch in der Kilter-App auftauchen.</string>
     <string name="kilter_climb_publish_disconnected_hint">Verbinde deinen Kilter-Account, um Climbs auch dort zu spiegeln.</string>
+    <string name="kilter_publish_queue_title">Veröffentlichungs-Warteschlange</string>
+    <string name="kilter_publish_queue_pending" formatted="false">%1$d Climbs warten auf Kilter-Sync</string>
+    <string name="kilter_publish_queue_failed" formatted="false">%1$d zuletzt fehlgeschlagen</string>
+    <string name="kilter_publish_queue_last_attempt">Letzter Versuch</string>
+    <string name="kilter_publish_queue_retry_now">Jetzt erneut versuchen</string>
     <string name="kilter_session_expired">Sitzung abgelaufen — bitte neu anmelden</string>
     <string name="kilter_relogin_button">Neu anmelden</string>
     <string name="kilter_disconnect">Verbindung trennen</string>

@@ -67,6 +67,7 @@
     <string name="relative_time_days_ago" formatted="false">%1$d d ago</string>
     <string name="climb_creator_save_failed">Couldn\'t save the draft. Please try again.</string>
     <string name="climb_creator_publish_failed">Couldn\'t publish. Please try again.</string>
+    <string name="climb_creator_publish_failed_will_retry">No relay accepted the climb just now — your draft is saved and CruxCoach will keep trying in the background.</string>
     <string name="climb_creator_drafts_load_failed">Couldn\'t load your drafts. Please try again.</string>
     <string name="climb_creator_drafts_delete_failed">Couldn\'t delete the draft. Please try again.</string>
     <string name="climb_creator_load_failed">Couldn\'t open the editor. Please try again.</string>
@@ -116,6 +117,8 @@
     <string name="setter_detail_title_fallback">Setter</string>
     <string name="setter_detail_climb_count">%1$d climbs</string>
     <string name="setter_detail_no_climbs">No climbs from this setter in your local catalog.</string>
+    <string name="setter_detail_load_failed">Could not load this setter\'s climbs.</string>
+    <string name="setters_list_load_failed">Could not load the setters list.</string>
     <string name="setter_detail_climb_meta">%1$d° · %2$.1f · ⭐%3$.1f · %4$d sends</string>
     <string name="setters_list_title">CruxCoach setters</string>
     <string name="setters_list_empty">No CruxCoach community climbs yet. Check back later or create your own.</string>
@@ -168,6 +171,8 @@
     <string name="action_save">Save</string>
     <string name="action_delete">Delete</string>
     <string name="action_back">Back</string>
+    <string name="screen_error_boundary_title">Something went wrong</string>
+    <string name="screen_error_boundary_body" formatted="false">The %1$s screen ran into an unexpected error. The rest of the app is still usable — go back and try again.</string>
     <string name="action_refresh">Refresh</string>
     <string name="action_done">Done</string>
     <string name="action_share">Share</string>
@@ -796,6 +801,11 @@
     <string name="kilter_climb_publish_label">Also publish climbs to Kilter</string>
     <string name="kilter_climb_publish_desc">Mirror new CruxCoach-set climbs to the official Kilter database so they appear in the Kilter app.</string>
     <string name="kilter_climb_publish_disconnected_hint">Connect your Kilter account to mirror your climbs there.</string>
+    <string name="kilter_publish_queue_title">Publish queue</string>
+    <string name="kilter_publish_queue_pending" formatted="false">%1$d climbs awaiting Kilter sync</string>
+    <string name="kilter_publish_queue_failed" formatted="false">%1$d failed previously</string>
+    <string name="kilter_publish_queue_last_attempt">Last attempt</string>
+    <string name="kilter_publish_queue_retry_now">Retry now</string>
     <string name="kilter_session_expired">Session expired — please sign in again</string>
     <string name="kilter_relogin_button">Sign in again</string>
     <string name="kilter_disconnect">Disconnect</string>

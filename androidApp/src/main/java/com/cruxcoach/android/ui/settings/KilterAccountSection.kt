@@ -41,6 +41,22 @@ data class KilterAccountState(
      *  Greyed out when the user isn't connected; tapping then nudges
      *  them through the Kilter login flow. */
     val climbPublishEnabled: Boolean = true,
+    /** Climbs awaiting Kilter sync (`origin='cruxcoach'`,
+     *  `sync_status='published_nostr'`, `kilter_status` NULL or 'failed').
+     *  Drives the queue-health row in the connected card. */
+    val publishPendingCount: Long = 0,
+    /** Subset of [publishPendingCount] whose latest status is 'failed'
+     *  (vs. NULL, never-attempted). UI renders this as the "X mit Fehler"
+     *  hint inside the queue-health row. */
+    val publishFailedCount: Long = 0,
+    /** Wall-clock millis of the most recent attempt across all climbs;
+     *  pulled from `kilter_publish_attempts.attempted_at`. Null when no
+     *  attempt has ever been recorded. */
+    val publishLastAttemptAtMs: Long? = null,
+    /** True while a manual `KilterPublishRetryWorker.runOnce` is queued
+     *  but the next state refresh hasn't observed the resulting writes.
+     *  Suppresses double-tap re-fires on the "Retry now" button. */
+    val publishRetryRunning: Boolean = false,
 )
 
 @Composable
@@ -60,7 +76,8 @@ internal fun KilterAccountSection(
     onDisconnect: () -> Unit,
     onShowDisconnectConfirm: () -> Unit,
     onDismissDisconnectConfirm: () -> Unit,
-    onDismissResult: () -> Unit
+    onDismissResult: () -> Unit,
+    onRetryPublishQueueNow: () -> Unit,
 ) {
     if (state.isConnected) {
         KilterConnectedCard(
@@ -70,11 +87,16 @@ internal fun KilterAccountSection(
             climbPublishEnabled = state.climbPublishEnabled,
             sessionExpired = state.sessionExpired,
             isSyncing = state.isSyncing,
+            publishPendingCount = state.publishPendingCount,
+            publishFailedCount = state.publishFailedCount,
+            publishLastAttemptAtMs = state.publishLastAttemptAtMs,
+            publishRetryRunning = state.publishRetryRunning,
             onSyncNow = onSyncNow,
             onPushEnabledChanged = onPushEnabledChanged,
             onClimbPublishEnabledChanged = onClimbPublishEnabledChanged,
             onReLogin = onShowLogin,
-            onDisconnect = onShowDisconnectConfirm
+            onDisconnect = onShowDisconnectConfirm,
+            onRetryPublishQueueNow = onRetryPublishQueueNow,
         )
     } else {
         Text(
@@ -321,11 +343,16 @@ private fun KilterConnectedCard(
     climbPublishEnabled: Boolean,
     sessionExpired: Boolean,
     isSyncing: Boolean,
+    publishPendingCount: Long,
+    publishFailedCount: Long,
+    publishLastAttemptAtMs: Long?,
+    publishRetryRunning: Boolean,
     onSyncNow: () -> Unit,
     onPushEnabledChanged: (Boolean) -> Unit,
     onClimbPublishEnabledChanged: (Boolean) -> Unit,
     onReLogin: () -> Unit,
-    onDisconnect: () -> Unit
+    onDisconnect: () -> Unit,
+    onRetryPublishQueueNow: () -> Unit,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -418,6 +445,20 @@ private fun KilterConnectedCard(
                 )
             }
 
+            // Publish-queue health row — only rendered when there's
+            // anything to surface. Pre-fix users saw only per-climb
+            // badges deep in the browse view, so a queue of 20 stranded
+            // climbs was invisible from the Kilter settings card.
+            if (publishPendingCount > 0 || publishFailedCount > 0) {
+                KilterPublishQueueRow(
+                    pendingCount = publishPendingCount,
+                    failedCount = publishFailedCount,
+                    lastAttemptAtMs = publishLastAttemptAtMs,
+                    retryRunning = publishRetryRunning,
+                    onRetryNow = onRetryPublishQueueNow,
+                )
+            }
+
             OutlinedButton(
                 onClick = onSyncNow,
                 modifier = Modifier.fillMaxWidth(),
@@ -446,6 +487,76 @@ private fun KilterConnectedCard(
                         color = MaterialTheme.colorScheme.error
                     )
                 }
+            }
+        }
+    }
+}
+
+/**
+ * "Publish queue" health row inside [KilterConnectedCard]. Renders queue
+ * depth, last-attempt time, and a "Retry now" button that fans out to
+ * `KilterPublishRetryWorker.runOnce`. Hidden when both pending and
+ * failed counts are zero — the steady state needs no UI noise.
+ */
+@Composable
+private fun KilterPublishQueueRow(
+    pendingCount: Long,
+    failedCount: Long,
+    lastAttemptAtMs: Long?,
+    retryRunning: Boolean,
+    onRetryNow: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (failedCount > 0) MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f)
+            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+        ),
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Text(
+                stringResource(R.string.kilter_publish_queue_title),
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                stringResource(R.string.kilter_publish_queue_pending, pendingCount.toInt()),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (failedCount > 0) {
+                Text(
+                    stringResource(R.string.kilter_publish_queue_failed, failedCount.toInt()),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+            lastAttemptAtMs?.let {
+                Text(
+                    stringResource(R.string.kilter_publish_queue_last_attempt) + " " +
+                        com.cruxcoach.android.ui.board.creator.relativeTimeLabel(it),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(Modifier.height(4.dp))
+            OutlinedButton(
+                onClick = onRetryNow,
+                enabled = !retryRunning,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = OrangeAccent),
+            ) {
+                if (retryRunning) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                        color = OrangeAccent,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                }
+                Text(stringResource(R.string.kilter_publish_queue_retry_now))
             }
         }
     }

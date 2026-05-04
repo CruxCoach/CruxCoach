@@ -86,7 +86,39 @@ fun SetterDetailScreen(
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
                 )
             }
-            if (state.climbs.isEmpty()) {
+            val errorMessage = state.errorMessage
+            if (errorMessage != null) {
+                // Distinguish DB read failure from genuine empty state.
+                item {
+                    androidx.compose.material3.Card(
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        colors = androidx.compose.material3.CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer,
+                        ),
+                    ) {
+                        androidx.compose.foundation.layout.Column(
+                            modifier = Modifier.padding(16.dp),
+                        ) {
+                            Text(
+                                stringResource(R.string.setter_detail_load_failed),
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                            )
+                            Text(
+                                errorMessage,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                            )
+                            androidx.compose.material3.OutlinedButton(
+                                onClick = { viewModel.retry() },
+                                modifier = Modifier.padding(top = 8.dp),
+                            ) {
+                                Text(stringResource(R.string.action_retry))
+                            }
+                        }
+                    }
+                }
+            } else if (state.climbs.isEmpty()) {
                 item {
                     Text(
                         text = stringResource(R.string.setter_detail_no_climbs),

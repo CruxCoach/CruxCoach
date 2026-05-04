@@ -794,6 +794,52 @@ class BoardRepositoryImpl(
         }
     }
 
+    override fun recordKilterPublishAttempt(
+        climbUuid: String,
+        attemptedAtMs: Long,
+        op: KilterPublishOp,
+        via: String,
+        outcome: KilterPublishOutcomeKind,
+        httpCode: Int?,
+        errorExcerpt: String?,
+    ) {
+        q.recordKilterPublishAttempt(
+            climb_uuid = climbUuid,
+            attempted_at = attemptedAtMs,
+            op = if (op == KilterPublishOp.UPDATE) "update" else "create",
+            via = via,
+            outcome = outcome.storageValue(),
+            http_code = httpCode?.toLong(),
+            error_excerpt = errorExcerpt,
+        )
+    }
+
+    override fun getKilterPublishAttempts(climbUuid: String, limit: Int): List<KilterPublishAttempt> =
+        q.getKilterPublishAttempts(climbUuid, limit.toLong()).executeAsList().map { row ->
+            KilterPublishAttempt(
+                id = row.id,
+                climbUuid = row.climb_uuid,
+                attemptedAtMs = row.attempted_at,
+                op = row.op,
+                via = row.via,
+                outcome = row.outcome,
+                httpCode = row.http_code?.toInt(),
+                errorExcerpt = row.error_excerpt,
+            )
+        }
+
+    override fun getKilterPublishQueueStats(): KilterPublishQueueStats {
+        val row = q.getKilterPublishQueueStats().executeAsOne()
+        return KilterPublishQueueStats(
+            pendingCount = row.pending_count,
+            failedCount = row.failed_count,
+            lastAttemptAtMs = row.last_attempt_at,
+        )
+    }
+
+    override fun getClimbsAwaitingNostrRetry(pubkey: String): List<CommunityClimbRow> =
+        q.getClimbsAwaitingNostrRetry(pubkey).executeAsList().map { it.toCommunityRow() }
+
     override fun getClimbsAwaitingKilterRetry(): List<CommunityClimbRow> =
         q.getClimbsAwaitingKilterRetry().executeAsList().map { it.toCommunityRow() }
 

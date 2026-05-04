@@ -232,7 +232,8 @@ fun SettingsScreen(
                         onDisconnect = { viewModel.kilterDisconnect() },
                         onShowDisconnectConfirm = { viewModel.showKilterDisconnectConfirm() },
                         onDismissDisconnectConfirm = { viewModel.dismissKilterDisconnectConfirm() },
-                        onDismissResult = { viewModel.dismissKilterResult() }
+                        onDismissResult = { viewModel.dismissKilterResult() },
+                        onRetryPublishQueueNow = { viewModel.retryKilterPublishQueueNow() },
                     )
                 }
             }

@@ -333,6 +333,52 @@ data class KilterPublishState(
     val syncedAtEpochSeconds: Long?,
 )
 
+/** Op recorded with each `kilter_publish_attempts` row. Mirrors the
+ *  CREATE/UPDATE branch the publisher / retry worker actually took. */
+enum class KilterPublishOp { CREATE, UPDATE }
+
+/** Terminal outcome of a single Kilter-publish attempt. Stored as a
+ *  string in `kilter_publish_attempts.outcome`; the enum keeps the
+ *  caller side type-safe. */
+enum class KilterPublishOutcomeKind {
+    SUCCESS,
+    TRANSIENT,
+    PERMANENT,
+    RATE_LIMITED,
+    AUTH,
+    SKIPPED;
+
+    fun storageValue(): String = when (this) {
+        SUCCESS -> "success"
+        TRANSIENT -> "transient"
+        PERMANENT -> "permanent"
+        RATE_LIMITED -> "rate_limited"
+        AUTH -> "auth"
+        SKIPPED -> "skipped"
+    }
+}
+
+/** Per-row mapping of `kilter_publish_attempts`. */
+data class KilterPublishAttempt(
+    val id: Long,
+    val climbUuid: String,
+    val attemptedAtMs: Long,
+    val op: String,
+    val via: String,
+    val outcome: String,
+    val httpCode: Int?,
+    val errorExcerpt: String?,
+)
+
+/** Aggregate counters for the Kilter-account UI's queue health card. */
+data class KilterPublishQueueStats(
+    val pendingCount: Long,
+    val failedCount: Long,
+    /** Wall-clock millis of the most recent attempt across all climbs.
+     *  Null when no attempt was ever recorded. */
+    val lastAttemptAtMs: Long?,
+)
+
 /** Outcome of [BoardRepository.claimKilterPublishSlot]. */
 sealed class KilterClaim {
     /** Slot was empty (`kilter_status` was NULL or 'failed') and is now
@@ -503,8 +549,33 @@ interface CommunityClimbQueries {
      * `getKilterPublishState` read and the API call).
      */
     fun claimKilterPublishSlot(uuid: String): KilterClaim
+    /**
+     * Append an immutable per-attempt audit row to `kilter_publish_attempts`.
+     * Called from every terminal branch of the publisher + retry worker so
+     * the timeline reconstruction survives subsequent overwrites of the
+     * single-value `climbs.kilter_*` columns.
+     */
+    fun recordKilterPublishAttempt(
+        climbUuid: String,
+        attemptedAtMs: Long,
+        op: KilterPublishOp,
+        via: String,
+        outcome: KilterPublishOutcomeKind,
+        httpCode: Int? = null,
+        errorExcerpt: String? = null,
+    )
+    /** Latest-first attempt history for a climb. */
+    fun getKilterPublishAttempts(climbUuid: String, limit: Int = 50): List<KilterPublishAttempt>
+    /** Aggregate counters for the Kilter-account UI's queue health card. */
+    fun getKilterPublishQueueStats(): KilterPublishQueueStats
     /** Climbs with `origin='cruxcoach'`, Nostr-published, awaiting Kilter sync. */
     fun getClimbsAwaitingKilterRetry(): List<CommunityClimbRow>
+    /**
+     * Local climbs the editor sent to relays where no relay accepted
+     * (`sync_status='failed'`) — the Nostr-side retry queue, scoped to
+     * [pubkey]. Drained by the periodic CommunityPublishRetryWorker.
+     */
+    fun getClimbsAwaitingNostrRetry(pubkey: String): List<CommunityClimbRow>
     /**
      * Drafts (`source='local'`, sync_status `draft`/`failed`) authored
      * by [pubkey] or with a NULL `created_by_pubkey` (legacy / pre-key-init).

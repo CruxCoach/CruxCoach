@@ -224,11 +224,24 @@ class FakeBoardRepository : BoardRepository {
     override fun markKilterPublishRejected(uuid: String, error: String) {}
     override fun claimKilterPublishSlot(uuid: String): com.cruxcoach.data.repository.KilterClaim =
         com.cruxcoach.data.repository.KilterClaim.Won(null)
+    override fun recordKilterPublishAttempt(
+        climbUuid: String,
+        attemptedAtMs: Long,
+        op: com.cruxcoach.data.repository.KilterPublishOp,
+        via: String,
+        outcome: com.cruxcoach.data.repository.KilterPublishOutcomeKind,
+        httpCode: Int?,
+        errorExcerpt: String?,
+    ) {}
+    override fun getKilterPublishAttempts(climbUuid: String, limit: Int): List<com.cruxcoach.data.repository.KilterPublishAttempt> = emptyList()
+    override fun getKilterPublishQueueStats(): com.cruxcoach.data.repository.KilterPublishQueueStats =
+        com.cruxcoach.data.repository.KilterPublishQueueStats(0, 0, null)
     override fun getKilterPublishState(uuid: String): com.cruxcoach.data.repository.KilterPublishState? = null
     override fun updateSetterUsernameForPubkey(pubkey: String, displayName: String) {}
     override fun getClimbsByPubkey(pubkey: String): List<com.cruxcoach.data.repository.SetterClimbEntry> = emptyList()
     override fun getCommunitySetterStats(): List<com.cruxcoach.data.repository.SetterStat> = emptyList()
     override fun getClimbsAwaitingKilterRetry(): List<CommunityClimbRow> = emptyList()
+    override fun getClimbsAwaitingNostrRetry(pubkey: String): List<CommunityClimbRow> = emptyList()
     override fun getDraftClimbs(pubkey: String?): List<CommunityClimbRow> = emptyList()
     override fun getMyClimbs(pubkey: String): List<CommunityClimbRow> = emptyList()
     override fun getCommunityClimbs(): List<CommunityClimbRow> = emptyList()

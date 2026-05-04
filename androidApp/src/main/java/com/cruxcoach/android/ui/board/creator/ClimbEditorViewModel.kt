@@ -556,10 +556,20 @@ class ClimbEditorViewModel @Inject constructor(
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "publish failed", e)
+                // The publisher's `accepted == 0` path persisted the
+                // climb as `sync_status='failed'` AND threw — so the
+                // climb's bytes are durable in the DB. Schedule a
+                // retry-now so the user's "I just tapped publish"
+                // intent gets the next attempt before the periodic
+                // 6h tick. Periodic schedule is wired in CruxCoachApp;
+                // this is the immediate-retry nudge.
+                runCatching {
+                    com.cruxcoach.android.community.CommunityPublishRetryWorker.runOnce(appContext)
+                }
                 _state.update {
                     it.copy(
                         isPublishing = false,
-                        errorMessage = appContext.getString(com.cruxcoach.android.R.string.climb_creator_publish_failed),
+                        errorMessage = appContext.getString(com.cruxcoach.android.R.string.climb_creator_publish_failed_will_retry),
                     )
                 }
                 return@launch

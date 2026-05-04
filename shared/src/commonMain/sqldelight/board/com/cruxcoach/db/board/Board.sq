@@ -166,6 +166,24 @@ CREATE INDEX idx_climbs_origin ON climbs(origin);
 CREATE INDEX idx_climbs_kilter_status ON climbs(kilter_status);
 CREATE INDEX idx_climbs_nostr_via ON climbs(nostr_publish_via);
 
+-- FEAT-006 Kilter publish per-attempt audit trail. Augments the
+-- single-value `climbs.kilter_*` columns (which carry latest-status only)
+-- with a permanent timeline so support / forensics / future retry caps
+-- can reconstruct the attempt sequence. Rows are append-only; deleting
+-- a climb intentionally does NOT cascade so the audit history survives.
+CREATE TABLE kilter_publish_attempts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    climb_uuid TEXT NOT NULL,
+    attempted_at INTEGER NOT NULL,    -- wall-clock millis
+    op TEXT NOT NULL,                 -- 'create' | 'update'
+    via TEXT NOT NULL,                -- 'self' | 'cruxcoach'
+    outcome TEXT NOT NULL,            -- 'success' | 'transient' | 'permanent' | 'rate_limited' | 'auth' | 'skipped'
+    http_code INTEGER,                -- NULL when no HTTP round-trip happened
+    error_excerpt TEXT                -- bounded by KilterApiClient.MAX_ERR_BODY at the boundary
+);
+
+CREATE INDEX idx_kilter_attempts_climb ON kilter_publish_attempts(climb_uuid, attempted_at DESC);
+
 -- FEAT-003 grade consensus cache. MVP only stores setter_grade_id; full
 -- consensus aggregation (vote_count, confidence, trimmed mean) lands when
 -- public ascent-vote events ship in 0.2.0.
@@ -777,6 +795,43 @@ UPDATE climbs
 lastClimbsChangeCount:
 SELECT changes();
 
+-- ═══ Kilter publish per-attempt audit-history ═══
+
+-- Append a row to the per-attempt audit trail. Called from every
+-- terminal branch of KilterClimbPublisher.submit + KilterPublishRetryWorker
+-- so the retry timeline is reconstructible after the single-value
+-- `climbs.kilter_*` columns have been overwritten by a later attempt.
+recordKilterPublishAttempt:
+INSERT INTO kilter_publish_attempts(climb_uuid, attempted_at, op, via, outcome, http_code, error_excerpt)
+VALUES (?, ?, ?, ?, ?, ?, ?);
+
+-- Per-climb attempt timeline (latest first). Used by support / forensics
+-- and the per-climb detail view's "Kilter publish history" section.
+getKilterPublishAttempts:
+SELECT * FROM kilter_publish_attempts
+WHERE climb_uuid = ?
+ORDER BY attempted_at DESC
+LIMIT ?;
+
+-- Aggregate counters for the Kilter-account UI's queue health card.
+-- Returns (pending_count, failed_count, last_attempt_at). pending =
+-- rows whose latest `kilter_status` is NULL or 'failed' under
+-- origin='cruxcoach' AND sync_status='published_nostr' (the same
+-- predicate as the retry worker's queue). failed_count is the same
+-- thing for visibility consistency. last_attempt_at uses the new audit
+-- table so a worker that ran since boot reflects in the UI.
+getKilterPublishQueueStats:
+SELECT
+    (SELECT COUNT(*) FROM climbs
+     WHERE origin = 'cruxcoach'
+       AND sync_status = 'published_nostr'
+       AND (kilter_status IS NULL OR kilter_status = 'failed')) AS pending_count,
+    (SELECT COUNT(*) FROM climbs
+     WHERE origin = 'cruxcoach'
+       AND sync_status = 'published_nostr'
+       AND kilter_status = 'failed') AS failed_count,
+    (SELECT MAX(attempted_at) FROM kilter_publish_attempts) AS last_attempt_at;
+
 -- Climbs that need a Kilter retry: cruxcoach-origin, not yet on Kilter
 -- (NULL or 'failed') and Nostr-published (so we know the user finalized
 -- their publish). Used by the retry queue.
@@ -790,6 +845,21 @@ SELECT * FROM climbs
 WHERE origin = 'cruxcoach'
   AND sync_status = 'published_nostr'
   AND (kilter_status IS NULL OR kilter_status = 'failed')
+ORDER BY created_at ASC
+LIMIT 25;
+
+-- Climbs the local user authored that the editor sent to relays but no
+-- relay accepted (`sync_status='failed'`). Used by the new
+-- CommunityPublishRetryWorker as the retry queue. Scoped to the current
+-- pubkey so an identity-switch device-side doesn't drain rows authored
+-- by another identity. LIMIT bounds the batch so a relay outage that
+-- accumulates dozens of stranded climbs doesn't fire them all in one
+-- worker tick — successive ticks chip at the queue.
+getClimbsAwaitingNostrRetry:
+SELECT * FROM climbs
+WHERE source = 'local'
+  AND sync_status = 'failed'
+  AND created_by_pubkey = ?
 ORDER BY created_at ASC
 LIMIT 25;
 

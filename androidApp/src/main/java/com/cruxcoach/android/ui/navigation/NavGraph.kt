@@ -430,17 +430,22 @@ fun CruxCoachNavHost(
                     },
                 ),
             ) {
-                com.cruxcoach.android.ui.board.creator.ClimbEditorScreen(
-                    onBack = { navController.popBackStack() },
-                    onPublished = { uuid -> navController.popBackStack() },
-                    onNavigateToKilterSettings = {
-                        navController.popBackStack()
-                        navController.navigate(Routes.SETTINGS)
-                    },
-                    onNavigateToNostrProfile = {
-                        navController.navigate(Routes.NOSTR_PROFILE)
-                    },
-                )
+                com.cruxcoach.android.ui.common.ScreenErrorBoundary(
+                    screenName = "ClimbEditor",
+                    onNavigateBack = { navController.popBackStack() },
+                ) {
+                    com.cruxcoach.android.ui.board.creator.ClimbEditorScreen(
+                        onBack = { navController.popBackStack() },
+                        onPublished = { uuid -> navController.popBackStack() },
+                        onNavigateToKilterSettings = {
+                            navController.popBackStack()
+                            navController.navigate(Routes.SETTINGS)
+                        },
+                        onNavigateToNostrProfile = {
+                            navController.navigate(Routes.NOSTR_PROFILE)
+                        },
+                    )
+                }
             }
 
             composable(Routes.BOARD_FILTER) { entry ->
@@ -659,9 +664,14 @@ fun CruxCoachNavHost(
             }
 
             composable(Routes.NOSTR_PROFILE) {
-                com.cruxcoach.android.ui.settings.NostrProfileScreen(
-                    onNavigateBack = { navController.popBackStack() }
-                )
+                com.cruxcoach.android.ui.common.ScreenErrorBoundary(
+                    screenName = "NostrProfile",
+                    onNavigateBack = { navController.popBackStack() },
+                ) {
+                    com.cruxcoach.android.ui.settings.NostrProfileScreen(
+                        onNavigateBack = { navController.popBackStack() }
+                    )
+                }
             }
 
             composable(
@@ -670,21 +680,31 @@ fun CruxCoachNavHost(
                     androidx.navigation.navArgument("setterPubkey") { type = androidx.navigation.NavType.StringType }
                 ),
             ) {
-                com.cruxcoach.android.ui.community.SetterDetailScreen(
+                com.cruxcoach.android.ui.common.ScreenErrorBoundary(
+                    screenName = "SetterDetail",
                     onNavigateBack = { navController.popBackStack() },
-                    onClimbClick = { uuid, angle ->
-                        navController.navigate(Routes.boardClimbDetail(uuid, angle))
-                    },
-                )
+                ) {
+                    com.cruxcoach.android.ui.community.SetterDetailScreen(
+                        onNavigateBack = { navController.popBackStack() },
+                        onClimbClick = { uuid, angle ->
+                            navController.navigate(Routes.boardClimbDetail(uuid, angle))
+                        },
+                    )
+                }
             }
 
             composable(Routes.SETTERS_LIST) {
-                com.cruxcoach.android.ui.community.SettersListScreen(
+                com.cruxcoach.android.ui.common.ScreenErrorBoundary(
+                    screenName = "SettersList",
                     onNavigateBack = { navController.popBackStack() },
-                    onSetterClick = { pubkey ->
-                        navController.navigate(Routes.setterDetail(pubkey))
-                    },
-                )
+                ) {
+                    com.cruxcoach.android.ui.community.SettersListScreen(
+                        onNavigateBack = { navController.popBackStack() },
+                        onSetterClick = { pubkey ->
+                            navController.navigate(Routes.setterDetail(pubkey))
+                        },
+                    )
+                }
             }
 
         }

@@ -1,5 +1,6 @@
 package com.cruxcoach.android.ui.community
 
+import android.util.Log
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -35,6 +36,9 @@ data class SetterDetailState(
     val lightningAddress: String? = null,
     val climbs: List<SetterClimbEntry> = emptyList(),
     val isLoading: Boolean = true,
+    /** Non-null after the climbs DB read fails — distinguishes "this
+     *  setter has no climbs yet" from "the read threw". */
+    val errorMessage: String? = null,
 )
 
 @HiltViewModel
@@ -64,29 +68,52 @@ class SetterDetailViewModel @Inject constructor(
         }
     }
 
+    fun retry() {
+        if (pubkey.isBlank()) return
+        loadClimbs()
+        loadProfile()
+    }
+
+    fun clearError() = _state.update { it.copy(errorMessage = null) }
+
     private fun loadClimbs() {
         viewModelScope.launch {
-            val rows = withContext(Dispatchers.IO) {
+            _state.update { it.copy(isLoading = true, errorMessage = null) }
+            val result = withContext(Dispatchers.IO) {
                 runCatching { boardRepository.getClimbsByPubkey(pubkey) }
-                    .getOrElse { emptyList() }
             }
-            _state.update {
-                it.copy(
-                    climbs = rows,
-                    // SetterClimbEntry doesn't carry the resolved
-                    // setter_username — that's what we'd display anyway,
-                    // but the title bar already uses the npub stub from
-                    // init. Kind-0 fetch below replaces it with the
-                    // proper display_name.
-                    isLoading = false,
-                )
-            }
+            result.fold(
+                onSuccess = { rows ->
+                    _state.update {
+                        it.copy(
+                            climbs = rows,
+                            // SetterClimbEntry doesn't carry the resolved
+                            // setter_username — the title bar uses the npub
+                            // stub from init; loadProfile replaces it.
+                            isLoading = false,
+                            errorMessage = null,
+                        )
+                    }
+                },
+                onFailure = { e ->
+                    Log.w(TAG, "getClimbsByPubkey($pubkey) failed", e)
+                    _state.update {
+                        it.copy(
+                            climbs = emptyList(),
+                            isLoading = false,
+                            errorMessage = e.message ?: e::class.simpleName ?: "load failed",
+                        )
+                    }
+                },
+            )
         }
     }
 
     private fun loadProfile() {
         viewModelScope.launch {
-            val profile = runCatching { nostrProfileManager.getProfile(pubkey) }.getOrNull()
+            val profile = runCatching { nostrProfileManager.getProfile(pubkey) }
+                .onFailure { Log.w(TAG, "getProfile($pubkey) failed", it) }
+                .getOrNull()
                 ?: return@launch
             _state.update { current ->
                 current.copy(
@@ -99,5 +126,9 @@ class SetterDetailViewModel @Inject constructor(
                 )
             }
         }
+    }
+
+    private companion object {
+        const val TAG = "SetterDetailVM"
     }
 }

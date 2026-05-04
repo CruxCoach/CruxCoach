@@ -116,4 +116,56 @@ class CommunityClimbSubscriberTest {
         // tries to overwrite via INSERT OR REPLACE on uuid alone.
         assertFalse(CommunityClimbValidation.authorOwnershipMatches(authorA, authorB))
     }
+
+    // ── Skip-matrix bounds (audit testing/integration-test-gaps/004) ──
+
+    @Test
+    fun eventSizeAcceptable_caps_at_16kb() {
+        assertTrue(CommunityClimbValidation.eventSizeAcceptable(0))
+        assertTrue(CommunityClimbValidation.eventSizeAcceptable(8 * 1024))
+        assertTrue(CommunityClimbValidation.eventSizeAcceptable(16 * 1024))
+        assertFalse(CommunityClimbValidation.eventSizeAcceptable(16 * 1024 + 1))
+        assertFalse(CommunityClimbValidation.eventSizeAcceptable(1_000_000))
+    }
+
+    @Test
+    fun nameLengthAcceptable_caps_at_100_chars() {
+        assertTrue(CommunityClimbValidation.nameLengthAcceptable(0))
+        assertTrue(CommunityClimbValidation.nameLengthAcceptable(50))
+        assertTrue(CommunityClimbValidation.nameLengthAcceptable(100))
+        assertFalse(CommunityClimbValidation.nameLengthAcceptable(101))
+        assertFalse(CommunityClimbValidation.nameLengthAcceptable(10_000))
+    }
+
+    @Test
+    fun descriptionLengthAcceptable_caps_at_500_chars() {
+        assertTrue(CommunityClimbValidation.descriptionLengthAcceptable(0))
+        assertTrue(CommunityClimbValidation.descriptionLengthAcceptable(250))
+        assertTrue(CommunityClimbValidation.descriptionLengthAcceptable(500))
+        assertFalse(CommunityClimbValidation.descriptionLengthAcceptable(501))
+    }
+
+    @Test
+    fun holdsCountAcceptable_caps_at_200_holds() {
+        assertTrue(CommunityClimbValidation.holdsCountAcceptable(0))
+        assertTrue(CommunityClimbValidation.holdsCountAcceptable(50))
+        assertTrue(CommunityClimbValidation.holdsCountAcceptable(200))
+        assertFalse(CommunityClimbValidation.holdsCountAcceptable(201))
+        assertFalse(CommunityClimbValidation.holdsCountAcceptable(10_000))
+    }
+
+    @Test
+    fun kindAcceptable_only_30078() {
+        assertTrue(CommunityClimbValidation.kindAcceptable(30078))
+        assertFalse(CommunityClimbValidation.kindAcceptable(0))
+        assertFalse(CommunityClimbValidation.kindAcceptable(1))
+        assertFalse(CommunityClimbValidation.kindAcceptable(30079))
+    }
+
+    @Test
+    fun isOwnEvent_skips_self_echo() {
+        assertTrue(CommunityClimbValidation.isOwnEvent(authorA, authorA))
+        assertFalse(CommunityClimbValidation.isOwnEvent(authorA, authorB))
+        assertFalse(CommunityClimbValidation.isOwnEvent(authorA, null))
+    }
 }

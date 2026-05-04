@@ -157,23 +157,32 @@ class KilterClimbPublisher @Inject constructor(
         // row was a permanent stranding. Catch + best-effort downgrade
         // to 'failed' so the next retry tick re-attempts (or surfaces
         // the failure cleanly).
+        val opEnum = if (isUpdate) com.cruxcoach.data.repository.KilterPublishOp.UPDATE
+                     else com.cruxcoach.data.repository.KilterPublishOp.CREATE
+        val attemptedAt = System.currentTimeMillis()
         return try {
             when (r) {
                 is KilterPublishResult.Success -> {
                     boardRepository.markKilterPublishSynced(
                         uuid = uuid,
                         via = "self",
-                        syncedAtEpochSeconds = System.currentTimeMillis() / 1000,
+                        syncedAtEpochSeconds = attemptedAt / 1000,
                     )
+                    recordAttempt(uuid, attemptedAt, opEnum,
+                        com.cruxcoach.data.repository.KilterPublishOutcomeKind.SUCCESS, null, null)
                     Outcome.Synced
                 }
                 is KilterPublishResult.NotAuthenticated -> {
                     Log.i(TAG, "$op via=self: token expired mid-call; deferring to retry worker")
                     boardRepository.markKilterPublishFailed(uuid, "token expired")
+                    recordAttempt(uuid, attemptedAt, opEnum,
+                        com.cruxcoach.data.repository.KilterPublishOutcomeKind.AUTH, null, "token expired")
                     Outcome.Failed(appContext.getString(R.string.kilter_publish_session_expired))
                 }
                 is KilterPublishResult.TransientError -> {
                     boardRepository.markKilterPublishFailed(uuid, "transient: ${r.message}")
+                    recordAttempt(uuid, attemptedAt, opEnum,
+                        com.cruxcoach.data.repository.KilterPublishOutcomeKind.TRANSIENT, null, r.message)
                     Outcome.Failed(appContext.getString(R.string.kilter_publish_transient))
                 }
                 is KilterPublishResult.RateLimited -> {
@@ -181,6 +190,8 @@ class KilterClimbPublisher @Inject constructor(
                     // the actual backoff. mark "rate-limited:" so logcat /
                     // kilter_error column distinguishes it.
                     boardRepository.markKilterPublishFailed(uuid, "rate-limited: ${r.message}")
+                    recordAttempt(uuid, attemptedAt, opEnum,
+                        com.cruxcoach.data.repository.KilterPublishOutcomeKind.RATE_LIMITED, 429, r.message)
                     Outcome.Failed(appContext.getString(R.string.kilter_publish_transient))
                 }
                 is KilterPublishResult.PermanentError -> {
@@ -197,6 +208,9 @@ class KilterClimbPublisher @Inject constructor(
                             uuid,
                             "http=${r.httpCode}: ${r.message.take(200)}",
                         )
+                        recordAttempt(uuid, attemptedAt, opEnum,
+                            com.cruxcoach.data.repository.KilterPublishOutcomeKind.PERMANENT,
+                            r.httpCode, r.message)
                         Outcome.Diverged(
                             appContext.getString(R.string.kilter_publish_diverged_with_code, r.httpCode),
                         )
@@ -205,6 +219,9 @@ class KilterClimbPublisher @Inject constructor(
                             uuid,
                             "http=${r.httpCode}: ${r.message.take(200)}",
                         )
+                        recordAttempt(uuid, attemptedAt, opEnum,
+                            com.cruxcoach.data.repository.KilterPublishOutcomeKind.PERMANENT,
+                            r.httpCode, r.message)
                         Outcome.Failed(
                             appContext.getString(R.string.kilter_publish_rejected_with_code, r.httpCode),
                         )
@@ -235,6 +252,31 @@ class KilterClimbPublisher @Inject constructor(
      * the same default and let Kilter's server-side validate.
      */
     private fun productNameFor(layoutId: Long): String = "Kilter Board Original"
+
+    /** Best-effort audit-trail write — wrapped in runCatching so a SQLite
+     *  hiccup at this point doesn't tip the publisher's main result. The
+     *  worst case is a missing row in the history; the live status
+     *  columns are still authoritative. */
+    private fun recordAttempt(
+        uuid: String,
+        attemptedAtMs: Long,
+        op: com.cruxcoach.data.repository.KilterPublishOp,
+        outcome: com.cruxcoach.data.repository.KilterPublishOutcomeKind,
+        httpCode: Int?,
+        errorExcerpt: String?,
+    ) {
+        runCatching {
+            boardRepository.recordKilterPublishAttempt(
+                climbUuid = uuid,
+                attemptedAtMs = attemptedAtMs,
+                op = op,
+                via = "self",
+                outcome = outcome,
+                httpCode = httpCode,
+                errorExcerpt = errorExcerpt?.take(200),
+            )
+        }.onFailure { Log.w(TAG, "recordKilterPublishAttempt threw for uuid=$uuid", it) }
+    }
 
     sealed class Outcome {
         /** Kilter accepted the climb. */

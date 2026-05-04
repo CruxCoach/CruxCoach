@@ -165,6 +165,8 @@ class SettingsViewModel @Inject constructor(
                 val unreadAnnouncements = announcementRepository.getUnreadCount().toInt()
                 val darkMode = userPreferences.darkMode.first()
                 val advertisingSupported = climbAdvertiser.checkSupported()
+                val queueStats = runCatching { boardRepository.getKilterPublishQueueStats() }
+                    .getOrElse { com.cruxcoach.data.repository.KilterPublishQueueStats(0, 0, null) }
 
                 val profileForm = if (profile != null) {
                     val gradeIndex = GradeConverter.gradeToIndex(profile.maxBoulderGrade)
@@ -229,6 +231,9 @@ class SettingsViewModel @Inject constructor(
                         lastSync = userPreferences.kilterLastSync.first(),
                         pushEnabled = userPreferences.kilterPushEnabled.first(),
                         climbPublishEnabled = userPreferences.kilterClimbPublishEnabled.first(),
+                        publishPendingCount = queueStats.pendingCount,
+                        publishFailedCount = queueStats.failedCount,
+                        publishLastAttemptAtMs = queueStats.lastAttemptAtMs,
                     )
                 )
             }
@@ -664,6 +669,41 @@ class SettingsViewModel @Inject constructor(
                     onFailure = { context.getString(R.string.kilter_sync_error, it.message ?: "") }
                 )
             )) }
+        }
+    }
+
+    /**
+     * User tapped "Retry now" on the Kilter publish-queue card. Fans out
+     * to [KilterPublishRetryWorker.runOnce] and then refreshes the
+     * queue-stats so the UI reflects the post-batch state.
+     *
+     * No retry-running flag flicker: WorkManager's APPEND_OR_REPLACE
+     * semantics serialize this behind any in-flight periodic worker run,
+     * so a double-tap before the previous attempt finishes is safe.
+     */
+    fun retryKilterPublishQueueNow() {
+        if (_state.value.kilterAccount.publishRetryRunning) return
+        _state.update { it.copy(kilterAccount = it.kilterAccount.copy(publishRetryRunning = true)) }
+        viewModelScope.launch {
+            com.cruxcoach.android.data.kilter.KilterPublishRetryWorker.runOnce(context)
+            // Optimistic delay then refresh — WorkManager fires the
+            // worker on a background thread; we don't have a deferred
+            // observation hook here, so a small wait + re-read covers
+            // the common case (sub-second worker runs). The user can
+            // also re-tap retry which idempotently re-queues.
+            kotlinx.coroutines.delay(2_000L)
+            val stats = withContext(Dispatchers.IO) {
+                runCatching { boardRepository.getKilterPublishQueueStats() }
+                    .getOrElse { com.cruxcoach.data.repository.KilterPublishQueueStats(0, 0, null) }
+            }
+            _state.update {
+                it.copy(kilterAccount = it.kilterAccount.copy(
+                    publishRetryRunning = false,
+                    publishPendingCount = stats.pendingCount,
+                    publishFailedCount = stats.failedCount,
+                    publishLastAttemptAtMs = stats.lastAttemptAtMs,
+                ))
+            }
         }
     }
 

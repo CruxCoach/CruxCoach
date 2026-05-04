@@ -224,6 +224,14 @@ class CruxCoachApp : Application(), Configuration.Provider {
                 com.cruxcoach.android.data.kilter.KilterPublishRetryWorker.schedule(this@CruxCoachApp)
             }.onFailure { PerfLogger.logCoroutine("appScope", "KilterPublishRetryWorker.schedule failed: ${it.message}") }
 
+            // Sibling retry worker for the Nostr-side of community publish.
+            // Drains rows the editor sent to relays where zero relays
+            // accepted (transient failure, captive portal, etc.). Same
+            // 6h cadence; idempotent; self-skips when no failed rows.
+            runCatching {
+                com.cruxcoach.android.community.CommunityPublishRetryWorker.schedule(this@CruxCoachApp)
+            }.onFailure { PerfLogger.logCoroutine("appScope", "CommunityPublishRetryWorker.schedule failed: ${it.message}") }
+
             // Channel B: live Nostr subscription for community climbs.
             // Closes the latency gap between two daily Blossom snapshots —
             // climbs other users publish appear in the local DB within

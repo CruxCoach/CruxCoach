@@ -1,5 +1,6 @@
 package com.cruxcoach.android.ui.community
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.data.repository.BoardRepository
@@ -23,6 +24,10 @@ import kotlinx.coroutines.withContext
 data class SettersListState(
     val setters: List<SetterStat> = emptyList(),
     val isLoading: Boolean = true,
+    /** Non-null after a DB read fails — distinguishes "no setters yet"
+     *  from "the read threw and we're showing nothing because of a bug".
+     *  UI surfaces this as an inline error card with a retry button. */
+    val errorMessage: String? = null,
 )
 
 @HiltViewModel
@@ -37,13 +42,35 @@ class SettersListViewModel @Inject constructor(
         load()
     }
 
+    fun retry() = load()
+
+    fun clearError() = _state.update { it.copy(errorMessage = null) }
+
     private fun load() {
         viewModelScope.launch {
-            val rows = withContext(Dispatchers.IO) {
+            _state.update { it.copy(isLoading = true, errorMessage = null) }
+            val result = withContext(Dispatchers.IO) {
                 runCatching { boardRepository.getCommunitySetterStats() }
-                    .getOrElse { emptyList() }
             }
-            _state.update { it.copy(setters = rows, isLoading = false) }
+            result.fold(
+                onSuccess = { rows ->
+                    _state.update { it.copy(setters = rows, isLoading = false, errorMessage = null) }
+                },
+                onFailure = { e ->
+                    Log.w(TAG, "getCommunitySetterStats failed", e)
+                    _state.update {
+                        it.copy(
+                            setters = emptyList(),
+                            isLoading = false,
+                            errorMessage = e.message ?: e::class.simpleName ?: "load failed",
+                        )
+                    }
+                },
+            )
         }
+    }
+
+    private companion object {
+        const val TAG = "SettersListVM"
     }
 }
