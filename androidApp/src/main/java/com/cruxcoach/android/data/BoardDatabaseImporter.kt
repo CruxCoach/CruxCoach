@@ -181,6 +181,21 @@ class BoardDatabaseImporter(
             "importFromChunks done: climbs=$climbCount stats=$statCount " +
                 "placements=$placementCount nomatch=$nomatchCount",
         )
+        // Post-import integrity probe. Steady-state expectation after the
+        // 6.sqm NOCASE migration: orphanStats and noStatsClimbs both stay
+        // small and stable across syncs. A sudden jump signals a stats-
+        // chunk import failure or a fresh case-drift regression. Wrapped
+        // in runCatching so a transient SQLite error never strands the
+        // sync's success state.
+        runCatching {
+            val orphanStats = boardRepository.countOrphanStats()
+            val noStatsClimbs = boardRepository.countListedClimbsWithoutStats()
+            Log.i(
+                TAG,
+                "importFromChunks integrity: orphanStats=$orphanStats " +
+                    "listedClimbsWithoutStats=$noStatsClimbs",
+            )
+        }.onFailure { Log.w(TAG, "integrity probe failed", it) }
         onProgress?.invoke(ImportStep.Done(climbCount.toInt(), statCount.toInt(), placementCount, nomatchCount.toInt()))
     }
 

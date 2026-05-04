@@ -4,7 +4,13 @@
 -- preserved across Aurora-extracted bundles and the Blossom-mirror cron.
 
 CREATE TABLE climbs (
-    uuid TEXT NOT NULL PRIMARY KEY,
+    -- COLLATE NOCASE: the Kilter blob carries UUIDs in mixed casings
+    -- (~114k upper, ~60k lower) and Kind-30078 events may reference
+    -- a Kilter UUID in any case. Binary collation would let case-shifted
+    -- duplicates coexist (browse VIEW would join each to a different
+    -- stats subset). NOCASE keeps the PK + JOINs case-insensitive.
+    -- Migration 6.sqm dedupes existing rows for upgraders.
+    uuid TEXT NOT NULL PRIMARY KEY COLLATE NOCASE,
     layout_id INTEGER NOT NULL,
     setter_username TEXT,
     name TEXT NOT NULL,
@@ -40,7 +46,10 @@ CREATE TABLE climbs (
 );
 
 CREATE TABLE climb_stats (
-    climb_uuid TEXT NOT NULL,
+    -- COLLATE NOCASE: pairs with climbs.uuid so the JOIN in climb_browse
+    -- and every climb_uuid lookup matches across casings. See climbs.uuid
+    -- comment + 6.sqm migration for the full rationale.
+    climb_uuid TEXT NOT NULL COLLATE NOCASE,
     angle INTEGER NOT NULL,
     display_difficulty REAL,
     difficulty_average REAL,
@@ -836,3 +845,24 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?);
 
 getGradeCache:
 SELECT * FROM community_grade_cache WHERE climb_d_tag = ? AND angle = ?;
+
+-- ── Post-import integrity diagnostics ────────────────────────────
+-- Counts surfaced by [BoardDatabaseImporter.importFromChunks] after
+-- every successful sync. Steady-state expectation post-6.sqm:
+--   * countOrphanStats = 0 — stats whose climb_uuid has no matching
+--     climbs row indicate cron-side desync (rare: a climb tombstoned
+--     in climbs but still referenced in stats) or a partial chunk set.
+--   * countListedClimbsWithoutStats: how many is_listed=1 climbs the
+--     INNER JOIN excludes from climb_browse. Non-zero is normal for
+--     fresh community climbs, but a sudden jump signals a stats-chunk
+--     import failure or a fresh case-drift regression.
+
+countOrphanStats:
+SELECT COUNT(*) FROM climb_stats cs
+LEFT JOIN climbs c ON c.uuid = cs.climb_uuid
+WHERE c.uuid IS NULL;
+
+countListedClimbsWithoutStats:
+SELECT COUNT(*) FROM climbs c
+WHERE c.is_listed = 1
+  AND NOT EXISTS (SELECT 1 FROM climb_stats cs WHERE cs.climb_uuid = c.uuid);

@@ -123,6 +123,14 @@ class BoardRepositoryImpl(
         return q.countStats().executeAsOne()
     }
 
+    override fun countOrphanStats(): Long {
+        return q.countOrphanStats().executeAsOne()
+    }
+
+    override fun countListedClimbsWithoutStats(): Long {
+        return q.countListedClimbsWithoutStats().executeAsOne()
+    }
+
     override fun climbExistsByUuid(uuid: String): Boolean {
         return q.climbExistsByUuid(uuid).executeAsOne() > 0
     }

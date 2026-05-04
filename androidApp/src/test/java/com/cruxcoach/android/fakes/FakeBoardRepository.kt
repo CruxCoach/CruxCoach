@@ -173,6 +173,10 @@ class FakeBoardRepository : BoardRepository {
 
     override fun getStatCount(): Long = 0L
 
+    override fun countOrphanStats(): Long = 0L
+
+    override fun countListedClimbsWithoutStats(): Long = 0L
+
     override fun searchClimbUuidsByHold(
         holdPattern: String, angle: Int, layoutId: Int, minDifficulty: Double,
         maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter

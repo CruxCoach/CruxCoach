@@ -179,6 +179,10 @@ interface BoardClimbQueries {
     fun countBenchmarkSearchClimbs(query: String, angle: Int, layoutId: Int, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER): Long
     fun getClimbCount(): Long
     fun getStatCount(): Long
+    /** Stats with no matching climbs row (cron desync indicator). */
+    fun countOrphanStats(): Long
+    /** Listed climbs the browse VIEW excludes because no stats exist. */
+    fun countListedClimbsWithoutStats(): Long
     fun climbExistsByUuid(uuid: String): Boolean
     fun statExistsByUuid(uuid: String): Boolean
     fun getClimbCountByAngle(layoutId: Int, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER): List<AngleClimbCount>
