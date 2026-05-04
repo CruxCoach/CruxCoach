@@ -683,7 +683,16 @@ markCommunityClimbDeleted {
     WHERE uuid = :uuid
       AND created_by_pubkey = :pubkey
       AND origin = 'cruxcoach';
-    DELETE FROM climb_stats WHERE climb_uuid = :uuid;
+    -- Mirror the owner+origin guard on the stats delete so a hostile
+    -- caller passing a foreign uuid + their own pubkey can't strip
+    -- someone else's climb_stats. Drops only when the climbs row was
+    -- actually owned by `:pubkey` and origin='cruxcoach'.
+    DELETE FROM climb_stats WHERE climb_uuid IN (
+        SELECT uuid FROM climbs
+        WHERE uuid = :uuid
+          AND created_by_pubkey = :pubkey
+          AND origin = 'cruxcoach'
+    );
 }
 
 -- True if a row exists and its is_deleted flag is set. Used by the
