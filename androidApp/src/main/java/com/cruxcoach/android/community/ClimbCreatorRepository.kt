@@ -43,7 +43,11 @@ class ClimbCreatorRepository @Inject constructor(
         val pubkey = runCatching { nostrSigner.getPublicKeyHex() }.getOrNull()
         val layoutId = userPreferences.boardLayoutId.first().toLong()
 
-        val uuid = UUID.randomUUID().toString().replace("-", "").uppercase()
+        // Lowercase canonical form (see climbs.uuid comment in Board.sq
+        // + 7.sqm). Pre-7.sqm this generated upper-case which left
+        // already-published cruxcoach climbs in upper case in the DB
+        // until 7.sqm normalized them; new drafts go straight to lower.
+        val uuid = UUID.randomUUID().toString().replace("-", "").lowercase()
         val frames = state.encodeFrames()
         val moveCount = BoardClimbParser
             .estimateMoveCount(BoardClimbParser.parseFrames(frames))

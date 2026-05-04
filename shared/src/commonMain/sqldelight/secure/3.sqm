@@ -1,0 +1,25 @@
+-- Migration version 3 → 4: lowercase canonicalization of climb_uuid in
+-- the user-side tables (ascents, bids, climb_list_entries).
+--
+-- Pairs with the board DB's 7.sqm: the board DB now stores climb UUIDs
+-- exclusively in lowercase (importer LOWER()s every blob row, the live
+-- sub lowercases parsed event UUIDs, ClimbCreator generates lowercase).
+-- Without normalizing the secure-side foreign references, joins via
+-- ClimbNameResolver still work — it case-fanouts on read — but every
+-- direct lookup that bypasses the resolver (e.g. the BoardLogbookScreen
+-- query path) silently misses ascents whose climb_uuid is uppercase.
+
+-- ascents + bids: climb_uuid has no UNIQUE constraint, plain UPDATE.
+UPDATE ascents SET climb_uuid = LOWER(climb_uuid);
+UPDATE bids SET climb_uuid = LOWER(climb_uuid);
+
+-- climb_list_entries: PK is (list_id, climb_uuid). Two entries for the
+-- same list with case-shifted UUIDs would collide on LOWER. Dedup the
+-- conflict by keeping the earliest-added row (smallest rowid) per
+-- (list_id, LOWER(climb_uuid)) cluster, dropping the rest.
+DELETE FROM climb_list_entries
+WHERE rowid NOT IN (
+    SELECT MIN(rowid) FROM climb_list_entries
+    GROUP BY list_id, LOWER(climb_uuid)
+);
+UPDATE climb_list_entries SET climb_uuid = LOWER(climb_uuid);

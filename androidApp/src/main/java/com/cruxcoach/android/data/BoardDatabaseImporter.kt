@@ -496,6 +496,12 @@ class BoardDatabaseImporter(
                 val batchEnd = batchStart + BULK_BATCH_SIZE - 1
                 targetDb.beginTransaction()
                 try {
+                    // LOWER(uuid) is the canonical write form (see 7.sqm
+                    // for full rationale). The Kilter blob carries the
+                    // same hex in mixed casings *with divergent metadata*
+                    // — they are *not* the same logical climb on the
+                    // cron's side — so we collapse case at the import
+                    // boundary and let BINARY collation enforce identity.
                     targetDb.execSQL("""
                         INSERT OR IGNORE INTO climbs(
                             uuid, layout_id, setter_username, name, frames,
@@ -503,7 +509,7 @@ class BoardDatabaseImporter(
                             edge_bottom, edge_top, created_at,
                             description, is_nomatch, frames_pace, hsm, move_count,
                             origin, created_by_pubkey)
-                        SELECT uuid, layout_id, setter_username, name, frames,
+                        SELECT LOWER(uuid), layout_id, setter_username, name, frames,
                                frames_count, is_listed, edge_left, edge_right,
                                edge_bottom, edge_top, created_at,
                                COALESCE(description, ''), COALESCE(is_nomatch, 0),
@@ -522,6 +528,10 @@ class BoardDatabaseImporter(
                     // way, the Blossom blob is at best as fresh as those
                     // sources, often staler. Don't let a daily blob
                     // refresh roll back an in-flight Nostr edit.
+                    // climbs.uuid is canonical lowercase (see INSERT
+                    // above); src.uuid may be in either case. Match by
+                    // LOWER() on the src side so the correlated subquery
+                    // and the IN list both find the same row.
                     targetDb.execSQL("""
                         UPDATE climbs SET
                             (layout_id, setter_username, name, frames,
@@ -535,10 +545,10 @@ class BoardDatabaseImporter(
                                       COALESCE(frames_pace, 0), COALESCE(hsm, 0),
                                       $moveCountExpr
                                FROM src.$srcTable
-                               WHERE src.$srcTable.uuid = climbs.uuid)
+                               WHERE LOWER(src.$srcTable.uuid) = climbs.uuid)
                         WHERE origin = 'kilter'
                           AND uuid IN (
-                            SELECT uuid FROM src.$srcTable
+                            SELECT LOWER(uuid) FROM src.$srcTable
                             WHERE rowid BETWEEN $batchStart AND $batchEnd
                           )
                     """)
@@ -554,7 +564,7 @@ class BoardDatabaseImporter(
                         WHERE origin = 'cruxcoach'
                           AND is_listed = 1
                           AND uuid IN (
-                            SELECT uuid FROM src.$srcTable
+                            SELECT LOWER(uuid) FROM src.$srcTable
                             WHERE rowid BETWEEN $batchStart AND $batchEnd
                               AND is_listed = 0
                           )
@@ -581,12 +591,12 @@ class BoardDatabaseImporter(
                     targetDb.execSQL("""
                         UPDATE climbs SET setter_username = COALESCE(
                             (SELECT setter_username FROM src.$srcTable
-                             WHERE src.$srcTable.uuid = climbs.uuid),
+                             WHERE LOWER(src.$srcTable.uuid) = climbs.uuid),
                             climbs.setter_username
                         )
                         WHERE origin = 'cruxcoach'
                           AND uuid IN (
-                            SELECT uuid FROM src.$srcTable
+                            SELECT LOWER(uuid) FROM src.$srcTable
                             WHERE rowid BETWEEN $batchStart AND $batchEnd
                           )
                     """)
@@ -603,7 +613,7 @@ class BoardDatabaseImporter(
                             UPDATE climbs SET origin = 'cruxcoach'
                             WHERE origin != 'cruxcoach'
                               AND uuid IN (
-                                SELECT uuid FROM src.$srcTable
+                                SELECT LOWER(uuid) FROM src.$srcTable
                                 WHERE rowid BETWEEN $batchStart AND $batchEnd
                                   AND origin = 'cruxcoach'
                               )
@@ -620,11 +630,11 @@ class BoardDatabaseImporter(
                         targetDb.execSQL("""
                             UPDATE climbs SET created_by_pubkey = (
                                 SELECT created_by_pubkey FROM src.$srcTable
-                                WHERE src.$srcTable.uuid = climbs.uuid
+                                WHERE LOWER(src.$srcTable.uuid) = climbs.uuid
                             )
                             WHERE created_by_pubkey IS NULL
                               AND uuid IN (
-                                SELECT uuid FROM src.$srcTable
+                                SELECT LOWER(uuid) FROM src.$srcTable
                                 WHERE rowid BETWEEN $batchStart AND $batchEnd
                                   AND created_by_pubkey IS NOT NULL
                               )
@@ -684,7 +694,11 @@ class BoardDatabaseImporter(
         cursor.use {
             while (it.moveToNext()) {
                 scanned++
-                val uuid = it.getString(0)
+                // Canonical lowercase: pairs with the ATTACH-bulk path's
+                // LOWER(uuid) above so existsClimb / upsertClimb operate
+                // on the same string regardless of which path the chunk
+                // took to get here.
+                val uuid = it.getString(0).lowercase()
                 if (existingUuids != null && uuid in existingUuids) {
                     if (scanned % (BATCH_SIZE * 4) == 0) onProgress?.invoke(inserted, scanned, total)
                     continue
@@ -736,12 +750,17 @@ class BoardDatabaseImporter(
                 val batchEnd = batchStart + BULK_BATCH_SIZE - 1
                 targetDb.beginTransaction()
                 try {
+                    // Mirror the climbs-side LOWER() canonicalization so
+                    // climb_stats.climb_uuid matches the lowercase uuids
+                    // we wrote into climbs. Without this the JOIN in
+                    // climb_browse fails for any chunk that ships stats
+                    // in upper-case while climbs landed lower-case.
                     targetDb.execSQL("""
                         INSERT OR REPLACE INTO climb_stats(
                             climb_uuid, angle, display_difficulty, difficulty_average,
                             quality_average, ascensionist_count, benchmark_difficulty,
                             fa_username, fa_at)
-                        SELECT climb_uuid, angle, display_difficulty, difficulty_average,
+                        SELECT LOWER(climb_uuid), angle, display_difficulty, difficulty_average,
                                quality_average, ascensionist_count, benchmark_difficulty,
                                fa_username, fa_at
                         FROM src.$srcTable
@@ -793,7 +812,7 @@ class BoardDatabaseImporter(
         cursor.use {
             while (it.moveToNext()) {
                 scanned++
-                val climbUuid = it.getString(0)
+                val climbUuid = it.getString(0).lowercase()
                 val angle = it.getLong(1)
                 val ascensionistCount = if (it.isNull(5)) null else it.getLong(5)
                 if (existingStats != null) {

@@ -115,6 +115,39 @@ class BoardSyncManager(
         }
     }
 
+    /**
+     * Handles the post-7.sqm forced re-sync. The migration wipes Kilter-
+     * side rows from the local board DB to escape the NOCASE-dedup
+     * mismatch (see 7.sqm header). Without coordinated chunk-hash +
+     * lastSyncTimestamp invalidation, [syncIfStale] would see "all
+     * chunks up to date" and "data fresh" and the user would land on
+     * an empty browser until they manually triggered a sync.
+     *
+     * 7.sqm leaves a `post_v8_force_resync` marker in `sync_states`;
+     * this method consumes it on app start, clears the dependent state,
+     * and triggers a background sync. The actual sync runs async and
+     * will redownload every chunk fresh.
+     */
+    fun handlePostMigrationResync() {
+        scope.launch {
+            if (!boardRepository.hasPostV8ResyncMarker()) return@launch
+            Log.i(TAG, "post-v8 migration: forcing chunk-hash + timestamp reset for clean re-sync")
+            blossomSyncManager.clearStoredHashes()
+            userPreferences.setLastSyncTimestamp(null)
+            // Clear marker now (not after sync completes) so a sync
+            // failure doesn't trap the user in a perpetual re-clear
+            // loop on every app start. Worst case: sync fails, user
+            // manually triggers one — chunk hashes are already gone,
+            // so the manual retry is itself a full re-sync.
+            boardRepository.clearPostV8ResyncMarker()
+            if (isNetworkAvailable(appContext)) {
+                startBackgroundSync()
+            } else {
+                Log.w(TAG, "post-v8 resync: no network at app start; user will see empty browser until manual sync")
+            }
+        }
+    }
+
     fun dismissWifiDialog() {
         _state.update { it.copy(showWifiDialog = false) }
     }

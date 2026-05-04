@@ -185,6 +185,14 @@ class CruxCoachApp : Application(), Configuration.Provider {
                 syncManager.get().recoverPartialImportIfNeeded()
             }.onFailure { PerfLogger.logCoroutine("appScope", "recoverPartialImport failed: ${it.message}") }
             runCatching {
+                // One-shot consumer of the 7.sqm post-migration marker:
+                // wipes chunk hashes + lastSyncTimestamp and triggers a
+                // background sync so the user doesn't land on an empty
+                // browser after the Kilter-side wipe. No-op when the
+                // marker is absent (i.e. on every subsequent start).
+                syncManager.get().handlePostMigrationResync()
+            }.onFailure { PerfLogger.logCoroutine("appScope", "handlePostMigrationResync failed: ${it.message}") }
+            runCatching {
                 // Note: no startup probe of the WiFi-Direct-share endpoint. The
                 // legitimate receive flow is deep-link driven (cruxcoach://import-board-db
                 // from the hotspot's landing page), gated by a user-visible consent

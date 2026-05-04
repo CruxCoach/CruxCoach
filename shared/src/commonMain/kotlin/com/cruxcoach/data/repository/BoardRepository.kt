@@ -183,6 +183,10 @@ interface BoardClimbQueries {
     fun countOrphanStats(): Long
     /** Listed climbs the browse VIEW excludes because no stats exist. */
     fun countListedClimbsWithoutStats(): Long
+    /** True if 7.sqm flagged the install for a forced clean re-sync. */
+    fun hasPostV8ResyncMarker(): Boolean
+    /** Cleared after the post-v8 resync completes successfully. */
+    fun clearPostV8ResyncMarker()
     fun climbExistsByUuid(uuid: String): Boolean
     fun statExistsByUuid(uuid: String): Boolean
     fun getClimbCountByAngle(layoutId: Int, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER): List<AngleClimbCount>

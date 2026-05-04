@@ -152,6 +152,8 @@ class FakeBoardRepository : BoardRepository {
     override fun getStatCount(): Long = 0L
     override fun countOrphanStats(): Long = 0L
     override fun countListedClimbsWithoutStats(): Long = 0L
+    override fun hasPostV8ResyncMarker(): Boolean = false
+    override fun clearPostV8ResyncMarker() {}
     override fun climbExistsByUuid(uuid: String): Boolean = storedClimbs.containsKey(uuid)
     override fun statExistsByUuid(uuid: String): Boolean = false
     override fun getClimbCountByAngle(layoutId: Int, climbType: ClimbTypeFilter): List<AngleClimbCount> = emptyList()

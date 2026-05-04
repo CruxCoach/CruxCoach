@@ -131,6 +131,14 @@ class BoardRepositoryImpl(
         return q.countListedClimbsWithoutStats().executeAsOne()
     }
 
+    override fun hasPostV8ResyncMarker(): Boolean {
+        return q.hasPostV8ResyncMarker().executeAsOneOrNull() != null
+    }
+
+    override fun clearPostV8ResyncMarker() {
+        q.clearPostV8ResyncMarker()
+    }
+
     override fun climbExistsByUuid(uuid: String): Boolean {
         return q.climbExistsByUuid(uuid).executeAsOne() > 0
     }

@@ -177,6 +177,10 @@ class FakeBoardRepository : BoardRepository {
 
     override fun countListedClimbsWithoutStats(): Long = 0L
 
+    override fun hasPostV8ResyncMarker(): Boolean = false
+
+    override fun clearPostV8ResyncMarker() {}
+
     override fun searchClimbUuidsByHold(
         holdPattern: String, angle: Int, layoutId: Int, minDifficulty: Double,
         maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter

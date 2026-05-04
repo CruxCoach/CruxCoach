@@ -4,13 +4,17 @@
 -- preserved across Aurora-extracted bundles and the Blossom-mirror cron.
 
 CREATE TABLE climbs (
-    -- COLLATE NOCASE: the Kilter blob carries UUIDs in mixed casings
-    -- (~114k upper, ~60k lower) and Kind-30078 events may reference
-    -- a Kilter UUID in any case. Binary collation would let case-shifted
-    -- duplicates coexist (browse VIEW would join each to a different
-    -- stats subset). NOCASE keeps the PK + JOINs case-insensitive.
-    -- Migration 6.sqm dedupes existing rows for upgraders.
-    uuid TEXT NOT NULL PRIMARY KEY COLLATE NOCASE,
+    -- UUID identity: BINARY collation, lowercase canonical form. The
+    -- Kilter blob carries UUIDs in mixed casing (~114k upper, ~60k
+    -- lower) but the two casings are *not* the same logical climb on
+    -- the cron's side — they carry divergent metadata. Importer
+    -- writes LOWER(uuid) on every insert, the live sub lowercases
+    -- parsed event UUIDs, and ClimbCreator generates lowercase UUIDs
+    -- for new community climbs. 7.sqm wiped the Kilter side and
+    -- normalized cruxcoach rows on upgrade. ClimbNameResolver still
+    -- case-fanouts read paths (BLE protocol decodes uppercase) so
+    -- legacy callers stay working.
+    uuid TEXT NOT NULL PRIMARY KEY,
     layout_id INTEGER NOT NULL,
     setter_username TEXT,
     name TEXT NOT NULL,
@@ -46,10 +50,9 @@ CREATE TABLE climbs (
 );
 
 CREATE TABLE climb_stats (
-    -- COLLATE NOCASE: pairs with climbs.uuid so the JOIN in climb_browse
-    -- and every climb_uuid lookup matches across casings. See climbs.uuid
-    -- comment + 6.sqm migration for the full rationale.
-    climb_uuid TEXT NOT NULL COLLATE NOCASE,
+    -- Pairs with climbs.uuid (lowercase canonical, BINARY). See the
+    -- climbs.uuid comment + 7.sqm migration for the full rationale.
+    climb_uuid TEXT NOT NULL,
     angle INTEGER NOT NULL,
     display_difficulty REAL,
     difficulty_average REAL,
@@ -866,3 +869,15 @@ countListedClimbsWithoutStats:
 SELECT COUNT(*) FROM climbs c
 WHERE c.is_listed = 1
   AND NOT EXISTS (SELECT 1 FROM climb_stats cs WHERE cs.climb_uuid = c.uuid);
+
+-- ── Post-v8 force-resync coordination ───────────────────────────
+-- 7.sqm wipes Kilter-side rows and inserts a marker row in
+-- sync_states. BoardSyncManager checks for it on app start; if
+-- present, it clears stored Blossom chunk hashes + lastSyncTimestamp
+-- and triggers a fresh full sync, then clears the marker.
+
+hasPostV8ResyncMarker:
+SELECT 1 FROM sync_states WHERE table_name = 'post_v8_force_resync' LIMIT 1;
+
+clearPostV8ResyncMarker:
+DELETE FROM sync_states WHERE table_name = 'post_v8_force_resync';

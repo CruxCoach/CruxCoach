@@ -578,9 +578,14 @@ class CommunityClimbSubscriber @Inject constructor(
                         .parseToJsonElement(event.content.ifBlank { "{}" })
                         .jsonObject
                 }.getOrNull() ?: JsonObject(emptyMap())
-                val uuid = contentObj["uuid"]?.jsonPrimitive?.contentOrNull
+                // Canonical lowercase: the board DB's uuid is BINARY-
+                // collated lowercase (see 7.sqm); event content / d-tag
+                // may carry mixed casing (Aurora-derived UUIDs are upper
+                // half the time). Lowercase here so existsClimb /
+                // getClimbAuthorPubkey / upsertCommunityClimb all match.
+                val uuid = (contentObj["uuid"]?.jsonPrimitive?.contentOrNull
                     ?: dTagUuid(dTag!!)
-                    ?: error("uuid not derivable from event")
+                    ?: error("uuid not derivable from event")).lowercase()
                 val name = contentObj["name"]?.jsonPrimitive?.contentOrNull.orEmpty()
                 val description = contentObj["description"]?.jsonPrimitive?.contentOrNull.orEmpty()
                 val contentPubkeyPrefix = contentObj["pubkey_prefix"]?.jsonPrimitive?.contentOrNull
