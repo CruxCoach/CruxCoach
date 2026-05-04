@@ -540,20 +540,65 @@ WHERE l.product_size_id = ?;
 -- ═══ FEAT-003 Community-climb queries ═══
 
 -- Insert/upsert a local climb draft (source='local'). When the editor
--- loads a draft and saves again, we INSERT OR REPLACE on the same uuid
--- so the row is updated in place (no orphan + no PK collision).
+-- loads a draft and saves again, we update the editor-controlled
+-- columns in place — without touching the cross-cutting provenance
+-- columns owned by the publish path (nostr_event_id, nostr_d_tag,
+-- kilter_status, kilter_synced_at, kilter_publish_via, kilter_error,
+-- is_deleted). Pre-fix this used INSERT OR REPLACE, which wiped all of
+-- those on every editor save, leaving a process-kill window where a
+-- previously-published climb's edit-in-progress looked unpublished and
+-- the retry worker would attempt to re-create it on Kilter (Kilter then
+-- 4xx-rejects because the climb already exists, marking it 'rejected'
+-- — a stranded row that confuses every subsequent UI/sync read).
+--
+-- The block runs INSERT OR IGNORE followed by an explicit
+-- column-whitelist UPDATE: a fresh uuid → INSERT applies defaults,
+-- UPDATE no-ops; an existing uuid → INSERT no-ops, UPDATE refreshes
+-- editor fields and leaves the provenance columns alone. SQLDelight
+-- runs both statements in one transaction so a process-kill between
+-- them rolls back cleanly.
+--
+-- Why source/origin/sync_status are still in the UPDATE: those are
+-- editor-domain (the editor authored this row, the editor declares it
+-- a draft until publish), so they always re-set to 'local'/'draft'/
+-- 'cruxcoach' on each save — matching pre-fix behaviour.
+--
 -- edge_* are the climb's bounding box derived from selected hold
 -- coordinates (see ClimbBounds.fromCoords); pass NULL when the editor
 -- can't resolve placement coords (rare race during layout-data load).
-insertLocalDraft:
-INSERT OR REPLACE INTO climbs(uuid, layout_id, setter_username, name, frames,
-    frames_count, is_listed, edge_left, edge_right, edge_bottom, edge_top, created_at,
-    description, is_nomatch, frames_pace, hsm, move_count,
-    source, created_by_pubkey, frames_hash, sync_status, origin)
-VALUES (?, ?, ?, ?, ?,
-    1, 1, ?, ?, ?, ?, ?,
-    ?, 0, 0, 0, ?,
-    'local', ?, ?, 'draft', 'cruxcoach');
+insertLocalDraft {
+    INSERT OR IGNORE INTO climbs(uuid, layout_id, setter_username, name, frames,
+        frames_count, is_listed, edge_left, edge_right, edge_bottom, edge_top, created_at,
+        description, is_nomatch, frames_pace, hsm, move_count,
+        source, created_by_pubkey, frames_hash, sync_status, origin)
+    VALUES (:uuid, :layout_id, :setter_username, :name, :frames,
+        1, 1, :edge_left, :edge_right, :edge_bottom, :edge_top, :created_at,
+        :description, 0, 0, 0, :move_count,
+        'local', :created_by_pubkey, :frames_hash, 'draft', 'cruxcoach');
+    UPDATE climbs SET
+        layout_id = :layout_id,
+        setter_username = :setter_username,
+        name = :name,
+        frames = :frames,
+        frames_count = 1,
+        is_listed = 1,
+        edge_left = :edge_left,
+        edge_right = :edge_right,
+        edge_bottom = :edge_bottom,
+        edge_top = :edge_top,
+        created_at = :created_at,
+        description = :description,
+        is_nomatch = 0,
+        frames_pace = 0,
+        hsm = 0,
+        move_count = :move_count,
+        source = 'local',
+        created_by_pubkey = :created_by_pubkey,
+        frames_hash = :frames_hash,
+        sync_status = 'draft',
+        origin = 'cruxcoach'
+    WHERE uuid = :uuid;
+}
 
 -- Delete a local-only climb (drafts user explicitly discards). Also
 -- removes its climb_stats row to keep the browse VIEW consistent. Use
