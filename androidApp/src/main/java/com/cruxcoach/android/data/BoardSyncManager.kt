@@ -43,11 +43,13 @@ class BoardSyncManager(
 ) {
     private companion object {
         const val TAG = "BoardSyncManager"
-        /** Max concurrent chunk downloads. 8 matches a modern browser's
-         *  per-origin connection limit and is well within primal.net's
-         *  comfort zone. OkHttp's synchronous `.execute()` bypasses the
-         *  Dispatcher's per-host cap, so this number is the only gate. */
-        const val PARALLEL_DOWNLOADS = 8
+        /** Max concurrent chunk downloads. On mobile links 4 streams
+         *  hit the bandwidth-delay-product without each stream
+         *  perpetually competing for TCP slow-start window; the 3
+         *  Blossom mirrors per chunk also frequently resolve to the
+         *  same provider, where 4 concurrent connections stay below
+         *  per-IP rate-limit thresholds. */
+        const val PARALLEL_DOWNLOADS = 4
         /** Denormalized-field refresh batch size — keeps per-transaction
          *  write-lock hold time short so user writes can interleave. */
         const val REFRESH_BATCH_SIZE = 100

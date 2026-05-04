@@ -216,9 +216,29 @@ object AppModule {
 
     @Provides
     @Singleton
+    @Named("blossom")
+    fun provideBlossomOkHttpClient(): OkHttpClient {
+        // Dedicated client for Blossom chunk downloads. The nostr client's
+        // 10s read + 60s call cap was sized for short relay messages and a
+        // single 13 MB upload — chunked downloads over 4G routinely stall
+        // for several seconds and run for minutes in aggregate, so they
+        // need their own, more lenient profile. readTimeout still bounds
+        // per-byte progress; callTimeout is intentionally omitted so a
+        // slow-but-progressing mirror is not killed by a wall-clock cap.
+        return PerfLogger.trace("DI: BlossomOkHttpClient") {
+            OkHttpClient.Builder()
+                .connectTimeout(15, TimeUnit.SECONDS)
+                .readTimeout(30, TimeUnit.SECONDS)
+                .writeTimeout(15, TimeUnit.SECONDS)
+                .build()
+        }
+    }
+
+    @Provides
+    @Singleton
     fun provideBlossomSyncManager(
         @ApplicationContext context: Context,
-        @Named("nostr") okHttpClient: OkHttpClient
+        @Named("blossom") okHttpClient: OkHttpClient
     ): BlossomSyncManager {
         return BlossomSyncManager(context, okHttpClient)
     }
