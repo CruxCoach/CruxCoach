@@ -1,0 +1,24 @@
+-- Migration version 8 → 9: re-arm the post-resync marker.
+--
+-- 7.sqm shipped together with importer LOWER() rewrites that contained
+-- a correlated-subquery scoping bug — the inner WHERE referenced an
+-- unqualified `climbs.uuid`, which SQLite resolves to `src.climbs.uuid`
+-- (the FROM-scoped table) since 16318b1 renamed the target table to
+-- the same name as the chunk's. The condition degenerated to a
+-- tautology, the SELECT picked an arbitrary src row, and that row's
+-- content was smeared across every UPDATE target. The 7.sqm-triggered
+-- forced re-sync therefore landed corrupt data on devices that
+-- already consumed the post_v8_force_resync marker.
+--
+-- This migration re-inserts the marker so BoardSyncManager fires
+-- handlePostMigrationResync again on next start, clearing chunk
+-- hashes + lastSyncTimestamp and re-pulling every chunk through the
+-- now-fixed importer (UPDATEs qualified with `main.climbs.uuid`).
+-- Wipe the Kilter side first so the contaminated content is gone
+-- before the re-import lands on the empty table.
+
+DELETE FROM climbs WHERE origin = 'kilter';
+DELETE FROM climb_stats;
+
+INSERT OR REPLACE INTO sync_states(table_name, last_synchronized_at)
+VALUES ('post_v8_force_resync', 'pending');

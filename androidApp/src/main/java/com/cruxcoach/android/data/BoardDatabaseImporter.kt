@@ -532,6 +532,15 @@ class BoardDatabaseImporter(
                     // above); src.uuid may be in either case. Match by
                     // LOWER() on the src side so the correlated subquery
                     // and the IN list both find the same row.
+                    //
+                    // Outer reference qualified as `main.climbs.uuid`:
+                    // src and main use the same table name `climbs`,
+                    // so SQLite resolves an unqualified `climbs.uuid`
+                    // inside the FROM-scoped subquery to src.climbs.uuid
+                    // — the WHERE then becomes a tautology and the
+                    // SELECT picks an arbitrary src row, smearing one
+                    // row's content across every UPDATE target. Same
+                    // qualification on the two follow-up UPDATEs below.
                     targetDb.execSQL("""
                         UPDATE climbs SET
                             (layout_id, setter_username, name, frames,
@@ -545,7 +554,7 @@ class BoardDatabaseImporter(
                                       COALESCE(frames_pace, 0), COALESCE(hsm, 0),
                                       $moveCountExpr
                                FROM src.$srcTable
-                               WHERE LOWER(src.$srcTable.uuid) = climbs.uuid)
+                               WHERE LOWER(src.$srcTable.uuid) = main.climbs.uuid)
                         WHERE origin = 'kilter'
                           AND uuid IN (
                             SELECT LOWER(uuid) FROM src.$srcTable
@@ -591,8 +600,8 @@ class BoardDatabaseImporter(
                     targetDb.execSQL("""
                         UPDATE climbs SET setter_username = COALESCE(
                             (SELECT setter_username FROM src.$srcTable
-                             WHERE LOWER(src.$srcTable.uuid) = climbs.uuid),
-                            climbs.setter_username
+                             WHERE LOWER(src.$srcTable.uuid) = main.climbs.uuid),
+                            main.climbs.setter_username
                         )
                         WHERE origin = 'cruxcoach'
                           AND uuid IN (
@@ -630,7 +639,7 @@ class BoardDatabaseImporter(
                         targetDb.execSQL("""
                             UPDATE climbs SET created_by_pubkey = (
                                 SELECT created_by_pubkey FROM src.$srcTable
-                                WHERE LOWER(src.$srcTable.uuid) = climbs.uuid
+                                WHERE LOWER(src.$srcTable.uuid) = main.climbs.uuid
                             )
                             WHERE created_by_pubkey IS NULL
                               AND uuid IN (
