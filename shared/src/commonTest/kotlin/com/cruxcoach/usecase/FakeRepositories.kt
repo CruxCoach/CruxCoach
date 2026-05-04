@@ -213,6 +213,7 @@ class FakeBoardRepository : BoardRepository {
     override fun deleteLocalClimb(uuid: String) {}
     override fun markCommunityClimbDeleted(uuid: String, pubkey: String, tombstoneIso: String) {}
     override fun isClimbTombstoned(uuid: String): Boolean = false
+    override fun insertTombstoneShell(uuid: String, pubkey: String, dTag: String, tombstoneIso: String) {}
     override fun getClimbCreatedAt(uuid: String): String? = null
     override fun getClimbAuthorPubkey(uuid: String): String? = null
     override fun computeEditorHeatmap(layoutId: Long, angle: Long, seedHolds: Set<Int>, targetRole: Int?): Map<Int, Float> = emptyMap()

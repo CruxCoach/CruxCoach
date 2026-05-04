@@ -266,6 +266,7 @@ class FakeBoardRepository : BoardRepository {
         climbs.removeAll { it.uuid == uuid && it.createdByPubkey == pubkey }
     }
     override fun isClimbTombstoned(uuid: String): Boolean = false
+    override fun insertTombstoneShell(uuid: String, pubkey: String, dTag: String, tombstoneIso: String) {}
     override fun getClimbCreatedAt(uuid: String): String? = null
     override fun getClimbAuthorPubkey(uuid: String): String? = null
     override fun computeEditorHeatmap(layoutId: Long, angle: Long, seedHolds: Set<Int>, targetRole: Int?): Map<Int, Float> = emptyMap()

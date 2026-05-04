@@ -448,6 +448,15 @@ interface CommunityClimbQueries {
      *  a Live-Sub event from a non-deleting relay). */
     fun isClimbTombstoned(uuid: String): Boolean
     /**
+     * Insert a minimal `is_deleted=1` row so a future Original-Event for
+     * the same uuid is absorbed by L3. Used on devices that receive a
+     * Kind-5 deletion intent (or Kind-30078 tombstone-replacement) for
+     * a uuid they never had locally — without the shell the next
+     * Original-Event from a non-deleting relay would import the climb
+     * fresh. INSERT OR IGNORE: real existing rows are not trampled.
+     */
+    fun insertTombstoneShell(uuid: String, pubkey: String, dTag: String, tombstoneIso: String)
+    /**
      * Returns the local row's stored `created_at` ISO string (or null if
      * the climb isn't in the DB yet). Used by the Channel-B subscriber
      * to skip re-broadcasted old events that would overwrite a newer

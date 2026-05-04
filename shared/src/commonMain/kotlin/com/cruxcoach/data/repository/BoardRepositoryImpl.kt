@@ -420,6 +420,15 @@ class BoardRepositoryImpl(
     override fun isClimbTombstoned(uuid: String): Boolean =
         q.isClimbTombstoned(uuid).executeAsOneOrNull() != null
 
+    override fun insertTombstoneShell(uuid: String, pubkey: String, dTag: String, tombstoneIso: String) {
+        q.insertTombstoneShell(
+            uuid = uuid,
+            tombstone_iso = tombstoneIso,
+            d_tag = dTag,
+            pubkey = pubkey,
+        )
+    }
+
     override fun getClimbCreatedAt(uuid: String): String? =
         q.getClimbCreatedAt(uuid).executeAsOneOrNull()?.created_at
 

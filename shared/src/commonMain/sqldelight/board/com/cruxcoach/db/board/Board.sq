@@ -680,6 +680,37 @@ SELECT 1 FROM climbs
 WHERE uuid = :uuid AND is_deleted = 1
 LIMIT 1;
 
+-- Cross-device defence: when a Kind-5 deletion (or Kind-30078 tombstone-
+-- replacement) lands on a device that *never* had the original climb,
+-- there's no row to flip and L3's is_deleted=1 absorption fires nowhere.
+-- The next Live-Sub Original-Event from a non-deleting relay would
+-- import the climb fresh. This INSERT OR IGNORE plants a minimal
+-- "memorial" row keyed on the same uuid so the eventual Original-Event
+-- hits L3 and is dropped. Real-row competition: if a row already
+-- exists (legitimate or from a prior import) the IGNORE no-ops; the
+-- caller follows up with markCommunityClimbDeleted to flip the real
+-- row's is_deleted flag (owner-locked).
+--
+-- Hardcoded `origin = 'cruxcoach'`: a tombstone shell is only ever
+-- meaningful for community climbs — Kilter-origin rows can never be
+-- deleted via this path (Kilter is read-only on our end), and a shell
+-- with origin='kilter' would be misclassified by every later
+-- diagnostic / browse path.
+insertTombstoneShell:
+INSERT OR IGNORE INTO climbs(
+    uuid, layout_id, setter_username, name, frames,
+    frames_count, is_listed, edge_left, edge_right, edge_bottom, edge_top,
+    created_at, description, is_nomatch, frames_pace, hsm, is_deleted,
+    move_count, source, nostr_d_tag, created_by_pubkey,
+    sync_status, origin
+) VALUES (
+    :uuid, 0, NULL, '', '',
+    1, 0, NULL, NULL, NULL, NULL,
+    :tombstone_iso, '', 0, 0, 0, 1,
+    0, 'nostr', :d_tag, :pubkey,
+    'deleted', 'cruxcoach'
+);
+
 -- Hold-frequency lookup for the editor's heatmap overlay. Returns
 -- (placement_id, occurrence_count) pairs across all listed climbs at the
 -- given layout + angle. The Kotlin side aggregates frames text → hold IDs

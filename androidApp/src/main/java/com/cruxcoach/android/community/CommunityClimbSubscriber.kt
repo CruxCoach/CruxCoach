@@ -237,7 +237,13 @@ class CommunityClimbSubscriber @Inject constructor(
 
     private fun buildFilter(sinceEpoch: Long?): String {
         val sinceClause = if (sinceEpoch != null && sinceEpoch > 0) ",\"since\":$sinceEpoch" else ""
-        return """{"kinds":[30078],"#L":["$NAMESPACE_LABEL"]$sinceClause}"""
+        // Subscribe to Kind-30078 (climb events) AND Kind-5 (NIP-09
+        // deletions). The deleter publishes both kinds with an
+        // ["L","com.cruxcoach.climb"] tag, so the same #L filter
+        // catches both — no second REQ subscription needed. Foreign
+        // Kind-5 events without our label tag are filtered server-side
+        // and never reach handleEvent.
+        return """{"kinds":[$KIND_30078,$KIND_DELETION],"#L":["$NAMESPACE_LABEL"]$sinceClause}"""
     }
 
     @VisibleForTesting
@@ -668,6 +674,7 @@ class CommunityClimbSubscriber @Inject constructor(
             1_000L, 2_000L, 5_000L, 15_000L, 60_000L, 60_000L,
         )
         const val KIND_30078 = 30078
+        const val KIND_DELETION = 5
         // Hard cap on raw event JSON size. ~16 KB covers the largest
         // legitimate climb (~84 holds + 100-char name + 500-char
         // description + tag overhead ≈ 6 KB) with comfortable headroom

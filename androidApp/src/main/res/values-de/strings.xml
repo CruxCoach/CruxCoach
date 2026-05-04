@@ -30,11 +30,11 @@
     <string name="climb_creator_issue_description_too_long" formatted="false">Beschreibung zu lang (max. %d Zeichen).</string>
     <string name="climb_creator_issue_angle_missing">Brett-Winkel wählen.</string>
     <string name="climb_creator_draft_saved">Entwurf gespeichert.</string>
-    <string name="climb_creator_also_post_note">Im sozialen Feed ankündigen</string>
-    <string name="climb_creator_also_post_note_hint">Postet zusätzlich eine kurze Nachricht an deine Follower im Nostr-Feed, die zurück auf deinen Climb verlinkt. Der Climb selbst landet so oder so im Community-Katalog — unabhängig von dieser Option.</string>
+    <string name="climb_creator_also_post_note">Auch auf Nostr posten</string>
+    <string name="climb_creator_also_post_note_hint">Postet eine kurze Nachricht an deine Follower auf Nostr, die zurück auf den Climb verlinkt.</string>
     <string name="auto_note_default_template">Ich habe einen neuen Boulder auf nostr:{npub_cruxcoach} veröffentlicht: „{name}“\n\n#kilterboard #climbing\n\n{cruxcoach_url}\nnostr:{naddr}</string>
-    <string name="auto_note_setting_title">Neue Climbs im Feed ankündigen</string>
-    <string name="auto_note_setting_body">Wenn aktiv, wird beim Veröffentlichen eines Climbs zusätzlich eine kurze Ankündigung im Nostr-Feed gepostet — sichtbar für deine Follower, mit Link zurück zu deinem Climb. Der Climb selbst landet so oder so im Community-Katalog. Pro Climb im Editor übersteuerbar. Default aus.</string>
+    <string name="auto_note_setting_title">Neue Climbs auf Nostr posten</string>
+    <string name="auto_note_setting_body">Wenn aktiv, wird beim Veröffentlichen eines Climbs zusätzlich eine kurze Nachricht an deine Follower auf Nostr gepostet, die zurück auf den Climb verlinkt. Pro Climb im Editor übersteuerbar. Default aus.</string>
     <string name="nostr_profile_subscriber_status_title">Community-Climb-Feed</string>
     <string name="nostr_profile_subscriber_status_running_never">Verbunden — warte auf das erste Climb-Event…</string>
     <string name="nostr_profile_subscriber_status_running_active_prefix">Verbunden — letztes Climb-Event</string>
