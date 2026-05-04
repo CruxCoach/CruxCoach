@@ -145,7 +145,32 @@ data class ClimbDetailState(
      *  NostrProfileManager). Composables must not block on this — fall
      *  back to the climb's `setterUsername` while loading. */
     val setterProfile: SetterProfile? = null,
+    /** Confirm-delete dialog visibility + the Kilter publish state at
+     *  the moment the user opened it (drives the variant text:
+     *  "manual cleanup on Kilter required" when true). */
+    val communityDeleteDialog: CommunityDeleteDialogState? = null,
+    /** One-shot feedback from the most recent delete attempt. UI
+     *  consumes via [BoardClimbDetailViewModel.consumeCommunityDeleteFeedback]. */
+    val communityDeleteFeedback: CommunityDeleteFeedback? = null,
 )
+
+data class CommunityDeleteDialogState(
+    val uuid: String,
+    val kilterAlsoPublished: Boolean,
+    val isInProgress: Boolean = false,
+)
+
+sealed interface CommunityDeleteFeedback {
+    data class Done(
+        val attempted: Int,
+        val accepted: Int,
+        val kilterAlsoPublished: Boolean,
+    ) : CommunityDeleteFeedback
+    object NotOwner : CommunityDeleteFeedback
+    object NotOurClimb : CommunityDeleteFeedback
+    object NotFound : CommunityDeleteFeedback
+    object Failed : CommunityDeleteFeedback
+}
 
 @HiltViewModel
 class BoardClimbDetailViewModel @Inject constructor(
@@ -162,6 +187,7 @@ class BoardClimbDetailViewModel @Inject constructor(
     private val kilterSyncEngine: com.cruxcoach.android.data.kilter.KilterSyncEngine,
     private val nostrSigner: com.cruxcoach.android.nostr.NostrSigner,
     private val nostrProfileManager: com.cruxcoach.android.payment.NostrProfileManager,
+    private val communityClimbDeleter: com.cruxcoach.android.community.CommunityClimbDeleter,
     val climbNavState: com.cruxcoach.android.ui.navigation.ClimbNavigationState,
     @param:ApplicationContext private val context: Context
 ) : ViewModel() {
@@ -350,6 +376,75 @@ class BoardClimbDetailViewModel @Inject constructor(
 
     fun clearError() {
         _state.update { it.copy(error = null) }
+    }
+
+    /** Open the confirm-delete dialog for the currently-displayed climb.
+     *  No-op when the climb isn't an own published cruxcoach climb —
+     *  the UI already gates the action button on the same predicate, but
+     *  we re-check here so an out-of-band caller can't bypass it. */
+    fun requestCommunityDelete() {
+        val climb = _state.value.climb ?: return
+        val signer = _state.value.currentUserPubkey ?: return
+        if (climb.origin != "cruxcoach") return
+        if (climb.createdByPubkey != signer) return
+        _state.update {
+            it.copy(
+                communityDeleteDialog = CommunityDeleteDialogState(
+                    uuid = climb.uuid,
+                    kilterAlsoPublished = climb.kilterStatus == "synced",
+                ),
+            )
+        }
+    }
+
+    fun dismissCommunityDeleteDialog() {
+        _state.update { it.copy(communityDeleteDialog = null) }
+    }
+
+    /**
+     * Run the actual deletion. Best-effort across the relay pool — even
+     * with `accepted == 0` the local row is tombstoned so the user sees
+     * an immediate UI effect; any future re-import via Live-Sub is
+     * absorbed by the L3 is_deleted=1 guard. [onDeleted] is invoked
+     * on a successful Done outcome so the screen can navigate back.
+     */
+    fun confirmCommunityDelete(onDeleted: () -> Unit) {
+        val dialog = _state.value.communityDeleteDialog ?: return
+        if (dialog.isInProgress) return
+        _state.update { it.copy(communityDeleteDialog = dialog.copy(isInProgress = true)) }
+        viewModelScope.launch {
+            val outcome = runCatching { communityClimbDeleter.delete(dialog.uuid) }
+                .onFailure { Log.w(TAG, "community delete threw uuid=${dialog.uuid}", it) }
+                .getOrNull()
+            val feedback: CommunityDeleteFeedback = when (outcome) {
+                is com.cruxcoach.android.community.CommunityClimbDeleter.Outcome.Done ->
+                    CommunityDeleteFeedback.Done(
+                        attempted = outcome.attempted,
+                        accepted = outcome.accepted,
+                        kilterAlsoPublished = outcome.kilterWasPublished,
+                    )
+                com.cruxcoach.android.community.CommunityClimbDeleter.Outcome.NotOwner ->
+                    CommunityDeleteFeedback.NotOwner
+                com.cruxcoach.android.community.CommunityClimbDeleter.Outcome.NotOurClimb ->
+                    CommunityDeleteFeedback.NotOurClimb
+                com.cruxcoach.android.community.CommunityClimbDeleter.Outcome.NotFound ->
+                    CommunityDeleteFeedback.NotFound
+                null -> CommunityDeleteFeedback.Failed
+            }
+            _state.update {
+                it.copy(
+                    communityDeleteDialog = null,
+                    communityDeleteFeedback = feedback,
+                )
+            }
+            if (feedback is CommunityDeleteFeedback.Done) {
+                onDeleted()
+            }
+        }
+    }
+
+    fun consumeCommunityDeleteFeedback() {
+        _state.update { it.copy(communityDeleteFeedback = null) }
     }
 
     fun switchClimb(uuid: String, angle: Int) {

@@ -291,6 +291,17 @@ data class RawClimbListEntry(
 
 // ── Community-climb support (FEAT-003) ─────────────────────
 
+/** Snapshot of the fields needed to publish a NIP-09 deletion + a
+ *  tombstone-replacement Kind-30078, plus the Kilter status for UI
+ *  warnings (no API delete on Kilter — manual cleanup required). */
+data class CommunityClimbDeleteContext(
+    val nostrEventId: String?,
+    val nostrDTag: String?,
+    val createdByPubkey: String?,
+    val kilterStatus: String?,
+    val origin: String,
+)
+
 data class LocalClimbDraft(
     val uuid: String,
     val name: String,
@@ -456,6 +467,13 @@ interface CommunityClimbQueries {
      * fresh. INSERT OR IGNORE: real existing rows are not trampled.
      */
     fun insertTombstoneShell(uuid: String, pubkey: String, dTag: String, tombstoneIso: String)
+    /**
+     * Bundle of fields the CommunityClimbDeleter reads in one go: the
+     * d-tag + last published event id (for NIP-09 `a`+`e` tags), the
+     * row's author (owner check), Kilter publish status (UI hint), and
+     * origin ('cruxcoach' is the only deletable provenance).
+     */
+    fun getCommunityClimbDeleteContext(uuid: String): CommunityClimbDeleteContext?
     /**
      * Returns the local row's stored `created_at` ISO string (or null if
      * the climb isn't in the DB yet). Used by the Channel-B subscriber

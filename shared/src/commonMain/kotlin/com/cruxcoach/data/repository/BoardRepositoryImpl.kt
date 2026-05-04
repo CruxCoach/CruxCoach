@@ -429,6 +429,17 @@ class BoardRepositoryImpl(
         )
     }
 
+    override fun getCommunityClimbDeleteContext(uuid: String): CommunityClimbDeleteContext? {
+        val row = q.getCommunityClimbDeleteContext(uuid).executeAsOneOrNull() ?: return null
+        return CommunityClimbDeleteContext(
+            nostrEventId = row.nostr_event_id,
+            nostrDTag = row.nostr_d_tag,
+            createdByPubkey = row.created_by_pubkey,
+            kilterStatus = row.kilter_status,
+            origin = row.origin,
+        )
+    }
+
     override fun getClimbCreatedAt(uuid: String): String? =
         q.getClimbCreatedAt(uuid).executeAsOneOrNull()?.created_at
 

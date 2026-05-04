@@ -267,15 +267,29 @@ class CommunityClimbSubscriber @Inject constructor(
             Log.w(TAG, "failed to parse event JSON")
             return
         }
-        if (event.kind != KIND_30078) {
-            Log.w(TAG, "skip non-30078 event kind=${event.kind}")
-            return
-        }
         if (!event.verifySignature()) {
             Log.w(TAG, "skip event with invalid signature id=${event.id}")
             return
         }
+        when (event.kind) {
+            KIND_30078 -> handleClimbEvent(event)
+            KIND_DELETION -> handleDeletionEvent(event)
+            else -> {
+                Log.w(TAG, "skip event of unsupported kind=${event.kind}")
+                return
+            }
+        }
+    }
 
+    /**
+     * Process a Kind-30078 community-climb event. Two sub-paths:
+     *  * `parsedClimb.deleted == true` → tombstone-replacement: route to
+     *    [absorbTombstone] (owner-locked + cross-author guarded).
+     *  * Otherwise → normal upsert path with the existing validation
+     *    pipeline plus the L3 absorption check that refuses re-importing
+     *    a climb whose local row already carries `is_deleted=1`.
+     */
+    private suspend fun handleClimbEvent(event: Event) {
         val parsedClimb = runCatching { ParsedClimb.from(event) }.getOrNull() ?: return
 
         // Self-filter: skip events we authored ourselves. Relays echo
@@ -343,6 +357,34 @@ class CommunityClimbSubscriber @Inject constructor(
                 "skip cross-author event uuid=${parsedClimb.uuid} " +
                     "existing=${existingAuthor!!.take(8)} incoming=${parsedClimb.pubkey.take(8)}",
             )
+            return
+        }
+
+        // L4: tombstone-replacement Kind-30078. Author + d-tag + cross-
+        // author guards already ran; route the deletion intent through
+        // absorbTombstone, which is owner-locked at the SQL layer.
+        if (parsedClimb.deleted) {
+            Log.i(TAG, "tombstone-replacement received uuid=${parsedClimb.uuid}")
+            absorbTombstone(
+                uuid = parsedClimb.uuid,
+                pubkey = parsedClimb.pubkey,
+                dTag = parsedClimb.dTag,
+                tombstoneIso = epochToIso(parsedClimb.createdAt),
+            )
+            advanceCursorIfNewer(parsedClimb.createdAt)
+            return
+        }
+
+        // L3: absorption. If the local row is already tombstoned, drop
+        // every incoming Original-Event for this uuid — a Live-Sub
+        // re-broadcast from a non-deleting relay would otherwise reset
+        // is_deleted=1 to the column DEFAULT 0 via upsertCommunityClimb's
+        // INSERT OR REPLACE. The check sits after cross-author so a
+        // legitimate re-author (different pubkey, currently disallowed
+        // by the cross-author guard, but defensive) cannot reanimate
+        // someone else's tombstone.
+        if (boardRepository.isClimbTombstoned(parsedClimb.uuid)) {
+            Log.d(TAG, "skip event for tombstoned climb uuid=${parsedClimb.uuid}")
             return
         }
 
@@ -445,15 +487,7 @@ class CommunityClimbSubscriber @Inject constructor(
         // Advance cursor only after a successful upsert. Use the event's
         // own created_at; relays may stream out of order so we max()
         // rather than blindly overwrite (a stale event could rewind us).
-        // The Mutex serializes the read-modify-write so two events that
-        // race for the cursor can't both observe the old value and both
-        // write — the second one would have rolled the cursor backwards.
-        cursorMutex.withLock {
-            val current = userPreferences.communityClimbSince.first() ?: 0L
-            if (parsedClimb.createdAt > current) {
-                userPreferences.setCommunityClimbSince(parsedClimb.createdAt)
-            }
-        }
+        advanceCursorIfNewer(parsedClimb.createdAt)
 
         // Lazy Kind-0 resolution for the setter. Cache-first via
         // NostrProfileManager: the first event from a new pubkey triggers
@@ -523,6 +557,116 @@ class CommunityClimbSubscriber @Inject constructor(
         }
     }
 
+    /**
+     * Process a NIP-09 Kind-5 deletion event.
+     *
+     * Spec compliance: a deletion is only valid when `event.pubkey ==
+     * referencedEvent.pubkey` (NIP-09 §1). Practically: an `a`-tag of
+     * shape `30078:<pubkey>:<d-tag>` is honoured iff `<pubkey>` matches
+     * the signer. Cross-author Kind-5s are dropped — they would be
+     * either misuse or an attempted denial-of-service against another
+     * user's climbs.
+     *
+     * The d-tag must follow the `cruxcoach:climb:<prefix>:<uuid>`
+     * convention so we can derive the canonical lowercase uuid; foreign
+     * d-tags accidentally wrapped in our `["L","com.cruxcoach.climb"]`
+     * label are silently ignored.
+     */
+    private suspend fun handleDeletionEvent(event: Event) {
+        var aTagRef: String? = null
+        for (tag in event.tags) {
+            if (tag.size >= 2 && tag[0] == "a") {
+                aTagRef = tag[1]
+                break
+            }
+        }
+        if (aTagRef == null) {
+            Log.w(TAG, "skip kind-5 without a-tag id=${event.id}")
+            return
+        }
+        val parts = aTagRef.split(":")
+        if (parts.size < 3) {
+            Log.w(TAG, "skip kind-5 with malformed a-tag ref=$aTagRef")
+            return
+        }
+        val refKind = parts[0].toIntOrNull()
+        val refPubkey = parts[1]
+        // The d-tag may itself contain colons (cruxcoach:climb:…:uuid),
+        // so rejoin everything after the second colon.
+        val refDTag = parts.drop(2).joinToString(":")
+        if (refKind != KIND_30078) {
+            Log.w(TAG, "skip kind-5 targeting non-30078 kind=$refKind")
+            return
+        }
+        // NIP-09 ownership: signer must be the original event's author.
+        if (refPubkey != event.pubKey) {
+            Log.w(
+                TAG,
+                "skip cross-author kind-5 signer=${event.pubKey.take(8)} ref=${refPubkey.take(8)}",
+            )
+            return
+        }
+        // Defence in depth: the d-tag must encode the same author
+        // (cruxcoach:climb:<pubkey-prefix-8>:…). A relay-forged d-tag
+        // for someone else's climb is otherwise indistinguishable from
+        // a legitimate self-delete here.
+        if (!CommunityClimbValidation.dTagAuthorMatches(refDTag, event.pubKey)) {
+            Log.w(TAG, "skip kind-5 with d-tag/pubkey mismatch d=$refDTag")
+            return
+        }
+        val uuid = ParsedClimb.dTagUuid(refDTag)?.lowercase()
+        if (uuid == null) {
+            Log.w(TAG, "skip kind-5 with non-cruxcoach d-tag d=$refDTag")
+            return
+        }
+        Log.i(TAG, "kind-5 deletion received uuid=$uuid")
+        absorbTombstone(
+            uuid = uuid,
+            pubkey = event.pubKey,
+            dTag = refDTag,
+            tombstoneIso = epochToIso(event.createdAt),
+        )
+        advanceCursorIfNewer(event.createdAt)
+    }
+
+    /**
+     * Apply a tombstone intent (from a Kind-5 deletion or a Kind-30078
+     * tombstone-replacement) to local state.
+     *
+     * Two-step write so cross-device defence works without cross-write
+     * races:
+     *  * `insertTombstoneShell` first plants a memorial row when no
+     *    local row exists yet. The shell is `is_deleted=1` so any
+     *    later Original-Event arriving via Live-Sub is absorbed by L3.
+     *  * `markCommunityClimbDeleted` then flips an existing real row
+     *    (or no-ops on the just-inserted shell since it's already
+     *    tombstoned). Owner-locked at SQL: `created_by_pubkey = pubkey
+     *    AND origin = 'cruxcoach'` — so a hostile Kind-5 with a
+     *    valid signature but pointing at a Kilter-origin row or another
+     *    user's row never flips anything.
+     */
+    private fun absorbTombstone(uuid: String, pubkey: String, dTag: String, tombstoneIso: String) {
+        runCatching {
+            boardRepository.insertTombstoneShell(uuid, pubkey, dTag, tombstoneIso)
+            boardRepository.markCommunityClimbDeleted(uuid, pubkey, tombstoneIso)
+        }.onFailure { Log.w(TAG, "absorbTombstone failed for uuid=$uuid", it) }
+    }
+
+    /**
+     * Advance the persisted `since` cursor to [eventCreatedAt] if it's
+     * newer than the current value. Mutex-serialised so concurrent
+     * relay-collect coroutines (a future fan-out) cannot rewind the
+     * cursor by writing in the wrong order.
+     */
+    private suspend fun advanceCursorIfNewer(eventCreatedAt: Long) {
+        cursorMutex.withLock {
+            val current = userPreferences.communityClimbSince.first() ?: 0L
+            if (eventCreatedAt > current) {
+                userPreferences.setCommunityClimbSince(eventCreatedAt)
+            }
+        }
+    }
+
     private fun computeMoveCount(framesText: String): Int {
         // Delegate to the shared estimator so the publisher's
         // (handHolds - startCount) formula and the subscriber's match.
@@ -577,6 +721,12 @@ class CommunityClimbSubscriber @Inject constructor(
         val angle: Int?,
         val bounds: ClimbBounds?,
         val contentPubkeyPrefix: String?,
+        /** True when the event is a tombstone-replacement carrying
+         *  `["deleted","true"]` tag or `{"deleted":true}` in content.
+         *  Tombstone-replacement events bypass the strict frames /
+         *  setter-grade requires below — those tags are no longer
+         *  semantically meaningful for a deleted climb. */
+        val deleted: Boolean,
     ) {
         companion object {
             fun from(event: Event): ParsedClimb {
@@ -588,6 +738,7 @@ class CommunityClimbSubscriber @Inject constructor(
                 var angle: Int? = null
                 var bounds: ClimbBounds? = null
                 var foundLabel = false
+                var deletedTag = false
 
                 for (tag in event.tags) {
                     if (tag.size < 2) continue
@@ -605,18 +756,37 @@ class CommunityClimbSubscriber @Inject constructor(
                             setterGradeId = tag[1].toIntOrNull()
                             if (tag.size >= 3) angle = tag[2].toIntOrNull()
                         }
+                        // L4: tombstone-replacement marker. The deleter
+                        // publishes a Kind-30078 with the same d-tag as
+                        // the original (replaceable-event semantics: the
+                        // newer event replaces the older in relay
+                        // indices) plus this marker so we can detect the
+                        // deletion intent without parsing content.
+                        "deleted" -> if (tag[1].equals("true", ignoreCase = true)) deletedTag = true
                     }
                 }
                 require(foundLabel) { "not a com.cruxcoach.climb event" }
                 require(dTag != null) { "d-tag missing" }
-                require(framesText != null && framesText!!.isNotBlank()) { "frames tag missing" }
-                require(layoutId != null) { "layout_id tag missing" }
 
                 val contentObj = runCatching {
                     Json { ignoreUnknownKeys = true; isLenient = true }
                         .parseToJsonElement(event.content.ifBlank { "{}" })
                         .jsonObject
                 }.getOrNull() ?: JsonObject(emptyMap())
+
+                // L4 fallback: also recognise content-side `{"deleted":true}`
+                // — covers a relay or fork that strips unknown tags but
+                // keeps the JSON content intact.
+                val deletedContent = runCatching {
+                    contentObj["deleted"]?.jsonPrimitive?.content?.equals("true", ignoreCase = true) == true
+                }.getOrNull() == true
+                val deleted = deletedTag || deletedContent
+
+                if (!deleted) {
+                    require(framesText != null && framesText!!.isNotBlank()) { "frames tag missing" }
+                    require(layoutId != null) { "layout_id tag missing" }
+                }
+
                 // Canonical lowercase: the board DB's uuid is BINARY-
                 // collated lowercase (see 7.sqm); event content / d-tag
                 // may carry mixed casing (Aurora-derived UUIDs are upper
@@ -641,18 +811,19 @@ class CommunityClimbSubscriber @Inject constructor(
                     uuid = uuid,
                     name = name,
                     description = description,
-                    framesText = framesText!!,
+                    framesText = framesText.orEmpty(),
                     framesHash = framesHash,
-                    layoutId = layoutId!!,
+                    layoutId = layoutId ?: 0L,
                     setterGradeId = setterGradeId,
                     angle = angle,
                     bounds = bounds,
                     contentPubkeyPrefix = contentPubkeyPrefix,
+                    deleted = deleted,
                 )
             }
 
             /** d-tag pattern: cruxcoach:climb:<pubkey-prefix-8>:<uuid>. */
-            private fun dTagUuid(dTag: String): String? {
+            internal fun dTagUuid(dTag: String): String? {
                 val parts = dTag.split(":")
                 return if (parts.size >= 4 && parts[0] == "cruxcoach" && parts[1] == "climb")
                     parts.last() else null

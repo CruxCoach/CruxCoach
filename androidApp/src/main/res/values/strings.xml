@@ -88,6 +88,16 @@
     <string name="climb_creator_kilter_connect_nudge">Climb published (CruxCoach only) — connect Kilter so it also appears in the Kilter app.</string>
     <string name="climb_creator_kilter_connect_action">Connect</string>
     <string name="climb_creator_edit_action">Edit climb</string>
+    <string name="community_climb_delete_action">Delete publication</string>
+    <string name="community_climb_delete_confirm_title">Delete this climb?</string>
+    <string name="community_climb_delete_confirm_nostr_only">Your climb will be removed from CruxCoach and a deletion is sent to the Nostr relays. The local row disappears immediately; relays may take a few minutes to propagate.</string>
+    <string name="community_climb_delete_confirm_kilter_warning">Your climb will be removed from CruxCoach and a deletion is sent to the Nostr relays. You also published this climb to Kilter — Kilter\'s API does not allow deletion. Open the official Kilter app to remove it from your account there.</string>
+    <string name="community_climb_delete_confirm_button">Delete</string>
+    <string name="community_climb_delete_cancel_button">Cancel</string>
+    <string name="community_climb_delete_done_nostr_only" formatted="false">Climb deleted (%1$d of %2$d relays acknowledged).</string>
+    <string name="community_climb_delete_done_with_kilter" formatted="false">Deleted on Nostr (%1$d of %2$d relays). Remember to remove the climb manually in the Kilter app.</string>
+    <string name="community_climb_delete_failed">Deletion failed. Please try again.</string>
+    <string name="community_climb_delete_not_owner">You can only delete climbs you authored yourself.</string>
     <string name="climb_detail_badge_on_kilter">On Kilter</string>
     <string name="climb_detail_badge_cruxcoach_only">CruxCoach community only</string>
     <string name="climb_detail_badge_kilter_diverged">Edited only here, original on Kilter</string>
@@ -724,7 +734,8 @@
     <string name="board_ble_permission_message">CruxCoach needs Bluetooth access to find and connect your board.</string>
     <string name="board_ble_grant_permission">Grant permission</string>
     <string name="board_ble_bt_disabled_title">Bluetooth is disabled</string>
-    <string name="board_ble_bt_disabled_message">Enable Bluetooth in system settings to connect your board.</string>
+    <string name="board_ble_bt_disabled_message">CruxCoach needs Bluetooth to talk to your board.</string>
+    <string name="board_ble_bt_enable_button">Turn Bluetooth on</string>
     <string name="board_ble_location_disabled_title">Location services disabled</string>
     <string name="board_ble_location_disabled_message">Location services (GPS) must be enabled on this device to find Bluetooth devices.</string>
     <string name="board_ble_session_active_title">Session active</string>

@@ -20,7 +20,9 @@ import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.BluetoothConnected
 import androidx.compose.material.icons.filled.CellTower
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Timer
@@ -158,6 +160,51 @@ fun BoardClimbDetailScreen(
         )
     }
 
+    // Community-publication delete confirmation. The text differs based
+    // on whether the climb was also pushed to Kilter — Kilter has no
+    // delete API so the user has to clean up there manually.
+    state.communityDeleteDialog?.let { dialog ->
+        val bodyRes = if (dialog.kilterAlsoPublished) {
+            R.string.community_climb_delete_confirm_kilter_warning
+        } else {
+            R.string.community_climb_delete_confirm_nostr_only
+        }
+        AlertDialog(
+            onDismissRequest = {
+                if (!dialog.isInProgress) viewModel.dismissCommunityDeleteDialog()
+            },
+            title = {
+                Text(
+                    stringResource(R.string.community_climb_delete_confirm_title),
+                    fontWeight = FontWeight.Bold,
+                )
+            },
+            text = { Text(stringResource(bodyRes)) },
+            confirmButton = {
+                Button(
+                    onClick = { viewModel.confirmCommunityDelete(onDeleted = onNavigateBack) },
+                    enabled = !dialog.isInProgress,
+                    colors = ButtonDefaults.buttonColors(containerColor = ErrorRed),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.testTag("boarddetail_delete_publication_confirm"),
+                ) {
+                    Text(
+                        stringResource(R.string.community_climb_delete_confirm_button),
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { viewModel.dismissCommunityDeleteDialog() },
+                    enabled = !dialog.isInProgress,
+                ) {
+                    Text(stringResource(R.string.community_climb_delete_cancel_button))
+                }
+            },
+        )
+    }
+
     if (state.listDialog.show) {
         AddToListDialog(
             lists = state.listDialog.lists,
@@ -224,6 +271,35 @@ fun BoardClimbDetailScreen(
             )
         }
         if (msg != null) snackbarHostState.showSnackbar(msg)
+    }
+
+    // Surface community-delete outcomes — the deleter returns success
+    // even when no relay accepted (local-row tombstoned regardless),
+    // so the snackbar text mentions the relay-accept count.
+    LaunchedEffect(state.communityDeleteFeedback) {
+        val feedback = state.communityDeleteFeedback ?: return@LaunchedEffect
+        val msg = when (feedback) {
+            is CommunityDeleteFeedback.Done -> {
+                val template = if (feedback.kilterAlsoPublished) {
+                    R.string.community_climb_delete_done_with_kilter
+                } else {
+                    R.string.community_climb_delete_done_nostr_only
+                }
+                context.getString(template, feedback.accepted, feedback.attempted)
+            }
+            CommunityDeleteFeedback.NotOwner -> context.getString(R.string.community_climb_delete_not_owner)
+            // Defensive: NotOurClimb / NotFound shouldn't reach the user
+            // because the menu item is gated on origin=cruxcoach + owner.
+            // If they ever do, fall back to the generic failure message.
+            CommunityDeleteFeedback.NotOurClimb,
+            CommunityDeleteFeedback.NotFound,
+            CommunityDeleteFeedback.Failed -> context.getString(R.string.community_climb_delete_failed)
+        }
+        snackbarHostState.showSnackbar(msg)
+        viewModel.consumeCommunityDeleteFeedback()
+    }
+
+    LaunchedEffect(quickSendStatus) {
         // Reset Done/Error to Idle after the snackbar fires so the next tap
         // starts fresh; transient states (Scanning/Sending/Disconnecting/
         // Connecting) reset themselves when the macro advances.
@@ -297,6 +373,45 @@ fun BoardClimbDetailScreen(
                                     contentDescription = stringResource(R.string.climb_creator_edit_action),
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
+                            }
+                            // Delete-this-publication overflow menu — same
+                            // owner gate as Edit. Hidden behind a 3-dot
+                            // menu rather than a top-bar button to keep
+                            // accidental destructive taps unlikely.
+                            var deleteMenuExpanded by remember { mutableStateOf(false) }
+                            Box {
+                                IconButton(
+                                    onClick = { deleteMenuExpanded = true },
+                                    modifier = Modifier.testTag("boarddetail_more_button"),
+                                ) {
+                                    Icon(
+                                        Icons.Default.MoreVert,
+                                        contentDescription = stringResource(R.string.community_climb_delete_action),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                                DropdownMenu(
+                                    expanded = deleteMenuExpanded,
+                                    onDismissRequest = { deleteMenuExpanded = false },
+                                ) {
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(stringResource(R.string.community_climb_delete_action))
+                                        },
+                                        leadingIcon = {
+                                            Icon(
+                                                Icons.Default.Delete,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.error,
+                                            )
+                                        },
+                                        onClick = {
+                                            deleteMenuExpanded = false
+                                            viewModel.requestCommunityDelete()
+                                        },
+                                        modifier = Modifier.testTag("boarddetail_delete_publication"),
+                                    )
+                                }
                             }
                         }
                         IconButton(

@@ -639,6 +639,20 @@ deleteLocalClimb {
     DELETE FROM climbs WHERE uuid = :uuid AND source = 'local';
 }
 
+-- Bundle the data the CommunityClimbDeleter needs in one read:
+-- the d-tag + last published event-id (so the Kind-5 deletion can
+-- carry both `a`- and `e`-references to the original), the row's
+-- author (so the deleter can refuse to send if the local row isn't
+-- the user's own — defence against a UI bug or compromised pubkey
+-- mismatch), and the Kilter publish status (so the UI can warn
+-- about manual Kilter cleanup when origin='cruxcoach' AND
+-- kilter_status='synced').
+getCommunityClimbDeleteContext:
+SELECT nostr_event_id, nostr_d_tag, created_by_pubkey, kilter_status, origin
+FROM climbs
+WHERE uuid = :uuid
+LIMIT 1;
+
 -- ── Tombstone path for already-published community climbs ───────
 -- Marks a CruxCoach-authored, already-published climb as deleted.
 -- Owner-locked at the SQL layer: the WHERE refuses to flip a row
