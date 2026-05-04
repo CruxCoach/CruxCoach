@@ -550,6 +550,20 @@ interface CommunityClimbQueries {
      */
     fun claimKilterPublishSlot(uuid: String): KilterClaim
     /**
+     * Sweep the residual "stuck pending" pool: any climb whose
+     * `kilter_status='pending'` has either no attempt history at all OR
+     * whose latest attempt is older than [olderThanMs] (wall-clock
+     * cutoff). Sets it back to 'failed' so the retry worker's queue
+     * picks it up. Returns the number of rows touched.
+     *
+     * Covers the residual edge from `claimKilterPublishSlot`'s try/catch
+     * downgrade — when even the catch path throws (process kill mid-
+     * statement, OOM in the SQLite driver), the row stayed 'pending'
+     * forever. The retry worker invokes this once per tick before
+     * draining the queue.
+     */
+    fun sweepStuckKilterPending(olderThanMs: Long): Long
+    /**
      * Append an immutable per-attempt audit row to `kilter_publish_attempts`.
      * Called from every terminal branch of the publisher + retry worker so
      * the timeline reconstruction survives subsequent overwrites of the

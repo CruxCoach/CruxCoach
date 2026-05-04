@@ -780,6 +780,12 @@ class BoardRepositoryImpl(
         q.markKilterPublishRejected(kilter_error = error, uuid = uuid)
     }
 
+    override fun sweepStuckKilterPending(olderThanMs: Long): Long =
+        q.transactionWithResult {
+            q.sweepStuckKilterPending(olderThanMs)
+            q.lastClimbsChangeCount().executeAsOne()
+        }
+
     override fun claimKilterPublishSlot(uuid: String): KilterClaim {
         // Read kilter_synced_at BEFORE the CAS so the caller can pick
         // CREATE vs UPDATE based on the pre-claim state. Both reads

@@ -68,6 +68,7 @@
     <string name="climb_creator_save_failed">Couldn\'t save the draft. Please try again.</string>
     <string name="climb_creator_publish_failed">Couldn\'t publish. Please try again.</string>
     <string name="climb_creator_publish_failed_will_retry">No relay accepted the climb just now — your draft is saved and CruxCoach will keep trying in the background.</string>
+    <string name="climb_creator_auto_note_zero_relays">Climb published, but the Auto-Note didn\'t reach any relay.</string>
     <string name="climb_creator_drafts_load_failed">Couldn\'t load your drafts. Please try again.</string>
     <string name="climb_creator_drafts_delete_failed">Couldn\'t delete the draft. Please try again.</string>
     <string name="climb_creator_load_failed">Couldn\'t open the editor. Please try again.</string>

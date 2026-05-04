@@ -68,6 +68,7 @@
     <string name="climb_creator_save_failed">Entwurf konnte nicht gespeichert werden. Bitte versuche es erneut.</string>
     <string name="climb_creator_publish_failed">Veröffentlichen fehlgeschlagen. Bitte versuche es erneut.</string>
     <string name="climb_creator_publish_failed_will_retry">Kein Relay hat den Climb angenommen — der Entwurf bleibt gespeichert und CruxCoach versucht es im Hintergrund weiter.</string>
+    <string name="climb_creator_auto_note_zero_relays">Climb veröffentlicht, aber die Auto-Note hat kein Relay erreicht.</string>
     <string name="climb_creator_drafts_load_failed">Entwürfe konnten nicht geladen werden. Bitte versuche es erneut.</string>
     <string name="climb_creator_drafts_delete_failed">Entwurf konnte nicht gelöscht werden. Bitte versuche es erneut.</string>
     <string name="climb_creator_load_failed">Editor konnte nicht geöffnet werden. Bitte versuche es erneut.</string>

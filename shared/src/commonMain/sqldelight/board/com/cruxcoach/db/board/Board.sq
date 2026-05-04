@@ -832,6 +832,37 @@ SELECT
        AND kilter_status = 'failed') AS failed_count,
     (SELECT MAX(attempted_at) FROM kilter_publish_attempts) AS last_attempt_at;
 
+-- Mid-flow recovery: rows whose `kilter_status='pending'` is older than
+-- the per-attempt grace window get downgraded to 'failed' so the retry
+-- worker's queue criterion picks them up next tick. The `pending` state
+-- is normally short-lived (the publisher's claim → submit → mark
+-- transition), but a process kill / OOM / mid-flow throw between the
+-- claim and the terminal mark used to strand the row indefinitely
+-- ('pending' is not in the retry-queue WHERE clause). Companion to
+-- [claimKilterPublishSlot]'s try/catch downgrade — covers the residual
+-- "even the catch threw" edge.
+sweepStuckKilterPending:
+UPDATE climbs
+   SET kilter_status = 'failed',
+       kilter_error = COALESCE(kilter_error, 'sweeper: stuck pending')
+ WHERE kilter_status = 'pending'
+   AND origin = 'cruxcoach'
+   AND uuid IN (
+       SELECT climb_uuid FROM kilter_publish_attempts
+        WHERE attempted_at < ?
+        GROUP BY climb_uuid
+       UNION
+       -- Rows that never recorded an attempt (claim succeeded but the
+       -- HTTP call hadn't been entered yet when the process died). The
+       -- created_at fallback is conservative — a pending row without
+       -- any attempt history that was created more than the cutoff ago
+       -- is by definition stuck.
+       SELECT uuid FROM climbs
+        WHERE kilter_status = 'pending'
+          AND origin = 'cruxcoach'
+          AND uuid NOT IN (SELECT climb_uuid FROM kilter_publish_attempts)
+   );
+
 -- Climbs that need a Kilter retry: cruxcoach-origin, not yet on Kilter
 -- (NULL or 'failed') and Nostr-published (so we know the user finalized
 -- their publish). Used by the retry queue.

@@ -87,6 +87,18 @@ class CommunityClimbPublisher @Inject constructor(
          * health-monitoring/011).
          */
         val kilterOutcome: KilterClimbPublisher.Outcome? = null,
+        /**
+         * Outcome of the optional Kind-1 auto-note publish:
+         *   - `null`  → user didn't opt into auto-note (template empty
+         *               or toggle off in editor)
+         *   - `true`  → ≥ 1 relay accepted the note
+         *   - `false` → 0 relays accepted; the climb is up but the
+         *               announcement didn't go through. Editor renders
+         *               a distinct "Auto-Note didn't reach any relay"
+         *               snackbar instead of the silent "✓ published"
+         *               (audit graceful-degradation/010).
+         */
+        val autoNotePublished: Boolean? = null,
     )
 
     suspend fun publish(
@@ -137,10 +149,13 @@ class CommunityClimbPublisher @Inject constructor(
         // the overall publish (the climb is already on relays via the
         // 30078 above; the user can re-share manually). Runs after the
         // mandatory Kind-30078 succeeded so the naddr is durable.
-        if (autoNote != null) {
+        // `autoNotePublished` carries the relay-accepted-at-least-once
+        // signal back to the editor; null means the user didn't opt in.
+        val autoNotePublished: Boolean? = if (autoNote != null) {
             runCatching { publishKind1Note(payload.dTag, pubkey, state.name, autoNote) }
                 .onFailure { Log.w(TAG, "auto-note publish threw — recoverable", it) }
-        }
+                .getOrDefault(false)
+        } else null
 
         // Step 2: Kilter — best-effort via the user's own account.
         // Detect "connected but publishing the climb still went only to
@@ -198,6 +213,7 @@ class CommunityClimbPublisher @Inject constructor(
             nostrEventId = event.id,
             nudgeToConnectKilter = nudgeToConnect,
             kilterOutcome = kilterOutcome,
+            autoNotePublished = autoNotePublished,
         )
     }
 
@@ -269,12 +285,23 @@ class CommunityClimbPublisher @Inject constructor(
      * for the maintainer account, which doubles as a reach-multiplier for
      * CruxCoach climbs.
      */
+    /**
+     * Publish the optional Kind-1 announcement note. Returns:
+     *   - `true`  → ≥ 1 relay accepted
+     *   - `false` → 0 relays accepted (the note didn't land anywhere)
+     *
+     * The Kind-30078 climb has already been accepted by the time this
+     * runs, so a `false` here is non-fatal — the user just doesn't get
+     * the announcement reach they asked for. Returned to the caller so
+     * the editor can surface a distinct "Auto-Note didn't go through"
+     * snackbar instead of the silent "published!" pre-fix.
+     */
     private suspend fun publishKind1Note(
         dTag: String,
         authorPubkeyHex: String,
         climbName: String,
         spec: AutoNoteSpec,
-    ) {
+    ): Boolean {
         val naddr = NAddress.create(
             kind = KIND_REPLACEABLE_PARAMETERIZED,
             pubKeyHex = authorPubkeyHex,
@@ -317,15 +344,13 @@ class CommunityClimbPublisher @Inject constructor(
         if (accepted == 0 && attempted > 0) {
             // The Kind-30078 climb was already accepted by the time we
             // got here, so the user sees "published!" — but the auto-note
-            // didn't reach any relay. Promote to WARN so a logcat scan
-            // catches the divergence; the audit's full UX fix
-            // (graceful-degradation/010) requires plumbing
-            // autoNotePublished=false back to the editor and is tracked
-            // as a follow-up.
+            // didn't reach any relay. Surface as `false` so the editor
+            // can render a distinct snackbar.
             Log.w(TAG, "auto-note rejected by all relays attempted=$attempted")
         } else {
             Log.i(TAG, "auto-note attempted=$attempted accepted=$accepted")
         }
+        return accepted > 0
     }
 
     private fun computeBounds(state: ClimbEditorState): ClimbBounds? {

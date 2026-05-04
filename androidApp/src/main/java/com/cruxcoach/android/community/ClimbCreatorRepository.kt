@@ -191,6 +191,7 @@ class ClimbCreatorRepository @Inject constructor(
             uuid = uuid,
             nudgeToConnectKilter = result.nudgeToConnectKilter,
             kilterOutcome = result.kilterOutcome,
+            autoNotePublished = result.autoNotePublished,
         )
     }
 
@@ -202,6 +203,9 @@ class ClimbCreatorRepository @Inject constructor(
          *  See [CommunityClimbPublisher.Result.kilterOutcome] for the
          *  semantics. */
         val kilterOutcome: com.cruxcoach.android.data.kilter.KilterClimbPublisher.Outcome? = null,
+        /** Optional Kind-1 auto-note outcome. See
+         *  [CommunityClimbPublisher.Result.autoNotePublished]. */
+        val autoNotePublished: Boolean? = null,
     )
 
     private fun nowIso(): String {

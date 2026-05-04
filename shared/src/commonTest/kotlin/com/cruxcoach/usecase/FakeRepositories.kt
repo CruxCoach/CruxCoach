@@ -224,6 +224,7 @@ class FakeBoardRepository : BoardRepository {
     override fun markKilterPublishRejected(uuid: String, error: String) {}
     override fun claimKilterPublishSlot(uuid: String): com.cruxcoach.data.repository.KilterClaim =
         com.cruxcoach.data.repository.KilterClaim.Won(null)
+    override fun sweepStuckKilterPending(olderThanMs: Long): Long = 0L
     override fun recordKilterPublishAttempt(
         climbUuid: String,
         attemptedAtMs: Long,

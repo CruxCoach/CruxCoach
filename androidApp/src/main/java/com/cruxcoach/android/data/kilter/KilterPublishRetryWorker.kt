@@ -69,6 +69,19 @@ class KilterPublishRetryWorker @AssistedInject constructor(
 
         Log.i(TAG, "worker start (publishEnabled=true, hasToken=true)")
 
+        // Recover stuck-'pending' rows before listing the queue.
+        // CommunityClimbPublisher's try/catch already downgrades on a
+        // mid-flow throw, but the residual case where even the catch
+        // path lost (process kill mid-mark, OOM in the SQLite driver)
+        // leaves a row stranded in 'pending'. The queue criterion
+        // matches NULL/'failed', so 'pending' rows are invisible to the
+        // retry worker without this sweep.
+        val stuckCutoffMs = System.currentTimeMillis() - STUCK_PENDING_GRACE_MS
+        val swept = runCatching { boardRepository.sweepStuckKilterPending(stuckCutoffMs) }
+            .onFailure { Log.w(TAG, "sweepStuckKilterPending threw", it) }
+            .getOrDefault(0L)
+        if (swept > 0) Log.i(TAG, "swept $swept stuck-pending row(s) back to 'failed'")
+
         val rows = runCatching { boardRepository.getClimbsAwaitingKilterRetry() }
             .getOrElse {
                 Log.w(TAG, "could not list retry candidates", it)
@@ -266,6 +279,13 @@ class KilterPublishRetryWorker @AssistedInject constructor(
     companion object {
         private const val TAG = "KilterRetryWorker"
         const val WORK_NAME = "kilter_publish_retry"
+        // Pending rows older than this cutoff (relative to the latest
+        // attempt OR row creation when no attempt is recorded) are swept
+        // back to 'failed' on each tick. 30 minutes is generous enough
+        // that a legitimate in-flight publish (P99 < 10s end-to-end)
+        // never gets reset, but tight enough that a stranded row
+        // recovers within the next tick or two.
+        private const val STUCK_PENDING_GRACE_MS = 30L * 60L * 1000L
 
         /**
          * Schedule the periodic retry. Uses the shared "publish-retry"

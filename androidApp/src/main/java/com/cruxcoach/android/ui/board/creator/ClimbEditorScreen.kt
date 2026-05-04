@@ -92,7 +92,13 @@ fun ClimbEditorScreen(
     val autoNoteTemplate = stringResource(R.string.auto_note_default_template)
     val coroutineScope = rememberCoroutineScope()
 
-    LaunchedEffect(state.publishedUuid, state.showKilterConnectNudge, state.kilterPublishOutcome) {
+    val autoNoteFailedMessage = stringResource(R.string.climb_creator_auto_note_zero_relays)
+    LaunchedEffect(
+        state.publishedUuid,
+        state.showKilterConnectNudge,
+        state.kilterPublishOutcome,
+        state.autoNotePublished,
+    ) {
         val uuid = state.publishedUuid ?: return@LaunchedEffect
         if (state.showKilterConnectNudge) {
             // Show the Snackbar BEFORE leaving the screen so the user has
@@ -122,6 +128,13 @@ fun ClimbEditorScreen(
             else -> Unit
         }
         viewModel.clearKilterPublishOutcome()
+        // Auto-Note Kind-1 reach: surface "0 relays accepted the
+        // announcement" as its own snackbar — pre-fix this case looked
+        // identical to a successful publish from the user's POV.
+        if (state.autoNotePublished == false) {
+            snackbarHostState.showSnackbar(autoNoteFailedMessage)
+        }
+        viewModel.clearAutoNoteOutcome()
         onPublished(uuid)
     }
     LaunchedEffect(state.errorMessage) {

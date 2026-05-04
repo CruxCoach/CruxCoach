@@ -138,6 +138,13 @@ class NostrProfileViewModel @Inject constructor(
 
     fun save() {
         val s = _state.value
+        // CAS guard against double-tap fanout: tapping "Save" twice in
+        // quick succession used to start two `publishProfile` coroutines
+        // that each fired a Kind-0 event under the user's pubkey,
+        // doubling the relay write and potentially causing replaceable-
+        // event ordering surprises. The check-and-set is on the
+        // single-threaded main dispatcher, so it's safe without a Mutex.
+        if (s.isSaving) return
         viewModelScope.launch {
             _state.update { it.copy(isSaving = true, errorMessage = null) }
             val result = nostrProfileManager.publishProfile(

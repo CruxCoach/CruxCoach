@@ -562,6 +562,15 @@ object AppModule {
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(15, TimeUnit.SECONDS)
+            // Wall-clock cap on the entire call. Without this a TLS
+            // handshake hang or a server-stalls-mid-response can block
+            // KilterPublishRetryWorker indefinitely — connect/read
+            // timeouts only cap individual sockets and reset on each
+            // byte. 60s is comfortably above any legitimate Kilter API
+            // call (P99 < 5s on the publish path) while bounding the
+            // pathological case so the worker tick can't drag past
+            // WorkManager's 10-min execution budget.
+            .callTimeout(60, TimeUnit.SECONDS)
             .addInterceptor { chain ->
                 val req = chain.request().newBuilder()
                     .header("User-Agent", ua)
