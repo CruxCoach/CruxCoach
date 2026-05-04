@@ -74,8 +74,6 @@ data class ClimbEditorUiState(
     val errorMessage: String? = null,
     /** Loaded-draft uuid — re-saving updates this row in place. */
     val loadedDraftUuid: String? = null,
-    /** Recovered autosave waiting for the user's restore decision. */
-    val autosaveOffer: EditorAutosave.AutosaveSnapshot? = null,
     /** Heatmap intensities (placementId → 0..1) for "popular co-occurring holds". */
     val heatmap: Map<Int, Float> = emptyMap(),
     /** User-toggled visibility of the heatmap overlay. */
@@ -205,10 +203,16 @@ class ClimbEditorViewModel @Inject constructor(
             }
             if (source != null) seedFromFork(source)
         }
-        // Autosave restore offer — only when the editor opens *fresh* (no fork/edit seed).
-        val offer = withContext(Dispatchers.IO) { autosave.load() }
-        if (offer != null && _state.value.editor.selectedHolds.isEmpty()) {
-            _state.update { it.copy(autosaveOffer = offer) }
+        // Auto-restore the last autosave — only when the editor opens
+        // *fresh* (no fork/edit seed). Pre-fix this surfaced as a
+        // "restore previous session?" prompt; the user wanted the
+        // friction-free version where the last in-flight state is
+        // simply re-applied. The trash icon in the toolbar
+        // ([clearEditor]) is the explicit "give me a clean slate"
+        // affordance for users who don't want what they had.
+        val snapshot = withContext(Dispatchers.IO) { autosave.load() }
+        if (snapshot != null && _state.value.editor.selectedHolds.isEmpty()) {
+            applyEditor(snapshot.state)
         }
     }
 
@@ -371,7 +375,7 @@ class ClimbEditorViewModel @Inject constructor(
                         repository.saveDraft(current)
                     }
                 }
-                // Cancel pending debounce before clearing — see [dismissAutosave].
+                // Cancel pending debounce before clearing — see [clearEditor].
                 autosaveJob?.cancel()
                 autosave.clear()
                 // Refresh the drafts list so the drawer shows the new
@@ -581,7 +585,7 @@ class ClimbEditorViewModel @Inject constructor(
                 }
                 return@launch
             }
-            // Cancel pending debounce before clearing — see [dismissAutosave].
+            // Cancel pending debounce before clearing — see [clearEditor].
             autosaveJob?.cancel()
             autosave.clear()
             _state.update {
@@ -612,22 +616,29 @@ class ClimbEditorViewModel @Inject constructor(
         _state.update { it.copy(autoNotePublished = null) }
     }
 
-    // ── Autosave restore offer ──────────────────────────────────
+    // ── Editor reset (toolbar trash icon) ────────────────────────
 
-    fun acceptAutosave() {
-        val offer = _state.value.autosaveOffer ?: return
-        applyEditor(offer.state)
-        _state.update { it.copy(autosaveOffer = null) }
-    }
-
-    fun dismissAutosave() {
-        // Cancel the in-flight 500ms debounce synchronously: an editor
-        // mutation that landed milliseconds before the dismiss would
-        // otherwise re-write the autosave keys back to DataStore right
-        // after `clear()` runs, silently losing the user's discard intent.
+    /**
+     * Wipe the editor's working state — selectedHolds, name, description,
+     * setterGradeId, angle, brush — so the user can start over without
+     * tapping each hold off. Also drops `loadedDraftUuid` (next save
+     * creates a fresh draft instead of overwriting the previously-loaded
+     * one) and clears the autosave slot (so the next editor open doesn't
+     * auto-restore the just-cleared state).
+     *
+     * The undo stack is preserved so a single Undo brings the wiped
+     * state back if the tap was a misclick — the cleared autosave slot
+     * is the price of that, but the working state is recoverable until
+     * the next mutation.
+     */
+    fun clearEditor() {
+        // Cancel the in-flight 500ms debounce synchronously so it
+        // doesn't write the still-current state back to DataStore
+        // right after we clear it.
         autosaveJob?.cancel()
         viewModelScope.launch { autosave.clear() }
-        _state.update { it.copy(autosaveOffer = null) }
+        applyEditor(ClimbEditorState())
+        _state.update { it.copy(loadedDraftUuid = null) }
     }
 
     // ── Drafts drawer ───────────────────────────────────────────

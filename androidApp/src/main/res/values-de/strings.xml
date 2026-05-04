@@ -55,10 +55,7 @@
     <string name="climb_creator_drafts_delete_action">Entwurf löschen</string>
     <string name="climb_creator_drafts_delete_confirm">Löschen</string>
     <string name="climb_creator_heatmap_toggle">Heatmap (häufige Griffe) ein/aus</string>
-    <string name="climb_creator_autosave_offer_title">Vorherige Sitzung wiederherstellen?</string>
-    <string name="climb_creator_autosave_offer_message" formatted="false">Ungespeicherte Änderungen %s.</string>
-    <string name="climb_creator_autosave_offer_restore">Wiederherstellen</string>
-    <string name="climb_creator_autosave_offer_discard">Verwerfen</string>
+    <string name="climb_creator_clear">Editor leeren</string>
 
     <!-- Relative-time labels (Climb Creator + Drafts drawer) -->
     <string name="relative_time_just_now">gerade eben</string>

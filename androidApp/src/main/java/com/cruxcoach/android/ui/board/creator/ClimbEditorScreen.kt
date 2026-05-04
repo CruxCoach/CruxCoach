@@ -20,6 +20,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Whatshot
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Whatshot
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChipDefaults
@@ -160,6 +161,12 @@ fun ClimbEditorScreen(
                             contentDescription = stringResource(R.string.climb_creator_drafts_open),
                         )
                     }
+                    IconButton(onClick = viewModel::clearEditor) {
+                        Icon(
+                            Icons.Outlined.Delete,
+                            contentDescription = stringResource(R.string.climb_creator_clear),
+                        )
+                    }
                     IconButton(onClick = viewModel::toggleHeatmap) {
                         Icon(
                             if (state.heatmapEnabled) Icons.Filled.Whatshot else Icons.Outlined.Whatshot,
@@ -199,16 +206,6 @@ fun ClimbEditorScreen(
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            // Autosave restore offer — appears once on editor open if a
-            // previous unsaved session is still in DataStore.
-            state.autosaveOffer?.let { offer ->
-                AutosaveRestoreBanner(
-                    savedAtEpochMs = offer.savedAtEpochMs,
-                    onAccept = viewModel::acceptAutosave,
-                    onDismiss = viewModel::dismissAutosave,
-                )
-            }
-
             // Live board visualization
             val activeHolds = state.editor.selectedHolds.map { (pid, role) -> BoardHold(pid, role) }
             KilterBoardVisualization(
@@ -372,42 +369,6 @@ fun ClimbEditorScreen(
  * unsaved session. Two paths: accept (load into editor) or discard
  * (clear the autosave from DataStore).
  */
-@Composable
-private fun AutosaveRestoreBanner(
-    savedAtEpochMs: Long,
-    onAccept: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    androidx.compose.material3.Surface(
-        modifier = Modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.tertiaryContainer,
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
-    ) {
-        Row(
-            modifier = Modifier.padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    stringResource(R.string.climb_creator_autosave_offer_title),
-                    style = MaterialTheme.typography.titleSmall,
-                )
-                Text(
-                    stringResource(R.string.climb_creator_autosave_offer_message, relativeTimeLabel(savedAtEpochMs)),
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.climb_creator_autosave_offer_discard))
-            }
-            Button(onClick = onAccept) {
-                Text(stringResource(R.string.climb_creator_autosave_offer_restore))
-            }
-        }
-    }
-}
-
 /**
  * Hold-count chips that double as brush-selectors. Tapping a chip arms
  * the brush so subsequent board taps paint that role; tapping again

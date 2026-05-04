@@ -55,10 +55,7 @@
     <string name="climb_creator_drafts_delete_action">Delete draft</string>
     <string name="climb_creator_drafts_delete_confirm">Delete</string>
     <string name="climb_creator_heatmap_toggle">Toggle popular-holds heatmap</string>
-    <string name="climb_creator_autosave_offer_title">Restore previous session?</string>
-    <string name="climb_creator_autosave_offer_message" formatted="false">Unsaved edits from %s.</string>
-    <string name="climb_creator_autosave_offer_restore">Restore</string>
-    <string name="climb_creator_autosave_offer_discard">Discard</string>
+    <string name="climb_creator_clear">Clear editor</string>
 
     <!-- Relative-time labels (Climb Creator + Drafts drawer) -->
     <string name="relative_time_just_now">Just now</string>
