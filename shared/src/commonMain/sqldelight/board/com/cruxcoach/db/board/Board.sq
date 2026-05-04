@@ -639,6 +639,47 @@ deleteLocalClimb {
     DELETE FROM climbs WHERE uuid = :uuid AND source = 'local';
 }
 
+-- ── Tombstone path for already-published community climbs ───────
+-- Marks a CruxCoach-authored, already-published climb as deleted.
+-- Owner-locked at the SQL layer: the WHERE refuses to flip a row
+-- whose `created_by_pubkey` doesn't match the caller's pubkey, so a
+-- bug or a malicious caller cannot tombstone someone else's climb.
+-- Hard-restricted to `origin='cruxcoach'` so a Kilter-blob row can
+-- never be removed via this path — Kilter is read-only on our end.
+--
+-- Sets:
+--  * is_deleted = 1, is_listed = 0   — VIEW excludes the row.
+--  * sync_status = 'deleted'         — UI/diagnostics distinguish from
+--                                      'published_nostr' / 'failed'.
+--  * created_at = :tombstone_iso     — replaces the original publish
+--                                      time so the subscriber's stale-
+--                                      event check rejects any incoming
+--                                      Original-Event with an older
+--                                      created_at. Without this, a Live-
+--                                      Sub re-import from a non-
+--                                      deleting relay would tie on
+--                                      created_at and the upsert would
+--                                      reset is_deleted to its 0 default.
+markCommunityClimbDeleted {
+    UPDATE climbs SET
+        is_deleted = 1,
+        is_listed = 0,
+        sync_status = 'deleted',
+        created_at = :tombstone_iso
+    WHERE uuid = :uuid
+      AND created_by_pubkey = :pubkey
+      AND origin = 'cruxcoach';
+    DELETE FROM climb_stats WHERE climb_uuid = :uuid;
+}
+
+-- True if a row exists and its is_deleted flag is set. Used by the
+-- subscriber's L3 absorption check to refuse re-importing a tombstoned
+-- climb from a Live-Sub event that came in via a non-deleting relay.
+isClimbTombstoned:
+SELECT 1 FROM climbs
+WHERE uuid = :uuid AND is_deleted = 1
+LIMIT 1;
+
 -- Hold-frequency lookup for the editor's heatmap overlay. Returns
 -- (placement_id, occurrence_count) pairs across all listed climbs at the
 -- given layout + angle. The Kotlin side aggregates frames text → hold IDs

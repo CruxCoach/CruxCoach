@@ -413,6 +413,13 @@ class BoardRepositoryImpl(
         q.deleteLocalClimb(uuid)
     }
 
+    override fun markCommunityClimbDeleted(uuid: String, pubkey: String, tombstoneIso: String) {
+        q.markCommunityClimbDeleted(uuid = uuid, pubkey = pubkey, tombstone_iso = tombstoneIso)
+    }
+
+    override fun isClimbTombstoned(uuid: String): Boolean =
+        q.isClimbTombstoned(uuid).executeAsOneOrNull() != null
+
     override fun getClimbCreatedAt(uuid: String): String? =
         q.getClimbCreatedAt(uuid).executeAsOneOrNull()?.created_at
 

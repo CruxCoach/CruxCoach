@@ -273,10 +273,17 @@ fun ClimbEditorScreen(
                     checked = state.alsoPostNote,
                     onCheckedChange = { viewModel.setAlsoPostNote(it) },
                 )
-                Text(
-                    stringResource(R.string.climb_creator_also_post_note),
-                    style = MaterialTheme.typography.bodySmall,
-                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        stringResource(R.string.climb_creator_also_post_note),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Text(
+                        stringResource(R.string.climb_creator_also_post_note_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

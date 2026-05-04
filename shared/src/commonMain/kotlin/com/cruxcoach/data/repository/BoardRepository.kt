@@ -431,6 +431,23 @@ interface CommunityClimbQueries {
     /** Delete a local draft (drafts user explicitly discards). */
     fun deleteLocalClimb(uuid: String)
     /**
+     * Tombstone a CruxCoach-authored, already-published climb. Owner-locked
+     * at the SQL layer: only flips rows whose `created_by_pubkey` matches
+     * `pubkey` AND `origin = 'cruxcoach'`. A Kilter-origin row can never
+     * be removed via this path — Kilter is read-only here.
+     *
+     * Sets `is_deleted = 1`, `is_listed = 0`, `sync_status = 'deleted'`,
+     * and bumps `created_at` to [tombstoneIso] so the subscriber's stale-
+     * event guard rejects any incoming Original-Event whose `created_at`
+     * is older than the tombstone moment. Drops the climb_stats rows so
+     * orphan-stats diagnostics stay clean.
+     */
+    fun markCommunityClimbDeleted(uuid: String, pubkey: String, tombstoneIso: String)
+    /** True iff the row exists locally and is_deleted=1 (subscriber's L3
+     *  absorption: refuse re-importing a tombstoned climb that arrives via
+     *  a Live-Sub event from a non-deleting relay). */
+    fun isClimbTombstoned(uuid: String): Boolean
+    /**
      * Returns the local row's stored `created_at` ISO string (or null if
      * the climb isn't in the DB yet). Used by the Channel-B subscriber
      * to skip re-broadcasted old events that would overwrite a newer

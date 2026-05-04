@@ -30,10 +30,11 @@
     <string name="climb_creator_issue_description_too_long" formatted="false">Description too long (max %d chars).</string>
     <string name="climb_creator_issue_angle_missing">Pick a board angle.</string>
     <string name="climb_creator_draft_saved">Draft saved.</string>
-    <string name="climb_creator_also_post_note">Also post a Note (Kind 1)</string>
+    <string name="climb_creator_also_post_note">Announce in the social feed</string>
+    <string name="climb_creator_also_post_note_hint">Posts a separate short message to your followers in the Nostr social feed, linking back to this climb. The climb itself is always saved to the community catalog regardless of this option.</string>
     <string name="auto_note_default_template">I just published a new boulder on nostr:{npub_cruxcoach}: \"{name}\"\n\n#kilterboard #climbing\n\n{cruxcoach_url}\nnostr:{naddr}</string>
-    <string name="auto_note_setting_title">Auto-Note on publish</string>
-    <string name="auto_note_setting_body">When enabled, publishing a climb also posts a public Kind 1 note linking to it. Default off; per-climb checkbox in the editor lets you override.</string>
+    <string name="auto_note_setting_title">Announce new climbs in the feed</string>
+    <string name="auto_note_setting_body">When enabled, every climb you publish also gets a short announcement post in the Nostr social feed — visible to your followers, with a link back to your climb. The climb itself is always added to the community catalog regardless. Default off; per-climb override in the editor.</string>
     <string name="nostr_profile_subscriber_status_title">Community climb feed</string>
     <string name="nostr_profile_subscriber_status_running_never">Connected — waiting for the first climb event…</string>
     <string name="nostr_profile_subscriber_status_running_active_prefix">Connected — last climb event</string>

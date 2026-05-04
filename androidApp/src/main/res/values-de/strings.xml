@@ -30,10 +30,11 @@
     <string name="climb_creator_issue_description_too_long" formatted="false">Beschreibung zu lang (max. %d Zeichen).</string>
     <string name="climb_creator_issue_angle_missing">Brett-Winkel wählen.</string>
     <string name="climb_creator_draft_saved">Entwurf gespeichert.</string>
-    <string name="climb_creator_also_post_note">Auch als Note (Kind 1) posten</string>
+    <string name="climb_creator_also_post_note">Im sozialen Feed ankündigen</string>
+    <string name="climb_creator_also_post_note_hint">Postet zusätzlich eine kurze Nachricht an deine Follower im Nostr-Feed, die zurück auf deinen Climb verlinkt. Der Climb selbst landet so oder so im Community-Katalog — unabhängig von dieser Option.</string>
     <string name="auto_note_default_template">Ich habe einen neuen Boulder auf nostr:{npub_cruxcoach} veröffentlicht: „{name}“\n\n#kilterboard #climbing\n\n{cruxcoach_url}\nnostr:{naddr}</string>
-    <string name="auto_note_setting_title">Auto-Note beim Veröffentlichen</string>
-    <string name="auto_note_setting_body">Wenn aktiv, wird beim Veröffentlichen eines Climbs zusätzlich ein öffentlicher Kind-1-Post abgesetzt, der auf den Climb verlinkt. Default aus; pro Climb eine Checkbox im Editor zum Überschreiben.</string>
+    <string name="auto_note_setting_title">Neue Climbs im Feed ankündigen</string>
+    <string name="auto_note_setting_body">Wenn aktiv, wird beim Veröffentlichen eines Climbs zusätzlich eine kurze Ankündigung im Nostr-Feed gepostet — sichtbar für deine Follower, mit Link zurück zu deinem Climb. Der Climb selbst landet so oder so im Community-Katalog. Pro Climb im Editor übersteuerbar. Default aus.</string>
     <string name="nostr_profile_subscriber_status_title">Community-Climb-Feed</string>
     <string name="nostr_profile_subscriber_status_running_never">Verbunden — warte auf das erste Climb-Event…</string>
     <string name="nostr_profile_subscriber_status_running_active_prefix">Verbunden — letztes Climb-Event</string>
