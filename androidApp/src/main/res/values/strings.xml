@@ -34,6 +34,11 @@
     <string name="auto_note_default_template">I just published a new boulder on nostr:{npub_cruxcoach}: \"{name}\"\n\n#kilterboard #climbing\n\n{cruxcoach_url}\nnostr:{naddr}</string>
     <string name="auto_note_setting_title">Auto-Note on publish</string>
     <string name="auto_note_setting_body">When enabled, publishing a climb also posts a public Kind 1 note linking to it. Default off; per-climb checkbox in the editor lets you override.</string>
+    <string name="nostr_profile_subscriber_status_title">Community climb feed</string>
+    <string name="nostr_profile_subscriber_status_running_never">Connected — waiting for the first climb event…</string>
+    <string name="nostr_profile_subscriber_status_running_active_prefix">Connected — last climb event</string>
+    <string name="nostr_profile_subscriber_status_stopped">Not connected</string>
+    <string name="nostr_profile_subscriber_status_failures" formatted="false">%1$d consecutive failures (last cause: %2$s)</string>
     <string name="climb_creator_dup_title">A climb with these holds already exists</string>
     <string name="climb_creator_dup_message" formatted="false">Same hold layout as “%s”. Same holds at a different angle/grade are allowed.</string>
     <string name="climb_creator_dup_continue">Keep editing</string>

@@ -272,7 +272,7 @@ class FakeBoardRepository : BoardRepository {
     override fun getClimbsByPubkey(pubkey: String): List<com.cruxcoach.data.repository.SetterClimbEntry> = emptyList()
     override fun getCommunitySetterStats(): List<com.cruxcoach.data.repository.SetterStat> = emptyList()
     override fun getClimbsAwaitingKilterRetry(): List<com.cruxcoach.data.repository.CommunityClimbRow> = emptyList()
-    override fun getDraftClimbs(): List<com.cruxcoach.data.repository.CommunityClimbRow> = emptyList()
+    override fun getDraftClimbs(pubkey: String?): List<com.cruxcoach.data.repository.CommunityClimbRow> = emptyList()
     override fun getMyClimbs(pubkey: String): List<com.cruxcoach.data.repository.CommunityClimbRow> = emptyList()
     override fun getCommunityClimbs(): List<com.cruxcoach.data.repository.CommunityClimbRow> = emptyList()
     override fun getClimbStatsForUuid(uuid: String): Pair<Int, Int?>? = null

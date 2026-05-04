@@ -201,6 +201,55 @@ fun NostrProfileScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+
+            // Subscriber liveness — minimal diagnostic so users can
+            // tell whether the relay-collect loop is alive. running=false
+            // means no events will arrive; failureStreak>0 means the loop
+            // is in exponential-backoff. Numbers come from the
+            // CommunityClimbSubscriber.health StateFlow.
+            HorizontalDivider(Modifier.padding(vertical = 12.dp))
+            SubscriberHealthLine(state.subscriberHealth)
         }
+    }
+}
+
+@Composable
+private fun SubscriberHealthLine(
+    snapshot: com.cruxcoach.android.community.CommunityClimbSubscriber.SubscriberHealth?,
+) {
+    if (snapshot == null) return
+    Text(
+        stringResource(R.string.nostr_profile_subscriber_status_title),
+        style = MaterialTheme.typography.titleSmall,
+    )
+    when {
+        !snapshot.running -> Text(
+            stringResource(R.string.nostr_profile_subscriber_status_stopped),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        snapshot.lastEventAtMs == null -> Text(
+            stringResource(R.string.nostr_profile_subscriber_status_running_never),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        else -> Text(
+            stringResource(R.string.nostr_profile_subscriber_status_running_active_prefix) +
+                " " +
+                com.cruxcoach.android.ui.board.creator.relativeTimeLabel(snapshot.lastEventAtMs),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+    if (snapshot.failureStreak > 0) {
+        Text(
+            stringResource(
+                R.string.nostr_profile_subscriber_status_failures,
+                snapshot.failureStreak,
+                snapshot.lastErrorClass ?: "—",
+            ),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+        )
     }
 }

@@ -83,6 +83,7 @@ class KilterPublishRetryWorkerTest {
 
         // Sensible defaults: opted-in, has token, has board metadata.
         every { prefs.kilterClimbPublishEnabled } returns MutableStateFlow(true)
+        every { prefs.kilterSyncEnabled } returns MutableStateFlow(true)
         every { prefs.boardProductSizeId } returns MutableStateFlow(1)
         every { tokenStore.getAccessToken() } returns "valid-token"
         every { repo.getProductSize(1) } returns boardSize

@@ -121,7 +121,7 @@ class InsertLocalDraftPreservationTest {
         db.boardQueries.markClimbPublishedNostr(
             nostr_event_id = "ev-abc-123",
             nostr_d_tag = "cruxcoach:climb:pubkey-h:c1",
-            created_by_pubkey = "pubkey-hex",
+            pubkey = "pubkey-hex",
             uuid = "c1",
         )
 
@@ -141,7 +141,7 @@ class InsertLocalDraftPreservationTest {
         insertEditorDraft("c1")
         db.boardQueries.markClimbPublishedNostr(
             nostr_event_id = "ev-1", nostr_d_tag = "d-1",
-            created_by_pubkey = "pk", uuid = "c1",
+            pubkey = "pk", uuid = "c1",
         )
         // Kilter side: pending → synced.
         db.boardQueries.markKilterPublishPending(uuid = "c1")

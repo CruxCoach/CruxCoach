@@ -364,14 +364,17 @@ class ClimbEditorViewModel @Inject constructor(
                         repository.saveDraft(current)
                     }
                 }
+                // Cancel pending debounce before clearing — see [dismissAutosave].
+                autosaveJob?.cancel()
                 autosave.clear()
                 // Refresh the drafts list so the drawer shows the new
                 // entry immediately (was stale if the drawer was already
                 // open, and required close+reopen to repopulate). Plus
                 // pin loadedDraftUuid so a follow-up "Save" updates this
                 // row in place instead of creating a duplicate.
+                val pubkey = runCatching { nostrSigner.getPublicKeyHex() }.getOrNull()
                 val drafts = withContext(Dispatchers.IO) {
-                    boardRepository.getDraftClimbs()
+                    boardRepository.getDraftClimbs(pubkey)
                 }
                 _state.update { s ->
                     s.copy(drafts = drafts, loadedDraftUuid = uuid)
@@ -561,6 +564,8 @@ class ClimbEditorViewModel @Inject constructor(
                 }
                 return@launch
             }
+            // Cancel pending debounce before clearing — see [dismissAutosave].
+            autosaveJob?.cancel()
             autosave.clear()
             _state.update {
                 it.copy(
@@ -592,6 +597,11 @@ class ClimbEditorViewModel @Inject constructor(
     }
 
     fun dismissAutosave() {
+        // Cancel the in-flight 500ms debounce synchronously: an editor
+        // mutation that landed milliseconds before the dismiss would
+        // otherwise re-write the autosave keys back to DataStore right
+        // after `clear()` runs, silently losing the user's discard intent.
+        autosaveJob?.cancel()
         viewModelScope.launch { autosave.clear() }
         _state.update { it.copy(autosaveOffer = null) }
     }
@@ -601,7 +611,8 @@ class ClimbEditorViewModel @Inject constructor(
     fun openDraftsSheet() {
         viewModelScope.launch {
             try {
-                val drafts = withContext(Dispatchers.IO) { boardRepository.getDraftClimbs() }
+                val pubkey = runCatching { nostrSigner.getPublicKeyHex() }.getOrNull()
+                val drafts = withContext(Dispatchers.IO) { boardRepository.getDraftClimbs(pubkey) }
                 _state.update { it.copy(drafts = drafts, draftsSheetOpen = true) }
             } catch (e: Exception) {
                 Log.w(TAG, "openDraftsSheet failed", e)
@@ -665,12 +676,23 @@ class ClimbEditorViewModel @Inject constructor(
     fun deleteDraft(uuid: String) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
+                val wasLoaded = _state.value.loadedDraftUuid == uuid
                 boardRepository.deleteLocalClimb(uuid)
+                // If the deleted row was the currently-loaded draft, also
+                // wipe the autosave snapshot. Without this the editor's
+                // next open would offer a "Restore previous session?" for
+                // the deleted draft (single-slot autosave isn't tied to
+                // any particular draft uuid), and accepting would
+                // re-materialise the row the user just discarded.
+                if (wasLoaded) {
+                    autosaveJob?.cancel()
+                    autosave.clear()
+                }
                 // Refresh the drawer's list.
-                val drafts = boardRepository.getDraftClimbs()
+                val pubkey = runCatching { nostrSigner.getPublicKeyHex() }.getOrNull()
+                val drafts = boardRepository.getDraftClimbs(pubkey)
                 _state.update { s ->
-                    val resetLoaded = if (s.loadedDraftUuid == uuid) null else s.loadedDraftUuid
-                    s.copy(drafts = drafts, loadedDraftUuid = resetLoaded)
+                    s.copy(drafts = drafts, loadedDraftUuid = if (wasLoaded) null else s.loadedDraftUuid)
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "deleteDraft failed for uuid=$uuid", e)

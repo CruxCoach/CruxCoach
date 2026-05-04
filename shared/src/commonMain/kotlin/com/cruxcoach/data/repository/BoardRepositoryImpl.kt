@@ -679,12 +679,25 @@ class BoardRepositoryImpl(
         nostrDTag: String,
         pubkey: String,
     ) {
-        q.markClimbPublishedNostr(
-            nostr_event_id = nostrEventId,
-            nostr_d_tag = nostrDTag,
-            created_by_pubkey = pubkey,
-            uuid = uuid,
-        )
+        q.transaction {
+            q.markClimbPublishedNostr(
+                nostr_event_id = nostrEventId,
+                nostr_d_tag = nostrDTag,
+                pubkey = pubkey,
+                uuid = uuid,
+            )
+            // SQL refuses to overwrite a foreign owner (see Board.sq).
+            // If changes()=0 and the row exists, the caller passed a
+            // pubkey that doesn't match the row's existing owner —
+            // surface that as a loud error instead of a silent no-op.
+            val changed = q.lastClimbsChangeCount().executeAsOne() > 0L
+            if (!changed) {
+                val existingOwner = q.getClimbAuthorPubkey(uuid).executeAsOneOrNull()?.created_by_pubkey
+                if (existingOwner != null && existingOwner != pubkey) {
+                    error("markClimbPublishedNostr: refusing to mark uuid=$uuid published — owner mismatch")
+                }
+            }
+        }
     }
 
     override fun markClimbPublishFailed(uuid: String) {
@@ -768,8 +781,8 @@ class BoardRepositoryImpl(
     override fun getClimbsAwaitingKilterRetry(): List<CommunityClimbRow> =
         q.getClimbsAwaitingKilterRetry().executeAsList().map { it.toCommunityRow() }
 
-    override fun getDraftClimbs(): List<CommunityClimbRow> =
-        q.getDraftClimbs().executeAsList().map { it.toCommunityRow() }
+    override fun getDraftClimbs(pubkey: String?): List<CommunityClimbRow> =
+        q.getDraftClimbs(pubkey).executeAsList().map { it.toCommunityRow() }
 
     override fun getMyClimbs(pubkey: String): List<CommunityClimbRow> =
         q.getMyClimbs(pubkey).executeAsList().map { it.toCommunityRow() }

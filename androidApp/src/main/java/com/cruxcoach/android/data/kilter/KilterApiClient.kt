@@ -189,6 +189,12 @@ class KilterApiClient @Inject constructor(
         const val PROD_LOGOUT_URL = "https://idp.kiltergrips.com/realms/kilter/protocol/openid-connect/logout"
         const val PROD_API_BASE = "https://portal.kiltergrips.com/api"
         const val CLIENT_ID = "kilter"
+        // Cap on Kilter error-response bodies before they enter the
+        // KilterPublishResult envelope (and from there logcat / DB
+        // `kilter_error` column / Android backup blob). 5xx renders can
+        // be 50–500 KB; truncating at the network boundary keeps every
+        // downstream consumer bounded without scattered take(200)s.
+        const val MAX_ERR_BODY = 200
     }
 
     // URL endpoints — `var` so unit tests can swap them for a
@@ -687,31 +693,40 @@ class KilterApiClient @Inject constructor(
                     response = httpClient.newCall(retryRequest).execute()
                 }
             }
-            if (response.isSuccessful) {
-                // Don't include setter_uuid (the user's Kilter account
-                // identifier): it's a stable PII handle that bug-report
-                // logcat dumps would otherwise leak. The climb_uuid is
-                // public on Nostr already so it's safe to log.
-                Log.i(TAG, "$op ok uuid=$climbUuid")
-                return@withContext KilterPublishResult.Success(climbUuid)
-            }
-            val responseBody = response.body?.string().orEmpty()
-            Log.w(TAG, "$op HTTP ${response.code}: $responseBody")
-            return@withContext when (response.code) {
-                401, 403 -> KilterPublishResult.NotAuthenticated
-                429 -> {
-                    // Retry-After per RFC 7231: integer seconds OR HTTP-date.
-                    // We only parse the integer form; date-form falls back
-                    // to null and the caller picks a default backoff.
-                    val raw = response.header("Retry-After")?.trim()
-                    val seconds = raw?.toLongOrNull()?.coerceAtLeast(0)
-                    KilterPublishResult.RateLimited(
-                        retryAfterSeconds = seconds,
-                        message = "HTTP 429${if (raw != null) " retry-after=$raw" else ""}",
-                    )
+            response.use { resp ->
+                if (resp.isSuccessful) {
+                    // Don't include setter_uuid (the user's Kilter account
+                    // identifier): it's a stable PII handle that bug-report
+                    // logcat dumps would otherwise leak. The climb_uuid is
+                    // public on Nostr already so it's safe to log.
+                    Log.i(TAG, "$op ok uuid=$climbUuid")
+                    return@withContext KilterPublishResult.Success(climbUuid)
                 }
-                in 400..499 -> KilterPublishResult.PermanentError(responseBody, response.code)
-                else -> KilterPublishResult.TransientError("HTTP ${response.code}: $responseBody")
+                // Truncate at the network boundary so every downstream
+                // consumer (logcat line, KilterPublishResult envelope,
+                // `kilter_error` DB column, retry-worker log) sees the
+                // already-bounded body. Pre-fix the transient branch
+                // persisted the raw response body verbatim, which on a 5xx
+                // HTML stack-trace render could be 50–500 KB into the
+                // unencrypted board DB and into Android Auto-Backup.
+                val responseBody = resp.body?.string().orEmpty().take(MAX_ERR_BODY)
+                Log.w(TAG, "$op HTTP ${resp.code}: $responseBody")
+                return@withContext when (resp.code) {
+                    401, 403 -> KilterPublishResult.NotAuthenticated
+                    429 -> {
+                        // Retry-After per RFC 7231: integer seconds OR HTTP-date.
+                        // We only parse the integer form; date-form falls back
+                        // to null and the caller picks a default backoff.
+                        val raw = resp.header("Retry-After")?.trim()
+                        val seconds = raw?.toLongOrNull()?.coerceAtLeast(0)
+                        KilterPublishResult.RateLimited(
+                            retryAfterSeconds = seconds,
+                            message = "HTTP 429${if (raw != null) " retry-after=$raw" else ""}",
+                        )
+                    }
+                    in 400..499 -> KilterPublishResult.PermanentError(responseBody, resp.code)
+                    else -> KilterPublishResult.TransientError("HTTP ${resp.code}: $responseBody")
+                }
             }
         } catch (e: CancellationException) {
             throw e

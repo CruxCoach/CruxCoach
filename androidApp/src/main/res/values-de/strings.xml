@@ -34,6 +34,11 @@
     <string name="auto_note_default_template">Ich habe einen neuen Boulder auf nostr:{npub_cruxcoach} veröffentlicht: „{name}“\n\n#kilterboard #climbing\n\n{cruxcoach_url}\nnostr:{naddr}</string>
     <string name="auto_note_setting_title">Auto-Note beim Veröffentlichen</string>
     <string name="auto_note_setting_body">Wenn aktiv, wird beim Veröffentlichen eines Climbs zusätzlich ein öffentlicher Kind-1-Post abgesetzt, der auf den Climb verlinkt. Default aus; pro Climb eine Checkbox im Editor zum Überschreiben.</string>
+    <string name="nostr_profile_subscriber_status_title">Community-Climb-Feed</string>
+    <string name="nostr_profile_subscriber_status_running_never">Verbunden — warte auf das erste Climb-Event…</string>
+    <string name="nostr_profile_subscriber_status_running_active_prefix">Verbunden — letztes Climb-Event</string>
+    <string name="nostr_profile_subscriber_status_stopped">Nicht verbunden</string>
+    <string name="nostr_profile_subscriber_status_failures" formatted="false">%1$d Fehler in Folge (zuletzt: %2$s)</string>
     <string name="climb_creator_dup_title">Ein Climb mit diesen Holds existiert schon</string>
     <string name="climb_creator_dup_message" formatted="false">Gleiches Griff-Layout wie „%s". Gleiche Griffe in anderem Winkel/Grade sind aber erlaubt.</string>
     <string name="climb_creator_dup_continue">Weiter bearbeiten</string>

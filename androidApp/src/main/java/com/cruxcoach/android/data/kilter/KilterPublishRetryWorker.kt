@@ -53,6 +53,13 @@ class KilterPublishRetryWorker @AssistedInject constructor(
             Log.i(TAG, "skip: user opt-out (kilterClimbPublishEnabled=false)")
             return androidx.work.ListenableWorker.Result.success()
         }
+        // Same persistent-connection gate as `KilterClimbPublisher.submit`.
+        // A leftover token from a failed one-time-import run must not become
+        // a silent auto-push retry channel.
+        if (!userPreferences.kilterSyncEnabled.first()) {
+            Log.i(TAG, "skip: not persistently connected (kilterSyncEnabled=false)")
+            return androidx.work.ListenableWorker.Result.success()
+        }
         // No Kilter login → can't retry the self path. Bundled retry isn't
         // supported (see class kdoc). Nothing to do.
         if (tokenStore.getAccessToken() == null) {

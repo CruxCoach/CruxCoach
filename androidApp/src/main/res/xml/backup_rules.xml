@@ -31,4 +31,12 @@
          forward-compatible catch-all — every new DataStore we add is
          covered automatically. -->
     <exclude domain="file" path="datastore"/>
+    <!-- Plain (non-SQLCipher) board catalog DB. Holds public Kilter
+         board content but FEAT-003 added identity-linkable columns:
+         created_by_pubkey (Nostr identity), nostr_event_id / nostr_d_tag
+         (own publish trail), kilter_error (Kilter API responses, may
+         carry server-side hostnames or request echoes). All of those
+         re-key cleanly on a fresh install via re-sync, so excluding the
+         DB from cloud-backup is both privacy-correct and lossless. -->
+    <exclude domain="database" path="cruxcoach.db"/>
 </full-backup-content>

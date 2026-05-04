@@ -644,13 +644,21 @@ VALUES (?, ?, ?, ?, ?,
 -- `nostr_publish_via` and `kilter_publish_via` columns remain in the
 -- schema (migration safety, future-reserved) but are no longer
 -- populated — there's only ever one identity now: the user's own.
+--
+-- Ownership-sticky: the WHERE refuses to overwrite an existing
+-- `created_by_pubkey` belonging to a different author. A future caller
+-- that gets the pubkey wrong (or is reached through an editor bypass)
+-- silently no-ops at the SQL layer instead of re-keying a foreign row.
+-- The repository layer reads `lastClimbsChangeCount` after the UPDATE
+-- to surface that mismatch as a loud failure.
 markClimbPublishedNostr:
 UPDATE climbs SET
     sync_status = 'published_nostr',
-    nostr_event_id = ?,
-    nostr_d_tag = ?,
-    created_by_pubkey = ?
-WHERE uuid = ?;
+    nostr_event_id = :nostr_event_id,
+    nostr_d_tag = :nostr_d_tag,
+    created_by_pubkey = :pubkey
+WHERE uuid = :uuid
+  AND (created_by_pubkey IS NULL OR created_by_pubkey = :pubkey);
 
 -- Mark a draft as failed (so the publish queue can retry / surface error).
 markClimbPublishFailed:
@@ -774,9 +782,17 @@ ORDER BY created_at ASC
 LIMIT 25;
 
 -- Drafts waiting to be published (source='local' AND sync_status='draft').
+-- Scoped to the current pubkey so an identity-switch on the same device
+-- (key-management screen → restartApp) doesn't surface drafts authored
+-- under a different identity. NULL `created_by_pubkey` rows are still
+-- included so pre-key-init drafts (legacy data, signer not yet ready
+-- when the row was first written) remain visible to the first identity
+-- that opens the editor.
 getDraftClimbs:
 SELECT * FROM climbs
-WHERE source = 'local' AND sync_status IN ('draft', 'failed')
+WHERE source = 'local'
+  AND sync_status IN ('draft', 'failed')
+  AND (created_by_pubkey = :pubkey OR created_by_pubkey IS NULL)
 ORDER BY created_at DESC;
 
 -- Single-row stats lookup for the editor's draft-restore path. Drafts have

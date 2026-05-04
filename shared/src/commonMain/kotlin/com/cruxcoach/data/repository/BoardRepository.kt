@@ -497,7 +497,14 @@ interface CommunityClimbQueries {
     fun claimKilterPublishSlot(uuid: String): KilterClaim
     /** Climbs with `origin='cruxcoach'`, Nostr-published, awaiting Kilter sync. */
     fun getClimbsAwaitingKilterRetry(): List<CommunityClimbRow>
-    fun getDraftClimbs(): List<CommunityClimbRow>
+    /**
+     * Drafts (`source='local'`, sync_status `draft`/`failed`) authored
+     * by [pubkey] or with a NULL `created_by_pubkey` (legacy / pre-key-init).
+     * Pass null to fetch only legacy NULL-pubkey drafts. Restricts visibility
+     * across identity switches: drafts authored under identity A are
+     * invisible to identity B opened in the editor on the same device.
+     */
+    fun getDraftClimbs(pubkey: String?): List<CommunityClimbRow>
     fun getMyClimbs(pubkey: String): List<CommunityClimbRow>
     fun getCommunityClimbs(): List<CommunityClimbRow>
     /** Single-row stats lookup used by the editor when restoring a draft.

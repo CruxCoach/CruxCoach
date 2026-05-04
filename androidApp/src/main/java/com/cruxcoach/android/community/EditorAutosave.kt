@@ -1,16 +1,16 @@
 package com.cruxcoach.android.community
 
-import android.content.Context
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
-import com.cruxcoach.android.data.dataStore
 import com.cruxcoach.domain.community.ClimbEditorState
-import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
 import javax.inject.Inject
+import javax.inject.Named
 import javax.inject.Singleton
 
 /**
@@ -21,13 +21,19 @@ import javax.inject.Singleton
  * One slot only: re-opening the editor on a different climb overwrites
  * the previous autosave. Cleared on explicit save / publish / discard.
  *
+ * Per-identity scope: writes go to the `keyScoped` DataStore (one file
+ * per Nostr-pubkey-prefix — see [AppModule.provideKeyScopedDataStore]),
+ * so an identity switch on the same device doesn't surface the previous
+ * identity's in-flight draft. Mirrors the pattern used by every other
+ * identity-bound preference (KILTER_SYNC_ENABLED, COMMUNITY_CLIMB_SINCE,
+ * PROFILE_HINT_DISMISSED, etc.).
+ *
  * Holds map is JSON-serialised as `pidA:roleA;pidB:roleB;…` — minimal,
- * readable in logs, no external library needed. SQL-injection / quoting
- * is moot because the value never leaves DataStore.
+ * readable in logs, no external library needed.
  */
 @Singleton
 class EditorAutosave @Inject constructor(
-    @ApplicationContext private val context: Context,
+    @Named("keyScoped") private val store: DataStore<Preferences>,
 ) {
     suspend fun save(state: ClimbEditorState) {
         if (state.selectedHolds.isEmpty() && state.name.isBlank() && state.description.isBlank()) {
@@ -35,7 +41,7 @@ class EditorAutosave @Inject constructor(
             return
         }
         val holds = encodeHolds(state.selectedHolds)
-        context.dataStore.edit { prefs ->
+        store.edit { prefs ->
             prefs[KEY_HOLDS] = holds
             prefs[KEY_NAME] = state.name
             prefs[KEY_DESCRIPTION] = state.description
@@ -46,7 +52,7 @@ class EditorAutosave @Inject constructor(
     }
 
     suspend fun load(): AutosaveSnapshot? {
-        val prefs = context.dataStore.data.firstOrNull() ?: return null
+        val prefs = store.data.firstOrNull() ?: return null
         val holds = prefs[KEY_HOLDS] ?: return null
         val savedAt = prefs[KEY_SAVED_AT] ?: return null
         return AutosaveSnapshot(
@@ -63,7 +69,7 @@ class EditorAutosave @Inject constructor(
     }
 
     suspend fun clear() {
-        context.dataStore.edit { prefs ->
+        store.edit { prefs ->
             prefs.remove(KEY_HOLDS)
             prefs.remove(KEY_NAME)
             prefs.remove(KEY_DESCRIPTION)
@@ -79,7 +85,7 @@ class EditorAutosave @Inject constructor(
      * prompt on open.
      */
     suspend fun hasAutosave(): Boolean {
-        val prefs = context.dataStore.data.first()
+        val prefs = store.data.first()
         return prefs[KEY_HOLDS] != null
     }
 
@@ -89,8 +95,7 @@ class EditorAutosave @Inject constructor(
     )
 
     companion object {
-        // Co-located in cruxcoach_prefs to avoid spawning a second DataStore
-        // file just for one editor feature.
+        // Stored in the per-identity (keyScoped) DataStore — see class kdoc.
         private val KEY_HOLDS = stringPreferencesKey("editor_autosave_holds")
         private val KEY_NAME = stringPreferencesKey("editor_autosave_name")
         private val KEY_DESCRIPTION = stringPreferencesKey("editor_autosave_description")

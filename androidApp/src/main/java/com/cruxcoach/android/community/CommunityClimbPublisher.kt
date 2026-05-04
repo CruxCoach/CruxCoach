@@ -221,7 +221,8 @@ class CommunityClimbPublisher @Inject constructor(
      *    cancellation still works.
      */
     suspend fun publishAllPending(sizeLabel: String, layoutId: Long): Int {
-        val drafts = runCatching { boardRepository.getDraftClimbs() }
+        val pubkey = runCatching { nostrSigner.getPublicKeyHex() }.getOrNull()
+        val drafts = runCatching { boardRepository.getDraftClimbs(pubkey) }
             .onFailure { Log.w(TAG, "publishAllPending: getDraftClimbs failed; batch aborted", it) }
             .getOrElse { return 0 }
         var published = 0

@@ -92,6 +92,14 @@ class KilterClimbPublisher @Inject constructor(
         if (!userPreferences.kilterClimbPublishEnabled.first()) {
             return Outcome.Skipped("user-opted-out")
         }
+        // Honour the user's persistent-connection intent — `kilterSyncEnabled`
+        // is the canonical "I want CruxCoach connected to my Kilter account"
+        // signal. A leftover token from a failed `importLogs(oneTimeOnly=true)`
+        // run (network flake before `tokenStore.clear()` ran) must not turn
+        // into a silent auto-push channel.
+        if (!userPreferences.kilterSyncEnabled.first()) {
+            return Outcome.Skipped("not-persistently-connected")
+        }
         if (boardSize == null) {
             return Outcome.Skipped("no-board-size")
         }

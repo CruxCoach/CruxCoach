@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.R
+import com.cruxcoach.android.community.CommunityClimbSubscriber
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.data.kilter.KilterTokenStore
 import com.cruxcoach.android.nostr.NostrSigner
@@ -46,6 +47,11 @@ data class NostrProfileEditState(
     /** Auto-Note global default — drives the editor's per-publish
      *  checkbox vorbelegung. Stored in [UserPreferences]. */
     val autoNoteEnabled: Boolean = false,
+    /** Live snapshot of the community-climb subscriber's loop. Surfaced
+     *  as a compact diagnostic line so users can tell whether incoming
+     *  CruxCoach climbs from other authors are flowing. Null until the
+     *  first emission. */
+    val subscriberHealth: CommunityClimbSubscriber.SubscriberHealth? = null,
 )
 
 @HiltViewModel
@@ -56,6 +62,7 @@ class NostrProfileViewModel @Inject constructor(
     private val kilterTokenStore: KilterTokenStore,
     private val boardRepository: BoardRepository,
     private val userPreferences: UserPreferences,
+    private val communityClimbSubscriber: CommunityClimbSubscriber,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(NostrProfileEditState())
@@ -66,6 +73,11 @@ class NostrProfileViewModel @Inject constructor(
         viewModelScope.launch {
             val initial = userPreferences.autoNoteEnabled.first()
             _state.update { it.copy(autoNoteEnabled = initial) }
+        }
+        viewModelScope.launch {
+            communityClimbSubscriber.health.collect { snapshot ->
+                _state.update { it.copy(subscriberHealth = snapshot) }
+            }
         }
     }
 

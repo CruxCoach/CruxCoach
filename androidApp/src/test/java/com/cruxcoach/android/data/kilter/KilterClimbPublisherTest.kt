@@ -67,6 +67,7 @@ class KilterClimbPublisherTest {
         every { ctx.getString(any()) } returns ""
         every { ctx.getString(any(), *anyVararg()) } returns ""
         every { prefs.kilterClimbPublishEnabled } returns MutableStateFlow(true)
+        every { prefs.kilterSyncEnabled } returns MutableStateFlow(true)
         every { tokenStore.getAccessToken() } returns "valid-token"
         every { tokenStore.getUserUuid() } returns "user-uuid"
         // Default: claim succeeds with no prior sync (CREATE branch).

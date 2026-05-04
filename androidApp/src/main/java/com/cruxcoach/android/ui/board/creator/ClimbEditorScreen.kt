@@ -92,7 +92,7 @@ fun ClimbEditorScreen(
     val autoNoteTemplate = stringResource(R.string.auto_note_default_template)
     val coroutineScope = rememberCoroutineScope()
 
-    LaunchedEffect(state.publishedUuid, state.showKilterConnectNudge) {
+    LaunchedEffect(state.publishedUuid, state.showKilterConnectNudge, state.kilterPublishOutcome) {
         val uuid = state.publishedUuid ?: return@LaunchedEffect
         if (state.showKilterConnectNudge) {
             // Show the Snackbar BEFORE leaving the screen so the user has
@@ -109,6 +109,19 @@ fun ClimbEditorScreen(
                 return@LaunchedEffect
             }
         }
+        // Surface a Kilter-side failure on the publish path: Nostr already
+        // accepted the climb (otherwise `publishedUuid` would be null), but
+        // the secondary Kilter-API push didn't land. The retry worker will
+        // pick it up next tick — this snackbar tells the user that's why a
+        // newly-published climb won't show up in their Kilter app yet.
+        when (val out = state.kilterPublishOutcome) {
+            is com.cruxcoach.android.data.kilter.KilterClimbPublisher.Outcome.Failed ->
+                snackbarHostState.showSnackbar(out.message)
+            is com.cruxcoach.android.data.kilter.KilterClimbPublisher.Outcome.Diverged ->
+                snackbarHostState.showSnackbar(out.message)
+            else -> Unit
+        }
+        viewModel.clearKilterPublishOutcome()
         onPublished(uuid)
     }
     LaunchedEffect(state.errorMessage) {
