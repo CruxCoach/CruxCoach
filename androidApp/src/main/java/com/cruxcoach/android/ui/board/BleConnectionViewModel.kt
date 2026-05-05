@@ -490,8 +490,9 @@ class BleConnectionViewModel @Inject constructor(
     }
 
     /**
-     * Banner-free quick-send for the climb editor: connect, fire [send]
-     * once we land in CONNECTED, wait for the send to finish, disconnect.
+     * Banner-free quick-send for the climb editor: connect, await
+     * [send] (which must itself await the BLE write to completion),
+     * disconnect.
      *
      * Differs from [startQuickSend] in three ways:
      *  * Never touches [_quickSend] — the editor doesn't surface a
@@ -500,6 +501,12 @@ class BleConnectionViewModel @Inject constructor(
      *  * Caller supplies the [send] action so the macro doesn't depend
      *    on the detail-VM's auto-send-on-CONNECTED collector.
      *  * Always disconnects after the send (no isRoute exemption).
+     *
+     * [send] MUST suspend until the underlying sendClimb call returns.
+     * Earlier the macro observed the SENDING→CONNECTED edge instead,
+     * but a fire-and-forget [send] would let `first { != SENDING }`
+     * resolve immediately on the still-CONNECTED value and tear GATT
+     * down before any bytes hit the wire.
      *
      * If the BLE prerequisites are missing (no permissions, BT off, or
      * the scan returns 0 / >1 boards) the macro silently exits — quick-
@@ -515,10 +522,13 @@ class BleConnectionViewModel @Inject constructor(
                     return@launch
                 }
 
-                // Already connected → just send + disconnect.
+                // Already connected → just send + disconnect. send()
+                // is suspending and awaits the actual BLE write, so
+                // we can disconnect straight after — no state-machine
+                // observation needed.
                 if (bleConnection.connectionState.value == ConnectionState.CONNECTED) {
                     send()
-                    awaitSendingSettledAndDisconnect()
+                    bleConnection.disconnect()
                     return@launch
                 }
 
@@ -558,7 +568,7 @@ class BleConnectionViewModel @Inject constructor(
                     return@launch
                 }
                 send()
-                awaitSendingSettledAndDisconnect()
+                bleConnection.disconnect()
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -566,22 +576,6 @@ class BleConnectionViewModel @Inject constructor(
                 bleScanner.stopScan()
             }
         }
-    }
-
-    /** Wait for any in-flight SENDING → CONNECTED transition (so the BLE
-     *  write actually completes), then disconnect. Banner-free. */
-    private suspend fun awaitSendingSettledAndDisconnect() {
-        // If a send started, wait it out (SENDING → CONNECTED). If no
-        // send fired, fall through after a short timeout so we still
-        // disconnect promptly.
-        withTimeoutOrNull(SEND_START_TIMEOUT_MS) {
-            // Snapshot the current state — if it's already CONNECTED
-            // (no send in progress) the .first below resolves
-            // immediately on the same value; if SENDING is in flight
-            // we wait for it to clear.
-            bleConnection.connectionState.first { it != ConnectionState.SENDING }
-        }
-        bleConnection.disconnect()
     }
 
     fun cancelQuickSend() {

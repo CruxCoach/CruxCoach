@@ -51,6 +51,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
@@ -121,22 +122,25 @@ fun ClimbEditorScreen(
 
     // Quick-Send-Mode integration: when the user enabled "schnell
     // senden" in Settings AND the board isn't already connected, every
-    // hold change kicks off a connect → send → disconnect cycle. The
-    // LaunchedEffect's keys re-launch on every selectedHolds change so
-    // the previous (still-debouncing) coroutine is cancelled — only
-    // the latest settled state hits the board. Banner-free per the
-    // user's request: no scanning/sending/done snackbar churn while
-    // the user is mid-edit.
+    // settled hold change kicks off a connect → send → disconnect cycle.
+    // Banner-free per the user's request: no scanning/sending/done
+    // snackbar churn while the user is mid-edit.
+    //
+    // bleConnected is intentionally NOT a LaunchedEffect key — the macro
+    // itself flips bleConnected false→true→false, and re-keying on each
+    // edge would cancel-and-relaunch this block, then 600 ms later fire
+    // another silentQuickSend on the same selection, looping forever.
+    // We re-check the latest bleConnected after the debounce instead.
+    val latestBleConnected by rememberUpdatedState(bleConnected)
     LaunchedEffect(
         state.editor.selectedHolds,
         bleConnState.quickBoardSendEnabled,
-        bleConnected,
     ) {
         if (!bleConnState.quickBoardSendEnabled) return@LaunchedEffect
-        if (bleConnected) return@LaunchedEffect // persistent-connect path handles it
         if (state.editor.selectedHolds.isEmpty()) return@LaunchedEffect
         // Dust-settle: rapid-fire hold-taps shouldn't queue cycles.
         kotlinx.coroutines.delay(600L)
+        if (latestBleConnected) return@LaunchedEffect // persistent-connect path handles it
         bleConnViewModel.silentQuickSend { viewModel.pushCurrentHoldsToBoard() }
     }
 
