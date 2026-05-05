@@ -99,6 +99,15 @@ class NostrProfileManager @Inject constructor(
         return profile?.lightningAddress
     }
 
+    /**
+     * Cache-only lookup — never touches relays, never times out.
+     * For paths that can't afford the 10 s relay-fetch budget on a
+     * cache miss (e.g. saveDraft, where the user expects an instant
+     * "draft saved" snackbar). Returns null on miss; callers fall
+     * back to whatever stub they use for unknown profiles.
+     */
+    fun getProfileFromCache(pubkey: String): NostrProfileData? = getCachedProfile(pubkey)
+
     private fun getCachedProfile(pubkey: String): NostrProfileData? {
         val row = profileQueries.getByPubkey(pubkey).executeAsOneOrNull() ?: return null
         return NostrProfileData(

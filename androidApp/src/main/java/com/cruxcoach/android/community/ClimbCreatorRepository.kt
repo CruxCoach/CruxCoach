@@ -120,14 +120,22 @@ class ClimbCreatorRepository @Inject constructor(
      * cope.
      */
     /**
-     * Resolve the user's Kind-0 display_name (cached if present, else
-     * fetched once). Returns null when no profile exists — Browse falls
-     * back to `npub:<short>`. Failures are swallowed: a missing profile
-     * is the empty case, not an error.
+     * Resolve the user's Kind-0 display_name from the LOCAL cache only —
+     * never hits relays. Returns null on miss; the publish path
+     * (CommunityClimbPublisher / upsertCommunityClimb) re-resolves
+     * setter_username when the row goes out, so the local draft just
+     * needs a sensible placeholder until then.
+     *
+     * Pre-fix this called nostrProfileManager.getProfile(pubkey) which
+     * falls back to fetchProfileFromRelays on cache miss with a 10 s
+     * timeout — saveDraft would then block for 10 s on every first
+     * save when the user hadn't published a Kind-0 profile, the
+     * "draft saved" snackbar fired only after the timeout, and the
+     * drafts-list refresh in the same coroutine looked stuck.
      */
-    private suspend fun resolveOwnSetterUsername(pubkey: String?): String? {
+    private fun resolveOwnSetterUsername(pubkey: String?): String? {
         if (pubkey.isNullOrBlank()) return null
-        val profile = runCatching { nostrProfileManager.getProfile(pubkey) }.getOrNull()
+        val profile = runCatching { nostrProfileManager.getProfileFromCache(pubkey) }.getOrNull()
         return profile?.displayName?.takeIf { it.isNotBlank() }
     }
 
