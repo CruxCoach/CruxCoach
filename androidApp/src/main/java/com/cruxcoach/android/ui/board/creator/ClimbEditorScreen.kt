@@ -119,6 +119,27 @@ fun ClimbEditorScreen(
         if (bleConnected) viewModel.pushCurrentHoldsToBoard()
     }
 
+    // Quick-Send-Mode integration: when the user enabled "schnell
+    // senden" in Settings AND the board isn't already connected, every
+    // hold change kicks off a connect → send → disconnect cycle. The
+    // LaunchedEffect's keys re-launch on every selectedHolds change so
+    // the previous (still-debouncing) coroutine is cancelled — only
+    // the latest settled state hits the board. Banner-free per the
+    // user's request: no scanning/sending/done snackbar churn while
+    // the user is mid-edit.
+    LaunchedEffect(
+        state.editor.selectedHolds,
+        bleConnState.quickBoardSendEnabled,
+        bleConnected,
+    ) {
+        if (!bleConnState.quickBoardSendEnabled) return@LaunchedEffect
+        if (bleConnected) return@LaunchedEffect // persistent-connect path handles it
+        if (state.editor.selectedHolds.isEmpty()) return@LaunchedEffect
+        // Dust-settle: rapid-fire hold-taps shouldn't queue cycles.
+        kotlinx.coroutines.delay(600L)
+        bleConnViewModel.silentQuickSend { viewModel.pushCurrentHoldsToBoard() }
+    }
+
     val nudgeMessage = stringResource(R.string.climb_creator_kilter_connect_nudge)
     val nudgeAction = stringResource(R.string.climb_creator_kilter_connect_action)
     val draftSavedMessage = stringResource(R.string.climb_creator_draft_saved)

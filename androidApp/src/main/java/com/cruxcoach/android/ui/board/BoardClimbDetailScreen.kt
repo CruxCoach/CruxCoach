@@ -240,37 +240,19 @@ fun BoardClimbDetailScreen(
         )
     }
 
-    // Quick-Send macro: surface progress + outcomes as snackbars and escalate
-    // multi-board ambiguity into the existing connection sheet for manual pick.
+    // Quick-Send macro: silent — no snackbar progress/outcome chatter
+    // (per user feedback: the BLE-icon colour change is signal enough,
+    // and "Sending… / Done" snackbars become noise on every tap).
+    // We still observe quickSendStatus to escalate the multi-board
+    // case into the manual-pick sheet (one-shot, no snackbar) and to
+    // reset Done/Error back to Idle so the next tap starts fresh.
     val quickSendStatus by bleConnViewModel.quickSend.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     LaunchedEffect(quickSendStatus) {
-        val msg = when (val s = quickSendStatus) {
-            QuickSendStatus.Idle -> null
-            QuickSendStatus.Scanning -> context.getString(R.string.ble_quick_send_scanning)
-            is QuickSendStatus.Connecting -> context.getString(R.string.ble_quick_send_connecting, s.boardName)
-            QuickSendStatus.Sending -> context.getString(R.string.ble_quick_send_sending)
-            QuickSendStatus.Disconnecting -> context.getString(R.string.ble_quick_send_disconnecting)
-            QuickSendStatus.Done -> context.getString(R.string.ble_quick_send_done)
-            is QuickSendStatus.NeedsManualPick -> {
-                // Auto-escalate: open the existing connection sheet so the user
-                // picks, then drop the macro. Once they tap a board the sheet
-                // takes over the connect-and-send flow.
-                showBleSheet = true
-                bleConnViewModel.resetQuickSend()
-                null
-            }
-            is QuickSendStatus.Error -> context.getString(
-                when (s.reason) {
-                    QuickSendStatus.ErrorReason.NoBoardsFound -> R.string.ble_quick_send_no_boards
-                    QuickSendStatus.ErrorReason.ConnectFailed -> R.string.ble_quick_send_connect_failed
-                    QuickSendStatus.ErrorReason.SendFailed -> R.string.ble_quick_send_send_failed
-                    QuickSendStatus.ErrorReason.BluetoothOff -> R.string.ble_quick_send_bluetooth_off
-                    QuickSendStatus.ErrorReason.NoPermissions -> R.string.ble_quick_send_no_permissions
-                }
-            )
+        if (quickSendStatus is QuickSendStatus.NeedsManualPick) {
+            showBleSheet = true
+            bleConnViewModel.resetQuickSend()
         }
-        if (msg != null) snackbarHostState.showSnackbar(msg)
     }
 
     // Surface community-delete outcomes — the deleter returns success

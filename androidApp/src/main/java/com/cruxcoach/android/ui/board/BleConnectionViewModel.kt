@@ -489,6 +489,101 @@ class BleConnectionViewModel @Inject constructor(
         _quickSend.value = QuickSendStatus.Idle
     }
 
+    /**
+     * Banner-free quick-send for the climb editor: connect, fire [send]
+     * once we land in CONNECTED, wait for the send to finish, disconnect.
+     *
+     * Differs from [startQuickSend] in three ways:
+     *  * Never touches [_quickSend] — the editor doesn't surface a
+     *    "Sending"/"Connecting"/"Done" snackbar (would be visual noise
+     *    on every hold-tap).
+     *  * Caller supplies the [send] action so the macro doesn't depend
+     *    on the detail-VM's auto-send-on-CONNECTED collector.
+     *  * Always disconnects after the send (no isRoute exemption).
+     *
+     * If the BLE prerequisites are missing (no permissions, BT off, or
+     * the scan returns 0 / >1 boards) the macro silently exits — quick-
+     * send mode is best-effort by design and the editor screen has no
+     * non-banner channel to nag the user.
+     */
+    fun silentQuickSend(send: suspend () -> Unit) {
+        quickSendJob?.cancel()
+        quickSendJob = viewModelScope.launch {
+            try {
+                if (!_state.value.hasPermissions || !_state.value.isBluetoothEnabled) {
+                    Log.d(TAG, "silentQuickSend: prereqs missing — skipping")
+                    return@launch
+                }
+
+                // Already connected → just send + disconnect.
+                if (bleConnection.connectionState.value == ConnectionState.CONNECTED) {
+                    send()
+                    awaitSendingSettledAndDisconnect()
+                    return@launch
+                }
+
+                bleConnection.awaitGattClosed()
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+                    nearbyClimbScanner.stopScan(preserveEntries = true)
+                }
+                bleScanner.startScan()
+                delay(SETTLING_WINDOW_MS)
+                val initial = bleScanner.discoveredBoards.value
+                val target = when {
+                    initial.size == 1 -> initial.first()
+                    initial.size > 1 -> {
+                        bleScanner.stopScan()
+                        Log.d(TAG, "silentQuickSend: ${initial.size} boards in range — skip (no manual-pick UI in editor)")
+                        return@launch
+                    }
+                    else -> withTimeoutOrNull(SCAN_EXTENDED_MS) {
+                        bleScanner.discoveredBoards.first { it.isNotEmpty() }
+                    }?.let { later ->
+                        if (later.size == 1) later.first() else null
+                    } ?: run {
+                        bleScanner.stopScan()
+                        Log.d(TAG, "silentQuickSend: no boards in range")
+                        return@launch
+                    }
+                }
+                bleScanner.stopScan()
+                bleConnection.connect(target)
+                val terminal = withTimeoutOrNull(CONNECT_TIMEOUT_MS) {
+                    bleConnection.connectionState.first {
+                        it == ConnectionState.CONNECTED || it == ConnectionState.DISCONNECTED
+                    }
+                }
+                if (terminal != ConnectionState.CONNECTED) {
+                    Log.d(TAG, "silentQuickSend: connect failed terminal=$terminal")
+                    return@launch
+                }
+                send()
+                awaitSendingSettledAndDisconnect()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "silentQuickSend failed", e)
+                bleScanner.stopScan()
+            }
+        }
+    }
+
+    /** Wait for any in-flight SENDING → CONNECTED transition (so the BLE
+     *  write actually completes), then disconnect. Banner-free. */
+    private suspend fun awaitSendingSettledAndDisconnect() {
+        // If a send started, wait it out (SENDING → CONNECTED). If no
+        // send fired, fall through after a short timeout so we still
+        // disconnect promptly.
+        withTimeoutOrNull(SEND_START_TIMEOUT_MS) {
+            // Snapshot the current state — if it's already CONNECTED
+            // (no send in progress) the .first below resolves
+            // immediately on the same value; if SENDING is in flight
+            // we wait for it to clear.
+            bleConnection.connectionState.first { it != ConnectionState.SENDING }
+        }
+        bleConnection.disconnect()
+    }
+
     fun cancelQuickSend() {
         quickSendJob?.cancel()
         bleScanner.stopScan()
