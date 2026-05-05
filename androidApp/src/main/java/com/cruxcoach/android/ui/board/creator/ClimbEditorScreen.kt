@@ -273,26 +273,21 @@ fun ClimbEditorScreen(
                     checked = state.alsoPostNote,
                     onCheckedChange = { viewModel.setAlsoPostNote(it) },
                 )
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        stringResource(R.string.climb_creator_also_post_note),
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                    Text(
-                        stringResource(R.string.climb_creator_also_post_note_hint),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+                Text(
+                    stringResource(R.string.climb_creator_also_post_note),
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.weight(1f),
+                )
             }
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(
                     // Save-as-draft stays in the editor: the user can keep
                     // tweaking and the now-loaded draft gets re-saved in
-                    // place via loadedDraftUuid. Previously this passed
-                    // `onPublished` which popped the back stack — that's
-                    // the publish flow, not the draft flow.
+                    // place via loadedDraftUuid. Same validation gate as
+                    // Publish so the user gets one consistent reason the
+                    // buttons are disabled — the ValidationStatus list
+                    // above already shows what's still missing.
                     onClick = {
                         viewModel.saveAsDraft { _ ->
                             coroutineScope.launch {
@@ -300,13 +295,10 @@ fun ClimbEditorScreen(
                             }
                         }
                     },
-                    enabled = !state.isPublishing,
+                    enabled = !state.isPublishing && state.validationIssues.isEmpty(),
                     modifier = Modifier.weight(1f),
                 ) { Text(stringResource(R.string.climb_creator_save_draft)) }
                 Button(
-                    // Drafts can be saved with any state, but Publish needs
-                    // every Kilter must-have satisfied (name, frames, role
-                    // counts) before the climb leaves the device.
                     onClick = { viewModel.publish(sizeLabel = "12x12", autoNoteTemplate = autoNoteTemplate) },
                     enabled = !state.isPublishing && state.validationIssues.isEmpty(),
                     modifier = Modifier.weight(1f),

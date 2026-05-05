@@ -214,6 +214,20 @@ class ClimbEditorViewModel @Inject constructor(
         if (snapshot != null && _state.value.editor.selectedHolds.isEmpty()) {
             applyEditor(snapshot.state)
         }
+        // Seed validationIssues against whatever final state we landed
+        // on (empty editor, fork, edit, or restored autosave). Without
+        // this, the publish-ready banner shows the "Valid" checkmark on
+        // a fresh editor open even though the climb is empty — and the
+        // Save / Publish buttons would be enabled. The state only
+        // refreshed after the first user-driven applyEditor call.
+        val current = _state.value.editor
+        _state.update {
+            it.copy(
+                validationIssues = ClimbValidation.validate(
+                    current.selectedHolds, current.name, current.description, current.angle,
+                ),
+            )
+        }
     }
 
     private fun seedFromFork(source: CommunityClimbRow) {
@@ -866,7 +880,15 @@ class ClimbEditorViewModel @Inject constructor(
         val ledMap = cur.placementToLed
         if (ledMap.isEmpty()) return
         val holds = cur.editor.selectedHolds.map { (pid, role) -> BoardHold(pid, role) }
-        runCatching { bleConnection.sendClimb(holds, ledMap) }
+        // Pass the user's customised hold-colour palette through. Without
+        // this, sendClimb falls back to BoardPacketEncoder.roleToColor's
+        // hardcoded defaults so a user who picked custom colours in
+        // Settings (red starts, etc.) saw their editor preview render
+        // those colours on screen but the BLE-mirrored board lit up in
+        // the unchanged factory palette. Same pattern as
+        // BoardSendController.kt:83.
+        val roleColors = cur.ledColors.toRoleColorMap()
+        runCatching { bleConnection.sendClimb(holds, ledMap, roleColors) }
             .onFailure { Log.v(TAG, "LED preview skipped: ${it.message}") }
     }
 
