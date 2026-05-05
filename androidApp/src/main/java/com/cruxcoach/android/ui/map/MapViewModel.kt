@@ -35,6 +35,9 @@ data class MapState(
     /** False when user has no board configured — disables the chip + tooltip. */
     val canFilterByMyBoard: Boolean = false,
     val selectedLocationId: Long? = null,
+    /** True when the underlying table is empty (older client without
+     *  locations chunk in manifest, or sync failed). Surfaces as a snackbar. */
+    val noLocationData: Boolean = false,
 )
 
 @HiltViewModel
@@ -52,6 +55,9 @@ class MapViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             allLocations = withContext(Dispatchers.IO) { repository.getAll() }
+            if (allLocations.isEmpty()) {
+                _state.update { it.copy(noLocationData = true, isLoading = false) }
+            }
             // Wire reactive filter pipeline. Each pref change recomputes the
             // visible list. Layout/size flow surfaces "no board configured"
             // as canFilterByMyBoard=false.

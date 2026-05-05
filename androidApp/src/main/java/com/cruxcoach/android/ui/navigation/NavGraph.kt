@@ -451,7 +451,8 @@ fun CruxCoachNavHost(
                         // ViewModel re-reads board prefs that the Map
                         // screen wrote via applyBoardConfigForBrowse.
                         navController.popBackStack(Routes.BOARD_BROWSER, false)
-                    }
+                    },
+                    onNavigateToBoardSync = { navController.navigate(Routes.BOARD_SYNC) },
                 )
             }
 

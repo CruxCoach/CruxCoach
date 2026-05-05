@@ -15,6 +15,10 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -32,6 +36,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import android.widget.Toast
 import com.cruxcoach.android.R
+import com.cruxcoach.android.util.isNetworkAvailable
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.maps.MapLibreMap
@@ -42,6 +47,7 @@ import org.maplibre.android.maps.Style
 fun MapScreen(
     onNavigateBack: () -> Unit,
     onNavigateToBoardBrowser: () -> Unit = {},
+    onNavigateToBoardSync: () -> Unit = {},
     viewModel: MapViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -51,8 +57,35 @@ fun MapScreen(
     val initialCamera = remember {
         cameraAt(state.initialLat, state.initialLng, state.initialZoom)
     }
+    val snackbarHostState = remember { SnackbarHostState() }
 
     var mapHandle by remember { mutableStateOf<Pair<MapLibreMap, Style>?>(null) }
+
+    // One-shot offline check on screen entry. Cache may still hold tiles
+    // from previous online sessions, but we don't probe — the dialog text
+    // calls out the cache benefit so a dismiss-and-pan flow is fine for
+    // returning users.
+    var showOfflineDialog by remember {
+        mutableStateOf(!isNetworkAvailable(context))
+    }
+    if (showOfflineDialog) {
+        OfflineMapDialog(onDismiss = { showOfflineDialog = false })
+    }
+
+    // Empty-data snackbar surfaces only when the location table is empty
+    // (older client without locations chunk in the manifest, or a sync
+    // failure). Action button takes the user to Board Sync.
+    LaunchedEffect(state.noLocationData) {
+        if (!state.noLocationData) return@LaunchedEffect
+        val result = snackbarHostState.showSnackbar(
+            message = context.getString(R.string.map_no_data),
+            actionLabel = context.getString(R.string.map_no_data_action),
+            duration = SnackbarDuration.Indefinite,
+        )
+        if (result == SnackbarResult.ActionPerformed) {
+            onNavigateToBoardSync()
+        }
+    }
 
     LaunchedEffect(mapHandle, state.locations, state.selectedLocationId) {
         val (_, style) = mapHandle ?: return@LaunchedEffect
@@ -87,7 +120,8 @@ fun MapScreen(
                     }
                 },
             )
-        }
+        },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
             FilterChipRow(
