@@ -42,6 +42,14 @@ data class ClimbWithStats(
      *  native Kilter rows. Used to gate the Edit-this-climb action: only the
      *  original setter sees it. */
     val createdByPubkey: String? = null,
+    /** Schema column `climbs.source`: 'kilter' | 'nostr' | 'local'. Drives the
+     *  draft badge in browse rows ('local' = local-only draft, not yet
+     *  published). Default 'kilter' keeps older code paths neutral. */
+    val source: String = "kilter",
+    /** Publish-lifecycle column `climbs.sync_status`: NULL | 'draft' | 'synced'
+     *  | 'published_nostr' | 'failed'. Combined with [source] to disambiguate
+     *  failed-publish rows from synced ones. */
+    val syncStatus: String? = null,
 ) {
     /** True when this climb is a multi-frame route (not a boulder). */
     val isRoute: Boolean get() = framesCount > 1
@@ -557,6 +565,11 @@ interface CommunityClimbQueries {
      *  entry carries its angle — same climb at multiple angles becomes
      *  multiple entries, matching the climb_stats row layout. */
     fun getClimbsByPubkey(pubkey: String): List<SetterClimbEntry>
+    /** My-climbs filter (board browser). Returns one [ClimbWithStats] per
+     *  uuid authored by [pubkey] on [layoutId], ignoring angle/grade/asc
+     *  filters so drafts saved at any angle remain discoverable. The row
+     *  is picked at [preferredAngle] when available, else any angle. */
+    fun getOwnClimbsForBrowse(pubkey: String, layoutId: Int, preferredAngle: Int): List<ClimbWithStats>
     /** Distinct cruxcoach setters with their climb-count, ordered desc. */
     fun getCommunitySetterStats(): List<SetterStat>
     fun markKilterPublishPending(uuid: String)

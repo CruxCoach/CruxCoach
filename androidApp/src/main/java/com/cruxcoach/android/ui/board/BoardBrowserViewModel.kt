@@ -6,6 +6,7 @@ import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.ConnectionState
 import android.util.Log
 import com.cruxcoach.android.ble.NearbySession
+import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.android.data.BleShareManager
 import com.cruxcoach.android.data.BleShareUiState
 import com.cruxcoach.android.data.BoardSessionManager
@@ -81,6 +82,10 @@ data class BrowserFilterState(
     val climbTypeFilter: ClimbTypeFilter = ClimbTypeFilter.BOULDER,
     val benchmarkOnly: Boolean = false,
     val originFilter: OriginFilter = OriginFilter.ALL,
+    /** When true, restrict the browser list to climbs authored by the local
+     *  user's Nostr pubkey (drafts + published). Bypasses angle/grade/asc
+     *  filters at fetch time so drafts saved at any angle remain visible. */
+    val myClimbsOnly: Boolean = false,
 )
 
 data class BrowserBleState(
@@ -132,6 +137,7 @@ class BoardBrowserViewModel @Inject constructor(
     private val gattBridge: SessionGattBridge,
     private val sessionQueueManager: SessionQueueManager,
     private val bleShareManager: BleShareManager,
+    private val nostrSigner: NostrSigner,
     val climbNavState: com.cruxcoach.android.ui.navigation.ClimbNavigationState
 ) : ViewModel() {
 
@@ -415,6 +421,14 @@ class BoardBrowserViewModel @Inject constructor(
         searchClimbs()
     }
 
+    /** "Eigene Climbs" toggle. Not persisted on purpose — defaults to OFF on
+     *  app start so users don't open the browser to an unexpectedly empty
+     *  list when they haven't published anything yet. */
+    fun updateMyClimbsFilter(enabled: Boolean) {
+        _state.update { it.copy(filter = it.filter.copy(myClimbsOnly = enabled)) }
+        searchClimbs()
+    }
+
     private suspend fun ensureStatusLoaded() {
         if (!statusLoaded) {
             sentUuids = PerfLogger.traceQuery("getUserSentClimbUuids") {
@@ -506,6 +520,12 @@ class BoardBrowserViewModel @Inject constructor(
      * - Only angle/grade/ascensionists/searchQuery/climbType trigger a DB COUNT
      */
     private suspend fun resolveCount(filter: BrowserFilterState, directCount: Int = 0): Long {
+        // MY-CLIMBS FILTER: directCount is the total after client-side
+        // filtering in the my-climbs branch of fetchFiltered.
+        if (filter.myClimbsOnly) {
+            return directCount.toLong()
+        }
+
         // HOLD FILTER: directCount is accurate from getClimbsByUuids
         val hs = _state.value.holdSearch
         if (hs.holdFilterActive && hs.holdFilterUuids.isNotEmpty()) {
@@ -567,6 +587,26 @@ class BoardBrowserViewModel @Inject constructor(
      * For ALL/NEW/UNSENT: page-scans (high hit rate, most climbs match).
      */
     private fun fetchFiltered(f: BrowserFilterState, dbOffset: Int): Triple<List<ClimbWithStats>, Int, Boolean> {
+        // MY-CLIMBS FILTER: short-circuit the paginated browse path. We pull
+        // every climb authored by the local pubkey on this layout in one
+        // call and apply remaining filters client-side. Drafts (source=
+        // 'local') saved at any angle stay visible regardless of the
+        // current angle slider. dbExhausted=true on first page so the
+        // infinite-scroll trigger doesn't keep firing.
+        if (f.myClimbsOnly) {
+            if (dbOffset > 0) return Triple(emptyList(), dbOffset, true)
+            val pubkey = runCatching { nostrSigner.getPublicKeyHex() }.getOrNull()
+            if (pubkey.isNullOrBlank()) return Triple(emptyList(), 0, true)
+            val all = boardRepository.getOwnClimbsForBrowse(pubkey, f.layoutId, f.angle)
+            val nameFiltered = if (f.searchQuery.isBlank()) all
+                else all.filter { it.name.contains(f.searchQuery, ignoreCase = true) }
+            val statusFiltered = applyStatusFilter(nameFiltered, f.statusFilter)
+            val benchFiltered = applyBenchmarkFilter(statusFiltered, f.benchmarkOnly)
+            val originFiltered = applyOriginFilter(benchFiltered, f.originFilter)
+            val sorted = sortInKotlin(originFiltered, f.sortField, f.sortDirection)
+            return Triple(sorted.take(PAGE_SIZE), sorted.size, sorted.size <= PAGE_SIZE)
+        }
+
         // HOLD FILTER: direct UUID query with hold-matched UUIDs
         val hs = _state.value.holdSearch
         if (hs.holdFilterActive && hs.holdFilterUuids.isNotEmpty()) {

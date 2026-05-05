@@ -563,6 +563,8 @@
     <string name="board_detail_delete_ascent_message">This ascent will be permanently deleted.</string>
     <string name="board_filter_all">All</string>
     <string name="board_filter_benchmarks_only">Benchmarks only</string>
+    <string name="board_filter_my_climbs">My climbs</string>
+    <string name="climb_card_draft_badge">Draft</string>
     <string name="board_filter_grade_range">Grade: %1$s – %2$s</string>
     <string name="board_filter_sort">Sort</string>
     <string name="board_filter_sort_asc">Ascending</string>

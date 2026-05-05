@@ -23,6 +23,8 @@ class BoardRepositoryImpl(
         origin: String = "kilter",
         kilterStatus: String? = null,
         createdByPubkey: String? = null,
+        source: String = "kilter",
+        syncStatus: String? = null,
     ) = ClimbWithStats(
         uuid = uuid, layoutId = layoutId, setterUsername = setterUsername,
         name = name, frames = frames, framesCount = framesCount,
@@ -35,6 +37,8 @@ class BoardRepositoryImpl(
         origin = origin,
         kilterStatus = kilterStatus,
         createdByPubkey = createdByPubkey,
+        source = source,
+        syncStatus = syncStatus,
     )
 
     // ── Climb Queries ──────────────────────────────────────────
@@ -48,6 +52,9 @@ class BoardRepositoryImpl(
         moveCount = it.move_count,
         origin = it.origin,
         kilterStatus = it.kilter_status,
+        createdByPubkey = it.created_by_pubkey,
+        source = it.source,
+        syncStatus = it.sync_status,
     )
 
     override fun searchClimbsByName(query: String, angle: Int, layoutId: Int, sortField: ClimbSortField, sortDirection: SortDirection, limit: Int, offset: Int, climbType: ClimbTypeFilter): List<ClimbWithStats> {
@@ -769,6 +776,27 @@ class BoardRepositoryImpl(
                 qualityAverage = row.quality_average,
                 ascensionistCount = row.ascensionist_count ?: 0L,
             )
+        }
+    }
+
+    override fun getOwnClimbsForBrowse(
+        pubkey: String,
+        layoutId: Int,
+        preferredAngle: Int,
+    ): List<ClimbWithStats> {
+        // Reuse the existing setter-detail query: it pulls climb_browse rows
+        // for this pubkey across every angle. We dedupe to one row per uuid,
+        // preferring the row matching `preferredAngle` so the visible stats
+        // line up with the browser's current angle when possible. Falls back
+        // to any angle so a draft saved at 40° remains visible while the
+        // user browses at 35° — the whole point of the My-climbs filter.
+        val all = q.getClimbsByPubkey(pubkey).executeAsList()
+            .filter { it.layout_id == layoutId.toLong() }
+        val grouped = all.groupBy { it.uuid }
+        val target = preferredAngle.toLong()
+        return grouped.values.map { rows ->
+            val pick = rows.firstOrNull { it.angle == target } ?: rows.first()
+            mapBrowse(pick)
         }
     }
 
