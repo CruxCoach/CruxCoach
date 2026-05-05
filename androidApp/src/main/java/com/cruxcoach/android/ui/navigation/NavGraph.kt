@@ -444,7 +444,14 @@ fun CruxCoachNavHost(
 
             composable(Routes.BOARD_MAP) {
                 MapScreen(
-                    onNavigateBack = { navController.popBackStack() }
+                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateToBoardBrowser = {
+                        // popBackStack lands the user on the BoardBrowser
+                        // already on the back stack. The browser's
+                        // ViewModel re-reads board prefs that the Map
+                        // screen wrote via applyBoardConfigForBrowse.
+                        navController.popBackStack(Routes.BOARD_BROWSER, false)
+                    }
                 )
             }
 

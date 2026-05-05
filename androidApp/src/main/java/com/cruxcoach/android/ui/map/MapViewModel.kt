@@ -111,6 +111,28 @@ class MapViewModel @Inject constructor(
         }
     }
 
+    fun selectedLocation(): BoardLocation? {
+        val id = _state.value.selectedLocationId ?: return null
+        return _state.value.locations.firstOrNull { it.id == id }
+            ?: allLocations.firstOrNull { it.id == id }
+    }
+
+    /**
+     * Apply this board's layout/size as the user's active board filter so a
+     * follow-up navigation to the Board Browser lands on a pre-filtered list.
+     * Best-effort and async — if the navigation fires before the prefs flow
+     * propagates, the browser refreshes within a frame as the new value
+     * arrives via DataStore's reactive read.
+     */
+    fun applyBoardConfigForBrowse(layoutId: Int, productSizeId: Int?) {
+        viewModelScope.launch {
+            userPreferences.setBoardLayoutId(layoutId)
+            if (productSizeId != null) {
+                userPreferences.setBoardProductSizeId(productSizeId)
+            }
+        }
+    }
+
     private data class FilterInputs(
         val publicOnly: Boolean,
         val matchesMyBoard: Boolean,

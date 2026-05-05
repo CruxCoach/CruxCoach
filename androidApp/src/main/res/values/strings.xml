@@ -225,6 +225,13 @@
     <string name="map_filter_public_only">Public only</string>
     <string name="map_filter_matches_my_board">Matches my board</string>
     <string name="map_filter_match_disabled">Configure your board first</string>
+    <string name="map_marker_browse_climbs">Browse climbs for this board</string>
+    <string name="map_marker_open_in_maps">Open in Maps</string>
+    <string name="map_marker_layout">Layout</string>
+    <string name="map_marker_access">Access</string>
+    <string name="map_marker_adjustability">Adjustability</string>
+    <string name="map_marker_frame">Frame</string>
+    <string name="map_marker_field_unknown">—</string>
     <string name="action_send">Send</string>
     <string name="action_retry">Retry</string>
     <string name="action_reset">Reset</string>

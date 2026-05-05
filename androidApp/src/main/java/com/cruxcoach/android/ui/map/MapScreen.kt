@@ -41,6 +41,7 @@ import org.maplibre.android.maps.Style
 @Composable
 fun MapScreen(
     onNavigateBack: () -> Unit,
+    onNavigateToBoardBrowser: () -> Unit = {},
     viewModel: MapViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -56,6 +57,21 @@ fun MapScreen(
     LaunchedEffect(mapHandle, state.locations, state.selectedLocationId) {
         val (_, style) = mapHandle ?: return@LaunchedEffect
         MapMarkerLayer.updateData(style, state.locations, state.selectedLocationId)
+    }
+
+    val selectedLocation = state.selectedLocationId?.let { id ->
+        state.locations.firstOrNull { it.id == id } ?: viewModel.selectedLocation()
+    }
+    if (selectedLocation != null) {
+        BoardLocationDetailSheet(
+            location = selectedLocation,
+            onDismiss = { viewModel.selectLocation(null) },
+            onBrowseClimbs = { layoutId, sizeId ->
+                viewModel.applyBoardConfigForBrowse(layoutId, sizeId)
+                viewModel.selectLocation(null)
+                onNavigateToBoardBrowser()
+            },
+        )
     }
 
     Scaffold(

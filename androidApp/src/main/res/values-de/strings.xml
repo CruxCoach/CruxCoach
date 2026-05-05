@@ -225,6 +225,13 @@
     <string name="map_filter_public_only">Nur öffentliche</string>
     <string name="map_filter_matches_my_board">Passt zu meinem Board</string>
     <string name="map_filter_match_disabled">Konfiguriere zuerst dein Board</string>
+    <string name="map_marker_browse_climbs">Climbs für dieses Board ansehen</string>
+    <string name="map_marker_open_in_maps">In Karten-App öffnen</string>
+    <string name="map_marker_layout">Layout</string>
+    <string name="map_marker_access">Zugang</string>
+    <string name="map_marker_adjustability">Verstellbarkeit</string>
+    <string name="map_marker_frame">Rahmen</string>
+    <string name="map_marker_field_unknown">—</string>
 
     <string name="action_send">Senden</string>
     <string name="action_retry">Erneut versuchen</string>
