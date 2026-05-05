@@ -3,7 +3,7 @@
     <string name="app_name">CruxCoach</string>
 
     <!-- Climb Creator (FEAT-003) -->
-    <string name="climb_creator_title">Climb erstellen</string>
+    <string name="climb_creator_title">Neuer Climb</string>
     <string name="climb_creator_open">Neuen Climb erstellen</string>
     <string name="climb_creator_undo">Rückgängig</string>
     <string name="climb_creator_redo">Wiederherstellen</string>
