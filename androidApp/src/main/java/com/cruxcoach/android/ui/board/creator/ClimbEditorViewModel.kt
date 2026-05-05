@@ -869,6 +869,17 @@ class ClimbEditorViewModel @Inject constructor(
     }
 
     /**
+     * One-shot push of the current hold map. Used by the Editor screen
+     * the moment a board connects so the user sees their in-progress
+     * climb without having to tap a new hold first. Subsequent edits
+     * are mirrored automatically by [syncLeds] which fires after every
+     * [applyEditor].
+     */
+    fun pushCurrentHoldsToBoard() {
+        viewModelScope.launch { syncLeds() }
+    }
+
+    /**
      * Push the current hold map to the connected board's LEDs (best-effort —
      * if disconnected, the call is a no-op). Re-uses the existing
      * [BoardBleConnection.sendClimb] path; the editor exits SENDING back

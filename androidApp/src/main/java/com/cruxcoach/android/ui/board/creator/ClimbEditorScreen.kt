@@ -18,6 +18,8 @@ import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.Bluetooth
+import androidx.compose.material.icons.filled.BluetoothConnected
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Whatshot
 import androidx.compose.material.icons.outlined.Delete
@@ -53,13 +55,18 @@ import androidx.compose.runtime.setValue
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
+import com.cruxcoach.android.ble.ConnectionState
+import com.cruxcoach.android.ui.board.BleConnectionSheet
+import com.cruxcoach.android.ui.board.BleConnectionViewModel
 import com.cruxcoach.android.ui.board.KilterBoardVisualization
+import com.cruxcoach.android.ui.theme.SuccessGreen
 import com.cruxcoach.domain.board.BoardHold
 import com.cruxcoach.domain.board.HoldRole
 import com.cruxcoach.domain.community.ClimbValidation
@@ -86,6 +93,31 @@ fun ClimbEditorScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
+
+    // Live-mirror to a connected board: ClimbEditorViewModel.applyEditor
+    // already calls syncLeds() on every hold-tap (no-op when disconnected),
+    // so the screen only owns the connect/disconnect surface — pick a
+    // board, hand off to BleConnectionViewModel, and let the existing
+    // BLE pipeline mirror the editor's selectedHolds in real time.
+    val bleConnViewModel: BleConnectionViewModel = hiltViewModel()
+    val bleConnState by bleConnViewModel.state.collectAsStateWithLifecycle()
+    val bleConnected = bleConnState.connectionState.let {
+        it == ConnectionState.CONNECTED || it == ConnectionState.SENDING
+    }
+    var showBleSheet by remember { mutableStateOf(false) }
+    if (showBleSheet) {
+        BleConnectionSheet(
+            onDismiss = { showBleSheet = false },
+            autoStartScan = true,
+        )
+    }
+    // First-time connect: push the current hold map immediately so the
+    // user sees their in-progress climb on the board. applyEditor's
+    // syncLeds() only fires on edits, so without this kick the board
+    // would stay dark until the next hold-tap.
+    LaunchedEffect(bleConnected) {
+        if (bleConnected) viewModel.pushCurrentHoldsToBoard()
+    }
 
     val nudgeMessage = stringResource(R.string.climb_creator_kilter_connect_nudge)
     val nudgeAction = stringResource(R.string.climb_creator_kilter_connect_action)
@@ -155,6 +187,18 @@ fun ClimbEditorScreen(
                     }
                 },
                 actions = {
+                    IconButton(
+                        onClick = { showBleSheet = true },
+                        modifier = Modifier.testTag("climb_creator_ble_connect_button"),
+                    ) {
+                        Icon(
+                            if (bleConnected) Icons.Default.BluetoothConnected else Icons.Default.Bluetooth,
+                            contentDescription = stringResource(
+                                if (bleConnected) R.string.cd_board_connected else R.string.cd_board_connect,
+                            ),
+                            tint = if (bleConnected) SuccessGreen else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                     IconButton(onClick = viewModel::openDraftsSheet) {
                         Icon(
                             Icons.AutoMirrored.Filled.List,
