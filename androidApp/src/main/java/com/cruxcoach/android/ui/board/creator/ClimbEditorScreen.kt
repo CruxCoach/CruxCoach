@@ -51,7 +51,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
@@ -67,6 +66,7 @@ import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.ui.board.BleConnectionSheet
 import com.cruxcoach.android.ui.board.BleConnectionViewModel
 import com.cruxcoach.android.ui.board.KilterBoardVisualization
+import com.cruxcoach.android.ui.board.QuickSendStatus
 import com.cruxcoach.android.ui.theme.SuccessGreen
 import com.cruxcoach.domain.board.BoardHold
 import com.cruxcoach.domain.board.HoldRole
@@ -95,11 +95,17 @@ fun ClimbEditorScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // Live-mirror to a connected board: ClimbEditorViewModel.applyEditor
-    // already calls syncLeds() on every hold-tap (no-op when disconnected),
-    // so the screen only owns the connect/disconnect surface — pick a
-    // board, hand off to BleConnectionViewModel, and let the existing
-    // BLE pipeline mirror the editor's selectedHolds in real time.
+    // BLE button + send pipeline mirrors BoardClimbDetailScreen 1:1:
+    //  * tap behaviour branches on userPrefs.quickBoardSend (the "schnell
+    //    senden" setting) into the macro or the manual sheet.
+    //  * BoardClimbDetailViewModel has BoardSendController that auto-
+    //    fires sendClimb on every CONNECTED transition; the editor
+    //    achieves the same via LaunchedEffect(bleConnected) below.
+    //  * QuickSendStatus.NeedsManualPick escalates back into the sheet
+    //    so the user can pick when 2+ boards are in range.
+    //  * Subsequent hold edits on a still-connected board are live-
+    //    mirrored by ClimbEditorViewModel.applyEditor -> syncLeds(),
+    //    which is a no-op when disconnected.
     val bleConnViewModel: BleConnectionViewModel = hiltViewModel()
     val bleConnState by bleConnViewModel.state.collectAsStateWithLifecycle()
     val bleConnected = bleConnState.connectionState.let {
@@ -112,36 +118,31 @@ fun ClimbEditorScreen(
             autoStartScan = true,
         )
     }
-    // First-time connect: push the current hold map immediately so the
-    // user sees their in-progress climb on the board. applyEditor's
-    // syncLeds() only fires on edits, so without this kick the board
-    // would stay dark until the next hold-tap.
+    // Editor-side equivalent of BoardSendController.kt's CONNECTED-collector:
+    // every transition into CONNECTED pushes the current hold map. Covers
+    // both the quick-send macro (scan/connect lands → fires) and the
+    // manual sheet path (user picks → connects → fires). Subsequent
+    // hold-tap edits keep the board in sync via syncLeds() inside
+    // applyEditor — this LaunchedEffect only owns the initial push.
     LaunchedEffect(bleConnected) {
         if (bleConnected) viewModel.pushCurrentHoldsToBoard()
     }
-
-    // Quick-Send-Mode integration: when the user enabled "schnell
-    // senden" in Settings AND the board isn't already connected, every
-    // settled hold change kicks off a connect → send → disconnect cycle.
-    // Banner-free per the user's request: no scanning/sending/done
-    // snackbar churn while the user is mid-edit.
-    //
-    // bleConnected is intentionally NOT a LaunchedEffect key — the macro
-    // itself flips bleConnected false→true→false, and re-keying on each
-    // edge would cancel-and-relaunch this block, then 600 ms later fire
-    // another silentQuickSend on the same selection, looping forever.
-    // We re-check the latest bleConnected after the debounce instead.
-    val latestBleConnected by rememberUpdatedState(bleConnected)
-    LaunchedEffect(
-        state.editor.selectedHolds,
-        bleConnState.quickBoardSendEnabled,
-    ) {
-        if (!bleConnState.quickBoardSendEnabled) return@LaunchedEffect
-        if (state.editor.selectedHolds.isEmpty()) return@LaunchedEffect
-        // Dust-settle: rapid-fire hold-taps shouldn't queue cycles.
-        kotlinx.coroutines.delay(600L)
-        if (latestBleConnected) return@LaunchedEffect // persistent-connect path handles it
-        bleConnViewModel.silentQuickSend { viewModel.pushCurrentHoldsToBoard() }
+    // NeedsManualPick + Done/Error reset — same observer pattern as
+    // BoardClimbDetailScreen.kt:296-308. Multi-board ambiguity escalates
+    // into the sheet; terminal Done/Error states reset the macro flow
+    // so the next icon tap starts fresh. No snackbars here either —
+    // the BLE-icon colour change (grey → green) is signal enough.
+    val quickSendStatus by bleConnViewModel.quickSend.collectAsStateWithLifecycle()
+    LaunchedEffect(quickSendStatus) {
+        if (quickSendStatus is QuickSendStatus.NeedsManualPick) {
+            showBleSheet = true
+            bleConnViewModel.resetQuickSend()
+        }
+    }
+    LaunchedEffect(quickSendStatus) {
+        if (quickSendStatus is QuickSendStatus.Done || quickSendStatus is QuickSendStatus.Error) {
+            bleConnViewModel.resetQuickSend()
+        }
     }
 
     val nudgeMessage = stringResource(R.string.climb_creator_kilter_connect_nudge)
@@ -213,7 +214,22 @@ fun ClimbEditorScreen(
                 },
                 actions = {
                     IconButton(
-                        onClick = { showBleSheet = true },
+                        onClick = {
+                            // 1:1 with BoardClimbDetailScreen.kt:399-414:
+                            // Settings → "Schnell-Senden" routes the tap
+                            // through the macro (scan → auto-connect-on-
+                            // single → CONNECTED → editor's
+                            // LaunchedEffect(bleConnected) auto-fires send
+                            // → SENDING → CONNECTED → disconnect). When
+                            // off, opens the manual connection sheet.
+                            // isRoute is always false for the editor —
+                            // the climb is a single-frame draft.
+                            if (bleConnState.quickBoardSendEnabled) {
+                                bleConnViewModel.startQuickSend(isRoute = false)
+                            } else {
+                                showBleSheet = true
+                            }
+                        },
                         modifier = Modifier.testTag("climb_creator_ble_connect_button"),
                     ) {
                         Icon(

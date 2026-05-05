@@ -894,8 +894,14 @@ class ClimbEditorViewModel @Inject constructor(
     private suspend fun syncLeds() {
         val cur = _state.value
         val ledMap = cur.placementToLed
-        if (ledMap.isEmpty()) return
+        if (ledMap.isEmpty()) {
+            Log.w(TAG, "syncLeds: placementToLed empty — board cannot light up; check loadBoardData ran")
+            return
+        }
         val holds = cur.editor.selectedHolds.map { (pid, role) -> BoardHold(pid, role) }
+        if (holds.isEmpty()) {
+            Log.d(TAG, "syncLeds: no holds selected — sending empty frame to clear board")
+        }
         // Pass the user's customised hold-colour palette through. Without
         // this, sendClimb falls back to BoardPacketEncoder.roleToColor's
         // hardcoded defaults so a user who picked custom colours in
@@ -904,8 +910,11 @@ class ClimbEditorViewModel @Inject constructor(
         // the unchanged factory palette. Same pattern as
         // BoardSendController.kt:83.
         val roleColors = cur.ledColors.toRoleColorMap()
-        runCatching { bleConnection.sendClimb(holds, ledMap, roleColors) }
-            .onFailure { Log.v(TAG, "LED preview skipped: ${it.message}") }
+        val result = runCatching { bleConnection.sendClimb(holds, ledMap, roleColors) }
+        result.fold(
+            onSuccess = { Log.i(TAG, "syncLeds: sendClimb returned ok=$it holds=${holds.size}") },
+            onFailure = { Log.w(TAG, "syncLeds: sendClimb threw holds=${holds.size}", it) },
+        )
     }
 
     companion object {
