@@ -1,0 +1,31 @@
+-- Migration from version 12 to 13: add kilter_board_location table.
+-- Populated by the daily Blossom sync's "locations" chunk, sourced
+-- primarily from the public hangtime-climbing-boards GeoJSON mirror of
+-- Kilter's PowerSync global_gyms bucket, augmented with StoreRocket
+-- contact data. See FEAT-006.
+
+CREATE TABLE kilter_board_location (
+    gym_uuid TEXT NOT NULL PRIMARY KEY,
+    name TEXT NOT NULL,
+    lat REAL NOT NULL,
+    lng REAL NOT NULL,
+    address TEXT,
+    city TEXT,
+    country_code TEXT NOT NULL,
+    phone TEXT,
+    email TEXT,
+    url TEXT,
+    instagram TEXT,
+    layout_name TEXT,
+    layout_id INTEGER,
+    size_label TEXT,
+    product_size_id INTEGER,
+    access_type TEXT NOT NULL DEFAULT 'UNKNOWN',
+    adjustability TEXT NOT NULL DEFAULT 'UNKNOWN',
+    fixed_angle INTEGER,
+    frame_maker TEXT
+);
+
+CREATE INDEX idx_kbl_layout_size ON kilter_board_location(layout_id, product_size_id);
+CREATE INDEX idx_kbl_country ON kilter_board_location(country_code);
+CREATE INDEX idx_kbl_access ON kilter_board_location(access_type);

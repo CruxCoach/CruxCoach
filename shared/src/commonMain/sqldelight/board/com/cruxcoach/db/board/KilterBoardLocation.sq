@@ -1,0 +1,73 @@
+-- Kilter Board physical installation locations.
+-- Sourced primarily from the hangtime-climbing-boards GeoJSON mirror of
+-- Kilter's PowerSync global_gyms bucket, with StoreRocket contact data
+-- merged in by geo proximity. Distributed via the daily Blossom sync as a
+-- separate manifest chunk (type="locations").
+-- See docs/specs/0.1.5/FEAT-006-board-locations-map.md.
+
+CREATE TABLE kilter_board_location (
+    gym_uuid TEXT NOT NULL PRIMARY KEY,
+    name TEXT NOT NULL,
+    lat REAL NOT NULL,
+    lng REAL NOT NULL,
+    address TEXT,
+    city TEXT,
+    country_code TEXT NOT NULL,
+    phone TEXT,
+    email TEXT,
+    url TEXT,
+    instagram TEXT,
+    layout_name TEXT,
+    layout_id INTEGER,
+    size_label TEXT,
+    product_size_id INTEGER,
+    access_type TEXT NOT NULL DEFAULT 'UNKNOWN',
+    adjustability TEXT NOT NULL DEFAULT 'UNKNOWN',
+    fixed_angle INTEGER,
+    frame_maker TEXT
+);
+
+CREATE INDEX idx_kbl_layout_size ON kilter_board_location(layout_id, product_size_id);
+CREATE INDEX idx_kbl_country ON kilter_board_location(country_code);
+CREATE INDEX idx_kbl_access ON kilter_board_location(access_type);
+
+-- Queries
+
+upsertLocation:
+INSERT OR REPLACE INTO kilter_board_location(
+    gym_uuid, name, lat, lng, address, city, country_code,
+    phone, email, url, instagram,
+    layout_name, layout_id, size_label, product_size_id,
+    access_type, adjustability, fixed_angle, frame_maker
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+deleteAllLocations:
+DELETE FROM kilter_board_location;
+
+countLocations:
+SELECT COUNT(*) FROM kilter_board_location;
+
+getAllLocations:
+SELECT * FROM kilter_board_location;
+
+getLocationById:
+SELECT * FROM kilter_board_location WHERE gym_uuid = ?;
+
+-- Locations matching a specific board configuration. product_size_id may
+-- be NULL on the location side (cron couldn't resolve the size string);
+-- such entries are excluded from "matches my board" filter results to
+-- avoid showing ambiguous matches as confident.
+getLocationsMatchingBoard:
+SELECT * FROM kilter_board_location
+WHERE layout_id = :layoutId
+  AND (product_size_id IS NULL OR product_size_id = :productSizeId);
+
+-- Variant for "Public only" filter combined with "Matches my board".
+getPublicLocationsMatchingBoard:
+SELECT * FROM kilter_board_location
+WHERE layout_id = :layoutId
+  AND (product_size_id IS NULL OR product_size_id = :productSizeId)
+  AND access_type = 'PUBLIC';
+
+getPublicLocations:
+SELECT * FROM kilter_board_location WHERE access_type = 'PUBLIC';
