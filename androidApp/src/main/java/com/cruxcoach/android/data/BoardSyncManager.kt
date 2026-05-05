@@ -447,6 +447,7 @@ class BoardSyncManager(
             val metaFiles = mutableListOf<File>()
             val climbFiles = mutableListOf<File>()
             val statFiles = mutableListOf<File>()
+            val locationFiles = mutableListOf<File>()
             for (chunk in chunksToDownload) {
                 val file = chunkFiles[chunk.name] ?: continue
                 val resolvedType = chunk.type.takeIf { it != "unknown" && it.isNotEmpty() } ?: inferType(chunk.name)
@@ -454,14 +455,16 @@ class BoardSyncManager(
                     "meta" -> metaFiles.add(file)
                     "climbs" -> climbFiles.add(file)
                     "stats" -> statFiles.add(file)
+                    "locations" -> locationFiles.add(file)
                 }
             }
 
-            Log.d(TAG, "Importing chunks: meta=${metaFiles.size}, climbs=${climbFiles.size}, stats=${statFiles.size}")
+            Log.d(TAG, "Importing chunks: meta=${metaFiles.size}, climbs=${climbFiles.size}, stats=${statFiles.size}, locations=${locationFiles.size}")
             importer.importFromChunks(
                 metaDbFiles = metaFiles,
                 climbsDbFiles = climbFiles,
                 statsDbFiles = statFiles,
+                locationsDbFiles = locationFiles,
                 onProgress = { step ->
                     _state.update { it.copy(importStep = step) }
                 }
@@ -502,6 +505,7 @@ class BoardSyncManager(
         name == "meta" -> "meta"
         name.startsWith("climbs") -> "climbs"
         name.startsWith("stats") -> "stats"
+        name.startsWith("locations") -> "locations"
         else -> "unknown"
     }
 
