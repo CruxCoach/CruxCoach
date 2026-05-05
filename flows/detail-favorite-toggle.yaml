@@ -4,34 +4,21 @@ tags:
   - smoke
   - mutates-state
 ---
-# Open a climb-detail (via the move-counter trick — see detail-open
-# for why), toggle the favorite star, verify the content-desc flips
-# from "Zu Favoriten hinzufügen" to "Von Favoriten entfernen", then
-# untoggle so the flow leaves no state behind.
-#
-# Combined with detail-favorite-toggle.expects which pins the
-# climb-detail navigation via PERF NAV markers — without that, a
-# silent regression that opens setter-detail-by-mistake might still
-# happen to render a star somewhere and pass.
+# Toggle the favorite star on a climb-detail screen and verify the
+# content-desc flips. Untoggle so the flow leaves no state behind.
+# Combined with detail-favorite-toggle.expects (PERF NAV markers
+# proving climb-detail navigation, not setter-detail).
 - launchApp
 - waitForAnimationToEnd:
     timeout: 5000
 - tapOn:
     text: "[0-9]+ Züge"
     index: 0
-- waitForAnimationToEnd:
-    timeout: 4000
-- assertVisible: "Zurück"   # confirm we're on detail
+- assertVisible: "Zurück"
 - tapOn: "Zu Favoriten hinzufügen"
-- waitForAnimationToEnd:
-    timeout: 1500
 - assertVisible: "Von Favoriten entfernen"
-# Cleanup so the flow is idempotent.
+# Idempotency cleanup.
 - tapOn: "Von Favoriten entfernen"
-- waitForAnimationToEnd:
-    timeout: 1500
 - assertVisible: "Zu Favoriten hinzufügen"
 - pressKey: Back
-- waitForAnimationToEnd:
-    timeout: 2000
 - assertVisible: "Filter"

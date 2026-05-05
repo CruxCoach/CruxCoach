@@ -4,29 +4,18 @@ tags:
   - smoke
 ---
 # Open the drafts drawer from the editor's overflow menu and verify
-# the drawer is the topmost surface. Both "Meine Entwürfe" header
-# AND "Editor leeren" *not visible* (proving the drawer occluded
-# the editor TopAppBar) make this assertion unambiguous.
+# the drawer header is rendered.
 - launchApp
 - waitForAnimationToEnd:
     timeout: 5000
 - tapOn: "Neuen Climb erstellen"
-- waitForAnimationToEnd:
-    timeout: 4000
 - assertVisible: "Neuer Climb"
 - tapOn: "Weitere Optionen"
-- waitForAnimationToEnd:
-    timeout: 1500
 - tapOn: "Entwürfe öffnen"
-- waitForAnimationToEnd:
-    timeout: 2500
+# DraftsDrawer header (climb_creator_drafts_title), regardless of
+# whether the user has any drafts.
 - assertVisible: "Meine Entwürfe"
-# Dismiss drawer + editor.
 - pressKey: Back
-- waitForAnimationToEnd:
-    timeout: 1000
 - assertVisible: "Neuer Climb"
 - pressKey: Back
-- waitForAnimationToEnd:
-    timeout: 2000
 - assertVisible: "Filter"

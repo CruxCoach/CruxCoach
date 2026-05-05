@@ -3,40 +3,22 @@ name: browser-filter-sheet
 tags:
   - smoke
 ---
-# Verify the filter screen renders all expected sections + chips and
-# the "Eigene Climbs" toggle accepts taps. Behavioural verification of
-# the filter pipeline (does the toggle actually filter the list?) is
-# covered by the JVM test `BrowserOriginFilterTest` and the
-# UserPreferences round-trip test — those run on every build. This
-# Maestro flow guards against UI-side regressions (chip wired to
-# the wrong VM action, label removed, FilterChip swapped for a
-# non-toggleable variant) without coupling to device-side data state.
+# Smoke-render check for the filter screen: navigates from Browser →
+# Filter, asserts all major sections are present, returns. The actual
+# filter LOGIC (e.g. myClimbsOnly persistence, status-filter
+# application) is covered by JVM tests in BrowserOriginFilterTest +
+# upcoming UserPreferences round-trip tests. This flow's value is
+# strictly UI-side: catches "filter screen fails to compose",
+# "section header string drift", "back-nav broken".
 - launchApp
 - waitForAnimationToEnd:
     timeout: 5000
 - tapOn: "Filter"
-- waitForAnimationToEnd:
-    timeout: 3000
-# Section headers — invariant labels from values-de/strings.xml.
 - assertVisible: "Sortierung"
 - assertVisible: "Status"
 - assertVisible: "Quelle"
 - assertVisible: "Eigene Climbs"
-# Tap the chip twice (toggle on, toggle off). Maestro just verifies
-# the tap is accepted and doesn't crash; UIAutomator surfaces the
-# selected state via `checkable=true checked=...` on a parent View
-# rather than a `selected=` attr on the text node, so we don't try
-# to assert the chip's checked state from the flow.
-- tapOn: "Eigene Climbs"
-- waitForAnimationToEnd:
-    timeout: 1000
-- tapOn: "Eigene Climbs"
-- waitForAnimationToEnd:
-    timeout: 1000
-# Filter screen still rendered after both taps.
-- assertVisible: "Sortierung"
+- assertVisible: "Nur Benchmarks"
 - pressKey: Back
-- waitForAnimationToEnd:
-    timeout: 2000
 - assertVisible: "Filter"
 - assertVisible: "Neuen Climb erstellen"

@@ -4,21 +4,18 @@ tags:
   - smoke
 ---
 # App-Smoke: launches the app, asserts the Browser is the landing
-# screen by checking three landmarks that are *only* present when the
-# Browser composable is actually mounted (the app remembers the last
-# screen across cold starts, so launching could otherwise resume into
-# Settings/Detail/etc.). Combined with the logcat .expects file,
-# verifies both UI and behavioural state at startup.
-#
-# Locale: assertions in DE — phone is DE-locale by default.
+# screen by checking landmarks unique to the Browser. Combined with
+# the logcat .expects file, verifies UI + behavioural state at
+# startup. Locale: DE — phone is DE-locale by default.
 - launchApp
+# Cold-start splash + initial query takes up to ~3s on this device.
+# Asserts below have an implicit 5s poll, so a single wait here is
+# enough; downstream taps/asserts don't need their own waits.
 - waitForAnimationToEnd:
     timeout: 5000
-# TopAppBar landmarks unique to the Browser screen.
 - assertVisible: "Filter"
 - assertVisible: "Neuen Climb erstellen"
 - assertVisible: "Meine Listen"
-# At least one climb-card is visible — pattern matches the
-# "X Züge" (X moves) line each card carries on a boulder problem.
+# At least one climb-card visible.
 - assertVisible:
     text: "[0-9]+ Züge"

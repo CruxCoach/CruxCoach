@@ -3,29 +3,18 @@ name: editor-overflow
 tags:
   - smoke
 ---
-# Open the editor's overflow menu and verify both expected items are
-# in it. Covers commit 90ee6e7 which moved Drafts + Heatmap from
-# direct TopBar icons into the ⋮ menu.
+# Verify the editor's ⋮ overflow menu has the expected items. Covers
+# commit 90ee6e7 which moved Drafts + Heatmap from direct TopBar
+# icons into the menu.
 - launchApp
 - waitForAnimationToEnd:
     timeout: 5000
 - tapOn: "Neuen Climb erstellen"
-- waitForAnimationToEnd:
-    timeout: 4000
 - assertVisible: "Neuer Climb"
 - tapOn: "Weitere Optionen"
-- waitForAnimationToEnd:
-    timeout: 1500
 - assertVisible: "Entwürfe öffnen"
 - assertVisible: "Heatmap (häufige Griffe) ein/aus"
-# Dismiss the menu with Back, then dismiss the editor.
 - pressKey: Back
-- waitForAnimationToEnd:
-    timeout: 1000
-# After dismissing the menu we're back in the editor — assert the
-# editor is still active (not the browser).
 - assertVisible: "Neuer Climb"
 - pressKey: Back
-- waitForAnimationToEnd:
-    timeout: 2000
 - assertVisible: "Filter"

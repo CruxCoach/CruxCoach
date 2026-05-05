@@ -1,0 +1,42 @@
+appId: com.cruxcoach.android
+name: detail-favorite-persists
+tags:
+  - smoke
+  - mutates-state
+---
+# End-to-end persistence test: toggle a favorite, stop the app
+# process, relaunch, navigate back to the same climb, verify the
+# favorite state survived the process restart. Catches DB
+# write/read regressions in the favorites pipeline that an in-
+# session toggle wouldn't catch.
+- launchApp
+- waitForAnimationToEnd:
+    timeout: 5000
+# First climb on the default sort — stable across cold starts.
+- tapOn:
+    text: "[0-9]+ Züge"
+    index: 0
+- assertVisible: "Zurück"
+- tapOn: "Zu Favoriten hinzufügen"
+- assertVisible: "Von Favoriten entfernen"
+- pressKey: Back
+- assertVisible: "Filter"
+# Force-restart the app process. clearState defaults to false so DB
+# + DataStore persist; only the Activity / NavHost in-memory state
+# resets, which means we should land on the Browser start-destination.
+- stopApp
+- launchApp
+- waitForAnimationToEnd:
+    timeout: 5000
+- assertVisible: "Filter"
+- tapOn:
+    text: "[0-9]+ Züge"
+    index: 0
+- assertVisible: "Zurück"
+# THE assertion: favorite state survived the process restart.
+- assertVisible: "Von Favoriten entfernen"
+# Idempotency cleanup — restore favorite-off state.
+- tapOn: "Von Favoriten entfernen"
+- assertVisible: "Zu Favoriten hinzufügen"
+- pressKey: Back
+- assertVisible: "Filter"

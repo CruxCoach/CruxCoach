@@ -3,26 +3,18 @@ name: editor-open
 tags:
   - smoke
 ---
-# Open the climb-creator via the FAB. Verifies several editor-screen
-# landmarks that *only* exist on the editor (TopAppBar title +
-# overflow icon + the action_more_options content-desc + the BLE
-# icon's content-desc which is the same as the detail screen but
-# co-occurring with the editor title pins it down).
+# Open the climb-creator via the FAB. Verifies editor landmarks that
+# uniquely identify the editor screen (vs. browser/detail/settings).
 - launchApp
 - waitForAnimationToEnd:
     timeout: 5000
 - tapOn: "Neuen Climb erstellen"
-- waitForAnimationToEnd:
-    timeout: 4000
-# Editor-only TopAppBar text (commit 1599c18 shortened it from
-# "Climb erstellen" to "Neuer Climb").
+# Editor-only TopAppBar text (commit 1599c18 shortened from "Climb
+# erstellen" to "Neuer Climb"). Co-occurring with "Editor leeren"
+# (Clear icon, climb_creator_clear) and "Weitere Optionen" (overflow,
+# action_more_options) the screen is unambiguously the editor.
 - assertVisible: "Neuer Climb"
-# Overflow icon added in commit 90ee6e7.
-- assertVisible: "Weitere Optionen"
-# BLE icon and Clear icon are also editor-side; their co-occurrence
-# with "Neuer Climb" rules out the browser/detail/settings paths.
 - assertVisible: "Editor leeren"
+- assertVisible: "Weitere Optionen"
 - pressKey: Back
-- waitForAnimationToEnd:
-    timeout: 2000
 - assertVisible: "Filter"

@@ -3,33 +3,19 @@ name: browser-search
 tags:
   - smoke
 ---
-# Verify the search bar actually filters the list.
-#
-# Strategy:
-#   1. Confirm climbs are visible by default.
-#   2. Open the search bar (bottom-nav icon) — that surfaces a separate
-#      EditText. Tap that EditText to focus it (the icon-tap alone
-#      doesn't focus; without the second tap, inputText goes nowhere).
-#   3. Type a string guaranteed not to match any climb in the catalog.
-#   4. Assert no climb-card move-counter ("X Züge") is visible.
-#
-# We don't assert anything after clearing because the search-bar
-# dismissal animation + keyboard hide + list re-scroll is timing-
-# sensitive and reliably races against `waitForAnimationToEnd` on
-# this device. The filter's correctness — which is what the test
-# proves — is fully captured by step 4.
+# Verify the search bar actually filters the list (not just visually
+# accepts text). Strategy: type a guaranteed-no-match query and
+# confirm no climb-cards remain. The double-tap is required because
+# the bottom-nav search icon's first tap merely surfaces the EditText,
+# the second tap focuses it for inputText.
 - launchApp
 - waitForAnimationToEnd:
     timeout: 5000
 - assertVisible:
     text: "[0-9]+ Züge"
 - tapOn: "Name oder Setter suchen…"
-- waitForAnimationToEnd:
-    timeout: 1500
 - tapOn: "Name oder Setter suchen…"
 - inputText: "zzznomatch"
-- waitForAnimationToEnd:
-    timeout: 3000
-# Filter actually applied: no climb-card visible.
+# Search debounce is ~300 ms; assertion's implicit poll covers it.
 - assertNotVisible:
     text: "[0-9]+ Züge"
