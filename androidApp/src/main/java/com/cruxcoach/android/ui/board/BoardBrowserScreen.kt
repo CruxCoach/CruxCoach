@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.CellTower
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.outlined.Map
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Tune
@@ -488,6 +489,22 @@ fun BoardBrowserScreen(
                             Icons.Default.GridView,
                             contentDescription = stringResource(R.string.cd_hold_search),
                             tint = holdsTint,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                    // FEAT-006: discover Kilter Boards on a map. Lives next
+                    // to hold-search as a peer "find climbs by another
+                    // dimension" action.
+                    IconButton(
+                        onClick = onNavigateToMap,
+                        modifier = Modifier
+                            .size(40.dp)
+                            .testTag("board_map_button")
+                    ) {
+                        Icon(
+                            Icons.Outlined.Map,
+                            contentDescription = stringResource(R.string.cd_map),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(22.dp)
                         )
                     }
