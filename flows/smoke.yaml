@@ -1,0 +1,21 @@
+appId: com.cruxcoach.android
+name: App-Smoke
+tags:
+  - smoke
+---
+# Sanity-check that the installed APK launches and stays foreground.
+# No clearState — keeps existing user state (drafts, prefs, Nostr key)
+# intact so the smoke run doesn't blow away dev-mode data.
+- launchApp
+- waitForAnimationToEnd:
+    timeout: 5000
+# Browser-Toolbar-Landmarks. Compose `testTag` ist nicht als
+# `resource-id` exposed (würde `Modifier.semantics {
+# testTagsAsResourceId = true }` an der Root-Composable verlangen),
+# also matchen wir hier auf content-desc / text — beides
+# zuverlässig in der UIAutomator-Hierarchie sichtbar.
+- assertVisible: "Filter"
+- assertVisible: "Neuen Climb erstellen"
+# Maestro auto-captures a screenshot into ~/.maestro/tests/$run on
+# any FAILED step — no need for an explicit takeScreenshot during the
+# happy path (it would land in the cwd / repo root).
