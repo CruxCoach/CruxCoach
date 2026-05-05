@@ -260,7 +260,18 @@ class ClimbEditorViewModel @Inject constructor(
             setterGradeId = stats?.second,
         )
         undoStack.clear(); redoStack.clear()
-        _state.update { it.copy(editor = seeded, loadedDraftUuid = source.uuid, canUndo = false, canRedo = false) }
+        val issues = ClimbValidation.validate(
+            seeded.selectedHolds, seeded.name, seeded.description, seeded.angle,
+        )
+        _state.update {
+            it.copy(
+                editor = seeded,
+                loadedDraftUuid = source.uuid,
+                canUndo = false,
+                canRedo = false,
+                validationIssues = issues,
+            )
+        }
         viewModelScope.launch { syncLeds() }
     }
 
@@ -703,6 +714,15 @@ class ClimbEditorViewModel @Inject constructor(
                 )
                 // Reset undo stacks — we're starting from a fresh draft snapshot.
                 undoStack.clear(); redoStack.clear()
+                // Recompute validation against the loaded snapshot. Without
+                // this, the publish-ready banner (and Save / Publish enable
+                // gates) keep whatever issues the editor had BEFORE the
+                // load — e.g. "name missing" stays even though the loaded
+                // draft has a name, until the next user edit triggers
+                // applyEditor.
+                val issues = ClimbValidation.validate(
+                    seeded.selectedHolds, seeded.name, seeded.description, seeded.angle,
+                )
                 _state.update {
                     it.copy(
                         editor = seeded,
@@ -710,6 +730,7 @@ class ClimbEditorViewModel @Inject constructor(
                         draftsSheetOpen = false,
                         canUndo = false,
                         canRedo = false,
+                        validationIssues = issues,
                     )
                 }
                 syncLeds()
