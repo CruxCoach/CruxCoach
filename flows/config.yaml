@@ -1,0 +1,29 @@
+name: CruxCoach UI Flows
+
+# Maestro workspace config. All flows assume the device is German-locale
+# (matches our dev phone's current state). Switching locale per flow is
+# possible via `runScript: setprop persist.sys.locale en-US` but adds
+# fragility; for now we keep all assertions in DE and add EN flows later
+# only when the locale-toggle path itself is the test target.
+#
+# Run all:
+#     dmaestro test flows/
+#
+# Run only smoke:
+#     dmaestro test --include-tags=smoke flows/
+#
+# Run all *except* mutating flows:
+#     dmaestro test --exclude-tags=mutates-state flows/
+
+executionOrder:
+  flowsOrder:
+    - smoke
+    - browser-search
+    - browser-filter-sheet
+    - detail-open
+    - detail-favorite-toggle
+    - editor-open
+    - editor-overflow
+    - drafts-drawer-open
+    - settings-navigate
+    - lists-navigate

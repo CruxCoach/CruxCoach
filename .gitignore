@@ -38,6 +38,7 @@ docs/audit/
 docs/backlog/
 docs/*.md
 !docs/KEY_ROTATION.md
+!docs/testing.md
 
 # Internal triage workflow (RepoLens findings, verdicts, per-release audits)
 #

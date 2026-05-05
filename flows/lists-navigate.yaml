@@ -1,0 +1,19 @@
+appId: com.cruxcoach.android
+name: lists-navigate
+tags:
+  - smoke
+---
+- launchApp
+- waitForAnimationToEnd:
+    timeout: 5000
+- tapOn: "Meine Listen"
+- waitForAnimationToEnd:
+    timeout: 3000
+# Lists landing has either "Favoriten" (built-in list, always present)
+# or "Keine Listen" / similar empty-state text. Favoriten is most
+# universally there.
+- assertVisible: "Favoriten"
+- pressKey: Back
+- waitForAnimationToEnd:
+    timeout: 2000
+- assertVisible: "Filter"

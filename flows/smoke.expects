@@ -1,0 +1,7 @@
+# Logcat-PERF assertions for the smoke flow. Each line is grep -E.
+# The flow runner clears logcat before launchApp and captures
+# `adb logcat -s PERF:D` for the duration of the run.
+
+📍 CruxCoachApp\.onCreate END
+📍 BoardBrowserVM\.init START
+📍 FIRST CONTENT: [0-9]+ climbs loaded

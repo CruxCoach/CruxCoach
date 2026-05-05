@@ -1,0 +1,32 @@
+appId: com.cruxcoach.android
+name: drafts-drawer-open
+tags:
+  - smoke
+---
+# Open the drafts drawer from the editor's overflow menu and verify
+# the drawer is the topmost surface. Both "Meine Entwürfe" header
+# AND "Editor leeren" *not visible* (proving the drawer occluded
+# the editor TopAppBar) make this assertion unambiguous.
+- launchApp
+- waitForAnimationToEnd:
+    timeout: 5000
+- tapOn: "Neuen Climb erstellen"
+- waitForAnimationToEnd:
+    timeout: 4000
+- assertVisible: "Neuer Climb"
+- tapOn: "Weitere Optionen"
+- waitForAnimationToEnd:
+    timeout: 1500
+- tapOn: "Entwürfe öffnen"
+- waitForAnimationToEnd:
+    timeout: 2500
+- assertVisible: "Meine Entwürfe"
+# Dismiss drawer + editor.
+- pressKey: Back
+- waitForAnimationToEnd:
+    timeout: 1000
+- assertVisible: "Neuer Climb"
+- pressKey: Back
+- waitForAnimationToEnd:
+    timeout: 2000
+- assertVisible: "Filter"

@@ -1,0 +1,44 @@
+appId: com.cruxcoach.android
+name: detail-open
+tags:
+  - smoke
+---
+# Tap the FIRST visible climb name and verify navigation actually
+# lands on the climb-detail screen — not on a SetterDetailScreen.
+# The earlier version of this flow tapped on `text: "von .*"` which
+# silently navigates to the SetterDetail page when the cruxcoach-
+# origin setter-link is clickable (commit ff7a04c). The current
+# tap target is the per-card "X Züge" move-counter, a Text node
+# without its own click handler that propagates the tap up to the
+# Card.onClick, which is the *climb*-detail navigation.
+#
+# The accompanying detail-open.expects file pins down the
+# behaviour via the PERF logcat tag's NAV markers — the strongest
+# signal that we landed on ClimbDetail (not somewhere else that
+# happens to render plausible UI).
+- launchApp
+- waitForAnimationToEnd:
+    timeout: 5000
+# Tap the move-counter on the first card (always present on a
+# boulder card; routes have a frame-counter instead but the default
+# sort surfaces boulders).
+- tapOn:
+    text: "[0-9]+ Züge"
+    index: 0
+- waitForAnimationToEnd:
+    timeout: 4000
+# Detail-screen has the back-arrow ("Zurück" content-desc) and
+# the BLE board-connect icon (cd_board_connect / cd_board_connected).
+- assertVisible: "Zurück"
+# Detail-screen BLE icon — content-desc is "Board verbinden" /
+# "Board verbunden" depending on connection state. Either string
+# uniquely identifies the climb-detail TopAppBar (the browser BLE
+# icon uses "Bluetooth" instead, ruling out a stuck-on-browser
+# false positive).
+- assertVisible: "Board verbinden"
+# Dismiss + verify back on browser.
+- pressKey: Back
+- waitForAnimationToEnd:
+    timeout: 2000
+- assertVisible: "Filter"
+- assertVisible: "Neuen Climb erstellen"

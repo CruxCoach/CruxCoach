@@ -1,0 +1,22 @@
+appId: com.cruxcoach.android
+name: settings-navigate
+tags:
+  - smoke
+---
+- launchApp
+- waitForAnimationToEnd:
+    timeout: 5000
+- tapOn: "Einstellungen"
+- waitForAnimationToEnd:
+    timeout: 3000
+# Stable top-level section landmarks. These are the section headers in
+# the settings landing screen (not nested-toggle labels which are
+# scrolled-into-view).
+- assertVisible: "Anzeige"
+- assertVisible: "Board-Einstellungen"
+- assertVisible: "Kilter Board Account"
+- assertVisible: "Datenverwaltung"
+- pressKey: Back
+- waitForAnimationToEnd:
+    timeout: 2000
+- assertVisible: "Filter"

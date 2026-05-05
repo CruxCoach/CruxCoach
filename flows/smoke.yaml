@@ -1,21 +1,24 @@
 appId: com.cruxcoach.android
-name: App-Smoke
+name: smoke
 tags:
   - smoke
 ---
-# Sanity-check that the installed APK launches and stays foreground.
-# No clearState — keeps existing user state (drafts, prefs, Nostr key)
-# intact so the smoke run doesn't blow away dev-mode data.
+# App-Smoke: launches the app, asserts the Browser is the landing
+# screen by checking three landmarks that are *only* present when the
+# Browser composable is actually mounted (the app remembers the last
+# screen across cold starts, so launching could otherwise resume into
+# Settings/Detail/etc.). Combined with the logcat .expects file,
+# verifies both UI and behavioural state at startup.
+#
+# Locale: assertions in DE — phone is DE-locale by default.
 - launchApp
 - waitForAnimationToEnd:
     timeout: 5000
-# Browser-Toolbar-Landmarks. Compose `testTag` ist nicht als
-# `resource-id` exposed (würde `Modifier.semantics {
-# testTagsAsResourceId = true }` an der Root-Composable verlangen),
-# also matchen wir hier auf content-desc / text — beides
-# zuverlässig in der UIAutomator-Hierarchie sichtbar.
+# TopAppBar landmarks unique to the Browser screen.
 - assertVisible: "Filter"
 - assertVisible: "Neuen Climb erstellen"
-# Maestro auto-captures a screenshot into ~/.maestro/tests/$run on
-# any FAILED step — no need for an explicit takeScreenshot during the
-# happy path (it would land in the cwd / repo root).
+- assertVisible: "Meine Listen"
+# At least one climb-card is visible — pattern matches the
+# "X Züge" (X moves) line each card carries on a boulder problem.
+- assertVisible:
+    text: "[0-9]+ Züge"

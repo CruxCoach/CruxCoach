@@ -1,0 +1,12 @@
+# Behavioural verification: tapping a climb card opens the climb-detail
+# screen, NOT a setter-detail screen. The PERF NAV markers are emitted
+# by BoardBrowserScreen + BoardClimbDetailViewModel + BoardClimbDetailScreen,
+# all of which fire only on the ClimbDetail path. SetterDetail does not
+# emit any of these markers.
+
+🧭 NAV START: BoardBrowser → ClimbDetail\(
+🧭 .*BOARD_CLIMB_DETAIL composable entered
+🧭 .*BoardClimbDetailVM\.init start
+🧭 .*loadClimb start
+🧭 .*loadClimb complete
+🧭 .*NAV COMPLETE: BoardClimbDetail\(
