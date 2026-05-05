@@ -111,6 +111,7 @@ class ClimbEditorViewModel @Inject constructor(
     private val savedStateHandle: androidx.lifecycle.SavedStateHandle,
     private val nostrSigner: com.cruxcoach.android.nostr.NostrSigner,
     private val nostrProfileManager: com.cruxcoach.android.payment.NostrProfileManager,
+    private val climbNavState: com.cruxcoach.android.ui.navigation.ClimbNavigationState,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ClimbEditorUiState())
@@ -415,6 +416,11 @@ class ClimbEditorViewModel @Inject constructor(
                 _state.update { s ->
                     s.copy(drafts = drafts, loadedDraftUuid = uuid)
                 }
+                // Tell the browser its cached page is stale. Without this,
+                // an in-place edit (e.g. rename) wouldn't show up on
+                // back-nav because refreshBoardData only re-runs the
+                // search on count changes. See ClimbNavigationState.
+                climbNavState.creatorDataChanged = true
                 onSaved(uuid)
             } catch (e: Exception) {
                 Log.w(TAG, "saveDraft failed", e)
@@ -622,6 +628,11 @@ class ClimbEditorViewModel @Inject constructor(
                     autoNotePublished = outcome.autoNotePublished,
                 )
             }
+            // Browser cache is stale: a publish may have transitioned
+            // the row from source='local' to source='nostr', dropped
+            // the draft badge, or changed the name/description. See
+            // ClimbNavigationState.creatorDataChanged.
+            climbNavState.creatorDataChanged = true
         }
     }
 
@@ -764,6 +775,11 @@ class ClimbEditorViewModel @Inject constructor(
                 _state.update { s ->
                     s.copy(drafts = drafts, loadedDraftUuid = if (wasLoaded) null else s.loadedDraftUuid)
                 }
+                // Browser must drop the deleted row on its next refresh.
+                // Count typically drops too, but the explicit flag avoids
+                // the race-prone "did the count query land before
+                // ON_RESUME?" question. See ClimbNavigationState.
+                climbNavState.creatorDataChanged = true
             } catch (e: Exception) {
                 Log.w(TAG, "deleteDraft failed for uuid=$uuid", e)
                 _state.update {

@@ -438,6 +438,11 @@ class BoardClimbDetailViewModel @Inject constructor(
                 )
             }
             if (feedback is CommunityDeleteFeedback.Done) {
+                // Browser cache is stale: the deleted publication must
+                // drop on its next refresh. Same flag the editor uses
+                // for save/delete so back-nav from either screen lands
+                // on a consistent list.
+                climbNavState.creatorDataChanged = true
                 onDeleted()
             }
         }

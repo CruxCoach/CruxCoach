@@ -277,6 +277,14 @@ class BoardBrowserViewModel @Inject constructor(
                 climbNavState.changedClimbUuids.clear()
             }
         } else emptySet()
+        // Pick up creator-side mutations (save / update / publish / delete
+        // from the editor + community-delete from the detail screen).
+        // Without this, an in-place edit (e.g. rename) leaves the browser
+        // showing stale data because the count didn't change. See
+        // ClimbNavigationState.creatorDataChanged.
+        val creatorDirty = climbNavState.creatorDataChanged.also {
+            if (it) climbNavState.creatorDataChanged = false
+        }
 
         // Consume pending setter filter from detail screen
         val setterFilterApplied = climbNavState.pendingSetterFilter != null
@@ -328,7 +336,7 @@ class BoardBrowserViewModel @Inject constructor(
                     }
                 }
                 _state.update { it.copy(climbCount = count, hasBoardData = count > 0) }
-                if ((countChanged || force || dataChanged || setterFilterApplied || needsBoardReload) && count > 0) {
+                if ((countChanged || force || dataChanged || creatorDirty || setterFilterApplied || needsBoardReload) && count > 0) {
                     searchClimbs()
                 } else {
                     _state.update { it.copy(isLoading = false) }
