@@ -165,6 +165,7 @@ object PreferenceKeys {
     val BOARD_CLIMB_TYPE = stringPreferencesKey("board_climb_type")
     val BOARD_BENCHMARK_ONLY = booleanPreferencesKey("board_benchmark_only")
     val BOARD_ORIGIN_FILTER = stringPreferencesKey("board_origin_filter")
+    val BOARD_MY_CLIMBS_ONLY = booleanPreferencesKey("board_my_climbs_only")
     val ROUTE_FRAME_SPEED = floatPreferencesKey("route_frame_speed_f")
     // Auto-Note: when true, publishing a Kind-30078 climb also sends a
     // public Kind-1 note linking to it. Default false; the editor exposes
@@ -223,6 +224,7 @@ data class BoardFilterSnapshot(
     val climbType: String,
     val benchmarkOnly: Boolean,
     val originFilter: String,
+    val myClimbsOnly: Boolean,
 )
 
 class UserPreferences(
@@ -246,6 +248,7 @@ class UserPreferences(
             climbType = prefs[PreferenceKeys.BOARD_CLIMB_TYPE] ?: "BOULDER",
             benchmarkOnly = prefs[PreferenceKeys.BOARD_BENCHMARK_ONLY] ?: false,
             originFilter = prefs[PreferenceKeys.BOARD_ORIGIN_FILTER] ?: "ALL",
+            myClimbsOnly = prefs[PreferenceKeys.BOARD_MY_CLIMBS_ONLY] ?: false,
         )
     }
 
@@ -473,6 +476,7 @@ class UserPreferences(
         sortField: String, sortDirection: String, statusFilter: String,
         climbType: String = "BOULDER", benchmarkOnly: Boolean = false,
         originFilter: String = "ALL",
+        myClimbsOnly: Boolean = false,
     ) {
         dataStore.edit { prefs ->
             prefs[PreferenceKeys.BOARD_ANGLE] = angle
@@ -485,6 +489,7 @@ class UserPreferences(
             prefs[PreferenceKeys.BOARD_CLIMB_TYPE] = climbType
             prefs[PreferenceKeys.BOARD_BENCHMARK_ONLY] = benchmarkOnly
             prefs[PreferenceKeys.BOARD_ORIGIN_FILTER] = originFilter
+            prefs[PreferenceKeys.BOARD_MY_CLIMBS_ONLY] = myClimbsOnly
         }
     }
 

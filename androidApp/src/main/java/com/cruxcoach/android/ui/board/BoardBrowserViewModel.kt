@@ -204,6 +204,7 @@ class BoardBrowserViewModel @Inject constructor(
                         statusFilter = statusFilter, climbTypeFilter = climbType,
                         benchmarkOnly = snap.benchmarkOnly,
                         originFilter = originFilter,
+                        myClimbsOnly = snap.myClimbsOnly,
                     )
                 ) }
                 filtersLoaded = true
@@ -358,6 +359,7 @@ class BoardBrowserViewModel @Inject constructor(
                 sortDirection = f.sortDirection.name, statusFilter = f.statusFilter.name,
                 climbType = f.climbTypeFilter.name, benchmarkOnly = f.benchmarkOnly,
                 originFilter = f.originFilter.name,
+                myClimbsOnly = f.myClimbsOnly,
             )
         }
     }
@@ -432,11 +434,13 @@ class BoardBrowserViewModel @Inject constructor(
         searchClimbs()
     }
 
-    /** "Eigene Climbs" toggle. Not persisted on purpose — defaults to OFF on
-     *  app start so users don't open the browser to an unexpectedly empty
-     *  list when they haven't published anything yet. */
+    /** "Eigene Climbs" toggle. Persisted alongside the other filter prefs so
+     *  the user lands back on their filtered view across app restarts —
+     *  fresh installs default to OFF (full catalog) via the BoardFilterSnapshot
+     *  fallback, so a brand-new account never opens to an empty list. */
     fun updateMyClimbsFilter(enabled: Boolean) {
         _state.update { it.copy(filter = it.filter.copy(myClimbsOnly = enabled)) }
+        persistFilters()
         searchClimbs()
     }
 
@@ -470,8 +474,16 @@ class BoardBrowserViewModel @Inject constructor(
     private fun applyOriginFilter(climbs: List<ClimbWithStats>, filter: OriginFilter): List<ClimbWithStats> {
         return when (filter) {
             OriginFilter.ALL -> climbs
-            OriginFilter.CRUXCOACH -> climbs.filter { it.origin == "cruxcoach" }
-            OriginFilter.KILTER -> climbs.filter { it.origin == "kilter" }
+            // Local drafts authored via the editor are by definition
+            // cruxcoach-side, even on legacy rows whose `origin` column
+            // still reads 'kilter' (the schema default — newer
+            // insertLocalDraft writes 'cruxcoach' explicitly, but rows
+            // from earlier builds don't get retroactively rewritten).
+            // Group `source='local'` with the cruxcoach bucket so the
+            // user's own drafts always surface under "Quelle: CruxCoach"
+            // and never misclassify into the Kilter bucket below.
+            OriginFilter.CRUXCOACH -> climbs.filter { it.origin == "cruxcoach" || it.source == "local" }
+            OriginFilter.KILTER -> climbs.filter { it.origin == "kilter" && it.source != "local" }
         }
     }
 
