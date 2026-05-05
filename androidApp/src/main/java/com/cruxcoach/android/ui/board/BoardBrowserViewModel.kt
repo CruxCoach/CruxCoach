@@ -192,6 +192,7 @@ class BoardBrowserViewModel @Inject constructor(
                 val sortDir = try { SortDirection.valueOf(snap.sortDirection) } catch (_: Exception) { SortDirection.DESC }
                 val statusFilter = try { ClimbStatusFilter.valueOf(snap.statusFilter) } catch (_: Exception) { ClimbStatusFilter.ALL }
                 val climbType = try { ClimbTypeFilter.valueOf(snap.climbType) } catch (_: Exception) { ClimbTypeFilter.BOULDER }
+                val originFilter = try { OriginFilter.valueOf(snap.originFilter) } catch (_: Exception) { OriginFilter.ALL }
                 PerfLogger.milestone("BoardBrowserVM prefs loaded (batch)")
 
                 _state.update { it.copy(
@@ -201,7 +202,8 @@ class BoardBrowserViewModel @Inject constructor(
                         minGradeIndex = snap.minGrade, maxGradeIndex = snap.maxGrade,
                         minAscensionists = snap.minAscensionists, sortField = sortField, sortDirection = sortDir,
                         statusFilter = statusFilter, climbTypeFilter = climbType,
-                        benchmarkOnly = snap.benchmarkOnly
+                        benchmarkOnly = snap.benchmarkOnly,
+                        originFilter = originFilter,
                     )
                 ) }
                 filtersLoaded = true
@@ -354,7 +356,8 @@ class BoardBrowserViewModel @Inject constructor(
                 angle = f.angle, minGrade = f.minGradeIndex, maxGrade = f.maxGradeIndex,
                 minAscensionists = f.minAscensionists, sortField = f.sortField.name,
                 sortDirection = f.sortDirection.name, statusFilter = f.statusFilter.name,
-                climbType = f.climbTypeFilter.name, benchmarkOnly = f.benchmarkOnly
+                climbType = f.climbTypeFilter.name, benchmarkOnly = f.benchmarkOnly,
+                originFilter = f.originFilter.name,
             )
         }
     }

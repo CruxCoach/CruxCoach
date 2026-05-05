@@ -164,6 +164,7 @@ object PreferenceKeys {
     val BOARD_STATUS_FILTER = stringPreferencesKey("board_status_filter")
     val BOARD_CLIMB_TYPE = stringPreferencesKey("board_climb_type")
     val BOARD_BENCHMARK_ONLY = booleanPreferencesKey("board_benchmark_only")
+    val BOARD_ORIGIN_FILTER = stringPreferencesKey("board_origin_filter")
     val ROUTE_FRAME_SPEED = floatPreferencesKey("route_frame_speed_f")
     // Auto-Note: when true, publishing a Kind-30078 climb also sends a
     // public Kind-1 note linking to it. Default false; the editor exposes
@@ -220,7 +221,8 @@ data class BoardFilterSnapshot(
     val sortDirection: String,
     val statusFilter: String,
     val climbType: String,
-    val benchmarkOnly: Boolean
+    val benchmarkOnly: Boolean,
+    val originFilter: String,
 )
 
 class UserPreferences(
@@ -242,7 +244,8 @@ class UserPreferences(
             sortDirection = prefs[PreferenceKeys.BOARD_SORT_DIRECTION] ?: "DESC",
             statusFilter = prefs[PreferenceKeys.BOARD_STATUS_FILTER] ?: "ALL",
             climbType = prefs[PreferenceKeys.BOARD_CLIMB_TYPE] ?: "BOULDER",
-            benchmarkOnly = prefs[PreferenceKeys.BOARD_BENCHMARK_ONLY] ?: false
+            benchmarkOnly = prefs[PreferenceKeys.BOARD_BENCHMARK_ONLY] ?: false,
+            originFilter = prefs[PreferenceKeys.BOARD_ORIGIN_FILTER] ?: "ALL",
         )
     }
 
@@ -468,7 +471,8 @@ class UserPreferences(
     suspend fun setBoardFilters(
         angle: Int, minGrade: Int, maxGrade: Int, minAscensionists: Int,
         sortField: String, sortDirection: String, statusFilter: String,
-        climbType: String = "BOULDER", benchmarkOnly: Boolean = false
+        climbType: String = "BOULDER", benchmarkOnly: Boolean = false,
+        originFilter: String = "ALL",
     ) {
         dataStore.edit { prefs ->
             prefs[PreferenceKeys.BOARD_ANGLE] = angle
@@ -480,6 +484,7 @@ class UserPreferences(
             prefs[PreferenceKeys.BOARD_STATUS_FILTER] = statusFilter
             prefs[PreferenceKeys.BOARD_CLIMB_TYPE] = climbType
             prefs[PreferenceKeys.BOARD_BENCHMARK_ONLY] = benchmarkOnly
+            prefs[PreferenceKeys.BOARD_ORIGIN_FILTER] = originFilter
         }
     }
 
