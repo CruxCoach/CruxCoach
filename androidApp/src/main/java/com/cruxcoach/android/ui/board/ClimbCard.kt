@@ -104,7 +104,19 @@ internal fun ClimbCard(
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    climb.setterUsername?.let { setter ->
+                    // Setter line: prefer the Kind-0/setter_username already
+                    // resolved into the row; else fall back to a short
+                    // `npub:<…>` stub for cruxcoach/local rows so own drafts
+                    // and own published climbs always show *something* even
+                    // when the local Kind-0 profile hasn't been published
+                    // yet (cache miss → setter_username column is NULL).
+                    // Mirrors BoardClimbDetailViewModel.seedSetterProfile.
+                    val setterDisplay = climb.setterUsername?.takeIf { it.isNotBlank() }
+                        ?: if (climb.origin == "cruxcoach" || climb.source == "local") {
+                            climb.createdByPubkey?.takeIf { it.isNotBlank() }
+                                ?.let { "npub:${it.take(16)}" }
+                        } else null
+                    setterDisplay?.let { setter ->
                         Text(
                             stringResource(R.string.board_climb_by_setter, setter),
                             style = MaterialTheme.typography.bodySmall,
