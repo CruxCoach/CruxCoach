@@ -1,0 +1,841 @@
+---
+status: skeleton
+---
+# Feature Spec: Kilter Own-Climb Import + Backup Extension (v0.2.0)
+
+> **Status:** Skeleton — scope and decisions captured; Kilter API endpoint
+> discovery, schema-migration sequencing, and the backup envelope version
+> bump need engineering review before implementation.
+>
+> **Depends on:**
+> - FEAT-003 (Climb Creator) — uses the same `CommunityClimbPublisher` to
+>   push imported climbs as Nostr Kind-30078 events, the same draft / source
+>   / sync_status state model, and the same `markClimbPublishedNostr` row
+>   mutation.
+> - Existing `KilterApiClient` Keycloak Password Grant flow — provides the
+>   per-user Kilter-account authentication this spec relies on for filtering
+>   "my climbs" out of the Kilter catalogue.
+>
+> **Blocks:** none. This is purely additive. Without it, users who set their
+> own climbs in the Kilter app today have no path to: (a) republish them as
+> CruxCoach (Nostr) climbs without retracing every hold, or (b) carry them
+> across a device migration / app reinstall through the existing CruxCoach
+> backup.
+
+---
+
+## 1. Overview
+
+Two related gaps in 0.1.4:
+
+1. **No way to import own Kilter-authored climbs into the CruxCoach world.**
+   Users with a linked Kilter account can publish CruxCoach-created climbs
+   *to* Kilter (FEAT-003 §5), but the reverse import — pulling climbs the
+   user already authored on Kilter and re-labelling them as CruxCoach climbs
+   so they show up under "Quelle: CruxCoach", get a Nostr-Kind-30078 mirror,
+   and are deletable / editable through the standard CruxCoach flows — has
+   no implementation. Today's only option is for the user to manually
+   re-create the climb in the CruxCoach editor.
+
+2. **The CruxCoach backup envelope ignores own climbs entirely.**
+   `CruxCoachBackup.Backup` (`shared/src/commonMain/kotlin/com/cruxcoach/data/CruxCoachBackup.kt`)
+   carries assessments, body stats, workout logs, climb logs, training plans,
+   board ascents/bids/sessions, and climb lists. It does **not** carry the
+   user's own authored climbs (`source IN ('local', 'nostr')` rows or any
+   row with `created_by_pubkey == ownPubkey`). Drafts in particular are
+   irrecoverable on device wipe — they have no Nostr trace, no Kilter
+   mirror, nothing.
+
+This spec covers both: an opt-in "Eigene Kilter-Climbs importieren" flow
+in Settings → Kilter-Konto, and a backup envelope extension that
+durably captures every climb the user authored, regardless of where it
+currently lives.
+
+### Goals
+
+- One-button import of own Kilter-authored climbs into the local DB,
+  with per-climb publish-to-Nostr opt-in.
+- Imported climbs become first-class CruxCoach citizens: they show up
+  under "Quelle: CruxCoach" in the browser, are editable through the
+  editor with `Edit-this-climb`, are deletable through `Community Delete`,
+  and get the same per-row treatment (badges, lists, BLE quick-send).
+- Idempotent: re-running the import after some climbs have already been
+  re-published is a no-op for those rows.
+- Backup envelope round-trips every own climb (drafts + Nostr-published
+  + Kilter-imported-and-republished) so a fresh CruxCoach install on a
+  new device reconstructs the user's full authoring history without
+  needing relay traffic or Kilter token refresh.
+- Backup restore re-attaches existing Nostr metadata (`nostr_event_id`,
+  `nostr_d_tag`) so a republish via the editor on the restored device
+  uses the same d-tag and replaces the original event rather than
+  forking a duplicate.
+
+### Non-Goals
+
+- Importing **other** users' Kilter climbs. The Kilter blob already
+  carries those (origin='kilter') via the daily Blossom sync.
+- Reverse-publishing an imported climb back to Kilter as a *new* climb.
+  The climb is already on Kilter — `kilter_status` is set to `synced`
+  on import, and the standard `KilterClimbPublisher` UPDATE path takes
+  over from there for any future edits.
+- Backing up the Kilter-origin reference catalogue. The Blossom blob
+  remains the source of truth for that — we only back up rows the user
+  authored.
+- Automated continuous sync of Kilter climbs (poll every N hours).
+  Single explicit user action only.
+
+---
+
+## 2. Background
+
+### 2.1 Today's data flow for an own Kilter climb
+
+```
+User opens Kilter app → creates climb → Kilter API records it
+  setter_uuid = user.kilter_uuid
+  origin (no equivalent column in Kilter)
+
+CruxCoach daily Blossom sync
+  → bundled chunked SQLite blob arrives
+  → BoardDatabaseImporter inserts row with:
+       origin = 'kilter' (default)
+       source = 'kilter'
+       sync_status = NULL
+       created_by_pubkey = NULL  -- Plan C only fills this for cruxcoach-origin
+       kilter_status = NULL
+  → row is browseable but indistinguishable from any other Kilter climb
+```
+
+There is no field on `climbs` carrying the Kilter setter UUID, so
+post-import we cannot answer "is this row mine?" by SQL alone — only by
+calling the Kilter API live with the user's token and matching
+`climb_uuid` against the API's `setter_uuid` filter result.
+
+### 2.2 Today's `applyOriginFilter`
+
+```kotlin
+OriginFilter.CRUXCOACH -> climbs.filter { it.origin == "cruxcoach" || it.source == "local" }
+OriginFilter.KILTER    -> climbs.filter { it.origin == "kilter"    && it.source != "local" }
+```
+
+(The `source == "local"` carve-out is the legacy-draft compatibility
+shim from `234c66d`. With FEAT-008 the cruxcoach-side definition
+broadens to include "Kilter row, but I republished it as Nostr".)
+
+### 2.3 Today's backup envelope (`CruxCoachBackup.Backup`)
+
+```kotlin
+@Serializable
+data class Backup(
+    val version: Int = 2,
+    val exportedAt: String,
+    val nostrPubkey: String? = null,
+    val profile: UserProfile? = null,
+    val assessments: List<Assessment> = emptyList(),
+    val bodyStats: List<BodyStat> = emptyList(),
+    val workoutLogs: List<WorkoutLog> = emptyList(),
+    val climbLogs: List<ClimbLog> = emptyList(),
+    val trainingPlans: List<PlanWithSessions> = emptyList(),
+    val boardAscents: List<AscentExport> = emptyList(),
+    val boardBids: List<BidExport> = emptyList(),
+    val boardSessions: List<SessionExport> = emptyList(),
+    val climbLists: List<ClimbListExport> = emptyList()
+)
+```
+
+No `boardClimbs` field. The header comment explicitly says "Board reference
+data … is NOT included — it can be re-downloaded via board sync." That's
+true for the Kilter catalogue but wrong for own climbs.
+
+### 2.4 Schema fields relevant to this spec
+
+`climbs` table (`shared/src/commonMain/sqldelight/board/com/cruxcoach/db/board/Board.sq`):
+
+| column                | role for FEAT-008                                           |
+|-----------------------|-------------------------------------------------------------|
+| `uuid`                | Stable identity, shared between Kilter + Nostr d-tag        |
+| `source`              | Will become `'nostr'` for republished imports               |
+| `origin`              | Mutated `'kilter' → 'cruxcoach'` on republish (atomic)      |
+| `sync_status`         | Set to `'published_nostr'` after republish                  |
+| `nostr_event_id`      | Filled by `markClimbPublishedNostr`                         |
+| `nostr_d_tag`         | Same uuid                                                   |
+| `created_by_pubkey`   | Filled with own Nostr pubkey on republish                   |
+| `frames_hash`         | Computed from frames + layout — duplicate detection         |
+| `kilter_status`       | Set to `'synced'` so retry worker stays a no-op             |
+| `kilter_synced_at`    | Filled with import-time epoch                               |
+| `kilter_publish_via`  | `'self'` — the user's own Kilter account                    |
+
+`kilter_publish_attempts` audit-trail table: append `op='import'` row at
+import time so the attempt history reflects the new state.
+
+---
+
+## 3. Design — Phase A: Kilter Own-Climb Import
+
+### 3.1 Identification
+
+The Kilter API has no `setter_uuid` field on the `climbs` rows we already
+hold locally. To answer "which uuids in my local DB did *I* author?" we
+must query the live Kilter API with the user's access token, scoped to
+`setter_uuid = me`.
+
+**Endpoint discovery (open):** The Kilter mobile app surfaces a
+"My climbs" tab, so the API supports the query — likely one of:
+
+- `GET /api/users/{userUuid}/climbs?setter_uuid={userUuid}` (REST)
+- `GET /api/climbs?setter_uuid={userUuid}` (filtered list)
+- `POST /api/users/{userUuid}/climbs/sync` (PowerSync-style delta)
+
+**Spike:** Reverse-engineer one tcpdump session with the official
+Kilter app to settle this. Add `KilterApiClient.fetchOwnClimbs(setterUuid:
+String): List<KilterClimbDto>` once the endpoint shape is known. Store
+the call response unaltered (no normalisation) so the import-flow code
+can be tested with replay fixtures.
+
+**Failure mode:** if the spike reveals Kilter has stopped exposing this
+endpoint server-side (similar to the Aurora API shutdown — see FEAT-005
+context), fall back to a **best-effort `setter_username` text match**
+between `KilterTokenStore.username` (preferred-username from JWT) and
+`climbs.setter_username`. Mark this fallback explicitly as fragile in
+the UI so users who renamed on Kilter understand why the list might be
+incomplete.
+
+### 3.2 Per-row state machine
+
+For each uuid returned by `fetchOwnClimbs`:
+
+```
+locally absent
+  → unusual; means user authored on Kilter but our blob is stale.
+  → fetch the climb via /api/climbs/{uuid} and INSERT (source='kilter',
+    origin='kilter', kilter_status='synced').
+  → from here it follows the "locally present" branch.
+
+locally present, origin='kilter', sync_status=NULL or 'failed'
+  → IMPORT CANDIDATE. List in UI with `source='kilter'` + "available to
+    re-publish" badge. Default checkbox state: unchecked.
+
+locally present, origin='kilter', sync_status='published_nostr'
+  → already imported in a prior run. List greyed-out with "imported on
+    {date}" timestamp. Don't show in publish-batch.
+
+locally present, origin='cruxcoach', kilter_status='synced'
+  → user-authored in CruxCoach, already round-tripped to Kilter via
+    standard publish. Skip silently — not import territory.
+
+locally present, origin='cruxcoach', kilter_status NOT 'synced'
+  → user-authored in CruxCoach, never made it to Kilter. Out of scope
+    for FEAT-008. Hide from import list.
+```
+
+### 3.3 Republish atomic transaction
+
+For each user-selected import candidate:
+
+1. **Sign + broadcast Kind-30078**: reuse `CommunityClimbPublisher.publish`
+   with a `ClimbEditorState` reconstructed from the existing row
+   (frames parsed back via `BoardClimbParser.parseFrames`, bounds
+   recomputed via `ClimbBounds.fromCoords` if `edge_*` is NULL — see
+   `ClimbCreatorRepository.computeBounds`). Use the existing uuid as
+   d-tag so any future republish replaces this event (NIP-78).
+
+2. **On relay accept**: write all of these in a single SQLDelight
+   transaction:
+
+```sql
+UPDATE climbs SET
+    origin           = 'cruxcoach',           -- mutate, atomically with kilter_status
+    source           = 'nostr',
+    sync_status      = 'published_nostr',
+    nostr_event_id   = :event_id,
+    nostr_d_tag      = :uuid,
+    created_by_pubkey = :own_pubkey,
+    frames_hash      = :computed_frames_hash,
+    kilter_status    = 'synced',              -- never NULL → retry worker no-op
+    kilter_synced_at = :import_epoch_seconds,
+    kilter_publish_via = 'self',
+    setter_username  = :resolved_kind0_displayname  -- fall back to existing value
+WHERE uuid = :uuid;
+
+INSERT INTO kilter_publish_attempts(
+    climb_uuid, attempted_at_ms, op, via, outcome, http_code, error_excerpt
+) VALUES (
+    :uuid, :import_epoch_ms, 'import', 'self', 'success', NULL, NULL
+);
+```
+
+3. **On relay reject (zero accepted)**: leave the row untouched. Caller
+   sees a per-row failure in the import UI and can retry. No partial
+   state — the row is either fully cruxcoach-side or fully Kilter-side.
+
+4. **No `kilter_publish_attempts` row on failure**: the actual publish
+   to Kilter didn't happen on import — Kilter already had the climb.
+   We log only successful imports.
+
+### 3.4 Why mutating `origin` is safe
+
+(Long-form analysis already in `feat/0.1.4-release` discussion 2026-05-05;
+short version here.)
+
+The "origin is immutable" comment in `Board.sq:43` is documentation, not
+a SQL constraint. The actual constraints come from the queries that
+filter on `origin`:
+
+| consumer                          | predicate                                        | post-flip behaviour                                      |
+|----------------------------------|--------------------------------------------------|----------------------------------------------------------|
+| `KilterPublishRetryWorker`       | `origin='cruxcoach' AND kilter_status NOT IN ('synced','rejected')` | safe — `kilter_status='synced'` is set in same txn       |
+| `markCommunityClimbDeleted`      | `WHERE origin='cruxcoach' AND created_by_pubkey=:p` | safe — the user owns the row, deleter can tombstone it   |
+| `getCommunitySetterStats`        | `WHERE origin='cruxcoach' AND created_by_pubkey IS NOT NULL` | safe — row joins setter list correctly                   |
+| `updateClimbBlobFields`          | (no origin predicate; updates blob-only fields)  | safe — preserved per `Board.sq:247-251`                  |
+| `applyOriginFilter` UI           | `origin='cruxcoach'` family                      | safe — desired classification                            |
+| `idx_climbs_origin`              | (index, not predicate)                           | safe — index path adjusts                                |
+
+`BoardDatabaseImporter` already supports `'kilter' → 'cruxcoach'` flips
+during bulk Blossom imports (Plan C). FEAT-008 reuses the same
+direction-of-flip from a different trigger.
+
+### 3.5 UX flow
+
+**Entry point:** Settings → Kilter-Konto → "Eigene Kilter-Climbs
+importieren" (new button below the existing connect/disconnect controls).
+
+**Discovery state:**
+
+- **Loading**: progress indicator while `fetchOwnClimbs` runs.
+- **Empty** (no climbs returned): "Keine eigenen Kilter-Climbs gefunden.
+  Setze eine Climb in der offiziellen Kilter-App und versuche es erneut."
+  Link to Kilter app intent.
+- **Populated**: `LazyColumn` of climb rows.
+
+**Per-row state:**
+
+```
+┌────────────────────────────────────────────────────┐
+│  ☐  V5 / 6c   "My Project Beta"                    │
+│       40°  · 12 holds · Setter: My Display Name    │
+│       Kilter (verfügbar)                           │
+└────────────────────────────────────────────────────┘
+```
+
+For already-imported climbs:
+
+```
+┌────────────────────────────────────────────────────┐
+│  ☑  V5 / 6c   "My Project Beta"                    │
+│       40°  · 12 holds · Setter: My Display Name    │
+│       Bereits am 2026-05-12 importiert  ↗          │
+└────────────────────────────────────────────────────┘
+```
+
+(Disabled checkbox; tap-to-row navigates to climb detail.)
+
+**Bulk action:** "Auf Nostr veröffentlichen ({n})" button at the bottom.
+Disabled when `n == 0`.
+
+**Mid-import progress:** `Foreground Service`-backed Worker so the user
+can leave Settings without aborting. Existing `KilterPublishRetryWorker`
+is the prior-art pattern. Each per-climb publish is throttled to 1s
+inter-request to avoid relay rate-limiting.
+
+**Cancel:** users can abort partway. Already-published climbs persist
+(idempotent on re-run). Pending ones simply stay un-imported.
+
+**Per-row failure handling:** failed climbs land in a separate
+`KilterImportRetryWorker` queue (`WHERE origin='kilter' AND
+kilter_status='synced' AND user_marked_for_import`)... no, wait — we
+don't have a `user_marked_for_import` column today. **Open decision §10:**
+do we add a `pending_import` boolean, or do we keep failures in-memory
+within the worker run and require the user to re-trigger from the UI?
+Recommendation: in-memory, fail-loud; bulk-import is a one-shot user
+action and a worker that survives across reboots is overkill for the
+2026-05 use case. Revisit if friction shows up.
+
+### 3.6 Edge cases
+
+| case | handling |
+|---|---|
+| Kilter token expired mid-import | refresh via `KilterTokenStore.refresh()`. If refresh fails, surface "Bitte mit Kilter neu anmelden" snackbar and abort the import worker. Already-published climbs stay published. |
+| User has no Nostr key set up yet | Hard-block the entry point: button is disabled with "Erst Nostr-Profil anlegen" CTA linking to `Settings → Nostr-Profil`. |
+| `frames_hash` matches a foreign community climb | Pop the same `DuplicateClimbDialog` the editor uses (FEAT-003 §4.5). Default action: skip this climb. User can override per-row. |
+| Climb has multiple angle stat rows | One climb can have stats at several angles (15°, 25°, 40°). The Nostr Kind-30078 event represents the climb definition once; the per-angle stats follow naturally via the climb_browse view. Republish posts ONE event per uuid. |
+| `edge_*` columns NULL on legacy Kilter rows | Recompute bounds from frames + placement coords via `ClimbBounds.fromCoords`. Same path the editor uses on save. |
+| User logs out of Kilter mid-import | Discovery list invalidates immediately; running publishes per-uuid finish (token already obtained). Settings entry point hides until re-login. |
+| Climb deleted on Kilter side post-import | Local row stays. Editing still works. Republish-as-update will fail (Kilter 404 on UPDATE-climb). User sees the existing `kilter_status='diverged'` state. Out of scope — manual reconciliation. |
+| Bulk-import of 50+ climbs | Foreground worker with progress notification. User can background the app. |
+| Import already-running, user retriggers | Worker is single-instance via `WorkManager.unique(name=KILTER_IMPORT)`. Second tap is a no-op. |
+| User has a CruxCoach-published climb that ALSO appears in `fetchOwnClimbs` | (i.e. they published via CruxCoach → it round-tripped to Kilter → Kilter API returns it as theirs) — `kilter_status='synced'` AND `origin='cruxcoach'` already, skip silently. |
+| User restores backup that contains imported climbs, then reimports | Idempotent — `sync_status='published_nostr'` rows are skipped from the candidate list. |
+
+### 3.7 Filter classification post-FEAT-008
+
+After implementation, the `applyOriginFilter` legacy carve-out for
+imported-not-yet-flipped rows becomes unnecessary, because the import
+itself flips `origin`. The shim from `234c66d` (`source == "local"`
+catch) stays for legacy local drafts whose `origin` column was written
+when the schema default was `'kilter'`.
+
+```kotlin
+OriginFilter.CRUXCOACH -> climbs.filter { it.origin == "cruxcoach" || it.source == "local" }
+OriginFilter.KILTER    -> climbs.filter { it.origin == "kilter"    && it.source != "local" }
+```
+
+(unchanged from `234c66d`).
+
+---
+
+## 4. Design — Phase B: Backup Extension
+
+### 4.1 New backup envelope field
+
+Bump `version` to **3** (current is 2). Add:
+
+```kotlin
+@Serializable
+data class Backup(
+    val version: Int = 3,
+    // ... existing fields unchanged ...
+    val boardClimbs: List<OwnClimbExport> = emptyList(),
+    val boardClimbStats: List<OwnClimbStatExport> = emptyList(),
+)
+```
+
+`version=2` backups remain restorable — `boardClimbs` defaults to empty.
+`version=3` reading code on a `version=2` payload skips the new fields
+gracefully via `ignoreUnknownKeys = true` (already set). On older
+clients trying to read a `version=3` backup, the existing
+`require(version in 1..2)` check throws "unsupported version" — we'll
+need to relax this to `1..3` in 0.2.0 *before* anyone publishes a v3
+backup. **This is a forward-compat must-do; bump version-allowed range
+in the 0.2.0 release that ships restore but not export of v3, then ship
+v3 export in the following point release. Or just ship both at once in
+0.2.0 and accept that 0.1.4 cannot restore 0.2.0 backups.** Recommend
+the latter — single release, clean version line.
+
+### 4.2 `OwnClimbExport` shape
+
+```kotlin
+@Serializable
+data class OwnClimbExport(
+    val uuid: String,
+    val layoutId: Long,
+    val name: String,
+    val description: String,
+    val frames: String,           // Delta format (placement+role pairs)
+    val framesCount: Long,
+    val moveCount: Long,
+    // edge_* may be NULL on legacy rows; restore recomputes from frames if so.
+    val edgeLeft: Long? = null,
+    val edgeRight: Long? = null,
+    val edgeBottom: Long? = null,
+    val edgeTop: Long? = null,
+    val createdAt: String,        // ISO-8601
+    // CruxCoach-side metadata
+    val source: String,           // 'local' | 'nostr' (never 'kilter' in this list)
+    val origin: String,           // 'cruxcoach' on all rows in this list (post-flip)
+    val syncStatus: String?,      // 'draft' | 'published_nostr' | 'failed'
+    val createdByPubkey: String?, // own pubkey, redundant but useful for cross-device verification
+    val framesHash: String?,
+    val setterUsername: String?,
+    // Nostr publish trace — preserves d-tag continuity across device migration
+    val nostrEventId: String? = null,
+    val nostrDTag: String? = null,
+    // Kilter mirror trace — preserves UPDATE-vs-CREATE decision on next edit
+    val kilterStatus: String? = null,           // 'synced' | 'failed' | 'diverged' | 'pending' | NULL
+    val kilterSyncedAt: Long? = null,           // epoch seconds
+    val kilterPublishVia: String? = null,       // 'self' | 'cruxcoach'
+    val kilterError: String? = null,
+)
+
+@Serializable
+data class OwnClimbStatExport(
+    val climbUuid: String,
+    val angle: Long,
+    val displayDifficulty: Double?,
+    val difficultyAverage: Double?,
+    val qualityAverage: Double?,
+    val ascensionistCount: Long,
+    val benchmarkDifficulty: Double?,
+)
+```
+
+### 4.3 Export selection criteria
+
+```sql
+-- All rows the local user authored, regardless of where they currently live.
+SELECT * FROM climbs
+WHERE created_by_pubkey = :own_pubkey
+   OR (source = 'local' AND created_by_pubkey IS NULL)  -- legacy drafts pre-pubkey
+ORDER BY created_at DESC;
+```
+
+The `OR` second branch covers the corner case where a draft was saved
+before NostrSigner could resolve a pubkey. These are unambiguously the
+local user's climbs (they came out of the device's editor with no
+pubkey resolution yet); restoring them on a new device with a
+freshly-derived pubkey re-attaches the row to that pubkey.
+
+For climb_stats: emit one row per (uuid, angle) where `uuid IN (the list above)`.
+
+### 4.4 Restore semantics
+
+For each `OwnClimbExport` row in the backup:
+
+1. **uuid collision check**: if the local DB already has the row,
+   compare `frames_hash` and `created_at`. Match → skip (idempotent
+   restore). Mismatch → conflict — see §4.5.
+2. **Insert / upsert** via a new SQLDelight `restoreOwnClimb` query
+   that's symmetric to `insertLocalDraft` but takes the full envelope:
+
+```sql
+restoreOwnClimb {
+    INSERT OR REPLACE INTO climbs(
+        uuid, layout_id, setter_username, name, frames, frames_count, is_listed,
+        edge_left, edge_right, edge_bottom, edge_top, created_at,
+        description, is_nomatch, frames_pace, hsm, move_count,
+        source, created_by_pubkey, frames_hash, sync_status, origin,
+        nostr_event_id, nostr_d_tag, kilter_status, kilter_synced_at,
+        kilter_publish_via, kilter_error
+    ) VALUES (
+        :uuid, :layout_id, :setter_username, :name, :frames, :frames_count, 1,
+        :edge_left, :edge_right, :edge_bottom, :edge_top, :created_at,
+        :description, 0, 0, 0, :move_count,
+        :source, :created_by_pubkey, :frames_hash, :sync_status, :origin,
+        :nostr_event_id, :nostr_d_tag, :kilter_status, :kilter_synced_at,
+        :kilter_publish_via, :kilter_error
+    );
+}
+```
+
+3. **Per-angle stats** restored via the existing `upsertLocalClimbStat`
+   path (no schema change needed — climb_stats was already export-grade).
+
+4. **Re-validate**: post-restore, run the existing
+   `countListedClimbsWithoutStats` integrity check; surface a warning
+   in the restore UI if drift detected.
+
+### 4.5 Conflict handling on restore
+
+If a uuid exists locally with different `frames_hash`:
+
+```
+┌──────────────────────────────────────────────────────────┐
+│ Konflikt: "My Project Beta"                              │
+│                                                          │
+│ Lokal:    aktualisiert 2026-04-30, 12 Holds              │
+│ Backup:   aktualisiert 2026-05-08, 14 Holds              │
+│                                                          │
+│ ◯ Lokale Version behalten                                │
+│ ◯ Backup-Version übernehmen                              │
+│ ● Beide behalten (Backup bekommt neue UUID)              │
+└──────────────────────────────────────────────────────────┘
+```
+
+"Beide behalten" generates a fresh UUIDv4 for the backup row, breaking
+its Nostr d-tag continuity (republish-from-restored-row creates a new
+event), but no data loss. Default selection: "Beide behalten".
+
+### 4.6 Backup envelope size budget
+
+Local user's own climbs are typically <100 rows × ~1-2 KB each → <200 KB
+added. Stays well within the existing Blossom blob upload cap (4 MB
+manifest). If a power user has 500+ climbs, compression mitigates;
+upper bound for the validate guard: `MAX_COLLECTION_SIZE = 50_000`
+already covers this.
+
+### 4.7 Backup encryption
+
+Existing `BackupCrypto` (NIP-44 / chacha20-poly1305 with key derived
+from the user's Nostr private key) covers the new fields without
+modification — they're added to the same plaintext JSON before
+compression and encryption.
+
+### 4.8 Backup edge cases
+
+| case | handling |
+|---|---|
+| Restore on a device with a *different* Nostr pubkey | reject — show "Backup gehört zu npub:abc... — nicht zu diesem Profil. Schlüssel wechseln oder neuen Account anlegen?" Existing `BackupRepository.restore` already gates on pubkey; new fields inherit that gate. |
+| Climb in backup, also in cruxcoach-blossom-sync delta | Idempotent — `INSERT OR REPLACE` keyed on uuid. Backup wins, but backup data is more authoritative for own climbs anyway. |
+| Restore on fresh install (DB empty) | Straightforward — every uuid is new, no conflicts. |
+| `nostr_event_id` in backup but row has been deleted on relay | Restore rewrites the metadata. Future republish via editor uses the same d-tag → resurrects the climb on the relay. Functionally a republish, fine. |
+| Backup version mismatch (v2 client, v3 backup) | v2 client throws "unsupported version 3". User sees clear message. v3 client reads v2 backup transparently (defaults). |
+| User exports v2 backup, restores on v3 client | Works — `boardClimbs` defaults to empty, no ownClimb data restored. User sees a one-time "Backup hat keine Climb-Daten — Drafts vor 0.2.0 nicht enthalten" toast. |
+| Same uuid in `boardClimbs` AND in `boardAscents.climbUuid` | Climb restored first, ascent second. Ascent's foreign-key-style reference to climb_uuid resolves cleanly. Restore order matters — see §4.9. |
+
+### 4.9 Restore step ordering
+
+Mirroring FEAT-005 §5.2:
+
+```
+1. profile (if present)
+2. boardClimbs        ← NEW, before any climb_uuid-referencing data
+3. boardClimbStats    ← NEW
+4. climbLists
+5. boardAscents
+6. boardBids
+7. boardSessions
+8. assessments / bodyStats / workoutLogs / climbLogs / trainingPlans
+```
+
+Climbs land before ascents/lists so their foreign-key-style references
+resolve. (No actual SQL FK constraint, but the UI assumes the parent row
+exists.)
+
+---
+
+## 5. Schema Additions
+
+### 5.1 No migrations needed for Phase A
+
+Every column referenced exists in the v0.1.4 schema. The flip transaction
+in §3.3 only writes to existing columns.
+
+### 5.2 No migrations needed for Phase B
+
+`climbs.is_listed`, `climbs.frames`, `climb_stats` per-angle rows — all
+present. The export reads from them, the import writes to them via the
+new `restoreOwnClimb` SQLDelight query (which is added but introduces no
+new columns).
+
+### 5.3 Optional: explicit `setter_user_id` column
+
+Long-term, adding `climbs.setter_user_id TEXT` (nullable) would let
+"is this row mine?" be answered by SQL alone, eliminating the live
+Kilter API roundtrip in §3.1. Out of scope for FEAT-008 unless the
+spike in §3.1 reveals the live endpoint is unstable; document as a
+0.3.0 follow-up regardless.
+
+---
+
+## 6. UX Flow
+
+### 6.1 Kilter import (Settings)
+
+```
+Settings
+└── Kilter-Konto
+    ├── Verbindungs-Status
+    ├── Trennen
+    └── ▶ Eigene Kilter-Climbs importieren    [NEW]
+
+Tap "Eigene Kilter-Climbs importieren"
+    ↓
+Loading state (1-3s typical)
+    ↓
+List of own Kilter climbs with selection checkboxes
+    ↓
+Bottom button: "Auf Nostr veröffentlichen (3)"
+    ↓
+Foreground worker progress: "Climb 2 von 3 wird veröffentlicht..."
+    ↓
+Done snackbar: "3 Climbs auf Nostr veröffentlicht"
+    ↓
+Browser → Quelle: CruxCoach → climbs are now there
+```
+
+### 6.2 Backup extension (no UI change)
+
+The existing backup-export and backup-restore UI in `BackupSettingsSection`
+already covers the user-facing flow. `OwnClimbExport` data flows
+transparently through:
+
+- Pre-backup: `BackupRepository.exportLocal` enumerates own climbs.
+- Manifest: existing Blossom upload pipeline.
+- Restore: existing `BackupRepository.restore` with the §4.9 step
+  ordering applied to the new fields.
+
+User sees one new line in the export-summary dialog:
+
+```
+Eigene Climbs:        12
+  davon Drafts:        2
+  davon publiziert:   10
+```
+
+---
+
+## 7. Localized Strings
+
+### 7.1 New string keys (EN + DE)
+
+```xml
+<!-- EN: values/strings.xml -->
+<string name="kilter_import_own_title">Import own Kilter climbs</string>
+<string name="kilter_import_own_subtitle">Republish climbs you authored on Kilter as CruxCoach community climbs</string>
+<string name="kilter_import_own_loading">Looking up your Kilter climbs…</string>
+<string name="kilter_import_own_empty">No own Kilter climbs found. Set a climb in the Kilter app and try again.</string>
+<string name="kilter_import_own_state_available">Available</string>
+<string name="kilter_import_own_state_imported">Imported on %1$s</string>
+<string name="kilter_import_own_publish_button">Publish to Nostr (%1$d)</string>
+<string name="kilter_import_own_progress">Publishing climb %1$d of %2$d…</string>
+<string name="kilter_import_own_done">%1$d climbs published to Nostr</string>
+<string name="kilter_import_own_failed_summary">%1$d climbs failed. Open Settings to retry.</string>
+<string name="kilter_import_own_needs_nostr_profile">Set up a Nostr profile first.</string>
+
+<string name="backup_summary_own_climbs">Own climbs: %1$d</string>
+<string name="backup_summary_own_climbs_drafts">  drafts: %1$d</string>
+<string name="backup_summary_own_climbs_published">  published: %1$d</string>
+<string name="backup_restore_climb_conflict_title">Conflict: %1$s</string>
+<string name="backup_restore_climb_conflict_keep_local">Keep local version</string>
+<string name="backup_restore_climb_conflict_keep_backup">Use backup version</string>
+<string name="backup_restore_climb_conflict_keep_both">Keep both (backup gets new UUID)</string>
+```
+
+DE equivalents in `values-de/strings.xml` per CONTRIBUTING.md rule.
+
+---
+
+## 8. Validation & Error Handling
+
+### 8.1 Import-side
+
+- `KilterApiClient.fetchOwnClimbs` failures map to existing
+  `KilterApiException` taxonomy (auth, network, rate-limit).
+- Per-climb `CommunityClimbPublisher.publish` zero-accepted result →
+  per-row failure. Other rows continue.
+- DB transaction in §3.3 wraps everything for one climb; partial state
+  not possible.
+
+### 8.2 Backup-side
+
+Reuse the existing `CruxCoachBackup.validate()` pattern. Add per-row
+validation for `OwnClimbExport`:
+
+```kotlin
+ownClimbs.forEach { c ->
+    requireUuid("ownClimbs.uuid", c.uuid)
+    requireLen("ownClimbs.name", c.name, MAX_NAME_LEN)
+    requireLen("ownClimbs.frames", c.frames, MAX_CLIMB_FRAMES_LEN)
+    require(c.source in setOf("local", "nostr")) { "invalid backup: ownClimbs.source" }
+    require(c.origin in setOf("local", "cruxcoach", "kilter")) { "invalid backup: ownClimbs.origin" }
+    c.nostrEventId?.let { require(HEX64_REGEX.matches(it)) { "invalid backup: ownClimbs.nostrEventId" } }
+    c.createdByPubkey?.let { require(HEX64_REGEX.matches(it)) { "invalid backup: ownClimbs.createdByPubkey" } }
+    requireRange("ownClimbs.kilterSyncedAt", c.kilterSyncedAt, 0L..Long.MAX_VALUE)
+}
+```
+
+---
+
+## 9. Privacy & DSGVO
+
+- Kilter import uses the user's own Kilter token. No second-party data
+  exchange. Personal data scope unchanged.
+- Backup extension exports only data the user authored
+  (`created_by_pubkey == ownPubkey`). No third-party climb data leaves
+  the device unless the user explicitly publishes.
+- Republish-to-Nostr is opt-in per climb. Existing `CommunityClimbPublisher`
+  privacy semantics inherit (climb description + frames go on the
+  relay, no other identity-linkable data).
+- Import-time `kilter_publish_attempts` audit row contains no PII
+  beyond `climb_uuid` + outcome, same as the existing CruxCoach→Kilter
+  publish trail.
+
+---
+
+## 10. Open Questions
+
+1. **§3.1 Endpoint discovery**: which Kilter API call lists "my climbs"?
+   Spike is a single-tcpdump session. Block on this before any
+   implementation.
+2. **§3.5 In-memory failure handling vs. `pending_import` column**:
+   schema-light recommendation made (in-memory). Decision remains.
+3. **§4.1 Backup version step**: bump to v3 at FEAT-008 ship, or pre-bump
+   the version-allowed range in a 0.1.x patch first to give a forward-
+   compat window? Recommendation: bundle both in 0.2.0; document the
+   downgrade-blocking nature in CHANGELOG.
+4. **§5.3 Add `climbs.setter_user_id`?** Defer to 0.3.0 unless the §3.1
+   spike forces our hand.
+5. **§3.5 Worker UI**: if the user backs out mid-import, do we surface a
+   resume prompt next time they enter Settings? Or leave it to fully
+   manual re-trigger? Recommendation: manual — bulk-import is a
+   discrete event, resume-prompts on a one-shot action add cognitive
+   load without much win.
+
+---
+
+## 11. Dependencies
+
+### 11.1 Code touched
+
+| file                                                                                | scope    |
+|-------------------------------------------------------------------------------------|----------|
+| `androidApp/src/main/java/com/cruxcoach/android/data/kilter/KilterApiClient.kt`     | + `fetchOwnClimbs` |
+| `androidApp/src/main/java/com/cruxcoach/android/community/CommunityClimbPublisher.kt` | reuse    |
+| `androidApp/src/main/java/com/cruxcoach/android/community/KilterImportRepository.kt`| **new**  |
+| `androidApp/src/main/java/com/cruxcoach/android/community/KilterImportWorker.kt`    | **new**  |
+| `androidApp/src/main/java/com/cruxcoach/android/ui/settings/KilterImportScreen.kt`  | **new**  |
+| `androidApp/src/main/java/com/cruxcoach/android/ui/settings/KilterImportViewModel.kt` | **new** |
+| `androidApp/src/main/java/com/cruxcoach/android/ui/settings/KilterAccountSection.kt` | + entry-point button |
+| `androidApp/src/main/java/com/cruxcoach/android/ui/navigation/NavGraph.kt`          | + `KILTER_IMPORT` route |
+| `shared/src/commonMain/kotlin/com/cruxcoach/data/CruxCoachBackup.kt`                | + `OwnClimbExport`, `OwnClimbStatExport`, `version=3` |
+| `shared/src/commonMain/kotlin/com/cruxcoach/data/repository/BoardRepository.kt`     | + `getOwnClimbsForBackup`, `restoreOwnClimb` |
+| `shared/src/commonMain/sqldelight/board/com/cruxcoach/db/board/Board.sq`            | + `restoreOwnClimb` query, + `applyKilterImportFlip` |
+| `androidApp/src/main/java/com/cruxcoach/android/nostr/backup/BackupRepository.kt`   | + ownClimb export/import wiring + restore step ordering |
+| `androidApp/src/main/res/values/strings.xml`                                        | + EN strings (§7) |
+| `androidApp/src/main/res/values-de/strings.xml`                                     | + DE strings (§7) |
+
+### 11.2 Out-of-tree
+
+- Kilter API endpoint (spike).
+- No cron / blossom changes — own climbs already publish via existing
+  CommunityClimbPublisher path.
+
+---
+
+## 12. Implementation Plan / Milestones
+
+| milestone | deliverable | gate |
+|---|---|---|
+| M1 — Discovery | Spike report on `KilterApiClient.fetchOwnClimbs` endpoint | Approved by user |
+| M2 — Phase A backbone | `KilterImportRepository` + flip transaction + tests | Compile-clean unit tests |
+| M3 — Phase A worker | `KilterImportWorker` foreground service + throttling | Manual test against fixture climbs |
+| M4 — Phase A UI | Settings screen + ViewModel + nav wiring | UX sign-off, EN+DE strings reviewed |
+| M5 — Phase B envelope | Backup version 3 + `OwnClimbExport` shape + validation | Round-trip backup+restore tests |
+| M6 — Phase B restore conflict UI | Conflict dialog + step ordering | Manual test of cross-device restore |
+| M7 — Polish | Edge-case handling, error-recovery snackbars, telemetry | Release-ready |
+
+---
+
+## 13. Testing Strategy
+
+### 13.1 Phase A
+
+- **Unit**: flip-transaction SQLDelight queries against a fresh in-memory
+  DB. Verify post-flip row state for retry-worker safety
+  (`kilter_status='synced'` ⇒ no enqueue).
+- **Unit**: `KilterImportRepository` against mocked `KilterApiClient`
+  returning fixed climb DTOs. Verify per-row state machine (§3.2).
+- **Integration**: mocked relay → real `CommunityClimbPublisher` → DB
+  flip → re-read row, assert browser-visible under cruxcoach origin.
+- **Manual**: live import against a Kilter test account with 3-5 climbs.
+  Verify resulting browser entries, edit-and-republish flow, delete
+  flow.
+
+### 13.2 Phase B
+
+- **Round-trip**: export backup with N own climbs, wipe DB, restore.
+  Diff `climbs` + `climb_stats` row contents — should be identical
+  modulo `kilter_synced_at` formatting.
+- **Cross-version**: restore a hand-crafted v2 backup on a v3 client —
+  no `boardClimbs`, no error.
+- **Conflict**: pre-populate the DB with a same-uuid different-frames
+  row, restore, verify the conflict dialog and each branch.
+- **Manual**: device A exports → device B (fresh install) restores →
+  user signs Nostr key matching backup pubkey → climbs appear in
+  browser, editable, deletable.
+
+---
+
+## 14. Notes for the Reviewer
+
+- The schema-rewrite resistance from FEAT-006 (immutable `origin`
+  documentation comment) was mitigated in the 2026-05-05 design
+  discussion — the comment understates what the codebase actually
+  permits, and the `BoardDatabaseImporter` Plan C path already flips
+  in the same direction.
+- Consider whether to bundle a one-time **setter_username backfill**
+  with the import worker: when we discover a row is "mine" via
+  `fetchOwnClimbs` and the user has a Kind-0 display_name set, write
+  `setter_username = display_name` even on rows the user *doesn't*
+  select for republish. Low-risk, surfaces the user's name on the
+  un-republished Kilter rows in the browse list. Suggest **yes** but
+  scoped under the same owner-gate the flip uses.
