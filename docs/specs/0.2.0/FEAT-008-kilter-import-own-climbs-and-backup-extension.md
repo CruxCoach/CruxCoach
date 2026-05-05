@@ -1,11 +1,11 @@
 ---
-status: skeleton
+status: design-locked
 ---
 # Feature Spec: Kilter Own-Climb Import + Backup Extension (v0.2.0)
 
-> **Status:** Skeleton — scope and decisions captured; Kilter API endpoint
-> discovery, schema-migration sequencing, and the backup envelope version
-> bump need engineering review before implementation.
+> **Status:** Design-locked 2026-05-05. Open Q1-Q13 from skeleton revision
+> resolved (see §10). Implementation gated only on M1 Kilter API endpoint
+> reverse-engineering spike.
 >
 > **Depends on:**
 > - FEAT-003 (Climb Creator) — uses the same `CommunityClimbPublisher` to
@@ -202,35 +202,98 @@ incomplete.
 
 ### 3.2 Per-row state machine
 
-For each uuid returned by `fetchOwnClimbs`:
+The Kilter API distinguishes two row-level states the user has authored:
+**`is_draft=1`** (set by user but not yet published — only visible to the
+author on Kilter's side; the daily Blossom blob doesn't carry these) and
+**`is_draft=0` + `is_listed=1`** (published, in the Kilter catalogue).
+CruxCoach's import flow treats them as separate sub-flows because they
+have different default behaviours (drafts: import only, no Nostr publish;
+published: import + Nostr publish in the same atomic step).
+
+For each row returned by `fetchOwnClimbs`, classify by Kilter-side state
+and CruxCoach-side state:
 
 ```
-locally absent
-  → unusual; means user authored on Kilter but our blob is stale.
-  → fetch the climb via /api/climbs/{uuid} and INSERT (source='kilter',
-    origin='kilter', kilter_status='synced').
-  → from here it follows the "locally present" branch.
+KILTER DRAFT (is_draft=1 on Kilter)
+================================================================
+A1. locally absent
+    → live-fetch frames/metadata from Kilter API, INSERT with
+      source='local', sync_status='draft', is_listed=1, origin=
+      'cruxcoach', created_by_pubkey=ownPubkey.
+    → Lands in CruxCoach Drafts drawer immediately, no Nostr publish.
 
-locally present, origin='kilter', sync_status=NULL or 'failed'
-  → IMPORT CANDIDATE. List in UI with `source='kilter'` + "available to
-    re-publish" badge. Default checkbox state: unchecked.
+A2. locally present already as source='local'/sync_status='draft'
+    → already imported in prior run; skip silently.
 
-locally present, origin='kilter', sync_status='published_nostr'
-  → already imported in a prior run. List greyed-out with "imported on
-    {date}" timestamp. Don't show in publish-batch.
+A3. locally present with any other state
+    → corner case (Kilter draft uuid collides with a published row?
+      impossible in practice). Skip with log warning.
 
-locally present, origin='cruxcoach', kilter_status='synced'
-  → user-authored in CruxCoach, already round-tripped to Kilter via
-    standard publish. Skip silently — not import territory.
+KILTER PUBLISHED (is_draft=0 AND is_listed=1)
+================================================================
+B1. locally absent
+    → live-fetch from /api/climbs/{uuid}, INSERT (source='kilter',
+      origin='kilter', kilter_status='synced').
+    → Then runs through B2 in the same import session.
 
-locally present, origin='cruxcoach', kilter_status NOT 'synced'
-  → user-authored in CruxCoach, never made it to Kilter. Out of scope
-    for FEAT-008. Hide from import list.
+B2. locally present, origin='kilter', sync_status=NULL or 'failed'
+    → IMPORT CANDIDATE. List in UI under "Veröffentlicht auf Kilter"
+      with `source='kilter'` + "verfügbar"-badge. Default checkbox
+      state: unchecked.
+
+B3. locally present, origin='kilter', sync_status='published_nostr'
+    → already imported in a prior run. List greyed-out with "imported on
+      {date}" timestamp. Don't show in publish-batch.
+
+B4. locally present, origin='cruxcoach', kilter_status='synced'
+    → user-authored in CruxCoach, already round-tripped to Kilter via
+      standard publish. Skip silently — not import territory.
+
+B5. locally present, origin='cruxcoach', kilter_status NOT 'synced'
+    → user-authored in CruxCoach, never made it to Kilter. Out of scope
+      for FEAT-008. Hide from import list.
 ```
 
-### 3.3 Republish atomic transaction
+### 3.3 Atomic transactions per branch
 
-For each user-selected import candidate:
+The two import branches (drafts vs. published) write different end-states.
+Both are executed as single SQLDelight transactions so partial state is
+impossible.
+
+#### 3.3.1 Draft import (Kilter draft → CruxCoach draft)
+
+Triggered for every user-selected row in the "Drafts auf Kilter" section.
+**No Nostr publish.** The row simply lands in the CruxCoach Drafts drawer;
+the user can later promote it to a publish via the standard editor flow.
+
+```sql
+INSERT OR REPLACE INTO climbs(
+    uuid, layout_id, setter_username, name, frames, frames_count,
+    is_listed, edge_left, edge_right, edge_bottom, edge_top, created_at,
+    description, is_nomatch, frames_pace, hsm, move_count,
+    source, created_by_pubkey, frames_hash, sync_status, origin
+) VALUES (
+    :uuid, :layout_id, :setter_username, :name, :frames, :frames_count,
+    1, :edge_left, :edge_right, :edge_bottom, :edge_top, :created_at,
+    :description, 0, 0, 0, :move_count,
+    'local', :own_pubkey, :computed_frames_hash, 'draft', 'cruxcoach'
+);
+
+INSERT OR REPLACE INTO climb_stats(
+    climb_uuid, angle, display_difficulty, difficulty_average,
+    quality_average, ascensionist_count, benchmark_difficulty,
+    fa_username, fa_at, official_kilter_difficulty
+) VALUES (
+    :uuid, :setter_angle, :setter_grade, :setter_grade,
+    NULL, 0, NULL, NULL, NULL, NULL
+);
+```
+
+Identical end-state to a fresh CruxCoach draft saved through the editor.
+
+#### 3.3.2 Published import (Kilter published → CruxCoach + Nostr)
+
+For each user-selected row in the "Veröffentlicht auf Kilter" section:
 
 1. **Sign + broadcast Kind-30078**: reuse `CommunityClimbPublisher.publish`
    with a `ClimbEditorState` reconstructed from the existing row
@@ -299,56 +362,161 @@ direction-of-flip from a different trigger.
 **Entry point:** Settings → Kilter-Konto → "Eigene Kilter-Climbs
 importieren" (new button below the existing connect/disconnect controls).
 
-**Discovery state:**
+#### 3.5.1 Pre-import gates
 
-- **Loading**: progress indicator while `fetchOwnClimbs` runs.
-- **Empty** (no climbs returned): "Keine eigenen Kilter-Climbs gefunden.
-  Setze eine Climb in der offiziellen Kilter-App und versuche es erneut."
-  Link to Kilter app intent.
-- **Populated**: `LazyColumn` of climb rows.
+Before showing the discovery list, the import flow runs three pre-checks
+in order. Failing any gate parks the user with a CTA to remediate; passing
+all three opens the discovery screen.
 
-**Per-row state:**
-
-```
-┌────────────────────────────────────────────────────┐
-│  ☐  V5 / 6c   "My Project Beta"                    │
-│       40°  · 12 holds · Setter: My Display Name    │
-│       Kilter (verfügbar)                           │
-└────────────────────────────────────────────────────┘
-```
-
-For already-imported climbs:
+**Gate 1 — Nostr identity present.** If `NostrSigner.getPublicKeyHex()`
+returns null/empty, present a soft prompt:
 
 ```
 ┌────────────────────────────────────────────────────┐
-│  ☑  V5 / 6c   "My Project Beta"                    │
-│       40°  · 12 holds · Setter: My Display Name    │
-│       Bereits am 2026-05-12 importiert  ↗          │
+│  Nostr-Profil noch nicht eingerichtet               │
+│                                                     │
+│  Importierte Climbs werden mit deinem Nostr-Schlüssel│
+│  signiert. Ohne Profil erscheinen sie als           │
+│  "npub:abc…" — wenig hilfreich für andere Climber.  │
+│                                                     │
+│  [ Profil einrichten ]   [ Trotzdem fortfahren ]    │
 └────────────────────────────────────────────────────┘
 ```
 
-(Disabled checkbox; tap-to-row navigates to climb detail.)
+"Profil einrichten" routes to FEAT-010's Kind-0 editor; "Trotzdem
+fortfahren" continues but the imported rows show npub-stub setter names
+until the user fills in a profile later.
 
-**Bulk action:** "Auf Nostr veröffentlichen ({n})" button at the bottom.
-Disabled when `n == 0`.
+**Gate 2 — Kilter-side profile auto-fill (Q6).** When the local Kind-0
+metadata has empty `name` / `picture` / `about` / `lud16` fields AND the
+Kilter API exposes equivalent fields (Kilter user profile typically
+carries display name + avatar URL), present a one-time pre-fill dialog:
 
-**Mid-import progress:** `Foreground Service`-backed Worker so the user
-can leave Settings without aborting. Existing `KilterPublishRetryWorker`
-is the prior-art pattern. Each per-climb publish is throttled to 1s
-inter-request to avoid relay rate-limiting.
+```
+┌────────────────────────────────────────────────────┐
+│  Kilter-Profilfelder übernehmen?                    │
+│                                                     │
+│  Diese Felder sind in deinem Nostr-Profil leer.     │
+│  Aus Kilter: …                                       │
+│  ☐ Name:    "Alice K."                              │
+│  ☐ Bild:    [thumbnail preview]                     │
+│  ☐ Bio:     "Climbing since 2018, ..."              │
+│                                                     │
+│  [ Übernehmen ]              [ Skip ]               │
+└────────────────────────────────────────────────────┘
+```
 
-**Cancel:** users can abort partway. Already-published climbs persist
-(idempotent on re-run). Pending ones simply stay un-imported.
+Lightning address (`lud16`) is **not** sourced from Kilter — Kilter
+doesn't track Lightning. The dialog only offers fields where (a) the
+Kilter API actually carries the value and (b) the local Kind-0 field is
+empty. If both conditions reduce the offered set to zero, the dialog
+is suppressed entirely.
 
-**Per-row failure handling:** failed climbs land in a separate
-`KilterImportRetryWorker` queue (`WHERE origin='kilter' AND
-kilter_status='synced' AND user_marked_for_import`)... no, wait — we
-don't have a `user_marked_for_import` column today. **Open decision §10:**
-do we add a `pending_import` boolean, or do we keep failures in-memory
-within the worker run and require the user to re-trigger from the UI?
-Recommendation: in-memory, fail-loud; bulk-import is a one-shot user
-action and a worker that survives across reboots is overkill for the
-2026-05 use case. Revisit if friction shows up.
+On "Übernehmen", the selected fields are written via FEAT-010's profile
+editor (which handles the Blossom upload for `picture`) and a fresh
+Kind-0 event is published. The import flow then continues with the
+freshly-resolved display name baked into all subsequent setter_username
+writes.
+
+**Gate 3 — Token freshness.** Refresh the Kilter access token via
+`KilterTokenStore.refresh()` if older than 1 hour. If refresh fails
+(network, credentials), abort with "Mit Kilter neu anmelden"-CTA.
+
+#### 3.5.2 Discovery screen
+
+After the gates pass, the discovery loads `fetchOwnClimbs` and renders
+a LazyColumn split into **two sticky-header sections**:
+
+```
+┌─ DRAFTS AUF KILTER (3) ──────────────────────────── ☑ alle ─┐
+│  ☑  V5 / 6c   "Project Mango"                                │
+│       40°  · 14 holds · last edited 2026-04-30 (Kilter)      │
+│       → wird zu CruxCoach-Draft                              │
+├──────────────────────────────────────────────────────────────┤
+│  ☑  ?? / ??   "Setterversuch 17"                             │
+│       — kein Grade gesetzt · 8 holds                         │
+│       → wird zu CruxCoach-Draft                              │
+├──────────────────────────────────────────────────────────────┤
+│  ☑  V3 / 6a   "Trockentest"                                  │
+│       30°  · 11 holds                                        │
+│       → wird zu CruxCoach-Draft                              │
+└──────────────────────────────────────────────────────────────┘
+
+┌─ VERÖFFENTLICHT AUF KILTER (5) ─────────────────── ☐ alle ──┐
+│  ☐  V5 / 6c   "My Project Beta"                              │
+│       40°  · 12 holds · 47 ascents on Kilter                 │
+│       → wird auf Nostr veröffentlicht                        │
+├──────────────────────────────────────────────────────────────┤
+│  ✓  V6 / 6c+  "Crimp Roof"                                   │
+│       45°  · 14 holds · Bereits importiert 2026-05-12  ↗     │
+└──────────────────────────────────────────────────────────────┘
+
+[ Importieren (3 Drafts + 0 Veröffentlichungen) ]
+```
+
+**Default selection states (Q3):**
+- Drafts section: all rows pre-checked (no Nostr publish, no data risk
+  from accidental selection).
+- Published section: all rows un-checked (publishing to Nostr is a
+  visible side-effect — opt-in is the right default).
+- Already-imported rows in either section: greyed out, unselectable,
+  show "Bereits importiert {date}" with a link to the local detail
+  screen.
+
+**Section header bulk-toggle:** clicking the header's `☑/☐ alle`
+checkbox flips all rows in that section.
+
+**Bottom CTA**: dynamically labelled — "Importieren ({nDrafts} Drafts +
+{nPublished} Veröffentlichungen)" — disabled when both counts are zero.
+
+#### 3.5.3 Import execution
+
+Triggered by the bottom CTA. Single foreground-service-backed
+`KilterImportWorker` (single-instance via `WorkManager.unique`).
+
+Pseudocode:
+
+```kotlin
+suspend fun importSelected(drafts: List<KilterDraftDto>,
+                           published: List<KilterPublishedDto>) {
+    val total = drafts.size + published.size
+    var done = 0
+    val failures = mutableListOf<ImportFailure>()
+
+    // Drafts first — fast, no relay roundtrip
+    for (d in drafts) {
+        runCatching { writeDraftTransaction(d) }
+            .onSuccess { done++ }
+            .onFailure { failures += ImportFailure(d.uuid, it.message) }
+        notifyProgress(done, total)
+    }
+
+    // Published — Nostr publish + atomic flip
+    for (p in published) {
+        runCatching {
+            val state = reconstructEditorState(p)
+            val event = communityClimbPublisher.publish(state, ...)
+            applyPublishedFlipTransaction(p.uuid, event)
+        }.onSuccess { done++ }
+            .onFailure { failures += ImportFailure(p.uuid, it.message) }
+        delay(1_000)  // throttle to avoid relay burst
+        notifyProgress(done, total)
+    }
+
+    finalSnackbar(done, total, failures)
+}
+```
+
+**Mid-import progress notification:** "Climb {done}/{total} importiert…"
+
+**Cancel button:** stops the loop after the current row finishes.
+Already-completed rows persist (idempotent on re-run).
+
+**Failure handling (resolved §10 Q2):** in-memory only. Failed rows
+listed in the post-run snackbar with retry-suggestion ("3 Climbs
+fehlgeschlagen — erneut versuchen?"). No `pending_import` schema
+column. Bulk-import is a one-shot action; a worker that survives
+across reboots is overkill at v0.2.0 user volumes.
 
 ### 3.6 Edge cases
 
@@ -731,24 +899,35 @@ ownClimbs.forEach { c ->
 
 ---
 
-## 10. Open Questions
+## 10. Open Questions and Decision Log
 
-1. **§3.1 Endpoint discovery**: which Kilter API call lists "my climbs"?
-   Spike is a single-tcpdump session. Block on this before any
-   implementation.
-2. **§3.5 In-memory failure handling vs. `pending_import` column**:
-   schema-light recommendation made (in-memory). Decision remains.
-3. **§4.1 Backup version step**: bump to v3 at FEAT-008 ship, or pre-bump
-   the version-allowed range in a 0.1.x patch first to give a forward-
-   compat window? Recommendation: bundle both in 0.2.0; document the
-   downgrade-blocking nature in CHANGELOG.
-4. **§5.3 Add `climbs.setter_user_id`?** Defer to 0.3.0 unless the §3.1
-   spike forces our hand.
-5. **§3.5 Worker UI**: if the user backs out mid-import, do we surface a
-   resume prompt next time they enter Settings? Or leave it to fully
-   manual re-trigger? Recommendation: manual — bulk-import is a
-   discrete event, resume-prompts on a one-shot action add cognitive
-   load without much win.
+All design questions resolved 2026-05-05. Implementation gated only on
+the M1 Kilter API endpoint reverse-engineering spike.
+
+### 10.1 Resolved decisions
+
+| ID | Topic | Decision |
+|---|---|---|
+| Q1 | Multi-angle: which angle in the Nostr event? | Delegated to FEAT-009. Setter publishes one anchor `(grade, setter_angle)` plus optional `valid_angles` tag list. Per-angle community grades come from FEAT-009's Bayesian aggregation over Kind-30079 vote events. |
+| Q2 | `setter_username` after republish: silent Kind-0 swap, or prompt? | Silent swap, with one-time snackbar on first import explaining the cross-platform name divergence. |
+| Q3 | Kilter `is_listed` during import: force or preserve? | Force `is_listed=1` on imported rows. The user's explicit "auf Nostr veröffentlichen"-action overrides any prior Kilter-side hide-state. Drafts also get `is_listed=1` (same as CruxCoach editor's saveDraft path) — visibility is gated by the source/sync_status filters, not is_listed. |
+| Q4 | Backup restore: merge or wipe? | Merge per UUID. Default-on. Optional opt-in toggle "Lokale Drafts vorher löschen" in the restore dialog for users who want a clean replace. |
+| Q5 | Restore conflict dialog: 3-way or 2-way? | 2-way ("Lokal behalten" / "Backup übernehmen") plus a global "Auf alle anwenden"-toggle. The 3-way "Beide behalten" (new-uuid) option is dropped — Nostr-d-tag continuity break is too subtle for a casual conflict prompt. Power users can fork through the editor post-restore. |
+| Q6 | Auto-fill blank Nostr profile fields from Kilter on import? | Yes. Pre-import gate (§3.5.1 Gate 2) offers `name`/`picture`/`about` import per-field, on Kind-0 fields that are currently empty. Lightning-address (`lud16`) is excluded — Kilter doesn't expose it. |
+| Q7 | Nostr-profile prerequisite: pubkey or published Kind-0? | Pubkey is enough; Kind-0 absence triggers the soft prompt at Gate 1 (§3.5.1). User can dismiss and continue with `npub:<short>` setter names. |
+| Q8 | Backup version rollout: bundle 2→3, or pre-bump? | Bundle both in 0.2.0. CHANGELOG explicitly notes "0.2.0 backups can't be restored on 0.1.x". CruxCoach has no documented downgrade story. |
+| Q9 | Spike approach for the endpoint: tcpdump or contact Kilter? | Reverse engineering only. Single Kilter-account-per-CruxCoach-account assumption holds; multi-account is deferred to 0.3.0+. |
+| Q10 | Multi-Kilter account support? | Single-account only. Documented as a known limitation. |
+| Q11 | Worker resume after Android-kill? | No. Manual re-trigger only. WorkManager `expedited` policy with one-shot retry — if it dies mid-run, user sees the import button at "ready to start"-state on next entry. |
+| Q12 | Concurrent publish (editor + import worker)? | Accept the race. `CommunityClimbPublisher.publish` is idempotent per `(uuid, event_id)` at the relay level (NIP-78 replaceable); the local DB transactions in §3.3 are atomic. No mutex needed. |
+| Q13 | Backup summary detail level | Minimal — single line in the export-summary dialog: "Eigene Climbs: N". Per-source/per-layout/per-angle breakdowns deferred to a future "Backup details" expand. Separate FEAT-010 covers the broader Kind-0 editor improvements. |
+
+### 10.2 Still open
+
+| ID | Topic | Status |
+|---|---|---|
+| M1 | `KilterApiClient.fetchOwnClimbs` endpoint shape | Spike pending. Estimated single-session reverse engineering against a captured tcpdump from the official Kilter Android app. Block on this before M2. |
+| 0.3.0+ | `climbs.setter_user_id` schema column | Deferred. Lifts the round-trip cost of the API spike permanently and enables purely-local "is this row mine?" queries. Adds a SQL migration + a Blossom-cron field. Not worth the complexity in 0.2.0. |
 
 ---
 
