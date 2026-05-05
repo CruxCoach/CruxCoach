@@ -598,6 +598,16 @@ private fun ValidationStatus(issues: List<ClimbValidation.Issue>) {
 @Composable
 private fun GradeSlider(gradeId: Int?, onChange: (Int?) -> Unit) {
     val effective = gradeId ?: 20
+    // Pre-fix the slider visually defaulted to V4 (id=20) but `state.
+    // setterGradeId` stayed null until the user dragged the thumb. Saving
+    // a draft without ever touching the slider wrote `difficulty_average=
+    // NULL` to climb_stats, which then surfaced as "?" in the board
+    // browser even though the editor showed a grade. Seeding the default
+    // back into editor state on first composition keeps the visible
+    // grade and the persisted grade in sync.
+    LaunchedEffect(Unit) {
+        if (gradeId == null) onChange(effective)
+    }
     val vGrade = com.cruxcoach.domain.board.KilterGradeMapper.difficultyToVScale(effective)
     val font = com.cruxcoach.domain.board.KilterGradeMapper.difficultyToFont(effective.toDouble())
     Column {
