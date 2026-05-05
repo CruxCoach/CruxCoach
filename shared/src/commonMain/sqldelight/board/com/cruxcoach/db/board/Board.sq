@@ -1000,7 +1000,23 @@ getDraftClimbs:
 SELECT * FROM climbs
 WHERE source = 'local'
   AND sync_status IN ('draft', 'failed')
-  AND (created_by_pubkey = :pubkey OR created_by_pubkey IS NULL)
+  AND (
+    -- Identity-isolation: a draft's `created_by_pubkey` must match the
+    -- caller's pubkey, OR be NULL (legacy / pre-signer-init data).
+    --
+    -- The `:pubkey IS NULL` short-circuit covers a real bug: nostrSigner
+    -- resolution is occasionally flaky (signer not yet warm, init race),
+    -- so saveDraft can write a row with `created_by_pubkey = X` while
+    -- the immediately-following getDraftClimbs(:pubkey=null) read would
+    -- otherwise filter that row out. The user then sees their just-
+    -- saved draft missing from the drawer until the next editor open
+    -- happens to resolve a stable pubkey. With this short-circuit, a
+    -- null-pubkey caller sees every draft — drafts are local-only data
+    -- so no privacy loss.
+    :pubkey IS NULL
+    OR created_by_pubkey = :pubkey
+    OR created_by_pubkey IS NULL
+  )
 ORDER BY created_at DESC;
 
 -- Single-row stats lookup for the editor's draft-restore path. Drafts have
