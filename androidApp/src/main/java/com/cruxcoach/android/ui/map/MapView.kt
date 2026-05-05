@@ -7,12 +7,13 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraPosition
+import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapView as MapLibreView
@@ -36,6 +37,7 @@ fun MapView(
     initialCameraPosition: CameraPosition,
     modifier: Modifier = Modifier,
     onMapReady: (MapLibreMap, Style) -> Unit = { _, _ -> },
+    onMapTap: ((MapLibreMap, screenX: Float, screenY: Float) -> Boolean)? = null,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -58,6 +60,12 @@ fun MapView(
                 map.setStyle(Style.Builder().fromUri(styleUrl)) { style ->
                     map.cameraPosition = initialCameraPosition
                     onMapReady(map, style)
+                }
+                onMapTap?.let { tapHandler ->
+                    map.addOnMapClickListener { latLng ->
+                        val pixel = map.projection.toScreenLocation(latLng)
+                        tapHandler(map, pixel.x, pixel.y)
+                    }
                 }
             }
         }
