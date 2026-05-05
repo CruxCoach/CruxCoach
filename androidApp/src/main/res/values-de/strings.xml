@@ -218,6 +218,11 @@
     <string name="action_disconnect">Trennen</string>
     <string name="action_next">Weiter</string>
     <string name="action_close">Schließen</string>
+
+    <!-- FEAT-006 Map (placeholder; full set added in phase 10) -->
+    <string name="map_screen_title">Karte</string>
+    <string name="cd_map">Kilter Board auf der Karte finden</string>
+
     <string name="action_send">Senden</string>
     <string name="action_retry">Erneut versuchen</string>
     <string name="action_reset">Zurücksetzen</string>

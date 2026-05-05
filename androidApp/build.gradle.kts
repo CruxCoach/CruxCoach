@@ -241,6 +241,12 @@ dependencies {
     implementation(libs.sqlcipher.android)
     implementation(libs.androidx.sqlite)
 
+    // MapLibre Native (FEAT-006 Kilter Board Locations Map). Vector tiles via
+    // OpenFreeMap, no API key. Annotation plugin gives us higher-level marker
+    // / cluster APIs over the raw style spec.
+    implementation(libs.maplibre.android.sdk)
+    implementation(libs.maplibre.android.plugin.annotation)
+
     // Zstd decompression is handled by native C library (see src/main/cpp/)
 
     // FEAT-010 profile editor: image loading + markdown preview

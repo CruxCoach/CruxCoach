@@ -58,6 +58,7 @@ import com.cruxcoach.android.ui.board.BoardClimbDetailScreen
 import com.cruxcoach.android.ui.board.BoardListDetailScreen
 import com.cruxcoach.android.ui.board.BoardListsScreen
 import com.cruxcoach.android.ui.board.BoardLogbookScreen
+import com.cruxcoach.android.ui.map.MapScreen
 import com.cruxcoach.android.ui.board.sync.BoardSyncScreen
 import com.cruxcoach.android.ui.common.LocalBleShareManager
 import com.cruxcoach.android.ui.common.LocalBoardSessionManager
@@ -106,6 +107,7 @@ object Routes {
     const val BOARD_SYNC = "board_sync"
     const val BOARD_LISTS = "board_lists"
     const val BOARD_LIST_DETAIL = "board_list_detail/{listId}"
+    const val BOARD_MAP = "board_map"
     const val BODY_STAT = "body_stat"
     const val DATA_IMPORT = "data_import"
     const val DATA_EXPORT = "data_export"
@@ -436,6 +438,13 @@ fun CruxCoachNavHost(
                     onNavigateToSetter = { pubkey ->
                         navController.navigate(Routes.setterDetail(pubkey))
                     },
+                    onNavigateToMap = { navController.navigate(Routes.BOARD_MAP) }
+                )
+            }
+
+            composable(Routes.BOARD_MAP) {
+                MapScreen(
+                    onNavigateBack = { navController.popBackStack() }
                 )
             }
 

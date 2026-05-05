@@ -74,6 +74,7 @@ fun BoardBrowserScreen(
     onNavigateToFilter: () -> Unit = {},
     onNavigateToClimbCreator: () -> Unit = {},
     onNavigateToSetter: (pubkey: String) -> Unit = {},
+    onNavigateToMap: () -> Unit = {},
     viewModel: BoardBrowserViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()

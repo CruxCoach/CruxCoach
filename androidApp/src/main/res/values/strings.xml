@@ -218,6 +218,10 @@
     <string name="action_disconnect">Disconnect</string>
     <string name="action_next">Next</string>
     <string name="action_close">Close</string>
+
+    <!-- FEAT-006 Map (placeholder; full set added in phase 10) -->
+    <string name="map_screen_title">Map</string>
+    <string name="cd_map">Find a Kilter Board on the map</string>
     <string name="action_send">Send</string>
     <string name="action_retry">Retry</string>
     <string name="action_reset">Reset</string>
