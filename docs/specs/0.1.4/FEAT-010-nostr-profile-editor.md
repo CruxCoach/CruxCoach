@@ -1,10 +1,11 @@
 ---
 status: skeleton
 ---
-# Feature Spec: Nostr Profile Editor (Kind-0) Polish (v0.2.0)
+# Feature Spec: Nostr Profile Editor (Kind-0) Polish (v0.1.4)
 
-> **Status:** Skeleton — UX direction agreed (Amethyst-shaped); Blossom
-> upload integration and NIP-05 verification need engineering review.
+> **Status:** Skeleton — retargeted from 0.2.0 → 0.1.4 on 2026-05-05.
+> UX direction agreed (Amethyst-shaped); Blossom upload integration
+> and NIP-05 verification need engineering review during M1 spike.
 >
 > **Depends on:**
 > - Existing `NostrProfileViewModel` + `NostrProfileScreen` (rudimentary
@@ -56,7 +57,7 @@ FEAT-009).
 - Multiple Nostr identities per CruxCoach install. Single-key model
   per memory `project_kilter_auth_decision.md` and `project_brand_decision.md`.
 - NIP-39 external identities (Mastodon / Twitter / GitHub
-  attestations). Defer to 0.3.0+.
+  attestations). Defer to post-0.1.4.
 - Reactive profile change broadcasts (NIP-65 NIPS). The existing
   publish-on-save flow is sufficient.
 - Editing Kind-3 follow lists. Outside profile-editor scope.

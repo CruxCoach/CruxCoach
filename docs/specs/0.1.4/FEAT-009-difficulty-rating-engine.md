@@ -1,15 +1,16 @@
 ---
 status: skeleton
 ---
-# Feature Spec: Difficulty Rating Engine (v0.2.0)
+# Feature Spec: Difficulty Rating Engine (v0.1.4)
 
-> **Status:** Skeleton — algorithm and Nostr event shapes locked from
-> 2026-05-05 deep-research synthesis. Implementation phasing (Stage 1
-> MVP → Stage 3 hold-feature-ML) and the Kilter / CruxCoach blend
-> behaviour are design-locked. Remaining open questions: empirical
-> tuning of `KILTER_TRUST_FACTOR` once we have ≥100-active-user
-> telemetry, and Nostr-side relay cost validation under sustained
-> Kind-30079 traffic.
+> **Status:** Skeleton — retargeted from 0.2.0 → 0.1.4 on 2026-05-05
+> (user decision). 0.1.4 ships **Stage 1 MVP** only; Stage 2 and Stage 3
+> remain post-0.1.4 milestones in this spec but execute against later
+> releases as community-data telemetry accumulates. Algorithm and Nostr
+> event shapes locked from 2026-05-05 deep-research synthesis.
+> Remaining open questions: empirical tuning of `KILTER_TRUST_FACTOR`
+> once we have ≥100-active-user telemetry, and Nostr-side relay cost
+> validation under sustained Kind-30079 traffic.
 >
 > **Depends on:**
 > - FEAT-003 (Climb Creator) — the Kind-30078 climb event already
@@ -74,9 +75,9 @@ trust-discounted prior.
 - Server-side aggregation, ML pipelines, or a centralised
   authoritative scoreboard.
 - Cross-board generalisation (Tension, Moonboard) — Kilter only for
-  v0.2.0.
+  v0.1.4.
 - Whole-History Rating (Coulom 2008 / Scarff 2020). Considered, deferred
-  to a 0.3.0+ optional "trusted aggregator" variant per §11.
+  to a post-0.1.4 optional "trusted aggregator" variant per §11.
 - Hold-feature CNN-based grade prediction. Stage 3 ships a simple
   feature regression at most.
 
@@ -720,7 +721,7 @@ Initial sync via NIP-77 negentropy: pull all Kind-30079 events for the
 user's local board. Worst case ~50 votes × 15 angles × 85k climbs × 250
 bytes = 16 GB upper bound, **but the parameterized-replaceable
 property caps it at distinct voters per (climb, angle)**. Real-world
-v0.2.0 estimate (≤1000 active climbers, sparse cross-coverage):
+v0.1.4 estimate (≤1000 active climbers, sparse cross-coverage):
 50–200 MB, multi-hour first-sync over LTE, a few minutes on Wi-Fi.
 
 ### 8.4 Optional: trusted aggregator events (Kind 30081)
@@ -874,7 +875,7 @@ more than any plausible benefit.
 
 ### 11.1 Stages
 
-**Stage 1 — MVP (ships with v0.2.0)**
+**Stage 1 — MVP (ships with v0.1.4)**
 
 Goal: single trustworthy grade per (climb, angle), strictly better
 than Kilter's `difficulty_average` even with sparse community.
@@ -894,7 +895,11 @@ than Kilter's `difficulty_average` even with sparse community.
 | Default WoT weight (§10.1) | new — uses existing Kind-3 plumbing |
 | Stage-1 climber-strength heuristic (§6.1 fallback) | new — purely local, no Nostr publish yet |
 
-**Stage 2 — After 100 active users (~v0.2.x)**
+**Stage 2 — After 100 active users (post-0.1.4 patch release)**
+
+Triggered by user-base growth, not by release cadence — kept in this
+spec for continuity but ships in whichever 0.1.x or 0.2.x release
+follows the 100-user threshold.
 
 | Component |
 |---|
@@ -904,7 +909,7 @@ than Kilter's `difficulty_average` even with sparse community.
 | Style-personalised grade variants (§6.4, §9.3-extension) |
 | Empirical tuning of `KILTER_TRUST_FACTOR` from telemetry |
 
-**Stage 3 — After 500 active users (~v0.3.0)**
+**Stage 3 — After 500 active users (post-Stage-2 release)**
 
 | Component |
 |---|

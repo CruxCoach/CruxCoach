@@ -1,11 +1,12 @@
 ---
 status: design-locked
 ---
-# Feature Spec: Kilter Own-Climb Import + Backup Extension (v0.2.0)
+# Feature Spec: Kilter Own-Climb Import + Backup Extension (v0.1.4)
 
-> **Status:** Design-locked 2026-05-05. Open Q1-Q13 from skeleton revision
-> resolved (see §10). Implementation gated only on M1 Kilter API endpoint
-> reverse-engineering spike.
+> **Status:** Design-locked 2026-05-05. Retargeted from 0.2.0 → 0.1.4 on
+> 2026-05-05. Implementation block: M1 Kilter API endpoint reverse-
+> engineering spike — drives the 0.1.4 release timeline. All Q1-Q13 from
+> the skeleton revision are resolved (see §10).
 >
 > **Depends on:**
 > - FEAT-003 (Climb Creator) — uses the same `CommunityClimbPublisher` to
@@ -516,7 +517,7 @@ Already-completed rows persist (idempotent on re-run).
 listed in the post-run snackbar with retry-suggestion ("3 Climbs
 fehlgeschlagen — erneut versuchen?"). No `pending_import` schema
 column. Bulk-import is a one-shot action; a worker that survives
-across reboots is overkill at v0.2.0 user volumes.
+across reboots is overkill at v0.1.4 user volumes.
 
 ### 3.6 Edge cases
 
@@ -571,13 +572,12 @@ data class Backup(
 `version=3` reading code on a `version=2` payload skips the new fields
 gracefully via `ignoreUnknownKeys = true` (already set). On older
 clients trying to read a `version=3` backup, the existing
-`require(version in 1..2)` check throws "unsupported version" — we'll
-need to relax this to `1..3` in 0.2.0 *before* anyone publishes a v3
-backup. **This is a forward-compat must-do; bump version-allowed range
-in the 0.2.0 release that ships restore but not export of v3, then ship
-v3 export in the following point release. Or just ship both at once in
-0.2.0 and accept that 0.1.4 cannot restore 0.2.0 backups.** Recommend
-the latter — single release, clean version line.
+`require(version in 1..2)` check throws "unsupported version" — 0.1.4
+ships a single envelope migration that bumps the allowed range to
+`1..3` and the default emit version to 3. Pre-0.1.4 clients (0.1.3
+and earlier) cannot restore 0.1.4-emitted backups; this is documented
+in the CHANGELOG as "downgrade not supported" — consistent with the
+project's existing no-rollback policy.
 
 ### 4.2 `OwnClimbExport` shape
 
@@ -726,7 +726,7 @@ compression and encryption.
 | Restore on fresh install (DB empty) | Straightforward — every uuid is new, no conflicts. |
 | `nostr_event_id` in backup but row has been deleted on relay | Restore rewrites the metadata. Future republish via editor uses the same d-tag → resurrects the climb on the relay. Functionally a republish, fine. |
 | Backup version mismatch (v2 client, v3 backup) | v2 client throws "unsupported version 3". User sees clear message. v3 client reads v2 backup transparently (defaults). |
-| User exports v2 backup, restores on v3 client | Works — `boardClimbs` defaults to empty, no ownClimb data restored. User sees a one-time "Backup hat keine Climb-Daten — Drafts vor 0.2.0 nicht enthalten" toast. |
+| User exports v2 backup, restores on v3 client | Works — `boardClimbs` defaults to empty, no ownClimb data restored. User sees a one-time "Backup hat keine Climb-Daten — Drafts vor 0.1.4 nicht enthalten" toast. |
 | Same uuid in `boardClimbs` AND in `boardAscents.climbUuid` | Climb restored first, ascent second. Ascent's foreign-key-style reference to climb_uuid resolves cleanly. Restore order matters — see §4.9. |
 
 ### 4.9 Restore step ordering
@@ -915,8 +915,8 @@ the M1 Kilter API endpoint reverse-engineering spike.
 | Q5 | Restore conflict dialog: 3-way or 2-way? | 2-way ("Lokal behalten" / "Backup übernehmen") plus a global "Auf alle anwenden"-toggle. The 3-way "Beide behalten" (new-uuid) option is dropped — Nostr-d-tag continuity break is too subtle for a casual conflict prompt. Power users can fork through the editor post-restore. |
 | Q6 | Auto-fill blank Nostr profile fields from Kilter on import? | Yes. Pre-import gate (§3.5.1 Gate 2) offers `name`/`picture`/`about` import per-field, on Kind-0 fields that are currently empty. Lightning-address (`lud16`) is excluded — Kilter doesn't expose it. |
 | Q7 | Nostr-profile prerequisite: pubkey or published Kind-0? | Pubkey is enough; Kind-0 absence triggers the soft prompt at Gate 1 (§3.5.1). User can dismiss and continue with `npub:<short>` setter names. |
-| Q8 | Backup version rollout: bundle 2→3, or pre-bump? | Bundle both in 0.2.0. CHANGELOG explicitly notes "0.2.0 backups can't be restored on 0.1.x". CruxCoach has no documented downgrade story. |
-| Q9 | Spike approach for the endpoint: tcpdump or contact Kilter? | Reverse engineering only. Single Kilter-account-per-CruxCoach-account assumption holds; multi-account is deferred to 0.3.0+. |
+| Q8 | Backup version rollout: bundle 2→3, or pre-bump? | Bundle both in 0.1.4. CHANGELOG explicitly notes "0.1.4 backups can't be restored on 0.1.3 or earlier". CruxCoach has no documented downgrade story. |
+| Q9 | Spike approach for the endpoint: tcpdump or contact Kilter? | Reverse engineering only. Single Kilter-account-per-CruxCoach-account assumption holds; multi-account is deferred to a post-0.1.4 release. |
 | Q10 | Multi-Kilter account support? | Single-account only. Documented as a known limitation. |
 | Q11 | Worker resume after Android-kill? | No. Manual re-trigger only. WorkManager `expedited` policy with one-shot retry — if it dies mid-run, user sees the import button at "ready to start"-state on next entry. |
 | Q12 | Concurrent publish (editor + import worker)? | Accept the race. `CommunityClimbPublisher.publish` is idempotent per `(uuid, event_id)` at the relay level (NIP-78 replaceable); the local DB transactions in §3.3 are atomic. No mutex needed. |
@@ -927,7 +927,7 @@ the M1 Kilter API endpoint reverse-engineering spike.
 | ID | Topic | Status |
 |---|---|---|
 | M1 | `KilterApiClient.fetchOwnClimbs` endpoint shape | Spike pending. Estimated single-session reverse engineering against a captured tcpdump from the official Kilter Android app. Block on this before M2. |
-| 0.3.0+ | `climbs.setter_user_id` schema column | Deferred. Lifts the round-trip cost of the API spike permanently and enables purely-local "is this row mine?" queries. Adds a SQL migration + a Blossom-cron field. Not worth the complexity in 0.2.0. |
+| post-0.1.4 | `climbs.setter_user_id` schema column | Deferred. Lifts the round-trip cost of the API spike permanently and enables purely-local "is this row mine?" queries. Adds a SQL migration + a Blossom-cron field. Not worth the complexity for 0.1.4 since the live-API path is sufficient at the v0.1.4 user volume. |
 
 ---
 
