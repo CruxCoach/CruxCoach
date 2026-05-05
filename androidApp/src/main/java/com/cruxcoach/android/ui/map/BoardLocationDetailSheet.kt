@@ -112,8 +112,11 @@ fun BoardLocationDetailSheet(
             HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
 
             LabelValueRow(stringResource(R.string.map_marker_layout), location.layoutDisplay())
-            LabelValueRow(stringResource(R.string.map_marker_access), location.accessDisplay())
-            LabelValueRow(stringResource(R.string.map_marker_adjustability), location.adjustabilityDisplay())
+            LabelValueRow(stringResource(R.string.map_marker_access), accessDisplay(location.accessType))
+            LabelValueRow(
+                stringResource(R.string.map_marker_adjustability),
+                adjustabilityDisplay(location.adjustability, location.fixedAngle),
+            )
             LabelValueRow(stringResource(R.string.map_marker_frame), location.frameMaker.placeholderIfMissing())
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -209,17 +212,21 @@ private fun BoardLocation.layoutDisplay(): String {
     return if (size.isNullOrBlank()) name else "$name ($size)"
 }
 
-private fun BoardLocation.accessDisplay(): String = when (accessType) {
-    AccessType.PUBLIC -> "Public"
-    AccessType.PRIVATE -> "Private"
-    AccessType.MEMBERS -> "Members / Reservations"
-    AccessType.UNKNOWN -> "—"
+@Composable
+private fun accessDisplay(access: AccessType): String = when (access) {
+    AccessType.PUBLIC -> stringResource(R.string.map_access_public)
+    AccessType.PRIVATE -> stringResource(R.string.map_access_private)
+    AccessType.MEMBERS -> stringResource(R.string.map_access_members)
+    AccessType.UNKNOWN -> stringResource(R.string.map_marker_field_unknown)
 }
 
-private fun BoardLocation.adjustabilityDisplay(): String = when (adjustability) {
-    Adjustability.FIXED -> if (fixedAngle != null) "Fixed (${fixedAngle}°)" else "Fixed"
-    Adjustability.ADJUSTABLE -> "Adjustable"
-    Adjustability.LIMITED -> "Limited"
-    Adjustability.FULL -> "Fully adjustable"
-    Adjustability.UNKNOWN -> "—"
+@Composable
+private fun adjustabilityDisplay(adj: Adjustability, fixedAngle: Int?): String = when (adj) {
+    Adjustability.FIXED -> if (fixedAngle != null)
+        stringResource(R.string.map_adjustability_fixed_angle, fixedAngle)
+    else stringResource(R.string.map_adjustability_fixed)
+    Adjustability.ADJUSTABLE -> stringResource(R.string.map_adjustability_adjustable)
+    Adjustability.LIMITED -> stringResource(R.string.map_adjustability_limited)
+    Adjustability.FULL -> stringResource(R.string.map_adjustability_full)
+    Adjustability.UNKNOWN -> stringResource(R.string.map_marker_field_unknown)
 }

@@ -236,7 +236,19 @@
     <string name="map_offline_dialog_body">The map needs internet the first time you open it. After that, areas you\'ve viewed stay available offline.\n\nConnect to Wi-Fi or mobile data and try again.</string>
     <string name="map_offline_dialog_close">Close</string>
     <string name="map_no_data">Board location data not available — sync the board database first</string>
-    <string name="map_no_data_action">Sync</string>
+    <string name="map_no_data_action">Sync now</string>
+
+    <!-- Access enum display values -->
+    <string name="map_access_public">Public</string>
+    <string name="map_access_private">Private</string>
+    <string name="map_access_members">Members / Reservations</string>
+
+    <!-- Adjustability enum display values -->
+    <string name="map_adjustability_fixed">Fixed</string>
+    <string name="map_adjustability_fixed_angle">Fixed (%1$d°)</string>
+    <string name="map_adjustability_adjustable">Adjustable</string>
+    <string name="map_adjustability_limited">Limited</string>
+    <string name="map_adjustability_full">Fully adjustable</string>
     <string name="action_send">Send</string>
     <string name="action_retry">Retry</string>
     <string name="action_reset">Reset</string>

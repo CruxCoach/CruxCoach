@@ -236,7 +236,19 @@
     <string name="map_offline_dialog_body">Die Karte benötigt beim ersten Öffnen eine Internetverbindung. Bereits angesehene Bereiche bleiben anschließend offline verfügbar.\n\nVerbinde dich mit WLAN oder mobilen Daten und versuche es erneut.</string>
     <string name="map_offline_dialog_close">Schließen</string>
     <string name="map_no_data">Standortdaten nicht verfügbar — synchronisiere zuerst die Board-Datenbank</string>
-    <string name="map_no_data_action">Sync</string>
+    <string name="map_no_data_action">Jetzt synchronisieren</string>
+
+    <!-- Access enum display values -->
+    <string name="map_access_public">Öffentlich</string>
+    <string name="map_access_private">Privat</string>
+    <string name="map_access_members">Mitglieder / Reservierung</string>
+
+    <!-- Adjustability enum display values -->
+    <string name="map_adjustability_fixed">Fest</string>
+    <string name="map_adjustability_fixed_angle">Fest (%1$d°)</string>
+    <string name="map_adjustability_adjustable">Verstellbar</string>
+    <string name="map_adjustability_limited">Eingeschränkt</string>
+    <string name="map_adjustability_full">Voll verstellbar</string>
 
     <string name="action_send">Senden</string>
     <string name="action_retry">Erneut versuchen</string>
