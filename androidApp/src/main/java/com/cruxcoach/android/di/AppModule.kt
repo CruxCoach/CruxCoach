@@ -155,6 +155,12 @@ object AppModule {
 
     @Provides
     @Singleton
+    fun provideBoardLocationRepository(database: BoardDatabase): BoardLocationRepository {
+        return BoardLocationRepositoryImpl(database)
+    }
+
+    @Provides
+    @Singleton
     fun providePersonalBoardRepository(database: SecureDatabase): PersonalBoardRepository {
         return PersonalBoardRepositoryImpl(database)
     }
