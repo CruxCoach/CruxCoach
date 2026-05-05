@@ -31,7 +31,7 @@ internal fun ClimbCard(
     climb: ClimbWithStats,
     gradeScale: GradeScale = GradeScale.V_SCALE,
     zones: IntensityZones? = null,
-    onSetterClick: ((String) -> Unit)? = null,
+    onNavigateToSetter: ((pubkey: String) -> Unit)? = null,
     onClimbClick: (String) -> Unit
 ) {
     // Cache computed values — estimateMoveCount() parses the frames string (expensive),
@@ -117,13 +117,22 @@ internal fun ClimbCard(
                                 ?.let { "npub:${it.take(16)}" }
                         } else null
                     setterDisplay?.let { setter ->
+                        // Click behaviour mirrors BoardClimbDetailScreen:
+                        // only cruxcoach-origin rows with a known pubkey
+                        // navigate to the setter's profile. Native Kilter
+                        // rows render as plain unclickable text — no search-
+                        // bar trigger, no link affordance.
+                        val setterPubkey = climb.createdByPubkey?.takeIf { it.isNotBlank() }
+                        val isClickable = climb.origin == "cruxcoach"
+                            && setterPubkey != null
+                            && onNavigateToSetter != null
                         Text(
                             stringResource(R.string.board_climb_by_setter, setter),
                             style = MaterialTheme.typography.bodySmall,
-                            color = if (onSetterClick != null) OrangeAccent
+                            color = if (isClickable) OrangeAccent
                                     else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = if (onSetterClick != null) {
-                                Modifier.clickable { onSetterClick(setter) }
+                            modifier = if (isClickable) {
+                                Modifier.clickable { onNavigateToSetter!!(setterPubkey!!) }
                             } else Modifier
                         )
                     }

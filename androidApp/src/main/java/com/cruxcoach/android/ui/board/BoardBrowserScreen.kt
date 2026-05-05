@@ -72,6 +72,7 @@ fun BoardBrowserScreen(
     onNavigateToSettings: () -> Unit = {},
     onNavigateToFilter: () -> Unit = {},
     onNavigateToClimbCreator: () -> Unit = {},
+    onNavigateToSetter: (pubkey: String) -> Unit = {},
     viewModel: BoardBrowserViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -493,20 +494,11 @@ fun BoardBrowserScreen(
                 val gradeScale = state.gradeScale
                 val zones = state.zones
                 // Stable lambda references — avoid new closures per item per recomposition.
-                // Using viewModel.state.value at click time ensures fresh data.
-                val onSetterClick = remember<(String) -> Unit>(viewModel) {
-                    { setter ->
-                        // Surfacing the search bar together with the query
-                        // is the point of the click: the setter name now
-                        // lives in the filter, so hiding the bar hides the
-                        // active filter too. Opening the bar whenever we
-                        // set a query makes the active scope self-evident
-                        // and gives the user the Clear-icon affordance
-                        // right next to the query instead of one lupe
-                        // click away.
-                        viewModel.updateSearchQuery(setter)
-                        searchVisible = true
-                    }
+                // Setter-link goes to SetterDetailScreen for cruxcoach rows
+                // with a known pubkey (decision lives inside ClimbCard).
+                // Foreign Kilter rows render the setter line unclickable.
+                val onSetterClickFromCard = remember<(String) -> Unit>(onNavigateToSetter) {
+                    { pubkey -> onNavigateToSetter(pubkey) }
                 }
                 val onClimbClick = remember<(String) -> Unit>(viewModel, onNavigateToClimb) {
                     { uuid ->
@@ -533,7 +525,7 @@ fun BoardBrowserScreen(
                             climb = climb,
                             gradeScale = gradeScale,
                             zones = zones,
-                            onSetterClick = onSetterClick,
+                            onNavigateToSetter = onSetterClickFromCard,
                             onClimbClick = onClimbClick
                         )
                     }
