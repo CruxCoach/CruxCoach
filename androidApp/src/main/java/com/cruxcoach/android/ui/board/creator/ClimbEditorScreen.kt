@@ -21,6 +21,7 @@ import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.BluetoothConnected
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Whatshot
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Whatshot
@@ -28,6 +29,8 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -240,30 +243,10 @@ fun ClimbEditorScreen(
                             tint = if (bleConnected) SuccessGreen else MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    IconButton(onClick = viewModel::openDraftsSheet) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.List,
-                            contentDescription = stringResource(R.string.climb_creator_drafts_open),
-                        )
-                    }
                     IconButton(onClick = viewModel::clearEditor) {
                         Icon(
                             Icons.Outlined.Delete,
                             contentDescription = stringResource(R.string.climb_creator_clear),
-                        )
-                    }
-                    IconButton(onClick = viewModel::toggleHeatmap) {
-                        Icon(
-                            if (state.heatmapEnabled) Icons.Filled.Whatshot else Icons.Outlined.Whatshot,
-                            contentDescription = stringResource(R.string.climb_creator_heatmap_toggle),
-                            // Bright tint when active, muted when off — gives
-                            // the outline-only icon a clearly "disabled" read
-                            // and avoids the look-alike between the two states.
-                            tint = if (state.heatmapEnabled) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant
-                            },
                         )
                     }
                     IconButton(onClick = viewModel::undo, enabled = state.canUndo) {
@@ -271,6 +254,57 @@ fun ClimbEditorScreen(
                     }
                     IconButton(onClick = viewModel::redo, enabled = state.canRedo) {
                         Icon(Icons.AutoMirrored.Filled.Redo, contentDescription = stringResource(R.string.climb_creator_redo))
+                    }
+                    // Overflow menu: drafts list + heatmap toggle. Six
+                    // primary actions in this TopAppBar squeezed the
+                    // title into one or two characters on phone widths;
+                    // demoting the two least-frequently-tapped actions
+                    // (drafts is opened occasionally, heatmap is a
+                    // discoverability aid) restores the title.
+                    var overflowExpanded by remember { mutableStateOf(false) }
+                    Box {
+                        IconButton(onClick = { overflowExpanded = true }) {
+                            Icon(
+                                Icons.Default.MoreVert,
+                                contentDescription = stringResource(R.string.action_more_options),
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = overflowExpanded,
+                            onDismissRequest = { overflowExpanded = false },
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.climb_creator_drafts_open)) },
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.List,
+                                        contentDescription = null,
+                                    )
+                                },
+                                onClick = {
+                                    overflowExpanded = false
+                                    viewModel.openDraftsSheet()
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.climb_creator_heatmap_toggle)) },
+                                leadingIcon = {
+                                    Icon(
+                                        if (state.heatmapEnabled) Icons.Filled.Whatshot else Icons.Outlined.Whatshot,
+                                        contentDescription = null,
+                                        tint = if (state.heatmapEnabled) {
+                                            MaterialTheme.colorScheme.primary
+                                        } else {
+                                            MaterialTheme.colorScheme.onSurfaceVariant
+                                        },
+                                    )
+                                },
+                                onClick = {
+                                    overflowExpanded = false
+                                    viewModel.toggleHeatmap()
+                                },
+                            )
+                        }
                     }
                 },
             )

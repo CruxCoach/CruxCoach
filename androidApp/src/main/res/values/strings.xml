@@ -194,6 +194,7 @@
     <string name="action_retry">Retry</string>
     <string name="action_reset">Reset</string>
     <string name="action_understood">Understood</string>
+    <string name="action_more_options">More options</string>
 
     <!-- Settings -->
     <string name="settings_language_title">Language</string>
