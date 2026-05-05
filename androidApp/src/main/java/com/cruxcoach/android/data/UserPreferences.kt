@@ -205,6 +205,10 @@ object PreferenceKeys {
     // FEAT-001: NIP-65 relay discovery
     val NIP65_DISCOVERY_ENABLED = booleanPreferencesKey("nip65_discovery_enabled")
     val NIP65_RESOLVED_RELAYS = stringPreferencesKey("nip65_resolved_relays")
+
+    // FEAT-006: Map filter chips
+    val MAP_FILTER_PUBLIC_ONLY = booleanPreferencesKey("map_filter_public_only")
+    val MAP_FILTER_MATCHES_MY_BOARD = booleanPreferencesKey("map_filter_matches_my_board")
 }
 
 /**
@@ -288,6 +292,27 @@ class UserPreferences(
     suspend fun setBoardLayoutId(id: Int) {
         dataStore.edit { prefs ->
             prefs[PreferenceKeys.BOARD_LAYOUT_ID] = id
+        }
+    }
+
+    // FEAT-006: Map filter chips
+    val mapFilterPublicOnly: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[PreferenceKeys.MAP_FILTER_PUBLIC_ONLY] ?: false
+    }
+
+    val mapFilterMatchesMyBoard: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[PreferenceKeys.MAP_FILTER_MATCHES_MY_BOARD] ?: false
+    }
+
+    suspend fun setMapFilterPublicOnly(enabled: Boolean) {
+        dataStore.edit { prefs ->
+            prefs[PreferenceKeys.MAP_FILTER_PUBLIC_ONLY] = enabled
+        }
+    }
+
+    suspend fun setMapFilterMatchesMyBoard(enabled: Boolean) {
+        dataStore.edit { prefs ->
+            prefs[PreferenceKeys.MAP_FILTER_MATCHES_MY_BOARD] = enabled
         }
     }
 

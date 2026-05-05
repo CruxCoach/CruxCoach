@@ -1,13 +1,17 @@
 package com.cruxcoach.android.ui.map
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
@@ -20,9 +24,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.Role
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import android.widget.Toast
 import com.cruxcoach.android.R
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
@@ -36,15 +44,13 @@ fun MapScreen(
     viewModel: MapViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val context = LocalContext.current
     val isDark = isSystemInDarkTheme()
     val styleUrl = remember(isDark) { MapStyleProvider.forDarkMode(isDark) }
     val initialCamera = remember {
         cameraAt(state.initialLat, state.initialLng, state.initialZoom)
     }
 
-    // Map + Style become available asynchronously; locations may already be
-    // loaded or arrive later. We capture both and re-run the marker update
-    // whenever either changes.
     var mapHandle by remember { mutableStateOf<Pair<MapLibreMap, Style>?>(null) }
 
     LaunchedEffect(mapHandle, state.locations, state.selectedLocationId) {
@@ -68,6 +74,23 @@ fun MapScreen(
         }
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+            FilterChipRow(
+                publicOnly = state.publicOnly,
+                matchesMyBoard = state.matchesMyBoard,
+                canFilterByMyBoard = state.canFilterByMyBoard,
+                onTogglePublicOnly = viewModel::togglePublicOnly,
+                onToggleMatchesMyBoard = {
+                    if (state.canFilterByMyBoard) {
+                        viewModel.toggleMatchesMyBoard()
+                    } else {
+                        Toast.makeText(
+                            context,
+                            R.string.map_filter_match_disabled,
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                    }
+                },
+            )
             Box(modifier = Modifier.fillMaxSize()) {
                 MapView(
                     styleUrl = styleUrl,
@@ -77,8 +100,6 @@ fun MapScreen(
                         mapHandle = map to style
                     },
                     onMapTap = { map, x, y ->
-                        // Cluster tap → zoom in. Marker tap → ViewModel selection.
-                        // Empty space → noop, return false to let MapLibre process default behavior.
                         val cluster = MapMarkerLayer.clusterAt(map, x, y)
                         if (cluster != null) {
                             val (point, targetZoom) = cluster
@@ -100,5 +121,36 @@ fun MapScreen(
                 )
             }
         }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FilterChipRow(
+    publicOnly: Boolean,
+    matchesMyBoard: Boolean,
+    canFilterByMyBoard: Boolean,
+    onTogglePublicOnly: () -> Unit,
+    onToggleMatchesMyBoard: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        FilterChip(
+            selected = publicOnly,
+            onClick = onTogglePublicOnly,
+            label = { Text(stringResource(R.string.map_filter_public_only)) },
+        )
+        // Always clickable so the toast can fire; visual disabled state via
+        // `enabled = false` would also make the row swallow the tap silently.
+        FilterChip(
+            selected = matchesMyBoard && canFilterByMyBoard,
+            enabled = canFilterByMyBoard,
+            onClick = onToggleMatchesMyBoard,
+            label = { Text(stringResource(R.string.map_filter_matches_my_board)) },
+        )
     }
 }

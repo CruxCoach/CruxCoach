@@ -2,6 +2,8 @@ package com.cruxcoach.android.ui.map
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.cruxcoach.android.data.UserPreferences
+import com.cruxcoach.data.repository.AccessType
 import com.cruxcoach.data.repository.BoardLocation
 import com.cruxcoach.data.repository.BoardLocationRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -9,6 +11,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -20,6 +24,7 @@ private const val INITIAL_LNG = 0.0
 private const val INITIAL_ZOOM = 1.0
 
 data class MapState(
+    /** Filtered list rendered as markers — already accounts for the filter chips. */
     val locations: List<BoardLocation> = emptyList(),
     val isLoading: Boolean = true,
     val initialLat: Double = INITIAL_LAT,
@@ -27,6 +32,7 @@ data class MapState(
     val initialZoom: Double = INITIAL_ZOOM,
     val publicOnly: Boolean = false,
     val matchesMyBoard: Boolean = false,
+    /** False when user has no board configured — disables the chip + tooltip. */
     val canFilterByMyBoard: Boolean = false,
     val selectedLocationId: Long? = null,
 )
@@ -34,19 +40,55 @@ data class MapState(
 @HiltViewModel
 class MapViewModel @Inject constructor(
     private val repository: BoardLocationRepository,
+    private val userPreferences: UserPreferences,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(MapState())
     val state: StateFlow<MapState> = _state.asStateFlow()
 
+    /** Cached unfiltered list — filter combinators reduce this in-memory. */
+    private var allLocations: List<BoardLocation> = emptyList()
+
     init {
-        loadAllLocations()
+        viewModelScope.launch {
+            allLocations = withContext(Dispatchers.IO) { repository.getAll() }
+            // Wire reactive filter pipeline. Each pref change recomputes the
+            // visible list. Layout/size flow surfaces "no board configured"
+            // as canFilterByMyBoard=false.
+            combine(
+                userPreferences.mapFilterPublicOnly,
+                userPreferences.mapFilterMatchesMyBoard,
+                userPreferences.boardLayoutId,
+                userPreferences.boardProductSizeId,
+                userPreferences.isBoardProductSizeDefault,
+            ) { publicOnly, matchMine, layoutId, sizeId, isDefault ->
+                FilterInputs(publicOnly, matchMine, layoutId, sizeId, !isDefault)
+            }.collect { inputs ->
+                applyFilters(inputs)
+            }
+        }
     }
 
-    private fun loadAllLocations() {
-        viewModelScope.launch {
-            val all = withContext(Dispatchers.IO) { repository.getAll() }
-            _state.update { it.copy(locations = all, isLoading = false) }
+    private fun applyFilters(inputs: FilterInputs) {
+        val effectiveMatchMine = inputs.matchesMyBoard && inputs.canFilterByMyBoard
+        val filtered = allLocations.asSequence()
+            .filter { !inputs.publicOnly || it.accessType == AccessType.PUBLIC }
+            .filter { loc ->
+                if (!effectiveMatchMine) return@filter true
+                if (loc.layoutId != inputs.layoutId) return@filter false
+                // Layout matches; size match required when both sides know it.
+                loc.productSizeId == null || loc.productSizeId == inputs.sizeId
+            }
+            .toList()
+
+        _state.update {
+            it.copy(
+                locations = filtered,
+                isLoading = false,
+                publicOnly = inputs.publicOnly,
+                matchesMyBoard = inputs.matchesMyBoard,
+                canFilterByMyBoard = inputs.canFilterByMyBoard,
+            )
         }
     }
 
@@ -55,11 +97,25 @@ class MapViewModel @Inject constructor(
     }
 
     fun togglePublicOnly() {
-        _state.update { it.copy(publicOnly = !it.publicOnly) }
+        viewModelScope.launch {
+            val current = userPreferences.mapFilterPublicOnly.first()
+            userPreferences.setMapFilterPublicOnly(!current)
+        }
     }
 
     fun toggleMatchesMyBoard() {
         if (!_state.value.canFilterByMyBoard) return
-        _state.update { it.copy(matchesMyBoard = !it.matchesMyBoard) }
+        viewModelScope.launch {
+            val current = userPreferences.mapFilterMatchesMyBoard.first()
+            userPreferences.setMapFilterMatchesMyBoard(!current)
+        }
     }
+
+    private data class FilterInputs(
+        val publicOnly: Boolean,
+        val matchesMyBoard: Boolean,
+        val layoutId: Int,
+        val sizeId: Int,
+        val canFilterByMyBoard: Boolean,
+    )
 }

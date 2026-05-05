@@ -222,6 +222,9 @@
     <!-- FEAT-006 Map (placeholder; full set added in phase 10) -->
     <string name="map_screen_title">Karte</string>
     <string name="cd_map">Kilter Board auf der Karte finden</string>
+    <string name="map_filter_public_only">Nur öffentliche</string>
+    <string name="map_filter_matches_my_board">Passt zu meinem Board</string>
+    <string name="map_filter_match_disabled">Konfiguriere zuerst dein Board</string>
 
     <string name="action_send">Senden</string>
     <string name="action_retry">Erneut versuchen</string>

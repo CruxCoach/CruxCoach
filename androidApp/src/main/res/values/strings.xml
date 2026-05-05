@@ -222,6 +222,9 @@
     <!-- FEAT-006 Map (placeholder; full set added in phase 10) -->
     <string name="map_screen_title">Map</string>
     <string name="cd_map">Find a Kilter Board on the map</string>
+    <string name="map_filter_public_only">Public only</string>
+    <string name="map_filter_matches_my_board">Matches my board</string>
+    <string name="map_filter_match_disabled">Configure your board first</string>
     <string name="action_send">Send</string>
     <string name="action_retry">Retry</string>
     <string name="action_reset">Reset</string>
