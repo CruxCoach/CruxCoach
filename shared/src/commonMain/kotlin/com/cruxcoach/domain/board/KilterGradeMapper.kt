@@ -11,6 +11,13 @@ import kotlin.math.abs
  */
 object KilterGradeMapper {
 
+    /** Default setter grade applied when the editor's grade slider was never
+     *  touched. 20 = V5 / 6c, the slider's visible default value. Owned by
+     *  the data layer so every persistence path (saveDraft, updateDraft,
+     *  future autosave / Fork-and-Edit / tooling) gets the same fallback
+     *  without relying on a UI-side LaunchedEffect to seed editor state. */
+    const val DEFAULT_SETTER_GRADE_ID = 20
+
     private val DIFFICULTY_TO_VSCALE = mapOf(
         10 to "V0", 11 to "V0", 12 to "V0",
         13 to "V1", 14 to "V1", 15 to "V2",

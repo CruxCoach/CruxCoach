@@ -11,6 +11,7 @@ import com.cruxcoach.domain.community.FramesHash
 import com.cruxcoach.domain.community.encodeFrames
 import com.cruxcoach.domain.board.BoardClimbParser
 import com.cruxcoach.domain.board.BoardHold
+import com.cruxcoach.domain.board.KilterGradeMapper
 import kotlinx.coroutines.flow.first
 import java.util.UUID
 import javax.inject.Inject
@@ -69,7 +70,17 @@ class ClimbCreatorRepository @Inject constructor(
             draft = draft,
             layoutId = layoutId,
             angle = angle.toLong(),
-            setterGradeId = state.setterGradeId,
+            // Fall back to the slider's visible default when editor state
+            // never carried a grade. Pre-fix the UI seeded this with a
+            // LaunchedEffect, but the seed lost a race against the VM's
+            // _state.update calls in loadDraft / seedFromEdit which
+            // emitted setterGradeId=null after the seed, causing
+            // climb_stats.difficulty_average to be persisted as NULL —
+            // surfaced as "?" in the browser even though the editor
+            // showed V5. Defaulting at write time closes every
+            // persistence path (autosave, fork-and-edit, future tooling)
+            // in one place rather than per-call-site.
+            setterGradeId = state.setterGradeId ?: KilterGradeMapper.DEFAULT_SETTER_GRADE_ID,
             bounds = bounds,
         )
         return uuid
@@ -107,7 +118,8 @@ class ClimbCreatorRepository @Inject constructor(
             draft = draft,
             layoutId = layoutId,
             angle = angle.toLong(),
-            setterGradeId = state.setterGradeId,
+            // See saveDraft for why the default lives here, not in the UI.
+            setterGradeId = state.setterGradeId ?: KilterGradeMapper.DEFAULT_SETTER_GRADE_ID,
             bounds = bounds,
         )
     }
