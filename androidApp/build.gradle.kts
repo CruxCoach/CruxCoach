@@ -124,6 +124,8 @@ android {
 
     testOptions {
         unitTests.isReturnDefaultValues = true
+        // Robolectric needs merged Android resources on the test classpath.
+        unitTests.isIncludeAndroidResources = true
     }
 
     // Pin OkHttp on the *unit-test* classpath to 4.12.0 so MockWebServer 4.12
@@ -254,4 +256,17 @@ dependencies {
     // here through the ASM-transformed test runtime).
     testImplementation(libs.okhttp)
     testImplementation(libs.okhttp.mockwebserver)
+    // Robolectric: Android-framework shim on JVM. Activity lifecycle,
+    // SharedPreferences, Resources, Context — needed for ViewModel tests
+    // that pull anything from the Android side.
+    testImplementation(libs.robolectric)
+    // Turbine: ergonomic StateFlow/Flow assertions in tests.
+    testImplementation(libs.turbine)
+    // Compose UI test rules + semantics-tree assertions.
+    testImplementation(platform(libs.compose.bom))
+    testImplementation(libs.androidx.compose.ui.test.junit4)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
+    // Hilt-Android-Testing: TestApplication + module-replacement plumbing
+    // for ViewModels that depend on @HiltAndroidApp injection.
+    testImplementation(libs.hilt.android.testing)
 }

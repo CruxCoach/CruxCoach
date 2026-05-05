@@ -34,6 +34,8 @@ object TestClimb {
         origin: String = "kilter",
         kilterStatus: String? = null,
         createdByPubkey: String? = null,
+        source: String = "kilter",
+        syncStatus: String? = null,
     ): ClimbWithStats = ClimbWithStats(
         uuid = uuid,
         layoutId = layoutId,
@@ -49,5 +51,7 @@ object TestClimb {
         origin = origin,
         kilterStatus = kilterStatus,
         createdByPubkey = createdByPubkey,
+        source = source,
+        syncStatus = syncStatus,
     )
 }

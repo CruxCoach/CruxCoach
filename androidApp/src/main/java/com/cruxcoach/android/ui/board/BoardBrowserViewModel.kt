@@ -59,6 +59,27 @@ enum class ClimbStatusFilter { ALL, SENT, ATTEMPTED, NEW, UNSENT }
 /** Provenance filter — corresponds to the `origin` column on `climbs`. */
 enum class OriginFilter { ALL, CRUXCOACH, KILTER }
 
+/** Pure-logic origin-bucketing extracted from [BoardBrowserViewModel] so it
+ *  can be unit-tested without spinning up the full Hilt-injected ViewModel.
+ *
+ *  Local drafts authored via the editor are by definition cruxcoach-side,
+ *  even on legacy rows whose `origin` column still reads 'kilter' (the
+ *  schema default — newer `insertLocalDraft` writes 'cruxcoach' explicitly,
+ *  but rows from earlier builds don't get retroactively rewritten).
+ *  Group `source='local'` with the cruxcoach bucket so the user's own
+ *  drafts always surface under "Quelle: CruxCoach" and never misclassify
+ *  into the Kilter bucket below.
+ */
+internal object BrowserOriginFilter {
+    fun apply(climbs: List<ClimbWithStats>, filter: OriginFilter): List<ClimbWithStats> {
+        return when (filter) {
+            OriginFilter.ALL -> climbs
+            OriginFilter.CRUXCOACH -> climbs.filter { it.origin == "cruxcoach" || it.source == "local" }
+            OriginFilter.KILTER -> climbs.filter { it.origin == "kilter" && it.source != "local" }
+        }
+    }
+}
+
 @Deprecated("Use EnhancedSessionSummary", replaceWith = ReplaceWith("EnhancedSessionSummary"))
 data class SessionZoneSummary(
     val warmupCount: Int = 0,
@@ -471,21 +492,8 @@ class BoardBrowserViewModel @Inject constructor(
         return if (benchmarkOnly) climbs.filter { it.benchmarkDifficulty > 0.0 } else climbs
     }
 
-    private fun applyOriginFilter(climbs: List<ClimbWithStats>, filter: OriginFilter): List<ClimbWithStats> {
-        return when (filter) {
-            OriginFilter.ALL -> climbs
-            // Local drafts authored via the editor are by definition
-            // cruxcoach-side, even on legacy rows whose `origin` column
-            // still reads 'kilter' (the schema default — newer
-            // insertLocalDraft writes 'cruxcoach' explicitly, but rows
-            // from earlier builds don't get retroactively rewritten).
-            // Group `source='local'` with the cruxcoach bucket so the
-            // user's own drafts always surface under "Quelle: CruxCoach"
-            // and never misclassify into the Kilter bucket below.
-            OriginFilter.CRUXCOACH -> climbs.filter { it.origin == "cruxcoach" || it.source == "local" }
-            OriginFilter.KILTER -> climbs.filter { it.origin == "kilter" && it.source != "local" }
-        }
-    }
+    private fun applyOriginFilter(climbs: List<ClimbWithStats>, filter: OriginFilter): List<ClimbWithStats> =
+        BrowserOriginFilter.apply(climbs, filter)
 
     private var firstContentReported = false
 
