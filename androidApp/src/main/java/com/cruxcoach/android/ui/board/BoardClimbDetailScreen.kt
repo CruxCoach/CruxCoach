@@ -307,6 +307,13 @@ fun BoardClimbDetailScreen(
                         }
                     },
                     actions = {
+                        // Three primary actions stay direct: Favorite, BLE,
+                        // Log-ascent (the orange Check). Everything else
+                        // (List, Rest timer, Fork, Edit, Delete) lives in a
+                        // single ⋮ overflow so the action row never grows
+                        // past four icons + back-arrow on the narrowest
+                        // phones — pre-fix it had six icons and overlapped
+                        // the back nav on compact widths.
                         IconButton(
                             onClick = { viewModel.toggleFavorite() },
                             modifier = Modifier.testTag("boarddetail_favorite_button")
@@ -316,105 +323,6 @@ fun BoardClimbDetailScreen(
                                 contentDescription = stringResource(if (state.isFavorited) R.string.cd_remove_favorite else R.string.cd_add_favorite),
                                 tint = if (state.isFavorited) WarningYellow else MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                        }
-                        IconButton(
-                            onClick = { viewModel.showAddToListDialog() },
-                            modifier = Modifier.testTag("boarddetail_add_to_list_button")
-                        ) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.PlaylistAdd,
-                                contentDescription = stringResource(R.string.cd_add_to_list),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        // Edit / Fork / Delete are creator-side actions. For
-                        // own climbs we collapse all three into a single 3-dot
-                        // overflow so the TopAppBar isn't crowded with rarely
-                        // tapped icons; for foreign climbs only Fork is
-                        // available, kept as a direct icon. Owner gate: origin
-                        // must be 'cruxcoach' (we can re-publish those via
-                        // Replaceable Kind 30078) AND the climb's
-                        // created_by_pubkey must match our local key.
-                        val canEdit = state.climb?.origin == "cruxcoach" &&
-                            state.climb?.createdByPubkey != null &&
-                            state.climb?.createdByPubkey == state.currentUserPubkey
-                        if (canEdit) {
-                            var creatorMenuExpanded by remember { mutableStateOf(false) }
-                            Box {
-                                IconButton(
-                                    onClick = { creatorMenuExpanded = true },
-                                    modifier = Modifier.testTag("boarddetail_more_button"),
-                                ) {
-                                    Icon(
-                                        Icons.Default.MoreVert,
-                                        contentDescription = stringResource(R.string.action_more_options),
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                                DropdownMenu(
-                                    expanded = creatorMenuExpanded,
-                                    onDismissRequest = { creatorMenuExpanded = false },
-                                ) {
-                                    DropdownMenuItem(
-                                        text = { Text(stringResource(R.string.climb_creator_edit_action)) },
-                                        leadingIcon = {
-                                            Icon(
-                                                Icons.Default.Edit,
-                                                contentDescription = null,
-                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            )
-                                        },
-                                        onClick = {
-                                            creatorMenuExpanded = false
-                                            state.climb?.uuid?.let(onNavigateToEdit)
-                                        },
-                                        modifier = Modifier.testTag("boarddetail_edit_button"),
-                                    )
-                                    DropdownMenuItem(
-                                        text = { Text(stringResource(R.string.climb_creator_remix_action)) },
-                                        leadingIcon = {
-                                            Icon(
-                                                Icons.AutoMirrored.Filled.CallSplit,
-                                                contentDescription = null,
-                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            )
-                                        },
-                                        onClick = {
-                                            creatorMenuExpanded = false
-                                            state.climb?.uuid?.let(onNavigateToFork)
-                                        },
-                                        modifier = Modifier.testTag("boarddetail_fork_button"),
-                                    )
-                                    HorizontalDivider()
-                                    DropdownMenuItem(
-                                        text = { Text(stringResource(R.string.community_climb_delete_action)) },
-                                        leadingIcon = {
-                                            Icon(
-                                                Icons.Default.Delete,
-                                                contentDescription = null,
-                                                tint = MaterialTheme.colorScheme.error,
-                                            )
-                                        },
-                                        onClick = {
-                                            creatorMenuExpanded = false
-                                            viewModel.requestCommunityDelete()
-                                        },
-                                        modifier = Modifier.testTag("boarddetail_delete_publication"),
-                                    )
-                                }
-                            }
-                        } else {
-                            IconButton(
-                                onClick = { state.climb?.uuid?.let(onNavigateToFork) },
-                                enabled = state.climb != null,
-                                modifier = Modifier.testTag("boarddetail_fork_button"),
-                            ) {
-                                Icon(
-                                    Icons.AutoMirrored.Filled.CallSplit,
-                                    contentDescription = stringResource(R.string.climb_creator_remix_action),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
                         }
                         IconButton(
                             onClick = {
@@ -442,17 +350,6 @@ fun BoardClimbDetailScreen(
                             )
                         }
                         IconButton(
-                            onClick = { viewModel.startRestTimer() },
-                            modifier = Modifier.testTag("boarddetail_rest_timer_button")
-                        ) {
-                            Icon(
-                                Icons.Default.Timer,
-                                contentDescription = stringResource(R.string.cd_rest_timer),
-                                tint = if (isRestTimerRunning) OrangeAccent
-                                       else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        IconButton(
                             onClick = { viewModel.showAscentDialog() },
                             modifier = Modifier.testTag("boarddetail_log_button")
                         ) {
@@ -461,6 +358,117 @@ fun BoardClimbDetailScreen(
                                 contentDescription = stringResource(R.string.cd_log_ascent),
                                 tint = OrangeAccent
                             )
+                        }
+                        // Owner gate for Edit/Delete inside the overflow.
+                        // origin must be 'cruxcoach' (we can re-publish those
+                        // via Replaceable Kind 30078) AND the climb's
+                        // created_by_pubkey must match our local key.
+                        val canEdit = state.climb?.origin == "cruxcoach" &&
+                            state.climb?.createdByPubkey != null &&
+                            state.climb?.createdByPubkey == state.currentUserPubkey
+                        var moreExpanded by remember { mutableStateOf(false) }
+                        Box {
+                            IconButton(
+                                onClick = { moreExpanded = true },
+                                modifier = Modifier.testTag("boarddetail_more_button"),
+                            ) {
+                                Icon(
+                                    Icons.Default.MoreVert,
+                                    contentDescription = stringResource(R.string.action_more_options),
+                                    // Inherit the rest-timer's running tint so a
+                                    // user with an active timer still sees an
+                                    // orange cue at a glance even though the
+                                    // timer button itself moved into the menu.
+                                    tint = if (isRestTimerRunning) OrangeAccent
+                                           else MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = moreExpanded,
+                                onDismissRequest = { moreExpanded = false },
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.cd_add_to_list)) },
+                                    leadingIcon = {
+                                        Icon(
+                                            Icons.AutoMirrored.Filled.PlaylistAdd,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    },
+                                    onClick = {
+                                        moreExpanded = false
+                                        viewModel.showAddToListDialog()
+                                    },
+                                    modifier = Modifier.testTag("boarddetail_add_to_list_button"),
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.cd_rest_timer)) },
+                                    leadingIcon = {
+                                        Icon(
+                                            Icons.Default.Timer,
+                                            contentDescription = null,
+                                            tint = if (isRestTimerRunning) OrangeAccent
+                                                   else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    },
+                                    onClick = {
+                                        moreExpanded = false
+                                        viewModel.startRestTimer()
+                                    },
+                                    modifier = Modifier.testTag("boarddetail_rest_timer_button"),
+                                )
+                                HorizontalDivider()
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.climb_creator_remix_action)) },
+                                    leadingIcon = {
+                                        Icon(
+                                            Icons.AutoMirrored.Filled.CallSplit,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    },
+                                    enabled = state.climb != null,
+                                    onClick = {
+                                        moreExpanded = false
+                                        state.climb?.uuid?.let(onNavigateToFork)
+                                    },
+                                    modifier = Modifier.testTag("boarddetail_fork_button"),
+                                )
+                                if (canEdit) {
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.climb_creator_edit_action)) },
+                                        leadingIcon = {
+                                            Icon(
+                                                Icons.Default.Edit,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        },
+                                        onClick = {
+                                            moreExpanded = false
+                                            state.climb?.uuid?.let(onNavigateToEdit)
+                                        },
+                                        modifier = Modifier.testTag("boarddetail_edit_button"),
+                                    )
+                                    HorizontalDivider()
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.community_climb_delete_action)) },
+                                        leadingIcon = {
+                                            Icon(
+                                                Icons.Default.Delete,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.error,
+                                            )
+                                        },
+                                        onClick = {
+                                            moreExpanded = false
+                                            viewModel.requestCommunityDelete()
+                                        },
+                                        modifier = Modifier.testTag("boarddetail_delete_publication"),
+                                    )
+                                }
+                            }
                         }
                     }
                 )
