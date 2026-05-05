@@ -307,13 +307,12 @@ fun BoardClimbDetailScreen(
                         }
                     },
                     actions = {
-                        // Three primary actions stay direct: Favorite, BLE,
-                        // Log-ascent (the orange Check). Everything else
-                        // (List, Rest timer, Fork, Edit, Delete) lives in a
-                        // single ⋮ overflow so the action row never grows
-                        // past four icons + back-arrow on the narrowest
-                        // phones — pre-fix it had six icons and overlapped
-                        // the back nav on compact widths.
+                        // Five primary actions stay direct: Favorite, Add-to-
+                        // list, Rest timer, BLE, Log-ascent (the orange
+                        // Check). Creator-side actions (Fork, Edit, Delete)
+                        // live in a single ⋮ overflow at the end so the
+                        // action row stops growing past six items + back-
+                        // arrow on narrow phones.
                         IconButton(
                             onClick = { viewModel.toggleFavorite() },
                             modifier = Modifier.testTag("boarddetail_favorite_button")
@@ -322,6 +321,27 @@ fun BoardClimbDetailScreen(
                                 if (state.isFavorited) Icons.Default.Star else Icons.Outlined.Star,
                                 contentDescription = stringResource(if (state.isFavorited) R.string.cd_remove_favorite else R.string.cd_add_favorite),
                                 tint = if (state.isFavorited) WarningYellow else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        IconButton(
+                            onClick = { viewModel.showAddToListDialog() },
+                            modifier = Modifier.testTag("boarddetail_add_to_list_button")
+                        ) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.PlaylistAdd,
+                                contentDescription = stringResource(R.string.cd_add_to_list),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        IconButton(
+                            onClick = { viewModel.startRestTimer() },
+                            modifier = Modifier.testTag("boarddetail_rest_timer_button")
+                        ) {
+                            Icon(
+                                Icons.Default.Timer,
+                                contentDescription = stringResource(R.string.cd_rest_timer),
+                                tint = if (isRestTimerRunning) OrangeAccent
+                                       else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                         IconButton(
@@ -375,50 +395,13 @@ fun BoardClimbDetailScreen(
                                 Icon(
                                     Icons.Default.MoreVert,
                                     contentDescription = stringResource(R.string.action_more_options),
-                                    // Inherit the rest-timer's running tint so a
-                                    // user with an active timer still sees an
-                                    // orange cue at a glance even though the
-                                    // timer button itself moved into the menu.
-                                    tint = if (isRestTimerRunning) OrangeAccent
-                                           else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
                             DropdownMenu(
                                 expanded = moreExpanded,
                                 onDismissRequest = { moreExpanded = false },
                             ) {
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.cd_add_to_list)) },
-                                    leadingIcon = {
-                                        Icon(
-                                            Icons.AutoMirrored.Filled.PlaylistAdd,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        )
-                                    },
-                                    onClick = {
-                                        moreExpanded = false
-                                        viewModel.showAddToListDialog()
-                                    },
-                                    modifier = Modifier.testTag("boarddetail_add_to_list_button"),
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.cd_rest_timer)) },
-                                    leadingIcon = {
-                                        Icon(
-                                            Icons.Default.Timer,
-                                            contentDescription = null,
-                                            tint = if (isRestTimerRunning) OrangeAccent
-                                                   else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        )
-                                    },
-                                    onClick = {
-                                        moreExpanded = false
-                                        viewModel.startRestTimer()
-                                    },
-                                    modifier = Modifier.testTag("boarddetail_rest_timer_button"),
-                                )
-                                HorizontalDivider()
                                 DropdownMenuItem(
                                     text = { Text(stringResource(R.string.climb_creator_remix_action)) },
                                     leadingIcon = {
