@@ -1,11 +1,44 @@
 ---
-status: skeleton
+status: implementation
 ---
 # Feature Spec: Nostr Profile Editor (Kind-0) Polish (v0.1.4)
 
-> **Status:** Skeleton — retargeted from 0.2.0 → 0.1.4 on 2026-05-05.
-> UX direction agreed (Amethyst-shaped); Blossom upload integration
-> and NIP-05 verification need engineering review during M1 spike.
+> **Status:** Implementation (0.1.4) — flagged 2026-05-06. Four
+> tranches landed on `feat/0.1.4-release`:
+>
+> - **Tier 1** (`96cb1a5`): schema migration `secure/4.sqm` + new
+>   Kind-0 fields (`banner`, `nip05`, `website`) wired through
+>   `NostrProfileData` / `NostrProfileManager.publishProfile()` /
+>   `NostrProfileViewModel` / `NostrProfileScreen`.
+> - **Tier 2** (`7f1441b`): `Nip05Verifier` + `LnurlVerifier`
+>   (Amethyst-style sealed-state classes, no-redirect on NIP-05),
+>   green ✓ / red ✗ / amber ⚠ trailing icons on the relevant fields,
+>   on-blur and eager-on-load triggering. 8 JVM unit tests for the
+>   parser helpers.
+> - **Tier 3** (`0cba54d`): image upload pipeline —
+>   `ImageProcessor` (two-pass Bitmap decode → JPEG q=85 at the
+>   per-target long-edge cap) + `ProfileImageUploader` (BUD-02
+>   single-shot, reuses `BlossomUploader.blossomAuthHeader` for
+>   Kind-24242 auth, no in-app cropper per the Amethyst
+>   reference). UI: 3:1 banner + 1:1 circular picture edit areas
+>   at the top of the editor, system gallery picker, Coil 2.7.0
+>   for inline rendering, progress overlay during upload.
+> - **Tier 4** (`0cba54d`, bundled with Tier 3): markdown preview
+>   for `about` via `compose-richtext` 0.20.0 (upstream of the
+>   fork Amethyst vendors), character counter "X / 500" turning
+>   red over budget.
+>
+> M5 (FEAT-008 pre-fill `applyKilterPrefill`) deferred — FEAT-008
+> sits in 0.2.0 now (`90ce8fb` retarget). Wire-up will land
+> alongside FEAT-008's M2 backbone work.
+>
+> Remaining gates before "Shipped": device-side visual QA
+> (Maestro + manual on a real Kilter login pubkey to verify NIP-05
+> verification flow against `cruxcoach.org` once that domain is
+> NIP-05-configured). Optional polish: dirty-state "Discard
+> changes?" prompt (§4.2), gradient placeholder for banner-less
+> profiles already in (Tier 3). Strings reviewed across EN+DE
+> (Tier 1+2+3+4 each added matching pairs).
 >
 > **Depends on:**
 > - Existing `NostrProfileViewModel` + `NostrProfileScreen` (rudimentary
