@@ -142,6 +142,29 @@ path. `/api/climbs/single/<uuid>` could in principle hydrate one
 row at a time, but ~169k per-row API calls is neither ergonomic
 nor compliant with the cron's "be a polite API citizen" stance.
 
+### Scope decision — ship at sparse coverage (2026-05-06)
+
+Decision: ship at the ~3 % absolute coverage, no fallback
+signal. The number understates *effective* visibility — /curated
+is by definition the slice the user encounters most in the
+browser (curated / featured / recent); tail-content climbs from
+the historical bulk are reachable only via deep search, where
+the badge's absence matters least anyway.
+
+A secondary "popular at X°" signal from
+`argmax(climb_stats.ascensionist_count)` is rejected for the
+same reason the same heuristic was rejected as a primary
+candidate above: at 68.6 % agreement with the true setter
+angle, two semantically distinct badges sharing the same UI
+slot would muddy the signal users come to trust on the slice
+where it does carry setter intent. A user who learns the badge
+as "setter intent" would silently get a different reading on
+~31 % of climbs without warning.
+
+The badge therefore omits gracefully when `angle` is null or 0;
+FEAT-009's confidence/origin treatment must compose with that
+absence (no slot collisions on the no-anchor case).
+
 ### Why `/climbdetails/user.angle` does not help blossom-sync
 
 ### Why `/climbdetails/user.angle` does not help blossom-sync
@@ -246,6 +269,12 @@ that climb, the picked angle becomes sticky for subsequent opens.
 
 - ✅ ~~Heuristic choice (spike outcome).~~ — resolved 2026-05-06
   in §2: use `climbs.angle` direct, no heuristic.
+- ✅ ~~Coverage tradeoff: accept sparse ~3 % at ship, or add a
+  "popular at X°" secondary signal from `argmax(ascensionist_count)`?~~
+  — resolved 2026-05-06 in §2 "Scope decision": ship at sparse
+  coverage, no fallback. Rationale: /curated is the
+  high-visibility slice users actually browse, and a fallback
+  would mix two semantically distinct signals in the same UI slot.
 - Final visual treatment of the anchor row alongside FEAT-009's
   confidence/origin indicator.
 - Whether the climb-creator should surface the in-flight anchor
