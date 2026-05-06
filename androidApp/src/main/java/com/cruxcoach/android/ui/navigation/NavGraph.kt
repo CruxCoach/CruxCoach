@@ -109,6 +109,7 @@ object Routes {
     const val BODY_STAT = "body_stat"
     const val DATA_IMPORT = "data_import"
     const val DATA_EXPORT = "data_export"
+    const val AURORA_MIGRATION = "aurora_migration"
     const val SETTINGS = "settings"
     const val PROFILE_ASSESSMENT = "profile_assessment"
     const val APP_SHARE = "app_share"
@@ -386,6 +387,12 @@ fun CruxCoachNavHost(
                 )
             }
 
+            composable(Routes.AURORA_MIGRATION) {
+                com.cruxcoach.android.ui.aurora.AuroraMigrationScreen(
+                    onNavigateBack = { navController.popBackStack() },
+                )
+            }
+
             composable(Routes.STATS) {
                 StatsScreen(
                     onNavigateBack = { navController.popBackStack() },
@@ -546,6 +553,7 @@ fun CruxCoachNavHost(
                     onNavigateToAppShare = { navController.navigate(Routes.APP_SHARE) },
                     onNavigateToImport = { navController.navigate(Routes.DATA_IMPORT) },
                     onNavigateToExport = { navController.navigate(Routes.DATA_EXPORT) },
+                    onNavigateToAuroraMigration = { navController.navigate(Routes.AURORA_MIGRATION) },
                     onNavigateToChat = { navController.navigate(Routes.DEV_CHAT) },
                     onNavigateToAnnouncements = { navController.navigate(Routes.ANNOUNCEMENTS) },
                     onNavigateToBugReports = { navController.navigate(Routes.BUG_REPORT_LIST) },

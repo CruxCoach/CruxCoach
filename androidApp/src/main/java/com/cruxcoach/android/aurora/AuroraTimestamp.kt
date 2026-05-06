@@ -45,20 +45,19 @@ object AuroraTimestamp {
         val withT = trimmed.replace(' ', 'T')
         val withTimezone = if (hasTimezoneSuffix(withT)) withT else "${withT}Z"
 
-        // Step 3+4: parse + canonicalise.
+        // Step 3: always truncate fractional seconds beyond millis. The
+        // JVM `Instant.parse` accepts microseconds and `Instant.toString`
+        // round-trips exactly the input precision — so two re-imports of
+        // the "same" instant (one with millis, one with micros) would
+        // canonicalise to *different* strings unless we cap precision
+        // pre-parse. Truncating to millis matches the boardsesh
+        // reference and keeps the dedup hash consistent.
+        val canonical = truncateSubSecondToMillis(withTimezone) ?: withTimezone
+
         return try {
-            Instant.parse(withTimezone).toString()
+            Instant.parse(canonical).toString()
         } catch (e: DateTimeParseException) {
-            // Fallback path: a few exports observed in the wild use
-            // `YYYY-MM-DDTHH:MM:SS.SSSSSS` (six-digit microseconds)
-            // which Instant.parse rejects on some Android / JVM
-            // combos. Truncate to milliseconds and retry once.
-            val truncated = truncateSubSecondToMillis(withTimezone) ?: return null
-            try {
-                Instant.parse(truncated).toString()
-            } catch (e2: DateTimeParseException) {
-                null
-            }
+            null
         }
     }
 

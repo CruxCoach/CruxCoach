@@ -44,6 +44,7 @@ fun SettingsScreen(
     onNavigateToAppShare: () -> Unit,
     onNavigateToImport: () -> Unit = {},
     onNavigateToExport: () -> Unit = {},
+    onNavigateToAuroraMigration: () -> Unit = {},
     onNavigateToChat: () -> Unit = {},
     onNavigateToAnnouncements: () -> Unit = {},
     onNavigateToBugReports: () -> Unit = {},
@@ -275,6 +276,7 @@ fun SettingsScreen(
                         deleteSuccess = state.deleteSuccess,
                         onNavigateToImport = onNavigateToImport,
                         onNavigateToExport = onNavigateToExport,
+                        onNavigateToAuroraMigration = onNavigateToAuroraMigration,
                         onDismissDeleteSuccess = { viewModel.dismissDeleteSuccess() },
                     )
                     HorizontalDivider()

@@ -1699,4 +1699,37 @@
     <string name="whatsnew_nostr_backup_body">Your climbs and notes can now be encrypted on this device and stored online across several public servers — restore them on any device. Off by default; enable here, or anytime in Settings → Encrypted cloud backup.</string>
     <string name="whatsnew_nostr_backup_toggle">Enable backup</string>
     <string name="whatsnew_nostr_backup_consent">A CruxCoach Account key is created on this device if you don\'t already have one. Backups don\'t run automatically — you start them yourself in Settings.</string>
+
+    <!-- FEAT-005 Aurora-JSON migration -->
+    <string name="settings_aurora_migration_title">Migrate from Aurora / old Kilter app</string>
+    <string name="settings_aurora_migration_desc">Bring your ascents, attempts and circuits across from the email export Aurora sends after a data request.</string>
+    <string name="aurora_migration_title">Aurora migration</string>
+    <string name="aurora_migration_what_happened_title">What happened to Aurora?</string>
+    <string name="aurora_migration_what_happened_body">Aurora Climbing took its API offline in early 2026 and the official Kilter app moved to a new backend. Aurora still honours one-time data-export requests by email — the file they send is what this importer reads.</string>
+    <string name="aurora_migration_step1_title">Request your Aurora export</string>
+    <string name="aurora_migration_step1_body">Email Aurora support and ask for a copy of your data. They\'ll reply with a single JSON file (usually within a couple of days).</string>
+    <string name="aurora_migration_email_button">Compose email to Aurora</string>
+    <string name="aurora_migration_email_subject">Data export request</string>
+    <string name="aurora_migration_email_body">Hi Aurora team,\n\nPlease send me a copy of my account data (ascents, projects, circuits) for the CruxCoach app to import.\n\nThanks!</string>
+    <string name="aurora_migration_step2_title">Import the file</string>
+    <string name="aurora_migration_step2_body">Save Aurora\'s reply attachment to your phone, then pick it here. Re-importing the same file is safe — already-imported entries are skipped automatically.</string>
+    <string name="aurora_migration_pick_file_button">Choose Aurora JSON file…</string>
+    <string name="aurora_migration_importing">Importing…</string>
+    <string name="aurora_migration_progress_starting">Starting…</string>
+    <string name="aurora_migration_progress_parsing">Parsing the JSON…</string>
+    <string name="aurora_migration_progress_resolving" formatted="false">Matching %1$d climb names against your local board catalog…</string>
+    <string name="aurora_migration_progress_ascents" formatted="false">Importing ascents (%1$d / %2$d)…</string>
+    <string name="aurora_migration_progress_bids" formatted="false">Importing attempts (%1$d / %2$d)…</string>
+    <string name="aurora_migration_progress_circuits" formatted="false">Importing circuits (%1$d / %2$d)…</string>
+    <string name="aurora_migration_progress_finalising">Wrapping up…</string>
+    <string name="aurora_migration_result_success">Import complete</string>
+    <string name="aurora_migration_result_failed">Import failed</string>
+    <string name="aurora_migration_result_parse_error" formatted="false">Couldn\'t read this file: %1$s</string>
+    <string name="aurora_migration_count_ascents">Ascents</string>
+    <string name="aurora_migration_count_bids">Attempts</string>
+    <string name="aurora_migration_count_circuits">Circuits</string>
+    <string name="aurora_migration_count_summary" formatted="false">%1$s: %2$d imported · %3$d already present · %4$d skipped</string>
+    <string name="aurora_migration_climbs_deferred" formatted="false">%1$d user-authored draft climbs in your export — climb-import lands in 0.1.5.</string>
+    <string name="aurora_migration_unresolved_title" formatted="false">%1$d climb names couldn\'t be matched against your local catalog</string>
+    <string name="aurora_migration_import_another">Import another file</string>
 </resources>
