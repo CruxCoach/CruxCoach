@@ -3,15 +3,28 @@ status: implementation
 ---
 # Feature Spec: Schema Naming Cleanup (v0.1.4)
 
-> **Status:** Implementation (0.1.4) — flagged 2026-05-06. `2.sqm`
-> migrations for board.db and secure.db (full `aurora_*` /
-> PascalCase → plural snake_case rename + index recreate +
-> `sync_states.table_name` content rewrite) are landed on
-> `feat/0.1.4-release`, plus the `4.sqm` follow-up that re-creates
-> `climb_browse` with `origin` + `kilter_status`, plus BLE/domain
-> class renames. Remaining work tracked in §3.5 (`Aurora`-mention
-> cleanup beyond table names) and §6 (Kotlin source-side rename
-> completion).
+> **Status:** Implementation (0.1.4) — materially complete on
+> `feat/0.1.4-release` as of 2026-05-06. Done:
+>
+> - `2.sqm` migrations (board.db + secure.db): full `aurora_*` /
+>   PascalCase → plural snake_case rename + index recreate +
+>   `sync_states.table_name` content rewrite.
+> - `4.sqm` follow-up: re-create `climb_browse` view with `origin`
+>   + `kilter_status` columns.
+> - §3.5 BLE/domain class renames (commit `1bc6212`):
+>   `AuroraBleConnection` → `BoardBleConnection`,
+>   `AuroraBleScanner` → `BoardBleScanner`, etc.; `AuroraBoard.kt`
+>   enum drops the four dead fields, keeps `productId` +
+>   `appPackage`.
+> - §6 Kotlin-source sweep: SQL strings + type references +
+>   comment updates landed across the previous releases.
+>
+> Remaining `aurora_*` text mentions in the source tree are
+> intentional and stay: migration-history SQL (`1.sqm`, `2.sqm`),
+> `BoardDatabaseImporter`'s backward-compat path for legacy
+> `kilter_board.bin` extracts (where the on-disk file still
+> carries the old table names), and cache filenames for download
+> resumes on existing installs. No net work outstanding for 0.1.4.
 > **Depends on:** —
 > **Blocks:** FEAT-003 (Climb Creator), FEAT-005 (Aurora JSON Import). Both
 > write into the renamed tables; merging this first means their code is
