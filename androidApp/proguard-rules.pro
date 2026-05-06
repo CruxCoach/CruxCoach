@@ -339,3 +339,24 @@
     public static int d(...);
     public static int v(...);
 }
+
+# ============================================================================
+# 21. MAPLIBRE NATIVE (FEAT-006 board locations map)
+# ============================================================================
+# MapLibre's native libmaplibre.so calls into Java/Kotlin via JNI to
+# instantiate model classes (RenderingStats, CameraPosition, LatLng, etc.)
+# from C++ rendering callbacks. R8 11.10's bundled consumer rules miss
+# RenderingStats — without an explicit keep, R8 strips its constructor
+# and the C++ side's NewObject crashes with InstantiationException at the
+# first frame post-render (visible as "tap-on-map causes crash" because
+# the map only finishes its first render after the user interacts).
+#
+# Nuclear-keep the entire org.maplibre.android.** namespace plus the
+# transitive gestures lib. APK size impact: negligible (~50 KB) compared
+# to the 20 MB native libs themselves.
+-keep class org.maplibre.android.** { *; }
+-keep interface org.maplibre.android.** { *; }
+-keep class com.mapbox.android.gestures.** { *; }
+-keep class org.maplibre.geojson.** { *; }
+-dontwarn org.maplibre.**
+-dontwarn com.mapbox.android.gestures.**
