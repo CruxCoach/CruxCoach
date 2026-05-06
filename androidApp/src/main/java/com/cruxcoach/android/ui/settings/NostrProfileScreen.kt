@@ -13,6 +13,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.CircularProgressIndicator
@@ -30,8 +33,11 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import com.cruxcoach.android.nostr.profile.LnurlVerifier
+import com.cruxcoach.android.nostr.profile.Nip05Verifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.foundation.text.KeyboardOptions
@@ -151,9 +157,16 @@ fun NostrProfileScreen(
                 value = state.lightningAddress,
                 onValueChange = viewModel::setLightningAddress,
                 label = { Text(stringResource(R.string.nostr_profile_lightning)) },
-                supportingText = { Text(stringResource(R.string.nostr_profile_lightning_hint)) },
+                supportingText = {
+                    Text(lnurlSupportingText(state.lnurlVerification))
+                },
+                trailingIcon = { LnurlVerificationIcon(state.lnurlVerification) },
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onFocusChanged { focus ->
+                        if (!focus.isFocused) viewModel.verifyLightningNow()
+                    },
             )
 
             OutlinedTextField(
@@ -178,9 +191,16 @@ fun NostrProfileScreen(
                 value = state.nip05,
                 onValueChange = viewModel::setNip05,
                 label = { Text(stringResource(R.string.nostr_profile_nip05_label)) },
-                supportingText = { Text(stringResource(R.string.nostr_profile_nip05_hint)) },
+                supportingText = {
+                    Text(nip05SupportingText(state.nip05Verification))
+                },
+                trailingIcon = { Nip05VerificationIcon(state.nip05Verification) },
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onFocusChanged { focus ->
+                        if (!focus.isFocused) viewModel.verifyNip05Now()
+                    },
             )
 
             OutlinedTextField(
@@ -238,6 +258,78 @@ fun NostrProfileScreen(
             SubscriberHealthLine(state.subscriberHealth)
         }
     }
+}
+
+/** Trailing-icon for the NIP-05 field — green ✓ on Verified, red ✗ on
+ *  Mismatch, amber ? on Unreachable, small spinner while verifying.
+ *  Idle renders nothing (so the field looks clean before first blur). */
+@Composable
+private fun Nip05VerificationIcon(state: Nip05Verifier.State) {
+    when (state) {
+        Nip05Verifier.State.Idle -> Unit
+        Nip05Verifier.State.Verifying -> CircularProgressIndicator(
+            modifier = Modifier.size(18.dp),
+            strokeWidth = 2.dp,
+        )
+        Nip05Verifier.State.Verified -> Icon(
+            Icons.Filled.Check,
+            contentDescription = stringResource(R.string.nostr_profile_nip05_verified),
+            tint = MaterialTheme.colorScheme.primary,
+        )
+        is Nip05Verifier.State.Mismatch -> Icon(
+            Icons.Filled.Close,
+            contentDescription = stringResource(R.string.nostr_profile_nip05_mismatch),
+            tint = MaterialTheme.colorScheme.error,
+        )
+        is Nip05Verifier.State.Unreachable -> Icon(
+            Icons.Filled.Warning,
+            contentDescription = stringResource(R.string.nostr_profile_nip05_unreachable),
+            tint = MaterialTheme.colorScheme.tertiary,
+        )
+    }
+}
+
+@Composable
+private fun nip05SupportingText(state: Nip05Verifier.State): String = when (state) {
+    Nip05Verifier.State.Idle, Nip05Verifier.State.Verifying ->
+        stringResource(R.string.nostr_profile_nip05_hint)
+    Nip05Verifier.State.Verified ->
+        stringResource(R.string.nostr_profile_nip05_verified)
+    is Nip05Verifier.State.Mismatch ->
+        stringResource(R.string.nostr_profile_nip05_mismatch)
+    is Nip05Verifier.State.Unreachable ->
+        stringResource(R.string.nostr_profile_nip05_unreachable)
+}
+
+@Composable
+private fun LnurlVerificationIcon(state: LnurlVerifier.State) {
+    when (state) {
+        LnurlVerifier.State.Idle -> Unit
+        LnurlVerifier.State.Verifying -> CircularProgressIndicator(
+            modifier = Modifier.size(18.dp),
+            strokeWidth = 2.dp,
+        )
+        LnurlVerifier.State.Verified -> Icon(
+            Icons.Filled.Check,
+            contentDescription = stringResource(R.string.nostr_profile_lud16_verified),
+            tint = MaterialTheme.colorScheme.primary,
+        )
+        is LnurlVerifier.State.Unreachable -> Icon(
+            Icons.Filled.Warning,
+            contentDescription = stringResource(R.string.nostr_profile_lud16_unreachable),
+            tint = MaterialTheme.colorScheme.tertiary,
+        )
+    }
+}
+
+@Composable
+private fun lnurlSupportingText(state: LnurlVerifier.State): String = when (state) {
+    LnurlVerifier.State.Idle, LnurlVerifier.State.Verifying ->
+        stringResource(R.string.nostr_profile_lightning_hint)
+    LnurlVerifier.State.Verified ->
+        stringResource(R.string.nostr_profile_lud16_verified)
+    is LnurlVerifier.State.Unreachable ->
+        stringResource(R.string.nostr_profile_lud16_unreachable)
 }
 
 @Composable

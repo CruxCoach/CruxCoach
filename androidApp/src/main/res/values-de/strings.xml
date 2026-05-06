@@ -122,6 +122,11 @@
     <string name="nostr_profile_nip05_hint">Optional. Format: name@domain — verifiziert deine Identität über den Well-Known-Endpoint der Domain.</string>
     <string name="nostr_profile_website_label">Webseite</string>
     <string name="nostr_profile_website_hint">Optional. Frei wählbare URL, wird auf deinem Profil angezeigt.</string>
+    <string name="nostr_profile_nip05_verified">Verifiziert — Pubkey stimmt überein</string>
+    <string name="nostr_profile_nip05_mismatch">Pubkey stimmt nicht überein — Domain zeigt auf eine andere Identität</string>
+    <string name="nostr_profile_nip05_unreachable">Konnte nicht verifizieren (offline oder Domain nicht konfiguriert)</string>
+    <string name="nostr_profile_lud16_verified">Lightning-Adresse aktiv</string>
+    <string name="nostr_profile_lud16_unreachable">Konnte Lightning-Adresse nicht verifizieren</string>
     <string name="nostr_profile_save">Profil speichern</string>
     <string name="nostr_profile_saving">Wird gespeichert…</string>
     <string name="nostr_profile_saved_toast">Profil gespeichert</string>

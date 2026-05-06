@@ -8,6 +8,8 @@ import com.cruxcoach.android.community.CommunityClimbSubscriber
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.data.kilter.KilterTokenStore
 import com.cruxcoach.android.nostr.NostrSigner
+import com.cruxcoach.android.nostr.profile.LnurlVerifier
+import com.cruxcoach.android.nostr.profile.Nip05Verifier
 import com.cruxcoach.android.payment.NostrProfileManager
 import com.cruxcoach.data.repository.BoardRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -62,6 +64,14 @@ data class NostrProfileEditState(
      *  CruxCoach climbs from other authors are flowing. Null until the
      *  first emission. */
     val subscriberHealth: CommunityClimbSubscriber.SubscriberHealth? = null,
+    /** NIP-05 verification status — surfaced as a trailing icon next to
+     *  the NIP-05 field. Resets to [Nip05Verifier.State.Idle] on every
+     *  edit; updated when the user blurs the field or the editor opens
+     *  with a non-blank cached value. */
+    val nip05Verification: Nip05Verifier.State = Nip05Verifier.State.Idle,
+    /** LNURL probe status for the Lightning-address field. Same lifecycle
+     *  as [nip05Verification]. */
+    val lnurlVerification: LnurlVerifier.State = LnurlVerifier.State.Idle,
 )
 
 @HiltViewModel
@@ -73,6 +83,8 @@ class NostrProfileViewModel @Inject constructor(
     private val boardRepository: BoardRepository,
     private val userPreferences: UserPreferences,
     private val communityClimbSubscriber: CommunityClimbSubscriber,
+    private val nip05Verifier: Nip05Verifier,
+    private val lnurlVerifier: LnurlVerifier,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(NostrProfileEditState())
@@ -125,17 +137,70 @@ class NostrProfileViewModel @Inject constructor(
                     kilterUsername = kilterUsername,
                 )
             }
+            // Eager re-verification: if the cached profile already has
+            // an NIP-05 / Lightning address, the user should see the
+            // ✓ / ⚠ / ✗ indicator without first having to focus + blur
+            // the field. Async — UI just reads the StateFlow.
+            if (!profile?.nip05.isNullOrBlank()) verifyNip05Now()
+            if (!profile?.lightningAddress.isNullOrBlank()) verifyLightningNow()
         }
     }
 
     fun setDisplayName(value: String) = _state.update { it.copy(displayName = value, justSaved = false) }
-    fun setLightningAddress(value: String) = _state.update { it.copy(lightningAddress = value, justSaved = false) }
+    fun setLightningAddress(value: String) = _state.update {
+        // Reset verification on every keystroke — a half-typed address
+        // shouldn't carry over the previous result's ✓/⚠. Re-verify on
+        // blur via [verifyLightningNow].
+        it.copy(
+            lightningAddress = value,
+            justSaved = false,
+            lnurlVerification = LnurlVerifier.State.Idle,
+        )
+    }
     fun setPictureUrl(value: String) = _state.update { it.copy(pictureUrl = value, justSaved = false) }
     fun setAbout(value: String) = _state.update { it.copy(about = value, justSaved = false) }
     fun setBannerUrl(value: String) = _state.update { it.copy(bannerUrl = value, justSaved = false) }
-    fun setNip05(value: String) = _state.update { it.copy(nip05 = value, justSaved = false) }
+    fun setNip05(value: String) = _state.update {
+        it.copy(
+            nip05 = value,
+            justSaved = false,
+            nip05Verification = Nip05Verifier.State.Idle,
+        )
+    }
     fun setWebsite(value: String) = _state.update { it.copy(website = value, justSaved = false) }
     fun clearError() = _state.update { it.copy(errorMessage = null) }
+
+    /** Trigger a NIP-05 well-known fetch + match against the user's own
+     *  pubkey. Wired to the field's onFocusChanged on blur. No-op when
+     *  the field is blank. */
+    fun verifyNip05Now() {
+        val nip05 = _state.value.nip05.trim()
+        if (nip05.isBlank()) {
+            _state.update { it.copy(nip05Verification = Nip05Verifier.State.Idle) }
+            return
+        }
+        val pubkey = runCatching { nostrSigner.getPublicKeyHex() }.getOrNull() ?: return
+        _state.update { it.copy(nip05Verification = Nip05Verifier.State.Verifying) }
+        viewModelScope.launch {
+            val result = nip05Verifier.verify(nip05, pubkey)
+            _state.update { it.copy(nip05Verification = result) }
+        }
+    }
+
+    /** Best-effort LNURL-pay probe on the Lightning-address field.
+     *  Wired to onFocusChanged on blur. */
+    fun verifyLightningNow() {
+        val lud16 = _state.value.lightningAddress.trim()
+        if (lud16.isBlank()) {
+            _state.update { it.copy(lnurlVerification = LnurlVerifier.State.Idle) }
+            return
+        }
+        _state.update { it.copy(lnurlVerification = LnurlVerifier.State.Verifying) }
+        viewModelScope.launch {
+            val result = lnurlVerifier.verify(lud16)
+            _state.update { it.copy(lnurlVerification = result) }
+        }
+    }
 
     /**
      * Pre-fill `displayName` with the cached Kilter username (no API call —
