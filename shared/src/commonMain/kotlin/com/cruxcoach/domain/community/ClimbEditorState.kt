@@ -1,6 +1,7 @@
 package com.cruxcoach.domain.community
 
 import com.cruxcoach.domain.board.BoardClimbParser
+import com.cruxcoach.domain.board.HoldRole
 
 /**
  * Pure-data state for the climb editor. Lives in commonMain so it can be
@@ -20,8 +21,13 @@ data class ClimbEditorState(
      * role (or toggle off if the hold already has it). Null (no chip
      * selected) → taps remove the hold's role; empty holds are no-ops.
      * Long-press + drag continues to MOVE existing holds regardless.
+     *
+     * Default = `HoldRole.START` so a freshly-opened editor pre-selects
+     * the green Start chip. Teaches first-time users that the chip row
+     * controls which role taps paint, instead of leaving them in a
+     * silent delete mode where their first tap simply does nothing.
      */
-    val activeBrush: Int? = null,
+    val activeBrush: Int? = HoldRole.START,
 )
 
 /**

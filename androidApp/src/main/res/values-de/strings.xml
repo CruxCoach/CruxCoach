@@ -18,6 +18,7 @@
     <string name="climb_creator_count_hand" formatted="false">Griff: %d</string>
     <string name="climb_creator_count_finish" formatted="false">Top: %d</string>
     <string name="climb_creator_count_foot" formatted="false">Tritt: %d</string>
+    <string name="climb_creator_brush_hint_delete_mode">Kein Chip aktiv — Tippen löscht Griffe. Chip wählen, um zu setzen.</string>
     <string name="climb_creator_valid">Alles gesetzt — bereit zum Veröffentlichen.</string>
     <string name="climb_creator_issue_no_start">Mindestens einen Start-Griff (grün) setzen.</string>
     <string name="climb_creator_issue_no_finish">Mindestens einen Top-Griff (magenta) setzen.</string>

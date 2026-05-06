@@ -18,6 +18,7 @@
     <string name="climb_creator_count_hand" formatted="false">Hand: %d</string>
     <string name="climb_creator_count_finish" formatted="false">Finish: %d</string>
     <string name="climb_creator_count_foot" formatted="false">Foot: %d</string>
+    <string name="climb_creator_brush_hint_delete_mode">No chip active — taps remove holds. Pick a chip to set holds.</string>
     <string name="climb_creator_valid">All set — ready to publish.</string>
     <string name="climb_creator_issue_no_start">Add at least one start hold (green).</string>
     <string name="climb_creator_issue_no_finish">Add at least one finish hold (magenta).</string>

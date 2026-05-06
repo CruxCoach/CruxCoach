@@ -36,4 +36,13 @@ class ClimbEditorStateTest {
         val state = ClimbEditorState(selectedHolds = emptyMap())
         assertEquals("", state.encodeFrames())
     }
+
+    @Test
+    fun activeBrush_defaults_to_START_on_fresh_state() {
+        // Regression: a freshly-opened editor must pre-select the green
+        // Start chip so first-time users discover the chip-row controls
+        // which role taps paint. Null-default would silently land them
+        // in delete mode where their first tap simply does nothing.
+        assertEquals(HoldRole.START, ClimbEditorState().activeBrush)
+    }
 }

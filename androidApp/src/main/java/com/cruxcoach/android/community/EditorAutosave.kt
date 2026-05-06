@@ -62,7 +62,6 @@ class EditorAutosave @Inject constructor(
                 description = prefs[KEY_DESCRIPTION].orEmpty(),
                 setterGradeId = prefs[KEY_GRADE],
                 angle = prefs[KEY_ANGLE],
-                activeBrush = null,
             ),
             savedAtEpochMs = savedAt,
         )

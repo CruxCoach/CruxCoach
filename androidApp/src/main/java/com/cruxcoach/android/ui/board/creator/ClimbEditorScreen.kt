@@ -507,38 +507,47 @@ private fun HoldCountStatus(
     val hands = holds.values.count { it == HoldRole.HAND }
     val feet = holds.values.count { it == HoldRole.FOOT }
     val finishes = holds.values.count { it == HoldRole.FINISH }
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        BrushChip(
-            label = stringResource(R.string.climb_creator_count_start, starts),
-            role = HoldRole.START,
-            roleColor = com.cruxcoach.android.ui.theme.rgb332ToComposeColor(ledColors.start),
-            isActive = activeBrush == HoldRole.START,
-            onClick = onBrushTap,
-        )
-        BrushChip(
-            label = stringResource(R.string.climb_creator_count_hand, hands),
-            role = HoldRole.HAND,
-            roleColor = com.cruxcoach.android.ui.theme.rgb332ToComposeColor(ledColors.hand),
-            isActive = activeBrush == HoldRole.HAND,
-            onClick = onBrushTap,
-        )
-        BrushChip(
-            label = stringResource(R.string.climb_creator_count_foot, feet),
-            role = HoldRole.FOOT,
-            roleColor = com.cruxcoach.android.ui.theme.rgb332ToComposeColor(ledColors.foot),
-            isActive = activeBrush == HoldRole.FOOT,
-            onClick = onBrushTap,
-        )
-        BrushChip(
-            label = stringResource(R.string.climb_creator_count_finish, finishes),
-            role = HoldRole.FINISH,
-            roleColor = com.cruxcoach.android.ui.theme.rgb332ToComposeColor(ledColors.finish),
-            isActive = activeBrush == HoldRole.FINISH,
-            onClick = onBrushTap,
-        )
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        if (activeBrush == null) {
+            Text(
+                text = stringResource(R.string.climb_creator_brush_hint_delete_mode),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.outline,
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            BrushChip(
+                label = stringResource(R.string.climb_creator_count_start, starts),
+                role = HoldRole.START,
+                roleColor = com.cruxcoach.android.ui.theme.rgb332ToComposeColor(ledColors.start),
+                isActive = activeBrush == HoldRole.START,
+                onClick = onBrushTap,
+            )
+            BrushChip(
+                label = stringResource(R.string.climb_creator_count_hand, hands),
+                role = HoldRole.HAND,
+                roleColor = com.cruxcoach.android.ui.theme.rgb332ToComposeColor(ledColors.hand),
+                isActive = activeBrush == HoldRole.HAND,
+                onClick = onBrushTap,
+            )
+            BrushChip(
+                label = stringResource(R.string.climb_creator_count_foot, feet),
+                role = HoldRole.FOOT,
+                roleColor = com.cruxcoach.android.ui.theme.rgb332ToComposeColor(ledColors.foot),
+                isActive = activeBrush == HoldRole.FOOT,
+                onClick = onBrushTap,
+            )
+            BrushChip(
+                label = stringResource(R.string.climb_creator_count_finish, finishes),
+                role = HoldRole.FINISH,
+                roleColor = com.cruxcoach.android.ui.theme.rgb332ToComposeColor(ledColors.finish),
+                isActive = activeBrush == HoldRole.FINISH,
+                onClick = onBrushTap,
+            )
+        }
     }
 }
 
