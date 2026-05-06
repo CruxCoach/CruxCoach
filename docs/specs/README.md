@@ -13,6 +13,7 @@ CruxCoach feature specifications, grouped by release.
   - `Skeleton` — scope and decisions agreed, implementation details TBD
   - `Draft` — design complete, pending engineering review
   - `Ready` — design complete, API surface + tests + rollout specified, implementation can start
+  - `Design-locked` — design frozen; remaining gates (e.g. an upstream spike) before implementation can start
   - `Implementation` — code in progress
   - `Shipped` — merged and released
   - `Failed` — abandoned; kept as a record of the attempted design, do not implement from this
@@ -31,12 +32,16 @@ CruxCoach feature specifications, grouped by release.
 
 | Spec | Title | Status | Depends on |
 |------|-------|--------|------------|
-| [FEAT-001](0.1.3/FEAT-001-nostr-relay-discovery.md) | Nostr Relay Discovery (NIP-65) | Implementation | — |
-| [FEAT-002](0.1.3/FEAT-002-nostr-backup-sync.md) | Nostr Encrypted Backup & Sync | Implementation | FEAT-001 |
+| [FEAT-001](0.1.3/FEAT-001-nostr-relay-discovery.md) | Nostr Relay Discovery (NIP-65) | Shipped | — |
+| [FEAT-002](0.1.3/FEAT-002-nostr-backup-sync.md) | Nostr Encrypted Backup & Sync | Shipped | FEAT-001 |
 
-### v0.1.4 — Climb Creator + Aurora migration
+### v0.1.4 — Climb Creator + schema cleanup + Kilter own-climb import
 
 | Spec | Title | Status | Depends on |
 |------|-------|--------|------------|
-| [FEAT-003](0.1.4/FEAT-003-climb-creator.md) | Climb Creator & Nostr Community Climbs | Skeleton | — |
+| [FEAT-003](0.1.4/FEAT-003-climb-creator.md) | Climb Creator & Nostr Community Climbs | Implementation | — |
 | [FEAT-005](0.1.4/FEAT-005-aurora-json-import.md) | Aurora JSON Export Import | Skeleton | FEAT-003 |
+| [FEAT-006](0.1.4/FEAT-006-schema-rename.md) | Schema Naming Cleanup | Implementation | — |
+| [FEAT-008](0.1.4/FEAT-008-kilter-import-own-climbs-and-backup-extension.md) | Kilter Own-Climb Import + Backup Extension | Design-locked | FEAT-003 |
+| [FEAT-009](0.1.4/FEAT-009-difficulty-rating-engine.md) | Difficulty Rating Engine | Skeleton | FEAT-003 |
+| [FEAT-010](0.1.4/FEAT-010-nostr-profile-editor.md) | Nostr Profile Editor (Kind-0) Polish | Skeleton | — |

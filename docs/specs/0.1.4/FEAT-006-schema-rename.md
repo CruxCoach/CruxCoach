@@ -1,14 +1,17 @@
 ---
-status: skeleton
+status: implementation
 ---
 # Feature Spec: Schema Naming Cleanup (v0.1.4)
 
-> **Status:** Skeleton — drafted 2026-04-27. Decisions collected during the
-> 0.1.3 release post-mortem (the Aurora API was retired on 2026-03-26; the
-> `aurora_*` table prefix has been semantically wrong for ~5 weeks).
-> Sections 1–7 (design) and 8–11 (rollout) are agreed. §4 column drop scope
-> and §5 migration mechanics need a final pass against the actual
-> SQLDelight migration setup before implementation.
+> **Status:** Implementation (0.1.4) — flagged 2026-05-06. `2.sqm`
+> migrations for board.db and secure.db (full `aurora_*` /
+> PascalCase → plural snake_case rename + index recreate +
+> `sync_states.table_name` content rewrite) are landed on
+> `feat/0.1.4-release`, plus the `4.sqm` follow-up that re-creates
+> `climb_browse` with `origin` + `kilter_status`, plus BLE/domain
+> class renames. Remaining work tracked in §3.5 (`Aurora`-mention
+> cleanup beyond table names) and §6 (Kotlin source-side rename
+> completion).
 > **Depends on:** —
 > **Blocks:** FEAT-003 (Climb Creator), FEAT-005 (Aurora JSON Import). Both
 > write into the renamed tables; merging this first means their code is

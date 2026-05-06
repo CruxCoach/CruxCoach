@@ -1,9 +1,10 @@
 # Feature Spec: Nostr Relay Discovery (NIP-65) (v0.1.3)
 
-> **Status:** Implementation — code landed; the full test matrix from §10
-> (parser, merge, cache, resolver, pool contract) is green. Remaining QA:
-> manual smoke test against `purplepag.es` / `relay.nostr.band` on a device
-> build, and post-release telemetry observation (§13).
+> **Status:** Shipped (v0.1.3) — discovery + merge + cache + resolver +
+> pool contract code landed; the full §10 test matrix is green.
+> Post-release QA target: telemetry observation per §13 (cache hit
+> rate, fallback frequency to `NostrConfig.DEFAULT_RELAYS`) against
+> live deploys.
 > **Prerequisite for:** FEAT-002 (Nostr Backup & Sync) — consumes the pool
 > contract defined in §8.
 

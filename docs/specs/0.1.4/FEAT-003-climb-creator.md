@@ -1,15 +1,18 @@
 ---
-status: skeleton
+status: implementation
 ---
 # Feature Spec: Climb Creator & Nostr Community Climbs (v0.1.4)
 
-> **Status:** Skeleton — revived 2026-04-25. The Kilter API re-integration
-> that this spec depended on (§12) shipped in v0.1.2, so the design is no
-> longer blocked. Sections 1–4 (UX), 6–8 (browse, consensus, moderation),
-> and 10–11 (offline, privacy) carry over unchanged. §5 (dual-publishing)
-> already matches what `KilterApiClient` does today. §9 (schema) needs
-> engineering review before implementation, especially in light of
-> FEAT-005's dependency on the local-climb storage decision.
+> **Status:** Implementation (0.1.4) — flagged 2026-05-06. Core slice
+> landed on `feat/0.1.4-release`: Climb Editor, Drafts drawer, browser
+> My-climbs filter + draft badge, BLE live-mirror + silent Quick-Send,
+> dual-publish to Nostr Kind-30078 (`CommunityClimbPublisher` /
+> `CommunityClimbSubscriber`) plus the official Kilter Board API,
+> FramesHash, owner-locked stats, and the per-attempt
+> `board_kilter_publish_*` audit trail. §7 (Grade Consensus) is now
+> owned by FEAT-009 (Difficulty Rating Engine) — treat as superseded
+> here. §8 (Moderation) remains a post-0.1.4 follow-up. §9 (schema)
+> is locked via `Board.sq` + the `2.sqm` rename from FEAT-006.
 > **Depends on:** — (Kilter API re-integration shipped in v0.1.2).
 > **Blocks:** FEAT-005 (Aurora JSON Import) — the imported `climbs[]`
 > array lands in the local-climb storage this spec defines.
