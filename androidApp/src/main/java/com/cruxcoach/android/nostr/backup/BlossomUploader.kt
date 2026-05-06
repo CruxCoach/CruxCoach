@@ -402,7 +402,18 @@ class BlossomUploader @Inject constructor(
      * `Authorization: Nostr base64(event_json)` header Blossom expects
      * (BUD-01 §1).
      */
-    private suspend fun blossomAuthHeader(action: String, sha256: String): String {
+    /**
+     * Sign a BUD-02 auth header (Kind-24242 Nostr event, base64-encoded
+     * inside `Authorization: Nostr <b64>`). Reused by [ProfileImageUploader]
+     * for FEAT-010 profile-image uploads. The auth event commits to
+     * `(action, sha256, expiration)` and is bound only to the blob's
+     * content hash — same signature works on any Blossom server.
+     */
+    internal suspend fun blossomAuthHeader(
+        action: String,
+        sha256: String,
+        content: String = "CruxCoach backup $action",
+    ): String {
         val now = System.currentTimeMillis() / 1000
         val expiration = now + AUTH_EXPIRATION_SECONDS
         val tags = arrayOf(
@@ -414,7 +425,7 @@ class BlossomUploader @Inject constructor(
             createdAt = now,
             kind = KIND_BLOSSOM_AUTH,
             tags = tags,
-            content = "CruxCoach backup $action",
+            content = content,
         )
         val eventJson = buildEventJson(event)
         val b64 = Base64.getEncoder().encodeToString(eventJson.encodeToByteArray())

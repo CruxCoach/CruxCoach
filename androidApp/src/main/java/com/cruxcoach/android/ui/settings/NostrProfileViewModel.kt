@@ -1,6 +1,7 @@
 package com.cruxcoach.android.ui.settings
 
 import android.content.Context
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.R
@@ -8,8 +9,10 @@ import com.cruxcoach.android.community.CommunityClimbSubscriber
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.data.kilter.KilterTokenStore
 import com.cruxcoach.android.nostr.NostrSigner
+import com.cruxcoach.android.nostr.profile.ImageProcessor
 import com.cruxcoach.android.nostr.profile.LnurlVerifier
 import com.cruxcoach.android.nostr.profile.Nip05Verifier
+import com.cruxcoach.android.nostr.profile.ProfileImageUploader
 import com.cruxcoach.android.payment.NostrProfileManager
 import com.cruxcoach.data.repository.BoardRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -72,6 +75,11 @@ data class NostrProfileEditState(
     /** LNURL probe status for the Lightning-address field. Same lifecycle
      *  as [nip05Verification]. */
     val lnurlVerification: LnurlVerifier.State = LnurlVerifier.State.Idle,
+    /** True while a banner image is being compressed + uploaded to Blossom.
+     *  UI shows a progress overlay on the banner edit area. */
+    val bannerUploadInFlight: Boolean = false,
+    /** True while a profile picture is being compressed + uploaded. */
+    val pictureUploadInFlight: Boolean = false,
 )
 
 @HiltViewModel
@@ -85,6 +93,8 @@ class NostrProfileViewModel @Inject constructor(
     private val communityClimbSubscriber: CommunityClimbSubscriber,
     private val nip05Verifier: Nip05Verifier,
     private val lnurlVerifier: LnurlVerifier,
+    private val imageProcessor: ImageProcessor,
+    private val profileImageUploader: ProfileImageUploader,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(NostrProfileEditState())
@@ -199,6 +209,69 @@ class NostrProfileViewModel @Inject constructor(
         viewModelScope.launch {
             val result = lnurlVerifier.verify(lud16)
             _state.update { it.copy(lnurlVerification = result) }
+        }
+    }
+
+    /** Compress the picked image at [uri] (1024 px long-edge JPEG) and
+     *  upload to Blossom. On success the URL replaces [pictureUrl]. On
+     *  failure an [errorMessage] surfaces in the snackbar. */
+    fun uploadPicture(uri: Uri) = uploadImage(
+        uri = uri,
+        maxDimension = ImageProcessor.MAX_DIMENSION_PICTURE,
+        markInFlight = { _state.update { it.copy(pictureUploadInFlight = true, errorMessage = null) } },
+        clearInFlight = { _state.update { it.copy(pictureUploadInFlight = false) } },
+        onSuccess = { url ->
+            _state.update { it.copy(pictureUrl = url, justSaved = false) }
+        },
+    )
+
+    /** Same as [uploadPicture] but for the 3:1-ish banner image
+     *  (1920 px long-edge). */
+    fun uploadBanner(uri: Uri) = uploadImage(
+        uri = uri,
+        maxDimension = ImageProcessor.MAX_DIMENSION_BANNER,
+        markInFlight = { _state.update { it.copy(bannerUploadInFlight = true, errorMessage = null) } },
+        clearInFlight = { _state.update { it.copy(bannerUploadInFlight = false) } },
+        onSuccess = { url ->
+            _state.update { it.copy(bannerUrl = url, justSaved = false) }
+        },
+    )
+
+    private fun uploadImage(
+        uri: Uri,
+        maxDimension: Int,
+        markInFlight: () -> Unit,
+        clearInFlight: () -> Unit,
+        onSuccess: (String) -> Unit,
+    ) {
+        markInFlight()
+        viewModelScope.launch {
+            try {
+                val bytes = imageProcessor.loadAndCompress(uri, maxDimension)
+                when (val result = profileImageUploader.upload(bytes)) {
+                    is ProfileImageUploader.Result.Success -> onSuccess(result.url)
+                    is ProfileImageUploader.Result.Failure -> _state.update {
+                        it.copy(
+                            errorMessage = appContext.getString(
+                                R.string.nostr_profile_image_upload_failed,
+                                result.message,
+                            ),
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("NostrProfileVM", "image upload pipeline failed", e)
+                _state.update {
+                    it.copy(
+                        errorMessage = appContext.getString(
+                            R.string.nostr_profile_image_upload_failed,
+                            e.message ?: e.javaClass.simpleName,
+                        ),
+                    )
+                }
+            } finally {
+                clearInFlight()
+            }
         }
     }
 

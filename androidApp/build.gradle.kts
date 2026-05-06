@@ -243,6 +243,12 @@ dependencies {
 
     // Zstd decompression is handled by native C library (see src/main/cpp/)
 
+    // FEAT-010 profile editor: image loading + markdown preview
+    implementation(libs.coil.compose)
+    implementation(libs.coil.okhttp)
+    implementation(libs.compose.richtext.commonmark)
+    implementation(libs.compose.richtext.ui.material3)
+
     // Testing
     testImplementation(libs.kotlin.test)
     testImplementation(libs.kotlinx.coroutines.test)

@@ -127,6 +127,10 @@
     <string name="nostr_profile_nip05_unreachable">Couldn\'t verify (offline or domain not configured)</string>
     <string name="nostr_profile_lud16_verified">Lightning address active</string>
     <string name="nostr_profile_lud16_unreachable">Couldn\'t verify Lightning address</string>
+    <string name="nostr_profile_banner_change">Change banner</string>
+    <string name="nostr_profile_picture_change">Change profile picture</string>
+    <string name="nostr_profile_image_upload_failed" formatted="false">Image upload failed: %1$s</string>
+    <string name="nostr_profile_about_count" formatted="false">%1$d / %2$d</string>
     <string name="nostr_profile_save">Save profile</string>
     <string name="nostr_profile_saving">Saving…</string>
     <string name="nostr_profile_saved_toast">Profile saved</string>

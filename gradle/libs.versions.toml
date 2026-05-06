@@ -27,6 +27,8 @@ biometric = "1.1.0"
 mockk = "1.14.9"
 robolectric = "4.14.1"
 turbine = "1.2.1"
+coil = "2.7.0"
+compose-richtext = "0.20.0"
 
 [libraries]
 # Compose BOM
@@ -92,6 +94,18 @@ biometric = { group = "androidx.biometric", name = "biometric", version.ref = "b
 
 # AppCompat (per-app language switching)
 appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
+
+# Coil — image loading (FEAT-010 profile editor: render banner + picture from
+# Blossom URLs). Coil 2 stays compatible with the current Compose BOM; Coil 3
+# requires a more recent BoM than 2026.02.00.
+coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
+coil-okhttp = { group = "io.coil-kt", name = "coil", version.ref = "coil" }
+
+# compose-richtext — markdown preview for the profile editor's `about`
+# field (FEAT-010 §3.5). Same library family Amethyst uses (vitorpamplona
+# vendored a fork; we use the upstream halilibo release direct).
+compose-richtext-commonmark = { group = "com.halilibo.compose-richtext", name = "richtext-commonmark", version.ref = "compose-richtext" }
+compose-richtext-ui-material3 = { group = "com.halilibo.compose-richtext", name = "richtext-ui-material3", version.ref = "compose-richtext" }
 
 # Testing
 kotlin-test = { group = "org.jetbrains.kotlin", name = "kotlin-test", version.ref = "kotlin" }

@@ -1,25 +1,36 @@
 package com.cruxcoach.android.ui.settings
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -33,11 +44,11 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardCapitalization
-import com.cruxcoach.android.nostr.profile.LnurlVerifier
-import com.cruxcoach.android.nostr.profile.Nip05Verifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.foundation.text.KeyboardOptions
@@ -45,7 +56,12 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.collectAsState
+import coil.compose.AsyncImage
 import com.cruxcoach.android.R
+import com.cruxcoach.android.nostr.profile.LnurlVerifier
+import com.cruxcoach.android.nostr.profile.Nip05Verifier
+import com.halilibo.richtext.markdown.Markdown
+import com.halilibo.richtext.ui.material3.RichText
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -68,6 +84,17 @@ fun NostrProfileScreen(
             viewModel.clearError()
         }
     }
+
+    // System gallery pickers — one each for banner and profile picture so
+    // a result handler doesn't have to disambiguate which image was picked.
+    val bannerPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia(),
+        onResult = { uri: Uri? -> uri?.let { viewModel.uploadBanner(it) } },
+    )
+    val picturePicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia(),
+        onResult = { uri: Uri? -> uri?.let { viewModel.uploadPicture(it) } },
+    )
 
     Scaffold(
         topBar = {
@@ -103,6 +130,26 @@ fun NostrProfileScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            BannerImageArea(
+                url = state.bannerUrl,
+                uploadInFlight = state.bannerUploadInFlight,
+                onEditClick = {
+                    bannerPicker.launch(
+                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+                    )
+                },
+            )
+
+            ProfilePictureArea(
+                url = state.pictureUrl,
+                uploadInFlight = state.pictureUploadInFlight,
+                onEditClick = {
+                    picturePicker.launch(
+                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+                    )
+                },
+            )
+
             Text(
                 stringResource(R.string.nostr_profile_explainer),
                 style = MaterialTheme.typography.bodyMedium,
@@ -149,9 +196,29 @@ fun NostrProfileScreen(
                 value = state.about,
                 onValueChange = viewModel::setAbout,
                 label = { Text(stringResource(R.string.nostr_profile_about)) },
-                supportingText = { Text(stringResource(R.string.nostr_profile_about_hint)) },
+                supportingText = {
+                    val limit = ABOUT_CHAR_LIMIT
+                    val tooLong = state.about.length > limit
+                    Text(
+                        text = stringResource(
+                            R.string.nostr_profile_about_count,
+                            state.about.length,
+                            limit,
+                        ),
+                        color = if (tooLong) MaterialTheme.colorScheme.error
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                },
                 modifier = Modifier.fillMaxWidth(),
             )
+
+            // Markdown preview — Amethyst-style: rendered below the editor
+            // so the user sees how `**bold**` / `*italic*` / `[link](url)`
+            // will appear on other clients. Hidden when the field is empty
+            // to avoid an empty-box visual.
+            if (state.about.isNotBlank()) {
+                AboutMarkdownPreview(content = state.about)
+            }
 
             OutlinedTextField(
                 value = state.lightningAddress,
@@ -169,23 +236,11 @@ fun NostrProfileScreen(
                     },
             )
 
-            OutlinedTextField(
-                value = state.pictureUrl,
-                onValueChange = viewModel::setPictureUrl,
-                label = { Text(stringResource(R.string.nostr_profile_picture)) },
-                supportingText = { Text(stringResource(R.string.nostr_profile_picture_hint)) },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
-
-            OutlinedTextField(
-                value = state.bannerUrl,
-                onValueChange = viewModel::setBannerUrl,
-                label = { Text(stringResource(R.string.nostr_profile_banner_label)) },
-                supportingText = { Text(stringResource(R.string.nostr_profile_banner_hint)) },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
+            // Banner + picture URL fields removed — the image-edit areas
+            // at the top of this screen own those URLs now (FEAT-010 Tier 3
+            // image upload). The state still carries the URLs and the
+            // setBannerUrl / setPictureUrl setters remain, used by the
+            // ProfileImageUploader callback path on a successful upload.
 
             OutlinedTextField(
                 value = state.nip05,
@@ -256,6 +311,131 @@ fun NostrProfileScreen(
             // CommunityClimbSubscriber.health StateFlow.
             HorizontalDivider(Modifier.padding(vertical = 12.dp))
             SubscriberHealthLine(state.subscriberHealth)
+        }
+    }
+}
+
+private const val ABOUT_CHAR_LIMIT = 500
+
+/** 3:1 banner image edit area at the top of the profile editor. Tap →
+ *  system gallery picker; ViewModel takes over on result. While an
+ *  upload is in flight the area shows a centred spinner over the
+ *  existing image (or gradient placeholder). */
+@Composable
+private fun BannerImageArea(
+    url: String,
+    uploadInFlight: Boolean,
+    onEditClick: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .aspectRatio(3f)
+            .clip(RoundedCornerShape(8.dp))
+            .background(
+                Brush.horizontalGradient(
+                    listOf(
+                        MaterialTheme.colorScheme.primaryContainer,
+                        MaterialTheme.colorScheme.secondaryContainer,
+                    ),
+                ),
+            ),
+    ) {
+        if (url.isNotBlank()) {
+            AsyncImage(
+                model = url,
+                contentDescription = stringResource(R.string.nostr_profile_banner_label),
+                modifier = Modifier.fillMaxSize(),
+                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+            )
+        }
+        if (uploadInFlight) {
+            CircularProgressIndicator(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .size(40.dp),
+            )
+        }
+        FilledIconButton(
+            onClick = onEditClick,
+            enabled = !uploadInFlight,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(8.dp)
+                .size(36.dp),
+        ) {
+            Icon(
+                Icons.Filled.Edit,
+                contentDescription = stringResource(R.string.nostr_profile_banner_change),
+                modifier = Modifier.size(18.dp),
+            )
+        }
+    }
+}
+
+/** 1:1 circular profile-picture edit area. Same upload semantics as
+ *  the banner — the two pickers are independent so the user can
+ *  re-upload one without the other. */
+@Composable
+private fun ProfilePictureArea(
+    url: String,
+    uploadInFlight: Boolean,
+    onEditClick: () -> Unit,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(96.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.primaryContainer),
+        ) {
+            if (url.isNotBlank()) {
+                AsyncImage(
+                    model = url,
+                    contentDescription = stringResource(R.string.nostr_profile_picture_change),
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                )
+            }
+            if (uploadInFlight) {
+                CircularProgressIndicator(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .size(28.dp),
+                )
+            }
+        }
+        FilledIconButton(
+            onClick = onEditClick,
+            enabled = !uploadInFlight,
+        ) {
+            Icon(
+                Icons.Filled.Edit,
+                contentDescription = stringResource(R.string.nostr_profile_picture_change),
+            )
+        }
+    }
+}
+
+/** Markdown preview for the `about` field. Renders below the editor
+ *  in a subdued box so the user sees how `**bold**` / `*italic*` /
+ *  `[link](url)` will appear on other Nostr clients. Uses
+ *  compose-richtext (same library family Amethyst uses; we pull
+ *  upstream halilibo, Amethyst vendors a fork). */
+@Composable
+private fun AboutMarkdownPreview(content: String) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+    ) {
+        RichText {
+            Markdown(content = content)
         }
     }
 }
