@@ -77,13 +77,43 @@ CruxCoach can ship its own equivalent that:
 
 ### 1.3 Goals
 
+The controller has TWO clearly-separated tiers of functionality:
+
+**Tier 1 — Offline core (works without any internet, mirrors the
+"offline-first" stance of the CruxCoach app itself):**
+
 - **Multi-phone access** to a single Aurora-protocol board: 4-10
   simultaneous BLE clients seamlessly multiplexed onto one board.
-- **Nostr-native**: subscribes to Kind-30078 / Kind-30079 / Kind-30080
-  on the user's relays, no CruxCoach-operated server required.
-- **Offline-first**: full BLE-proxy operation without any internet
-  connection. Online features (Nostr, OTA, climb-of-the-day) are
-  additive.
+  Pure local-network operation, no relay or backend involved.
+- **Configurable via captive portal** on the controller's WiFi-AP
+  fallback (no upstream internet required for setup).
+- **Time-out / cooldown** to free the board for the next user.
+
+If you turn off your router and unplug the gym's internet, Tier 1
+still works — same as how the CruxCoach app itself keeps working
+on a phone in airplane mode.
+
+**Tier 2 — Online additive (only active when the controller has
+WiFi+internet, never required for Tier 1):**
+
+- **Nostr-relay subscription** to Kind-30078 / Kind-30079 / Kind-30080
+  events on the user's configured relays — no CruxCoach-operated
+  server in the path. When relays are reachable, the controller
+  picks up community climb-shares, grade votes, and trainer-mode
+  queues. When they aren't, those features simply don't update;
+  the BLE multiplexing keeps working.
+- **OTA firmware updates** (polled from Codeberg-Releases).
+- **Lightning zap visuals** via NIP-57 when relays + LN endpoints
+  are reachable.
+
+The reason the controller speaks Nostr at all (rather than being
+purely offline) is to enable decentralised features without a
+CruxCoach-operated backend — same architectural stance the phone
+app takes. Internet-dependent features are explicitly opt-in and
+clearly labelled.
+
+**Other goals:**
+
 - **Open-source firmware** distributed via Zapstore, Codeberg, or
   similar.
 - **Optional pre-built hardware** via cruxcoach.org for users who
