@@ -1093,3 +1093,27 @@ SELECT 1 FROM sync_states WHERE table_name = 'post_v8_force_resync' LIMIT 1;
 
 clearPostV8ResyncMarker:
 DELETE FROM sync_states WHERE table_name = 'post_v8_force_resync';
+
+-- ─────────────────────────────────────────────────────────────────
+-- FEAT-005 Aurora-JSON-import — name-based climb resolution
+-- ─────────────────────────────────────────────────────────────────
+-- Aurora exports reference each climb by display name (not UUID).
+-- The importer collects every distinct name from the export's
+-- ascents/attempts/circuits, looks them up via the query below in
+-- bounded batches (≤500 names per call to stay well under the
+-- SQLite 999 bound-variable cap), and resolves the public-over-draft
+-- + popularity tiebreaker in Kotlin.
+--
+-- Joins climbs to climb_stats so the caller sees the total
+-- ascensionist count per uuid; the Kotlin picker uses that as the
+-- collision tiebreaker (boardsesh proven pattern).
+lookupClimbsByNamesForAuroraImport:
+SELECT c.name, c.uuid, c.source, c.is_listed,
+       CAST(COALESCE(SUM(cs.ascensionist_count), 0) AS INTEGER) AS total_ascensionist_count
+FROM climbs c
+LEFT JOIN climb_stats cs ON cs.climb_uuid = c.uuid
+WHERE c.name IN :names
+  AND c.is_deleted = 0
+  AND (c.source = 'kilter'
+       OR (c.source = 'local' AND c.created_by_pubkey = :ownPubkey))
+GROUP BY c.uuid;

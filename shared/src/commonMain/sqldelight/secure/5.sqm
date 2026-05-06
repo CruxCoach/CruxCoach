@@ -1,0 +1,28 @@
+-- Migration version 5 → 6: idempotency markers for FEAT-005 (Aurora
+-- JSON Export Import). Adds an `external_id` column to the user-data
+-- tables that ingest from the Aurora email-export, plus three columns
+-- (`description`, `color`, `external_id`) on `climb_lists` so circuits
+-- imported from Aurora carry their original metadata.
+--
+-- All columns are nullable; existing rows stay valid. The unique
+-- partial index lets re-imports of the same Aurora export resolve to
+-- INSERT-or-skip via ON CONFLICT(external_id) at the SQL layer
+-- without burdening already-stored rows that have no Aurora origin.
+
+ALTER TABLE ascents ADD COLUMN external_id TEXT;
+ALTER TABLE bids    ADD COLUMN external_id TEXT;
+
+-- Partial unique index — only `external_id IS NOT NULL` rows compete
+-- for uniqueness, so the column stays optional for ascents/bids that
+-- arrive via the Kilter API or the in-app logbook screens.
+CREATE UNIQUE INDEX idx_ascents_external_id ON ascents(external_id)
+    WHERE external_id IS NOT NULL;
+CREATE UNIQUE INDEX idx_bids_external_id ON bids(external_id)
+    WHERE external_id IS NOT NULL;
+
+ALTER TABLE climb_lists ADD COLUMN description TEXT;
+ALTER TABLE climb_lists ADD COLUMN color       TEXT;
+ALTER TABLE climb_lists ADD COLUMN external_id TEXT;
+
+CREATE UNIQUE INDEX idx_climb_lists_external_id ON climb_lists(external_id)
+    WHERE external_id IS NOT NULL;
