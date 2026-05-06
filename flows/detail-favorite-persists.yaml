@@ -9,7 +9,8 @@ tags:
 # favorite state survived the process restart. Catches DB
 # write/read regressions in the favorites pipeline that an in-
 # session toggle wouldn't catch.
-- launchApp
+- launchApp:
+    stopApp: false
 - waitForAnimationToEnd:
     timeout: 5000
 # First climb on the default sort — stable across cold starts.

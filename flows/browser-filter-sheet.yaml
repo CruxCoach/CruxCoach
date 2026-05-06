@@ -10,7 +10,8 @@ tags:
 # upcoming UserPreferences round-trip tests. This flow's value is
 # strictly UI-side: catches "filter screen fails to compose",
 # "section header string drift", "back-nav broken".
-- launchApp
+- launchApp:
+    stopApp: false
 - waitForAnimationToEnd:
     timeout: 5000
 - tapOn: "Filter"

@@ -7,7 +7,8 @@ tags:
 # screen by checking landmarks unique to the Browser. Combined with
 # the logcat .expects file, verifies UI + behavioural state at
 # startup. Locale: DE — phone is DE-locale by default.
-- launchApp
+- launchApp:
+    stopApp: false
 # Cold-start splash + initial query takes up to ~3s on this device.
 # Asserts below have an implicit 5s poll, so a single wait here is
 # enough; downstream taps/asserts don't need their own waits.

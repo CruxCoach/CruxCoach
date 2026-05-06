@@ -5,7 +5,8 @@ tags:
 ---
 # Open the climb-creator via the FAB. Verifies editor landmarks that
 # uniquely identify the editor screen (vs. browser/detail/settings).
-- launchApp
+- launchApp:
+    stopApp: false
 - waitForAnimationToEnd:
     timeout: 5000
 - tapOn: "Neuen Climb erstellen"

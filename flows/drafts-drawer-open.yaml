@@ -5,7 +5,8 @@ tags:
 ---
 # Open the drafts drawer from the editor's overflow menu and verify
 # the drawer header is rendered.
-- launchApp
+- launchApp:
+    stopApp: false
 - waitForAnimationToEnd:
     timeout: 5000
 - tapOn: "Neuen Climb erstellen"

@@ -1,0 +1,4 @@
+# Detail navigations both directions (initial + cleanup).
+🧭 NAV START: BoardBrowser → ClimbDetail\(
+🧭 .*BoardClimbDetailVM\.init start
+🧭 .*NAV COMPLETE: BoardClimbDetail\(

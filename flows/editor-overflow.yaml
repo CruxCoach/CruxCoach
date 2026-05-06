@@ -6,7 +6,8 @@ tags:
 # Verify the editor's ⋮ overflow menu has the expected items. Covers
 # commit 90ee6e7 which moved Drafts + Heatmap from direct TopBar
 # icons into the menu.
-- launchApp
+- launchApp:
+    stopApp: false
 - waitForAnimationToEnd:
     timeout: 5000
 - tapOn: "Neuen Climb erstellen"

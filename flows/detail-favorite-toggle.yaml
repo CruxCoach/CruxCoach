@@ -8,7 +8,8 @@ tags:
 # content-desc flips. Untoggle so the flow leaves no state behind.
 # Combined with detail-favorite-toggle.expects (PERF NAV markers
 # proving climb-detail navigation, not setter-detail).
-- launchApp
+- launchApp:
+    stopApp: false
 - waitForAnimationToEnd:
     timeout: 5000
 - tapOn:

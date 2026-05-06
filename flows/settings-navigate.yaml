@@ -3,7 +3,8 @@ name: settings-navigate
 tags:
   - smoke
 ---
-- launchApp
+- launchApp:
+    stopApp: false
 - waitForAnimationToEnd:
     timeout: 5000
 - tapOn: "Einstellungen"

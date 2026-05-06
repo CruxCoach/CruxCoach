@@ -10,7 +10,8 @@ tags:
 # Behavioural verification: see detail-open.expects file with PERF
 # NAV markers — the strongest signal that the right composable was
 # entered, not a similar-looking sibling.
-- launchApp
+- launchApp:
+    stopApp: false
 - waitForAnimationToEnd:
     timeout: 5000
 - tapOn:
