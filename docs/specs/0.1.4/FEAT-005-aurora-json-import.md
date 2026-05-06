@@ -1,14 +1,31 @@
 ---
-status: skeleton
+status: implementation
 ---
 # Feature Spec: Aurora JSON Export Import (v0.1.4)
 
-> **Status:** Skeleton — scope and decisions agreed, schema migrations and
-> wire-up sections need engineering review before implementation.
-> **Depends on:** FEAT-003 (Climb Creator) — local/draft climb storage that
-> imported user-created climbs land in. JSON import without FEAT-003 is
-> still useful (ascents, bids, lists work standalone) but loses the
-> climbs[] section of the export.
+> **Status:** Implementation (0.1.4) — flagged 2026-05-06. Re-added to
+> 0.1.4 scope after the FEAT-010 polish landed cleanly. Implementation
+> mirrors `boardsesh/packages/web/app/lib/data-sync/aurora/` (Apache 2.0)
+> for the empirically-proven patterns: timestamp normalisation,
+> deterministic `auroraId` hash, name-resolution with public-over-draft
+> tiebreaker, dedup via `INSERT … ON CONFLICT (external_id)`. Boardsesh
+> verifies the §2 "Input JSON Shape" with real test fixtures (not just
+> our own sample), so the field set is solid.
+>
+> Two corrections vs. the original skeleton (recorded inline in §2 and §4):
+>
+> - §4.3 retargeted from a separate `local_climb` table to FEAT-003's
+>   unified `climbs` table with `source='local' / origin='cruxcoach'`.
+>   FEAT-003 went the single-table route, not the two-table one the
+>   skeleton assumed.
+> - §2.2 dropped the 1-3 → 1-5 quality conversion. Aurora's *email
+>   export* already arrives on the 1-5 scale; only the *live API*
+>   (which we don't talk to) returns 1-3.
+>
+> **Depends on:** FEAT-003 (Climb Creator) — provides the unified
+> `climbs` table where imported user-authored draft rows land. JSON
+> import without FEAT-003 still ingests ascents, bids and circuits; the
+> `climbs[]` section is silently skipped.
 
 ## 1. Overview
 
@@ -145,41 +162,60 @@ means "not from Aurora-JSON-import".
 
 ### 4.1 Idempotency markers on existing tables
 
+Tables were renamed by FEAT-006 (`aurora_*` → plural snake_case). Schema
+target is post-rename; FEAT-005 lands as `secure/5.sqm` migrating from
+v5 → v6:
+
 ```sql
 -- secure DB
-ALTER TABLE aurora_ascent ADD COLUMN external_id TEXT;
-ALTER TABLE aurora_bid    ADD COLUMN external_id TEXT;
-CREATE UNIQUE INDEX idx_ascent_external ON aurora_ascent(external_id)
+ALTER TABLE ascents ADD COLUMN external_id TEXT;
+ALTER TABLE bids    ADD COLUMN external_id TEXT;
+CREATE UNIQUE INDEX idx_ascents_external ON ascents(external_id)
     WHERE external_id IS NOT NULL;
-CREATE UNIQUE INDEX idx_bid_external    ON aurora_bid(external_id)
+CREATE UNIQUE INDEX idx_bids_external    ON bids(external_id)
     WHERE external_id IS NOT NULL;
 ```
 
 `external_id` is namespaced and deterministic (§5.1) so re-importing the
 same file produces the same value, and the unique index turns "did we
-already import this row?" into a single-statement upsert.
+already import this row?" into a single-statement upsert. Note that
+`is_mirror`, `is_benchmark`, `attempt_id`, `bid_count`, `quality`,
+`comment` are already on the post-FEAT-006 schema — no extra ALTER.
 
 ### 4.2 Circuit / list extensions
 
 ```sql
 -- secure DB
-ALTER TABLE climb_list ADD COLUMN description TEXT;
-ALTER TABLE climb_list ADD COLUMN color       TEXT;
-ALTER TABLE climb_list ADD COLUMN external_id TEXT;
-CREATE UNIQUE INDEX idx_climb_list_external ON climb_list(external_id)
+ALTER TABLE climb_lists ADD COLUMN description TEXT;
+ALTER TABLE climb_lists ADD COLUMN color       TEXT;
+ALTER TABLE climb_lists ADD COLUMN external_id TEXT;
+CREATE UNIQUE INDEX idx_climb_lists_external ON climb_lists(external_id)
     WHERE external_id IS NOT NULL;
 ```
 
 `color` is purely cosmetic — Aurora circuits carry a hex color; CruxCoach
 list UI can ignore it for v0.1.4 and pick it up later.
 
-### 4.3 Local-climb storage (FEAT-003)
+### 4.3 Draft-climb storage (FEAT-003 unified table)
 
-`local_climb` is **not** added by this spec. FEAT-003 owns it. If
-FEAT-003 misses v0.1.4, this importer ships with the climbs[] section
-disabled and a "draft climbs require v0.1.5" notice in the post-import
-result screen. Ascents that reference an unresolvable name fall back to
-the unresolved-climbs list (§5.4) and are not lost.
+No new table. FEAT-003 unified user-authored climbs into the existing
+`climbs` table on the board DB with `source = 'local'` and
+`origin = 'cruxcoach'`. The Aurora importer follows the same pattern:
+imported `climbs[]` rows land in `climbs` with those provenance markers,
+plus `external_id` (FEAT-006-renamed table; new column added by the
+same `5.sqm` migration above).
+
+```sql
+-- board DB (note: separate DB file, not secure DB)
+ALTER TABLE climbs ADD COLUMN external_id TEXT;
+CREATE UNIQUE INDEX idx_climbs_external ON climbs(external_id)
+    WHERE external_id IS NOT NULL;
+```
+
+Per boardsesh's empirical handling, `is_draft = true` rows from the
+export are upsert-on-`external_id`; `is_draft = false / null` rows are
+INSERT…ON CONFLICT(external_id) DO NOTHING (preserving the existing row
+if a published climb of that name already exists in the catalogue).
 
 ---
 
@@ -238,14 +274,19 @@ minutes). Per-step failure is logged but doesn't abort the next step.
 ```sql
 -- Two-stage lookup, with batching to keep IN clauses bounded.
 -- Stage 1: public board climbs (preferred)
-SELECT name, uuid FROM aurora_climb WHERE name IN (?, ?, ...);
--- Stage 2: user's local climbs (fallback)
-SELECT name, uuid FROM local_climb  WHERE name IN (?, ?, ...);
+SELECT name, uuid FROM climbs
+WHERE source = 'kilter' AND name IN (?, ?, ...);
+-- Stage 2: user's own draft climbs (fallback)
+SELECT name, uuid FROM climbs
+WHERE source = 'local' AND created_by_pubkey = ? AND name IN (?, ?, ...);
 ```
 
 Batch IN clauses at 500 entries (SQLite `SQLITE_MAX_VARIABLE_NUMBER`
 default is 999; 500 is well under). Same-name collisions in the public
-DB are resolved by ascensionist count (highest wins).
+DB are resolved by ascensionist count (highest wins) — boardsesh's
+proven tiebreaker. The `created_by_pubkey` filter on stage 2 keeps
+multi-identity installs from cross-resolving against another user's
+drafts on the same device.
 
 ### 5.4 Unresolved climbs
 

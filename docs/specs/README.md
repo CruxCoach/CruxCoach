@@ -40,7 +40,7 @@ CruxCoach feature specifications, grouped by release.
 | Spec | Title | Status | Depends on |
 |------|-------|--------|------------|
 | [FEAT-003](0.1.4/FEAT-003-climb-creator.md) | Climb Creator & Nostr Community Climbs | Implementation | — |
-| [FEAT-005](0.1.4/FEAT-005-aurora-json-import.md) | Aurora JSON Export Import | Skeleton | FEAT-003 |
+| [FEAT-005](0.1.4/FEAT-005-aurora-json-import.md) | Aurora JSON Export Import | Implementation | FEAT-003 |
 | [FEAT-006](0.1.4/FEAT-006-schema-rename.md) | Schema Naming Cleanup | Implementation | — |
 | [FEAT-010](0.1.4/FEAT-010-nostr-profile-editor.md) | Nostr Profile Editor (Kind-0) Polish | Implementation | — |
 
