@@ -51,3 +51,4 @@ CruxCoach feature specifications, grouped by release.
 | [FEAT-008](0.2.0/FEAT-008-kilter-import-own-climbs-and-backup-extension.md) | Kilter Own-Climb Import + Backup Extension | Design-locked | FEAT-003 |
 | [FEAT-009](0.2.0/FEAT-009-difficulty-rating-engine.md) | Difficulty Rating Engine | Skeleton | FEAT-003 |
 | [FEAT-011](0.2.0/FEAT-011-setter-angle-visibility.md) | Setter Angle Visibility | Skeleton | — |
+| [FEAT-012](0.2.0/FEAT-012-route-creation-and-playback.md) | Route Creation & Playback | Skeleton | FEAT-003, FEAT-005 |
