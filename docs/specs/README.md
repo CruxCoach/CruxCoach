@@ -35,13 +35,18 @@ CruxCoach feature specifications, grouped by release.
 | [FEAT-001](0.1.3/FEAT-001-nostr-relay-discovery.md) | Nostr Relay Discovery (NIP-65) | Shipped | — |
 | [FEAT-002](0.1.3/FEAT-002-nostr-backup-sync.md) | Nostr Encrypted Backup & Sync | Shipped | FEAT-001 |
 
-### v0.1.4 — Climb Creator + schema cleanup + Kilter own-climb import
+### v0.1.4 — Climb Creator + schema cleanup + Aurora migration
 
 | Spec | Title | Status | Depends on |
 |------|-------|--------|------------|
 | [FEAT-003](0.1.4/FEAT-003-climb-creator.md) | Climb Creator & Nostr Community Climbs | Implementation | — |
 | [FEAT-005](0.1.4/FEAT-005-aurora-json-import.md) | Aurora JSON Export Import | Skeleton | FEAT-003 |
 | [FEAT-006](0.1.4/FEAT-006-schema-rename.md) | Schema Naming Cleanup | Implementation | — |
-| [FEAT-008](0.1.4/FEAT-008-kilter-import-own-climbs-and-backup-extension.md) | Kilter Own-Climb Import + Backup Extension | Design-locked | FEAT-003 |
-| [FEAT-009](0.1.4/FEAT-009-difficulty-rating-engine.md) | Difficulty Rating Engine | Skeleton | FEAT-003 |
 | [FEAT-010](0.1.4/FEAT-010-nostr-profile-editor.md) | Nostr Profile Editor (Kind-0) Polish | Skeleton | — |
+
+### v0.2.0 — Kilter own-climb import + difficulty rating engine
+
+| Spec | Title | Status | Depends on |
+|------|-------|--------|------------|
+| [FEAT-008](0.2.0/FEAT-008-kilter-import-own-climbs-and-backup-extension.md) | Kilter Own-Climb Import + Backup Extension | Design-locked | FEAT-003 |
+| [FEAT-009](0.2.0/FEAT-009-difficulty-rating-engine.md) | Difficulty Rating Engine | Skeleton | FEAT-003 |
