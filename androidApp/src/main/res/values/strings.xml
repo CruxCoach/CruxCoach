@@ -116,6 +116,12 @@
     <string name="nostr_profile_lightning_hint">Optional. Format: name@domain — lets others zap you.</string>
     <string name="nostr_profile_picture">Picture URL</string>
     <string name="nostr_profile_picture_hint">Optional. Direct image URL — currently only your display name is rendered.</string>
+    <string name="nostr_profile_banner_label">Banner image URL</string>
+    <string name="nostr_profile_banner_hint">Optional. 3:1 aspect ratio looks best — header image on your profile.</string>
+    <string name="nostr_profile_nip05_label">NIP-05 identifier</string>
+    <string name="nostr_profile_nip05_hint">Optional. Format: name@domain — verifies your identity via the domain\'s well-known endpoint.</string>
+    <string name="nostr_profile_website_label">Website</string>
+    <string name="nostr_profile_website_hint">Optional. Free-form URL shown on your profile.</string>
     <string name="nostr_profile_save">Save profile</string>
     <string name="nostr_profile_saving">Saving…</string>
     <string name="nostr_profile_saved_toast">Profile saved</string>

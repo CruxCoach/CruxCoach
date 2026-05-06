@@ -116,6 +116,12 @@
     <string name="nostr_profile_lightning_hint">Optional. Format: name@domain — andere können dich damit zappen.</string>
     <string name="nostr_profile_picture">Profilbild-URL</string>
     <string name="nostr_profile_picture_hint">Optional. Direkter Bild-Link — aktuell wird nur dein Anzeigename gerendert.</string>
+    <string name="nostr_profile_banner_label">Banner-Bild-URL</string>
+    <string name="nostr_profile_banner_hint">Optional. 3:1-Seitenverhältnis sieht am besten aus — Headerbild auf deinem Profil.</string>
+    <string name="nostr_profile_nip05_label">NIP-05-Kennung</string>
+    <string name="nostr_profile_nip05_hint">Optional. Format: name@domain — verifiziert deine Identität über den Well-Known-Endpoint der Domain.</string>
+    <string name="nostr_profile_website_label">Webseite</string>
+    <string name="nostr_profile_website_hint">Optional. Frei wählbare URL, wird auf deinem Profil angezeigt.</string>
     <string name="nostr_profile_save">Profil speichern</string>
     <string name="nostr_profile_saving">Wird gespeichert…</string>
     <string name="nostr_profile_saved_toast">Profil gespeichert</string>

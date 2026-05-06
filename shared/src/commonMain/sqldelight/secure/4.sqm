@@ -1,0 +1,10 @@
+-- Migration version 4 → 5: extend `nostr_profiles` cache with the
+-- three Kind-0 fields FEAT-010 (Nostr Profile Editor Polish) adds to
+-- the editor: banner image URL, NIP-05 identifier, website URL.
+--
+-- All three are nullable. Existing rows stay valid; the next profile
+-- save populates the new columns. No row data changes here.
+
+ALTER TABLE nostr_profiles ADD COLUMN banner_url TEXT;
+ALTER TABLE nostr_profiles ADD COLUMN nip05 TEXT;
+ALTER TABLE nostr_profiles ADD COLUMN website TEXT;

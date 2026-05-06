@@ -34,6 +34,16 @@ data class NostrProfileEditState(
     val lightningAddress: String = "",
     val pictureUrl: String = "",
     val about: String = "",
+    /** Banner image URL (3:1 aspect, Kind-0 `banner` field). FEAT-010
+     *  Tier 1 ships URL-paste only; in-app upload + crop arrive in a
+     *  later tranche per spec §7.1 M1. */
+    val bannerUrl: String = "",
+    /** NIP-05 DNS identifier (`<local>@<domain>`). Verified server-side
+     *  via `https://<domain>/.well-known/nostr.json?name=<local>` —
+     *  see [Nip05Verifier] in Tier 2. */
+    val nip05: String = "",
+    /** Free-form website URL (Kind-0 `website` field). */
+    val website: String = "",
     val isLoading: Boolean = true,
     val isSaving: Boolean = false,
     val justSaved: Boolean = false,
@@ -107,6 +117,9 @@ class NostrProfileViewModel @Inject constructor(
                     lightningAddress = profile?.lightningAddress.orEmpty(),
                     pictureUrl = profile?.pictureUrl.orEmpty(),
                     about = "",                     // about is not cached locally; keep blank
+                    bannerUrl = profile?.bannerUrl.orEmpty(),
+                    nip05 = profile?.nip05.orEmpty(),
+                    website = profile?.website.orEmpty(),
                     isLoading = false,
                     canImportFromKilter = kilterUsername != null,
                     kilterUsername = kilterUsername,
@@ -119,6 +132,9 @@ class NostrProfileViewModel @Inject constructor(
     fun setLightningAddress(value: String) = _state.update { it.copy(lightningAddress = value, justSaved = false) }
     fun setPictureUrl(value: String) = _state.update { it.copy(pictureUrl = value, justSaved = false) }
     fun setAbout(value: String) = _state.update { it.copy(about = value, justSaved = false) }
+    fun setBannerUrl(value: String) = _state.update { it.copy(bannerUrl = value, justSaved = false) }
+    fun setNip05(value: String) = _state.update { it.copy(nip05 = value, justSaved = false) }
+    fun setWebsite(value: String) = _state.update { it.copy(website = value, justSaved = false) }
     fun clearError() = _state.update { it.copy(errorMessage = null) }
 
     /**
@@ -152,6 +168,9 @@ class NostrProfileViewModel @Inject constructor(
                 lightningAddress = s.lightningAddress.trim(),
                 picture = s.pictureUrl.trim(),
                 about = s.about.trim(),
+                banner = s.bannerUrl.trim(),
+                nip05 = s.nip05.trim(),
+                website = s.website.trim(),
             )
             if (result == null) {
                 _state.update {

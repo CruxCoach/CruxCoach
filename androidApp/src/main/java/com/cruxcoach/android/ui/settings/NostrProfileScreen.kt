@@ -165,6 +165,33 @@ fun NostrProfileScreen(
                 modifier = Modifier.fillMaxWidth(),
             )
 
+            OutlinedTextField(
+                value = state.bannerUrl,
+                onValueChange = viewModel::setBannerUrl,
+                label = { Text(stringResource(R.string.nostr_profile_banner_label)) },
+                supportingText = { Text(stringResource(R.string.nostr_profile_banner_hint)) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            OutlinedTextField(
+                value = state.nip05,
+                onValueChange = viewModel::setNip05,
+                label = { Text(stringResource(R.string.nostr_profile_nip05_label)) },
+                supportingText = { Text(stringResource(R.string.nostr_profile_nip05_hint)) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            OutlinedTextField(
+                value = state.website,
+                onValueChange = viewModel::setWebsite,
+                label = { Text(stringResource(R.string.nostr_profile_website_label)) },
+                supportingText = { Text(stringResource(R.string.nostr_profile_website_hint)) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
             Spacer(Modifier.height(8.dp))
 
             Button(

@@ -3,12 +3,18 @@ CREATE TABLE nostr_profiles (
     display_name TEXT,
     lightning_address TEXT,
     picture_url TEXT,
-    updated_at INTEGER NOT NULL
+    updated_at INTEGER NOT NULL,
+    banner_url TEXT,
+    nip05 TEXT,
+    website TEXT
 );
 
 upsert:
-INSERT OR REPLACE INTO nostr_profiles(pubkey, display_name, lightning_address, picture_url, updated_at)
-VALUES (?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO nostr_profiles(
+    pubkey, display_name, lightning_address, picture_url, updated_at,
+    banner_url, nip05, website
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
 
 getByPubkey:
 SELECT * FROM nostr_profiles WHERE pubkey = ?;

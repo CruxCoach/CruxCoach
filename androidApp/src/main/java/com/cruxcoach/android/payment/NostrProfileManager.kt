@@ -37,6 +37,9 @@ class NostrProfileManager @Inject constructor(
         lightningAddress: String?,
         picture: String?,
         about: String? = null,
+        banner: String? = null,
+        nip05: String? = null,
+        website: String? = null,
     ): NostrProfileData? {
         return try {
             val content = JSONObject().apply {
@@ -44,6 +47,9 @@ class NostrProfileManager @Inject constructor(
                 lightningAddress?.takeIf { it.isNotBlank() }?.let { put("lud16", it) }
                 picture?.takeIf { it.isNotBlank() }?.let { put("picture", it) }
                 about?.takeIf { it.isNotBlank() }?.let { put("about", it) }
+                banner?.takeIf { it.isNotBlank() }?.let { put("banner", it) }
+                nip05?.takeIf { it.isNotBlank() }?.let { put("nip05", it) }
+                website?.takeIf { it.isNotBlank() }?.let { put("website", it) }
             }.toString()
 
             val event = eventBuilder.buildSignedEvent(
@@ -69,13 +75,19 @@ class NostrProfileManager @Inject constructor(
                 display_name = displayName?.takeIf { it.isNotBlank() },
                 lightning_address = lightningAddress?.takeIf { it.isNotBlank() },
                 picture_url = picture?.takeIf { it.isNotBlank() },
-                updated_at = System.currentTimeMillis() / 1000
+                updated_at = System.currentTimeMillis() / 1000,
+                banner_url = banner?.takeIf { it.isNotBlank() },
+                nip05 = nip05?.takeIf { it.isNotBlank() },
+                website = website?.takeIf { it.isNotBlank() },
             )
             NostrProfileData(
                 pubkey = ownPubkey,
                 displayName = displayName?.takeIf { it.isNotBlank() },
                 lightningAddress = lightningAddress?.takeIf { it.isNotBlank() },
                 pictureUrl = picture?.takeIf { it.isNotBlank() },
+                bannerUrl = banner?.takeIf { it.isNotBlank() },
+                nip05 = nip05?.takeIf { it.isNotBlank() },
+                website = website?.takeIf { it.isNotBlank() },
             )
         } catch (e: Exception) {
             Log.e(TAG, "Failed to publish profile", e)
@@ -114,7 +126,10 @@ class NostrProfileManager @Inject constructor(
             pubkey = row.pubkey,
             displayName = row.display_name,
             lightningAddress = row.lightning_address,
-            pictureUrl = row.picture_url
+            pictureUrl = row.picture_url,
+            bannerUrl = row.banner_url,
+            nip05 = row.nip05,
+            website = row.website,
         )
     }
 
@@ -164,20 +179,29 @@ class NostrProfileManager @Inject constructor(
             val displayName = content.optString("name", null)
             val lud16 = content.optString("lud16", null)
             val picture = content.optString("picture", null)
+            val banner = content.optString("banner", null)
+            val nip05 = content.optString("nip05", null)
+            val website = content.optString("website", null)
 
             profileQueries.upsert(
                 pubkey = pubkey,
                 display_name = displayName,
                 lightning_address = lud16,
                 picture_url = picture,
-                updated_at = System.currentTimeMillis() / 1000
+                updated_at = System.currentTimeMillis() / 1000,
+                banner_url = banner,
+                nip05 = nip05,
+                website = website,
             )
 
             NostrProfileData(
                 pubkey = pubkey,
                 displayName = displayName,
                 lightningAddress = lud16,
-                pictureUrl = picture
+                pictureUrl = picture,
+                bannerUrl = banner,
+                nip05 = nip05,
+                website = website,
             )
         } catch (e: Exception) {
             Log.e(TAG, "Failed to parse profile event", e)
