@@ -177,28 +177,121 @@ import time so the attempt history reflects the new state.
 
 ### 3.1 Identification
 
-The Kilter API has no `setter_uuid` field on the `climbs` rows we already
-hold locally. To answer "which uuids in my local DB did *I* author?" we
-must query the live Kilter API with the user's access token, scoped to
-`setter_uuid = me`.
+The Kilter REST API exposes the climb's setter on the server-side
+`climbs.user_uuid` column (the official Flutter app's local SQLite
+mirrors it as `climbs.user_uuid TEXT NOT NULL` plus `climbs.username
+TEXT NOT NULL`, verified from `libapp.so` string-table extraction).
+We use the user's Bearer access token (Keycloak Password Grant) to
+fetch only the rows where `user_uuid = self`.
 
-**Endpoint discovery (open):** The Kilter mobile app surfaces a
-"My climbs" tab, so the API supports the query — likely one of:
+**M1 static RE — endpoint candidates (2026-05-06).** The Flutter
+app's AOT-compiled `libapp.so` string table contains the following
+verbatim climb-fetch URLs / path fragments. "High" confidence means
+the full URL appears as a single literal string in the snapshot;
+"Medium" means only a path fragment was observed.
 
-- `GET /api/users/{userUuid}/climbs?setter_uuid={userUuid}` (REST)
-- `GET /api/climbs?setter_uuid={userUuid}` (filtered list)
-- `POST /api/users/{userUuid}/climbs/sync` (PowerSync-style delta)
+| Verb / URL | Confidence | Role for FEAT-008 |
+|---|---|---|
+| `GET https://portal.kiltergrips.com/api/climbs/climbdetails/user` | High | **Primary candidate.** Co-located in strings with the Dart providers `getMyClimbs`, `watchMyClimbs`, `getMyFilteredClimbs`, `watchUserClimbsDraft` and the navigation route `/profile/climbs`. |
+| `GET https://portal.kiltergrips.com/api/climbs/?…` | High | **Fallback.** Generic list endpoint. The local-cache pattern `WHERE climbs.user_uuid = ? AND climbs.is_draft = 1` and the index `idx_climbs_product_draft_curated` strongly suggest server-side filter params mirroring (`setterUuid`, `isDraft`, `curated`). |
+| `GET /api/climbs/all/` | Medium (fragment) | Less-specific exhaustive list. Probably superseded by the two above. |
+| `GET https://portal.kiltergrips.com/api/climbs/logged` | High | Likely **NOT** the right endpoint — semantically "climbs the user has logged ascents on", not "authored". Probe once to rule out. |
+| `GET https://portal.kiltergrips.com/api/climbs/climbdetails/<uuid>` | High | Single-row detail. Useful for on-demand hydration; not the bulk import path. |
+| `POST https://portal.kiltergrips.com/api/climbs/create-climb/transaction` | High | Already wired in `KilterApiClient.createClimb`. Confirms own-climb mutation shape (see below). |
 
-**Spike:** Reverse-engineer one tcpdump session with the official
-Kilter app to settle this. Add `KilterApiClient.fetchOwnClimbs(setterUuid:
-String): List<KilterClimbDto>` once the endpoint shape is known. Store
-the call response unaltered (no normalisation) so the import-flow code
-can be tested with replay fixtures.
+**Live probe order (M1 follow-up).** With a real Kilter test account,
+hit candidates in this order and capture each unaltered JSON response
+into a fixture file under
+`androidApp/src/test/resources/kilter-api/own-climbs/<n>.json`:
 
-**Failure mode:** if the spike reveals Kilter has stopped exposing this
-endpoint server-side (similar to the Aurora API shutdown — see FEAT-005
-context), fall back to a **best-effort `setter_username` text match**
-between `KilterTokenStore.username` (preferred-username from JWT) and
+1. `/api/climbs/climbdetails/user` — Bearer token only, no params.
+2. Same path, with `?userUuid=<self>` (camelCase to match the rest of
+   the Kilter REST surface), then snake_case `?user_uuid=<self>` as a
+   second fallback.
+3. `/api/climbs/?setterUuid=<self>` with and without an `isDraft`
+   filter — to learn the default-draft-inclusion behaviour and to
+   confirm the generic-list fallback.
+4. `/api/climbs/logged` — once, purely to confirm the semantic and
+   rule it out as the "my climbs" endpoint.
+
+`KilterApiClient.fetchOwnClimbs(setterUuid: String): List<KilterClimbDto>`
+keeps the signature the rest of this spec assumes; the implementation
+picks whichever of (1)–(3) the live probe confirms first. Store the
+unaltered JSON response (no normalisation) so importer tests can run
+against fixtures.
+
+**Inferred response shape** (camelCase — same convention the existing
+`KilterApiClient.fetchLogs` already uses; field set merged from the
+Flutter app's local SQLite DDL + the climb-create wire shape):
+
+```kotlin
+@Serializable
+data class KilterClimbDto(
+    val climbUuid: String,
+    val climbConcat: String,                    // h{holdPlacementId}p{role}…
+    val name: String,
+    val description: String? = null,
+    val edgeLeft: Int, val edgeRight: Int,
+    val edgeBottom: Int, val edgeTop: Int,
+    // Field-name uncertainty: Kilter's local SELECT uses singular
+    // `frame_count`, the REST POST `create-climb` shape uses plural
+    // `frames_count`. DTO accepts both via @JsonNames; live probe
+    // confirms which form the GET response actually emits.
+    @JsonNames("frameCount", "framesCount") val frameCount: Int,
+    val framesPace: Int,
+    val username: String,                       // setter username (NOT setterUsername)
+    val setterUuid: String,                     // = our local `user_uuid`
+    val productName: String,
+    val productLayoutUuid: String,
+    val isDraft: Boolean,
+    val isListed: Boolean,
+    val isDeleted: Boolean = false,
+    val accumulatedHoldSetValue: Int = 0,
+    val curated: Int? = null,
+    val angle: Int? = null,
+    val createdAt: String,
+    val updatedAt: String,
+    val climbStats: List<KilterClimbStatDto> = emptyList()
+)
+
+@Serializable
+data class KilterClimbStatDto(
+    val angle: Int,
+    val difficultyAverage: Double? = null,
+    val qualityAverage: Double? = null,
+    val ascentCount: Int = 0,
+    val officialKilterDifficulty: Int? = null,
+    val faUsername: String? = null,
+    val faAt: String? = null,
+    val curated: Int? = null,
+)
+```
+
+Field-name divergences to flag at import time: Kilter's wire
+`username` (setter) maps to our `setter_username`; Kilter's
+`climbConcat` maps to our `frames` after the existing 692-row
+placement-id remap; Kilter's per-angle `KilterClimbStatDto`s flatten
+into our `aurora_climb_stat` rows one-to-one.
+
+**Open questions still requiring the live probe** (folded in to the
+M1 follow-up):
+
+- Pagination shape: limit/offset, cursor, `nextPage` token, or
+  unbounded. None of the candidates carries pagination markers in
+  the strings table; given the per-user catalog rarely exceeds a
+  few hundred rows, unbounded is plausible.
+- Default draft inclusion on `/api/climbs/climbdetails/user` (returns
+  drafts by default, or only behind `?includeDraft=true`).
+- Response wrapping: bare array vs. `{climbs: […], climbStats: […]}`
+  envelope as on `/api/climbs/curated`.
+- 429 rate-limit behaviour on these specific endpoints — the existing
+  `/api/climbs/curated` and `/api/logs` were verified rate-limit-free
+  in 2026-04-06 RE, but the user-scoped candidates were not covered.
+
+**Failure mode (unchanged):** if all candidates fail server-side
+(similar to the Aurora API shutdown — see FEAT-005 context), fall back
+to a **best-effort `setter_username` text match** between
+`KilterTokenStore.username` (preferred-username from JWT) and
 `climbs.setter_username`. Mark this fallback explicitly as fragile in
 the UI so users who renamed on Kilter understand why the list might be
 incomplete.
@@ -929,7 +1022,7 @@ the M1 Kilter API endpoint reverse-engineering spike.
 
 | ID | Topic | Status |
 |---|---|---|
-| M1 | `KilterApiClient.fetchOwnClimbs` endpoint shape | Spike pending. Estimated single-session reverse engineering against a captured tcpdump from the official Kilter Android app. Block on this before M2. |
+| M1 | `KilterApiClient.fetchOwnClimbs` endpoint shape | **Static RE complete (2026-05-06)** — see §3.1 for ranked endpoint candidates, inferred `KilterClimbDto` shape, and the residual open questions. Live probe with a real Kilter account still pending — captures the actual response shape, pagination behaviour, and resolves the four "open questions" listed in §3.1. Block on the live probe before M2. |
 | 0.3.0+ | `climbs.setter_user_id` schema column | Deferred. Lifts the round-trip cost of the API spike permanently and enables purely-local "is this row mine?" queries. Adds a SQL migration + a Blossom-cron field. Not worth the complexity in 0.2.0. |
 
 ---
@@ -967,7 +1060,8 @@ the M1 Kilter API endpoint reverse-engineering spike.
 
 | milestone | deliverable | gate |
 |---|---|---|
-| M1 — Discovery | Spike report on `KilterApiClient.fetchOwnClimbs` endpoint | Approved by user |
+| M1 — Discovery (static) | Endpoint candidates + inferred response shape from `libapp.so` string-table extraction | ✅ Done 2026-05-06 — see §3.1 |
+| M1.5 — Discovery (live) | One-session live probe with a real Kilter account; capture the unaltered JSON response under `androidApp/src/test/resources/kilter-api/own-climbs/`; promote the chosen candidate from §3.1 to the implemented endpoint and lock the `KilterClimbDto` shape | Approved by user |
 | M2 — Phase A backbone | `KilterImportRepository` + flip transaction + tests | Compile-clean unit tests |
 | M3 — Phase A worker | `KilterImportWorker` foreground service + throttling | Manual test against fixture climbs |
 | M4 — Phase A UI | Settings screen + ViewModel + nav wiring | UX sign-off, EN+DE strings reviewed |
