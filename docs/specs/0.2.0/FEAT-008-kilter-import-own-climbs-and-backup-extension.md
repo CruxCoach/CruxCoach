@@ -192,37 +192,41 @@ the full URL appears as a single literal string in the snapshot;
 
 | Verb / URL | Confidence | Role for FEAT-008 |
 |---|---|---|
-| `GET https://portal.kiltergrips.com/api/climbs/climbdetails/user` | High | **Primary candidate.** Co-located in strings with the Dart providers `getMyClimbs`, `watchMyClimbs`, `getMyFilteredClimbs`, `watchUserClimbsDraft` and the navigation route `/profile/climbs`. |
+| `GET https://portal.kiltergrips.com/api/climbs/climbdetails/user` | **Verified live (2026-05-06)** | **Primary endpoint, confirmed.** Live probe details below. HTTP 200 with Bearer, no query params required. Co-located in strings with the Dart providers `getMyClimbs`, `watchMyClimbs`, `getMyFilteredClimbs`, `watchUserClimbsDraft` and the navigation route `/profile/climbs`. |
 | `GET https://portal.kiltergrips.com/api/climbs/?…` | High | **Fallback.** Generic list endpoint. The local-cache pattern `WHERE climbs.user_uuid = ? AND climbs.is_draft = 1` and the index `idx_climbs_product_draft_curated` strongly suggest server-side filter params mirroring (`setterUuid`, `isDraft`, `curated`). |
-| `GET /api/climbs/all/` | Medium (fragment) | Less-specific exhaustive list. Probably superseded by the two above. |
+| `GET /api/climbs/all`, `/all/`, `/all/<n>`, `/all/<iso8601>` | Verified empty (2026-05-06) | All variants return HTTP 200 + bare `[]` for normal accounts. Admin-restricted at the API layer; out of scope. |
 | `GET https://portal.kiltergrips.com/api/climbs/logged` | High | Likely **NOT** the right endpoint — semantically "climbs the user has logged ascents on", not "authored". Probe once to rule out. |
 | `GET https://portal.kiltergrips.com/api/climbs/climbdetails/<uuid>` | High | Single-row detail. Useful for on-demand hydration; not the bulk import path. |
 | `POST https://portal.kiltergrips.com/api/climbs/create-climb/transaction` | High | Already wired in `KilterApiClient.createClimb`. Confirms own-climb mutation shape (see below). |
 
-**Live probe order (M1 follow-up).** With a real Kilter test account,
-hit candidates in this order and capture each unaltered JSON response
-into a fixture file under
-`androidApp/src/test/resources/kilter-api/own-climbs/<n>.json`:
+**M1.5 live probe — observed (2026-05-06).** Authenticated to
+`idp.kiltergrips.com` via Keycloak Password Grant with a Kilter
+account that has zero authored own climbs, then probed each candidate
+against the live API:
 
-1. `/api/climbs/climbdetails/user` — Bearer token only, no params.
-2. Same path, with `?userUuid=<self>` (camelCase to match the rest of
-   the Kilter REST surface), then snake_case `?user_uuid=<self>` as a
-   second fallback.
-3. `/api/climbs/?setterUuid=<self>` with and without an `isDraft`
-   filter — to learn the default-draft-inclusion behaviour and to
-   confirm the generic-list fallback.
-4. `/api/climbs/logged` — once, purely to confirm the semantic and
-   rule it out as the "my climbs" endpoint.
+| candidate | http | wrap (empty) | rows | verdict |
+|---|---|---|---|---|
+| `GET /api/climbs/climbdetails/user` | 200 | bare `[]` | 0 | **Primary endpoint, confirmed live.** Bearer-only, no query params. |
+| `GET /api/climbs/curated` | 200 | `{climbs:[…], climbStats:[…]}` envelope | 5,279 | Public catalog. Supplies the populated row shape that drives the verified DTO below. |
+| `GET /api/climbs/all`, `/all/`, `/all/0`, `/all/<iso8601>` | 200 | bare `[]` | 0 | All four shapes return empty for normal accounts. Admin-restricted at the API layer; out of scope. |
+| `GET /api/climbs/delteduuids`, `/delteduuids/0` | 200 | array of strings | 15,706 / 0 | Delta-sync probe; out of scope unless we move to incremental cache eviction. |
+
+The empty case on `/climbdetails/user` returns literal `[]`, which
+strongly suggests the populated-case shape is bare `Climb[]` (not the
+`/curated`-style envelope). The per-row shape is verified independently
+from the 5,279 rows of `/curated[].climbs` — same backing table on
+Kilter's PostgreSQL, same Spring-Boot serialiser.
 
 `KilterApiClient.fetchOwnClimbs(setterUuid: String): List<KilterClimbDto>`
-keeps the signature the rest of this spec assumes; the implementation
-picks whichever of (1)–(3) the live probe confirms first. Store the
-unaltered JSON response (no normalisation) so importer tests can run
-against fixtures.
+keeps the signature the rest of this spec assumes; once an account
+with own climbs is available, store the unaltered JSON response
+(no normalisation) under
+`androidApp/src/test/resources/kilter-api/own-climbs/<n>.json` so the
+importer's tests run against real-shape replay fixtures.
 
-**Inferred response shape** (camelCase — same convention the existing
-`KilterApiClient.fetchLogs` already uses; field set merged from the
-Flutter app's local SQLite DDL + the climb-create wire shape):
+**Verified response shape** (camelCase, all fields non-null across
+the 5,279-row sample; `origin` distribution: NATIVE 5,183 / MIGRATED
+51 / IMPORTED 45):
 
 ```kotlin
 @Serializable
@@ -230,63 +234,83 @@ data class KilterClimbDto(
     val climbUuid: String,
     val climbConcat: String,                    // h{holdPlacementId}p{role}…
     val name: String,
-    val description: String? = null,
+    val description: String,                    // empty string when absent
     val edgeLeft: Int, val edgeRight: Int,
     val edgeBottom: Int, val edgeTop: Int,
-    // Field-name uncertainty: Kilter's local SELECT uses singular
-    // `frame_count`, the REST POST `create-climb` shape uses plural
-    // `frames_count`. DTO accepts both via @JsonNames; live probe
-    // confirms which form the GET response actually emits.
-    @JsonNames("frameCount", "framesCount") val frameCount: Int,
+    val frameCount: Int,                        // singular (wire-confirmed)
     val framesPace: Int,
-    val username: String,                       // setter username (NOT setterUsername)
-    val setterUuid: String,                     // = our local `user_uuid`
+    val username: String,                       // setter username
+    val userUuid: String,                       // setter UUID — wire name (NOT `setterUuid`)
     val productName: String,
     val productLayoutUuid: String,
+    val allowMatch: Boolean,                    // hand-match rule
     val isDraft: Boolean,
     val isListed: Boolean,
-    val isDeleted: Boolean = false,
-    val accumulatedHoldSetValue: Int = 0,
-    val curated: Int? = null,
-    val angle: Int? = null,
-    val createdAt: String,
+    val isDeleted: Boolean,
+    val accumulatedHoldSetValue: Int,
+    val angle: Int,
+    val origin: KilterClimbOrigin,
+    val createdAt: String,                      // ISO 8601
     val updatedAt: String,
-    val climbStats: List<KilterClimbStatDto> = emptyList()
 )
 
 @Serializable
+enum class KilterClimbOrigin { NATIVE, MIGRATED, IMPORTED }
+
+@Serializable
 data class KilterClimbStatDto(
+    val climbUuid: String,
     val angle: Int,
-    val difficultyAverage: Double? = null,
-    val qualityAverage: Double? = null,
-    val ascentCount: Int = 0,
-    val officialKilterDifficulty: Int? = null,
-    val faUsername: String? = null,
-    val faAt: String? = null,
-    val curated: Int? = null,
+    val ascentCount: Int,
+    val currentDifficultyId: Int,               // FK → difficulty_grades
+    val officialKilterDifficulty: Int,
+    val difficultyAverage: Double,
+    val qualityAverage: Double,
+    val faUsername: String,
+    val faAt: String,                           // ISO 8601
 )
 ```
 
-Field-name divergences to flag at import time: Kilter's wire
+**`origin` semantics — affects FEAT-008 import scope.** Distribution
+across the 5,279 sample rows:
+
+- `NATIVE` (98.2 %) — climb authored via the new Kilter app
+  (post-2026-03 Aurora retirement). These are the rows the user
+  almost certainly wants imported into CruxCoach as their own.
+- `MIGRATED` (0.97 %) — migrated from the Aurora system into the new
+  Kilter store during the 2026-Q1 Aurora→Kilter cutover.
+- `IMPORTED` (0.85 %) — imported from some other path (likely bulk
+  seed or community contribution).
+
+For §3.2 (per-row state machine), the import flow tentatively treats
+`origin == NATIVE` as today's "user authored on Kilter" assumption,
+and surfaces `MIGRATED` / `IMPORTED` rows in the import-list UI with
+a small badge so the user can deselect them if they want a strict-
+NATIVE-only import. Final UX call deferred to M2 — the data model
+just needs `origin` to land in the DTO so the classifier sees it.
+
+**Field-name divergences to flag at import time:** Kilter's wire
 `username` (setter) maps to our `setter_username`; Kilter's
 `climbConcat` maps to our `frames` after the existing 692-row
-placement-id remap; Kilter's per-angle `KilterClimbStatDto`s flatten
-into our `aurora_climb_stat` rows one-to-one.
+placement-id remap; Kilter's per-angle `KilterClimbStatDto` flattens
+into our `aurora_climb_stat` rows one-to-one (we ignore
+`currentDifficultyId`, which is a server-side denormalised cache of
+"which difficulty-grade row this climb currently averages to" — we
+re-derive client-side via `KilterGradeMapper`).
 
-**Open questions still requiring the live probe** (folded in to the
-M1 follow-up):
+**Open questions remaining** — answerable only with an account that
+has at least one authored climb on Kilter:
 
-- Pagination shape: limit/offset, cursor, `nextPage` token, or
-  unbounded. None of the candidates carries pagination markers in
-  the strings table; given the per-user catalog rarely exceeds a
-  few hundred rows, unbounded is plausible.
-- Default draft inclusion on `/api/climbs/climbdetails/user` (returns
-  drafts by default, or only behind `?includeDraft=true`).
-- Response wrapping: bare array vs. `{climbs: […], climbStats: […]}`
-  envelope as on `/api/climbs/curated`.
-- 429 rate-limit behaviour on these specific endpoints — the existing
-  `/api/climbs/curated` and `/api/logs` were verified rate-limit-free
-  in 2026-04-06 RE, but the user-scoped candidates were not covered.
+- Pagination shape on `/climbdetails/user` populated. `/curated`
+  delivers 5,279 rows unbounded with no pagination markers; own-climbs
+  is almost certainly the same, but unverified.
+- Default draft inclusion: returns drafts in the same array, or only
+  behind a query toggle.
+- Response wrapping when populated: bare `Climb[]` (most likely given
+  the empty-case `[]`) vs. `{climbs:[…], climbStats:[…]}` envelope.
+
+These can be answered with one curl + one log of the response keys
+from any user with own climbs.
 
 **Failure mode (unchanged):** if all candidates fail server-side
 (similar to the Aurora API shutdown — see FEAT-005 context), fall back
@@ -1022,7 +1046,7 @@ the M1 Kilter API endpoint reverse-engineering spike.
 
 | ID | Topic | Status |
 |---|---|---|
-| M1 | `KilterApiClient.fetchOwnClimbs` endpoint shape | **Static RE complete (2026-05-06)** — see §3.1 for ranked endpoint candidates, inferred `KilterClimbDto` shape, and the residual open questions. Live probe with a real Kilter account still pending — captures the actual response shape, pagination behaviour, and resolves the four "open questions" listed in §3.1. Block on the live probe before M2. |
+| M1 | `KilterApiClient.fetchOwnClimbs` endpoint shape | **Static RE + live probe complete (2026-05-06)** — see §3.1. Endpoint `GET /api/climbs/climbdetails/user` confirmed live (HTTP 200, Bearer-only, no params); empty case returns bare `[]`. The verified `KilterClimbDto` / `KilterClimbStatDto` shapes are derived from the 5,279-row `/curated` sample (same backing table, same serialiser). Three residual questions still need an account with at least one authored climb — pagination shape, default draft inclusion, populated-case wrapping — but they don't block M2: the importer can be written against the verified DTO and a populated-account replay fixture added later when one becomes available. |
 | 0.3.0+ | `climbs.setter_user_id` schema column | Deferred. Lifts the round-trip cost of the API spike permanently and enables purely-local "is this row mine?" queries. Adds a SQL migration + a Blossom-cron field. Not worth the complexity in 0.2.0. |
 
 ---
@@ -1061,7 +1085,8 @@ the M1 Kilter API endpoint reverse-engineering spike.
 | milestone | deliverable | gate |
 |---|---|---|
 | M1 — Discovery (static) | Endpoint candidates + inferred response shape from `libapp.so` string-table extraction | ✅ Done 2026-05-06 — see §3.1 |
-| M1.5 — Discovery (live) | One-session live probe with a real Kilter account; capture the unaltered JSON response under `androidApp/src/test/resources/kilter-api/own-climbs/`; promote the chosen candidate from §3.1 to the implemented endpoint and lock the `KilterClimbDto` shape | Approved by user |
+| M1.5 — Discovery (live, empty-account) | Probe `GET /api/climbs/climbdetails/user` against a Kilter account with zero own climbs; verify endpoint + auth + empty-case wrapping; derive populated row shape from `/curated` parallel | ✅ Done 2026-05-06 — see §3.1 |
+| M1.6 — Discovery (live, populated-account) | Whenever a Kilter account with ≥1 authored climb is available: re-probe `/climbdetails/user`, confirm pagination + draft inclusion + populated-case wrapping, save the unaltered JSON under `androidApp/src/test/resources/kilter-api/own-climbs/` as a replay fixture, lock the `KilterClimbDto` shape | M2 can start without this; nice-to-have before code lands |
 | M2 — Phase A backbone | `KilterImportRepository` + flip transaction + tests | Compile-clean unit tests |
 | M3 — Phase A worker | `KilterImportWorker` foreground service + throttling | Manual test against fixture climbs |
 | M4 — Phase A UI | Settings screen + ViewModel + nav wiring | UX sign-off, EN+DE strings reviewed |
