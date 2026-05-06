@@ -4,10 +4,11 @@ status: skeleton
 # Feature Spec: Setter Angle Visibility (v0.2.0)
 
 > **Status:** Skeleton — UX problem and rough surfaces identified.
-> Final design pending a small data-source spike (§2) and visual
-> alignment with FEAT-009's confidence/origin treatment so the
-> anchor row coexists cleanly with the rating engine's per-angle
-> rendering.
+> §2 data-source spike resolved 2026-05-06 (see §2 for the
+> live-probed Kilter API verdict and the per-source coverage
+> table). Remaining gate before implementation: visual alignment
+> with FEAT-009's confidence/origin treatment so the anchor row
+> coexists cleanly with the rating engine's per-angle rendering.
 >
 > **Depends on:** None at spec level. Touches the detail screen,
 > the browser card, and the per-angle picker — all in
@@ -61,25 +62,99 @@ setter's anchor angle from a purely community-derived row.
 - Editing the anchor for community climbs. The anchor is set at
   publish time and immutable thereafter.
 
-## 2. Data source — open question (spike, ~1-2 h)
+## 2. Data source — spike resolved 2026-05-06
 
-The Aurora-shaped `climb_stats` table holds per-(climb, angle)
-aggregates but does not flag the setter's anchor explicitly.
-Plausible candidates to be validated against ~50 known
-ground-truth climbs (climbs where the setter's intended angle is
-known from community context):
+**Decision: use Kilter's `climbs.angle` field directly.** The
+Kilter REST API exposes the setter's anchor angle as a first-class
+column on each `climbs` row, distinct from the per-(climb, angle)
+`climb_stats` aggregates. Verified against the live API
+(`/api/climbs/curated`, n=5,279 climbs):
 
-- **`climb_stats.is_listed = 1`** — Kilter uses this flag to mark
-  angles the setter assigned a grade to. If exactly one row per
-  climb carries it, that's the anchor.
-- **First-vote / created-at ordering** — the chronologically
-  earliest row in `climb_stats` is typically the setter's own
-  first send.
-- **`climbs.angle` field** — some Aurora rows carry an `angle`
-  column on `climbs` itself; if populated, it is the anchor.
+| coverage | rows |
+|---|---|
+| non-null, non-zero `angle` | 5,121 (97.0 %) |
+| `angle = 0` (sentinel for "no anchor set") | 147 (2.8 %) |
+| `angle = null` | 11 (0.2 %) |
 
-Output of the spike: one heuristic chosen, plus a short
-`SetterAngleResolver` document under `shared/` describing it.
+Distinct values: `5°, 10°, 15°, …, 70°` in 5° steps.
+
+### Heuristic alternatives — all rejected
+
+The three candidate heuristics from the original skeleton,
+re-tested against the 5,121 truth rows:
+
+| heuristic | match rate against `climbs.angle` |
+|---|---|
+| Highest-`ascensionist_count` angle in `climb_stats` | 68.6 % |
+| `climb_stats.fa_username == climbs.username` row | 35.2 % |
+| `climb_stats.is_listed = 1` row | n/a — column does not exist on the new Kilter API stats response |
+
+Setters publish at one angle, the community then logs sends at
+their preferred wall angles — the modal-send-angle is *not* the
+setter's anchor 31 % of the time. Neither fallback is reliable
+enough to serve as a primary or even secondary signal.
+
+### Per-source coverage in our local DB
+
+| climb source | `angle` available? |
+|---|---|
+| New CruxCoach-authored climbs (FEAT-003 editor) | Yes — wall angle is known at publish time, persist on the row |
+| FEAT-008 imported NATIVE (`/api/climbs/climbdetails/user`) | Yes — endpoint returns `angle` (and `derivativeAngle`) per row |
+| Live Kilter-API harvest into the daily Blossom mirror (`/api/climbs/curated`) | ~97 % — the cron just needs to pull the field |
+| Aurora-era bulk catalog (~169k climbs in our snapshot) | **No** — the Aurora schema never stored a setter-anchor column. The data is not recoverable from what we have. |
+
+For the Aurora-era bulk, there is no realistic backfill — the
+value was never recorded. The UI must tolerate `angle = NULL`
+(badge omitted) for that majority of historical rows.
+
+### Catalog coverage — sparse by design
+
+The daily blossom-sync cron only pulls `/api/climbs/curated`
+(~5,279 rows on 2026-05-06) and `/api/climbs/delteduuids`
+(deletion notifications). The local Board DB currently carries
+**174,218 climbs** (per `cruxcoach-blossom-sync/metrics.csv` row
+2026-05-06), of which 171,172 are still listed. The cron *adds
+and updates* but never wipes; climbs that were once in /curated
+stay in the local DB even after they leave the curated set.
+
+Result, in concrete numbers:
+
+| segment | rows | `angle` populated post-FEAT-011? |
+|---|---|---|
+| Currently in `/api/climbs/curated` | ~5,279 | Yes (~97 %) |
+| Once in /curated, now de-listed; or pure Aurora-era bulk | ~169,000 | **No — never** |
+| FEAT-008 own-climb imports | per-user, small | Yes (100 %) |
+| New CruxCoach-authored climbs | growing, small | Yes (100 %) |
+
+⇒ at v0.2.0 ship, the badge is visible on roughly **3 % of the
+catalog**. Net growth of /curated is ~30 climbs/day on recent
+observation, so the coverage shrinks asymptotically toward "all
+new climbs have it" without ever back-filling the historical
+bulk. **This is the design-intentional outcome of the spike, not
+a gap to close** — there is no upstream that has the data we
+would need.
+
+`/api/climbs/all` (and its paginated variants `/all/0`,
+`/all/<iso8601>`) all return HTTP 200 + `[]` for normal user
+accounts (verified 2026-05-06; FEAT-008 §3.1 candidate table).
+Admin-restricted at the API layer; not a workable bulk-fetch
+path. `/api/climbs/single/<uuid>` could in principle hydrate one
+row at a time, but ~169k per-row API calls is neither ergonomic
+nor compliant with the cron's "be a polite API citizen" stance.
+
+### Why `/climbdetails/user.angle` does not help blossom-sync
+
+### Why `/climbdetails/user.angle` does not help blossom-sync
+
+The `/api/climbs/climbdetails/user` endpoint (FEAT-008 §3.1) is
+per-user-authenticated and returns only the caller's authored
+climbs. It is the right source for the FEAT-008 import flow.
+It is **not** usable in the daily blossom-sync cron, which runs
+on a single dedicated cron account per compliance
+(`feedback_kilter_compliance.md`: no shared service-account
+aggregation, self-account-only writes). The cron account itself
+authors no climbs, so the endpoint returns `[]`. The cron must
+keep using `/api/climbs/curated.angle` for broad-catalog coverage.
 
 ## 3. UX surfaces
 
@@ -136,25 +211,41 @@ that climb, the picked angle becomes sticky for subsequent opens.
 
 ## 5. Implementation sketch
 
-- Spike (§2): pick the anchor heuristic.
-- `shared/`: derive `setter_angle: Int?` on the
-  `climb_browse` view (or whichever shared row representation
-  feeds the browser).
-- `ClimbBrowseRow` + detail-screen view-models read it.
-- Compose: a small reusable `SetterAngleBadge` composable so the
-  detail-header and browser card stay visually consistent.
-- Default-angle wiring: `BoardClimbDetailViewModel` reads
-  `setter_angle` when no user-preference / per-climb override is
+- ✅ Spike (§2): resolved 2026-05-06 — use Kilter's `climbs.angle`.
+- **Schema migration** (`shared/src/commonMain/sqldelight/board/<n>.sqm`):
+  `ALTER TABLE climbs ADD COLUMN angle INTEGER` (nullable; treat
+  `0` and `null` as "unknown" client-side).
+- **Cron mapping** (`cruxcoach-blossom-sync/update_board_db.py`):
+  extend the Kilter-API-harvest INSERT path to read `angle` from
+  the `/api/climbs/curated[].angle` field and persist it on the
+  new column. The next regular cron cycle picks up the ~5,000
+  curated-side values; older Aurora-era rows stay NULL.
+- **FEAT-008 importer**: pass `KilterClimbDto.angle` straight
+  through into `climbs.angle` on the local insert.
+- **ClimbCreator publish path** (FEAT-003 + this spec): persist
+  the wall-angle the user selected at publish time onto
+  `climbs.angle` for newly-authored CruxCoach climbs.
+- **`shared/`**: surface `angle: Int?` on `ClimbBrowseRow` via
+  the `climb_browse` view.
+- **Compose**: a small reusable `SetterAngleBadge` composable so
+  the detail-header and browser card stay visually consistent.
+  Renders only when `angle != null && angle > 0`; otherwise the
+  badge slot collapses with no fallback.
+- **Default-angle wiring**: `BoardClimbDetailViewModel` reads
+  `climbs.angle` when no user-preference / per-climb override is
   set.
-- Maestro: pick a community climb known to be set at 35°, assert
-  badge displays 35°, assert the per-angle picker defaults to
-  35° on first open.
-- JVM unit test for the `SetterAngleResolver` against a fixture of
-  rows representing each candidate heuristic.
+- **Maestro**: pick a community climb known to be set at 35°,
+  assert badge displays 35°, assert the per-angle picker defaults
+  to 35° on first open. Plus one Aurora-era climb to assert the
+  badge is hidden when `angle == 0/null`.
+- **JVM unit test**: assert the badge composable hides on `null`
+  and on `0`, and renders for a sane in-range value (5–70 in 5°
+  steps).
 
 ## 6. Open questions
 
-- Heuristic choice (spike outcome).
+- ✅ ~~Heuristic choice (spike outcome).~~ — resolved 2026-05-06
+  in §2: use `climbs.angle` direct, no heuristic.
 - Final visual treatment of the anchor row alongside FEAT-009's
   confidence/origin indicator.
 - Whether the climb-creator should surface the in-flight anchor
