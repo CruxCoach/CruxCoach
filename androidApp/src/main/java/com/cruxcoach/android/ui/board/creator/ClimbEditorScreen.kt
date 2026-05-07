@@ -155,6 +155,8 @@ fun ClimbEditorScreen(
     val coroutineScope = rememberCoroutineScope()
 
     val autoNoteFailedMessage = stringResource(R.string.climb_creator_auto_note_zero_relays)
+    val publishBothOkMessage = stringResource(R.string.climb_creator_publish_both_ok)
+    val publishKilterPendingMessage = stringResource(R.string.climb_creator_publish_kilter_pending)
     LaunchedEffect(
         state.publishedUuid,
         state.showKilterConnectNudge,
@@ -162,32 +164,45 @@ fun ClimbEditorScreen(
         state.autoNotePublished,
     ) {
         val uuid = state.publishedUuid ?: return@LaunchedEffect
-        if (state.showKilterConnectNudge) {
-            // Show the Snackbar BEFORE leaving the screen so the user has
-            // a chance to act on it. After dismiss/timeout (or action),
-            // navigate to the published-detail like the normal flow.
-            val result = snackbarHostState.showSnackbar(
-                message = nudgeMessage,
-                actionLabel = nudgeAction,
-                duration = androidx.compose.material3.SnackbarDuration.Long,
-            )
-            viewModel.clearKilterConnectNudge()
-            if (result == androidx.compose.material3.SnackbarResult.ActionPerformed) {
-                onNavigateToKilterSettings()
-                return@LaunchedEffect
+        // One outcome snackbar per publish, picked from the dominant
+        // state — most-actionable first. Rationale: pre-0.1.4 the editor
+        // either showed the connect-Kilter nudge OR a Kilter failure
+        // message OR nothing, leaving the happy path completely silent
+        // (user couldn't tell whether a "save without confirmation" was
+        // the success or a swallowed error). The four cases below mirror
+        // FEAT-003's publish-state matrix:
+        //   • Kilter not connected → existing nudge with action button
+        //   • Kilter sync failed/diverged → "Nostr ok, Kilter retry"
+        //   • Both networks green → "Nostr + Kilter"
+        //   • User opted Kilter publishing off → silent (no Kilter
+        //     expectation to manage)
+        // Auto-note failure is surfaced separately afterwards because
+        // it's an orthogonal Kind-1 dispatch, not a Kind-30078 outcome.
+        val kilterOutcome = state.kilterPublishOutcome
+        when {
+            state.showKilterConnectNudge -> {
+                val result = snackbarHostState.showSnackbar(
+                    message = nudgeMessage,
+                    actionLabel = nudgeAction,
+                    duration = androidx.compose.material3.SnackbarDuration.Long,
+                )
+                viewModel.clearKilterConnectNudge()
+                if (result == androidx.compose.material3.SnackbarResult.ActionPerformed) {
+                    viewModel.clearKilterPublishOutcome()
+                    viewModel.clearAutoNoteOutcome()
+                    onNavigateToKilterSettings()
+                    return@LaunchedEffect
+                }
             }
-        }
-        // Surface a Kilter-side failure on the publish path: Nostr already
-        // accepted the climb (otherwise `publishedUuid` would be null), but
-        // the secondary Kilter-API push didn't land. The retry worker will
-        // pick it up next tick — this snackbar tells the user that's why a
-        // newly-published climb won't show up in their Kilter app yet.
-        when (val out = state.kilterPublishOutcome) {
-            is com.cruxcoach.android.data.kilter.KilterClimbPublisher.Outcome.Failed ->
-                snackbarHostState.showSnackbar(out.message)
-            is com.cruxcoach.android.data.kilter.KilterClimbPublisher.Outcome.Diverged ->
-                snackbarHostState.showSnackbar(out.message)
-            else -> Unit
+            kilterOutcome is com.cruxcoach.android.data.kilter.KilterClimbPublisher.Outcome.Failed ||
+                kilterOutcome is com.cruxcoach.android.data.kilter.KilterClimbPublisher.Outcome.Diverged ->
+                snackbarHostState.showSnackbar(publishKilterPendingMessage)
+            kilterOutcome is com.cruxcoach.android.data.kilter.KilterClimbPublisher.Outcome.Synced ->
+                snackbarHostState.showSnackbar(publishBothOkMessage)
+            // else: kilterOutcome == null (user disabled Kilter publishing
+            // in settings) or Skipped(non-login reason). Stay silent —
+            // navigating to the detail screen is the implicit success
+            // signal for these "Nostr-only by design" paths.
         }
         viewModel.clearKilterPublishOutcome()
         // Auto-Note Kind-1 reach: surface "0 relays accepted the
