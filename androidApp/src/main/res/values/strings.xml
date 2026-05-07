@@ -1701,6 +1701,13 @@
     <string name="whatsnew_nostr_backup_consent">A CruxCoach Account key is created on this device if you don\'t already have one. Backups don\'t run automatically — you start them yourself in Settings.</string>
 
     <!-- FEAT-005 Aurora-JSON migration -->
+    <string name="onboarding_aurora_card_title">Coming from the old Kilter app?</string>
+    <string name="onboarding_aurora_card_subtitle">Bring your Aurora ascents, attempts and circuits across via the JSON export Aurora sends after a data request.</string>
+    <string name="whatsnew_aurora_import_title">Aurora data — import it now</string>
+    <string name="whatsnew_aurora_import_body">0.1.4 ingests the email JSON Aurora sends after a data-export request. Your historical ascents, attempts and circuits land in CruxCoach\'s logbook with one tap.</string>
+    <string name="whatsnew_aurora_import_hint">Have the JSON file already? Tap "Import now". Otherwise the importer stays in Settings → Migrate from Aurora — request the export first, come back later.</string>
+    <string name="whatsnew_aurora_import_action_now">Import now</string>
+    <string name="whatsnew_aurora_import_action_later">Later</string>
     <string name="settings_aurora_migration_title">Migrate from Aurora / old Kilter app</string>
     <string name="settings_aurora_migration_desc">Bring your ascents, attempts and circuits across from the email export Aurora sends after a data request.</string>
     <string name="aurora_migration_title">Aurora migration</string>

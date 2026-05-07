@@ -92,7 +92,13 @@ data class OnboardingState(
     val showRestartConfirm: Boolean = false,
 
     val isSaving: Boolean = false,
-    val error: String? = null
+    val error: String? = null,
+
+    /** FEAT-005 — when true, the Kilter step renders a ModalBottomSheet
+     *  hosting the AuroraMigrationScreen body. Optional path: users
+     *  with an Aurora email export can run the import without leaving
+     *  onboarding. Default false (most users will skip). */
+    val auroraSheetOpen: Boolean = false,
 )
 
 @HiltViewModel
@@ -109,6 +115,10 @@ class OnboardingViewModel @Inject constructor(
 
     private companion object {
         const val TAG = "OnboardingVM"
+    }
+
+    fun setAuroraSheetOpen(value: Boolean) {
+        _state.update { it.copy(auroraSheetOpen = value) }
     }
 
     private val _state = MutableStateFlow(

@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
@@ -17,7 +18,11 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.automirrored.filled.Login
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.*
+import com.cruxcoach.android.ui.aurora.AuroraMigrationViewModel
+import com.cruxcoach.android.ui.aurora.MigrationFlowContent
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.runtime.Composable
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
@@ -681,6 +686,14 @@ private fun KilterStep(state: OnboardingState, viewModel: OnboardingViewModel) {
             }
         }
 
+        // FEAT-005 — Aurora-from-old-Kilter migration tile. Tucked
+        // below the live OAuth card so the default path (sign in to
+        // the new Kilter API) still wins visually for the 95 % of
+        // users who never used Aurora.
+        AuroraOnboardingCard(
+            onClick = { viewModel.setAuroraSheetOpen(true) },
+        )
+
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = InfoBlue.copy(alpha = 0.1f)),
@@ -691,6 +704,78 @@ private fun KilterStep(state: OnboardingState, viewModel: OnboardingViewModel) {
                 modifier = Modifier.padding(12.dp),
                 style = MaterialTheme.typography.bodySmall,
                 color = InfoBlue,
+            )
+        }
+    }
+
+    if (state.auroraSheetOpen) {
+        AuroraMigrationBottomSheet(
+            onDismiss = { viewModel.setAuroraSheetOpen(false) },
+        )
+    }
+}
+
+@Composable
+private fun AuroraOnboardingCard(onClick: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() },
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+        ),
+        shape = RoundedCornerShape(16.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Icon(
+                Icons.Filled.SwapHoriz,
+                contentDescription = null,
+                tint = OrangeAccent,
+                modifier = Modifier.size(28.dp),
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    stringResource(R.string.onboarding_aurora_card_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    stringResource(R.string.onboarding_aurora_card_subtitle),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AuroraMigrationBottomSheet(
+    onDismiss: () -> Unit,
+    auroraVm: AuroraMigrationViewModel = hiltViewModel(),
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val auroraState by auroraVm.state.collectAsStateWithLifecycle()
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            MigrationFlowContent(
+                state = auroraState,
+                onPickFile = auroraVm::importFromUri,
+                onReset = auroraVm::reset,
             )
         }
     }

@@ -725,6 +725,7 @@ fun CruxCoachNavHost(
     // onboarding; only upgrading users see anything.
     WhatsNewHost(
         onNavigateToKeyManagement = { navController.navigate(Routes.KEY_MANAGEMENT) },
+        onNavigateToAuroraMigration = { navController.navigate(Routes.AURORA_MIGRATION) },
     )
     } // CompositionLocalProvider
 }

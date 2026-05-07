@@ -1703,6 +1703,13 @@
     <string name="whatsnew_nostr_backup_consent">Auf diesem Gerät wird ein CruxCoach-Account-Schlüssel erzeugt (falls noch nicht vorhanden). Backups laufen nicht automatisch — du startest sie selbst in den Einstellungen.</string>
 
     <!-- FEAT-005 Aurora-JSON migration -->
+    <string name="onboarding_aurora_card_title">Aus der alten Kilter-App?</string>
+    <string name="onboarding_aurora_card_subtitle">Begehungen, Versuche und Circuits aus dem Aurora-JSON-Export übernehmen.</string>
+    <string name="whatsnew_aurora_import_title">Aurora-Daten — jetzt importieren</string>
+    <string name="whatsnew_aurora_import_body">0.1.4 importiert die JSON-Datei, die Aurora auf Datenexport-Anfrage zusendet. Deine alten Begehungen, Versuche und Circuits landen mit einem Tipp im CruxCoach-Logbuch.</string>
+    <string name="whatsnew_aurora_import_hint">Datei schon zur Hand? Auf „Jetzt importieren" tippen. Sonst bleibt der Importer in Einstellungen → Migration aus Aurora — Export anfragen, später wiederkommen.</string>
+    <string name="whatsnew_aurora_import_action_now">Jetzt importieren</string>
+    <string name="whatsnew_aurora_import_action_later">Später</string>
     <string name="settings_aurora_migration_title">Migration aus Aurora / alter Kilter-App</string>
     <string name="settings_aurora_migration_desc">Begehungen, Versuche und Circuits aus dem E-Mail-Export übernehmen, den Aurora auf Anfrage zusendet.</string>
     <string name="aurora_migration_title">Aurora-Migration</string>
