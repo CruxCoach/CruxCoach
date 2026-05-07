@@ -979,6 +979,105 @@ class BoardRepositoryImpl(
         )
     }
 
+    // ── Backup / restore for own climbs (FEAT-008 Phase B) ──────
+
+    override fun getOwnClimbsForBackup(pubkey: String): List<OwnClimbBackupRow> =
+        q.getOwnClimbsForBackup(pubkey).executeAsList().map { row ->
+            OwnClimbBackupRow(
+                uuid = row.uuid,
+                layoutId = row.layout_id,
+                setterUsername = row.setter_username,
+                name = row.name,
+                frames = row.frames,
+                edgeLeft = row.edge_left,
+                edgeRight = row.edge_right,
+                edgeBottom = row.edge_bottom,
+                edgeTop = row.edge_top,
+                createdAt = row.created_at,
+                description = row.description,
+                moveCount = row.move_count,
+                source = row.source,
+                syncStatus = row.sync_status,
+                createdByPubkey = row.created_by_pubkey,
+                framesHash = row.frames_hash,
+                nostrEventId = row.nostr_event_id,
+                nostrDTag = row.nostr_d_tag,
+                nostrPublishVia = row.nostr_publish_via,
+                kilterStatus = row.kilter_status,
+                kilterSyncedAt = row.kilter_synced_at,
+                kilterPublishVia = row.kilter_publish_via,
+                kilterError = row.kilter_error,
+            )
+        }
+
+    override fun getOwnClimbStatsForBackup(pubkey: String): List<OwnClimbStatBackupRow> =
+        q.getOwnClimbStatsForBackup(pubkey).executeAsList().map { row ->
+            OwnClimbStatBackupRow(
+                climbUuid = row.climb_uuid,
+                angle = row.angle,
+                displayDifficulty = row.display_difficulty,
+                difficultyAverage = row.difficulty_average,
+                qualityAverage = row.quality_average,
+                ascensionistCount = row.ascensionist_count ?: 0L,
+                benchmarkDifficulty = row.benchmark_difficulty,
+            )
+        }
+
+    override fun restoreOwnClimb(row: OwnClimbBackupRow): Boolean =
+        q.transactionWithResult {
+            q.restoreOwnClimb(
+                uuid = row.uuid,
+                layout_id = row.layoutId,
+                setter_username = row.setterUsername,
+                name = row.name,
+                frames = row.frames,
+                edge_left = row.edgeLeft,
+                edge_right = row.edgeRight,
+                edge_bottom = row.edgeBottom,
+                edge_top = row.edgeTop,
+                created_at = row.createdAt,
+                description = row.description,
+                move_count = row.moveCount,
+                source = row.source,
+                sync_status = row.syncStatus,
+                created_by_pubkey = row.createdByPubkey,
+                frames_hash = row.framesHash,
+                nostr_event_id = row.nostrEventId,
+                nostr_d_tag = row.nostrDTag,
+                nostr_publish_via = row.nostrPublishVia,
+                kilter_status = row.kilterStatus,
+                kilter_synced_at = row.kilterSyncedAt,
+                kilter_publish_via = row.kilterPublishVia,
+                kilter_error = row.kilterError,
+            )
+            // changes() == 1 → fresh INSERT; 0 → uuid already existed,
+            // INSERT OR IGNORE preserved the existing row. The caller
+            // surfaces this as "imported" vs "skipped" feedback.
+            q.lastClimbsChangeCount().executeAsOne() > 0L
+        }
+
+    override fun restoreOwnClimbStat(row: OwnClimbStatBackupRow) {
+        // Use the generic upsertClimbStat — it preserves every column the
+        // backup carries. The local-only `upsertLocalClimbStat` hardcodes
+        // quality_average / ascensionist_count / benchmark_difficulty to
+        // sentinels and would silently drop those fields on restore.
+        // fa_username / fa_at / official_kilter_difficulty are NULL by
+        // construction for own-climb stats (only the Blossom catalog
+        // populates them).
+        q.upsertClimbStat(
+            climb_uuid = row.climbUuid,
+            angle = row.angle,
+            display_difficulty = row.displayDifficulty,
+            difficulty_average = row.difficultyAverage,
+            quality_average = row.qualityAverage,
+            ascensionist_count = row.ascensionistCount,
+            benchmark_difficulty = row.benchmarkDifficulty,
+            fa_username = null,
+            fa_at = null,
+            official_kilter_difficulty = null,
+        )
+    }
+
     private fun com.cruxcoach.db.board.Climbs.toCommunityRow(): CommunityClimbRow =
         CommunityClimbRow(
             uuid = uuid,

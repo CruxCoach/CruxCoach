@@ -154,6 +154,9 @@ class FakeBoardRepository : BoardRepository {
     override fun countListedClimbsWithoutStats(): Long = 0L
     override fun hasPostV8ResyncMarker(): Boolean = false
     override fun clearPostV8ResyncMarker() {}
+    override fun hasHomewallResyncMarker(): Boolean = false
+    override fun clearHomewallResyncMarker() {}
+    override fun deleteKilterCatalogData() {}
     override fun climbExistsByUuid(uuid: String): Boolean = storedClimbs.containsKey(uuid)
     override fun statExistsByUuid(uuid: String): Boolean = false
     override fun getClimbCountByAngle(layoutId: Int, climbType: ClimbTypeFilter): List<AngleClimbCount> = emptyList()
@@ -256,4 +259,8 @@ class FakeBoardRepository : BoardRepository {
     override fun getClimbStatsForUuid(uuid: String): Pair<Int, Int?>? = null
     override fun findClimbByFramesHash(framesHash: String, layoutId: Long): CommunityClimbRow? = null
     override fun upsertSetterGrade(climbDTag: String, angle: Long, setterGradeId: Int, lastUpdatedEpochMs: Long) {}
+    override fun getOwnClimbsForBackup(pubkey: String): List<com.cruxcoach.data.repository.OwnClimbBackupRow> = emptyList()
+    override fun getOwnClimbStatsForBackup(pubkey: String): List<com.cruxcoach.data.repository.OwnClimbStatBackupRow> = emptyList()
+    override fun restoreOwnClimb(row: com.cruxcoach.data.repository.OwnClimbBackupRow): Boolean = true
+    override fun restoreOwnClimbStat(row: com.cruxcoach.data.repository.OwnClimbStatBackupRow) {}
 }

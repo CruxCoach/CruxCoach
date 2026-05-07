@@ -424,6 +424,56 @@ sealed class KilterClaim {
     data object Lost : KilterClaim()
 }
 
+/**
+ * Full-fidelity snapshot of an own-authored climb for the v3 backup
+ * envelope (FEAT-008 Phase B). Carries every persisted column that
+ * matters for restore: the editor-domain fields, the Nostr publish
+ * provenance, and the Kilter-side lifecycle. Derived columns
+ * (frames_count, is_listed, is_nomatch, frames_pace, hsm) and the
+ * tombstone flag are intentionally omitted — `restoreOwnClimb` writes
+ * sane defaults for those.
+ */
+data class OwnClimbBackupRow(
+    val uuid: String,
+    val layoutId: Long,
+    val setterUsername: String?,
+    val name: String,
+    val frames: String,
+    val edgeLeft: Long?,
+    val edgeRight: Long?,
+    val edgeBottom: Long?,
+    val edgeTop: Long?,
+    val createdAt: String?,
+    val description: String,
+    val moveCount: Long,
+    val source: String,             // 'local' | 'nostr'
+    val syncStatus: String,         // 'draft' | 'failed' | 'published_nostr' | …
+    val createdByPubkey: String?,
+    val framesHash: String?,
+    val nostrEventId: String?,
+    val nostrDTag: String?,
+    val nostrPublishVia: String?,
+    val kilterStatus: String?,
+    val kilterSyncedAt: Long?,
+    val kilterPublishVia: String?,
+    val kilterError: String?,
+)
+
+/**
+ * Per-angle stats for an own climb in the backup envelope. Mirrors the
+ * subset of `climb_stats` columns that an own-climb row ever carries
+ * (Kilter-only `fa_*` and `official_kilter_difficulty` are skipped).
+ */
+data class OwnClimbStatBackupRow(
+    val climbUuid: String,
+    val angle: Long,
+    val displayDifficulty: Double?,
+    val difficultyAverage: Double?,
+    val qualityAverage: Double?,
+    val ascensionistCount: Long,
+    val benchmarkDifficulty: Double?,
+)
+
 data class CommunityClimbRow(
     val uuid: String,
     val name: String,
@@ -698,6 +748,38 @@ interface CommunityClimbQueries {
     fun findClimbByFramesHash(framesHash: String, layoutId: Long): CommunityClimbRow?
     /** Cache the setter-grade entry for a community climb (MVP — no vote aggregation). */
     fun upsertSetterGrade(climbDTag: String, angle: Long, setterGradeId: Int, lastUpdatedEpochMs: Long)
+
+    // ── Backup / restore for own climbs (FEAT-008 Phase B) ──────
+    /**
+     * Snapshot every own-authored climb belonging to [pubkey] (plus
+     * legacy NULL-pubkey local drafts) for export into the v3 backup
+     * envelope. Returns full-fidelity rows including Nostr + Kilter
+     * provenance. Tombstoned rows are excluded.
+     */
+    fun getOwnClimbsForBackup(pubkey: String): List<OwnClimbBackupRow>
+    /**
+     * Per-angle stats for the same set of own climbs as
+     * [getOwnClimbsForBackup]. JOIN-filtered so a stats row whose
+     * climb has been tombstoned is excluded.
+     */
+    fun getOwnClimbStatsForBackup(pubkey: String): List<OwnClimbStatBackupRow>
+    /**
+     * Restore a single own climb from a backup envelope. Returns true
+     * when a new row was inserted, false when an existing row with the
+     * same uuid was preserved (idempotent re-import; the live-sub may
+     * have already re-fetched the published climb, or the user is
+     * restoring on top of their own current state). The caller decides
+     * whether to surface the skip count to the user.
+     *
+     * Uses INSERT OR IGNORE under the hood — a uuid collision keeps the
+     * existing row in place rather than clobbering it.
+     */
+    fun restoreOwnClimb(row: OwnClimbBackupRow): Boolean
+    /**
+     * Restore the per-angle stats for an own climb. Idempotent
+     * (INSERT OR REPLACE on the (climb_uuid, angle) primary key).
+     */
+    fun restoreOwnClimbStat(row: OwnClimbStatBackupRow)
 }
 
 // ── Composite interface (backward-compatible) ───────────────

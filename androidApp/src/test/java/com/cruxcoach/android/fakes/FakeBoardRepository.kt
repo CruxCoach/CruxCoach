@@ -315,4 +315,8 @@ class FakeBoardRepository : BoardRepository {
     override fun getClimbStatsForUuid(uuid: String): Pair<Int, Int?>? = null
     override fun findClimbByFramesHash(framesHash: String, layoutId: Long): com.cruxcoach.data.repository.CommunityClimbRow? = null
     override fun upsertSetterGrade(climbDTag: String, angle: Long, setterGradeId: Int, lastUpdatedEpochMs: Long) {}
+    override fun getOwnClimbsForBackup(pubkey: String): List<com.cruxcoach.data.repository.OwnClimbBackupRow> = emptyList()
+    override fun getOwnClimbStatsForBackup(pubkey: String): List<com.cruxcoach.data.repository.OwnClimbStatBackupRow> = emptyList()
+    override fun restoreOwnClimb(row: com.cruxcoach.data.repository.OwnClimbBackupRow): Boolean = true
+    override fun restoreOwnClimbStat(row: com.cruxcoach.data.repository.OwnClimbStatBackupRow) {}
 }

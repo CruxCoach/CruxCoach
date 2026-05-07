@@ -1119,6 +1119,77 @@ findClimbByFramesHash:
 SELECT uuid, name, source, created_by_pubkey FROM climbs
 WHERE frames_hash = ? AND layout_id = ?;
 
+-- ── Backup / restore for own-authored climbs (FEAT-008 Phase B) ───
+-- Drives the v3 backup envelope's `boardClimbs` + `boardClimbStats`
+-- fields. Three queries, all gated to `origin='cruxcoach'` so a
+-- Kilter-imported row can never accidentally land in a user's
+-- personal backup blob.
+
+-- Pull every CruxCoach-authored climb belonging to :pubkey, plus the
+-- legacy `created_by_pubkey IS NULL` drafts (signer-init-race orphans
+-- the editor still surfaces in the drafts drawer — they're local-only
+-- so binding them to the current pubkey on restore is correct).
+-- `is_listed` is intentionally NOT filtered: even locally-hidden own
+-- climbs deserve to be in the backup.
+-- Tombstoned rows (`is_deleted=1`) are excluded — restoring a tombstone
+-- on another device would re-broadcast a deletion intent the user
+-- already actioned, so the tombstone column is intentionally NOT round-
+-- tripped through backups.
+getOwnClimbsForBackup:
+SELECT uuid, layout_id, setter_username, name, frames,
+       edge_left, edge_right, edge_bottom, edge_top, created_at, description,
+       move_count, source, sync_status, created_by_pubkey, frames_hash,
+       nostr_event_id, nostr_d_tag, nostr_publish_via,
+       kilter_status, kilter_synced_at, kilter_publish_via, kilter_error
+FROM climbs
+WHERE origin = 'cruxcoach'
+  AND is_deleted = 0
+  AND (created_by_pubkey = :pubkey OR (created_by_pubkey IS NULL AND source = 'local'))
+ORDER BY created_at DESC;
+
+-- Pair the climbs above with their per-angle stats. JOIN on uuid +
+-- ownership re-check so the worst case (a stats row whose climb has
+-- since been tombstoned or stripped) returns no rows. fa_username /
+-- fa_at / official_kilter_difficulty are Kilter-only fields, never
+-- meaningful for own-climb stats — omitted.
+getOwnClimbStatsForBackup:
+SELECT cs.climb_uuid, cs.angle, cs.display_difficulty, cs.difficulty_average,
+       cs.quality_average, cs.ascensionist_count, cs.benchmark_difficulty
+FROM climb_stats cs
+INNER JOIN climbs c ON c.uuid = cs.climb_uuid
+WHERE c.origin = 'cruxcoach'
+  AND c.is_deleted = 0
+  AND (c.created_by_pubkey = :pubkey OR (c.created_by_pubkey IS NULL AND c.source = 'local'));
+
+-- Restore path. INSERT OR IGNORE so an existing row with the same uuid
+-- stays in place (idempotent re-import; the live-sub may have already
+-- re-fetched a published climb from the relays before the restore
+-- runs). The repo layer reads `lastClimbsChangeCount` after this to
+-- distinguish "inserted" (count=1) from "skipped because uuid already
+-- existed" (count=0). Bookkeeping defaults: is_listed=1, is_nomatch=0,
+-- frames_pace=0, hsm=0, is_deleted=0, frames_count=1 (boulders only —
+-- multi-frame routes are FEAT-012 / 0.2.0+). `origin='cruxcoach'` is
+-- hardcoded; the export side filters by it so any row reaching this
+-- query is by definition cruxcoach-origin.
+restoreOwnClimb:
+INSERT OR IGNORE INTO climbs(
+    uuid, layout_id, setter_username, name, frames,
+    frames_count, is_listed, edge_left, edge_right, edge_bottom, edge_top, created_at,
+    description, is_nomatch, frames_pace, hsm, move_count, is_deleted,
+    source, origin, sync_status,
+    created_by_pubkey, frames_hash,
+    nostr_event_id, nostr_d_tag, nostr_publish_via,
+    kilter_status, kilter_synced_at, kilter_publish_via, kilter_error)
+VALUES (
+    :uuid, :layout_id, :setter_username, :name, :frames,
+    1, 1, :edge_left, :edge_right, :edge_bottom, :edge_top, :created_at,
+    :description, 0, 0, 0, :move_count, 0,
+    :source, 'cruxcoach', :sync_status,
+    :created_by_pubkey, :frames_hash,
+    :nostr_event_id, :nostr_d_tag, :nostr_publish_via,
+    :kilter_status, :kilter_synced_at, :kilter_publish_via, :kilter_error
+);
+
 -- Insert/refresh climb_stats for a local climb at a given angle (setter
 -- difficulty + quality not yet aggregated — sets sentinels).
 upsertLocalClimbStat:
