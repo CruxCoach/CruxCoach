@@ -88,7 +88,11 @@ object CruxCoachBackup {
      * UI's existing error handler surfaces it cleanly.
      */
     internal fun Backup.validate(): Backup {
-        require(version in 1..2) { "invalid backup: unsupported version $version" }
+        // v1 / v2: 0.1.3 and earlier (no own-climb data).
+        // v3:      0.1.4+ adds boardClimbs + boardClimbStats. 0.1.3 clients
+        //          reject v3 explicitly — by-design forward-incompatibility,
+        //          documented at the export side.
+        require(version in 1..3) { "invalid backup: unsupported version $version" }
         requireLen("exportedAt", exportedAt, MAX_DATE_LEN)
         nostrPubkey?.let { require(HEX64_REGEX.matches(it)) { "invalid backup: nostrPubkey" } }
 
@@ -101,6 +105,8 @@ object CruxCoachBackup {
         requireSize("boardBids", boardBids.size)
         requireSize("boardSessions", boardSessions.size)
         requireSize("climbLists", climbLists.size)
+        requireSize("boardClimbs", boardClimbs.size)
+        requireSize("boardClimbStats", boardClimbStats.size)
 
         profile?.let { p ->
             requireLen("profile.name", p.name, MAX_NAME_LEN)
@@ -204,6 +210,63 @@ object CruxCoachBackup {
             }
         }
 
+        // v3 own-climb payload — same defence-in-depth posture as the
+        // pre-existing rows: reject anything that would corrupt the DB
+        // before the restore transaction starts.
+        for (c in boardClimbs) {
+            requireUuid("ownClimb.uuid", c.uuid)
+            requireLen("ownClimb.name", c.name, MAX_NAME_LEN)
+            requireLen("ownClimb.frames", c.frames, MAX_CLIMB_FRAMES_LEN)
+            requireLen("ownClimb.description", c.description, MAX_NOTES_LEN)
+            requireLen("ownClimb.setterUsername", c.setterUsername, MAX_NAME_LEN)
+            requireLen("ownClimb.createdAt", c.createdAt, MAX_DATE_LEN)
+            requireLen("ownClimb.syncStatus", c.syncStatus, MAX_GRADE_LEN)
+            requireLen("ownClimb.kilterStatus", c.kilterStatus, MAX_GRADE_LEN)
+            requireLen("ownClimb.kilterPublishVia", c.kilterPublishVia, MAX_GRADE_LEN)
+            requireLen("ownClimb.nostrPublishVia", c.nostrPublishVia, MAX_GRADE_LEN)
+            requireLen("ownClimb.kilterError", c.kilterError, MAX_NOTES_LEN)
+            // source must be one of the values the schema's CHECK-style
+            // comments enumerate. 'kilter' is rejected even though it's
+            // a valid column value, because origin='cruxcoach' rows are
+            // never source='kilter' by construction.
+            require(c.source in setOf("local", "nostr")) {
+                "invalid backup: ownClimb.source=${c.source}"
+            }
+            // origin is hardcoded to 'cruxcoach' on the SQL restore side,
+            // but the wire format carries it for forward-compat readability.
+            require(c.origin == "cruxcoach") {
+                "invalid backup: ownClimb.origin=${c.origin} (only cruxcoach allowed)"
+            }
+            c.createdByPubkey?.let {
+                require(HEX64_REGEX.matches(it)) { "invalid backup: ownClimb.createdByPubkey" }
+            }
+            c.framesHash?.let {
+                require(HEX64_REGEX.matches(it)) { "invalid backup: ownClimb.framesHash" }
+            }
+            c.nostrEventId?.let {
+                require(HEX64_REGEX.matches(it)) { "invalid backup: ownClimb.nostrEventId" }
+            }
+            requireLen("ownClimb.nostrDTag", c.nostrDTag, MAX_NAME_LEN)
+            requireRange("ownClimb.layoutId", c.layoutId, 0L..1_000L)
+            requireRange("ownClimb.moveCount", c.moveCount, 0L..1_000L)
+            requireRange("ownClimb.kilterSyncedAt", c.kilterSyncedAt, 0L..Long.MAX_VALUE)
+            // edge_* are pixel coords on the layout grid — generous range.
+            requireRange("ownClimb.edgeLeft", c.edgeLeft, 0L..10_000L)
+            requireRange("ownClimb.edgeRight", c.edgeRight, 0L..10_000L)
+            requireRange("ownClimb.edgeBottom", c.edgeBottom, 0L..10_000L)
+            requireRange("ownClimb.edgeTop", c.edgeTop, 0L..10_000L)
+        }
+
+        for (s in boardClimbStats) {
+            requireUuid("ownClimbStat.climbUuid", s.climbUuid)
+            requireRange("ownClimbStat.angle", s.angle, 0L..70L)
+            requireRange("ownClimbStat.ascensionistCount", s.ascensionistCount, 0L..100_000L)
+            requireFinite("ownClimbStat.displayDifficulty", s.displayDifficulty)
+            requireFinite("ownClimbStat.difficultyAverage", s.difficultyAverage)
+            requireFinite("ownClimbStat.qualityAverage", s.qualityAverage)
+            requireFinite("ownClimbStat.benchmarkDifficulty", s.benchmarkDifficulty)
+        }
+
         return this
     }
 
@@ -218,14 +281,22 @@ object CruxCoachBackup {
         TRAINING_PLANS("Trainingspläne"),
         BOARD_LOGBOOK("Board-Sends & -Versuche"),
         BOARD_SESSIONS("Board-Sessions"),
-        CLIMB_LISTS("Climb-Listen & Favoriten")
+        CLIMB_LISTS("Climb-Listen & Favoriten"),
+        OWN_CLIMBS("Eigene Climbs & Drafts")
     }
 
     // ── Serializable backup envelope ────────────────────────────
 
     @Serializable
     data class Backup(
-        val version: Int = 2,
+        // version 1, 2: 0.1.3 and earlier — no boardClimbs / boardClimbStats.
+        // version 3:    0.1.4+ — adds own-climb payload (FEAT-008 §4).
+        //
+        // Default bumped to 3 so every backup written by 0.1.4+ carries the
+        // own-climb fields. Older clients (0.1.3) reject v3 at validate(),
+        // which is intentional — there's no safe way to round-trip a draft
+        // through a binary that doesn't know about the columns.
+        val version: Int = 3,
         val app: String = "CruxCoach",
         val exportedAt: String,
         val nostrPubkey: String? = null,
@@ -238,7 +309,17 @@ object CruxCoachBackup {
         val boardAscents: List<AscentExport> = emptyList(),
         val boardBids: List<BidExport> = emptyList(),
         val boardSessions: List<SessionExport> = emptyList(),
-        val climbLists: List<ClimbListExport> = emptyList()
+        val climbLists: List<ClimbListExport> = emptyList(),
+        // ── v3 additions (FEAT-008 Phase B) ────────────────────────
+        // CruxCoach-authored climbs the user wrote via the editor — drafts
+        // (source='local') and Nostr-published rows (source='nostr'),
+        // both gated to origin='cruxcoach' on the export side.
+        val boardClimbs: List<OwnClimbExport> = emptyList(),
+        // Per-angle stats for the same set. Carried separately because
+        // climb_stats is a sibling table with its own (climb_uuid, angle)
+        // primary key — modelling it as a child collection of OwnClimbExport
+        // would force the JSON to denormalise and bloat re-export diffs.
+        val boardClimbStats: List<OwnClimbStatExport> = emptyList(),
     )
 
     @Serializable
@@ -295,6 +376,52 @@ object CruxCoachBackup {
         val entries: List<String> // climb UUIDs
     )
 
+    /**
+     * Wire-format snapshot of a CruxCoach-authored climb. Mirrors
+     * [com.cruxcoach.data.repository.OwnClimbBackupRow] field-for-field;
+     * the two are kept separate so the wire format can evolve
+     * independently from the repo type without leaking serialization
+     * concerns into the data layer.
+     */
+    @Serializable
+    data class OwnClimbExport(
+        val uuid: String,
+        val layoutId: Long,
+        val setterUsername: String? = null,
+        val name: String,
+        val frames: String,
+        val edgeLeft: Long? = null,
+        val edgeRight: Long? = null,
+        val edgeBottom: Long? = null,
+        val edgeTop: Long? = null,
+        val createdAt: String? = null,
+        val description: String = "",
+        val moveCount: Long = 0,
+        val source: String,                   // 'local' | 'nostr'
+        val origin: String = "cruxcoach",     // always 'cruxcoach' (validated)
+        val syncStatus: String,               // 'draft' | 'failed' | 'published_nostr' | …
+        val createdByPubkey: String? = null,
+        val framesHash: String? = null,
+        val nostrEventId: String? = null,
+        val nostrDTag: String? = null,
+        val nostrPublishVia: String? = null,
+        val kilterStatus: String? = null,
+        val kilterSyncedAt: Long? = null,
+        val kilterPublishVia: String? = null,
+        val kilterError: String? = null,
+    )
+
+    @Serializable
+    data class OwnClimbStatExport(
+        val climbUuid: String,
+        val angle: Long,
+        val displayDifficulty: Double? = null,
+        val difficultyAverage: Double? = null,
+        val qualityAverage: Double? = null,
+        val ascensionistCount: Long = 0,
+        val benchmarkDifficulty: Double? = null,
+    )
+
     // ── Preview (for import) ────────────────────────────────────
 
     data class ImportPreview(
@@ -308,7 +435,8 @@ object CruxCoachBackup {
         val boardAscents: Int = 0,
         val boardBids: Int = 0,
         val boardSessions: Int = 0,
-        val climbLists: Int = 0
+        val climbLists: Int = 0,
+        val ownClimbs: Int = 0,
     ) {
         /** Which categories have data in this backup? */
         fun detectedCategories(): Set<Category> {
@@ -322,6 +450,7 @@ object CruxCoachBackup {
             if (boardAscents > 0 || boardBids > 0) cats.add(Category.BOARD_LOGBOOK)
             if (boardSessions > 0) cats.add(Category.BOARD_SESSIONS)
             if (climbLists > 0) cats.add(Category.CLIMB_LISTS)
+            if (ownClimbs > 0) cats.add(Category.OWN_CLIMBS)
             return cats
         }
 
@@ -335,6 +464,7 @@ object CruxCoachBackup {
             Category.BOARD_LOGBOOK -> "$boardAscents Sends, $boardBids Versuche"
             Category.BOARD_SESSIONS -> "$boardSessions Sessions"
             Category.CLIMB_LISTS -> "$climbLists Listen"
+            Category.OWN_CLIMBS -> "$ownClimbs eigene Climbs"
         }
     }
 
@@ -352,7 +482,8 @@ object CruxCoachBackup {
             boardAscents = backup.boardAscents.size,
             boardBids = backup.boardBids.size,
             boardSessions = backup.boardSessions.size,
-            climbLists = backup.climbLists.size
+            climbLists = backup.climbLists.size,
+            ownClimbs = backup.boardClimbs.size,
         )
     }
 
@@ -460,6 +591,11 @@ object CruxCoachBackup {
         val boardBids: Int = 0,
         val boardSessions: Int = 0,
         val climbLists: Int = 0,
+        /** Own-authored climbs newly inserted into the board DB. Excludes
+         *  rows whose uuid was already present (counted in [skippedDuplicates]). */
+        val ownClimbs: Int = 0,
+        /** Per-angle stats rows upserted for the imported own climbs. */
+        val ownClimbStats: Int = 0,
         val skippedDuplicates: Int = 0
     )
 
