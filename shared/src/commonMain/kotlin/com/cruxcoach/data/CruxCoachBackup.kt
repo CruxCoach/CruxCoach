@@ -497,6 +497,15 @@ object CruxCoachBackup {
         climbRepository: ClimbRepository,
         planRepository: PlanRepository,
         personalBoardRepo: PersonalBoardRepository,
+        /** Board (unencrypted) repository — sourced from the same DB as the
+         *  Kilter catalog. Used for own-climb backup (FEAT-008 §4): own
+         *  climbs and their per-angle stats live in `climbs` /
+         *  `climb_stats` (unencrypted), not in the secure DB the rest of
+         *  the export reads from. Cross-DB boundary is intentional —
+         *  PersonalBoardRepository would have to grow cross-DB
+         *  delegating methods, breaking the "no cross-DB joins"
+         *  invariant the codebase otherwise upholds. */
+        boardRepository: BoardRepository,
         exportedAt: String,
         nostrPubkey: String? = null
     ): String {
@@ -567,12 +576,56 @@ object CruxCoachBackup {
             }
         } else emptyList()
 
+        // Own climbs (FEAT-008 §4 Phase B). Identity-bound: skip entirely
+        // when the caller didn't pass a nostrPubkey — there's no way to
+        // safely scope the export without one, and an unscoped dump
+        // would carry every identity's drafts on a multi-account
+        // device. The repo query also tolerates the legacy
+        // `created_by_pubkey IS NULL` orphans (signer-init-race drafts)
+        // by binding them to the active pubkey on the export side.
+        val ownClimbs = if (Category.OWN_CLIMBS in categories && nostrPubkey != null) {
+            boardRepository.getOwnClimbsForBackup(nostrPubkey).map { row ->
+                OwnClimbExport(
+                    uuid = row.uuid, layoutId = row.layoutId,
+                    setterUsername = row.setterUsername, name = row.name,
+                    frames = row.frames,
+                    edgeLeft = row.edgeLeft, edgeRight = row.edgeRight,
+                    edgeBottom = row.edgeBottom, edgeTop = row.edgeTop,
+                    createdAt = row.createdAt, description = row.description,
+                    moveCount = row.moveCount,
+                    source = row.source, syncStatus = row.syncStatus,
+                    createdByPubkey = row.createdByPubkey,
+                    framesHash = row.framesHash,
+                    nostrEventId = row.nostrEventId, nostrDTag = row.nostrDTag,
+                    nostrPublishVia = row.nostrPublishVia,
+                    kilterStatus = row.kilterStatus,
+                    kilterSyncedAt = row.kilterSyncedAt,
+                    kilterPublishVia = row.kilterPublishVia,
+                    kilterError = row.kilterError,
+                )
+            }
+        } else emptyList()
+
+        val ownClimbStats = if (Category.OWN_CLIMBS in categories && nostrPubkey != null) {
+            boardRepository.getOwnClimbStatsForBackup(nostrPubkey).map { row ->
+                OwnClimbStatExport(
+                    climbUuid = row.climbUuid, angle = row.angle,
+                    displayDifficulty = row.displayDifficulty,
+                    difficultyAverage = row.difficultyAverage,
+                    qualityAverage = row.qualityAverage,
+                    ascensionistCount = row.ascensionistCount,
+                    benchmarkDifficulty = row.benchmarkDifficulty,
+                )
+            }
+        } else emptyList()
+
         val backup = Backup(
             exportedAt = exportedAt, nostrPubkey = nostrPubkey, profile = profile,
             assessments = assessments, bodyStats = bodyStats,
             workoutLogs = workoutLogs, climbLogs = climbLogs,
             trainingPlans = plansWithSessions, boardAscents = ascents,
-            boardBids = bids, boardSessions = boardSessions, climbLists = climbLists
+            boardBids = bids, boardSessions = boardSessions, climbLists = climbLists,
+            boardClimbs = ownClimbs, boardClimbStats = ownClimbStats,
         )
 
         return json.encodeToString(backup)
@@ -608,6 +661,11 @@ object CruxCoachBackup {
         climbRepository: ClimbRepository,
         planRepository: PlanRepository,
         personalBoardRepo: PersonalBoardRepository,
+        /** See [export] for the cross-DB rationale. Used here to write
+         *  back the v3 own-climb payload after the secure-DB transaction
+         *  commits — see the post-transaction block at the end of this
+         *  function for the failure-mode notes. */
+        boardRepository: BoardRepository,
         transactionRunner: TransactionRunner,
         /**
          * Defence-in-depth pubkey-binding. When the caller knows which
@@ -633,7 +691,7 @@ object CruxCoachBackup {
             )
         }
 
-        return transactionRunner.runInTransaction {
+        val secureResult = transactionRunner.runInTransaction {
             var result = ImportResult()
             var skipped = 0
 
@@ -827,5 +885,72 @@ object CruxCoachBackup {
 
             result.copy(skippedDuplicates = skipped)
         }
+
+        // 11. Own climbs + per-angle stats (FEAT-008 §4 Phase B).
+        //
+        // Runs OUTSIDE the secure-DB transaction because the writes target
+        // the unencrypted board DB — `transactionRunner` only spans secure-
+        // DB queries, and trying to wrap board writes inside it would
+        // either silently bypass transaction semantics (current behaviour
+        // would be cross-DB inconsistent) or require introducing a
+        // composite transaction abstraction (not in 0.1.4 scope).
+        //
+        // Failure semantics: each restoreOwnClimb is its own atomic SQL
+        // statement (INSERT OR IGNORE) and idempotent re-run is safe.
+        // A partial failure here therefore leaves the board DB in a
+        // mid-restore state, but a re-import completes the missing rows
+        // without duplicating the present ones. The secure-DB result is
+        // already committed and not at risk.
+        //
+        // Order: stats AFTER climbs so a stat row never references a
+        // not-yet-restored climb uuid (no FK enforces this, but it
+        // matches the editor's natural insert order and keeps any
+        // future browse-during-restore consistent).
+        var ownClimbsImported = 0
+        var ownClimbStatsImported = 0
+        var ownClimbsSkipped = 0
+        if (Category.OWN_CLIMBS in selectedCategories) {
+            for (climb in backup.boardClimbs) {
+                val row = OwnClimbBackupRow(
+                    uuid = climb.uuid, layoutId = climb.layoutId,
+                    setterUsername = climb.setterUsername, name = climb.name,
+                    frames = climb.frames,
+                    edgeLeft = climb.edgeLeft, edgeRight = climb.edgeRight,
+                    edgeBottom = climb.edgeBottom, edgeTop = climb.edgeTop,
+                    createdAt = climb.createdAt, description = climb.description,
+                    moveCount = climb.moveCount,
+                    source = climb.source, syncStatus = climb.syncStatus,
+                    createdByPubkey = climb.createdByPubkey,
+                    framesHash = climb.framesHash,
+                    nostrEventId = climb.nostrEventId,
+                    nostrDTag = climb.nostrDTag,
+                    nostrPublishVia = climb.nostrPublishVia,
+                    kilterStatus = climb.kilterStatus,
+                    kilterSyncedAt = climb.kilterSyncedAt,
+                    kilterPublishVia = climb.kilterPublishVia,
+                    kilterError = climb.kilterError,
+                )
+                if (boardRepository.restoreOwnClimb(row)) ownClimbsImported++ else ownClimbsSkipped++
+            }
+            for (stat in backup.boardClimbStats) {
+                boardRepository.restoreOwnClimbStat(
+                    OwnClimbStatBackupRow(
+                        climbUuid = stat.climbUuid, angle = stat.angle,
+                        displayDifficulty = stat.displayDifficulty,
+                        difficultyAverage = stat.difficultyAverage,
+                        qualityAverage = stat.qualityAverage,
+                        ascensionistCount = stat.ascensionistCount,
+                        benchmarkDifficulty = stat.benchmarkDifficulty,
+                    )
+                )
+                ownClimbStatsImported++
+            }
+        }
+
+        return secureResult.copy(
+            ownClimbs = ownClimbsImported,
+            ownClimbStats = ownClimbStatsImported,
+            skippedDuplicates = secureResult.skippedDuplicates + ownClimbsSkipped,
+        )
     }
 }

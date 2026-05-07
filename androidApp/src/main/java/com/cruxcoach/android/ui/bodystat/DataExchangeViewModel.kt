@@ -64,6 +64,10 @@ class DataExchangeViewModel @Inject constructor(
     private val climbRepository: ClimbRepository,
     private val planRepository: PlanRepository,
     private val personalBoardRepo: PersonalBoardRepository,
+    /** Board (unencrypted) repository — sourced for the v3 own-climb
+     *  payload (FEAT-008 §4). See [CruxCoachBackup.export] for the
+     *  cross-DB rationale. */
+    private val boardRepository: com.cruxcoach.data.repository.BoardRepository,
     private val transactionRunner: TransactionRunner,
     private val nostrKeyStore: NostrKeyStore,
     @param:ApplicationContext private val context: Context
@@ -117,6 +121,7 @@ class DataExchangeViewModel @Inject constructor(
                             climbRepository = climbRepository,
                             planRepository = planRepository,
                             personalBoardRepo = personalBoardRepo,
+                            boardRepository = boardRepository,
                             exportedAt = DateTimeUtil.nowIso(),
                             nostrPubkey = nostrKeyStore.getOrCreateKeyPair().pubKey.toHexKey()
                         )
@@ -238,6 +243,7 @@ class DataExchangeViewModel @Inject constructor(
                         climbRepository = climbRepository,
                         planRepository = planRepository,
                         personalBoardRepo = personalBoardRepo,
+                        boardRepository = boardRepository,
                         transactionRunner = transactionRunner
                     )
                 }
@@ -253,6 +259,7 @@ class DataExchangeViewModel @Inject constructor(
                 if (result.boardBids > 0) parts.add(context.getString(R.string.import_result_board_bids, result.boardBids))
                 if (result.boardSessions > 0) parts.add(context.getString(R.string.import_result_board_sessions, result.boardSessions))
                 if (result.climbLists > 0) parts.add(context.getString(R.string.import_result_lists, result.climbLists))
+                if (result.ownClimbs > 0) parts.add(context.getString(R.string.import_result_own_climbs, result.ownClimbs))
 
                 val summary = if (parts.isNotEmpty()) parts.joinToString(", ") else context.getString(R.string.import_result_no_data)
                 val dupNote = if (result.skippedDuplicates > 0)

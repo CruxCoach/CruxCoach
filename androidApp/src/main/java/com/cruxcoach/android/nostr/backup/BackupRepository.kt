@@ -6,6 +6,7 @@ import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.android.nostr.SignerMode
 import com.cruxcoach.data.CruxCoachBackup
 import com.cruxcoach.data.TransactionRunner
+import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.BodyStatRepository
 import com.cruxcoach.data.repository.ClimbRepository
 import com.cruxcoach.data.repository.PersonalBoardRepository
@@ -57,6 +58,10 @@ class BackupRepository @Inject constructor(
     private val climbRepository: ClimbRepository,
     private val planRepository: PlanRepository,
     private val personalBoardRepo: PersonalBoardRepository,
+    /** Board (unencrypted) repository — needed for the v3 own-climb
+     *  payload (FEAT-008 §4). Cross-DB by design; see [CruxCoachBackup.export]
+     *  for the rationale. */
+    private val boardRepository: BoardRepository,
     private val transactionRunner: TransactionRunner,
 ) {
 
@@ -96,6 +101,7 @@ class BackupRepository @Inject constructor(
             climbRepository = climbRepository,
             planRepository = planRepository,
             personalBoardRepo = personalBoardRepo,
+            boardRepository = boardRepository,
             exportedAt = Instant.now().toString(),
             nostrPubkey = pubkey,
         )
@@ -400,6 +406,7 @@ class BackupRepository @Inject constructor(
             climbRepository = climbRepository,
             planRepository = planRepository,
             personalBoardRepo = personalBoardRepo,
+            boardRepository = boardRepository,
             transactionRunner = transactionRunner,
             expectedNostrPubkey = nostrSigner.getPublicKeyHex(),
         )
@@ -411,6 +418,7 @@ class BackupRepository @Inject constructor(
         val rowsImported = with(importResult) {
             assessments + bodyStats + workoutLogs + climbLogs + trainingPlans +
                 boardAscents + boardBids + boardSessions + climbLists +
+                ownClimbs + ownClimbStats +
                 (if (profileImported) 1 else 0)
         }
         Log.d(

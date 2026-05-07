@@ -1350,6 +1350,7 @@
     <string name="import_result_board_bids">%1$d Board-Versuche</string>
     <string name="import_result_board_sessions">%1$d Board-Sessions</string>
     <string name="import_result_lists">%1$d Listen</string>
+    <string name="import_result_own_climbs">%1$d eigene Climbs</string>
     <string name="import_result_no_data">Keine Daten</string>
     <string name="import_result_summary">Importiert: %1$s</string>
     <string name="import_result_duplicates_skipped"> (%1$d Duplikate übersprungen)</string>

@@ -1304,6 +1304,7 @@
     <string name="import_result_board_bids">%1$d board bids</string>
     <string name="import_result_board_sessions">%1$d board sessions</string>
     <string name="import_result_lists">%1$d lists</string>
+    <string name="import_result_own_climbs">%1$d own climbs</string>
     <string name="import_result_no_data">No data</string>
     <string name="import_result_summary">Imported: %1$s</string>
     <string name="import_result_duplicates_skipped"> (%1$d duplicates skipped)</string>
