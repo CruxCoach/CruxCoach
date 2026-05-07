@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
@@ -98,14 +99,24 @@ fun NostrProfileScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.nostr_profile_title)) },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
-                    }
-                },
-            )
+            Column {
+                TopAppBar(
+                    title = { Text(stringResource(R.string.nostr_profile_title)) },
+                    navigationIcon = {
+                        IconButton(onClick = onNavigateBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
+                        }
+                    },
+                )
+                // Indeterminate progress strip directly under the AppBar
+                // — fields are already showing from the local cache, this
+                // just signals that the relay round-trip is still in
+                // flight. Disappears as soon as the fetch resolves
+                // (success, timeout, or no-op on identical data).
+                if (state.isRefreshing && !state.isLoading) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                }
+            }
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { paddingValues ->
@@ -138,6 +149,7 @@ fun NostrProfileScreen(
                         PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
                     )
                 },
+                onRemoveClick = { viewModel.setBannerUrl("") },
             )
 
             ProfilePictureArea(
@@ -148,6 +160,7 @@ fun NostrProfileScreen(
                         PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
                     )
                 },
+                onRemoveClick = { viewModel.setPictureUrl("") },
             )
 
             Text(
@@ -326,6 +339,7 @@ private fun BannerImageArea(
     url: String,
     uploadInFlight: Boolean,
     onEditClick: () -> Unit,
+    onRemoveClick: () -> Unit,
 ) {
     Box(
         modifier = Modifier
@@ -356,6 +370,22 @@ private fun BannerImageArea(
                     .size(40.dp),
             )
         }
+        // Remove button (top-left) — only visible when a banner is set.
+        if (url.isNotBlank() && !uploadInFlight) {
+            FilledIconButton(
+                onClick = onRemoveClick,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(8.dp)
+                    .size(36.dp),
+            ) {
+                Icon(
+                    Icons.Filled.Close,
+                    contentDescription = stringResource(R.string.nostr_profile_banner_remove),
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+        }
         FilledIconButton(
             onClick = onEditClick,
             enabled = !uploadInFlight,
@@ -381,6 +411,7 @@ private fun ProfilePictureArea(
     url: String,
     uploadInFlight: Boolean,
     onEditClick: () -> Unit,
+    onRemoveClick: () -> Unit,
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -416,6 +447,14 @@ private fun ProfilePictureArea(
                 Icons.Filled.Edit,
                 contentDescription = stringResource(R.string.nostr_profile_picture_change),
             )
+        }
+        if (url.isNotBlank() && !uploadInFlight) {
+            FilledIconButton(onClick = onRemoveClick) {
+                Icon(
+                    Icons.Filled.Close,
+                    contentDescription = stringResource(R.string.nostr_profile_picture_remove),
+                )
+            }
         }
     }
 }

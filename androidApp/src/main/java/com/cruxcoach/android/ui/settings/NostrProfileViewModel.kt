@@ -80,6 +80,15 @@ data class NostrProfileEditState(
     val bannerUploadInFlight: Boolean = false,
     /** True while a profile picture is being compressed + uploaded. */
     val pictureUploadInFlight: Boolean = false,
+    /** True while a relay refresh is running in the background. The
+     *  fields are already populated from the local cache when this is
+     *  true — UI uses it for a subtle "syncing…" indicator, not a
+     *  full-screen blocker. */
+    val isRefreshing: Boolean = false,
+    /** Set on any field setter call. Guards Phase-2 cache→relay refresh
+     *  from clobbering the user's in-flight edits. Cleared by `load()`
+     *  on screen entry and by `save()` after a successful publish. */
+    val hasUserEdited: Boolean = false,
 )
 
 @HiltViewModel
@@ -132,31 +141,103 @@ class NostrProfileViewModel @Inject constructor(
                 }
                 return@launch
             }
-            val profile = runCatching { nostrProfileManager.getProfile(pubkey) }.getOrNull()
-            _state.update {
-                it.copy(
-                    displayName = profile?.displayName.orEmpty(),
-                    lightningAddress = profile?.lightningAddress.orEmpty(),
-                    pictureUrl = profile?.pictureUrl.orEmpty(),
-                    about = "",                     // about is not cached locally; keep blank
-                    bannerUrl = profile?.bannerUrl.orEmpty(),
-                    nip05 = profile?.nip05.orEmpty(),
-                    website = profile?.website.orEmpty(),
-                    isLoading = false,
-                    canImportFromKilter = kilterUsername != null,
-                    kilterUsername = kilterUsername,
-                )
+
+            // Phase 1: render from local cache instantly. The previous
+            // code path went through `getProfile`, which always blocks
+            // on the relay round-trip when the cache is empty AND
+            // bypasses the cache hit when there's any in-process event-
+            // dedup hit — the screen used to show a full-screen spinner
+            // for up to 10s on every open. Now we paint cached values
+            // immediately and only touch relays in the background.
+            val cached = runCatching { nostrProfileManager.getProfileFromCache(pubkey) }
+                .getOrNull()
+            if (cached != null) {
+                _state.update {
+                    it.copy(
+                        displayName = cached.displayName.orEmpty(),
+                        lightningAddress = cached.lightningAddress.orEmpty(),
+                        pictureUrl = cached.pictureUrl.orEmpty(),
+                        about = "",
+                        bannerUrl = cached.bannerUrl.orEmpty(),
+                        nip05 = cached.nip05.orEmpty(),
+                        website = cached.website.orEmpty(),
+                        isLoading = false,
+                        isRefreshing = true,
+                        hasUserEdited = false,
+                        canImportFromKilter = kilterUsername != null,
+                        kilterUsername = kilterUsername,
+                    )
+                }
+                if (!cached.nip05.isNullOrBlank()) verifyNip05Now()
+                if (!cached.lightningAddress.isNullOrBlank()) verifyLightningNow()
+            } else {
+                // No cache yet — drop the full-screen spinner anyway
+                // so the user can start typing while the relay fetch
+                // runs in the background. The TopAppBar's small
+                // refresh indicator (driven by isRefreshing) signals
+                // the in-flight fetch.
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        isRefreshing = true,
+                        hasUserEdited = false,
+                        canImportFromKilter = kilterUsername != null,
+                        kilterUsername = kilterUsername,
+                    )
+                }
             }
-            // Eager re-verification: if the cached profile already has
-            // an NIP-05 / Lightning address, the user should see the
-            // ✓ / ⚠ / ✗ indicator without first having to focus + blur
-            // the field. Async — UI just reads the StateFlow.
-            if (!profile?.nip05.isNullOrBlank()) verifyNip05Now()
-            if (!profile?.lightningAddress.isNullOrBlank()) verifyLightningNow()
+
+            // Phase 2: background relay fetch. This either populates an
+            // empty cache (first-ever open) or refreshes a stale one.
+            // We skip the field-overwrite if the user already started
+            // typing — `setDisplayName`/etc. flip `hasUserEdited`.
+            val fresh = runCatching { nostrProfileManager.getProfile(pubkey) }.getOrNull()
+            val freshChanged = fresh != null && (
+                fresh.displayName.orEmpty() != cached?.displayName.orEmpty() ||
+                fresh.lightningAddress.orEmpty() != cached?.lightningAddress.orEmpty() ||
+                fresh.pictureUrl.orEmpty() != cached?.pictureUrl.orEmpty() ||
+                fresh.bannerUrl.orEmpty() != cached?.bannerUrl.orEmpty() ||
+                fresh.nip05.orEmpty() != cached?.nip05.orEmpty() ||
+                fresh.website.orEmpty() != cached?.website.orEmpty()
+            )
+            _state.update { current ->
+                if (fresh == null) {
+                    // Relay fetch failed — keep whatever cache we already
+                    // showed; just drop the syncing indicator.
+                    current.copy(isLoading = false, isRefreshing = false)
+                } else if (current.hasUserEdited) {
+                    // Don't clobber typed text. The fresh values still
+                    // landed in the cache via parseAndCacheProfile, so
+                    // a future load() picks them up.
+                    current.copy(isLoading = false, isRefreshing = false)
+                } else if (cached == null || freshChanged) {
+                    current.copy(
+                        displayName = fresh.displayName.orEmpty(),
+                        lightningAddress = fresh.lightningAddress.orEmpty(),
+                        pictureUrl = fresh.pictureUrl.orEmpty(),
+                        bannerUrl = fresh.bannerUrl.orEmpty(),
+                        nip05 = fresh.nip05.orEmpty(),
+                        website = fresh.website.orEmpty(),
+                        isLoading = false,
+                        isRefreshing = false,
+                    )
+                } else {
+                    current.copy(isLoading = false, isRefreshing = false)
+                }
+            }
+            // Re-verify if the relay-fetched values differ — the cached
+            // verifyNip05Now / verifyLightningNow above were against
+            // the (potentially stale) cache.
+            if (fresh != null && (cached == null || freshChanged) && !_state.value.hasUserEdited) {
+                if (!fresh.nip05.isNullOrBlank()) verifyNip05Now()
+                if (!fresh.lightningAddress.isNullOrBlank()) verifyLightningNow()
+            }
         }
     }
 
-    fun setDisplayName(value: String) = _state.update { it.copy(displayName = value, justSaved = false) }
+    fun setDisplayName(value: String) = _state.update {
+        it.copy(displayName = value, justSaved = false, hasUserEdited = true)
+    }
     fun setLightningAddress(value: String) = _state.update {
         // Reset verification on every keystroke — a half-typed address
         // shouldn't carry over the previous result's ✓/⚠. Re-verify on
@@ -164,20 +245,30 @@ class NostrProfileViewModel @Inject constructor(
         it.copy(
             lightningAddress = value,
             justSaved = false,
+            hasUserEdited = true,
             lnurlVerification = LnurlVerifier.State.Idle,
         )
     }
-    fun setPictureUrl(value: String) = _state.update { it.copy(pictureUrl = value, justSaved = false) }
-    fun setAbout(value: String) = _state.update { it.copy(about = value, justSaved = false) }
-    fun setBannerUrl(value: String) = _state.update { it.copy(bannerUrl = value, justSaved = false) }
+    fun setPictureUrl(value: String) = _state.update {
+        it.copy(pictureUrl = value, justSaved = false, hasUserEdited = true)
+    }
+    fun setAbout(value: String) = _state.update {
+        it.copy(about = value, justSaved = false, hasUserEdited = true)
+    }
+    fun setBannerUrl(value: String) = _state.update {
+        it.copy(bannerUrl = value, justSaved = false, hasUserEdited = true)
+    }
     fun setNip05(value: String) = _state.update {
         it.copy(
             nip05 = value,
             justSaved = false,
+            hasUserEdited = true,
             nip05Verification = Nip05Verifier.State.Idle,
         )
     }
-    fun setWebsite(value: String) = _state.update { it.copy(website = value, justSaved = false) }
+    fun setWebsite(value: String) = _state.update {
+        it.copy(website = value, justSaved = false, hasUserEdited = true)
+    }
     fun clearError() = _state.update { it.copy(errorMessage = null) }
 
     /** Trigger a NIP-05 well-known fetch + match against the user's own

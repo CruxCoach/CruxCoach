@@ -28,6 +28,19 @@ object AuroraExternalId {
     fun circuit(name: String, createdAtIso: String): String =
         "aurora-json:circuit:" + sha256("$name:$createdAtIso").take(32)
 
+    /**
+     * Deterministic UUID for an Aurora-imported draft climb. Mirrors
+     * boardsesh's `generateClimbImportUuid` —
+     * `(layoutId, name, createdAt)` is enough to dedup; userId is left
+     * out so re-importing under a rotated Nostr key doesn't fork the
+     * draft. UUIDv3 (name-based, MD5) via [java.util.UUID.nameUUIDFromBytes]
+     * — collision-resistant enough for a single user's draft set.
+     */
+    fun climbUuid(layoutId: Long, name: String, createdAtIso: String): String =
+        java.util.UUID
+            .nameUUIDFromBytes("aurora-json:climb:$layoutId:$name:$createdAtIso".toByteArray(Charsets.UTF_8))
+            .toString()
+
     internal fun sha256(input: String): String {
         val digest = MessageDigest.getInstance("SHA-256")
         val bytes = digest.digest(input.toByteArray(Charsets.UTF_8))

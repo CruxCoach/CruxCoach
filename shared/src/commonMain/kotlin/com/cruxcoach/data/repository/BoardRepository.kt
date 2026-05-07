@@ -195,6 +195,17 @@ interface BoardClimbQueries {
     fun hasPostV8ResyncMarker(): Boolean
     /** Cleared after the post-v8 resync completes successfully. */
     fun clearPostV8ResyncMarker()
+    /** True if 10.sqm flagged the install for a one-shot Homewall
+     *  resync (0.1.3 → 0.1.4 OTA upgrade — the old per-chunk hash
+     *  cache would otherwise short-circuit Homewall data sync). */
+    fun hasHomewallResyncMarker(): Boolean
+    /** Cleared after the Homewall resync completes successfully. */
+    fun clearHomewallResyncMarker()
+    /** Wipe just the cron-derived catalog rows (source='kilter') so
+     *  the next sync runs through the fresh-install fast path. Used
+     *  by the post-migration force-resync flow; cruxcoach-authored
+     *  climbs are preserved. */
+    fun deleteKilterCatalogData()
     fun climbExistsByUuid(uuid: String): Boolean
     fun statExistsByUuid(uuid: String): Boolean
     fun getClimbCountByAngle(layoutId: Int, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER): List<AngleClimbCount>

@@ -130,7 +130,9 @@
     <string name="nostr_profile_lud16_verified">Lightning-Adresse aktiv</string>
     <string name="nostr_profile_lud16_unreachable">Konnte Lightning-Adresse nicht verifizieren</string>
     <string name="nostr_profile_banner_change">Banner ändern</string>
+    <string name="nostr_profile_banner_remove">Banner entfernen</string>
     <string name="nostr_profile_picture_change">Profilbild ändern</string>
+    <string name="nostr_profile_picture_remove">Profilbild entfernen</string>
     <string name="nostr_profile_image_upload_failed" formatted="false">Bild-Upload fehlgeschlagen: %1$s</string>
     <string name="nostr_profile_about_count" formatted="false">%1$d / %2$d</string>
     <string name="nostr_profile_save">Profil speichern</string>
@@ -1380,6 +1382,13 @@
     <string name="settings_app_share_title">App teilen</string>
     <string name="settings_profile_assessment_title">Profil &amp; Assessment</string>
     <string name="settings_section_board">Board-Einstellungen</string>
+    <string name="settings_board_layout_title">Wand</string>
+    <string name="settings_board_layout_desc">Wähle, welche Kilter-Wand du hast. Browse und Climb-Creator richten sich danach.</string>
+    <string name="settings_board_layout_original">Kilter Original</string>
+    <string name="settings_board_layout_homewall">Kilter Homewall</string>
+    <string name="settings_board_model_title">Board-Größe</string>
+    <string name="settings_board_model_change">Ändern</string>
+    <string name="settings_board_model_not_configured">Nicht konfiguriert</string>
     <string name="settings_section_data">Datenverwaltung</string>
     <string name="settings_section_dev_contact">Entwickler-Kontakt</string>
     <string name="settings_section_display">Anzeige</string>
@@ -1720,8 +1729,9 @@
     <string name="aurora_migration_step1_title">Datenexport bei Aurora anfordern</string>
     <string name="aurora_migration_step1_body">Schreibe eine E-Mail an den Aurora-Support und bitte um eine Kopie deiner Daten. Die Antwort kommt meist binnen einiger Tage und enthält eine einzelne JSON-Datei.</string>
     <string name="aurora_migration_email_button">E-Mail an Aurora vorbereiten</string>
-    <string name="aurora_migration_email_subject">Datenexport-Anfrage</string>
-    <string name="aurora_migration_email_body">Hallo Aurora-Team,\n\nbitte sendet mir eine Kopie meiner Account-Daten (Begehungen, Projekte, Circuits) zum Import in die CruxCoach-App.\n\nDanke!</string>
+    <string name="aurora_migration_email_copy_button">E-Mail in Zwischenablage kopieren</string>
+    <string name="aurora_migration_email_copy_toast">E-Mail kopiert — in dein E-Mail-Programm einfügen und an support@auroraclimbing.com senden.</string>
+    <string name="aurora_migration_email_copy_fallback_toast">Keine E-Mail-App gefunden. Inhalt kopiert — in ein Webmail-Programm einfügen und an support@auroraclimbing.com senden.</string>
     <string name="aurora_migration_step2_title">Datei importieren</string>
     <string name="aurora_migration_step2_body">Speichere den Anhang aus Auroras Antwort auf dein Telefon und wähle ihn hier aus. Erneutes Importieren derselben Datei ist sicher — bereits vorhandene Einträge werden automatisch übersprungen.</string>
     <string name="aurora_migration_pick_file_button">Aurora-JSON-Datei wählen…</string>
@@ -1729,6 +1739,7 @@
     <string name="aurora_migration_progress_starting">Starte…</string>
     <string name="aurora_migration_progress_parsing">JSON wird gelesen…</string>
     <string name="aurora_migration_progress_resolving" formatted="false">Gleiche %1$d Climb-Namen mit dem lokalen Board-Katalog ab…</string>
+    <string name="aurora_migration_progress_climbs" formatted="false">Importiere deine Climbs (%1$d / %2$d)…</string>
     <string name="aurora_migration_progress_ascents" formatted="false">Importiere Begehungen (%1$d / %2$d)…</string>
     <string name="aurora_migration_progress_bids" formatted="false">Importiere Versuche (%1$d / %2$d)…</string>
     <string name="aurora_migration_progress_circuits" formatted="false">Importiere Circuits (%1$d / %2$d)…</string>
@@ -1739,8 +1750,8 @@
     <string name="aurora_migration_count_ascents">Begehungen</string>
     <string name="aurora_migration_count_bids">Versuche</string>
     <string name="aurora_migration_count_circuits">Circuits</string>
+    <string name="aurora_migration_count_climbs">Eigene Climbs</string>
     <string name="aurora_migration_count_summary" formatted="false">%1$s: %2$d importiert · %3$d schon vorhanden · %4$d übersprungen</string>
-    <string name="aurora_migration_climbs_deferred" formatted="false">%1$d eigene Climb-Entwürfe im Export — der Climb-Import folgt in 0.1.5.</string>
     <string name="aurora_migration_unresolved_title" formatted="false">%1$d Climb-Namen konnten lokal nicht zugeordnet werden</string>
     <string name="aurora_migration_import_another">Weitere Datei importieren</string>
 </resources>

@@ -546,6 +546,18 @@ DELETE FROM climbs;
 deleteAllClimbStats:
 DELETE FROM climb_stats;
 
+-- Targeted bulk delete used by [BoardSyncManager.handlePostMigrationResync]
+-- to wipe ONLY the cron-blob-derived catalog rows (source='kilter')
+-- before a force-resync. Cruxcoach-authored climbs (source='local' /
+-- 'nostr', origin='cruxcoach') stay untouched. Run stats first since
+-- there's no FK cascade in SQLite without explicit constraints.
+deleteKilterSourceClimbStats:
+DELETE FROM climb_stats
+WHERE climb_uuid IN (SELECT uuid FROM climbs WHERE source = 'kilter');
+
+deleteKilterSourceClimbs:
+DELETE FROM climbs WHERE source = 'kilter';
+
 deleteAllPlacements:
 DELETE FROM placements;
 
@@ -1157,6 +1169,15 @@ SELECT 1 FROM sync_states WHERE table_name = 'post_v8_force_resync' LIMIT 1;
 clearPostV8ResyncMarker:
 DELETE FROM sync_states WHERE table_name = 'post_v8_force_resync';
 
+-- Homewall (0.1.4) force-resync marker. See 10.sqm for the why —
+-- existing 0.1.3 installs need a one-shot hash-cache wipe so the
+-- new Homewall chunks land on first launch of 0.1.4.
+hasHomewallResyncMarker:
+SELECT 1 FROM sync_states WHERE table_name = 'homewall_force_resync' LIMIT 1;
+
+clearHomewallResyncMarker:
+DELETE FROM sync_states WHERE table_name = 'homewall_force_resync';
+
 -- ─────────────────────────────────────────────────────────────────
 -- FEAT-005 Aurora-JSON-import — name-based climb resolution
 -- ─────────────────────────────────────────────────────────────────
@@ -1180,3 +1201,36 @@ WHERE c.name IN :names
   AND (c.source = 'kilter'
        OR (c.source = 'local' AND c.created_by_pubkey = :ownPubkey))
 GROUP BY c.uuid;
+
+-- Case-insensitive fallback for the same lookup. Aurora exports preserve
+-- whatever casing the user typed when ticking, while the Kilter catalog
+-- has its own canonical form. Empirical drift seen in 0.1.4 dogfooding:
+-- Aurora "MacroDre" / "swift" / "big day no nap" did not match catalog
+-- entries even though the climbs exist (catalog stores them with
+-- different casing). LOWER() bypasses the index — call this only as a
+-- fallback for names the case-sensitive query missed, with a tiny
+-- residual list per import.
+lookupClimbsByLowerNamesForAuroraImport:
+SELECT c.name, c.uuid, c.source, c.is_listed,
+       CAST(COALESCE(SUM(cs.ascensionist_count), 0) AS INTEGER) AS total_ascensionist_count
+FROM climbs c
+LEFT JOIN climb_stats cs ON cs.climb_uuid = c.uuid
+WHERE LOWER(c.name) IN :lowerNames
+  AND c.is_deleted = 0
+  AND (c.source = 'kilter'
+       OR (c.source = 'local' AND c.created_by_pubkey = :ownPubkey))
+GROUP BY c.uuid;
+
+-- Substring-LIKE fallback used as a *diagnostic* for names that
+-- survived both the case-sensitive and case-insensitive lookups. The
+-- intent is to surface near-matches — e.g. catalog stores
+-- "Calico Desert (V5)" while Aurora exports the bare "Calico Desert".
+-- Cap at 5 results per name; cap inputs to ~30 unresolved names per
+-- import so we don't accidentally run a full table scan loop.
+likeClimbNamesForAuroraDiagnostic:
+SELECT c.name, c.source, c.is_listed
+FROM climbs c
+WHERE LOWER(c.name) LIKE :pattern
+  AND c.is_deleted = 0
+  AND c.source = 'kilter'
+LIMIT 5;

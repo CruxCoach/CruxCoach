@@ -23,9 +23,7 @@ status: implementation
 >   (which we don't talk to) returns 1-3.
 >
 > **Depends on:** FEAT-003 (Climb Creator) — provides the unified
-> `climbs` table where imported user-authored draft rows land. JSON
-> import without FEAT-003 still ingests ascents, bids and circuits; the
-> `climbs[]` section is silently skipped.
+> `climbs` table where imported user-authored draft rows land.
 
 ## 1. Overview
 
@@ -148,7 +146,7 @@ Same shape as ascent **minus** `stars` and `grade`.
 | `ascents[]` | `aurora_ascent` rows | Name resolution required |
 | `attempts[]` | `aurora_bid` rows | Name resolution required |
 | `circuits[]` | `climb_list` + `climb_list_entry` | New columns required (§4.2) |
-| `climbs[]` | `local_climb` (FEAT-003) | Requires FEAT-003 to ship first |
+| `climbs[]` | local-draft rows in `climbs` (FEAT-003 unified table) | Skipped if a public Kilter climb of the same name already covers it |
 | `likes[]` | (dropped) | No CruxCoach analogue in v0.1.4 |
 | `walls/blocks/beta_links/agreements/follows` | (dropped) | At parse time |
 
@@ -198,24 +196,26 @@ list UI can ignore it for v0.1.4 and pick it up later.
 
 ### 4.3 Draft-climb storage (FEAT-003 unified table)
 
-No new table. FEAT-003 unified user-authored climbs into the existing
-`climbs` table on the board DB with `source = 'local'` and
-`origin = 'cruxcoach'`. The Aurora importer follows the same pattern:
-imported `climbs[]` rows land in `climbs` with those provenance markers,
-plus `external_id` (FEAT-006-renamed table; new column added by the
-same `5.sqm` migration above).
+No new table, no new column. FEAT-003 unified user-authored climbs into
+the existing `climbs` table on the board DB with `source = 'local'` and
+`origin = 'cruxcoach'`. The Aurora importer reuses the existing
+`insertLocalDraft` SQL (INSERT OR IGNORE on the primary `uuid`) — and
+generates that uuid deterministically from
+`(layoutId, name, createdAt)` via `UUID.nameUUIDFromBytes` so re-imports
+of the same export collapse onto the same row.
 
-```sql
--- board DB (note: separate DB file, not secure DB)
-ALTER TABLE climbs ADD COLUMN external_id TEXT;
-CREATE UNIQUE INDEX idx_climbs_external ON climbs(external_id)
-    WHERE external_id IS NOT NULL;
-```
+The `is_draft` distinction Aurora makes is collapsed onto CruxCoach's
+`sync_status = 'draft'`: every imported `climbs[]` entry lands as a
+local draft regardless of whether it was already published in Aurora,
+because Aurora's publish state isn't migrating with the user (the
+backend that gave it meaning is offline). Users can re-publish via the
+climb-creator UI's existing publish flow.
 
-Per boardsesh's empirical handling, `is_draft = true` rows from the
-export are upsert-on-`external_id`; `is_draft = false / null` rows are
-INSERT…ON CONFLICT(external_id) DO NOTHING (preserving the existing row
-if a published climb of that name already exists in the catalogue).
+The importer skips a `climbs[]` entry whenever the climb's name already
+resolves to a public Kilter row in the local board DB — we don't want
+phantom local clones of catalog climbs the user happens to have logged.
+Resolution uses the same case-insensitive fallback as the
+ascent/circuit name-resolution path (§5.3).
 
 ---
 

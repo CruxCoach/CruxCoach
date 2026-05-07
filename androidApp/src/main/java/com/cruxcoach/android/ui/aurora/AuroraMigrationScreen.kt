@@ -1,7 +1,11 @@
 package com.cruxcoach.android.ui.aurora
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -24,6 +28,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
@@ -141,16 +146,29 @@ fun MigrationFlowContent(
     ) {
         OutlinedButton(
             onClick = {
-                val intent = Intent(Intent.ACTION_SENDTO, "mailto:peter@auroraclimbing.com".toUri())
-                    .putExtra(
-                        Intent.EXTRA_SUBJECT,
-                        context.getString(R.string.aurora_migration_email_subject),
-                    )
-                    .putExtra(
-                        Intent.EXTRA_TEXT,
-                        context.getString(R.string.aurora_migration_email_body),
-                    )
-                runCatching { context.startActivity(intent) }
+                // Body + subject are intentionally hard-coded in English
+                // regardless of device locale: Aurora's support is an
+                // English-speaking inbox, and the user only needs to fill
+                // in the two `[…]` placeholders before sending.
+                // To-address mirrors Kilter's official "Get Your Data Back"
+                // page (support@, not the community-shared peter@).
+                val intent = Intent(Intent.ACTION_SENDTO, "mailto:$AURORA_SUPPORT_EMAIL".toUri())
+                    .putExtra(Intent.EXTRA_SUBJECT, AURORA_EMAIL_SUBJECT)
+                    .putExtra(Intent.EXTRA_TEXT, AURORA_EMAIL_BODY)
+                val launched = runCatching { context.startActivity(intent) }.isSuccess
+                if (!launched) {
+                    // No mailto-capable app on the device — fall back to
+                    // clipboard so the user can manually paste into a
+                    // webmail client. We mirror the same behaviour the
+                    // explicit copy button below offers, plus an
+                    // informational Toast so it isn't silent.
+                    copyAuroraEmailToClipboard(context)
+                    Toast.makeText(
+                        context,
+                        context.getString(R.string.aurora_migration_email_copy_fallback_toast),
+                        Toast.LENGTH_LONG,
+                    ).show()
+                }
             },
             modifier = Modifier.fillMaxWidth(),
         ) {
@@ -161,6 +179,26 @@ fun MigrationFlowContent(
             )
             Spacer(Modifier.size(8.dp))
             Text(stringResource(R.string.aurora_migration_email_button))
+        }
+        Spacer(Modifier.height(8.dp))
+        TextButton(
+            onClick = {
+                copyAuroraEmailToClipboard(context)
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.aurora_migration_email_copy_toast),
+                    Toast.LENGTH_LONG,
+                ).show()
+            },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Icon(
+                Icons.Filled.ContentCopy,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+            )
+            Spacer(Modifier.size(8.dp))
+            Text(stringResource(R.string.aurora_migration_email_copy_button))
         }
     }
 
@@ -256,6 +294,9 @@ private fun ImportInFlightCard(progress: AuroraImportProgress?) {
                 AuroraImportProgress.Parsing -> stringResource(R.string.aurora_migration_progress_parsing) to null
                 is AuroraImportProgress.ResolvingClimbNames ->
                     stringResource(R.string.aurora_migration_progress_resolving, progress.totalNames) to null
+                is AuroraImportProgress.ImportingClimbs ->
+                    stringResource(R.string.aurora_migration_progress_climbs, progress.current, progress.total) to
+                        if (progress.total > 0) progress.current.toFloat() / progress.total else null
                 is AuroraImportProgress.ImportingAscents ->
                     stringResource(R.string.aurora_migration_progress_ascents, progress.current, progress.total) to
                         if (progress.total > 0) progress.current.toFloat() / progress.total else null
@@ -341,14 +382,10 @@ private fun ImportResultCard(
                     label = stringResource(R.string.aurora_migration_count_circuits),
                     counts = result.circuits,
                 )
-                if (result.climbs.skipped > 0) {
-                    Text(
-                        text = stringResource(
-                            R.string.aurora_migration_climbs_deferred,
-                            result.climbs.skipped,
-                        ),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                if (result.climbs.total > 0) {
+                    CountRow(
+                        label = stringResource(R.string.aurora_migration_count_climbs),
+                        counts = result.climbs,
                     )
                 }
                 if (result.unresolvedClimbNames.isNotEmpty()) {
@@ -387,5 +424,36 @@ private fun CountRow(label: String, counts: ImportCounts) {
             counts.failed,
         ),
         style = MaterialTheme.typography.bodyMedium,
+    )
+}
+
+private const val AURORA_SUPPORT_EMAIL = "support@auroraclimbing.com"
+
+private const val AURORA_EMAIL_SUBJECT = "Data export request"
+
+private val AURORA_EMAIL_BODY = """
+    Hi Aurora support,
+
+    Please send me a copy of my Kilter Board account data export.
+
+    Old app username: [your old username]
+    Email on old app: [your old email]
+
+    Thanks!
+""".trimIndent()
+
+/** Mirror of what the mailto-intent puts into a fresh email — flat blob
+ *  with To/Subject prefixes so the user can paste it into a webmail
+ *  client and immediately see what goes where. */
+private fun composeAuroraEmailClipboardText(): String = buildString {
+    append("To: ").append(AURORA_SUPPORT_EMAIL).append('\n')
+    append("Subject: ").append(AURORA_EMAIL_SUBJECT).append("\n\n")
+    append(AURORA_EMAIL_BODY)
+}
+
+private fun copyAuroraEmailToClipboard(context: Context) {
+    val manager = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    manager.setPrimaryClip(
+        ClipData.newPlainText("Aurora data export request", composeAuroraEmailClipboardText()),
     )
 }

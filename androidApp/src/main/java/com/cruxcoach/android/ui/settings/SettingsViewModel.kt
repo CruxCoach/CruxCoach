@@ -75,6 +75,7 @@ data class SettingsState(
     val isLoading: Boolean = true,
     val darkMode: DarkModeSetting = DarkModeSetting.SYSTEM,
     val gradeScale: GradeScale = GradeScale.FRENCH,
+    val boardLayoutId: Int = BoardConstants.KILTER_ORIGINAL_LAYOUT,
     val boardProductSizeId: Int = BoardConstants.KILTER_DEFAULT_SIZE,
     val boardProductSizeName: String = "",
     val syncInterval: SyncInterval = SyncInterval.MANUAL,
@@ -137,6 +138,7 @@ class SettingsViewModel @Inject constructor(
             // Batch-load ALL initial values in one IO block to avoid flash of defaults
             val initialState = withContext(Dispatchers.IO) {
                 val profile = userRepository.getActiveProfile()
+                val layoutId = userPreferences.boardLayoutId.first()
                 val boardSizeId = userPreferences.boardProductSizeId.first()
                 val boardSizeName = boardRepository.getProductSize(boardSizeId)?.name ?: ""
                 val interval = userPreferences.syncInterval.first()
@@ -190,6 +192,7 @@ class SettingsViewModel @Inject constructor(
                     isLoading = false,
                     darkMode = darkMode,
                     gradeScale = scale,
+                    boardLayoutId = layoutId,
                     boardProductSizeId = boardSizeId,
                     boardProductSizeName = boardSizeName,
                     syncInterval = interval,
@@ -340,6 +343,45 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             userPreferences.setBoardProductSizeId(id)
         }
+    }
+
+    /**
+     * Switch the active Kilter layout (Original ↔ Homewall). The
+     * product_size also has to roll over because Original sizes
+     * (12x12, 16x12, …) aren't valid on a Homewall and vice-versa —
+     * picking the FIRST visible size for the new layout's product is
+     * the sensible default; the user can refine via the "Board-Modell"
+     * picker right below.
+     */
+    fun updateBoardLayout(layoutId: Int) {
+        if (_state.value.boardLayoutId == layoutId) return
+        viewModelScope.launch {
+            userPreferences.setBoardLayoutId(layoutId)
+            val targetProductId = layoutToProductId(layoutId)
+            val newSize = withContext(Dispatchers.IO) {
+                boardRepository.getAllProductSizes()
+                    .firstOrNull { it.productId.toInt() == targetProductId }
+            }
+            val newSizeId = newSize?.id?.toInt()
+                ?: when (layoutId) {
+                    BoardConstants.KILTER_HOMEWALL_LAYOUT -> BoardConstants.KILTER_HOMEWALL_DEFAULT_SIZE
+                    else -> BoardConstants.KILTER_DEFAULT_SIZE
+                }
+            val newSizeName = newSize?.name ?: ""
+            userPreferences.setBoardProductSizeId(newSizeId)
+            _state.update {
+                it.copy(
+                    boardLayoutId = layoutId,
+                    boardProductSizeId = newSizeId,
+                    boardProductSizeName = newSizeName,
+                )
+            }
+        }
+    }
+
+    private fun layoutToProductId(layoutId: Int): Int = when (layoutId) {
+        BoardConstants.KILTER_HOMEWALL_LAYOUT -> BoardConstants.KILTER_HOMEWALL_PRODUCT_ID
+        else -> BoardConstants.KILTER_PRODUCT_ID
     }
 
     fun loadProductSizes() {

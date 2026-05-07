@@ -146,6 +146,21 @@ class BoardRepositoryImpl(
         q.clearPostV8ResyncMarker()
     }
 
+    override fun hasHomewallResyncMarker(): Boolean {
+        return q.hasHomewallResyncMarker().executeAsOneOrNull() != null
+    }
+
+    override fun clearHomewallResyncMarker() {
+        q.clearHomewallResyncMarker()
+    }
+
+    override fun deleteKilterCatalogData() {
+        q.transaction {
+            q.deleteKilterSourceClimbStats()
+            q.deleteKilterSourceClimbs()
+        }
+    }
+
     override fun climbExistsByUuid(uuid: String): Boolean {
         return q.climbExistsByUuid(uuid).executeAsOne() > 0
     }

@@ -24,6 +24,9 @@ import com.cruxcoach.android.ui.aurora.AuroraMigrationViewModel
 import com.cruxcoach.android.ui.aurora.MigrationFlowContent
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -75,7 +78,7 @@ fun OnboardingScreen(
             label = "onboarding_step",
         ) { step ->
             when (step) {
-                OnboardingStep.BOARD_SETUP -> BoardSetupStep()
+                OnboardingStep.BOARD_SETUP -> BoardSetupStep(state, viewModel)
                 OnboardingStep.PRIVACY -> PrivacyStep(state, viewModel, onNavigateToKeyManagement)
                 OnboardingStep.KILTER -> KilterStep(state, viewModel)
             }
@@ -242,7 +245,33 @@ fun OnboardingScreen(
 // ─── Step 1: Board setup (with inline welcome header) ─────────────────────
 
 @Composable
-private fun BoardSetupStep() {
+private fun BoardSetupStep(
+    state: OnboardingState,
+    viewModel: OnboardingViewModel,
+) {
+    var showBoardModelDialog by rememberSaveable { mutableStateOf(false) }
+    val activeProductId = when (state.boardLayoutId) {
+        com.cruxcoach.android.data.BoardConstants.KILTER_HOMEWALL_LAYOUT ->
+            com.cruxcoach.android.data.BoardConstants.KILTER_HOMEWALL_PRODUCT_ID
+        else -> com.cruxcoach.android.data.BoardConstants.KILTER_PRODUCT_ID
+    }
+    if (showBoardModelDialog) {
+        // Always-available pre-sync via KILTER_KNOWN_SIZES — board model
+        // is hardware knowledge that doesn't need a sync round-trip.
+        val sizes = com.cruxcoach.android.data.BoardConstants.KILTER_KNOWN_SIZES
+            .filter { it.productId.toInt() == activeProductId }
+        com.cruxcoach.android.ui.settings.BoardModelSelectionDialog(
+            productSizes = sizes,
+            selectedId = state.boardProductSizeId,
+            onConfirm = { id ->
+                val name = sizes.find { it.id.toInt() == id }?.name ?: ""
+                viewModel.updateBoardProductSize(id, name)
+                showBoardModelDialog = false
+            },
+            onDismiss = { showBoardModelDialog = false },
+        )
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -288,6 +317,20 @@ private fun BoardSetupStep() {
                 )
             }
         }
+
+        // Board-model picker first — hardware knowledge doesn't need
+        // a sync round-trip. The user picks Original/Homewall + size,
+        // then triggers the sync that downloads the matching catalog.
+        com.cruxcoach.android.ui.settings.KilterLayoutSection(
+            selectedLayoutId = state.boardLayoutId,
+            onLayoutChange = { viewModel.updateBoardLayout(it) },
+        )
+        com.cruxcoach.android.ui.settings.BoardModelSection(
+            boardModelName = state.boardProductSizeName,
+            onChangeModel = { showBoardModelDialog = true },
+        )
+
+        HorizontalDivider()
 
         Text(
             stringResource(R.string.onboarding_board_setup_title),

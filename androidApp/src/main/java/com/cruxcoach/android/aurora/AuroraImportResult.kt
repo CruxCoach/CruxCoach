@@ -48,6 +48,7 @@ data class ImportCounts(
  */
 sealed class AuroraImportProgress {
     data object Parsing : AuroraImportProgress()
+    data class ImportingClimbs(val current: Int, val total: Int) : AuroraImportProgress()
     data class ResolvingClimbNames(val totalNames: Int) : AuroraImportProgress()
     data class ImportingAscents(val current: Int, val total: Int) : AuroraImportProgress()
     data class ImportingBids(val current: Int, val total: Int) : AuroraImportProgress()

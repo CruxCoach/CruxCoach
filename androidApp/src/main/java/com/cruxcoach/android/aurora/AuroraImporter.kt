@@ -2,9 +2,16 @@ package com.cruxcoach.android.aurora
 
 import android.util.Log
 import com.cruxcoach.android.nostr.NostrSigner
+import com.cruxcoach.data.repository.BoardRepository
+import com.cruxcoach.data.repository.LocalClimbDraft
 import com.cruxcoach.db.board.BoardDatabase
 import com.cruxcoach.db.secure.SecureDatabase
+import com.cruxcoach.domain.board.BoardClimbParser
+import com.cruxcoach.domain.board.BoardHold
+import com.cruxcoach.domain.board.HoldRole
 import com.cruxcoach.domain.board.KilterGradeMapper
+import com.cruxcoach.domain.community.ClimbBounds
+import com.cruxcoach.domain.community.FramesHash
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.UUID
@@ -18,19 +25,18 @@ import javax.inject.Singleton
  * Apache 2.0):
  *
  *   1. Parse JSON → [AuroraExportData] via [AuroraExportParser].
- *   2. Collect every distinct climb name from ascents/attempts/circuits.
- *   3. Resolve names → board-DB UUIDs in batches (≤500/IN-clause). Apply
- *      the boardsesh tiebreaker: public Kilter > user-local draft, then
- *      higher `total_ascensionist_count` wins on ties within a tier.
+ *   2. Resolve names from ascents/attempts/circuits → board-DB UUIDs:
+ *      case-sensitive batch first (index-friendly), case-insensitive
+ *      fallback for any residual.
+ *   3. Import `climbs[]` as local drafts — only when the climb's name
+ *      doesn't already resolve to a public Kilter UUID (avoids cloning
+ *      catalog climbs the user happens to have logged).
  *   4. Insert ascents idempotently keyed on
  *      `external_id = aurora-json:ascent:<sha256(climbUuid:angle:climbedAt)[..32]>`.
  *   5. Same for bids.
  *   6. Upsert circuits as `climb_lists` rows; replace-and-rewrite their
  *      `climb_list_entries` so re-imports re-resolve names that became
  *      resolvable since last run.
- *   7. (Deferred to 0.1.5) Import user-authored draft climbs from the
- *      `climbs[]` array — coordinate→placement_id lookup is non-trivial
- *      and not blocking for the ascents/bids/circuits data path.
  *
  * Each step runs inside its own SQLCipher transaction (per FEAT-005
  * §5.2 — one transaction per step, not one big one, so a 50k-row import
@@ -40,6 +46,7 @@ import javax.inject.Singleton
 class AuroraImporter @Inject constructor(
     private val secureDb: SecureDatabase,
     private val boardDb: BoardDatabase,
+    private val boardRepository: BoardRepository,
     private val nostrSigner: NostrSigner,
     private val parser: AuroraExportParser,
 ) {
@@ -58,16 +65,33 @@ class AuroraImporter @Inject constructor(
 
         val ownPubkey = runCatching { nostrSigner.getPublicKeyHex() }.getOrNull().orEmpty()
 
-        val names = collectDistinctNames(data)
-        progress(AuroraImportProgress.ResolvingClimbNames(names.size))
-        val resolution = resolveNames(names, ownPubkey)
+        // Pass 1: resolve names referenced by ascents/attempts/circuits.
+        // climbs[] are imported AFTER this so we can detect collisions
+        // with the public catalog before inserting a phantom local draft.
+        val refNames = collectReferencedNames(data)
+        progress(AuroraImportProgress.ResolvingClimbNames(refNames.size))
+        val initial = resolveNames(refNames, ownPubkey)
+
+        val (climbs, newlyImported) = importLocalClimbs(
+            climbs = data.climbs,
+            username = data.user.username,
+            ownPubkey = ownPubkey,
+            existingResolution = initial,
+            progress = progress,
+        )
+
+        // Merge in the newly-imported draft UUIDs so ascents/circuits
+        // referencing them resolve. (Any climb name that was already
+        // resolved to a public Kilter UUID stays that way — the importer
+        // skipped the climbs[] insert in that case.)
+        val resolution = NameResolution(
+            byName = initial.byName + newlyImported,
+            unresolved = initial.unresolved - newlyImported.keys,
+        )
 
         val ascents = importAscents(data.ascents, resolution, progress)
         val bids = importBids(data.attempts, resolution, progress)
         val circuits = importCircuits(data.circuits, resolution, progress)
-
-        // climbs[] section deferred — see status note in §4.3 of the spec.
-        val climbs = ImportCounts(skipped = data.climbs.size)
 
         progress(AuroraImportProgress.Done)
 
@@ -90,7 +114,14 @@ class AuroraImporter @Inject constructor(
         val unresolved: Set<String>,
     )
 
-    private fun collectDistinctNames(data: AuroraExportData): Set<String> {
+    private data class ResolverPick(
+        val uuid: String,
+        val source: String,
+        val weight: Int,         // 2 = public, 1 = draft
+        val popularity: Long,
+    )
+
+    private fun collectReferencedNames(data: AuroraExportData): Set<String> {
         val names = HashSet<String>()
         data.ascents.forEach { names.add(it.climb) }
         data.attempts.forEach { names.add(it.climb) }
@@ -101,36 +132,218 @@ class AuroraImporter @Inject constructor(
     private fun resolveNames(names: Set<String>, ownPubkey: String): NameResolution {
         if (names.isEmpty()) return NameResolution(emptyMap(), emptySet())
 
-        val resolved = HashMap<String, String>(names.size)
-        // Per-name tiebreaker state — pick public over draft, then by
-        // total_ascensionist_count.
-        val sourceWeight = HashMap<String, Int>()  // 2 = public, 1 = draft
-        val popularity = HashMap<String, Long>()
+        val picks = HashMap<String, ResolverPick>(names.size)
 
+        // Pass 1: case-sensitive (uses idx_climbs_name).
         names.chunked(NAME_BATCH_SIZE).forEach { batch ->
             val rows = boardDb.boardQueries
                 .lookupClimbsByNamesForAuroraImport(batch, ownPubkey)
                 .executeAsList()
             for (row in rows) {
-                val weight = if (row.source == "kilter") 2 else 1
-                val existingWeight = sourceWeight[row.name] ?: 0
-                val existingPop = popularity[row.name] ?: -1L
-                val take = when {
-                    weight > existingWeight -> true
-                    weight < existingWeight -> false
-                    row.total_ascensionist_count > existingPop -> true
-                    else -> false
-                }
-                if (take) {
-                    resolved[row.name] = row.uuid
-                    sourceWeight[row.name] = weight
-                    popularity[row.name] = row.total_ascensionist_count
+                applyPick(picks, row.name, row.uuid, row.source, row.total_ascensionist_count)
+            }
+        }
+
+        // Pass 2: case-insensitive fallback for whatever didn't match.
+        val stillUnresolved = names - picks.keys
+        if (stillUnresolved.isNotEmpty()) {
+            val lowerToOriginal = HashMap<String, String>(stillUnresolved.size)
+            stillUnresolved.forEach { lowerToOriginal[it.lowercase()] = it }
+            lowerToOriginal.keys.toList().chunked(NAME_BATCH_SIZE).forEach { batch ->
+                val rows = boardDb.boardQueries
+                    .lookupClimbsByLowerNamesForAuroraImport(batch, ownPubkey)
+                    .executeAsList()
+                for (row in rows) {
+                    val original = lowerToOriginal[row.name.lowercase()] ?: continue
+                    applyPick(picks, original, row.uuid, row.source, row.total_ascensionist_count)
                 }
             }
         }
 
+        val resolved = HashMap<String, String>(picks.size)
+        picks.forEach { (name, pick) -> resolved[name] = pick.uuid }
         val unresolved = names - resolved.keys
+        Log.i(
+            TAG,
+            "name-resolution: total=${names.size} resolved=${resolved.size} unresolved=${unresolved.size}",
+        )
         return NameResolution(resolved, unresolved)
+    }
+
+    private fun applyPick(
+        picks: HashMap<String, ResolverPick>,
+        name: String,
+        uuid: String,
+        source: String,
+        popularity: Long,
+    ) {
+        val weight = if (source == "kilter") 2 else 1
+        val existing = picks[name]
+        val take = when {
+            existing == null -> true
+            weight > existing.weight -> true
+            weight < existing.weight -> false
+            popularity > existing.popularity -> true
+            else -> false
+        }
+        if (take) picks[name] = ResolverPick(uuid, source, weight, popularity)
+    }
+
+    // ── climbs[] (local drafts) ───────────────────────────────────────
+
+    /**
+     * Returns import counts plus a `name → newly-inserted-uuid` map for
+     * the caller to fold into the main name-resolution table.
+     *
+     * Skip rules (in order):
+     *   1. Layout name not recognised → `failed++`.
+     *   2. Empty `holds` (no draft body) → `failed++`.
+     *   3. None of the holds resolve to a placement_id (board.db doesn't
+     *      know any of those (x,y) coords for the layout) → `failed++`.
+     *   4. Name already resolves to a *public* Kilter UUID → `skipped++`.
+     *      (We don't want to clone a catalog climb just because the user
+     *      has it in their personal climbs[] list.)
+     *   5. Otherwise: `INSERT OR IGNORE` via [BoardRepository.insertLocalDraft].
+     *      Re-imports of the same export hit the IGNORE path and produce
+     *      `skipped++` even though the deterministic UUID matches. We
+     *      treat "row already exists" as a skip rather than re-running
+     *      the UPDATE pass — the pre-existing row could carry user edits
+     *      from the climb-creator that we mustn't clobber.
+     */
+    private fun importLocalClimbs(
+        climbs: List<AuroraClimb>,
+        username: String,
+        ownPubkey: String,
+        existingResolution: NameResolution,
+        progress: (AuroraImportProgress) -> Unit,
+    ): Pair<ImportCounts, Map<String, String>> {
+        if (climbs.isEmpty()) return ImportCounts() to emptyMap()
+
+        var imported = 0
+        var skipped = 0
+        var failed = 0
+        val newUuids = HashMap<String, String>()
+
+        // Pre-load placements once. ~3k rows on a Kilter catalog — fine.
+        val placementCoordIndex = HashMap<Long, Long>(4096)  // (x*1_000_000 + y) → placementId
+        for (p in boardRepository.getAllPlacements()) {
+            placementCoordIndex[coordKey(p.x.toInt(), p.y.toInt())] = p.placementId
+        }
+
+        // Keys we already saw in this batch so two equally-named
+        // climbs in the same export get distinct UUIDs (the deterministic
+        // UUID input includes created_at, so realistically they collide
+        // only on hand-crafted JSON — but cheap to be safe).
+        val seenUuids = HashSet<String>()
+
+        climbs.forEachIndexed { idx, climb ->
+            progress(AuroraImportProgress.ImportingClimbs(idx + 1, climbs.size))
+            try {
+                val layoutId = resolveLayoutId(climb.layout)
+                if (layoutId == null) {
+                    Log.w(TAG, "climbs[$idx] '${climb.name}' — unknown layout '${climb.layout}'")
+                    failed++; return@forEachIndexed
+                }
+                if (climb.holds.isEmpty()) { failed++; return@forEachIndexed }
+
+                // Skip if a public Kilter climb already covers this name.
+                val existing = existingResolution.byName[climb.name]
+                if (existing != null) {
+                    skipped++; return@forEachIndexed
+                }
+
+                val holds = mutableListOf<BoardHold>()
+                var unmappedCoords = 0
+                var unknownRoles = 0
+                for (h in climb.holds) {
+                    val pid = placementCoordIndex[coordKey(h.x, h.y)]
+                    if (pid == null) { unmappedCoords++; continue }
+                    val role = roleStringToId(h.role) ?: run { unknownRoles++; null }
+                    if (role != null) holds += BoardHold(placementId = pid.toInt(), roleId = role)
+                }
+                if (holds.isEmpty()) {
+                    Log.w(
+                        TAG,
+                        "climbs[$idx] '${climb.name}' — no holds resolvable " +
+                            "(in=${climb.holds.size}, unmappedCoords=$unmappedCoords, " +
+                            "unknownRoles=$unknownRoles, layout=$layoutId). " +
+                            "Aurora hold coords are expected on the same scale as " +
+                            "placements.x/y (~ -50..170); off-scale coords usually " +
+                            "mean the export was hand-crafted or for a layout we " +
+                            "don't have placement data for.",
+                    )
+                    failed++; return@forEachIndexed
+                }
+
+                val createdAtIso = AuroraTimestamp.normalize(climb.created_at) ?: ""
+                val frames = BoardClimbParser.encodeFrames(holds)
+                val framesHash = FramesHash.of(frames, layoutId)
+                val bounds = ClimbBounds.fromCoords(climb.holds.map { it.x to it.y })
+                val moveCount = holds.count { it.roleId in MOVE_ROLES }.toLong()
+
+                var draftUuid = AuroraExternalId.climbUuid(layoutId, climb.name, createdAtIso)
+                // Hand-crafted JSON edge case: two climbs same (layout,
+                // name, createdAt) → fall back to a random UUID for the
+                // duplicate so both rows land. Real exports never collide.
+                if (!seenUuids.add(draftUuid)) {
+                    draftUuid = UUID.randomUUID().toString()
+                }
+
+                // Skip re-imports — the existing insertLocalDraft is INSERT
+                // OR IGNORE + UPDATE, so calling it on an already-existing
+                // uuid clobbers user edits made via the climb-creator UI.
+                // We need "import once, ignore on re-runs" semantics here,
+                // which is exactly what an existence check buys us.
+                if (boardRepository.climbExistsByUuid(draftUuid)) {
+                    skipped++; return@forEachIndexed
+                }
+
+                boardRepository.insertLocalDraft(
+                    draft = LocalClimbDraft(
+                        uuid = draftUuid,
+                        name = climb.name,
+                        description = climb.description.orEmpty(),
+                        framesText = frames,
+                        framesHash = framesHash,
+                        createdAt = createdAtIso,
+                        createdByPubkey = ownPubkey.takeIf { it.isNotEmpty() },
+                        moveCount = moveCount,
+                        setterUsername = username,
+                    ),
+                    layoutId = layoutId,
+                    angle = DEFAULT_DRAFT_ANGLE,
+                    setterGradeId = KilterGradeMapper.DEFAULT_SETTER_GRADE_ID,
+                    bounds = bounds,
+                )
+                imported++
+                newUuids[climb.name] = draftUuid
+            } catch (e: Exception) {
+                Log.w(TAG, "climbs[$idx] '${climb.name}' import failed", e)
+                failed++
+            }
+        }
+
+        return ImportCounts(imported, skipped, failed) to newUuids
+    }
+
+    private fun coordKey(x: Int, y: Int): Long {
+        // Pack two 16-bit coords (placement coords are well under that)
+        // into one Long key. Avoids the cost of a Pair<Int,Int> hash.
+        return (x.toLong() shl 32) or (y.toLong() and 0xFFFFFFFFL)
+    }
+
+    private fun resolveLayoutId(layoutName: String): Long? {
+        val canon = layoutName.trim()
+        return KILTER_LAYOUT_NAMES[canon]
+            ?: KILTER_LAYOUT_NAMES[canon.lowercase()]
+    }
+
+    private fun roleStringToId(role: String): Int? = when (role.lowercase()) {
+        "start" -> HoldRole.START
+        "middle", "hand" -> HoldRole.HAND
+        "finish" -> HoldRole.FINISH
+        "foot" -> HoldRole.FOOT
+        else -> null
     }
 
     // ── Ascents / Bids / Circuits ─────────────────────────────────────
@@ -312,6 +525,29 @@ class AuroraImporter @Inject constructor(
     companion object {
         private const val TAG = "AuroraImporter"
         private const val NAME_BATCH_SIZE = 500
+        /** Default angle for an imported draft. The Aurora export
+         *  format doesn't carry per-climb authoring angle (it's a
+         *  property of the ascent / circuit, not the climb), so we
+         *  pick the most popular setting for a community-mode draft.
+         *  The user can re-angle the climb in the editor later. */
+        private const val DEFAULT_DRAFT_ANGLE = 40L
+
+        private val MOVE_ROLES = setOf(HoldRole.START, HoldRole.HAND, HoldRole.FINISH)
+
+        /** Layout-name → layout_id table. 0.1.4 supports both Kilter
+         *  layouts (Original = 1, Homewall = 8). Aurora-exported
+         *  layout names empirically seen: "Kilter Board", "Kilter
+         *  Board Original", "Kilter Board Homewall". The lower-case
+         *  duplicates are tolerance for Aurora's older exports that
+         *  occasionally lower-case the layout label. */
+        private val KILTER_LAYOUT_NAMES: Map<String, Long> = mapOf(
+            "Kilter Board" to 1L,
+            "Kilter Board Original" to 1L,
+            "Kilter Board Homewall" to 8L,
+            "kilter board" to 1L,
+            "kilter board original" to 1L,
+            "kilter board homewall" to 8L,
+        )
 
         /** Inverse of [KilterGradeMapper.DIFFICULTY_TO_FONT]. Built lazily
          *  from the KilterGradeMapper public surface — the source map is

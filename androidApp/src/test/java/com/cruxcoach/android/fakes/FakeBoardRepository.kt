@@ -181,6 +181,12 @@ class FakeBoardRepository : BoardRepository {
 
     override fun clearPostV8ResyncMarker() {}
 
+    override fun hasHomewallResyncMarker(): Boolean = false
+
+    override fun clearHomewallResyncMarker() {}
+
+    override fun deleteKilterCatalogData() {}
+
     override fun searchClimbUuidsByHold(
         holdPattern: String, angle: Int, layoutId: Int, minDifficulty: Double,
         maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter

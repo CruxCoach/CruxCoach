@@ -49,8 +49,13 @@ import com.cruxcoach.data.repository.BoardSize
 import com.cruxcoach.domain.board.BoardHold
 import kotlinx.coroutines.withTimeoutOrNull
 
-/** Bundled board-size IDs that have a WebP asset in board_images/. */
-private val BUNDLED_BOARD_SIZES = setOf(7L, 8L, 10L, 14L, 27L, 28L)
+/** Bundled board-size IDs that have a WebP asset in board_images/.
+ *  Original Kilter sizes: 7, 8, 10, 14, 27, 28 (product_id=1).
+ *  Homewall sizes: 17, 18, 19, 21, 22, 23, 24, 25, 26, 29 (product_id=7). */
+private val BUNDLED_BOARD_SIZES = setOf(
+    7L, 8L, 10L, 14L, 27L, 28L,
+    17L, 18L, 19L, 21L, 22L, 23L, 24L, 25L, 26L, 29L,
+)
 
 /**
  * Single-entry bitmap cache keyed by board-size ID.

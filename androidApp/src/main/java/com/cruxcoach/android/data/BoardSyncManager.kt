@@ -130,21 +130,48 @@ class BoardSyncManager(
      */
     fun handlePostMigrationResync() {
         scope.launch {
-            if (!boardRepository.hasPostV8ResyncMarker()) return@launch
-            Log.i(TAG, "post-v8 migration: forcing chunk-hash + timestamp reset for clean re-sync")
+            val v8 = boardRepository.hasPostV8ResyncMarker()
+            val homewall = boardRepository.hasHomewallResyncMarker()
+            if (!v8 && !homewall) return@launch
+            val reason = listOfNotNull(
+                "post-v8".takeIf { v8 },
+                "homewall".takeIf { homewall },
+            ).joinToString("+")
+            // Defer the actual wipe + marker-clear until we have a
+            // network path: the resync needs the network anyway, and
+            // wiping the chunk-hash cache + lastSyncTimestamp offline
+            // would just leave the user staring at a "never synced"
+            // state with no way to recover until they go online. Their
+            // existing local board DB stays fully usable in the
+            // meantime — they'd only miss the *new* Homewall data
+            // until the actual resync runs. The marker stays in
+            // sync_states so the next app-start with network re-enters
+            // this branch.
+            if (!isNetworkAvailable(appContext)) {
+                Log.i(TAG, "$reason resync: no network at app start; marker kept, retry on next launch")
+                return@launch
+            }
+            Log.i(TAG, "$reason migration: forcing chunk-hash + timestamp reset for clean re-sync")
+            // Wipe the cron-derived catalog rows so the resync runs
+            // through the fresh-install fast path inside
+            // [BoardDatabaseImporter.importFromChunks] (skips the per-
+            // chunk UPDATE pass — without this an ~5min resync drags
+            // through 174k+20k correlated subqueries that are mostly
+            // no-ops). Cruxcoach-authored climbs (source='local' /
+            // 'nostr') are preserved. Browse goes empty during the
+            // ~30-60s of resync; the import progress UI is up the
+            // whole time so it's framed as "syncing", not "broken".
+            boardRepository.deleteKilterCatalogData()
             blossomSyncManager.clearStoredHashes()
             userPreferences.setLastSyncTimestamp(null)
-            // Clear marker now (not after sync completes) so a sync
+            // Clear markers now (not after sync completes) so a sync
             // failure doesn't trap the user in a perpetual re-clear
             // loop on every app start. Worst case: sync fails, user
             // manually triggers one — chunk hashes are already gone,
             // so the manual retry is itself a full re-sync.
-            boardRepository.clearPostV8ResyncMarker()
-            if (isNetworkAvailable(appContext)) {
-                startBackgroundSync()
-            } else {
-                Log.w(TAG, "post-v8 resync: no network at app start; user will see empty browser until manual sync")
-            }
+            if (v8) boardRepository.clearPostV8ResyncMarker()
+            if (homewall) boardRepository.clearHomewallResyncMarker()
+            startBackgroundSync()
         }
     }
 
@@ -556,6 +583,13 @@ class BoardSyncManager(
             syncComplete = false,
             lastSyncTimestamp = null
         ) }
+        // Also wipe the per-chunk SHA-256 cache. Without this the next
+        // sync's `getChangedChunks` matches every chunk against its
+        // pre-deletion hash, returns an empty diff list, and the import
+        // pipeline never runs — leaving the user with an empty board DB
+        // and a no-op "Sync abgeschlossen" message. Mirror of
+        // `handlePostMigrationResync` which already does this.
+        blossomSyncManager.clearStoredHashes()
         scope.launch { userPreferences.setLastSyncTimestamp(null) }
     }
 

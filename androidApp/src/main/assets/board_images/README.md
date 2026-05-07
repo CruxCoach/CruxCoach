@@ -7,6 +7,8 @@ These WebP images show the physical Kilter Board layouts for the
 so CruxCoach can render a recognisable offline view of the board behind the
 app's hold overlay.
 
+**Kilter Board Original** (product_id=1):
+
 | File | `product_size_id` |
 |------|---:|
 | `board_7.webp`  |  7 |
@@ -15,6 +17,21 @@ app's hold overlay.
 | `board_14.webp` | 14 |
 | `board_27.webp` | 27 |
 | `board_28.webp` | 28 |
+
+**Kilter Board Homewall** (product_id=7):
+
+| File | `product_size_id` |
+|------|---:|
+| `board_17.webp` | 17 |
+| `board_18.webp` | 18 |
+| `board_19.webp` | 19 |
+| `board_21.webp` | 21 |
+| `board_22.webp` | 22 |
+| `board_23.webp` | 23 |
+| `board_24.webp` | 24 |
+| `board_25.webp` | 25 |
+| `board_26.webp` | 26 |
+| `board_29.webp` | 29 |
 
 ## Origin
 

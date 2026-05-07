@@ -99,6 +99,15 @@ data class OnboardingState(
      *  with an Aurora email export can run the import without leaving
      *  onboarding. Default false (most users will skip). */
     val auroraSheetOpen: Boolean = false,
+
+    /** Board-model picker, surfaced in the BOARD_SETUP step BEFORE the
+     *  sync card. Hardware knowledge — the user knows their physical
+     *  board, so making them sync-then-pick is unnecessary friction.
+     *  These values are persisted to UserPreferences immediately on
+     *  change so they're available everywhere else in the app. */
+    val boardLayoutId: Int = com.cruxcoach.android.data.BoardConstants.KILTER_ORIGINAL_LAYOUT,
+    val boardProductSizeId: Int = com.cruxcoach.android.data.BoardConstants.KILTER_DEFAULT_SIZE,
+    val boardProductSizeName: String = "",
 )
 
 @HiltViewModel
@@ -142,6 +151,60 @@ class OnboardingViewModel @Inject constructor(
                 }
                 triggerBackupCheckIfNeeded()
             }
+        }
+        // Seed the board-model fields from the persisted preferences so
+        // the user's prior choice survives onboarding restarts (e.g.
+        // backup-restore round trip).
+        viewModelScope.launch {
+            val layoutId = userPreferences.boardLayoutId.first()
+            val sizeId = userPreferences.boardProductSizeId.first()
+            val name = com.cruxcoach.android.data.BoardConstants.KILTER_KNOWN_SIZES
+                .firstOrNull { it.id.toInt() == sizeId }?.name.orEmpty()
+            _state.update {
+                it.copy(
+                    boardLayoutId = layoutId,
+                    boardProductSizeId = sizeId,
+                    boardProductSizeName = name,
+                )
+            }
+        }
+    }
+
+    /** See SettingsViewModel.updateBoardLayout for the rationale —
+     *  switching the layout also rolls the product_size to a sensible
+     *  default for the new layout, since Original sizes don't exist on
+     *  Homewall and vice-versa. */
+    fun updateBoardLayout(layoutId: Int) {
+        if (_state.value.boardLayoutId == layoutId) return
+        viewModelScope.launch {
+            userPreferences.setBoardLayoutId(layoutId)
+            val targetProductId = when (layoutId) {
+                com.cruxcoach.android.data.BoardConstants.KILTER_HOMEWALL_LAYOUT ->
+                    com.cruxcoach.android.data.BoardConstants.KILTER_HOMEWALL_PRODUCT_ID
+                else -> com.cruxcoach.android.data.BoardConstants.KILTER_PRODUCT_ID
+            }
+            val newSize = com.cruxcoach.android.data.BoardConstants.KILTER_KNOWN_SIZES
+                .firstOrNull { it.productId.toInt() == targetProductId }
+            val newSizeId = newSize?.id?.toInt() ?: when (layoutId) {
+                com.cruxcoach.android.data.BoardConstants.KILTER_HOMEWALL_LAYOUT ->
+                    com.cruxcoach.android.data.BoardConstants.KILTER_HOMEWALL_DEFAULT_SIZE
+                else -> com.cruxcoach.android.data.BoardConstants.KILTER_DEFAULT_SIZE
+            }
+            userPreferences.setBoardProductSizeId(newSizeId)
+            _state.update {
+                it.copy(
+                    boardLayoutId = layoutId,
+                    boardProductSizeId = newSizeId,
+                    boardProductSizeName = newSize?.name.orEmpty(),
+                )
+            }
+        }
+    }
+
+    fun updateBoardProductSize(id: Int, name: String) {
+        viewModelScope.launch {
+            userPreferences.setBoardProductSizeId(id)
+            _state.update { it.copy(boardProductSizeId = id, boardProductSizeName = name) }
         }
     }
 
