@@ -453,6 +453,9 @@ class BoardRepositoryImpl(
     override fun getClimbAuthorPubkey(uuid: String): String? =
         q.getClimbAuthorPubkey(uuid).executeAsOneOrNull()?.created_by_pubkey
 
+    override fun isLocallyAuthored(uuid: String): Boolean =
+        q.isLocallyAuthored(uuid).executeAsOneOrNull() != null
+
     /**
      * Heatmap fast-path: parsed placements + roles per (layoutId, angle).
      *
@@ -752,6 +755,10 @@ class BoardRepositoryImpl(
 
     override fun markClimbPublishFailed(uuid: String) {
         q.markClimbPublishFailed(uuid)
+    }
+
+    override fun markClimbPublishInFlight(uuid: String) {
+        q.markClimbPublishInFlight(uuid)
     }
 
     override fun getKilterPublishState(uuid: String): KilterPublishState? {

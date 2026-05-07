@@ -310,6 +310,21 @@ class CommunityClimbSubscriber @Inject constructor(
             Log.d(TAG, "skip own event uuid=${parsedClimb.uuid}")
             return
         }
+        // Backstop self-filter: the primary check above misses two narrow
+        // cases — (a) signer outage returning a null ownPubkey, (b) a key
+        // rotation where the relay-echoed event still carries the old
+        // signing pubkey but the local user now presents a new one. In
+        // both cases the local row was authored here (source='local' is
+        // only ever written by insertLocalDraft), so an upsert from
+        // anything signed under any pubkey is necessarily an own-echo and
+        // would clobber sync_status / kilter_status / nostr_event_id.
+        val locallyAuthored = runCatching {
+            boardRepository.isLocallyAuthored(parsedClimb.uuid)
+        }.getOrDefault(false)
+        if (locallyAuthored) {
+            Log.d(TAG, "skip event for locally-authored row uuid=${parsedClimb.uuid}")
+            return
+        }
 
         // D-tag prefix must encode the same author as the signed pubkey
         // (FEAT-003 §4.2: d-tag = "cruxcoach:climb:<pubkey-prefix-8>:<uuid>").

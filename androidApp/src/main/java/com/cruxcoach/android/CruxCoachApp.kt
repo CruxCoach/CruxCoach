@@ -232,6 +232,17 @@ class CruxCoachApp : Application(), Configuration.Provider {
                 com.cruxcoach.android.community.CommunityPublishRetryWorker.schedule(this@CruxCoachApp)
             }.onFailure { PerfLogger.logCoroutine("appScope", "CommunityPublishRetryWorker.schedule failed: ${it.message}") }
 
+            // One-shot drain on every cold start: covers the crash window
+            // between the publisher's pre-send `markClimbPublishInFlight`
+            // and the post-send `markClimbPublishedNostr`. Without this,
+            // a 'failed' row left by such a crash would have to wait up
+            // to 6h for the next periodic tick. WorkManager's
+            // APPEND_OR_REPLACE under the same WORK_NAME dedupes against
+            // the periodic, so this is safe to call unconditionally.
+            runCatching {
+                com.cruxcoach.android.community.CommunityPublishRetryWorker.runOnce(this@CruxCoachApp)
+            }.onFailure { PerfLogger.logCoroutine("appScope", "CommunityPublishRetryWorker.runOnce failed: ${it.message}") }
+
             // Channel B: live Nostr subscription for community climbs.
             // Closes the latency gap between two daily Blossom snapshots —
             // climbs other users publish appear in the local DB within

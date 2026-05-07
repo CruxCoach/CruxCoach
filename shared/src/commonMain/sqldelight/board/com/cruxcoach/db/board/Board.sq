@@ -233,6 +233,18 @@ SELECT created_at FROM climbs WHERE uuid = ? LIMIT 1;
 getClimbAuthorPubkey:
 SELECT created_by_pubkey FROM climbs WHERE uuid = ? LIMIT 1;
 
+-- Backstop self-filter for the live subscriber. True iff a row exists
+-- with source='local' — by definition only the editor's `insertLocalDraft`
+-- writes that source value, so any uuid in this state was authored locally.
+-- Used after the primary pubkey-based self-filter so a degraded signer
+-- (ownPubkey resolution returning null) or a key rotation (where the
+-- signed event still carries the old pubkey but the local user now
+-- presents a new one) can't open the door for an own-event echo to
+-- clobber `sync_status`, `kilter_status`, `nostr_event_id`, etc. via
+-- upsertCommunityClimb's INSERT OR REPLACE.
+isLocallyAuthored:
+SELECT 1 FROM climbs WHERE uuid = ? AND source = 'local' LIMIT 1;
+
 -- Insert-only path: used by the upsert transaction when no row with
 -- this uuid exists. Default column values cover source ('kilter'),
 -- origin ('kilter'), and the Nostr/Kilter status fields (NULL).
@@ -630,13 +642,38 @@ insertLocalDraft {
     WHERE uuid = :uuid;
 }
 
--- Delete a local-only climb (drafts user explicitly discards). Also
--- removes its climb_stats row to keep the browse VIEW consistent. Use
--- only for climbs the current pubkey owns; published Nostr climbs are
--- replaceable events, not delete-able locally.
+-- Delete a local-only DRAFT (user explicitly discards). Two SQL guards
+-- combined enforce "drafts only":
+--   * source = 'local'      — was inserted via the editor (insertLocalDraft),
+--                             not via the live-sub upsert path
+--   * nostr_event_id IS NULL — never reached a relay
+--
+-- The second guard is a defence-in-depth backstop: the drafts drawer's
+-- query (`getDraftClimbs`) already filters out published rows, so today's
+-- UI can't route a published row through this delete path. But `source`
+-- alone stays 'local' even after publish (markClimbPublishedNostr only
+-- flips sync_status), so a future caller that bypassed the drawer would
+-- have silently torn down published metadata. Pinning on nostr_event_id
+-- IS NULL closes that brittleness at the SQL boundary.
+--
+-- Published climbs must go through CommunityClimbDeleter (Kind-5 + a
+-- tombstone-replacement Kind-30078). A hard DELETE here would leave the
+-- relay copy orphaned with no local marker to absorb the live-sub echo,
+-- and the climb would silently rematerialise on next sync.
+--
+-- climb_stats deletion mirrors the same WHERE so we never strip stats
+-- for a row we'd refuse to delete.
 deleteLocalClimb {
-    DELETE FROM climb_stats WHERE climb_uuid = :uuid;
-    DELETE FROM climbs WHERE uuid = :uuid AND source = 'local';
+    DELETE FROM climb_stats WHERE climb_uuid IN (
+        SELECT uuid FROM climbs
+        WHERE uuid = :uuid
+          AND source = 'local'
+          AND nostr_event_id IS NULL
+    );
+    DELETE FROM climbs
+    WHERE uuid = :uuid
+      AND source = 'local'
+      AND nostr_event_id IS NULL;
 }
 
 -- Bundle the data the CommunityClimbDeleter needs in one read:
@@ -788,6 +825,32 @@ WHERE uuid = :uuid
 -- Mark a draft as failed (so the publish queue can retry / surface error).
 markClimbPublishFailed:
 UPDATE climbs SET sync_status = 'failed' WHERE uuid = ?;
+
+-- Crash-safety marker. Called immediately BEFORE the publisher hands the
+-- signed event off to the relay pool. Semantics piggy-back on 'failed'
+-- (= "needs retry"), so the existing CommunityPublishRetryWorker drains
+-- the row without any new state machine.
+--
+-- Why pre-mark instead of relying on the post-send catch block: there's
+-- a small but real window between `pool.sendEventWithStats` accepting
+-- the event and `markClimbPublishedNostr` flipping the row to
+-- 'published_nostr'. Process death (OOM kill, user force-stop, OS
+-- restart) inside that window leaves the event durable on the relay
+-- but the local row stuck at 'draft' forever — drafts aren't in the
+-- retry queue's filter. Pre-marking promotes the row into the queue
+-- BEFORE the relay round-trip starts, so the same crash now leaves a
+-- 'failed' row that the next periodic tick (or app-start runOnce)
+-- retries. Re-publish is safe because Kind-30078 is replaceable on
+-- (pubkey, kind, d-tag) — a second publish carrying the same d-tag
+-- collapses on the relay.
+--
+-- Restricted to `source='local'` + `origin='cruxcoach'` so we can never
+-- accidentally promote a Kilter-imported row into the Nostr retry queue.
+markClimbPublishInFlight:
+UPDATE climbs SET sync_status = 'failed'
+WHERE uuid = :uuid
+  AND source = 'local'
+  AND origin = 'cruxcoach';
 
 -- Read just the Kilter publish-state for a climb. Returns null if the
 -- climb isn't in the local DB. Used by CommunityClimbPublisher to decide

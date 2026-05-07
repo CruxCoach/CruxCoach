@@ -131,9 +131,23 @@ class CommunityClimbPublisher @Inject constructor(
             tags = tags,
             content = payload.content,
         )
+        // Crash-safety pre-mark: promote the row into the retry queue
+        // BEFORE the relay round-trip starts. If the process dies between
+        // pool.sendEventWithStats accepting the event and the post-send
+        // markClimbPublishedNostr below, the row stays in 'failed' (=
+        // needs retry) and the next CommunityPublishRetryWorker tick
+        // re-publishes; without this pre-mark a crash here would strand
+        // the row at 'draft' forever, outside the retry filter.
+        // Re-publish is idempotent — Kind-30078 is replaceable on
+        // (pubkey, kind, d-tag) so the second event collapses with the
+        // first on every relay.
+        boardRepository.markClimbPublishInFlight(uuid)
         val (attempted, accepted) = pool.sendEventWithStats(event)
         Log.i(TAG, "publish uuid=$uuid d=${payload.dTag} attempted=$attempted accepted=$accepted")
         if (accepted == 0) {
+            // Already 'failed' from the pre-mark above; markClimbPublishFailed
+            // is idempotent so the second flip costs nothing and keeps the
+            // call site readable.
             boardRepository.markClimbPublishFailed(uuid)
             throw IllegalStateException("No relay accepted the community-climb event (attempted=$attempted)")
         }

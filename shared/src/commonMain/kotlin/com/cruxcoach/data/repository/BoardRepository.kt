@@ -500,6 +500,16 @@ interface CommunityClimbQueries {
      */
     fun getClimbAuthorPubkey(uuid: String): String?
     /**
+     * True iff a row exists locally with `source='local'` — i.e. authored
+     * via the editor's `insertLocalDraft`. Used as a backstop self-filter
+     * in the live subscriber when the primary pubkey-based check can't
+     * fire (degraded signer, key rotation: the event still carries the
+     * old pubkey, the local user now presents a new one). Without this,
+     * an own-event echo would clobber `sync_status` / `kilter_status` /
+     * `nostr_event_id` via upsertCommunityClimb's INSERT OR REPLACE.
+     */
+    fun isLocallyAuthored(uuid: String): Boolean
+    /**
      * Returns (placement_id → normalized 0..1 frequency) for boulders at the
      * given layout+angle, optionally weighted by climbs that contain ALL
      * `seedHolds`. Used by the editor heatmap overlay.
@@ -550,6 +560,16 @@ interface CommunityClimbQueries {
         pubkey: String,
     )
     fun markClimbPublishFailed(uuid: String)
+    /**
+     * Pre-send crash-safety marker. Promote a draft into the retry queue
+     * BEFORE the relay round-trip starts — semantically `sync_status='failed'`
+     * = "needs retry". Called immediately before the publisher sends the
+     * signed event so a process death between relay-accept and the
+     * post-send `markClimbPublishedNostr` flip doesn't leave the row
+     * stuck at 'draft' forever (drafts aren't drained by the retry
+     * worker). Restricted to source='local' + origin='cruxcoach' rows.
+     */
+    fun markClimbPublishInFlight(uuid: String)
 
     // ── Kilter-side publish lifecycle (independent of Nostr sync_status) ──
     /** Mark a climb as enqueued for Kilter publish. Sets `kilter_status='pending'`. */

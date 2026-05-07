@@ -11,7 +11,9 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /**
  * Regression test for the `concurrency/race-conditions/007` /
@@ -201,5 +203,123 @@ class InsertLocalDraftPreservationTest {
         assertEquals(0L, r.hsm)
         assertEquals(1L, r.is_listed)
         assertEquals(1L, r.frames_count)
+    }
+
+    // ── E1: pre-send crash-safety marker ───────────────────────────
+
+    @Test
+    fun `markClimbPublishInFlight flips a draft to failed (= retry queue)`() {
+        insertEditorDraft("c1")
+        assertEquals("draft", rowFor("c1").sync_status)
+
+        db.boardQueries.markClimbPublishInFlight("c1")
+
+        // CommunityPublishRetryWorker drains rows on sync_status='failed';
+        // this transition promotes the row into the queue BEFORE the
+        // relay round-trip starts so a process death between
+        // pool.sendEventWithStats and markClimbPublishedNostr leaves the
+        // row recoverable instead of stuck at 'draft' forever.
+        assertEquals("failed", rowFor("c1").sync_status)
+    }
+
+    @Test
+    fun `markClimbPublishedNostr resolves an in-flight marker to published_nostr`() {
+        insertEditorDraft("c1")
+        db.boardQueries.markClimbPublishInFlight("c1")
+        assertEquals("failed", rowFor("c1").sync_status)
+
+        db.boardQueries.markClimbPublishedNostr(
+            nostr_event_id = "ev-1",
+            nostr_d_tag = "cruxcoach:climb:pubkey-h:c1",
+            pubkey = "pubkey-hex",
+            uuid = "c1",
+        )
+
+        val r = rowFor("c1")
+        assertEquals("published_nostr", r.sync_status, "post-send flip overrides the in-flight marker")
+        assertEquals("ev-1", r.nostr_event_id)
+    }
+
+    @Test
+    fun `markClimbPublishInFlight refuses to touch a kilter-origin row`() {
+        // Manually plant a kilter-origin row to mimic a Blossom-imported
+        // catalog entry. The marker must not promote it into the Nostr
+        // retry queue — only cruxcoach-authored locals belong there.
+        driver.execute(null, """
+            INSERT INTO climbs(uuid, layout_id, name, frames, source, origin, sync_status, frames_count, is_listed)
+            VALUES ('kilter-uuid', 1, 'Catalog', X'', 'kilter', 'kilter', 'synced', 1, 1)
+        """.trimIndent(), 0)
+
+        db.boardQueries.markClimbPublishInFlight("kilter-uuid")
+
+        val r = rowFor("kilter-uuid")
+        assertEquals("synced", r.sync_status, "kilter-origin row left untouched")
+        assertEquals("kilter", r.origin)
+    }
+
+    // ── E2: deleteLocalClimb hardened against published rows ───────
+
+    @Test
+    fun `deleteLocalClimb removes an unpublished draft (nostr_event_id NULL)`() {
+        insertEditorDraft("c1")
+        // Stats row to mirror real editor flow (climb_stats is touched in lockstep).
+        db.boardQueries.upsertClimbStat(
+            climb_uuid = "c1", angle = 40L,
+            display_difficulty = null, difficulty_average = null,
+            quality_average = null, ascensionist_count = 0L,
+            benchmark_difficulty = null, fa_username = null, fa_at = null,
+            official_kilter_difficulty = null,
+        )
+        assertNotNull(db.boardQueries.getClimbStatsForUuid("c1").executeAsOneOrNull())
+
+        db.boardQueries.deleteLocalClimb("c1")
+
+        assertNull(db.boardQueries.getClimbByUuid(40L, "c1").executeAsOneOrNull(),
+            "draft row gone")
+        assertNull(db.boardQueries.getClimbStatsForUuid("c1").executeAsOneOrNull(),
+            "stats row gone in lockstep")
+    }
+
+    @Test
+    fun `deleteLocalClimb refuses to delete a row that has been published to Nostr`() {
+        insertEditorDraft("c1")
+        db.boardQueries.markClimbPublishedNostr(
+            nostr_event_id = "ev-on-relay",
+            nostr_d_tag = "cruxcoach:climb:pubkey-h:c1",
+            pubkey = "pubkey-hex",
+            uuid = "c1",
+        )
+
+        db.boardQueries.deleteLocalClimb("c1")
+
+        // Post-publish rows must go through CommunityClimbDeleter (Kind-5
+        // + tombstone-replacement). A hard DELETE here would leave the
+        // relay copy with no local marker, so the live-sub would just
+        // re-import the climb on next sync.
+        val r = rowFor("c1")
+        assertEquals("published_nostr", r.sync_status, "published row preserved")
+        assertEquals("ev-on-relay", r.nostr_event_id)
+    }
+
+    // ── E5: source='local' backstop for the live-sub self-filter ───
+
+    @Test
+    fun `isLocallyAuthored true for editor-inserted draft`() {
+        insertEditorDraft("c1")
+        assertTrue(db.boardQueries.isLocallyAuthored("c1").executeAsOneOrNull() != null)
+    }
+
+    @Test
+    fun `isLocallyAuthored false for kilter-origin row`() {
+        driver.execute(null, """
+            INSERT INTO climbs(uuid, layout_id, name, frames, source, origin, sync_status, frames_count, is_listed)
+            VALUES ('kilter-uuid', 1, 'Catalog', X'', 'kilter', 'kilter', 'synced', 1, 1)
+        """.trimIndent(), 0)
+        assertNull(db.boardQueries.isLocallyAuthored("kilter-uuid").executeAsOneOrNull())
+    }
+
+    @Test
+    fun `isLocallyAuthored false for unknown uuid`() {
+        assertNull(db.boardQueries.isLocallyAuthored("does-not-exist").executeAsOneOrNull())
     }
 }
