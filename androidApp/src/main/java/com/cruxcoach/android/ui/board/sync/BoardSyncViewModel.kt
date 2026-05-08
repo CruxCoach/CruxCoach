@@ -54,10 +54,24 @@ class BoardSyncViewModel @Inject constructor(
      * Check if the user needs to select a board model after first sync.
      * Shows the dialog if boardProductSizeId has never been explicitly set
      * (i.e., still using the default).
+     *
+     * Two skip-gates, in order:
+     *   1. Onboarding still in progress — OnboardingScreen embeds
+     *      BoardSyncInlineCard during the first-run sync, so this hook
+     *      fires WHILE the user is still inside the BOARD_SETUP step.
+     *      The onboarding's completeOnboarding() writes the pref at the
+     *      end of the flow; popping the dialog here would race that
+     *      write and surface a redundant prompt for a question the
+     *      onboarding's board-step is already asking. Defer to the
+     *      onboarding flow.
+     *   2. User has already explicitly chosen a board (post-onboarding
+     *      or via Settings) — pref-key exists in DataStore.
+     *
+     * Either gate true → no dialog. Otherwise show the picker.
      */
     fun checkFirstSyncModelSelection() {
         viewModelScope.launch {
-            // Only show selection dialog if user has never explicitly chosen a board model
+            if (!userPreferences.isOnboardingCompleted()) return@launch
             val isDefault = userPreferences.isBoardProductSizeDefault.first()
             if (!isDefault) return@launch
 
