@@ -60,6 +60,17 @@ class CommunityClimbSubscriber @Inject constructor(
     private val userPreferences: UserPreferences,
     private val nostrSigner: NostrSigner,
     private val nostrProfileManager: com.cruxcoach.android.payment.NostrProfileManager,
+    /** Read-only state to gate event ingest while a board-data sync is
+     *  in flight. Each upsertCommunityClimb is its own SQLite write
+     *  transaction (commit + fsync) — interleaving them with the bulk
+     *  importer's batch transactions blows up writer-lock contention
+     *  even under WAL, taking the import from ~100s to 10+ minutes
+     *  on slower-eMMC devices when a relay backlog drips dozens of
+     *  events into the queue mid-import. handleEvent SUSPENDS (not
+     *  drops) on isSyncing so the Flow collector back-pressures the
+     *  websocket reader; events resume in order once the importer
+     *  releases its writer. */
+    private val boardSyncManager: com.cruxcoach.android.data.BoardSyncManager,
 ) {
 
     /**
@@ -248,6 +259,27 @@ class CommunityClimbSubscriber @Inject constructor(
 
     @VisibleForTesting
     internal suspend fun handleEvent(eventJson: String) {
+        // Defer-during-board-sync gate. The bulk board importer is a
+        // single-writer hammering ~190k INSERT-OR-IGNORE rows in 97 chunk
+        // transactions; a Live-Sub upsertCommunityClimb in the middle of
+        // that is its own tiny writer transaction (commit + fsync) that
+        // serializes against the importer even under WAL. A handful of
+        // interleaved upserts has been observed to take a 100s import to
+        // 10+ minutes on slower-eMMC devices.
+        //
+        // Suspend (not drop) until isSyncing flips false. The Flow
+        // collector is back-pressured to the websocket reader; events
+        // queue up in the upstream until we resume. This is the
+        // crucial difference from "drop + advance-cursor-later" — a
+        // dropped event is gone for that subscription session because
+        // relays don't re-push already-delivered events; only a fresh
+        // REQ with the cursor would backfill them. By suspending we
+        // keep every event without depending on relay backfill behaviour.
+        if (boardSyncManager.state.value.isSyncing) {
+            Log.d(TAG, "suspend event handling during board-sync (resume after import)")
+            boardSyncManager.state.first { !it.isSyncing }
+            Log.d(TAG, "board-sync ended, resuming event handling")
+        }
         // Hard size cap on the raw event payload before we even parse it.
         // The largest legitimate climb event is ~6 KB (≈84 holds × ~12
         // chars per p/r token + name + description + tag overhead);
