@@ -310,20 +310,23 @@ class CommunityClimbSubscriber @Inject constructor(
             Log.d(TAG, "skip own event uuid=${parsedClimb.uuid}")
             return
         }
-        // Backstop self-filter: the primary check above misses two narrow
-        // cases — (a) signer outage returning a null ownPubkey, (b) a key
-        // rotation where the relay-echoed event still carries the old
-        // signing pubkey but the local user now presents a new one. In
-        // both cases the local row was authored here (source='local' is
-        // only ever written by insertLocalDraft), so an upsert from
-        // anything signed under any pubkey is necessarily an own-echo and
-        // would clobber sync_status / kilter_status / nostr_event_id.
-        val locallyAuthored = runCatching {
-            boardRepository.isLocallyAuthored(parsedClimb.uuid)
-        }.getOrDefault(false)
-        if (locallyAuthored) {
-            Log.d(TAG, "skip event for locally-authored row uuid=${parsedClimb.uuid}")
-            return
+        // Backstop self-filter: only when the primary check above could
+        // not run (signer outage → ownPubkey is null). With a resolvable
+        // ownPubkey the primary is authoritative — an event whose
+        // signer != ownPubkey is by definition a foreign event, even if
+        // a local `source='local'` row exists for the same uuid (the
+        // identity-switch and key-rotation cases). Blocking the upsert
+        // there would silently hide foreign-authored climbs from the
+        // browser when the user switches identity, which is exactly
+        // what the live sub is supposed to ingest.
+        if (ownPubkey == null) {
+            val locallyAuthored = runCatching {
+                boardRepository.isLocallyAuthored(parsedClimb.uuid)
+            }.getOrDefault(false)
+            if (locallyAuthored) {
+                Log.d(TAG, "skip event for locally-authored row uuid=${parsedClimb.uuid} (signer-outage backstop)")
+                return
+            }
         }
 
         // D-tag prefix must encode the same author as the signed pubkey
