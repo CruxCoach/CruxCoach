@@ -177,18 +177,33 @@ class ClimbEditorViewModel @Inject constructor(
     private suspend fun handleNavigationArgs() {
         val editUuid: String? = savedStateHandle["editUuid"]
         val forkUuid: String? = savedStateHandle["forkUuid"]
+        // getMyClimbs filters on `created_by_pubkey = :pubkey`. Pre-fix
+        // we passed the literal sentinel "__none__" — `getMyClimbs` then
+        // matched zero rows and we silently fell through to
+        // getCommunityClimbs (`source='nostr'` only). Own-published
+        // climbs stay at `source='local'` until the live-sub echo
+        // upserts them, but the E5 self-filter blocks that upsert by
+        // design — so the editor opened EMPTY whenever the user tapped
+        // ⋮ → Edit on a climb they had just published. Resolve the
+        // active pubkey lazily; null only happens during a signer-init
+        // race + then both queries no-op cleanly.
+        val ownPubkey = runCatching { nostrSigner.getPublicKeyHex() }.getOrNull()
         if (editUuid != null) {
             val source = withContext(Dispatchers.IO) {
-                boardRepository.getMyClimbs("__none__")
-                    .firstOrNull { it.uuid.equals(editUuid, ignoreCase = true) }
+                (ownPubkey?.let {
+                    boardRepository.getMyClimbs(it)
+                        .firstOrNull { row -> row.uuid.equals(editUuid, ignoreCase = true) }
+                })
                     ?: boardRepository.getCommunityClimbs()
                         .firstOrNull { it.uuid.equals(editUuid, ignoreCase = true) }
             }
             if (source != null) seedFromEdit(source)
         } else if (forkUuid != null) {
             val source = withContext(Dispatchers.IO) {
-                boardRepository.getMyClimbs("__none__")
-                    .firstOrNull { it.uuid.equals(forkUuid, ignoreCase = true) }
+                (ownPubkey?.let {
+                    boardRepository.getMyClimbs(it)
+                        .firstOrNull { row -> row.uuid.equals(forkUuid, ignoreCase = true) }
+                })
                     ?: boardRepository.getCommunityClimbs()
                         .firstOrNull { it.uuid.equals(forkUuid, ignoreCase = true) }
                     // Final fallback: a raw climb (Kilter source) by uuid via the existing browse query.
@@ -205,15 +220,21 @@ class ClimbEditorViewModel @Inject constructor(
             if (source != null) seedFromFork(source)
         }
         // Auto-restore the last autosave — only when the editor opens
-        // *fresh* (no fork/edit seed). Pre-fix this surfaced as a
-        // "restore previous session?" prompt; the user wanted the
-        // friction-free version where the last in-flight state is
-        // simply re-applied. The trash icon in the toolbar
-        // ([clearEditor]) is the explicit "give me a clean slate"
-        // affordance for users who don't want what they had.
-        val snapshot = withContext(Dispatchers.IO) { autosave.load() }
-        if (snapshot != null && _state.value.editor.selectedHolds.isEmpty()) {
-            applyEditor(snapshot.state)
+        // *fresh* (no fork/edit seed). Pre-fix the only guard was
+        // `selectedHolds.isEmpty()`, which silently fell back to the
+        // autosave whenever seedFromEdit/seedFromFork failed (frames-
+        // parse error, missing stats row, source-resolve miss). Result:
+        // user tapped ⋮ → Edit on a published climb but got
+        // *yesterday's draft* instead. Hard-gate the restore on "no
+        // navigation args present" — if the user navigated here
+        // explicitly to edit/remix something, the autosave never wins.
+        // The drafts-drawer load path uses [loadDraft] directly which
+        // doesn't go through this method, so it's also unaffected.
+        if (editUuid == null && forkUuid == null) {
+            val snapshot = withContext(Dispatchers.IO) { autosave.load() }
+            if (snapshot != null && _state.value.editor.selectedHolds.isEmpty()) {
+                applyEditor(snapshot.state)
+            }
         }
         // Seed validationIssues against whatever final state we landed
         // on (empty editor, fork, edit, or restored autosave). Without
