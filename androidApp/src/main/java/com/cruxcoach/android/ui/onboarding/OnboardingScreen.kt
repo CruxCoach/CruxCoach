@@ -343,10 +343,16 @@ private fun BoardSetupStep(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
-        // Inline sync card — no navigation hop. Handles "Jetzt laden",
-        // progress checklist, already-synced state, error + model-select
-        // dialogs without leaving the onboarding step.
-        BoardSyncInlineCard(modifier = Modifier.fillMaxWidth())
+        // Inline sync card — no navigation hop. Handles progress
+        // checklist, already-synced state, error + model-select dialogs
+        // without leaving the onboarding step. autoStartIfNeeded fires
+        // the download immediately so the user doesn't have to scroll
+        // and tap "Jetzt laden" — by the time they finish the intro
+        // text the chunks are already coming down.
+        BoardSyncInlineCard(
+            modifier = Modifier.fillMaxWidth(),
+            autoStartIfNeeded = true,
+        )
     }
 }
 

@@ -41,12 +41,26 @@ fun BoardSyncInlineCard(
     modifier: Modifier = Modifier,
     viewModel: BoardSyncViewModel = hiltViewModel(),
     onNavigateToBugReport: (title: String, description: String) -> Unit = { _, _ -> },
+    /** When true, fires the API sync automatically on first composition
+     *  if no board data is present yet. Used by the onboarding's
+     *  BOARD_SETUP step so the user doesn't have to scroll past the
+     *  intro and tap "Jetzt laden" before the download begins. Default
+     *  false keeps every other call site (BoardBrowser, Settings)
+     *  manual-trigger as before. */
+    autoStartIfNeeded: Boolean = false,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val modelState by viewModel.modelState.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     LaunchedEffect(Unit) { viewModel.checkNetwork() }
+    if (autoStartIfNeeded) {
+        // One-shot on first composition. The VM's startApiSyncIfNeeded
+        // guards on alreadyImported + isSyncing so a re-entry to the
+        // onboarding (or returning user) doesn't kick off a redundant
+        // re-download.
+        LaunchedEffect(Unit) { viewModel.startApiSyncIfNeeded() }
+    }
 
     if (state.showNetworkDialog) {
         AlertDialog(

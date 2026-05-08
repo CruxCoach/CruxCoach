@@ -46,6 +46,19 @@ class BoardSyncViewModel @Inject constructor(
     fun dismissWifiDialog() = syncManager.dismissWifiDialog()
     fun dismissNetworkDialog() = syncManager.dismissNetworkDialog()
     fun startApiSync() = syncManager.startApiSync()
+
+    /** Onboarding-only auto-trigger. Fires startApiSync only when no
+     *  board data exists yet and no sync is already in flight; safe to
+     *  call repeatedly. Without this, a fresh-install user would have
+     *  to scroll past the title + intro text inside the BOARD_SETUP
+     *  onboarding step to find the "Jetzt laden" button before the
+     *  sync would even start — an extra friction step that defeats the
+     *  point of having the inline card embedded in the step at all. */
+    fun startApiSyncIfNeeded() {
+        val s = state.value
+        if (s.alreadyImported || s.isSyncing) return
+        syncManager.startApiSync()
+    }
     fun clearError() = syncManager.clearError()
     fun confirmLocalImport() = syncManager.confirmLocalImport()
     fun dismissLocalImport() = syncManager.dismissLocalImport()
