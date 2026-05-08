@@ -386,6 +386,17 @@ fun BoardClimbDetailScreen(
                         val canEdit = state.climb?.origin == "cruxcoach" &&
                             state.climb?.createdByPubkey != null &&
                             state.climb?.createdByPubkey == state.currentUserPubkey
+                        // Kilter's API treats published climbs as immutable
+                        // (no PATCH, no DELETE — see KilterApiClient docstrings).
+                        // For climbs we already mirrored to Kilter the editor
+                        // would create divergent state — local + Nostr would
+                        // hold the new version, Kilter the old, and the cron
+                        // pipeline would see two truths for the same uuid.
+                        // Hiding Edit (Delete still works, with warning) is
+                        // the simplest invariant: "synced and diverged are
+                        // frozen on Kilter, period."
+                        val kilterImmutable = state.climb?.kilterStatus == "synced" ||
+                            state.climb?.kilterStatus == "diverged"
                         var moreExpanded by remember { mutableStateOf(false) }
                         Box {
                             IconButton(
@@ -419,21 +430,52 @@ fun BoardClimbDetailScreen(
                                     modifier = Modifier.testTag("boarddetail_fork_button"),
                                 )
                                 if (canEdit) {
-                                    DropdownMenuItem(
-                                        text = { Text(stringResource(R.string.climb_creator_edit_action)) },
-                                        leadingIcon = {
-                                            Icon(
-                                                Icons.Default.Edit,
-                                                contentDescription = null,
-                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            )
-                                        },
-                                        onClick = {
-                                            moreExpanded = false
-                                            state.climb?.uuid?.let(onNavigateToEdit)
-                                        },
-                                        modifier = Modifier.testTag("boarddetail_edit_button"),
-                                    )
+                                    if (!kilterImmutable) {
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(R.string.climb_creator_edit_action)) },
+                                            leadingIcon = {
+                                                Icon(
+                                                    Icons.Default.Edit,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                )
+                                            },
+                                            onClick = {
+                                                moreExpanded = false
+                                                state.climb?.uuid?.let(onNavigateToEdit)
+                                            },
+                                            modifier = Modifier.testTag("boarddetail_edit_button"),
+                                        )
+                                    } else {
+                                        // Greyed-out Edit row + tooltip-style sub-text
+                                        // so the user understands WHY Edit isn't here
+                                        // (instead of just silently missing it).
+                                        DropdownMenuItem(
+                                            text = {
+                                                Column {
+                                                    Text(
+                                                        stringResource(R.string.climb_creator_edit_action),
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                                    )
+                                                    Text(
+                                                        stringResource(R.string.climb_detail_edit_locked_kilter),
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                                    )
+                                                }
+                                            },
+                                            leadingIcon = {
+                                                Icon(
+                                                    Icons.Default.Edit,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                                                )
+                                            },
+                                            enabled = false,
+                                            onClick = {},
+                                            modifier = Modifier.testTag("boarddetail_edit_button_locked"),
+                                        )
+                                    }
                                     HorizontalDivider()
                                     DropdownMenuItem(
                                         text = { Text(stringResource(R.string.community_climb_delete_action)) },

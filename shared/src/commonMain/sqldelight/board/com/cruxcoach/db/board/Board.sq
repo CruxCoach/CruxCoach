@@ -1161,6 +1161,14 @@ WHERE c.origin = 'cruxcoach'
   AND c.is_deleted = 0
   AND (c.created_by_pubkey = :pubkey OR (c.created_by_pubkey IS NULL AND c.source = 'local'));
 
+-- Single-angle lookup for own climbs. The Kilter publish path needs the
+-- author's chosen angle as a top-level field (the API rejects missing
+-- angle), but the climbs row itself doesn't store it — only climb_stats
+-- does, keyed by (uuid, angle). Pick MIN(angle) so the result is stable
+-- when there's only one row (the typical own-climb case).
+getOwnClimbAngle:
+SELECT MIN(angle) AS angle FROM climb_stats WHERE climb_uuid = ?;
+
 -- Restore path. INSERT OR IGNORE so an existing row with the same uuid
 -- stays in place (idempotent re-import; the live-sub may have already
 -- re-fetched a published climb from the relays before the restore

@@ -252,6 +252,15 @@ class BoardRepositoryImpl(
         }
     }
 
+    override fun getPlacementsForLayout(productSizeId: Int, layoutId: Int): List<BoardPlacement> {
+        val activeSetIds = q.getBoardImages(productSizeId.toLong(), layoutId.toLong())
+            .executeAsList()
+            .map { it.set_id }
+            .toSet()
+        val all = getAllPlacements()
+        return if (activeSetIds.isEmpty()) all else all.filter { it.setId in activeSetIds }
+    }
+
     override fun getProductSize(id: Int): BoardSize? {
         return q.getProductSize(id.toLong()).executeAsOneOrNull()?.let {
             BoardSize(it.id, it.product_id, it.name, it.edge_left, it.edge_right, it.edge_bottom, it.edge_top, it.image_filename)
@@ -958,6 +967,7 @@ class BoardRepositoryImpl(
             createdAt = null,
             moveCount = 0,
             kilterSyncedAt = null,
+            layoutId = layoutId,
         )
     }
 
@@ -1022,6 +1032,9 @@ class BoardRepositoryImpl(
                 benchmarkDifficulty = row.benchmark_difficulty,
             )
         }
+
+    override fun getOwnClimbAngle(uuid: String): Long? =
+        q.getOwnClimbAngle(uuid).executeAsOneOrNull()?.angle
 
     override fun restoreOwnClimb(row: OwnClimbBackupRow): Boolean =
         q.transactionWithResult {
@@ -1094,5 +1107,6 @@ class BoardRepositoryImpl(
             createdAt = created_at,
             moveCount = move_count,
             kilterSyncedAt = kilter_synced_at,
+            layoutId = layout_id,
         )
 }

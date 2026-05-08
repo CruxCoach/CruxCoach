@@ -109,8 +109,15 @@ class KilterPublishRetryWorker @AssistedInject constructor(
             // would otherwise be the soonest any other queued row gets
             // retried.
             try {
+            // Resolve placementId → holeId so the API receives valid Kilter
+            // hole_ids (see encodeClimbConcat docstring). Cached per-batch:
+            // 692 rows is cheap and the loop stays tight.
+            val pidToHoleId: Map<Int, Long> = runCatching { boardRepository.getAllPlacements() }
+                .getOrDefault(emptyList())
+                .associate { it.placementId.toInt() to it.holeId }
             val climbConcat = BoardClimbParser.encodeClimbConcat(
-                BoardClimbParser.parseFrames(row.framesText)
+                BoardClimbParser.parseFrames(row.framesText),
+                pidToHoleId,
             )
             if (climbConcat.isBlank()) {
                 // Frames missing — mark permanently failed so we don't loop.
@@ -135,13 +142,20 @@ class KilterPublishRetryWorker @AssistedInject constructor(
             // accepted by Kilter (use update-climb); otherwise CREATE.
             val isUpdate = (claim as com.cruxcoach.data.repository.KilterClaim.Won)
                 .previouslySyncedAtEpochSeconds != null
+            // Angle from per-climb stats; 40° fallback if the stats row
+            // hasn't materialized yet (e.g. row written but stats insert
+            // failed mid-flow). The Kilter API requires a non-null angle.
+            val angle = (boardRepository.getOwnClimbAngle(row.uuid) ?: 40L).toInt()
+            val productLayoutUuid = boardSize.id.toString()
             val result = if (isUpdate) {
                 apiClient.updateClimb(
                     climbUuid = row.uuid,
                     name = row.name,
                     description = row.description,
                     framesClimbConcat = climbConcat,
-                    productName = "Kilter Board Original",
+                    productName = productNameForLayout(row.layoutId),
+                    productLayoutUuid = productLayoutUuid,
+                    angle = angle,
                     edgeLeft = boardSize.edgeLeft.toInt(),
                     edgeRight = boardSize.edgeRight.toInt(),
                     edgeBottom = boardSize.edgeBottom.toInt(),
@@ -153,7 +167,9 @@ class KilterPublishRetryWorker @AssistedInject constructor(
                     name = row.name,
                     description = row.description,
                     framesClimbConcat = climbConcat,
-                    productName = "Kilter Board Original",
+                    productName = productNameForLayout(row.layoutId),
+                    productLayoutUuid = productLayoutUuid,
+                    angle = angle,
                     edgeLeft = boardSize.edgeLeft.toInt(),
                     edgeRight = boardSize.edgeRight.toInt(),
                     edgeBottom = boardSize.edgeBottom.toInt(),
@@ -276,9 +292,20 @@ class KilterPublishRetryWorker @AssistedInject constructor(
         }.onFailure { Log.w(TAG, "recordKilterPublishAttempt threw for uuid=$uuid", it) }
     }
 
+    /** Same mapping as KilterClimbPublisher.productNameFor. Kept duplicated
+     *  rather than extracted because the retry-worker module would
+     *  otherwise need to depend on the publisher class purely for one
+     *  pure-function lookup. */
+    private fun productNameForLayout(layoutId: Long): String = when (layoutId) {
+        com.cruxcoach.android.data.BoardConstants.KILTER_HOMEWALL_LAYOUT.toLong() -> "Kilter Board Homewall"
+        else -> "Kilter Board Original"
+    }
+
     companion object {
         private const val TAG = "KilterRetryWorker"
         const val WORK_NAME = "kilter_publish_retry"
+        // Distinct from WORK_NAME — see runOnce's docstring for why.
+        const val ONESHOT_WORK_NAME = "kilter_publish_retry_oneshot"
         // Pending rows older than this cutoff (relative to the latest
         // attempt OR row creation when no attempt is recorded) are swept
         // back to 'failed' on each tick. 30 minutes is generous enough
@@ -316,16 +343,24 @@ class KilterPublishRetryWorker @AssistedInject constructor(
         /** Manual one-shot trigger — useful right after the user toggles
          *  the publish setting on, or after restoring connectivity.
          *
-         *  Shares [WORK_NAME] with the periodic worker so WorkManager
-         *  enforces single-runner semantics across both trigger paths.
-         *  Pre-fix runOnce used a distinct unique name
-         *  (`${WORK_NAME}_oneshot`), so a `runOnce` fired while the
-         *  periodic batch was mid-flight could double-publish the same
-         *  rows. APPEND_OR_REPLACE means: if a worker is already running
-         *  the oneshot is queued behind it; if nothing's running it
-         *  starts immediately; if a previous oneshot is queued, we
-         *  replace it (no need to drain the same queue twice). */
+         *  Uses a DISTINCT unique name from [WORK_NAME] (the periodic
+         *  cadence). Reason: WorkManager's `enqueueUniqueWork` against a
+         *  name already held by a PeriodicWorkRequest is a documented
+         *  edge case — across versions the request has been silently
+         *  ignored, silently replaced, or queued depending on the
+         *  policy and the WM internal state, with no log on the dropped
+         *  path. Empirically the user's "Retry now" tap was a no-op
+         *  with no JobScheduler entry created, despite the click
+         *  reaching this entry point.
+         *
+         *  Race-with-periodic protection comes from the row-level
+         *  CAS-claim in `claimKilterPublishSlot` (publisher + worker
+         *  contend on the same atomic SQLite update; loser logs and
+         *  skips), so two workers running concurrently can't double-
+         *  publish the same row even if WorkManager schedules them
+         *  in parallel. */
         fun runOnce(context: Context) {
+            Log.i(TAG, "runOnce: enqueueing one-shot retry")
             val request = androidx.work.OneTimeWorkRequestBuilder<KilterPublishRetryWorker>()
                 .setConstraints(
                     Constraints.Builder()
@@ -334,8 +369,8 @@ class KilterPublishRetryWorker @AssistedInject constructor(
                 )
                 .build()
             WorkManager.getInstance(context).enqueueUniqueWork(
-                WORK_NAME,
-                androidx.work.ExistingWorkPolicy.APPEND_OR_REPLACE,
+                ONESHOT_WORK_NAME,
+                androidx.work.ExistingWorkPolicy.REPLACE,
                 request,
             )
         }

@@ -96,10 +96,32 @@ object BoardClimbParser {
     }
 
     /**
-     * Encode holds to Kilter climbConcat string (h{id}p{role}).
+     * Encode holds to Kilter climbConcat string (`h{hole_id}p{role}`).
+     *
+     * **Important: `h{...}` is hole_id, NOT placement_id.** The Kilter
+     * API treats the h-prefixed value as a hole identifier and looks it
+     * up in its own placement set; sending placement_ids straight from
+     * our local Aurora-derived schema produces a JSON that the API
+     * accepts (because most numeric values happen to also be valid
+     * hole_ids on the same board) but at completely wrong spatial
+     * positions — the published climb shows different holds than the
+     * user drew. The cron-side ingest (update_board_db.convert_climb_concat)
+     * already understands this correctly when going Kilter→Aurora; the
+     * publish path is the inverse and was previously broken.
+     *
+     * Caller passes a placements map (placementId → BoardPlacement)
+     * keyed on the same placementId values that appear inside [BoardHold].
+     * Holds whose placement isn't present in the map are skipped — that
+     * shouldn't normally happen because the editor only emits holds it
+     * could resolve, but defensive in case of map-staleness across
+     * board-data sync boundaries.
      */
-    fun encodeClimbConcat(holds: List<BoardHold>): String {
-        return holds.joinToString("") { "h${it.placementId}p${it.roleId}" }
+    fun encodeClimbConcat(holds: List<BoardHold>, placementToHoleId: Map<Int, Long>): String {
+        return holds.joinToString("") { hold ->
+            val hid = placementToHoleId[hold.placementId]
+                ?: return@joinToString ""
+            "h${hid}p${hold.roleId}"
+        }
     }
 
     /**

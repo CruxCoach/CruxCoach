@@ -171,6 +171,7 @@ class FakeBoardRepository : BoardRepository {
     // -- BoardLayoutQueries --
 
     override fun getAllPlacements(): List<BoardPlacement> = emptyList()
+    override fun getPlacementsForLayout(productSizeId: Int, layoutId: Int): List<BoardPlacement> = emptyList()
     override fun getProductSize(id: Int): BoardSize? = null
     override fun getAllProductSizes(productId: Long): List<BoardSize> = emptyList()
     override fun getBoardImages(productSizeId: Int, layoutId: Int): List<BoardImage> = emptyList()
@@ -261,6 +262,7 @@ class FakeBoardRepository : BoardRepository {
     override fun upsertSetterGrade(climbDTag: String, angle: Long, setterGradeId: Int, lastUpdatedEpochMs: Long) {}
     override fun getOwnClimbsForBackup(pubkey: String): List<com.cruxcoach.data.repository.OwnClimbBackupRow> = emptyList()
     override fun getOwnClimbStatsForBackup(pubkey: String): List<com.cruxcoach.data.repository.OwnClimbStatBackupRow> = emptyList()
+    override fun getOwnClimbAngle(uuid: String): Long? = null
     override fun restoreOwnClimb(row: com.cruxcoach.data.repository.OwnClimbBackupRow): Boolean = true
     override fun restoreOwnClimbStat(row: com.cruxcoach.data.repository.OwnClimbStatBackupRow) {}
 }

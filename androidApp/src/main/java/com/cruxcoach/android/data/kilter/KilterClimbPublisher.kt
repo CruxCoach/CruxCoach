@@ -125,6 +125,17 @@ class KilterClimbPublisher @Inject constructor(
         }
         val isUpdate = (claim as com.cruxcoach.data.repository.KilterClaim.Won)
             .previouslySyncedAtEpochSeconds != null
+        // Publish-time angle: editor's current angle (always set by the
+        // editor's seedAngle init from prefs), with a 40° fallback for
+        // the rare null-state case so we never send a missing required
+        // field.
+        val publishAngle = state.angle ?: 40
+        // productLayoutUuid is Kilter's API identifier of the (product,
+        // size) variant — empirically equal to our productSizeId stringified
+        // for the layouts we ship (Kilter Original sizes 7/8/10/14/27/28,
+        // Homewall sizes 17/18/19/21..29). Stored as a numeric string in
+        // the API.
+        val productLayoutUuid = boardSize.id.toString()
         val r = if (isUpdate) {
             apiClient.updateClimb(
                 climbUuid = uuid,
@@ -132,6 +143,8 @@ class KilterClimbPublisher @Inject constructor(
                 description = state.description,
                 framesClimbConcat = framesClimbConcat,
                 productName = productNameFor(layoutId),
+                productLayoutUuid = productLayoutUuid,
+                angle = publishAngle,
                 edgeLeft = boardSize.edgeLeft.toInt(),
                 edgeRight = boardSize.edgeRight.toInt(),
                 edgeBottom = boardSize.edgeBottom.toInt(),
@@ -144,6 +157,8 @@ class KilterClimbPublisher @Inject constructor(
                 description = state.description,
                 framesClimbConcat = framesClimbConcat,
                 productName = productNameFor(layoutId),
+                productLayoutUuid = productLayoutUuid,
+                angle = publishAngle,
                 edgeLeft = boardSize.edgeLeft.toInt(),
                 edgeRight = boardSize.edgeRight.toInt(),
                 edgeBottom = boardSize.edgeBottom.toInt(),
@@ -247,11 +262,19 @@ class KilterClimbPublisher @Inject constructor(
     }
 
     /**
-     * Best-effort layout_id → Kilter product_name mapping. Most CruxCoach
-     * users are on the Kilter Original; other layouts fall through to
-     * the same default and let Kilter's server-side validate.
+     * layout_id → Kilter product_name mapping. The Kilter API resolves
+     * placement IDs against the product named here — sending "Original"
+     * for a Homewall climb means the API can't find any of the climb's
+     * placement IDs in the product's set table and returns 500. Names
+     * match the strings AuroraImporter.KILTER_LAYOUT_NAMES uses on the
+     * import side (1 = Original, 8 = Homewall); other layouts default
+     * to Original and let the server reject (we don't ship support for
+     * any third Kilter product yet).
      */
-    private fun productNameFor(layoutId: Long): String = "Kilter Board Original"
+    private fun productNameFor(layoutId: Long): String = when (layoutId) {
+        com.cruxcoach.android.data.BoardConstants.KILTER_HOMEWALL_LAYOUT.toLong() -> "Kilter Board Homewall"
+        else -> "Kilter Board Original"
+    }
 
     /** Best-effort audit-trail write — wrapped in runCatching so a SQLite
      *  hiccup at this point doesn't tip the publisher's main result. The

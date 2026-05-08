@@ -72,25 +72,51 @@ private data class CreateClimbTransaction(
     val climb: ClimbCreatePayload,
 )
 
+/**
+ * Kilter create/update-climb payload — empirically reverse-engineered
+ * from the Kilter Flutter app's outgoing JSON shape. Every field below
+ * has been live-tested against `portal.kiltergrips.com/api/climbs/
+ * create-climb/transaction` with a probe account; missing or mis-cased
+ * fields cause the server to throw a generic "An error occurred when
+ * running the transaction." HTTP 500 with no detail.
+ *
+ * Naming: camelCase. Earlier iterations sent snake_case (which is what
+ * the Kilter app's *local* SQLite uses), but the API itself is camelCase
+ * — snake_case fields are silently dropped, so a snake-cased payload
+ * leaves NOT-NULL columns NULL and the transaction fails.
+ *
+ * `origin` is an enum: MIGRATED | IMPORTED | NATIVE — climbs we author
+ * via the editor are NATIVE.
+ */
 @Serializable
 private data class ClimbCreatePayload(
-    val climb_uuid: String,
-    val setter_uuid: String,
+    val climbUuid: String,
+    val userUuid: String,
+    val username: String,
     val name: String,
     val description: String,
-    val frames: String,                    // climbConcat-format `h{id}p{ref}…`
-    val product_name: String,              // e.g. "Kilter Board Original"
-    val is_listed: Boolean = true,
-    val is_draft: Boolean = false,
-    val frames_count: Int = 1,
-    val frames_pace: Int = 0,
-    val hsm: Int = 0,
-    val edge_left: Int,
-    val edge_right: Int,
-    val edge_bottom: Int,
-    val edge_top: Int,
-    val created_at: String,
-    val updated_at: String,
+    /** Concat of placement+role per hold: `h{placementId}p{roleId}…`. */
+    val climbConcat: String,
+    val productName: String,
+    /** Server-side identifier of the layout (board size + variant).
+     *  Stored as a numeric string in Kilter's API ("10", "27", etc.). */
+    val productLayoutUuid: String,
+    val angle: Int,
+    val frameCount: Int = 1,
+    val framesPace: Int = 0,
+    val edgeLeft: Int,
+    val edgeRight: Int,
+    val edgeBottom: Int,
+    val edgeTop: Int,
+    val allowMatch: Boolean = true,
+    val isDraft: Boolean = false,
+    val isListed: Boolean = true,
+    val isDeleted: Boolean = false,
+    val accumulatedHoldSetValue: Int = 1,
+    /** Enum: MIGRATED | IMPORTED | NATIVE. App-authored = NATIVE. */
+    val origin: String = "NATIVE",
+    val createdAt: String,
+    val updatedAt: String,
 )
 
 /** Outcome of a Kilter publish. Distinct from a generic Result so callers
@@ -212,7 +238,16 @@ class KilterApiClient @Inject constructor(
         apiBase = "$base/api"
     }
 
-    private val json = Json { ignoreUnknownKeys = true }
+    // encodeDefaults = true: the Kilter create-climb payload has many
+    // NOT-NULL columns server-side that we model with sensible Kotlin
+    // defaults (allowMatch, isDraft, isListed, isDeleted, frameCount,
+    // framesPace, accumulatedHoldSetValue, origin). Without this flag
+    // kotlinx-serialization silently drops every field whose runtime
+    // value equals its declaration default — and the API then NPEs on
+    // the resulting NULL columns ("Cannot invoke Boolean.booleanValue()
+    // because isDraft is null"), with the error wrapped as a generic
+    // HTTP 500 transaction-error so the cause is invisible client-side.
+    private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     private val refreshMutex = Mutex()
 
     // Client-side login throttle. Per-email exponential backoff in
@@ -573,6 +608,8 @@ class KilterApiClient @Inject constructor(
         description: String,
         framesClimbConcat: String,
         productName: String,
+        productLayoutUuid: String,
+        angle: Int,
         edgeLeft: Int,
         edgeRight: Int,
         edgeBottom: Int,
@@ -580,11 +617,14 @@ class KilterApiClient @Inject constructor(
     ): KilterPublishResult = submitClimb(
         endpointPath = "create-climb/transaction",
         op = "publishClimb",
+        method = "POST",
         climbUuid = climbUuid,
         name = name,
         description = description,
         framesClimbConcat = framesClimbConcat,
         productName = productName,
+        productLayoutUuid = productLayoutUuid,
+        angle = angle,
         edgeLeft = edgeLeft,
         edgeRight = edgeRight,
         edgeBottom = edgeBottom,
@@ -609,6 +649,8 @@ class KilterApiClient @Inject constructor(
         description: String,
         framesClimbConcat: String,
         productName: String,
+        productLayoutUuid: String,
+        angle: Int,
         edgeLeft: Int,
         edgeRight: Int,
         edgeBottom: Int,
@@ -616,16 +658,58 @@ class KilterApiClient @Inject constructor(
     ): KilterPublishResult = submitClimb(
         endpointPath = "update-climb/transaction",
         op = "updateClimb",
+        // The update endpoint requires PATCH — POST returns 405. Probed
+        // empirically against the live API.
+        method = "PATCH",
         climbUuid = climbUuid,
         name = name,
         description = description,
         framesClimbConcat = framesClimbConcat,
         productName = productName,
+        productLayoutUuid = productLayoutUuid,
+        angle = angle,
         edgeLeft = edgeLeft,
         edgeRight = edgeRight,
         edgeBottom = edgeBottom,
         edgeTop = edgeTop,
     )
+
+    /**
+     * Delete an own climb. Method `DELETE /api/climbs/{uuid}` — verified
+     * empirically; the server returns "The climbs have been deleted
+     * successfully." on success. Note: there is no PATCH-with-isDeleted
+     * shortcut; sending isDeleted=true via update-climb does not actually
+     * mark the row deleted server-side, you have to use this endpoint.
+     */
+    suspend fun deleteClimb(climbUuid: String): KilterPublishResult = withContext(Dispatchers.IO) {
+        val token = ensureValidToken()
+            ?: return@withContext KilterPublishResult.NotAuthenticated
+        val request = Request.Builder()
+            .url("$apiBase/climbs/$climbUuid")
+            .addHeader("Authorization", "Bearer $token")
+            .delete()
+            .build()
+        try {
+            httpClient.newCall(request).execute().use { resp ->
+                if (resp.isSuccessful) {
+                    Log.i(TAG, "deleteClimb ok uuid=$climbUuid")
+                    return@withContext KilterPublishResult.Success(climbUuid)
+                }
+                val responseBody = resp.body?.string().orEmpty().take(MAX_ERR_BODY)
+                Log.w(TAG, "deleteClimb HTTP ${resp.code}: $responseBody")
+                return@withContext when (resp.code) {
+                    401, 403 -> KilterPublishResult.NotAuthenticated
+                    in 400..499 -> KilterPublishResult.PermanentError(responseBody, resp.code)
+                    else -> KilterPublishResult.TransientError("HTTP ${resp.code}: $responseBody")
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e(TAG, "deleteClimb exception uuid=$climbUuid", e)
+            return@withContext KilterPublishResult.TransientError(e.message ?: "network error")
+        }
+    }
 
     /**
      * Shared transport for both create and update flows — same payload,
@@ -635,11 +719,14 @@ class KilterApiClient @Inject constructor(
     private suspend fun submitClimb(
         endpointPath: String,
         op: String,
+        method: String,
         climbUuid: String,
         name: String,
         description: String,
         framesClimbConcat: String,
         productName: String,
+        productLayoutUuid: String,
+        angle: Int,
         edgeLeft: Int,
         edgeRight: Int,
         edgeBottom: Int,
@@ -647,32 +734,47 @@ class KilterApiClient @Inject constructor(
     ): KilterPublishResult = withContext(Dispatchers.IO) {
         val token = ensureValidToken()
             ?: return@withContext KilterPublishResult.NotAuthenticated
-        val setterUuid = tokenStore.getUserUuid()?.takeIf { it.isNotBlank() }
+        val userUuid = tokenStore.getUserUuid()?.takeIf { it.isNotBlank() }
+            ?: return@withContext KilterPublishResult.NotAuthenticated
+        // Username is the JWT preferred_username claim — the server
+        // accepts either email-style or display-name; both round-trip
+        // through /climbs/curated as the climb's `username` field.
+        val username = tokenStore.getUsername()?.takeIf { it.isNotBlank() }
             ?: return@withContext KilterPublishResult.NotAuthenticated
 
         val nowIso = java.time.Instant.now().toString()
         val payload = CreateClimbTransaction(
             climb = ClimbCreatePayload(
-                climb_uuid = climbUuid,
-                setter_uuid = setterUuid,
+                climbUuid = climbUuid,
+                userUuid = userUuid,
+                username = username,
                 name = name,
                 description = description,
-                frames = framesClimbConcat,
-                product_name = productName,
-                edge_left = edgeLeft,
-                edge_right = edgeRight,
-                edge_bottom = edgeBottom,
-                edge_top = edgeTop,
-                created_at = nowIso,
-                updated_at = nowIso,
+                climbConcat = framesClimbConcat,
+                productName = productName,
+                productLayoutUuid = productLayoutUuid,
+                angle = angle,
+                edgeLeft = edgeLeft,
+                edgeRight = edgeRight,
+                edgeBottom = edgeBottom,
+                edgeTop = edgeTop,
+                createdAt = nowIso,
+                updatedAt = nowIso,
             )
         )
-        val body = json.encodeToString(CreateClimbTransaction.serializer(), payload)
-            .toRequestBody("application/json".toMediaType())
+        val bodyJson = json.encodeToString(CreateClimbTransaction.serializer(), payload)
+        // Diagnostic: dump the outgoing payload (minus userUuid PII) so a
+        // server-side 500 can be triaged without having to reproduce the
+        // request locally. climbConcat is the most-likely culprit (placement
+        // IDs not in the product layout), productLayoutUuid + edges next.
+        // userUuid is a stable Kilter user identifier — redact it.
+        Log.d(TAG, "$op outgoing payload (userUuid redacted): " +
+            bodyJson.replace(Regex("\"userUuid\":\"[^\"]+\""), "\"userUuid\":\"<redacted>\""))
+        val body = bodyJson.toRequestBody("application/json".toMediaType())
         val request = Request.Builder()
             .url("$apiBase/climbs/$endpointPath")
             .addHeader("Authorization", "Bearer $token")
-            .post(body)
+            .method(method, body)
             .build()
 
         try {

@@ -66,6 +66,7 @@ class KilterPublishRetryWorkerTest {
         createdAt = null,
         moveCount = 3L,
         kilterSyncedAt = kilterSyncedAt,
+        layoutId = 1L,
     )
 
     private fun worker() = KilterPublishRetryWorker(

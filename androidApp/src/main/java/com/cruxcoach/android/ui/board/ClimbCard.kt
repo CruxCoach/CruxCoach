@@ -88,7 +88,22 @@ internal fun ClimbCard(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false)
                     )
-                    if (climb.source == "local") {
+                    // "Entwurf" badge: source='local' is a NECESSARY condition
+                    // (the row was authored here) but not SUFFICIENT — once
+                    // the climb has been Nostr-published, sync_status flips
+                    // to 'published_nostr' (or 'published_kilter'/'..._both')
+                    // and the badge becomes misleading. Pre-fix the badge
+                    // also showed for already-published own climbs because
+                    // markClimbPublishedNostr only updates sync_status, not
+                    // source. Treat 'draft' / 'failed' / NULL as still-a-draft.
+                    val showDraftBadge = climb.source == "local" &&
+                        (climb.syncStatus == null ||
+                         climb.syncStatus == "draft" ||
+                         climb.syncStatus == "failed")
+                    if (climb.name.startsWith("TEST-")) {
+                        android.util.Log.d("ClimbCard", "badge-eval name=${climb.name} source=${climb.source} sync_status=${climb.syncStatus} kilter_status=${climb.kilterStatus} → showDraft=$showDraftBadge")
+                    }
+                    if (showDraftBadge) {
                         Surface(
                             color = OrangeAccent.copy(alpha = 0.18f),
                             contentColor = OrangeAccent,

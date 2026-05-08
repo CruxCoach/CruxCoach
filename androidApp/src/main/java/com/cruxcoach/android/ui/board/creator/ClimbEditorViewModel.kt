@@ -189,6 +189,29 @@ class ClimbEditorViewModel @Inject constructor(
         // race + then both queries no-op cleanly.
         val ownPubkey = runCatching { nostrSigner.getPublicKeyHex() }.getOrNull()
         if (editUuid != null) {
+            // Kilter-immutability gate: a climb that was successfully
+            // mirrored to Kilter ('synced') OR whose update Kilter
+            // refused ('diverged') is frozen on the Kilter side. Local
+            // edits would diverge from Kilter (cron pulls Kilter →
+            // Blossom-bundle is stale w.r.t. our latest Nostr
+            // replaceable). Refuse to load the editor and surface a
+            // localized "use Remix instead" hint. The detail-screen
+            // already greys the Edit menu item; this is a defensive
+            // backstop for direct deep-links / older nav state.
+            val kilterState = withContext(Dispatchers.IO) {
+                runCatching { boardRepository.getKilterPublishState(editUuid) }.getOrNull()
+            }
+            if (kilterState?.status == "synced" || kilterState?.status == "diverged") {
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        errorMessage = appContext.getString(
+                            com.cruxcoach.android.R.string.climb_editor_load_failed_kilter_locked
+                        ),
+                    )
+                }
+                return
+            }
             val source = withContext(Dispatchers.IO) {
                 (ownPubkey?.let {
                     boardRepository.getMyClimbs(it)
@@ -213,7 +236,7 @@ class ClimbEditorViewModel @Inject constructor(
                             description = c.description, framesText = c.frames, source = "kilter",
                             syncStatus = "synced", createdByPubkey = null, nostrEventId = null,
                             nostrDTag = null, framesHash = null, createdAt = null, moveCount = c.storedMoveCount,
-                            kilterSyncedAt = null,
+                            kilterSyncedAt = null, layoutId = c.layoutId,
                         )
                     }
             }
@@ -303,7 +326,12 @@ class ClimbEditorViewModel @Inject constructor(
         val defaultAngle = userPreferences.boardAngle.first()
         val (size, placements, images, ledMap) = withContext(Dispatchers.IO) {
             val size = boardRepository.getProductSize(sizeId)
-            val placements = boardRepository.getAllPlacements().associateBy { it.placementId.toInt() }
+            // Filter to set_ids actually rendered for this layout — see
+            // BoardRepository.getPlacementsForLayout for the why. Without
+            // this the editor's tap-detection snaps to placements that
+            // belong to other sets and aren't visible in the photo.
+            val placements = boardRepository.getPlacementsForLayout(sizeId, layoutId)
+                .associateBy { it.placementId.toInt() }
             val images = boardRepository.getBoardImages(sizeId, layoutId)
             val led = boardRepository.getPlacementLedMap(sizeId)
             BoardLoad(size, placements, images, led)

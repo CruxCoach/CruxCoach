@@ -183,10 +183,17 @@ class CommunityClimbPublisher @Inject constructor(
 
         if (publishToKilter) {
             val boardSize = activeBoardSize()
+            // Kilter's climbConcat uses hole_id (not placement_id) — see
+            // BoardClimbParser.encodeClimbConcat docstring. Pull the
+            // placementId → holeId map and let the encoder resolve.
+            val pidToHoleId: Map<Int, Long> = runCatching { boardRepository.getAllPlacements() }
+                .getOrDefault(emptyList())
+                .associate { it.placementId.toInt() to it.holeId }
             val framesClimbConcat = BoardClimbParser.encodeClimbConcat(
                 state.selectedHolds.entries
                     .sortedBy { it.key }
-                    .map { com.cruxcoach.domain.board.BoardHold(it.key, it.value) }
+                    .map { com.cruxcoach.domain.board.BoardHold(it.key, it.value) },
+                pidToHoleId,
             )
             runCatching {
                 // Edit branches into update-climb/transaction. We only

@@ -104,6 +104,8 @@
     <string name="climb_detail_badge_on_kilter">On Kilter</string>
     <string name="climb_detail_badge_cruxcoach_only">CruxCoach community only</string>
     <string name="climb_detail_badge_kilter_diverged">Edited only here, original on Kilter</string>
+    <string name="climb_detail_edit_locked_kilter">Locked — published to Kilter (immutable)</string>
+    <string name="climb_editor_load_failed_kilter_locked">This climb is published to Kilter and cannot be edited. Use the Remix action to start a fresh climb based on it.</string>
 
     <!-- Nostr profile editor (settings) -->
     <string name="nostr_profile_title">My Nostr Profile</string>

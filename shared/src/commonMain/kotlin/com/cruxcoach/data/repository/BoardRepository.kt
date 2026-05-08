@@ -225,6 +225,17 @@ interface BoardClimbQueries {
 /** Board layout, placement, LED, and product-size queries. */
 interface BoardLayoutQueries {
     fun getAllPlacements(): List<BoardPlacement>
+    /** Placements restricted to the set_ids that the active layout actually
+     *  paints onto the board photo (one row per layered board_image). The
+     *  unfiltered [getAllPlacements] mixes in placements from every set
+     *  the cron ever shipped — including ones whose holds aren't part of
+     *  the current Original/Homewall layout — so the editor's nearest-
+     *  hold tap detection would snap to invisible Off-Set placements
+     *  between the rendered holds, leaving a circle on what looks to the
+     *  user like empty board space. Falls back to all placements when no
+     *  board_images row exists for the (productSize, layout) combination
+     *  yet (very early sync state, mostly tests). */
+    fun getPlacementsForLayout(productSizeId: Int, layoutId: Int): List<BoardPlacement>
     fun getProductSize(id: Int): BoardSize?
     /** Product-sizes for a single Aurora `product_id`. The post-sync model
      *  picker and the Settings board-size dropdown both filter by the
@@ -497,6 +508,10 @@ data class CommunityClimbRow(
     /** Set when Kilter accepted the climb at least once. Used by the
      *  retry worker to pick between create and update endpoints. */
     val kilterSyncedAt: Long?,
+    /** Layout ID at row-creation time. The Kilter API rejects publishes
+     *  whose `product_name` doesn't match the placement IDs' product, so
+     *  the retry worker has to derive the product name from this. */
+    val layoutId: Long,
 )
 
 /** Climb-creation + community-climb queries (FEAT-003). */
@@ -769,6 +784,10 @@ interface CommunityClimbQueries {
      * climb has been tombstoned is excluded.
      */
     fun getOwnClimbStatsForBackup(pubkey: String): List<OwnClimbStatBackupRow>
+    /** Lookup the chosen angle for a single own climb. Returns null when
+     *  no climb_stats row exists yet (climb just published, stats row is
+     *  written after); caller falls back to a sensible default (40°). */
+    fun getOwnClimbAngle(uuid: String): Long?
     /**
      * Restore a single own climb from a backup envelope. Returns true
      * when a new row was inserted, false when an existing row with the
