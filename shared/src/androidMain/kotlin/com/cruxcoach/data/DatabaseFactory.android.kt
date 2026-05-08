@@ -78,6 +78,19 @@ actual class BoardDriverFactory(private val context: Context) {
         val HOT_PATH_INDEX_DDL: List<String> = listOf(
             "CREATE INDEX IF NOT EXISTS idx_climbs_listed ON climbs(is_listed)",
             "CREATE INDEX IF NOT EXISTS idx_climbs_frames_count ON climbs(is_listed, frames_count, uuid)",
+            // FEAT-003 + 0.1.4 community-climb indexes. Mirror the set in
+            // BoardDatabaseImporter.CLIMB_INDEXES — both lists are dropped
+            // before bulk import and rebuilt afterwards, and are also
+            // self-healed on app start if SQLite ever drops them. Without
+            // these entries here, a mid-import process kill would leave
+            // the device with no community-climb indexes and every
+            // origin/source/pubkey-filtered query would full-scan.
+            "CREATE INDEX IF NOT EXISTS idx_climbs_source ON climbs(source)",
+            "CREATE INDEX IF NOT EXISTS idx_climbs_frames_hash ON climbs(frames_hash)",
+            "CREATE INDEX IF NOT EXISTS idx_climbs_pubkey ON climbs(created_by_pubkey)",
+            "CREATE INDEX IF NOT EXISTS idx_climbs_origin ON climbs(origin)",
+            "CREATE INDEX IF NOT EXISTS idx_climbs_kilter_status ON climbs(kilter_status)",
+            "CREATE INDEX IF NOT EXISTS idx_climbs_nostr_via ON climbs(nostr_publish_via)",
             "CREATE INDEX IF NOT EXISTS idx_climb_stats_angle ON climb_stats(angle)",
             "CREATE INDEX IF NOT EXISTS idx_climb_stats_browse ON climb_stats(angle, difficulty_average, quality_average, ascensionist_count, benchmark_difficulty, climb_uuid)",
             "CREATE INDEX IF NOT EXISTS idx_climb_stats_by_popularity ON climb_stats(angle, ascensionist_count, difficulty_average, climb_uuid)",

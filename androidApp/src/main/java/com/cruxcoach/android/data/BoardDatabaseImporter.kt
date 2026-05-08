@@ -37,7 +37,26 @@ class BoardDatabaseImporter(
             "idx_climbs_listed" to
                     "CREATE INDEX idx_climbs_listed ON climbs(is_listed)",
             "idx_climbs_frames_count" to
-                    "CREATE INDEX idx_climbs_frames_count ON climbs(is_listed, frames_count, uuid)"
+                    "CREATE INDEX idx_climbs_frames_count ON climbs(is_listed, frames_count, uuid)",
+            // FEAT-003 + 0.1.4 community-climb indexes. Added to the
+            // bulk-import drop/rebuild dance so each INSERT during a fresh
+            // 270k-row import doesn't pay 6 extra index-maintenance writes
+            // per row — pre-fix, fresh installs spent 6+ minutes in the
+            // climbs phase on slower-eMMC devices because these indexes
+            // were live throughout. Keep this list byte-equivalent (modulo
+            // `IF NOT EXISTS`) to DatabaseFactory.HOT_PATH_INDEX_DDL.
+            "idx_climbs_source" to
+                    "CREATE INDEX idx_climbs_source ON climbs(source)",
+            "idx_climbs_frames_hash" to
+                    "CREATE INDEX idx_climbs_frames_hash ON climbs(frames_hash)",
+            "idx_climbs_pubkey" to
+                    "CREATE INDEX idx_climbs_pubkey ON climbs(created_by_pubkey)",
+            "idx_climbs_origin" to
+                    "CREATE INDEX idx_climbs_origin ON climbs(origin)",
+            "idx_climbs_kilter_status" to
+                    "CREATE INDEX idx_climbs_kilter_status ON climbs(kilter_status)",
+            "idx_climbs_nostr_via" to
+                    "CREATE INDEX idx_climbs_nostr_via ON climbs(nostr_publish_via)",
         )
 
         internal val STAT_INDEXES = arrayOf(
