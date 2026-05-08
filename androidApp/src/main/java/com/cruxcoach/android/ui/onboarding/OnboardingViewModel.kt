@@ -480,6 +480,15 @@ class OnboardingViewModel @Inject constructor(
                     // through Settings either.
                     interval = s.backupFrequency,
                 )
+                // Commit the board-step selection even when the user accepted
+                // the displayed defaults without tapping a chip. Without this,
+                // the DataStore keys stay unset and BoardSyncViewModel's
+                // checkFirstSyncModelSelection (gated on
+                // `isBoardProductSizeDefault`) would re-prompt the model
+                // dialog right after the first board sync — duplicating
+                // the choice the user just made in the BOARD_SETUP step.
+                userPreferences.setBoardLayoutId(s.boardLayoutId)
+                userPreferences.setBoardProductSizeId(s.boardProductSizeId)
                 userPreferences.setOnboardingCompleted(true)
                 // Suppress the "what's new" dialog for features the user
                 // already chose during onboarding — they would otherwise
