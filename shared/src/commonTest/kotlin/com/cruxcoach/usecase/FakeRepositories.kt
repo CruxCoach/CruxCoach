@@ -172,7 +172,7 @@ class FakeBoardRepository : BoardRepository {
 
     override fun getAllPlacements(): List<BoardPlacement> = emptyList()
     override fun getProductSize(id: Int): BoardSize? = null
-    override fun getAllProductSizes(): List<BoardSize> = emptyList()
+    override fun getAllProductSizes(productId: Long): List<BoardSize> = emptyList()
     override fun getBoardImages(productSizeId: Int, layoutId: Int): List<BoardImage> = emptyList()
     override fun getPlacementLedMap(productSizeId: Int): Map<Int, Int> = emptyMap()
     override fun getMirrorPlacementMap(productSizeId: Int): Map<Int, Int> = emptyMap()

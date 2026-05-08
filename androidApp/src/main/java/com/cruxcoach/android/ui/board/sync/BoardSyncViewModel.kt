@@ -88,8 +88,10 @@ class BoardSyncViewModel @Inject constructor(
             val isDefault = userPreferences.isBoardProductSizeDefault.first()
             if (!isDefault) return@launch
 
+            val layoutId = userPreferences.boardLayoutId.first()
+            val productId = layoutToProductId(layoutId)
             val sizes = withContext(Dispatchers.IO) {
-                boardRepository.getAllProductSizes()
+                boardRepository.getAllProductSizes(productId)
             }
             if (sizes.isEmpty()) return@launch
             val currentId = userPreferences.boardProductSizeId.first()
@@ -97,6 +99,12 @@ class BoardSyncViewModel @Inject constructor(
                 it.copy(showDialog = true, productSizes = sizes, selectedId = currentId)
             }
         }
+    }
+
+    private fun layoutToProductId(layoutId: Int): Long = when (layoutId) {
+        com.cruxcoach.android.data.BoardConstants.KILTER_HOMEWALL_LAYOUT ->
+            com.cruxcoach.android.data.BoardConstants.KILTER_HOMEWALL_PRODUCT_ID.toLong()
+        else -> com.cruxcoach.android.data.BoardConstants.KILTER_PRODUCT_ID.toLong()
     }
 
     fun confirmBoardModel(id: Int) {

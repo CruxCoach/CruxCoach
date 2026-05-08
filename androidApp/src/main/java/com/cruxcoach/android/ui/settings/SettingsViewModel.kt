@@ -359,8 +359,8 @@ class SettingsViewModel @Inject constructor(
             userPreferences.setBoardLayoutId(layoutId)
             val targetProductId = layoutToProductId(layoutId)
             val newSize = withContext(Dispatchers.IO) {
-                boardRepository.getAllProductSizes()
-                    .firstOrNull { it.productId.toInt() == targetProductId }
+                boardRepository.getAllProductSizes(targetProductId.toLong())
+                    .firstOrNull()
             }
             val newSizeId = newSize?.id?.toInt()
                 ?: when (layoutId) {
@@ -388,7 +388,8 @@ class SettingsViewModel @Inject constructor(
         if (_state.value.productSizes.isNotEmpty()) return
         viewModelScope.launch {
             val sizes = withContext(Dispatchers.IO) {
-                boardRepository.getAllProductSizes()
+                val productId = layoutToProductId(_state.value.boardLayoutId).toLong()
+                boardRepository.getAllProductSizes(productId)
             }
             _state.update { it.copy(productSizes = sizes) }
         }

@@ -226,7 +226,13 @@ interface BoardClimbQueries {
 interface BoardLayoutQueries {
     fun getAllPlacements(): List<BoardPlacement>
     fun getProductSize(id: Int): BoardSize?
-    fun getAllProductSizes(): List<BoardSize>
+    /** Product-sizes for a single Aurora `product_id`. The post-sync model
+     *  picker and the Settings board-size dropdown both filter by the
+     *  user's currently-active layout — Original (Kilter id=1) and
+     *  Homewall (Kilter id=7) ship with disjoint size sets. Pre-fix this
+     *  hardcoded id=1, silently dropping Homewall sizes from every UI
+     *  reachable through this method. */
+    fun getAllProductSizes(productId: Long): List<BoardSize>
     fun getBoardImages(productSizeId: Int, layoutId: Int): List<BoardImage>
     fun getPlacementLedMap(productSizeId: Int): Map<Int, Int>
     fun getMirrorPlacementMap(productSizeId: Int): Map<Int, Int>

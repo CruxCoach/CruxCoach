@@ -258,8 +258,8 @@ class BoardRepositoryImpl(
         }
     }
 
-    override fun getAllProductSizes(): List<BoardSize> {
-        return q.getAllProductSizes(SupportedBoard.KILTER.productId).executeAsList().map {
+    override fun getAllProductSizes(productId: Long): List<BoardSize> {
+        return q.getAllProductSizes(productId).executeAsList().map {
             BoardSize(it.id, it.product_id, it.name, it.edge_left, it.edge_right, it.edge_bottom, it.edge_top, it.image_filename)
         }
     }
