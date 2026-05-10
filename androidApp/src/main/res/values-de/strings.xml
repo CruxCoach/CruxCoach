@@ -1360,8 +1360,10 @@
     <string name="import_waistline_success">Waistline-Import: %1$d Wert(e) importiert</string>
     <string name="import_select_categories">Kategorien zum Importieren auswählen:</string>
     <string name="import_pubkey_mismatch_title">Anderer CruxCoach Account</string>
-    <string name="import_pubkey_mismatch_body">Dieses Backup stammt von einem anderen CruxCoach Account (%1$s). Die Daten werden in deinen aktuellen Account importiert. Dies kann für eine Account-Migration gewünscht sein.</string>
+    <string name="import_pubkey_mismatch_body">Dieses Backup wurde mit einem anderen CruxCoach-Schlüssel erstellt (%1$s). Die Daten werden in deinen aktuellen Account übernommen. Genau richtig, wenn du deinen alten nsec verloren hast oder bewusst die Identität wechselst. Hinweis: Climbs, die du importierst und später erneut zu Kilter publishst, erscheinen unter deinem aktuellen Kilter-Account.</string>
     <string name="import_pubkey_mismatch_confirm">Trotzdem importieren</string>
+    <string name="import_pubkey_override_banner_title">Import aus anderem Schlüssel</string>
+    <string name="import_pubkey_override_banner_body">Du importierst Daten aus %1$s in deinen aktuellen Account. Climbs, die du später erneut publishst, werden deinem aktuellen Kilter-Account zugeordnet.</string>
     <string name="month_apr">Apr</string>
     <string name="month_aug">Aug</string>
     <string name="month_dec">Dez</string>

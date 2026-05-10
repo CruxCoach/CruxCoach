@@ -1314,8 +1314,10 @@
     <string name="import_waistline_success">Waistline import: %1$d value(s) imported</string>
     <string name="import_select_categories">Select categories to import:</string>
     <string name="import_pubkey_mismatch_title">Different CruxCoach Account</string>
-    <string name="import_pubkey_mismatch_body">This backup is from a different CruxCoach account (%1$s). Data will be imported into your current account. This may be desired for account migration.</string>
+    <string name="import_pubkey_mismatch_body">This backup was created with a different CruxCoach account (%1$s). The data will be merged into your current account. This is the right path if you lost your previous nsec key or are deliberately migrating accounts. Note: any climbs you import and later republish to Kilter will appear under your current Kilter account.</string>
     <string name="import_pubkey_mismatch_confirm">Import Anyway</string>
+    <string name="import_pubkey_override_banner_title">Import from a different key</string>
+    <string name="import_pubkey_override_banner_body">You are importing data from %1$s into your current account. Climbs you republish later will be attributed to your current Kilter account.</string>
     <string name="month_apr">Apr</string>
     <string name="month_aug">Aug</string>
     <string name="month_dec">Dec</string>

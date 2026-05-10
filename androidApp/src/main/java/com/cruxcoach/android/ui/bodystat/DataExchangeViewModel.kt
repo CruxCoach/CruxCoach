@@ -2,6 +2,7 @@ package com.cruxcoach.android.ui.bodystat
 
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.R
@@ -48,8 +49,23 @@ data class DataExchangeState(
     val pendingImportJson: String? = null,
     val detectedWaistline: Boolean = false,
     val isImporting: Boolean = false,
+    /** Set when the preview detected that the backup's `nostrPubkey`
+     *  envelope field doesn't match the active signer. Drives a one-shot
+     *  warning dialog in the UI; the user picks "import anyway" or
+     *  "cancel". */
     val importPubkeyMismatch: Boolean = false,
     val importSourcePubkey: String? = null,
+    /** Persists across the Mismatch dialog being dismissed: `true` once
+     *  the user has explicitly accepted importing across an nsec
+     *  boundary (lost-key recovery, deliberate identity migration). UI
+     *  shows a persistent inline banner while this is `true` so the
+     *  user can't forget the override before tapping "Import"; the
+     *  ViewModel passes `expectedNostrPubkey = null` into the codec on
+     *  this branch and emits an audit-log line. The default-path
+     *  (`false`) wires `expectedNostrPubkey = currentPubkey` so the
+     *  codec hard-refuses any mismatch — closes the historical bypass
+     *  where the codec defense was dead-code on this UI flow. */
+    val importMismatchAccepted: Boolean = false,
 
     // Feedback
     val message: String? = null,
@@ -233,6 +249,25 @@ class DataExchangeViewModel @Inject constructor(
         _state.update { it.copy(isImporting = true, error = null) }
         viewModelScope.launch {
             try {
+                val currentPubkey = nostrKeyStore.getOrCreateKeyPair().pubKey.toHexKey()
+                // Default-path: pass the active pubkey so the codec
+                // hard-refuses any mismatch. Override-path: user has
+                // explicitly accepted the cross-pubkey import via the
+                // mismatch dialog (lost-key recovery, deliberate
+                // identity migration) — pass null to disable the codec
+                // check, but emit an audit-log line so the override is
+                // attributable in logcat when triaging "why are these
+                // climbs in my account?".
+                val expectedPubkey: String? = if (s.importMismatchAccepted) {
+                    Log.w(
+                        TAG,
+                        "import-with-pubkey-override: source=${s.importSourcePubkey?.take(8) ?: "?"}…" +
+                            " active=${currentPubkey.take(8)}…",
+                    )
+                    null
+                } else {
+                    currentPubkey
+                }
                 val result = withContext(Dispatchers.IO) {
                     CruxCoachBackup.import(
                         jsonString = jsonString,
@@ -244,7 +279,8 @@ class DataExchangeViewModel @Inject constructor(
                         planRepository = planRepository,
                         personalBoardRepo = personalBoardRepo,
                         boardRepository = boardRepository,
-                        transactionRunner = transactionRunner
+                        transactionRunner = transactionRunner,
+                        expectedNostrPubkey = expectedPubkey,
                     )
                 }
 
@@ -270,6 +306,8 @@ class DataExchangeViewModel @Inject constructor(
                     importPreview = null,
                     pendingImportJson = null,
                     importCategories = emptySet(),
+                    importMismatchAccepted = false,
+                    importSourcePubkey = null,
                     message = context.getString(R.string.import_result_summary, "$summary$dupNote")
                 ) }
             } catch (e: Exception) {
@@ -279,8 +317,11 @@ class DataExchangeViewModel @Inject constructor(
     }
 
     fun dismissPubkeyMismatch() {
+        // Cancel-branch from the mismatch dialog: discard the pending
+        // import entirely. Resets every override-related field.
         _state.update { it.copy(
             importPubkeyMismatch = false,
+            importMismatchAccepted = false,
             importSourcePubkey = null,
             importPreview = null,
             pendingImportJson = null,
@@ -289,9 +330,14 @@ class DataExchangeViewModel @Inject constructor(
     }
 
     fun confirmMismatchImport() {
+        // Override-branch from the mismatch dialog: user has explicitly
+        // accepted importing across nsec boundaries (legitimate use:
+        // lost-key recovery from a local file, deliberate migration).
+        // The flag drives both the persistent inline warning in the UI
+        // and the `expectedNostrPubkey = null` branch in [confirmImport].
         _state.update { it.copy(
             importPubkeyMismatch = false,
-            importSourcePubkey = null
+            importMismatchAccepted = true,
         ) }
     }
 
@@ -301,11 +347,16 @@ class DataExchangeViewModel @Inject constructor(
             pendingImportJson = null,
             importCategories = emptySet(),
             importPubkeyMismatch = false,
+            importMismatchAccepted = false,
             importSourcePubkey = null
         ) }
     }
 
     fun clearMessage() {
         _state.update { it.copy(message = null, error = null) }
+    }
+
+    private companion object {
+        const val TAG = "DataExchangeVM"
     }
 }
