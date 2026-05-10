@@ -12,10 +12,15 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.cruxcoach.android.data.UserPreferences
+import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.domain.board.BoardClimbParser
+import dagger.Module
+import dagger.Provides
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
+import dagger.hilt.InstallIn
+import dagger.hilt.components.SingletonComponent
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
@@ -39,6 +44,35 @@ import kotlinx.coroutines.flow.first
  * For the self path the user's Keycloak token is enough; this is the
  * only retry mode v0.1.4 ships.
  */
+/**
+ * Resolves the active Nostr pubkey for the worker without pulling
+ * [NostrSigner] (and its Quartz superclass) into the test classpath.
+ * Quartz's signer classes are compiled against Java 21; the project's
+ * test JVM is Java 17, so MockK / ByteBuddy can't transform any direct
+ * dependency on `NostrSigner` in unit tests. This indirection is the
+ * smallest seam — production binds it to `nostrSigner::getPublicKeyHex`
+ * via [KilterPublishRetryModule]; tests inject a plain lambda mock.
+ *
+ * Returns null when no pubkey is currently available (signer not
+ * initialised, key derivation threw). The worker treats that as
+ * "skip this tick".
+ */
+fun interface ActivePubkeyResolver {
+    fun resolve(): String?
+}
+
+@Module
+@InstallIn(SingletonComponent::class)
+internal object KilterPublishRetryModule {
+    @Provides
+    fun provideActivePubkeyResolver(signer: NostrSigner): ActivePubkeyResolver =
+        ActivePubkeyResolver {
+            runCatching { signer.getPublicKeyHex() }
+                .getOrNull()
+                ?.takeIf { it.isNotBlank() }
+        }
+}
+
 @HiltWorker
 class KilterPublishRetryWorker @AssistedInject constructor(
     @Assisted appContext: Context,
@@ -47,6 +81,7 @@ class KilterPublishRetryWorker @AssistedInject constructor(
     private val apiClient: KilterApiClient,
     private val tokenStore: KilterTokenStore,
     private val userPreferences: UserPreferences,
+    private val activePubkeyResolver: ActivePubkeyResolver,
 ) : CoroutineWorker(appContext, workerParams) {
 
     override suspend fun doWork(): androidx.work.ListenableWorker.Result {
@@ -68,7 +103,22 @@ class KilterPublishRetryWorker @AssistedInject constructor(
             return androidx.work.ListenableWorker.Result.success()
         }
 
-        Log.i(TAG, "worker start (publishEnabled=true, hasToken=true)")
+        // Resolve the active Nostr pubkey BEFORE listing the queue —
+        // the queue is pubkey-scoped (see getClimbsAwaitingKilterRetry
+        // SQL) so a backup-restore from a different nsec or an
+        // identity-switch on the same device cannot drain rows authored
+        // under another identity onto the active Kilter account. If the
+        // signer can't resolve a pubkey (key not yet initialised, or
+        // the keystore is genuinely empty in some pre-onboarding edge),
+        // there's nothing this worker can safely do — succeed and wait
+        // for the next tick.
+        val pubkey = activePubkeyResolver.resolve()
+        if (pubkey == null) {
+            Log.i(TAG, "skip: no nostr pubkey available")
+            return androidx.work.ListenableWorker.Result.success()
+        }
+
+        Log.i(TAG, "worker start (publishEnabled=true, hasToken=true, pubkey=${pubkey.take(8)}…)")
 
         // Recover stuck-'pending' rows before listing the queue.
         // CommunityClimbPublisher's try/catch already downgrades on a
@@ -83,7 +133,7 @@ class KilterPublishRetryWorker @AssistedInject constructor(
             .getOrDefault(0L)
         if (swept > 0) Log.i(TAG, "swept $swept stuck-pending row(s) back to 'failed'")
 
-        val rows = runCatching { boardRepository.getClimbsAwaitingKilterRetry() }
+        val rows = runCatching { boardRepository.getClimbsAwaitingKilterRetry(pubkey) }
             .getOrElse {
                 Log.w(TAG, "could not list retry candidates", it)
                 return androidx.work.ListenableWorker.Result.retry()

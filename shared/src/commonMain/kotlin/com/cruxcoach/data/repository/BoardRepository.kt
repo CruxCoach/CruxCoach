@@ -741,8 +741,15 @@ interface CommunityClimbQueries {
     fun getKilterPublishAttempts(climbUuid: String, limit: Int = 50): List<KilterPublishAttempt>
     /** Aggregate counters for the Kilter-account UI's queue health card. */
     fun getKilterPublishQueueStats(): KilterPublishQueueStats
-    /** Climbs with `origin='cruxcoach'`, Nostr-published, awaiting Kilter sync. */
-    fun getClimbsAwaitingKilterRetry(): List<CommunityClimbRow>
+    /**
+     * Climbs with `origin='cruxcoach'`, Nostr-published, awaiting Kilter
+     * sync, scoped to [pubkey]. Drained by [KilterPublishRetryWorker].
+     * Pubkey-scope mirrors [getClimbsAwaitingNostrRetry] so a backup
+     * restored from a different nsec (DataExchange override path) or an
+     * identity-switch on the same device cannot push climbs authored
+     * under another identity to the active Kilter account.
+     */
+    fun getClimbsAwaitingKilterRetry(pubkey: String): List<CommunityClimbRow>
     /**
      * Local climbs the editor sent to relays where no relay accepted
      * (`sync_status='failed'`) — the Nostr-side retry queue, scoped to

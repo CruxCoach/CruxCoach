@@ -932,8 +932,8 @@ class BoardRepositoryImpl(
     override fun getClimbsAwaitingNostrRetry(pubkey: String): List<CommunityClimbRow> =
         q.getClimbsAwaitingNostrRetry(pubkey).executeAsList().map { it.toCommunityRow() }
 
-    override fun getClimbsAwaitingKilterRetry(): List<CommunityClimbRow> =
-        q.getClimbsAwaitingKilterRetry().executeAsList().map { it.toCommunityRow() }
+    override fun getClimbsAwaitingKilterRetry(pubkey: String): List<CommunityClimbRow> =
+        q.getClimbsAwaitingKilterRetry(pubkey).executeAsList().map { it.toCommunityRow() }
 
     override fun getDraftClimbs(pubkey: String?): List<CommunityClimbRow> =
         q.getDraftClimbs(pubkey).executeAsList().map { it.toCommunityRow() }
