@@ -94,6 +94,29 @@ data class AngleClimbCount(
     val climbCount: Long
 )
 
+/**
+ * One row from the community-climb dead-letter queue (M16). [rawEventJson]
+ * is the original signed Kind-30078 payload — re-validating its Schnorr
+ * signature on retry is cheap and keeps the retry path safe against a
+ * corrupted DB row.
+ */
+data class CommunityClimbDeadLetter(
+    val uuid: String,
+    val eventId: String,
+    val eventCreatedAt: Long,
+    val rawEventJson: String,
+    val firstFailedAtMs: Long,
+    val lastFailedAtMs: Long,
+    val retryCount: Long,
+    val lastErrorExcerpt: String?,
+)
+
+/** Two-counter snapshot for the dead-letter queue diagnostics UI. */
+data class DeadLetterCounts(
+    val total: Long,
+    val abandoned: Long,
+)
+
 data class AngleOption(
     val angle: Int,
     val difficultyAverage: Double?,
@@ -630,6 +653,47 @@ interface CommunityClimbQueries {
         qualityAverage: Double?,
         bounds: com.cruxcoach.domain.community.ClimbBounds?,
     )
+
+    // ─── Community-climb dead-letter queue (M16) ──────────────────────
+    // Failed Kind-30078 upserts (SQLite layer threw — disk full, lock,
+    // unexpected constraint) get persisted here so the subscriber can
+    // retry on next start. Without this, the cursor advances over the
+    // failed event on the very next successful one and NIP-01 Live-REQ
+    // never re-delivers it.
+
+    /**
+     * Atomic insert-or-increment for a failed community-climb upsert.
+     * On first failure for [uuid] inserts a new row with retry_count=1;
+     * on subsequent failures bumps retry_count and overwrites
+     * `last_failed_at_ms` + `last_error_excerpt`. Wraps both branches
+     * in a SQLDelight transaction for safety against parallel writers.
+     */
+    fun recordCommunityClimbDeadLetter(
+        uuid: String,
+        eventId: String,
+        eventCreatedAt: Long,
+        rawEventJson: String,
+        nowMs: Long,
+        errorExcerpt: String?,
+    )
+
+    /**
+     * Drained by the subscriber's retry pass. [maxRetries] is the
+     * cap-application boundary: rows with retry_count < it come back
+     * for another try, rows >= it are abandoned (still readable for
+     * diagnostics). [limit] bounds per-call cost — pass a small
+     * number (~25) so a giant backlog doesn't lock the DB.
+     */
+    fun getRetriableCommunityClimbDeadLetters(
+        maxRetries: Long,
+        limit: Long,
+    ): List<CommunityClimbDeadLetter>
+
+    /** Drop a DLQ row after a successful retry-upsert. */
+    fun deleteCommunityClimbDeadLetter(uuid: String)
+
+    /** Aggregate counts for a future "Failed climb imports" UI card. */
+    fun getCommunityClimbDeadLetterCounts(maxRetries: Long): DeadLetterCounts
     /**
      * Flip a draft to "published_nostr" after the relay accepts the event.
      * `pubkey` is the user's own hex pubkey — persisted so "my climbs"

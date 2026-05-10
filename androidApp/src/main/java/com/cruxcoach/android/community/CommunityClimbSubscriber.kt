@@ -148,6 +148,15 @@ class CommunityClimbSubscriber @Inject constructor(
             // events" instead of "subscription never starts".
             runCatching { seedCursorFromManifestIfFirstRun() }
                 .onFailure { Log.w(TAG, "seedCursorFromManifestIfFirstRun failed; continuing without seed", it) }
+            // Drain the DLQ once before the live sub takes over. Any
+            // events that failed in a previous session sit in
+            // community_climb_dead_letters with their signed payload
+            // intact; on a fresh start the SQLite issue (disk full,
+            // lock contention, transient OOM) is usually gone, so a
+            // single retry pass picks them up. Best-effort — a DLQ
+            // failure here doesn't block the live subscription.
+            runCatching { retryDeadLetters() }
+                .onFailure { Log.w(TAG, "DLQ initial retry failed; deferring to next start", it) }
             try {
                 runSubscriptionLoop()
             } finally {
@@ -185,6 +194,78 @@ class CommunityClimbSubscriber @Inject constructor(
     fun stop() {
         job?.cancel()
         job = null
+    }
+
+    /**
+     * Replay the dead-letter queue: for every persisted Kind-30078
+     * event whose previous upsert failed, re-parse the signed JSON,
+     * re-validate the Schnorr signature (cheap; the bytes are exactly
+     * what the relay sent), and route it through [handleClimbEvent] —
+     * the same code path live events take, so the stale-event guard,
+     * cross-author check, and absorption rules apply on retry too.
+     *
+     * Rows whose upsert succeeds are deleted from the DLQ via the
+     * happy path inside [handleClimbEvent]. Rows that fail again get
+     * their retry_count bumped by [recordCommunityClimbDeadLetter];
+     * once a row's retry_count reaches [MAX_DEAD_LETTER_RETRIES] the
+     * SQL `getRetriableDeadLetters` filter excludes it from future
+     * retries (the row is still readable for a future diagnostics UI).
+     *
+     * Public so a Settings/health-card "retry now" button can call it
+     * without restarting the subscriber.
+     */
+    suspend fun retryDeadLetters() {
+        val rows = runCatching {
+            boardRepository.getRetriableCommunityClimbDeadLetters(
+                maxRetries = MAX_DEAD_LETTER_RETRIES,
+                limit = MAX_DEAD_LETTER_BATCH,
+            )
+        }.getOrElse {
+            Log.w(TAG, "DLQ retry: list query failed", it)
+            return
+        }
+        if (rows.isEmpty()) return
+        Log.i(TAG, "DLQ retry: ${rows.size} candidate(s)")
+        for (row in rows) {
+            // Treat each row's parse as best-effort: a corrupted JSON
+            // (storage bit-flip, hostile DB rewrite) shouldn't poison
+            // the rest of the batch. The signature re-verify catches
+            // anything that doesn't match the original signed bytes.
+            try {
+                val event = Event.fromJson(row.rawEventJson)
+                if (!event.verifySignature()) {
+                    Log.w(TAG, "DLQ retry: signature invalid for uuid=${row.uuid} — abandoning")
+                    runCatching { boardRepository.deleteCommunityClimbDeadLetter(row.uuid) }
+                    continue
+                }
+                if (event.kind != KIND_30078) {
+                    Log.w(TAG, "DLQ retry: wrong kind=${event.kind} for uuid=${row.uuid} — abandoning")
+                    runCatching { boardRepository.deleteCommunityClimbDeadLetter(row.uuid) }
+                    continue
+                }
+                handleClimbEvent(event, row.rawEventJson)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "DLQ retry: throw uuid=${row.uuid}; staying in queue", e)
+                // recordCommunityClimbDeadLetter inside handleClimbEvent
+                // already bumped retry_count if upsert threw. A throw
+                // OUT of the parse/verify branch is rarer; bump
+                // explicitly so a poisoned row eventually hits the
+                // MAX_DEAD_LETTER_RETRIES cap and stops looping.
+                runCatching {
+                    boardRepository.recordCommunityClimbDeadLetter(
+                        uuid = row.uuid,
+                        eventId = row.eventId,
+                        eventCreatedAt = row.eventCreatedAt,
+                        rawEventJson = row.rawEventJson,
+                        nowMs = System.currentTimeMillis(),
+                        errorExcerpt = (e.message ?: e::class.simpleName)
+                            .orEmpty().take(MAX_DLQ_ERROR_EXCERPT),
+                    )
+                }
+            }
+        }
     }
 
     private suspend fun runSubscriptionLoop() {
@@ -304,7 +385,7 @@ class CommunityClimbSubscriber @Inject constructor(
             return
         }
         when (event.kind) {
-            KIND_30078 -> handleClimbEvent(event)
+            KIND_30078 -> handleClimbEvent(event, eventJson)
             KIND_DELETION -> handleDeletionEvent(event)
             else -> {
                 Log.w(TAG, "skip event of unsupported kind=${event.kind}")
@@ -321,7 +402,7 @@ class CommunityClimbSubscriber @Inject constructor(
      *    pipeline plus the L3 absorption check that refuses re-importing
      *    a climb whose local row already carries `is_deleted=1`.
      */
-    private suspend fun handleClimbEvent(event: Event) {
+    private suspend fun handleClimbEvent(event: Event, rawEventJson: String) {
         val parsedClimb = runCatching { ParsedClimb.from(event) }.getOrNull() ?: return
 
         // Self-filter: skip events we authored ourselves. Relays echo
@@ -529,8 +610,35 @@ class CommunityClimbSubscriber @Inject constructor(
                 qualityAverage = null,
                 bounds = parsedClimb.bounds,
             )
+            // Successful upsert wins. Drop a previous DLQ entry (if any
+            // — the row may have failed earlier in this session before
+            // the next retry path retried it). No-op when no DLQ entry
+            // exists for this uuid.
+            runCatching { boardRepository.deleteCommunityClimbDeadLetter(parsedClimb.uuid) }
+                .onFailure { Log.w(TAG, "DLQ cleanup after success failed uuid=${parsedClimb.uuid}", it) }
+        } catch (e: CancellationException) {
+            // Coroutine cancellation must propagate so the live-sub
+            // shuts down cleanly when the subscriber's job is cancelled
+            // (app stop, signer outage). NOT a DLQ-able failure.
+            throw e
         } catch (e: Exception) {
-            Log.w(TAG, "upsertCommunityClimb failed for uuid=${parsedClimb.uuid}", e)
+            // Persist the raw signed event in the DLQ so the next
+            // start-up (or an explicit retryDeadLetters call) can
+            // re-run the upsert. Without the DLQ the cursor would
+            // advance past this event on the very next successful
+            // upsert and NIP-01 Live-REQ would never re-deliver it,
+            // causing a permanent silent data-loss for this uuid.
+            Log.w(TAG, "upsertCommunityClimb failed uuid=${parsedClimb.uuid} — enqueuing for retry", e)
+            runCatching {
+                boardRepository.recordCommunityClimbDeadLetter(
+                    uuid = parsedClimb.uuid,
+                    eventId = parsedClimb.eventId,
+                    eventCreatedAt = parsedClimb.createdAt,
+                    rawEventJson = rawEventJson,
+                    nowMs = System.currentTimeMillis(),
+                    errorExcerpt = (e.message ?: e::class.simpleName).orEmpty().take(MAX_DLQ_ERROR_EXCERPT),
+                )
+            }.onFailure { Log.w(TAG, "DLQ enqueue failed uuid=${parsedClimb.uuid}", it) }
             return
         }
 
@@ -913,6 +1021,26 @@ class CommunityClimbSubscriber @Inject constructor(
         // hammering relays for a setter who genuinely never published a
         // Kind 0 (in which case the npub stub is the correct steady state).
         const val RESOLVE_RETRY_TTL_MS = 30L * 60L * 1000L
+
+        /** Cap on retries per dead-letter row. Past this the row is
+         *  considered abandoned — it stays in the DLQ for diagnostics
+         *  but the retry pass skips it. 5 covers 5 app-launches /
+         *  manual-retry-button presses; if every one fails the issue
+         *  is structural (corrupt event, schema-mismatch row) and
+         *  hammering on it indefinitely doesn't help. */
+        const val MAX_DEAD_LETTER_RETRIES = 5L
+
+        /** Per-call DLQ batch size. Bounds the cost of a single retry
+         *  pass so a giant accumulated backlog doesn't lock the writer
+         *  for seconds. The retry method runs to completion within a
+         *  single batch; subsequent batches come from the next start
+         *  or manual trigger. */
+        const val MAX_DEAD_LETTER_BATCH = 25L
+
+        /** Truncation for the `last_error_excerpt` column. Keeps
+         *  pathological exception messages (e.g. SQLiteException with
+         *  the full failing SQL inlined) out of the DB. */
+        const val MAX_DLQ_ERROR_EXCERPT = 200
 
         /** d-tag prefix that the publisher embeds for [pubkey] (FEAT-003 §4.2). */
         fun communityClimbDTagPrefix(pubkey: String): String =

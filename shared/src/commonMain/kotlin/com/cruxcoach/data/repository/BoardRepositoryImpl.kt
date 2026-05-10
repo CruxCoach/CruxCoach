@@ -750,6 +750,73 @@ class BoardRepositoryImpl(
         }
     }
 
+    // ── Community-climb dead-letter queue (M16) ────────────────
+
+    override fun recordCommunityClimbDeadLetter(
+        uuid: String,
+        eventId: String,
+        eventCreatedAt: Long,
+        rawEventJson: String,
+        nowMs: Long,
+        errorExcerpt: String?,
+    ) {
+        // Atomic insert-or-increment: try INSERT OR IGNORE first, and
+        // fall through to UPDATE iff the row already exists (changes()
+        // = 0 on conflict). SQLite 3.18 (Android API 26 baseline)
+        // doesn't speak `ON CONFLICT … DO UPDATE`, so the two-step
+        // form lives here in code instead of in the SQL file.
+        q.transaction {
+            q.insertDeadLetter(
+                uuid = uuid,
+                event_id = eventId,
+                event_created_at = eventCreatedAt,
+                raw_event_json = rawEventJson,
+                first_failed_at_ms = nowMs,
+                last_failed_at_ms = nowMs,
+                last_error_excerpt = errorExcerpt,
+            )
+            val inserted = q.lastClimbsChangeCount().executeAsOne() > 0L
+            if (!inserted) {
+                q.incrementDeadLetterRetry(
+                    last_failed_at_ms = nowMs,
+                    last_error_excerpt = errorExcerpt,
+                    uuid = uuid,
+                )
+            }
+        }
+    }
+
+    override fun getRetriableCommunityClimbDeadLetters(
+        maxRetries: Long,
+        limit: Long,
+    ): List<CommunityClimbDeadLetter> =
+        q.getRetriableDeadLetters(maxRetries = maxRetries, limit = limit)
+            .executeAsList()
+            .map { row ->
+                CommunityClimbDeadLetter(
+                    uuid = row.uuid,
+                    eventId = row.event_id,
+                    eventCreatedAt = row.event_created_at,
+                    rawEventJson = row.raw_event_json,
+                    firstFailedAtMs = row.first_failed_at_ms,
+                    lastFailedAtMs = row.last_failed_at_ms,
+                    retryCount = row.retry_count,
+                    lastErrorExcerpt = row.last_error_excerpt,
+                )
+            }
+
+    override fun deleteCommunityClimbDeadLetter(uuid: String) {
+        q.deleteDeadLetter(uuid)
+    }
+
+    override fun getCommunityClimbDeadLetterCounts(maxRetries: Long): DeadLetterCounts {
+        val row = q.getDeadLetterCounts(maxRetries).executeAsOne()
+        return DeadLetterCounts(
+            total = row.total_count,
+            abandoned = row.abandoned_count ?: 0L,
+        )
+    }
+
     override fun markClimbPublishedNostr(
         uuid: String,
         nostrEventId: String,

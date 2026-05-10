@@ -1322,3 +1322,75 @@ WHERE LOWER(c.name) LIKE :pattern
   AND c.is_deleted = 0
   AND c.source = 'kilter'
 LIMIT 5;
+
+
+-- ─── Community-Climb Dead-Letter Queue ────────────────────────────
+-- Captures Kind-30078 events whose `upsertCommunityClimb` raised at
+-- the SQLite layer so the subscriber can retry them after the next
+-- start instead of leaking a permanent silent data-loss past the
+-- `since` cursor (NIP-01 Live-REQ doesn't re-deliver pre-cursor
+-- events). Created in migration 11.sqm; the schema must also live
+-- here as SQLDelight's source-of-truth for fresh-install schema.
+
+CREATE TABLE community_climb_dead_letters (
+    uuid TEXT NOT NULL PRIMARY KEY,
+    event_id TEXT NOT NULL,
+    event_created_at INTEGER NOT NULL,
+    raw_event_json TEXT NOT NULL,
+    first_failed_at_ms INTEGER NOT NULL,
+    last_failed_at_ms INTEGER NOT NULL,
+    retry_count INTEGER NOT NULL DEFAULT 1,
+    last_error_excerpt TEXT
+);
+
+CREATE INDEX idx_climb_dead_letters_retry
+    ON community_climb_dead_letters(retry_count, last_failed_at_ms);
+
+-- Initial insert. INSERT OR IGNORE so a re-fire of the same uuid
+-- (relay re-delivery within the same session before the cursor moves)
+-- doesn't reset retry_count or first_failed_at_ms. The transaction in
+-- BoardRepository.recordDeadLetterFailure routes a re-fire through
+-- [incrementDeadLetterRetry] instead.
+insertDeadLetter:
+INSERT OR IGNORE INTO community_climb_dead_letters(
+    uuid, event_id, event_created_at, raw_event_json,
+    first_failed_at_ms, last_failed_at_ms, retry_count, last_error_excerpt
+) VALUES (?, ?, ?, ?, ?, ?, 1, ?);
+
+-- Re-fire on an existing DLQ row: bump retry_count, update the last-
+-- failed timestamp + error excerpt. event payload stays as-was on
+-- the assumption the same uuid carries the same content (replaceable
+-- semantics + identical d-tag).
+incrementDeadLetterRetry:
+UPDATE community_climb_dead_letters
+   SET retry_count = retry_count + 1,
+       last_failed_at_ms = :last_failed_at_ms,
+       last_error_excerpt = :last_error_excerpt
+ WHERE uuid = :uuid;
+
+-- Lookup for the insert-or-increment transaction.
+findDeadLetter:
+SELECT * FROM community_climb_dead_letters WHERE uuid = ?;
+
+-- Drained by the subscriber's retry pass. retry_count cap is applied
+-- in code (CommunityClimbSubscriber.MAX_DEAD_LETTER_RETRIES) so we
+-- can change the cap without a schema migration. ORDER BY
+-- first_failed_at_ms keeps the queue FIFO across restarts. LIMIT
+-- bounds the per-call cost.
+getRetriableDeadLetters:
+SELECT * FROM community_climb_dead_letters
+ WHERE retry_count < :maxRetries
+ ORDER BY first_failed_at_ms ASC
+ LIMIT :limit;
+
+-- Called on a successful retry-upsert: drop the DLQ row.
+deleteDeadLetter:
+DELETE FROM community_climb_dead_letters WHERE uuid = ?;
+
+-- Aggregate counts for a future "Failed climb imports" diagnostics
+-- card (FEAT-014 / settings health surface). Cheap, indexed.
+getDeadLetterCounts:
+SELECT
+    COUNT(*) AS total_count,
+    SUM(CASE WHEN retry_count >= :maxRetries THEN 1 ELSE 0 END) AS abandoned_count
+FROM community_climb_dead_letters;
