@@ -68,8 +68,17 @@ class Nip05Verifier @Inject constructor(
                     if (!response.isSuccessful) {
                         return@use State.Unreachable("HTTP ${response.code}")
                     }
-                    val body = response.body?.string()
-                        ?: return@use State.Unreachable("empty response")
+                    // Cap the body read at MAX_BODY_BYTES so a hostile or
+                    // misconfigured well-known endpoint can't OOM the
+                    // editor by streaming an unbounded payload — the
+                    // 60s callTimeout from the shared OkHttp client only
+                    // bounds wall-clock, not bytes. Real well-known
+                    // responses are <4 KB; 64 KB leaves comfortable
+                    // headroom for verbose servers without exposing the
+                    // viewModelScope to OOM. peekBody is on Response and
+                    // returns a fresh, bounded ResponseBody snapshot.
+                    val body = response.peekBody(MAX_BODY_BYTES).string()
+                    if (body.isBlank()) return@use State.Unreachable("empty response")
                     val foundPubkey = parsePubkey(body, local)
                     when {
                         foundPubkey == null -> State.Mismatch(null)
@@ -86,6 +95,12 @@ class Nip05Verifier @Inject constructor(
 
     companion object {
         private const val TAG = "Nip05Verifier"
+
+        /** Hard ceiling on the body bytes the verifier will buffer. Picked
+         *  to comfortably fit any plausible NIP-05 well-known JSON
+         *  (typical responses are <4 KB; spec doesn't mandate a cap) while
+         *  bounding worst-case memory pressure for a hostile server. */
+        internal const val MAX_BODY_BYTES: Long = 64L * 1024L
 
         /** Split `<local>@<domain>` into a (local, lowercased-domain)
          *  pair. Returns null if the address is malformed or contains
