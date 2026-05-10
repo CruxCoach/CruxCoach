@@ -101,6 +101,7 @@
     <string name="community_climb_delete_done_with_kilter" formatted="false">Deleted on Nostr (%1$d of %2$d relays). Remember to remove the climb manually in the Kilter app.</string>
     <string name="community_climb_delete_failed">Deletion failed. Please try again.</string>
     <string name="community_climb_delete_not_owner">You can only delete climbs you authored yourself.</string>
+    <string name="community_climb_delete_local_failed" formatted="false">Deleted on Nostr (%1$d of %2$d relays) but the local copy could not be removed. The climb may still appear locally — please reinstall the app or clear app data to fully remove it.</string>
     <string name="climb_detail_badge_on_kilter">On Kilter</string>
     <string name="climb_detail_badge_cruxcoach_only">CruxCoach community only</string>
     <string name="climb_detail_badge_kilter_diverged">Edited only here, original on Kilter</string>
@@ -1755,4 +1756,5 @@
     <string name="aurora_migration_count_summary" formatted="false">%1$s: %2$d imported · %3$d already present · %4$d skipped</string>
     <string name="aurora_migration_unresolved_title" formatted="false">%1$d climb names couldn\'t be matched against your local catalog</string>
     <string name="aurora_migration_import_another">Import another file</string>
+    <string name="aurora_migration_file_too_large">File is too large for direct import (%1$d MB). Aurora exports are typically a few MB; if your export is much larger, contact support.</string>
 </resources>

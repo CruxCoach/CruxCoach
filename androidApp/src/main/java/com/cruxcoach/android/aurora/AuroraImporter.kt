@@ -2,6 +2,7 @@ package com.cruxcoach.android.aurora
 
 import android.util.Log
 import com.cruxcoach.android.nostr.NostrSigner
+import kotlinx.coroutines.CancellationException
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.LocalClimbDraft
 import com.cruxcoach.db.board.BoardDatabase
@@ -358,41 +359,53 @@ class AuroraImporter @Inject constructor(
         var skipped = 0
         var failed = 0
         val q = secureDb.ascentsQueries
+        // Per-row try/catch inside the transaction: a single bad row
+        // (malformed grade, missing climb name, SQL constraint violation)
+        // counts as `failed` instead of rolling back the entire batch.
+        // CancellationException must rethrow so the transaction aborts
+        // cleanly on coroutine cancellation.
         secureDb.transaction {
             ascents.forEachIndexed { idx, a ->
                 if (idx % 50 == 0) {
                     progress(AuroraImportProgress.ImportingAscents(idx, ascents.size))
                 }
-                val climbUuid = resolution.byName[a.climb] ?: run { failed++; return@forEachIndexed }
-                val climbedAt = AuroraTimestamp.normalize(a.climbed_at)
-                    ?: run { failed++; return@forEachIndexed }
-                val external = AuroraExternalId.ascent(climbUuid, a.angle, climbedAt)
-                val attemptId = if (a.count == 1) 1L else 2L  // 1 = flash, 2 = redpoint
-                val difficulty = parseGradeToDifficultyId(a.grade)
-                val uuid = UUID.randomUUID().toString()
-                q.insertAuroraAscent(
-                    uuid = uuid,
-                    climb_uuid = climbUuid,
-                    angle = a.angle.toLong(),
-                    is_mirror = 0L,
-                    attempt_id = attemptId,
-                    bid_count = a.count.toLong(),
-                    quality = a.stars.toLong(),
-                    difficulty = difficulty?.toLong(),
-                    is_benchmark = 0L,
-                    comment = null,
-                    climbed_at = climbedAt,
-                    synced = 0L,
-                    gym_uuid = null,
-                    wall_uuid = null,
-                    product_layout_uuid = null,
-                    climb_name = a.climb,
-                    difficulty_average = null,
-                    climb_frames = "",
-                    frames_count = 1L,
-                    external_id = external,
-                )
-                if (q.lastAscentChangeCount().executeAsOne() > 0) imported++ else skipped++
+                try {
+                    val climbUuid = resolution.byName[a.climb] ?: run { failed++; return@forEachIndexed }
+                    val climbedAt = AuroraTimestamp.normalize(a.climbed_at)
+                        ?: run { failed++; return@forEachIndexed }
+                    val external = AuroraExternalId.ascent(climbUuid, a.angle, climbedAt)
+                    val attemptId = if (a.count == 1) 1L else 2L  // 1 = flash, 2 = redpoint
+                    val difficulty = parseGradeToDifficultyId(a.grade)
+                    val uuid = UUID.randomUUID().toString()
+                    q.insertAuroraAscent(
+                        uuid = uuid,
+                        climb_uuid = climbUuid,
+                        angle = a.angle.toLong(),
+                        is_mirror = 0L,
+                        attempt_id = attemptId,
+                        bid_count = a.count.toLong(),
+                        quality = a.stars.toLong(),
+                        difficulty = difficulty?.toLong(),
+                        is_benchmark = 0L,
+                        comment = null,
+                        climbed_at = climbedAt,
+                        synced = 0L,
+                        gym_uuid = null,
+                        wall_uuid = null,
+                        product_layout_uuid = null,
+                        climb_name = a.climb,
+                        difficulty_average = null,
+                        climb_frames = "",
+                        frames_count = 1L,
+                        external_id = external,
+                    )
+                    if (q.lastAscentChangeCount().executeAsOne() > 0) imported++ else skipped++
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (t: Throwable) {
+                    Log.w(TAG, "ascents[$idx] '${a.climb}' insert failed", t)
+                    failed++
+                }
             }
         }
         progress(AuroraImportProgress.ImportingAscents(ascents.size, ascents.size))
@@ -409,33 +422,41 @@ class AuroraImporter @Inject constructor(
         var skipped = 0
         var failed = 0
         val q = secureDb.bidsQueries
+        // Per-row try/catch inside the transaction: see importAscents.
         secureDb.transaction {
             attempts.forEachIndexed { idx, b ->
                 if (idx % 50 == 0) {
                     progress(AuroraImportProgress.ImportingBids(idx, attempts.size))
                 }
-                val climbUuid = resolution.byName[b.climb] ?: run { failed++; return@forEachIndexed }
-                val climbedAt = AuroraTimestamp.normalize(b.climbed_at)
-                    ?: run { failed++; return@forEachIndexed }
-                val external = AuroraExternalId.bid(climbUuid, b.angle, climbedAt)
-                val uuid = UUID.randomUUID().toString()
-                q.insertAuroraBid(
-                    uuid = uuid,
-                    climb_uuid = climbUuid,
-                    angle = b.angle.toLong(),
-                    is_mirror = 0L,
-                    bid_count = b.count.toLong(),
-                    comment = null,
-                    climbed_at = climbedAt,
-                    synced = 0L,
-                    gym_uuid = null,
-                    wall_uuid = null,
-                    product_layout_uuid = null,
-                    climb_name = b.climb,
-                    difficulty_average = null,
-                    external_id = external,
-                )
-                if (q.lastBidChangeCount().executeAsOne() > 0) imported++ else skipped++
+                try {
+                    val climbUuid = resolution.byName[b.climb] ?: run { failed++; return@forEachIndexed }
+                    val climbedAt = AuroraTimestamp.normalize(b.climbed_at)
+                        ?: run { failed++; return@forEachIndexed }
+                    val external = AuroraExternalId.bid(climbUuid, b.angle, climbedAt)
+                    val uuid = UUID.randomUUID().toString()
+                    q.insertAuroraBid(
+                        uuid = uuid,
+                        climb_uuid = climbUuid,
+                        angle = b.angle.toLong(),
+                        is_mirror = 0L,
+                        bid_count = b.count.toLong(),
+                        comment = null,
+                        climbed_at = climbedAt,
+                        synced = 0L,
+                        gym_uuid = null,
+                        wall_uuid = null,
+                        product_layout_uuid = null,
+                        climb_name = b.climb,
+                        difficulty_average = null,
+                        external_id = external,
+                    )
+                    if (q.lastBidChangeCount().executeAsOne() > 0) imported++ else skipped++
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (t: Throwable) {
+                    Log.w(TAG, "bids[$idx] '${b.climb}' insert failed", t)
+                    failed++
+                }
             }
         }
         progress(AuroraImportProgress.ImportingBids(attempts.size, attempts.size))
