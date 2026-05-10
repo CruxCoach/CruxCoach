@@ -94,7 +94,7 @@ h{holdPlacementId}p{placementTypeRef}
 Example: `h1461p12h1575p13h1636p14`
 
 Role IDs remain identical (12-15). A mapping of 692 placement IDs between
-Aurora and Kilter formats exists at `~/kilter-re/analysis/placement_mapping.json`.
+Aurora and Kilter formats is maintained out-of-tree as a reference table.
 
 CruxCoach already supports both formats in `BoardClimbParser`:
 - Aurora: `AURORA_PATTERN = Regex("p(\d+)r(\d+)")`
@@ -474,12 +474,11 @@ Password grant allows headless auth without browser redirect.
 
 ### 5.3 CruxCoach Bridge Cron Job
 
-A server-side cron job (Python, like the donations tracker) polls Nostr relays
-for new community climbs and uploads them to Kilter under the CruxCoach account.
+A server-side cron job polls Nostr relays for new community climbs and
+uploads them to Kilter under the CruxCoach account.
 
 **Schedule:** Every 6 hours
-**Location:** `~/cruxcoach-kilter-bridge/`
-**Pattern:** Identical to `~/cruxcoach-donations/` (Python + cron + git state)
+**Implementation:** Out-of-tree Python service with persisted cron state.
 
 #### Flow
 
@@ -1039,7 +1038,7 @@ No difficulty/quality (use separate `climb-rating` endpoint).
 
 ### 12.4 Placement Mapping
 
-692 mappings Aurora → Kilter at `~/kilter-re/analysis/placement_mapping.json`.
+692 Aurora→Kilter mappings are maintained out-of-tree as a reference table.
 Format: `{"old_placement_id": "new_hold_placement_id", ...}`.
 
 Conversion:

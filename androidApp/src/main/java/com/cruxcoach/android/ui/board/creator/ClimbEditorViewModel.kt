@@ -62,14 +62,13 @@ data class ClimbEditorUiState(
      *  after the success terminal, then clears via
      *  [clearKilterPublishOutcome]. Pre-fix every non-Skipped(no-login)
      *  outcome was silent and the user navigated away thinking both
-     *  destinations succeeded (audit health-monitoring/011). */
+     *  destinations succeeded. */
     val kilterPublishOutcome: com.cruxcoach.android.data.kilter.KilterClimbPublisher.Outcome? = null,
     /** Optional Kind-1 auto-note outcome. Null = user didn't opt into
      *  auto-note; true = ≥ 1 relay accepted; false = 0 relays accepted
      *  (the climb is up but the announcement didn't go through). The
      *  screen renders a distinct snackbar when this is `false` so a
-     *  silent-published outcome no longer hides relay reach loss
-     *  (audit graceful-degradation/010). */
+     *  silent-published outcome no longer hides relay reach loss. */
     val autoNotePublished: Boolean? = null,
     val errorMessage: String? = null,
     /** Loaded-draft uuid — re-saving updates this row in place. */

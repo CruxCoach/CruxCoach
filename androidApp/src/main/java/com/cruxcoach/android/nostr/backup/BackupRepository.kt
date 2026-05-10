@@ -71,10 +71,10 @@ class BackupRepository @Inject constructor(
      * Without this, `performFullBackup`'s read-modify-write of
      * `previousBlobSha256` (read at line ~141, write at ~152) racing
      * against itself orphaned blobs on Blossom or — worse — pointed
-     * cleanup at the live blob (audit C1/C2). The same lock guards
-     * `restore`, `deleteRemoteBackups`, and `getOrCreateDataKey` so
-     * pipeline state can't be observed mid-mutation by any caller.
-     * `checkForBackup` is read-only and stays outside the lock.
+     * cleanup at the live blob. The same lock guards `restore`,
+     * `deleteRemoteBackups`, and `getOrCreateDataKey` so pipeline state
+     * can't be observed mid-mutation by any caller. `checkForBackup`
+     * is read-only and stays outside the lock.
      */
     private val pipelineMutex = Mutex()
 
@@ -521,7 +521,7 @@ class BackupRepository @Inject constructor(
         // we logged on `false` and continued, which let `performFullBackup`
         // advance `previousBlobSha256` and delete the prior blob even when
         // no relay knew about the new pointer — the user's restore path
-        // could then find no pointer at all (audit C3).
+        // could then find no pointer at all.
         val (attempted, accepted) = pool.sendEventWithStats(event)
         if (accepted == 0) {
             Log.w(TAG, "event=backup_pointer_publish_failed attempted=$attempted accepted=0")

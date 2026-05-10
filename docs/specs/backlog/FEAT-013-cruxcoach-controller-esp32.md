@@ -9,9 +9,9 @@ status: backlog
 > phone-first without waiting on hardware. This spec is now strictly
 > the BLE-multiplexer + captive-portal + OTA hardware companion.
 >
-> **Reference architecture:** BoardSesh's "Gizmo" (open-source ESP32
-> firmware, see `~/boardsesh/embedded/projects/board-controller/`)
-> implements the BLE-proxy core idea CruxCoach would build on.
+> **Prior art:** open-source ESP32 BLE-proxy firmware projects in the
+> Aurora/Kilter ecosystem demonstrate the core idea CruxCoach would
+> build on (BLE multiplex + captive-portal config + OTA).
 >
 > **Relates to:**
 > - FEAT-014 (Live Training Coordination via Nostr) — phone-first
@@ -171,10 +171,10 @@ features, that happens on the phone side per FEAT-014 — the
 controller only sees the resulting Aurora-protocol BLE frames the
 phone sends.
 
-### 3.2 Reusable from BoardSesh
+### 3.2 Reusable from prior art
 
-The BoardSesh firmware tree at `~/boardsesh/embedded/` cleanly
-separates:
+Existing open-source ESP32 firmware in this space cleanly separates
+the layers we need:
 
 | BoardSesh lib | CruxCoach reuse? |
 |---|---|
@@ -273,7 +273,7 @@ Goal: prove the BLE-multiplex value-prop without any display.
 | Task | Artefact |
 |---|---|
 | Source ESP32-S3 + Aurora board for testing | hardware procurement |
-| Fork BoardSesh's `aurora-protocol`, `nordic-uart-ble`, `ble-proxy` libs (license-permitting) | `boardsesh/embedded/libs/*` reused or reimplemented |
+| Source or reimplement `aurora-protocol`, `nordic-uart-ble`, `ble-proxy` equivalents (license-permitting if forking prior art) | reused or reimplemented under our own tree |
 | Strip GraphQL-WS layer; keep WiFi captive portal + HTTP config | `embedded/cruxcoach-controller/` |
 | BLE multiplex test: 4 phone clients, one board | manual test |
 | OTA firmware update flow | Codeberg-Releases auto-poll |

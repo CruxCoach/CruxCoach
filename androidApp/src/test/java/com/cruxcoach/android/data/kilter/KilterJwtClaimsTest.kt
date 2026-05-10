@@ -12,9 +12,8 @@ import java.util.Base64
  *
  * Verifies the happy-path claim extraction (`sub`, `preferred_username`,
  * etc.) and the defensive returns-empty-map paths the in-class wrapper
- * relies on. The wrapper-side `try { … } catch` is a separate concern
- * (see error-handling/unhandled-errors/011 — silent swallow of
- * malformed-JWT exceptions is a known issue, not codified here).
+ * relies on. The wrapper-side `try { … } catch` (silent swallow of
+ * malformed-JWT exceptions) is a separate concern, not codified here.
  */
 class KilterJwtClaimsTest {
 

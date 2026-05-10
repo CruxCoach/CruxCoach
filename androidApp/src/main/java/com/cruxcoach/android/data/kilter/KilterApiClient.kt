@@ -1,6 +1,7 @@
 package com.cruxcoach.android.data.kilter
 
 import android.util.Log
+import com.cruxcoach.android.BuildConfig
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -169,8 +170,7 @@ sealed class KilterAuthResult {
      *
      * Pre-fix this carried a single hardcoded German message that the
      * UI surfaced verbatim (English-locale users saw German text), and
-     * KilterSyncEngine pattern-matched on the text — see audit findings
-     * error-handling/error-messages/001 + unhandled-errors/011.
+     * KilterSyncEngine pattern-matched on the text.
      */
     data class Error(
         val reason: Reason,
@@ -763,13 +763,21 @@ class KilterApiClient @Inject constructor(
             )
         )
         val bodyJson = json.encodeToString(CreateClimbTransaction.serializer(), payload)
-        // Diagnostic: dump the outgoing payload (minus userUuid PII) so a
-        // server-side 500 can be triaged without having to reproduce the
-        // request locally. climbConcat is the most-likely culprit (placement
-        // IDs not in the product layout), productLayoutUuid + edges next.
-        // userUuid is a stable Kilter user identifier — redact it.
-        Log.d(TAG, "$op outgoing payload (userUuid redacted): " +
-            bodyJson.replace(Regex("\"userUuid\":\"[^\"]+\""), "\"userUuid\":\"<redacted>\""))
+        // Debug-only payload dump for triaging server-side 500s without
+        // reproducing locally. climbConcat is the most-likely culprit
+        // (placement IDs not in the product layout), productLayoutUuid +
+        // edges next. Release builds redact aggressively because the
+        // payload carries the Kilter username and the user-supplied climb
+        // name/description — both PII at the boundary even though name
+        // is public on Nostr afterwards.
+        if (BuildConfig.DEBUG) {
+            val redacted = bodyJson
+                .replace(Regex("\"userUuid\":\"[^\"]+\""), "\"userUuid\":\"<redacted>\"")
+                .replace(Regex("\"username\":\"[^\"]*\""), "\"username\":\"<redacted>\"")
+                .replace(Regex("\"name\":\"[^\"]*\""), "\"name\":\"<redacted>\"")
+                .replace(Regex("\"description\":\"[^\"]*\""), "\"description\":\"<redacted>\"")
+            Log.d(TAG, "$op outgoing payload (PII redacted): $redacted")
+        }
         val body = bodyJson.toRequestBody("application/json".toMediaType())
         val request = Request.Builder()
             .url("$apiBase/climbs/$endpointPath")

@@ -10,13 +10,11 @@ import kotlin.test.assertTrue
  * back the security guards added to [CommunityClimbSubscriber.handleEvent]:
  *
  *  - d-tag prefix cross-check: drops events whose d-tag claims a different
- *    author than the signed pubkey (CRITICAL: security/authorization,
- *    audit finding 002).
+ *    author than the signed pubkey.
  *  - content.pubkey_prefix cross-check: defence-in-depth on the same
- *    property (CRITICAL: security/cryptography).
+ *    property.
  *  - Cross-author UUID guard: drops events that would overwrite a row
- *    owned by a different author via INSERT OR REPLACE on uuid alone
- *    (CRITICAL: security/authorization, audit finding 002).
+ *    owned by a different author via INSERT OR REPLACE on uuid alone.
  *
  * The Schnorr-signature and event-id-recompute guards (`Event.fromJson` +
  * `verifySignature`) are not unit-tested here because Quartz ships its
@@ -117,7 +115,7 @@ class CommunityClimbSubscriberTest {
         assertFalse(CommunityClimbValidation.authorOwnershipMatches(authorA, authorB))
     }
 
-    // ── Skip-matrix bounds (audit testing/integration-test-gaps/004) ──
+    // ── Skip-matrix bounds ──────────────────────────────────────────────
 
     @Test
     fun eventSizeAcceptable_caps_at_16kb() {

@@ -42,10 +42,9 @@ import com.cruxcoach.android.R
  * LazyColumn duplicate-key, format-string mismatch, Canvas paint throw).
  * A `runCatching { content() }` wrap is illegal — the Compose compiler
  * forbids invoking a `@Composable () -> Unit` from a non-Composable
- * lambda. The audit (`error-boundaries/003`) acknowledges this and
- * recommends a `LocalUncaughtExceptionHandler` CompositionLocal as the
- * right shape for in-composition catches; that requires deeper Compose
- * runtime integration than the boundary documented here.
+ * lambda. The right shape for in-composition catches is a
+ * `LocalUncaughtExceptionHandler` CompositionLocal, which requires deeper
+ * Compose runtime integration than the boundary documented here.
  *
  * For now this boundary covers the **reported-error** class: anything
  * the rest of the app already runCatches and now has a place to surface

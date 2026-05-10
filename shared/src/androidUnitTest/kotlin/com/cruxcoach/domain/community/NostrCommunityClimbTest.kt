@@ -109,7 +109,7 @@ class NostrCommunityClimbTest {
         assertNotEquals(mine.dTag, theirs.dTag)
     }
 
-    // ── jsonString escape coverage (testing/edge-cases/001) ───────────
+    // ── jsonString escape coverage ──────────────────────────────────────
     // The hand-rolled escaper at NostrCommunityClimb.jsonString handles
     // 7 paths: " \ \n \r \t \b \f and control chars below 0x20. The
     // earlier "Description with \"quotes\"" assertion only exercised the

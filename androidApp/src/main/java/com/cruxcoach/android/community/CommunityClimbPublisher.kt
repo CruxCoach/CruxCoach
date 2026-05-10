@@ -83,8 +83,7 @@ class CommunityClimbPublisher @Inject constructor(
          * the existing connect-Kilter nudge. Pre-fix the editor
          * collapsed every non-Skipped("no-kilter-login") outcome into
          * a silent "✓ veröffentlicht" — the user navigated away
-         * believing both destinations had succeeded (audit
-         * health-monitoring/011).
+         * believing both destinations had succeeded.
          */
         val kilterOutcome: KilterClimbPublisher.Outcome? = null,
         /**
@@ -95,8 +94,7 @@ class CommunityClimbPublisher @Inject constructor(
          *   - `false` → 0 relays accepted; the climb is up but the
          *               announcement didn't go through. Editor renders
          *               a distinct "Auto-Note didn't reach any relay"
-         *               snackbar instead of the silent "✓ published"
-         *               (audit graceful-degradation/010).
+         *               snackbar instead of the silent "✓ published".
          */
         val autoNotePublished: Boolean? = null,
     )
@@ -345,8 +343,7 @@ class CommunityClimbPublisher @Inject constructor(
         // covers the climb-link side. The maintainer-mention is gated by
         // BuildConfig.AUTO_NOTE_PTAG_MAINTAINER so forks default to off
         // — every fork install would otherwise unconditionally amplify
-        // whoever the fork's MAINTAINER_PUBKEY resolves to (see OSR
-        // trademark-branding/003).
+        // whoever the fork's MAINTAINER_PUBKEY resolves to.
         val tagList = mutableListOf(
             arrayOf("t", "kilterboard"),
             arrayOf("t", "climbing"),

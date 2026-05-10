@@ -325,3 +325,17 @@
 # ============================================================================
 # AppCompat Per-App Language persistence service (declared enabled=false in manifest)
 -keep class androidx.appcompat.app.AppLocalesMetadataHolderService { *; }
+
+# ============================================================================
+# 20. STRIP DEBUG/VERBOSE LOGS IN RELEASE
+# ============================================================================
+# Backstop for any Log.d / Log.v that escaped a BuildConfig.DEBUG guard. Even
+# when the call site uses an `if (BuildConfig.DEBUG)`, R8 may keep the String
+# concatenations (regex .replace, payload dumps) alive because of perceived
+# side-effects. Treating these methods as no-ops lets R8 dead-code the entire
+# diagnostic argument list. Errors and warnings stay live so crash reports
+# still carry actionable signal.
+-assumenosideeffects class android.util.Log {
+    public static int d(...);
+    public static int v(...);
+}

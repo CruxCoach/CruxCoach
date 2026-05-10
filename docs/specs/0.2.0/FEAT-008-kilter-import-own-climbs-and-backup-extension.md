@@ -839,7 +839,7 @@ compression and encryption.
 | case | handling |
 |---|---|
 | Restore on a device with a *different* Nostr pubkey | reject — show "Backup gehört zu npub:abc... — nicht zu diesem Profil. Schlüssel wechseln oder neuen Account anlegen?" Existing `BackupRepository.restore` already gates on pubkey; new fields inherit that gate. |
-| Climb in backup, also in cruxcoach-blossom-sync delta | Idempotent — `INSERT OR REPLACE` keyed on uuid. Backup wins, but backup data is more authoritative for own climbs anyway. |
+| Climb in backup, also in next Blossom delta | Idempotent — `INSERT OR REPLACE` keyed on uuid. Backup wins, but backup data is more authoritative for own climbs anyway. |
 | Restore on fresh install (DB empty) | Straightforward — every uuid is new, no conflicts. |
 | `nostr_event_id` in backup but row has been deleted on relay | Restore rewrites the metadata. Future republish via editor uses the same d-tag → resurrects the climb on the relay. Functionally a republish, fine. |
 | Backup version mismatch (v2 client, v3 backup) | v2 client throws "unsupported version 3". User sees clear message. v3 client reads v2 backup transparently (defaults). |

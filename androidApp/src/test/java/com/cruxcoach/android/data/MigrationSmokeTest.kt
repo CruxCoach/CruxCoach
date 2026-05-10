@@ -13,8 +13,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 
 /**
- * Migration-chain smoke test (closes audit `testing/e2e-test-gaps/007` +
- * `integration-test-gaps/006`).
+ * Migration-chain smoke test — real-data preservation across the full
+ * migration walk from v1 to current.
  *
  * Pre-fix the project's only migration coverage was `verifySqlDelightMigration`
  * (synthetic schema-snapshot diffing). Real-data preservation — "after

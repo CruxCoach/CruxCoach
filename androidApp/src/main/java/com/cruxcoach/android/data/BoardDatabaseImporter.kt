@@ -533,13 +533,12 @@ class BoardDatabaseImporter(
             }
             val hasMoveCount = "move_count" in srcCols
             val moveCountExpr = if (hasMoveCount) "COALESCE(move_count, 0)" else "0"
-            // origin column landed in Blossom chunks once the cron started
-            // emitting it (cruxcoach-blossom-sync 2026-04-29+). Old chunks
-            // without it fall back to the schema default 'kilter' on the
-            // target side. Note: the UPDATE pass below intentionally does
-            // NOT touch origin — locally-set 'cruxcoach' (e.g. via
-            // CommunityClimbSubscriber on a row the cron later refreshes)
-            // must survive a Blossom blob refresh.
+            // origin column landed in Blossom chunks at a known schema-roll
+            // boundary; older chunks without it fall back to the schema
+            // default 'kilter' on the target side. Note: the UPDATE pass
+            // below intentionally does NOT touch origin — locally-set
+            // 'cruxcoach' (e.g. via CommunityClimbSubscriber on a row the
+            // cron later refreshes) must survive a Blossom blob refresh.
             val hasOrigin = "origin" in srcCols
             val originExpr = if (hasOrigin) "COALESCE(origin, 'kilter')" else "'kilter'"
             // Plan C: cron writes created_by_pubkey for cruxcoach-origin

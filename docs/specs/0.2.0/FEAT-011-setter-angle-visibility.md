@@ -109,13 +109,13 @@ value was never recorded. The UI must tolerate `angle = NULL`
 
 ### Catalog coverage — sparse by design
 
-The daily blossom-sync cron only pulls `/api/climbs/curated`
+The daily blossom-sync only pulls `/api/climbs/curated`
 (~5,279 rows on 2026-05-06) and `/api/climbs/delteduuids`
 (deletion notifications). The local Board DB currently carries
-**174,218 climbs** (per `cruxcoach-blossom-sync/metrics.csv` row
-2026-05-06), of which 171,172 are still listed. The cron *adds
-and updates* but never wipes; climbs that were once in /curated
-stay in the local DB even after they leave the curated set.
+**174,218 climbs** (snapshot 2026-05-06), of which 171,172 are
+still listed. The sync *adds and updates* but never wipes;
+climbs that were once in /curated stay in the local DB even
+after they leave the curated set.
 
 Result, in concrete numbers:
 
@@ -238,11 +238,11 @@ that climb, the picked angle becomes sticky for subsequent opens.
 - **Schema migration** (`shared/src/commonMain/sqldelight/board/<n>.sqm`):
   `ALTER TABLE climbs ADD COLUMN angle INTEGER` (nullable; treat
   `0` and `null` as "unknown" client-side).
-- **Cron mapping** (`cruxcoach-blossom-sync/update_board_db.py`):
-  extend the Kilter-API-harvest INSERT path to read `angle` from
-  the `/api/climbs/curated[].angle` field and persist it on the
-  new column. The next regular cron cycle picks up the ~5,000
-  curated-side values; older Aurora-era rows stay NULL.
+- **Server-side blossom-sync mapping**: extend the Kilter-API-harvest
+  INSERT path to read `angle` from the `/api/climbs/curated[].angle`
+  field and persist it on the new column. The next regular sync
+  cycle picks up the ~5,000 curated-side values; older Aurora-era
+  rows stay NULL.
 - **FEAT-008 importer**: pass `KilterClimbDto.angle` straight
   through into `climbs.angle` on the local insert.
 - **ClimbCreator publish path** (FEAT-003 + this spec): persist

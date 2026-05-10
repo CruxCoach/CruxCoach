@@ -17,9 +17,8 @@ import kotlin.test.assertTrue
 
 /**
  * HTTP-level tests for [KilterApiClient.authenticate]. Exercises the
- * Keycloak `/protocol/openid-connect/token` response shapes that the
- * audit findings care about (error-path-tests/001, test-quality/005,
- * unit-test-gaps/004 — error mapping coverage).
+ * Keycloak `/protocol/openid-connect/token` response shapes and verifies
+ * that each one maps to exactly one [KilterAuthResult.Error.Reason].
  *
  * Pre-fix the auth path returned a single free-form German error string;
  * the typed [KilterAuthResult.Error.Reason] sealed class is now what we

@@ -44,13 +44,11 @@ private const val NAMESPACE_LABEL = "com.cruxcoach.climb"
  * the stale-event check.
  *
  * Kilter is intentionally NOT touched. Kilter's REST API has no
- * delete-climb endpoint (verified via reverse-engineering of the
- * official app — see ~/kilter-re/analysis/FINDINGS.md, §4); the
- * Kilter app itself only allows deleting drafts and only via PowerSync
- * (binary sync protocol we don't speak). The deleter surfaces the
- * Kilter publish status via [Outcome.kilterWasPublished] so the UI
- * can warn the user that they must remove the climb manually if they
- * also published it to Kilter.
+ * delete-climb endpoint; the Kilter app itself only allows deleting
+ * drafts and only via PowerSync (binary sync protocol we don't speak).
+ * The deleter surfaces the Kilter publish status via
+ * [Outcome.kilterWasPublished] so the UI can warn the user that they
+ * must remove the climb manually if they also published it to Kilter.
  */
 @Singleton
 class CommunityClimbDeleter @Inject constructor(
@@ -79,6 +77,17 @@ class CommunityClimbDeleter @Inject constructor(
             val attempted: Int,
             val accepted: Int,
             val kilterWasPublished: Boolean,
+        ) : Outcome
+        /** Relay-side delete events fired but the local SQLite tombstone
+         *  write threw, so the user still sees the row locally even
+         *  though the relay-side delete is permanent. UI should warn the
+         *  user to manually clear local state (e.g. delete the entire
+         *  app data) — there's no quick recovery from the asymmetry. */
+        data class LocalTombstoneFailed(
+            val attempted: Int,
+            val accepted: Int,
+            val kilterWasPublished: Boolean,
+            val cause: Throwable,
         ) : Outcome
     }
 
@@ -165,11 +174,13 @@ class CommunityClimbDeleter @Inject constructor(
 
         // 3) Local tombstone. Owner-locked in SQL so a misuse here
         //    cannot flip a foreign row even if the calling code is
-        //    buggy. Best-effort relay delivery is independent: even
-        //    if no relay accepted the events, the local row is still
-        //    tombstoned so the user sees an immediate effect; OfflineQueueManager
-        //    will retry the events on the next connection.
-        runCatching {
+        //    buggy. If the SQL write throws (corrupt secure DB,
+        //    locked file, OOM-class) the relay-side delete is already
+        //    permanent — surface that asymmetry via a distinct
+        //    LocalTombstoneFailed outcome so the UI can warn the user
+        //    rather than silently render Done while the row is still
+        //    visible locally.
+        val localResult = runCatching {
             boardRepository.markCommunityClimbDeleted(
                 uuid = uuid,
                 pubkey = signer,
@@ -184,10 +195,20 @@ class CommunityClimbDeleter @Inject constructor(
         val attempted = maxOf(replaceAttempted, deleteAttempted)
         val accepted = maxOf(replaceAccepted, deleteAccepted)
         val kilterWasPublished = ctx.kilterStatus == "synced"
-        return Outcome.Done(
-            attempted = attempted,
-            accepted = accepted,
-            kilterWasPublished = kilterWasPublished,
-        )
+        val localFailure = localResult.exceptionOrNull()
+        return if (localFailure != null) {
+            Outcome.LocalTombstoneFailed(
+                attempted = attempted,
+                accepted = accepted,
+                kilterWasPublished = kilterWasPublished,
+                cause = localFailure,
+            )
+        } else {
+            Outcome.Done(
+                attempted = attempted,
+                accepted = accepted,
+                kilterWasPublished = kilterWasPublished,
+            )
+        }
     }
 }

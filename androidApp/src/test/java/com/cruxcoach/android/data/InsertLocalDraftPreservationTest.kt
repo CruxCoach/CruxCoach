@@ -16,9 +16,9 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * Regression test for the `concurrency/race-conditions/007` /
- * `transaction-concurrency/010` audit findings — edit-republish wipes
- * nostr/kilter metadata via INSERT OR REPLACE.
+ * Regression test for the edit-republish-wipes-metadata bug:
+ * `INSERT OR REPLACE` reset every column not in the INSERT list,
+ * losing nostr/kilter publish state on every editor save.
  *
  * **Pre-fix behaviour** (`INSERT OR REPLACE INTO climbs(...)`): every
  * editor save reset every column not in the INSERT list — `is_deleted`,
