@@ -170,6 +170,14 @@ sealed interface CommunityDeleteFeedback {
     object NotOurClimb : CommunityDeleteFeedback
     object NotFound : CommunityDeleteFeedback
     object Failed : CommunityDeleteFeedback
+    /** Relay delete went out but local SQLite write threw — UI should
+     *  warn the user to clear local state manually (relay-permanent +
+     *  local-still-visible asymmetry). */
+    data class LocalTombstoneFailed(
+        val attempted: Int,
+        val accepted: Int,
+        val kilterAlsoPublished: Boolean,
+    ) : CommunityDeleteFeedback
 }
 
 @HiltViewModel
@@ -419,6 +427,12 @@ class BoardClimbDetailViewModel @Inject constructor(
             val feedback: CommunityDeleteFeedback = when (outcome) {
                 is com.cruxcoach.android.community.CommunityClimbDeleter.Outcome.Done ->
                     CommunityDeleteFeedback.Done(
+                        attempted = outcome.attempted,
+                        accepted = outcome.accepted,
+                        kilterAlsoPublished = outcome.kilterWasPublished,
+                    )
+                is com.cruxcoach.android.community.CommunityClimbDeleter.Outcome.LocalTombstoneFailed ->
+                    CommunityDeleteFeedback.LocalTombstoneFailed(
                         attempted = outcome.attempted,
                         accepted = outcome.accepted,
                         kilterAlsoPublished = outcome.kilterWasPublished,

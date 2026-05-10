@@ -269,6 +269,11 @@ fun BoardClimbDetailScreen(
                 }
                 context.getString(template, feedback.accepted, feedback.attempted)
             }
+            is CommunityDeleteFeedback.LocalTombstoneFailed ->
+                context.getString(
+                    R.string.community_climb_delete_local_failed,
+                    feedback.accepted, feedback.attempted,
+                )
             CommunityDeleteFeedback.NotOwner -> context.getString(R.string.community_climb_delete_not_owner)
             // Defensive: NotOurClimb / NotFound shouldn't reach the user
             // because the menu item is gated on origin=cruxcoach + owner.
