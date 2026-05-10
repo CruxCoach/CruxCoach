@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.BuildConfig
+import com.cruxcoach.android.R
 import com.cruxcoach.android.data.SyncInterval
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.data.kilter.KilterApiClient
@@ -250,31 +251,48 @@ class OnboardingViewModel @Inject constructor(
         _state.update { it.copy(isKilterLoggingIn = true, kilterLoginError = null) }
 
         viewModelScope.launch {
-            val result = kilterApiClient.authenticate(s.kilterEmail, s.kilterPassword)
-            when (result) {
-                is KilterAuthResult.Success -> {
-                    kilterTokenStore.storeTokens(
-                        accessToken = result.accessToken,
-                        refreshToken = result.refreshToken,
-                        expiresInSeconds = result.expiresIn,
-                        userUuid = result.userUuid,
-                        username = result.username
-                    )
-                    // Fetch import preview
-                    val preview = kilterSyncEngine.previewImport()
-                    _state.update {
-                        it.copy(
-                            isKilterLoggingIn = false,
-                            kilterConnected = true,
-                            kilterUsername = result.username,
-                            kilterImportPreview = preview.getOrNull()
+            // Engine-side `Result.map` (not `mapCatching`) lets a SQL throw
+            // out of insertLogs / getAllClimbUuids escape the Result and
+            // kill the coroutine — leaving isKilterLoggingIn = true forever
+            // and blocking the Skip button. Wrap defensively so any
+            // unexpected throw resets the spinner with a localized error.
+            try {
+                val result = kilterApiClient.authenticate(s.kilterEmail, s.kilterPassword)
+                when (result) {
+                    is KilterAuthResult.Success -> {
+                        kilterTokenStore.storeTokens(
+                            accessToken = result.accessToken,
+                            refreshToken = result.refreshToken,
+                            expiresInSeconds = result.expiresIn,
+                            userUuid = result.userUuid,
+                            username = result.username
                         )
+                        // Fetch import preview
+                        val preview = kilterSyncEngine.previewImport()
+                        _state.update {
+                            it.copy(
+                                isKilterLoggingIn = false,
+                                kilterConnected = true,
+                                kilterUsername = result.username,
+                                kilterImportPreview = preview.getOrNull()
+                            )
+                        }
+                    }
+                    is KilterAuthResult.Error -> {
+                        _state.update {
+                            it.copy(isKilterLoggingIn = false, kilterLoginError = result.localized(appContext))
+                        }
                     }
                 }
-                is KilterAuthResult.Error -> {
-                    _state.update {
-                        it.copy(isKilterLoggingIn = false, kilterLoginError = result.localized(appContext))
-                    }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "kilterLogin threw", e)
+                _state.update {
+                    it.copy(
+                        isKilterLoggingIn = false,
+                        kilterLoginError = appContext.getString(R.string.kilter_sync_error, ""),
+                    )
                 }
             }
         }
@@ -283,16 +301,28 @@ class OnboardingViewModel @Inject constructor(
     fun kilterImportOneTime() {
         _state.update { it.copy(isKilterImporting = true) }
         viewModelScope.launch {
-            val result = kilterSyncEngine.importLogs(oneTimeOnly = true)
-            _state.update {
-                it.copy(
-                    isKilterImporting = false,
-                    kilterImportResult = result.fold(
-                        onSuccess = { count -> "$count" },
-                        onFailure = { e -> e.message }
-                    ),
-                    kilterConnected = false // credentials cleared
-                )
+            try {
+                val result = kilterSyncEngine.importLogs(oneTimeOnly = true)
+                _state.update {
+                    it.copy(
+                        isKilterImporting = false,
+                        kilterImportResult = result.fold(
+                            onSuccess = { count -> "$count" },
+                            onFailure = { e -> e.message }
+                        ),
+                        kilterConnected = false // credentials cleared
+                    )
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "kilterImportOneTime threw", e)
+                _state.update {
+                    it.copy(
+                        isKilterImporting = false,
+                        kilterImportResult = appContext.getString(R.string.kilter_sync_error, ""),
+                    )
+                }
             }
         }
     }
@@ -300,15 +330,27 @@ class OnboardingViewModel @Inject constructor(
     fun kilterImportPersistent() {
         _state.update { it.copy(isKilterImporting = true) }
         viewModelScope.launch {
-            val result = kilterSyncEngine.importLogs(oneTimeOnly = false)
-            _state.update {
-                it.copy(
-                    isKilterImporting = false,
-                    kilterImportResult = result.fold(
-                        onSuccess = { count -> "$count" },
-                        onFailure = { e -> e.message }
+            try {
+                val result = kilterSyncEngine.importLogs(oneTimeOnly = false)
+                _state.update {
+                    it.copy(
+                        isKilterImporting = false,
+                        kilterImportResult = result.fold(
+                            onSuccess = { count -> "$count" },
+                            onFailure = { e -> e.message }
+                        )
                     )
-                )
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "kilterImportPersistent threw", e)
+                _state.update {
+                    it.copy(
+                        isKilterImporting = false,
+                        kilterImportResult = appContext.getString(R.string.kilter_sync_error, ""),
+                    )
+                }
             }
         }
     }
@@ -457,6 +499,17 @@ class OnboardingViewModel @Inject constructor(
 
         viewModelScope.launch {
             try {
+                // Preview-only Kilter login: tokens were stored at the
+                // KILTER step (so the user could see their account), but
+                // they finished onboarding without picking Import Once /
+                // Import Sync. The Settings analog `dismissKilterPreview`
+                // revokes server-side and clears local — mirror that here
+                // so the 30-day Keycloak refresh token doesn't outlive a
+                // step the user effectively cancelled.
+                if (s.kilterConnected && s.kilterImportResult == null) {
+                    runCatching { kilterApiClient.revokeRefreshToken() }
+                    kilterTokenStore.clear()
+                }
                 userPreferences.setNearbyClimbSharing(s.bleSharing)
                 userPreferences.setAllowRemoteDisconnect(s.bleSharing)
                 userPreferences.setCrashReportOptIn(s.communityFeatures)

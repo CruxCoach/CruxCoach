@@ -260,20 +260,29 @@ fun CruxCoachNavHost(
                 .imePadding()
         ) {
             composable(Routes.ONBOARDING) {
-                OnboardingScreen(
-                    onComplete = {
-                        navController.navigate(Routes.BOARD_BROWSER) {
-                            popUpTo(Routes.ONBOARDING) { inclusive = true }
-                        }
-                    },
-                    onNavigateToKeyImport = { navController.navigate(Routes.KEY_IMPORT) },
-                    // KeyManagementScreen as a forward push (not a popUpTo).
-                    // Onboarding's NavBackStackEntry stays on the stack, so
-                    // hitting back from KeyManagementScreen returns the user
-                    // to the same onboarding step they were on (state +
-                    // ViewModel preserved via the survived BackStackEntry).
-                    onNavigateToKeyManagement = { navController.navigate(Routes.KEY_MANAGEMENT) },
-                )
+                // Onboarding is the highest-blast-radius first-launch flow:
+                // a render throw before `setOnboardingCompleted(true)` lands
+                // would brick the app in a cold-install crash loop. The
+                // boundary surfaces a reported error UI instead.
+                com.cruxcoach.android.ui.common.ScreenErrorBoundary(
+                    screenName = "Onboarding",
+                    onNavigateBack = { navController.popBackStack() },
+                ) {
+                    OnboardingScreen(
+                        onComplete = {
+                            navController.navigate(Routes.BOARD_BROWSER) {
+                                popUpTo(Routes.ONBOARDING) { inclusive = true }
+                            }
+                        },
+                        onNavigateToKeyImport = { navController.navigate(Routes.KEY_IMPORT) },
+                        // KeyManagementScreen as a forward push (not a popUpTo).
+                        // Onboarding's NavBackStackEntry stays on the stack, so
+                        // hitting back from KeyManagementScreen returns the user
+                        // to the same onboarding step they were on (state +
+                        // ViewModel preserved via the survived BackStackEntry).
+                        onNavigateToKeyManagement = { navController.navigate(Routes.KEY_MANAGEMENT) },
+                    )
+                }
             }
 
             composable(Routes.DASHBOARD) {
@@ -388,9 +397,14 @@ fun CruxCoachNavHost(
             }
 
             composable(Routes.AURORA_MIGRATION) {
-                com.cruxcoach.android.ui.aurora.AuroraMigrationScreen(
+                com.cruxcoach.android.ui.common.ScreenErrorBoundary(
+                    screenName = "AuroraMigration",
                     onNavigateBack = { navController.popBackStack() },
-                )
+                ) {
+                    com.cruxcoach.android.ui.aurora.AuroraMigrationScreen(
+                        onNavigateBack = { navController.popBackStack() },
+                    )
+                }
             }
 
             composable(Routes.STATS) {

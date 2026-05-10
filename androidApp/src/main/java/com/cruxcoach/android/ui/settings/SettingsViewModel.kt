@@ -627,31 +627,54 @@ class SettingsViewModel @Inject constructor(
         _state.update { it.copy(kilterAccount = ka.copy(isLoggingIn = true, loginError = null)) }
 
         viewModelScope.launch {
-            val result = kilterApiClient.authenticate(ka.loginEmail, ka.loginPassword)
-            when (result) {
-                is com.cruxcoach.android.data.kilter.KilterAuthResult.Success -> {
-                    kilterTokenStore.storeTokens(
-                        result.accessToken, result.refreshToken,
-                        result.expiresIn, result.userUuid, result.username
-                    )
-                    kilterSyncEngine.clearSessionExpired()
-                    // Fetch preview
-                    val preview = kilterSyncEngine.previewImport()
-                    _state.update { it.copy(kilterAccount = it.kilterAccount.copy(
-                        isLoggingIn = false,
-                        showLoginSheet = false,
-                        loginEmail = "", loginPassword = "",
-                        showImportPreview = true,
-                        importPreview = preview.getOrNull(),
-                        username = result.username
-                    )) }
+            // Engine-side `Result.map` (not `mapCatching`) lets a SQL throw
+            // out of insertLogs / getAllClimbUuids escape the Result and
+            // kill the coroutine — leaving isLoggingIn = true forever with
+            // tokens already persisted, so the user sees a stuck spinner
+            // and dismissKilterLogin never runs. Wrap defensively.
+            try {
+                val result = kilterApiClient.authenticate(ka.loginEmail, ka.loginPassword)
+                when (result) {
+                    is com.cruxcoach.android.data.kilter.KilterAuthResult.Success -> {
+                        // Re-login: revoke the prior offline_access refresh token
+                        // server-side before overwriting it locally, so a stolen
+                        // copy can't outlive the new session for the full 30-day
+                        // Keycloak window. Best-effort — runCatching keeps a
+                        // network failure from blocking the new login.
+                        if (kilterTokenStore.hasCredentials()) {
+                            runCatching { kilterApiClient.revokeRefreshToken() }
+                        }
+                        kilterTokenStore.storeTokens(
+                            result.accessToken, result.refreshToken,
+                            result.expiresIn, result.userUuid, result.username
+                        )
+                        kilterSyncEngine.clearSessionExpired()
+                        // Fetch preview
+                        val preview = kilterSyncEngine.previewImport()
+                        _state.update { it.copy(kilterAccount = it.kilterAccount.copy(
+                            isLoggingIn = false,
+                            showLoginSheet = false,
+                            loginEmail = "", loginPassword = "",
+                            showImportPreview = true,
+                            importPreview = preview.getOrNull(),
+                            username = result.username
+                        )) }
+                    }
+                    is com.cruxcoach.android.data.kilter.KilterAuthResult.Error -> {
+                        val msg = result.localized(context)
+                        _state.update { it.copy(kilterAccount = it.kilterAccount.copy(
+                            isLoggingIn = false, loginError = msg
+                        )) }
+                    }
                 }
-                is com.cruxcoach.android.data.kilter.KilterAuthResult.Error -> {
-                    val msg = result.localized(context)
-                    _state.update { it.copy(kilterAccount = it.kilterAccount.copy(
-                        isLoggingIn = false, loginError = msg
-                    )) }
-                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "kilterLogin threw", e)
+                _state.update { it.copy(kilterAccount = it.kilterAccount.copy(
+                    isLoggingIn = false,
+                    loginError = context.getString(R.string.kilter_sync_error, ""),
+                )) }
             }
         }
     }
@@ -659,34 +682,56 @@ class SettingsViewModel @Inject constructor(
     fun kilterImportOneTime() {
         _state.update { it.copy(kilterAccount = it.kilterAccount.copy(isImporting = true)) }
         viewModelScope.launch {
-            val result = kilterSyncEngine.importLogs(oneTimeOnly = true)
-            _state.update { it.copy(kilterAccount = it.kilterAccount.copy(
-                isImporting = false,
-                showImportPreview = false,
-                isConnected = false,
-                resultMessage = result.fold(
-                    onSuccess = { context.getString(R.string.kilter_import_success, it) },
-                    onFailure = { context.getString(R.string.kilter_sync_error, it.message ?: "") }
-                )
-            )) }
+            try {
+                val result = kilterSyncEngine.importLogs(oneTimeOnly = true)
+                _state.update { it.copy(kilterAccount = it.kilterAccount.copy(
+                    isImporting = false,
+                    showImportPreview = false,
+                    isConnected = false,
+                    resultMessage = result.fold(
+                        onSuccess = { context.getString(R.string.kilter_import_success, it) },
+                        onFailure = { context.getString(R.string.kilter_sync_error, it.message ?: "") }
+                    )
+                )) }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "kilterImportOneTime threw", e)
+                _state.update { it.copy(kilterAccount = it.kilterAccount.copy(
+                    isImporting = false,
+                    showImportPreview = false,
+                    resultMessage = context.getString(R.string.kilter_sync_error, ""),
+                )) }
+            }
         }
     }
 
     fun kilterImportPersistent() {
         _state.update { it.copy(kilterAccount = it.kilterAccount.copy(isImporting = true)) }
         viewModelScope.launch {
-            val result = kilterSyncEngine.importLogs(oneTimeOnly = false)
-            val lastSync = userPreferences.kilterLastSync.first()
-            _state.update { it.copy(kilterAccount = it.kilterAccount.copy(
-                isImporting = false,
-                showImportPreview = false,
-                isConnected = true,
-                lastSync = lastSync,
-                resultMessage = result.fold(
-                    onSuccess = { context.getString(R.string.kilter_import_success, it) },
-                    onFailure = { context.getString(R.string.kilter_sync_error, it.message ?: "") }
-                )
-            )) }
+            try {
+                val result = kilterSyncEngine.importLogs(oneTimeOnly = false)
+                val lastSync = userPreferences.kilterLastSync.first()
+                _state.update { it.copy(kilterAccount = it.kilterAccount.copy(
+                    isImporting = false,
+                    showImportPreview = false,
+                    isConnected = true,
+                    lastSync = lastSync,
+                    resultMessage = result.fold(
+                        onSuccess = { context.getString(R.string.kilter_import_success, it) },
+                        onFailure = { context.getString(R.string.kilter_sync_error, it.message ?: "") }
+                    )
+                )) }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "kilterImportPersistent threw", e)
+                _state.update { it.copy(kilterAccount = it.kilterAccount.copy(
+                    isImporting = false,
+                    showImportPreview = false,
+                    resultMessage = context.getString(R.string.kilter_sync_error, ""),
+                )) }
+            }
         }
     }
 
