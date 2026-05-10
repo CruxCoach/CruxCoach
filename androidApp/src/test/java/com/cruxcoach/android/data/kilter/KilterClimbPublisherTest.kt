@@ -84,7 +84,7 @@ class KilterClimbPublisherTest {
         every { prefs.kilterClimbPublishEnabled } returns MutableStateFlow(false)
         val outcome = publisher.publish(uuid, layoutId, state, boardSize, framesConcat)
         assertEquals(KilterClimbPublisher.Outcome.Skipped("user-opted-out"), outcome)
-        coVerify(exactly = 0) { apiClient.publishClimb(any(), any(), any(), any(), any(), any(), any(), any(), any()) }
+        coVerify(exactly = 0) { apiClient.publishClimb(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()) }
         // Slot-claim should not happen either when user opted out.
         coVerify(exactly = 0) { repo.claimKilterPublishSlot(any()) }
     }
@@ -95,15 +95,15 @@ class KilterClimbPublisherTest {
         val outcome = publisher.publish(uuid, layoutId, state, boardSize, framesConcat)
         assertEquals(KilterClimbPublisher.Outcome.Skipped("slot-busy"), outcome)
         // No API call when another flow holds the slot.
-        coVerify(exactly = 0) { apiClient.publishClimb(any(), any(), any(), any(), any(), any(), any(), any(), any()) }
-        coVerify(exactly = 0) { apiClient.updateClimb(any(), any(), any(), any(), any(), any(), any(), any(), any()) }
+        coVerify(exactly = 0) { apiClient.publishClimb(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()) }
+        coVerify(exactly = 0) { apiClient.updateClimb(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()) }
     }
 
     @Test
     fun publish_returns_skipped_when_board_size_unknown() = runTest {
         val outcome = publisher.publish(uuid, layoutId, state, boardSize = null, framesConcat)
         assertEquals(KilterClimbPublisher.Outcome.Skipped("no-board-size"), outcome)
-        coVerify(exactly = 0) { apiClient.publishClimb(any(), any(), any(), any(), any(), any(), any(), any(), any()) }
+        coVerify(exactly = 0) { apiClient.publishClimb(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()) }
     }
 
     @Test
@@ -111,7 +111,7 @@ class KilterClimbPublisherTest {
         every { tokenStore.getAccessToken() } returns null
         val outcome = publisher.publish(uuid, layoutId, state, boardSize, framesConcat)
         assertEquals(KilterClimbPublisher.Outcome.Skipped("no-kilter-login"), outcome)
-        coVerify(exactly = 0) { apiClient.publishClimb(any(), any(), any(), any(), any(), any(), any(), any(), any()) }
+        coVerify(exactly = 0) { apiClient.publishClimb(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()) }
     }
 
     @Test
@@ -126,7 +126,7 @@ class KilterClimbPublisherTest {
     @Test
     fun publish_marks_synced_on_success() = runTest {
         coEvery {
-            apiClient.publishClimb(any(), any(), any(), any(), any(), any(), any(), any(), any())
+            apiClient.publishClimb(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any())
         } returns KilterPublishResult.Success(uuid)
 
         val outcome = publisher.publish(uuid, layoutId, state, boardSize, framesConcat)
@@ -148,7 +148,7 @@ class KilterClimbPublisherTest {
     @Test
     fun publish_returns_failed_when_token_expired_mid_call() = runTest {
         coEvery {
-            apiClient.publishClimb(any(), any(), any(), any(), any(), any(), any(), any(), any())
+            apiClient.publishClimb(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any())
         } returns KilterPublishResult.NotAuthenticated
 
         val outcome = publisher.publish(uuid, layoutId, state, boardSize, framesConcat)
@@ -161,7 +161,7 @@ class KilterClimbPublisherTest {
     @Test
     fun publish_returns_failed_on_transient_error() = runTest {
         coEvery {
-            apiClient.publishClimb(any(), any(), any(), any(), any(), any(), any(), any(), any())
+            apiClient.publishClimb(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any())
         } returns KilterPublishResult.TransientError("network glitch")
 
         val outcome = publisher.publish(uuid, layoutId, state, boardSize, framesConcat)
@@ -176,7 +176,7 @@ class KilterClimbPublisherTest {
     @Test
     fun publish_returns_failed_on_permanent_error_for_create() = runTest {
         coEvery {
-            apiClient.publishClimb(any(), any(), any(), any(), any(), any(), any(), any(), any())
+            apiClient.publishClimb(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any())
         } returns KilterPublishResult.PermanentError("nope", httpCode = 422)
 
         val outcome = publisher.publish(uuid, layoutId, state, boardSize, framesConcat)
@@ -202,7 +202,7 @@ class KilterClimbPublisherTest {
     fun update_returns_diverged_on_permanent_error() = runTest {
         every { repo.claimKilterPublishSlot(uuid) } returns KilterClaim.Won(previouslySyncedAtEpochSeconds = 100L)
         coEvery {
-            apiClient.updateClimb(any(), any(), any(), any(), any(), any(), any(), any(), any())
+            apiClient.updateClimb(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any())
         } returns KilterPublishResult.PermanentError("cannot edit", httpCode = 409)
 
         val outcome = publisher.update(uuid, layoutId, state, boardSize, framesConcat)
@@ -219,7 +219,7 @@ class KilterClimbPublisherTest {
     fun update_marks_synced_on_success() = runTest {
         every { repo.claimKilterPublishSlot(uuid) } returns KilterClaim.Won(previouslySyncedAtEpochSeconds = 100L)
         coEvery {
-            apiClient.updateClimb(any(), any(), any(), any(), any(), any(), any(), any(), any())
+            apiClient.updateClimb(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any())
         } returns KilterPublishResult.Success(uuid)
 
         val outcome = publisher.update(uuid, layoutId, state, boardSize, framesConcat)
@@ -234,13 +234,13 @@ class KilterClimbPublisherTest {
     fun no_prior_sync_uses_create_endpoint() = runTest {
         // Default claim returns Won(null) → CREATE branch.
         coEvery {
-            apiClient.publishClimb(any(), any(), any(), any(), any(), any(), any(), any(), any())
+            apiClient.publishClimb(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any())
         } returns KilterPublishResult.Success(uuid)
 
         publisher.publish(uuid, layoutId, state, boardSize, framesConcat)
 
-        coVerify(exactly = 1) { apiClient.publishClimb(climbUuid = uuid, name = any(), description = any(), framesClimbConcat = any(), productName = any(), edgeLeft = any(), edgeRight = any(), edgeBottom = any(), edgeTop = any()) }
-        coVerify(exactly = 0) { apiClient.updateClimb(any(), any(), any(), any(), any(), any(), any(), any(), any()) }
+        coVerify(exactly = 1) { apiClient.publishClimb(climbUuid = uuid, name = any(), description = any(), framesClimbConcat = any(), productName = any(), productLayoutUuid = any(), angle = any(), edgeLeft = any(), edgeRight = any(), edgeBottom = any(), edgeTop = any()) }
+        coVerify(exactly = 0) { apiClient.updateClimb(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()) }
     }
 
     @Test
@@ -250,12 +250,12 @@ class KilterClimbPublisherTest {
         // publisher.update()). Caller-supplied entrypoint is informational.
         every { repo.claimKilterPublishSlot(uuid) } returns KilterClaim.Won(previouslySyncedAtEpochSeconds = 999L)
         coEvery {
-            apiClient.updateClimb(any(), any(), any(), any(), any(), any(), any(), any(), any())
+            apiClient.updateClimb(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any())
         } returns KilterPublishResult.Success(uuid)
 
         publisher.publish(uuid, layoutId, state, boardSize, framesConcat)
 
-        coVerify(exactly = 1) { apiClient.updateClimb(climbUuid = uuid, name = any(), description = any(), framesClimbConcat = any(), productName = any(), edgeLeft = any(), edgeRight = any(), edgeBottom = any(), edgeTop = any()) }
-        coVerify(exactly = 0) { apiClient.publishClimb(any(), any(), any(), any(), any(), any(), any(), any(), any()) }
+        coVerify(exactly = 1) { apiClient.updateClimb(climbUuid = uuid, name = any(), description = any(), framesClimbConcat = any(), productName = any(), productLayoutUuid = any(), angle = any(), edgeLeft = any(), edgeRight = any(), edgeBottom = any(), edgeTop = any()) }
+        coVerify(exactly = 0) { apiClient.publishClimb(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()) }
     }
 }

@@ -17,6 +17,7 @@ import com.cruxcoach.domain.board.BoardClimbParser
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 
 /**
@@ -248,6 +249,13 @@ class KilterPublishRetryWorker @AssistedInject constructor(
                         result.httpCode, result.message)
                 }
             }
+            } catch (e: CancellationException) {
+                // Cooperate with WorkManager cancellation — without this
+                // re-throw, Kotlin's CancellationException (which extends
+                // Exception) gets absorbed below and the worker marks
+                // every remaining row as 'failed' with bogus excerpts and
+                // returns Result.success(), masking the cancel signal.
+                throw e
             } catch (e: Exception) {
                 rowErrors++
                 Log.w(TAG, "row threw uuid=${row.uuid}; continuing batch", e)

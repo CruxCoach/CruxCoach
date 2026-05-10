@@ -211,6 +211,11 @@ class KilterSyncEngine @Inject constructor(
             userPreferences.setKilterLastSync(timestamp)
 
             if (oneTimeOnly) {
+                // Revoke server-side before clearing locally so the
+                // 30-day Keycloak refresh token can't outlive the user's
+                // explicit "import once and disconnect" choice. Best-
+                // effort — failure here must not block the local clear.
+                runCatching { apiClient.revokeRefreshToken() }
                 tokenStore.clear()
                 userPreferences.setKilterSyncEnabled(false)
             } else {

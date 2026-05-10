@@ -126,7 +126,7 @@ class KilterPublishRetryWorkerTest {
     fun returns_success_when_queue_is_empty() = runTest {
         val result = worker().doWork()
         assertTrue(result is ListenableWorker.Result.Success, "expected empty-queue success, got $result")
-        coVerify(exactly = 0) { apiClient.publishClimb(any(), any(), any(), any(), any(), any(), any(), any(), any()) }
+        coVerify(exactly = 0) { apiClient.publishClimb(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()) }
     }
 
     // ── Per-row outcomes ────────────────────────────────────────────
@@ -135,7 +135,7 @@ class KilterPublishRetryWorkerTest {
     fun success_row_is_marked_synced() = runTest {
         every { repo.getClimbsAwaitingKilterRetry() } returns listOf(row("c1"))
         coEvery {
-            apiClient.publishClimb(any(), any(), any(), any(), any(), any(), any(), any(), any())
+            apiClient.publishClimb(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any())
         } returns KilterPublishResult.Success("c1")
 
         val result = worker().doWork()
@@ -151,7 +151,7 @@ class KilterPublishRetryWorkerTest {
     fun transient_row_is_marked_failed_with_transient_prefix() = runTest {
         every { repo.getClimbsAwaitingKilterRetry() } returns listOf(row("c1"))
         coEvery {
-            apiClient.publishClimb(any(), any(), any(), any(), any(), any(), any(), any(), any())
+            apiClient.publishClimb(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any())
         } returns KilterPublishResult.TransientError("net glitch")
 
         val result = worker().doWork()
@@ -172,7 +172,7 @@ class KilterPublishRetryWorkerTest {
         every { repo.getClimbsAwaitingKilterRetry() } returns listOf(row("c1", kilterSyncedAt = 100L))
         every { repo.claimKilterPublishSlot("c1") } returns KilterClaim.Won(previouslySyncedAtEpochSeconds = 100L)
         coEvery {
-            apiClient.updateClimb(any(), any(), any(), any(), any(), any(), any(), any(), any())
+            apiClient.updateClimb(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any())
         } returns KilterPublishResult.PermanentError("nope", httpCode = 409)
 
         val result = worker().doWork()
@@ -189,7 +189,7 @@ class KilterPublishRetryWorkerTest {
         // kilterSyncedAt null → never synced → use CREATE
         every { repo.getClimbsAwaitingKilterRetry() } returns listOf(row("c1", kilterSyncedAt = null))
         coEvery {
-            apiClient.publishClimb(any(), any(), any(), any(), any(), any(), any(), any(), any())
+            apiClient.publishClimb(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any())
         } returns KilterPublishResult.PermanentError("rejected", httpCode = 422)
 
         val result = worker().doWork()
@@ -207,25 +207,25 @@ class KilterPublishRetryWorkerTest {
     fun not_authenticated_mid_batch_aborts_with_success() = runTest {
         every { repo.getClimbsAwaitingKilterRetry() } returns listOf(row("c1"), row("c2"))
         coEvery {
-            apiClient.publishClimb(any(), any(), any(), any(), any(), any(), any(), any(), any())
+            apiClient.publishClimb(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any())
         } returns KilterPublishResult.NotAuthenticated
 
         val result = worker().doWork()
 
         assertTrue(result is ListenableWorker.Result.Success, "expected success-bail, got $result")
         // Bailed on first row — second row never attempted.
-        coVerify(exactly = 1) { apiClient.publishClimb(climbUuid = "c1", any(), any(), any(), any(), any(), any(), any(), any()) }
-        coVerify(exactly = 0) { apiClient.publishClimb(climbUuid = "c2", any(), any(), any(), any(), any(), any(), any(), any()) }
+        coVerify(exactly = 1) { apiClient.publishClimb(climbUuid = "c1", any(), any(), any(), any(), any(), any(), any(), any(), any(), any()) }
+        coVerify(exactly = 0) { apiClient.publishClimb(climbUuid = "c2", any(), any(), any(), any(), any(), any(), any(), any(), any(), any()) }
     }
 
     @Test
     fun row_throw_is_caught_and_batch_continues() = runTest {
         every { repo.getClimbsAwaitingKilterRetry() } returns listOf(row("c1"), row("c2"))
         coEvery {
-            apiClient.publishClimb(climbUuid = "c1", any(), any(), any(), any(), any(), any(), any(), any())
+            apiClient.publishClimb(climbUuid = "c1", any(), any(), any(), any(), any(), any(), any(), any(), any(), any())
         } throws RuntimeException("DB lock")
         coEvery {
-            apiClient.publishClimb(climbUuid = "c2", any(), any(), any(), any(), any(), any(), any(), any())
+            apiClient.publishClimb(climbUuid = "c2", any(), any(), any(), any(), any(), any(), any(), any(), any(), any())
         } returns KilterPublishResult.Success("c2")
 
         val result = worker().doWork()
@@ -245,7 +245,7 @@ class KilterPublishRetryWorkerTest {
     fun all_transient_returns_retry_for_workmanager_backoff() = runTest {
         every { repo.getClimbsAwaitingKilterRetry() } returns listOf(row("c1"), row("c2"))
         coEvery {
-            apiClient.publishClimb(any(), any(), any(), any(), any(), any(), any(), any(), any())
+            apiClient.publishClimb(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any())
         } returns KilterPublishResult.TransientError("oops")
 
         val result = worker().doWork()
@@ -258,10 +258,10 @@ class KilterPublishRetryWorkerTest {
         // 1 transient + 1 permanent → not all-transient, so success.
         every { repo.getClimbsAwaitingKilterRetry() } returns listOf(row("c1"), row("c2"))
         coEvery {
-            apiClient.publishClimb(climbUuid = "c1", any(), any(), any(), any(), any(), any(), any(), any())
+            apiClient.publishClimb(climbUuid = "c1", any(), any(), any(), any(), any(), any(), any(), any(), any(), any())
         } returns KilterPublishResult.TransientError("temp")
         coEvery {
-            apiClient.publishClimb(climbUuid = "c2", any(), any(), any(), any(), any(), any(), any(), any())
+            apiClient.publishClimb(climbUuid = "c2", any(), any(), any(), any(), any(), any(), any(), any(), any(), any())
         } returns KilterPublishResult.PermanentError("nope", httpCode = 422)
 
         val result = worker().doWork()
