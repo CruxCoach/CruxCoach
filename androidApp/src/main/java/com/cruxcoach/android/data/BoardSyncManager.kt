@@ -100,11 +100,13 @@ class BoardSyncManager(
      */
     fun recoverPartialImportIfNeeded() {
         scope.launch {
-            val climbCount = boardRepository.getClimbCount()
-            if (climbCount == 0L) return@launch
+            // EXISTS-based fast path: getClimbCount() blocks tens of
+            // seconds during an active import, and this hook fires at
+            // app-start where the user is already waiting on UI render.
+            if (!boardRepository.hasAnyClimbs()) return@launch
             if (boardRepository.getAllPlacements().isNotEmpty()) return@launch
 
-            Log.w(TAG, "Partial board DB detected (climbs=$climbCount, placements=0) — interrupted import; triggering recovery sync")
+            Log.w(TAG, "Partial board DB detected (climbs>0, placements=0) — interrupted import; triggering recovery sync")
 
             if (!isNetworkAvailable(appContext)) {
                 Log.w(TAG, "Recovery needed but no network — will retry on next app start")

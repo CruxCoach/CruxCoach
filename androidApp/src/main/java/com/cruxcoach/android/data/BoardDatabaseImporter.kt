@@ -71,9 +71,13 @@ class BoardDatabaseImporter(
         )
     }
 
-    /** Returns true if board data has already been imported (including layout data). */
+    /** Returns true if board data has already been imported (including layout data).
+     *  Uses the EXISTS-based fast path — boardRepository.getClimbCount()
+     *  is a full table-scan that blocks on the importer's writer-lock
+     *  (~28s on slower-eMMC), unacceptable for the BoardSyncManager's
+     *  startup-decision read that needs to feel instant. */
     fun isImported(): Boolean {
-        return boardRepository.getClimbCount() > 0
+        return boardRepository.hasAnyClimbs()
     }
 
     fun getClimbCount(): Long = boardRepository.getClimbCount()
@@ -146,41 +150,72 @@ class BoardDatabaseImporter(
         withDeferredIndexes(
             onRebuild = { onProgress?.invoke(ImportStep.Finalizing) }
         ) {
-            // Import all climb chunks (bulk ATTACH or row-by-row fallback)
+            // Import all climb chunks (bulk ATTACH or row-by-row fallback).
+            // Single shared target connection across chunks: avoids
+            // re-running 4 PRAGMAs per chunk + keeps the climbs.uuid PK
+            // B-tree warm in the page cache between chunks (otherwise
+            // each new connection starts cold and re-faults the same
+            // pages we just read in the previous chunk).
+            //
+            // wal_autocheckpoint = 0 disables the default 1000-page
+            // ( ~4 MB) auto-checkpoint that otherwise stops the writer
+            // mid-import once the WAL grows past the threshold. We
+            // checkpoint(TRUNCATE) explicitly at end-of-phase to reclaim
+            // the WAL space before starting the next phase.
             if (climbsDbFiles.isNotEmpty()) {
-                var cumInserted = 0; var cumScanned = 0
-                onProgress?.invoke(ImportStep.ImportClimbs(0, 0, grandClimbTotal))
-                for ((i, file) in climbsDbFiles.withIndex()) {
-                    val baseInserted = cumInserted; val baseScanned = cumScanned
-                    openReadOnly(file) { rawDb ->
-                        importClimbs(rawDb, freshInstall = freshInstallClimbs) { inserted, scanned, _ ->
-                            onProgress?.invoke(ImportStep.ImportClimbs(
-                                baseInserted + inserted, baseScanned + scanned, grandClimbTotal
-                            ))
+                val sharedDb = openTargetDb()
+                sharedDb.rawQuery("PRAGMA wal_autocheckpoint = 0", null).use { it.moveToFirst() }
+                try {
+                    var cumInserted = 0; var cumScanned = 0
+                    onProgress?.invoke(ImportStep.ImportClimbs(0, 0, grandClimbTotal))
+                    for ((i, file) in climbsDbFiles.withIndex()) {
+                        val baseInserted = cumInserted; val baseScanned = cumScanned
+                        openReadOnly(file) { rawDb ->
+                            importClimbs(rawDb, freshInstall = freshInstallClimbs, sharedTargetDb = sharedDb) { inserted, scanned, _ ->
+                                onProgress?.invoke(ImportStep.ImportClimbs(
+                                    baseInserted + inserted, baseScanned + scanned, grandClimbTotal
+                                ))
+                            }
+                        }.also { chunkInserted ->
+                            cumInserted += chunkInserted
+                            cumScanned += climbChunkCounts[i]
                         }
-                    }.also { chunkInserted ->
-                        cumInserted += chunkInserted
-                        cumScanned += climbChunkCounts[i]
                     }
+                } finally {
+                    sharedDb.rawQuery("PRAGMA wal_checkpoint(TRUNCATE)", null).use { it.moveToFirst() }
+                    sharedDb.rawQuery("PRAGMA wal_autocheckpoint = 1000", null).use { it.moveToFirst() }
+                    sharedDb.close()
                 }
             }
 
-            // Import all stat chunks (bulk ATTACH or row-by-row fallback)
+            // Import all stat chunks (bulk ATTACH or row-by-row fallback).
+            // Same shared-connection + WAL-tuning rationale as the
+            // climbs phase above. Stats is the larger of the two phases
+            // (several stats per climb), so the cache-warmth benefit of
+            // the shared connection dominates here.
             if (statsDbFiles.isNotEmpty()) {
-                var cumInserted = 0; var cumScanned = 0
-                onProgress?.invoke(ImportStep.ImportStats(0, 0, grandStatTotal))
-                for ((i, file) in statsDbFiles.withIndex()) {
-                    val baseInserted = cumInserted; val baseScanned = cumScanned
-                    openReadOnly(file) { rawDb ->
-                        importClimbStats(rawDb, freshInstall = freshInstallStats) { inserted, scanned, _ ->
-                            onProgress?.invoke(ImportStep.ImportStats(
-                                baseInserted + inserted, baseScanned + scanned, grandStatTotal
-                            ))
+                val sharedDb = openTargetDb()
+                sharedDb.rawQuery("PRAGMA wal_autocheckpoint = 0", null).use { it.moveToFirst() }
+                try {
+                    var cumInserted = 0; var cumScanned = 0
+                    onProgress?.invoke(ImportStep.ImportStats(0, 0, grandStatTotal))
+                    for ((i, file) in statsDbFiles.withIndex()) {
+                        val baseInserted = cumInserted; val baseScanned = cumScanned
+                        openReadOnly(file) { rawDb ->
+                            importClimbStats(rawDb, freshInstall = freshInstallStats, sharedTargetDb = sharedDb) { inserted, scanned, _ ->
+                                onProgress?.invoke(ImportStep.ImportStats(
+                                    baseInserted + inserted, baseScanned + scanned, grandStatTotal
+                                ))
+                            }
+                        }.also { chunkInserted ->
+                            cumInserted += chunkInserted
+                            cumScanned += statChunkCounts[i]
                         }
-                    }.also { chunkInserted ->
-                        cumInserted += chunkInserted
-                        cumScanned += statChunkCounts[i]
                     }
+                } finally {
+                    sharedDb.rawQuery("PRAGMA wal_checkpoint(TRUNCATE)", null).use { it.moveToFirst() }
+                    sharedDb.rawQuery("PRAGMA wal_autocheckpoint = 1000", null).use { it.moveToFirst() }
+                    sharedDb.close()
                 }
             }
 
@@ -396,7 +431,7 @@ class BoardDatabaseImporter(
     // ── Delta snapshot ───────────────────────────────────────────────
 
     private fun loadExistingSnapshot(): DiffSnapshot? {
-        if (boardRepository.getClimbCount() == 0L) return null
+        if (!boardRepository.hasAnyClimbs()) return null
         return DiffSnapshot(
             placementCount = boardRepository.getAllPlacements().size,
             ledCount = boardRepository.countLeds().toInt()
@@ -490,11 +525,16 @@ class BoardDatabaseImporter(
         rawDb: SQLiteDatabase,
         existingUuids: Set<String>? = null,
         freshInstall: Boolean = false,
+        sharedTargetDb: SQLiteDatabase? = null,
         onProgress: ((inserted: Int, scanned: Int, total: Int) -> Unit)? = null
     ): Int {
         val chunkPath = rawDb.path ?: return importClimbsLegacy(rawDb, existingUuids, onProgress)
         val srcTable = resolveClimbsTable(rawDb)
-        val targetDb = openTargetDb()
+        // sharedTargetDb is owned by the caller (importFromChunks holds one
+        // connection per phase to avoid PRAGMA-roundtrip + page-cache-cold
+        // overhead on every chunk). Only close locally-opened ones.
+        val targetDb = sharedTargetDb ?: openTargetDb()
+        val ownsTargetDb = sharedTargetDb == null
         try {
             targetDb.execSQL("ATTACH DATABASE ? AS src", arrayOf(chunkPath))
             val total = queryLong(targetDb, "SELECT COUNT(*) FROM src.$srcTable WHERE is_listed = 1").toInt()
@@ -568,6 +608,34 @@ class BoardDatabaseImporter(
             // propagates to client-side defaults that filter is_listed=1).
             // The INSERT path stays is_listed=1 only (no point inserting
             // tombstones for climbs we don't have).
+            // Tier-2 incremental-sync optimisation: stage each batch into
+            // a temp table with `uuid` already lower-cased + indexed, then
+            // run all UPDATE passes against THAT (chunk_norm) instead of
+            // src. The original `WHERE LOWER(src.uuid) = main.climbs.uuid`
+            // killed src's PK index (function on indexed column) → each
+            // outer row paid an O(K) full-scan of src. With chunk_norm
+            // pre-normalised, every UPDATE becomes an O(log K) PK lookup.
+            // Per-chunk cost: O(K log K) instead of O(K²) per pass × 5
+            // passes = ~700-1000× faster on incremental sync. Fresh-install
+            // costs one extra K-row copy per batch (worth it: the INSERT
+            // path also wins from the same indexed lookup vs LOWER() in
+            // its own SELECT).
+            //
+            // Temp tables are connection-scoped + the connection is shared
+            // across chunks via [sharedTargetDb], so we IF-NOT-EXISTS once
+            // and DELETE between batches to reuse storage.
+            targetDb.execSQL("""
+                CREATE TEMP TABLE IF NOT EXISTS chunk_norm (
+                    uuid TEXT PRIMARY KEY,
+                    layout_id INTEGER, setter_username TEXT, name TEXT, frames TEXT,
+                    frames_count INTEGER, is_listed INTEGER,
+                    edge_left INTEGER, edge_right INTEGER,
+                    edge_bottom INTEGER, edge_top INTEGER,
+                    created_at INTEGER, description TEXT,
+                    is_nomatch INTEGER, frames_pace INTEGER, hsm INTEGER,
+                    move_count INTEGER, origin TEXT, created_by_pubkey TEXT
+                ) WITHOUT ROWID
+            """)
             val minRowid = queryLong(targetDb, "SELECT MIN(rowid) FROM src.$srcTable")
             val maxRowid = queryLong(targetDb, "SELECT MAX(rowid) FROM src.$srcTable")
             var batchStart = minRowid
@@ -582,13 +650,12 @@ class BoardDatabaseImporter(
                     // — they are *not* the same logical climb on the
                     // cron's side — so we collapse case at the import
                     // boundary and let BINARY collation enforce identity.
+                    // INSERT OR IGNORE handles intra-batch duplicate
+                    // LOWER(uuid) collisions (rare — the cron typically
+                    // dedupes within a month-chunk).
+                    targetDb.execSQL("DELETE FROM chunk_norm")
                     targetDb.execSQL("""
-                        INSERT OR IGNORE INTO climbs(
-                            uuid, layout_id, setter_username, name, frames,
-                            frames_count, is_listed, edge_left, edge_right,
-                            edge_bottom, edge_top, created_at,
-                            description, is_nomatch, frames_pace, hsm, move_count,
-                            origin, created_by_pubkey)
+                        INSERT OR IGNORE INTO chunk_norm
                         SELECT LOWER(uuid), layout_id, setter_username, name, frames,
                                frames_count, is_listed, edge_left, edge_right,
                                edge_bottom, edge_top, created_at,
@@ -598,29 +665,30 @@ class BoardDatabaseImporter(
                                $originExpr,
                                $pubkeyExpr
                         FROM src.$srcTable
-                        WHERE is_listed = 1 AND rowid BETWEEN $batchStart AND $batchEnd
+                        WHERE rowid BETWEEN $batchStart AND $batchEnd
+                    """)
+                    // Insert listed rows from chunk_norm. Tombstones
+                    // (is_listed=0) are intentionally not inserted — no
+                    // point materialising rows for climbs we don't have.
+                    targetDb.execSQL("""
+                        INSERT OR IGNORE INTO climbs(
+                            uuid, layout_id, setter_username, name, frames,
+                            frames_count, is_listed, edge_left, edge_right,
+                            edge_bottom, edge_top, created_at,
+                            description, is_nomatch, frames_pace, hsm, move_count,
+                            origin, created_by_pubkey)
+                        SELECT uuid, layout_id, setter_username, name, frames,
+                               frames_count, is_listed, edge_left, edge_right,
+                               edge_bottom, edge_top, created_at,
+                               description, is_nomatch, frames_pace, hsm, move_count,
+                               origin, created_by_pubkey
+                        FROM chunk_norm
+                        WHERE is_listed = 1
                     """)
                     // Content refresh — only for origin='kilter' rows.
                     // Climbs authored via CruxCoach (origin='cruxcoach')
-                    // have Nostr as their source of truth: either the
-                    // CommunityClimbSubscriber has the latest, or the
-                    // user's own publish path wrote it directly. Either
-                    // way, the Blossom blob is at best as fresh as those
-                    // sources, often staler. Don't let a daily blob
-                    // refresh roll back an in-flight Nostr edit.
-                    // climbs.uuid is canonical lowercase (see INSERT
-                    // above); src.uuid may be in either case. Match by
-                    // LOWER() on the src side so the correlated subquery
-                    // and the IN list both find the same row.
-                    //
-                    // Outer reference qualified as `main.climbs.uuid`:
-                    // src and main use the same table name `climbs`,
-                    // so SQLite resolves an unqualified `climbs.uuid`
-                    // inside the FROM-scoped subquery to src.climbs.uuid
-                    // — the WHERE then becomes a tautology and the
-                    // SELECT picks an arbitrary src row, smearing one
-                    // row's content across every UPDATE target. Same
-                    // qualification on the two follow-up UPDATEs below.
+                    // have Nostr as their source of truth and are
+                    // protected from blob refresh.
                     if (!skipUpdatePasses) {
                         targetDb.execSQL("""
                             UPDATE climbs SET
@@ -630,108 +698,57 @@ class BoardDatabaseImporter(
                                  is_nomatch, frames_pace, hsm, move_count)
                                 = (SELECT layout_id, setter_username, name, frames,
                                           frames_count, is_listed, edge_left, edge_right,
-                                          edge_bottom, edge_top, created_at,
-                                          COALESCE(description, ''), COALESCE(is_nomatch, 0),
-                                          COALESCE(frames_pace, 0), COALESCE(hsm, 0),
-                                          $moveCountExpr
-                                   FROM src.$srcTable
-                                   WHERE LOWER(src.$srcTable.uuid) = main.climbs.uuid)
+                                          edge_bottom, edge_top, created_at, description,
+                                          is_nomatch, frames_pace, hsm, move_count
+                                   FROM chunk_norm
+                                   WHERE chunk_norm.uuid = main.climbs.uuid)
                             WHERE origin = 'kilter'
-                              AND uuid IN (
-                                SELECT LOWER(uuid) FROM src.$srcTable
-                                WHERE rowid BETWEEN $batchStart AND $batchEnd
-                              )
+                              AND uuid IN (SELECT uuid FROM chunk_norm)
                         """)
                     }
                     // Tombstone propagation for cruxcoach-origin climbs.
-                    // We don't refresh content (above), but we DO want
-                    // is_listed=0 to flow through if a cruxcoach climb
-                    // got unlisted (e.g. NIP-09 deletion the cron tracked,
-                    // or a Kilter-side unlist for a hybrid climb). Only
-                    // flips to 0 — never re-lists what the user has
-                    // chosen to hide locally.
+                    // Only flips listed→tombstoned, never the reverse.
                     if (!skipUpdatePasses) {
                         targetDb.execSQL("""
                             UPDATE climbs SET is_listed = 0
                             WHERE origin = 'cruxcoach'
                               AND is_listed = 1
-                              AND uuid IN (
-                                SELECT LOWER(uuid) FROM src.$srcTable
-                                WHERE rowid BETWEEN $batchStart AND $batchEnd
-                                  AND is_listed = 0
-                              )
+                              AND uuid IN (SELECT uuid FROM chunk_norm WHERE is_listed = 0)
                         """)
                     }
                     // Setter-username propagation for cruxcoach-origin
-                    // climbs. Per Plan C, the cron runs Kind-0
-                    // resolution on every tick and writes the resolved
-                    // display_name into the blob's setter_username.
-                    // That value beats whatever the live sub wrote
-                    // locally because: (a) the cron's resolution path
-                    // is the same as the live sub's (both fetch Kind 0),
-                    // (b) the cron sees profile renames even without a
-                    // new climb event (sweep pass).
-                    //
-                    // COALESCE preserves the local value when the source
-                    // is NULL (defensive — shouldn't happen with cron
-                    // patches active, but stale blob bytes could).
-                    //
-                    // This is the ONE column we let the import flow touch
-                    // on cruxcoach rows. Frames/name/description remain
-                    // protected (above) — they're climb content, not
-                    // identity, and Nostr is their authoritative source
-                    // through the live sub.
+                    // climbs (Plan C: cron resolves Kind-0 + writes the
+                    // display_name into the blob). COALESCE keeps the
+                    // local value when source is NULL.
                     if (!skipUpdatePasses) {
                         targetDb.execSQL("""
                             UPDATE climbs SET setter_username = COALESCE(
-                                (SELECT setter_username FROM src.$srcTable
-                                 WHERE LOWER(src.$srcTable.uuid) = main.climbs.uuid),
+                                (SELECT setter_username FROM chunk_norm
+                                 WHERE chunk_norm.uuid = main.climbs.uuid),
                                 main.climbs.setter_username
                             )
                             WHERE origin = 'cruxcoach'
-                              AND uuid IN (
-                                SELECT LOWER(uuid) FROM src.$srcTable
-                                WHERE rowid BETWEEN $batchStart AND $batchEnd
-                              )
+                              AND uuid IN (SELECT uuid FROM chunk_norm)
                         """)
                     }
-                    // Origin upgrade pass — asymmetric on purpose. We only
-                    // ever flip 'kilter' → 'cruxcoach' (the cron sub
-                    // discovered the climb on Nostr and annotated the
-                    // blob); never 'cruxcoach' → 'kilter'. A locally-set
-                    // 'cruxcoach' (e.g. CommunityClimbSubscriber wrote it
-                    // before a Blossom refresh) survives. Skipped entirely
-                    // when the source schema lacks `origin` (pre-2026-04-29
-                    // chunks).
+                    // Origin upgrade — kilter→cruxcoach only (asymmetric).
                     if (!skipUpdatePasses && hasOrigin) {
                         targetDb.execSQL("""
                             UPDATE climbs SET origin = 'cruxcoach'
                             WHERE origin != 'cruxcoach'
-                              AND uuid IN (
-                                SELECT LOWER(uuid) FROM src.$srcTable
-                                WHERE rowid BETWEEN $batchStart AND $batchEnd
-                                  AND origin = 'cruxcoach'
-                              )
+                              AND uuid IN (SELECT uuid FROM chunk_norm WHERE origin = 'cruxcoach')
                         """)
                     }
-                    // Pubkey backfill — only fills NULL locally, never
-                    // overwrites. Useful for hybrid climbs that came in
-                    // via Kilter API first (no pubkey), then later got
-                    // their pubkey written by the cron after seeing the
-                    // matching Nostr event. Symmetric semantics with the
-                    // origin-upgrade pass above: blob-fills-gap, never
-                    // overrides.
+                    // Pubkey backfill — fills NULL only, never overwrites.
                     if (!skipUpdatePasses && hasCreatedByPubkey) {
                         targetDb.execSQL("""
                             UPDATE climbs SET created_by_pubkey = (
-                                SELECT created_by_pubkey FROM src.$srcTable
-                                WHERE LOWER(src.$srcTable.uuid) = main.climbs.uuid
+                                SELECT created_by_pubkey FROM chunk_norm
+                                WHERE chunk_norm.uuid = main.climbs.uuid
                             )
                             WHERE created_by_pubkey IS NULL
                               AND uuid IN (
-                                SELECT LOWER(uuid) FROM src.$srcTable
-                                WHERE rowid BETWEEN $batchStart AND $batchEnd
-                                  AND created_by_pubkey IS NOT NULL
+                                SELECT uuid FROM chunk_norm WHERE created_by_pubkey IS NOT NULL
                               )
                         """)
                     }
@@ -739,11 +756,20 @@ class BoardDatabaseImporter(
                 } finally {
                     targetDb.endTransaction()
                 }
-                val batchCount = queryLong(targetDb,
-                    "SELECT COUNT(*) FROM src.$srcTable WHERE is_listed = 1 AND rowid BETWEEN $batchStart AND $batchEnd"
-                ).toInt()
-                scanned += batchCount
-                onProgress?.invoke(scanned, scanned, total)
+                // Approximate scanned-progress from rowid arithmetic
+                // (avoids a per-batch COUNT scan on the source chunk).
+                // Source rowids are dense for fresh dumps so the upper
+                // cap of `total` keeps the UI from overshooting on the
+                // rare WHERE is_listed = 1 holes.
+                //
+                // inserted=0 (sentinel) keeps the UI's "+N new" label
+                // anchored at the prior chunk-final value mid-chunk;
+                // the real chunk-inserted count flows through the
+                // post-loop onProgress invoke below. Without this the
+                // label flickered fast-→-slow as Tier-2 dropped per-
+                // chunk time from 30s to <1s.
+                scanned = (scanned + (batchEnd - batchStart + 1).toInt()).coerceAtMost(total)
+                onProgress?.invoke(0, scanned, total)
                 batchStart = batchEnd + 1
             }
 
@@ -769,7 +795,7 @@ class BoardDatabaseImporter(
             Log.w(TAG, "ATTACH-import failed for climbs; falling back to legacy row-by-row", e)
             return importClimbsLegacy(rawDb, existingUuids, onProgress)
         } finally {
-            targetDb.close()
+            if (ownsTargetDb) targetDb.close()
         }
     }
 
@@ -838,11 +864,15 @@ class BoardDatabaseImporter(
         rawDb: SQLiteDatabase,
         existingStats: Map<Pair<String, Long>, Long?>? = null,
         freshInstall: Boolean = false,
+        sharedTargetDb: SQLiteDatabase? = null,
         onProgress: ((inserted: Int, scanned: Int, total: Int) -> Unit)? = null
     ): Int {
         val chunkPath = rawDb.path ?: return importClimbStatsLegacy(rawDb, existingStats, onProgress)
         val srcTable = resolveStatsTable(rawDb)
-        val targetDb = openTargetDb()
+        // See [importClimbs] — long-lived shared connection avoids
+        // PRAGMA + page-cache reset on every chunk.
+        val targetDb = sharedTargetDb ?: openTargetDb()
+        val ownsTargetDb = sharedTargetDb == null
         try {
             targetDb.execSQL("ATTACH DATABASE ? AS src", arrayOf(chunkPath))
             val total = queryLong(targetDb, "SELECT COUNT(*) FROM src.$srcTable").toInt()
@@ -884,11 +914,12 @@ class BoardDatabaseImporter(
                 } finally {
                     targetDb.endTransaction()
                 }
-                val batchCount = queryLong(targetDb,
-                    "SELECT COUNT(*) FROM src.$srcTable WHERE rowid BETWEEN $batchStart AND $batchEnd"
-                ).toInt()
-                scanned += batchCount
-                onProgress?.invoke(scanned, scanned, total)
+                // Same rowid-arithmetic optimisation as [importClimbs] —
+                // skip the per-batch source COUNT scan. inserted=0
+                // sentinel: see [importClimbs] for the no-flicker
+                // rationale.
+                scanned = (scanned + (batchEnd - batchStart + 1).toInt()).coerceAtMost(total)
+                onProgress?.invoke(0, scanned, total)
                 batchStart = batchEnd + 1
             }
 
@@ -906,7 +937,7 @@ class BoardDatabaseImporter(
             Log.w(TAG, "ATTACH-import failed for climb_stats; falling back to legacy row-by-row", e)
             return importClimbStatsLegacy(rawDb, existingStats, onProgress)
         } finally {
-            targetDb.close()
+            if (ownsTargetDb) targetDb.close()
         }
     }
 
