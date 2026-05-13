@@ -332,8 +332,16 @@ class BoardBrowserViewModel @Inject constructor(
         cachedCountKey = ""
         viewModelScope.launch {
             val changed = withContext(Dispatchers.IO) {
-                val count = PerfLogger.traceQuery("getClimbCount") { boardRepository.getClimbCount() }
-                val countChanged = count != _state.value.climbCount
+                // hasAnyClimbs() = O(1) EXISTS probe; getClimbCount() is a
+                // full table-scan that blocks tens of seconds on the bulk
+                // importer's writer-lock during sync. We only need a
+                // boolean here ("can we render the browse list?"), so the
+                // EXISTS path is fine. countChanged is then just a
+                // hasBoardData transition (false → true after the first
+                // chunk lands), not a delta-by-row-count.
+                val hasData = PerfLogger.traceQuery("hasAnyClimbs") { boardRepository.hasAnyClimbs() }
+                val count = if (hasData) _state.value.climbCount.coerceAtLeast(1) else 0L
+                val countChanged = hasData != _state.value.hasBoardData
                 val prefSizeId = userPreferences.boardProductSizeId.first()
                 val prefLayoutId = userPreferences.boardLayoutId.first()
                 val needsBoardReload = _state.value.boardSize == null || _state.value.boardSize!!.id.toInt() != prefSizeId

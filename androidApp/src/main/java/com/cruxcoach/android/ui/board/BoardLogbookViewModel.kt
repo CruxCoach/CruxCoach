@@ -123,6 +123,13 @@ class BoardLogbookViewModel @Inject constructor(
     private val userPreferences: UserPreferences,
     private val zoneManager: IntensityZoneManager,
     val climbNavState: com.cruxcoach.android.ui.navigation.ClimbNavigationState,
+    /** UUID-case fanout (raw → lowercase → uppercase → hyphenated …)
+     *  needed because BLE-decoded ascents store uuids upper-case-no-hyphens
+     *  but the climbs table writes lowercase canonical form (see 7.sqm).
+     *  Without going through the resolver the repair-pass below silently
+     *  fails and the user sees blank climb names with the cards still
+     *  navigating to the correct detail screen — confusing UX. */
+    private val climbNameResolver: com.cruxcoach.android.data.ClimbNameResolver,
     @param:ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -254,7 +261,10 @@ class BoardLogbookViewModel @Inject constructor(
         for (i in entries.indices) {
             val entry = entries[i]
             if (entry.climbName.isNotBlank() && entry.difficultyAverage != null) continue
-            val climb = boardRepository.getClimbByUuid(entry.climbUuid, entry.angle.toInt()) ?: continue
+            // Use the case-fanout resolver: BLE protocol decodes uuids as
+            // uppercase-no-hyphens, our climbs table stores lowercase
+            // canonical form. Raw getClimbByUuid would silently miss those.
+            val climb = climbNameResolver.resolveClimb(entry.climbUuid, entry.angle.toInt()) ?: continue
             // Fix in-memory for immediate display
             entries[i] = entry.copy(
                 climbName = climb.name,
