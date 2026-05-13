@@ -209,6 +209,12 @@ interface BoardClimbQueries {
     fun countSearchClimbs(query: String, angle: Int, layoutId: Int, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER): Long
     fun countBenchmarkSearchClimbs(query: String, angle: Int, layoutId: Int, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER): Long
     fun getClimbCount(): Long
+    /** O(1) existence check. Far cheaper than [getClimbCount] — that one
+     *  full-table-scans on a 190k-row catalog, and worse, blocks on the
+     *  bulk importer's writer-lock during sync (~28s on slower-eMMC).
+     *  Use this anywhere the caller only needs a boolean (empty-state
+     *  decision in BoardBrowser, fresh-install probe). */
+    fun hasAnyClimbs(): Boolean
     fun getStatCount(): Long
     /** Stats with no matching climbs row (cron desync indicator). */
     fun countOrphanStats(): Long

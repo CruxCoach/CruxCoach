@@ -385,6 +385,14 @@ WHERE l.product_size_id = ?;
 countClimbs:
 SELECT COUNT(*) FROM climbs;
 
+-- O(1) "do we have any climbs at all" check. Use this anywhere the
+-- caller only needs a boolean — countClimbs is a full table-scan
+-- (190k+ rows) and degrades to seconds during an active import (writer
+-- holds the page-cache hot path), so the empty-state path on app-start
+-- noticeably stalls the browser when the user opens during sync.
+hasAnyClimbs:
+SELECT EXISTS(SELECT 1 FROM climbs LIMIT 1);
+
 getClimbCountByAngle:
 SELECT cs.angle, COUNT(*) AS climb_count
 FROM climb_stats cs
@@ -885,12 +893,21 @@ ORDER BY name ASC;
 -- Filter on origin='cruxcoach' so only community setters appear, not
 -- every Kilter-API-imported username with a coincidentally non-null
 -- pubkey field.
+-- Implementation note: the COUNT must match what `getClimbsByPubkey`
+-- below actually returns. That query reads from the `climb_browse`
+-- VIEW, which INNER JOINs climbs against climb_stats — so a climbs
+-- row that lacks a climb_stats entry (orphaned by a partial import or
+-- a bug in the publish path) is COUNTed here but missing from the
+-- detail screen, surfacing as the confusing "list shows 2, screen
+-- shows 1" UX. EXISTS-gate the COUNT on the same INNER JOIN
+-- predicate so the two queries can never drift.
 getCommunitySetterStats:
 SELECT created_by_pubkey, setter_username, COUNT(*) AS climb_count
-FROM climbs
+FROM climbs c
 WHERE origin = 'cruxcoach'
   AND created_by_pubkey IS NOT NULL
   AND is_listed = 1
+  AND EXISTS (SELECT 1 FROM climb_stats cs WHERE cs.climb_uuid = c.uuid)
 GROUP BY created_by_pubkey
 ORDER BY climb_count DESC, setter_username ASC;
 

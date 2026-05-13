@@ -126,6 +126,10 @@ class BoardRepositoryImpl(
         return q.countClimbs().executeAsOne()
     }
 
+    override fun hasAnyClimbs(): Boolean {
+        return q.hasAnyClimbs().executeAsOne()
+    }
+
     override fun getStatCount(): Long {
         return q.countStats().executeAsOne()
     }

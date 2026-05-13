@@ -149,6 +149,7 @@ class FakeBoardRepository : BoardRepository {
     override fun countSearchClimbs(query: String, angle: Int, layoutId: Int, climbType: ClimbTypeFilter): Long = 0L
     override fun countBenchmarkSearchClimbs(query: String, angle: Int, layoutId: Int, climbType: ClimbTypeFilter): Long = 0L
     override fun getClimbCount(): Long = storedClimbs.size.toLong()
+    override fun hasAnyClimbs(): Boolean = storedClimbs.isNotEmpty()
     override fun getStatCount(): Long = 0L
     override fun countOrphanStats(): Long = 0L
     override fun countListedClimbsWithoutStats(): Long = 0L
