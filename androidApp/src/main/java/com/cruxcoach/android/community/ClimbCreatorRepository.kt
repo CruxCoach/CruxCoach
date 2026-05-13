@@ -29,6 +29,15 @@ class ClimbCreatorRepository @Inject constructor(
     private val userPreferences: UserPreferences,
     private val nostrSigner: NostrSigner,
     private val nostrProfileManager: NostrProfileManager,
+    /** Same suspend-during-board-sync gate as CommunityClimbSubscriber.
+     *  insertLocalDraft() is a SQLite write transaction (commit + fsync);
+     *  while the bulk board importer holds the writer-lock for its 97-
+     *  chunk INSERT-OR-IGNORE storm, an editor save throws
+     *  SQLiteDatabaseLockedException (SQLITE_BUSY) within milliseconds
+     *  even under WAL. Suspend (don't fail) until isSyncing flips false
+     *  so the user's tap on "Veröffentlichen" reliably succeeds without
+     *  asking them to understand sync timing. */
+    private val boardSyncManager: com.cruxcoach.android.data.BoardSyncManager,
 ) {
     /**
      * Persist editor state as a local draft. Generates a fresh UUIDv4 +
@@ -40,6 +49,7 @@ class ClimbCreatorRepository @Inject constructor(
      */
     suspend fun saveDraft(state: ClimbEditorState): String {
         require(state.angle != null) { "angle is required when saving draft" }
+        awaitBoardSyncQuiescent()
 
         val pubkey = runCatching { nostrSigner.getPublicKeyHex() }.getOrNull()
         val layoutId = userPreferences.boardLayoutId.first().toLong()
@@ -94,6 +104,7 @@ class ClimbCreatorRepository @Inject constructor(
      */
     suspend fun updateDraft(uuid: String, state: ClimbEditorState) {
         require(state.angle != null) { "angle is required when updating draft" }
+        awaitBoardSyncQuiescent()
         val pubkey = runCatching { nostrSigner.getPublicKeyHex() }.getOrNull()
         val layoutId = userPreferences.boardLayoutId.first().toLong()
 
@@ -149,6 +160,19 @@ class ClimbCreatorRepository @Inject constructor(
         if (pubkey.isNullOrBlank()) return null
         val profile = runCatching { nostrProfileManager.getProfileFromCache(pubkey) }.getOrNull()
         return profile?.displayName?.takeIf { it.isNotBlank() }
+    }
+
+    /** Suspend until the bulk board importer releases the writer-lock.
+     *  Without this the editor's `insertLocalDraft` transaction races
+     *  against ~97 chunk INSERT-OR-IGNORE batches and throws SQLITE_BUSY
+     *  within a few ms — surfacing as a "Publish failed" snackbar that
+     *  the user has no way to reason about. Fast-paths to no-op when
+     *  no sync is in flight (the common case). */
+    private suspend fun awaitBoardSyncQuiescent() {
+        if (!boardSyncManager.state.value.isSyncing) return
+        android.util.Log.d("ClimbCreator", "awaiting board-sync to finish before draft write")
+        boardSyncManager.state.first { !it.isSyncing }
+        android.util.Log.d("ClimbCreator", "board-sync done, proceeding with draft write")
     }
 
     private fun computeBounds(state: ClimbEditorState): ClimbBounds? {

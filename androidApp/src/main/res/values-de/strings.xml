@@ -33,7 +33,7 @@
     <string name="climb_creator_draft_saved">Entwurf gespeichert.</string>
     <string name="climb_creator_also_post_note">Auch auf Nostr posten</string>
     <string name="climb_creator_also_post_note_hint">Postet eine kurze Nachricht an deine Follower auf Nostr, die zurück auf den Climb verlinkt.</string>
-    <string name="auto_note_default_template">Ich habe einen neuen Boulder auf nostr:{npub_cruxcoach} veröffentlicht: „{name}“\n\n#kilterboard #climbing\n\n{cruxcoach_url}\nnostr:{naddr}</string>
+    <string name="auto_note_default_template">Ich habe einen neuen Boulder auf nostr:{npub_cruxcoach} veröffentlicht:\n\n{cruxcoach_url}\n\n#climbing #bouldering</string>
     <string name="auto_note_setting_title">Neue Climbs auf Nostr posten</string>
     <string name="auto_note_setting_body">Wenn aktiv, wird beim Veröffentlichen eines Climbs zusätzlich eine kurze Nachricht an deine Follower auf Nostr gepostet, die zurück auf den Climb verlinkt. Pro Climb im Editor übersteuerbar. Default aus.</string>
     <string name="nostr_profile_subscriber_status_title">Community-Climb-Feed</string>
@@ -67,6 +67,9 @@
     <string name="climb_creator_save_failed">Entwurf konnte nicht gespeichert werden. Bitte versuche es erneut.</string>
     <string name="climb_creator_publish_failed">Veröffentlichen fehlgeschlagen. Bitte versuche es erneut.</string>
     <string name="climb_creator_publish_failed_will_retry">Kein Relay hat den Climb angenommen — der Entwurf bleibt gespeichert und CruxCoach versucht es im Hintergrund weiter.</string>
+    <string name="climb_creator_publish_waiting_for_sync">Board-Sync läuft — dein Climb wird veröffentlicht, sobald der Sync fertig ist.</string>
+    <string name="climb_creator_auto_note_text_label">Notiz-Text</string>
+    <string name="climb_creator_auto_note_placeholders_hint">Platzhalter bleiben unverändert: {name}, {naddr}, {npub_cruxcoach}, {cruxcoach_url}</string>
     <string name="climb_creator_auto_note_zero_relays">Climb veröffentlicht, aber die Auto-Note hat kein Relay erreicht.</string>
     <string name="climb_creator_publish_both_ok">Climb veröffentlicht auf Nostr und Kilter.</string>
     <string name="climb_creator_publish_kilter_pending">Auf Nostr veröffentlicht — Kilter-Sync läuft im Hintergrund.</string>
@@ -94,7 +97,7 @@
     <string name="community_climb_delete_action">Veröffentlichung löschen</string>
     <string name="community_climb_delete_confirm_title">Diesen Climb löschen?</string>
     <string name="community_climb_delete_confirm_nostr_only">Dein Climb wird aus CruxCoach entfernt und eine Löschung wird an die Nostr-Relays gesendet. Lokal verschwindet er sofort; bei den Relays kann es ein paar Minuten dauern.</string>
-    <string name="community_climb_delete_confirm_kilter_warning">Dein Climb wird aus CruxCoach entfernt und eine Löschung wird an die Nostr-Relays gesendet. Du hast diesen Climb auch auf Kilter veröffentlicht — die Kilter-API erlaubt keine Löschung. Öffne die offizielle Kilter-App, um ihn dort aus deinem Account zu entfernen.</string>
+    <string name="community_climb_delete_confirm_kilter_warning">Dein Climb wird aus CruxCoach entfernt und eine Löschung wird an die Nostr-Relays gesendet. Du hast diesen Climb auch auf Kilter veröffentlicht — Kilter erlaubt das Entfernen veröffentlichter Climbs in keinem Client (der Server gated das für ihre App genauso wie für unsere). Deine Kilter-Kopie bleibt für immer öffentlich.</string>
     <string name="community_climb_delete_confirm_button">Löschen</string>
     <string name="community_climb_delete_cancel_button">Abbrechen</string>
     <string name="community_climb_delete_done_nostr_only" formatted="false">Climb gelöscht (%1$d von %2$d Relays bestätigt).</string>

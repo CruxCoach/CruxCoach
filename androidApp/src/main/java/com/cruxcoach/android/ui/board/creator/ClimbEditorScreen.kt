@@ -214,6 +214,15 @@ fun ClimbEditorScreen(
         viewModel.clearAutoNoteOutcome()
         onPublished(uuid)
     }
+    LaunchedEffect(state.infoMessage) {
+        state.infoMessage?.let { msg ->
+            snackbarHostState.showSnackbar(
+                message = msg,
+                duration = androidx.compose.material3.SnackbarDuration.Short,
+            )
+            viewModel.clearInfoMessage()
+        }
+    }
     LaunchedEffect(state.errorMessage) {
         state.errorMessage?.let { msg ->
             snackbarHostState.showSnackbar(msg)
@@ -405,7 +414,7 @@ fun ClimbEditorScreen(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 androidx.compose.material3.Checkbox(
                     checked = state.alsoPostNote,
-                    onCheckedChange = { viewModel.setAlsoPostNote(it) },
+                    onCheckedChange = { viewModel.setAlsoPostNote(it, autoNoteTemplate) },
                 )
                 Text(
                     stringResource(R.string.climb_creator_also_post_note),
@@ -413,25 +422,50 @@ fun ClimbEditorScreen(
                     modifier = Modifier.weight(1f),
                 )
             }
+            // Per-publish editor for the Kind-1 announcement text. Only
+            // visible while the Auto-Note checkbox is on. The text is
+            // pre-seeded with the default template (substituted at
+            // publish time — placeholders like {name}, {naddr},
+            // {npub_cruxcoach}, {cruxcoach_url} stay literal here so
+            // the user can keep them, edit them out, or rewrite the
+            // surrounding prose without losing the dynamic parts.
+            if (state.alsoPostNote) {
+                androidx.compose.material3.OutlinedTextField(
+                    value = state.autoNoteText.orEmpty(),
+                    onValueChange = { viewModel.setAutoNoteText(it) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 40.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+                    label = { Text(stringResource(R.string.climb_creator_auto_note_text_label)) },
+                    supportingText = { Text(stringResource(R.string.climb_creator_auto_note_placeholders_hint), style = MaterialTheme.typography.bodySmall) },
+                    minLines = 4,
+                    maxLines = 10,
+                    textStyle = MaterialTheme.typography.bodySmall,
+                )
+            }
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(
-                    // Save-as-draft stays in the editor: the user can keep
-                    // tweaking and the now-loaded draft gets re-saved in
-                    // place via loadedDraftUuid. Same validation gate as
-                    // Publish so the user gets one consistent reason the
-                    // buttons are disabled — the ValidationStatus list
-                    // above already shows what's still missing.
-                    onClick = {
-                        viewModel.saveAsDraft { _ ->
-                            coroutineScope.launch {
-                                snackbarHostState.showSnackbar(draftSavedMessage)
+                if (!state.isEditingExisting) {
+                    OutlinedButton(
+                        // Save-as-draft stays in the editor: the user can keep
+                        // tweaking and the now-loaded draft gets re-saved in
+                        // place via loadedDraftUuid. Same validation gate as
+                        // Publish so the user gets one consistent reason the
+                        // buttons are disabled — the ValidationStatus list
+                        // above already shows what's still missing. Hidden
+                        // when editing an already-published climb (a
+                        // published climb is not a draft).
+                        onClick = {
+                            viewModel.saveAsDraft { _ ->
+                                coroutineScope.launch {
+                                    snackbarHostState.showSnackbar(draftSavedMessage)
+                                }
                             }
-                        }
-                    },
-                    enabled = !state.isPublishing && state.validationIssues.isEmpty(),
-                    modifier = Modifier.weight(1f),
-                ) { Text(stringResource(R.string.climb_creator_save_draft)) }
+                        },
+                        enabled = !state.isPublishing && state.validationIssues.isEmpty(),
+                        modifier = Modifier.weight(1f),
+                    ) { Text(stringResource(R.string.climb_creator_save_draft)) }
+                }
                 Button(
                     onClick = { viewModel.publish(sizeLabel = "12x12", autoNoteTemplate = autoNoteTemplate) },
                     enabled = !state.isPublishing && state.validationIssues.isEmpty(),

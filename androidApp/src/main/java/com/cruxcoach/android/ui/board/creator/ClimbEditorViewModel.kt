@@ -71,6 +71,11 @@ data class ClimbEditorUiState(
      *  silent-published outcome no longer hides relay reach loss. */
     val autoNotePublished: Boolean? = null,
     val errorMessage: String? = null,
+    /** Non-error informational snackbar (e.g. "Sync läuft, Veröffentlichung
+     *  startet danach"). Distinct from errorMessage so the screen can
+     *  render it with a different colour and the user doesn't read it
+     *  as a failure. Cleared by the screen after rendering. */
+    val infoMessage: String? = null,
     /** Loaded-draft uuid — re-saving updates this row in place. */
     val loadedDraftUuid: String? = null,
     /** Heatmap intensities (placementId → 0..1) for "popular co-occurring holds". */
@@ -97,6 +102,22 @@ data class ClimbEditorUiState(
      *  opens; the user can flip it for a single publish without
      *  affecting the global default. */
     val alsoPostNote: Boolean = false,
+    /** User-editable Kind-1 note text. null = field hasn't been
+     *  initialised yet (the editor's auto-note toggle hasn't been
+     *  flipped to ON in this session, OR the screen hasn't seeded the
+     *  default template into it yet). When non-null this string is
+     *  what gets sent verbatim to publishKind1Note's template renderer
+     *  — placeholders like `{name}`, `{naddr}`, `{npub_cruxcoach}`,
+     *  `{cruxcoach_url}` are still substituted, so the user can keep
+     *  the dynamic parts and only tweak the static prose around them. */
+    val autoNoteText: String? = null,
+    /** True when the editor is editing an already-published climb (came
+     *  in via `editUuid`). In that case "Save as draft" is hidden — a
+     *  published climb is not a draft, and re-saving it as one would
+     *  create UX ambiguity ("did my edits go live?"). Fork mode stays
+     *  false because forking creates a fresh climb that *can* be
+     *  parked as a draft. */
+    val isEditingExisting: Boolean = false,
 )
 
 @HiltViewModel
@@ -111,6 +132,12 @@ class ClimbEditorViewModel @Inject constructor(
     private val nostrSigner: com.cruxcoach.android.nostr.NostrSigner,
     private val nostrProfileManager: com.cruxcoach.android.payment.NostrProfileManager,
     private val climbNavState: com.cruxcoach.android.ui.navigation.ClimbNavigationState,
+    /** Read-only access to surface a "publish waits for sync" snackbar
+     *  the moment the user taps Veröffentlichen during an in-flight
+     *  board sync — without it the editor just looks frozen for tens
+     *  of seconds while ClimbCreatorRepository.awaitBoardSyncQuiescent
+     *  blocks waiting for the importer's writer-lock to release. */
+    private val boardSyncManager: com.cruxcoach.android.data.BoardSyncManager,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ClimbEditorUiState())
@@ -176,6 +203,7 @@ class ClimbEditorViewModel @Inject constructor(
     private suspend fun handleNavigationArgs() {
         val editUuid: String? = savedStateHandle["editUuid"]
         val forkUuid: String? = savedStateHandle["forkUuid"]
+        Log.i(TAG, "handleNavigationArgs: editUuid=$editUuid forkUuid=$forkUuid")
         // getMyClimbs filters on `created_by_pubkey = :pubkey`. Pre-fix
         // we passed the literal sentinel "__none__" — `getMyClimbs` then
         // matched zero rows and we silently fell through to
@@ -201,6 +229,7 @@ class ClimbEditorViewModel @Inject constructor(
                 runCatching { boardRepository.getKilterPublishState(editUuid) }.getOrNull()
             }
             if (kilterState?.status == "synced" || kilterState?.status == "diverged") {
+                Log.w(TAG, "edit refused for $editUuid — kilter_status=${kilterState.status}")
                 _state.update {
                     it.copy(
                         isLoading = false,
@@ -211,6 +240,7 @@ class ClimbEditorViewModel @Inject constructor(
                 }
                 return
             }
+            Log.i(TAG, "edit gate ok kilter_status=${kilterState?.status} → proceeding to seedFromEdit")
             val source = withContext(Dispatchers.IO) {
                 (ownPubkey?.let {
                     boardRepository.getMyClimbs(it)
@@ -219,7 +249,9 @@ class ClimbEditorViewModel @Inject constructor(
                     ?: boardRepository.getCommunityClimbs()
                         .firstOrNull { it.uuid.equals(editUuid, ignoreCase = true) }
             }
+            Log.i(TAG, "edit-source lookup for $editUuid → found=${source != null} (uuid=${source?.uuid}, name=${source?.name})")
             if (source != null) seedFromEdit(source)
+            else Log.w(TAG, "edit-source NOT FOUND for editUuid=$editUuid — editor will open empty + publish would create a new climb")
         } else if (forkUuid != null) {
             val source = withContext(Dispatchers.IO) {
                 (ownPubkey?.let {
@@ -311,6 +343,7 @@ class ClimbEditorViewModel @Inject constructor(
             it.copy(
                 editor = seeded,
                 loadedDraftUuid = source.uuid,
+                isEditingExisting = true,
                 canUndo = false,
                 canRedo = false,
                 validationIssues = issues,
@@ -410,8 +443,19 @@ class ClimbEditorViewModel @Inject constructor(
     fun setDescription(desc: String) = mutate { copy(description = desc) }
     fun setSetterGradeId(gradeId: Int?) = mutate { copy(setterGradeId = gradeId) }
     fun setAngle(angle: Int?) = mutate { copy(angle = angle) }
-    fun setAlsoPostNote(value: Boolean) {
-        _state.update { it.copy(alsoPostNote = value) }
+    fun setAlsoPostNote(value: Boolean, defaultTemplate: String) {
+        _state.update {
+            // Seed the editor's auto-note text on first opt-in so the user
+            // sees the default template immediately and can tweak it
+            // before publishing. Don't overwrite an already-edited value
+            // — toggling off+on must preserve the user's prose.
+            val seeded = if (value && it.autoNoteText.isNullOrBlank()) defaultTemplate else it.autoNoteText
+            it.copy(alsoPostNote = value, autoNoteText = seeded)
+        }
+    }
+
+    fun setAutoNoteText(text: String) {
+        _state.update { it.copy(autoNoteText = text) }
     }
 
     fun undo() {
@@ -630,6 +674,19 @@ class ClimbEditorViewModel @Inject constructor(
 
     private fun doPublish(sizeLabel: String, autoNoteTemplate: String? = null) {
         _state.update { it.copy(isPublishing = true, errorMessage = null) }
+        // If the bulk board importer holds the writer-lock right now, the
+        // saveDraft inside saveAndPublish will sit on awaitBoardSyncQuiescent
+        // until isSyncing flips false. Flag that to the user immediately
+        // via an info-snackbar so the spinner-while-waiting doesn't read
+        // as a hang. The snackbar dismisses itself after ~4s; the publish
+        // continues regardless.
+        if (boardSyncManager.state.value.isSyncing) {
+            _state.update {
+                it.copy(infoMessage = appContext.getString(
+                    com.cruxcoach.android.R.string.climb_creator_publish_waiting_for_sync
+                ))
+            }
+        }
         val current = _state.value.editor
         val existingUuid = _state.value.loadedDraftUuid
         // Resolve the auto-note spec once at the publish-edge so the
@@ -690,6 +747,12 @@ class ClimbEditorViewModel @Inject constructor(
 
     /** Screen calls this after rendering the kilter-side outcome
      *  Snackbar so it doesn't fire again on rotation/recomposition. */
+    /** Screen calls this after rendering the info-snackbar so it
+     *  doesn't re-fire on rotation/recomposition. */
+    fun clearInfoMessage() {
+        _state.update { it.copy(infoMessage = null) }
+    }
+
     fun clearKilterPublishOutcome() {
         _state.update { it.copy(kilterPublishOutcome = null) }
     }
@@ -939,6 +1002,12 @@ class ClimbEditorViewModel @Inject constructor(
      *  a bug report.
      */
     private fun scheduleAutosave(next: ClimbEditorState) {
+        // Edit-mode never writes to the shared creator-mode autosave —
+        // the original climb still lives on Nostr + locally, so crash
+        // recovery for in-flight edits is redundant. Without this guard,
+        // backing out of a partial edit leaks edit-mode holds into the
+        // next "Neuer Climb" via autosave-restore.
+        if (_state.value.isEditingExisting) return
         autosaveJob?.cancel()
         autosaveJob = viewModelScope.launch {
             kotlinx.coroutines.delay(AUTOSAVE_DEBOUNCE_MS)

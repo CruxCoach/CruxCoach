@@ -432,7 +432,7 @@ fun CruxCoachNavHost(
                     onNavigateToLists = { navController.navigate(Routes.BOARD_LISTS) },
                     onNavigateToSettings = { navController.navigate(Routes.SETTINGS) },
                     onNavigateToFilter = { navController.navigate(Routes.BOARD_FILTER) },
-                    onNavigateToClimbCreator = { navController.navigate(Routes.CLIMB_CREATOR) },
+                    onNavigateToClimbCreator = { navController.navigate(Routes.climbCreator()) },
                     onNavigateToSetter = { pubkey ->
                         navController.navigate(Routes.setterDetail(pubkey))
                     },
