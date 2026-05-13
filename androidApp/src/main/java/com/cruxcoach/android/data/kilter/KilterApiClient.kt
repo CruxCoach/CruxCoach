@@ -10,6 +10,9 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.FormBody
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -326,7 +329,41 @@ class KilterApiClient @Inject constructor(
                         cause = "missing sub claim",
                     )
                 }
-                val username = claims["preferred_username"] ?: email
+                // Display-name resolution chain — never leak the email
+                // address as the public setter handle on Kilter. Kilter's
+                // realm uses email as `preferred_username` (the login
+                // handle), so the JWT claim alone gives us PII.
+                //
+                // 1. /api/users/{uuid}.username — the user-chosen display
+                //    name they registered with on Kilter Portal. Kilter
+                //    registration enforces uniqueness + non-empty
+                //    ("IllegalArgumentException: The username is already
+                //    in use"; "Please enter your Username"), so this is
+                //    guaranteed to exist for any active Kilter account.
+                //    The only failure mode is a transient network error
+                //    during this auth call.
+                // 2. JWT `name` claim — the user's full name from their
+                //    Kilter profile. Stand-in when (1) is unreachable.
+                // 3. Hard placeholder "CruxCoach" — final safety net so
+                //    we never fall through to the email itself even if
+                //    every upstream-resolved string looks email-shaped.
+                //    Identifiable as a CruxCoach-app-published climb on
+                //    the Kilter side rather than a generic anonymous
+                //    handle.
+                //
+                // The chosen value is cached in KilterTokenStore and
+                // becomes the `username` field on every published climb
+                // (visible to all Kilter users browsing public climbs).
+                val displayUsername = runCatching {
+                    fetchDisplayUsername(tokenResponse.accessToken, userUuid)
+                }.getOrNull()
+                val nameClaim = claims["name"]?.takeIf { it.isNotBlank() }
+                fun emailShaped(s: String): Boolean = s.contains("@")
+                val username = when {
+                    !displayUsername.isNullOrBlank() && !emailShaped(displayUsername) -> displayUsername
+                    nameClaim != null && !emailShaped(nameClaim) -> nameClaim
+                    else -> "CruxCoach"
+                }
 
                 // Successful login → clear the backoff state for this email.
                 authFailures.remove(throttleKey)
@@ -736,11 +773,23 @@ class KilterApiClient @Inject constructor(
             ?: return@withContext KilterPublishResult.NotAuthenticated
         val userUuid = tokenStore.getUserUuid()?.takeIf { it.isNotBlank() }
             ?: return@withContext KilterPublishResult.NotAuthenticated
-        // Username is the JWT preferred_username claim — the server
-        // accepts either email-style or display-name; both round-trip
-        // through /climbs/curated as the climb's `username` field.
-        val username = tokenStore.getUsername()?.takeIf { it.isNotBlank() }
+        // Username = the user's chosen display name on Kilter Portal,
+        // resolved at login via fetchDisplayUsername with email-shape
+        // defense (see authenticate()). Defence-in-depth here too: if
+        // the stored value somehow ended up email-shaped (e.g. a stale
+        // login from a pre-fix build before fetchDisplayUsername
+        // existed, or a future schema change), refuse to publish
+        // rather than leak the email as the public setter handle. The
+        // user re-logs in and the new authenticate() path resolves a
+        // safe name. NotAuthenticated keeps the kilter_status='failed'
+        // path alive so the retry-worker re-attempts after re-login.
+        val storedUsername = tokenStore.getUsername()?.takeIf { it.isNotBlank() }
             ?: return@withContext KilterPublishResult.NotAuthenticated
+        if (storedUsername.contains("@")) {
+            Log.w(TAG, "$op refusing to publish — stored username is email-shaped (re-login required)")
+            return@withContext KilterPublishResult.NotAuthenticated
+        }
+        val username = storedUsername
 
         val nowIso = java.time.Instant.now().toString()
         val payload = CreateClimbTransaction(
@@ -850,6 +899,58 @@ class KilterApiClient @Inject constructor(
         val token = tokenStore.getAccessToken() ?: return null
         if (!tokenStore.isAccessTokenExpired()) return token
         return if (refreshAccessToken()) tokenStore.getAccessToken() else null
+    }
+
+    /**
+     * Backfill the cached display username when the previously-stored
+     * value is missing or email-shaped. Pre-username-fix builds stored
+     * the JWT `preferred_username` claim which equals the email handle
+     * for Kilter's Keycloak realm — the new publish path now refuses
+     * to send email-shaped usernames as the public setter handle, so
+     * stale cache entries from those builds would block publishing
+     * until a manual re-login. This silently catches them up at
+     * app-start instead. Skipped (no-op) when the cached value is
+     * already a valid non-email username — no extra HTTP call in the
+     * steady state. Token + userUuid pulled from tokenStore; failure
+     * is non-fatal (the publish-path guard remains as last-resort
+     * defense).
+     */
+    suspend fun refreshUsernameIfStale() = withContext(Dispatchers.IO) {
+        val cached = tokenStore.getUsername()
+        if (!cached.isNullOrBlank() && !cached.contains("@")) return@withContext
+        val userUuid = tokenStore.getUserUuid()?.takeIf { it.isNotBlank() } ?: return@withContext
+        val token = ensureValidToken() ?: return@withContext
+        val fresh = fetchDisplayUsername(token, userUuid)
+        if (!fresh.isNullOrBlank() && !fresh.contains("@")) {
+            Log.i(TAG, "Backfilled display username from /users/{uuid}")
+            tokenStore.updateUsername(fresh)
+        }
+    }
+
+    /**
+     * Fetch the user's display name from `/api/users/{uuid}.username`.
+     * Returns null on any failure (network, HTTP non-2xx, missing field,
+     * JSON shape change). Caller falls back to the JWT preferred_username
+     * which is the email-shaped login handle in the Kilter realm.
+     */
+    private suspend fun fetchDisplayUsername(token: String, userUuid: String): String? = withContext(Dispatchers.IO) {
+        try {
+            val req = Request.Builder()
+                .url("$apiBase/users/$userUuid")
+                .addHeader("Authorization", "Bearer $token")
+                .get()
+                .build()
+            httpClient.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) return@withContext null
+                val body = resp.body?.string() ?: return@withContext null
+                json.parseToJsonElement(body).jsonObject["username"]?.jsonPrimitive?.contentOrNull
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "fetchDisplayUsername failed for uuid=${userUuid.take(8)}…", e)
+            null
+        }
     }
 
     /**

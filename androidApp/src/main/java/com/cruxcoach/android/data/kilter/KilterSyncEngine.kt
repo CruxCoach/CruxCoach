@@ -147,6 +147,16 @@ class KilterSyncEngine @Inject constructor(
                         return@launch
                     }
                 }
+                // Backfill the display username if the cached value is
+                // stale (pre-fix login flow stored email-shaped
+                // preferred_username, which the publish-path now refuses
+                // to send to Kilter as a setter handle). Best-effort
+                // background fetch; failure leaves the cached email in
+                // place — the publish path's own email-shape guard
+                // surfaces the issue to the user via Snackbar instead
+                // of leaking PII silently.
+                runCatching { apiClient.refreshUsernameIfStale() }
+                    .onFailure { Log.w(TAG, "Username backfill failed (cached value will be re-checked next app-start)", it) }
 
                 // Download
                 val logsResult = apiClient.fetchLogs()
