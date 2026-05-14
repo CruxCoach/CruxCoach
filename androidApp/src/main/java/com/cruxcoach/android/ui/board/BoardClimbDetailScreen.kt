@@ -542,19 +542,21 @@ fun BoardClimbDetailScreen(
                                     }
                                     HorizontalDivider()
                                     // Branch on whether this row was ever
-                                    // actually published. Drafts (sync_status
-                                    // 'draft' / 'failed' / NULL) have no
-                                    // Nostr event to tombstone — calling
-                                    // requestCommunityDelete on those used
-                                    // to surface as a "Löschen
-                                    // fehlgeschlagen" snackbar. Route them
-                                    // to the local-only delete path with a
+                                    // actually published. Climbs with no
+                                    // `nostr_event_id` have never reached a
+                                    // relay — calling requestCommunityDelete
+                                    // on those surfaces as "Löschen
+                                    // fehlgeschlagen" since there's no
+                                    // Kind-30078 to tombstone. Route them to
+                                    // the local-only delete path with a
                                     // matching label so the user sees the
                                     // right confirm copy too.
+                                    // sync_status alone wasn't reliable — a
+                                    // successful prior publish can drift to
+                                    // 'failed' on a later attempt and still
+                                    // have a live event on relays.
                                     val isUnpublishedDraft = state.climb?.let {
-                                        it.syncStatus == null ||
-                                            it.syncStatus == "draft" ||
-                                            it.syncStatus == "failed"
+                                        it.nostrEventId.isNullOrBlank()
                                     } ?: false
                                     if (isUnpublishedDraft) {
                                         DropdownMenuItem(
@@ -754,23 +756,27 @@ private fun ClimbDetailPageContent(
                                     )
                                 }
                                 // Provenance + Kilter-mirror badge — only shown for
-                                // CruxCoach-authored climbs that have actually
-                                // been *published* (sync_status indicates the
-                                // climb reached at least one CruxCoach Nostr
-                                // relay). For drafts and failed-publish rows
-                                // the previous "Nur CruxCoach-Community" copy
-                                // was misleading: an Aurora-imported draft
+                                // CruxCoach-authored climbs that actually have a
+                                // live Nostr publication (`nostr_event_id` is
+                                // set iff at least one publish has reached at
+                                // least one relay, either from this device via
+                                // markClimbPublishedNostr, or via the live-sub
+                                // upsert echoing back the user's own event).
+                                // For drafts and failed-publish rows the
+                                // previous "Nur CruxCoach-Community" copy was
+                                // misleading: an Aurora-imported draft
                                 // (origin='cruxcoach' + kilterStatus=NULL +
                                 // sync_status='draft') is *not* on the
                                 // CruxCoach community, just sitting locally,
                                 // and showing the same chip as a genuinely
                                 // community-published climb conflated the two.
-                                // For native Kilter rows the info is tautological
-                                // (they're inherently on Kilter), so we suppress
-                                // the chip there too.
-                                val isPublishedToNostr = climb.syncStatus == "published_nostr" ||
-                                    climb.syncStatus == "synced"
-                                if (climb.origin == "cruxcoach" && isPublishedToNostr) {
+                                // sync_status alone wasn't a reliable
+                                // discriminator — a successful prior publish
+                                // can drift to 'failed' on a later attempt
+                                // and still have a live event on relays;
+                                // nostr_event_id is the deterministic signal.
+                                val hasLivePublication = !climb.nostrEventId.isNullOrBlank()
+                                if (climb.origin == "cruxcoach" && hasLivePublication) {
                                     Spacer(Modifier.size(4.dp))
                                     // Three states: synced = both Nostr +
                                     // Kilter; diverged = local edit Kilter

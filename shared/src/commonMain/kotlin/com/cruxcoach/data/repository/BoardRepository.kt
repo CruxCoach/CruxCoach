@@ -50,6 +50,15 @@ data class ClimbWithStats(
      *  | 'published_nostr' | 'failed'. Combined with [source] to disambiguate
      *  failed-publish rows from synced ones. */
     val syncStatus: String? = null,
+    /** The Nostr event ID of the climb's most recent successful publish.
+     *  Non-null iff at least one publish reached at least one relay
+     *  (set by [markClimbPublishedNostr] / received via live-sub on
+     *  upsertCommunityClimb). Drives the detail-screen's provenance
+     *  badge + delete-action routing: "does this climb have a live
+     *  publication?" is the deterministic signal, where sync_status
+     *  alone can drift ('failed' after a successful prior publish,
+     *  etc.). */
+    val nostrEventId: String? = null,
 ) {
     /** True when this climb is a multi-frame route (not a boulder). */
     val isRoute: Boolean get() = framesCount > 1
