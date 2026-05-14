@@ -58,14 +58,25 @@ class BackupPreferences @Inject constructor(
      *  only in the [BackupSettingsViewModel]'s in-memory state, so cold
      *  restarts rebuilt the worker against the unrelated *board-sync*
      *  interval and silently cancelled periodic backups whenever
-     *  board-sync was MANUAL. Default DAILY matches the prior in-memory
-     *  default — users who upgrade with no key set don't see a behaviour
-     *  change. Persisted by NAME (string) so adding/re-ordering enum
-     *  values later doesn't silently migrate existing rows. */
+     *  board-sync was MANUAL.
+     *
+     *  Default MANUAL: a fresh install never silently overwrites a
+     *  pre-existing cloud-backup just because the user enabled the
+     *  feature. The worker stays inactive until the user explicitly
+     *  picks Daily or Weekly — observed during 0.1.3→0.1.4 cross-version
+     *  testing where the previous DAILY default ran an auto-backup
+     *  seconds after onboarding completed and clobbered the cloud
+     *  state we were about to restore. Pre-FEAT-021 builds had no
+     *  reliable interval at all (they used the board-sync pref by
+     *  mistake), so MANUAL is also a strict improvement for any
+     *  upgrader with an empty BACKUP_INTERVAL key.
+     *
+     *  Persisted by NAME (string) so adding/re-ordering enum values
+     *  later doesn't silently migrate existing rows. */
     val backupInterval: Flow<SyncInterval> = dataStore.data.map { prefs ->
         prefs[Keys.BACKUP_INTERVAL]
             ?.let { name -> runCatching { SyncInterval.valueOf(name) }.getOrNull() }
-            ?: SyncInterval.DAILY
+            ?: SyncInterval.MANUAL
     }
 
     suspend fun setBackupInterval(interval: SyncInterval) {

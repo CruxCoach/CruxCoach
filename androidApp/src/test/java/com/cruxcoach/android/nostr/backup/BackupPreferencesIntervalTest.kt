@@ -47,9 +47,13 @@ class BackupPreferencesIntervalTest {
     }
 
     @Test
-    fun `backupInterval defaults to DAILY when key is unset`() = runTest {
+    fun `backupInterval defaults to MANUAL when key is unset`() = runTest {
         val prefs = newPrefs(backgroundScope)
-        assertEquals(SyncInterval.DAILY, prefs.backupInterval.first())
+        // MANUAL default: a fresh install never silently overwrites a
+        // pre-existing cloud-backup just because the user enabled the
+        // feature — see BackupPreferences kdoc for the 0.1.3→0.1.4
+        // cross-version testing scenario that motivated this default.
+        assertEquals(SyncInterval.MANUAL, prefs.backupInterval.first())
     }
 
     @Test
