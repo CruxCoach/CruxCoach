@@ -1645,10 +1645,11 @@
     <string name="delete_remote_note_blossom_auth_failed">Storage server rejected the auth signature.</string>
     <string name="delete_remote_note_blossom_fully_rejected">Every storage server refused the deletion.</string>
     <string name="delete_remote_note_blossom_partial">Only %1$d of %2$d storage servers acknowledged the deletion.</string>
+    <string name="delete_remote_note_tombstone_publish_failed">Could not publish the deletion marker to enough index servers (pointer %1$d, key %2$d of %3$d). The backup may still be visible on other devices — please retry.</string>
     <string name="delete_remote_note_unexpected_error">Unexpected error: %1$s</string>
     <string name="settings_backup_delete_remote">Delete remote backups…</string>
     <string name="settings_backup_delete_remote_dialog_title">Delete remote backups?</string>
-    <string name="settings_backup_delete_remote_dialog_body">This will request deletion of your backup info and encrypted backup data from the public servers. Be aware:\n\n• Deletion is best-effort. Not every server honours it.\n• After this, you cannot restore your backup on another device.\n• Local data is not affected.</string>
+    <string name="settings_backup_delete_remote_dialog_body">This will hide your backup behind a deletion marker on every index server, and request the encrypted backup data to be removed from every storage server. After this:\n\n• No device — yours or anyone else\'s — can restore the backup, even if a storage server still holds the encrypted bytes.\n• Storage-server cleanup is best-effort. A partial result (e.g. 1/2 servers) is not a privacy issue: the deletion marker is what guarantees the backup is unrecoverable.\n• Local data on this device is not affected.</string>
     <string name="settings_backup_delete_remote_confirm">Delete</string>
     <string name="settings_backup_delete_remote_in_progress">Deleting…</string>
     <string name="settings_backup_delete_remote_done_header">Remote backups deleted.</string>

@@ -1647,10 +1647,11 @@
     <string name="delete_remote_note_blossom_auth_failed">Speicher-Server hat die Auth-Signatur abgelehnt.</string>
     <string name="delete_remote_note_blossom_fully_rejected">Alle Speicher-Server haben die Löschung abgelehnt.</string>
     <string name="delete_remote_note_blossom_partial">Nur %1$d von %2$d Speicher-Servern haben die Löschung bestätigt.</string>
+    <string name="delete_remote_note_tombstone_publish_failed">Lösch-Marker konnte nicht an genug Index-Server gesendet werden (Pointer %1$d, Schlüssel %2$d von %3$d). Das Backup könnte auf anderen Geräten weiter sichtbar sein — bitte erneut versuchen.</string>
     <string name="delete_remote_note_unexpected_error">Unerwarteter Fehler: %1$s</string>
     <string name="settings_backup_delete_remote">Remote-Backups löschen…</string>
     <string name="settings_backup_delete_remote_dialog_title">Remote-Backups löschen?</string>
-    <string name="settings_backup_delete_remote_dialog_body">Dies fordert die Löschung deiner Backup-Info und der verschlüsselten Backup-Daten von den öffentlichen Servern an. Beachte:\n\n• Die Löschung ist Best-Effort. Nicht jeder Server honoriert sie.\n• Danach kannst du dein Backup nicht mehr auf einem anderen Gerät wiederherstellen.\n• Lokale Daten bleiben unangetastet.</string>
+    <string name="settings_backup_delete_remote_dialog_body">Dies versieht dein Backup auf jedem Index-Server mit einem Lösch-Marker und fordert die verschlüsselten Backup-Daten von jedem Speicher-Server zur Entfernung an. Danach gilt:\n\n• Kein Gerät — weder dein eigenes noch ein fremdes — kann das Backup wiederherstellen, selbst wenn ein Speicher-Server die verschlüsselten Daten noch hält.\n• Das Aufräumen auf den Speicher-Servern ist Best-Effort. Ein Teilergebnis (z.B. 1/2 Server) ist kein Datenschutzproblem: Der Lösch-Marker garantiert, dass das Backup unwiederherstellbar ist.\n• Lokale Daten auf diesem Gerät bleiben unangetastet.</string>
     <string name="settings_backup_delete_remote_confirm">Löschen</string>
     <string name="settings_backup_delete_remote_in_progress">Lösche…</string>
     <string name="settings_backup_delete_remote_done_header">Remote-Backups gelöscht.</string>

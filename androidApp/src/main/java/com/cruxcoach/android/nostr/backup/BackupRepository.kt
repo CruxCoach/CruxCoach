@@ -273,6 +273,25 @@ class BackupRepository @Inject constructor(
             return CheckOutcome.NotFound
         }
 
+        // Tombstone gate (FEAT-002 delete-remote): a prior opt-out
+        // replaced the live Kind-30078 with a sentinel via NIP-01
+        // replaceable-event semantics. Check both pointer + key event
+        // because a failed publish may have tombstoned only one (the
+        // other half still surfaces here as a structured NotFound, not
+        // a confusing DecryptFailed). Skipping the decrypt also avoids
+        // a needless Amber popup on the AMBER signer path.
+        if (pointerEvent.content == TOMBSTONE_CONTENT ||
+            keyEvent.content == TOMBSTONE_CONTENT
+        ) {
+            Log.d(
+                TAG,
+                "event=restore_check_miss reason=tombstoned" +
+                    " pointer=${pointerEvent.content == TOMBSTONE_CONTENT}" +
+                    " key=${keyEvent.content == TOMBSTONE_CONTENT}",
+            )
+            return CheckOutcome.NotFound
+        }
+
         val pointer = try {
             decryptPointer(pointerEvent.content, pubkey).also { it.validateOrThrow() }
         } catch (e: IllegalArgumentException) {
@@ -506,6 +525,39 @@ class BackupRepository @Inject constructor(
             }
         }
 
+        // Tombstone the live Kind-30078 events. NIP-09 (Kind-5 above) is
+        // best-effort and silently dropped by major relays for
+        // replaceable kinds; Blossom DELETE returns 200 on at least
+        // some servers without actually purging the blob (observed
+        // 2026-05-14 with Identity-A: 2/2 acked yet a fresh restore
+        // succeeded seconds later). The replaceable-event tombstone is
+        // the one mechanism every relay implementation must honour —
+        // shadowing the original ciphertext-bearing pointer with a
+        // sentinel so [checkForBackup] returns NotFound on the next
+        // poll, regardless of relay opt-in flags.
+        var tombstoneAttempted = 0
+        var tombstoneBackupAccepted = 0
+        var tombstoneKeyAccepted = 0
+        if (backupDTag != null && keyDTag != null) {
+            val (b1, b2) = runCatching { publishTombstoneForDTag(backupDTag) }
+                .getOrDefault(0 to 0)
+            val (k1, k2) = runCatching { publishTombstoneForDTag(keyDTag) }
+                .getOrDefault(0 to 0)
+            // Both calls hit the same relay-pool snapshot, so attempt
+            // counts agree; surface the per-publish max so a
+            // mid-sequence relay drop still shows accurately.
+            tombstoneAttempted = maxOf(b1, k1)
+            tombstoneBackupAccepted = b2
+            tombstoneKeyAccepted = k2
+            if (b2 == 0 || k2 == 0) {
+                notes += DeleteRemoteNote.TombstonePublishFailed(
+                    backupAccepted = b2,
+                    keyAccepted = k2,
+                    attempted = tombstoneAttempted,
+                )
+            }
+        }
+
         // Clear local state regardless: the user explicitly asked for
         // opt-out, so we forget everything we can locally even if the
         // remote delete was only partial. The UI still surfaces the
@@ -513,6 +565,12 @@ class BackupRepository @Inject constructor(
         // fell short.
         preferences.clearAllIdentityState()
         preferences.setBackupEnabled(false)
+        Log.d(
+            TAG,
+            "event=delete_remote_done relays=$relaysAccepted/$relaysAttempted " +
+                "blossom=$blossomAccepted/$blossomAttempted " +
+                "tombstones=$tombstoneBackupAccepted+$tombstoneKeyAccepted/$tombstoneAttempted",
+        )
 
         DeleteRemoteOutcome(
             relaysAttempted = relaysAttempted,
@@ -587,6 +645,27 @@ class BackupRepository @Inject constructor(
             content = "backup opt-out",
         )
         pool.sendEvent(event)
+    }
+
+    /**
+     * Publish a Kind-30078 tombstone for [dTag] — a plaintext sentinel
+     * payload that deliberately fails the standard NIP-44 decrypt the
+     * restore path attempts on the pointer, so [checkForBackup] sees
+     * the latest replaceable-event copy and treats the backup as
+     * absent.
+     *
+     * Returns `(attempted, accepted)` from
+     * [NostrRelayPool.sendEventWithStats] so the caller can surface a
+     * structured per-d-tag note when the publish fails to land.
+     */
+    private suspend fun publishTombstoneForDTag(dTag: String): Pair<Int, Int> {
+        val event = nostrSigner.signer.sign<com.vitorpamplona.quartz.nip01Core.core.Event>(
+            createdAt = System.currentTimeMillis() / 1000,
+            kind = KIND_REPLACEABLE_PARAMETERIZED,
+            tags = arrayOf(arrayOf("d", dTag)),
+            content = TOMBSTONE_CONTENT,
+        )
+        return pool.sendEventWithStats(event)
     }
 
     // ------------------------------------------------------------ dataKey ops
@@ -947,6 +1026,27 @@ class BackupRepository @Inject constructor(
         // gzip-bomb payload that would otherwise OOM the restore.
         private const val MAX_PLAINTEXT_BYTES = 64 * 1024 * 1024
         private val JSON = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+
+        /**
+         * Sentinel content for a Kind-30078 tombstone published by
+         * delete-remote-backups. Replaceable-event semantics (NIP-01
+         * core) make any new Kind-30078 with the same `d` tag and a
+         * newer `created_at` shadow the prior ciphertext-bearing
+         * pointer on every compliant relay. The marker is intentionally
+         * a fixed plaintext (not NIP-44 ciphertext): publishing a
+         * deletion is itself a public statement, and the plain literal
+         * is cheap for [checkForBackup] to recognise without an extra
+         * decrypt round-trip. The version suffix lets a future schema
+         * change distinguish old vs new tombstone shapes without
+         * breaking forward-compat.
+         *
+         * NIP-09 + Blossom DELETE remain the front line (best-effort
+         * cleanup); the tombstone is the durable backstop that every
+         * relay implementation must honour, since it relies on
+         * vanilla replaceable-event replacement rather than opt-in
+         * deletion semantics.
+         */
+        internal const val TOMBSTONE_CONTENT = "CRUXCOACH_BACKUP_TOMBSTONE_V1"
     }
 }
 

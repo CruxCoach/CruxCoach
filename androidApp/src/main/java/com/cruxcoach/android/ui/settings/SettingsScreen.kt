@@ -554,6 +554,13 @@ private fun localizedDeleteRemoteNote(note: DeleteRemoteNote): String = when (no
         stringResource(R.string.delete_remote_note_blossom_fully_rejected)
     is DeleteRemoteNote.BlossomPartial ->
         stringResource(R.string.delete_remote_note_blossom_partial, note.accepted, note.attempted)
+    is DeleteRemoteNote.TombstonePublishFailed ->
+        stringResource(
+            R.string.delete_remote_note_tombstone_publish_failed,
+            note.backupAccepted,
+            note.keyAccepted,
+            note.attempted,
+        )
     is DeleteRemoteNote.UnexpectedError ->
         stringResource(R.string.delete_remote_note_unexpected_error, note.type)
 }
