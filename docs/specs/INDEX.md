@@ -29,6 +29,8 @@ branches see the reservation.
 | FEAT-014 | Live Training Coordination via Nostr | backlog | backlog | `backlog/FEAT-014-live-training-coordination.md` |
 | FEAT-015 | Kilter Board Locations Map | v0.1.5 | implementation | `0.1.5/FEAT-015-board-locations-map.md` |
 | FEAT-016 | Kilter Homewall Support | v0.1.7 | skeleton | `0.1.7/FEAT-016-homewall-support.md` |
+| FEAT-022 | Multi-Heatmap per Board | backlog | backlog | `backlog/FEAT-022-multi-heatmap-per-board.md` |
+| FEAT-023 | Cross-Board Lists + Send Concept | backlog | backlog | `backlog/FEAT-023-cross-board-lists-and-send.md` |
 
 ## Renumbered (history)
 
@@ -45,8 +47,10 @@ file.
 
 ## Next free
 
-**FEAT-017** is the next unallocated ID. Allocate the next one
-when starting a new spec.
+**FEAT-024** is the next unallocated ID. Allocate the next one
+when starting a new spec. (FEAT-017–021 are reserved on parallel
+branches and not yet merged into this index — verify there before
+allocating to avoid collisions.)
 
 ## Status legend
 
