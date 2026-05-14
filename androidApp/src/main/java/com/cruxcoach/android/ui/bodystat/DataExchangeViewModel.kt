@@ -36,6 +36,8 @@ enum class ExportFormat { CRUXCOACH, WAISTLINE_JSON, WAISTLINE_CSV }
  *   that data has no UI in 0.1.4 to set or view; the label
  *   "Profil & Einstellungen" is misleading because app preferences
  *   are NOT in the wire format at all)
+ * - CLIMB_LOGS (generic ClimbLog diary, part of the hidden bottom-bar
+ *   training surface — no Add-form exposed in 0.1.4)
  * - ASSESSMENTS, BODY_STATS, WORKOUT_LOGS, TRAINING_PLANS,
  *   BOARD_SESSIONS — same "no UI yet" reason.
  *
@@ -49,7 +51,6 @@ enum class ExportFormat { CRUXCOACH, WAISTLINE_JSON, WAISTLINE_CSV }
  * old hidden-but-still-stored data on the next backup cycle.
  */
 val VISIBLE_CATEGORIES: Set<Category> = setOf(
-    Category.CLIMB_LOGS,
     Category.BOARD_LOGBOOK,
     Category.CLIMB_LISTS,
     Category.OWN_CLIMBS,
