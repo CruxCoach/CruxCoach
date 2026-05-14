@@ -63,6 +63,13 @@ class BackupRepository @Inject constructor(
      *  for the rationale. */
     private val boardRepository: BoardRepository,
     private val transactionRunner: TransactionRunner,
+    /** Read-only access for the [restore]-time gate that suspends until
+     *  any in-flight board-sync finishes — prevents SQLITE_BUSY when
+     *  the typical fresh-install flow (onboarding triggers board-sync,
+     *  user immediately taps "restore from cloud-backup") tries to
+     *  write own-climbs into the same `climbs` table the importer is
+     *  bulk-loading into. Same pattern as [com.cruxcoach.android.community.ClimbCreatorRepository]. */
+    private val boardSyncManager: com.cruxcoach.android.data.BoardSyncManager,
 ) {
 
     /**
@@ -351,6 +358,20 @@ class BackupRepository @Inject constructor(
      * the worker.
      */
     suspend fun restore(info: BackupInfo) = pipelineMutex.withLock {
+        // Wait out any in-flight board-sync before we start writing into
+        // the (unencrypted) board DB's climbs table — concurrent writers
+        // race for the SQLite writer-lock and bulk-import wins on
+        // duration, which would surface here as SQLITE_BUSY. The typical
+        // fresh-install flow is: onboarding kicks off board-sync, user
+        // taps Settings → Cloud-Restore while sync is still importing
+        // 190K rows. The gate is a no-op when no sync is in flight
+        // (common case for users restoring from a settled state).
+        if (boardSyncManager.state.value.isSyncing) {
+            android.util.Log.i(TAG, "restore: awaiting board-sync to finish before write")
+            boardSyncManager.state.first { !it.isSyncing }
+            android.util.Log.i(TAG, "restore: board-sync done, proceeding")
+        }
+
         val started = System.currentTimeMillis()
         val pointer = info.pointer
 

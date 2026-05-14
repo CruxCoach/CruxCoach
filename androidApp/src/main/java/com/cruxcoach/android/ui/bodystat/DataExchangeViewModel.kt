@@ -20,6 +20,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -106,6 +107,12 @@ class DataExchangeViewModel @Inject constructor(
     private val boardRepository: com.cruxcoach.data.repository.BoardRepository,
     private val transactionRunner: TransactionRunner,
     private val nostrKeyStore: NostrKeyStore,
+    /** Same gate as in [com.cruxcoach.android.nostr.backup.BackupRepository.restore]:
+     *  suspends a manual JSON-import until any in-flight board-sync has
+     *  released the SQLite writer-lock on the unencrypted board DB,
+     *  preventing SQLITE_BUSY when a user imports own-climbs from a
+     *  file mid-onboarding. */
+    private val boardSyncManager: com.cruxcoach.android.data.BoardSyncManager,
     @param:ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -287,6 +294,13 @@ class DataExchangeViewModel @Inject constructor(
                     null
                 } else {
                     currentPubkey
+                }
+                // Wait out any in-flight board-sync before writing — see
+                // BackupRepository.restore for the same pattern + rationale.
+                if (boardSyncManager.state.value.isSyncing) {
+                    Log.i(TAG, "import: awaiting board-sync to finish before write")
+                    boardSyncManager.state.first { !it.isSyncing }
+                    Log.i(TAG, "import: board-sync done, proceeding")
                 }
                 val result = withContext(Dispatchers.IO) {
                     CruxCoachBackup.import(

@@ -1195,34 +1195,66 @@ WHERE c.origin = 'cruxcoach'
 getOwnClimbAngle:
 SELECT MIN(angle) AS angle FROM climb_stats WHERE climb_uuid = ?;
 
--- Restore path. INSERT OR IGNORE so an existing row with the same uuid
--- stays in place (idempotent re-import; the live-sub may have already
--- re-fetched a published climb from the relays before the restore
--- runs). The repo layer reads `lastClimbsChangeCount` after this to
--- distinguish "inserted" (count=1) from "skipped because uuid already
--- existed" (count=0). Bookkeeping defaults: is_listed=1, is_nomatch=0,
+-- Restore path. Two-step:
+--  1. INSERT OR IGNORE for the typical fresh-row case (no existing
+--     row, content + lifecycle land together).
+--  2. COALESCE-fill UPDATE for the case where an earlier board-sync
+--     (= cron-blob import) already wrote a base row carrying only
+--     the public columns (origin / created_by_pubkey / content) but
+--     not the lifecycle columns the cron deliberately doesn't track
+--     in the public blob (kilter_status, nostr_event_id, frames_hash,
+--     …). Pre-fix the bare INSERT OR IGNORE silently skipped that
+--     case and the restored backup's lifecycle metadata was lost —
+--     manifesting as post-restore "Edit" misfires (Option-C gate sees
+--     kilter_status=NULL and lets the user edit a Kilter-immutable
+--     climb), redundant Kilter republish-retries, and the wrong
+--     "Community only" badge. The COALESCE-fill only writes when the
+--     existing column is NULL, so any non-NULL local state set after
+--     the board-sync (e.g. user marked the climb tombstoned in the
+--     meantime) wins over the backup. The `origin='cruxcoach'` guard
+--     in the WHERE is belt-and-suspenders against a malformed backup
+--     trying to flip Kilter-blob rows.
+--
+-- Bookkeeping defaults on the INSERT branch: is_listed=1, is_nomatch=0,
 -- frames_pace=0, hsm=0, is_deleted=0, frames_count=1 (boulders only —
 -- multi-frame routes are FEAT-012 / 0.2.0+). `origin='cruxcoach'` is
--- hardcoded; the export side filters by it so any row reaching this
--- query is by definition cruxcoach-origin.
-restoreOwnClimb:
-INSERT OR IGNORE INTO climbs(
-    uuid, layout_id, setter_username, name, frames,
-    frames_count, is_listed, edge_left, edge_right, edge_bottom, edge_top, created_at,
-    description, is_nomatch, frames_pace, hsm, move_count, is_deleted,
-    source, origin, sync_status,
-    created_by_pubkey, frames_hash,
-    nostr_event_id, nostr_d_tag, nostr_publish_via,
-    kilter_status, kilter_synced_at, kilter_publish_via, kilter_error)
-VALUES (
-    :uuid, :layout_id, :setter_username, :name, :frames,
-    1, 1, :edge_left, :edge_right, :edge_bottom, :edge_top, :created_at,
-    :description, 0, 0, 0, :move_count, 0,
-    :source, 'cruxcoach', :sync_status,
-    :created_by_pubkey, :frames_hash,
-    :nostr_event_id, :nostr_d_tag, :nostr_publish_via,
-    :kilter_status, :kilter_synced_at, :kilter_publish_via, :kilter_error
-);
+-- hardcoded on the INSERT; the export side filters by it so any row
+-- reaching this query is by definition cruxcoach-origin.
+--
+-- Note: SQLDelight runs the block's two statements in one transaction,
+-- so a process-kill between them rolls back cleanly — same pattern as
+-- upsertLocalClimb.
+restoreOwnClimb {
+    INSERT OR IGNORE INTO climbs(
+        uuid, layout_id, setter_username, name, frames,
+        frames_count, is_listed, edge_left, edge_right, edge_bottom, edge_top, created_at,
+        description, is_nomatch, frames_pace, hsm, move_count, is_deleted,
+        source, origin, sync_status,
+        created_by_pubkey, frames_hash,
+        nostr_event_id, nostr_d_tag, nostr_publish_via,
+        kilter_status, kilter_synced_at, kilter_publish_via, kilter_error)
+    VALUES (
+        :uuid, :layout_id, :setter_username, :name, :frames,
+        1, 1, :edge_left, :edge_right, :edge_bottom, :edge_top, :created_at,
+        :description, 0, 0, 0, :move_count, 0,
+        :source, 'cruxcoach', :sync_status,
+        :created_by_pubkey, :frames_hash,
+        :nostr_event_id, :nostr_d_tag, :nostr_publish_via,
+        :kilter_status, :kilter_synced_at, :kilter_publish_via, :kilter_error
+    );
+    UPDATE climbs SET
+        sync_status         = COALESCE(sync_status,         :sync_status),
+        created_by_pubkey   = COALESCE(created_by_pubkey,   :created_by_pubkey),
+        frames_hash         = COALESCE(frames_hash,         :frames_hash),
+        nostr_event_id      = COALESCE(nostr_event_id,      :nostr_event_id),
+        nostr_d_tag         = COALESCE(nostr_d_tag,         :nostr_d_tag),
+        nostr_publish_via   = COALESCE(nostr_publish_via,   :nostr_publish_via),
+        kilter_status       = COALESCE(kilter_status,       :kilter_status),
+        kilter_synced_at    = COALESCE(kilter_synced_at,    :kilter_synced_at),
+        kilter_publish_via  = COALESCE(kilter_publish_via,  :kilter_publish_via),
+        kilter_error        = COALESCE(kilter_error,        :kilter_error)
+    WHERE uuid = :uuid AND origin = 'cruxcoach';
+}
 
 -- Insert/refresh climb_stats for a local climb at a given angle (setter
 -- difficulty + quality not yet aggregated — sets sentinels).
