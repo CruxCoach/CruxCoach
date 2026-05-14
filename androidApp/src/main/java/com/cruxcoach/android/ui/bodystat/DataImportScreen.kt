@@ -215,7 +215,7 @@ private fun ImportPreviewCard(
             VISIBLE_CATEGORIES.forEach { category ->
                 if (category in detected) {
                     CategoryCheckboxRow(
-                        label = category.label,
+                        label = category.localizedLabel(),
                         checked = category in selectedCategories,
                         onCheckedChange = { onToggleCategory(category) },
                         count = preview.summaryLine(category)

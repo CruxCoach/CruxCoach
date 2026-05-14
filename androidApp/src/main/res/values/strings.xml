@@ -1294,6 +1294,16 @@
     <string name="export_waistline_hint">For import into the Waistline app</string>
     <string name="export_waistline_json_label">Waistline JSON</string>
     <string name="export_categories_exported">%1$d category(ies) exported</string>
+    <string name="export_category_profile">Profile &amp; settings</string>
+    <string name="export_category_assessments">Fitness assessments</string>
+    <string name="export_category_body_stats">Body stats</string>
+    <string name="export_category_workout_logs">Workout logs</string>
+    <string name="export_category_climb_logs">Climbing logbook</string>
+    <string name="export_category_training_plans">Training plans</string>
+    <string name="export_category_board_logbook">Board sends &amp; attempts</string>
+    <string name="export_category_board_sessions">Board sessions</string>
+    <string name="export_category_climb_lists">Climb lists &amp; favorites</string>
+    <string name="export_category_own_climbs">Own climbs &amp; drafts</string>
     <string name="export_waistline_json_success">Waistline JSON exported</string>
     <string name="export_waistline_csv_success">Waistline CSV exported</string>
     <string name="import_auto_detect_hint">Format is auto-detected</string>
