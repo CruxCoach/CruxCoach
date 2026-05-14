@@ -100,14 +100,26 @@ class ClimbNameResolverTest {
     }
 
     @Test
-    fun `angle is propagated to every repo lookup`() {
+    fun `angle is propagated to every resolution lookup`() {
         val uuid = "305ECF354AB54C9CAFD591AF0848004B"
         every { repo.getClimbByUuid(any(), any()) } returns null
 
         resolver.resolveName(uuid, angle = 70)
 
-        // No call should land on a different angle.
-        verify(exactly = 0) { repo.getClimbByUuid(any(), neq(70)) }
+        // Resolution lookups (raw, lowercase, uppercase, hyphen-lower,
+        // hyphen-upper) MUST all carry the requested angle so a
+        // wrong-angle climb_stats row never wins. The "uuid-not-in-
+        // climbs vs stats-missing-for-angle" diagnostic at the end of
+        // resolveClimb does one extra angle=0 lookup intentionally
+        // (it asks "does this uuid exist for ANY angle?") — that
+        // single call is exempt and asserted-on-purpose so a future
+        // refactor doesn't silently spam getClimbByUuid with random
+        // angles in the resolution path.
+        verify(exactly = 5) { repo.getClimbByUuid(any(), 70) }
+        verify(exactly = 1) { repo.getClimbByUuid(uuid.lowercase(), 0) }
+        verify(exactly = 0) {
+            repo.getClimbByUuid(any(), match { it != 70 && it != 0 })
+        }
     }
 
     @Test

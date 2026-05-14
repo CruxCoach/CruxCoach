@@ -69,11 +69,20 @@ class KilterApiClientHttpTest {
 
     @Test
     fun authenticate_returns_success_with_jwt_claims() = runTest {
-        val accessToken = jwtFor(sub = "user-uuid-123", username = "alice")
+        val accessToken = jwtFor(sub = "user-uuid-123", username = "alice@example.com")
+        // 1 — token response
         server.enqueue(
             MockResponse().setResponseCode(200).setBody(
                 """{"access_token":"$accessToken","refresh_token":"refresh-1","expires_in":3600}"""
             )
+        )
+        // 2 — display-username fetch (/api/users/{uuid}). Post-FEAT-030
+        // the JWT preferred_username carries the email handle, so the
+        // auth path resolves the public setter handle from the Kilter
+        // user record instead — see KilterApiClient §"Display-name
+        // resolution chain".
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody("""{"username":"alice"}""")
         )
 
         val result = client.authenticate("alice@example.com", "secret")
