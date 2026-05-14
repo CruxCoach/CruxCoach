@@ -274,6 +274,33 @@ interface BoardLayoutQueries {
      *  reachable through this method. */
     fun getAllProductSizes(productId: Long): List<BoardSize>
     fun getBoardImages(productSizeId: Int, layoutId: Int): List<BoardImage>
+    /** Sizes that have board-image tiles for the given layout. Used by
+     *  the climb-detail screen to render an Aurora-imported or cross-
+     *  board community climb on the right physical board even when the
+     *  user's preferred layout differs from the climb's. */
+    fun getProductSizesForLayout(layoutId: Int): List<Int>
+    /** True when the user's currently-configured [productSizeId] can
+     *  validly host this climb's render — same layout, has images,
+     *  big enough to contain the climb's bbox. The detail screen
+     *  uses this to default to the user's settings board (matching
+     *  the BoardBrowser → Detail mental model) and only fall back to
+     *  the climb's source size when that's not possible (Aurora-
+     *  imported cross-board climb, smaller user-board than the
+     *  climb's bbox, etc.). */
+    fun canRenderClimbOnSize(uuid: String, productSizeId: Int): Boolean
+    /** Find the smallest product_size whose four edges *contain* the
+     *  climb's bounding box AND has board_images for the climb's
+     *  layout. This pins each climb to the physical board variant
+     *  it was set on (= the user's actual board at climb-set time),
+     *  so cropped sub-routes stay rendered on the right Kilter SKU
+     *  (e.g. a Homewall-10×12-with-kickboard climb always renders
+     *  on size 25 even when the user has Homewall-7×10 configured).
+     *  Two climbs from the same physical board therefore always
+     *  render at the same size — consistent per source-size, not
+     *  per-current-pref. Returns null when the climb has no edges
+     *  or no containing size exists; caller falls back to layout-
+     *  only heuristics. */
+    fun getProductSizeForClimbRender(uuid: String): Int?
     fun getPlacementLedMap(productSizeId: Int): Map<Int, Int>
     fun getMirrorPlacementMap(productSizeId: Int): Map<Int, Int>
     fun countLeds(): Long

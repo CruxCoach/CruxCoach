@@ -537,9 +537,15 @@ class BoardClimbDetailViewModel @Inject constructor(
                         }
                         val prefSizeId = userPreferences.boardProductSizeId.first()
                         val prefLayoutId = userPreferences.boardLayoutId.first()
-                        val boardSize = boardRepository.getProductSize(prefSizeId)
+                        val (effectiveSizeId, effectiveLayoutId) = pickEffectiveBoardForClimb(
+                            climbUuid = uuid,
+                            climbLayoutId = climb.layoutId.toInt(),
+                            preferredSizeId = prefSizeId,
+                            preferredLayoutId = prefLayoutId,
+                        )
+                        val boardSize = boardRepository.getProductSize(effectiveSizeId)
                         val boardImages = boardRepository.getBoardImages(
-                            prefSizeId, prefLayoutId
+                            effectiveSizeId, effectiveLayoutId
                         )
                         val userAscents = PerfLogger.trace("loadClimb.userHistory") {
                             personalBoardRepo.getUserHistoryForClimb(uuid)
@@ -548,7 +554,7 @@ class BoardClimbDetailViewModel @Inject constructor(
                         val angles = boardRepository.getAnglesForClimb(uuid)
 
                         mirrorPlacementMap = PerfLogger.trace("loadClimb.mirrorMap") {
-                            boardRepository.getMirrorPlacementMap(prefSizeId).ifEmpty {
+                            boardRepository.getMirrorPlacementMap(effectiveSizeId).ifEmpty {
                                 computeMirrorMapFromPlacements(placementMap, boardSize)
                             }
                         }
@@ -678,9 +684,15 @@ class BoardClimbDetailViewModel @Inject constructor(
                     }
                     val prefSizeId = userPreferences.boardProductSizeId.first()
                     val prefLayoutId = userPreferences.boardLayoutId.first()
-                    val boardSize = boardRepository.getProductSize(prefSizeId)
+                    val (effectiveSizeId, effectiveLayoutId) = pickEffectiveBoardForClimb(
+                        climbUuid = uuid,
+                        climbLayoutId = climb.layoutId.toInt(),
+                        preferredSizeId = prefSizeId,
+                        preferredLayoutId = prefLayoutId,
+                    )
+                    val boardSize = boardRepository.getProductSize(effectiveSizeId)
                     val boardImages = boardRepository.getBoardImages(
-                        prefSizeId, prefLayoutId
+                        effectiveSizeId, effectiveLayoutId
                     )
                     val userAscents = personalBoardRepo.getUserHistoryForClimb(uuid)
                     val isFavorited = personalBoardRepo.isClimbFavorited(uuid)
@@ -799,6 +811,67 @@ class BoardClimbDetailViewModel @Inject constructor(
         return holds.map { hold ->
             val mirroredId = mirrorPlacementMap[hold.placementId]
             if (mirroredId != null) hold.copy(placementId = mirroredId) else hold
+        }
+    }
+
+    /**
+     * Resolve which (productSize, layout) pair to render this specific
+     * climb under. Aurora-imported and cross-board community climbs
+     * carry a layout_id that may differ from the user's currently-
+     * configured board (e.g. user has Original 12×12 set but the climb
+     * was set on Homewall). Pre-fix the detail screen blindly used the
+     * user's preferred (size, layout) pair, which had two visible
+     * effects:
+     *  - the wrong image tiles loaded behind the holds (Original
+     *    background under Homewall placements, etc.), and
+     *  - the BoardSize edges drove a coordinate transformation tuned
+     *    for the wrong physical board, so holds shifted off their hole
+     *    centers.
+     *
+     * Resolution rules, in priority order:
+     *  1. **User's currently-configured board** (Settings → Board)
+     *     when it can host the climb — same layout, has images, and
+     *     its extent contains the climb's bbox. This is the default
+     *     because the BoardBrowser → Detail flow filters by the
+     *     user's board, so the user expects to see "this climb on MY
+     *     board". A climb from a smaller-or-equal physical board
+     *     renders here at the user's bigger board's size, with the
+     *     climb's holds positioned correctly inside the larger frame.
+     *  2. **Per-climb containment fallback** — only when the user's
+     *     board can't host the climb (Aurora-imported climb from a
+     *     different layout, or a climb whose bbox extends past the
+     *     user's smaller board). Picks the smallest size whose
+     *     extent contains the climb's bbox, so cropped sub-routes
+     *     stay rendered on the right Kilter SKU.
+     *  3. Prefer the user's size for the climb's layout (most users
+     *     have one physical size and bundles ship multiple layouts).
+     *  4. Any size that has images for the climb's layout.
+     *  5. Last-resort fall back to the user's preferred pair so the
+     *     screen never goes blank for an unrecognised layout.
+     */
+    private suspend fun pickEffectiveBoardForClimb(
+        climbUuid: String,
+        climbLayoutId: Int,
+        preferredSizeId: Int,
+        preferredLayoutId: Int,
+    ): Pair<Int, Int> {
+        if (boardRepository.canRenderClimbOnSize(climbUuid, preferredSizeId)) {
+            // Use the climb's layout (not preferredLayoutId) so a
+            // multi-layout size still renders the right image set —
+            // canRenderClimbOnSize already verified images exist for
+            // (preferredSizeId, climb.layoutId). For the typical case
+            // where the user's preferred layout already matches the
+            // climb, this collapses to the user's full settings pair.
+            return preferredSizeId to climbLayoutId
+        }
+        boardRepository.getProductSizeForClimbRender(climbUuid)?.let { containing ->
+            return containing to climbLayoutId
+        }
+        val candidateSizes = boardRepository.getProductSizesForLayout(climbLayoutId)
+        return when {
+            preferredSizeId in candidateSizes -> preferredSizeId to climbLayoutId
+            candidateSizes.isNotEmpty() -> candidateSizes.first() to climbLayoutId
+            else -> preferredSizeId to preferredLayoutId
         }
     }
 

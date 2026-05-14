@@ -283,6 +283,18 @@ class BoardRepositoryImpl(
         }
     }
 
+    override fun getProductSizesForLayout(layoutId: Int): List<Int> {
+        return q.getProductSizesForLayout(layoutId.toLong()).executeAsList().map { it.toInt() }
+    }
+
+    override fun canRenderClimbOnSize(uuid: String, productSizeId: Int): Boolean {
+        return q.canRenderClimbOnSize(productSizeId.toLong(), uuid).executeAsOneOrNull() != null
+    }
+
+    override fun getProductSizeForClimbRender(uuid: String): Int? {
+        return q.getProductSizeForClimbRender(uuid).executeAsOneOrNull()?.toInt()
+    }
+
     override fun getPlacementLedMap(productSizeId: Int): Map<Int, Int> {
         return q.getPlacementLedMap(productSizeId.toLong()).executeAsList().associate {
             it.placement_id.toInt() to it.led_position.toInt()

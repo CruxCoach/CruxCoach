@@ -512,6 +512,77 @@ VALUES (?, ?, ?, ?, ?);
 getBoardImages:
 SELECT * FROM board_images WHERE product_size_id = ? AND layout_id = ?;
 
+-- Per-climb board rendering (Aurora migration + cross-board community
+-- climbs): the climbs.layout_id may differ from the user's currently-
+-- installed board, so the detail screen needs to pick a (size, layout)
+-- pair that has actual image tiles for the climb's layout. Returns
+-- the candidate sizes a layout was published in; caller prefers the
+-- user's configured size when present, otherwise falls back to the
+-- first candidate.
+getProductSizesForLayout:
+SELECT DISTINCT product_size_id FROM board_images WHERE layout_id = :layoutId;
+
+
+-- Cheap "can the user's currently-configured board render this climb"
+-- predicate. Returns 1 row when the user's [productSizeId] both
+-- (a) has board_images for the climb's layout AND (b) is large enough
+-- in every edge direction to contain the climb's bbox without
+-- clipping (or the climb has no recorded bbox). Used by the detail
+-- screen to keep the *default* render target = Settings → Board so
+-- the BoardBrowser → Detail flow keeps showing the user's actual
+-- physical board, falling back to the per-climb source size only
+-- when an Aurora-imported / cross-board climb genuinely doesn't fit.
+canRenderClimbOnSize:
+SELECT 1 FROM climbs c
+JOIN product_sizes ps ON ps.id = :productSizeId
+WHERE c.uuid = :uuid
+  AND EXISTS (
+      SELECT 1 FROM board_images bi
+      WHERE bi.product_size_id = ps.id AND bi.layout_id = c.layout_id
+  )
+  AND (c.edge_left IS NULL OR (
+        ps.edge_left   <= c.edge_left  AND
+        ps.edge_right  >= c.edge_right AND
+        ps.edge_bottom <= c.edge_bottom AND
+        ps.edge_top    >= c.edge_top
+      ))
+LIMIT 1;
+
+-- Resolve the smallest product_size whose physical extent fully
+-- *contains* the climb's bounding box, for the climb-detail render
+-- on the user's currently-installed board. Containment (not exact
+-- equality) is required because cropped sub-routes have asymmetric
+-- edges that don't match any size verbatim — e.g. a community climb
+-- on the left half of a Homewall has edges -48/-4/-8/140 while every
+-- Homewall product_size is symmetric (-44/44 or -56/56) and bigger
+-- in every dimension. Pre-fix the equality match returned NULL for
+-- such climbs and the layout-only fallback picked the *first*
+-- candidate size, frequently the smallest, which then *clipped* any
+-- hold whose x or y fell outside the smaller bounding box. The
+-- visible symptom: start + finish holds disappearing off the
+-- top-left corner.
+--
+-- ORDER BY area ASC picks the tightest fit, which keeps the rendered
+-- board as zoomed-in on the climb as possible without clipping. The
+-- EXISTS guard ensures we never return a size that has no
+-- board_images rows for the climb's layout (those would render an
+-- empty background).
+getProductSizeForClimbRender:
+SELECT ps.id FROM climbs c
+JOIN product_sizes ps ON ps.edge_left   <= c.edge_left
+                     AND ps.edge_right  >= c.edge_right
+                     AND ps.edge_bottom <= c.edge_bottom
+                     AND ps.edge_top    >= c.edge_top
+WHERE c.uuid = :uuid
+  AND c.edge_left IS NOT NULL
+  AND EXISTS (
+      SELECT 1 FROM board_images bi
+      WHERE bi.product_size_id = ps.id
+        AND bi.layout_id       = c.layout_id
+  )
+ORDER BY (ps.edge_right - ps.edge_left) * (ps.edge_top - ps.edge_bottom) ASC
+LIMIT 1;
+
 -- Hole queries (for placement join)
 upsertHole:
 INSERT OR REPLACE INTO holes(id, product_size_id, x, y, mirrored_hole_id)
