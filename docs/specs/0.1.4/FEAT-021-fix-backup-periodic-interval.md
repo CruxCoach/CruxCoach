@@ -1,21 +1,16 @@
 ---
-status: backlog
+status: 0.1.4
 ---
-# Feature Spec: Fix Daily/Weekly Auto-Backup Interval (backlog)
+# Feature Spec: Fix Daily/Weekly Auto-Backup Interval (0.1.4)
 
-> **Status:** Backlog — captured 2026-05-14. Bug. The daily /
-> weekly automatic backup interval that the user picks in
-> Settings → Backup is not honoured across app restarts: the
-> periodic `BackupSyncWorker` gets re-scheduled on every cold
-> start using the **board-sync** interval, not the
-> backup-specific one — and any user who has board-sync on
-> MANUAL silently loses their periodic backup the next time
-> the app restarts.
->
-> No release target. A patch-release candidate once verified
-> in the field; the fix is small but the impact is silent
-> data-loss risk (backups not running when the user thinks
-> they are).
+> **Status:** Shipped in 0.1.4 — captured + fixed 2026-05-14.
+> Bug. The daily / weekly automatic backup interval that the
+> user picks in Settings → Backup was not honoured across app
+> restarts: the periodic `BackupSyncWorker` got re-scheduled
+> on every cold start using the **board-sync** interval, not
+> the backup-specific one — and any user who had board-sync
+> on MANUAL silently lost their periodic backup the next time
+> the app restarted.
 >
 > **Depends on:**
 > - None. Self-contained DataStore + Worker plumbing fix.
