@@ -801,9 +801,18 @@ object CruxCoachBackup {
                     if (ascent.uuid in existingAscentUuids) {
                         skipped++
                     } else {
+                        // Lower-case the climbUuid: 0.1.3 backups carry
+                        // climb_uuid in mixed case for some add-paths
+                        // (custom-list "add-climb" did not normalize),
+                        // and the local climbs table stores canonical
+                        // lowercase form, so a JOIN with BINARY collation
+                        // would silently return no rows. Symptom seen in
+                        // 0.1.3→0.1.4 cross-version restore: list count
+                        // reads "1 climb" but the detail screen shows
+                        // empty.
                         personalBoardRepo.insertAscent(
                             uuid = ascent.uuid,
-                            climbUuid = ascent.climbUuid, angle = ascent.angle,
+                            climbUuid = ascent.climbUuid.lowercase(), angle = ascent.angle,
                             isMirror = ascent.isMirror, attemptId = 0,
                             bidCount = ascent.bidCount, quality = ascent.quality,
                             difficulty = ascent.difficulty, isBenchmark = false,
@@ -827,9 +836,11 @@ object CruxCoachBackup {
                     if (bid.uuid in existingBidUuids) {
                         skipped++
                     } else {
+                        // climbUuid lowercase — same 0.1.3-mixed-case
+                        // legacy as the ascent path above.
                         personalBoardRepo.insertBid(
                             uuid = bid.uuid,
-                            climbUuid = bid.climbUuid, angle = bid.angle,
+                            climbUuid = bid.climbUuid.lowercase(), angle = bid.angle,
                             isMirror = bid.isMirror, bidCount = bid.bidCount,
                             comment = bid.comment, climbedAt = bid.climbedAt,
                             synced = false,
@@ -893,7 +904,10 @@ object CruxCoachBackup {
                     }
                     for (climbUuid in list.entries) {
                         try {
-                            personalBoardRepo.addClimbToList(listId, climbUuid)
+                            // Lowercase: 0.1.3 stored upper-case UUIDs
+                            // for some custom-list adds; the climbs table
+                            // is canonical-lowercase, BINARY join misses.
+                            personalBoardRepo.addClimbToList(listId, climbUuid.lowercase())
                         } catch (e: Exception) {
                             // Duplicate list entry — expected for re-imports
                             skipped++
@@ -931,8 +945,13 @@ object CruxCoachBackup {
         var ownClimbsSkipped = 0
         if (Category.OWN_CLIMBS in selectedCategories) {
             for (climb in backup.boardClimbs) {
+                // uuid lowercase — same legacy-mixed-case defense as the
+                // ascents / bids / list-entries above. v3 backups from
+                // 0.1.4 should already be canonical, but a hand-edited
+                // backup or future cross-version case shouldn't bypass
+                // the canonical-lowercase invariant on climbs.uuid.
                 val row = OwnClimbBackupRow(
-                    uuid = climb.uuid, layoutId = climb.layoutId,
+                    uuid = climb.uuid.lowercase(), layoutId = climb.layoutId,
                     setterUsername = climb.setterUsername, name = climb.name,
                     frames = climb.frames,
                     edgeLeft = climb.edgeLeft, edgeRight = climb.edgeRight,
@@ -955,7 +974,7 @@ object CruxCoachBackup {
             for (stat in backup.boardClimbStats) {
                 boardRepository.restoreOwnClimbStat(
                     OwnClimbStatBackupRow(
-                        climbUuid = stat.climbUuid, angle = stat.angle,
+                        climbUuid = stat.climbUuid.lowercase(), angle = stat.angle,
                         displayDifficulty = stat.displayDifficulty,
                         difficultyAverage = stat.difficultyAverage,
                         qualityAverage = stat.qualityAverage,
