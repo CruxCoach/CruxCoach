@@ -28,13 +28,17 @@ import javax.inject.Inject
 enum class ExportFormat { CRUXCOACH, WAISTLINE_JSON, WAISTLINE_CSV }
 
 /**
- * Categories currently visible in the app UI.
- * Extend this list as more features (Training, Logbuch, Stats) are enabled.
+ * Categories visible in the manual JSON export/import UI.
+ *
+ * Pre-fix this was a hand-curated subset (BOARD_LOGBOOK + CLIMB_LISTS),
+ * which silently filtered out new categories the wire format gained
+ * later — most critically v3's own_climbs + the profile category that
+ * already had user-facing data. The Nostr-backup path (BackupRepository)
+ * has always used `Category.entries.toSet()`, so the JSON path now
+ * matches it: every category the wire format supports is offered in the
+ * UI, and ones with no data simply serialize as empty arrays.
  */
-val VISIBLE_CATEGORIES: Set<Category> = setOf(
-    Category.BOARD_LOGBOOK,
-    Category.CLIMB_LISTS
-)
+val VISIBLE_CATEGORIES: Set<Category> = Category.entries.toSet()
 
 data class DataExchangeState(
     // Export
