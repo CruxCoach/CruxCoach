@@ -149,6 +149,14 @@ data class ClimbDetailState(
      *  the moment the user opened it (drives the variant text:
      *  "manual cleanup on Kilter required" when true). */
     val communityDeleteDialog: CommunityDeleteDialogState? = null,
+    /** Confirm-delete dialog for the *draft* path — local-only removal
+     *  with no Nostr / Blossom round-trip. Routed to instead of
+     *  [communityDeleteDialog] when the climb has never been published
+     *  (sync_status='draft'/'failed'/NULL); avoids the
+     *  "Veröffentlichung löschen" menu calling
+     *  CommunityClimbDeleter for a row with no d-tag, which used to
+     *  surface as a confusing "Löschen fehlgeschlagen" snackbar. */
+    val draftDeleteDialog: DraftDeleteDialogState? = null,
     /** One-shot feedback from the most recent delete attempt. UI
      *  consumes via [BoardClimbDetailViewModel.consumeCommunityDeleteFeedback]. */
     val communityDeleteFeedback: CommunityDeleteFeedback? = null,
@@ -157,6 +165,12 @@ data class ClimbDetailState(
 data class CommunityDeleteDialogState(
     val uuid: String,
     val kilterAlsoPublished: Boolean,
+    val isInProgress: Boolean = false,
+)
+
+data class DraftDeleteDialogState(
+    val uuid: String,
+    val name: String,
     val isInProgress: Boolean = false,
 )
 
@@ -407,6 +421,64 @@ class BoardClimbDetailViewModel @Inject constructor(
 
     fun dismissCommunityDeleteDialog() {
         _state.update { it.copy(communityDeleteDialog = null) }
+    }
+
+    /**
+     * Open the local-only delete confirm for a draft climb (sync_status
+     * 'draft' / 'failed' / NULL — never made it to a relay). The
+     * actual deletion is gated at the SQL layer too via
+     * [com.cruxcoach.data.repository.BoardRepository.deleteLocalClimb]
+     * (`source='local' AND nostr_event_id IS NULL`), so even a UI bug
+     * that opens this for a published row would silently no-op
+     * server-side.
+     */
+    fun requestDraftDelete() {
+        val climb = _state.value.climb ?: return
+        val signer = _state.value.currentUserPubkey ?: return
+        if (climb.origin != "cruxcoach") return
+        if (climb.createdByPubkey != signer) return
+        _state.update {
+            it.copy(
+                draftDeleteDialog = DraftDeleteDialogState(
+                    uuid = climb.uuid,
+                    name = climb.name,
+                ),
+            )
+        }
+    }
+
+    fun dismissDraftDeleteDialog() {
+        _state.update { it.copy(draftDeleteDialog = null) }
+    }
+
+    /** Run a draft (local-only) deletion. The repository call is
+     *  idempotent and gated by `source='local' AND nostr_event_id IS
+     *  NULL` so it's safe even on a sync race. [onDeleted] is invoked
+     *  on success so the screen can pop back. */
+    fun confirmDraftDelete(onDeleted: () -> Unit) {
+        val dialog = _state.value.draftDeleteDialog ?: return
+        if (dialog.isInProgress) return
+        _state.update { it.copy(draftDeleteDialog = dialog.copy(isInProgress = true)) }
+        viewModelScope.launch {
+            val ok = runCatching {
+                withContext(Dispatchers.IO) {
+                    boardRepository.deleteLocalClimb(dialog.uuid)
+                }
+                true
+            }.getOrElse { e ->
+                Log.w(TAG, "draft delete failed uuid=${dialog.uuid}", e)
+                false
+            }
+            _state.update { it.copy(draftDeleteDialog = null) }
+            if (ok) {
+                // Browser cache stale — the deleted draft must drop
+                // on its next refresh. Same flag the editor uses for
+                // save/delete so back-nav from either screen lands
+                // on a consistent list.
+                climbNavState.creatorDataChanged = true
+                onDeleted()
+            }
+        }
     }
 
     /**

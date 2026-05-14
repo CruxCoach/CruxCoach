@@ -179,6 +179,49 @@ fun BoardClimbDetailScreen(
     // Community-publication delete confirmation. The text differs based
     // on whether the climb was also pushed to Kilter — Kilter has no
     // delete API so the user has to clean up there manually.
+    // Draft (local-only) delete confirmation. Reuses the
+    // climb_creator_drafts_delete_* strings so the wording matches
+    // the editor's drafts-drawer flow — same action, different entry
+    // point.
+    state.draftDeleteDialog?.let { dialog ->
+        AlertDialog(
+            onDismissRequest = {
+                if (!dialog.isInProgress) viewModel.dismissDraftDeleteDialog()
+            },
+            title = {
+                Text(
+                    stringResource(R.string.climb_creator_drafts_delete_title),
+                    fontWeight = FontWeight.Bold,
+                )
+            },
+            text = {
+                Text(stringResource(R.string.climb_creator_drafts_delete_message, dialog.name))
+            },
+            confirmButton = {
+                Button(
+                    onClick = { viewModel.confirmDraftDelete(onDeleted = onNavigateBack) },
+                    enabled = !dialog.isInProgress,
+                    colors = ButtonDefaults.buttonColors(containerColor = ErrorRed),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.testTag("boarddetail_delete_draft_confirm"),
+                ) {
+                    Text(
+                        stringResource(R.string.climb_creator_drafts_delete_confirm),
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { viewModel.dismissDraftDeleteDialog() },
+                    enabled = !dialog.isInProgress,
+                ) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            },
+        )
+    }
+
     state.communityDeleteDialog?.let { dialog ->
         val bodyRes = if (dialog.kilterAlsoPublished) {
             R.string.community_climb_delete_confirm_kilter_warning
@@ -498,21 +541,54 @@ fun BoardClimbDetailScreen(
                                         )
                                     }
                                     HorizontalDivider()
-                                    DropdownMenuItem(
-                                        text = { Text(stringResource(R.string.community_climb_delete_action)) },
-                                        leadingIcon = {
-                                            Icon(
-                                                Icons.Default.Delete,
-                                                contentDescription = null,
-                                                tint = MaterialTheme.colorScheme.error,
-                                            )
-                                        },
-                                        onClick = {
-                                            moreExpanded = false
-                                            viewModel.requestCommunityDelete()
-                                        },
-                                        modifier = Modifier.testTag("boarddetail_delete_publication"),
-                                    )
+                                    // Branch on whether this row was ever
+                                    // actually published. Drafts (sync_status
+                                    // 'draft' / 'failed' / NULL) have no
+                                    // Nostr event to tombstone — calling
+                                    // requestCommunityDelete on those used
+                                    // to surface as a "Löschen
+                                    // fehlgeschlagen" snackbar. Route them
+                                    // to the local-only delete path with a
+                                    // matching label so the user sees the
+                                    // right confirm copy too.
+                                    val isUnpublishedDraft = state.climb?.let {
+                                        it.syncStatus == null ||
+                                            it.syncStatus == "draft" ||
+                                            it.syncStatus == "failed"
+                                    } ?: false
+                                    if (isUnpublishedDraft) {
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(R.string.climb_creator_drafts_delete_action)) },
+                                            leadingIcon = {
+                                                Icon(
+                                                    Icons.Default.Delete,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.error,
+                                                )
+                                            },
+                                            onClick = {
+                                                moreExpanded = false
+                                                viewModel.requestDraftDelete()
+                                            },
+                                            modifier = Modifier.testTag("boarddetail_delete_draft"),
+                                        )
+                                    } else {
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(R.string.community_climb_delete_action)) },
+                                            leadingIcon = {
+                                                Icon(
+                                                    Icons.Default.Delete,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.error,
+                                                )
+                                            },
+                                            onClick = {
+                                                moreExpanded = false
+                                                viewModel.requestCommunityDelete()
+                                            },
+                                            modifier = Modifier.testTag("boarddetail_delete_publication"),
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -678,10 +754,23 @@ private fun ClimbDetailPageContent(
                                     )
                                 }
                                 // Provenance + Kilter-mirror badge — only shown for
-                                // CruxCoach-authored climbs. For native Kilter rows
-                                // the info is tautological (they're inherently on
-                                // Kilter), so we suppress the chip there.
-                                if (climb.origin == "cruxcoach") {
+                                // CruxCoach-authored climbs that have actually
+                                // been *published* (sync_status indicates the
+                                // climb reached at least one CruxCoach Nostr
+                                // relay). For drafts and failed-publish rows
+                                // the previous "Nur CruxCoach-Community" copy
+                                // was misleading: an Aurora-imported draft
+                                // (origin='cruxcoach' + kilterStatus=NULL +
+                                // sync_status='draft') is *not* on the
+                                // CruxCoach community, just sitting locally,
+                                // and showing the same chip as a genuinely
+                                // community-published climb conflated the two.
+                                // For native Kilter rows the info is tautological
+                                // (they're inherently on Kilter), so we suppress
+                                // the chip there too.
+                                val isPublishedToNostr = climb.syncStatus == "published_nostr" ||
+                                    climb.syncStatus == "synced"
+                                if (climb.origin == "cruxcoach" && isPublishedToNostr) {
                                     Spacer(Modifier.size(4.dp))
                                     // Three states: synced = both Nostr +
                                     // Kilter; diverged = local edit Kilter
