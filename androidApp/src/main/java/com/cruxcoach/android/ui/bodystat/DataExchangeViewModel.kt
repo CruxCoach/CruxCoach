@@ -32,7 +32,13 @@ enum class ExportFormat { CRUXCOACH, WAISTLINE_JSON, WAISTLINE_CSV }
  * what the user can actually access via 0.1.4's app surface.
  *
  * Hidden in 0.1.4 (no user-facing UI yet, so no point exporting):
- * ASSESSMENTS, BODY_STATS, WORKOUT_LOGS, TRAINING_PLANS, BOARD_SESSIONS.
+ * - PROFILE (carries the fitness UserProfile only, age/weight/grade —
+ *   that data has no UI in 0.1.4 to set or view; the label
+ *   "Profil & Einstellungen" is misleading because app preferences
+ *   are NOT in the wire format at all)
+ * - ASSESSMENTS, BODY_STATS, WORKOUT_LOGS, TRAINING_PLANS,
+ *   BOARD_SESSIONS — same "no UI yet" reason.
+ *
  * Re-add them here as their UI lands so the wire format stays in sync
  * with the visible feature surface.
  *
@@ -43,7 +49,6 @@ enum class ExportFormat { CRUXCOACH, WAISTLINE_JSON, WAISTLINE_CSV }
  * old hidden-but-still-stored data on the next backup cycle.
  */
 val VISIBLE_CATEGORIES: Set<Category> = setOf(
-    Category.PROFILE,
     Category.CLIMB_LOGS,
     Category.BOARD_LOGBOOK,
     Category.CLIMB_LISTS,
