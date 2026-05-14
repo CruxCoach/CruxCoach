@@ -258,12 +258,22 @@ class CruxCoachApp : Application(), Configuration.Provider {
                 // every app start — catches cases where the user flipped the
                 // toggle + killed the app before WorkManager committed the
                 // schedule change.
+                //
+                // FEAT-021: read the BACKUP-specific interval, not the
+                // board-sync `interval` from above. Pre-fix the same
+                // board-sync value drove both schedules — users with
+                // board-sync=MANUAL silently had their periodic backup
+                // cancelled on every cold start. The two prefs are
+                // wholly unrelated user-facing options that happen to
+                // share the SyncInterval enum type.
                 val backupPrefs = backupPreferences.get()
                 val backupEnabled = backupPrefs.isBackupEnabled() && backupPrefs.isBackupFeatureEnabled()
+                val backupInterval = runCatching { backupPrefs.backupInterval.first() }
+                    .getOrDefault(com.cruxcoach.android.data.SyncInterval.DAILY)
                 com.cruxcoach.android.nostr.backup.BackupSyncWorker.schedule(
                     this@CruxCoachApp,
                     enabled = backupEnabled,
-                    interval = interval,
+                    interval = backupInterval,
                 )
             }.onFailure { PerfLogger.logCoroutine("appScope", "BackupSyncWorker.schedule failed: ${it.message}") }
             PerfLogger.logCoroutine("appScope", "singleton-init + sync DONE")

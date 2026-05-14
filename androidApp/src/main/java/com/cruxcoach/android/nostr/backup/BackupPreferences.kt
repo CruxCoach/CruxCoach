@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
+import com.cruxcoach.android.data.SyncInterval
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -51,6 +52,24 @@ class BackupPreferences @Inject constructor(
 
     suspend fun setBackupFeatureEnabled(enabled: Boolean) {
         dataStore.edit { it[Keys.BACKUP_FEATURE_ENABLED] = enabled }
+    }
+
+    /** Persisted auto-backup cadence (FEAT-021). Pre-fix this value lived
+     *  only in the [BackupSettingsViewModel]'s in-memory state, so cold
+     *  restarts rebuilt the worker against the unrelated *board-sync*
+     *  interval and silently cancelled periodic backups whenever
+     *  board-sync was MANUAL. Default DAILY matches the prior in-memory
+     *  default — users who upgrade with no key set don't see a behaviour
+     *  change. Persisted by NAME (string) so adding/re-ordering enum
+     *  values later doesn't silently migrate existing rows. */
+    val backupInterval: Flow<SyncInterval> = dataStore.data.map { prefs ->
+        prefs[Keys.BACKUP_INTERVAL]
+            ?.let { name -> runCatching { SyncInterval.valueOf(name) }.getOrNull() }
+            ?: SyncInterval.DAILY
+    }
+
+    suspend fun setBackupInterval(interval: SyncInterval) {
+        dataStore.edit { it[Keys.BACKUP_INTERVAL] = interval.name }
     }
 
     /** Onboarding seen flag so the opt-in step isn't shown twice. */
@@ -209,6 +228,7 @@ class BackupPreferences @Inject constructor(
         val BACKUP_FEATURE_ENABLED = booleanPreferencesKey("backup_feature_enabled")
         val BACKUP_ONBOARDING_SEEN = booleanPreferencesKey("backup_onboarding_seen")
         val BACKUP_RESTORE_INTENT = booleanPreferencesKey("backup_restore_intent")
+        val BACKUP_INTERVAL = stringPreferencesKey("backup_interval")
         val WRAPPED_DATA_KEY = stringPreferencesKey("backup_wrapped_data_key")
         val PREVIOUS_BLOB_SHA256 = stringPreferencesKey("backup_previous_blob_sha256")
         val DEVICE_ID = stringPreferencesKey("backup_device_id")
