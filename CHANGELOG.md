@@ -82,6 +82,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the privacy guarantee and a partial storage-server result (e.g.
   1/2) is no longer presented as a security caveat. Transient
   DELETE timeouts on storage servers retry once.
+- **Climb detail screen now picks the right physical board for
+  every climb** — Aurora-imported climbs and any cross-board
+  community climb (Homewall climb on an Original-12×12 user, a
+  cropped sub-route whose extent exceeds the user's smaller
+  variant, etc.) now render against a board whose edges actually
+  contain the climb's holds. Pre-fix the renderer always used the
+  user's Settings board, which clipped start + finish holds off
+  the canvas for cross-board entries and used coordinate edges
+  tuned for the wrong physical wall.
+- **Climb detail screen no longer opens the wrong climb when
+  navigating from Setter pages** — pre-fix tapping a climb on a
+  setter's profile silently routed to the *first* climb of
+  whatever browser/logbook list was last open, because the pager
+  inherited stale list context. The detail screen now drops to a
+  single-page render of the actual tapped climb when the cached
+  list is no longer relevant.
+- **Drafts no longer present as published in the detail screen** —
+  Aurora-imported drafts (and any other never-published row)
+  used to show the "CruxCoach community" provenance chip and
+  offer "Veröffentlichung löschen" as the delete action — which
+  failed because there was no Nostr event to tombstone. The
+  chip now only appears for climbs that actually reached a
+  relay, and the delete menu routes drafts to a local-only
+  delete that succeeds and matches the action label.
+- **Cloud-backup restore shows progress instead of freezing** —
+  a fresh-install restore blocks on the board-database
+  download to avoid a SQLite race; the dialog used to look like
+  a hard freeze for the 1–3 minutes that took. It now shows a
+  spinner with explicit "waiting for board-database download"
+  and "restoring backup" phase copy.
 - **Auto-backup interval finally persists across cold restarts** —
   previously, the daily / weekly cadence you picked could silently
   revert to whatever the board-sync was on (or disappear entirely
