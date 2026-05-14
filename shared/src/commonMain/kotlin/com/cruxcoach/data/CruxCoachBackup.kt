@@ -864,12 +864,32 @@ object CruxCoachBackup {
             }
 
             // 10. Climb lists
+            //
+            // Match-by-name on custom lists: pre-fix every import created
+            // a fresh row, so re-importing the same backup twice produced
+            // duplicates ("Test-Liste" + "Test-Liste"). Now we look up
+            // existing lists by name and merge entries into the existing
+            // list when one matches; only genuinely-new names create a
+            // row. Builtin Favoriten still goes through
+            // [ensureFavoritesListExists] which is its own merge path
+            // (matched on is_builtin=1, name-independent).
+            //
+            // Cross-identity caveat: a backup from another account whose
+            // custom-list name happens to collide with one of yours will
+            // also merge into yours rather than appearing as a separate
+            // namespaced list. This matches the same merge semantics as
+            // builtin Favoriten and is the desired UX per user direction
+            // — name-collision is rare in practice and the alternative
+            // (always-additive) was already breaking idempotent re-imports.
             if (Category.CLIMB_LISTS in selectedCategories) {
+                val existingByName = personalBoardRepo.getAllClimbLists()
+                    .associate { it.name to it.id }
                 for (list in backup.climbLists) {
                     val listId = if (list.isBuiltin) {
                         personalBoardRepo.ensureFavoritesListExists()
                     } else {
-                        personalBoardRepo.createClimbList(list.name)
+                        existingByName[list.name]
+                            ?: personalBoardRepo.createClimbList(list.name)
                     }
                     for (climbUuid in list.entries) {
                         try {
