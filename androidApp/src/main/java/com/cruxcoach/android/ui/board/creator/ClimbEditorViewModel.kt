@@ -201,8 +201,20 @@ class ClimbEditorViewModel @Inject constructor(
      * instead so they're not handled here.
      */
     private suspend fun handleNavigationArgs() {
-        val editUuid: String? = savedStateHandle["editUuid"]
-        val forkUuid: String? = savedStateHandle["forkUuid"]
+        // Defensive guard: any caller that accidentally passes the raw
+        // route template constant (e.g. `Routes.CLIMB_CREATOR` instead of
+        // `Routes.climbCreator()`) lands here with the literal placeholder
+        // string `"{editUuid}"` / `"{forkUuid}"` — Compose Navigation
+        // treats unsubstituted query placeholders as their literal
+        // values. Coerce to null so the editor opens fresh in
+        // creator mode (with autosave-restore) instead of running
+        // a doomed source-lookup. Pairs with the FAB-routing fix in
+        // NavGraph.kt that closed the only known producer of this
+        // sentinel; this guard catches any future regression.
+        fun normalize(s: String?): String? =
+            if (s == null || s == "{editUuid}" || s == "{forkUuid}") null else s
+        val editUuid: String? = normalize(savedStateHandle["editUuid"])
+        val forkUuid: String? = normalize(savedStateHandle["forkUuid"])
         Log.i(TAG, "handleNavigationArgs: editUuid=$editUuid forkUuid=$forkUuid")
         // getMyClimbs filters on `created_by_pubkey = :pubkey`. Pre-fix
         // we passed the literal sentinel "__none__" — `getMyClimbs` then
