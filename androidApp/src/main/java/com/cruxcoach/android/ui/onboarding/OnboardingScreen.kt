@@ -201,15 +201,44 @@ fun OnboardingScreen(
     state.pendingRestore?.let { info ->
         val sizeKb = info.pointer.size / 1024
         AlertDialog(
-            onDismissRequest = { viewModel.dismissOnboardingRestore() },
+            onDismissRequest = {
+                if (!state.restoreInProgress) viewModel.dismissOnboardingRestore()
+            },
             title = { Text(stringResource(R.string.settings_backup_restore_dialog_title)) },
             text = {
-                Text(
-                    stringResource(
-                        R.string.onboarding_restore_dialog_body,
-                        if (sizeKb < 1024) "$sizeKb KB" else "${sizeKb / 1024} MB",
-                    ),
-                )
+                if (state.restoreInProgress) {
+                    // Phase-aware progress copy. The restore pipeline
+                    // blocks on the board-sync gate during the climbs-
+                    // table import; without explicit copy the dialog
+                    // looked frozen for the 1–3 minutes the gate took
+                    // on a fresh install (Blossom CDN download +
+                    // decompression + bulk insert of ~190K climbs).
+                    androidx.compose.foundation.layout.Row(
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp),
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            strokeWidth = 2.dp,
+                        )
+                        Text(
+                            stringResource(
+                                if (state.restoreAwaitingBoardSync) {
+                                    R.string.onboarding_restore_progress_awaiting_board_sync
+                                } else {
+                                    R.string.onboarding_restore_progress_active
+                                },
+                            ),
+                        )
+                    }
+                } else {
+                    Text(
+                        stringResource(
+                            R.string.onboarding_restore_dialog_body,
+                            if (sizeKb < 1024) "$sizeKb KB" else "${sizeKb / 1024} MB",
+                        ),
+                    )
+                }
             },
             confirmButton = {
                 Button(

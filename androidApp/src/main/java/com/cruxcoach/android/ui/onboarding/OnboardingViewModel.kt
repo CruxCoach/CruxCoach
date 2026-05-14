@@ -87,6 +87,15 @@ data class OnboardingState(
     val backupCheckAttempted: Boolean = false,
     val pendingRestore: BackupInfo? = null,
     val restoreInProgress: Boolean = false,
+    /** True iff [restoreInProgress] AND board-sync is still finishing
+     *  the climbs-table import. The restore pipeline blocks on
+     *  board-sync to avoid a SQLITE_BUSY race against the bulk
+     *  importer; on a fresh install this typically takes 1–3
+     *  minutes (Blossom CDN download + decompression + bulk SQL
+     *  insert of ~190K climbs), during which the previous UI showed
+     *  no indication beyond a frozen confirm dialog. Drives a phase-
+     *  aware progress message in the dialog. */
+    val restoreAwaitingBoardSync: Boolean = false,
     val restoreFailed: Boolean = false,
     val restoreSucceeded: Boolean = false,
     val noBackupFoundForKey: Boolean = false,
@@ -121,6 +130,7 @@ class OnboardingViewModel @Inject constructor(
     private val keyStore: NostrKeyStore,
     private val backupPreferences: BackupPreferences,
     private val backupRepository: BackupRepository,
+    private val boardSyncManager: com.cruxcoach.android.data.BoardSyncManager,
 ) : ViewModel() {
 
     private companion object {
@@ -452,15 +462,33 @@ class OnboardingViewModel @Inject constructor(
 
     fun confirmOnboardingRestore() {
         val info = _state.value.pendingRestore ?: return
-        _state.update { it.copy(restoreInProgress = true, restoreFailed = false) }
+        _state.update { it.copy(
+            restoreInProgress = true,
+            restoreAwaitingBoardSync = boardSyncManager.state.value.isSyncing,
+            restoreFailed = false,
+        ) }
+        // Surface the board-sync wait phase to the UI. The restore
+        // pipeline itself blocks on `boardSyncManager.state.first
+        // { !it.isSyncing }`; without this collector the user sees
+        // a frozen "Wiederherstellen…" dialog for the ~30 s of board
+        // sync on a fresh install. Cancellation is automatic when the
+        // restore launch above completes (collector lives inside the
+        // same viewModelScope job).
+        val boardSyncWatcher = viewModelScope.launch {
+            boardSyncManager.state.collect { sync ->
+                _state.update { it.copy(restoreAwaitingBoardSync = sync.isSyncing) }
+            }
+        }
         viewModelScope.launch {
             val result = runCatching { backupRepository.restore(info) }
+            boardSyncWatcher.cancel()
             if (result.isSuccess) {
                 backupPreferences.setBackupEnabled(true)
                 backupPreferences.setBackupRestoreIntent(false)
                 _state.update {
                     it.copy(
                         restoreInProgress = false,
+                        restoreAwaitingBoardSync = false,
                         pendingRestore = null,
                         restoreSucceeded = true,
                         backupOptIn = true,
@@ -472,6 +500,7 @@ class OnboardingViewModel @Inject constructor(
                 _state.update {
                     it.copy(
                         restoreInProgress = false,
+                        restoreAwaitingBoardSync = false,
                         pendingRestore = null,
                         restoreFailed = true,
                     )
