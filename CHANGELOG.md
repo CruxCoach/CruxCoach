@@ -6,40 +6,163 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+> 0.1.4 turns CruxCoach from a Kilter-catalog viewer into a small
+> climbing-community-on-Nostr. You can now set your own climbs, share
+> them with other CruxCoach users, see what others have set, pick a
+> profile, and migrate your old Kilter-app data into the app.
+
 ### Added
-- **Climb Creator** — set your own climbs on the board image, save drafts, publish to other CruxCoach users via Nostr (Kind-30078), and optionally push the climb to your own Kilter account so it shows up in the Kilter app too. Heatmap shows where popular hand/start/finish holds typically go for the current layout + angle. Frames are validated before publish (start/finish constraints, no duplicate frames). Drafts drawer + autosave so a kill or accidental back-press never costs you in-progress work.
-- **Community climbs in BoardBrowser** — climbs other CruxCoach users have published on Nostr now appear next to the Kilter catalog. The new origin filter chip lets you filter to *CruxCoach*, *Kilter*, or *All*.
-- **Setter detail + setters list** — see who in the CruxCoach community has been publishing climbs and tap through to their list. A community badge on each climb's detail screen links to the setter.
-- **Auto-Note (optional)** — when you publish a community climb you can also fire a Kind-1 note to your relays announcing the climb. Off by default; toggle in *Settings → Climb Creator*. Angle is required at publish time so the announcement carries the route's grade + angle.
-- **Edit my published climb** — load any climb you previously published into the Climb Creator, edit it, and re-publish. The Nostr d-tag stays stable across edits so the original event is replaced (not duplicated); the Kilter side does an UPDATE if the climb was previously synced there.
-- **Live Nostr subscription for community climbs** — climbs published while you're online appear immediately, not after the next daily Blossom snapshot. Bursts of relay echoes (your own published events) are filtered.
-- **Kilter publish (opt-in)** — *Settings → Kilter publish* toggles whether your community climbs are also pushed to your own Kilter account via the Kilter API. Periodic 6-hour retry worker drains transient failures.
-- **On-Kilter badge** — when a community climb is also synced to Kilter, the climb-detail view shows a badge so you know it's findable in the Kilter app too.
-- **Nostr profile editor** in *Settings* — set the display name and picture other CruxCoach users see next to your community climbs. Without this, your climbs show up under `npub:<hex>...` instead of a real name.
-- **Stale-event protection** for community-climb ingest — old replays of your own (or someone else's) events arriving on a different relay can no longer rewind a freshly-edited climb.
+- **Climb Creator** — set your own climbs on the board image, save
+  drafts (with autosave), publish to other CruxCoach users via Nostr
+  (Kind-30078), optionally push to your own Kilter account so they
+  show up in the Kilter app too. Heatmap shows where popular
+  hand/start/finish holds typically go for the current layout +
+  angle. Frames are validated before publish.
+- **Community climbs in BoardBrowser** — climbs other CruxCoach
+  users have published appear next to the Kilter catalog. Origin
+  filter chip lets you filter to CruxCoach / Kilter / All.
+- **Setter detail page + setters list** — see who's been publishing
+  in the community and browse their climbs. A community badge on
+  each climb's detail screen links to the setter.
+- **Edit my published climb** — load any climb you previously
+  published into the Creator, edit, and re-publish. The Nostr d-tag
+  stays stable so the original event is replaced, not duplicated.
+  Kilter side does an UPDATE if previously synced there.
+- **Live Nostr subscription for community climbs** — climbs
+  published while you're online appear immediately, not after the
+  next daily Blossom snapshot.
+- **My-climbs filter** in BoardBrowser surfaces just your own
+  published + draft climbs.
+- **Nostr profile editor** in *Settings → Profile* — display name,
+  picture, banner, NIP-05 identifier (with on-blur verification),
+  Lightning address (with on-blur LNURL probe), and a markdown bio.
+  Without this, your community climbs show up as `npub:<hex>...`.
+- **Aurora migration** in *Settings → Migrate from Aurora* — import
+  the JSON Aurora emails after a data-export request: ascents,
+  attempts, circuits, and bid history land in your local logbook.
+  Re-importing the same file is safe.
+- **Auto-Note** (optional) — when you publish a community climb you
+  can also fire a Kind-1 note to your relays announcing it. Off by
+  default; editable template per climb.
+- **Kilter publish (opt-in)** — *Settings → Kilter publish* toggles
+  whether your community climbs are also pushed to Kilter. 6-hour
+  retry worker drains transient failures. On-Kilter badge on the
+  detail screen when a climb is synced to both surfaces.
+- **Homewall support** — new 7-row Homewall layout is selectable in
+  onboarding and via the size-picker.
+- **Cloud-Backup now covers your own climbs** — v3 envelope includes
+  published + draft climbs so they restore on a new device.
 
 ### Changed
-- **Internal table naming cleaned up** — board database now uses unprefixed plural names (`climbs`, `climb_stats`, `placements`, …) instead of the historical `aurora_*` prefix. In-app schema migration runs once on first launch; no user action required.
-- **BLE class names** dropped the Aurora prefix in favour of `Board*`. Internal refactor only.
-- **Logbook detail** removed the "X Begehungen" / "Climb Details" toolbar headers — they were redundant with the screen content.
-- **Quality rating** in Climb-Detail accepts 1–5 stars (was 1–3) — Kilter migrated to a 5-star scale.
+- **Onboarding** auto-starts the board-database download the moment
+  you reach that step.
+- **Board-database import is noticeably faster on mid-range devices**
+  — shared SQLite connection across chunks, WAL tuning, and a
+  join-based normalisation pass.
+- **Internal table renames** — board DB moved from the historical
+  `aurora_*` prefix to plain plural names (`climbs`, `climb_stats`,
+  …). Migration runs once on first launch; BLE class names lost
+  their Aurora prefix to match.
+- **Quality rating** in climb-detail accepts 1–5 stars (was 1–3)
+  — Kilter migrated to a 5-star scale.
+- **Detail-screen + Logbook toolbars** cleaned up — redundant
+  titles dropped, overflow menu consolidated so the top bar doesn't
+  overflow on narrow screens.
 
 ### Fixed
-- **Empty climb_browse view after schema upgrade** — the recreated VIEW now correctly carries the new origin + kilter_status columns, so the BoardBrowser query stops returning zero hits after first launch on 0.1.4.
-- **CruxCoach metadata preserved across Kilter blob refreshes** — when the daily Kilter sync re-imports the catalog, your community climbs' Nostr provenance, frames_hash, sync_status, and Kilter-publish flags are no longer overwritten with defaults.
-- **Tombstones propagate** — climbs deleted upstream are now correctly marked `is_deleted=1` locally instead of being silently re-inserted on the next bulk import.
-- **Hot-path index self-heal** — index drift after the table rename auto-recovers without requiring a sync.
-- **Climb-creator UX** — empty-brush tap now deletes the hold (no more eraser chip), drag-to-move works, German climbing terms throughout, V-scale grade slider has live validation.
-- **Heatmap performance** — parsed frames cached + fast IntArray parser; no more frame drops on layouts with hundreds of climbs.
-- **Saving a draft** correctly refreshes the drafts list and pins the draft's UUID so re-opening the editor lands you back on the same draft.
+- **Cloud-backup deletion now sticks across devices** — pre-fix,
+  tapping *Delete remote backups* could silently leave a
+  recoverable copy on the index servers, because some don't honour
+  the standard deletion event for replaceable items: a fresh
+  restore on a new device would still find and import the backup.
+  CruxCoach now also publishes a deletion marker that every relay
+  must honour, so the next restore returns "no backup found"
+  regardless of how thoroughly the storage servers complied. The
+  confirm-dialog copy was reworded to reflect that the marker is
+  the privacy guarantee and a partial storage-server result (e.g.
+  1/2) is no longer presented as a security caveat. Transient
+  DELETE timeouts on storage servers retry once.
+- **Auto-backup interval finally persists across cold restarts** —
+  previously, the daily / weekly cadence you picked could silently
+  revert to whatever the board-sync was on (or disappear entirely
+  if board-sync was on Manual).
+- **Onboarding and Aurora-migration screens recover from internal
+  errors** — instead of throwing you back to a fresh-install state.
+- **Stuck "logging in" / "importing" spinners** when a backend call
+  threw transiently — the spinner clears, an error surfaces, and
+  the user can retry.
+- **Aurora import survives bad rows** — a single malformed entry
+  no longer rolls back the whole import; oversized files are refused
+  with a clear message instead of crashing the import.
+- **Community-climb sync queue** — if an incoming climb temporarily
+  fails to save (disk pressure, lock contention), it's parked in a
+  durable retry queue and re-imported on the next start instead of
+  being lost.
+- **Profile metadata stays correct on slow relays** — the in-app
+  cache compares each incoming Kind-0 against the event's own
+  timestamp, so older versions can't overwrite a newer one.
+- **Tombstoned climbs propagate** — upstream-deleted climbs are
+  marked `is_deleted=1` locally instead of being silently re-inserted
+  on the next bulk import.
+- **CruxCoach metadata preserved across Kilter blob refreshes** —
+  your Nostr provenance, frames-hash, sync-status, and
+  Kilter-publish flags survive the daily catalog refresh.
+- **Climb-creator UX** — empty-brush tap deletes the hold, drag-to-
+  move works, V-scale slider has live validation, German climbing
+  terms throughout, drafts re-open without showing autosave state.
+- **Heatmap performance** — parsed frames cached + fast IntArray
+  parser; no frame drops on layouts with hundreds of climbs.
+- **Filters persist** — origin filter + "My climbs" toggle survive
+  app restarts.
+- **Setter usernames** — BoardBrowser uses an npub stub when the
+  cached display name is missing instead of an empty label.
 
 ### Security
-- **Community-climb signature verification** — every incoming Kind-30078 event is parsed through Quartz `Event.fromJson` (recomputes canonical event id) and verified with `verifySignature()` before persisting. Mirrors the existing pattern at NostrProfileManager / BlossomSyncManager / BackupRepository.
-- **Author-uuid guard** — incoming events whose d-tag prefix or content `pubkey_prefix` field claims a different author than the signed pubkey are dropped, and a UUID already owned by author A cannot be overwritten by an event from author B (first-author wins). Without these guards a relay (or MITM on a non-TLS connection) could spoof events under any pubkey or clobber legitimate climbs via INSERT-OR-REPLACE on the uuid alone.
+- **Every incoming community-climb event is signature-verified** —
+  Quartz `Event.fromJson` recomputes the canonical event id +
+  `verifySignature()` runs before persisting. Mirrors the existing
+  pattern at NostrProfileManager / BlossomSyncManager / BackupRepository.
+- **Author-uuid guard** — events whose d-tag prefix or content
+  `pubkey_prefix` claims a different author than the signed pubkey
+  are dropped; a UUID owned by author A cannot be overwritten by an
+  event from author B (first-author wins).
+- **Refresh-token revocation on logout / re-login** — both the
+  re-login path and the one-time-import path now revoke the prior
+  Keycloak refresh token server-side before clearing it locally,
+  closing the 30-day stolen-credential window.
+- **Manual backup-import pubkey binding** — importing a backup from
+  a different Nostr key requires an explicit toggle with a persistent
+  warning that imported climbs will publish under your current
+  account if you republish. The default path hard-refuses the
+  mismatch.
+- **Climbs imported via backup can no longer be auto-republished
+  under your active Kilter account** — the background retry worker
+  is now scoped to the active Nostr identity.
+- **Profile-editor NIP-05 + LNURL fetches bounded** — server
+  responses capped at 64 KB and the LNURL probe refuses to follow
+  redirects, so a hostile endpoint can't OOM the editor or redirect
+  probes onto your LAN.
+- **Kilter publish payload not logged in release builds** — debug
+  logs that previously emitted the outgoing climb JSON (name,
+  description, username) are stripped from release APKs via ProGuard.
+- **Display name used on Kilter never falls back to email** — a
+  resolution chain ensures your public Kilter handle is either your
+  registered display name or a neutral placeholder, never the email
+  you logged in with.
 
 ### Notes
-- This is the first release that publishes user-authored climbs publicly on Nostr (when you tap *Publish* in the Climb Creator). Auto-Note Kind-1 is opt-in. Kilter API push is opt-in. Identity defaults to your existing CruxCoach Account key (the one used for cloud backup).
-- `SECURITY.md` has been updated with the new attack surface (community-publishing chain, Kilter API self-account writes, Auto-Note Kind-1).
+- This is the first release that publishes user-authored climbs
+  publicly on Nostr (when you tap *Publish* in the Climb Creator).
+  Identity defaults to your existing CruxCoach Account key (same
+  as encrypted cloud backup). Auto-Note Kind-1 + Kilter API push
+  are both opt-in.
+- The community-climb deletion path can remove a climb from
+  CruxCoach + Nostr relays, but cannot remove it from Kilter —
+  Kilter's API has no delete endpoint and enforces this for every
+  client. The delete confirm-dialog warns you of this.
+- `SECURITY.md` has been updated with the new attack surface:
+  community-publishing chain, Kilter API self-account writes,
+  Auto-Note Kind-1.
 
 ## [0.1.3] - 2026-04-26
 
