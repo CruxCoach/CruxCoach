@@ -90,10 +90,26 @@ fun BoardClimbDetailScreen(
     // When navigating from the browser, always use the full browser climb list —
     // regardless of whether a session queue is active.
     val navigatedFromQueue = viewModel.climbNavState.source == com.cruxcoach.android.ui.navigation.ClimbNavigationSource.QUEUE
-    val navUuids = if (navigatedFromQueue && detailQueueState.isActive && detailQueueState.queue.isNotEmpty()) {
+    val rawNavUuids = if (navigatedFromQueue && detailQueueState.isActive && detailQueueState.queue.isNotEmpty()) {
         detailQueueState.queue.map { it.climbUuid }
     } else {
         remember { viewModel.climbNavState.climbUuids }
+    }
+    // Defense against stale climbNavState. Some navigation paths
+    // (SetterDetailScreen, push notifications, deep-links) navigate
+    // straight to boardClimbDetail without first refreshing
+    // climbNavState.climbUuids — leaving it pointing at the previous
+    // browser/logbook session. Without this guard the pager would
+    // open at index 0 of that stale list, which means tapping a
+    // climb in the new screen lands the user on a *completely
+    // different* climb (the first entry of whatever they were
+    // browsing before). When the route's UUID isn't in the cached
+    // list, drop to a single-page render of just that UUID — the
+    // user loses left/right swipe-paging for this screen instance,
+    // but at least sees the climb they actually tapped.
+    val navUuids = remember(rawNavUuids, viewModel.initialClimbUuid) {
+        if (viewModel.initialClimbUuid in rawNavUuids) rawNavUuids
+        else listOf(viewModel.initialClimbUuid)
     }
     val navAngle = if (navigatedFromQueue && detailQueueState.isActive && detailQueueState.queue.isNotEmpty()) {
         detailQueueState.queue.firstOrNull()?.angle ?: remember { viewModel.climbNavState.angle }
