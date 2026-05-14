@@ -1109,7 +1109,7 @@ class BoardRepositoryImpl(
 
     override fun restoreOwnClimb(row: OwnClimbBackupRow): Boolean =
         q.transactionWithResult {
-            q.restoreOwnClimb(
+            q.restoreOwnClimbInsert(
                 uuid = row.uuid,
                 layout_id = row.layoutId,
                 setter_username = row.setterUsername,
@@ -1134,10 +1134,27 @@ class BoardRepositoryImpl(
                 kilter_publish_via = row.kilterPublishVia,
                 kilter_error = row.kilterError,
             )
-            // changes() == 1 → fresh INSERT; 0 → uuid already existed,
-            // INSERT OR IGNORE preserved the existing row. The caller
-            // surfaces this as "imported" vs "skipped" feedback.
-            q.lastClimbsChangeCount().executeAsOne() > 0L
+            // Capture changes() BEFORE the COALESCE-fill UPDATE — that
+            // UPDATE always reports 1 affected row for an existing
+            // (and thus IGNORE-skipped) uuid, which would mask the
+            // skip and falsely tick the "imported" counter. Reading
+            // here pins changes() to the INSERT outcome (1 = fresh,
+            // 0 = uuid already existed).
+            val freshlyInserted = q.lastClimbsChangeCount().executeAsOne() > 0L
+            q.restoreOwnClimbCoalesceFill(
+                uuid = row.uuid,
+                sync_status = row.syncStatus,
+                created_by_pubkey = row.createdByPubkey,
+                frames_hash = row.framesHash,
+                nostr_event_id = row.nostrEventId,
+                nostr_d_tag = row.nostrDTag,
+                nostr_publish_via = row.nostrPublishVia,
+                kilter_status = row.kilterStatus,
+                kilter_synced_at = row.kilterSyncedAt,
+                kilter_publish_via = row.kilterPublishVia,
+                kilter_error = row.kilterError,
+            )
+            freshlyInserted
         }
 
     override fun restoreOwnClimbStat(row: OwnClimbStatBackupRow) {

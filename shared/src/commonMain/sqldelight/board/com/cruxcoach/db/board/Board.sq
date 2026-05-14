@@ -1224,37 +1224,50 @@ SELECT MIN(angle) AS angle FROM climb_stats WHERE climb_uuid = ?;
 -- Note: SQLDelight runs the block's two statements in one transaction,
 -- so a process-kill between them rolls back cleanly — same pattern as
 -- upsertLocalClimb.
-restoreOwnClimb {
-    INSERT OR IGNORE INTO climbs(
-        uuid, layout_id, setter_username, name, frames,
-        frames_count, is_listed, edge_left, edge_right, edge_bottom, edge_top, created_at,
-        description, is_nomatch, frames_pace, hsm, move_count, is_deleted,
-        source, origin, sync_status,
-        created_by_pubkey, frames_hash,
-        nostr_event_id, nostr_d_tag, nostr_publish_via,
-        kilter_status, kilter_synced_at, kilter_publish_via, kilter_error)
-    VALUES (
-        :uuid, :layout_id, :setter_username, :name, :frames,
-        1, 1, :edge_left, :edge_right, :edge_bottom, :edge_top, :created_at,
-        :description, 0, 0, 0, :move_count, 0,
-        :source, 'cruxcoach', :sync_status,
-        :created_by_pubkey, :frames_hash,
-        :nostr_event_id, :nostr_d_tag, :nostr_publish_via,
-        :kilter_status, :kilter_synced_at, :kilter_publish_via, :kilter_error
-    );
-    UPDATE climbs SET
-        sync_status         = COALESCE(sync_status,         :sync_status),
-        created_by_pubkey   = COALESCE(created_by_pubkey,   :created_by_pubkey),
-        frames_hash         = COALESCE(frames_hash,         :frames_hash),
-        nostr_event_id      = COALESCE(nostr_event_id,      :nostr_event_id),
-        nostr_d_tag         = COALESCE(nostr_d_tag,         :nostr_d_tag),
-        nostr_publish_via   = COALESCE(nostr_publish_via,   :nostr_publish_via),
-        kilter_status       = COALESCE(kilter_status,       :kilter_status),
-        kilter_synced_at    = COALESCE(kilter_synced_at,    :kilter_synced_at),
-        kilter_publish_via  = COALESCE(kilter_publish_via,  :kilter_publish_via),
-        kilter_error        = COALESCE(kilter_error,        :kilter_error)
-    WHERE uuid = :uuid AND origin = 'cruxcoach';
-}
+-- Split into INSERT and COALESCE-fill UPDATE so the caller can read
+-- `lastClimbsChangeCount()` BETWEEN the two statements: the inserted-vs-
+-- existed discriminator drives the snackbar's "imported X / skipped Y"
+-- counter. A single-block `restoreOwnClimb { INSERT...; UPDATE...; }`
+-- left changes() reflecting the trailing UPDATE (always 1 for an
+-- existing row, masquerading as a fresh insert) — see the regression
+-- test `re-import is idempotent - INSERT OR IGNORE preserves the
+-- existing row` for the concrete shape.
+restoreOwnClimbInsert:
+INSERT OR IGNORE INTO climbs(
+    uuid, layout_id, setter_username, name, frames,
+    frames_count, is_listed, edge_left, edge_right, edge_bottom, edge_top, created_at,
+    description, is_nomatch, frames_pace, hsm, move_count, is_deleted,
+    source, origin, sync_status,
+    created_by_pubkey, frames_hash,
+    nostr_event_id, nostr_d_tag, nostr_publish_via,
+    kilter_status, kilter_synced_at, kilter_publish_via, kilter_error)
+VALUES (
+    :uuid, :layout_id, :setter_username, :name, :frames,
+    1, 1, :edge_left, :edge_right, :edge_bottom, :edge_top, :created_at,
+    :description, 0, 0, 0, :move_count, 0,
+    :source, 'cruxcoach', :sync_status,
+    :created_by_pubkey, :frames_hash,
+    :nostr_event_id, :nostr_d_tag, :nostr_publish_via,
+    :kilter_status, :kilter_synced_at, :kilter_publish_via, :kilter_error
+);
+
+-- Fill in the previously-NULL Nostr/Kilter publish metadata that the v3
+-- envelope carries. COALESCE preserves any non-NULL local value so a
+-- mid-restore-state import doesn't clobber locally-stamped fields with
+-- the (possibly older) backup snapshot.
+restoreOwnClimbCoalesceFill:
+UPDATE climbs SET
+    sync_status         = COALESCE(sync_status,         :sync_status),
+    created_by_pubkey   = COALESCE(created_by_pubkey,   :created_by_pubkey),
+    frames_hash         = COALESCE(frames_hash,         :frames_hash),
+    nostr_event_id      = COALESCE(nostr_event_id,      :nostr_event_id),
+    nostr_d_tag         = COALESCE(nostr_d_tag,         :nostr_d_tag),
+    nostr_publish_via   = COALESCE(nostr_publish_via,   :nostr_publish_via),
+    kilter_status       = COALESCE(kilter_status,       :kilter_status),
+    kilter_synced_at    = COALESCE(kilter_synced_at,    :kilter_synced_at),
+    kilter_publish_via  = COALESCE(kilter_publish_via,  :kilter_publish_via),
+    kilter_error        = COALESCE(kilter_error,        :kilter_error)
+WHERE uuid = :uuid AND origin = 'cruxcoach';
 
 -- Insert/refresh climb_stats for a local climb at a given angle (setter
 -- difficulty + quality not yet aggregated — sets sentinels).
