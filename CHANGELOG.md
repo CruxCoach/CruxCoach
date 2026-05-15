@@ -134,6 +134,39 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Tombstoned climbs propagate** — upstream-deleted climbs are
   marked `is_deleted=1` locally instead of being silently re-inserted
   on the next bulk import.
+- **Cross-published climb deletion now actually hides the climb** —
+  when you delete a community climb that was also pushed to your
+  Kilter account, every other CruxCoach device used to keep the
+  climb visible in BoardBrowser indefinitely. Three pre-fix gaps:
+  (a) the daily catalog refresh kept re-introducing the row from
+  Kilter's API, (b) the chunked Blossom bundle stripped tombstones
+  before publishing them, and (c) the app-side delete handler
+  silently no-op'd on rows whose local provenance was Kilter-flavoured.
+  All three layers now treat the Nostr tombstone as the source of
+  truth: an explicit delete propagates through the daily snapshot
+  and through the live Nostr subscription within seconds.
+- **Deleted climbs stay useful in your logbook** — the climb's name,
+  grade, holds, and send-count are preserved on the device after the
+  setter deletes; only the BoardBrowser visibility flips. Pre-fix a
+  delete erased the metadata that the logbook still wanted to render
+  for climbs you'd already attempted.
+- **Live Nostr subscription doesn't flood the relay on cold start** —
+  a fresh install now waits up to 30 s for the daily Blossom snapshot
+  to arrive before opening the live subscription, so the relay only
+  has to stream the ~24 h delta instead of all-of-history. Pre-fix
+  the subscription opened first and the resulting WebSocket buffer
+  blew up writer-lock contention against the bulk importer running
+  in parallel.
+- **Setter display names update when their profile changes** — the
+  in-app Kind-0 cache now refreshes after a 30-minute TTL instead of
+  pinning the first-seen snapshot forever. New display names land on
+  the next setter-page open via a two-phase load (cached snapshot
+  immediately, fresh fetch in the background).
+- **CruxCoach setter-source filter shows community climbs first** —
+  the BoardBrowser filter ran client-side over a sends-sorted SQL
+  pagination, so low-send community climbs landed on page 50+ and
+  were invisible without manual scroll. The filter now pre-narrows
+  at the SQL level and orders by stat-quality.
 - **CruxCoach metadata preserved across Kilter blob refreshes** —
   your Nostr provenance, frames-hash, sync-status, and
   Kilter-publish flags survive the daily catalog refresh.
