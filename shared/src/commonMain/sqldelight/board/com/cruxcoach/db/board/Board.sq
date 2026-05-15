@@ -848,15 +848,14 @@ markCommunityClimbDeleted {
         created_at = :tombstone_iso
     WHERE uuid = :uuid
       AND created_by_pubkey = :pubkey;
-    -- Stats delete guarded by the same pubkey ownership check via the
-    -- subselect — a hostile caller passing a foreign uuid + their own
-    -- pubkey still misses, because the SELECT only yields a row when
-    -- `created_by_pubkey = :pubkey`.
-    DELETE FROM climb_stats WHERE climb_uuid IN (
-        SELECT uuid FROM climbs
-        WHERE uuid = :uuid
-          AND created_by_pubkey = :pubkey
-    );
+    -- climb_stats intentionally preserved. The tombstone-design treats
+    -- a deletion as a *visibility flip*, not a row purge: the climb
+    -- stays in the climbs table with is_listed=0 so user-history JOINs
+    -- (climb_logs, attempts, sends) still resolve to a real row with
+    -- name/frames/setter intact, and climb_stats stays so the logbook /
+    -- detail-screen can still show grade + send-count for a climb the
+    -- user already attempted before the setter deleted it. Pre-fix
+    -- this DELETE wiped the grade from logbook entries.
 }
 
 -- True if a row exists and its is_deleted flag is set. Used by the

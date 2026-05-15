@@ -685,10 +685,22 @@ class BoardDatabaseImporter(
                         FROM chunk_norm
                         WHERE is_listed = 1
                     """)
-                    // Content refresh — only for origin='kilter' rows.
+                    // Content refresh — only for origin='kilter' rows AND
+                    // only for chunk rows that are themselves listed
+                    // (chunk_norm.is_listed = 1). The latter guard exists
+                    // because the cron now plants tombstone-shell rows
+                    // (name='', frames='', is_listed=0) for cruxcoach-
+                    // published-and-deleted climbs whose row went missing
+                    // from the work-DB. Without this guard, the SET-from-
+                    // SELECT would overwrite any meaningful local content
+                    // (real name, holds) with the tombstone shell's empty
+                    // strings, wiping the metadata that the user's logbook
+                    // and the detail-screen still want to render for
+                    // already-logged climbs.
+                    //
                     // Climbs authored via CruxCoach (origin='cruxcoach')
                     // have Nostr as their source of truth and are
-                    // protected from blob refresh.
+                    // protected from blob refresh entirely.
                     if (!skipUpdatePasses) {
                         targetDb.execSQL("""
                             UPDATE climbs SET
@@ -703,16 +715,29 @@ class BoardDatabaseImporter(
                                    FROM chunk_norm
                                    WHERE chunk_norm.uuid = main.climbs.uuid)
                             WHERE origin = 'kilter'
-                              AND uuid IN (SELECT uuid FROM chunk_norm)
+                              AND uuid IN (SELECT uuid FROM chunk_norm WHERE is_listed = 1)
                         """)
                     }
-                    // Tombstone propagation for cruxcoach-origin climbs.
-                    // Only flips listed→tombstoned, never the reverse.
+                    // Tombstone propagation. Symmetric flip for BOTH
+                    // origin flavours: a chunk row with is_listed=0 means
+                    // "this uuid was tombstoned upstream", regardless of
+                    // how the local row got labelled. Only updates the
+                    // is_listed column, so the local name/setter/frames
+                    // survive — the user's logbook entries for this climb
+                    // remain readable, and the detail-screen can still
+                    // render the holds the user actually attempted.
+                    //
+                    // Pre-fix the kilter-origin update above carried the
+                    // tombstone-overwrite by also propagating is_listed
+                    // along with name/frames; a tombstone-shell from the
+                    // cron silently wiped the meaningful local data.
+                    // Splitting the listing flip into its own UPDATE
+                    // pass keeps tombstone propagation working while
+                    // separating it from the kilter content-refresh.
                     if (!skipUpdatePasses) {
                         targetDb.execSQL("""
                             UPDATE climbs SET is_listed = 0
-                            WHERE origin = 'cruxcoach'
-                              AND is_listed = 1
+                            WHERE is_listed = 1
                               AND uuid IN (SELECT uuid FROM chunk_norm WHERE is_listed = 0)
                         """)
                     }
