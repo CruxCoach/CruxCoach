@@ -20,11 +20,14 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -176,17 +179,41 @@ class CommunityClimbSubscriber @Inject constructor(
      * "~24 h since last cron run", which is the difference between a
      * 100 MB Nostr-burst and ~50 KB.
      *
+     * On a true cold start the in-process race used to bite: the
+     * subscriber's `start()` is fired in parallel with the auto board-
+     * sync. The seed used to read `blossomManifestCreatedAt` ONCE and
+     * bail if null — typically winning the race against the manifest-
+     * fetch by ~1 s and emitting a `since=null` REQ. The relay then
+     * streamed all-of-history (MB-GB) only for those events to be
+     * superseded by the bundle import seconds later, blowing up the
+     * WebSocket buffer + writer-lock contention.
+     *
+     * Now: wait up to [SEED_MANIFEST_TIMEOUT_MS] for the first non-null
+     * manifest epoch, then seed. The board-sync is on the same app
+     * process and writes the manifest within the first network roundtrip
+     * (~100 ms LAN, ~1-2 s mobile). On timeout (no network / blossom
+     * fetch fails) we fall through to the unseeded path — a full
+     * backfill is correct in that case anyway, since there's no bundle
+     * to defer to.
+     *
      * Skipped when:
      *  - cursor is already set (we've persisted at least one event)
-     *  - no Blossom manifest fetched yet (rare — first launch before
-     *    initial sync; the cron-snapshot pathway hasn't kicked in either,
-     *    so a full backfill is the right thing)
+     *  - no Blossom manifest fetched within the timeout (= board-sync
+     *    failed; we accept the cold-start cost as the lesser evil)
      */
     private suspend fun seedCursorFromManifestIfFirstRun() {
         val cursor = userPreferences.communityClimbSince.first()
         if (cursor != null && cursor > 0) return
-        val manifestEpoch = userPreferences.blossomManifestCreatedAt.first() ?: return
-        if (manifestEpoch <= 0) return
+        val manifestEpoch = withTimeoutOrNull(SEED_MANIFEST_TIMEOUT_MS) {
+            userPreferences.blossomManifestCreatedAt
+                .filterNotNull()
+                .filter { it > 0 }
+                .first()
+        }
+        if (manifestEpoch == null) {
+            Log.w(TAG, "no blossom manifest within ${SEED_MANIFEST_TIMEOUT_MS}ms — proceeding without seed (cold-start cost accepted)")
+            return
+        }
         Log.i(TAG, "seeding cursor from blossom manifest: $manifestEpoch")
         userPreferences.setCommunityClimbSince(manifestEpoch)
     }
@@ -1056,6 +1083,16 @@ class CommunityClimbSubscriber @Inject constructor(
          *  pathological exception messages (e.g. SQLiteException with
          *  the full failing SQL inlined) out of the DB. */
         const val MAX_DLQ_ERROR_EXCERPT = 200
+
+        /** Upper bound on how long [seedCursorFromManifestIfFirstRun]
+         *  waits for the parallel board-sync to write its first manifest
+         *  before falling through to an unseeded REQ. 30 s is generous:
+         *  the manifest fetch is a single Nostr REQ to three relays in
+         *  parallel and completes in ~100 ms LAN, ~1-2 s mobile. The
+         *  ceiling exists so a permanently-broken network doesn't
+         *  starve the live-sub forever — past the timeout, accepting
+         *  the cold-start relay flood is the lesser evil. */
+        const val SEED_MANIFEST_TIMEOUT_MS = 30_000L
 
         /** d-tag prefix that the publisher embeds for [pubkey] (FEAT-003 §4.2). */
         fun communityClimbDTagPrefix(pubkey: String): String =
