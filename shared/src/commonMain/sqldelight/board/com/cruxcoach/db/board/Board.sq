@@ -812,8 +812,20 @@ LIMIT 1;
 -- Owner-locked at the SQL layer: the WHERE refuses to flip a row
 -- whose `created_by_pubkey` doesn't match the caller's pubkey, so a
 -- bug or a malicious caller cannot tombstone someone else's climb.
--- Hard-restricted to `origin='cruxcoach'` so a Kilter-blob row can
--- never be removed via this path — Kilter is read-only on our end.
+--
+-- The `created_by_pubkey` check is the real owner gate. We deliberately
+-- do NOT additionally gate on `origin = 'cruxcoach'` here — pre-fix
+-- that extra clause silently no-op'd the entire UPDATE on cross-
+-- published rows, where the row's `origin` was 'kilter' (= the
+-- Live-Sub had imported it from a Blossom blob whose cron-merge
+-- never linked the original Kind-30078 publish to the Kilter row,
+-- so origin stayed 'kilter' even though `created_by_pubkey` was
+-- correctly set). Result before fix: a Live-Sub Kind-5 / D-tombstone
+-- arrived, ran through this path, matched zero rows, and the
+-- deleted climb stayed visible in BoardBrowser indefinitely. The
+-- pubkey match is sufficient — it can only succeed when the row was
+-- published by the caller, regardless of which provenance flavour
+-- the local copy carries.
 --
 -- Sets:
 --  * is_deleted = 1, is_listed = 0   — VIEW excludes the row.
@@ -835,17 +847,15 @@ markCommunityClimbDeleted {
         sync_status = 'deleted',
         created_at = :tombstone_iso
     WHERE uuid = :uuid
-      AND created_by_pubkey = :pubkey
-      AND origin = 'cruxcoach';
-    -- Mirror the owner+origin guard on the stats delete so a hostile
-    -- caller passing a foreign uuid + their own pubkey can't strip
-    -- someone else's climb_stats. Drops only when the climbs row was
-    -- actually owned by `:pubkey` and origin='cruxcoach'.
+      AND created_by_pubkey = :pubkey;
+    -- Stats delete guarded by the same pubkey ownership check via the
+    -- subselect — a hostile caller passing a foreign uuid + their own
+    -- pubkey still misses, because the SELECT only yields a row when
+    -- `created_by_pubkey = :pubkey`.
     DELETE FROM climb_stats WHERE climb_uuid IN (
         SELECT uuid FROM climbs
         WHERE uuid = :uuid
           AND created_by_pubkey = :pubkey
-          AND origin = 'cruxcoach'
     );
 }
 
