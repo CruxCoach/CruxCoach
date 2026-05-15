@@ -646,6 +646,31 @@ class BoardBrowserViewModel @Inject constructor(
             return Triple(sorted.take(PAGE_SIZE), sorted.size, sorted.size <= PAGE_SIZE)
         }
 
+        // CRUXCOACH ORIGIN FILTER: short-circuit pagination. The default
+        // browse path fetches PAGE_SIZE rows from a 190K-row Kilter
+        // catalogue and post-filters down to cruxcoach-side climbs;
+        // a community climb without sends (quality_average = NULL)
+        // sorts to the end of the unconstrained query and effectively
+        // disappears from the visible top pages. Pull the entire
+        // cruxcoach-side set in one query (small total — community
+        // climbs scale into the low thousands at most), then sort
+        // client-side just like the my-climbs branch above.
+        if (f.originFilter == OriginFilter.CRUXCOACH) {
+            if (dbOffset > 0) return Triple(emptyList(), dbOffset, true)
+            val french = _state.value.gradeScale == GradeScale.FRENCH
+            val minDiff = KilterGradeMapper.indexToFilterMin(f.minGradeIndex, french)
+            val maxDiff = KilterGradeMapper.indexToFilterMax(f.maxGradeIndex, french)
+            val all = boardRepository.getCruxCoachClimbs(
+                f.layoutId, f.angle, minDiff, maxDiff, f.minAscensionists, f.climbTypeFilter
+            )
+            val nameFiltered = if (f.searchQuery.isBlank()) all
+                else all.filter { it.name.contains(f.searchQuery, ignoreCase = true) }
+            val statusFiltered = applyStatusFilter(nameFiltered, f.statusFilter)
+            val benchFiltered = applyBenchmarkFilter(statusFiltered, f.benchmarkOnly)
+            val sorted = sortInKotlin(benchFiltered, f.sortField, f.sortDirection)
+            return Triple(sorted.take(PAGE_SIZE), sorted.size, sorted.size <= PAGE_SIZE)
+        }
+
         // HOLD FILTER: direct UUID query with hold-matched UUIDs
         val hs = _state.value.holdSearch
         if (hs.holdFilterActive && hs.holdFilterUuids.isNotEmpty()) {

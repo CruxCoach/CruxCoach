@@ -329,4 +329,8 @@ class FakeBoardRepository : BoardRepository {
     override fun getProductSizesForLayout(layoutId: Int): List<Int> = emptyList()
     override fun canRenderClimbOnSize(uuid: String, productSizeId: Int): Boolean = true
     override fun getProductSizeForClimbRender(uuid: String): Int? = null
+    override fun getCruxCoachClimbs(
+        layoutId: Int, angle: Int, minDifficulty: Double, maxDifficulty: Double,
+        minAscensionists: Int, climbType: com.cruxcoach.data.repository.ClimbTypeFilter,
+    ): List<com.cruxcoach.data.repository.ClimbWithStats> = emptyList()
 }

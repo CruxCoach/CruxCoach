@@ -317,6 +317,32 @@ SELECT * FROM climb_browse WHERE layout_id = :layoutId AND angle = :angle AND fr
 browseByAscensionistsAsc:
 SELECT * FROM climb_browse WHERE layout_id = :layoutId AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND difficulty_average >= :minDiff AND difficulty_average <= :maxDiff AND ascensionist_count >= :minAsc ORDER BY ascensionist_count ASC LIMIT :limit OFFSET :offset;
 
+-- Browse query restricted to CruxCoach-side climbs (community-published
+-- + user's local drafts). Returns the FULL filtered set in one go —
+-- no pagination — because the cruxcoach-side row count is tiny next
+-- to the 190K Kilter catalogue. The previous pagination + client-side
+-- OriginFilter combo silently buried community climbs without sends
+-- at the bottom of the unsorted-by-origin pages: a freshly published
+-- climb with quality_average=NULL sat past page 100 of the
+-- quality-DESC sort, effectively invisible. Sorting is done in
+-- Kotlin (matches `sortInKotlin`'s existing handling) so the
+-- ascending / descending toggles all four sort fields without 4×
+-- new SQL variants here.
+--
+-- Mirror the pre-existing browse WHERE clause exactly so
+-- (layout, angle, grade range, ascensionist floor) filters land
+-- on the same rows the unconstrained query would have. The single
+-- added clause is `(origin = 'cruxcoach' OR source = 'local')` —
+-- same predicate the client-side BrowserOriginFilter used.
+browseCruxCoachOnly:
+SELECT * FROM climb_browse
+WHERE layout_id = :layoutId
+  AND angle = :angle
+  AND frames_count >= :minFrames AND frames_count <= :maxFrames
+  AND difficulty_average >= :minDiff AND difficulty_average <= :maxDiff
+  AND ascensionist_count >= :minAsc
+  AND (origin = 'cruxcoach' OR source = 'local');
+
 browseByNameDesc:
 SELECT * FROM climb_browse WHERE layout_id = :layoutId AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND difficulty_average >= :minDiff AND difficulty_average <= :maxDiff AND ascensionist_count >= :minAsc ORDER BY name DESC LIMIT :limit OFFSET :offset;
 

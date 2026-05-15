@@ -297,6 +297,18 @@ interface BoardLayoutQueries {
      *  imported cross-board climb, smaller user-board than the
      *  climb's bbox, etc.). */
     fun canRenderClimbOnSize(uuid: String, productSizeId: Int): Boolean
+    /** Full set of CruxCoach-side climbs (community + local-drafts)
+     *  that satisfy the user's browse filters. Returns the entire
+     *  matching set in one call — the client-side OriginFilter that
+     *  used to post-filter pagination silently buried community
+     *  climbs without sends at the bottom of the 190K-row Kilter
+     *  catalogue. Cruxcoach-side row count stays tiny, so a single
+     *  un-paginated SELECT is the right shape. Caller sorts in
+     *  Kotlin via the existing sortInKotlin path. */
+    fun getCruxCoachClimbs(
+        layoutId: Int, angle: Int, minDifficulty: Double, maxDifficulty: Double,
+        minAscensionists: Int, climbType: ClimbTypeFilter,
+    ): List<ClimbWithStats>
     /** Find the smallest product_size whose four edges *contain* the
      *  climb's bounding box AND has board_images for the climb's
      *  layout. This pins each climb to the physical board variant

@@ -302,6 +302,17 @@ class BoardRepositoryImpl(
         return q.getProductSizesForLayout(layoutId.toLong()).executeAsList().map { it.toInt() }
     }
 
+    override fun getCruxCoachClimbs(
+        layoutId: Int, angle: Int, minDifficulty: Double, maxDifficulty: Double,
+        minAscensionists: Int, climbType: ClimbTypeFilter,
+    ): List<ClimbWithStats> {
+        return q.browseCruxCoachOnly(
+            layoutId.toLong(), angle.toLong(),
+            climbType.minFrames(), climbType.maxFrames(),
+            minDifficulty, maxDifficulty, minAscensionists.toLong(),
+        ).executeAsList().map { mapBrowse(it) }
+    }
+
     override fun canRenderClimbOnSize(uuid: String, productSizeId: Int): Boolean {
         return q.canRenderClimbOnSize(productSizeId.toLong(), uuid).executeAsOneOrNull() != null
     }
