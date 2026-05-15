@@ -111,22 +111,43 @@ class SetterDetailViewModel @Inject constructor(
 
     private fun loadProfile() {
         viewModelScope.launch {
-            val profile = runCatching { nostrProfileManager.getProfile(pubkey) }
-                .onFailure { Log.w(TAG, "getProfile($pubkey) failed", it) }
+            // Two-phase: paint cached values *immediately* (sync DB
+            // read) so the user sees the display name + picture
+            // without an npub-stub flicker, then re-fetch from relays
+            // in the background and update the screen if the live
+            // version differs. Pre-fix this only ran refreshProfile,
+            // which forced a 1-3 s relay round-trip before any name
+            // appeared — perceived as "nothing loaded yet" even
+            // though we had cached metadata locally.
+            val cached = runCatching { nostrProfileManager.getProfileFromCache(pubkey) }
+                .onFailure { Log.w(TAG, "getProfileFromCache($pubkey) failed", it) }
+                .getOrNull()
+            if (cached != null) {
+                _state.update { current -> current.applyProfile(cached) }
+            }
+
+            // Force a relay re-fetch on every screen-open (not just on
+            // TTL miss). Opening someone's setter page is an explicit
+            // "show me their latest" signal — the TTL only optimises
+            // the *background* lookup paths (climb-detail setter chip,
+            // live-sub resolve). Stale-tolerance is baked into
+            // refreshProfile: a relay outage just falls back to the
+            // existing cache instead of blanking the screen.
+            val refreshed = runCatching { nostrProfileManager.refreshProfile(pubkey) }
+                .onFailure { Log.w(TAG, "refreshProfile($pubkey) failed", it) }
                 .getOrNull()
                 ?: return@launch
-            _state.update { current ->
-                current.copy(
-                    displayName = profile.displayName?.takeIf { it.isNotBlank() }
-                        ?: current.displayName,
-                    pictureUrl = profile.pictureUrl?.takeIf { it.isNotBlank() },
-                    lightningAddress = profile.lightningAddress?.takeIf { it.isNotBlank() },
-                    // about is on the event but not in the cache row;
-                    // re-parse if the manager exposes it later.
-                )
-            }
+            _state.update { current -> current.applyProfile(refreshed) }
         }
     }
+
+    private fun SetterDetailState.applyProfile(
+        profile: com.cruxcoach.android.payment.model.NostrProfileData,
+    ) = copy(
+        displayName = profile.displayName?.takeIf { it.isNotBlank() } ?: displayName,
+        pictureUrl = profile.pictureUrl?.takeIf { it.isNotBlank() },
+        lightningAddress = profile.lightningAddress?.takeIf { it.isNotBlank() },
+    )
 
     private companion object {
         const val TAG = "SetterDetailVM"

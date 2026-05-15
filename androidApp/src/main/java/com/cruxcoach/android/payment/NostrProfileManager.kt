@@ -101,10 +101,44 @@ class NostrProfileManager @Inject constructor(
     }
 
     suspend fun getProfile(pubkey: String): NostrProfileData? {
+        // TTL-gated cache: a profile cached longer than
+        // [PROFILE_CACHE_TTL_SECONDS] is treated as potentially stale
+        // and re-fetched from relays on the next lookup. Without this
+        // an Alice→Bob profile update silently never reached Bob —
+        // his cache for Alice was set on first contact and was never
+        // invalidated, so Alice could rename / change picture / fix
+        // her LUD16 and Bob's app would forever render the old
+        // version. The "no live-sub on kind 0" gap (FEAT-002 §11
+        // captured the trade-off) was originally accepted because
+        // profile-update propagation was not a 0.1.x release goal,
+        // but Aurora-import + community climbs in 0.1.4 surfaced it
+        // as a visible UX bug.
+        //
+        // Stale fetch keeps the cached row as fallback if the relay
+        // fetch fails — so a momentary network outage doesn't blank
+        // the displayed profile.
         val cached = getCachedProfile(pubkey)
-        if (cached != null) return cached
+        // Single-column SELECT on a NOT NULL column — SQLDelight
+        // generates `Query<Long>` so executeAsOneOrNull() returns
+        // Long? directly (null when no row matches the pubkey).
+        val cacheUpdatedAt: Long? = profileQueries.getCacheUpdatedAt(pubkey).executeAsOneOrNull()
+        val cacheAgeSec = cacheUpdatedAt?.let { (System.currentTimeMillis() / 1000) - it }
+        if (cached != null && cacheAgeSec != null && cacheAgeSec < PROFILE_CACHE_TTL_SECONDS) {
+            return cached
+        }
+        val refreshed = fetchProfileFromRelays(pubkey)
+        return refreshed ?: cached
+    }
 
-        return fetchProfileFromRelays(pubkey)
+    /** Force-bypass the TTL cache and fetch the latest Kind-0 directly
+     *  from relays. Used by the NostrProfile / SetterDetail screens'
+     *  on-resume hook so opening the screen always shows the freshest
+     *  profile state without waiting for the TTL to expire. Stale
+     *  fetch keeps the cached row as fallback (same contract as
+     *  [getProfile]'s stale-tolerance) if the relay fetch fails. */
+    suspend fun refreshProfile(pubkey: String): NostrProfileData? {
+        val refreshed = fetchProfileFromRelays(pubkey)
+        return refreshed ?: getCachedProfile(pubkey)
     }
 
     suspend fun getLightningAddress(pubkey: String): String? {
@@ -303,5 +337,13 @@ class NostrProfileManager @Inject constructor(
     companion object {
         private const val TAG = "NostrProfileManager"
         private const val KIND_METADATA = 0
+        /** TTL for cached profiles (in seconds). Picked to balance
+         *  bandwidth (a re-fetch costs one REQ per relay) against the
+         *  worst-case "user updated their NIP-05 / lud16 / display
+         *  name and other devices showed the old value for X" delay.
+         *  30 minutes covers the gap without making profile views
+         *  spam relays — the cached value still wins for the bulk
+         *  of intra-session lookups. */
+        const val PROFILE_CACHE_TTL_SECONDS = 30L * 60L
     }
 }

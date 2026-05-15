@@ -42,5 +42,13 @@ SELECT last_event_created_at FROM nostr_profiles WHERE pubkey = ?;
 getByPubkey:
 SELECT * FROM nostr_profiles WHERE pubkey = ?;
 
+-- Local cache write time in epoch seconds (the moment we wrote/upserted
+-- the row from a relay fetch or own-publish). Used by the TTL guard in
+-- NostrProfileManager.getProfile so a profile cached more than the
+-- configured staleness window forces a relay re-fetch on the next
+-- lookup. Returns NULL when no row exists for the pubkey.
+getCacheUpdatedAt:
+SELECT updated_at FROM nostr_profiles WHERE pubkey = ?;
+
 getLightningAddress:
 SELECT lightning_address FROM nostr_profiles WHERE pubkey = ?;
