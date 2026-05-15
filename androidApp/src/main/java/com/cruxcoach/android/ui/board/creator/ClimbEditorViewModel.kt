@@ -313,6 +313,7 @@ class ClimbEditorViewModel @Inject constructor(
             it.copy(
                 validationIssues = ClimbValidation.validate(
                     current.selectedHolds, current.name, current.description, current.angle,
+                    current.setterGradeId,
                 ),
             )
         }
@@ -345,11 +346,17 @@ class ClimbEditorViewModel @Inject constructor(
             name = source.name,
             description = source.description,
             angle = stats?.first ?: currentAngle,
-            setterGradeId = stats?.second,
+            // Default-fallback for legacy/imported drafts whose stats
+            // row never had a setter_grade — without this they'd
+            // hit publish-time `require(...)` instead of just
+            // pre-seeding the publishable default.
+            setterGradeId = stats?.second
+                ?: com.cruxcoach.domain.board.KilterGradeMapper.DEFAULT_SETTER_GRADE_ID,
         )
         undoStack.clear(); redoStack.clear()
         val issues = ClimbValidation.validate(
             seeded.selectedHolds, seeded.name, seeded.description, seeded.angle,
+            seeded.setterGradeId,
         )
         _state.update {
             it.copy(
@@ -489,6 +496,7 @@ class ClimbEditorViewModel @Inject constructor(
         val current = _state.value.editor
         val issues = ClimbValidation.validate(
             current.selectedHolds, current.name, current.description, current.angle,
+            current.setterGradeId,
         )
         if (issues.isNotEmpty()) {
             _state.update { it.copy(validationIssues = issues) }
@@ -545,6 +553,7 @@ class ClimbEditorViewModel @Inject constructor(
         val current = _state.value.editor
         val issues = ClimbValidation.validate(
             current.selectedHolds, current.name, current.description, current.angle,
+            current.setterGradeId,
         )
         if (issues.isNotEmpty()) {
             _state.update { it.copy(validationIssues = issues) }
@@ -844,7 +853,10 @@ class ClimbEditorViewModel @Inject constructor(
                     name = draft.name,
                     description = draft.description,
                     angle = stats?.first ?: currentAngle,
-                    setterGradeId = stats?.second,
+                    // Default-fallback for legacy drafts without a stats
+                    // row — see seedFromFork above for the same pattern.
+                    setterGradeId = stats?.second
+                        ?: com.cruxcoach.domain.board.KilterGradeMapper.DEFAULT_SETTER_GRADE_ID,
                 )
                 // Reset undo stacks — we're starting from a fresh draft snapshot.
                 undoStack.clear(); redoStack.clear()
@@ -856,6 +868,7 @@ class ClimbEditorViewModel @Inject constructor(
                 // applyEditor.
                 val issues = ClimbValidation.validate(
                     seeded.selectedHolds, seeded.name, seeded.description, seeded.angle,
+                    seeded.setterGradeId,
                 )
                 _state.update {
                     it.copy(
@@ -989,6 +1002,7 @@ class ClimbEditorViewModel @Inject constructor(
             name = next.name,
             description = next.description,
             angle = next.angle,
+            setterGradeId = next.setterGradeId,
         )
         _state.update {
             it.copy(

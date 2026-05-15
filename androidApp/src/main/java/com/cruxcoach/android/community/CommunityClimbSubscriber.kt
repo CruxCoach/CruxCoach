@@ -562,11 +562,26 @@ class CommunityClimbSubscriber @Inject constructor(
             }
         }
 
-        // Skip ungraded events — per the "no synthetic stats" rule, we
-        // don't want to manufacture NULL-difficulty rows that pollute
-        // default browse.
-        val grade = parsedClimb.setterGradeId ?: return
-        val angle = parsedClimb.angle ?: return
+        // Skip ungraded / un-angled events — per the "no synthetic
+        // stats" rule we don't manufacture NULL-difficulty rows. Pre-
+        // fix this was a silent `?: return` with no log line at all,
+        // which made debugging the 0.1.4 publisher gap (`setter_grade`
+        // tag missing on default-grade publishes) basically impossible
+        // — every relay accepted the event, no subscriber complained
+        // visibly, the climb just never appeared on any other device.
+        // Logging at WARN keeps the symptom visible in logcat without
+        // the publisher itself getting a crash on a stricter
+        // require() (already added in NostrCommunityClimb).
+        val grade = parsedClimb.setterGradeId
+        if (grade == null) {
+            Log.w(TAG, "skip event without setter_grade tag uuid=${parsedClimb.uuid} pubkey=${parsedClimb.pubkey.take(8)}")
+            return
+        }
+        val angle = parsedClimb.angle
+        if (angle == null) {
+            Log.w(TAG, "skip event without angle uuid=${parsedClimb.uuid} pubkey=${parsedClimb.pubkey.take(8)}")
+            return
+        }
 
         // Stale-event protection: replaceable Kind-30078 events can arrive
         // out of order if the user's main key republished, then a backup

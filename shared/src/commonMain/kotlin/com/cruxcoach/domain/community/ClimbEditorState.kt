@@ -14,7 +14,20 @@ data class ClimbEditorState(
     val selectedHolds: Map<Int, Int> = emptyMap(),  // placementId → roleId (12/13/14/15)
     val name: String = "",
     val description: String = "",
-    val setterGradeId: Int? = null,                  // 10..34, see KilterGradeMapper
+    /**
+     *  10..34 (see [com.cruxcoach.domain.board.KilterGradeMapper]).
+     *  Defaults to [com.cruxcoach.domain.board.KilterGradeMapper.DEFAULT_SETTER_GRADE_ID]
+     *  (V4 / 6B+) so a fresh editor always has a publishable grade
+     *  pre-selected. Pre-fix this defaulted to null and the slider
+     *  *displayed* the default visually but kept the state field at
+     *  null — users who didn't touch the slider published events
+     *  without a `setter_grade` tag, which every subscriber silently
+     *  dropped (no log, climb invisible to every other device). The
+     *  composable now renders the seeded value, validation passes
+     *  on the seed, and the publisher's `require(...)` becomes
+     *  defense-in-depth.
+     */
+    val setterGradeId: Int? = com.cruxcoach.domain.board.KilterGradeMapper.DEFAULT_SETTER_GRADE_ID,
     val angle: Int? = null,                          // 20..70 in 5° steps
     /**
      * Active brush role for paint-mode taps. Non-null → taps paint this

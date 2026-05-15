@@ -326,4 +326,7 @@ class FakeBoardRepository : BoardRepository {
     override fun getOwnClimbAngle(uuid: String): Long? = null
     override fun restoreOwnClimb(row: com.cruxcoach.data.repository.OwnClimbBackupRow): Boolean = true
     override fun restoreOwnClimbStat(row: com.cruxcoach.data.repository.OwnClimbStatBackupRow) {}
+    override fun getProductSizesForLayout(layoutId: Int): List<Int> = emptyList()
+    override fun canRenderClimbOnSize(uuid: String, productSizeId: Int): Boolean = true
+    override fun getProductSizeForClimbRender(uuid: String): Int? = null
 }

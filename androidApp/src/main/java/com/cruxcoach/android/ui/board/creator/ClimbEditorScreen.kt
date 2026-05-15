@@ -643,6 +643,7 @@ private fun ValidationStatus(issues: List<ClimbValidation.Issue>) {
                 is ClimbValidation.Issue.NameTooLong -> stringResource(R.string.climb_creator_issue_name_too_long, ClimbValidation.NAME_MAX_LENGTH)
                 is ClimbValidation.Issue.DescriptionTooLong -> stringResource(R.string.climb_creator_issue_description_too_long, ClimbValidation.DESCRIPTION_MAX_LENGTH)
                 ClimbValidation.Issue.AngleMissing -> stringResource(R.string.climb_creator_issue_angle_missing)
+                ClimbValidation.Issue.GradeMissing -> stringResource(R.string.climb_creator_issue_grade_missing)
             }
             Text(
                 "• $msg",
@@ -655,12 +656,14 @@ private fun ValidationStatus(issues: List<ClimbValidation.Issue>) {
 
 @Composable
 private fun GradeSlider(gradeId: Int?, onChange: (Int?) -> Unit) {
+    // ClimbEditorState seeds setterGradeId with
+    // KilterGradeMapper.DEFAULT_SETTER_GRADE_ID at construction; load-
+    // paths fall back to the same default for legacy stats rows that
+    // came in without a grade. So `gradeId` is non-null in practice;
+    // the `?:` fallback here is a thin defense-in-depth for any future
+    // call site that constructs a ClimbEditorState by hand and
+    // forgets to seed the field.
     val effective = gradeId ?: com.cruxcoach.domain.board.KilterGradeMapper.DEFAULT_SETTER_GRADE_ID
-    // Default-seeding now lives in ClimbCreatorRepository.saveDraft /
-    // updateDraft (single defensive ?: at write time). Earlier this
-    // composable also seeded editor state via LaunchedEffect(Unit), but
-    // the seed lost a race against _state.update calls from loadDraft /
-    // seedFromEdit and drafts could still persist with NULL grade.
     val vGrade = com.cruxcoach.domain.board.KilterGradeMapper.difficultyToVScale(effective)
     val font = com.cruxcoach.domain.board.KilterGradeMapper.difficultyToFont(effective.toDouble())
     Column {

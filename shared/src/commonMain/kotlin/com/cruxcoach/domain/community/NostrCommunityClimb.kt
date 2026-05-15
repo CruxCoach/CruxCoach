@@ -63,6 +63,15 @@ fun buildCommunityClimbEvent(
     bounds: ClimbBounds? = null,
 ): NostrCommunityClimb {
     require(state.angle != null) { "angle is required at publish time" }
+    // Grade is required for the same reason: subscribers drop ungraded
+    // events at the door (no synthetic NULL-difficulty rows allowed in
+    // the catalogue), so an event without `setter_grade` would be
+    // accepted by every relay but invisible to every other CruxCoach
+    // user. Pre-fix the editor's Publish button could fire on a draft
+    // with state.setterGradeId == null and silently produce one of
+    // these unreceivable events. The editor now also gates the button
+    // on this same precondition.
+    require(state.setterGradeId != null) { "grade is required at publish time" }
 
     val frames = state.encodeFrames()
     val framesHash = FramesHash.of(frames, layoutId)
@@ -80,12 +89,14 @@ fun buildCommunityClimbEvent(
         listOf("layout_id", layoutId.toString()),
     )
     bounds?.let { tags += listOf("bounds", it.encode()) }
-    state.setterGradeId?.let { grade ->
-        // Per spec §4.5 the angle goes alongside the grade so multi-angle
-        // climbs can carry a setter grade per angle. v0.1.4 publishes a
-        // single (grade, angle) pair.
-        tags += listOf("setter_grade", grade.toString(), state.angle.toString())
-    }
+    // Per spec §4.5 the angle goes alongside the grade so multi-angle
+    // climbs can carry a setter grade per angle. v0.1.4 publishes a
+    // single (grade, angle) pair. Both fields required at publish time
+    // (see `require(...)` above), so unconditional add — the previous
+    // `state.setterGradeId?.let { ... }` could omit the tag entirely on
+    // a grade-less publish, producing an event subscribers couldn't
+    // ingest.
+    tags += listOf("setter_grade", state.setterGradeId.toString(), state.angle.toString())
     tags += listOf("t", "kilterboard")
     tags += listOf("t", "climbing")
 

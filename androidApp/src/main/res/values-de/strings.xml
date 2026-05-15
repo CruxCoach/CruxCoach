@@ -30,6 +30,8 @@
     <string name="climb_creator_issue_name_too_long" formatted="false">Name zu lang (max. %d Zeichen).</string>
     <string name="climb_creator_issue_description_too_long" formatted="false">Beschreibung zu lang (max. %d Zeichen).</string>
     <string name="climb_creator_issue_angle_missing">Brett-Winkel wählen.</string>
+    <string name="climb_creator_issue_grade_missing">Setter-Schwierigkeit wählen.</string>
+    <string name="climb_creator_grade_unset">Setter-Schwierigkeit · tippe auf den Schieber zum Setzen</string>
     <string name="climb_creator_draft_saved">Entwurf gespeichert.</string>
     <string name="climb_creator_also_post_note">Auch auf Nostr posten</string>
     <string name="climb_creator_also_post_note_hint">Postet eine kurze Nachricht an deine Follower auf Nostr, die zurück auf den Climb verlinkt.</string>

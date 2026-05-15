@@ -24,6 +24,13 @@ object ClimbValidation {
         // the gap as a validation Issue keeps the failure inside the localised
         // bottom-bar instead of a raw exception message.
         data object AngleMissing : Issue()
+        // Grade required for the same reason as angle: subscribers drop
+        // ungraded events at the door (no synthetic NULL-difficulty rows
+        // in the catalogue), so an event without `setter_grade` silently
+        // disappears for every other CruxCoach user. Pre-fix the editor
+        // let users tap Publish without picking a grade and produced
+        // exactly such an unreceivable event.
+        data object GradeMissing : Issue()
     }
 
     const val NAME_MAX_LENGTH = 100
@@ -50,6 +57,7 @@ object ClimbValidation {
         name: String,
         description: String,
         angle: Int? = null,
+        setterGradeId: Int? = null,
     ): List<Issue> {
         val issues = mutableListOf<Issue>()
 
@@ -69,6 +77,7 @@ object ClimbValidation {
         if (description.length > DESCRIPTION_MAX_LENGTH) issues += Issue.DescriptionTooLong(description.length)
 
         if (angle == null) issues += Issue.AngleMissing
+        if (setterGradeId == null) issues += Issue.GradeMissing
 
         return issues
     }
@@ -78,5 +87,6 @@ object ClimbValidation {
         name: String,
         description: String,
         angle: Int? = null,
-    ): Boolean = validate(holds, name, description, angle).isEmpty()
+        setterGradeId: Int? = null,
+    ): Boolean = validate(holds, name, description, angle, setterGradeId).isEmpty()
 }

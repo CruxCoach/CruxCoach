@@ -30,6 +30,8 @@
     <string name="climb_creator_issue_name_too_long" formatted="false">Name too long (max %d chars).</string>
     <string name="climb_creator_issue_description_too_long" formatted="false">Description too long (max %d chars).</string>
     <string name="climb_creator_issue_angle_missing">Pick a board angle.</string>
+    <string name="climb_creator_issue_grade_missing">Pick a setter grade.</string>
+    <string name="climb_creator_grade_unset">Setter grade · tap the slider to set</string>
     <string name="climb_creator_draft_saved">Draft saved.</string>
     <string name="climb_creator_also_post_note">Also post to Nostr</string>
     <string name="climb_creator_also_post_note_hint">Posts a short message to your Nostr followers linking back to this climb.</string>
