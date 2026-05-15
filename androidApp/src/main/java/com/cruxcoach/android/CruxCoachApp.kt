@@ -1,6 +1,7 @@
 package com.cruxcoach.android
 
 import android.app.Application
+import android.util.Log
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
 import androidx.lifecycle.DefaultLifecycleObserver
@@ -46,6 +47,9 @@ class CruxCoachApp : Application(), Configuration.Provider {
 
     @Inject
     lateinit var connectivityObserver: dagger.Lazy<NostrRelayConnectivityObserver>
+
+    @Inject
+    lateinit var nostrRelayPool: dagger.Lazy<com.cruxcoach.android.nostr.NostrRelayPool>
 
     @Inject
     lateinit var pushCoordinator: dagger.Lazy<NostrPushCoordinator>
@@ -138,6 +142,21 @@ class CruxCoachApp : Application(), Configuration.Provider {
                 // Re-evaluate "system" locale on every foreground — picks up
                 // changes to the device's primary language without a full restart.
                 applySystemLocaleIfNeeded()
+
+                // Kick the Nostr relay pool back to life on every
+                // foreground. Pre-fix, the pool only auto-reconnected on
+                // OS network-availability events (NostrRelayConnectivityObserver):
+                // a stable Wi-Fi connection that didn't generate an
+                // onAvailable event between two foregrounds left a stalled
+                // sub silent until the next network-state change. Concretely:
+                // user backgrounds CruxCoach for 5 min, a friend publishes a
+                // climb, user foregrounds — the new climb wouldn't appear
+                // until WLAN flapped or the app restarted. reconnectAll()
+                // is idempotent (no-op if every relay is already healthy)
+                // and clears the per-relay reconnectExhausted flag so the
+                // pool tries again even after 5 prior failures.
+                runCatching { nostrRelayPool.get().reconnectAll() }
+                    .onFailure { Log.w("CruxCoachApp", "foreground reconnectAll failed", it) }
 
                 val now = System.currentTimeMillis()
                 if (now - lastForegroundPoll > 30_000) {

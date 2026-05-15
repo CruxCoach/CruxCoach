@@ -255,7 +255,31 @@ class NostrRelayPool @Inject constructor(
 
                 if (!connected) {
                     reconnectExhausted = true
-                    Log.w(TAG, "Gave up reconnecting to $url after $attempts attempts")
+                    Log.w(TAG, "Gave up reconnecting to $url after $attempts attempts; scheduling slow-retry every ${NostrConfig.RECONNECT_SLOW_RETRY_MS}ms")
+                    // Slow-retry backstop: without this, a stable
+                    // network that just happens to be racing the
+                    // initial reconnect window leaves the pool dead
+                    // forever (no further OS network-event would fire,
+                    // no in-app trigger ever calls reconnectAll for
+                    // this relay specifically). Loop here at a long
+                    // interval so the connection eventually heals
+                    // even with no external prompt — bounded battery
+                    // cost, very high reliability win for the
+                    // community-climb live-sub.
+                    while (isActive && !connected) {
+                        delay(NostrConfig.RECONNECT_SLOW_RETRY_MS)
+                        try {
+                            openWebSocket()
+                            activeFilters.forEach { (subId, filter) ->
+                                ws?.send("[\"REQ\",\"$subId\",$filter]")
+                            }
+                            reconnectExhausted = false
+                            Log.i(TAG, "Slow-retry reconnect to $url succeeded")
+                            return@launch
+                        } catch (e: Exception) {
+                            Log.d(TAG, "Slow-retry to $url failed; will try again in ${NostrConfig.RECONNECT_SLOW_RETRY_MS}ms")
+                        }
+                    }
                 }
             }
         }
