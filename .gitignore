@@ -40,6 +40,14 @@ docs/*.md
 !docs/KEY_ROTATION.md
 !docs/testing.md
 
+# FEAT specs are internal planning docs — never public. Kept only in the
+# local main worktree. Whole docs/specs/ tree excluded (incl. INDEX.md /
+# README.md navigation), consistent with docs/backlog/. NOTE: 23 specs
+# were tracked + pushed before this rule; they remain in public git
+# history until a deliberate history-rewrite purge — see CLAUDE.md
+# Public-Repo-Hygiene.
+docs/specs/
+
 # Internal triage workflow (RepoLens findings, verdicts, per-release audits)
 #
 # HARD RULE: RepoLens findings and any audit-tool output NEVER land in this
