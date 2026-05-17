@@ -1,6 +1,7 @@
 package com.cruxcoach.domain.community
 
 import com.cruxcoach.domain.board.HoldRole
+import com.cruxcoach.domain.board.KilterGradeMapper
 import kotlin.test.Test
 import kotlin.test.assertTrue
 
@@ -14,7 +15,12 @@ class ClimbValidationTest {
 
     @Test
     fun valid_climb_passes() {
-        assertTrue(ClimbValidation.isValid(goodHolds, name = "Pump 540°", description = "", angle = 40))
+        assertTrue(
+            ClimbValidation.isValid(
+                goodHolds, name = "Pump 540°", description = "", angle = 40,
+                setterGradeId = KilterGradeMapper.DEFAULT_SETTER_GRADE_ID,
+            )
+        )
     }
 
     @Test

@@ -158,6 +158,13 @@ class FakeBoardRepository : BoardRepository {
     override fun hasHomewallResyncMarker(): Boolean = false
     override fun clearHomewallResyncMarker() {}
     override fun deleteKilterCatalogData() {}
+    override fun getProductSizesForLayout(layoutId: Int): List<Int> = emptyList()
+    override fun canRenderClimbOnSize(uuid: String, productSizeId: Int): Boolean = true
+    override fun getProductSizeForClimbRender(uuid: String): Int? = null
+    override fun getCruxCoachClimbs(
+        layoutId: Int, angle: Int, minDifficulty: Double, maxDifficulty: Double,
+        minAscensionists: Int, climbType: ClimbTypeFilter,
+    ): List<ClimbWithStats> = emptyList()
     override fun climbExistsByUuid(uuid: String): Boolean = storedClimbs.containsKey(uuid)
     override fun statExistsByUuid(uuid: String): Boolean = false
     override fun getClimbCountByAngle(layoutId: Int, climbType: ClimbTypeFilter): List<AngleClimbCount> = emptyList()
