@@ -46,3 +46,23 @@
 # Forks publishing to their own Zapstore namespace should override this
 # so the in-app share button doesn't drive their users to upstream.
 # ZAPSTORE_APP_URL=https://zapstore.dev/apps/com.yourfork.android
+
+# ─── Brand-bound constants on the wire (HTTP, App Links, Auto-Note) ──
+# USER_AGENT_PRODUCT lands in the outgoing User-Agent header for the
+# Kilter API client (`<product>/<version> (https://<host>)`). Lets Kilter
+# operators tell forks apart from upstream traffic. Default: CruxCoach.
+# USER_AGENT_PRODUCT=YourFork
+#
+# APP_LINK_HOST sets the host for shareable climb URLs and the Android
+# App Link `<intent-filter>`. Forks need to host their own
+# `/.well-known/assetlinks.json` for App Link verification to succeed;
+# until then App Links fall back to opening in a browser. Default:
+# cruxcoach.org.
+# APP_LINK_HOST=yourfork.example
+#
+# AUTO_NOTE_PTAG_MAINTAINER controls whether Auto-Note Kind-1 publishes
+# attach an unconditional p-tag mention of MAINTAINER_PUBKEY. Default
+# `true` for upstream; forks should set `false` so their users don't
+# accidentally amplify whoever the fork's MAINTAINER_PUBKEY resolves to
+# every time they publish a climb.
+# AUTO_NOTE_PTAG_MAINTAINER=false

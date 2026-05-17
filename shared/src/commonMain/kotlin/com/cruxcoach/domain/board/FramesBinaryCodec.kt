@@ -1,7 +1,7 @@
 package com.cruxcoach.domain.board
 
 /**
- * Binary codec for Aurora Board frame strings.
+ * Binary codec for climb-frame strings (delta-format wire shape).
  *
  * Encodes the TEXT frame format into a compact BLOB (3 bytes per hold entry)
  * and decodes back to the original TEXT format for transparent use by parsers.
@@ -22,9 +22,9 @@ object FramesBinaryCodec {
     private const val REMOVAL_MARKER: Byte = 0xFE.toByte()
     private const val BYTES_PER_ENTRY = 3
 
-    // Three disjoint entry shapes in Aurora/Kilter frame strings:
-    //   p{id}r{role}  — Aurora hold
-    //   x{id}         — Aurora removal (no role)
+    // Three disjoint entry shapes in delta- and range-format frame strings:
+    //   p{id}r{role}  — delta-format hold
+    //   x{id}         — delta-format removal (no role)
     //   h{id}p{role}  — Kilter climbConcat hold
     // A single `[pxh](\d+)[rp]?(\d*)` collapses them, but greedy matching
     // then swallows the following entry's prefix (e.g. `x100p300r43` parses
@@ -62,7 +62,7 @@ object FramesBinaryCodec {
         val checkLen = minOf(20, blob.size)
         for (i in 0 until checkLen) {
             val b = blob[i].toInt() and 0xFF
-            // Valid text chars: p, x, r, comma, digits (Aurora) + h (Kilter climbConcat)
+            // Valid text chars: p, x, r, comma, digits (delta) + h (range climbConcat)
             if (b != 0x70 && b != 0x78 && b != 0x72 && b != 0x68 && b != 0x2C &&
                 !(b in 0x30..0x39)
             ) return false

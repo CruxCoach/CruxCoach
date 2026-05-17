@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
+import com.cruxcoach.android.data.SyncInterval
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -51,6 +52,35 @@ class BackupPreferences @Inject constructor(
 
     suspend fun setBackupFeatureEnabled(enabled: Boolean) {
         dataStore.edit { it[Keys.BACKUP_FEATURE_ENABLED] = enabled }
+    }
+
+    /** Persisted auto-backup cadence (FEAT-021). Pre-fix this value lived
+     *  only in the [BackupSettingsViewModel]'s in-memory state, so cold
+     *  restarts rebuilt the worker against the unrelated *board-sync*
+     *  interval and silently cancelled periodic backups whenever
+     *  board-sync was MANUAL.
+     *
+     *  Default MANUAL: a fresh install never silently overwrites a
+     *  pre-existing cloud-backup just because the user enabled the
+     *  feature. The worker stays inactive until the user explicitly
+     *  picks Daily or Weekly — observed during 0.1.3→0.1.4 cross-version
+     *  testing where the previous DAILY default ran an auto-backup
+     *  seconds after onboarding completed and clobbered the cloud
+     *  state we were about to restore. Pre-FEAT-021 builds had no
+     *  reliable interval at all (they used the board-sync pref by
+     *  mistake), so MANUAL is also a strict improvement for any
+     *  upgrader with an empty BACKUP_INTERVAL key.
+     *
+     *  Persisted by NAME (string) so adding/re-ordering enum values
+     *  later doesn't silently migrate existing rows. */
+    val backupInterval: Flow<SyncInterval> = dataStore.data.map { prefs ->
+        prefs[Keys.BACKUP_INTERVAL]
+            ?.let { name -> runCatching { SyncInterval.valueOf(name) }.getOrNull() }
+            ?: SyncInterval.MANUAL
+    }
+
+    suspend fun setBackupInterval(interval: SyncInterval) {
+        dataStore.edit { it[Keys.BACKUP_INTERVAL] = interval.name }
     }
 
     /** Onboarding seen flag so the opt-in step isn't shown twice. */
@@ -209,6 +239,7 @@ class BackupPreferences @Inject constructor(
         val BACKUP_FEATURE_ENABLED = booleanPreferencesKey("backup_feature_enabled")
         val BACKUP_ONBOARDING_SEEN = booleanPreferencesKey("backup_onboarding_seen")
         val BACKUP_RESTORE_INTENT = booleanPreferencesKey("backup_restore_intent")
+        val BACKUP_INTERVAL = stringPreferencesKey("backup_interval")
         val WRAPPED_DATA_KEY = stringPreferencesKey("backup_wrapped_data_key")
         val PREVIOUS_BLOB_SHA256 = stringPreferencesKey("backup_previous_blob_sha256")
         val DEVICE_ID = stringPreferencesKey("backup_device_id")

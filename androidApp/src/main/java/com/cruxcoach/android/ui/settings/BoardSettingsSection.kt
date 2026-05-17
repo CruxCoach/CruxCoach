@@ -137,7 +137,7 @@ internal fun BoardModelSection(
     onChangeModel: () -> Unit
 ) {
     Text(
-        "Board-Modell",
+        stringResource(R.string.settings_board_model_title),
         style = MaterialTheme.typography.titleMedium,
         fontWeight = FontWeight.Bold
     )
@@ -148,13 +148,62 @@ internal fun BoardModelSection(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
-            text = boardModelName.ifEmpty { "Nicht konfiguriert" },
+            text = boardModelName.ifEmpty { stringResource(R.string.settings_board_model_not_configured) },
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.weight(1f)
         )
         TextButton(onClick = onChangeModel) {
-            Text("Ändern", color = OrangeAccent)
+            Text(stringResource(R.string.settings_board_model_change), color = OrangeAccent)
         }
+    }
+}
+
+/**
+ * Original-vs-Homewall picker. The layout determines which set of
+ * placements + sizes the rest of the app shows; the "Board-Modell"
+ * picker right below scopes the size *within* the chosen layout.
+ *
+ * Original is the dominant case on the Kilter ecosystem so it stays
+ * the default; Homewall users opt in here once and everything
+ * downstream (Browse, Climb-Creator, Stats, Aurora-import) follows.
+ */
+@Composable
+internal fun KilterLayoutSection(
+    selectedLayoutId: Int,
+    onLayoutChange: (Int) -> Unit,
+) {
+    Text(
+        stringResource(R.string.settings_board_layout_title),
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.Bold
+    )
+    Text(
+        stringResource(R.string.settings_board_layout_desc),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.testTag("settings_board_layout"),
+    ) {
+        FilterChip(
+            selected = selectedLayoutId == com.cruxcoach.android.data.BoardConstants.KILTER_ORIGINAL_LAYOUT,
+            onClick = { onLayoutChange(com.cruxcoach.android.data.BoardConstants.KILTER_ORIGINAL_LAYOUT) },
+            label = { Text(stringResource(R.string.settings_board_layout_original)) },
+            colors = FilterChipDefaults.filterChipColors(
+                selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
+                selectedLabelColor = OrangeAccent,
+            ),
+        )
+        FilterChip(
+            selected = selectedLayoutId == com.cruxcoach.android.data.BoardConstants.KILTER_HOMEWALL_LAYOUT,
+            onClick = { onLayoutChange(com.cruxcoach.android.data.BoardConstants.KILTER_HOMEWALL_LAYOUT) },
+            label = { Text(stringResource(R.string.settings_board_layout_homewall)) },
+            colors = FilterChipDefaults.filterChipColors(
+                selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
+                selectedLabelColor = OrangeAccent,
+            ),
+        )
     }
 }
 
@@ -257,7 +306,8 @@ internal fun AssessmentSection(
 
 @Composable
 internal fun AccountKeysSection(
-    onNavigateToKeyManagement: () -> Unit
+    onNavigateToKeyManagement: () -> Unit,
+    onNavigateToNostrProfile: () -> Unit = {},
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -278,6 +328,13 @@ internal fun AccountKeysSection(
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
+    OutlinedButton(
+        onClick = onNavigateToNostrProfile,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Text(stringResource(R.string.nostr_profile_settings_label))
+    }
     OutlinedButton(
         onClick = onNavigateToKeyManagement,
         modifier = Modifier.fillMaxWidth(),

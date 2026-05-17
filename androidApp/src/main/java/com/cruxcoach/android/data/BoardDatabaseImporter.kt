@@ -2,6 +2,7 @@ package com.cruxcoach.android.data
 
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
+import android.util.Log
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.domain.board.BoardClimbParser
 import java.io.File
@@ -15,7 +16,7 @@ import java.io.FileOutputStream
  * - **Online legacy** ([downloadAndImport]): Delegates APK download and DB extraction
  *   to [ApkDownloader], then imports the extracted file.
  *
- * All produce temp SQLite files with the raw Aurora schema (climbs, climb_stats,
+ * All produce temp SQLite files with the Kilter board schema (Aurora-style: climbs, climb_stats,
  * placements, holes, etc.), then bulk-insert into SQLDelight.
  */
 class BoardDatabaseImporter(
@@ -24,13 +25,59 @@ class BoardDatabaseImporter(
     private val apkDownloader: ApkDownloader
 ) {
     companion object {
+        private const val TAG = "BoardImporter"
         private const val BATCH_SIZE = 500
         private const val BULK_BATCH_SIZE = 10_000
+
+        // Hot-path indexes for the climbs table — dropped before bulk
+        // import + recreated afterwards. Must stay byte-equivalent (modulo
+        // `IF NOT EXISTS`) to DatabaseFactory.HOT_PATH_INDEX_DDL —
+        // HotPathIndexDriftTest asserts both sets agree.
+        internal val CLIMB_INDEXES = arrayOf(
+            "idx_climbs_listed" to
+                    "CREATE INDEX idx_climbs_listed ON climbs(is_listed)",
+            "idx_climbs_frames_count" to
+                    "CREATE INDEX idx_climbs_frames_count ON climbs(is_listed, frames_count, uuid)",
+            // FEAT-003 + 0.1.4 community-climb indexes. Added to the
+            // bulk-import drop/rebuild dance so each INSERT during a fresh
+            // 270k-row import doesn't pay 6 extra index-maintenance writes
+            // per row — pre-fix, fresh installs spent 6+ minutes in the
+            // climbs phase on slower-eMMC devices because these indexes
+            // were live throughout. Keep this list byte-equivalent (modulo
+            // `IF NOT EXISTS`) to DatabaseFactory.HOT_PATH_INDEX_DDL.
+            "idx_climbs_source" to
+                    "CREATE INDEX idx_climbs_source ON climbs(source)",
+            "idx_climbs_frames_hash" to
+                    "CREATE INDEX idx_climbs_frames_hash ON climbs(frames_hash)",
+            "idx_climbs_pubkey" to
+                    "CREATE INDEX idx_climbs_pubkey ON climbs(created_by_pubkey)",
+            "idx_climbs_origin" to
+                    "CREATE INDEX idx_climbs_origin ON climbs(origin)",
+            "idx_climbs_kilter_status" to
+                    "CREATE INDEX idx_climbs_kilter_status ON climbs(kilter_status)",
+            "idx_climbs_nostr_via" to
+                    "CREATE INDEX idx_climbs_nostr_via ON climbs(nostr_publish_via)",
+        )
+
+        internal val STAT_INDEXES = arrayOf(
+            "idx_climb_stats_angle" to
+                    "CREATE INDEX idx_climb_stats_angle ON climb_stats(angle)",
+            "idx_climb_stats_browse" to
+                    "CREATE INDEX idx_climb_stats_browse ON climb_stats(angle, difficulty_average, quality_average, ascensionist_count, benchmark_difficulty, climb_uuid)",
+            "idx_climb_stats_by_popularity" to
+                    "CREATE INDEX idx_climb_stats_by_popularity ON climb_stats(angle, ascensionist_count, difficulty_average, climb_uuid)",
+            "idx_climb_stats_count_cover" to
+                    "CREATE INDEX idx_climb_stats_count_cover ON climb_stats(angle, ascensionist_count, difficulty_average, benchmark_difficulty, climb_uuid)"
+        )
     }
 
-    /** Returns true if board data has already been imported (including layout data). */
+    /** Returns true if board data has already been imported (including layout data).
+     *  Uses the EXISTS-based fast path — boardRepository.getClimbCount()
+     *  is a full table-scan that blocks on the importer's writer-lock
+     *  (~28s on slower-eMMC), unacceptable for the BoardSyncManager's
+     *  startup-decision read that needs to feel instant. */
     fun isImported(): Boolean {
-        return boardRepository.getClimbCount() > 0
+        return boardRepository.hasAnyClimbs()
     }
 
     fun getClimbCount(): Long = boardRepository.getClimbCount()
@@ -65,6 +112,20 @@ class BoardDatabaseImporter(
         onProgress: ((step: ImportStep) -> Unit)? = null
     ) {
         val snapshot = loadExistingSnapshot()
+        // Snapshot once — fresh-install vs incremental gates the per-
+        // chunk UPDATE passes inside [importClimbs] / [importClimbStats].
+        // Without this, only the FIRST chunk runs the fast path because
+        // subsequent chunks observe a non-empty target and incorrectly
+        // re-enable the (semantically no-op) UPDATE pass over rows we
+        // just inserted.
+        val freshInstallClimbs: Boolean = openTargetDb().let { db ->
+            try { queryLong(db, "SELECT COUNT(*) FROM climbs") == 0L }
+            finally { db.close() }
+        }
+        val freshInstallStats: Boolean = openTargetDb().let { db ->
+            try { queryLong(db, "SELECT COUNT(*) FROM climb_stats") == 0L }
+            finally { db.close() }
+        }
 
         // Pre-count totals across all chunks (COUNT(*) is ~instant on SQLite)
         val climbChunkCounts = climbsDbFiles.map { file ->
@@ -89,52 +150,95 @@ class BoardDatabaseImporter(
         withDeferredIndexes(
             onRebuild = { onProgress?.invoke(ImportStep.Finalizing) }
         ) {
-            // Import all climb chunks (bulk ATTACH or row-by-row fallback)
+            // Import all climb chunks (bulk ATTACH or row-by-row fallback).
+            // Single shared target connection across chunks: avoids
+            // re-running 4 PRAGMAs per chunk + keeps the climbs.uuid PK
+            // B-tree warm in the page cache between chunks (otherwise
+            // each new connection starts cold and re-faults the same
+            // pages we just read in the previous chunk).
+            //
+            // wal_autocheckpoint = 0 disables the default 1000-page
+            // ( ~4 MB) auto-checkpoint that otherwise stops the writer
+            // mid-import once the WAL grows past the threshold. We
+            // checkpoint(TRUNCATE) explicitly at end-of-phase to reclaim
+            // the WAL space before starting the next phase.
             if (climbsDbFiles.isNotEmpty()) {
-                var cumInserted = 0; var cumScanned = 0
-                onProgress?.invoke(ImportStep.ImportClimbs(0, 0, grandClimbTotal))
-                for ((i, file) in climbsDbFiles.withIndex()) {
-                    val baseInserted = cumInserted; val baseScanned = cumScanned
-                    openReadOnly(file) { rawDb ->
-                        importClimbs(rawDb) { inserted, scanned, _ ->
-                            onProgress?.invoke(ImportStep.ImportClimbs(
-                                baseInserted + inserted, baseScanned + scanned, grandClimbTotal
-                            ))
+                val sharedDb = openTargetDb()
+                sharedDb.rawQuery("PRAGMA wal_autocheckpoint = 0", null).use { it.moveToFirst() }
+                try {
+                    var cumInserted = 0; var cumScanned = 0
+                    onProgress?.invoke(ImportStep.ImportClimbs(0, 0, grandClimbTotal))
+                    for ((i, file) in climbsDbFiles.withIndex()) {
+                        val baseInserted = cumInserted; val baseScanned = cumScanned
+                        openReadOnly(file) { rawDb ->
+                            importClimbs(rawDb, freshInstall = freshInstallClimbs, sharedTargetDb = sharedDb) { inserted, scanned, _ ->
+                                onProgress?.invoke(ImportStep.ImportClimbs(
+                                    baseInserted + inserted, baseScanned + scanned, grandClimbTotal
+                                ))
+                            }
+                        }.also { chunkInserted ->
+                            cumInserted += chunkInserted
+                            cumScanned += climbChunkCounts[i]
                         }
-                    }.also { chunkInserted ->
-                        cumInserted += chunkInserted
-                        cumScanned += climbChunkCounts[i]
                     }
+                } finally {
+                    sharedDb.rawQuery("PRAGMA wal_checkpoint(TRUNCATE)", null).use { it.moveToFirst() }
+                    sharedDb.rawQuery("PRAGMA wal_autocheckpoint = 1000", null).use { it.moveToFirst() }
+                    sharedDb.close()
                 }
             }
 
-            // Import all stat chunks (bulk ATTACH or row-by-row fallback)
+            // Import all stat chunks (bulk ATTACH or row-by-row fallback).
+            // Same shared-connection + WAL-tuning rationale as the
+            // climbs phase above. Stats is the larger of the two phases
+            // (several stats per climb), so the cache-warmth benefit of
+            // the shared connection dominates here.
             if (statsDbFiles.isNotEmpty()) {
-                var cumInserted = 0; var cumScanned = 0
-                onProgress?.invoke(ImportStep.ImportStats(0, 0, grandStatTotal))
-                for ((i, file) in statsDbFiles.withIndex()) {
-                    val baseInserted = cumInserted; val baseScanned = cumScanned
-                    openReadOnly(file) { rawDb ->
-                        importClimbStats(rawDb) { inserted, scanned, _ ->
-                            onProgress?.invoke(ImportStep.ImportStats(
-                                baseInserted + inserted, baseScanned + scanned, grandStatTotal
-                            ))
+                val sharedDb = openTargetDb()
+                sharedDb.rawQuery("PRAGMA wal_autocheckpoint = 0", null).use { it.moveToFirst() }
+                try {
+                    var cumInserted = 0; var cumScanned = 0
+                    onProgress?.invoke(ImportStep.ImportStats(0, 0, grandStatTotal))
+                    for ((i, file) in statsDbFiles.withIndex()) {
+                        val baseInserted = cumInserted; val baseScanned = cumScanned
+                        openReadOnly(file) { rawDb ->
+                            importClimbStats(rawDb, freshInstall = freshInstallStats, sharedTargetDb = sharedDb) { inserted, scanned, _ ->
+                                onProgress?.invoke(ImportStep.ImportStats(
+                                    baseInserted + inserted, baseScanned + scanned, grandStatTotal
+                                ))
+                            }
+                        }.also { chunkInserted ->
+                            cumInserted += chunkInserted
+                            cumScanned += statChunkCounts[i]
                         }
-                    }.also { chunkInserted ->
-                        cumInserted += chunkInserted
-                        cumScanned += statChunkCounts[i]
                     }
+                } finally {
+                    sharedDb.rawQuery("PRAGMA wal_checkpoint(TRUNCATE)", null).use { it.moveToFirst() }
+                    sharedDb.rawQuery("PRAGMA wal_autocheckpoint = 1000", null).use { it.moveToFirst() }
+                    sharedDb.close()
                 }
             }
 
-            // Import meta chunks (usually just 1)
+            // Import meta chunks (usually just 1).
+            //
+            // We used to short-circuit `importPlacements` /
+            // `importProductSizes` / `importBoardImages` whenever the
+            // device already had layout data, on the (then-correct)
+            // assumption that those rows never change. The 0.1.4 cron
+            // ships Homewall, so existing-install upgrades suddenly need
+            // to *gain* a layout's worth of rows — short-circuit would
+            // leave them on the Original-only data forever. The total
+            // volume here is tiny (~1.2k placements, 16 sizes, 34 board-
+            // images, ~5k leds) so just re-importing on every run is
+            // cheap and keeps the device in lockstep with whatever the
+            // cron published.
             for (file in metaDbFiles) {
                 openReadOnly(file) { rawDb ->
                     onProgress?.invoke(ImportStep.ImportLayout(0))
-                    val hasLayout = snapshot != null && snapshot.placementCount > 0
-                    val layoutCount = if (hasLayout) snapshot!!.placementCount else importPlacements(rawDb)
-                    if (!hasLayout) { importProductSizes(rawDb); importBoardImages(rawDb) }
-                    if (snapshot == null || snapshot.ledCount == 0) importLeds(rawDb)
+                    val layoutCount = importPlacements(rawDb)
+                    importProductSizes(rawDb)
+                    importBoardImages(rawDb)
+                    importLeds(rawDb)
                     importSyncState(rawDb)
                     onProgress?.invoke(ImportStep.ImportLayout(layoutCount))
                 }
@@ -152,6 +256,26 @@ class BoardDatabaseImporter(
         val statCount = boardRepository.getStatCount()
         val placementCount = boardRepository.getAllPlacements().size
         val nomatchCount = boardRepository.countNomatchClimbs()
+        Log.i(
+            TAG,
+            "importFromChunks done: climbs=$climbCount stats=$statCount " +
+                "placements=$placementCount nomatch=$nomatchCount",
+        )
+        // Post-import integrity probe. Steady-state expectation after the
+        // 6.sqm NOCASE migration: orphanStats and noStatsClimbs both stay
+        // small and stable across syncs. A sudden jump signals a stats-
+        // chunk import failure or a fresh case-drift regression. Wrapped
+        // in runCatching so a transient SQLite error never strands the
+        // sync's success state.
+        runCatching {
+            val orphanStats = boardRepository.countOrphanStats()
+            val noStatsClimbs = boardRepository.countListedClimbsWithoutStats()
+            Log.i(
+                TAG,
+                "importFromChunks integrity: orphanStats=$orphanStats " +
+                    "listedClimbsWithoutStats=$noStatsClimbs",
+            )
+        }.onFailure { Log.w(TAG, "integrity probe failed", it) }
         onProgress?.invoke(ImportStep.Done(climbCount.toInt(), statCount.toInt(), placementCount, nomatchCount.toInt()))
     }
 
@@ -202,6 +326,17 @@ class BoardDatabaseImporter(
         onProgress: ((step: ImportStep) -> Unit)? = null
     ) {
         val snapshot = loadExistingSnapshot()
+        // Same fresh-install gate as importFromChunks — captured once
+        // at the start so the hot path stays consistent across the
+        // run. See importFromChunks for the rationale.
+        val freshInstallClimbs: Boolean = openTargetDb().let { db ->
+            try { queryLong(db, "SELECT COUNT(*) FROM climbs") == 0L }
+            finally { db.close() }
+        }
+        val freshInstallStats: Boolean = openTargetDb().let { db ->
+            try { queryLong(db, "SELECT COUNT(*) FROM climb_stats") == 0L }
+            finally { db.close() }
+        }
 
         val rawDb = SQLiteDatabase.openDatabase(
             dbFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY
@@ -209,11 +344,11 @@ class BoardDatabaseImporter(
         try {
             val (climbCount, statCount) = withDeferredIndexes {
                 onProgress?.invoke(ImportStep.ImportClimbs(0, 0, 0))
-                val climbs = importClimbs(rawDb) { inserted, scanned, total ->
+                val climbs = importClimbs(rawDb, freshInstall = freshInstallClimbs) { inserted, scanned, total ->
                     onProgress?.invoke(ImportStep.ImportClimbs(inserted, scanned, total))
                 }
                 onProgress?.invoke(ImportStep.ImportStats(0, 0, 0))
-                val stats = importClimbStats(rawDb) { inserted, scanned, total ->
+                val stats = importClimbStats(rawDb, freshInstall = freshInstallStats) { inserted, scanned, total ->
                     onProgress?.invoke(ImportStep.ImportStats(inserted, scanned, total))
                 }
                 climbs to stats
@@ -296,7 +431,7 @@ class BoardDatabaseImporter(
     // ── Delta snapshot ───────────────────────────────────────────────
 
     private fun loadExistingSnapshot(): DiffSnapshot? {
-        if (boardRepository.getClimbCount() == 0L) return null
+        if (!boardRepository.hasAnyClimbs()) return null
         return DiffSnapshot(
             placementCount = boardRepository.getAllPlacements().size,
             ledCount = boardRepository.countLeds().toInt()
@@ -312,7 +447,7 @@ class BoardDatabaseImporter(
 
     /**
      * Detect whether a source DB uses the Kilter schema (`climbs`, `climb_stats`)
-     * or the CruxCoach schema (`aurora_climb`, `aurora_climb_stat`).
+     * or the legacy CruxCoach schema (`aurora_climb`, `aurora_climb_stat`) — kept for backward-compat with old kilter_board.bin extracts.
      * CruxCoach's own `cruxcoach.db` is served during local WiFi share.
      */
     private fun hasTable(db: SQLiteDatabase, table: String): Boolean {
@@ -344,13 +479,13 @@ class BoardDatabaseImporter(
         val db = openTargetDb()
         try {
             val stmt = db.compileStatement(
-                "UPDATE aurora_climb SET move_count = ? WHERE uuid = ?"
+                "UPDATE climbs SET move_count = ? WHERE uuid = ?"
             )
             // Process in batches to avoid CursorWindow overflow on older APIs
             var lastUuid = ""
             while (true) {
                 val cursor = db.rawQuery(
-                    """SELECT uuid, frames FROM aurora_climb
+                    """SELECT uuid, frames FROM climbs
                        WHERE move_count = 0 AND frames_count = 1 AND uuid > ?
                        ORDER BY uuid LIMIT $BULK_BATCH_SIZE""",
                     arrayOf(lastUuid)
@@ -380,7 +515,7 @@ class BoardDatabaseImporter(
         }
     }
 
-    // ── Table import methods (raw Aurora schema) ─────────────────────
+    // ── Table import methods (Kilter board / Aurora-style schema) ───
 
     /**
      * Bulk-import climbs from a chunk SQLite file using ATTACH DATABASE.
@@ -389,77 +524,311 @@ class BoardDatabaseImporter(
     private fun importClimbs(
         rawDb: SQLiteDatabase,
         existingUuids: Set<String>? = null,
+        freshInstall: Boolean = false,
+        sharedTargetDb: SQLiteDatabase? = null,
         onProgress: ((inserted: Int, scanned: Int, total: Int) -> Unit)? = null
     ): Int {
         val chunkPath = rawDb.path ?: return importClimbsLegacy(rawDb, existingUuids, onProgress)
         val srcTable = resolveClimbsTable(rawDb)
-        val targetDb = openTargetDb()
+        // sharedTargetDb is owned by the caller (importFromChunks holds one
+        // connection per phase to avoid PRAGMA-roundtrip + page-cache-cold
+        // overhead on every chunk). Only close locally-opened ones.
+        val targetDb = sharedTargetDb ?: openTargetDb()
+        val ownsTargetDb = sharedTargetDb == null
         try {
             targetDb.execSQL("ATTACH DATABASE ? AS src", arrayOf(chunkPath))
             val total = queryLong(targetDb, "SELECT COUNT(*) FROM src.$srcTable WHERE is_listed = 1").toInt()
-            val countBefore = queryLong(targetDb, "SELECT COUNT(*) FROM aurora_climb")
+            // Fresh-install fast path: when the *original* import started
+            // with an empty `climbs` table, every UPDATE pass below would
+            // target only rows we just INSERT-ed in the same batch — i.e.
+            // self-no-ops semantically (refresh a row with values we'd
+            // just pulled from the same source row). Skipping them saves
+            // the per-batch full-range correlated-subquery scan that's
+            // the single largest CPU cost in the bulk-import on first
+            // launch.
+            //
+            // The flag is plumbed in by [importFromChunks] from a single
+            // `COUNT(*)` snapshot at the start of the run. We can't infer
+            // it locally because chunk #2 onwards observes a non-empty
+            // target (chunk #1 just populated it) and would otherwise
+            // wrongly re-enable the slow UPDATE path.
+            //
+            // For incremental syncs (`freshInstall=false`), the UPDATE
+            // passes remain mandatory for content / tombstone / pubkey
+            // refresh.
+            val skipUpdatePasses = freshInstall
+            // countBefore is now only used for the inserted-count math
+            // on the incremental path; on the fresh-install path we skip
+            // it entirely (saves an O(N) PK-index scan on a 174k+ row
+            // target before each chunk's batches).
+            val countBefore = if (skipUpdatePasses) 0L
+            else queryLong(targetDb, "SELECT COUNT(*) FROM climbs")
             onProgress?.invoke(0, 0, total)
 
             // Copy move_count when the source has it (CruxCoach backups always,
             // Blossom chunks from 2026-04-21+). Old chunks without the column
             // fall back to 0 and backfillMoveCounts() computes it post-import.
-            val hasMoveCount = rawDb.rawQuery("PRAGMA table_info($srcTable)", null).use { c ->
-                generateSequence { if (c.moveToNext()) c.getString(1) else null }
-                    .any { it == "move_count" }
+            val srcCols = rawDb.rawQuery("PRAGMA table_info($srcTable)", null).use { c ->
+                buildSet { while (c.moveToNext()) add(c.getString(1)) }
             }
+            val hasMoveCount = "move_count" in srcCols
             val moveCountExpr = if (hasMoveCount) "COALESCE(move_count, 0)" else "0"
+            // origin column landed in Blossom chunks at a known schema-roll
+            // boundary; older chunks without it fall back to the schema
+            // default 'kilter' on the target side. Note: the UPDATE pass
+            // below intentionally does NOT touch origin — locally-set
+            // 'cruxcoach' (e.g. via CommunityClimbSubscriber on a row the
+            // cron later refreshes) must survive a Blossom blob refresh.
+            val hasOrigin = "origin" in srcCols
+            val originExpr = if (hasOrigin) "COALESCE(origin, 'kilter')" else "'kilter'"
+            // Plan C: cron writes created_by_pubkey for cruxcoach-origin
+            // climbs so the SettersListScreen + profile-resolution chain
+            // works for fresh installs. Defensive — pre-Plan-C blobs
+            // don't have it.
+            val hasCreatedByPubkey = "created_by_pubkey" in srcCols
+            val pubkeyExpr = if (hasCreatedByPubkey) "created_by_pubkey" else "NULL"
 
-            // Import in batches by rowid range (avoids OFFSET scanning and CursorWindow issues on older APIs)
-            val minRowid = queryLong(targetDb, "SELECT MIN(rowid) FROM src.$srcTable WHERE is_listed = 1")
-            val maxRowid = queryLong(targetDb, "SELECT MAX(rowid) FROM src.$srcTable WHERE is_listed = 1")
+            // Two-step bulk merge per batch:
+            //
+            //   Step 1 — INSERT OR IGNORE: adds rows whose uuid isn't yet
+            //   in target. Existing rows are skipped, so CruxCoach-side
+            //   metadata (origin, source, sync_status, nostr_*, kilter_*,
+            //   created_by_pubkey, frames_hash) is preserved.
+            //
+            //   Step 2 — UPDATE … SET (cols) = (SELECT cols FROM src):
+            //   refreshes Kilter-authoritative fields on rows that exist
+            //   in both. Tuple-update-from-select is supported on
+            //   SQLite ≥3.15 (Android API 26+, our minSdk). The SET list
+            //   intentionally excludes every CruxCoach column so they
+            //   survive the refresh.
+            //
+            // Includes is_listed in the UPDATE set + lets the UPDATE
+            // batch include unlisted rows (so the cron's tombstone-sync
+            // — `UPDATE blob.climbs SET is_listed = 0 WHERE …` — actually
+            // propagates to client-side defaults that filter is_listed=1).
+            // The INSERT path stays is_listed=1 only (no point inserting
+            // tombstones for climbs we don't have).
+            // Tier-2 incremental-sync optimisation: stage each batch into
+            // a temp table with `uuid` already lower-cased + indexed, then
+            // run all UPDATE passes against THAT (chunk_norm) instead of
+            // src. The original `WHERE LOWER(src.uuid) = main.climbs.uuid`
+            // killed src's PK index (function on indexed column) → each
+            // outer row paid an O(K) full-scan of src. With chunk_norm
+            // pre-normalised, every UPDATE becomes an O(log K) PK lookup.
+            // Per-chunk cost: O(K log K) instead of O(K²) per pass × 5
+            // passes = ~700-1000× faster on incremental sync. Fresh-install
+            // costs one extra K-row copy per batch (worth it: the INSERT
+            // path also wins from the same indexed lookup vs LOWER() in
+            // its own SELECT).
+            //
+            // Temp tables are connection-scoped + the connection is shared
+            // across chunks via [sharedTargetDb], so we IF-NOT-EXISTS once
+            // and DELETE between batches to reuse storage.
+            targetDb.execSQL("""
+                CREATE TEMP TABLE IF NOT EXISTS chunk_norm (
+                    uuid TEXT PRIMARY KEY,
+                    layout_id INTEGER, setter_username TEXT, name TEXT, frames TEXT,
+                    frames_count INTEGER, is_listed INTEGER,
+                    edge_left INTEGER, edge_right INTEGER,
+                    edge_bottom INTEGER, edge_top INTEGER,
+                    created_at INTEGER, description TEXT,
+                    is_nomatch INTEGER, frames_pace INTEGER, hsm INTEGER,
+                    move_count INTEGER, origin TEXT, created_by_pubkey TEXT
+                ) WITHOUT ROWID
+            """)
+            val minRowid = queryLong(targetDb, "SELECT MIN(rowid) FROM src.$srcTable")
+            val maxRowid = queryLong(targetDb, "SELECT MAX(rowid) FROM src.$srcTable")
             var batchStart = minRowid
             var scanned = 0
             while (batchStart <= maxRowid) {
                 val batchEnd = batchStart + BULK_BATCH_SIZE - 1
                 targetDb.beginTransaction()
                 try {
+                    // LOWER(uuid) is the canonical write form (see 7.sqm
+                    // for full rationale). The Kilter blob carries the
+                    // same hex in mixed casings *with divergent metadata*
+                    // — they are *not* the same logical climb on the
+                    // cron's side — so we collapse case at the import
+                    // boundary and let BINARY collation enforce identity.
+                    // INSERT OR IGNORE handles intra-batch duplicate
+                    // LOWER(uuid) collisions (rare — the cron typically
+                    // dedupes within a month-chunk).
+                    targetDb.execSQL("DELETE FROM chunk_norm")
                     targetDb.execSQL("""
-                        INSERT OR REPLACE INTO aurora_climb(
-                            uuid, layout_id, setter_username, name, frames,
-                            frames_count, is_listed, edge_left, edge_right,
-                            edge_bottom, edge_top, created_at,
-                            description, is_nomatch, frames_pace, hsm, move_count)
-                        SELECT uuid, layout_id, setter_username, name, frames,
+                        INSERT OR IGNORE INTO chunk_norm
+                        SELECT LOWER(uuid), layout_id, setter_username, name, frames,
                                frames_count, is_listed, edge_left, edge_right,
                                edge_bottom, edge_top, created_at,
                                COALESCE(description, ''), COALESCE(is_nomatch, 0),
                                COALESCE(frames_pace, 0), COALESCE(hsm, 0),
-                               $moveCountExpr
+                               $moveCountExpr,
+                               $originExpr,
+                               $pubkeyExpr
                         FROM src.$srcTable
-                        WHERE is_listed = 1 AND rowid BETWEEN $batchStart AND $batchEnd
+                        WHERE rowid BETWEEN $batchStart AND $batchEnd
                     """)
+                    // Insert listed rows from chunk_norm. Tombstones
+                    // (is_listed=0) are intentionally not inserted — no
+                    // point materialising rows for climbs we don't have.
+                    targetDb.execSQL("""
+                        INSERT OR IGNORE INTO climbs(
+                            uuid, layout_id, setter_username, name, frames,
+                            frames_count, is_listed, edge_left, edge_right,
+                            edge_bottom, edge_top, created_at,
+                            description, is_nomatch, frames_pace, hsm, move_count,
+                            origin, created_by_pubkey)
+                        SELECT uuid, layout_id, setter_username, name, frames,
+                               frames_count, is_listed, edge_left, edge_right,
+                               edge_bottom, edge_top, created_at,
+                               description, is_nomatch, frames_pace, hsm, move_count,
+                               origin, created_by_pubkey
+                        FROM chunk_norm
+                        WHERE is_listed = 1
+                    """)
+                    // Content refresh — only for origin='kilter' rows AND
+                    // only for chunk rows that are themselves listed
+                    // (chunk_norm.is_listed = 1). The latter guard exists
+                    // because the cron now plants tombstone-shell rows
+                    // (name='', frames='', is_listed=0) for cruxcoach-
+                    // published-and-deleted climbs whose row went missing
+                    // from the work-DB. Without this guard, the SET-from-
+                    // SELECT would overwrite any meaningful local content
+                    // (real name, holds) with the tombstone shell's empty
+                    // strings, wiping the metadata that the user's logbook
+                    // and the detail-screen still want to render for
+                    // already-logged climbs.
+                    //
+                    // Climbs authored via CruxCoach (origin='cruxcoach')
+                    // have Nostr as their source of truth and are
+                    // protected from blob refresh entirely.
+                    if (!skipUpdatePasses) {
+                        targetDb.execSQL("""
+                            UPDATE climbs SET
+                                (layout_id, setter_username, name, frames,
+                                 frames_count, is_listed, edge_left, edge_right,
+                                 edge_bottom, edge_top, created_at, description,
+                                 is_nomatch, frames_pace, hsm, move_count)
+                                = (SELECT layout_id, setter_username, name, frames,
+                                          frames_count, is_listed, edge_left, edge_right,
+                                          edge_bottom, edge_top, created_at, description,
+                                          is_nomatch, frames_pace, hsm, move_count
+                                   FROM chunk_norm
+                                   WHERE chunk_norm.uuid = main.climbs.uuid)
+                            WHERE origin = 'kilter'
+                              AND uuid IN (SELECT uuid FROM chunk_norm WHERE is_listed = 1)
+                        """)
+                    }
+                    // Tombstone propagation. Symmetric flip for BOTH
+                    // origin flavours: a chunk row with is_listed=0 means
+                    // "this uuid was tombstoned upstream", regardless of
+                    // how the local row got labelled. Only updates the
+                    // is_listed column, so the local name/setter/frames
+                    // survive — the user's logbook entries for this climb
+                    // remain readable, and the detail-screen can still
+                    // render the holds the user actually attempted.
+                    //
+                    // Pre-fix the kilter-origin update above carried the
+                    // tombstone-overwrite by also propagating is_listed
+                    // along with name/frames; a tombstone-shell from the
+                    // cron silently wiped the meaningful local data.
+                    // Splitting the listing flip into its own UPDATE
+                    // pass keeps tombstone propagation working while
+                    // separating it from the kilter content-refresh.
+                    if (!skipUpdatePasses) {
+                        targetDb.execSQL("""
+                            UPDATE climbs SET is_listed = 0
+                            WHERE is_listed = 1
+                              AND uuid IN (SELECT uuid FROM chunk_norm WHERE is_listed = 0)
+                        """)
+                    }
+                    // Setter-username propagation for cruxcoach-origin
+                    // climbs (Plan C: cron resolves Kind-0 + writes the
+                    // display_name into the blob). COALESCE keeps the
+                    // local value when source is NULL.
+                    if (!skipUpdatePasses) {
+                        targetDb.execSQL("""
+                            UPDATE climbs SET setter_username = COALESCE(
+                                (SELECT setter_username FROM chunk_norm
+                                 WHERE chunk_norm.uuid = main.climbs.uuid),
+                                main.climbs.setter_username
+                            )
+                            WHERE origin = 'cruxcoach'
+                              AND uuid IN (SELECT uuid FROM chunk_norm)
+                        """)
+                    }
+                    // Origin upgrade — kilter→cruxcoach only (asymmetric).
+                    if (!skipUpdatePasses && hasOrigin) {
+                        targetDb.execSQL("""
+                            UPDATE climbs SET origin = 'cruxcoach'
+                            WHERE origin != 'cruxcoach'
+                              AND uuid IN (SELECT uuid FROM chunk_norm WHERE origin = 'cruxcoach')
+                        """)
+                    }
+                    // Pubkey backfill — fills NULL only, never overwrites.
+                    if (!skipUpdatePasses && hasCreatedByPubkey) {
+                        targetDb.execSQL("""
+                            UPDATE climbs SET created_by_pubkey = (
+                                SELECT created_by_pubkey FROM chunk_norm
+                                WHERE chunk_norm.uuid = main.climbs.uuid
+                            )
+                            WHERE created_by_pubkey IS NULL
+                              AND uuid IN (
+                                SELECT uuid FROM chunk_norm WHERE created_by_pubkey IS NOT NULL
+                              )
+                        """)
+                    }
                     targetDb.setTransactionSuccessful()
                 } finally {
                     targetDb.endTransaction()
                 }
-                val batchCount = queryLong(targetDb,
-                    "SELECT COUNT(*) FROM src.$srcTable WHERE is_listed = 1 AND rowid BETWEEN $batchStart AND $batchEnd"
-                ).toInt()
-                scanned += batchCount
-                onProgress?.invoke(scanned, scanned, total)
+                // Approximate scanned-progress from rowid arithmetic
+                // (avoids a per-batch COUNT scan on the source chunk).
+                // Source rowids are dense for fresh dumps so the upper
+                // cap of `total` keeps the UI from overshooting on the
+                // rare WHERE is_listed = 1 holes.
+                //
+                // inserted=0 (sentinel) keeps the UI's "+N new" label
+                // anchored at the prior chunk-final value mid-chunk;
+                // the real chunk-inserted count flows through the
+                // post-loop onProgress invoke below. Without this the
+                // label flickered fast-→-slow as Tier-2 dropped per-
+                // chunk time from 30s to <1s.
+                scanned = (scanned + (batchEnd - batchStart + 1).toInt()).coerceAtMost(total)
+                onProgress?.invoke(0, scanned, total)
                 batchStart = batchEnd + 1
             }
 
-            val countAfter = queryLong(targetDb, "SELECT COUNT(*) FROM aurora_climb")
-            val inserted = (countAfter - countBefore).toInt()
+            // Fresh-install fast path: target was empty before this
+            // chunk, every scanned row got inserted (no update pass, no
+            // PK collisions). Skip the post-import COUNT(*) — on the
+            // last few chunks of a 97-chunk import that's a full PK-
+            // index scan over 170k+ rows each, total O(N²) just for
+            // the progress callback.
+            // Incremental path keeps the precise COUNT(*) so the UI's
+            // "X new climbs" line is accurate.
+            val inserted = if (skipUpdatePasses) {
+                scanned
+            } else {
+                val countAfter = queryLong(targetDb, "SELECT COUNT(*) FROM climbs")
+                (countAfter - countBefore).toInt()
+            }
             onProgress?.invoke(inserted, total, total)
             targetDb.execSQL("DETACH DATABASE src")
             return inserted
         } catch (e: Exception) {
             try { targetDb.execSQL("DETACH DATABASE src") } catch (_: Exception) {}
-            // Fallback to legacy row-by-row import
+            Log.w(TAG, "ATTACH-import failed for climbs; falling back to legacy row-by-row", e)
             return importClimbsLegacy(rawDb, existingUuids, onProgress)
         } finally {
-            targetDb.close()
+            if (ownsTargetDb) targetDb.close()
         }
     }
 
-    /** Row-by-row fallback for when ATTACH is not available (e.g. in-memory DB). */
+    /** Row-by-row fallback for when ATTACH is not available (e.g. in-memory DB).
+     *  Origin propagation from the source is not wired here — this path is
+     *  exercised only for in-memory DBs in tests, where origin is irrelevant.
+     *  Real-device imports go through the ATTACH path above which honours
+     *  the source's `origin` column. */
     private fun importClimbsLegacy(
         rawDb: SQLiteDatabase,
         existingUuids: Set<String>? = null,
@@ -483,7 +852,11 @@ class BoardDatabaseImporter(
         cursor.use {
             while (it.moveToNext()) {
                 scanned++
-                val uuid = it.getString(0)
+                // Canonical lowercase: pairs with the ATTACH-bulk path's
+                // LOWER(uuid) above so existsClimb / upsertClimb operate
+                // on the same string regardless of which path the chunk
+                // took to get here.
+                val uuid = it.getString(0).lowercase()
                 if (existingUuids != null && uuid in existingUuids) {
                     if (scanned % (BATCH_SIZE * 4) == 0) onProgress?.invoke(inserted, scanned, total)
                     continue
@@ -515,15 +888,26 @@ class BoardDatabaseImporter(
     private fun importClimbStats(
         rawDb: SQLiteDatabase,
         existingStats: Map<Pair<String, Long>, Long?>? = null,
+        freshInstall: Boolean = false,
+        sharedTargetDb: SQLiteDatabase? = null,
         onProgress: ((inserted: Int, scanned: Int, total: Int) -> Unit)? = null
     ): Int {
         val chunkPath = rawDb.path ?: return importClimbStatsLegacy(rawDb, existingStats, onProgress)
         val srcTable = resolveStatsTable(rawDb)
-        val targetDb = openTargetDb()
+        // See [importClimbs] — long-lived shared connection avoids
+        // PRAGMA + page-cache reset on every chunk.
+        val targetDb = sharedTargetDb ?: openTargetDb()
+        val ownsTargetDb = sharedTargetDb == null
         try {
             targetDb.execSQL("ATTACH DATABASE ? AS src", arrayOf(chunkPath))
             val total = queryLong(targetDb, "SELECT COUNT(*) FROM src.$srcTable").toInt()
-            val countBefore = queryLong(targetDb, "SELECT COUNT(*) FROM aurora_climb_stat")
+            // See [importClimbs] for the same fresh-install fast-path
+            // rationale — the only diff is climb_stats has no UPDATE
+            // pass, just an INSERT OR REPLACE, so the only saving here
+            // is the per-chunk countBefore / countAfter pair which goes
+            // O(N) over a 290k-row target by the last few chunks.
+            val countBefore = if (freshInstall) 0L
+            else queryLong(targetDb, "SELECT COUNT(*) FROM climb_stats")
             onProgress?.invoke(0, 0, total)
 
             // Import in batches by rowid range (avoids OFFSET scanning and CursorWindow issues on older APIs)
@@ -535,12 +919,17 @@ class BoardDatabaseImporter(
                 val batchEnd = batchStart + BULK_BATCH_SIZE - 1
                 targetDb.beginTransaction()
                 try {
+                    // Mirror the climbs-side LOWER() canonicalization so
+                    // climb_stats.climb_uuid matches the lowercase uuids
+                    // we wrote into climbs. Without this the JOIN in
+                    // climb_browse fails for any chunk that ships stats
+                    // in upper-case while climbs landed lower-case.
                     targetDb.execSQL("""
-                        INSERT OR REPLACE INTO aurora_climb_stat(
+                        INSERT OR REPLACE INTO climb_stats(
                             climb_uuid, angle, display_difficulty, difficulty_average,
                             quality_average, ascensionist_count, benchmark_difficulty,
                             fa_username, fa_at)
-                        SELECT climb_uuid, angle, display_difficulty, difficulty_average,
+                        SELECT LOWER(climb_uuid), angle, display_difficulty, difficulty_average,
                                quality_average, ascensionist_count, benchmark_difficulty,
                                fa_username, fa_at
                         FROM src.$srcTable
@@ -550,24 +939,30 @@ class BoardDatabaseImporter(
                 } finally {
                     targetDb.endTransaction()
                 }
-                val batchCount = queryLong(targetDb,
-                    "SELECT COUNT(*) FROM src.$srcTable WHERE rowid BETWEEN $batchStart AND $batchEnd"
-                ).toInt()
-                scanned += batchCount
-                onProgress?.invoke(scanned, scanned, total)
+                // Same rowid-arithmetic optimisation as [importClimbs] —
+                // skip the per-batch source COUNT scan. inserted=0
+                // sentinel: see [importClimbs] for the no-flicker
+                // rationale.
+                scanned = (scanned + (batchEnd - batchStart + 1).toInt()).coerceAtMost(total)
+                onProgress?.invoke(0, scanned, total)
                 batchStart = batchEnd + 1
             }
 
-            val countAfter = queryLong(targetDb, "SELECT COUNT(*) FROM aurora_climb_stat")
-            val inserted = (countAfter - countBefore).toInt()
+            val inserted = if (freshInstall) {
+                scanned
+            } else {
+                val countAfter = queryLong(targetDb, "SELECT COUNT(*) FROM climb_stats")
+                (countAfter - countBefore).toInt()
+            }
             onProgress?.invoke(inserted, total, total)
             targetDb.execSQL("DETACH DATABASE src")
             return inserted
         } catch (e: Exception) {
             try { targetDb.execSQL("DETACH DATABASE src") } catch (_: Exception) {}
+            Log.w(TAG, "ATTACH-import failed for climb_stats; falling back to legacy row-by-row", e)
             return importClimbStatsLegacy(rawDb, existingStats, onProgress)
         } finally {
-            targetDb.close()
+            if (ownsTargetDb) targetDb.close()
         }
     }
 
@@ -591,7 +986,7 @@ class BoardDatabaseImporter(
         cursor.use {
             while (it.moveToNext()) {
                 scanned++
-                val climbUuid = it.getString(0)
+                val climbUuid = it.getString(0).lowercase()
                 val angle = it.getLong(1)
                 val ascensionistCount = if (it.isNull(5)) null else it.getLong(5)
                 if (existingStats != null) {
@@ -630,6 +1025,27 @@ class BoardDatabaseImporter(
         // query or rawQuery methods only" — which the sync UI mis-renders
         // as "prüfe Internetverbindung" even when the download succeeded.
         db.rawQuery("PRAGMA busy_timeout = 5000", null).use { it.moveToFirst() }
+        // Bulk-import tuning. These PRAGMAs are connection-scoped so they
+        // need to be re-set every time we open a fresh handle (this fn is
+        // called many times across an import). All three are safe defaults
+        // for an interactively-used DB, not just for import:
+        //   synchronous=NORMAL  — fsync at tx-commit boundaries, not in
+        //     between. Standard recommendation for WAL mode (which Android
+        //     SQLite uses by default since API 16). FULL costs an extra
+        //     fsync per write without practical durability gain on Android,
+        //     where the OS journals the underlying filesystem already.
+        //   temp_store=MEMORY   — keeps temp tables / sort buffers in RAM
+        //     instead of spilling to disk. Important for the per-batch
+        //     correlated-subquery UPDATEs in [importClimbs] (incremental
+        //     sync path).
+        //   cache_size=-65536   — 64 MiB page cache (negative = KiB). The
+        //     PK uniqueness check on every INSERT OR IGNORE row reads the
+        //     uuid index back; with the default 2 MiB cache we churn pages
+        //     hard on a 174k-row import. 64 MiB lets the entire PK index
+        //     stay resident even on a fresh install.
+        db.rawQuery("PRAGMA synchronous = NORMAL", null).use { it.moveToFirst() }
+        db.rawQuery("PRAGMA temp_store = MEMORY", null).use { it.moveToFirst() }
+        db.rawQuery("PRAGMA cache_size = -65536", null).use { it.moveToFirst() }
         return db
     }
 
@@ -639,28 +1055,8 @@ class BoardDatabaseImporter(
     }
 
     // ── Index management for bulk import performance ────────────────
-
-    private val CLIMB_INDEXES = arrayOf(
-        "idx_aurora_climb_listed" to
-                "CREATE INDEX idx_aurora_climb_listed ON aurora_climb(is_listed)",
-        "idx_aurora_climb_frames_count" to
-                "CREATE INDEX idx_aurora_climb_frames_count ON aurora_climb(is_listed, frames_count, uuid)"
-    )
-
-    private val STAT_INDEXES = arrayOf(
-        "idx_aurora_climb_stat_angle" to
-                "CREATE INDEX idx_aurora_climb_stat_angle ON aurora_climb_stat(angle)",
-        "idx_climb_stat_browse" to
-                """CREATE INDEX idx_climb_stat_browse ON aurora_climb_stat(
-                   angle, difficulty_average, quality_average, ascensionist_count,
-                   benchmark_difficulty, climb_uuid)""",
-        "idx_climb_stat_by_popularity" to
-                """CREATE INDEX idx_climb_stat_by_popularity ON aurora_climb_stat(
-                   angle, ascensionist_count, difficulty_average, climb_uuid)""",
-        "idx_climb_stat_count_cover" to
-                """CREATE INDEX idx_climb_stat_count_cover ON aurora_climb_stat(
-                   angle, ascensionist_count, difficulty_average, benchmark_difficulty, climb_uuid)"""
-    )
+    // Index DDLs live in the companion object at the top of the class so
+    // they can also be referenced by HotPathIndexDriftTest.
 
     private fun dropIndexes(db: SQLiteDatabase, indexes: Array<Pair<String, String>>) {
         for ((name, _) in indexes) db.execSQL("DROP INDEX IF EXISTS $name")
@@ -693,7 +1089,14 @@ class BoardDatabaseImporter(
             try {
                 createIndexes(db2, CLIMB_INDEXES)
                 createIndexes(db2, STAT_INDEXES)
-                db2.execSQL("PRAGMA optimize")
+                // Note: PRAGMA optimize used to run here but was dropped —
+                // on a fresh import it triggers a full ANALYZE pass over
+                // the freshly-built indexes (174k climbs + 290k stats),
+                // which takes the same 10-30s the user just waited
+                // through for the index rebuild. The SQLite query planner
+                // copes fine with fresh indexes that have no sqlite_stat1
+                // entries; ANALYZE can be re-introduced in an idle-time
+                // worker if a query-plan regression actually shows up.
             } finally {
                 db2.close()
             }
@@ -707,13 +1110,17 @@ class BoardDatabaseImporter(
             """SELECT placement_id, hole_id, set_id, x, y
                FROM aurora_placement"""
         } else {
+            // Import placements for ALL layouts the source carries — pre-
+            // 0.1.4 cron output had only Original (layout 1, product 1)
+            // so a `MIN`-pinned filter happened to be correct; the 0.1.4
+            // cron ships Homewall (layout 8, product 7) too. Filtering
+            // by `layout_id IN (SELECT id FROM layouts)` covers whatever
+            // the meta chunk decided to include without us hard-coding
+            // a layout list here.
             """SELECT p.id, p.hole_id, p.set_id, h.x, h.y
                FROM placements p
                JOIN holes h ON p.hole_id = h.id
-               WHERE p.layout_id = (
-                   SELECT MIN(id) FROM layouts
-                   WHERE product_id = (SELECT MIN(id) FROM products)
-               )"""
+               WHERE p.layout_id IN (SELECT id FROM layouts)"""
         }
         val cursor = rawDb.rawQuery(query, null)
         var inserted = 0

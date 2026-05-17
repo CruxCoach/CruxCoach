@@ -1,9 +1,11 @@
 package com.cruxcoach.android.ui.settings
 
 import android.content.Context
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.cruxcoach.android.ble.AuroraBleConnection
+import com.cruxcoach.android.data.kilter.localized
+import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.ClimbBleAdvertiser
 import com.cruxcoach.android.data.AnnouncementRepository
 import com.cruxcoach.android.data.DarkModeSetting
@@ -73,6 +75,7 @@ data class SettingsState(
     val isLoading: Boolean = true,
     val darkMode: DarkModeSetting = DarkModeSetting.SYSTEM,
     val gradeScale: GradeScale = GradeScale.FRENCH,
+    val boardLayoutId: Int = BoardConstants.KILTER_ORIGINAL_LAYOUT,
     val boardProductSizeId: Int = BoardConstants.KILTER_DEFAULT_SIZE,
     val boardProductSizeName: String = "",
     val syncInterval: SyncInterval = SyncInterval.MANUAL,
@@ -113,7 +116,7 @@ class SettingsViewModel @Inject constructor(
     private val personalBoardRepo: PersonalBoardRepository,
     private val syncManager: BoardSyncManager,
     private val userPreferences: UserPreferences,
-    private val bleConnection: AuroraBleConnection,
+    private val bleConnection: BoardBleConnection,
     private val climbAdvertiser: ClimbBleAdvertiser,
     private val announcementRepository: AnnouncementRepository,
     private val queueManager: OfflineQueueManager,
@@ -135,6 +138,7 @@ class SettingsViewModel @Inject constructor(
             // Batch-load ALL initial values in one IO block to avoid flash of defaults
             val initialState = withContext(Dispatchers.IO) {
                 val profile = userRepository.getActiveProfile()
+                val layoutId = userPreferences.boardLayoutId.first()
                 val boardSizeId = userPreferences.boardProductSizeId.first()
                 val boardSizeName = boardRepository.getProductSize(boardSizeId)?.name ?: ""
                 val interval = userPreferences.syncInterval.first()
@@ -163,6 +167,8 @@ class SettingsViewModel @Inject constructor(
                 val unreadAnnouncements = announcementRepository.getUnreadCount().toInt()
                 val darkMode = userPreferences.darkMode.first()
                 val advertisingSupported = climbAdvertiser.checkSupported()
+                val queueStats = runCatching { boardRepository.getKilterPublishQueueStats() }
+                    .getOrElse { com.cruxcoach.data.repository.KilterPublishQueueStats(0, 0, null) }
 
                 val profileForm = if (profile != null) {
                     val gradeIndex = GradeConverter.gradeToIndex(profile.maxBoulderGrade)
@@ -186,6 +192,7 @@ class SettingsViewModel @Inject constructor(
                     isLoading = false,
                     darkMode = darkMode,
                     gradeScale = scale,
+                    boardLayoutId = layoutId,
                     boardProductSizeId = boardSizeId,
                     boardProductSizeName = boardSizeName,
                     syncInterval = interval,
@@ -225,7 +232,11 @@ class SettingsViewModel @Inject constructor(
                             userPreferences.kilterSyncEnabled.first(),
                         username = kilterTokenStore.getUsername() ?: "",
                         lastSync = userPreferences.kilterLastSync.first(),
-                        pushEnabled = userPreferences.kilterPushEnabled.first()
+                        pushEnabled = userPreferences.kilterPushEnabled.first(),
+                        climbPublishEnabled = userPreferences.kilterClimbPublishEnabled.first(),
+                        publishPendingCount = queueStats.pendingCount,
+                        publishFailedCount = queueStats.failedCount,
+                        publishLastAttemptAtMs = queueStats.lastAttemptAtMs,
                     )
                 )
             }
@@ -334,11 +345,51 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Switch the active Kilter layout (Original ↔ Homewall). The
+     * product_size also has to roll over because Original sizes
+     * (12x12, 16x12, …) aren't valid on a Homewall and vice-versa —
+     * picking the FIRST visible size for the new layout's product is
+     * the sensible default; the user can refine via the "Board-Modell"
+     * picker right below.
+     */
+    fun updateBoardLayout(layoutId: Int) {
+        if (_state.value.boardLayoutId == layoutId) return
+        viewModelScope.launch {
+            userPreferences.setBoardLayoutId(layoutId)
+            val targetProductId = layoutToProductId(layoutId)
+            val newSize = withContext(Dispatchers.IO) {
+                boardRepository.getAllProductSizes(targetProductId.toLong())
+                    .firstOrNull()
+            }
+            val newSizeId = newSize?.id?.toInt()
+                ?: when (layoutId) {
+                    BoardConstants.KILTER_HOMEWALL_LAYOUT -> BoardConstants.KILTER_HOMEWALL_DEFAULT_SIZE
+                    else -> BoardConstants.KILTER_DEFAULT_SIZE
+                }
+            val newSizeName = newSize?.name ?: ""
+            userPreferences.setBoardProductSizeId(newSizeId)
+            _state.update {
+                it.copy(
+                    boardLayoutId = layoutId,
+                    boardProductSizeId = newSizeId,
+                    boardProductSizeName = newSizeName,
+                )
+            }
+        }
+    }
+
+    private fun layoutToProductId(layoutId: Int): Int = when (layoutId) {
+        BoardConstants.KILTER_HOMEWALL_LAYOUT -> BoardConstants.KILTER_HOMEWALL_PRODUCT_ID
+        else -> BoardConstants.KILTER_PRODUCT_ID
+    }
+
     fun loadProductSizes() {
         if (_state.value.productSizes.isNotEmpty()) return
         viewModelScope.launch {
             val sizes = withContext(Dispatchers.IO) {
-                boardRepository.getAllProductSizes()
+                val productId = layoutToProductId(_state.value.boardLayoutId).toLong()
+                boardRepository.getAllProductSizes(productId)
             }
             _state.update { it.copy(productSizes = sizes) }
         }
@@ -488,7 +539,7 @@ class SettingsViewModel @Inject constructor(
                 if (grid.isEmpty()) return@launch
                 val frames = BoardEasterAnimations.easterEgg(grid)
                 if (frames.isEmpty() || frames.all { it.leds.isEmpty() }) return@launch
-                val encoder = com.cruxcoach.domain.board.AuroraPacketEncoder(3)
+                val encoder = com.cruxcoach.domain.board.BoardPacketEncoder(3)
                 repeat(3) {
                     for (frame in frames) {
                         val chunks = encoder.encodeClimb(frame.leds)
@@ -497,6 +548,13 @@ class SettingsViewModel @Inject constructor(
                     }
                 }
                 bleConnection.clearBoard()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Mirrors the BoardBrowserViewModel.playEasterAnimation
+                // fix — pre-fix a BLE / SQL / encoder throw skipped the
+                // try/finally's catch arm and poisoned the parent scope.
+                Log.w(TAG, "easter animation failed", e)
             } finally {
                 _state.update { it.copy(isAnimating = false) }
             }
@@ -531,9 +589,14 @@ class SettingsViewModel @Inject constructor(
     fun deleteUserBoardData() {
         _state.update { it.copy(showDeleteUserDataDialog = false) }
         viewModelScope.launch {
+            // Audit-trail: log the destructive action with a timestamp so a
+            // user reporting "my logbook is empty" can be triaged via logcat
+            // without DB forensics.
+            Log.i(TAG, "destructive: deleteAllUserBoardData() requested at ${System.currentTimeMillis() / 1000}")
             withContext(Dispatchers.IO) {
                 personalBoardRepo.deleteAllUserBoardData()
             }
+            Log.i(TAG, "destructive: deleteAllUserBoardData() done")
             _state.update { it.copy(deleteSuccess = context.getString(R.string.settings_delete_logbook_success)) }
         }
     }
@@ -564,30 +627,54 @@ class SettingsViewModel @Inject constructor(
         _state.update { it.copy(kilterAccount = ka.copy(isLoggingIn = true, loginError = null)) }
 
         viewModelScope.launch {
-            val result = kilterApiClient.authenticate(ka.loginEmail, ka.loginPassword)
-            when (result) {
-                is com.cruxcoach.android.data.kilter.KilterAuthResult.Success -> {
-                    kilterTokenStore.storeTokens(
-                        result.accessToken, result.refreshToken,
-                        result.expiresIn, result.userUuid, result.username
-                    )
-                    kilterSyncEngine.clearSessionExpired()
-                    // Fetch preview
-                    val preview = kilterSyncEngine.previewImport()
-                    _state.update { it.copy(kilterAccount = it.kilterAccount.copy(
-                        isLoggingIn = false,
-                        showLoginSheet = false,
-                        loginEmail = "", loginPassword = "",
-                        showImportPreview = true,
-                        importPreview = preview.getOrNull(),
-                        username = result.username
-                    )) }
+            // Engine-side `Result.map` (not `mapCatching`) lets a SQL throw
+            // out of insertLogs / getAllClimbUuids escape the Result and
+            // kill the coroutine — leaving isLoggingIn = true forever with
+            // tokens already persisted, so the user sees a stuck spinner
+            // and dismissKilterLogin never runs. Wrap defensively.
+            try {
+                val result = kilterApiClient.authenticate(ka.loginEmail, ka.loginPassword)
+                when (result) {
+                    is com.cruxcoach.android.data.kilter.KilterAuthResult.Success -> {
+                        // Re-login: revoke the prior offline_access refresh token
+                        // server-side before overwriting it locally, so a stolen
+                        // copy can't outlive the new session for the full 30-day
+                        // Keycloak window. Best-effort — runCatching keeps a
+                        // network failure from blocking the new login.
+                        if (kilterTokenStore.hasCredentials()) {
+                            runCatching { kilterApiClient.revokeRefreshToken() }
+                        }
+                        kilterTokenStore.storeTokens(
+                            result.accessToken, result.refreshToken,
+                            result.expiresIn, result.userUuid, result.username
+                        )
+                        kilterSyncEngine.clearSessionExpired()
+                        // Fetch preview
+                        val preview = kilterSyncEngine.previewImport()
+                        _state.update { it.copy(kilterAccount = it.kilterAccount.copy(
+                            isLoggingIn = false,
+                            showLoginSheet = false,
+                            loginEmail = "", loginPassword = "",
+                            showImportPreview = true,
+                            importPreview = preview.getOrNull(),
+                            username = result.username
+                        )) }
+                    }
+                    is com.cruxcoach.android.data.kilter.KilterAuthResult.Error -> {
+                        val msg = result.localized(context)
+                        _state.update { it.copy(kilterAccount = it.kilterAccount.copy(
+                            isLoggingIn = false, loginError = msg
+                        )) }
+                    }
                 }
-                is com.cruxcoach.android.data.kilter.KilterAuthResult.Error -> {
-                    _state.update { it.copy(kilterAccount = it.kilterAccount.copy(
-                        isLoggingIn = false, loginError = result.message
-                    )) }
-                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "kilterLogin threw", e)
+                _state.update { it.copy(kilterAccount = it.kilterAccount.copy(
+                    isLoggingIn = false,
+                    loginError = context.getString(R.string.kilter_sync_error, ""),
+                )) }
             }
         }
     }
@@ -595,34 +682,56 @@ class SettingsViewModel @Inject constructor(
     fun kilterImportOneTime() {
         _state.update { it.copy(kilterAccount = it.kilterAccount.copy(isImporting = true)) }
         viewModelScope.launch {
-            val result = kilterSyncEngine.importLogs(oneTimeOnly = true)
-            _state.update { it.copy(kilterAccount = it.kilterAccount.copy(
-                isImporting = false,
-                showImportPreview = false,
-                isConnected = false,
-                resultMessage = result.fold(
-                    onSuccess = { context.getString(R.string.kilter_import_success, it) },
-                    onFailure = { context.getString(R.string.kilter_sync_error, it.message ?: "") }
-                )
-            )) }
+            try {
+                val result = kilterSyncEngine.importLogs(oneTimeOnly = true)
+                _state.update { it.copy(kilterAccount = it.kilterAccount.copy(
+                    isImporting = false,
+                    showImportPreview = false,
+                    isConnected = false,
+                    resultMessage = result.fold(
+                        onSuccess = { context.getString(R.string.kilter_import_success, it) },
+                        onFailure = { context.getString(R.string.kilter_sync_error, it.message ?: "") }
+                    )
+                )) }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "kilterImportOneTime threw", e)
+                _state.update { it.copy(kilterAccount = it.kilterAccount.copy(
+                    isImporting = false,
+                    showImportPreview = false,
+                    resultMessage = context.getString(R.string.kilter_sync_error, ""),
+                )) }
+            }
         }
     }
 
     fun kilterImportPersistent() {
         _state.update { it.copy(kilterAccount = it.kilterAccount.copy(isImporting = true)) }
         viewModelScope.launch {
-            val result = kilterSyncEngine.importLogs(oneTimeOnly = false)
-            val lastSync = userPreferences.kilterLastSync.first()
-            _state.update { it.copy(kilterAccount = it.kilterAccount.copy(
-                isImporting = false,
-                showImportPreview = false,
-                isConnected = true,
-                lastSync = lastSync,
-                resultMessage = result.fold(
-                    onSuccess = { context.getString(R.string.kilter_import_success, it) },
-                    onFailure = { context.getString(R.string.kilter_sync_error, it.message ?: "") }
-                )
-            )) }
+            try {
+                val result = kilterSyncEngine.importLogs(oneTimeOnly = false)
+                val lastSync = userPreferences.kilterLastSync.first()
+                _state.update { it.copy(kilterAccount = it.kilterAccount.copy(
+                    isImporting = false,
+                    showImportPreview = false,
+                    isConnected = true,
+                    lastSync = lastSync,
+                    resultMessage = result.fold(
+                        onSuccess = { context.getString(R.string.kilter_import_success, it) },
+                        onFailure = { context.getString(R.string.kilter_sync_error, it.message ?: "") }
+                    )
+                )) }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "kilterImportPersistent threw", e)
+                _state.update { it.copy(kilterAccount = it.kilterAccount.copy(
+                    isImporting = false,
+                    showImportPreview = false,
+                    resultMessage = context.getString(R.string.kilter_sync_error, ""),
+                )) }
+            }
         }
     }
 
@@ -651,12 +760,60 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    /**
+     * User tapped "Retry now" on the Kilter publish-queue card. Fans out
+     * to [KilterPublishRetryWorker.runOnce] and then refreshes the
+     * queue-stats so the UI reflects the post-batch state.
+     *
+     * No retry-running flag flicker: WorkManager's APPEND_OR_REPLACE
+     * semantics serialize this behind any in-flight periodic worker run,
+     * so a double-tap before the previous attempt finishes is safe.
+     */
+    fun retryKilterPublishQueueNow() {
+        if (_state.value.kilterAccount.publishRetryRunning) return
+        _state.update { it.copy(kilterAccount = it.kilterAccount.copy(publishRetryRunning = true)) }
+        viewModelScope.launch {
+            com.cruxcoach.android.data.kilter.KilterPublishRetryWorker.runOnce(context)
+            // Optimistic delay then refresh — WorkManager fires the
+            // worker on a background thread; we don't have a deferred
+            // observation hook here, so a small wait + re-read covers
+            // the common case (sub-second worker runs). The user can
+            // also re-tap retry which idempotently re-queues.
+            kotlinx.coroutines.delay(2_000L)
+            val stats = withContext(Dispatchers.IO) {
+                runCatching { boardRepository.getKilterPublishQueueStats() }
+                    .getOrElse { com.cruxcoach.data.repository.KilterPublishQueueStats(0, 0, null) }
+            }
+            _state.update {
+                it.copy(kilterAccount = it.kilterAccount.copy(
+                    publishRetryRunning = false,
+                    publishPendingCount = stats.pendingCount,
+                    publishFailedCount = stats.failedCount,
+                    publishLastAttemptAtMs = stats.lastAttemptAtMs,
+                ))
+            }
+        }
+    }
+
     fun showKilterDisconnectConfirm() {
         _state.update { it.copy(kilterAccount = it.kilterAccount.copy(showDisconnectConfirm = true)) }
     }
 
     fun dismissKilterDisconnectConfirm() {
         _state.update { it.copy(kilterAccount = it.kilterAccount.copy(showDisconnectConfirm = false)) }
+    }
+
+    fun setKilterClimbPublishEnabled(enabled: Boolean) {
+        _state.update { it.copy(kilterAccount = it.kilterAccount.copy(climbPublishEnabled = enabled)) }
+        viewModelScope.launch { userPreferences.setKilterClimbPublishEnabled(enabled) }
+        // Drain the retry queue immediately when the user enables the
+        // toggle — without this, climbs published while opted-out wait up
+        // to 6h for the next periodic tick. WorkManager.runOnce() is
+        // network-gated so it harmlessly defers until connectivity if
+        // we're offline at this moment.
+        if (enabled) {
+            com.cruxcoach.android.data.kilter.KilterPublishRetryWorker.runOnce(context)
+        }
     }
 
     fun setKilterPushEnabled(enabled: Boolean) {
@@ -666,14 +823,23 @@ class SettingsViewModel @Inject constructor(
 
     fun kilterDisconnect() {
         viewModelScope.launch {
+            // Audit-trail: log the disconnect with a timestamp so post-hoc
+            // triage of "I lost my Kilter login" or "my pending publishes
+            // disappeared" reports can be matched against logcat.
+            Log.i(TAG, "destructive: kilterDisconnect() requested at ${System.currentTimeMillis() / 1000}")
             kilterApiClient.revokeRefreshToken()
             kilterTokenStore.clear()
             userPreferences.setKilterSyncEnabled(false)
             _state.update { it.copy(kilterAccount = KilterAccountState()) }
+            Log.i(TAG, "destructive: kilterDisconnect() done — token cleared, sync disabled")
         }
     }
 
     fun dismissKilterResult() {
         _state.update { it.copy(kilterAccount = it.kilterAccount.copy(resultMessage = null)) }
+    }
+
+    private companion object {
+        const val TAG = "SettingsVM"
     }
 }

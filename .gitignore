@@ -38,6 +38,7 @@ docs/audit/
 docs/backlog/
 docs/*.md
 !docs/KEY_ROTATION.md
+!docs/testing.md
 
 # FEAT specs are internal planning docs — never public. Kept only in the
 # local main worktree. Whole docs/specs/ tree excluded (incl. INDEX.md /

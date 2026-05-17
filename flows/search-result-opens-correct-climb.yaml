@@ -1,0 +1,47 @@
+appId: com.cruxcoach.android
+name: search-result-opens-correct-climb
+tags:
+  - smoke
+---
+# BEHAVIOUR test: search-pipeline + tap-routing-to-correct-uuid +
+# detail-load-of-the-tapped-climb. Catches:
+# - search filter ignoring the query
+# - card-onClick wired to the wrong uuid
+# - detail screen loading a different climb than the tap target
+#
+# FILTER-STATE precondition: defaults — climbType=BOULDER,
+# status=ALL, origin=ALL, no benchmark filter, no Eigene Climbs.
+# Setup re-asserts BOULDER (the only filter we actively set in this
+# test). Other state assumed default; if a previous flow left the
+# device with Eigene Climbs filter on AND the user has zero own
+# climbs, the search would return empty and the flow fails noisily.
+#
+# We pick "Floats Your Boat" because it's a stable Kilter catalog
+# climb whose name is very unlikely to false-match other rows
+# (4 distinctive words).
+- launchApp:
+    stopApp: false
+- waitForAnimationToEnd:
+    timeout: 5000
+# Setup: ensure climb-type=BOULDER (default).
+- tapOn: "Filter"
+- tapOn: "Boulder"
+- pressKey: Back
+- assertVisible: "Filter"
+# Search "Floats" via the bottom-nav search icon. Two taps because
+# the icon's first tap shows the EditText, the second focuses it
+# (without focus, inputText goes nowhere).
+- tapOn: "Name oder Setter suchen…"
+- tapOn: "Name oder Setter suchen…"
+- inputText: "Floats"
+- assertVisible: "Floats Your Boat"
+# Tap the climb-name text — propagates to the Card's onClick which
+# navigates to ClimbDetail with the climb's uuid. (NOT "von <setter>"
+# which would route to SetterDetail for cruxcoach-origin rows.)
+- tapOn: "Floats Your Boat"
+- assertVisible: "Zurück"
+# Detail-screen unique landmark + the climb name as the title-line.
+- assertVisible: "Board verbinden"
+- assertVisible: "Floats Your Boat"
+- pressKey: Back
+- assertVisible: "Filter"

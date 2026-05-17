@@ -1,0 +1,96 @@
+-- User bids (attempts/projects) — private, per-key DB file
+
+CREATE TABLE bids (
+    uuid TEXT NOT NULL PRIMARY KEY,
+    climb_uuid TEXT NOT NULL,
+    angle INTEGER NOT NULL,
+    is_mirror INTEGER NOT NULL DEFAULT 0,
+    bid_count INTEGER DEFAULT 0,
+    comment TEXT,
+    climbed_at TEXT NOT NULL,
+    synced INTEGER NOT NULL DEFAULT 0,
+    gym_uuid TEXT,
+    wall_uuid TEXT,
+    product_layout_uuid TEXT,
+    -- Denormalized from BoardDB (refreshable)
+    climb_name TEXT NOT NULL DEFAULT '',
+    difficulty_average REAL,
+    -- Optimistic-locking token — see ascents for the full rationale.
+    row_version INTEGER NOT NULL DEFAULT 0,
+    -- FEAT-005 idempotency marker — see ascents.external_id.
+    external_id TEXT
+);
+
+CREATE INDEX idx_bids_climb ON bids(climb_uuid);
+CREATE INDEX idx_bids_date ON bids(climbed_at);
+CREATE UNIQUE INDEX idx_bids_external_id ON bids(external_id)
+    WHERE external_id IS NOT NULL;
+
+-- ═══ Insert / Delete ═══
+
+insertBid:
+INSERT OR REPLACE INTO bids(uuid, climb_uuid, angle, is_mirror,
+    bid_count, comment, climbed_at, synced,
+    gym_uuid, wall_uuid, product_layout_uuid,
+    climb_name, difficulty_average)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+deleteBid:
+DELETE FROM bids WHERE uuid = ?;
+
+-- ═══ UUID lookups ═══
+
+getUserAttemptedClimbUuids:
+SELECT DISTINCT climb_uuid FROM bids
+EXCEPT
+SELECT DISTINCT climb_uuid FROM ascents;
+
+-- ═══ Difficulty queries (for grade pyramid) ═══
+
+getUserBidDifficulties:
+SELECT difficulty_average FROM bids WHERE climbed_at >= ?;
+
+-- ═══ Kilter sync ═══
+
+getUnsyncedBids:
+SELECT * FROM bids WHERE synced = 0;
+
+-- Optimistic mark — see ascents.markAscentSyncedIfUnchanged.
+markBidSyncedIfUnchanged:
+UPDATE bids SET synced = 1 WHERE uuid = ? AND row_version = ?;
+
+-- See ascents.lastAscentChangeCount.
+lastBidChangeCount:
+SELECT changes();
+
+-- ═���═ Export (raw, no JOIN) ═══
+
+getRawBidsForUser:
+SELECT * FROM bids ORDER BY climbed_at DESC;
+
+-- ═══ Denormalization refresh ═══
+
+updateBidDenormalized:
+UPDATE bids SET climb_name = ?, difficulty_average = ?
+WHERE climb_uuid = ? AND angle = ?;
+
+-- ═══ Bulk operations ═══
+
+deleteAllBids:
+DELETE FROM bids;
+
+getAllBidClimbKeys:
+SELECT DISTINCT climb_uuid, angle FROM bids;
+
+-- ═══ FEAT-005 Aurora-JSON-import ═══
+
+insertAuroraBid:
+INSERT OR IGNORE INTO bids(uuid, climb_uuid, angle, is_mirror,
+    bid_count, comment, climbed_at, synced,
+    gym_uuid, wall_uuid, product_layout_uuid,
+    climb_name, difficulty_average,
+    external_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+countBidsWithExternalIdPrefix:
+SELECT COUNT(*) FROM bids WHERE external_id LIKE ?;

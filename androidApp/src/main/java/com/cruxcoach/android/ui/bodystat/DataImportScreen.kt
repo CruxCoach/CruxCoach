@@ -16,6 +16,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -111,6 +112,24 @@ fun DataImportScreen(
                 )
             }
 
+            // Persistent banner while a cross-pubkey import override is
+            // active. Confirms the user hasn't forgotten the override
+            // between the dialog and the Import button, and discloses the
+            // downstream consequence (climbs land under the active
+            // Kilter account on republish).
+            if (state.importMismatchAccepted) {
+                val sourceNpub = remember(state.importSourcePubkey) {
+                    val hex = state.importSourcePubkey
+                    if (hex.isNullOrBlank()) "?" else try {
+                        val npub = hex.hexToByteArray().toNpub()
+                        if (npub.length > 20) "${npub.take(12)}…${npub.takeLast(6)}" else npub
+                    } catch (_: Exception) {
+                        hex.take(12) + "…"
+                    }
+                }
+                PubkeyOverrideBanner(sourceNpubTruncated = sourceNpub)
+            }
+
             if (state.importPreview == null) {
                 Text(
                     stringResource(R.string.bodystat_select_file),
@@ -196,7 +215,7 @@ private fun ImportPreviewCard(
             VISIBLE_CATEGORIES.forEach { category ->
                 if (category in detected) {
                     CategoryCheckboxRow(
-                        label = category.label,
+                        label = category.localizedLabel(),
                         checked = category in selectedCategories,
                         onCheckedChange = { onToggleCategory(category) },
                         count = preview.summaryLine(category)
@@ -245,6 +264,45 @@ private fun ImportPreviewCard(
                         Text(stringResource(R.string.bodystat_import), fontWeight = FontWeight.Bold)
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PubkeyOverrideBanner(sourceNpubTruncated: String) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.errorContainer
+        ),
+        shape = RoundedCornerShape(16.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.Top,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Icon(
+                Icons.Default.Warning,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onErrorContainer,
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    stringResource(R.string.import_pubkey_override_banner_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                )
+                Text(
+                    stringResource(
+                        R.string.import_pubkey_override_banner_body,
+                        sourceNpubTruncated,
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                )
             }
         }
     }

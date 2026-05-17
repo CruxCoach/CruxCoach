@@ -27,7 +27,7 @@ import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.*
 import com.cruxcoach.android.util.GradeDisplayHelper
-import com.cruxcoach.data.repository.ClimbListEntry
+import com.cruxcoach.data.repository.Climb_list_entries
 import com.cruxcoach.domain.board.IntensityZones
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -159,7 +159,7 @@ fun BoardListDetailScreen(
 
 @Composable
 private fun ListEntryCard(
-    entry: ClimbListEntry,
+    entry: Climb_list_entries,
     gradeScale: com.cruxcoach.android.data.GradeScale,
     zones: IntensityZones? = null,
     onClick: () -> Unit,

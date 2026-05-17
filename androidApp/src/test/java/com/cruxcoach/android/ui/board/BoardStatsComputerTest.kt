@@ -1,14 +1,17 @@
 package com.cruxcoach.android.ui.board
 
 import com.cruxcoach.android.data.GradeScale
-import com.cruxcoach.data.repository.AuroraAscentWithClimb
+import com.cruxcoach.data.repository.AscentWithClimb
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.Clock
+import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneOffset
 
 /**
  * Tests for [BoardStatsComputer]. The computer was extracted from
@@ -22,6 +25,13 @@ import java.time.LocalDate
  */
 class BoardStatsComputerTest {
 
+    // Pin "now" so fixture construction and the production code under
+    // test see exactly the same instant. Without this a midnight-boundary
+    // race made `filterByInterval DAYS_30 drops ascents older than cutoff`
+    // and the periodComparison cases potentially flaky.
+    private val fixedClock: Clock = Clock.fixed(Instant.parse("2026-03-15T12:00:00Z"), ZoneOffset.UTC)
+    private val today: LocalDate = LocalDate.now(fixedClock)
+
     // -- Test fixtures --
 
     private fun ascent(
@@ -33,7 +43,7 @@ class BoardStatsComputerTest {
         bidCount: Long = 1L,
         difficulty: Double? = 18.5,
         framesCount: Long = 1L,
-    ) = AuroraAscentWithClimb(
+    ) = AscentWithClimb(
         uuid = uuid,
         userId = 0L,
         climbUuid = climbUuid,
@@ -65,15 +75,15 @@ class BoardStatsComputerTest {
 
     @Test
     fun `filterByInterval DAYS_30 drops ascents older than cutoff`() {
-        val today = LocalDate.now().toString()
-        val old = LocalDate.now().minusDays(90).toString()
+        val todayStr = today.toString()
+        val old = today.minusDays(90).toString()
         val ascents = listOf(
-            ascent(climbedAt = "${today}T10:00:00"),
+            ascent(climbedAt = "${todayStr}T10:00:00"),
             ascent(climbedAt = "${old}T10:00:00"),
         )
-        val out = BoardStatsComputer.filterByInterval(ascents, StatsTimeInterval.DAYS_30)
+        val out = BoardStatsComputer.filterByInterval(ascents, StatsTimeInterval.DAYS_30, clock = fixedClock)
         assertEquals(1, out.size)
-        assertEquals("${today}T10:00:00", out[0].climbedAt)
+        assertEquals("${todayStr}T10:00:00", out[0].climbedAt)
     }
 
     @Test
@@ -289,9 +299,10 @@ class BoardStatsComputerTest {
 
     @Test
     fun `periodComparison is null when neither period has data`() {
-        val veryOld = LocalDate.now().minusDays(400).toString()
+        val veryOld = today.minusDays(400).toString()
         val stats = BoardStatsComputer.computeStats(
             ascents = listOf(ascent(climbedAt = "${veryOld}T10:00:00")),
+            clock = fixedClock,
             interval = StatsTimeInterval.DAYS_30,
             gradeScale = GradeScale.V_SCALE,
         )

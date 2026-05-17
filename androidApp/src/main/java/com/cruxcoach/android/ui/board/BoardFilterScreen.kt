@@ -18,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -255,30 +256,97 @@ fun BoardFilterScreen(
                     }
                 }
 
-                FilterChip(
-                    selected = state.filter.benchmarkOnly,
-                    onClick = { viewModel.updateBenchmarkFilter(!state.filter.benchmarkOnly) },
-                    label = {
-                        Text(
-                            stringResource(R.string.board_filter_benchmarks_only),
-                            style = MaterialTheme.typography.labelSmall
-                        )
-                    },
-                    leadingIcon = if (state.filter.benchmarkOnly) {
-                        {
-                            Icon(
-                                Icons.Default.Verified,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.horizontalScroll(rememberScrollState())
+                ) {
+                    FilterChip(
+                        selected = state.filter.benchmarkOnly,
+                        onClick = { viewModel.updateBenchmarkFilter(!state.filter.benchmarkOnly) },
+                        label = {
+                            Text(
+                                stringResource(R.string.board_filter_benchmarks_only),
+                                style = MaterialTheme.typography.labelSmall
                             )
-                        }
-                    } else null,
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
-                        selectedLabelColor = OrangeAccent
-                    ),
-                    modifier = Modifier.height(32.dp)
+                        },
+                        leadingIcon = if (state.filter.benchmarkOnly) {
+                            {
+                                Icon(
+                                    Icons.Default.Verified,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        } else null,
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
+                            selectedLabelColor = OrangeAccent
+                        ),
+                        modifier = Modifier.height(32.dp)
+                    )
+
+                    // My-climbs toggle: drafts + published, all angles, all
+                    // grades. Bypasses the regular paginated browse path so
+                    // a draft saved at any angle stays discoverable.
+                    FilterChip(
+                        selected = state.filter.myClimbsOnly,
+                        onClick = { viewModel.updateMyClimbsFilter(!state.filter.myClimbsOnly) },
+                        label = {
+                            Text(
+                                stringResource(R.string.board_filter_my_climbs),
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                        },
+                        leadingIcon = if (state.filter.myClimbsOnly) {
+                            {
+                                Icon(
+                                    Icons.Default.Person,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        } else null,
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
+                            selectedLabelColor = OrangeAccent
+                        ),
+                        modifier = Modifier.height(32.dp)
+                    )
+                }
+
+                // Provenance filter — schema column `origin`. CruxCoach
+                // climbs are the ones authored via this app's editor;
+                // Kilter climbs come from the official Kilter app and
+                // were pulled by our daily mirror.
+                Text(
+                    stringResource(R.string.board_filter_origin),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold
                 )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.horizontalScroll(rememberScrollState())
+                ) {
+                    val originOptions = listOf(
+                        OriginFilter.ALL to stringResource(R.string.board_filter_all),
+                        OriginFilter.CRUXCOACH to stringResource(R.string.board_filter_origin_cruxcoach),
+                        OriginFilter.KILTER to stringResource(R.string.board_filter_origin_kilter),
+                    )
+                    originOptions.forEach { (filter, label) ->
+                        FilterChip(
+                            selected = state.filter.originFilter == filter,
+                            onClick = { viewModel.updateOriginFilter(filter) },
+                            label = { Text(label, style = MaterialTheme.typography.labelSmall) },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
+                                selectedLabelColor = OrangeAccent
+                            ),
+                            modifier = Modifier.height(32.dp)
+                        )
+                    }
+                }
 
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),

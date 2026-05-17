@@ -35,8 +35,14 @@ object WhatsNewItems {
     /** FEAT-002 — encrypted Nostr/Blossom backups, default off. */
     val NOSTR_BACKUP = WhatsNewItem(id = "nostr-backup", sinceVersionCode = 4)
 
+    /** FEAT-005 — Aurora JSON import (0.1.4). Discovery surface for
+     *  users upgrading from 0.1.3 who already have the Aurora email
+     *  export sitting in their Downloads. */
+    val AURORA_JSON_IMPORT = WhatsNewItem(id = "aurora-json-import", sinceVersionCode = 5)
+
     val registry: List<WhatsNewItem> = listOf(
         NOSTR_BACKUP,
+        AURORA_JSON_IMPORT,
     )
 }
 
@@ -116,6 +122,7 @@ class WhatsNewViewModel @Inject constructor(
 @Composable
 fun WhatsNewHost(
     onNavigateToKeyManagement: () -> Unit = {},
+    onNavigateToAuroraMigration: () -> Unit = {},
     vm: WhatsNewViewModel = hiltViewModel(),
 ) {
     val pending by vm.pending.collectAsState()
@@ -126,6 +133,11 @@ fun WhatsNewHost(
             NostrBackupWhatsNewDialog(
                 onDismiss = { vm.dismissCurrent() },
                 onNavigateToKeyManagement = onNavigateToKeyManagement,
+            )
+        WhatsNewItems.AURORA_JSON_IMPORT.id ->
+            AuroraJsonImportWhatsNewDialog(
+                onDismiss = { vm.dismissCurrent() },
+                onNavigateToAuroraMigration = onNavigateToAuroraMigration,
             )
         else -> {
             // Unknown id (shouldn't happen unless registry/dispatch

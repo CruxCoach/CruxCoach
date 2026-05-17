@@ -1,7 +1,7 @@
 package com.cruxcoach.android.data
 
 import android.util.Log
-import com.cruxcoach.android.ble.AuroraBleConnection
+import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.ble.QueueItem
 import com.cruxcoach.android.ble.SessionQueueProtocol
@@ -50,7 +50,7 @@ data class SessionQueueState(
  * - Hilt @Singleton via AppModule
  */
 class SessionQueueManager(
-    private val bleConnection: AuroraBleConnection,
+    private val bleConnection: BoardBleConnection,
     private val boardRepository: BoardRepository,
     private val climbNameResolver: ClimbNameResolver,
     private val userPreferences: UserPreferences,
@@ -433,7 +433,7 @@ class SessionQueueManager(
      * (uppercase-no-hyphens, e.g. `305ECF354AB54C9CAFD591AF0848004B`) and the database
      * (lowercase-with-hyphens, e.g. `305ecf35-4ab5-4c9c-afd5-91af0848004b`).
      */
-    private fun resolveClimb(uuid: String, angle: Int): com.cruxcoach.data.repository.AuroraClimbWithStats? {
+    private fun resolveClimb(uuid: String, angle: Int): com.cruxcoach.data.repository.ClimbWithStats? {
         boardRepository.getClimbByUuid(uuid, angle)?.let { return it }
         boardRepository.getClimbByUuid(uuid.lowercase(), angle)?.let { return it }
         // Protocol decodes as uppercase-no-hyphens; DB may store lowercase-with-hyphens

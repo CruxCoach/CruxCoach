@@ -1,0 +1,185 @@
+-- User ascents (sends) — private, per-key DB file
+-- Denormalized fields (climb_name, difficulty_average, climb_frames, frames_count)
+-- are populated at insert time and refreshed after board sync.
+
+CREATE TABLE ascents (
+    uuid TEXT NOT NULL PRIMARY KEY,
+    climb_uuid TEXT NOT NULL,
+    angle INTEGER NOT NULL,
+    is_mirror INTEGER NOT NULL DEFAULT 0,
+    attempt_id INTEGER DEFAULT 0,
+    bid_count INTEGER DEFAULT 0,
+    quality INTEGER,
+    difficulty INTEGER,
+    is_benchmark INTEGER DEFAULT 0,
+    comment TEXT,
+    climbed_at TEXT NOT NULL,
+    synced INTEGER NOT NULL DEFAULT 0,
+    gym_uuid TEXT,
+    wall_uuid TEXT,
+    product_layout_uuid TEXT,
+    -- Denormalized from BoardDB (refreshable)
+    climb_name TEXT NOT NULL DEFAULT '',
+    difficulty_average REAL,
+    climb_frames TEXT NOT NULL DEFAULT '',
+    frames_count INTEGER NOT NULL DEFAULT 1,
+    -- Optimistic-locking token bumped on every user edit. Kilter sync
+    -- captures the value at read time and only stamps synced=1 if it
+    -- still matches at write time — prevents TOCTOU where an edit
+    -- during the upload window would be silently re-flagged as synced.
+    row_version INTEGER NOT NULL DEFAULT 0,
+    -- FEAT-005 idempotency marker — null for ascents that didn't come
+    -- from an Aurora JSON import; deterministic
+    -- "aurora-json:ascent:<32-hex>" otherwise. Partial unique index
+    -- below rejects duplicate re-imports.
+    external_id TEXT
+);
+
+CREATE INDEX idx_ascents_climb ON ascents(climb_uuid);
+CREATE INDEX idx_ascents_date ON ascents(climbed_at);
+CREATE UNIQUE INDEX idx_ascents_external_id ON ascents(external_id)
+    WHERE external_id IS NOT NULL;
+
+-- ═══ Insert / Update / Delete ═══
+
+-- row_version starts at 0 via column DEFAULT; the re-insert path (INSERT OR
+-- REPLACE) resets it, which is fine because the row's UUID is identical and
+-- any in-flight upload snapshot for the old row is already invalidated by
+-- the REPLACE itself (synced flag is explicit).
+insertAscent:
+INSERT OR REPLACE INTO ascents(uuid, climb_uuid, angle, is_mirror,
+    attempt_id, bid_count, quality, difficulty, is_benchmark, comment, climbed_at, synced,
+    gym_uuid, wall_uuid, product_layout_uuid,
+    climb_name, difficulty_average, climb_frames, frames_count)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+deleteAscent:
+DELETE FROM ascents WHERE uuid = ?;
+
+-- Increment row_version on every user edit so concurrent sync snapshots go
+-- stale and markAscentSyncedIfUnchanged refuses to stamp.
+updateAscent:
+UPDATE ascents
+SET bid_count = ?, quality = ?, comment = ?, synced = 0, row_version = row_version + 1
+WHERE uuid = ?;
+
+-- ═══ UUID lookups (for browser status filter) ═══
+
+getUserSentClimbUuids:
+SELECT DISTINCT climb_uuid FROM ascents;
+
+-- ═══ Logbook queries (denormalized — no JOINs needed) ═══
+
+getUserAscentsAll:
+SELECT * FROM ascents ORDER BY climbed_at DESC;
+
+getUserAscentsBetween:
+SELECT * FROM ascents WHERE climbed_at >= ? AND climbed_at <= ? ORDER BY climbed_at ASC;
+
+-- Combined logbook: ascents + bids (paginated)
+getUserLogbookPage:
+SELECT uuid, climb_uuid, angle, is_mirror,
+       bid_count, quality, difficulty, comment, climbed_at,
+       climb_name, climb_frames, frames_count,
+       difficulty_average, 1 AS is_send
+FROM ascents
+UNION ALL
+SELECT uuid, climb_uuid, angle, is_mirror,
+       bid_count, NULL, NULL, comment, climbed_at,
+       climb_name, '' AS climb_frames, 1 AS frames_count,
+       difficulty_average, 0 AS is_send
+FROM bids
+ORDER BY climbed_at DESC
+LIMIT :limit OFFSET :offset;
+
+-- Combined logbook: all entries (light, no frames)
+getUserLogbookAllLight:
+SELECT uuid, climb_uuid, angle, is_mirror,
+       bid_count, quality, difficulty, comment, climbed_at,
+       climb_name, '' AS climb_frames, frames_count,
+       difficulty_average, 1 AS is_send
+FROM ascents
+UNION ALL
+SELECT uuid, climb_uuid, angle, is_mirror,
+       bid_count, NULL, NULL, comment, climbed_at,
+       climb_name, '' AS climb_frames, 1 AS frames_count,
+       difficulty_average, 0 AS is_send
+FROM bids
+ORDER BY climbed_at DESC;
+
+-- Per-climb history
+getUserHistoryForClimb:
+SELECT uuid, climb_uuid, angle, is_mirror,
+       bid_count, quality, difficulty, comment, climbed_at,
+       climb_name, climb_frames, frames_count,
+       difficulty_average, 1 AS is_send
+FROM ascents WHERE climb_uuid = :climbUuid
+UNION ALL
+SELECT uuid, climb_uuid, angle, is_mirror,
+       bid_count, NULL, NULL, comment, climbed_at,
+       climb_name, '' AS climb_frames, 1 AS frames_count,
+       difficulty_average, 0 AS is_send
+FROM bids WHERE climb_uuid = :climbUuid
+ORDER BY climbed_at DESC;
+
+-- Combined count
+countUserLogbook:
+SELECT (SELECT COUNT(*) FROM ascents) + (SELECT COUNT(*) FROM bids);
+
+-- ═══ Difficulty queries (for grade pyramid) ═══
+
+getUserSendDifficulties:
+SELECT difficulty_average FROM ascents WHERE climbed_at >= ?;
+
+-- ═══ Repeat count (for browser sort-by-repeats) ═══
+
+getRepeatCounts:
+SELECT climb_uuid, COUNT(*) AS repeat_count FROM ascents GROUP BY climb_uuid;
+
+-- ═══ Kilter sync ═══
+
+getUnsyncedAscents:
+SELECT * FROM ascents WHERE synced = 0;
+
+-- Optimistic mark: only stamp synced=1 when the captured row_version still
+-- matches. If the user edited the row during the upload window row_version
+-- has advanced; the UPDATE touches zero rows and the next sync re-uploads.
+markAscentSyncedIfUnchanged:
+UPDATE ascents SET synced = 1 WHERE uuid = ? AND row_version = ?;
+
+-- Number of rows affected by the last UPDATE on this connection. Scope per
+-- transaction to read immediately after [markAscentSyncedIfUnchanged] and
+-- tell applied marks from stale-snapshot skips.
+lastAscentChangeCount:
+SELECT changes();
+
+-- ═══ Denormalization refresh (after board sync) ═══
+
+updateAscentDenormalized:
+UPDATE ascents SET climb_name = ?, difficulty_average = ?, climb_frames = ?, frames_count = ?
+WHERE climb_uuid = ? AND angle = ?;
+
+-- ═══ Bulk operations ═══
+
+deleteAllAscents:
+DELETE FROM ascents;
+
+getAllAscentClimbKeys:
+SELECT DISTINCT climb_uuid, angle FROM ascents;
+
+-- ═══ FEAT-005 Aurora-JSON-import — INSERT-or-skip on external_id ═══
+
+-- Idempotent insert: a row with the same external_id is silently
+-- skipped via the partial UNIQUE INDEX. Distinct from `insertAscent`'s
+-- INSERT OR REPLACE because re-imports must not clobber locally-edited
+-- comments / quality on the already-imported row.
+insertAuroraAscent:
+INSERT OR IGNORE INTO ascents(uuid, climb_uuid, angle, is_mirror,
+    attempt_id, bid_count, quality, difficulty, is_benchmark, comment, climbed_at, synced,
+    gym_uuid, wall_uuid, product_layout_uuid,
+    climb_name, difficulty_average, climb_frames, frames_count,
+    external_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+countAscentsWithExternalIdPrefix:
+SELECT COUNT(*) FROM ascents WHERE external_id LIKE ?;

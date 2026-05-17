@@ -1,0 +1,25 @@
+-- Migration version 6 → 7: stale-event guard on the `nostr_profiles`
+-- cache.
+--
+-- Pre-fix the upsert was `INSERT OR REPLACE`, which blindly overwrote
+-- the cache row regardless of which Kind-0 event was the freshest.
+-- Combined with `firstOrNull()` in `fetchProfileFromRelays`, a
+-- mis-configured or hostile relay that races to deliver an older
+-- Kind-0 first could pin the user's cached `lud16` to a stale
+-- (potentially attacker-controlled) lightning address — zaps would
+-- then route to that wallet until the next cache eviction (which
+-- doesn't happen on its own).
+--
+-- The new column persists `event.createdAt` (Unix seconds) of the
+-- Kind-0 the row was built from. The upsert query (`upsert` in
+-- `NostrProfiles.sq`) becomes `INSERT … ON CONFLICT … WHERE excluded
+-- .last_event_created_at > IFNULL(existing.last_event_created_at, 0)`
+-- so older events are silently rejected. Mirrors the stale-event
+-- guard already in place for `climbs` (Board.sq getClimbCreatedAt /
+-- isExistingNewer in CommunityClimbSubscriber).
+--
+-- Existing rows get NULL for the new column; the IFNULL(0) clause in
+-- the upsert query treats them as "freshness unknown" and lets any
+-- subsequent Kind-0 event populate the field.
+
+ALTER TABLE nostr_profiles ADD COLUMN last_event_created_at INTEGER;

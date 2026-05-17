@@ -1,0 +1,30 @@
+-- Migration version 9 → 10: per-attempt Kilter-publish history.
+--
+-- The `climbs` row carries four mutable single-value columns
+-- (kilter_status, kilter_synced_at, kilter_publish_via, kilter_error)
+-- that every retry tick overwrites in place. After three failed retries
+-- the row preserves only the most recent error string — earlier
+-- failures, the first-attempt timestamp, and the attempt count are all
+-- lost. That makes "this climb never landed on Kilter, why?" support
+-- requests unanswerable.
+--
+-- This migration adds a per-attempt audit-history table next to
+-- `climbs`. The single-value columns stay (latest-status fast-read is
+-- still useful) — the new table augments rather than replaces them.
+
+CREATE TABLE kilter_publish_attempts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    climb_uuid TEXT NOT NULL,
+    -- Wall-clock millis of the attempt. Not foreign-keyed so that a
+    -- climb deletion can leave the audit trail intact (FK CASCADE here
+    -- would defeat the audit purpose); orphan rows are cheap and
+    -- harmless.
+    attempted_at INTEGER NOT NULL,
+    op TEXT NOT NULL,                 -- 'create' | 'update'
+    via TEXT NOT NULL,                -- 'self' | 'cruxcoach'
+    outcome TEXT NOT NULL,            -- 'success' | 'transient' | 'permanent' | 'rate_limited' | 'auth' | 'skipped'
+    http_code INTEGER,                -- NULL when no HTTP round-trip happened (skipped, network error)
+    error_excerpt TEXT                -- bounded by KilterApiClient.MAX_ERR_BODY at the boundary
+);
+
+CREATE INDEX idx_kilter_attempts_climb ON kilter_publish_attempts(climb_uuid, attempted_at DESC);

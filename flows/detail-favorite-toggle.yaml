@@ -1,0 +1,25 @@
+appId: com.cruxcoach.android
+name: detail-favorite-toggle
+tags:
+  - smoke
+  - mutates-state
+---
+# Toggle the favorite star on a climb-detail screen and verify the
+# content-desc flips. Untoggle so the flow leaves no state behind.
+# Combined with detail-favorite-toggle.expects (PERF NAV markers
+# proving climb-detail navigation, not setter-detail).
+- launchApp:
+    stopApp: false
+- waitForAnimationToEnd:
+    timeout: 5000
+- tapOn:
+    text: "[0-9]+ Züge"
+    index: 0
+- assertVisible: "Zurück"
+- tapOn: "Zu Favoriten hinzufügen"
+- assertVisible: "Von Favoriten entfernen"
+# Idempotency cleanup.
+- tapOn: "Von Favoriten entfernen"
+- assertVisible: "Zu Favoriten hinzufügen"
+- pressKey: Back
+- assertVisible: "Filter"

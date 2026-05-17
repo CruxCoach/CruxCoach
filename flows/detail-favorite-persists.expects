@@ -1,0 +1,7 @@
+# Both ClimbDetail navigations log the NAV markers — verifies we
+# actually landed on the climb-detail screen both times (not
+# setter-detail or some other screen that happens to show the
+# favorite icon).
+🧭 NAV START: BoardBrowser → ClimbDetail\(
+🧭 .*BoardClimbDetailVM\.init start
+🧭 .*NAV COMPLETE: BoardClimbDetail\(

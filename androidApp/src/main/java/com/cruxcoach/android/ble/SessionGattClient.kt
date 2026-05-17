@@ -31,7 +31,7 @@ enum class SessionClientState { DISCONNECTED, CONNECTING, CONNECTED }
  * Connects to the host's GATT server, subscribes to notifications,
  * and sends commands.
  *
- * Follows the same patterns as [AuroraBleConnection]:
+ * Follows the same patterns as [BoardBleConnection]:
  * - Mutex + CompletableDeferred for write flow control
  * - Main-thread GATT operations
  * - Explicit disconnect/close lifecycle

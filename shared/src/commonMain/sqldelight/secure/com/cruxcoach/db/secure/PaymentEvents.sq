@@ -1,0 +1,25 @@
+CREATE TABLE payment_events (
+    id TEXT NOT NULL PRIMARY KEY,
+    type TEXT NOT NULL,
+    direction TEXT NOT NULL,
+    sender_pubkey TEXT NOT NULL,
+    recipient_pubkey TEXT NOT NULL,
+    event_id TEXT,
+    amount_sats INTEGER NOT NULL,
+    message TEXT,
+    created_at INTEGER NOT NULL
+);
+
+CREATE INDEX idx_payment_events_recipient ON payment_events(recipient_pubkey);
+CREATE INDEX idx_payment_events_ref ON payment_events(event_id);
+
+insert:
+INSERT OR IGNORE INTO payment_events(id, type, direction, sender_pubkey, recipient_pubkey, event_id, amount_sats, message, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+getAll:
+SELECT * FROM payment_events ORDER BY created_at DESC;
+
+getRecent:
+SELECT * FROM payment_events ORDER BY created_at DESC LIMIT ?;
+

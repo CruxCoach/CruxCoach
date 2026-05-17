@@ -44,12 +44,14 @@ fun SettingsScreen(
     onNavigateToAppShare: () -> Unit,
     onNavigateToImport: () -> Unit = {},
     onNavigateToExport: () -> Unit = {},
+    onNavigateToAuroraMigration: () -> Unit = {},
     onNavigateToChat: () -> Unit = {},
     onNavigateToAnnouncements: () -> Unit = {},
     onNavigateToBugReports: () -> Unit = {},
     onNavigateToFeatureRequests: () -> Unit = {},
     onNavigateToCrashReports: () -> Unit = {},
     onNavigateToKeyManagement: () -> Unit = {},
+    onNavigateToNostrProfile: () -> Unit = {},
     onDonateClick: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
     backupViewModel: BackupSettingsViewModel = hiltViewModel(),
@@ -122,14 +124,32 @@ fun SettingsScreen(
         LaunchedEffect(Unit) { viewModel.loadProductSizes() }
 
         if (showBoardModelDialog) {
-            // No onNavigateToSync — the sync card lives in the Data section
-            // on this very screen, so the dialog's DB-empty branch falls
-            // back to "Schließen"; the user scrolls to the sync card.
+            // Filter the size list to the active layout's product so a
+            // Homewall user doesn't see Original-board sizes (and vice
+            // versa). The active layout itself is picked one section
+            // higher via the KilterLayoutSection.
+            val activeProductId = when (state.boardLayoutId) {
+                com.cruxcoach.android.data.BoardConstants.KILTER_HOMEWALL_LAYOUT ->
+                    com.cruxcoach.android.data.BoardConstants.KILTER_HOMEWALL_PRODUCT_ID
+                else -> com.cruxcoach.android.data.BoardConstants.KILTER_PRODUCT_ID
+            }
+            val dbSizes = state.productSizes.filter { it.productId.toInt() == activeProductId }
+            // Pre-sync: fall back to hardcoded standard sizes so the
+            // user can still pick their physical board model. Board
+            // model is hardware knowledge — it doesn't need a network
+            // round-trip to be answered. Once the DB syncs, dbSizes
+            // becomes non-empty and replaces the fallback.
+            val filteredSizes = if (dbSizes.isNotEmpty()) {
+                dbSizes
+            } else {
+                com.cruxcoach.android.data.BoardConstants.KILTER_KNOWN_SIZES
+                    .filter { it.productId.toInt() == activeProductId }
+            }
             BoardModelSelectionDialog(
-                productSizes = state.productSizes,
+                productSizes = filteredSizes,
                 selectedId = state.boardProductSizeId,
                 onConfirm = { id ->
-                    val name = state.productSizes.find { it.id.toInt() == id }?.name ?: ""
+                    val name = filteredSizes.find { it.id.toInt() == id }?.name ?: ""
                     viewModel.updateBoardProductSize(id, name)
                     showBoardModelDialog = false
                 },
@@ -168,6 +188,11 @@ fun SettingsScreen(
             CollapsibleHeader(stringResource(R.string.settings_section_board), boardSettingsExpanded) { boardSettingsExpanded = !boardSettingsExpanded }
             AnimatedVisibility(visible = boardSettingsExpanded) {
                 Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    KilterLayoutSection(
+                        selectedLayoutId = state.boardLayoutId,
+                        onLayoutChange = { viewModel.updateBoardLayout(it) },
+                    )
+                    HorizontalDivider()
                     BoardModelSection(
                         boardModelName = state.boardProductSizeName,
                         onChangeModel = { showBoardModelDialog = true }
@@ -227,10 +252,12 @@ fun SettingsScreen(
                         onDismissPreview = { viewModel.dismissKilterPreview() },
                         onSyncNow = { viewModel.kilterSyncNow() },
                         onPushEnabledChanged = { viewModel.setKilterPushEnabled(it) },
+                        onClimbPublishEnabledChanged = { viewModel.setKilterClimbPublishEnabled(it) },
                         onDisconnect = { viewModel.kilterDisconnect() },
                         onShowDisconnectConfirm = { viewModel.showKilterDisconnectConfirm() },
                         onDismissDisconnectConfirm = { viewModel.dismissKilterDisconnectConfirm() },
-                        onDismissResult = { viewModel.dismissKilterResult() }
+                        onDismissResult = { viewModel.dismissKilterResult() },
+                        onRetryPublishQueueNow = { viewModel.retryKilterPublishQueueNow() },
                     )
                 }
             }
@@ -272,6 +299,7 @@ fun SettingsScreen(
                         deleteSuccess = state.deleteSuccess,
                         onNavigateToImport = onNavigateToImport,
                         onNavigateToExport = onNavigateToExport,
+                        onNavigateToAuroraMigration = onNavigateToAuroraMigration,
                         onDismissDeleteSuccess = { viewModel.dismissDeleteSuccess() },
                     )
                     HorizontalDivider()
@@ -335,7 +363,10 @@ fun SettingsScreen(
             CollapsibleHeader(stringResource(R.string.key_section_account_keys), accountExpanded) { accountExpanded = !accountExpanded }
             AnimatedVisibility(visible = accountExpanded) {
                 Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    AccountKeysSection(onNavigateToKeyManagement = onNavigateToKeyManagement)
+                    AccountKeysSection(
+                        onNavigateToKeyManagement = onNavigateToKeyManagement,
+                        onNavigateToNostrProfile = onNavigateToNostrProfile,
+                    )
                 }
             }
 
@@ -523,6 +554,13 @@ private fun localizedDeleteRemoteNote(note: DeleteRemoteNote): String = when (no
         stringResource(R.string.delete_remote_note_blossom_fully_rejected)
     is DeleteRemoteNote.BlossomPartial ->
         stringResource(R.string.delete_remote_note_blossom_partial, note.accepted, note.attempted)
+    is DeleteRemoteNote.TombstonePublishFailed ->
+        stringResource(
+            R.string.delete_remote_note_tombstone_publish_failed,
+            note.backupAccepted,
+            note.keyAccepted,
+            note.attempted,
+        )
     is DeleteRemoteNote.UnexpectedError ->
         stringResource(R.string.delete_remote_note_unexpected_error, note.type)
 }

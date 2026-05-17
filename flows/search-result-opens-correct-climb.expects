@@ -1,0 +1,11 @@
+# Verifies the tap on the search-result row routed to ClimbDetail
+# (not e.g. SetterDetail or a different climb's detail). The NAV
+# COMPLETE marker carries the climb's uuid; we don't pin a specific
+# uuid here because Kilter catalog uuids change with blob refreshes,
+# but the presence of the marker is enough alongside the assertVisible
+# of the climb name on the detail screen.
+🧭 NAV START: BoardBrowser → ClimbDetail\(
+🧭 .*BoardClimbDetailVM\.init start
+🧭 .*loadClimb start
+🧭 .*loadClimb complete
+🧭 .*NAV COMPLETE: BoardClimbDetail\(

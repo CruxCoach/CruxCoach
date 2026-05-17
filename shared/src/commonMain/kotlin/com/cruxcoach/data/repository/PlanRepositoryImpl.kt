@@ -11,8 +11,8 @@ class PlanRepositoryImpl(
 ) : PlanRepository {
 
     private val json = Json { ignoreUnknownKeys = true }
-    private val planQueries = database.trainingPlanQueries
-    private val sessionQueries = database.trainingSessionQueries
+    private val planQueries = database.trainingPlansQueries
+    private val sessionQueries = database.trainingSessionsQueries
 
     override fun getActivePlan(userId: Long): TrainingPlan? {
         return planQueries.getActivePlan(userId).executeAsOneOrNull()?.toDomain()
@@ -125,7 +125,7 @@ class PlanRepositoryImpl(
         }
     }
 
-    private fun com.cruxcoach.db.secure.TrainingPlan.toDomain(): TrainingPlan {
+    private fun com.cruxcoach.db.secure.Training_plans.toDomain(): TrainingPlan {
         return TrainingPlan(
             id = id,
             userId = user_id,
@@ -139,7 +139,7 @@ class PlanRepositoryImpl(
         )
     }
 
-    private fun com.cruxcoach.db.secure.TrainingSession.toDomain(): PlannedSession {
+    private fun com.cruxcoach.db.secure.Training_sessions.toDomain(): PlannedSession {
         return PlannedSession(
             id = id,
             planId = plan_id,

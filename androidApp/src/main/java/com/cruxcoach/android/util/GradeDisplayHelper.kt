@@ -52,7 +52,7 @@ object GradeDisplayHelper {
     }
 
     /**
-     * Format an Aurora difficulty_average value according to selected scale.
+     * Format a Kilter difficulty_average value according to selected scale.
      * Both modes use ROUND(difficulty) → lookup, matching the Kilter Board app exactly.
      */
     fun formatDifficulty(diffAvg: Double, scale: GradeScale): String {
@@ -73,7 +73,7 @@ object GradeDisplayHelper {
     }
 
     /**
-     * Format an Aurora difficulty with detailed raw value.
+     * Format a Kilter difficulty with detailed raw value.
      */
     fun formatDifficultyDetailed(diffAvg: Double, scale: GradeScale): String {
         val grade = formatDifficulty(diffAvg, scale)

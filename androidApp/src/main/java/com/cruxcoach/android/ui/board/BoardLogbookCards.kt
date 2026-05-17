@@ -19,13 +19,13 @@ import com.cruxcoach.android.R
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.ui.theme.*
 import com.cruxcoach.android.util.GradeDisplayHelper
-import com.cruxcoach.data.repository.AuroraAscentWithClimb
+import com.cruxcoach.data.repository.AscentWithClimb
 import com.cruxcoach.domain.board.IntensityZones
 import java.time.LocalDate
 
 @Composable
 internal fun AscentCard(
-    ascent: AuroraAscentWithClimb,
+    ascent: AscentWithClimb,
     gradeScale: GradeScale,
     zones: IntensityZones? = null,
     isSelected: Boolean,

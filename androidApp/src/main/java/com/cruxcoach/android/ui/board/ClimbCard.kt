@@ -23,15 +23,15 @@ import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.*
 import com.cruxcoach.android.util.GradeDisplayHelper
-import com.cruxcoach.data.repository.AuroraClimbWithStats
+import com.cruxcoach.data.repository.ClimbWithStats
 import com.cruxcoach.domain.board.IntensityZones
 
 @Composable
 internal fun ClimbCard(
-    climb: AuroraClimbWithStats,
+    climb: ClimbWithStats,
     gradeScale: GradeScale = GradeScale.V_SCALE,
     zones: IntensityZones? = null,
-    onSetterClick: ((String) -> Unit)? = null,
+    onNavigateToSetter: ((pubkey: String) -> Unit)? = null,
     onClimbClick: (String) -> Unit
 ) {
     // Cache computed values — estimateMoveCount() parses the frames string (expensive),
@@ -76,22 +76,78 @@ internal fun ClimbCard(
             Spacer(modifier = Modifier.width(12.dp))
 
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    climb.name,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Text(
+                        climb.name,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    // "Entwurf" badge: source='local' is a NECESSARY condition
+                    // (the row was authored here) but not SUFFICIENT — once
+                    // the climb has been Nostr-published, sync_status flips
+                    // to 'published_nostr' (or 'published_kilter'/'..._both')
+                    // and the badge becomes misleading. Pre-fix the badge
+                    // also showed for already-published own climbs because
+                    // markClimbPublishedNostr only updates sync_status, not
+                    // source. Treat 'draft' / 'failed' / NULL as still-a-draft.
+                    val showDraftBadge = climb.source == "local" &&
+                        (climb.syncStatus == null ||
+                         climb.syncStatus == "draft" ||
+                         climb.syncStatus == "failed")
+                    if (climb.name.startsWith("TEST-")) {
+                        android.util.Log.d("ClimbCard", "badge-eval name=${climb.name} source=${climb.source} sync_status=${climb.syncStatus} kilter_status=${climb.kilterStatus} → showDraft=$showDraftBadge")
+                    }
+                    if (showDraftBadge) {
+                        Surface(
+                            color = OrangeAccent.copy(alpha = 0.18f),
+                            contentColor = OrangeAccent,
+                            shape = RoundedCornerShape(4.dp),
+                        ) {
+                            Text(
+                                stringResource(R.string.climb_card_draft_badge),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    climb.setterUsername?.let { setter ->
+                    // Setter line: prefer the Kind-0/setter_username already
+                    // resolved into the row; else fall back to a short
+                    // `npub:<…>` stub for cruxcoach/local rows so own drafts
+                    // and own published climbs always show *something* even
+                    // when the local Kind-0 profile hasn't been published
+                    // yet (cache miss → setter_username column is NULL).
+                    // Mirrors BoardClimbDetailViewModel.seedSetterProfile.
+                    val setterDisplay = climb.setterUsername?.takeIf { it.isNotBlank() }
+                        ?: if (climb.origin == "cruxcoach" || climb.source == "local") {
+                            climb.createdByPubkey?.takeIf { it.isNotBlank() }
+                                ?.let { "npub:${it.take(16)}" }
+                        } else null
+                    setterDisplay?.let { setter ->
+                        // Click behaviour mirrors BoardClimbDetailScreen:
+                        // only cruxcoach-origin rows with a known pubkey
+                        // navigate to the setter's profile. Native Kilter
+                        // rows render as plain unclickable text — no search-
+                        // bar trigger, no link affordance.
+                        val setterPubkey = climb.createdByPubkey?.takeIf { it.isNotBlank() }
+                        val isClickable = climb.origin == "cruxcoach"
+                            && setterPubkey != null
+                            && onNavigateToSetter != null
                         Text(
                             stringResource(R.string.board_climb_by_setter, setter),
                             style = MaterialTheme.typography.bodySmall,
-                            color = if (onSetterClick != null) OrangeAccent
+                            color = if (isClickable) OrangeAccent
                                     else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = if (onSetterClick != null) {
-                                Modifier.clickable { onSetterClick(setter) }
+                            modifier = if (isClickable) {
+                                Modifier.clickable { onNavigateToSetter!!(setterPubkey!!) }
                             } else Modifier
                         )
                     }

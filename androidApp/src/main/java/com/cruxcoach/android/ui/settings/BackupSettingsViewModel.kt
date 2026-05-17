@@ -141,6 +141,15 @@ class BackupSettingsViewModel @Inject constructor(
                 _state.update { it.copy(lastBackupIso = epoch?.toLocalizedDateTime()) }
             }
         }
+        // FEAT-021: surface the persisted backup interval so the UI shows
+        // the user's previously-picked cadence instead of the in-memory
+        // DAILY default that pre-fix made every cold start look like the
+        // user had picked Daily.
+        viewModelScope.launch {
+            preferences.backupInterval.collect { interval ->
+                _state.update { it.copy(interval = interval) }
+            }
+        }
         // hasNostrKey is a point-in-time check — the keystore doesn't
         // expose a Flow, but it only changes on identity switch which
         // forces an app restart (see A2 flow), so a single read on
@@ -173,6 +182,12 @@ class BackupSettingsViewModel @Inject constructor(
 
     fun setInterval(interval: SyncInterval) {
         viewModelScope.launch {
+            // FEAT-021: persist BEFORE updating state — the persisted
+            // value is what CruxCoachApp.onCreate reads on the next
+            // cold start to reschedule the periodic worker, so any
+            // in-memory state without a corresponding DataStore write
+            // is silently lost the moment the OS reclaims the process.
+            preferences.setBackupInterval(interval)
             _state.update { it.copy(interval = interval) }
             if (_state.value.backupEnabled) {
                 BackupSyncWorker.schedule(appContext, enabled = true, interval = interval)

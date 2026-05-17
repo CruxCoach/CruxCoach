@@ -147,6 +147,16 @@ class KilterSyncEngine @Inject constructor(
                         return@launch
                     }
                 }
+                // Backfill the display username if the cached value is
+                // stale (pre-fix login flow stored email-shaped
+                // preferred_username, which the publish-path now refuses
+                // to send to Kilter as a setter handle). Best-effort
+                // background fetch; failure leaves the cached email in
+                // place — the publish path's own email-shape guard
+                // surfaces the issue to the user via Snackbar instead
+                // of leaking PII silently.
+                runCatching { apiClient.refreshUsernameIfStale() }
+                    .onFailure { Log.w(TAG, "Username backfill failed (cached value will be re-checked next app-start)", it) }
 
                 // Download
                 val logsResult = apiClient.fetchLogs()
@@ -211,6 +221,11 @@ class KilterSyncEngine @Inject constructor(
             userPreferences.setKilterLastSync(timestamp)
 
             if (oneTimeOnly) {
+                // Revoke server-side before clearing locally so the
+                // 30-day Keycloak refresh token can't outlive the user's
+                // explicit "import once and disconnect" choice. Best-
+                // effort — failure here must not block the local clear.
+                runCatching { apiClient.revokeRefreshToken() }
                 tokenStore.clear()
                 userPreferences.setKilterSyncEnabled(false)
             } else {
@@ -249,7 +264,12 @@ class KilterSyncEngine @Inject constructor(
             Result.success(KilterSyncReport(downloaded, uploaded))
         } catch (e: Exception) {
             Log.e(TAG, "Sync failed", e)
-            if (e.message?.contains("Nicht angemeldet") == true) {
+            // Pre-fix this pattern-matched on `e.message?.contains("Nicht
+            // angemeldet")` — brittle to any i18n change of the (now
+            // typed) error. KilterApiClient throws KilterApiException
+            // with a typed reason, so we can dispatch on that directly.
+            if (e is KilterApiException &&
+                e.reason == KilterAuthResult.Error.Reason.NotAuthenticated) {
                 _sessionExpired.value = true
             }
             Result.failure(e)

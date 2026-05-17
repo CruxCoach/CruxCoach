@@ -119,6 +119,22 @@ sealed class DeleteRemoteNote {
     /** Partial Blossom success — at least one but not all. */
     data class BlossomPartial(val accepted: Int, val attempted: Int) : DeleteRemoteNote()
 
+    /**
+     * Tombstone Kind-30078 (the replaceable-event replacement that hides
+     * the live pointer / key event from any future restore_check) failed
+     * to land on at least one relay for at least one of the two d-tags.
+     * Without a tombstone on every relay, a cross-device restore could
+     * still find the original ciphertext-bearing pointer there. Surfaced
+     * as a hard "retry" hint because — unlike NIP-09, which third-party
+     * relays may silently drop — replaceable-event replacement is core
+     * NIP-01 and a 0-accept means the publish itself didn't reach anyone.
+     */
+    data class TombstonePublishFailed(
+        val backupAccepted: Int,
+        val keyAccepted: Int,
+        val attempted: Int,
+    ) : DeleteRemoteNote()
+
     /** Catch-all for an unexpected throwable (carries `e.javaClass.simpleName`). */
     data class UnexpectedError(val type: String) : DeleteRemoteNote()
 }

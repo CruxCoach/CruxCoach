@@ -2,7 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Internet access for Aurora board sync -->
+    <!-- Internet access for Kilter Board sync -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
@@ -98,6 +98,22 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="cruxcoach" android:host="import-board-db" />
+            </intent-filter>
+            <!-- Android App Link: https://${appLinkHost}/c/<naddr> opens the
+                 climb directly in the app when installed (verified via
+                 https://${appLinkHost}/.well-known/assetlinks.json).
+                 Falls back to browser when the app isn't installed or the
+                 verification has not completed yet. The host is supplied
+                 by build.gradle.kts via manifestPlaceholders["appLinkHost"]
+                 so forks override it from local.properties without
+                 editing the manifest. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https"
+                      android:host="${appLinkHost}"
+                      android:pathPrefix="/c/" />
             </intent-filter>
         </activity>
 

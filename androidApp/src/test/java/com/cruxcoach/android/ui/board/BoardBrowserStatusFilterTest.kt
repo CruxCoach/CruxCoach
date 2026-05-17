@@ -2,7 +2,8 @@ package com.cruxcoach.android.ui.board
 
 import com.cruxcoach.android.fakes.FakeBoardRepository
 import com.cruxcoach.android.fakes.FakePersonalBoardRepository
-import com.cruxcoach.data.repository.AuroraClimbWithStats
+import com.cruxcoach.android.fakes.TestClimb
+import com.cruxcoach.data.repository.ClimbWithStats
 import com.cruxcoach.data.repository.ClimbSortField
 import com.cruxcoach.data.repository.ClimbTypeFilter
 import com.cruxcoach.data.repository.SortDirection
@@ -26,17 +27,15 @@ class BoardBrowserStatusFilterTest {
         name: String = "Climb $uuid",
         difficulty: Double = 10.0,
         quality: Double = 3.0,
-        ascensionists: Long = 100
-    ) = AuroraClimbWithStats(
-        uuid = uuid,
-        layoutId = 1,
-        setterUsername = "setter",
-        name = name,
+        ascensionists: Long = 100,
+    ): ClimbWithStats = TestClimb.stats(
+        uuid = uuid, name = name, difficulty = difficulty,
+        quality = quality, ascensionists = ascensionists,
+        // Preserve this file's pre-dedupe defaults (empty frames was a
+        // quirk that several status-filter assertions implicitly relied
+        // on — keep it explicit instead of inheriting TestClimb's
+        // shared default).
         frames = "",
-        framesCount = 1,
-        difficultyAverage = difficulty,
-        qualityAverage = quality,
-        ascensionistCount = ascensionists
     )
 
     // ── getClimbsByUuids in FakeBoardRepository ──────────────────
@@ -242,7 +241,7 @@ class BoardBrowserStatusFilterTest {
     fun `sort handles null difficulty gracefully`() {
         val climbs = listOf(
             climb("a", difficulty = 10.0),
-            AuroraClimbWithStats(
+            ClimbWithStats(
                 uuid = "b", layoutId = 1, setterUsername = null, name = "NoDiff",
                 frames = "", framesCount = 1, difficultyAverage = null,
                 qualityAverage = null, ascensionistCount = 0
@@ -282,19 +281,11 @@ class BoardBrowserStatusFilterTest {
         assertEquals(sentUuids.size.toLong(), sentClimbs.size.toLong())
     }
 
-    // ── Helper: mirrors the ViewModel's sortInKotlin ─────────────
+    // ── Helper: delegates to the production sort so any drift in the
+    //     ViewModel's sort logic is caught by these tests instead of
+    //     hidden behind a copy. ────────────────────────────────────
 
     private fun sortInKotlin(
-        climbs: List<AuroraClimbWithStats>, field: ClimbSortField, dir: SortDirection
-    ): List<AuroraClimbWithStats> {
-        val comparator = when (field) {
-            ClimbSortField.QUALITY -> compareBy<AuroraClimbWithStats> { it.qualityAverage ?: 0.0 }
-            ClimbSortField.DIFFICULTY -> compareBy { it.difficultyAverage ?: 0.0 }
-            ClimbSortField.ASCENSIONISTS -> compareBy { it.ascensionistCount ?: 0L }
-            ClimbSortField.NAME -> compareBy(String.CASE_INSENSITIVE_ORDER) { it.name }
-            else -> compareBy { it.ascensionistCount ?: 0L }
-        }
-        return if (dir == SortDirection.DESC) climbs.sortedWith(comparator.reversed())
-        else climbs.sortedWith(comparator)
-    }
+        climbs: List<ClimbWithStats>, field: ClimbSortField, dir: SortDirection
+    ): List<ClimbWithStats> = boardBrowserSortInKotlin(climbs, field, dir)
 }

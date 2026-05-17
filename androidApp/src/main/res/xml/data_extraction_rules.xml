@@ -12,6 +12,8 @@
         <exclude domain="sharedpref" path="kilter_secure_prefs.xml"/>
         <exclude domain="sharedpref" path="amber_config.xml"/>
         <exclude domain="file" path="datastore"/>
+        <!-- Plain board catalog DB — see backup_rules.xml for rationale. -->
+        <exclude domain="database" path="cruxcoach.db"/>
     </cloud-backup>
     <device-transfer>
         <exclude domain="sharedpref" path="nostr_secure_prefs.xml"/>
@@ -20,5 +22,6 @@
         <exclude domain="sharedpref" path="kilter_secure_prefs.xml"/>
         <exclude domain="sharedpref" path="amber_config.xml"/>
         <exclude domain="file" path="datastore"/>
+        <exclude domain="database" path="cruxcoach.db"/>
     </device-transfer>
 </data-extraction-rules>

@@ -10,6 +10,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Create
 import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
@@ -49,6 +50,7 @@ import com.cruxcoach.android.ui.common.LocalSessionQueueManager
 import com.cruxcoach.android.ui.common.RestTimerBannerSlot
 import com.cruxcoach.android.ui.common.BleStatusArea
 import com.cruxcoach.android.ui.common.SyncStatusBannerSlot
+import com.cruxcoach.android.ui.board.sync.BoardSyncInlineCard
 import com.cruxcoach.android.ui.theme.*
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.util.GradeDisplayHelper
@@ -69,6 +71,8 @@ fun BoardBrowserScreen(
     onNavigateToLists: () -> Unit = {},
     onNavigateToSettings: () -> Unit = {},
     onNavigateToFilter: () -> Unit = {},
+    onNavigateToClimbCreator: () -> Unit = {},
+    onNavigateToSetter: (pubkey: String) -> Unit = {},
     viewModel: BoardBrowserViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -79,7 +83,7 @@ fun BoardBrowserScreen(
     var searchVisible by remember { mutableStateOf(false) }
     val queueManager = LocalSessionQueueManager.current
     val queueState by queueManager.state.collectAsStateWithLifecycle()
-    var lastEndedSession by remember { mutableStateOf<com.cruxcoach.data.repository.BoardSession?>(null) }
+    var lastEndedSession by remember { mutableStateOf<com.cruxcoach.data.repository.Board_sessions?>(null) }
 
     // Notification permission request (Android 13+)
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
@@ -333,7 +337,21 @@ fun BoardBrowserScreen(
                 CircularProgressIndicator(color = OrangeAccent)
             }
         } else if (!state.hasBoardData) {
-            NoBoardDataCard(onSyncClick = onNavigateToSync)
+            // Render the same inline sync UI the onboarding flow uses,
+            // instead of a static "go to settings" hint. The user can
+            // kick off the first Blossom sync, watch the import-step
+            // checklist, and resolve network/wifi prompts without
+            // leaving the browser. The empty-data state is the only
+            // path that ever reaches this branch — once the catalog
+            // is populated, the LazyColumn below takes over.
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp),
+            ) {
+                BoardSyncInlineCard(modifier = Modifier.fillMaxWidth())
+            }
         } else {
             // 2-button action bar (Session + Zufall) — only visible when no session is active
             if (!isSessionActive && !queueState.isActive && !queueState.isConnecting) {
@@ -476,20 +494,11 @@ fun BoardBrowserScreen(
                 val gradeScale = state.gradeScale
                 val zones = state.zones
                 // Stable lambda references — avoid new closures per item per recomposition.
-                // Using viewModel.state.value at click time ensures fresh data.
-                val onSetterClick = remember<(String) -> Unit>(viewModel) {
-                    { setter ->
-                        // Surfacing the search bar together with the query
-                        // is the point of the click: the setter name now
-                        // lives in the filter, so hiding the bar hides the
-                        // active filter too. Opening the bar whenever we
-                        // set a query makes the active scope self-evident
-                        // and gives the user the Clear-icon affordance
-                        // right next to the query instead of one lupe
-                        // click away.
-                        viewModel.updateSearchQuery(setter)
-                        searchVisible = true
-                    }
+                // Setter-link goes to SetterDetailScreen for cruxcoach rows
+                // with a known pubkey (decision lives inside ClimbCard).
+                // Foreign Kilter rows render the setter line unclickable.
+                val onSetterClickFromCard = remember<(String) -> Unit>(onNavigateToSetter) {
+                    { pubkey -> onNavigateToSetter(pubkey) }
                 }
                 val onClimbClick = remember<(String) -> Unit>(viewModel, onNavigateToClimb) {
                     { uuid ->
@@ -516,7 +525,7 @@ fun BoardBrowserScreen(
                             climb = climb,
                             gradeScale = gradeScale,
                             zones = zones,
-                            onSetterClick = onSetterClick,
+                            onNavigateToSetter = onSetterClickFromCard,
                             onClimbClick = onClimbClick
                         )
                     }
@@ -539,23 +548,36 @@ fun BoardBrowserScreen(
             }
         }
     }
-        // Floating search toggle (magnifying glass overlay, bottom-right)
+        // Floating action stack: Search (bottom) + Create-climb (top).
         if (state.hasBoardData) {
-            FloatingActionButton(
-                onClick = { searchVisible = !searchVisible },
-                containerColor = OrangeAccent,
-                contentColor = DarkBackground,
+            androidx.compose.foundation.layout.Column(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(16.dp)
-                    .testTag("board_search_fab")
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalAlignment = Alignment.End,
             ) {
-                Icon(
-                    if (searchVisible) Icons.Default.Clear else Icons.Default.Search,
-                    contentDescription = stringResource(
-                        if (searchVisible) R.string.cd_clear_search else R.string.board_browser_search_hint
+                FloatingActionButton(
+                    onClick = onNavigateToClimbCreator,
+                    containerColor = OrangeAccent,
+                    contentColor = DarkBackground,
+                    modifier = Modifier.testTag("board_create_fab")
+                ) {
+                    Icon(Icons.Default.Create, contentDescription = stringResource(R.string.climb_creator_open))
+                }
+                FloatingActionButton(
+                    onClick = { searchVisible = !searchVisible },
+                    containerColor = OrangeAccent,
+                    contentColor = DarkBackground,
+                    modifier = Modifier.testTag("board_search_fab")
+                ) {
+                    Icon(
+                        if (searchVisible) Icons.Default.Clear else Icons.Default.Search,
+                        contentDescription = stringResource(
+                            if (searchVisible) R.string.cd_clear_search else R.string.board_browser_search_hint
+                        )
                     )
-                )
+                }
             }
         }
     }

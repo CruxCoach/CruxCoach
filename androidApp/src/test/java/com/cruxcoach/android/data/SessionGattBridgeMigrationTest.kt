@@ -2,7 +2,7 @@ package com.cruxcoach.android.data
 
 import android.bluetooth.BluetoothDevice
 import android.content.Context
-import com.cruxcoach.android.ble.AuroraBleConnection
+import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.ClimbBleAdvertiser
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.ble.GattCommand
@@ -75,7 +75,7 @@ class SessionGattBridgeMigrationTest {
     private val mockGattClient = mockk<SessionGattClient>(relaxed = true)
     private val mockAdvertiser = mockk<ClimbBleAdvertiser>(relaxed = true)
     private val mockNearbyScanner = mockk<NearbyClimbScanner>(relaxed = true)
-    private val mockBleConnection = mockk<AuroraBleConnection>(relaxed = true)
+    private val mockBleConnection = mockk<BoardBleConnection>(relaxed = true)
     private val mockBoardRepository = mockk<BoardRepository>(relaxed = true)
     private val mockBoardStateManager = mockk<BoardStateManager>(relaxed = true)
     private val mockClimbNameResolver = mockk<ClimbNameResolver>(relaxed = true)
@@ -99,7 +99,7 @@ class SessionGattBridgeMigrationTest {
     private val serverConnectionEventsFlow =
         MutableSharedFlow<GattConnectionEvent>(extraBufferCapacity = 4)
 
-    // Controllable flow for AuroraBleConnection
+    // Controllable flow for BoardBleConnection
     private val bleConnectionStateFlow = MutableStateFlow(ConnectionState.DISCONNECTED)
 
     private lateinit var bridge: SessionGattBridge
@@ -230,7 +230,7 @@ class SessionGattBridgeMigrationTest {
      * nearbySessions, and migration filters it out correctly.
      */
     @Test
-    fun `migration promotes to host when only old host session is visible`() = runTest {
+    fun `migration promotes to host when only old host session is visible`() = runTest(testDispatcher.scheduler) {
         val hostDevice = mockDevice("AA:BB:CC:DD:EE:01")
         val hostSessionId = 12345
 
@@ -261,7 +261,7 @@ class SessionGattBridgeMigrationTest {
      * the participant must join it instead of self-promoting.
      */
     @Test
-    fun `migration joins new host session instead of self-promoting`() = runTest {
+    fun `migration joins new host session instead of self-promoting`() = runTest(testDispatcher.scheduler) {
         val oldHostDevice = mockDevice("AA:BB:CC:DD:EE:01")
         val oldHostSessionId = 11111
 
@@ -304,7 +304,7 @@ class SessionGattBridgeMigrationTest {
      * stranded with an error. Migration must be retried so a successor host can emerge.
      */
     @Test
-    fun `failed migration join does not produce error and keeps queue intact`() = runTest {
+    fun `failed migration join does not produce error and keeps queue intact`() = runTest(testDispatcher.scheduler) {
         val hostDevice = mockDevice("AA:BB:CC:DD:EE:01")
         val hostSessionId = 99999
 
@@ -338,7 +338,7 @@ class SessionGattBridgeMigrationTest {
      * immediately rather than waiting and self-promoting to host with nothing to play.
      */
     @Test
-    fun `migration ends queue immediately when queue is empty`() = runTest {
+    fun `migration ends queue immediately when queue is empty`() = runTest(testDispatcher.scheduler) {
         val hostDevice = mockDevice("AA:BB:CC:DD:EE:01")
         nearbySessionsFlow.value = listOf(makeSession(55555, "AA:BB:CC:DD:EE:01", hostDevice))
 
@@ -367,7 +367,7 @@ class SessionGattBridgeMigrationTest {
      * when X is the only nearby session across multiple retries.
      */
     @Test
-    fun `subsequent migration retries also filter the session that was last tried`() = runTest {
+    fun `subsequent migration retries also filter the session that was last tried`() = runTest(testDispatcher.scheduler) {
         val hostDevice = mockDevice("AA:BB:CC:DD:EE:01")
         val hostSessionId = 77777
 

@@ -1,8 +1,8 @@
 package com.cruxcoach.android.fakes
 
-import com.cruxcoach.data.repository.AuroraAscentWithClimb
-import com.cruxcoach.data.repository.BoardSession
-import com.cruxcoach.data.repository.ClimbList
+import com.cruxcoach.data.repository.AscentWithClimb
+import com.cruxcoach.data.repository.Board_sessions
+import com.cruxcoach.data.repository.Climb_lists
 import com.cruxcoach.data.repository.PersonalBoardRepository
 import com.cruxcoach.data.repository.RawAscent
 import com.cruxcoach.data.repository.RawBid
@@ -33,14 +33,14 @@ class FakePersonalBoardRepository : PersonalBoardRepository {
 
     override fun deleteAscent(uuid: String) {}
     override fun updateAscent(uuid: String, bidCount: Long, quality: Long?, comment: String?) {}
-    override fun getUserAscentsAll(): List<AuroraAscentWithClimb> = emptyList()
-    override fun getUserAscentsBetween(from: String, to: String): List<AuroraAscentWithClimb> = emptyList()
+    override fun getUserAscentsAll(): List<AscentWithClimb> = emptyList()
+    override fun getUserAscentsBetween(from: String, to: String): List<AscentWithClimb> = emptyList()
     override fun getUserSentClimbUuids(): Set<String> = sentUuids
     override fun getUserAttemptedClimbUuids(): Set<String> = attemptedUuids - sentUuids
     override fun getUserSendDifficulties(since: String): List<Double> = emptyList()
-    override fun getUserLogbookPage(limit: Int, offset: Int): List<AuroraAscentWithClimb> = emptyList()
-    override fun getUserLogbookAllLight(): List<AuroraAscentWithClimb> = emptyList()
-    override fun getUserHistoryForClimb(climbUuid: String): List<AuroraAscentWithClimb> = emptyList()
+    override fun getUserLogbookPage(limit: Int, offset: Int): List<AscentWithClimb> = emptyList()
+    override fun getUserLogbookAllLight(): List<AscentWithClimb> = emptyList()
+    override fun getUserHistoryForClimb(climbUuid: String): List<AscentWithClimb> = emptyList()
     override fun countUserLogbook(): Long = 0L
     override fun getRepeatCounts(): Map<String, Long> = emptyMap()
     override fun getUnsyncedAscents(): List<RawAscent> = emptyList()
@@ -65,17 +65,17 @@ class FakePersonalBoardRepository : PersonalBoardRepository {
     // -- Board session queries --
 
     override fun insertBoardSession(startedAt: String, endedAt: String?, totalDurationSeconds: Long, pauseDurationSeconds: Long, ascentCount: Long, bidCount: Long): Long = 1L
-    override fun getRecentBoardSessions(limit: Int): List<BoardSession> = emptyList()
-    override fun getActiveSession(): BoardSession? = null
+    override fun getRecentBoardSessions(limit: Int): List<Board_sessions> = emptyList()
+    override fun getActiveSession(): Board_sessions? = null
     override fun updateActiveSession(id: Long, ascentCount: Long, bidCount: Long, pauseDurationSeconds: Long, totalDurationSeconds: Long) {}
     override fun endBoardSession(id: Long, endedAt: String, totalDurationSeconds: Long, pauseDurationSeconds: Long, ascentCount: Long, bidCount: Long) {}
-    override fun getAllBoardSessions(): List<BoardSession> = emptyList()
+    override fun getAllBoardSessions(): List<Board_sessions> = emptyList()
 
     // -- Climb list queries --
 
     override fun ensureFavoritesListExists(): Long = 1L
-    override fun getAllClimbLists(): List<ClimbList> = emptyList()
-    override fun getClimbListById(id: Long): ClimbList? = null
+    override fun getAllClimbLists(): List<Climb_lists> = emptyList()
+    override fun getClimbListById(id: Long): Climb_lists? = null
     override fun createClimbList(name: String): Long = 1L
     override fun renameClimbList(id: Long, name: String) {}
     override fun deleteClimbList(id: Long) {}

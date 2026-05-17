@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
@@ -17,8 +18,15 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.automirrored.filled.Login
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.*
+import com.cruxcoach.android.ui.aurora.AuroraMigrationViewModel
+import com.cruxcoach.android.ui.aurora.MigrationFlowContent
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -70,7 +78,7 @@ fun OnboardingScreen(
             label = "onboarding_step",
         ) { step ->
             when (step) {
-                OnboardingStep.BOARD_SETUP -> BoardSetupStep()
+                OnboardingStep.BOARD_SETUP -> BoardSetupStep(state, viewModel)
                 OnboardingStep.PRIVACY -> PrivacyStep(state, viewModel, onNavigateToKeyManagement)
                 OnboardingStep.KILTER -> KilterStep(state, viewModel)
             }
@@ -193,15 +201,44 @@ fun OnboardingScreen(
     state.pendingRestore?.let { info ->
         val sizeKb = info.pointer.size / 1024
         AlertDialog(
-            onDismissRequest = { viewModel.dismissOnboardingRestore() },
+            onDismissRequest = {
+                if (!state.restoreInProgress) viewModel.dismissOnboardingRestore()
+            },
             title = { Text(stringResource(R.string.settings_backup_restore_dialog_title)) },
             text = {
-                Text(
-                    stringResource(
-                        R.string.onboarding_restore_dialog_body,
-                        if (sizeKb < 1024) "$sizeKb KB" else "${sizeKb / 1024} MB",
-                    ),
-                )
+                if (state.restoreInProgress) {
+                    // Phase-aware progress copy. The restore pipeline
+                    // blocks on the board-sync gate during the climbs-
+                    // table import; without explicit copy the dialog
+                    // looked frozen for the 1–3 minutes the gate took
+                    // on a fresh install (Blossom CDN download +
+                    // decompression + bulk insert of ~190K climbs).
+                    androidx.compose.foundation.layout.Row(
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp),
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            strokeWidth = 2.dp,
+                        )
+                        Text(
+                            stringResource(
+                                if (state.restoreAwaitingBoardSync) {
+                                    R.string.onboarding_restore_progress_awaiting_board_sync
+                                } else {
+                                    R.string.onboarding_restore_progress_active
+                                },
+                            ),
+                        )
+                    }
+                } else {
+                    Text(
+                        stringResource(
+                            R.string.onboarding_restore_dialog_body,
+                            if (sizeKb < 1024) "$sizeKb KB" else "${sizeKb / 1024} MB",
+                        ),
+                    )
+                }
             },
             confirmButton = {
                 Button(
@@ -237,7 +274,33 @@ fun OnboardingScreen(
 // ─── Step 1: Board setup (with inline welcome header) ─────────────────────
 
 @Composable
-private fun BoardSetupStep() {
+private fun BoardSetupStep(
+    state: OnboardingState,
+    viewModel: OnboardingViewModel,
+) {
+    var showBoardModelDialog by rememberSaveable { mutableStateOf(false) }
+    val activeProductId = when (state.boardLayoutId) {
+        com.cruxcoach.android.data.BoardConstants.KILTER_HOMEWALL_LAYOUT ->
+            com.cruxcoach.android.data.BoardConstants.KILTER_HOMEWALL_PRODUCT_ID
+        else -> com.cruxcoach.android.data.BoardConstants.KILTER_PRODUCT_ID
+    }
+    if (showBoardModelDialog) {
+        // Always-available pre-sync via KILTER_KNOWN_SIZES — board model
+        // is hardware knowledge that doesn't need a sync round-trip.
+        val sizes = com.cruxcoach.android.data.BoardConstants.KILTER_KNOWN_SIZES
+            .filter { it.productId.toInt() == activeProductId }
+        com.cruxcoach.android.ui.settings.BoardModelSelectionDialog(
+            productSizes = sizes,
+            selectedId = state.boardProductSizeId,
+            onConfirm = { id ->
+                val name = sizes.find { it.id.toInt() == id }?.name ?: ""
+                viewModel.updateBoardProductSize(id, name)
+                showBoardModelDialog = false
+            },
+            onDismiss = { showBoardModelDialog = false },
+        )
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -284,6 +347,20 @@ private fun BoardSetupStep() {
             }
         }
 
+        // Board-model picker first — hardware knowledge doesn't need
+        // a sync round-trip. The user picks Original/Homewall + size,
+        // then triggers the sync that downloads the matching catalog.
+        com.cruxcoach.android.ui.settings.KilterLayoutSection(
+            selectedLayoutId = state.boardLayoutId,
+            onLayoutChange = { viewModel.updateBoardLayout(it) },
+        )
+        com.cruxcoach.android.ui.settings.BoardModelSection(
+            boardModelName = state.boardProductSizeName,
+            onChangeModel = { showBoardModelDialog = true },
+        )
+
+        HorizontalDivider()
+
         Text(
             stringResource(R.string.onboarding_board_setup_title),
             style = MaterialTheme.typography.titleMedium,
@@ -295,10 +372,16 @@ private fun BoardSetupStep() {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
-        // Inline sync card — no navigation hop. Handles "Jetzt laden",
-        // progress checklist, already-synced state, error + model-select
-        // dialogs without leaving the onboarding step.
-        BoardSyncInlineCard(modifier = Modifier.fillMaxWidth())
+        // Inline sync card — no navigation hop. Handles progress
+        // checklist, already-synced state, error + model-select dialogs
+        // without leaving the onboarding step. autoStartIfNeeded fires
+        // the download immediately so the user doesn't have to scroll
+        // and tap "Jetzt laden" — by the time they finish the intro
+        // text the chunks are already coming down.
+        BoardSyncInlineCard(
+            modifier = Modifier.fillMaxWidth(),
+            autoStartIfNeeded = true,
+        )
     }
 }
 
@@ -681,6 +764,14 @@ private fun KilterStep(state: OnboardingState, viewModel: OnboardingViewModel) {
             }
         }
 
+        // FEAT-005 — Aurora-from-old-Kilter migration tile. Tucked
+        // below the live OAuth card so the default path (sign in to
+        // the new Kilter API) still wins visually for the 95 % of
+        // users who never used Aurora.
+        AuroraOnboardingCard(
+            onClick = { viewModel.setAuroraSheetOpen(true) },
+        )
+
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = InfoBlue.copy(alpha = 0.1f)),
@@ -691,6 +782,78 @@ private fun KilterStep(state: OnboardingState, viewModel: OnboardingViewModel) {
                 modifier = Modifier.padding(12.dp),
                 style = MaterialTheme.typography.bodySmall,
                 color = InfoBlue,
+            )
+        }
+    }
+
+    if (state.auroraSheetOpen) {
+        AuroraMigrationBottomSheet(
+            onDismiss = { viewModel.setAuroraSheetOpen(false) },
+        )
+    }
+}
+
+@Composable
+private fun AuroraOnboardingCard(onClick: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() },
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+        ),
+        shape = RoundedCornerShape(16.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Icon(
+                Icons.Filled.SwapHoriz,
+                contentDescription = null,
+                tint = OrangeAccent,
+                modifier = Modifier.size(28.dp),
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    stringResource(R.string.onboarding_aurora_card_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    stringResource(R.string.onboarding_aurora_card_subtitle),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AuroraMigrationBottomSheet(
+    onDismiss: () -> Unit,
+    auroraVm: AuroraMigrationViewModel = hiltViewModel(),
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val auroraState by auroraVm.state.collectAsStateWithLifecycle()
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            MigrationFlowContent(
+                state = auroraState,
+                onPickFile = auroraVm::importFromUri,
+                onReset = auroraVm::reset,
             )
         }
     }

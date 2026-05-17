@@ -2,6 +2,175 @@
 <resources>
     <string name="app_name">CruxCoach</string>
 
+    <!-- Climb Creator (FEAT-003) -->
+    <string name="climb_creator_title">Neuer Climb</string>
+    <string name="climb_creator_open">Neuen Climb erstellen</string>
+    <string name="climb_creator_undo">Rückgängig</string>
+    <string name="climb_creator_redo">Wiederherstellen</string>
+    <string name="climb_creator_name">Name</string>
+    <string name="climb_creator_description">Beschreibung (optional)</string>
+    <string name="climb_creator_grade_label" formatted="false">Setter-Schwierigkeit · %1$s (%2$s)</string>
+    <string name="climb_creator_angle_label">Winkel</string>
+    <string name="climb_creator_angle_pick">Winkel wählen</string>
+    <string name="climb_creator_save_draft">Als Entwurf speichern</string>
+    <string name="climb_creator_publish">Veröffentlichen</string>
+    <string name="climb_creator_count_start" formatted="false">Start: %d</string>
+    <string name="climb_creator_count_hand" formatted="false">Griff: %d</string>
+    <string name="climb_creator_count_finish" formatted="false">Top: %d</string>
+    <string name="climb_creator_count_foot" formatted="false">Tritt: %d</string>
+    <string name="climb_creator_brush_hint_delete_mode">Kein Chip aktiv — Tippen löscht Griffe. Chip wählen, um zu setzen.</string>
+    <string name="climb_creator_valid">Alles gesetzt — bereit zum Veröffentlichen.</string>
+    <string name="climb_creator_issue_no_start">Mindestens einen Start-Griff (grün) setzen.</string>
+    <string name="climb_creator_issue_no_finish">Mindestens einen Top-Griff (magenta) setzen.</string>
+    <string name="climb_creator_issue_too_few_holds" formatted="false">Mindestens %d Griffe nötig (Start + Top + min. ein Griff dazwischen).</string>
+    <string name="climb_creator_issue_too_many_holds" formatted="false">Zu viele Griffe: max. %d.</string>
+    <string name="climb_creator_issue_too_many_starts" formatted="false">Zu viele Start-Griffe: %d (max. 2).</string>
+    <string name="climb_creator_issue_too_many_finishes" formatted="false">Zu viele Top-Griffe: %d (max. 2).</string>
+    <string name="climb_creator_issue_name_missing">Name ist erforderlich.</string>
+    <string name="climb_creator_issue_name_too_long" formatted="false">Name zu lang (max. %d Zeichen).</string>
+    <string name="climb_creator_issue_description_too_long" formatted="false">Beschreibung zu lang (max. %d Zeichen).</string>
+    <string name="climb_creator_issue_angle_missing">Brett-Winkel wählen.</string>
+    <string name="climb_creator_issue_grade_missing">Setter-Schwierigkeit wählen.</string>
+    <string name="climb_creator_grade_unset">Setter-Schwierigkeit · tippe auf den Schieber zum Setzen</string>
+    <string name="climb_creator_draft_saved">Entwurf gespeichert.</string>
+    <string name="climb_creator_also_post_note">Auch auf Nostr posten</string>
+    <string name="climb_creator_also_post_note_hint">Postet eine kurze Nachricht an deine Follower auf Nostr, die zurück auf den Climb verlinkt.</string>
+    <string name="auto_note_default_template">Ich habe einen neuen Boulder auf nostr:{npub_cruxcoach} veröffentlicht:\n\n{cruxcoach_url}\n\n#climbing #bouldering</string>
+    <string name="auto_note_setting_title">Neue Climbs auf Nostr posten</string>
+    <string name="auto_note_setting_body">Wenn aktiv, wird beim Veröffentlichen eines Climbs zusätzlich eine kurze Nachricht an deine Follower auf Nostr gepostet, die zurück auf den Climb verlinkt. Pro Climb im Editor übersteuerbar. Default aus.</string>
+    <string name="nostr_profile_subscriber_status_title">Community-Climb-Feed</string>
+    <string name="nostr_profile_subscriber_status_running_never">Verbunden — warte auf das erste Climb-Event…</string>
+    <string name="nostr_profile_subscriber_status_running_active_prefix">Verbunden — letztes Climb-Event</string>
+    <string name="nostr_profile_subscriber_status_stopped">Nicht verbunden</string>
+    <string name="nostr_profile_subscriber_status_failures" formatted="false">%1$d Fehler in Folge (zuletzt: %2$s)</string>
+    <string name="climb_creator_dup_title">Ein Climb mit diesen Holds existiert schon</string>
+    <string name="climb_creator_dup_message" formatted="false">Gleiches Griff-Layout wie „%s". Gleiche Griffe in anderem Winkel/Grade sind aber erlaubt.</string>
+    <string name="climb_creator_dup_continue">Weiter bearbeiten</string>
+    <string name="climb_creator_dup_publish_anyway">Trotzdem veröffentlichen</string>
+    <string name="climb_creator_drafts_open">Entwürfe öffnen</string>
+    <string name="climb_creator_drafts_title">Meine Entwürfe</string>
+    <string name="climb_creator_drafts_count" formatted="false">%d</string>
+    <string name="climb_creator_drafts_loading">Lade…</string>
+    <string name="climb_creator_drafts_empty">Noch keine Entwürfe. Speichere einen Climb, um ihn später weiter zu bearbeiten.</string>
+    <string name="climb_creator_drafts_unnamed">Unbenannter Climb</string>
+    <string name="climb_creator_drafts_holds" formatted="false">%d Griffe</string>
+    <string name="climb_creator_drafts_delete_title">Entwurf löschen?</string>
+    <string name="climb_creator_drafts_delete_message" formatted="false">„%s" wird endgültig entfernt.</string>
+    <string name="climb_creator_drafts_delete_action">Entwurf löschen</string>
+    <string name="climb_creator_drafts_delete_confirm">Löschen</string>
+    <string name="climb_creator_heatmap_toggle">Heatmap (häufige Griffe) ein/aus</string>
+    <string name="climb_creator_clear">Editor leeren</string>
+
+    <!-- Relative-time labels (Climb Creator + Drafts drawer) -->
+    <string name="relative_time_just_now">gerade eben</string>
+    <string name="relative_time_minutes_ago" formatted="false">vor %1$d min</string>
+    <string name="relative_time_hours_ago" formatted="false">vor %1$d h</string>
+    <string name="relative_time_days_ago" formatted="false">vor %1$d t</string>
+    <string name="climb_creator_save_failed">Entwurf konnte nicht gespeichert werden. Bitte versuche es erneut.</string>
+    <string name="climb_creator_publish_failed">Veröffentlichen fehlgeschlagen. Bitte versuche es erneut.</string>
+    <string name="climb_creator_publish_failed_will_retry">Kein Relay hat den Climb angenommen — der Entwurf bleibt gespeichert und CruxCoach versucht es im Hintergrund weiter.</string>
+    <string name="climb_creator_publish_waiting_for_sync">Board-Sync läuft — dein Climb wird veröffentlicht, sobald der Sync fertig ist.</string>
+    <string name="climb_creator_auto_note_text_label">Notiz-Text</string>
+    <string name="climb_creator_auto_note_placeholders_hint">Platzhalter bleiben unverändert: {name}, {naddr}, {npub_cruxcoach}, {cruxcoach_url}</string>
+    <string name="climb_creator_auto_note_zero_relays">Climb veröffentlicht, aber die Auto-Note hat kein Relay erreicht.</string>
+    <string name="climb_creator_publish_both_ok">Climb veröffentlicht auf Nostr und Kilter.</string>
+    <string name="climb_creator_publish_kilter_pending">Auf Nostr veröffentlicht — Kilter-Sync läuft im Hintergrund.</string>
+    <string name="climb_creator_drafts_load_failed">Entwürfe konnten nicht geladen werden. Bitte versuche es erneut.</string>
+    <string name="climb_creator_drafts_delete_failed">Entwurf konnte nicht gelöscht werden. Bitte versuche es erneut.</string>
+    <string name="climb_creator_load_failed">Editor konnte nicht geöffnet werden. Bitte versuche es erneut.</string>
+    <!-- Kilter authentication errors (KilterAuthResult.Error.Reason → user-visible) -->
+    <string name="kilter_auth_invalid_credentials">Ungültige Zugangsdaten.</string>
+    <string name="kilter_auth_empty_response">Kilter hat eine leere Antwort geliefert. Bitte versuche es erneut.</string>
+    <string name="kilter_auth_network_error">Verbindung zu Kilter fehlgeschlagen. Bitte prüfe deine Verbindung.</string>
+    <string name="kilter_auth_throttled" formatted="false">Zu viele Anmeldeversuche — bitte später erneut versuchen.</string>
+    <string name="kilter_auth_throttled_with_seconds" formatted="false">Zu viele Anmeldeversuche — bitte %1$d Sekunden warten.</string>
+    <string name="kilter_auth_not_authenticated">Nicht bei Kilter angemeldet.</string>
+    <string name="kilter_auth_invalid_jwt">Kilter hat ein unerwartetes Token geliefert. Bitte erneut versuchen.</string>
+    <string name="kilter_auth_http_failure" formatted="false">Anmeldung fehlgeschlagen (HTTP %1$d).</string>
+
+    <string name="kilter_publish_session_expired">Kilter-Sitzung abgelaufen — wird später wiederholt.</string>
+    <string name="kilter_publish_transient">Übertragung fehlgeschlagen — Versuch wird wiederholt.</string>
+    <string name="kilter_publish_diverged_with_code" formatted="false">Kilter erlaubt keine Änderung am bereits veröffentlichten Climb (%1$d).</string>
+    <string name="kilter_publish_rejected_with_code" formatted="false">Kilter hat den Climb abgelehnt (%1$d).</string>
+    <string name="climb_creator_remix_action">Climb remixen</string>
+    <string name="climb_creator_kilter_connect_nudge">Climb veröffentlicht (nur CruxCoach) — verbinde Kilter, damit er auch in der Kilter-App erscheint.</string>
+    <string name="climb_creator_kilter_connect_action">Verbinden</string>
+    <string name="climb_creator_edit_action">Climb bearbeiten</string>
+    <string name="community_climb_delete_action">Veröffentlichung löschen</string>
+    <string name="community_climb_delete_confirm_title">Diesen Climb löschen?</string>
+    <string name="community_climb_delete_confirm_nostr_only">Dein Climb wird aus CruxCoach entfernt und eine Löschung wird an die Nostr-Relays gesendet. Lokal verschwindet er sofort; bei den Relays kann es ein paar Minuten dauern.</string>
+    <string name="community_climb_delete_confirm_kilter_warning">Dein Climb wird aus CruxCoach entfernt und eine Löschung wird an die Nostr-Relays gesendet. Du hast diesen Climb auch auf Kilter veröffentlicht — Kilter erlaubt das Entfernen veröffentlichter Climbs in keinem Client (der Server gated das für ihre App genauso wie für unsere). Deine Kilter-Kopie bleibt für immer öffentlich.</string>
+    <string name="community_climb_delete_confirm_button">Löschen</string>
+    <string name="community_climb_delete_cancel_button">Abbrechen</string>
+    <string name="community_climb_delete_done_nostr_only" formatted="false">Climb gelöscht (%1$d von %2$d Relays bestätigt).</string>
+    <string name="community_climb_delete_done_with_kilter" formatted="false">Auf Nostr gelöscht (%1$d von %2$d Relays). Nicht vergessen: den Climb manuell aus der Kilter-App entfernen.</string>
+    <string name="community_climb_delete_failed">Löschung fehlgeschlagen. Bitte erneut versuchen.</string>
+    <string name="community_climb_delete_not_owner">Du kannst nur Climbs löschen, die du selbst erstellt hast.</string>
+    <string name="community_climb_delete_local_failed" formatted="false">Auf Nostr gelöscht (%1$d von %2$d Relays), aber die lokale Kopie konnte nicht entfernt werden. Der Climb erscheint möglicherweise weiterhin lokal — die App neu installieren oder App-Daten löschen, um ihn vollständig zu entfernen.</string>
+    <string name="climb_detail_badge_on_kilter">Auf Kilter</string>
+    <string name="climb_detail_badge_cruxcoach_only">Nur CruxCoach-Community</string>
+    <string name="climb_detail_badge_kilter_diverged">Nur hier bearbeitet, auf Kilter Originalversion</string>
+    <string name="climb_detail_edit_locked_kilter">Gesperrt — auf Kilter veröffentlicht (unveränderbar)</string>
+    <string name="climb_editor_load_failed_kilter_locked">Dieser Climb ist auf Kilter veröffentlicht und kann nicht bearbeitet werden. Nutze die Remix-Aktion, um einen frischen Climb darauf basierend zu starten.</string>
+
+    <!-- Nostr-Profil-Editor (Einstellungen) -->
+    <string name="nostr_profile_title">Mein Nostr-Profil</string>
+    <string name="nostr_profile_settings_label">Nostr-Profil</string>
+    <string name="nostr_profile_settings_summary">Anzeigename, Profilbild, Lightning-Adresse</string>
+    <string name="nostr_profile_explainer">Andere CruxCoach-Nutzer sehen dieses Profil neben deinen Community-Climbs. Ohne Profil siehst du nur eine kurze Hex-npub.</string>
+    <string name="nostr_profile_display_name">Anzeigename</string>
+    <string name="nostr_profile_display_name_hint">Wird neben deinen Climbs als Setter angezeigt.</string>
+    <string name="nostr_profile_about">Über mich</string>
+    <string name="nostr_profile_about_hint">Optional. Kurze Bio.</string>
+    <string name="nostr_profile_lightning">Lightning-Adresse</string>
+    <string name="nostr_profile_lightning_hint">Optional. Format: name@domain — andere können dich damit zappen.</string>
+    <string name="nostr_profile_picture">Profilbild-URL</string>
+    <string name="nostr_profile_picture_hint">Optional. Direkter Bild-Link — aktuell wird nur dein Anzeigename gerendert.</string>
+    <string name="nostr_profile_banner_label">Banner-Bild-URL</string>
+    <string name="nostr_profile_banner_hint">Optional. 3:1-Seitenverhältnis sieht am besten aus — Headerbild auf deinem Profil.</string>
+    <string name="nostr_profile_nip05_label">NIP-05-Kennung</string>
+    <string name="nostr_profile_nip05_hint">Optional. Format: name@domain — verifiziert deine Identität über den Well-Known-Endpoint der Domain.</string>
+    <string name="nostr_profile_website_label">Webseite</string>
+    <string name="nostr_profile_website_hint">Optional. Frei wählbare URL, wird auf deinem Profil angezeigt.</string>
+    <string name="nostr_profile_nip05_verified">Verifiziert — Pubkey stimmt überein</string>
+    <string name="nostr_profile_nip05_mismatch">Pubkey stimmt nicht überein — Domain zeigt auf eine andere Identität</string>
+    <string name="nostr_profile_nip05_unreachable">Konnte nicht verifizieren (offline oder Domain nicht konfiguriert)</string>
+    <string name="nostr_profile_lud16_verified">Lightning-Adresse aktiv</string>
+    <string name="nostr_profile_lud16_unreachable">Konnte Lightning-Adresse nicht verifizieren</string>
+    <string name="nostr_profile_banner_change">Banner ändern</string>
+    <string name="nostr_profile_banner_remove">Banner entfernen</string>
+    <string name="nostr_profile_picture_change">Profilbild ändern</string>
+    <string name="nostr_profile_picture_remove">Profilbild entfernen</string>
+    <string name="nostr_profile_image_upload_failed" formatted="false">Bild-Upload fehlgeschlagen: %1$s</string>
+    <string name="nostr_profile_about_count" formatted="false">%1$d / %2$d</string>
+    <string name="nostr_profile_save">Profil speichern</string>
+    <string name="nostr_profile_saving">Wird gespeichert…</string>
+    <string name="nostr_profile_saved_toast">Profil gespeichert</string>
+    <string name="nostr_profile_save_failed">Konnte Profil nicht senden. Versuche es nochmal.</string>
+    <string name="nostr_profile_import_from_kilter">Kilter-Username übernehmen</string>
+    <string name="nostr_profile_kilter_divergence_hint">Dein Kilter-Username (\"%1$s\") bleibt in der Kilter-App unverändert. Dieses Profil gilt nur für CruxCoach + Nostr.</string>
+
+    <!-- Setter-Detail / Liste (Community) -->
+    <string name="setter_detail_title_fallback">Setter</string>
+    <string name="setter_detail_climb_count">%1$d Climbs</string>
+    <string name="setter_detail_no_climbs">Keine Climbs dieses Setters in deinem lokalen Katalog.</string>
+    <string name="setter_detail_load_failed">Climbs konnten nicht geladen werden.</string>
+    <string name="setters_list_load_failed">Setter-Liste konnte nicht geladen werden.</string>
+    <string name="setter_detail_climb_meta">%1$d° · %2$.1f · ⭐%3$.1f · %4$d Begehungen</string>
+    <string name="setters_list_title">CruxCoach-Setter</string>
+    <string name="setters_list_empty">Noch keine CruxCoach-Community-Climbs. Schau später wieder rein oder leg selbst los.</string>
+    <string name="setters_list_count">%1$d Climbs</string>
+    <string name="setters_list_browse_button">Setter durchstöbern</string>
+    <string name="board_lists_community_banner_title">CruxCoach-Community</string>
+    <string name="board_lists_community_banner_subtitle">Setter und ihre Climbs entdecken</string>
+    <string name="board_lists_section_title">Deine Listen</string>
+
+    <!-- Profil-Hinweis vor erstem Publish -->
+    <string name="profile_hint_dialog_title">Profil einrichten?</string>
+    <string name="profile_hint_dialog_body">Dein Climb wird für alle sichtbar. Ohne Profil sehen andere nur eine kurze Kennung (npub:abc…). Ein Anzeigename ist in einer Minute eingerichtet.</string>
+    <string name="profile_hint_dialog_setup">Profil einrichten</string>
+    <string name="profile_hint_dialog_later">Jetzt nicht</string>
+
     <!-- Onboarding -->
     <string name="onboarding_welcome">Willkommen bei CruxCoach</string>
     <string name="onboarding_welcome_subtitle">Open-Source-App für dein Kilter Board — Routen finden, Board ansteuern, Sessions loggen.</string>
@@ -39,6 +208,8 @@
     <string name="action_save">Speichern</string>
     <string name="action_delete">Löschen</string>
     <string name="action_back">Zurück</string>
+    <string name="screen_error_boundary_title">Da ist etwas schiefgegangen</string>
+    <string name="screen_error_boundary_body" formatted="false">Der Screen „%1$s" hat einen unerwarteten Fehler — der Rest der App ist weiter benutzbar. Gehe zurück und versuche es erneut.</string>
     <string name="action_refresh">Aktualisieren</string>
     <string name="action_done">Fertig</string>
     <string name="action_share">Freigeben</string>
@@ -51,6 +222,7 @@
     <string name="action_retry">Erneut versuchen</string>
     <string name="action_reset">Zurücksetzen</string>
     <string name="action_understood">Verstanden</string>
+    <string name="action_more_options">Weitere Optionen</string>
 
     <!-- Settings -->
     <string name="settings_language_title">Sprache</string>
@@ -392,7 +564,7 @@
     <string name="board_search_placeholder">Climb suchen…</string>
     <string name="board_climbs_found">%d Climbs gefunden</string>
     <string name="board_no_data_title">Keine Board-Daten</string>
-    <string name="board_no_data_hint">Synchronisiere die Kilter/Tension Board-Datenbank, um Climbs zu suchen.</string>
+    <string name="board_no_data_hint">Synchronisiere die Kilter Board-Datenbank, um Climbs zu suchen.</string>
     <string name="board_angle">Winkel</string>
     <string name="board_moves">Züge</string>
     <string name="board_quality">Qualität</string>
@@ -419,6 +591,8 @@
     <string name="board_detail_delete_ascent_message">Diese Begehung wird unwiderruflich gelöscht.</string>
     <string name="board_filter_all">Alle</string>
     <string name="board_filter_benchmarks_only">Nur Benchmarks</string>
+    <string name="board_filter_my_climbs">Eigene Climbs</string>
+    <string name="climb_card_draft_badge">Entwurf</string>
     <string name="board_filter_grade_range">Grad: %1$s – %2$s</string>
     <string name="board_filter_sort">Sortierung</string>
     <string name="board_filter_sort_asc">Aufsteigend</string>
@@ -428,6 +602,9 @@
     <string name="board_filter_status_attempted">Versucht</string>
     <string name="board_filter_status_sent">Gesendet</string>
     <string name="board_filter_status_unsent">Offen</string>
+    <string name="board_filter_origin">Quelle</string>
+    <string name="board_filter_origin_cruxcoach">CruxCoach-Setter</string>
+    <string name="board_filter_origin_kilter">Kilter (offiziell)</string>
     <string name="board_filter_type">Typ</string>
     <string name="board_filter_type_boulder">Boulder</string>
     <string name="board_filter_type_routes">Routen</string>
@@ -631,7 +808,8 @@
     <string name="board_ble_permission_message">CruxCoach benötigt Bluetooth-Zugriff, um dein Board zu finden und zu verbinden.</string>
     <string name="board_ble_grant_permission">Berechtigung erteilen</string>
     <string name="board_ble_bt_disabled_title">Bluetooth ist deaktiviert</string>
-    <string name="board_ble_bt_disabled_message">Aktiviere Bluetooth in den Systemeinstellungen, um dein Board zu verbinden.</string>
+    <string name="board_ble_bt_disabled_message">CruxCoach braucht Bluetooth, um mit deinem Board zu sprechen.</string>
+    <string name="board_ble_bt_enable_button">Bluetooth einschalten</string>
     <string name="board_ble_location_disabled_title">Standortdienste deaktiviert</string>
     <string name="board_ble_location_disabled_message">Auf diesem Gerät müssen die Standortdienste (GPS) eingeschaltet sein, damit Bluetooth-Geräte gefunden werden können.</string>
     <string name="board_ble_session_active_title">Session aktiv</string>
@@ -659,7 +837,7 @@
     <string name="board_climb_by_setter">von %s</string>
     <string name="board_climb_moves">%d Züge</string>
     <string name="board_climb_no_data_title">Keine Board-Daten</string>
-    <string name="board_climb_no_data_message">Synchronisiere die Kilter/Tension Board-Datenbank, um Climbs zu suchen und auf dem Board anzuzeigen.</string>
+    <string name="board_climb_no_data_message">Synchronisiere die Kilter Board-Datenbank, um Climbs zu suchen und auf dem Board anzuzeigen.</string>
     <string name="board_sync_title">Board-Daten synchronisieren</string>
 
     <!-- Board: Detail -->
@@ -704,6 +882,13 @@
     <string name="kilter_sync_now">Jetzt synchronisieren</string>
     <string name="kilter_push_label">Zu Kilter hochladen</string>
     <string name="kilter_push_desc">Lokale Begehungen auch nach Kilter hochladen</string>
+    <string name="kilter_climb_publish_label">Eigene Climbs auf Kilter veröffentlichen</string>
+    <string name="kilter_climb_publish_disconnected_hint">Verbinde deinen Kilter-Account, um Climbs auch dort zu spiegeln.</string>
+    <string name="kilter_publish_queue_title">Veröffentlichungs-Warteschlange</string>
+    <string name="kilter_publish_queue_pending" formatted="false">%1$d Climbs warten auf Kilter-Sync</string>
+    <string name="kilter_publish_queue_failed" formatted="false">%1$d zuletzt fehlgeschlagen</string>
+    <string name="kilter_publish_queue_last_attempt">Letzter Versuch</string>
+    <string name="kilter_publish_queue_retry_now">Jetzt erneut versuchen</string>
     <string name="kilter_session_expired">Sitzung abgelaufen — bitte neu anmelden</string>
     <string name="kilter_relogin_button">Neu anmelden</string>
     <string name="kilter_disconnect">Verbindung trennen</string>
@@ -1157,6 +1342,16 @@
     <string name="export_waistline_hint">Für den Import in die Waistline-App</string>
     <string name="export_waistline_json_label">Waistline JSON</string>
     <string name="export_categories_exported">%1$d Kategorie(n) exportiert</string>
+    <string name="export_category_profile">Profil &amp; Einstellungen</string>
+    <string name="export_category_assessments">Fitness-Assessments</string>
+    <string name="export_category_body_stats">Körperdaten</string>
+    <string name="export_category_workout_logs">Workout-Logs</string>
+    <string name="export_category_climb_logs">Boulder-Logbuch</string>
+    <string name="export_category_training_plans">Trainingspläne</string>
+    <string name="export_category_board_logbook">Board-Sends &amp; -Versuche</string>
+    <string name="export_category_board_sessions">Board-Sessions</string>
+    <string name="export_category_climb_lists">Climb-Listen &amp; Favoriten</string>
+    <string name="export_category_own_climbs">Eigene Climbs &amp; Drafts</string>
     <string name="export_waistline_json_success">Waistline JSON exportiert</string>
     <string name="export_waistline_csv_success">Waistline CSV exportiert</string>
     <string name="import_auto_detect_hint">Format wird automatisch erkannt</string>
@@ -1173,14 +1368,17 @@
     <string name="import_result_board_bids">%1$d Board-Versuche</string>
     <string name="import_result_board_sessions">%1$d Board-Sessions</string>
     <string name="import_result_lists">%1$d Listen</string>
+    <string name="import_result_own_climbs">%1$d eigene Climbs</string>
     <string name="import_result_no_data">Keine Daten</string>
     <string name="import_result_summary">Importiert: %1$s</string>
     <string name="import_result_duplicates_skipped"> (%1$d Duplikate übersprungen)</string>
     <string name="import_waistline_success">Waistline-Import: %1$d Wert(e) importiert</string>
     <string name="import_select_categories">Kategorien zum Importieren auswählen:</string>
     <string name="import_pubkey_mismatch_title">Anderer CruxCoach Account</string>
-    <string name="import_pubkey_mismatch_body">Dieses Backup stammt von einem anderen CruxCoach Account (%1$s). Die Daten werden in deinen aktuellen Account importiert. Dies kann für eine Account-Migration gewünscht sein.</string>
+    <string name="import_pubkey_mismatch_body">Dieses Backup wurde mit einem anderen CruxCoach-Schlüssel erstellt (%1$s). Die Daten werden in deinen aktuellen Account übernommen. Genau richtig, wenn du deinen alten nsec verloren hast oder bewusst die Identität wechselst. Hinweis: Climbs, die du importierst und später erneut zu Kilter publishst, erscheinen unter deinem aktuellen Kilter-Account.</string>
     <string name="import_pubkey_mismatch_confirm">Trotzdem importieren</string>
+    <string name="import_pubkey_override_banner_title">Import aus anderem Schlüssel</string>
+    <string name="import_pubkey_override_banner_body">Du importierst Daten aus %1$s in deinen aktuellen Account. Climbs, die du später erneut publishst, werden deinem aktuellen Kilter-Account zugeordnet.</string>
     <string name="month_apr">Apr</string>
     <string name="month_aug">Aug</string>
     <string name="month_dec">Dez</string>
@@ -1205,6 +1403,13 @@
     <string name="settings_app_share_title">App teilen</string>
     <string name="settings_profile_assessment_title">Profil &amp; Assessment</string>
     <string name="settings_section_board">Board-Einstellungen</string>
+    <string name="settings_board_layout_title">Wand</string>
+    <string name="settings_board_layout_desc">Wähle, welche Kilter-Wand du hast. Browse und Climb-Creator richten sich danach.</string>
+    <string name="settings_board_layout_original">Kilter Original</string>
+    <string name="settings_board_layout_homewall">Kilter Homewall</string>
+    <string name="settings_board_model_title">Board-Größe</string>
+    <string name="settings_board_model_change">Ändern</string>
+    <string name="settings_board_model_not_configured">Nicht konfiguriert</string>
     <string name="settings_section_data">Datenverwaltung</string>
     <string name="settings_section_dev_contact">Entwickler-Kontakt</string>
     <string name="settings_section_display">Anzeige</string>
@@ -1444,10 +1649,11 @@
     <string name="delete_remote_note_blossom_auth_failed">Speicher-Server hat die Auth-Signatur abgelehnt.</string>
     <string name="delete_remote_note_blossom_fully_rejected">Alle Speicher-Server haben die Löschung abgelehnt.</string>
     <string name="delete_remote_note_blossom_partial">Nur %1$d von %2$d Speicher-Servern haben die Löschung bestätigt.</string>
+    <string name="delete_remote_note_tombstone_publish_failed">Lösch-Marker konnte nicht an genug Index-Server gesendet werden (Pointer %1$d, Schlüssel %2$d von %3$d). Das Backup könnte auf anderen Geräten weiter sichtbar sein — bitte erneut versuchen.</string>
     <string name="delete_remote_note_unexpected_error">Unerwarteter Fehler: %1$s</string>
     <string name="settings_backup_delete_remote">Remote-Backups löschen…</string>
     <string name="settings_backup_delete_remote_dialog_title">Remote-Backups löschen?</string>
-    <string name="settings_backup_delete_remote_dialog_body">Dies fordert die Löschung deiner Backup-Info und der verschlüsselten Backup-Daten von den öffentlichen Servern an. Beachte:\n\n• Die Löschung ist Best-Effort. Nicht jeder Server honoriert sie.\n• Danach kannst du dein Backup nicht mehr auf einem anderen Gerät wiederherstellen.\n• Lokale Daten bleiben unangetastet.</string>
+    <string name="settings_backup_delete_remote_dialog_body">Dies versieht dein Backup auf jedem Index-Server mit einem Lösch-Marker und fordert die verschlüsselten Backup-Daten von jedem Speicher-Server zur Entfernung an. Danach gilt:\n\n• Kein Gerät — weder dein eigenes noch ein fremdes — kann das Backup wiederherstellen, selbst wenn ein Speicher-Server die verschlüsselten Daten noch hält.\n• Das Aufräumen auf den Speicher-Servern ist Best-Effort. Ein Teilergebnis (z.B. 1/2 Server) ist kein Datenschutzproblem: Der Lösch-Marker garantiert, dass das Backup unwiederherstellbar ist.\n• Lokale Daten auf diesem Gerät bleiben unangetastet.</string>
     <string name="settings_backup_delete_remote_confirm">Löschen</string>
     <string name="settings_backup_delete_remote_in_progress">Lösche…</string>
     <string name="settings_backup_delete_remote_done_header">Remote-Backups gelöscht.</string>
@@ -1467,6 +1673,8 @@
     <string name="onboarding_nostr_backup_title">Backup deiner Daten</string>
     <string name="onboarding_nostr_backup_body">Auf deinem Gerät verschlüsselt, danach online auf mehreren öffentlichen Servern gespeichert. Nur du kannst es entschlüsseln. Voreinstellung: aus — jederzeit in den Einstellungen aktivierbar.</string>
     <string name="onboarding_restore_dialog_body">Ein Backup wurde gefunden (%1$s).\n\nWiederherstellen ersetzt deine lokalen Daten durch den Inhalt des Backups.</string>
+    <string name="onboarding_restore_progress_awaiting_board_sync">Warte auf den Download der Board-Datenbank… dauert bei frischer Installation typisch 1–3 Minuten, je nach Verbindung.</string>
+    <string name="onboarding_restore_progress_active">Backup wird wiederhergestellt…</string>
 
     <!-- FEAT-002: Onboarding Backup-Wahl (3-Step-Onboarding) -->
     <string name="onboarding_backup_choice_fresh_title">Neu starten</string>
@@ -1528,4 +1736,47 @@
     <string name="whatsnew_nostr_backup_body">Deine Klettereinträge und Notizen können jetzt auf deinem Gerät verschlüsselt und online auf mehreren öffentlichen Servern gespeichert werden — auf jedem Gerät wiederherstellbar. Standardmäßig aus; hier aktivieren oder jederzeit in Einstellungen → Verschlüsseltes Cloud-Backup.</string>
     <string name="whatsnew_nostr_backup_toggle">Backup aktivieren</string>
     <string name="whatsnew_nostr_backup_consent">Auf diesem Gerät wird ein CruxCoach-Account-Schlüssel erzeugt (falls noch nicht vorhanden). Backups laufen nicht automatisch — du startest sie selbst in den Einstellungen.</string>
+
+    <!-- FEAT-005 Aurora-JSON migration -->
+    <string name="onboarding_aurora_card_title">Aus der alten Kilter-App?</string>
+    <string name="onboarding_aurora_card_subtitle">Begehungen, Versuche und Circuits aus dem Aurora-JSON-Export übernehmen.</string>
+    <string name="whatsnew_aurora_import_title">Aurora-Daten — jetzt importieren</string>
+    <string name="whatsnew_aurora_import_body">0.1.4 importiert die JSON-Datei, die Aurora auf Datenexport-Anfrage zusendet. Deine alten Begehungen, Versuche und Circuits landen mit einem Tipp im CruxCoach-Logbuch.</string>
+    <string name="whatsnew_aurora_import_hint">Datei schon zur Hand? Auf „Jetzt importieren" tippen. Sonst bleibt der Importer in Einstellungen → Migration aus Aurora — Export anfragen, später wiederkommen.</string>
+    <string name="whatsnew_aurora_import_action_now">Jetzt importieren</string>
+    <string name="whatsnew_aurora_import_action_later">Später</string>
+    <string name="settings_aurora_migration_title">Migration aus Aurora / alter Kilter-App</string>
+    <string name="settings_aurora_migration_desc">Begehungen, Versuche und Circuits aus dem E-Mail-Export übernehmen, den Aurora auf Anfrage zusendet.</string>
+    <string name="aurora_migration_title">Aurora-Migration</string>
+    <string name="aurora_migration_what_happened_title">Was ist mit Aurora passiert?</string>
+    <string name="aurora_migration_what_happened_body">Aurora Climbing hat Anfang 2026 die API abgeschaltet, und die offizielle Kilter-App ist auf ein neues Backend umgezogen. Aurora bedient einmalige Datenexport-Anfragen per E-Mail — die Datei, die sie zurückschicken, liest dieser Importer.</string>
+    <string name="aurora_migration_step1_title">Datenexport bei Aurora anfordern</string>
+    <string name="aurora_migration_step1_body">Schreibe eine E-Mail an den Aurora-Support und bitte um eine Kopie deiner Daten. Die Antwort kommt meist binnen einiger Tage und enthält eine einzelne JSON-Datei.</string>
+    <string name="aurora_migration_email_button">E-Mail an Aurora vorbereiten</string>
+    <string name="aurora_migration_email_copy_button">E-Mail in Zwischenablage kopieren</string>
+    <string name="aurora_migration_email_copy_toast">E-Mail kopiert — in dein E-Mail-Programm einfügen und an support@auroraclimbing.com senden.</string>
+    <string name="aurora_migration_email_copy_fallback_toast">Keine E-Mail-App gefunden. Inhalt kopiert — in ein Webmail-Programm einfügen und an support@auroraclimbing.com senden.</string>
+    <string name="aurora_migration_step2_title">Datei importieren</string>
+    <string name="aurora_migration_step2_body">Speichere den Anhang aus Auroras Antwort auf dein Telefon und wähle ihn hier aus. Erneutes Importieren derselben Datei ist sicher — bereits vorhandene Einträge werden automatisch übersprungen.</string>
+    <string name="aurora_migration_pick_file_button">Aurora-JSON-Datei wählen…</string>
+    <string name="aurora_migration_importing">Wird importiert…</string>
+    <string name="aurora_migration_progress_starting">Starte…</string>
+    <string name="aurora_migration_progress_parsing">JSON wird gelesen…</string>
+    <string name="aurora_migration_progress_resolving" formatted="false">Gleiche %1$d Climb-Namen mit dem lokalen Board-Katalog ab…</string>
+    <string name="aurora_migration_progress_climbs" formatted="false">Importiere deine Climbs (%1$d / %2$d)…</string>
+    <string name="aurora_migration_progress_ascents" formatted="false">Importiere Begehungen (%1$d / %2$d)…</string>
+    <string name="aurora_migration_progress_bids" formatted="false">Importiere Versuche (%1$d / %2$d)…</string>
+    <string name="aurora_migration_progress_circuits" formatted="false">Importiere Circuits (%1$d / %2$d)…</string>
+    <string name="aurora_migration_progress_finalising">Abschluss…</string>
+    <string name="aurora_migration_result_success">Import abgeschlossen</string>
+    <string name="aurora_migration_result_failed">Import fehlgeschlagen</string>
+    <string name="aurora_migration_result_parse_error" formatted="false">Datei konnte nicht gelesen werden: %1$s</string>
+    <string name="aurora_migration_count_ascents">Begehungen</string>
+    <string name="aurora_migration_count_bids">Versuche</string>
+    <string name="aurora_migration_count_circuits">Circuits</string>
+    <string name="aurora_migration_count_climbs">Eigene Climbs</string>
+    <string name="aurora_migration_count_summary" formatted="false">%1$s: %2$d importiert · %3$d schon vorhanden · %4$d übersprungen</string>
+    <string name="aurora_migration_unresolved_title" formatted="false">%1$d Climb-Namen konnten lokal nicht zugeordnet werden</string>
+    <string name="aurora_migration_import_another">Weitere Datei importieren</string>
+    <string name="aurora_migration_file_too_large">Datei zu groß für den direkten Import (%1$d MB). Aurora-Exports sind üblicherweise wenige MB groß — bei deutlich größeren Dateien bitte den Support kontaktieren.</string>
 </resources>

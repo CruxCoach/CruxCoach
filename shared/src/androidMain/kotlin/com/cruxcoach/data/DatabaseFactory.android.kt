@@ -53,34 +53,49 @@ actual class BoardDriverFactory(private val context: Context) {
      */
     private fun ensureHotPathIndexes(db: SupportSQLiteDatabase) {
         try {
-            db.execSQL("CREATE INDEX IF NOT EXISTS idx_aurora_climb_listed ON aurora_climb(is_listed)")
-            db.execSQL(
-                "CREATE INDEX IF NOT EXISTS idx_aurora_climb_frames_count " +
-                    "ON aurora_climb(is_listed, frames_count, uuid)"
-            )
-            db.execSQL(
-                "CREATE INDEX IF NOT EXISTS idx_aurora_climb_stat_angle " +
-                    "ON aurora_climb_stat(angle)"
-            )
-            db.execSQL(
-                "CREATE INDEX IF NOT EXISTS idx_climb_stat_browse ON aurora_climb_stat(" +
-                    "angle, difficulty_average, quality_average, ascensionist_count, " +
-                    "benchmark_difficulty, climb_uuid)"
-            )
-            db.execSQL(
-                "CREATE INDEX IF NOT EXISTS idx_climb_stat_by_popularity ON aurora_climb_stat(" +
-                    "angle, ascensionist_count, difficulty_average, climb_uuid)"
-            )
-            db.execSQL(
-                "CREATE INDEX IF NOT EXISTS idx_climb_stat_count_cover ON aurora_climb_stat(" +
-                    "angle, ascensionist_count, difficulty_average, benchmark_difficulty, climb_uuid)"
-            )
+            for (ddl in HOT_PATH_INDEX_DDL) db.execSQL(ddl)
         } catch (e: Exception) {
             // Tables may not exist yet on brand-new installs; schema callback
             // will (re-)create the indexes when the schema runs. Don't block
             // DB open on a self-heal failure.
             Log.w("DatabaseFactory", "ensureHotPathIndexes failed", e)
         }
+    }
+
+    companion object {
+        /**
+         * Hot-path index DDLs — must stay byte-identical to the index list
+         * rebuilt in [com.cruxcoach.android.data.BoardDatabaseImporter]'s
+         * `withDeferredIndexes`. Drift between the two locations means
+         * indexes that were dropped during a bulk import won't get
+         * recreated on the next app open and every browse query will fall
+         * back to a full-table scan.
+         *
+         * The HotPathIndexDriftTest in androidUnitTest asserts both lists
+         * stay in lock-step.
+         */
+        @Suppress("MaxLineLength")
+        val HOT_PATH_INDEX_DDL: List<String> = listOf(
+            "CREATE INDEX IF NOT EXISTS idx_climbs_listed ON climbs(is_listed)",
+            "CREATE INDEX IF NOT EXISTS idx_climbs_frames_count ON climbs(is_listed, frames_count, uuid)",
+            // FEAT-003 + 0.1.4 community-climb indexes. Mirror the set in
+            // BoardDatabaseImporter.CLIMB_INDEXES — both lists are dropped
+            // before bulk import and rebuilt afterwards, and are also
+            // self-healed on app start if SQLite ever drops them. Without
+            // these entries here, a mid-import process kill would leave
+            // the device with no community-climb indexes and every
+            // origin/source/pubkey-filtered query would full-scan.
+            "CREATE INDEX IF NOT EXISTS idx_climbs_source ON climbs(source)",
+            "CREATE INDEX IF NOT EXISTS idx_climbs_frames_hash ON climbs(frames_hash)",
+            "CREATE INDEX IF NOT EXISTS idx_climbs_pubkey ON climbs(created_by_pubkey)",
+            "CREATE INDEX IF NOT EXISTS idx_climbs_origin ON climbs(origin)",
+            "CREATE INDEX IF NOT EXISTS idx_climbs_kilter_status ON climbs(kilter_status)",
+            "CREATE INDEX IF NOT EXISTS idx_climbs_nostr_via ON climbs(nostr_publish_via)",
+            "CREATE INDEX IF NOT EXISTS idx_climb_stats_angle ON climb_stats(angle)",
+            "CREATE INDEX IF NOT EXISTS idx_climb_stats_browse ON climb_stats(angle, difficulty_average, quality_average, ascensionist_count, benchmark_difficulty, climb_uuid)",
+            "CREATE INDEX IF NOT EXISTS idx_climb_stats_by_popularity ON climb_stats(angle, ascensionist_count, difficulty_average, climb_uuid)",
+            "CREATE INDEX IF NOT EXISTS idx_climb_stats_count_cover ON climb_stats(angle, ascensionist_count, difficulty_average, benchmark_difficulty, climb_uuid)",
+        )
     }
 
     private fun vacuumIfNeeded(db: SupportSQLiteDatabase) {

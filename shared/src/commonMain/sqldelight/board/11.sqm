@@ -1,0 +1,34 @@
+-- Migration version 11 → 12: dead-letter queue for community-climb
+-- ingests that failed at the SQLite layer.
+--
+-- Pre-fix `CommunityClimbSubscriber.handleClimbEvent` swallowed
+-- upsert exceptions with `Log.w` and returned. The cursor advanced
+-- normally on the *next* successful event, so the failed event's
+-- payload was permanently lost — NIP-01 Live-REQ relays don't
+-- re-deliver events older than the `since` cursor, and there's no
+-- other recovery path for non-curated community climbs.
+--
+-- The DLQ persists the raw signed event JSON keyed on uuid so the
+-- subscriber can retry on the next start, on a periodic tick, or on
+-- explicit UI request. Cap retries via `retry_count`; once a row is
+-- past `MAX_RETRIES` the subscriber stops trying automatically (the
+-- row is still readable for diagnostics / future user-facing surface).
+--
+-- Schema lives in the (unencrypted) board DB because the climb
+-- payload itself is a public Nostr event — no PII / nsec material.
+-- Deliberately NOT a foreign-key reference to `climbs(uuid)`: the
+-- whole point is that the row doesn't exist there yet.
+
+CREATE TABLE community_climb_dead_letters (
+    uuid TEXT NOT NULL PRIMARY KEY,
+    event_id TEXT NOT NULL,
+    event_created_at INTEGER NOT NULL,
+    raw_event_json TEXT NOT NULL,
+    first_failed_at_ms INTEGER NOT NULL,
+    last_failed_at_ms INTEGER NOT NULL,
+    retry_count INTEGER NOT NULL DEFAULT 1,
+    last_error_excerpt TEXT
+);
+
+CREATE INDEX idx_climb_dead_letters_retry
+    ON community_climb_dead_letters(retry_count, last_failed_at_ms);

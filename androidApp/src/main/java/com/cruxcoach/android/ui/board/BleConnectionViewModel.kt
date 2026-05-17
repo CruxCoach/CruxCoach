@@ -5,8 +5,8 @@ import android.os.Build
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.cruxcoach.android.ble.AuroraBleConnection
-import com.cruxcoach.android.ble.AuroraBleScanner
+import com.cruxcoach.android.ble.BoardBleConnection
+import com.cruxcoach.android.ble.BoardBleScanner
 import com.cruxcoach.android.ble.BlePermissionHelper
 import com.cruxcoach.android.ble.ClimbBleAdvertiser
 import com.cruxcoach.android.ble.ConnectionState
@@ -83,8 +83,8 @@ sealed class QuickSendStatus {
 @HiltViewModel
 class BleConnectionViewModel @Inject constructor(
     private val application: Application,
-    private val bleScanner: AuroraBleScanner,
-    private val bleConnection: AuroraBleConnection,
+    private val bleScanner: BoardBleScanner,
+    private val bleConnection: BoardBleConnection,
     private val userPreferences: UserPreferences,
     private val nearbyClimbScanner: NearbyClimbScanner,
     private val climbAdvertiser: ClimbBleAdvertiser,
@@ -334,7 +334,7 @@ class BleConnectionViewModel @Inject constructor(
      *
      * Reuses the existing pipeline: BoardClimbDetailViewModel already auto-
      * triggers `sendController.sendToBoard()` on the DISCONNECTED→CONNECTED
-     * transition when holds are present, and AuroraBleConnection flips its
+     * transition when holds are present, and BoardBleConnection flips its
      * state to SENDING during the actual write. We just observe those state
      * machine edges from here — no new send-callback needed.
      *
@@ -448,7 +448,7 @@ class BleConnectionViewModel @Inject constructor(
 
     /**
      * After the screen-side ClimbDetailVM auto-fires `sendController.sendToBoard()`
-     * on the CONNECTED transition, AuroraBleConnection flips state to SENDING
+     * on the CONNECTED transition, BoardBleConnection flips state to SENDING
      * for the duration of the BLE write, then back to CONNECTED. We watch that
      * transition (with a fallback timeout if no send actually fired — e.g. the
      * climb's holds list was empty) and then disconnect.
@@ -488,6 +488,7 @@ class BleConnectionViewModel @Inject constructor(
     fun resetQuickSend() {
         _quickSend.value = QuickSendStatus.Idle
     }
+
 
     fun cancelQuickSend() {
         quickSendJob?.cancel()

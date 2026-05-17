@@ -1,0 +1,51 @@
+CREATE TABLE workout_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id INTEGER,
+    date TEXT NOT NULL,
+    actual_duration_min INTEGER,
+    perceived_rpe REAL,
+    energy_level INTEGER,
+    mood_pre INTEGER,
+    mood_post INTEGER,
+    finger_skin_status TEXT DEFAULT 'GOOD',
+    pain_areas TEXT NOT NULL DEFAULT '[]',
+    sleep_hours_prev_night REAL,
+    completed_exercises TEXT,
+    free_notes TEXT,
+    FOREIGN KEY (session_id) REFERENCES training_sessions(id)
+);
+
+insert:
+INSERT INTO workout_logs (session_id, date, actual_duration_min,
+    perceived_rpe, energy_level, mood_pre, mood_post,
+    finger_skin_status, pain_areas, sleep_hours_prev_night,
+    completed_exercises, free_notes)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+getById:
+SELECT * FROM workout_logs WHERE id = ?;
+
+getRecent:
+SELECT * FROM workout_logs ORDER BY date DESC LIMIT ?;
+
+getForDateRange:
+SELECT * FROM workout_logs WHERE date BETWEEN ? AND ? ORDER BY date;
+
+getAvgRpeLastN:
+SELECT AVG(perceived_rpe) AS avg_rpe FROM (
+    SELECT perceived_rpe FROM workout_logs
+    WHERE perceived_rpe IS NOT NULL ORDER BY date DESC LIMIT ?
+);
+
+countThisWeek:
+SELECT COUNT(*) AS count FROM workout_logs
+WHERE date >= date('now', 'weekday 0', '-7 days');
+
+getAll:
+SELECT * FROM workout_logs ORDER BY date DESC;
+
+lastInsertRowId:
+SELECT last_insert_rowid();
+
+deleteById:
+DELETE FROM workout_logs WHERE id = ?;

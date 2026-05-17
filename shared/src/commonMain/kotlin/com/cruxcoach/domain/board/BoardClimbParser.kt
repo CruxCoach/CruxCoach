@@ -6,7 +6,7 @@ import kotlinx.serialization.Serializable
 data class BoardHold(val placementId: Int, val roleId: Int)
 
 /**
- * Hold roles in Aurora protocol:
+ * Hold roles in the climb-frame protocol (Aurora-derived):
  * - 12 = Start hold (green)    — boulder
  * - 13 = Hand hold (blue/cyan) — boulder
  * - 14 = Finish hold (magenta) — boulder
@@ -41,8 +41,8 @@ object BoardClimbParser {
 
     /**
      * Parse frames string into hold list. Supports both formats:
-     * - Aurora:  "p{placementId}r{roleId}..."  (e.g. "p1091r15p1096r15p1163r12")
-     * - Kilter:  "h{holdPlacementId}p{roleId}..." (e.g. "h1461p12h1575p13h1636p14")
+     * - Delta:  "p{placementId}r{roleId}..."  (e.g. "p1091r15p1096r15p1163r12") — Aurora-era / Blossom DB
+     * - Range:  "h{holdPlacementId}p{roleId}..." (e.g. "h1461p12h1575p13h1636p14") — Kilter REST API
      *
      * Format is auto-detected by checking the first character.
      * Route-specific role IDs (42-45) are normalized to standard roles (12-15).
@@ -58,12 +58,12 @@ object BoardClimbParser {
     /**
      * Parse a single frame section, extracting hold entries and
      * ignoring x{id} removal entries (only relevant in multi-frame context).
-     * Auto-detects Aurora (p...r...) vs. Kilter (h...p...) format.
+     * Auto-detects delta-format (p…r…) vs. range-format (h…p…).
      */
     private fun parseHoldEntries(section: String): List<BoardHold> {
         if (section.isBlank()) return emptyList()
         val holds = mutableListOf<BoardHold>()
-        val pattern = if (isClimbConcat(section)) KILTER_PATTERN else AURORA_PATTERN
+        val pattern = if (isClimbConcat(section)) RANGE_PATTERN else DELTA_PATTERN
         for (match in pattern.findAll(section)) {
             val placement = match.groupValues[1].toIntOrNull() ?: continue
             val rawRole = match.groupValues[2].toIntOrNull() ?: continue
@@ -72,8 +72,8 @@ object BoardClimbParser {
         return holds
     }
 
-    private val AURORA_PATTERN = Regex("""p(\d+)r(\d+)""")
-    private val KILTER_PATTERN = Regex("""h(\d+)p(\d+)""")
+    private val DELTA_PATTERN = Regex("""p(\d+)r(\d+)""")
+    private val RANGE_PATTERN = Regex("""h(\d+)p(\d+)""")
 
     /**
      * Parse x{id} removal entries from a frame section.
@@ -89,17 +89,39 @@ object BoardClimbParser {
     }
 
     /**
-     * Encode holds back to Aurora frames string (p{id}r{role}).
+     * Encode holds back to delta-format frames string (p{id}r{role}).
      */
     fun encodeFrames(holds: List<BoardHold>): String {
         return holds.joinToString("") { "p${it.placementId}r${it.roleId}" }
     }
 
     /**
-     * Encode holds to Kilter climbConcat string (h{id}p{role}).
+     * Encode holds to Kilter climbConcat string (`h{hole_id}p{role}`).
+     *
+     * **Important: `h{...}` is hole_id, NOT placement_id.** The Kilter
+     * API treats the h-prefixed value as a hole identifier and looks it
+     * up in its own placement set; sending placement_ids straight from
+     * our local Aurora-derived schema produces a JSON that the API
+     * accepts (because most numeric values happen to also be valid
+     * hole_ids on the same board) but at completely wrong spatial
+     * positions — the published climb shows different holds than the
+     * user drew. The cron-side ingest (update_board_db.convert_climb_concat)
+     * already understands this correctly when going Kilter→Aurora; the
+     * publish path is the inverse and was previously broken.
+     *
+     * Caller passes a placements map (placementId → BoardPlacement)
+     * keyed on the same placementId values that appear inside [BoardHold].
+     * Holds whose placement isn't present in the map are skipped — that
+     * shouldn't normally happen because the editor only emits holds it
+     * could resolve, but defensive in case of map-staleness across
+     * board-data sync boundaries.
      */
-    fun encodeClimbConcat(holds: List<BoardHold>): String {
-        return holds.joinToString("") { "h${it.placementId}p${it.roleId}" }
+    fun encodeClimbConcat(holds: List<BoardHold>, placementToHoleId: Map<Int, Long>): String {
+        return holds.joinToString("") { hold ->
+            val hid = placementToHoleId[hold.placementId]
+                ?: return@joinToString ""
+            "h${hid}p${hold.roleId}"
+        }
     }
 
     /**
@@ -128,7 +150,7 @@ object BoardClimbParser {
     /**
      * Parse multi-frame route string into list of resolved frames.
      *
-     * Aurora route format uses incremental diffs:
+     * Delta route format uses incremental diffs:
      * - Frame 1: base set of holds (p{id}r{role} entries)
      * - Frame 2+: x{id} = remove hold, p{id}r{role} = add hold
      * - Comma = frame delimiter

@@ -1,0 +1,48 @@
+appId: com.cruxcoach.android
+name: climb-type-filter-changes-list
+tags:
+  - smoke
+  - mutates-state
+---
+# BEHAVIOUR test: filter-pipeline end-to-end. Toggling the
+# climb-type filter from BOULDER (default) to ROUTE flips the
+# kind of cards visible in the browser:
+#   - boulders carry "X Züge" (move-counter, board_climb_moves)
+#   - routes carry "X Frames" (frame-counter, board_climb_frames)
+#
+# Strategy: assert Züge visible (default), switch filter, assert
+# Frames visible AND Züge no longer visible, switch back, restore
+# Züge. Catches a regression in any layer of the filter chain:
+# UI tap → ViewModel.updateClimbTypeFilter → Repository query →
+# climb_browse VIEW → adapter render.
+#
+# FILTER-STATE precondition: defaults. The flow itself is fully
+# self-contained — it sets and resets the climb-type filter
+# explicitly. Other filters are not touched.
+- launchApp:
+    stopApp: false
+- waitForAnimationToEnd:
+    timeout: 5000
+# Sanity: boulder default → "X Züge" cards visible.
+- assertVisible:
+    text: "[0-9]+ Züge"
+# Switch to Routes.
+- tapOn: "Filter"
+- assertVisible: "Sortierung"
+- tapOn: "Routen"
+- pressKey: Back
+- assertVisible: "Filter"
+# Routes mode → "X Frames" cards, NO "X Züge".
+- assertVisible:
+    text: "[0-9]+ Frames"
+- assertNotVisible:
+    text: "[0-9]+ Züge"
+# Restore default boulder filter.
+- tapOn: "Filter"
+- tapOn: "Boulder"
+- pressKey: Back
+- assertVisible: "Filter"
+- assertVisible:
+    text: "[0-9]+ Züge"
+- assertNotVisible:
+    text: "[0-9]+ Frames"

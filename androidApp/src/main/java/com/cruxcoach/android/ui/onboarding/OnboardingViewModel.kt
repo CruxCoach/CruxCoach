@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.BuildConfig
+import com.cruxcoach.android.R
 import com.cruxcoach.android.data.SyncInterval
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.data.kilter.KilterApiClient
@@ -12,6 +13,7 @@ import com.cruxcoach.android.data.kilter.KilterAuthResult
 import com.cruxcoach.android.data.kilter.KilterImportPreview
 import com.cruxcoach.android.data.kilter.KilterSyncEngine
 import com.cruxcoach.android.data.kilter.KilterTokenStore
+import com.cruxcoach.android.data.kilter.localized
 import com.cruxcoach.android.nostr.NostrKeyStore
 import com.cruxcoach.android.nostr.backup.BackupInfo
 import com.cruxcoach.android.nostr.backup.BackupPreferences
@@ -85,13 +87,37 @@ data class OnboardingState(
     val backupCheckAttempted: Boolean = false,
     val pendingRestore: BackupInfo? = null,
     val restoreInProgress: Boolean = false,
+    /** True iff [restoreInProgress] AND board-sync is still finishing
+     *  the climbs-table import. The restore pipeline blocks on
+     *  board-sync to avoid a SQLITE_BUSY race against the bulk
+     *  importer; on a fresh install this typically takes 1–3
+     *  minutes (Blossom CDN download + decompression + bulk SQL
+     *  insert of ~190K climbs), during which the previous UI showed
+     *  no indication beyond a frozen confirm dialog. Drives a phase-
+     *  aware progress message in the dialog. */
+    val restoreAwaitingBoardSync: Boolean = false,
     val restoreFailed: Boolean = false,
     val restoreSucceeded: Boolean = false,
     val noBackupFoundForKey: Boolean = false,
     val showRestartConfirm: Boolean = false,
 
     val isSaving: Boolean = false,
-    val error: String? = null
+    val error: String? = null,
+
+    /** FEAT-005 — when true, the Kilter step renders a ModalBottomSheet
+     *  hosting the AuroraMigrationScreen body. Optional path: users
+     *  with an Aurora email export can run the import without leaving
+     *  onboarding. Default false (most users will skip). */
+    val auroraSheetOpen: Boolean = false,
+
+    /** Board-model picker, surfaced in the BOARD_SETUP step BEFORE the
+     *  sync card. Hardware knowledge — the user knows their physical
+     *  board, so making them sync-then-pick is unnecessary friction.
+     *  These values are persisted to UserPreferences immediately on
+     *  change so they're available everywhere else in the app. */
+    val boardLayoutId: Int = com.cruxcoach.android.data.BoardConstants.KILTER_ORIGINAL_LAYOUT,
+    val boardProductSizeId: Int = com.cruxcoach.android.data.BoardConstants.KILTER_DEFAULT_SIZE,
+    val boardProductSizeName: String = "",
 )
 
 @HiltViewModel
@@ -104,10 +130,15 @@ class OnboardingViewModel @Inject constructor(
     private val keyStore: NostrKeyStore,
     private val backupPreferences: BackupPreferences,
     private val backupRepository: BackupRepository,
+    private val boardSyncManager: com.cruxcoach.android.data.BoardSyncManager,
 ) : ViewModel() {
 
     private companion object {
         const val TAG = "OnboardingVM"
+    }
+
+    fun setAuroraSheetOpen(value: Boolean) {
+        _state.update { it.copy(auroraSheetOpen = value) }
     }
 
     private val _state = MutableStateFlow(
@@ -131,6 +162,60 @@ class OnboardingViewModel @Inject constructor(
                 }
                 triggerBackupCheckIfNeeded()
             }
+        }
+        // Seed the board-model fields from the persisted preferences so
+        // the user's prior choice survives onboarding restarts (e.g.
+        // backup-restore round trip).
+        viewModelScope.launch {
+            val layoutId = userPreferences.boardLayoutId.first()
+            val sizeId = userPreferences.boardProductSizeId.first()
+            val name = com.cruxcoach.android.data.BoardConstants.KILTER_KNOWN_SIZES
+                .firstOrNull { it.id.toInt() == sizeId }?.name.orEmpty()
+            _state.update {
+                it.copy(
+                    boardLayoutId = layoutId,
+                    boardProductSizeId = sizeId,
+                    boardProductSizeName = name,
+                )
+            }
+        }
+    }
+
+    /** See SettingsViewModel.updateBoardLayout for the rationale —
+     *  switching the layout also rolls the product_size to a sensible
+     *  default for the new layout, since Original sizes don't exist on
+     *  Homewall and vice-versa. */
+    fun updateBoardLayout(layoutId: Int) {
+        if (_state.value.boardLayoutId == layoutId) return
+        viewModelScope.launch {
+            userPreferences.setBoardLayoutId(layoutId)
+            val targetProductId = when (layoutId) {
+                com.cruxcoach.android.data.BoardConstants.KILTER_HOMEWALL_LAYOUT ->
+                    com.cruxcoach.android.data.BoardConstants.KILTER_HOMEWALL_PRODUCT_ID
+                else -> com.cruxcoach.android.data.BoardConstants.KILTER_PRODUCT_ID
+            }
+            val newSize = com.cruxcoach.android.data.BoardConstants.KILTER_KNOWN_SIZES
+                .firstOrNull { it.productId.toInt() == targetProductId }
+            val newSizeId = newSize?.id?.toInt() ?: when (layoutId) {
+                com.cruxcoach.android.data.BoardConstants.KILTER_HOMEWALL_LAYOUT ->
+                    com.cruxcoach.android.data.BoardConstants.KILTER_HOMEWALL_DEFAULT_SIZE
+                else -> com.cruxcoach.android.data.BoardConstants.KILTER_DEFAULT_SIZE
+            }
+            userPreferences.setBoardProductSizeId(newSizeId)
+            _state.update {
+                it.copy(
+                    boardLayoutId = layoutId,
+                    boardProductSizeId = newSizeId,
+                    boardProductSizeName = newSize?.name.orEmpty(),
+                )
+            }
+        }
+    }
+
+    fun updateBoardProductSize(id: Int, name: String) {
+        viewModelScope.launch {
+            userPreferences.setBoardProductSizeId(id)
+            _state.update { it.copy(boardProductSizeId = id, boardProductSizeName = name) }
         }
     }
 
@@ -176,31 +261,48 @@ class OnboardingViewModel @Inject constructor(
         _state.update { it.copy(isKilterLoggingIn = true, kilterLoginError = null) }
 
         viewModelScope.launch {
-            val result = kilterApiClient.authenticate(s.kilterEmail, s.kilterPassword)
-            when (result) {
-                is KilterAuthResult.Success -> {
-                    kilterTokenStore.storeTokens(
-                        accessToken = result.accessToken,
-                        refreshToken = result.refreshToken,
-                        expiresInSeconds = result.expiresIn,
-                        userUuid = result.userUuid,
-                        username = result.username
-                    )
-                    // Fetch import preview
-                    val preview = kilterSyncEngine.previewImport()
-                    _state.update {
-                        it.copy(
-                            isKilterLoggingIn = false,
-                            kilterConnected = true,
-                            kilterUsername = result.username,
-                            kilterImportPreview = preview.getOrNull()
+            // Engine-side `Result.map` (not `mapCatching`) lets a SQL throw
+            // out of insertLogs / getAllClimbUuids escape the Result and
+            // kill the coroutine — leaving isKilterLoggingIn = true forever
+            // and blocking the Skip button. Wrap defensively so any
+            // unexpected throw resets the spinner with a localized error.
+            try {
+                val result = kilterApiClient.authenticate(s.kilterEmail, s.kilterPassword)
+                when (result) {
+                    is KilterAuthResult.Success -> {
+                        kilterTokenStore.storeTokens(
+                            accessToken = result.accessToken,
+                            refreshToken = result.refreshToken,
+                            expiresInSeconds = result.expiresIn,
+                            userUuid = result.userUuid,
+                            username = result.username
                         )
+                        // Fetch import preview
+                        val preview = kilterSyncEngine.previewImport()
+                        _state.update {
+                            it.copy(
+                                isKilterLoggingIn = false,
+                                kilterConnected = true,
+                                kilterUsername = result.username,
+                                kilterImportPreview = preview.getOrNull()
+                            )
+                        }
+                    }
+                    is KilterAuthResult.Error -> {
+                        _state.update {
+                            it.copy(isKilterLoggingIn = false, kilterLoginError = result.localized(appContext))
+                        }
                     }
                 }
-                is KilterAuthResult.Error -> {
-                    _state.update {
-                        it.copy(isKilterLoggingIn = false, kilterLoginError = result.message)
-                    }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "kilterLogin threw", e)
+                _state.update {
+                    it.copy(
+                        isKilterLoggingIn = false,
+                        kilterLoginError = appContext.getString(R.string.kilter_sync_error, ""),
+                    )
                 }
             }
         }
@@ -209,16 +311,28 @@ class OnboardingViewModel @Inject constructor(
     fun kilterImportOneTime() {
         _state.update { it.copy(isKilterImporting = true) }
         viewModelScope.launch {
-            val result = kilterSyncEngine.importLogs(oneTimeOnly = true)
-            _state.update {
-                it.copy(
-                    isKilterImporting = false,
-                    kilterImportResult = result.fold(
-                        onSuccess = { count -> "$count" },
-                        onFailure = { e -> e.message }
-                    ),
-                    kilterConnected = false // credentials cleared
-                )
+            try {
+                val result = kilterSyncEngine.importLogs(oneTimeOnly = true)
+                _state.update {
+                    it.copy(
+                        isKilterImporting = false,
+                        kilterImportResult = result.fold(
+                            onSuccess = { count -> "$count" },
+                            onFailure = { e -> e.message }
+                        ),
+                        kilterConnected = false // credentials cleared
+                    )
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "kilterImportOneTime threw", e)
+                _state.update {
+                    it.copy(
+                        isKilterImporting = false,
+                        kilterImportResult = appContext.getString(R.string.kilter_sync_error, ""),
+                    )
+                }
             }
         }
     }
@@ -226,15 +340,27 @@ class OnboardingViewModel @Inject constructor(
     fun kilterImportPersistent() {
         _state.update { it.copy(isKilterImporting = true) }
         viewModelScope.launch {
-            val result = kilterSyncEngine.importLogs(oneTimeOnly = false)
-            _state.update {
-                it.copy(
-                    isKilterImporting = false,
-                    kilterImportResult = result.fold(
-                        onSuccess = { count -> "$count" },
-                        onFailure = { e -> e.message }
+            try {
+                val result = kilterSyncEngine.importLogs(oneTimeOnly = false)
+                _state.update {
+                    it.copy(
+                        isKilterImporting = false,
+                        kilterImportResult = result.fold(
+                            onSuccess = { count -> "$count" },
+                            onFailure = { e -> e.message }
+                        )
                     )
-                )
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "kilterImportPersistent threw", e)
+                _state.update {
+                    it.copy(
+                        isKilterImporting = false,
+                        kilterImportResult = appContext.getString(R.string.kilter_sync_error, ""),
+                    )
+                }
             }
         }
     }
@@ -336,15 +462,33 @@ class OnboardingViewModel @Inject constructor(
 
     fun confirmOnboardingRestore() {
         val info = _state.value.pendingRestore ?: return
-        _state.update { it.copy(restoreInProgress = true, restoreFailed = false) }
+        _state.update { it.copy(
+            restoreInProgress = true,
+            restoreAwaitingBoardSync = boardSyncManager.state.value.isSyncing,
+            restoreFailed = false,
+        ) }
+        // Surface the board-sync wait phase to the UI. The restore
+        // pipeline itself blocks on `boardSyncManager.state.first
+        // { !it.isSyncing }`; without this collector the user sees
+        // a frozen "Wiederherstellen…" dialog for the ~30 s of board
+        // sync on a fresh install. Cancellation is automatic when the
+        // restore launch above completes (collector lives inside the
+        // same viewModelScope job).
+        val boardSyncWatcher = viewModelScope.launch {
+            boardSyncManager.state.collect { sync ->
+                _state.update { it.copy(restoreAwaitingBoardSync = sync.isSyncing) }
+            }
+        }
         viewModelScope.launch {
             val result = runCatching { backupRepository.restore(info) }
+            boardSyncWatcher.cancel()
             if (result.isSuccess) {
                 backupPreferences.setBackupEnabled(true)
                 backupPreferences.setBackupRestoreIntent(false)
                 _state.update {
                     it.copy(
                         restoreInProgress = false,
+                        restoreAwaitingBoardSync = false,
                         pendingRestore = null,
                         restoreSucceeded = true,
                         backupOptIn = true,
@@ -356,6 +500,7 @@ class OnboardingViewModel @Inject constructor(
                 _state.update {
                     it.copy(
                         restoreInProgress = false,
+                        restoreAwaitingBoardSync = false,
                         pendingRestore = null,
                         restoreFailed = true,
                     )
@@ -383,6 +528,17 @@ class OnboardingViewModel @Inject constructor(
 
         viewModelScope.launch {
             try {
+                // Preview-only Kilter login: tokens were stored at the
+                // KILTER step (so the user could see their account), but
+                // they finished onboarding without picking Import Once /
+                // Import Sync. The Settings analog `dismissKilterPreview`
+                // revokes server-side and clears local — mirror that here
+                // so the 30-day Keycloak refresh token doesn't outlive a
+                // step the user effectively cancelled.
+                if (s.kilterConnected && s.kilterImportResult == null) {
+                    runCatching { kilterApiClient.revokeRefreshToken() }
+                    kilterTokenStore.clear()
+                }
                 userPreferences.setNearbyClimbSharing(s.bleSharing)
                 userPreferences.setAllowRemoteDisconnect(s.bleSharing)
                 userPreferences.setCrashReportOptIn(s.communityFeatures)
@@ -406,6 +562,15 @@ class OnboardingViewModel @Inject constructor(
                     // through Settings either.
                     interval = s.backupFrequency,
                 )
+                // Commit the board-step selection even when the user accepted
+                // the displayed defaults without tapping a chip. Without this,
+                // the DataStore keys stay unset and BoardSyncViewModel's
+                // checkFirstSyncModelSelection (gated on
+                // `isBoardProductSizeDefault`) would re-prompt the model
+                // dialog right after the first board sync — duplicating
+                // the choice the user just made in the BOARD_SETUP step.
+                userPreferences.setBoardLayoutId(s.boardLayoutId)
+                userPreferences.setBoardProductSizeId(s.boardProductSizeId)
                 userPreferences.setOnboardingCompleted(true)
                 // Suppress the "what's new" dialog for features the user
                 // already chose during onboarding — they would otherwise

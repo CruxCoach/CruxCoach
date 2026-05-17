@@ -1,6 +1,7 @@
 package com.cruxcoach.android
 
 import android.app.Application
+import android.util.Log
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
 import androidx.lifecycle.DefaultLifecycleObserver
@@ -48,6 +49,9 @@ class CruxCoachApp : Application(), Configuration.Provider {
     lateinit var connectivityObserver: dagger.Lazy<NostrRelayConnectivityObserver>
 
     @Inject
+    lateinit var nostrRelayPool: dagger.Lazy<com.cruxcoach.android.nostr.NostrRelayPool>
+
+    @Inject
     lateinit var pushCoordinator: dagger.Lazy<NostrPushCoordinator>
 
     @Inject
@@ -58,6 +62,9 @@ class CruxCoachApp : Application(), Configuration.Provider {
 
     @Inject
     lateinit var backupPreferences: dagger.Lazy<com.cruxcoach.android.nostr.backup.BackupPreferences>
+
+    @Inject
+    lateinit var communityClimbSubscriber: dagger.Lazy<com.cruxcoach.android.community.CommunityClimbSubscriber>
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -136,6 +143,21 @@ class CruxCoachApp : Application(), Configuration.Provider {
                 // changes to the device's primary language without a full restart.
                 applySystemLocaleIfNeeded()
 
+                // Kick the Nostr relay pool back to life on every
+                // foreground. Pre-fix, the pool only auto-reconnected on
+                // OS network-availability events (NostrRelayConnectivityObserver):
+                // a stable Wi-Fi connection that didn't generate an
+                // onAvailable event between two foregrounds left a stalled
+                // sub silent until the next network-state change. Concretely:
+                // user backgrounds CruxCoach for 5 min, a friend publishes a
+                // climb, user foregrounds — the new climb wouldn't appear
+                // until WLAN flapped or the app restarted. reconnectAll()
+                // is idempotent (no-op if every relay is already healthy)
+                // and clears the per-relay reconnectExhausted flag so the
+                // pool tries again even after 5 prior failures.
+                runCatching { nostrRelayPool.get().reconnectAll() }
+                    .onFailure { Log.w("CruxCoachApp", "foreground reconnectAll failed", it) }
+
                 val now = System.currentTimeMillis()
                 if (now - lastForegroundPoll > 30_000) {
                     lastForegroundPoll = now
@@ -182,6 +204,14 @@ class CruxCoachApp : Application(), Configuration.Provider {
                 syncManager.get().recoverPartialImportIfNeeded()
             }.onFailure { PerfLogger.logCoroutine("appScope", "recoverPartialImport failed: ${it.message}") }
             runCatching {
+                // One-shot consumer of the 7.sqm post-migration marker:
+                // wipes chunk hashes + lastSyncTimestamp and triggers a
+                // background sync so the user doesn't land on an empty
+                // browser after the Kilter-side wipe. No-op when the
+                // marker is absent (i.e. on every subsequent start).
+                syncManager.get().handlePostMigrationResync()
+            }.onFailure { PerfLogger.logCoroutine("appScope", "handlePostMigrationResync failed: ${it.message}") }
+            runCatching {
                 // Note: no startup probe of the WiFi-Direct-share endpoint. The
                 // legitimate receive flow is deep-link driven (cruxcoach://import-board-db
                 // from the hotspot's landing page), gated by a user-visible consent
@@ -205,17 +235,64 @@ class CruxCoachApp : Application(), Configuration.Provider {
                 BoardSyncWorker.schedule(this@CruxCoachApp, interval)
             }.onFailure { PerfLogger.logCoroutine("appScope", "BoardSyncWorker.schedule failed: ${it.message}") }
 
+            // Kilter publish retry — drains rows where the direct push
+            // failed (network blip, server hiccup, token expiry). Idempotent;
+            // safe to schedule unconditionally, the worker self-skips when
+            // the user has no Kilter token or disabled climb publishing.
+            runCatching {
+                com.cruxcoach.android.data.kilter.KilterPublishRetryWorker.schedule(this@CruxCoachApp)
+            }.onFailure { PerfLogger.logCoroutine("appScope", "KilterPublishRetryWorker.schedule failed: ${it.message}") }
+
+            // Sibling retry worker for the Nostr-side of community publish.
+            // Drains rows the editor sent to relays where zero relays
+            // accepted (transient failure, captive portal, etc.). Same
+            // 6h cadence; idempotent; self-skips when no failed rows.
+            runCatching {
+                com.cruxcoach.android.community.CommunityPublishRetryWorker.schedule(this@CruxCoachApp)
+            }.onFailure { PerfLogger.logCoroutine("appScope", "CommunityPublishRetryWorker.schedule failed: ${it.message}") }
+
+            // One-shot drain on every cold start: covers the crash window
+            // between the publisher's pre-send `markClimbPublishInFlight`
+            // and the post-send `markClimbPublishedNostr`. Without this,
+            // a 'failed' row left by such a crash would have to wait up
+            // to 6h for the next periodic tick. WorkManager's
+            // APPEND_OR_REPLACE under the same WORK_NAME dedupes against
+            // the periodic, so this is safe to call unconditionally.
+            runCatching {
+                com.cruxcoach.android.community.CommunityPublishRetryWorker.runOnce(this@CruxCoachApp)
+            }.onFailure { PerfLogger.logCoroutine("appScope", "CommunityPublishRetryWorker.runOnce failed: ${it.message}") }
+
+            // Channel B: live Nostr subscription for community climbs.
+            // Closes the latency gap between two daily Blossom snapshots —
+            // climbs other users publish appear in the local DB within
+            // seconds of being relayed, not on the next blob refresh.
+            // Idempotent; the subscriber re-uses the existing relay pool
+            // and self-restarts on connection drops.
+            runCatching {
+                communityClimbSubscriber.get().start(appScope)
+            }.onFailure { PerfLogger.logCoroutine("appScope", "CommunityClimbSubscriber.start failed: ${it.message}") }
+
             runCatching {
                 // FEAT-002: reconcile the backup worker with persisted prefs on
                 // every app start — catches cases where the user flipped the
                 // toggle + killed the app before WorkManager committed the
                 // schedule change.
+                //
+                // FEAT-021: read the BACKUP-specific interval, not the
+                // board-sync `interval` from above. Pre-fix the same
+                // board-sync value drove both schedules — users with
+                // board-sync=MANUAL silently had their periodic backup
+                // cancelled on every cold start. The two prefs are
+                // wholly unrelated user-facing options that happen to
+                // share the SyncInterval enum type.
                 val backupPrefs = backupPreferences.get()
                 val backupEnabled = backupPrefs.isBackupEnabled() && backupPrefs.isBackupFeatureEnabled()
+                val backupInterval = runCatching { backupPrefs.backupInterval.first() }
+                    .getOrDefault(com.cruxcoach.android.data.SyncInterval.DAILY)
                 com.cruxcoach.android.nostr.backup.BackupSyncWorker.schedule(
                     this@CruxCoachApp,
                     enabled = backupEnabled,
-                    interval = interval,
+                    interval = backupInterval,
                 )
             }.onFailure { PerfLogger.logCoroutine("appScope", "BackupSyncWorker.schedule failed: ${it.message}") }
             PerfLogger.logCoroutine("appScope", "singleton-init + sync DONE")

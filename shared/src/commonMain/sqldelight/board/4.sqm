@@ -1,0 +1,61 @@
+-- Migration from version 4 to 5: provenance + per-network publish status.
+--
+-- Why a separate `origin` from `source`:
+--   `source` describes where the row's *data* was last refreshed from
+--   ('kilter' = pulled via Kilter API blob; 'nostr' = received via
+--   community Kind 30078; 'local' = saved as a draft, not yet
+--   broadcast). It's mutable: the same climb can transition source
+--   over its lifetime (local → nostr after publish; nostr → kilter
+--   after Kilter blob harvest re-pulls it).
+--
+--   `origin` is immutable provenance: where was this climb FIRST
+--   created? 'cruxcoach' = authored in our editor; 'kilter' = authored
+--   in the official Kilter app and we pulled it. The user wants to
+--   filter on this ("show me only CruxCoach-setter climbs") which
+--   isn't expressible from `source` alone.
+--
+-- The kilter_* fields track whether the climb has reached Kilter's
+-- official server DB, separate from Nostr. CruxCoach-origin climbs are
+-- always pushed to Nostr; Kilter is best-effort (depends on user
+-- account state + the future bundled-account fallback service).
+
+ALTER TABLE climbs ADD COLUMN origin TEXT NOT NULL DEFAULT 'kilter';
+
+-- 'pending' = upload enqueued, not yet attempted or in retry
+-- 'synced'  = Kilter accepted; kilter_synced_at + kilter_publish_via set
+-- 'failed'  = exhausted retries; kilter_error has the last reason
+-- NULL      = never attempted (e.g. setting off, not yet eligible)
+ALTER TABLE climbs ADD COLUMN kilter_status TEXT;
+ALTER TABLE climbs ADD COLUMN kilter_synced_at INTEGER;       -- epoch seconds
+ALTER TABLE climbs ADD COLUMN kilter_publish_via TEXT;        -- 'self' | 'cruxcoach'
+ALTER TABLE climbs ADD COLUMN kilter_error TEXT;              -- last failure message
+
+CREATE INDEX idx_climbs_origin ON climbs(origin);
+CREATE INDEX idx_climbs_kilter_status ON climbs(kilter_status);
+
+-- ── refresh climb_browse VIEW with the new climbs columns ───────
+-- The VIEW exposes origin + kilter_status (browser-list filter chip
+-- + provenance badge). 3.sqm did this dance for source/sync_status;
+-- 4.sqm shipped without recreating the VIEW, which left every upgrader
+-- (DB ≤ v3 before the update) with a VIEW pinned to the old schema —
+-- queries reading climb_browse.origin returned "no such column" and
+-- the browser silently went empty.
+--
+-- Fresh installs were unaffected because the canonical VIEW in
+-- Board.sq is recreated from the .sq schema on first DB-open. Real
+-- v0.1.3 → v0.1.4 upgrades hit this on every device.
+--
+-- This block is a no-op for fresh installs (VIEW is already correct);
+-- on upgrade paths it replaces the stale definition.
+DROP VIEW IF EXISTS climb_browse;
+CREATE VIEW climb_browse AS
+SELECT
+    c.uuid, c.name, c.setter_username, c.frames_count, c.layout_id,
+    COALESCE(c.description, '') AS description,
+    c.is_nomatch, c.frames_pace, c.hsm, c.move_count,
+    c.source, c.created_by_pubkey, c.sync_status, c.origin, c.kilter_status,
+    cs.angle, cs.difficulty_average, cs.quality_average,
+    cs.ascensionist_count, cs.benchmark_difficulty
+FROM climbs c
+INNER JOIN climb_stats cs ON c.uuid = cs.climb_uuid
+WHERE c.is_listed = 1;

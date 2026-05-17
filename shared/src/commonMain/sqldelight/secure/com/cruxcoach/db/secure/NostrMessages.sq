@@ -1,0 +1,116 @@
+CREATE TABLE IF NOT EXISTS nostr_messages (
+    id TEXT NOT NULL PRIMARY KEY,
+    type TEXT NOT NULL,
+    direction TEXT NOT NULL,
+    content TEXT NOT NULL,
+    subject TEXT,
+    sender_pubkey TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    relay_accepted INTEGER NOT NULL DEFAULT 0,
+    read INTEGER NOT NULL DEFAULT 0,
+    reply_to_id TEXT,
+    queued_at INTEGER DEFAULT NULL,
+    event_json TEXT DEFAULT NULL,
+    thread_anchor_id TEXT DEFAULT NULL
+);
+
+CREATE INDEX idx_nostr_messages_type ON nostr_messages(type);
+CREATE INDEX idx_nostr_messages_created ON nostr_messages(created_at);
+CREATE INDEX idx_nostr_messages_reply ON nostr_messages(reply_to_id);
+CREATE INDEX IF NOT EXISTS idx_nostr_messages_type_dir ON nostr_messages(type, direction);
+
+insert:
+INSERT OR IGNORE INTO nostr_messages(id, type, direction, content, subject, sender_pubkey, created_at, relay_accepted, read, reply_to_id, thread_anchor_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+getAll:
+SELECT * FROM nostr_messages ORDER BY created_at DESC;
+
+getById:
+SELECT * FROM nostr_messages WHERE id = ?;
+
+getByType:
+SELECT * FROM nostr_messages WHERE type = ? ORDER BY created_at DESC;
+
+getRootMessagesByType:
+SELECT * FROM nostr_messages WHERE type = ? AND reply_to_id IS NULL AND direction = 'sent' ORDER BY created_at DESC;
+
+getThread:
+SELECT * FROM nostr_messages
+WHERE id = :rootId
+   OR reply_to_id = :rootId
+   OR reply_to_id = (SELECT thread_anchor_id FROM nostr_messages WHERE id = :rootId)
+ORDER BY created_at ASC;
+
+getUnreadCountByType:
+SELECT COUNT(*) FROM nostr_messages WHERE type = ? AND read = 0 AND direction = 'received';
+
+getTotalUnreadCount:
+SELECT COUNT(*) FROM nostr_messages WHERE read = 0 AND direction = 'received';
+
+markRead:
+UPDATE nostr_messages SET read = 1 WHERE id = ?;
+
+markAllReadByType:
+UPDATE nostr_messages SET read = 1 WHERE type = ? AND read = 0;
+
+markThreadRead:
+UPDATE nostr_messages SET read = 1
+WHERE id = :rootId
+   OR reply_to_id = :rootId
+   OR reply_to_id = (SELECT thread_anchor_id FROM nostr_messages WHERE id = :rootId);
+
+updateRelayAccepted:
+UPDATE nostr_messages SET relay_accepted = 1 WHERE id = ?;
+
+deleteById:
+DELETE FROM nostr_messages WHERE id = ?;
+
+-- Remove NIP-17 self-wrap echoes that were inserted as "received" before the
+-- subscription learned to skip them. Identified by sender_pubkey == own pubkey.
+deleteSelfEchoes:
+DELETE FROM nostr_messages WHERE direction = 'received' AND sender_pubkey = ?;
+
+-- Recovery wipe: drops every row that isn't still waiting in the offline queue.
+-- Used by the v2 recovery migration to clear pre-fix corrupted sent rows. The
+-- relay subscription re-fetches history (capped at 365 days) after the wipe.
+deleteAllNonQueued:
+DELETE FROM nostr_messages WHERE queued_at IS NULL;
+
+-- Count sent rows whose sender_pubkey doesn't match the supplied (current)
+-- pubkey. A positive result means the device's Nostr identity has rotated
+-- since those rows were stored — every sent row was written with our own
+-- pubkey of the time, so a mismatch is a deterministic key-change signal.
+countStaleSentRows:
+SELECT COUNT(*) FROM nostr_messages WHERE direction = 'sent' AND sender_pubkey != ?;
+
+-- Hard identity filter: deletes every non-queued row that doesn't belong to
+-- the current identity. Valid rows are:
+--   * sent  AND sender_pubkey = currentPubkey  (our own message, this identity)
+--   * received AND sender_pubkey = devPubkey   (genuine dev message)
+-- Anything else is either a phantom from an old rotated identity or a
+-- self-echo artefact that can never be decrypted/verified by the current key.
+-- Queued rows are preserved so pending offline sends are never lost.
+-- Uses De Morgan'd negation because SQLDelight's parser rejects "NOT (...)"
+-- at the top level of the WHERE clause.
+deleteForeignIdentityRows:
+DELETE FROM nostr_messages
+WHERE queued_at IS NULL
+  AND (direction != 'sent' OR sender_pubkey != :currentPubkey)
+  AND (direction != 'received' OR sender_pubkey != :devPubkey);
+
+-- Queue operations
+getQueued:
+SELECT * FROM nostr_messages WHERE queued_at IS NOT NULL ORDER BY queued_at ASC;
+
+getQueuedCount:
+SELECT COUNT(*) FROM nostr_messages WHERE queued_at IS NOT NULL;
+
+markQueued:
+UPDATE nostr_messages SET queued_at = ?, event_json = ? WHERE id = ?;
+
+clearQueued:
+UPDATE nostr_messages SET queued_at = NULL, relay_accepted = 1 WHERE id = ?;
+
+deleteExpiredQueued:
+DELETE FROM nostr_messages WHERE queued_at IS NOT NULL AND queued_at < ?;

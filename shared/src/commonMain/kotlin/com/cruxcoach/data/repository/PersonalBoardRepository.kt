@@ -22,14 +22,14 @@ interface PersonalBoardRepository {
     fun deleteAscent(uuid: String)
     fun updateAscent(uuid: String, bidCount: Long, quality: Long?, comment: String?)
 
-    fun getUserAscentsAll(): List<AuroraAscentWithClimb>
-    fun getUserAscentsBetween(from: String, to: String): List<AuroraAscentWithClimb>
+    fun getUserAscentsAll(): List<AscentWithClimb>
+    fun getUserAscentsBetween(from: String, to: String): List<AscentWithClimb>
     fun getUserSentClimbUuids(): Set<String>
     fun getUserAttemptedClimbUuids(): Set<String>
     fun getUserSendDifficulties(since: String): List<Double>
-    fun getUserLogbookPage(limit: Int = 50, offset: Int = 0): List<AuroraAscentWithClimb>
-    fun getUserLogbookAllLight(): List<AuroraAscentWithClimb>
-    fun getUserHistoryForClimb(climbUuid: String): List<AuroraAscentWithClimb>
+    fun getUserLogbookPage(limit: Int = 50, offset: Int = 0): List<AscentWithClimb>
+    fun getUserLogbookAllLight(): List<AscentWithClimb>
+    fun getUserHistoryForClimb(climbUuid: String): List<AscentWithClimb>
     fun countUserLogbook(): Long
 
     /** Map of climb_uuid → repeat count (for browse sort-by-repeats). */
@@ -73,17 +73,17 @@ interface PersonalBoardRepository {
         ascentCount: Long, bidCount: Long
     ): Long
 
-    fun getRecentBoardSessions(limit: Int = 20): List<BoardSession>
-    fun getActiveSession(): BoardSession?
+    fun getRecentBoardSessions(limit: Int = 20): List<Board_sessions>
+    fun getActiveSession(): Board_sessions?
     fun updateActiveSession(id: Long, ascentCount: Long, bidCount: Long, pauseDurationSeconds: Long, totalDurationSeconds: Long)
     fun endBoardSession(id: Long, endedAt: String, totalDurationSeconds: Long, pauseDurationSeconds: Long, ascentCount: Long, bidCount: Long)
-    fun getAllBoardSessions(): List<BoardSession>
+    fun getAllBoardSessions(): List<Board_sessions>
 
     // ── Climb list queries ──────────────────────────────────────
 
     fun ensureFavoritesListExists(): Long
-    fun getAllClimbLists(): List<ClimbList>
-    fun getClimbListById(id: Long): ClimbList?
+    fun getAllClimbLists(): List<Climb_lists>
+    fun getClimbListById(id: Long): Climb_lists?
     fun createClimbList(name: String): Long
     fun renameClimbList(id: Long, name: String)
     fun deleteClimbList(id: Long)

@@ -1,0 +1,74 @@
+appId: com.cruxcoach.android
+name: detail-add-to-list
+tags:
+  - smoke
+  - mutates-state
+---
+# BEHAVIOUR test: add-to-list pipeline. Open a climb detail, open
+# the Add-to-list dialog, toggle the climb into the built-in
+# "Favoriten" list, confirm, navigate to Lists screen, verify
+# "Favoriten" still listed (round-trip render).
+#
+# Idempotency: the flow toggles the climb INTO Favoriten and then
+# back OUT before exiting, leaving the list state as found. Catches
+# regressions in:
+# - showAddToListDialog wiring on detail screen
+# - dialog rendering with the user's lists
+# - ToggleClimbInList write to DB
+# - list-detail re-render after toggle
+#
+# FILTER-STATE precondition: defaults. The flow itself doesn't touch
+# any filter; it just navigates from Browser → Detail → Add-to-list
+# dialog → close → Browser → Lists.
+- launchApp:
+    stopApp: false
+- waitForAnimationToEnd:
+    timeout: 5000
+# Open first climb detail.
+- tapOn:
+    text: "[0-9]+ Züge"
+    index: 0
+- assertVisible: "Zurück"
+# Open Add-to-list dialog from detail TopBar.
+- tapOn: "Zu Liste hinzufügen"
+- assertVisible:
+    text: "Zu Liste hinzufügen"
+# The dialog has the same title as the icon's content-desc; assert
+# also a Favoriten row (built-in list, always present in the list
+# of options inside the dialog).
+- assertVisible: "Favoriten"
+# Toggle Favoriten (adds the climb to the list).
+- tapOn:
+    text: "Favoriten"
+- tapOn: "Fertig"
+# After dialog close we're back on Detail. Navigate to Lists.
+- pressKey: Back
+- assertVisible: "Filter"
+- tapOn: "Meine Listen"
+- assertVisible: "Favoriten"
+# Tap into Favoriten — should show the just-added climb count or
+# the climb-card list. We don't assert the specific climb because
+# the climb name from the detail tap isn't easily exfiltrated; the
+# value of this assertion is "list opens without crash and renders".
+- tapOn: "Favoriten"
+- waitForAnimationToEnd:
+    timeout: 3000
+# A boulder list-detail-card carries "X Züge" same as browser cards.
+- assertVisible:
+    text: "[0-9]+ Züge"
+- pressKey: Back
+- assertVisible: "Favoriten"
+- pressKey: Back
+- assertVisible: "Filter"
+# Cleanup: remove the climb from Favoriten so the flow is idempotent.
+- tapOn:
+    text: "[0-9]+ Züge"
+    index: 0
+- assertVisible: "Zurück"
+- tapOn: "Zu Liste hinzufügen"
+- assertVisible: "Favoriten"
+- tapOn:
+    text: "Favoriten"
+- tapOn: "Fertig"
+- pressKey: Back
+- assertVisible: "Filter"

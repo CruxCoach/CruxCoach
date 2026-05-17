@@ -1,6 +1,8 @@
 package com.cruxcoach.android.data.kilter
 
 import android.util.Log
+import com.cruxcoach.android.BuildConfig
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -8,6 +10,9 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.FormBody
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -57,6 +62,88 @@ private data class CustomWallRequest(
     val serialNumber: String? = null
 )
 
+/**
+ * Wire shape for `POST /api/climbs/create-climb/transaction`.
+ *
+ * Snake-cased fields mirror the column names of the `climbs` table in
+ * the Aurora board catalog. The endpoint name suggests the upstream
+ * server wraps the climb + climb-stats inserts in a single PowerSync-style
+ * transaction; for v1 we ship just the climb half — stats get aggregated
+ * server-side from ratings/logs.
+ */
+@Serializable
+private data class CreateClimbTransaction(
+    val climb: ClimbCreatePayload,
+)
+
+/**
+ * Kilter create/update-climb payload — empirically reverse-engineered
+ * from the Kilter Flutter app's outgoing JSON shape. Every field below
+ * has been live-tested against `portal.kiltergrips.com/api/climbs/
+ * create-climb/transaction` with a probe account; missing or mis-cased
+ * fields cause the server to throw a generic "An error occurred when
+ * running the transaction." HTTP 500 with no detail.
+ *
+ * Naming: camelCase. Earlier iterations sent snake_case (which is what
+ * the Kilter app's *local* SQLite uses), but the API itself is camelCase
+ * — snake_case fields are silently dropped, so a snake-cased payload
+ * leaves NOT-NULL columns NULL and the transaction fails.
+ *
+ * `origin` is an enum: MIGRATED | IMPORTED | NATIVE — climbs we author
+ * via the editor are NATIVE.
+ */
+@Serializable
+private data class ClimbCreatePayload(
+    val climbUuid: String,
+    val userUuid: String,
+    val username: String,
+    val name: String,
+    val description: String,
+    /** Concat of placement+role per hold: `h{placementId}p{roleId}…`. */
+    val climbConcat: String,
+    val productName: String,
+    /** Server-side identifier of the layout (board size + variant).
+     *  Stored as a numeric string in Kilter's API ("10", "27", etc.). */
+    val productLayoutUuid: String,
+    val angle: Int,
+    val frameCount: Int = 1,
+    val framesPace: Int = 0,
+    val edgeLeft: Int,
+    val edgeRight: Int,
+    val edgeBottom: Int,
+    val edgeTop: Int,
+    val allowMatch: Boolean = true,
+    val isDraft: Boolean = false,
+    val isListed: Boolean = true,
+    val isDeleted: Boolean = false,
+    val accumulatedHoldSetValue: Int = 1,
+    /** Enum: MIGRATED | IMPORTED | NATIVE. App-authored = NATIVE. */
+    val origin: String = "NATIVE",
+    val createdAt: String,
+    val updatedAt: String,
+)
+
+/** Outcome of a Kilter publish. Distinct from a generic Result so callers
+ *  can react to the auth-missing case (offer login UI) vs. transient errors
+ *  (queue retry) vs. permanent rejections (e.g. uuid conflict). */
+sealed class KilterPublishResult {
+    /** Kilter accepted the climb. `climbUuid` echoes what we sent. */
+    data class Success(val climbUuid: String) : KilterPublishResult()
+    /** No valid token — user needs to log in (or the bundled path applies). */
+    object NotAuthenticated : KilterPublishResult()
+    /** Network/server error; retry candidate. `message` carries the body. */
+    data class TransientError(val message: String) : KilterPublishResult()
+    /** Server rejected the payload (4xx); usually a content/validation issue. */
+    data class PermanentError(val message: String, val httpCode: Int) : KilterPublishResult()
+    /**
+     * Server returned 429 Too Many Requests. Distinct from PermanentError
+     * because the right action is "back off and retry later", not "stop
+     * retrying". `retryAfterSeconds` is the parsed `Retry-After` header
+     * value (null if missing/unparseable).
+     */
+    data class RateLimited(val retryAfterSeconds: Long?, val message: String) : KilterPublishResult()
+}
+
 @Serializable
 private data class KilterTokenResponse(
     @SerialName("access_token") val accessToken: String,
@@ -78,8 +165,45 @@ sealed class KilterAuthResult {
         val expiresIn: Long
     ) : KilterAuthResult()
 
-    data class Error(val message: String) : KilterAuthResult()
+    /**
+     * Typed authentication failure. `reason` is the canonical category
+     * (the UI layer maps it to a localized R.string); `httpCode` and
+     * `throttleSec` carry context for reasons that need it; `cause` is
+     * a free-form diagnostic string for logcat (never user-visible).
+     *
+     * Pre-fix this carried a single hardcoded German message that the
+     * UI surfaced verbatim (English-locale users saw German text), and
+     * KilterSyncEngine pattern-matched on the text.
+     */
+    data class Error(
+        val reason: Reason,
+        val httpCode: Int? = null,
+        val throttleSec: Long? = null,
+        val cause: String? = null,
+    ) : KilterAuthResult() {
+        sealed interface Reason {
+            data object InvalidCredentials : Reason
+            data object EmptyResponse : Reason
+            data object NetworkError : Reason
+            data object Throttled : Reason
+            data object NotAuthenticated : Reason
+            data object InvalidJwt : Reason
+            data object HttpFailure : Reason
+        }
+    }
 }
+
+/**
+ * Typed exception thrown by [KilterApiClient] non-auth methods that
+ * return [Result] (fetchLogs / uploadLogs / submitClimb wrappers).
+ * Lets [KilterSyncEngine] dispatch on `reason` instead of pattern-
+ * matching on `e.message` — pre-fix the latter was brittle to any
+ * i18n change of the embedded German strings.
+ */
+class KilterApiException(
+    val reason: KilterAuthResult.Error.Reason,
+    message: String,
+) : Exception(message)
 
 // --- API Client ---
 
@@ -90,14 +214,54 @@ class KilterApiClient @Inject constructor(
 ) {
     private companion object {
         const val TAG = "KilterApiClient"
-        const val TOKEN_URL = "https://idp.kiltergrips.com/realms/kilter/protocol/openid-connect/token"
-        const val LOGOUT_URL = "https://idp.kiltergrips.com/realms/kilter/protocol/openid-connect/logout"
-        const val API_BASE = "https://portal.kiltergrips.com/api"
+        const val PROD_TOKEN_URL = "https://idp.kiltergrips.com/realms/kilter/protocol/openid-connect/token"
+        const val PROD_LOGOUT_URL = "https://idp.kiltergrips.com/realms/kilter/protocol/openid-connect/logout"
+        const val PROD_API_BASE = "https://portal.kiltergrips.com/api"
         const val CLIENT_ID = "kilter"
+        // Cap on Kilter error-response bodies before they enter the
+        // KilterPublishResult envelope (and from there logcat / DB
+        // `kilter_error` column / Android backup blob). 5xx renders can
+        // be 50–500 KB; truncating at the network boundary keeps every
+        // downstream consumer bounded without scattered take(200)s.
+        const val MAX_ERR_BODY = 200
     }
 
-    private val json = Json { ignoreUnknownKeys = true }
+    // URL endpoints — `var` so unit tests can swap them for a
+    // MockWebServer base URL via [setEndpointsForTesting]. Production
+    // never mutates these; the @VisibleForTesting accessor below is
+    // the only writer.
+    private var tokenUrl: String = PROD_TOKEN_URL
+    private var logoutUrl: String = PROD_LOGOUT_URL
+    private var apiBase: String = PROD_API_BASE
+
+    @androidx.annotation.VisibleForTesting
+    internal fun setEndpointsForTesting(base: String) {
+        tokenUrl = "$base/realms/kilter/protocol/openid-connect/token"
+        logoutUrl = "$base/realms/kilter/protocol/openid-connect/logout"
+        apiBase = "$base/api"
+    }
+
+    // encodeDefaults = true: the Kilter create-climb payload has many
+    // NOT-NULL columns server-side that we model with sensible Kotlin
+    // defaults (allowMatch, isDraft, isListed, isDeleted, frameCount,
+    // framesPace, accumulatedHoldSetValue, origin). Without this flag
+    // kotlinx-serialization silently drops every field whose runtime
+    // value equals its declaration default — and the API then NPEs on
+    // the resulting NULL columns ("Cannot invoke Boolean.booleanValue()
+    // because isDraft is null"), with the error wrapped as a generic
+    // HTTP 500 transaction-error so the cause is invisible client-side.
+    private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     private val refreshMutex = Mutex()
+
+    // Client-side login throttle. Per-email exponential backoff in
+    // process memory only — survives the in-app retry pattern but not
+    // a process-kill (acceptable: an attacker that can restart the
+    // process can also wipe other forms of state). Defends against
+    // accidental brute-force from a stuck-finger user *and* against
+    // Wi-Fi-local helper apps that try to lock the user out of their
+    // Keycloak account by triggering N rapid 401s.
+    private val authBackoff = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    private val authFailures = java.util.concurrent.ConcurrentHashMap<String, Int>()
 
     /**
      * Authenticate with Kilter Keycloak using password grant.
@@ -105,6 +269,17 @@ class KilterApiClient @Inject constructor(
      */
     suspend fun authenticate(email: String, password: String): KilterAuthResult =
         withContext(Dispatchers.IO) {
+            val throttleKey = email.lowercase().trim()
+            val nextAllowed = authBackoff[throttleKey] ?: 0L
+            val now = System.currentTimeMillis()
+            if (now < nextAllowed) {
+                val waitSec = ((nextAllowed - now) / 1000L).coerceAtLeast(1)
+                Log.w(TAG, "auth throttled for ${throttleKey.take(3)}*** waitSec=$waitSec")
+                return@withContext KilterAuthResult.Error(
+                    reason = KilterAuthResult.Error.Reason.Throttled,
+                    throttleSec = waitSec,
+                )
+            }
             try {
                 val body = FormBody.Builder()
                     .add("grant_type", "password")
@@ -114,26 +289,85 @@ class KilterApiClient @Inject constructor(
                     .add("scope", "openid offline_access")
                     .build()
 
-                val request = Request.Builder().url(TOKEN_URL).post(body).build()
+                val request = Request.Builder().url(tokenUrl).post(body).build()
                 val response = httpClient.newCall(request).execute()
 
                 if (!response.isSuccessful) {
                     val errorBody = response.body?.string() ?: ""
                     Log.w(TAG, "Auth failed: HTTP ${response.code}, $errorBody")
+                    bumpAuthBackoff(throttleKey)
                     return@withContext KilterAuthResult.Error(
-                        if (response.code == 401) "Ungültige Zugangsdaten"
-                        else "Anmeldung fehlgeschlagen (HTTP ${response.code})"
+                        reason = if (response.code == 401)
+                            KilterAuthResult.Error.Reason.InvalidCredentials
+                        else KilterAuthResult.Error.Reason.HttpFailure,
+                        httpCode = response.code,
+                        cause = errorBody.take(200),
                     )
                 }
 
                 val responseBody = response.body?.string()
-                    ?: return@withContext KilterAuthResult.Error("Leere Antwort vom Server")
+                    ?: run {
+                        bumpAuthBackoff(throttleKey)
+                        return@withContext KilterAuthResult.Error(
+                            reason = KilterAuthResult.Error.Reason.EmptyResponse,
+                        )
+                    }
                 val tokenResponse = json.decodeFromString<KilterTokenResponse>(responseBody)
 
-                // Extract user UUID and username from JWT access token
-                val claims = parseJwtClaims(tokenResponse.accessToken)
-                val userUuid = claims["sub"] ?: ""
-                val username = claims["preferred_username"] ?: email
+                // Extract user UUID and username from JWT access token.
+                // Pre-fix parseJwtClaims silently returned an empty map on
+                // parse failure, which left userUuid="" — the user looked
+                // logged in to the app but every subsequent API call would
+                // fail obscurely. Now we surface InvalidJwt as a typed
+                // error so the login UI shows a meaningful message.
+                val claims = parseJwtClaimsOrNull(tokenResponse.accessToken)
+                val userUuid = claims?.get("sub")
+                if (claims == null || userUuid.isNullOrBlank()) {
+                    bumpAuthBackoff(throttleKey)
+                    return@withContext KilterAuthResult.Error(
+                        reason = KilterAuthResult.Error.Reason.InvalidJwt,
+                        cause = "missing sub claim",
+                    )
+                }
+                // Display-name resolution chain — never leak the email
+                // address as the public setter handle on Kilter. Kilter's
+                // realm uses email as `preferred_username` (the login
+                // handle), so the JWT claim alone gives us PII.
+                //
+                // 1. /api/users/{uuid}.username — the user-chosen display
+                //    name they registered with on Kilter Portal. Kilter
+                //    registration enforces uniqueness + non-empty
+                //    ("IllegalArgumentException: The username is already
+                //    in use"; "Please enter your Username"), so this is
+                //    guaranteed to exist for any active Kilter account.
+                //    The only failure mode is a transient network error
+                //    during this auth call.
+                // 2. JWT `name` claim — the user's full name from their
+                //    Kilter profile. Stand-in when (1) is unreachable.
+                // 3. Hard placeholder "CruxCoach" — final safety net so
+                //    we never fall through to the email itself even if
+                //    every upstream-resolved string looks email-shaped.
+                //    Identifiable as a CruxCoach-app-published climb on
+                //    the Kilter side rather than a generic anonymous
+                //    handle.
+                //
+                // The chosen value is cached in KilterTokenStore and
+                // becomes the `username` field on every published climb
+                // (visible to all Kilter users browsing public climbs).
+                val displayUsername = runCatching {
+                    fetchDisplayUsername(tokenResponse.accessToken, userUuid)
+                }.getOrNull()
+                val nameClaim = claims["name"]?.takeIf { it.isNotBlank() }
+                fun emailShaped(s: String): Boolean = s.contains("@")
+                val username = when {
+                    !displayUsername.isNullOrBlank() && !emailShaped(displayUsername) -> displayUsername
+                    nameClaim != null && !emailShaped(nameClaim) -> nameClaim
+                    else -> "CruxCoach"
+                }
+
+                // Successful login → clear the backoff state for this email.
+                authFailures.remove(throttleKey)
+                authBackoff.remove(throttleKey)
 
                 KilterAuthResult.Success(
                     userUuid = userUuid,
@@ -142,11 +376,33 @@ class KilterApiClient @Inject constructor(
                     refreshToken = tokenResponse.refreshToken,
                     expiresIn = tokenResponse.expiresIn
                 )
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Auth error", e)
-                KilterAuthResult.Error("Verbindung fehlgeschlagen: ${e.message}")
+                bumpAuthBackoff(throttleKey)
+                KilterAuthResult.Error(
+                    reason = KilterAuthResult.Error.Reason.NetworkError,
+                    cause = e.message?.take(200),
+                )
             }
         }
+
+    /**
+     * Record a failed authentication attempt for [emailKey] and compute
+     * the next-allowed timestamp using exponential backoff capped at
+     * 5 minutes. The cap matches the typical Keycloak per-account
+     * brute-force lockout window — we want to be at least as cautious
+     * as the server side without locking the user out of their own
+     * account longer than necessary.
+     */
+    private fun bumpAuthBackoff(emailKey: String) {
+        val attempts = (authFailures[emailKey] ?: 0) + 1
+        authFailures[emailKey] = attempts
+        // 1s, 2s, 4s, 8s, 16s, 32s, 64s, 128s, 256s → cap at 300s.
+        val backoffMs = (1000L * (1L shl (attempts - 1).coerceAtMost(8))).coerceAtMost(300_000L)
+        authBackoff[emailKey] = System.currentTimeMillis() + backoffMs
+    }
 
     /**
      * Refresh the access token using the offline refresh token.
@@ -165,7 +421,7 @@ class KilterApiClient @Inject constructor(
                     .add("refresh_token", refreshToken)
                     .build()
 
-                val request = Request.Builder().url(TOKEN_URL).post(body).build()
+                val request = Request.Builder().url(tokenUrl).post(body).build()
                 val response = httpClient.newCall(request).execute()
 
                 if (response.isSuccessful) {
@@ -178,6 +434,8 @@ class KilterApiClient @Inject constructor(
                     return@withContext true
                 }
                 Log.w(TAG, "Token refresh failed: HTTP ${response.code}")
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Token refresh error", e)
             }
@@ -202,12 +460,14 @@ class KilterApiClient @Inject constructor(
                 .add("client_id", CLIENT_ID)
                 .add("refresh_token", refreshToken)
                 .build()
-            val request = Request.Builder().url(LOGOUT_URL).post(body).build()
+            val request = Request.Builder().url(logoutUrl).post(body).build()
             val response = httpClient.newCall(request).execute()
             response.close()
             val ok = response.isSuccessful
             if (!ok) Log.w(TAG, "Logout HTTP ${response.code}")
             ok
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.w(TAG, "Logout call failed — continuing with local clear", e)
             false
@@ -219,11 +479,11 @@ class KilterApiClient @Inject constructor(
      */
     suspend fun fetchLogs(): Result<List<KilterLog>> = withContext(Dispatchers.IO) {
         val token = ensureValidToken()
-            ?: return@withContext Result.failure(Exception("Nicht angemeldet"))
+            ?: return@withContext Result.failure(KilterApiException(KilterAuthResult.Error.Reason.NotAuthenticated, "no valid token"))
 
         try {
             val request = Request.Builder()
-                .url("$API_BASE/logs")
+                .url("$apiBase/logs")
                 .addHeader("Authorization", "Bearer $token")
                 .build()
             val response = httpClient.newCall(request).execute()
@@ -243,6 +503,8 @@ class KilterApiClient @Inject constructor(
                 json.decodeFromString<KilterLogsResponse>(body).logs
             }
             Result.success(logs)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "fetchLogs failed", e)
             Result.failure(e)
@@ -256,14 +518,14 @@ class KilterApiClient @Inject constructor(
         if (logs.isEmpty()) return@withContext Result.success(Unit)
 
         val token = ensureValidToken()
-            ?: return@withContext Result.failure(Exception("Nicht angemeldet"))
+            ?: return@withContext Result.failure(KilterApiException(KilterAuthResult.Error.Reason.NotAuthenticated, "no valid token"))
 
         try {
             val payload = json.encodeToString(logs)
             val requestBody = payload.toRequestBody("application/json".toMediaType())
 
             val request = Request.Builder()
-                .url("$API_BASE/logs/bulk")
+                .url("$apiBase/logs/bulk")
                 .addHeader("Authorization", "Bearer $token")
                 .post(requestBody)
                 .build()
@@ -275,6 +537,8 @@ class KilterApiClient @Inject constructor(
                 )
             }
             Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "uploadLogs failed", e)
             Result.failure(e)
@@ -340,7 +604,7 @@ class KilterApiClient @Inject constructor(
                 productLayoutUuid = productLayoutUuid
             ))
             val request = Request.Builder()
-                .url("$API_BASE/walls/custom-wall")
+                .url("$apiBase/walls/custom-wall")
                 .addHeader("Authorization", "Bearer $token")
                 .post(body.toRequestBody("application/json".toMediaType()))
                 .build()
@@ -353,9 +617,281 @@ class KilterApiClient @Inject constructor(
                 Log.w(TAG, "Custom wall server registration failed (HTTP ${response.code}) — using local context")
             }
             localContext
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.w(TAG, "Custom wall registration error — using local context", e)
             localContext
+        }
+    }
+
+    /**
+     * Publish a CruxCoach-authored climb to Kilter's official server DB.
+     *
+     * Endpoint per RE: `POST /api/climbs/create-climb/transaction`. The
+     * `setter_uuid` is read from the cached Keycloak token (sub-claim);
+     * the `climb_uuid` is the same UUID we already generated in the
+     * editor and pinned in the Nostr Kind 30078 event, so the row stays
+     * deduplicated when the daily Kilter-API harvester pulls it back.
+     *
+     * Idempotent: re-calling with the same climb_uuid is a server-side
+     * no-op (Kilter treats duplicate UUID as already-exists). The caller
+     * doesn't need to track "did this attempt actually create or just
+     * idempotency-replay" for status flags — both count as success.
+     */
+    suspend fun publishClimb(
+        climbUuid: String,
+        name: String,
+        description: String,
+        framesClimbConcat: String,
+        productName: String,
+        productLayoutUuid: String,
+        angle: Int,
+        edgeLeft: Int,
+        edgeRight: Int,
+        edgeBottom: Int,
+        edgeTop: Int,
+    ): KilterPublishResult = submitClimb(
+        endpointPath = "create-climb/transaction",
+        op = "publishClimb",
+        method = "POST",
+        climbUuid = climbUuid,
+        name = name,
+        description = description,
+        framesClimbConcat = framesClimbConcat,
+        productName = productName,
+        productLayoutUuid = productLayoutUuid,
+        angle = angle,
+        edgeLeft = edgeLeft,
+        edgeRight = edgeRight,
+        edgeBottom = edgeBottom,
+        edgeTop = edgeTop,
+    )
+
+    /**
+     * Update an already-published climb on the upstream Aurora API:
+     * `POST /api/climbs/update-climb/transaction`.
+     *
+     * Same payload shape as create. The upstream UI only lets the setter
+     * trigger this for `is_draft=1` climbs, but the API does not visibly
+     * gate against published rows, so we use it for the edit-flow of
+     * a CruxCoach climb that was previously synced. If the API rejects
+     * it (4xx for "published cannot be edited" or similar), the caller
+     * marks the climb `kilter_status='diverged'` so the retry worker
+     * stops poking it.
+     */
+    suspend fun updateClimb(
+        climbUuid: String,
+        name: String,
+        description: String,
+        framesClimbConcat: String,
+        productName: String,
+        productLayoutUuid: String,
+        angle: Int,
+        edgeLeft: Int,
+        edgeRight: Int,
+        edgeBottom: Int,
+        edgeTop: Int,
+    ): KilterPublishResult = submitClimb(
+        endpointPath = "update-climb/transaction",
+        op = "updateClimb",
+        // The update endpoint requires PATCH — POST returns 405. Probed
+        // empirically against the live API.
+        method = "PATCH",
+        climbUuid = climbUuid,
+        name = name,
+        description = description,
+        framesClimbConcat = framesClimbConcat,
+        productName = productName,
+        productLayoutUuid = productLayoutUuid,
+        angle = angle,
+        edgeLeft = edgeLeft,
+        edgeRight = edgeRight,
+        edgeBottom = edgeBottom,
+        edgeTop = edgeTop,
+    )
+
+    /**
+     * Delete an own climb. Method `DELETE /api/climbs/{uuid}` — verified
+     * empirically; the server returns "The climbs have been deleted
+     * successfully." on success. Note: there is no PATCH-with-isDeleted
+     * shortcut; sending isDeleted=true via update-climb does not actually
+     * mark the row deleted server-side, you have to use this endpoint.
+     */
+    suspend fun deleteClimb(climbUuid: String): KilterPublishResult = withContext(Dispatchers.IO) {
+        val token = ensureValidToken()
+            ?: return@withContext KilterPublishResult.NotAuthenticated
+        val request = Request.Builder()
+            .url("$apiBase/climbs/$climbUuid")
+            .addHeader("Authorization", "Bearer $token")
+            .delete()
+            .build()
+        try {
+            httpClient.newCall(request).execute().use { resp ->
+                if (resp.isSuccessful) {
+                    Log.i(TAG, "deleteClimb ok uuid=$climbUuid")
+                    return@withContext KilterPublishResult.Success(climbUuid)
+                }
+                val responseBody = resp.body?.string().orEmpty().take(MAX_ERR_BODY)
+                Log.w(TAG, "deleteClimb HTTP ${resp.code}: $responseBody")
+                return@withContext when (resp.code) {
+                    401, 403 -> KilterPublishResult.NotAuthenticated
+                    in 400..499 -> KilterPublishResult.PermanentError(responseBody, resp.code)
+                    else -> KilterPublishResult.TransientError("HTTP ${resp.code}: $responseBody")
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e(TAG, "deleteClimb exception uuid=$climbUuid", e)
+            return@withContext KilterPublishResult.TransientError(e.message ?: "network error")
+        }
+    }
+
+    /**
+     * Shared transport for both create and update flows — same payload,
+     * same auth, same error mapping; only the endpoint path differs. `op`
+     * is a label for log lines so the two flows stay distinguishable.
+     */
+    private suspend fun submitClimb(
+        endpointPath: String,
+        op: String,
+        method: String,
+        climbUuid: String,
+        name: String,
+        description: String,
+        framesClimbConcat: String,
+        productName: String,
+        productLayoutUuid: String,
+        angle: Int,
+        edgeLeft: Int,
+        edgeRight: Int,
+        edgeBottom: Int,
+        edgeTop: Int,
+    ): KilterPublishResult = withContext(Dispatchers.IO) {
+        val token = ensureValidToken()
+            ?: return@withContext KilterPublishResult.NotAuthenticated
+        val userUuid = tokenStore.getUserUuid()?.takeIf { it.isNotBlank() }
+            ?: return@withContext KilterPublishResult.NotAuthenticated
+        // Username = the user's chosen display name on Kilter Portal,
+        // resolved at login via fetchDisplayUsername with email-shape
+        // defense (see authenticate()). Defence-in-depth here too: if
+        // the stored value somehow ended up email-shaped (e.g. a stale
+        // login from a pre-fix build before fetchDisplayUsername
+        // existed, or a future schema change), refuse to publish
+        // rather than leak the email as the public setter handle. The
+        // user re-logs in and the new authenticate() path resolves a
+        // safe name. NotAuthenticated keeps the kilter_status='failed'
+        // path alive so the retry-worker re-attempts after re-login.
+        val storedUsername = tokenStore.getUsername()?.takeIf { it.isNotBlank() }
+            ?: return@withContext KilterPublishResult.NotAuthenticated
+        if (storedUsername.contains("@")) {
+            Log.w(TAG, "$op refusing to publish — stored username is email-shaped (re-login required)")
+            return@withContext KilterPublishResult.NotAuthenticated
+        }
+        val username = storedUsername
+
+        val nowIso = java.time.Instant.now().toString()
+        val payload = CreateClimbTransaction(
+            climb = ClimbCreatePayload(
+                climbUuid = climbUuid,
+                userUuid = userUuid,
+                username = username,
+                name = name,
+                description = description,
+                climbConcat = framesClimbConcat,
+                productName = productName,
+                productLayoutUuid = productLayoutUuid,
+                angle = angle,
+                edgeLeft = edgeLeft,
+                edgeRight = edgeRight,
+                edgeBottom = edgeBottom,
+                edgeTop = edgeTop,
+                createdAt = nowIso,
+                updatedAt = nowIso,
+            )
+        )
+        val bodyJson = json.encodeToString(CreateClimbTransaction.serializer(), payload)
+        // Debug-only payload dump for triaging server-side 500s without
+        // reproducing locally. climbConcat is the most-likely culprit
+        // (placement IDs not in the product layout), productLayoutUuid +
+        // edges next. Release builds redact aggressively because the
+        // payload carries the Kilter username and the user-supplied climb
+        // name/description — both PII at the boundary even though name
+        // is public on Nostr afterwards.
+        if (BuildConfig.DEBUG) {
+            val redacted = bodyJson
+                .replace(Regex("\"userUuid\":\"[^\"]+\""), "\"userUuid\":\"<redacted>\"")
+                .replace(Regex("\"username\":\"[^\"]*\""), "\"username\":\"<redacted>\"")
+                .replace(Regex("\"name\":\"[^\"]*\""), "\"name\":\"<redacted>\"")
+                .replace(Regex("\"description\":\"[^\"]*\""), "\"description\":\"<redacted>\"")
+            Log.d(TAG, "$op outgoing payload (PII redacted): $redacted")
+        }
+        val body = bodyJson.toRequestBody("application/json".toMediaType())
+        val request = Request.Builder()
+            .url("$apiBase/climbs/$endpointPath")
+            .addHeader("Authorization", "Bearer $token")
+            .method(method, body)
+            .build()
+
+        try {
+            var response = httpClient.newCall(request).execute()
+            // 401 means our access token expired since `ensureValidToken`
+            // last checked (window race). Try exactly one silent refresh
+            // + retry — same pattern as the ascent fetch/upload path. If
+            // it still fails, surface NotAuthenticated so the orchestrator
+            // can defer.
+            if (response.code == 401) {
+                response.close()
+                val refreshed = if (refreshAccessToken()) tokenStore.getAccessToken() else null
+                if (refreshed != null) {
+                    Log.i(TAG, "$op 401 → refreshed + retrying once")
+                    val retryRequest = request.newBuilder()
+                        .header("Authorization", "Bearer $refreshed")
+                        .build()
+                    response = httpClient.newCall(retryRequest).execute()
+                }
+            }
+            response.use { resp ->
+                if (resp.isSuccessful) {
+                    // Don't include setter_uuid (the user's Kilter account
+                    // identifier): it's a stable PII handle that bug-report
+                    // logcat dumps would otherwise leak. The climb_uuid is
+                    // public on Nostr already so it's safe to log.
+                    Log.i(TAG, "$op ok uuid=$climbUuid")
+                    return@withContext KilterPublishResult.Success(climbUuid)
+                }
+                // Truncate at the network boundary so every downstream
+                // consumer (logcat line, KilterPublishResult envelope,
+                // `kilter_error` DB column, retry-worker log) sees the
+                // already-bounded body. Pre-fix the transient branch
+                // persisted the raw response body verbatim, which on a 5xx
+                // HTML stack-trace render could be 50–500 KB into the
+                // unencrypted board DB and into Android Auto-Backup.
+                val responseBody = resp.body?.string().orEmpty().take(MAX_ERR_BODY)
+                Log.w(TAG, "$op HTTP ${resp.code}: $responseBody")
+                return@withContext when (resp.code) {
+                    401, 403 -> KilterPublishResult.NotAuthenticated
+                    429 -> {
+                        // Retry-After per RFC 7231: integer seconds OR HTTP-date.
+                        // We only parse the integer form; date-form falls back
+                        // to null and the caller picks a default backoff.
+                        val raw = resp.header("Retry-After")?.trim()
+                        val seconds = raw?.toLongOrNull()?.coerceAtLeast(0)
+                        KilterPublishResult.RateLimited(
+                            retryAfterSeconds = seconds,
+                            message = "HTTP 429${if (raw != null) " retry-after=$raw" else ""}",
+                        )
+                    }
+                    in 400..499 -> KilterPublishResult.PermanentError(responseBody, resp.code)
+                    else -> KilterPublishResult.TransientError("HTTP ${resp.code}: $responseBody")
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e(TAG, "$op exception uuid=$climbUuid", e)
+            return@withContext KilterPublishResult.TransientError(e.message ?: "network error")
         }
     }
 
@@ -366,27 +902,100 @@ class KilterApiClient @Inject constructor(
     }
 
     /**
+     * Backfill the cached display username when the previously-stored
+     * value is missing or email-shaped. Pre-username-fix builds stored
+     * the JWT `preferred_username` claim which equals the email handle
+     * for Kilter's Keycloak realm — the new publish path now refuses
+     * to send email-shaped usernames as the public setter handle, so
+     * stale cache entries from those builds would block publishing
+     * until a manual re-login. This silently catches them up at
+     * app-start instead. Skipped (no-op) when the cached value is
+     * already a valid non-email username — no extra HTTP call in the
+     * steady state. Token + userUuid pulled from tokenStore; failure
+     * is non-fatal (the publish-path guard remains as last-resort
+     * defense).
+     */
+    suspend fun refreshUsernameIfStale() = withContext(Dispatchers.IO) {
+        val cached = tokenStore.getUsername()
+        if (!cached.isNullOrBlank() && !cached.contains("@")) return@withContext
+        val userUuid = tokenStore.getUserUuid()?.takeIf { it.isNotBlank() } ?: return@withContext
+        val token = ensureValidToken() ?: return@withContext
+        val fresh = fetchDisplayUsername(token, userUuid)
+        if (!fresh.isNullOrBlank() && !fresh.contains("@")) {
+            Log.i(TAG, "Backfilled display username from /users/{uuid}")
+            tokenStore.updateUsername(fresh)
+        }
+    }
+
+    /**
+     * Fetch the user's display name from `/api/users/{uuid}.username`.
+     * Returns null on any failure (network, HTTP non-2xx, missing field,
+     * JSON shape change). Caller falls back to the JWT preferred_username
+     * which is the email-shaped login handle in the Kilter realm.
+     */
+    private suspend fun fetchDisplayUsername(token: String, userUuid: String): String? = withContext(Dispatchers.IO) {
+        try {
+            val req = Request.Builder()
+                .url("$apiBase/users/$userUuid")
+                .addHeader("Authorization", "Bearer $token")
+                .get()
+                .build()
+            httpClient.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) return@withContext null
+                val body = resp.body?.string() ?: return@withContext null
+                json.parseToJsonElement(body).jsonObject["username"]?.jsonPrimitive?.contentOrNull
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "fetchDisplayUsername failed for uuid=${userUuid.take(8)}…", e)
+            null
+        }
+    }
+
+    /**
      * Extract claims from a JWT by base64-decoding the payload segment.
      * No signature verification needed — we trust the Keycloak server response.
      */
-    private fun parseJwtClaims(jwt: String): Map<String, String> {
-        return try {
-            val parts = jwt.split(".")
-            if (parts.size != 3) return emptyMap()
-            val payload = String(
-                android.util.Base64.decode(parts[1], android.util.Base64.URL_SAFE or android.util.Base64.NO_PADDING),
-                Charsets.UTF_8
-            )
-            val element = json.parseToJsonElement(payload)
-            element.let { el ->
-                val obj = el as? kotlinx.serialization.json.JsonObject ?: return emptyMap()
-                obj.entries.associate { (k, v) ->
-                    k to (v as? kotlinx.serialization.json.JsonPrimitive)?.content.orEmpty()
-                }
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "JWT parse failed", e)
-            emptyMap()
-        }
+    /**
+     * Returns parsed JWT claims, or null if the token is malformed.
+     * Pre-fix this returned an empty map on any parse failure, which
+     * collapsed cleanly into `claims["sub"] ?: ""` — userUuid="" became
+     * indistinguishable from a successful login with a missing claim.
+     * Returning null lets callers surface an InvalidJwt error.
+     */
+    private fun parseJwtClaimsOrNull(jwt: String): Map<String, String>? = try {
+        parseJwtClaimsPure(jwt, json)
+    } catch (e: Exception) {
+        Log.w(TAG, "JWT parse failed", e)
+        null
+    }
+}
+
+/**
+ * Pure JWT-claims parser, extracted from [KilterApiClient.parseJwtClaims]
+ * so JVM unit tests can exercise it without an Android-stub Base64. Uses
+ * [java.util.Base64] (URL-safe decoder, padding-tolerant per the Java
+ * spec) which is available on the project's minSdk 26.
+ *
+ * Returns an empty map for any malformed input — unchanged behavior from
+ * the wrapping `parseJwtClaims`. Throws on `IllegalArgumentException`
+ * from Base64 / kotlinx.serialization so callers can decide what to do
+ * (the in-class wrapper catches + logs).
+ */
+internal fun parseJwtClaimsPure(
+    jwt: String,
+    json: kotlinx.serialization.json.Json,
+): Map<String, String> {
+    val parts = jwt.split(".")
+    if (parts.size != 3) return emptyMap()
+    val payload = String(
+        java.util.Base64.getUrlDecoder().decode(parts[1]),
+        Charsets.UTF_8,
+    )
+    val element = json.parseToJsonElement(payload)
+    val obj = element as? kotlinx.serialization.json.JsonObject ?: return emptyMap()
+    return obj.entries.associate { (k, v) ->
+        k to (v as? kotlinx.serialization.json.JsonPrimitive)?.content.orEmpty()
     }
 }

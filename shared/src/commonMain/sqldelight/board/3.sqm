@@ -1,0 +1,45 @@
+-- Migration from version 3 to 4: FEAT-003 community-climb support.
+-- Adds 6 columns to `climbs` (source, nostr_event_id, nostr_d_tag,
+-- created_by_pubkey, frames_hash, sync_status), 3 indexes, the
+-- community_grade_cache table, and re-creates the climb_browse VIEW
+-- so it surfaces source/created_by_pubkey/sync_status (filter side).
+
+-- ── climbs columns ──────────────────────────────────────────────
+ALTER TABLE climbs ADD COLUMN source TEXT NOT NULL DEFAULT 'kilter';
+ALTER TABLE climbs ADD COLUMN nostr_event_id TEXT;
+ALTER TABLE climbs ADD COLUMN nostr_d_tag TEXT;
+ALTER TABLE climbs ADD COLUMN created_by_pubkey TEXT;
+ALTER TABLE climbs ADD COLUMN frames_hash TEXT;
+ALTER TABLE climbs ADD COLUMN sync_status TEXT NOT NULL DEFAULT 'synced';
+
+-- ── indexes ─────────────────────────────────────────────────────
+CREATE INDEX idx_climbs_source ON climbs(source);
+CREATE INDEX idx_climbs_frames_hash ON climbs(frames_hash);
+CREATE INDEX idx_climbs_pubkey ON climbs(created_by_pubkey);
+
+-- ── grade-consensus cache (MVP: setter_grade_id only) ───────────
+CREATE TABLE community_grade_cache (
+    climb_d_tag TEXT NOT NULL,
+    angle INTEGER NOT NULL,
+    setter_grade_id INTEGER,
+    consensus_average REAL,
+    consensus_grade_id INTEGER,
+    vote_count INTEGER NOT NULL DEFAULT 0,
+    confidence TEXT NOT NULL DEFAULT 'LOW',
+    last_updated INTEGER NOT NULL,
+    PRIMARY KEY (climb_d_tag, angle)
+);
+
+-- ── refresh climb_browse VIEW with the new climbs columns ───────
+DROP VIEW IF EXISTS climb_browse;
+CREATE VIEW climb_browse AS
+SELECT
+    c.uuid, c.name, c.setter_username, c.frames_count, c.layout_id,
+    COALESCE(c.description, '') AS description,
+    c.is_nomatch, c.frames_pace, c.hsm, c.move_count,
+    c.source, c.created_by_pubkey, c.sync_status,
+    cs.angle, cs.difficulty_average, cs.quality_average,
+    cs.ascensionist_count, cs.benchmark_difficulty
+FROM climbs c
+INNER JOIN climb_stats cs ON c.uuid = cs.climb_uuid
+WHERE c.is_listed = 1;
