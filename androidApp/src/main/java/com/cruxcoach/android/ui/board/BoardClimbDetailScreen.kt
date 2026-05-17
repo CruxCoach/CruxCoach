@@ -477,6 +477,37 @@ fun BoardClimbDetailScreen(
                                 expanded = moreExpanded,
                                 onDismissRequest = { moreExpanded = false },
                             ) {
+                                // Mirror toggle — moved out of the detail body
+                                // (it was a full-width centered IconButton row
+                                // that cost a whole vertical band between the
+                                // stat header and the board). It's a display-
+                                // only toggle that applies to any climb, so it
+                                // sits at the top of the overflow, above the
+                                // owner-gated Edit/Delete actions.
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            stringResource(
+                                                if (state.isMirrored) R.string.cd_mirror_off
+                                                else R.string.cd_mirror_on
+                                            )
+                                        )
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            Icons.Default.SwapHoriz,
+                                            contentDescription = null,
+                                            tint = if (state.isMirrored) OrangeAccent
+                                                   else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    },
+                                    onClick = {
+                                        moreExpanded = false
+                                        viewModel.toggleMirror()
+                                    },
+                                    modifier = Modifier.testTag("boarddetail_mirror_toggle"),
+                                )
+                                HorizontalDivider()
                                 DropdownMenuItem(
                                     text = { Text(stringResource(R.string.climb_creator_remix_action)) },
                                     leadingIcon = {
@@ -879,21 +910,6 @@ private fun ClimbDetailPageContent(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                    }
-                }
-
-                // Mirror toggle (centered icon-only)
-                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    IconButton(
-                        onClick = { viewModel.toggleMirror() },
-                        modifier = Modifier.testTag("boarddetail_mirror_toggle")
-                    ) {
-                        Icon(
-                            Icons.Default.SwapHoriz,
-                            contentDescription = stringResource(if (state.isMirrored) R.string.cd_mirror_off else R.string.cd_mirror_on),
-                            tint = if (state.isMirrored) OrangeAccent
-                                   else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
                     }
                 }
 
