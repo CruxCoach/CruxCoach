@@ -115,7 +115,7 @@ class CommunityClimbTombstoneTest {
     // ── markCommunityClimbDeleted: happy path ───────────────────────
 
     @Test
-    fun `tombstone flips own cruxcoach row + drops stats`() {
+    fun `tombstone flips own cruxcoach row + preserves stats`() {
         insertCommunityRow("c1", authorA)
         assertEquals(1, db.boardQueries.countStats().executeAsOne().toInt())
 
@@ -131,7 +131,12 @@ class CommunityClimbTombstoneTest {
         assertEquals(0L, r.is_listed, "is_listed cleared (browse VIEW excludes)")
         assertEquals("deleted", r.sync_status, "sync_status reflects tombstone")
         assertEquals("2026-05-04T13:00:00Z", r.created_at, "created_at bumped to tombstone time")
-        assertEquals(0, db.boardQueries.countStats().executeAsOne().toInt(), "climb_stats dropped")
+        assertEquals(
+            1, db.boardQueries.countStats().executeAsOne().toInt(),
+            "climb_stats preserved — tombstone is a visibility flip, not a purge; " +
+                "the user's logbook keeps grade/send-count for a climb they already " +
+                "attempted after the setter deletes it",
+        )
         assert(isTombstoned("c1")) { "isClimbTombstoned returns true post-mark" }
     }
 
