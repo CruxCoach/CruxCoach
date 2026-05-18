@@ -10,7 +10,7 @@ package com.cruxcoach.data.repository
 interface BoardLocationRepository {
     fun count(): Long
     fun getAll(): List<BoardLocation>
-    fun getById(storerocketId: Long): BoardLocation?
+    fun getById(gymUuid: String): BoardLocation?
 
     /**
      * Locations whose `(layout_id, product_size_id)` matches the user's
@@ -27,7 +27,7 @@ interface BoardLocationRepository {
 }
 
 data class BoardLocation(
-    val id: Long,
+    val id: String,
     val name: String,
     val lat: Double,
     val lng: Double,

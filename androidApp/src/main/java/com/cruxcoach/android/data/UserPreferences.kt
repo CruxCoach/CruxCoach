@@ -207,8 +207,21 @@ object PreferenceKeys {
     val NIP65_RESOLVED_RELAYS = stringPreferencesKey("nip65_resolved_relays")
 
     // FEAT-006: Map filter chips
-    val MAP_FILTER_PUBLIC_ONLY = booleanPreferencesKey("map_filter_public_only")
+    // Replaces the older PUBLIC_ONLY filter — StoreRocket's "access"
+    // metadata was unreliable (commercial gyms mis-flagged as private).
+    // Layout-based filter is sourced from hangtime/PowerSync and trustworthy.
+    val MAP_FILTER_SHOW_ORIGINAL = booleanPreferencesKey("map_filter_show_original")
+    val MAP_FILTER_SHOW_HOMEWALLS = booleanPreferencesKey("map_filter_show_homewalls")
     val MAP_FILTER_MATCHES_MY_BOARD = booleanPreferencesKey("map_filter_matches_my_board")
+
+    // Multi-select set filters — empty value (or unset key) means "no
+    // filter on this dimension". Stored as comma-separated strings so
+    // we don't need a Proto DataStore migration. Sets are typically
+    // small (a few countries / size labels) so CSV is fine.
+    val MAP_FILTER_COUNTRIES = stringPreferencesKey("map_filter_countries")
+    val MAP_FILTER_ACCESS_TYPES = stringPreferencesKey("map_filter_access_types")
+    val MAP_FILTER_ADJUSTABILITIES = stringPreferencesKey("map_filter_adjustabilities")
+    val MAP_FILTER_SIZE_IDS = stringPreferencesKey("map_filter_size_ids")
 }
 
 /**
@@ -295,18 +308,84 @@ class UserPreferences(
         }
     }
 
-    // FEAT-006: Map filter chips
-    val mapFilterPublicOnly: Flow<Boolean> = dataStore.data.map { prefs ->
-        prefs[PreferenceKeys.MAP_FILTER_PUBLIC_ONLY] ?: false
+    // FEAT-006: Map filter chips. Default shows commercial gyms (Original
+    // layout) only — the "where can I go climb?" use case. Private
+    // homewall installations (~5% of dataset, layout_id=8) are off by
+    // default but can be opted in. Both flags can be toggled
+    // independently — turning both off intentionally yields an empty
+    // map (the user gets a visible "0 of 1080" footer to recover).
+    val mapFilterShowOriginal: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[PreferenceKeys.MAP_FILTER_SHOW_ORIGINAL] ?: true
+    }
+
+    val mapFilterShowHomewalls: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[PreferenceKeys.MAP_FILTER_SHOW_HOMEWALLS] ?: false
     }
 
     val mapFilterMatchesMyBoard: Flow<Boolean> = dataStore.data.map { prefs ->
         prefs[PreferenceKeys.MAP_FILTER_MATCHES_MY_BOARD] ?: false
     }
 
-    suspend fun setMapFilterPublicOnly(enabled: Boolean) {
+    suspend fun setMapFilterShowOriginal(enabled: Boolean) {
         dataStore.edit { prefs ->
-            prefs[PreferenceKeys.MAP_FILTER_PUBLIC_ONLY] = enabled
+            prefs[PreferenceKeys.MAP_FILTER_SHOW_ORIGINAL] = enabled
+        }
+    }
+
+    suspend fun setMapFilterShowHomewalls(enabled: Boolean) {
+        dataStore.edit { prefs ->
+            prefs[PreferenceKeys.MAP_FILTER_SHOW_HOMEWALLS] = enabled
+        }
+    }
+
+    private fun parseCsvSet(value: String?): Set<String> =
+        value?.split(',')?.mapNotNull { it.trim().takeIf(String::isNotEmpty) }?.toSet() ?: emptySet()
+
+    val mapFilterCountries: Flow<Set<String>> = dataStore.data.map { prefs ->
+        parseCsvSet(prefs[PreferenceKeys.MAP_FILTER_COUNTRIES])
+    }
+
+    val mapFilterAccessTypes: Flow<Set<String>> = dataStore.data.map { prefs ->
+        parseCsvSet(prefs[PreferenceKeys.MAP_FILTER_ACCESS_TYPES])
+    }
+
+    val mapFilterAdjustabilities: Flow<Set<String>> = dataStore.data.map { prefs ->
+        parseCsvSet(prefs[PreferenceKeys.MAP_FILTER_ADJUSTABILITIES])
+    }
+
+    /** Stored as CSV of integers; parsed to Set<Int>. */
+    val mapFilterSizeIds: Flow<Set<Int>> = dataStore.data.map { prefs ->
+        parseCsvSet(prefs[PreferenceKeys.MAP_FILTER_SIZE_IDS])
+            .mapNotNull { it.toIntOrNull() }
+            .toSet()
+    }
+
+    suspend fun setMapFilterCountries(values: Set<String>) {
+        dataStore.edit { it[PreferenceKeys.MAP_FILTER_COUNTRIES] = values.joinToString(",") }
+    }
+
+    suspend fun setMapFilterAccessTypes(values: Set<String>) {
+        dataStore.edit { it[PreferenceKeys.MAP_FILTER_ACCESS_TYPES] = values.joinToString(",") }
+    }
+
+    suspend fun setMapFilterAdjustabilities(values: Set<String>) {
+        dataStore.edit { it[PreferenceKeys.MAP_FILTER_ADJUSTABILITIES] = values.joinToString(",") }
+    }
+
+    suspend fun setMapFilterSizeIds(values: Set<Int>) {
+        dataStore.edit { it[PreferenceKeys.MAP_FILTER_SIZE_IDS] = values.joinToString(",") }
+    }
+
+    /** Reset every map-side filter to its empty/default state in one transaction. */
+    suspend fun resetMapFilters() {
+        dataStore.edit { prefs ->
+            prefs.remove(PreferenceKeys.MAP_FILTER_SHOW_ORIGINAL)
+            prefs.remove(PreferenceKeys.MAP_FILTER_SHOW_HOMEWALLS)
+            prefs.remove(PreferenceKeys.MAP_FILTER_MATCHES_MY_BOARD)
+            prefs.remove(PreferenceKeys.MAP_FILTER_COUNTRIES)
+            prefs.remove(PreferenceKeys.MAP_FILTER_ACCESS_TYPES)
+            prefs.remove(PreferenceKeys.MAP_FILTER_ADJUSTABILITIES)
+            prefs.remove(PreferenceKeys.MAP_FILTER_SIZE_IDS)
         }
     }
 

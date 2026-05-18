@@ -222,7 +222,8 @@
     <!-- FEAT-006 Map (placeholder; full set added in phase 10) -->
     <string name="map_screen_title">Map</string>
     <string name="cd_map">Find a Kilter Board on the map</string>
-    <string name="map_filter_public_only">Public only</string>
+    <string name="map_filter_show_original">Commercial gyms (Original)</string>
+    <string name="map_filter_show_homewalls">Private homewalls</string>
     <string name="map_filter_matches_my_board">Matches my board</string>
     <string name="map_filter_match_disabled">Configure your board first</string>
     <string name="map_marker_browse_climbs">Browse climbs for this board</string>
@@ -237,6 +238,28 @@
     <string name="map_offline_dialog_close">Close</string>
     <string name="map_no_data">Board location data not available — sync the board database first</string>
     <string name="map_no_data_action">Sync now</string>
+    <string name="map_open_filters">Open filters</string>
+    <string name="map_open_stats">Open stats</string>
+    <string name="map_filter_sheet_title">Filter map</string>
+    <string name="map_filter_section_layout">Layout</string>
+    <string name="map_filter_section_access">Access</string>
+    <string name="map_filter_section_adjustability">Adjustability</string>
+    <string name="map_filter_section_size">Size</string>
+    <string name="map_filter_section_country">Country</string>
+    <string name="map_filter_count_template">Showing %1$d of %2$d</string>
+    <string name="map_filter_reset">Reset</string>
+    <string name="map_stats_layout_distribution">Layout distribution</string>
+    <string name="map_stats_access_distribution">Access distribution</string>
+    <string name="map_stats_adjustability_distribution">Adjustability distribution</string>
+    <string name="map_stats_top_countries">Top countries</string>
+    <string name="map_stats_size_distribution">Size distribution</string>
+    <string name="map_stats_layout_original">Original</string>
+    <string name="map_stats_layout_homewall">Homewall</string>
+    <string name="map_stats_label_countries">Countries</string>
+    <string name="map_stats_label_public">Public</string>
+    <string name="map_stats_label_adjustable">Adjustable</string>
+    <string name="map_stats_visible_of_total_template">%1$d of %2$d locations match your filters</string>
+    <string name="map_stats_empty">No data</string>
 
     <!-- Access enum display values -->
     <string name="map_access_public">Public</string>

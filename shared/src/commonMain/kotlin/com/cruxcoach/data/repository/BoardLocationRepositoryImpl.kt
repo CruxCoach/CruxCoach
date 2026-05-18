@@ -14,8 +14,8 @@ class BoardLocationRepositoryImpl(
     override fun getAll(): List<BoardLocation> =
         q.getAllLocations().executeAsList().map { it.toDomain() }
 
-    override fun getById(storerocketId: Long): BoardLocation? =
-        q.getLocationById(storerocketId).executeAsOneOrNull()?.toDomain()
+    override fun getById(gymUuid: String): BoardLocation? =
+        q.getLocationById(gymUuid).executeAsOneOrNull()?.toDomain()
 
     override fun getMatchingBoard(layoutId: Int, productSizeId: Int): List<BoardLocation> =
         q.getLocationsMatchingBoard(layoutId.toLong(), productSizeId.toLong())
@@ -29,7 +29,7 @@ class BoardLocationRepositoryImpl(
         q.getPublicLocations().executeAsList().map { it.toDomain() }
 
     private fun Kilter_board_location.toDomain() = BoardLocation(
-        id = storerocket_id,
+        id = gym_uuid,
         name = name,
         lat = lat,
         lng = lng,

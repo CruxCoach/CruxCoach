@@ -1289,12 +1289,12 @@ class BoardDatabaseImporter(
                 targetDb.execSQL("DELETE FROM kilter_board_location")
                 targetDb.execSQL("""
                     INSERT INTO kilter_board_location(
-                        storerocket_id, name, lat, lng, address, city, country_code,
+                        gym_uuid, name, lat, lng, address, city, country_code,
                         phone, email, url, instagram,
                         layout_name, layout_id, size_label, product_size_id,
                         access_type, adjustability, fixed_angle, frame_maker
                     )
-                    SELECT storerocket_id, name, lat, lng, address, city, country_code,
+                    SELECT gym_uuid, name, lat, lng, address, city, country_code,
                            phone, email, url, instagram,
                            layout_name, layout_id, size_label, product_size_id,
                            COALESCE(access_type, 'UNKNOWN'),
