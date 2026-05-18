@@ -585,7 +585,7 @@
     <string name="board_browser_climbs_count">%d Climbs</string>
     <string name="board_browser_climbs_loaded">%d Climbs (%d loaded)</string>
     <string name="board_browser_preparing_db">Preparing the climb database…</string>
-    <string name="board_browser_preparing_db_hint">First launch after an update can take a minute or two on slower devices. You can leave the app open — there is no need to close it.</string>
+    <string name="board_browser_preparing_db_hint">First launch after an update can take a minute or two on slower devices. Please keep the app open — closing it makes the preparation start over next time.</string>
     <string name="board_detail_title">Climb details</string>
     <string name="board_detail_by_setter">by %s</string>
     <string name="board_detail_error">Error</string>
