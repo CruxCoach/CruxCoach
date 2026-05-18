@@ -3,7 +3,7 @@
 -- Kilter's PowerSync global_gyms bucket, with StoreRocket contact data
 -- merged in by geo proximity. Distributed via the daily Blossom sync as a
 -- separate manifest chunk (type="locations").
--- See docs/specs/0.1.5/FEAT-006-board-locations-map.md.
+-- See docs/specs/0.1.5/FEAT-015-board-locations-map.md.
 
 CREATE TABLE kilter_board_location (
     gym_uuid TEXT NOT NULL PRIMARY KEY,
