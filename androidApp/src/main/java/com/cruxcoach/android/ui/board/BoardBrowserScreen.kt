@@ -42,6 +42,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.cruxcoach.android.ble.ConnectionState
@@ -333,8 +334,34 @@ fun BoardBrowserScreen(
         RestTimerBannerSlot()
         SyncStatusBannerSlot()
         if (state.isLoading && !state.hasBoardData) {
+            // First DB access lazily runs any pending schema migration +
+            // the onOpen VACUUM / index rebuild on the ~190k-row board DB.
+            // On slower devices (mid-range eMMC) this blocks the first
+            // query for 1-2+ minutes. A bare spinner here reads as a
+            // freeze and tempts the user to force-kill mid-migration —
+            // the migration is atomic + recoverable so that's data-safe,
+            // but it wastes their time re-running it. Tell them what's
+            // happening instead.
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = OrangeAccent)
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(horizontal = 32.dp)
+                ) {
+                    CircularProgressIndicator(color = OrangeAccent)
+                    Spacer(modifier = Modifier.height(20.dp))
+                    Text(
+                        text = stringResource(R.string.board_browser_preparing_db),
+                        style = MaterialTheme.typography.titleMedium,
+                        textAlign = TextAlign.Center,
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = stringResource(R.string.board_browser_preparing_db_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                    )
+                }
             }
         } else if (!state.hasBoardData) {
             // Render the same inline sync UI the onboarding flow uses,

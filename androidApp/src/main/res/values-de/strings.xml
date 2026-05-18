@@ -584,6 +584,8 @@
     <string name="board_browser_search_hint">Name oder Setter suchen…</string>
     <string name="board_browser_climbs_count">%d Climbs</string>
     <string name="board_browser_climbs_loaded">%d Climbs (%d geladen)</string>
+    <string name="board_browser_preparing_db">Climb-Datenbank wird vorbereitet…</string>
+    <string name="board_browser_preparing_db_hint">Der erste Start nach einem Update kann auf langsameren Geräten ein, zwei Minuten dauern. Lass die App einfach offen — sie muss nicht geschlossen werden.</string>
     <string name="board_detail_title">Climb Details</string>
     <string name="board_detail_by_setter">von %s</string>
     <string name="board_detail_error">Fehler</string>
