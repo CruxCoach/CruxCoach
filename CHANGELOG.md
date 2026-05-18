@@ -4,7 +4,7 @@ All notable changes to CruxCoach will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.1.4] - 2026-05-18
 
 > 0.1.4 turns CruxCoach from a Kilter-catalog viewer into a small
 > climbing-community-on-Nostr. You can now set your own climbs, share
@@ -68,6 +68,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Detail-screen + Logbook toolbars** cleaned up — redundant
   titles dropped, overflow menu consolidated so the top bar doesn't
   overflow on narrow screens.
+- **Mirror toggle moved into the climb-detail ⋮ overflow menu** — it
+  was a full-width centered button between the stats and the board
+  image; it's now the first item in the overflow, reclaiming that
+  vertical band on every climb-detail view.
 
 ### Fixed
 - **Cloud-backup deletion now sticks across devices** — pre-fix,
@@ -179,6 +183,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   app restarts.
 - **Setter usernames** — BoardBrowser uses an npub stub when the
   cached display name is missing instead of an empty label.
+- **First launch after this update no longer looks frozen** — the
+  one-time database preparation that runs once after updating now
+  shows a clear "Preparing the climb database…" message with a
+  keep-the-app-open hint instead of a bare spinner. The preparation
+  itself is roughly 3× faster on slower devices, and it is atomic:
+  if the app is closed mid-preparation it simply re-runs cleanly on
+  the next launch — no data loss or corruption.
 
 ### Security
 - **Every incoming community-climb event is signature-verified** —
