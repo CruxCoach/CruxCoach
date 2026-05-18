@@ -11,7 +11,7 @@ class WorkoutRepositoryImpl(
 ) : WorkoutRepository {
 
     private val json = Json { ignoreUnknownKeys = true }
-    private val queries = database.workoutLogQueries
+    private val queries = database.workoutLogsQueries
 
     override fun insertWorkout(log: WorkoutLog): Long {
         return queries.transactionWithResult {
@@ -61,7 +61,7 @@ class WorkoutRepositoryImpl(
         queries.deleteById(id)
     }
 
-    private fun com.cruxcoach.db.secure.WorkoutLog.toDomain(): WorkoutLog {
+    private fun com.cruxcoach.db.secure.Workout_logs.toDomain(): WorkoutLog {
         return WorkoutLog(
             id = id,
             sessionId = session_id,

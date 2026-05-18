@@ -1,0 +1,84 @@
+-- Migration from version 2 to 3: drop the `aurora_*` provenance prefix
+-- (Aurora API is dead since 2026-03-26) and pluralize table names to
+-- match the Blossom-mirror DB conventions. Pure ALTER TABLE … RENAME TO,
+-- no row data changes — see FEAT-006 §3.1, §5.2.
+
+-- The climb_browse VIEW must be dropped before its underlying tables are
+-- renamed; SQLite will keep the VIEW pinned to the old table name unless
+-- we recreate it.
+DROP VIEW IF EXISTS climb_browse;
+
+-- ── Tables ──────────────────────────────────────────────────────
+ALTER TABLE aurora_climb         RENAME TO climbs;
+ALTER TABLE aurora_climb_stat    RENAME TO climb_stats;
+ALTER TABLE aurora_placement     RENAME TO placements;
+ALTER TABLE aurora_hole          RENAME TO holes;
+ALTER TABLE aurora_led           RENAME TO leds;
+ALTER TABLE aurora_product_size  RENAME TO product_sizes;
+ALTER TABLE aurora_board_image   RENAME TO board_images;
+ALTER TABLE aurora_beta_link     RENAME TO beta_links;
+ALTER TABLE aurora_sync_state    RENAME TO sync_states;
+ALTER TABLE board_hold_position  RENAME TO board_hold_positions;
+
+-- ── Indexes — drop old, recreate with new names ─────────────────
+DROP INDEX IF EXISTS idx_aurora_placement_set;
+CREATE INDEX idx_placements_set ON placements(set_id);
+
+DROP INDEX IF EXISTS idx_aurora_board_image_size;
+CREATE INDEX idx_board_images_size ON board_images(product_size_id);
+
+DROP INDEX IF EXISTS idx_aurora_beta_link_climb;
+CREATE INDEX idx_beta_links_climb ON beta_links(climb_uuid);
+
+DROP INDEX IF EXISTS idx_aurora_climb_stat_angle;
+CREATE INDEX idx_climb_stats_angle ON climb_stats(angle);
+
+DROP INDEX IF EXISTS idx_aurora_climb_listed;
+CREATE INDEX idx_climbs_listed ON climbs(is_listed);
+
+DROP INDEX IF EXISTS idx_climb_stat_browse;
+CREATE INDEX idx_climb_stats_browse ON climb_stats(
+    angle, difficulty_average, quality_average, ascensionist_count,
+    benchmark_difficulty, climb_uuid
+);
+
+DROP INDEX IF EXISTS idx_climb_stat_by_popularity;
+CREATE INDEX idx_climb_stats_by_popularity ON climb_stats(
+    angle, ascensionist_count, difficulty_average, climb_uuid
+);
+
+DROP INDEX IF EXISTS idx_aurora_climb_frames_count;
+CREATE INDEX idx_climbs_frames_count ON climbs(is_listed, frames_count, uuid);
+
+DROP INDEX IF EXISTS idx_climb_stat_count_cover;
+CREATE INDEX idx_climb_stats_count_cover ON climb_stats(
+    angle, ascensionist_count, difficulty_average, benchmark_difficulty, climb_uuid
+);
+
+-- ── VIEW recreated against new table names ──────────────────────
+CREATE VIEW climb_browse AS
+SELECT
+    c.uuid, c.name, c.setter_username, c.frames_count, c.layout_id,
+    COALESCE(c.description, '') AS description,
+    c.is_nomatch, c.frames_pace, c.hsm, c.move_count,
+    cs.angle, cs.difficulty_average, cs.quality_average,
+    cs.ascensionist_count, cs.benchmark_difficulty
+FROM climbs c
+INNER JOIN climb_stats cs ON c.uuid = cs.climb_uuid
+WHERE c.is_listed = 1;
+
+-- ── sync_states.table_name string-content rewrite ───────────────
+-- Q-B (FEAT-006 §13): legacy rows referenced the old `aurora_*` names;
+-- without this UPDATE, the next cron sync would treat every renamed
+-- table as never-synced and re-download the whole catalog. Cosmetically
+-- correct + saves a one-time bandwidth spike.
+UPDATE sync_states SET table_name = 'climbs'                WHERE table_name = 'aurora_climb';
+UPDATE sync_states SET table_name = 'climb_stats'           WHERE table_name = 'aurora_climb_stat';
+UPDATE sync_states SET table_name = 'placements'            WHERE table_name = 'aurora_placement';
+UPDATE sync_states SET table_name = 'holes'                 WHERE table_name = 'aurora_hole';
+UPDATE sync_states SET table_name = 'leds'                  WHERE table_name = 'aurora_led';
+UPDATE sync_states SET table_name = 'product_sizes'         WHERE table_name = 'aurora_product_size';
+UPDATE sync_states SET table_name = 'board_images'          WHERE table_name = 'aurora_board_image';
+UPDATE sync_states SET table_name = 'beta_links'            WHERE table_name = 'aurora_beta_link';
+UPDATE sync_states SET table_name = 'sync_states'           WHERE table_name = 'aurora_sync_state';
+UPDATE sync_states SET table_name = 'board_hold_positions'  WHERE table_name = 'board_hold_position';

@@ -1,0 +1,161 @@
+-- Migration version 7 → 8: revert NOCASE collation, normalize all
+-- persisted UUIDs to lowercase, force a clean re-sync of Kilter data.
+--
+-- Why 6.sqm's NOCASE strategy was wrong:
+--
+-- The Kilter blob carries the same hex UUID in two casings *with
+-- divergent metadata* — e.g. one row "Float Your Boat" by florent
+-- with 76k sends, another "fastoche" by william at the same hex
+-- string in the other case. NOCASE collation collapses those into
+-- one row per hex-by-NOCASE-class, and 6.sqm's two dedup passes
+-- (climbs by origin/created_at, climb_stats by ascensionist_count)
+-- pick survivors *independently*. The result is a Frankenstein
+-- VIEW row: name + setter from one logical climb, sends + FA from
+-- a different one. The user sees "fastoche by william" with Float
+-- Your Boat's stats; the real Float Your Boat falls out of the
+-- INNER JOIN entirely.
+--
+-- 0.1.3's BINARY-JOIN behaviour hid this by simply dropping the
+-- case-shifted partner — fewer rows visible, but each visible row
+-- internally consistent. NOCASE made everything visible *and*
+-- identity-incoherent.
+--
+-- Correct strategy: there is no canonical-by-NOCASE collapse to
+-- make at the SQL layer; the Kilter blob's two casings are *not*
+-- the same logical climb. Persist UUIDs in a single canonical
+-- form (lowercase) and let BINARY collation enforce identity.
+-- The blob refresh is the source of truth, so we wipe the Kilter
+-- side and let the next sync re-populate cleanly with LOWER()'d
+-- UUIDs (importer change). User-authored cruxcoach climbs are
+-- normalized in place — they survived 6.sqm with a stable identity
+-- per NOCASE-class, so LOWER()'ing now is safe.
+
+DROP VIEW IF EXISTS climb_browse;
+
+-- ── Wipe Kilter-side data; refilled cleanly by next blob sync ─────
+DELETE FROM climbs WHERE origin = 'kilter';
+DELETE FROM climb_stats;
+
+-- ── Normalize remaining (cruxcoach-origin) climbs in place ────────
+-- After 6.sqm every cruxcoach row's UUID is unique by NOCASE-class,
+-- so LOWER() can never produce a PK collision. beta_links has no
+-- UNIQUE constraint on climb_uuid, also safe.
+UPDATE climbs SET uuid = LOWER(uuid);
+UPDATE beta_links SET climb_uuid = LOWER(climb_uuid);
+
+-- ── Recreate climbs without COLLATE NOCASE ────────────────────────
+CREATE TABLE climbs_new (
+    uuid TEXT NOT NULL PRIMARY KEY,
+    layout_id INTEGER NOT NULL,
+    setter_username TEXT,
+    name TEXT NOT NULL,
+    frames_count INTEGER NOT NULL DEFAULT 1,
+    is_listed INTEGER NOT NULL DEFAULT 1,
+    edge_left INTEGER,
+    edge_right INTEGER,
+    edge_bottom INTEGER,
+    edge_top INTEGER,
+    created_at TEXT,
+    description TEXT NOT NULL DEFAULT '',
+    is_nomatch INTEGER NOT NULL DEFAULT 0,
+    frames_pace INTEGER NOT NULL DEFAULT 0,
+    hsm INTEGER NOT NULL DEFAULT 0,
+    frames BLOB NOT NULL,
+    is_deleted INTEGER NOT NULL DEFAULT 0,
+    move_count INTEGER NOT NULL DEFAULT 0,
+    source TEXT NOT NULL DEFAULT 'kilter',
+    nostr_event_id TEXT,
+    nostr_d_tag TEXT,
+    created_by_pubkey TEXT,
+    frames_hash TEXT,
+    sync_status TEXT NOT NULL DEFAULT 'synced',
+    origin TEXT NOT NULL DEFAULT 'kilter',
+    kilter_status TEXT,
+    kilter_synced_at INTEGER,
+    kilter_publish_via TEXT,
+    kilter_error TEXT,
+    nostr_publish_via TEXT
+);
+
+INSERT INTO climbs_new(
+    uuid, layout_id, setter_username, name, frames_count, is_listed,
+    edge_left, edge_right, edge_bottom, edge_top, created_at,
+    description, is_nomatch, frames_pace, hsm, frames, is_deleted,
+    move_count, source, nostr_event_id, nostr_d_tag, created_by_pubkey,
+    frames_hash, sync_status, origin, kilter_status, kilter_synced_at,
+    kilter_publish_via, kilter_error, nostr_publish_via)
+SELECT
+    uuid, layout_id, setter_username, name, frames_count, is_listed,
+    edge_left, edge_right, edge_bottom, edge_top, created_at,
+    description, is_nomatch, frames_pace, hsm, frames, is_deleted,
+    move_count, source, nostr_event_id, nostr_d_tag, created_by_pubkey,
+    frames_hash, sync_status, origin, kilter_status, kilter_synced_at,
+    kilter_publish_via, kilter_error, nostr_publish_via
+FROM climbs;
+
+DROP TABLE climbs;
+ALTER TABLE climbs_new RENAME TO climbs;
+
+-- ── Recreate climb_stats without COLLATE NOCASE (empty) ───────────
+CREATE TABLE climb_stats_new (
+    climb_uuid TEXT NOT NULL,
+    angle INTEGER NOT NULL,
+    display_difficulty REAL,
+    difficulty_average REAL,
+    quality_average REAL,
+    ascensionist_count INTEGER DEFAULT 0,
+    benchmark_difficulty REAL,
+    fa_username TEXT,
+    fa_at TEXT,
+    official_kilter_difficulty INTEGER,
+    PRIMARY KEY (climb_uuid, angle)
+);
+
+DROP TABLE climb_stats;
+ALTER TABLE climb_stats_new RENAME TO climb_stats;
+
+-- ── Recreate indexes ──────────────────────────────────────────────
+CREATE INDEX idx_climbs_listed ON climbs(is_listed);
+CREATE INDEX idx_climbs_frames_count ON climbs(is_listed, frames_count, uuid);
+CREATE INDEX idx_climbs_source ON climbs(source);
+CREATE INDEX idx_climbs_frames_hash ON climbs(frames_hash);
+CREATE INDEX idx_climbs_pubkey ON climbs(created_by_pubkey);
+CREATE INDEX idx_climbs_origin ON climbs(origin);
+CREATE INDEX idx_climbs_kilter_status ON climbs(kilter_status);
+CREATE INDEX idx_climbs_nostr_via ON climbs(nostr_publish_via);
+
+CREATE INDEX idx_climb_stats_angle ON climb_stats(angle);
+CREATE INDEX idx_climb_stats_browse ON climb_stats(
+    angle, difficulty_average, quality_average, ascensionist_count,
+    benchmark_difficulty, climb_uuid
+);
+CREATE INDEX idx_climb_stats_by_popularity ON climb_stats(
+    angle, ascensionist_count, difficulty_average, climb_uuid
+);
+CREATE INDEX idx_climb_stats_count_cover ON climb_stats(
+    angle, ascensionist_count, difficulty_average, benchmark_difficulty,
+    climb_uuid
+);
+
+-- ── Recreate climb_browse VIEW ────────────────────────────────────
+CREATE VIEW climb_browse AS
+SELECT
+    c.uuid, c.name, c.setter_username, c.frames_count, c.layout_id,
+    COALESCE(c.description, '') AS description,
+    c.is_nomatch, c.frames_pace, c.hsm, c.move_count,
+    c.source, c.created_by_pubkey, c.sync_status, c.origin, c.kilter_status,
+    cs.angle, cs.difficulty_average, cs.quality_average,
+    cs.ascensionist_count, cs.benchmark_difficulty
+FROM climbs c
+INNER JOIN climb_stats cs ON c.uuid = cs.climb_uuid
+WHERE c.is_listed = 1;
+
+-- ── Force-resync marker ───────────────────────────────────────────
+-- BoardSyncManager checks for this row on next start: if present, it
+-- clears stored Blossom chunk hashes + lastSyncTimestamp and triggers
+-- a fresh full sync (the local Kilter side is empty after this
+-- migration, so a chunk-hash-incremental sync would otherwise leave
+-- the user with an empty browser until they manually tap "Sync now").
+-- Cleared by BoardSyncManager once the resync finishes successfully.
+INSERT OR REPLACE INTO sync_states(table_name, last_synchronized_at)
+VALUES ('post_v8_force_resync', 'pending');

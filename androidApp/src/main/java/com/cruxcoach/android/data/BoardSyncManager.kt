@@ -43,11 +43,13 @@ class BoardSyncManager(
 ) {
     private companion object {
         const val TAG = "BoardSyncManager"
-        /** Max concurrent chunk downloads. 8 matches a modern browser's
-         *  per-origin connection limit and is well within primal.net's
-         *  comfort zone. OkHttp's synchronous `.execute()` bypasses the
-         *  Dispatcher's per-host cap, so this number is the only gate. */
-        const val PARALLEL_DOWNLOADS = 8
+        /** Max concurrent chunk downloads. On mobile links 4 streams
+         *  hit the bandwidth-delay-product without each stream
+         *  perpetually competing for TCP slow-start window; the 3
+         *  Blossom mirrors per chunk also frequently resolve to the
+         *  same provider, where 4 concurrent connections stay below
+         *  per-IP rate-limit thresholds. */
+        const val PARALLEL_DOWNLOADS = 4
         /** Denormalized-field refresh batch size — keeps per-transaction
          *  write-lock hold time short so user writes can interleave. */
         const val REFRESH_BATCH_SIZE = 100
@@ -98,17 +100,79 @@ class BoardSyncManager(
      */
     fun recoverPartialImportIfNeeded() {
         scope.launch {
-            val climbCount = boardRepository.getClimbCount()
-            if (climbCount == 0L) return@launch
+            // EXISTS-based fast path: getClimbCount() blocks tens of
+            // seconds during an active import, and this hook fires at
+            // app-start where the user is already waiting on UI render.
+            if (!boardRepository.hasAnyClimbs()) return@launch
             if (boardRepository.getAllPlacements().isNotEmpty()) return@launch
 
-            Log.w(TAG, "Partial board DB detected (climbs=$climbCount, placements=0) — interrupted import; triggering recovery sync")
+            Log.w(TAG, "Partial board DB detected (climbs>0, placements=0) — interrupted import; triggering recovery sync")
 
             if (!isNetworkAvailable(appContext)) {
                 Log.w(TAG, "Recovery needed but no network — will retry on next app start")
                 return@launch
             }
 
+            startBackgroundSync()
+        }
+    }
+
+    /**
+     * Handles the post-7.sqm forced re-sync. The migration wipes Kilter-
+     * side rows from the local board DB to escape the NOCASE-dedup
+     * mismatch (see 7.sqm header). Without coordinated chunk-hash +
+     * lastSyncTimestamp invalidation, [syncIfStale] would see "all
+     * chunks up to date" and "data fresh" and the user would land on
+     * an empty browser until they manually triggered a sync.
+     *
+     * 7.sqm leaves a `post_v8_force_resync` marker in `sync_states`;
+     * this method consumes it on app start, clears the dependent state,
+     * and triggers a background sync. The actual sync runs async and
+     * will redownload every chunk fresh.
+     */
+    fun handlePostMigrationResync() {
+        scope.launch {
+            val v8 = boardRepository.hasPostV8ResyncMarker()
+            val homewall = boardRepository.hasHomewallResyncMarker()
+            if (!v8 && !homewall) return@launch
+            val reason = listOfNotNull(
+                "post-v8".takeIf { v8 },
+                "homewall".takeIf { homewall },
+            ).joinToString("+")
+            // Defer the actual wipe + marker-clear until we have a
+            // network path: the resync needs the network anyway, and
+            // wiping the chunk-hash cache + lastSyncTimestamp offline
+            // would just leave the user staring at a "never synced"
+            // state with no way to recover until they go online. Their
+            // existing local board DB stays fully usable in the
+            // meantime — they'd only miss the *new* Homewall data
+            // until the actual resync runs. The marker stays in
+            // sync_states so the next app-start with network re-enters
+            // this branch.
+            if (!isNetworkAvailable(appContext)) {
+                Log.i(TAG, "$reason resync: no network at app start; marker kept, retry on next launch")
+                return@launch
+            }
+            Log.i(TAG, "$reason migration: forcing chunk-hash + timestamp reset for clean re-sync")
+            // Wipe the cron-derived catalog rows so the resync runs
+            // through the fresh-install fast path inside
+            // [BoardDatabaseImporter.importFromChunks] (skips the per-
+            // chunk UPDATE pass — without this an ~5min resync drags
+            // through 174k+20k correlated subqueries that are mostly
+            // no-ops). Cruxcoach-authored climbs (source='local' /
+            // 'nostr') are preserved. Browse goes empty during the
+            // ~30-60s of resync; the import progress UI is up the
+            // whole time so it's framed as "syncing", not "broken".
+            boardRepository.deleteKilterCatalogData()
+            blossomSyncManager.clearStoredHashes()
+            userPreferences.setLastSyncTimestamp(null)
+            // Clear markers now (not after sync completes) so a sync
+            // failure doesn't trap the user in a perpetual re-clear
+            // loop on every app start. Worst case: sync fails, user
+            // manually triggers one — chunk hashes are already gone,
+            // so the manual retry is itself a full re-sync.
+            if (v8) boardRepository.clearPostV8ResyncMarker()
+            if (homewall) boardRepository.clearHomewallResyncMarker()
             startBackgroundSync()
         }
     }
@@ -161,6 +225,7 @@ class BoardSyncManager(
             Log.d(TAG, "Data stale, checking Blossom manifest...")
             try {
                 val manifest = blossomSyncManager.fetchManifest()
+                userPreferences.setBlossomManifestCreatedAt(manifest.createdAt)
                 val changedChunks = blossomSyncManager.getChangedChunks(manifest)
                 if (changedChunks.isEmpty()) {
                     Log.d(TAG, "All chunks up to date — skipping auto-sync")
@@ -311,6 +376,10 @@ class BoardSyncManager(
         _state.update { it.copy(importStep = ImportStep.FetchingManifest) }
         Log.d(TAG, "Fetching Blossom manifest...")
         val manifest = blossomSyncManager.fetchManifest()
+        // Persist manifest timestamp so CommunityClimbSubscriber can seed
+        // its cursor on first run — avoids pulling the entire historical
+        // Nostr tail when the cron has already merged it into the blob.
+        userPreferences.setBlossomManifestCreatedAt(manifest.createdAt)
         Log.d(TAG, "Manifest fetched: ${manifest.chunks.size} chunks")
 
         // 2. Determine which chunks need downloading
@@ -516,6 +585,13 @@ class BoardSyncManager(
             syncComplete = false,
             lastSyncTimestamp = null
         ) }
+        // Also wipe the per-chunk SHA-256 cache. Without this the next
+        // sync's `getChangedChunks` matches every chunk against its
+        // pre-deletion hash, returns an empty diff list, and the import
+        // pipeline never runs — leaving the user with an empty board DB
+        // and a no-op "Sync abgeschlossen" message. Mirror of
+        // `handlePostMigrationResync` which already does this.
+        blossomSyncManager.clearStoredHashes()
         scope.launch { userPreferences.setLastSyncTimestamp(null) }
     }
 

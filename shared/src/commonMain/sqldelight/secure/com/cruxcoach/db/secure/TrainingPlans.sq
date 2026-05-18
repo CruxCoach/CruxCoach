@@ -1,0 +1,34 @@
+CREATE TABLE training_plans (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    start_date TEXT NOT NULL,
+    end_date TEXT NOT NULL,
+    phase TEXT NOT NULL,
+    focus_areas TEXT NOT NULL,
+    sessions_per_week INTEGER NOT NULL,
+    plan_version INTEGER NOT NULL DEFAULT 1,
+    generated_by TEXT NOT NULL DEFAULT 'INITIAL',
+    FOREIGN KEY (user_id) REFERENCES user_profiles(id)
+);
+
+insert:
+INSERT INTO training_plans (user_id, start_date, end_date, phase,
+    focus_areas, sessions_per_week, plan_version, generated_by)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+
+getById:
+SELECT * FROM training_plans WHERE id = ?;
+
+getActivePlan:
+SELECT * FROM training_plans
+WHERE user_id = ? AND date('now') BETWEEN start_date AND end_date
+ORDER BY plan_version DESC LIMIT 1;
+
+getAllForUser:
+SELECT * FROM training_plans WHERE user_id = ? ORDER BY start_date DESC;
+
+lastInsertRowId:
+SELECT last_insert_rowid();
+
+deleteById:
+DELETE FROM training_plans WHERE id = ?;

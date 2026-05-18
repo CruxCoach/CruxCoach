@@ -1,0 +1,119 @@
+-- Climb lists (favorites + custom lists) — private, per-key DB file
+
+CREATE TABLE climb_lists (
+    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    is_builtin INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    -- FEAT-005 (Aurora circuits): aurora carries each circuit's
+    -- description + hex color (no '#') + a creation timestamp; we
+    -- preserve all three so a re-imported circuit keeps its identity.
+    description TEXT,
+    color TEXT,
+    external_id TEXT
+);
+
+CREATE UNIQUE INDEX idx_climb_lists_external_id ON climb_lists(external_id)
+    WHERE external_id IS NOT NULL;
+
+CREATE TABLE climb_list_entries (
+    list_id INTEGER NOT NULL,
+    climb_uuid TEXT NOT NULL,
+    added_at TEXT NOT NULL,
+    PRIMARY KEY (list_id, climb_uuid)
+);
+
+CREATE INDEX idx_climb_list_entries_list ON climb_list_entries(list_id);
+CREATE INDEX idx_climb_list_entries_climb ON climb_list_entries(climb_uuid);
+
+-- ═══ List CRUD ═══
+
+insertClimbList:
+INSERT INTO climb_lists(name, is_builtin, created_at) VALUES (?, ?, ?);
+
+getLastInsertedListId:
+SELECT last_insert_rowid();
+
+getClimbListById:
+SELECT cl.*, COUNT(cle.climb_uuid) AS climb_count
+FROM climb_lists cl
+LEFT JOIN climb_list_entries cle ON cl.id = cle.list_id
+WHERE cl.id = ?
+GROUP BY cl.id;
+
+getAllClimbLists:
+SELECT cl.*, COUNT(cle.climb_uuid) AS climb_count
+FROM climb_lists cl
+LEFT JOIN climb_list_entries cle ON cl.id = cle.list_id
+GROUP BY cl.id
+ORDER BY cl.is_builtin DESC, cl.name ASC;
+
+getBuiltinFavoritesList:
+SELECT cl.*, COUNT(cle.climb_uuid) AS climb_count
+FROM climb_lists cl
+LEFT JOIN climb_list_entries cle ON cl.id = cle.list_id
+WHERE cl.is_builtin = 1
+GROUP BY cl.id
+LIMIT 1;
+
+updateClimbListName:
+UPDATE climb_lists SET name = ? WHERE id = ?;
+
+deleteClimbList:
+DELETE FROM climb_lists WHERE id = ?;
+
+-- ═══ Entry operations ═══
+
+insertClimbListEntry:
+INSERT OR IGNORE INTO climb_list_entries(list_id, climb_uuid, added_at) VALUES (?, ?, ?);
+
+removeClimbListEntry:
+DELETE FROM climb_list_entries WHERE list_id = ? AND climb_uuid = ?;
+
+deleteClimbListEntries:
+DELETE FROM climb_list_entries WHERE list_id = ?;
+
+-- Get UUIDs for a list page (two-phase: UUIDs from SecureDB, climb details from BoardDB)
+getClimbListEntryUuids:
+SELECT climb_uuid, added_at FROM climb_list_entries
+WHERE list_id = :list_id
+ORDER BY added_at DESC
+LIMIT :limit OFFSET :offset;
+
+countClimbListEntries:
+SELECT COUNT(*) FROM climb_list_entries WHERE list_id = ?;
+
+getListIdsForClimb:
+SELECT list_id FROM climb_list_entries WHERE climb_uuid = ?;
+
+isClimbInList:
+SELECT COUNT(*) FROM climb_list_entries WHERE list_id = ? AND climb_uuid = ?;
+
+-- ═══ Export ═══
+
+getClimbListEntriesRaw:
+SELECT list_id, climb_uuid, added_at FROM climb_list_entries ORDER BY list_id, added_at;
+
+-- ═══ Bulk operations ═══
+
+deleteAllClimbListEntries:
+DELETE FROM climb_list_entries;
+
+deleteAllClimbLists:
+DELETE FROM climb_lists;
+
+-- ═══ FEAT-005 Aurora-JSON-import — circuit upsert by external_id ═══
+
+findClimbListByExternalId:
+SELECT id FROM climb_lists WHERE external_id = ? LIMIT 1;
+
+-- Insert a new circuit with full Aurora metadata. Caller checks for an
+-- existing row first via [findClimbListByExternalId]; if found, the
+-- caller uses [updateAuroraClimbListMeta] + [deleteClimbListEntries] to
+-- refresh the membership.
+insertAuroraClimbList:
+INSERT INTO climb_lists(name, is_builtin, created_at, description, color, external_id)
+VALUES (?, 0, ?, ?, ?, ?);
+
+updateAuroraClimbListMeta:
+UPDATE climb_lists SET name = ?, description = ?, color = ? WHERE id = ?;

@@ -136,7 +136,7 @@ fun DataExportScreen(
                         Column(modifier = Modifier.padding(4.dp)) {
                             VISIBLE_CATEGORIES.forEach { category ->
                                 CategoryCheckboxRow(
-                                    label = category.label,
+                                    label = category.localizedLabel(),
                                     checked = category in state.exportCategories,
                                     onCheckedChange = { viewModel.toggleExportCategory(category) }
                                 )

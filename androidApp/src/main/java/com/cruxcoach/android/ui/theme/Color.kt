@@ -33,7 +33,7 @@ val GradeElite = Color(0xFFAB47BC)
 
 /**
  * Returns a color based on V-Grade, so the same grade always gets the same color.
- * Converts Aurora difficulty_average → V-Grade number → color band.
+ * Converts Kilter difficulty_average → V-Grade number → color band.
  *   V0-V2  (4 – 5+)    → green
  *   V3-V5  (6a – 6c)   → orange
  *   V6-V8  (7a – 7b+)  → red

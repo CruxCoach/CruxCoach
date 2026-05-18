@@ -14,7 +14,7 @@ class SecureDatabaseTransactionRunner(
     private val database: SecureDatabase
 ) : TransactionRunner {
     override fun <T> runInTransaction(block: () -> T): T {
-        return database.workoutLogQueries.transactionWithResult {
+        return database.workoutLogsQueries.transactionWithResult {
             block()
         }
     }

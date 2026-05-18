@@ -70,7 +70,7 @@ internal fun BoardStatsSheet(
     customDateTo: LocalDate? = null,
     heatmapMode: HeatmapMode = HeatmapMode.PERSONAL,
     heatmapData: Map<Int, Float> = emptyMap(),
-    placements: Map<Int, com.cruxcoach.data.repository.AuroraPlacement> = emptyMap(),
+    placements: Map<Int, com.cruxcoach.data.repository.BoardPlacement> = emptyMap(),
     boardSize: com.cruxcoach.data.repository.BoardSize? = null,
     boardImages: List<com.cruxcoach.data.repository.BoardImage> = emptyList(),
     onIntervalSelect: (StatsTimeInterval) -> Unit,

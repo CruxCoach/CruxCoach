@@ -3,13 +3,20 @@ package com.cruxcoach.domain.board
 import kotlin.math.abs
 
 /**
- * Maps Aurora/Kilter difficulty integers to V-Scale and Font grades.
+ * Maps Kilter difficulty integers (10–34) to V-Scale and Font grades.
  * Grade mappings match the official difficulty_grades table from the Kilter Board app.
  *
  * Display uses ROUND(difficulty_average) → lookup, matching Kilter's SQL:
  *   SELECT boulder_name FROM difficulty_grades WHERE difficulty = ROUND(display_difficulty)
  */
 object KilterGradeMapper {
+
+    /** Default setter grade applied when the editor's grade slider was never
+     *  touched. 20 = V5 / 6c, the slider's visible default value. Owned by
+     *  the data layer so every persistence path (saveDraft, updateDraft,
+     *  future autosave / Fork-and-Edit / tooling) gets the same fallback
+     *  without relying on a UI-side LaunchedEffect to seed editor state. */
+    const val DEFAULT_SETTER_GRADE_ID = 20
 
     private val DIFFICULTY_TO_VSCALE = mapOf(
         10 to "V0", 11 to "V0", 12 to "V0",
@@ -91,7 +98,7 @@ object KilterGradeMapper {
     }
 
     /**
-     * Map unified grade index (0..22) to Aurora difficulty value.
+     * Map unified grade index (0..22) to Kilter difficulty value.
      * Each value is the exact integer difficulty from the Kilter DB difficulty_grades table.
      */
     private val INDEX_TO_DIFFICULTY = doubleArrayOf(

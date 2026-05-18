@@ -45,8 +45,8 @@ import com.cruxcoach.android.data.SessionQueueManager
 import com.cruxcoach.android.data.SharingConfig
 import com.cruxcoach.android.notification.AppNotificationService
 import com.cruxcoach.android.data.IntensityZoneManager
-import com.cruxcoach.android.ble.AuroraBleConnection
-import com.cruxcoach.android.ble.AuroraBleScanner
+import com.cruxcoach.android.ble.BoardBleConnection
+import com.cruxcoach.android.ble.BoardBleScanner
 import com.cruxcoach.android.ble.ClimbBleAdvertiser
 import com.cruxcoach.android.ble.NearbyClimbScanner
 import com.cruxcoach.android.ble.SessionGattClient
@@ -216,9 +216,29 @@ object AppModule {
 
     @Provides
     @Singleton
+    @Named("blossom")
+    fun provideBlossomOkHttpClient(): OkHttpClient {
+        // Dedicated client for Blossom chunk downloads. The nostr client's
+        // 10s read + 60s call cap was sized for short relay messages and a
+        // single 13 MB upload — chunked downloads over 4G routinely stall
+        // for several seconds and run for minutes in aggregate, so they
+        // need their own, more lenient profile. readTimeout still bounds
+        // per-byte progress; callTimeout is intentionally omitted so a
+        // slow-but-progressing mirror is not killed by a wall-clock cap.
+        return PerfLogger.trace("DI: BlossomOkHttpClient") {
+            OkHttpClient.Builder()
+                .connectTimeout(15, TimeUnit.SECONDS)
+                .readTimeout(30, TimeUnit.SECONDS)
+                .writeTimeout(15, TimeUnit.SECONDS)
+                .build()
+        }
+    }
+
+    @Provides
+    @Singleton
     fun provideBlossomSyncManager(
         @ApplicationContext context: Context,
-        @Named("nostr") okHttpClient: OkHttpClient
+        @Named("blossom") okHttpClient: OkHttpClient
     ): BlossomSyncManager {
         return BlossomSyncManager(context, okHttpClient)
     }
@@ -270,14 +290,14 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideAuroraBleScanner(@ApplicationContext context: Context): AuroraBleScanner {
-        return PerfLogger.trace("DI: AuroraBleScanner") { AuroraBleScanner(context) }
+    fun provideBoardBleScanner(@ApplicationContext context: Context): BoardBleScanner {
+        return PerfLogger.trace("DI: BoardBleScanner") { BoardBleScanner(context) }
     }
 
     @Provides
     @Singleton
-    fun provideAuroraBleConnection(@ApplicationContext context: Context): AuroraBleConnection {
-        return PerfLogger.trace("DI: AuroraBleConnection") { AuroraBleConnection(context) }
+    fun provideBoardBleConnection(@ApplicationContext context: Context): BoardBleConnection {
+        return PerfLogger.trace("DI: BoardBleConnection") { BoardBleConnection(context) }
     }
 
     @Provides
@@ -367,7 +387,7 @@ object AppModule {
     @Provides
     @Singleton
     fun provideSessionQueueManager(
-        bleConnection: AuroraBleConnection,
+        bleConnection: BoardBleConnection,
         boardRepository: BoardRepository,
         climbNameResolver: ClimbNameResolver,
         userPreferences: UserPreferences
@@ -384,7 +404,7 @@ object AppModule {
         gattClient: SessionGattClient,
         advertiser: ClimbBleAdvertiser,
         nearbyScanner: NearbyClimbScanner,
-        bleConnection: AuroraBleConnection,
+        bleConnection: BoardBleConnection,
         boardStateManager: BoardStateManager,
         boardSessionManager: BoardSessionManager
     ): SessionGattBridge {
@@ -528,10 +548,35 @@ object AppModule {
     @Singleton
     @Named("kilter")
     fun provideKilterOkHttpClient(): OkHttpClient {
+        // Identifiable User-Agent so Kilter operators can:
+        //   - tell our traffic apart from random scrapers
+        //   - reach us if something looks off (URL in the UA string)
+        //   - whitelist us if we're well-behaved
+        // Spoofing the official Kilter app's UA would be a Trademark
+        // + ToS issue; using a clear, honest one is the safer call.
+        val versionName = com.cruxcoach.android.BuildConfig.VERSION_NAME
+        val product = com.cruxcoach.android.BuildConfig.USER_AGENT_PRODUCT
+        val host = com.cruxcoach.android.BuildConfig.APP_LINK_HOST
+        val ua = "$product/$versionName (https://$host)"
         return OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(15, TimeUnit.SECONDS)
+            // Wall-clock cap on the entire call. Without this a TLS
+            // handshake hang or a server-stalls-mid-response can block
+            // KilterPublishRetryWorker indefinitely — connect/read
+            // timeouts only cap individual sockets and reset on each
+            // byte. 60s is comfortably above any legitimate Kilter API
+            // call (P99 < 5s on the publish path) while bounding the
+            // pathological case so the worker tick can't drag past
+            // WorkManager's 10-min execution budget.
+            .callTimeout(60, TimeUnit.SECONDS)
+            .addInterceptor { chain ->
+                val req = chain.request().newBuilder()
+                    .header("User-Agent", ua)
+                    .build()
+                chain.proceed(req)
+            }
             .build()
     }
 

@@ -1,6 +1,6 @@
 package com.cruxcoach.android.data
 
-import com.cruxcoach.android.ble.AuroraBleConnection
+import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.ble.QueueItem
 import com.cruxcoach.data.repository.BoardRepository
@@ -35,7 +35,7 @@ class SessionQueueManagerTest {
     private val testDispatcher = UnconfinedTestDispatcher()
     private lateinit var managerScope: CoroutineScope
     private lateinit var queueManager: SessionQueueManager
-    private val bleConnection = mockk<AuroraBleConnection>(relaxed = true)
+    private val bleConnection = mockk<BoardBleConnection>(relaxed = true)
     private val boardRepository = mockk<BoardRepository>(relaxed = true)
     private val climbNameResolver = mockk<ClimbNameResolver>(relaxed = true)
     private val userPreferences = mockk<UserPreferences>(relaxed = true)

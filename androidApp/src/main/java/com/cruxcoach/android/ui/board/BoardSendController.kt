@@ -1,7 +1,7 @@
 package com.cruxcoach.android.ui.board
 
 import android.util.Log
-import com.cruxcoach.android.ble.AuroraBleConnection
+import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.ClimbBleAdvertiser
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.data.SessionQueueManager
@@ -27,7 +27,7 @@ internal class BoardSendController(
     private val scope: CoroutineScope,
     private val state: MutableStateFlow<ClimbDetailState>,
     private val boardRepository: BoardRepository,
-    private val bleConnection: AuroraBleConnection,
+    private val bleConnection: BoardBleConnection,
     private val userPreferences: UserPreferences,
     private val climbAdvertiser: ClimbBleAdvertiser,
     private val sessionQueueManager: SessionQueueManager,

@@ -7,7 +7,7 @@ class BodyStatRepositoryImpl(
     private val database: SecureDatabase
 ) : BodyStatRepository {
 
-    private val queries = database.bodyStatQueries
+    private val queries = database.bodyStatsQueries
 
     override fun insert(stat: BodyStat): Long {
         queries.insert(
@@ -68,7 +68,7 @@ class BodyStatRepositoryImpl(
         queries.deleteByDateAndStatName(date, statName)
     }
 
-    private fun com.cruxcoach.db.secure.Body_stat.toDomain(): BodyStat {
+    private fun com.cruxcoach.db.secure.Body_stats.toDomain(): BodyStat {
         return BodyStat(
             id = id,
             date = date,

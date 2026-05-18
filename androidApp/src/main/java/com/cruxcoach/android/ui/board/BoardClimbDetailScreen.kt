@@ -12,6 +12,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.CallSplit
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.ArrowDropDown
@@ -19,6 +20,9 @@ import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.BluetoothConnected
 import androidx.compose.material.icons.filled.CellTower
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Timer
@@ -65,6 +69,9 @@ fun BoardClimbDetailScreen(
     onNavigateBack: () -> Unit,
     onNavigateToClimb: ((climbUuid: String, angle: Int) -> Unit)? = null,
     onNavigateToBugReport: (title: String, description: String) -> Unit = { _, _ -> },
+    onNavigateToFork: (climbUuid: String) -> Unit = {},
+    onNavigateToEdit: (climbUuid: String) -> Unit = {},
+    onNavigateToSetter: (pubkey: String) -> Unit = {},
     viewModel: BoardClimbDetailViewModel = hiltViewModel()
 ) {
     PerfLogger.navMilestone("BoardClimbDetailScreen composing")
@@ -83,10 +90,26 @@ fun BoardClimbDetailScreen(
     // When navigating from the browser, always use the full browser climb list —
     // regardless of whether a session queue is active.
     val navigatedFromQueue = viewModel.climbNavState.source == com.cruxcoach.android.ui.navigation.ClimbNavigationSource.QUEUE
-    val navUuids = if (navigatedFromQueue && detailQueueState.isActive && detailQueueState.queue.isNotEmpty()) {
+    val rawNavUuids = if (navigatedFromQueue && detailQueueState.isActive && detailQueueState.queue.isNotEmpty()) {
         detailQueueState.queue.map { it.climbUuid }
     } else {
         remember { viewModel.climbNavState.climbUuids }
+    }
+    // Defense against stale climbNavState. Some navigation paths
+    // (SetterDetailScreen, push notifications, deep-links) navigate
+    // straight to boardClimbDetail without first refreshing
+    // climbNavState.climbUuids — leaving it pointing at the previous
+    // browser/logbook session. Without this guard the pager would
+    // open at index 0 of that stale list, which means tapping a
+    // climb in the new screen lands the user on a *completely
+    // different* climb (the first entry of whatever they were
+    // browsing before). When the route's UUID isn't in the cached
+    // list, drop to a single-page render of just that UUID — the
+    // user loses left/right swipe-paging for this screen instance,
+    // but at least sees the climb they actually tapped.
+    val navUuids = remember(rawNavUuids, viewModel.initialClimbUuid) {
+        if (viewModel.initialClimbUuid in rawNavUuids) rawNavUuids
+        else listOf(viewModel.initialClimbUuid)
     }
     val navAngle = if (navigatedFromQueue && detailQueueState.isActive && detailQueueState.queue.isNotEmpty()) {
         detailQueueState.queue.firstOrNull()?.angle ?: remember { viewModel.climbNavState.angle }
@@ -153,6 +176,94 @@ fun BoardClimbDetailScreen(
         )
     }
 
+    // Community-publication delete confirmation. The text differs based
+    // on whether the climb was also pushed to Kilter — Kilter has no
+    // delete API so the user has to clean up there manually.
+    // Draft (local-only) delete confirmation. Reuses the
+    // climb_creator_drafts_delete_* strings so the wording matches
+    // the editor's drafts-drawer flow — same action, different entry
+    // point.
+    state.draftDeleteDialog?.let { dialog ->
+        AlertDialog(
+            onDismissRequest = {
+                if (!dialog.isInProgress) viewModel.dismissDraftDeleteDialog()
+            },
+            title = {
+                Text(
+                    stringResource(R.string.climb_creator_drafts_delete_title),
+                    fontWeight = FontWeight.Bold,
+                )
+            },
+            text = {
+                Text(stringResource(R.string.climb_creator_drafts_delete_message, dialog.name))
+            },
+            confirmButton = {
+                Button(
+                    onClick = { viewModel.confirmDraftDelete(onDeleted = onNavigateBack) },
+                    enabled = !dialog.isInProgress,
+                    colors = ButtonDefaults.buttonColors(containerColor = ErrorRed),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.testTag("boarddetail_delete_draft_confirm"),
+                ) {
+                    Text(
+                        stringResource(R.string.climb_creator_drafts_delete_confirm),
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { viewModel.dismissDraftDeleteDialog() },
+                    enabled = !dialog.isInProgress,
+                ) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            },
+        )
+    }
+
+    state.communityDeleteDialog?.let { dialog ->
+        val bodyRes = if (dialog.kilterAlsoPublished) {
+            R.string.community_climb_delete_confirm_kilter_warning
+        } else {
+            R.string.community_climb_delete_confirm_nostr_only
+        }
+        AlertDialog(
+            onDismissRequest = {
+                if (!dialog.isInProgress) viewModel.dismissCommunityDeleteDialog()
+            },
+            title = {
+                Text(
+                    stringResource(R.string.community_climb_delete_confirm_title),
+                    fontWeight = FontWeight.Bold,
+                )
+            },
+            text = { Text(stringResource(bodyRes)) },
+            confirmButton = {
+                Button(
+                    onClick = { viewModel.confirmCommunityDelete(onDeleted = onNavigateBack) },
+                    enabled = !dialog.isInProgress,
+                    colors = ButtonDefaults.buttonColors(containerColor = ErrorRed),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.testTag("boarddetail_delete_publication_confirm"),
+                ) {
+                    Text(
+                        stringResource(R.string.community_climb_delete_confirm_button),
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { viewModel.dismissCommunityDeleteDialog() },
+                    enabled = !dialog.isInProgress,
+                ) {
+                    Text(stringResource(R.string.community_climb_delete_cancel_button))
+                }
+            },
+        )
+    }
+
     if (state.listDialog.show) {
         AddToListDialog(
             lists = state.listDialog.lists,
@@ -188,37 +299,53 @@ fun BoardClimbDetailScreen(
         )
     }
 
-    // Quick-Send macro: surface progress + outcomes as snackbars and escalate
-    // multi-board ambiguity into the existing connection sheet for manual pick.
+    // Quick-Send macro: silent — no snackbar progress/outcome chatter
+    // (per user feedback: the BLE-icon colour change is signal enough,
+    // and "Sending… / Done" snackbars become noise on every tap).
+    // We still observe quickSendStatus to escalate the multi-board
+    // case into the manual-pick sheet (one-shot, no snackbar) and to
+    // reset Done/Error back to Idle so the next tap starts fresh.
     val quickSendStatus by bleConnViewModel.quickSend.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     LaunchedEffect(quickSendStatus) {
-        val msg = when (val s = quickSendStatus) {
-            QuickSendStatus.Idle -> null
-            QuickSendStatus.Scanning -> context.getString(R.string.ble_quick_send_scanning)
-            is QuickSendStatus.Connecting -> context.getString(R.string.ble_quick_send_connecting, s.boardName)
-            QuickSendStatus.Sending -> context.getString(R.string.ble_quick_send_sending)
-            QuickSendStatus.Disconnecting -> context.getString(R.string.ble_quick_send_disconnecting)
-            QuickSendStatus.Done -> context.getString(R.string.ble_quick_send_done)
-            is QuickSendStatus.NeedsManualPick -> {
-                // Auto-escalate: open the existing connection sheet so the user
-                // picks, then drop the macro. Once they tap a board the sheet
-                // takes over the connect-and-send flow.
-                showBleSheet = true
-                bleConnViewModel.resetQuickSend()
-                null
-            }
-            is QuickSendStatus.Error -> context.getString(
-                when (s.reason) {
-                    QuickSendStatus.ErrorReason.NoBoardsFound -> R.string.ble_quick_send_no_boards
-                    QuickSendStatus.ErrorReason.ConnectFailed -> R.string.ble_quick_send_connect_failed
-                    QuickSendStatus.ErrorReason.SendFailed -> R.string.ble_quick_send_send_failed
-                    QuickSendStatus.ErrorReason.BluetoothOff -> R.string.ble_quick_send_bluetooth_off
-                    QuickSendStatus.ErrorReason.NoPermissions -> R.string.ble_quick_send_no_permissions
-                }
-            )
+        if (quickSendStatus is QuickSendStatus.NeedsManualPick) {
+            showBleSheet = true
+            bleConnViewModel.resetQuickSend()
         }
-        if (msg != null) snackbarHostState.showSnackbar(msg)
+    }
+
+    // Surface community-delete outcomes — the deleter returns success
+    // even when no relay accepted (local-row tombstoned regardless),
+    // so the snackbar text mentions the relay-accept count.
+    LaunchedEffect(state.communityDeleteFeedback) {
+        val feedback = state.communityDeleteFeedback ?: return@LaunchedEffect
+        val msg = when (feedback) {
+            is CommunityDeleteFeedback.Done -> {
+                val template = if (feedback.kilterAlsoPublished) {
+                    R.string.community_climb_delete_done_with_kilter
+                } else {
+                    R.string.community_climb_delete_done_nostr_only
+                }
+                context.getString(template, feedback.accepted, feedback.attempted)
+            }
+            is CommunityDeleteFeedback.LocalTombstoneFailed ->
+                context.getString(
+                    R.string.community_climb_delete_local_failed,
+                    feedback.accepted, feedback.attempted,
+                )
+            CommunityDeleteFeedback.NotOwner -> context.getString(R.string.community_climb_delete_not_owner)
+            // Defensive: NotOurClimb / NotFound shouldn't reach the user
+            // because the menu item is gated on origin=cruxcoach + owner.
+            // If they ever do, fall back to the generic failure message.
+            CommunityDeleteFeedback.NotOurClimb,
+            CommunityDeleteFeedback.NotFound,
+            CommunityDeleteFeedback.Failed -> context.getString(R.string.community_climb_delete_failed)
+        }
+        snackbarHostState.showSnackbar(msg)
+        viewModel.consumeCommunityDeleteFeedback()
+    }
+
+    LaunchedEffect(quickSendStatus) {
         // Reset Done/Error to Idle after the snackbar fires so the next tap
         // starts fresh; transient states (Scanning/Sending/Disconnecting/
         // Connecting) reset themselves when the macro advances.
@@ -234,7 +361,7 @@ fun BoardClimbDetailScreen(
         topBar = {
             Column {
                 TopAppBar(
-                    title = { Text(stringResource(R.string.board_detail_title)) },
+                    title = {},
                     navigationIcon = {
                         IconButton(
                             onClick = onNavigateBack,
@@ -244,6 +371,12 @@ fun BoardClimbDetailScreen(
                         }
                     },
                     actions = {
+                        // Five primary actions stay direct: Favorite, Add-to-
+                        // list, Rest timer, BLE, Log-ascent (the orange
+                        // Check). Creator-side actions (Fork, Edit, Delete)
+                        // live in a single ⋮ overflow at the end so the
+                        // action row stops growing past six items + back-
+                        // arrow on narrow phones.
                         IconButton(
                             onClick = { viewModel.toggleFavorite() },
                             modifier = Modifier.testTag("boarddetail_favorite_button")
@@ -262,6 +395,17 @@ fun BoardClimbDetailScreen(
                                 Icons.AutoMirrored.Filled.PlaylistAdd,
                                 contentDescription = stringResource(R.string.cd_add_to_list),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        IconButton(
+                            onClick = { viewModel.startRestTimer() },
+                            modifier = Modifier.testTag("boarddetail_rest_timer_button")
+                        ) {
+                            Icon(
+                                Icons.Default.Timer,
+                                contentDescription = stringResource(R.string.cd_rest_timer),
+                                tint = if (isRestTimerRunning) OrangeAccent
+                                       else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                         IconButton(
@@ -290,17 +434,6 @@ fun BoardClimbDetailScreen(
                             )
                         }
                         IconButton(
-                            onClick = { viewModel.startRestTimer() },
-                            modifier = Modifier.testTag("boarddetail_rest_timer_button")
-                        ) {
-                            Icon(
-                                Icons.Default.Timer,
-                                contentDescription = stringResource(R.string.cd_rest_timer),
-                                tint = if (isRestTimerRunning) OrangeAccent
-                                       else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        IconButton(
                             onClick = { viewModel.showAscentDialog() },
                             modifier = Modifier.testTag("boarddetail_log_button")
                         ) {
@@ -309,6 +442,188 @@ fun BoardClimbDetailScreen(
                                 contentDescription = stringResource(R.string.cd_log_ascent),
                                 tint = OrangeAccent
                             )
+                        }
+                        // Owner gate for Edit/Delete inside the overflow.
+                        // origin must be 'cruxcoach' (we can re-publish those
+                        // via Replaceable Kind 30078) AND the climb's
+                        // created_by_pubkey must match our local key.
+                        val canEdit = state.climb?.origin == "cruxcoach" &&
+                            state.climb?.createdByPubkey != null &&
+                            state.climb?.createdByPubkey == state.currentUserPubkey
+                        // Kilter's API treats published climbs as immutable
+                        // (no PATCH, no DELETE — see KilterApiClient docstrings).
+                        // For climbs we already mirrored to Kilter the editor
+                        // would create divergent state — local + Nostr would
+                        // hold the new version, Kilter the old, and the cron
+                        // pipeline would see two truths for the same uuid.
+                        // Hiding Edit (Delete still works, with warning) is
+                        // the simplest invariant: "synced and diverged are
+                        // frozen on Kilter, period."
+                        val kilterImmutable = state.climb?.kilterStatus == "synced" ||
+                            state.climb?.kilterStatus == "diverged"
+                        var moreExpanded by remember { mutableStateOf(false) }
+                        Box {
+                            IconButton(
+                                onClick = { moreExpanded = true },
+                                modifier = Modifier.testTag("boarddetail_more_button"),
+                            ) {
+                                Icon(
+                                    Icons.Default.MoreVert,
+                                    contentDescription = stringResource(R.string.action_more_options),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = moreExpanded,
+                                onDismissRequest = { moreExpanded = false },
+                            ) {
+                                // Mirror toggle — moved out of the detail body
+                                // (it was a full-width centered IconButton row
+                                // that cost a whole vertical band between the
+                                // stat header and the board). It's a display-
+                                // only toggle that applies to any climb, so it
+                                // sits at the top of the overflow, above the
+                                // owner-gated Edit/Delete actions.
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            stringResource(
+                                                if (state.isMirrored) R.string.cd_mirror_off
+                                                else R.string.cd_mirror_on
+                                            )
+                                        )
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            Icons.Default.SwapHoriz,
+                                            contentDescription = null,
+                                            tint = if (state.isMirrored) OrangeAccent
+                                                   else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    },
+                                    onClick = {
+                                        moreExpanded = false
+                                        viewModel.toggleMirror()
+                                    },
+                                    modifier = Modifier.testTag("boarddetail_mirror_toggle"),
+                                )
+                                HorizontalDivider()
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.climb_creator_remix_action)) },
+                                    leadingIcon = {
+                                        Icon(
+                                            Icons.AutoMirrored.Filled.CallSplit,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    },
+                                    enabled = state.climb != null,
+                                    onClick = {
+                                        moreExpanded = false
+                                        state.climb?.uuid?.let(onNavigateToFork)
+                                    },
+                                    modifier = Modifier.testTag("boarddetail_fork_button"),
+                                )
+                                if (canEdit) {
+                                    if (!kilterImmutable) {
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(R.string.climb_creator_edit_action)) },
+                                            leadingIcon = {
+                                                Icon(
+                                                    Icons.Default.Edit,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                )
+                                            },
+                                            onClick = {
+                                                moreExpanded = false
+                                                state.climb?.uuid?.let(onNavigateToEdit)
+                                            },
+                                            modifier = Modifier.testTag("boarddetail_edit_button"),
+                                        )
+                                    } else {
+                                        // Greyed-out Edit row + tooltip-style sub-text
+                                        // so the user understands WHY Edit isn't here
+                                        // (instead of just silently missing it).
+                                        DropdownMenuItem(
+                                            text = {
+                                                Column {
+                                                    Text(
+                                                        stringResource(R.string.climb_creator_edit_action),
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                                    )
+                                                    Text(
+                                                        stringResource(R.string.climb_detail_edit_locked_kilter),
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                                    )
+                                                }
+                                            },
+                                            leadingIcon = {
+                                                Icon(
+                                                    Icons.Default.Edit,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                                                )
+                                            },
+                                            enabled = false,
+                                            onClick = {},
+                                            modifier = Modifier.testTag("boarddetail_edit_button_locked"),
+                                        )
+                                    }
+                                    HorizontalDivider()
+                                    // Branch on whether this row was ever
+                                    // actually published. Climbs with no
+                                    // `nostr_event_id` have never reached a
+                                    // relay — calling requestCommunityDelete
+                                    // on those surfaces as "Löschen
+                                    // fehlgeschlagen" since there's no
+                                    // Kind-30078 to tombstone. Route them to
+                                    // the local-only delete path with a
+                                    // matching label so the user sees the
+                                    // right confirm copy too.
+                                    // sync_status alone wasn't reliable — a
+                                    // successful prior publish can drift to
+                                    // 'failed' on a later attempt and still
+                                    // have a live event on relays.
+                                    val isUnpublishedDraft = state.climb?.let {
+                                        it.nostrEventId.isNullOrBlank()
+                                    } ?: false
+                                    if (isUnpublishedDraft) {
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(R.string.climb_creator_drafts_delete_action)) },
+                                            leadingIcon = {
+                                                Icon(
+                                                    Icons.Default.Delete,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.error,
+                                                )
+                                            },
+                                            onClick = {
+                                                moreExpanded = false
+                                                viewModel.requestDraftDelete()
+                                            },
+                                            modifier = Modifier.testTag("boarddetail_delete_draft"),
+                                        )
+                                    } else {
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(R.string.community_climb_delete_action)) },
+                                            leadingIcon = {
+                                                Icon(
+                                                    Icons.Default.Delete,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.error,
+                                                )
+                                            },
+                                            onClick = {
+                                                moreExpanded = false
+                                                viewModel.requestCommunityDelete()
+                                            },
+                                            modifier = Modifier.testTag("boarddetail_delete_publication"),
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 )
@@ -371,7 +686,8 @@ fun BoardClimbDetailScreen(
                     isSharingEnabled = isSharingEnabled,
                     viewModel = viewModel,
                     onNavigateBack = onNavigateBack,
-                    onNavigateToBugReport = onNavigateToBugReport
+                    onNavigateToBugReport = onNavigateToBugReport,
+                    onNavigateToSetter = onNavigateToSetter,
                 )
             }
         } else {
@@ -381,6 +697,7 @@ fun BoardClimbDetailScreen(
                 viewModel = viewModel,
                 onNavigateBack = onNavigateBack,
                 onNavigateToBugReport = onNavigateToBugReport,
+                onNavigateToSetter = onNavigateToSetter,
                 modifier = Modifier.padding(padding)
             )
         }
@@ -395,6 +712,7 @@ private fun ClimbDetailPageContent(
     viewModel: BoardClimbDetailViewModel,
     onNavigateBack: () -> Unit,
     onNavigateToBugReport: (title: String, description: String) -> Unit = { _, _ -> },
+    onNavigateToSetter: (pubkey: String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -444,18 +762,79 @@ private fun ClimbDetailPageContent(
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(climb.name, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                                climb.setterUsername?.let { setter ->
+                                // Setter line. Click behaviour:
+                                //  - cruxcoach-origin + has pubkey → navigate
+                                //    to SetterDetailScreen (Plan 8)
+                                //  - else (Kilter-origin or pubkey missing) →
+                                //    no click (use the search bar to filter
+                                //    by setter name)
+                                val setterDisplay = state.setterProfile?.displayName
+                                    ?: climb.setterUsername
+                                val setterPubkey = climb.createdByPubkey?.takeIf { it.isNotBlank() }
+                                setterDisplay?.takeIf { it.isNotBlank() }?.let { setter ->
+                                    val isClickable = climb.origin == "cruxcoach" && setterPubkey != null
                                     Text(
                                         stringResource(R.string.board_detail_by_setter, setter),
                                         style = MaterialTheme.typography.bodyMedium.copy(
-                                            textDecoration = TextDecoration.Underline
+                                            textDecoration = if (isClickable) TextDecoration.Underline else TextDecoration.None
                                         ),
-                                        color = OrangeAccent,
-                                        modifier = Modifier.clickable {
-                                            viewModel.requestSetterFilter(setter)
-                                            onNavigateBack()
-                                        }
+                                        color = if (isClickable) OrangeAccent else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = if (isClickable) {
+                                            Modifier.clickable {
+                                                onNavigateToSetter(setterPubkey!!)
+                                            }
+                                        } else Modifier
                                     )
+                                }
+                                // Provenance + Kilter-mirror badge — only shown for
+                                // CruxCoach-authored climbs that actually have a
+                                // live Nostr publication (`nostr_event_id` is
+                                // set iff at least one publish has reached at
+                                // least one relay, either from this device via
+                                // markClimbPublishedNostr, or via the live-sub
+                                // upsert echoing back the user's own event).
+                                // For drafts and failed-publish rows the
+                                // previous "Nur CruxCoach-Community" copy was
+                                // misleading: an Aurora-imported draft
+                                // (origin='cruxcoach' + kilterStatus=NULL +
+                                // sync_status='draft') is *not* on the
+                                // CruxCoach community, just sitting locally,
+                                // and showing the same chip as a genuinely
+                                // community-published climb conflated the two.
+                                // sync_status alone wasn't a reliable
+                                // discriminator — a successful prior publish
+                                // can drift to 'failed' on a later attempt
+                                // and still have a live event on relays;
+                                // nostr_event_id is the deterministic signal.
+                                val hasLivePublication = !climb.nostrEventId.isNullOrBlank()
+                                if (climb.origin == "cruxcoach" && hasLivePublication) {
+                                    Spacer(Modifier.size(4.dp))
+                                    // Three states: synced = both Nostr +
+                                    // Kilter; diverged = local edit Kilter
+                                    // refused (older version still on
+                                    // Kilter); else (NULL/pending/failed)
+                                    // = community-only.
+                                    val badgeText = when (climb.kilterStatus) {
+                                        "synced" -> stringResource(R.string.climb_detail_badge_on_kilter)
+                                        "diverged" -> stringResource(R.string.climb_detail_badge_kilter_diverged)
+                                        else -> stringResource(R.string.climb_detail_badge_cruxcoach_only)
+                                    }
+                                    val badgeColor = when (climb.kilterStatus) {
+                                        "synced" -> OrangeAccent
+                                        "diverged" -> MaterialTheme.colorScheme.tertiary
+                                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                    }
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = badgeColor.copy(alpha = 0.15f),
+                                    ) {
+                                        Text(
+                                            badgeText,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = badgeColor,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                        )
+                                    }
                                 }
                             }
                             Column(
@@ -531,21 +910,6 @@ private fun ClimbDetailPageContent(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                    }
-                }
-
-                // Mirror toggle (centered icon-only)
-                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    IconButton(
-                        onClick = { viewModel.toggleMirror() },
-                        modifier = Modifier.testTag("boarddetail_mirror_toggle")
-                    ) {
-                        Icon(
-                            Icons.Default.SwapHoriz,
-                            contentDescription = stringResource(if (state.isMirrored) R.string.cd_mirror_off else R.string.cd_mirror_on),
-                            tint = if (state.isMirrored) OrangeAccent
-                                   else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
                     }
                 }
 

@@ -2,7 +2,7 @@ package com.cruxcoach.android.data
 
 import com.cruxcoach.db.secure.SecureDatabase
 import com.cruxcoach.db.secure.GetQueued
-import com.cruxcoach.db.secure.NostrMessage
+import com.cruxcoach.db.secure.Nostr_messages
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -10,7 +10,7 @@ import javax.inject.Singleton
 class NostrMessageRepository @Inject constructor(
     private val database: SecureDatabase
 ) {
-    private val queries get() = database.nostrMessageQueries
+    private val queries get() = database.nostrMessagesQueries
 
     fun insert(
         id: String,
@@ -40,16 +40,16 @@ class NostrMessageRepository @Inject constructor(
         )
     }
 
-    fun getAll(): List<NostrMessage> = queries.getAll().executeAsList()
+    fun getAll(): List<Nostr_messages> = queries.getAll().executeAsList()
 
-    fun getByType(type: String): List<NostrMessage> = queries.getByType(type).executeAsList()
+    fun getByType(type: String): List<Nostr_messages> = queries.getByType(type).executeAsList()
 
-    fun getById(id: String): NostrMessage? = queries.getById(id).executeAsOneOrNull()
+    fun getById(id: String): Nostr_messages? = queries.getById(id).executeAsOneOrNull()
 
-    fun getRootMessagesByType(type: String): List<NostrMessage> =
+    fun getRootMessagesByType(type: String): List<Nostr_messages> =
         queries.getRootMessagesByType(type).executeAsList()
 
-    fun getThread(rootId: String): List<NostrMessage> =
+    fun getThread(rootId: String): List<Nostr_messages> =
         queries.getThread(rootId).executeAsList()
 
     fun getUnreadCountByType(type: String): Long =

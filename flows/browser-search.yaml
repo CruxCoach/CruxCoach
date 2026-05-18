@@ -1,0 +1,22 @@
+appId: com.cruxcoach.android
+name: browser-search
+tags:
+  - smoke
+---
+# Verify the search bar actually filters the list (not just visually
+# accepts text). Strategy: type a guaranteed-no-match query and
+# confirm no climb-cards remain. The double-tap is required because
+# the bottom-nav search icon's first tap merely surfaces the EditText,
+# the second tap focuses it for inputText.
+- launchApp:
+    stopApp: false
+- waitForAnimationToEnd:
+    timeout: 5000
+- assertVisible:
+    text: "[0-9]+ Züge"
+- tapOn: "Name oder Setter suchen…"
+- tapOn: "Name oder Setter suchen…"
+- inputText: "zzznomatch"
+# Search debounce is ~300 ms; assertion's implicit poll covers it.
+- assertNotVisible:
+    text: "[0-9]+ Züge"

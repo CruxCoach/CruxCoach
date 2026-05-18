@@ -40,4 +40,12 @@ object NostrConfig {
     const val RECONNECT_DELAY_MS = 10_000L
     const val RECONNECT_MAX_DELAY_MS = 60_000L
     const val MAX_RECONNECT_ATTEMPTS = 5
+    /** Once the bounded reconnect ladder above is exhausted, the
+     *  pool falls back to a long-interval retry loop instead of
+     *  giving up forever. 5 minutes balances battery cost against
+     *  the worst-case "user wonders why nothing arrives even though
+     *  Wi-Fi is fine" silence window. The loop exits as soon as a
+     *  reconnect succeeds or `reconnectAll()` is called externally
+     *  (foreground tick, OS network-event). */
+    const val RECONNECT_SLOW_RETRY_MS = 5L * 60L * 1000L
 }

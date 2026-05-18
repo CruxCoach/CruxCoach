@@ -10,7 +10,7 @@ class ClimbRepositoryImpl(
 ) : ClimbRepository {
 
     private val json = Json { ignoreUnknownKeys = true }
-    private val queries = database.climbLogQueries
+    private val queries = database.climbLogsQueries
 
     override fun insertClimb(log: ClimbLog): Long {
         return queries.transactionWithResult {
@@ -69,7 +69,7 @@ class ClimbRepositoryImpl(
         queries.deleteById(id)
     }
 
-    private fun com.cruxcoach.db.secure.ClimbLog.toDomain(): ClimbLog {
+    private fun com.cruxcoach.db.secure.Climb_logs.toDomain(): ClimbLog {
         return ClimbLog(
             id = id,
             workoutLogId = workout_log_id,

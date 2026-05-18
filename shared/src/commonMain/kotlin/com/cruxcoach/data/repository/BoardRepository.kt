@@ -11,7 +11,7 @@ enum class ClimbTypeFilter {
     fun maxFrames(): Long = when (this) { BOULDER -> 1L; ROUTE -> 999L; ALL -> 999L }
 }
 
-data class AuroraClimbWithStats(
+data class ClimbWithStats(
     val uuid: String,
     val layoutId: Long,
     val setterUsername: String?,
@@ -29,7 +29,36 @@ data class AuroraClimbWithStats(
     val faUsername: String? = null,
     val faAt: String? = null,
     /** Pre-computed move count from DB. 0 = not yet computed (fallback to live parse). */
-    val storedMoveCount: Long = 0
+    val storedMoveCount: Long = 0,
+    /** Provenance: 'cruxcoach' (set via the CruxCoach editor) | 'kilter' (set via
+     *  the official Kilter app, pulled by us via the API harvest). Defaults to
+     *  'kilter' to keep older code paths neutral. */
+    val origin: String = "kilter",
+    /** Kilter publish lifecycle: NULL | 'pending' | 'synced' | 'failed'. Only
+     *  meaningful for `origin == 'cruxcoach'` rows — for native Kilter climbs
+     *  the field is irrelevant (they're inherently on Kilter). */
+    val kilterStatus: String? = null,
+    /** Setter pubkey for CruxCoach-authored climbs (Nostr hex pubkey). NULL for
+     *  native Kilter rows. Used to gate the Edit-this-climb action: only the
+     *  original setter sees it. */
+    val createdByPubkey: String? = null,
+    /** Schema column `climbs.source`: 'kilter' | 'nostr' | 'local'. Drives the
+     *  draft badge in browse rows ('local' = local-only draft, not yet
+     *  published). Default 'kilter' keeps older code paths neutral. */
+    val source: String = "kilter",
+    /** Publish-lifecycle column `climbs.sync_status`: NULL | 'draft' | 'synced'
+     *  | 'published_nostr' | 'failed'. Combined with [source] to disambiguate
+     *  failed-publish rows from synced ones. */
+    val syncStatus: String? = null,
+    /** The Nostr event ID of the climb's most recent successful publish.
+     *  Non-null iff at least one publish reached at least one relay
+     *  (set by [markClimbPublishedNostr] / received via live-sub on
+     *  upsertCommunityClimb). Drives the detail-screen's provenance
+     *  badge + delete-action routing: "does this climb have a live
+     *  publication?" is the deterministic signal, where sync_status
+     *  alone can drift ('failed' after a successful prior publish,
+     *  etc.). */
+    val nostrEventId: String? = null,
 ) {
     /** True when this climb is a multi-frame route (not a boulder). */
     val isRoute: Boolean get() = framesCount > 1
@@ -42,7 +71,7 @@ data class AuroraClimbWithStats(
     }
 }
 
-data class AuroraAscentWithClimb(
+data class AscentWithClimb(
     val uuid: String,
     val userId: Long = 0L,
     val climbUuid: String,
@@ -74,6 +103,29 @@ data class AngleClimbCount(
     val climbCount: Long
 )
 
+/**
+ * One row from the community-climb dead-letter queue (M16). [rawEventJson]
+ * is the original signed Kind-30078 payload — re-validating its Schnorr
+ * signature on retry is cheap and keeps the retry path safe against a
+ * corrupted DB row.
+ */
+data class CommunityClimbDeadLetter(
+    val uuid: String,
+    val eventId: String,
+    val eventCreatedAt: Long,
+    val rawEventJson: String,
+    val firstFailedAtMs: Long,
+    val lastFailedAtMs: Long,
+    val retryCount: Long,
+    val lastErrorExcerpt: String?,
+)
+
+/** Two-counter snapshot for the dead-letter queue diagnostics UI. */
+data class DeadLetterCounts(
+    val total: Long,
+    val abandoned: Long,
+)
+
 data class AngleOption(
     val angle: Int,
     val difficultyAverage: Double?,
@@ -82,7 +134,7 @@ data class AngleOption(
     val benchmarkDifficulty: Double
 )
 
-data class AuroraPlacement(
+data class BoardPlacement(
     val placementId: Long,
     val holeId: Long,
     val setId: Long,
@@ -109,7 +161,7 @@ data class BoardImage(
     val imageFilename: String
 )
 
-data class AuroraHole(
+data class BoardHole(
     val id: Long,
     val productSizeId: Long,
     val x: Long,
@@ -125,7 +177,7 @@ data class LedGridPoint(
 )
 
 
-data class ClimbList(
+data class Climb_lists(
     val id: Long,
     val name: String,
     val isBuiltin: Boolean,
@@ -133,12 +185,12 @@ data class ClimbList(
     val climbCount: Long
 )
 
-data class ClimbListEntry(
+data class Climb_list_entries(
     val addedAt: String,
-    val climb: AuroraClimbWithStats
+    val climb: ClimbWithStats
 )
 
-data class BoardSession(
+data class Board_sessions(
     val id: Long,
     val startedAt: String,
     val endedAt: String?,
@@ -157,24 +209,49 @@ data class ClimbFrameRow(
 
 /** Climb search, filter, and count queries. All browse/search/count methods require layoutId to scope results to a board type. */
 interface BoardClimbQueries {
-    fun searchClimbsByName(query: String, angle: Int, layoutId: Int, sortField: ClimbSortField = ClimbSortField.QUALITY, sortDirection: SortDirection = SortDirection.DESC, limit: Int = 50, offset: Int = 0, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER): List<AuroraClimbWithStats>
-    fun searchClimbsSorted(angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, sortField: ClimbSortField, sortDirection: SortDirection, limit: Int = 50, offset: Int = 0, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER): List<AuroraClimbWithStats>
-    fun getClimbByUuid(uuid: String, angle: Int): AuroraClimbWithStats?
+    fun searchClimbsByName(query: String, angle: Int, layoutId: Int, sortField: ClimbSortField = ClimbSortField.QUALITY, sortDirection: SortDirection = SortDirection.DESC, limit: Int = 50, offset: Int = 0, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER): List<ClimbWithStats>
+    fun searchClimbsSorted(angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, sortField: ClimbSortField, sortDirection: SortDirection, limit: Int = 50, offset: Int = 0, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER): List<ClimbWithStats>
+    fun getClimbByUuid(uuid: String, angle: Int): ClimbWithStats?
     fun countFilteredClimbsFast(angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int): Long
     fun countFilteredClimbs(angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER): Long
     fun countBenchmarkFilteredClimbs(angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER): Long
     fun countSearchClimbs(query: String, angle: Int, layoutId: Int, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER): Long
     fun countBenchmarkSearchClimbs(query: String, angle: Int, layoutId: Int, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER): Long
     fun getClimbCount(): Long
+    /** O(1) existence check. Far cheaper than [getClimbCount] — that one
+     *  full-table-scans on a 190k-row catalog, and worse, blocks on the
+     *  bulk importer's writer-lock during sync (~28s on slower-eMMC).
+     *  Use this anywhere the caller only needs a boolean (empty-state
+     *  decision in BoardBrowser, fresh-install probe). */
+    fun hasAnyClimbs(): Boolean
     fun getStatCount(): Long
+    /** Stats with no matching climbs row (cron desync indicator). */
+    fun countOrphanStats(): Long
+    /** Listed climbs the browse VIEW excludes because no stats exist. */
+    fun countListedClimbsWithoutStats(): Long
+    /** True if 7.sqm flagged the install for a forced clean re-sync. */
+    fun hasPostV8ResyncMarker(): Boolean
+    /** Cleared after the post-v8 resync completes successfully. */
+    fun clearPostV8ResyncMarker()
+    /** True if 10.sqm flagged the install for a one-shot Homewall
+     *  resync (0.1.3 → 0.1.4 OTA upgrade — the old per-chunk hash
+     *  cache would otherwise short-circuit Homewall data sync). */
+    fun hasHomewallResyncMarker(): Boolean
+    /** Cleared after the Homewall resync completes successfully. */
+    fun clearHomewallResyncMarker()
+    /** Wipe just the cron-derived catalog rows (source='kilter') so
+     *  the next sync runs through the fresh-install fast path. Used
+     *  by the post-migration force-resync flow; cruxcoach-authored
+     *  climbs are preserved. */
+    fun deleteKilterCatalogData()
     fun climbExistsByUuid(uuid: String): Boolean
     fun statExistsByUuid(uuid: String): Boolean
     fun getClimbCountByAngle(layoutId: Int, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER): List<AngleClimbCount>
     fun getAnglesForClimb(climbUuid: String): List<AngleOption>
     fun countNomatchClimbs(): Long
-    fun getClimbsByUuids(uuids: Collection<String>, angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter): List<AuroraClimbWithStats>
+    fun getClimbsByUuids(uuids: Collection<String>, angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter): List<ClimbWithStats>
     /** Fetch climbs by UUID list at a given angle, no additional filters. */
-    fun getClimbsByUuids(uuids: Collection<String>, angle: Int): List<AuroraClimbWithStats>
+    fun getClimbsByUuids(uuids: Collection<String>, angle: Int): List<ClimbWithStats>
     /** Find climb UUIDs whose frames contain the given placement ID. */
     fun searchClimbUuidsByHold(holdPattern: String, angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter): List<String>
     /** Find climb UUIDs whose frames contain ALL given hold patterns (single DB pass). */
@@ -185,10 +262,66 @@ interface BoardClimbQueries {
 
 /** Board layout, placement, LED, and product-size queries. */
 interface BoardLayoutQueries {
-    fun getAllPlacements(): List<AuroraPlacement>
+    fun getAllPlacements(): List<BoardPlacement>
+    /** Placements restricted to the set_ids that the active layout actually
+     *  paints onto the board photo (one row per layered board_image). The
+     *  unfiltered [getAllPlacements] mixes in placements from every set
+     *  the cron ever shipped — including ones whose holds aren't part of
+     *  the current Original/Homewall layout — so the editor's nearest-
+     *  hold tap detection would snap to invisible Off-Set placements
+     *  between the rendered holds, leaving a circle on what looks to the
+     *  user like empty board space. Falls back to all placements when no
+     *  board_images row exists for the (productSize, layout) combination
+     *  yet (very early sync state, mostly tests). */
+    fun getPlacementsForLayout(productSizeId: Int, layoutId: Int): List<BoardPlacement>
     fun getProductSize(id: Int): BoardSize?
-    fun getAllProductSizes(): List<BoardSize>
+    /** Product-sizes for a single Aurora `product_id`. The post-sync model
+     *  picker and the Settings board-size dropdown both filter by the
+     *  user's currently-active layout — Original (Kilter id=1) and
+     *  Homewall (Kilter id=7) ship with disjoint size sets. Pre-fix this
+     *  hardcoded id=1, silently dropping Homewall sizes from every UI
+     *  reachable through this method. */
+    fun getAllProductSizes(productId: Long): List<BoardSize>
     fun getBoardImages(productSizeId: Int, layoutId: Int): List<BoardImage>
+    /** Sizes that have board-image tiles for the given layout. Used by
+     *  the climb-detail screen to render an Aurora-imported or cross-
+     *  board community climb on the right physical board even when the
+     *  user's preferred layout differs from the climb's. */
+    fun getProductSizesForLayout(layoutId: Int): List<Int>
+    /** True when the user's currently-configured [productSizeId] can
+     *  validly host this climb's render — same layout, has images,
+     *  big enough to contain the climb's bbox. The detail screen
+     *  uses this to default to the user's settings board (matching
+     *  the BoardBrowser → Detail mental model) and only fall back to
+     *  the climb's source size when that's not possible (Aurora-
+     *  imported cross-board climb, smaller user-board than the
+     *  climb's bbox, etc.). */
+    fun canRenderClimbOnSize(uuid: String, productSizeId: Int): Boolean
+    /** Full set of CruxCoach-side climbs (community + local-drafts)
+     *  that satisfy the user's browse filters. Returns the entire
+     *  matching set in one call — the client-side OriginFilter that
+     *  used to post-filter pagination silently buried community
+     *  climbs without sends at the bottom of the 190K-row Kilter
+     *  catalogue. Cruxcoach-side row count stays tiny, so a single
+     *  un-paginated SELECT is the right shape. Caller sorts in
+     *  Kotlin via the existing sortInKotlin path. */
+    fun getCruxCoachClimbs(
+        layoutId: Int, angle: Int, minDifficulty: Double, maxDifficulty: Double,
+        minAscensionists: Int, climbType: ClimbTypeFilter,
+    ): List<ClimbWithStats>
+    /** Find the smallest product_size whose four edges *contain* the
+     *  climb's bounding box AND has board_images for the climb's
+     *  layout. This pins each climb to the physical board variant
+     *  it was set on (= the user's actual board at climb-set time),
+     *  so cropped sub-routes stay rendered on the right Kilter SKU
+     *  (e.g. a Homewall-10×12-with-kickboard climb always renders
+     *  on size 25 even when the user has Homewall-7×10 configured).
+     *  Two climbs from the same physical board therefore always
+     *  render at the same size — consistent per source-size, not
+     *  per-current-pref. Returns null when the climb has no edges
+     *  or no containing size exists; caller falls back to layout-
+     *  only heuristics. */
+    fun getProductSizeForClimbRender(uuid: String): Int?
     fun getPlacementLedMap(productSizeId: Int): Map<Int, Int>
     fun getMirrorPlacementMap(productSizeId: Int): Map<Int, Int>
     fun countLeds(): Long
@@ -269,9 +402,540 @@ data class RawClimbListEntry(
     val addedAt: String
 )
 
+// ── Community-climb support (FEAT-003) ─────────────────────
+
+/** Snapshot of the fields needed to publish a NIP-09 deletion + a
+ *  tombstone-replacement Kind-30078, plus the Kilter status for UI
+ *  warnings (no API delete on Kilter — manual cleanup required). */
+data class CommunityClimbDeleteContext(
+    val nostrEventId: String?,
+    val nostrDTag: String?,
+    val createdByPubkey: String?,
+    val kilterStatus: String?,
+    val origin: String,
+)
+
+data class LocalClimbDraft(
+    val uuid: String,
+    val name: String,
+    val description: String,
+    val framesText: String,
+    val framesHash: String,
+    val createdAt: String,
+    val createdByPubkey: String?,
+    val moveCount: Long,
+    /** Setter display string seeded from the local user's Kind 0 profile.
+     *  Null when the user has no profile yet — Browse falls back to
+     *  `npub:<short>` via the same path it uses for foreign climbs. */
+    val setterUsername: String? = null,
+)
+
+/** Aggregate row for the SettersListScreen — one per unique pubkey. */
+data class SetterStat(
+    val pubkey: String,
+    val displayName: String?,    // setter_username column — already resolved by Plan C
+    val climbCount: Long,
+)
+
+/** A single climb in the SetterDetailScreen's list — only the fields the
+ *  list row needs. Keeps it light + lets us include `angle` (which the
+ *  full ClimbWithStats doesn't carry, since the regular browse filters
+ *  by a global angle). */
+data class SetterClimbEntry(
+    val uuid: String,
+    val name: String,
+    val angle: Int,
+    val difficultyAverage: Double?,
+    val qualityAverage: Double?,
+    val ascensionistCount: Long,
+)
+
+/** Snapshot of a climb's Kilter publish-state — drives the create-vs-update
+ *  decision on edit publishes. */
+data class KilterPublishState(
+    val status: String?,        // NULL | 'pending' | 'synced' | 'failed' | 'diverged'
+    val syncedAtEpochSeconds: Long?,
+)
+
+/** Op recorded with each `kilter_publish_attempts` row. Mirrors the
+ *  CREATE/UPDATE branch the publisher / retry worker actually took. */
+enum class KilterPublishOp { CREATE, UPDATE }
+
+/** Terminal outcome of a single Kilter-publish attempt. Stored as a
+ *  string in `kilter_publish_attempts.outcome`; the enum keeps the
+ *  caller side type-safe. */
+enum class KilterPublishOutcomeKind {
+    SUCCESS,
+    TRANSIENT,
+    PERMANENT,
+    RATE_LIMITED,
+    AUTH,
+    SKIPPED;
+
+    fun storageValue(): String = when (this) {
+        SUCCESS -> "success"
+        TRANSIENT -> "transient"
+        PERMANENT -> "permanent"
+        RATE_LIMITED -> "rate_limited"
+        AUTH -> "auth"
+        SKIPPED -> "skipped"
+    }
+}
+
+/** Per-row mapping of `kilter_publish_attempts`. */
+data class KilterPublishAttempt(
+    val id: Long,
+    val climbUuid: String,
+    val attemptedAtMs: Long,
+    val op: String,
+    val via: String,
+    val outcome: String,
+    val httpCode: Int?,
+    val errorExcerpt: String?,
+)
+
+/** Aggregate counters for the Kilter-account UI's queue health card. */
+data class KilterPublishQueueStats(
+    val pendingCount: Long,
+    val failedCount: Long,
+    /** Wall-clock millis of the most recent attempt across all climbs.
+     *  Null when no attempt was ever recorded. */
+    val lastAttemptAtMs: Long?,
+)
+
+/** Outcome of [BoardRepository.claimKilterPublishSlot]. */
+sealed class KilterClaim {
+    /** Slot was empty (`kilter_status` was NULL or 'failed') and is now
+     *  marked `'pending'` for the calling flow. `previouslySyncedAtEpochSeconds`
+     *  carries the row's `kilter_synced_at` from BEFORE the claim — non-null
+     *  means "we previously synced this climb on Kilter; use UPDATE-climb",
+     *  null means "first publish; use CREATE-climb". */
+    data class Won(val previouslySyncedAtEpochSeconds: Long?) : KilterClaim()
+    /** Another flow already holds the slot, or the row is in a terminal
+     *  state ('synced' / 'rejected' / 'diverged'). Caller should skip
+     *  this row — the current owner will mark a result or the row is
+     *  already finished. */
+    data object Lost : KilterClaim()
+}
+
+/**
+ * Full-fidelity snapshot of an own-authored climb for the v3 backup
+ * envelope (FEAT-008 Phase B). Carries every persisted column that
+ * matters for restore: the editor-domain fields, the Nostr publish
+ * provenance, and the Kilter-side lifecycle. Derived columns
+ * (frames_count, is_listed, is_nomatch, frames_pace, hsm) and the
+ * tombstone flag are intentionally omitted — `restoreOwnClimb` writes
+ * sane defaults for those.
+ */
+data class OwnClimbBackupRow(
+    val uuid: String,
+    val layoutId: Long,
+    val setterUsername: String?,
+    val name: String,
+    val frames: String,
+    val edgeLeft: Long?,
+    val edgeRight: Long?,
+    val edgeBottom: Long?,
+    val edgeTop: Long?,
+    val createdAt: String?,
+    val description: String,
+    val moveCount: Long,
+    val source: String,             // 'local' | 'nostr'
+    val syncStatus: String,         // 'draft' | 'failed' | 'published_nostr' | …
+    val createdByPubkey: String?,
+    val framesHash: String?,
+    val nostrEventId: String?,
+    val nostrDTag: String?,
+    val nostrPublishVia: String?,
+    val kilterStatus: String?,
+    val kilterSyncedAt: Long?,
+    val kilterPublishVia: String?,
+    val kilterError: String?,
+)
+
+/**
+ * Per-angle stats for an own climb in the backup envelope. Mirrors the
+ * subset of `climb_stats` columns that an own-climb row ever carries
+ * (Kilter-only `fa_*` and `official_kilter_difficulty` are skipped).
+ */
+data class OwnClimbStatBackupRow(
+    val climbUuid: String,
+    val angle: Long,
+    val displayDifficulty: Double?,
+    val difficultyAverage: Double?,
+    val qualityAverage: Double?,
+    val ascensionistCount: Long,
+    val benchmarkDifficulty: Double?,
+)
+
+data class CommunityClimbRow(
+    val uuid: String,
+    val name: String,
+    val setterUsername: String?,
+    val description: String,
+    val framesText: String,
+    val source: String,            // 'kilter' | 'nostr' | 'local'
+    val syncStatus: String,         // 'draft' | 'synced' | 'published_nostr' | 'failed'
+    val createdByPubkey: String?,
+    val nostrEventId: String?,
+    val nostrDTag: String?,
+    val framesHash: String?,
+    val createdAt: String?,
+    val moveCount: Long,
+    /** Set when Kilter accepted the climb at least once. Used by the
+     *  retry worker to pick between create and update endpoints. */
+    val kilterSyncedAt: Long?,
+    /** Layout ID at row-creation time. The Kilter API rejects publishes
+     *  whose `product_name` doesn't match the placement IDs' product, so
+     *  the retry worker has to derive the product name from this. */
+    val layoutId: Long,
+)
+
+/** Climb-creation + community-climb queries (FEAT-003). */
+interface CommunityClimbQueries {
+    /** Insert or upsert a local climb draft (source='local'). Re-saving an
+     *  already-loaded draft replaces the row in place (same uuid).
+     *  `bounds` is the bounding box of the selected holds; pass null when
+     *  it can't be derived (placements not loaded yet). When null the
+     *  edge_* columns stay NULL — browse compatibility filters treat
+     *  "fits all sizes" in that case. */
+    fun insertLocalDraft(
+        draft: LocalClimbDraft,
+        layoutId: Long,
+        angle: Long,
+        setterGradeId: Int?,
+        bounds: com.cruxcoach.domain.community.ClimbBounds?,
+    )
+    /** Delete a local draft (drafts user explicitly discards). */
+    fun deleteLocalClimb(uuid: String)
+    /**
+     * Tombstone a CruxCoach-authored, already-published climb. Owner-locked
+     * at the SQL layer: only flips rows whose `created_by_pubkey` matches
+     * `pubkey` AND `origin = 'cruxcoach'`. A Kilter-origin row can never
+     * be removed via this path — Kilter is read-only here.
+     *
+     * Sets `is_deleted = 1`, `is_listed = 0`, `sync_status = 'deleted'`,
+     * and bumps `created_at` to [tombstoneIso] so the subscriber's stale-
+     * event guard rejects any incoming Original-Event whose `created_at`
+     * is older than the tombstone moment. Drops the climb_stats rows so
+     * orphan-stats diagnostics stay clean.
+     */
+    fun markCommunityClimbDeleted(uuid: String, pubkey: String, tombstoneIso: String)
+    /** True iff the row exists locally and is_deleted=1 (subscriber's L3
+     *  absorption: refuse re-importing a tombstoned climb that arrives via
+     *  a Live-Sub event from a non-deleting relay). */
+    fun isClimbTombstoned(uuid: String): Boolean
+    /**
+     * Insert a minimal `is_deleted=1` row so a future Original-Event for
+     * the same uuid is absorbed by L3. Used on devices that receive a
+     * Kind-5 deletion intent (or Kind-30078 tombstone-replacement) for
+     * a uuid they never had locally — without the shell the next
+     * Original-Event from a non-deleting relay would import the climb
+     * fresh. INSERT OR IGNORE: real existing rows are not trampled.
+     */
+    fun insertTombstoneShell(uuid: String, pubkey: String, dTag: String, tombstoneIso: String)
+    /**
+     * Bundle of fields the CommunityClimbDeleter reads in one go: the
+     * d-tag + last published event id (for NIP-09 `a`+`e` tags), the
+     * row's author (owner check), Kilter publish status (UI hint), and
+     * origin ('cruxcoach' is the only deletable provenance).
+     */
+    fun getCommunityClimbDeleteContext(uuid: String): CommunityClimbDeleteContext?
+    /**
+     * Returns the local row's stored `created_at` ISO string (or null if
+     * the climb isn't in the DB yet). Used by the Channel-B subscriber
+     * to skip re-broadcasted old events that would overwrite a newer
+     * state — replaceable Kind-30078 events on relays don't enforce
+     * ordering on receive, so the client has to.
+     */
+    fun getClimbCreatedAt(uuid: String): String?
+    /**
+     * Returns the local row's stored `created_by_pubkey` (or null if no
+     * row, or if the row has no Nostr provenance). Used by the Channel-B
+     * subscriber to enforce one-author-per-uuid: an incoming event whose
+     * signed pubkey differs from the existing owner is rejected before
+     * upsert, blocking the cross-author overwrite path that the
+     * uuid-only primary key on `climbs` would otherwise allow.
+     */
+    fun getClimbAuthorPubkey(uuid: String): String?
+    /**
+     * True iff a row exists locally with `source='local'` — i.e. authored
+     * via the editor's `insertLocalDraft`. Used as a backstop self-filter
+     * in the live subscriber when the primary pubkey-based check can't
+     * fire (degraded signer, key rotation: the event still carries the
+     * old pubkey, the local user now presents a new one). Without this,
+     * an own-event echo would clobber `sync_status` / `kilter_status` /
+     * `nostr_event_id` via upsertCommunityClimb's INSERT OR REPLACE.
+     */
+    fun isLocallyAuthored(uuid: String): Boolean
+    /**
+     * Returns (placement_id → normalized 0..1 frequency) for boulders at the
+     * given layout+angle, optionally weighted by climbs that contain ALL
+     * `seedHolds`. Used by the editor heatmap overlay.
+     *
+     * - When `seedHolds` is empty → general popularity heatmap.
+     * - When `seedHolds` has entries → only counts climbs that include
+     *   every seed hold; surfaces "what holds typically follow these".
+     * - When `targetRole` is non-null → only placements with that role
+     *   in the source climb are counted (role-aware suggestions for the
+     *   user's currently active brush). When null → all roles aggregated.
+     */
+    fun computeEditorHeatmap(
+        layoutId: Long,
+        angle: Long,
+        seedHolds: Set<Int>,
+        targetRole: Int? = null,
+    ): Map<Int, Float>
+    /** Upsert a community climb received from Nostr. `bounds` comes from
+     *  the optional `bounds` Nostr-tag — null when the event predates Plan
+     *  2 or the publisher couldn't derive coordinates. */
+    fun upsertCommunityClimb(
+        uuid: String,
+        layoutId: Long,
+        setterUsername: String?,
+        name: String,
+        framesText: String,
+        description: String,
+        moveCount: Long,
+        nostrEventId: String,
+        nostrDTag: String,
+        createdByPubkey: String,
+        framesHash: String,
+        createdAt: String,
+        angle: Long,
+        difficultyAverage: Double?,
+        qualityAverage: Double?,
+        bounds: com.cruxcoach.domain.community.ClimbBounds?,
+    )
+
+    // ─── Community-climb dead-letter queue (M16) ──────────────────────
+    // Failed Kind-30078 upserts (SQLite layer threw — disk full, lock,
+    // unexpected constraint) get persisted here so the subscriber can
+    // retry on next start. Without this, the cursor advances over the
+    // failed event on the very next successful one and NIP-01 Live-REQ
+    // never re-delivers it.
+
+    /**
+     * Atomic insert-or-increment for a failed community-climb upsert.
+     * On first failure for [uuid] inserts a new row with retry_count=1;
+     * on subsequent failures bumps retry_count and overwrites
+     * `last_failed_at_ms` + `last_error_excerpt`. Wraps both branches
+     * in a SQLDelight transaction for safety against parallel writers.
+     */
+    fun recordCommunityClimbDeadLetter(
+        uuid: String,
+        eventId: String,
+        eventCreatedAt: Long,
+        rawEventJson: String,
+        nowMs: Long,
+        errorExcerpt: String?,
+    )
+
+    /**
+     * Drained by the subscriber's retry pass. [maxRetries] is the
+     * cap-application boundary: rows with retry_count < it come back
+     * for another try, rows >= it are abandoned (still readable for
+     * diagnostics). [limit] bounds per-call cost — pass a small
+     * number (~25) so a giant backlog doesn't lock the DB.
+     */
+    fun getRetriableCommunityClimbDeadLetters(
+        maxRetries: Long,
+        limit: Long,
+    ): List<CommunityClimbDeadLetter>
+
+    /** Drop a DLQ row after a successful retry-upsert. */
+    fun deleteCommunityClimbDeadLetter(uuid: String)
+
+    /** Aggregate counts for a future "Failed climb imports" UI card. */
+    fun getCommunityClimbDeadLetterCounts(maxRetries: Long): DeadLetterCounts
+    /**
+     * Flip a draft to "published_nostr" after the relay accepts the event.
+     * `pubkey` is the user's own hex pubkey — persisted so "my climbs"
+     * filters always have a stable creator handle.
+     */
+    fun markClimbPublishedNostr(
+        uuid: String,
+        nostrEventId: String,
+        nostrDTag: String,
+        pubkey: String,
+    )
+    fun markClimbPublishFailed(uuid: String)
+    /**
+     * Pre-send crash-safety marker. Promote a draft into the retry queue
+     * BEFORE the relay round-trip starts — semantically `sync_status='failed'`
+     * = "needs retry". Called immediately before the publisher sends the
+     * signed event so a process death between relay-accept and the
+     * post-send `markClimbPublishedNostr` flip doesn't leave the row
+     * stuck at 'draft' forever (drafts aren't drained by the retry
+     * worker). Restricted to source='local' + origin='cruxcoach' rows.
+     */
+    fun markClimbPublishInFlight(uuid: String)
+
+    // ── Kilter-side publish lifecycle (independent of Nostr sync_status) ──
+    /** Mark a climb as enqueued for Kilter publish. Sets `kilter_status='pending'`. */
+    /** Read just the Kilter publish-state. Null when the climb isn't in
+     *  the local DB. */
+    fun getKilterPublishState(uuid: String): KilterPublishState?
+    /** Bulk-rename setter_username on every CruxCoach community climb
+     *  authored by [pubkey]. Used by both: profile-editor save (own
+     *  pubkey) and the live subscriber (foreign pubkeys, after Kind 0
+     *  resolves). The query semantics are identical for either case. */
+    fun updateSetterUsernameForPubkey(pubkey: String, displayName: String)
+    /** All climbs authored by [pubkey] (CruxCoach setter detail). Each
+     *  entry carries its angle — same climb at multiple angles becomes
+     *  multiple entries, matching the climb_stats row layout. */
+    fun getClimbsByPubkey(pubkey: String): List<SetterClimbEntry>
+    /** My-climbs filter (board browser). Returns one [ClimbWithStats] per
+     *  uuid authored by [pubkey] on [layoutId], ignoring angle/grade/asc
+     *  filters so drafts saved at any angle remain discoverable. The row
+     *  is picked at [preferredAngle] when available, else any angle. */
+    fun getOwnClimbsForBrowse(pubkey: String, layoutId: Int, preferredAngle: Int): List<ClimbWithStats>
+    /** Distinct cruxcoach setters with their climb-count, ordered desc. */
+    fun getCommunitySetterStats(): List<SetterStat>
+    fun markKilterPublishPending(uuid: String)
+    /**
+     * Mark a climb as accepted by Kilter. `via` is 'self' (user account) or
+     * 'cruxcoach' (bundled fallback). `syncedAtEpochSeconds` is the moment
+     * Kilter accepted; useful for the "veröffentlicht am" UI badge.
+     */
+    fun markKilterPublishSynced(uuid: String, via: String, syncedAtEpochSeconds: Long)
+    /** Mark a climb's Kilter publish as failed; `error` captures the last reason. */
+    fun markKilterPublishFailed(uuid: String, error: String)
+    /** Server explicitly rejected an update on an already-published climb.
+     *  Distinct from `'failed'` — the retry worker stops poking it. */
+    fun markKilterPublishDiverged(uuid: String, error: String)
+    /** Server rejected the *create* payload with a 4xx (validation,
+     *  content-policy, account-state). Terminal — the retry worker stops
+     *  poking it. Without this, 4xx CREATEs would stay in the retry queue
+     *  forever because the queue criterion matches `kilter_status='failed'`. */
+    fun markKilterPublishRejected(uuid: String, error: String)
+
+    /**
+     * Atomic CAS claim of the Kilter publish slot. Transitions
+     * `kilter_status` from `NULL`/`'failed'` to `'pending'` for an
+     * origin='cruxcoach' row.
+     *
+     * Returns `KilterClaim.Won` (with the row's pre-claim
+     * `kilter_synced_at` so the caller can pick CREATE vs UPDATE) when
+     * the claim succeeded, `KilterClaim.Lost` when another flow already
+     * holds the slot or the row isn't claimable.
+     *
+     * Replaces the read-then-decide pattern in CommunityClimbPublisher
+     * + KilterPublishRetryWorker that could let two flows both attempt
+     * to publish the same climb (TOCTOU between the
+     * `getKilterPublishState` read and the API call).
+     */
+    fun claimKilterPublishSlot(uuid: String): KilterClaim
+    /**
+     * Sweep the residual "stuck pending" pool: any climb whose
+     * `kilter_status='pending'` has either no attempt history at all OR
+     * whose latest attempt is older than [olderThanMs] (wall-clock
+     * cutoff). Sets it back to 'failed' so the retry worker's queue
+     * picks it up. Returns the number of rows touched.
+     *
+     * Covers the residual edge from `claimKilterPublishSlot`'s try/catch
+     * downgrade — when even the catch path throws (process kill mid-
+     * statement, OOM in the SQLite driver), the row stayed 'pending'
+     * forever. The retry worker invokes this once per tick before
+     * draining the queue.
+     */
+    fun sweepStuckKilterPending(olderThanMs: Long): Long
+    /**
+     * Append an immutable per-attempt audit row to `kilter_publish_attempts`.
+     * Called from every terminal branch of the publisher + retry worker so
+     * the timeline reconstruction survives subsequent overwrites of the
+     * single-value `climbs.kilter_*` columns.
+     */
+    fun recordKilterPublishAttempt(
+        climbUuid: String,
+        attemptedAtMs: Long,
+        op: KilterPublishOp,
+        via: String,
+        outcome: KilterPublishOutcomeKind,
+        httpCode: Int? = null,
+        errorExcerpt: String? = null,
+    )
+    /** Latest-first attempt history for a climb. */
+    fun getKilterPublishAttempts(climbUuid: String, limit: Int = 50): List<KilterPublishAttempt>
+    /** Aggregate counters for the Kilter-account UI's queue health card. */
+    fun getKilterPublishQueueStats(): KilterPublishQueueStats
+    /**
+     * Climbs with `origin='cruxcoach'`, Nostr-published, awaiting Kilter
+     * sync, scoped to [pubkey]. Drained by [KilterPublishRetryWorker].
+     * Pubkey-scope mirrors [getClimbsAwaitingNostrRetry] so a backup
+     * restored from a different nsec (DataExchange override path) or an
+     * identity-switch on the same device cannot push climbs authored
+     * under another identity to the active Kilter account.
+     */
+    fun getClimbsAwaitingKilterRetry(pubkey: String): List<CommunityClimbRow>
+    /**
+     * Local climbs the editor sent to relays where no relay accepted
+     * (`sync_status='failed'`) — the Nostr-side retry queue, scoped to
+     * [pubkey]. Drained by the periodic CommunityPublishRetryWorker.
+     */
+    fun getClimbsAwaitingNostrRetry(pubkey: String): List<CommunityClimbRow>
+    /**
+     * Drafts (`source='local'`, sync_status `draft`/`failed`) authored
+     * by [pubkey] or with a NULL `created_by_pubkey` (legacy / pre-key-init).
+     * Pass null to fetch only legacy NULL-pubkey drafts. Restricts visibility
+     * across identity switches: drafts authored under identity A are
+     * invisible to identity B opened in the editor on the same device.
+     */
+    fun getDraftClimbs(pubkey: String?): List<CommunityClimbRow>
+    fun getMyClimbs(pubkey: String): List<CommunityClimbRow>
+    fun getCommunityClimbs(): List<CommunityClimbRow>
+    /** Single-row stats lookup used by the editor when restoring a draft.
+     *  Returns null when the climb has no stats row at all. The pair is
+     *  (angle, setterGradeId) — for local drafts these match what
+     *  upsertLocalClimbStat persisted; both null means the row predates
+     *  having stats and the editor falls back to its default angle. */
+    fun getClimbStatsForUuid(uuid: String): Pair<Int, Int?>?
+    /** Look up an existing climb by frames_hash for duplicate detection. */
+    fun findClimbByFramesHash(framesHash: String, layoutId: Long): CommunityClimbRow?
+    /** Cache the setter-grade entry for a community climb (MVP — no vote aggregation). */
+    fun upsertSetterGrade(climbDTag: String, angle: Long, setterGradeId: Int, lastUpdatedEpochMs: Long)
+
+    // ── Backup / restore for own climbs (FEAT-008 Phase B) ──────
+    /**
+     * Snapshot every own-authored climb belonging to [pubkey] (plus
+     * legacy NULL-pubkey local drafts) for export into the v3 backup
+     * envelope. Returns full-fidelity rows including Nostr + Kilter
+     * provenance. Tombstoned rows are excluded.
+     */
+    fun getOwnClimbsForBackup(pubkey: String): List<OwnClimbBackupRow>
+    /**
+     * Per-angle stats for the same set of own climbs as
+     * [getOwnClimbsForBackup]. JOIN-filtered so a stats row whose
+     * climb has been tombstoned is excluded.
+     */
+    fun getOwnClimbStatsForBackup(pubkey: String): List<OwnClimbStatBackupRow>
+    /** Lookup the chosen angle for a single own climb. Returns null when
+     *  no climb_stats row exists yet (climb just published, stats row is
+     *  written after); caller falls back to a sensible default (40°). */
+    fun getOwnClimbAngle(uuid: String): Long?
+    /**
+     * Restore a single own climb from a backup envelope. Returns true
+     * when a new row was inserted, false when an existing row with the
+     * same uuid was preserved (idempotent re-import; the live-sub may
+     * have already re-fetched the published climb, or the user is
+     * restoring on top of their own current state). The caller decides
+     * whether to surface the skip count to the user.
+     *
+     * Uses INSERT OR IGNORE under the hood — a uuid collision keeps the
+     * existing row in place rather than clobbering it.
+     */
+    fun restoreOwnClimb(row: OwnClimbBackupRow): Boolean
+    /**
+     * Restore the per-angle stats for an own climb. Idempotent
+     * (INSERT OR REPLACE on the (climb_uuid, angle) primary key).
+     */
+    fun restoreOwnClimbStat(row: OwnClimbStatBackupRow)
+}
+
 // ── Composite interface (backward-compatible) ───────────────
 
 interface BoardRepository :
     BoardClimbQueries,
     BoardLayoutQueries,
-    BoardWriteOperations
+    BoardWriteOperations,
+    CommunityClimbQueries

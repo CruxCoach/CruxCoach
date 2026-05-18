@@ -1,12 +1,13 @@
 package com.cruxcoach.android.ui.board
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.data.IntensityZoneManager
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.domain.board.IntensityZones
-import com.cruxcoach.data.repository.AuroraAscentWithClimb
+import com.cruxcoach.data.repository.AscentWithClimb
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.PersonalBoardRepository
 import android.content.Context
@@ -76,7 +77,7 @@ data class BoardLogbookStats(
 data class BoardLogbookState(
     val isLoading: Boolean = true,
     val isLoadingMore: Boolean = false,
-    val ascents: List<AuroraAscentWithClimb> = emptyList(),
+    val ascents: List<AscentWithClimb> = emptyList(),
     val totalCount: Long = 0,
     val canLoadMore: Boolean = false,
     val gradeScale: GradeScale = GradeScale.V_SCALE,
@@ -108,7 +109,7 @@ data class BoardLogbookState(
     // ("Meine Sends"); other modes pull frames from the board DB so the
     // user can switch between own / global / role views without leaving
     // their stats screen.
-    val placements: Map<Int, com.cruxcoach.data.repository.AuroraPlacement> = emptyMap(),
+    val placements: Map<Int, com.cruxcoach.data.repository.BoardPlacement> = emptyMap(),
     val boardSize: com.cruxcoach.data.repository.BoardSize? = null,
     val boardImages: List<com.cruxcoach.data.repository.BoardImage> = emptyList(),
     val heatmapMode: HeatmapMode = HeatmapMode.PERSONAL,
@@ -122,16 +123,24 @@ class BoardLogbookViewModel @Inject constructor(
     private val userPreferences: UserPreferences,
     private val zoneManager: IntensityZoneManager,
     val climbNavState: com.cruxcoach.android.ui.navigation.ClimbNavigationState,
+    /** UUID-case fanout (raw → lowercase → uppercase → hyphenated …)
+     *  needed because BLE-decoded ascents store uuids upper-case-no-hyphens
+     *  but the climbs table writes lowercase canonical form (see 7.sqm).
+     *  Without going through the resolver the repair-pass below silently
+     *  fails and the user sees blank climb names with the cards still
+     *  navigating to the correct detail screen — confusing UX. */
+    private val climbNameResolver: com.cruxcoach.android.data.ClimbNameResolver,
     @param:ApplicationContext private val context: Context
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(BoardLogbookState())
     val state: StateFlow<BoardLogbookState> = _state.asStateFlow()
 
-    private var allAscents: List<AuroraAscentWithClimb> = emptyList()
+    private var allAscents: List<AscentWithClimb> = emptyList()
 
     companion object {
         private const val PAGE_SIZE = 50
+        private const val TAG = "BoardLogbookVM"
     }
 
     init {
@@ -154,21 +163,27 @@ class BoardLogbookViewModel @Inject constructor(
 
     private fun loadBoardData() {
         viewModelScope.launch {
-            val sizeId = userPreferences.boardProductSizeId.first()
-            val layoutId = userPreferences.boardLayoutId.first()
-            val (placements, boardSize, boardImages) = withContext(Dispatchers.IO) {
-                Triple(
-                    boardRepository.getAllPlacements().associate { it.placementId.toInt() to it },
-                    boardRepository.getProductSize(sizeId),
-                    boardRepository.getBoardImages(sizeId, layoutId)
-                )
-            }
-            _state.update {
-                it.copy(
-                    placements = placements,
-                    boardSize = boardSize,
-                    boardImages = boardImages
-                )
+            try {
+                val sizeId = userPreferences.boardProductSizeId.first()
+                val layoutId = userPreferences.boardLayoutId.first()
+                val (placements, boardSize, boardImages) = withContext(Dispatchers.IO) {
+                    Triple(
+                        boardRepository.getAllPlacements().associate { it.placementId.toInt() to it },
+                        boardRepository.getProductSize(sizeId),
+                        boardRepository.getBoardImages(sizeId, layoutId)
+                    )
+                }
+                _state.update {
+                    it.copy(
+                        placements = placements,
+                        boardSize = boardSize,
+                        boardImages = boardImages
+                    )
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "loadBoardData failed; placements/heatmap canvas will be empty", e)
             }
         }
     }
@@ -200,11 +215,17 @@ class BoardLogbookViewModel @Inject constructor(
 
     private fun preloadStats() {
         viewModelScope.launch {
-            val all = withContext(Dispatchers.IO) {
-                personalBoardRepo.getUserLogbookAllLight()
+            try {
+                val all = withContext(Dispatchers.IO) {
+                    personalBoardRepo.getUserLogbookAllLight()
+                }
+                allAscents = all
+                recomputeStats()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "preloadStats failed; stats sheet may show stale", e)
             }
-            allAscents = all
-            recomputeStats()
         }
     }
 
@@ -236,11 +257,14 @@ class BoardLogbookViewModel @Inject constructor(
      * (e.g. Kilter sync ran before board sync), fill them from BoardDB
      * and persist the fix so it doesn't recur.
      */
-    private fun repairMissingDenormalized(entries: MutableList<AuroraAscentWithClimb>) {
+    private fun repairMissingDenormalized(entries: MutableList<AscentWithClimb>) {
         for (i in entries.indices) {
             val entry = entries[i]
             if (entry.climbName.isNotBlank() && entry.difficultyAverage != null) continue
-            val climb = boardRepository.getClimbByUuid(entry.climbUuid, entry.angle.toInt()) ?: continue
+            // Use the case-fanout resolver: BLE protocol decodes uuids as
+            // uppercase-no-hyphens, our climbs table stores lowercase
+            // canonical form. Raw getClimbByUuid would silently miss those.
+            val climb = climbNameResolver.resolveClimb(entry.climbUuid, entry.angle.toInt()) ?: continue
             // Fix in-memory for immediate display
             entries[i] = entry.copy(
                 climbName = climb.name,
@@ -294,15 +318,21 @@ class BoardLogbookViewModel @Inject constructor(
 
     private fun recomputeStats() {
         viewModelScope.launch {
-            val s = _state.value
-            val stats = withContext(Dispatchers.Default) {
-                BoardStatsComputer.computeStats(
-                    allAscents, s.statsInterval, s.gradeScale,
-                    s.customDateFrom, s.customDateTo, context
-                )
+            try {
+                val s = _state.value
+                val stats = withContext(Dispatchers.Default) {
+                    BoardStatsComputer.computeStats(
+                        allAscents, s.statsInterval, s.gradeScale,
+                        s.customDateFrom, s.customDateTo, context
+                    )
+                }
+                _state.update { it.copy(stats = stats) }
+                recomputeHeatmap()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "recomputeStats failed", e)
             }
-            _state.update { it.copy(stats = stats) }
-            recomputeHeatmap()
         }
     }
 
@@ -314,53 +344,59 @@ class BoardLogbookViewModel @Inject constructor(
 
     private fun recomputeHeatmap() {
         viewModelScope.launch {
-            val mode = _state.value.heatmapMode
-            if (mode == HeatmapMode.OFF) {
-                _state.update { it.copy(heatmapData = emptyMap()) }
-                return@launch
-            }
-            val layoutId = userPreferences.boardLayoutId.first()
-            val data = withContext(Dispatchers.IO) {
-                val frameRows: List<String> = when (mode) {
-                    // allAscents comes from getUserLogbookAllLight() which
-                    // strips climb_frames to save memory for the list UI —
-                    // the heavy SELECT * variant is the only one that carries
-                    // the frames we need to render the personal heatmap.
-                    HeatmapMode.PERSONAL -> personalBoardRepo.getUserAscentsAll()
-                        .map { it.climbFrames }
-                        .filter { it.isNotBlank() }
-                    else -> boardRepository.getAllFramesForHeatmap(
-                        angle = 40,
-                        layoutId = layoutId,
-                        minDifficulty = 0.0,
-                        maxDifficulty = Double.MAX_VALUE,
-                        minAscensionists = 0,
-                        climbType = ClimbTypeFilter.ALL
-                    ).map { it.frames }
+            try {
+                val mode = _state.value.heatmapMode
+                if (mode == HeatmapMode.OFF) {
+                    _state.update { it.copy(heatmapData = emptyMap()) }
+                    return@launch
                 }
-                val raw = when (mode) {
-                    HeatmapMode.START -> HoldHeatmapComputer.computeHeatmapByRole(frameRows, HoldRole.START)
-                    HeatmapMode.HAND -> HoldHeatmapComputer.computeHeatmapByRole(frameRows, HoldRole.HAND)
-                    HeatmapMode.FOOT -> HoldHeatmapComputer.computeHeatmapByRole(frameRows, HoldRole.FOOT)
-                    HeatmapMode.FINISH -> HoldHeatmapComputer.computeHeatmapByRole(frameRows, HoldRole.FINISH)
-                    else -> HoldHeatmapComputer.computeGlobalHeatmap(frameRows)
+                val layoutId = userPreferences.boardLayoutId.first()
+                val data = withContext(Dispatchers.IO) {
+                    val frameRows: List<String> = when (mode) {
+                        // allAscents comes from getUserLogbookAllLight() which
+                        // strips climb_frames to save memory for the list UI —
+                        // the heavy SELECT * variant is the only one that carries
+                        // the frames we need to render the personal heatmap.
+                        HeatmapMode.PERSONAL -> personalBoardRepo.getUserAscentsAll()
+                            .map { it.climbFrames }
+                            .filter { it.isNotBlank() }
+                        else -> boardRepository.getAllFramesForHeatmap(
+                            angle = 40,
+                            layoutId = layoutId,
+                            minDifficulty = 0.0,
+                            maxDifficulty = Double.MAX_VALUE,
+                            minAscensionists = 0,
+                            climbType = ClimbTypeFilter.ALL
+                        ).map { it.frames }
+                    }
+                    val raw = when (mode) {
+                        HeatmapMode.START -> HoldHeatmapComputer.computeHeatmapByRole(frameRows, HoldRole.START)
+                        HeatmapMode.HAND -> HoldHeatmapComputer.computeHeatmapByRole(frameRows, HoldRole.HAND)
+                        HeatmapMode.FOOT -> HoldHeatmapComputer.computeHeatmapByRole(frameRows, HoldRole.FOOT)
+                        HeatmapMode.FINISH -> HoldHeatmapComputer.computeHeatmapByRole(frameRows, HoldRole.FINISH)
+                        else -> HoldHeatmapComputer.computeGlobalHeatmap(frameRows)
+                    }
+                    HoldHeatmapComputer.normalizeHeatmap(raw)
                 }
-                HoldHeatmapComputer.normalizeHeatmap(raw)
-            }
-            if (_state.value.heatmapMode == mode) {
-                _state.update { it.copy(heatmapData = data) }
+                if (_state.value.heatmapMode == mode) {
+                    _state.update { it.copy(heatmapData = data) }
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "recomputeHeatmap failed; keeping previous overlay", e)
             }
         }
     }
 
     // --- Single edit ---
 
-    fun editAscent(ascent: AuroraAscentWithClimb) {
+    fun editAscent(ascent: AscentWithClimb) {
         _state.update { it.copy(
             showEditDialog = true,
             editingAscentUuid = ascent.uuid,
             editBidCount = ascent.bidCount.toInt().coerceAtLeast(1),
-            editQuality = (ascent.quality?.toInt() ?: 0).coerceIn(0, 3),
+            editQuality = (ascent.quality?.toInt() ?: 0).coerceIn(0, 5),
             editComment = ascent.comment ?: ""
         ) }
     }
@@ -374,7 +410,7 @@ class BoardLogbookViewModel @Inject constructor(
     }
 
     fun updateEditQuality(quality: Int) {
-        _state.update { it.copy(editQuality = quality.coerceIn(0, 3)) }
+        _state.update { it.copy(editQuality = quality.coerceIn(0, 5)) }
     }
 
     fun updateEditComment(comment: String) {
@@ -386,16 +422,23 @@ class BoardLogbookViewModel @Inject constructor(
         val uuid = s.editingAscentUuid ?: return
 
         viewModelScope.launch {
-            withContext(Dispatchers.IO) {
-                personalBoardRepo.updateAscent(
-                    uuid = uuid,
-                    bidCount = s.editBidCount.toLong(),
-                    quality = if (s.editQuality > 0) s.editQuality.toLong() else null,
-                    comment = s.editComment.ifBlank { null }
-                )
+            try {
+                withContext(Dispatchers.IO) {
+                    personalBoardRepo.updateAscent(
+                        uuid = uuid,
+                        bidCount = s.editBidCount.toLong(),
+                        quality = if (s.editQuality > 0) s.editQuality.toLong() else null,
+                        comment = s.editComment.ifBlank { null }
+                    )
+                }
+                _state.update { it.copy(showEditDialog = false, editingAscentUuid = null) }
+                reloadAscents()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "saveEdit failed uuid=$uuid", e)
+                _state.update { it.copy(showEditDialog = false, editingAscentUuid = null) }
             }
-            _state.update { it.copy(showEditDialog = false, editingAscentUuid = null) }
-            reloadAscents()
         }
     }
 
@@ -413,13 +456,20 @@ class BoardLogbookViewModel @Inject constructor(
         val uuid = _state.value.showDeleteConfirm ?: return
         val entry = _state.value.ascents.find { it.uuid == uuid }
         viewModelScope.launch {
-            withContext(Dispatchers.IO) {
-                if (entry?.isSend == false) personalBoardRepo.deleteBid(uuid)
-                else personalBoardRepo.deleteAscent(uuid)
+            try {
+                withContext(Dispatchers.IO) {
+                    if (entry?.isSend == false) personalBoardRepo.deleteBid(uuid)
+                    else personalBoardRepo.deleteAscent(uuid)
+                }
+                _state.update { it.copy(showDeleteConfirm = null, selectedUuids = it.selectedUuids - uuid) }
+                reloadAscents()
+                zoneManager.recompute()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "confirmDeleteAscent failed uuid=$uuid", e)
+                _state.update { it.copy(showDeleteConfirm = null) }
             }
-            _state.update { it.copy(showDeleteConfirm = null, selectedUuids = it.selectedUuids - uuid) }
-            reloadAscents()
-            zoneManager.recompute()
         }
     }
 
@@ -459,12 +509,27 @@ class BoardLogbookViewModel @Inject constructor(
         val bidUuids = _state.value.ascents.filter { !it.isSend && it.uuid in _state.value.selectedUuids }.map { it.uuid }.toSet()
 
         viewModelScope.launch {
+            // Per-row try/catch so a single delete failure doesn't strand
+            // the rest of the batch in selected-but-not-deleted state.
+            // The per-row counter informs a future "X of N deletes failed"
+            // Snackbar (audit recommendation); for now logged.
+            var deleted = 0
+            var errors = 0
             withContext(Dispatchers.IO) {
-                uuids.forEach { uuid ->
-                    if (uuid in bidUuids) personalBoardRepo.deleteBid(uuid)
-                    else personalBoardRepo.deleteAscent(uuid)
+                for (uuid in uuids) {
+                    try {
+                        if (uuid in bidUuids) personalBoardRepo.deleteBid(uuid)
+                        else personalBoardRepo.deleteAscent(uuid)
+                        deleted++
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        errors++
+                        Log.w(TAG, "batch delete failed uuid=$uuid", e)
+                    }
                 }
             }
+            if (errors > 0) Log.w(TAG, "batch delete summary: ok=$deleted err=$errors of ${uuids.size}")
             _state.update { it.copy(showBatchDeleteConfirm = false, selectedUuids = emptySet()) }
             reloadAscents()
             zoneManager.recompute()

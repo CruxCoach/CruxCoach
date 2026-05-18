@@ -52,6 +52,7 @@ class CruxCoachBackupPreviewTest {
             assessments = 1, bodyStats = 1, workoutLogs = 1,
             climbLogs = 1, trainingPlans = 1,
             boardAscents = 1, boardSessions = 1, climbLists = 1,
+            ownClimbs = 1,
         )
         val cats = p.detectedCategories()
         assertEquals(CruxCoachBackup.Category.values().toSet(), cats)

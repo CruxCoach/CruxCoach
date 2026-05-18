@@ -15,14 +15,14 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.*
-import com.cruxcoach.data.repository.BoardSession
+import com.cruxcoach.data.repository.Board_sessions
 import com.cruxcoach.domain.board.IntensityZones
 import com.cruxcoach.domain.board.SessionType
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun SessionSummarySheet(
-    session: BoardSession,
+    session: Board_sessions,
     summary: EnhancedSessionSummary?,
     zones: IntensityZones?,
     onDismiss: () -> Unit

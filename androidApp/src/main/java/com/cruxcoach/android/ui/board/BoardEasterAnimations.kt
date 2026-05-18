@@ -1,25 +1,25 @@
 package com.cruxcoach.android.ui.board
 
 import com.cruxcoach.data.repository.LedGridPoint
-import com.cruxcoach.domain.board.AuroraPacketEncoder
+import com.cruxcoach.domain.board.BoardPacketEncoder
 
 enum class EasterAnimation { EGG }
 
 data class AnimationFrame(val leds: List<Pair<Int, Int>>)
 
 /**
- * Easter-themed LED animation patterns for Aurora Climbing boards.
+ * Easter-themed LED animation patterns for Kilter Boards.
  * Each animation returns a list of frames; each frame is a list of (ledPosition, rgb332Color) pairs.
  */
 object BoardEasterAnimations {
 
     // Pastel color palettes (RGB332 encoded)
-    private val PASTEL_PINK = AuroraPacketEncoder.encodeColor(255, 150, 180)
-    private val PASTEL_YELLOW = AuroraPacketEncoder.encodeColor(255, 240, 100)
-    private val PASTEL_MINT = AuroraPacketEncoder.encodeColor(130, 255, 180)
-    private val PASTEL_LAVENDER = AuroraPacketEncoder.encodeColor(200, 160, 255)
-    private val PASTEL_ORANGE = AuroraPacketEncoder.encodeColor(255, 190, 100)
-    private val PASTEL_SKY = AuroraPacketEncoder.encodeColor(130, 200, 255)
+    private val PASTEL_PINK = BoardPacketEncoder.encodeColor(255, 150, 180)
+    private val PASTEL_YELLOW = BoardPacketEncoder.encodeColor(255, 240, 100)
+    private val PASTEL_MINT = BoardPacketEncoder.encodeColor(130, 255, 180)
+    private val PASTEL_LAVENDER = BoardPacketEncoder.encodeColor(200, 160, 255)
+    private val PASTEL_ORANGE = BoardPacketEncoder.encodeColor(255, 190, 100)
+    private val PASTEL_SKY = BoardPacketEncoder.encodeColor(130, 200, 255)
 
     // Each palette defines 7 stripe colors for a richly decorated egg.
     // Colors shift between frames for the "breathing" animation effect.

@@ -42,7 +42,7 @@ internal fun HoldSearchSheet(
     selectedHolds: Set<Int>,
     matchCount: Int,
     isSearching: Boolean,
-    placements: Map<Int, com.cruxcoach.data.repository.AuroraPlacement>,
+    placements: Map<Int, com.cruxcoach.data.repository.BoardPlacement>,
     boardSize: com.cruxcoach.data.repository.BoardSize?,
     boardImages: List<com.cruxcoach.data.repository.BoardImage> = emptyList(),
     onHoldTapped: (Int) -> Unit,

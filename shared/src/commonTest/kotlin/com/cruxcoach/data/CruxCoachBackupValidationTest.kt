@@ -81,7 +81,7 @@ class CruxCoachBackupValidationTest {
 
     @Test
     fun accepts_ascent_with_kilter_32hex_climb_uuid() {
-        // Kilter/Aurora climb_uuid format: 32 lowercase hex chars, no
+        // Kilter climb_uuid format: 32 lowercase hex chars, no
         // hyphens — the app stores them verbatim in aurora_ascent and
         // re-serializes them in the backup payload, so the validator
         // must recognize both 8-4-4-4-12 and raw-hex shapes.

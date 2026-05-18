@@ -33,6 +33,23 @@ object KeyScopedKeys {
     val KILTER_SYNC_ENABLED = booleanPreferencesKey("kilter_sync_enabled")
     val KILTER_PUSH_ENABLED = booleanPreferencesKey("kilter_push_enabled")
     val KILTER_LAST_SYNC = stringPreferencesKey("kilter_last_sync")
+    // Climb-publishing flags (separate from ascent push so users can opt
+    // in/out independently — and so non-Kilter-users don't get pinged).
+    val KILTER_CLIMB_PUBLISH_ENABLED = booleanPreferencesKey("kilter_climb_publish_enabled")
+    // Cursor for the live community-climb Nostr subscription. Holds the
+    // largest event.created_at we've persisted; subsequent subscribes use
+    // it as the `since` filter so we don't re-process the historical tail.
+    val COMMUNITY_CLIMB_SINCE = longPreferencesKey("community_climb_since")
+    // Last seen Blossom-manifest `created_at` (epoch seconds). Written by
+    // BoardSyncManager on every successful manifest fetch. Used by
+    // CommunityClimbSubscriber to seed its cursor on first run so a fresh
+    // install doesn't pull the entire historical Nostr tail (the cron has
+    // already merged everything older into the blob).
+    val BLOSSOM_MANIFEST_CREATED_AT = longPreferencesKey("blossom_manifest_created_at")
+    // True once the user has seen + dismissed the "set up your profile?"
+    // dialog that fires on first publish without a Kind-0 profile. Per-
+    // identity (key-scoped) so a re-imported nsec gets the prompt again.
+    val PROFILE_HINT_DISMISSED = booleanPreferencesKey("profile_hint_dismissed")
     val SIGNER_MODE = stringPreferencesKey("signer_mode")
     val AMBER_PUBKEY = stringPreferencesKey("amber_pubkey")
     val AMBER_PACKAGE_NAME = stringPreferencesKey("amber_package_name")
@@ -147,7 +164,13 @@ object PreferenceKeys {
     val BOARD_STATUS_FILTER = stringPreferencesKey("board_status_filter")
     val BOARD_CLIMB_TYPE = stringPreferencesKey("board_climb_type")
     val BOARD_BENCHMARK_ONLY = booleanPreferencesKey("board_benchmark_only")
+    val BOARD_ORIGIN_FILTER = stringPreferencesKey("board_origin_filter")
+    val BOARD_MY_CLIMBS_ONLY = booleanPreferencesKey("board_my_climbs_only")
     val ROUTE_FRAME_SPEED = floatPreferencesKey("route_frame_speed_f")
+    // Auto-Note: when true, publishing a Kind-30078 climb also sends a
+    // public Kind-1 note linking to it. Default false; the editor exposes
+    // a per-publish checkbox that's pre-populated from this flag.
+    val AUTO_NOTE_ENABLED = booleanPreferencesKey("auto_note_enabled")
     val ROUTE_USE_SETTER_SPEED = booleanPreferencesKey("route_use_setter_speed")
     val ROUTE_COUNTDOWN = booleanPreferencesKey("route_countdown")
     val ROUTE_COUNTDOWN_SECONDS = intPreferencesKey("route_countdown_seconds")
@@ -199,7 +222,9 @@ data class BoardFilterSnapshot(
     val sortDirection: String,
     val statusFilter: String,
     val climbType: String,
-    val benchmarkOnly: Boolean
+    val benchmarkOnly: Boolean,
+    val originFilter: String,
+    val myClimbsOnly: Boolean,
 )
 
 class UserPreferences(
@@ -221,7 +246,9 @@ class UserPreferences(
             sortDirection = prefs[PreferenceKeys.BOARD_SORT_DIRECTION] ?: "DESC",
             statusFilter = prefs[PreferenceKeys.BOARD_STATUS_FILTER] ?: "ALL",
             climbType = prefs[PreferenceKeys.BOARD_CLIMB_TYPE] ?: "BOULDER",
-            benchmarkOnly = prefs[PreferenceKeys.BOARD_BENCHMARK_ONLY] ?: false
+            benchmarkOnly = prefs[PreferenceKeys.BOARD_BENCHMARK_ONLY] ?: false,
+            originFilter = prefs[PreferenceKeys.BOARD_ORIGIN_FILTER] ?: "ALL",
+            myClimbsOnly = prefs[PreferenceKeys.BOARD_MY_CLIMBS_ONLY] ?: false,
         )
     }
 
@@ -292,12 +319,63 @@ class UserPreferences(
         prefs[KeyScopedKeys.KILTER_LAST_SYNC]
     }
 
+    /**
+     * Whether to push newly created CruxCoach climbs into the official
+     * Kilter database. Default `true` — the design goal is that every
+     * CruxCoach-set climb also lives on Kilter (via the user's account
+     * if logged in, or via the bundled fallback if enabled).
+     */
+    val kilterClimbPublishEnabled: Flow<Boolean> = keyScoped.data.map { prefs ->
+        prefs[KeyScopedKeys.KILTER_CLIMB_PUBLISH_ENABLED] ?: true
+    }
+
     suspend fun setKilterSyncEnabled(enabled: Boolean) {
         keyScoped.edit { prefs -> prefs[KeyScopedKeys.KILTER_SYNC_ENABLED] = enabled }
     }
 
     suspend fun setKilterPushEnabled(enabled: Boolean) {
         keyScoped.edit { prefs -> prefs[KeyScopedKeys.KILTER_PUSH_ENABLED] = enabled }
+    }
+
+    suspend fun setKilterClimbPublishEnabled(enabled: Boolean) {
+        keyScoped.edit { prefs -> prefs[KeyScopedKeys.KILTER_CLIMB_PUBLISH_ENABLED] = enabled }
+    }
+
+    /**
+     * Cursor for the live community-climb Nostr subscription. Returns
+     * `null` until the first event has landed, then the max
+     * `event.created_at` (epoch seconds) we've successfully upserted.
+     */
+    val communityClimbSince: Flow<Long?> = keyScoped.data.map { prefs ->
+        prefs[KeyScopedKeys.COMMUNITY_CLIMB_SINCE]
+    }
+
+    suspend fun setCommunityClimbSince(epochSeconds: Long) {
+        keyScoped.edit { prefs -> prefs[KeyScopedKeys.COMMUNITY_CLIMB_SINCE] = epochSeconds }
+    }
+
+    /**
+     * Last `created_at` of a successfully-fetched Blossom manifest. Written
+     * by BoardSyncManager. Read once by CommunityClimbSubscriber to seed
+     * the live-sub cursor on a fresh install — see start() in that class.
+     */
+    val blossomManifestCreatedAt: Flow<Long?> = keyScoped.data.map { prefs ->
+        prefs[KeyScopedKeys.BLOSSOM_MANIFEST_CREATED_AT]
+    }
+
+    suspend fun setBlossomManifestCreatedAt(epochSeconds: Long) {
+        keyScoped.edit { prefs -> prefs[KeyScopedKeys.BLOSSOM_MANIFEST_CREATED_AT] = epochSeconds }
+    }
+
+    /** Whether the first-publish "set up your profile?" hint has been
+     *  shown + dismissed for the current identity. Default false (= will
+     *  show on next publish without a profile). */
+    val profileHintDismissed: Flow<Boolean> = keyScoped.data.map { prefs ->
+        prefs[KeyScopedKeys.PROFILE_HINT_DISMISSED] ?: false
+    }
+
+    suspend fun setProfileHintDismissed(value: Boolean) {
+        keyScoped.edit { prefs -> prefs[KeyScopedKeys.PROFILE_HINT_DISMISSED] = value }
     }
 
     suspend fun setKilterLastSync(timestamp: String?) {
@@ -387,10 +465,18 @@ class UserPreferences(
     val boardClimbType: Flow<String> = dataStore.data.map { it[PreferenceKeys.BOARD_CLIMB_TYPE] ?: "BOULDER" }
     val boardBenchmarkOnly: Flow<Boolean> = dataStore.data.map { it[PreferenceKeys.BOARD_BENCHMARK_ONLY] ?: false }
 
+    /** Auto-Note global default (off). */
+    val autoNoteEnabled: Flow<Boolean> = dataStore.data.map { it[PreferenceKeys.AUTO_NOTE_ENABLED] ?: false }
+    suspend fun setAutoNoteEnabled(enabled: Boolean) {
+        dataStore.edit { prefs -> prefs[PreferenceKeys.AUTO_NOTE_ENABLED] = enabled }
+    }
+
     suspend fun setBoardFilters(
         angle: Int, minGrade: Int, maxGrade: Int, minAscensionists: Int,
         sortField: String, sortDirection: String, statusFilter: String,
-        climbType: String = "BOULDER", benchmarkOnly: Boolean = false
+        climbType: String = "BOULDER", benchmarkOnly: Boolean = false,
+        originFilter: String = "ALL",
+        myClimbsOnly: Boolean = false,
     ) {
         dataStore.edit { prefs ->
             prefs[PreferenceKeys.BOARD_ANGLE] = angle
@@ -402,6 +488,8 @@ class UserPreferences(
             prefs[PreferenceKeys.BOARD_STATUS_FILTER] = statusFilter
             prefs[PreferenceKeys.BOARD_CLIMB_TYPE] = climbType
             prefs[PreferenceKeys.BOARD_BENCHMARK_ONLY] = benchmarkOnly
+            prefs[PreferenceKeys.BOARD_ORIGIN_FILTER] = originFilter
+            prefs[PreferenceKeys.BOARD_MY_CLIMBS_ONLY] = myClimbsOnly
         }
     }
 

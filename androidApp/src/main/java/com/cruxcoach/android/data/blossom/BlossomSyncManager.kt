@@ -11,6 +11,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -22,11 +23,13 @@ import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
+import java.io.BufferedOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.security.MessageDigest
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
+import kotlin.random.Random
 
 /**
  * Downloads board database chunks from Nostr Blossom servers.
@@ -176,15 +179,23 @@ class BlossomSyncManager(
     ): Unit = withContext(Dispatchers.IO) {
         val compressedFile = File(context.cacheDir, "blossom_${chunk.name}.zst")
         try {
-            downloadChunk(chunk, compressedFile, onProgress)
-            verifyHash(compressedFile, chunk.sha256)
+            downloadAndVerifyChunk(chunk, compressedFile, onProgress)
             decompressZstd(compressedFile, outputFile)
         } finally {
             compressedFile.delete()
         }
     }
 
-    private fun downloadChunk(
+    /**
+     * Downloads a chunk and verifies its SHA-256 against the manifest's
+     * declared hash. Iterates the mirror list up to [DOWNLOAD_PASSES] times
+     * with backoff; a corrupted response from one mirror fails over to the
+     * next instead of poisoning the chunk.
+     *
+     * Hash verification lives inside the loop on purpose: a truncated or
+     * malformed body counts as a mirror failure, not a chunk-level error.
+     */
+    private suspend fun downloadAndVerifyChunk(
         chunk: BlossomChunk,
         targetFile: File,
         onProgress: ((Long, Long) -> Unit)?
@@ -196,21 +207,32 @@ class BlossomSyncManager(
             throw BlossomSyncException("No https:// URL for chunk ${chunk.name}")
         }
 
-        // Try each Blossom mirror in order. Blobs are content-addressed by
-        // SHA-256, so any Blossom server holding the blob returns the same
-        // bytes — a single slow/down mirror must not strand the sync.
+        // Two passes through the mirror list. Most transient failures
+        // (5xx blip, brief socket reset, rate-limit window flip) clear
+        // within a second, so retrying once across all mirrors recovers
+        // the common case without ever surfacing the error to the user.
         var lastError: Throwable? = null
-        for ((attempt, url) in httpsUrls.withIndex()) {
-            try {
-                downloadChunkFromUrl(chunk, url, targetFile, onProgress)
-                return
-            } catch (e: Exception) {
-                lastError = e
-                Log.w(
-                    TAG,
-                    "Chunk ${chunk.name} download failed from $url " +
-                        "(${attempt + 1}/${httpsUrls.size}): ${e.message}"
-                )
+        for (pass in 0 until DOWNLOAD_PASSES) {
+            for ((mirrorIdx, url) in httpsUrls.withIndex()) {
+                try {
+                    downloadChunkFromUrl(chunk, url, targetFile, onProgress)
+                    verifyHash(targetFile, chunk.sha256)
+                    return
+                } catch (e: Exception) {
+                    lastError = e
+                    Log.w(
+                        TAG,
+                        "Chunk ${chunk.name} mirror ${mirrorIdx + 1}/${httpsUrls.size} " +
+                            "(pass ${pass + 1}/$DOWNLOAD_PASSES) failed: ${e.message}"
+                    )
+                }
+            }
+            if (pass < DOWNLOAD_PASSES - 1) {
+                // Linear backoff with jitter — enough to clear a transient
+                // server-side rate-limit window without dragging the sync.
+                val backoffMs = DOWNLOAD_BACKOFF_BASE_MS +
+                    Random.nextLong(DOWNLOAD_BACKOFF_JITTER_MS)
+                delay(backoffMs)
             }
         }
         throw BlossomSyncException(
@@ -243,10 +265,17 @@ class BlossomSyncManager(
             // disk-fill.
             val maxAllowedBytes = totalBytes + CHUNK_SIZE_OVERRUN_MARGIN
             var bytesRead = 0L
+            // Throttle progress emissions: an unfiltered callback fires
+            // hundreds of times per second per chunk and floods the
+            // StateFlow / UI recomposition pipeline. The cumulative
+            // counter in BoardSyncManager keeps the UI fresh across
+            // chunk boundaries even if the last per-chunk emit is
+            // dropped, so missing the final tick is harmless.
+            var lastEmitMs = 0L
 
             body.byteStream().use { input ->
-                FileOutputStream(targetFile).use { output ->
-                    val buffer = ByteArray(8192)
+                BufferedOutputStream(FileOutputStream(targetFile), DOWNLOAD_BUFFER_SIZE).use { output ->
+                    val buffer = ByteArray(DOWNLOAD_BUFFER_SIZE)
                     var read: Int
                     while (input.read(buffer).also { read = it } != -1) {
                         bytesRead += read
@@ -257,7 +286,13 @@ class BlossomSyncManager(
                             )
                         }
                         output.write(buffer, 0, read)
-                        onProgress?.invoke(bytesRead, totalBytes)
+                        if (onProgress != null) {
+                            val now = System.currentTimeMillis()
+                            if (now - lastEmitMs >= PROGRESS_THROTTLE_MS) {
+                                lastEmitMs = now
+                                onProgress(bytesRead, totalBytes)
+                            }
+                        }
                     }
                 }
             }
@@ -314,6 +349,20 @@ class BlossomSyncManager(
         // Board DB is ~85MB total across all chunks today; 512MB covers
         // years of growth while still refusing any plausible bomb payload.
         private const val MAX_DECOMPRESSED_CHUNK_BYTES = 512L * 1024 * 1024
+        // 64 KB matches OkHttp's internal Okio segment chaining well, cuts
+        // syscall count ~8x vs. the previous 8 KB buffer, and is small
+        // enough to keep peak heap flat under PARALLEL_DOWNLOADS workers.
+        private const val DOWNLOAD_BUFFER_SIZE = 64 * 1024
+        // Min interval between progress emissions per chunk. ~5 Hz keeps
+        // the progress bar visibly smooth without thrashing StateFlow
+        // under N parallel downloads.
+        private const val PROGRESS_THROTTLE_MS = 200L
+        // Number of full passes through the mirror list before giving up.
+        private const val DOWNLOAD_PASSES = 2
+        // Backoff between retry passes. Linear + jitter is sufficient for
+        // the typical "transient 5xx clears within a second" failure mode.
+        private const val DOWNLOAD_BACKOFF_BASE_MS = 750L
+        private const val DOWNLOAD_BACKOFF_JITTER_MS = 500L
         // Chunk names are joined into filesystem paths; restrict to a strict
         // allowlist so values like "../x" or "a/b" cannot escape cacheDir.
         private val CHUNK_NAME_REGEX = Regex("^[A-Za-z0-9_-]{1,64}$")

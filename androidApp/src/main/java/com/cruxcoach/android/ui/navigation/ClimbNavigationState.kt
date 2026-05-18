@@ -23,4 +23,10 @@ class ClimbNavigationState @Inject constructor() {
     val changedClimbUuids: MutableSet<String> = mutableSetOf()
     /** Set by detail screen when user taps a setter name; consumed by browser on resume. */
     var pendingSetterFilter: String? = null
+    /** Set by [ClimbEditorViewModel] after any save / update / publish / delete
+     *  on a local draft; read & reset by [BoardBrowserViewModel.refreshBoardData].
+     *  Without this, edit-without-count-change (e.g. rename) leaves the browser
+     *  showing the stale row title until app restart, since refreshBoardData
+     *  only re-runs searchClimbs when the count changed. */
+    var creatorDataChanged: Boolean = false
 }

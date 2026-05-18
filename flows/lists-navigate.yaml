@@ -1,0 +1,14 @@
+appId: com.cruxcoach.android
+name: lists-navigate
+tags:
+  - smoke
+---
+- launchApp:
+    stopApp: false
+- waitForAnimationToEnd:
+    timeout: 5000
+- tapOn: "Meine Listen"
+# Lists landing — "Favoriten" is the built-in list, always present.
+- assertVisible: "Favoriten"
+- pressKey: Back
+- assertVisible: "Filter"

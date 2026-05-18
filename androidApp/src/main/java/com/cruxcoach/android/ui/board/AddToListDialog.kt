@@ -32,11 +32,11 @@ import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.theme.WarningYellow
-import com.cruxcoach.data.repository.ClimbList
+import com.cruxcoach.data.repository.Climb_lists
 
 @Composable
 internal fun AddToListDialog(
-    lists: List<ClimbList>,
+    lists: List<Climb_lists>,
     climbInListIds: Set<Long>,
     newListName: String,
     onToggleList: (Long) -> Unit,

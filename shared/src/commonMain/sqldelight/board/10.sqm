@@ -1,0 +1,19 @@
+-- Migration 9 → 10 — FEAT-Homewall force-resync marker.
+--
+-- 0.1.4 ships Kilter Board Homewall data (layout_id=8, product_id=7)
+-- alongside the existing Original (layout_id=1, product_id=1). The
+-- per-chunk SHA-256 cache from a 0.1.3 install still matches every
+-- *Original-only* chunk's hash, so `BoardSyncManager.getChangedChunks`
+-- would return an empty diff on the first 0.1.4 sync — leaving the
+-- user with the old Homewall-less local DB even though the Blossom
+-- side now ships both.
+--
+-- Same shape as 7.sqm's `post_v8_force_resync` marker:
+-- BoardSyncManager checks for this row on app start, clears the
+-- per-chunk hash cache + lastSyncTimestamp, triggers a fresh sync,
+-- then deletes the marker. Worst case (sync fails before the marker
+-- is cleared): user re-tries manually; chunk hashes are already gone
+-- so the retry is itself a full resync.
+
+INSERT OR REPLACE INTO sync_states(table_name, last_synchronized_at)
+VALUES ('homewall_force_resync', 'pending');

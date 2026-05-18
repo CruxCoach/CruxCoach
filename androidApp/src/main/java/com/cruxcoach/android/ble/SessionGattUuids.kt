@@ -7,7 +7,7 @@ import java.util.UUID
  * Service UUID reuses CRUXCOACH_CLIMB_SHARING; characteristics are sub-UUIDs.
  */
 object SessionGattUuids {
-    val SERVICE: UUID = AuroraBleUuids.CRUXCOACH_CLIMB_SHARING
+    val SERVICE: UUID = BoardBleUuids.CRUXCOACH_CLIMB_SHARING
     val SESSION_INFO: UUID = UUID.fromString("C1140B01-CC01-4000-8000-DEADC0AC0001")
     val CURRENT_CLIMB: UUID = UUID.fromString("C1140B02-CC01-4000-8000-DEADC0AC0001")
     val QUEUE_STATE: UUID = UUID.fromString("C1140B03-CC01-4000-8000-DEADC0AC0001")

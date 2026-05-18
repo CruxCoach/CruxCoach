@@ -1,7 +1,8 @@
 package com.cruxcoach.android.ui.board
 
 import com.cruxcoach.android.fakes.FakeBoardRepository
-import com.cruxcoach.data.repository.AuroraClimbWithStats
+import com.cruxcoach.android.fakes.TestClimb
+import com.cruxcoach.data.repository.ClimbWithStats
 import com.cruxcoach.data.repository.ClimbSortField
 import com.cruxcoach.data.repository.ClimbTypeFilter
 import com.cruxcoach.data.repository.SortDirection
@@ -29,17 +30,11 @@ class RandomClimbPickerTest {
         setter: String? = "setter",
         difficulty: Double = 10.0,
         quality: Double = 3.0,
-        ascensionists: Long = 100
-    ) = AuroraClimbWithStats(
-        uuid = uuid,
-        layoutId = 1,
-        setterUsername = setter,
-        name = name,
-        frames = "",
-        framesCount = 1,
-        difficultyAverage = difficulty,
-        qualityAverage = quality,
-        ascensionistCount = ascensionists
+        ascensionists: Long = 100,
+    ): ClimbWithStats = TestClimb.stats(
+        uuid = uuid, name = name, setterUsername = setter,
+        difficulty = difficulty, quality = quality,
+        ascensionists = ascensionists, frames = "",
     )
 
     private fun repoWithClimbs(count: Int): FakeBoardRepository {

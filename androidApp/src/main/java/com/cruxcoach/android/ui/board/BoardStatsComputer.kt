@@ -4,8 +4,9 @@ import android.content.Context
 import com.cruxcoach.android.R
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.util.GradeDisplayHelper
-import com.cruxcoach.data.repository.AuroraAscentWithClimb
+import com.cruxcoach.data.repository.AscentWithClimb
 import com.cruxcoach.domain.board.KilterGradeMapper
+import java.time.Clock
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
@@ -35,21 +36,22 @@ object BoardStatsComputer {
         return context?.getString(MONTH_RES_IDS[month]) ?: MONTH_NAMES_FALLBACK[month]
     }
 
-    // Grade band thresholds (Aurora difficulty values)
+    // Grade band thresholds (Kilter difficulty values)
     // Easy: V0-V2 (diff < 16), Medium: V3-V5 (16..20), Hard: V6-V8 (21..26), Elite: V9+ (27+)
     private const val MEDIUM_THRESHOLD = 16.0
     private const val HARD_THRESHOLD = 21.0
     private const val ELITE_THRESHOLD = 27.0
 
     fun computeStats(
-        ascents: List<AuroraAscentWithClimb>,
+        ascents: List<AscentWithClimb>,
         interval: StatsTimeInterval,
         gradeScale: GradeScale,
         customFrom: LocalDate? = null,
         customTo: LocalDate? = null,
-        context: Context? = null
+        context: Context? = null,
+        clock: Clock = Clock.systemDefaultZone(),
     ): BoardLogbookStats {
-        val filtered = filterByInterval(ascents, interval, customFrom, customTo)
+        val filtered = filterByInterval(ascents, interval, customFrom, customTo, clock)
         if (filtered.isEmpty()) return BoardLogbookStats()
 
         val sends = filtered.filter { it.isSend }
@@ -77,8 +79,8 @@ object BoardStatsComputer {
         val weeklyVolume = computeWeeklyVolume(filtered)
         val gradeProgression = computeGradeProgression(sends, interval, context)
         val uniqueClimbsByGrade = computeUniqueClimbsByGrade(sends, gradeScale)
-        val periodComparison = computePeriodComparison(ascents, interval, gradeScale, context)
-        val personalRecords = computePersonalRecords(ascents, gradeScale)
+        val periodComparison = computePeriodComparison(ascents, interval, gradeScale, context, clock)
+        val personalRecords = computePersonalRecords(ascents, gradeScale, clock)
 
         return BoardLogbookStats(
             hardestGrade = hardestGrade,
@@ -105,11 +107,12 @@ object BoardStatsComputer {
     }
 
     fun filterByInterval(
-        ascents: List<AuroraAscentWithClimb>,
+        ascents: List<AscentWithClimb>,
         interval: StatsTimeInterval,
         customFrom: LocalDate? = null,
-        customTo: LocalDate? = null
-    ): List<AuroraAscentWithClimb> {
+        customTo: LocalDate? = null,
+        clock: Clock = Clock.systemDefaultZone(),
+    ): List<AscentWithClimb> {
         // Custom date range overrides interval
         if (customFrom != null && customTo != null) {
             val from = customFrom.toString()
@@ -117,12 +120,12 @@ object BoardStatsComputer {
             return ascents.filter { it.climbedAt.take(10) in from..to }
         }
         val cutoffDays = interval.days ?: return ascents
-        val cutoff = LocalDate.now().minusDays(cutoffDays.toLong()).toString()
+        val cutoff = LocalDate.now(clock).minusDays(cutoffDays.toLong()).toString()
         return ascents.filter { it.climbedAt.take(10) >= cutoff }
     }
 
     private fun computeGradePyramid(
-        sends: List<AuroraAscentWithClimb>,
+        sends: List<AscentWithClimb>,
         gradeScale: GradeScale
     ): List<BoardGradePyramidEntry> {
         return sends
@@ -139,7 +142,7 @@ object BoardStatsComputer {
     }
 
     private fun computeAngleDistribution(
-        filtered: List<AuroraAscentWithClimb>
+        filtered: List<AscentWithClimb>
     ): List<AngleDistEntry> {
         return filtered
             .groupBy { it.angle.toInt() }
@@ -148,7 +151,7 @@ object BoardStatsComputer {
     }
 
     fun computeSendsOverTime(
-        ascents: List<AuroraAscentWithClimb>,
+        ascents: List<AscentWithClimb>,
         interval: StatsTimeInterval,
         context: Context? = null
     ): List<TimeBucketEntry> {
@@ -182,7 +185,7 @@ object BoardStatsComputer {
     }
 
     private fun computeActivityMap(
-        filtered: List<AuroraAscentWithClimb>
+        filtered: List<AscentWithClimb>
     ): Map<LocalDate, Int> {
         return filtered.mapNotNull { parseDate(it.climbedAt) }
             .groupBy { it }
@@ -192,8 +195,8 @@ object BoardStatsComputer {
     // --- New extended stats ---
 
     private fun computeGradeOutcomes(
-        sends: List<AuroraAscentWithClimb>,
-        bids: List<AuroraAscentWithClimb>,
+        sends: List<AscentWithClimb>,
+        bids: List<AscentWithClimb>,
         gradeScale: GradeScale
     ): List<GradeOutcomeEntry> {
         // Group all entries by V-Scale grade
@@ -218,7 +221,7 @@ object BoardStatsComputer {
     }
 
     private fun computeOutcomeDistribution(
-        sends: List<AuroraAscentWithClimb>
+        sends: List<AscentWithClimb>
     ): OutcomeDistribution {
         val flashes = sends.count { it.bidCount <= 1L }
         val redpoints = sends.count { it.bidCount > 1L }
@@ -227,7 +230,7 @@ object BoardStatsComputer {
     }
 
     private fun computeWeeklyVolume(
-        filtered: List<AuroraAscentWithClimb>
+        filtered: List<AscentWithClimb>
     ): List<WeeklyVolumeEntry> {
         if (filtered.isEmpty()) return emptyList()
 
@@ -257,7 +260,7 @@ object BoardStatsComputer {
     }
 
     private fun computeGradeProgression(
-        sends: List<AuroraAscentWithClimb>,
+        sends: List<AscentWithClimb>,
         interval: StatsTimeInterval,
         context: Context? = null
     ): List<GradeProgressionPoint> {
@@ -285,7 +288,7 @@ object BoardStatsComputer {
     }
 
     private fun computeUniqueClimbsByGrade(
-        sends: List<AuroraAscentWithClimb>,
+        sends: List<AscentWithClimb>,
         gradeScale: GradeScale
     ): List<UniqueClimbEntry> {
         return sends
@@ -304,13 +307,14 @@ object BoardStatsComputer {
     }
 
     private fun computePeriodComparison(
-        allAscents: List<AuroraAscentWithClimb>,
+        allAscents: List<AscentWithClimb>,
         interval: StatsTimeInterval,
         gradeScale: GradeScale,
-        context: Context? = null
+        context: Context? = null,
+        clock: Clock = Clock.systemDefaultZone(),
     ): PeriodComparison? {
         val days = interval.days ?: return null // No comparison for "ALL"
-        val now = LocalDate.now()
+        val now = LocalDate.now(clock)
         val currentStart = now.minusDays(days.toLong())
         val previousStart = currentStart.minusDays(days.toLong())
 
@@ -348,8 +352,9 @@ object BoardStatsComputer {
     }
 
     private fun computePersonalRecords(
-        allAscents: List<AuroraAscentWithClimb>,
-        gradeScale: GradeScale
+        allAscents: List<AscentWithClimb>,
+        gradeScale: GradeScale,
+        clock: Clock = Clock.systemDefaultZone(),
     ): PersonalRecords {
         val sends = allAscents.filter { it.isSend }
         if (sends.isEmpty()) return PersonalRecords()
@@ -369,7 +374,7 @@ object BoardStatsComputer {
 
         // Streaks (consecutive days with at least one send)
         val sendDates = sendsByDay.keys.mapNotNull { parseDate(it) }.sorted()
-        val (currentStreak, longestStreak) = computeStreaks(sendDates)
+        val (currentStreak, longestStreak) = computeStreaks(sendDates, clock)
 
         return PersonalRecords(
             hardestFlashGrade = hardestFlashGrade,
@@ -381,12 +386,15 @@ object BoardStatsComputer {
         )
     }
 
-    private fun computeStreaks(sortedDates: List<LocalDate>): Pair<Int, Int> {
+    private fun computeStreaks(
+        sortedDates: List<LocalDate>,
+        clock: Clock = Clock.systemDefaultZone(),
+    ): Pair<Int, Int> {
         if (sortedDates.isEmpty()) return 0 to 0
 
         var longest = 1
         var current = 1
-        val today = LocalDate.now()
+        val today = LocalDate.now(clock)
 
         for (i in 1 until sortedDates.size) {
             if (ChronoUnit.DAYS.between(sortedDates[i - 1], sortedDates[i]) == 1L) {

@@ -47,7 +47,7 @@ object HoldHeatmapComputer {
         }.keys
     }
 
-    /** Build the LIKE pattern for a placement ID in Aurora frame format. */
+    /** Build the LIKE pattern for a placement ID in delta-format frames. */
     fun holdLikePattern(placementId: Int): String = "p${placementId}r"
 
     /**

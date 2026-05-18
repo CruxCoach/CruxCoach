@@ -17,7 +17,10 @@ data class NostrProfileData(
     val pubkey: String,
     val displayName: String?,
     val lightningAddress: String?,
-    val pictureUrl: String?
+    val pictureUrl: String?,
+    val bannerUrl: String? = null,
+    val nip05: String? = null,
+    val website: String? = null,
 )
 
 enum class PaymentChannel {

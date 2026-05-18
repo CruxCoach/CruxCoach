@@ -1,0 +1,1564 @@
+-- Climbing-board catalog tables.
+-- Schema-shape inherited from Aurora Climbing's original SQLite (climbs,
+-- climb_stats, placements, holes, leds, product_sizes) — that shape is
+-- preserved across Aurora-extracted bundles and the Blossom-mirror cron.
+
+CREATE TABLE climbs (
+    -- UUID identity: BINARY collation, lowercase canonical form. The
+    -- Kilter blob carries UUIDs in mixed casing (~114k upper, ~60k
+    -- lower) but the two casings are *not* the same logical climb on
+    -- the cron's side — they carry divergent metadata. Importer
+    -- writes LOWER(uuid) on every insert, the live sub lowercases
+    -- parsed event UUIDs, and ClimbCreator generates lowercase UUIDs
+    -- for new community climbs. 7.sqm wiped the Kilter side and
+    -- normalized cruxcoach rows on upgrade. ClimbNameResolver still
+    -- case-fanouts read paths (BLE protocol decodes uppercase) so
+    -- legacy callers stay working.
+    uuid TEXT NOT NULL PRIMARY KEY,
+    layout_id INTEGER NOT NULL,
+    setter_username TEXT,
+    name TEXT NOT NULL,
+    frames_count INTEGER NOT NULL DEFAULT 1,
+    is_listed INTEGER NOT NULL DEFAULT 1,
+    edge_left INTEGER,
+    edge_right INTEGER,
+    edge_bottom INTEGER,
+    edge_top INTEGER,
+    created_at TEXT,
+    description TEXT NOT NULL DEFAULT '',
+    is_nomatch INTEGER NOT NULL DEFAULT 0,
+    frames_pace INTEGER NOT NULL DEFAULT 0,
+    hsm INTEGER NOT NULL DEFAULT 0,
+    frames BLOB AS kotlin.String NOT NULL,
+    is_deleted INTEGER NOT NULL DEFAULT 0,
+    move_count INTEGER NOT NULL DEFAULT 0,
+    -- FEAT-003 community-climb fields:
+    source TEXT NOT NULL DEFAULT 'kilter',          -- 'kilter' | 'nostr' | 'local' (data origin, mutable)
+    nostr_event_id TEXT,                            -- Kind 30078 event id (set on publish)
+    nostr_d_tag TEXT,                               -- d-tag of the published event
+    created_by_pubkey TEXT,                         -- setter pubkey for nostr/local climbs
+    frames_hash TEXT,                               -- canonical sha256 of frames+layout (dup detection)
+    sync_status TEXT NOT NULL DEFAULT 'synced',     -- 'draft' | 'synced' | 'published_nostr' | 'published_kilter' | 'published_both' | 'failed'
+    -- v0.1.5 provenance + Kilter publish status:
+    origin TEXT NOT NULL DEFAULT 'kilter',          -- 'cruxcoach' | 'kilter' (immutable, where authored)
+    kilter_status TEXT,                             -- NULL | 'pending' | 'synced' | 'failed' | 'diverged'
+    kilter_synced_at INTEGER,                       -- epoch seconds, set when Kilter accepts
+    kilter_publish_via TEXT,                        -- 'self' (user account) | 'cruxcoach' (bundled)
+    kilter_error TEXT,                              -- last Kilter publish failure message
+    -- v0.1.6 per-network identity tracking for Nostr
+    nostr_publish_via TEXT                          -- 'self' | 'cruxcoach' (bundled signing key)
+);
+
+CREATE TABLE climb_stats (
+    -- Pairs with climbs.uuid (lowercase canonical, BINARY). See the
+    -- climbs.uuid comment + 7.sqm migration for the full rationale.
+    climb_uuid TEXT NOT NULL,
+    angle INTEGER NOT NULL,
+    display_difficulty REAL,
+    difficulty_average REAL,
+    quality_average REAL,
+    ascensionist_count INTEGER DEFAULT 0,
+    benchmark_difficulty REAL,
+    fa_username TEXT,
+    fa_at TEXT,
+    official_kilter_difficulty INTEGER,
+    PRIMARY KEY (climb_uuid, angle)
+);
+
+CREATE TABLE board_hold_positions (
+    hole_id INTEGER NOT NULL,
+    product_size_id INTEGER NOT NULL,
+    x INTEGER NOT NULL,
+    y INTEGER NOT NULL,
+    led_position INTEGER NOT NULL,
+    placement_id INTEGER NOT NULL,
+    PRIMARY KEY (hole_id, product_size_id)
+);
+
+-- Placement → coordinate mapping (pre-joined from placements + holes)
+CREATE TABLE placements (
+    placement_id INTEGER NOT NULL PRIMARY KEY,
+    hole_id INTEGER NOT NULL,
+    set_id INTEGER NOT NULL,
+    x INTEGER NOT NULL,
+    y INTEGER NOT NULL
+);
+
+-- Board size definitions with edge boundaries for coordinate transformation
+CREATE TABLE product_sizes (
+    id INTEGER NOT NULL PRIMARY KEY,
+    product_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    edge_left INTEGER NOT NULL,
+    edge_right INTEGER NOT NULL,
+    edge_bottom INTEGER NOT NULL,
+    edge_top INTEGER NOT NULL,
+    image_filename TEXT
+);
+
+-- Board images per size+layout+set combination
+CREATE TABLE board_images (
+    id INTEGER NOT NULL PRIMARY KEY,
+    product_size_id INTEGER NOT NULL,
+    layout_id INTEGER NOT NULL,
+    set_id INTEGER NOT NULL,
+    image_filename TEXT NOT NULL
+);
+
+-- LED position per hole per board size
+CREATE TABLE leds (
+    hole_id INTEGER NOT NULL,
+    product_size_id INTEGER NOT NULL,
+    position INTEGER NOT NULL,
+    PRIMARY KEY (hole_id, product_size_id)
+);
+
+-- Raw hole coordinates (joined with placements to derive positions)
+CREATE TABLE holes (
+    id INTEGER NOT NULL PRIMARY KEY,
+    product_size_id INTEGER NOT NULL,
+    x INTEGER NOT NULL,
+    y INTEGER NOT NULL,
+    mirrored_hole_id INTEGER
+);
+
+CREATE INDEX idx_placements_set ON placements(set_id);
+CREATE INDEX idx_board_images_size ON board_images(product_size_id);
+
+CREATE TABLE sync_states (
+    table_name TEXT NOT NULL PRIMARY KEY,
+    last_synchronized_at TEXT NOT NULL
+);
+
+CREATE TABLE beta_links (
+    id INTEGER NOT NULL PRIMARY KEY,
+    climb_uuid TEXT NOT NULL,
+    foreign_username TEXT,
+    link TEXT NOT NULL,
+    created_at TEXT
+);
+
+CREATE INDEX idx_beta_links_climb ON beta_links(climb_uuid);
+CREATE INDEX idx_climb_stats_angle ON climb_stats(angle);
+CREATE INDEX idx_climbs_listed ON climbs(is_listed);
+CREATE INDEX idx_climb_stats_browse ON climb_stats(
+    angle, difficulty_average, quality_average, ascensionist_count,
+    benchmark_difficulty, climb_uuid
+);
+-- Optimized for default sort (ASCENSIONISTS DESC): angle equality + sort column
+-- lets SQLite scan backward without temp sort for LIMIT queries.
+CREATE INDEX idx_climb_stats_by_popularity ON climb_stats(
+    angle, ascensionist_count, difficulty_average, climb_uuid
+);
+CREATE INDEX idx_climbs_frames_count ON climbs(is_listed, frames_count, uuid);
+
+-- Covering index for COUNT queries: angle equality → range filters → climb_uuid for JOIN.
+-- Allows SQLite to satisfy countFilteredClimbs entirely from the index (no table lookup).
+CREATE INDEX idx_climb_stats_count_cover ON climb_stats(
+    angle, ascensionist_count, difficulty_average, benchmark_difficulty, climb_uuid
+);
+
+-- FEAT-003 community-climb indexes
+CREATE INDEX idx_climbs_source ON climbs(source);
+CREATE INDEX idx_climbs_frames_hash ON climbs(frames_hash);
+CREATE INDEX idx_climbs_pubkey ON climbs(created_by_pubkey);
+CREATE INDEX idx_climbs_origin ON climbs(origin);
+CREATE INDEX idx_climbs_kilter_status ON climbs(kilter_status);
+CREATE INDEX idx_climbs_nostr_via ON climbs(nostr_publish_via);
+
+-- FEAT-006 Kilter publish per-attempt audit trail. Augments the
+-- single-value `climbs.kilter_*` columns (which carry latest-status only)
+-- with a permanent timeline so support / forensics / future retry caps
+-- can reconstruct the attempt sequence. Rows are append-only; deleting
+-- a climb intentionally does NOT cascade so the audit history survives.
+CREATE TABLE kilter_publish_attempts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    climb_uuid TEXT NOT NULL,
+    attempted_at INTEGER NOT NULL,    -- wall-clock millis
+    op TEXT NOT NULL,                 -- 'create' | 'update'
+    via TEXT NOT NULL,                -- 'self' | 'cruxcoach'
+    outcome TEXT NOT NULL,            -- 'success' | 'transient' | 'permanent' | 'rate_limited' | 'auth' | 'skipped'
+    http_code INTEGER,                -- NULL when no HTTP round-trip happened
+    error_excerpt TEXT                -- bounded by KilterApiClient.MAX_ERR_BODY at the boundary
+);
+
+CREATE INDEX idx_kilter_attempts_climb ON kilter_publish_attempts(climb_uuid, attempted_at DESC);
+
+-- FEAT-003 grade consensus cache. MVP only stores setter_grade_id; full
+-- consensus aggregation (vote_count, confidence, trimmed mean) lands when
+-- public ascent-vote events ship in 0.2.0.
+CREATE TABLE community_grade_cache (
+    climb_d_tag TEXT NOT NULL,
+    angle INTEGER NOT NULL,
+    setter_grade_id INTEGER,
+    consensus_average REAL,
+    consensus_grade_id INTEGER,
+    vote_count INTEGER NOT NULL DEFAULT 0,
+    confidence TEXT NOT NULL DEFAULT 'LOW',
+    last_updated INTEGER NOT NULL,
+    PRIMARY KEY (climb_d_tag, angle)
+);
+
+-- Browse VIEW: live join of climb + stats, no frames column (saves ~50MB).
+-- SQLite flattens simple INNER JOIN views into the outer query (no materialization).
+CREATE VIEW climb_browse AS
+SELECT
+    c.uuid, c.name, c.setter_username, c.frames_count, c.layout_id,
+    COALESCE(c.description, '') AS description,
+    c.is_nomatch, c.frames_pace, c.hsm, c.move_count,
+    c.source, c.created_by_pubkey, c.sync_status, c.origin, c.kilter_status,
+    cs.angle, cs.difficulty_average, cs.quality_average,
+    cs.ascensionist_count, cs.benchmark_difficulty
+FROM climbs c
+INNER JOIN climb_stats cs ON c.uuid = cs.climb_uuid
+WHERE c.is_listed = 1;
+
+-- Queries
+
+-- Existence probe used by [upsertClimb] (the Kotlin-side transaction).
+existsClimb:
+SELECT 1 FROM climbs WHERE uuid = ? LIMIT 1;
+
+-- Returns the local row's `created_at` for stale-event protection in
+-- the Nostr live subscriber. Used to avoid letting a re-broadcasted
+-- old event overwrite a newer state.
+getClimbCreatedAt:
+SELECT created_at FROM climbs WHERE uuid = ? LIMIT 1;
+
+-- Returns the local row's `created_by_pubkey` so the live subscriber can
+-- reject incoming Kind-30078 events whose signed pubkey differs from
+-- whoever already owns this uuid. Without this guard a second author
+-- with a colliding uuid silently overwrites the first author's row
+-- (INSERT OR REPLACE keyed on uuid alone).
+getClimbAuthorPubkey:
+SELECT created_by_pubkey FROM climbs WHERE uuid = ? LIMIT 1;
+
+-- Backstop self-filter for the live subscriber. True iff a row exists
+-- with source='local' — by definition only the editor's `insertLocalDraft`
+-- writes that source value, so any uuid in this state was authored locally.
+-- Used after the primary pubkey-based self-filter so a degraded signer
+-- (ownPubkey resolution returning null) or a key rotation (where the
+-- signed event still carries the old pubkey but the local user now
+-- presents a new one) can't open the door for an own-event echo to
+-- clobber `sync_status`, `kilter_status`, `nostr_event_id`, etc. via
+-- upsertCommunityClimb's INSERT OR REPLACE.
+isLocallyAuthored:
+SELECT 1 FROM climbs WHERE uuid = ? AND source = 'local' LIMIT 1;
+
+-- Insert-only path: used by the upsert transaction when no row with
+-- this uuid exists. Default column values cover source ('kilter'),
+-- origin ('kilter'), and the Nostr/Kilter status fields (NULL).
+insertClimbRow:
+INSERT INTO climbs(uuid, layout_id, setter_username, name,
+    frames_count, is_listed, edge_left, edge_right, edge_bottom, edge_top, created_at,
+    description, is_nomatch, frames_pace, hsm, frames, move_count)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+-- Update-only path: refreshes the columns Kilter is authoritative for
+-- (name, frames, edges, …). Intentionally does NOT touch the CruxCoach
+-- side: source, origin, nostr_event_id, nostr_d_tag, created_by_pubkey,
+-- frames_hash, sync_status, kilter_status, kilter_synced_at,
+-- kilter_publish_via, kilter_error. A CruxCoach-published climb that
+-- got pulled back via the Kilter API harvest keeps its provenance +
+-- Nostr linkage + Kilter publish status across blob refreshes.
+updateClimbBlobFields:
+UPDATE climbs SET
+    layout_id = ?,
+    setter_username = ?,
+    name = ?,
+    frames_count = ?,
+    is_listed = ?,
+    edge_left = ?,
+    edge_right = ?,
+    edge_bottom = ?,
+    edge_top = ?,
+    created_at = ?,
+    description = ?,
+    is_nomatch = ?,
+    frames_pace = ?,
+    hsm = ?,
+    frames = ?,
+    move_count = ?
+WHERE uuid = ?;
+
+upsertClimbStat:
+INSERT OR REPLACE INTO climb_stats(climb_uuid, angle, display_difficulty,
+    difficulty_average, quality_average, ascensionist_count, benchmark_difficulty,
+    fa_username, fa_at, official_kilter_difficulty)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+upsertHoldPosition:
+INSERT OR REPLACE INTO board_hold_positions(hole_id, product_size_id, x, y, led_position, placement_id)
+VALUES (?, ?, ?, ?, ?, ?);
+
+upsertSyncState:
+INSERT OR REPLACE INTO sync_states(table_name, last_synchronized_at) VALUES (?, ?);
+
+getSyncState:
+SELECT last_synchronized_at FROM sync_states WHERE table_name = ?;
+
+-- ═══ Browse queries (climb_browse VIEW — JOIN flattened by SQLite) ═══
+
+browseByQualityDesc:
+SELECT * FROM climb_browse WHERE layout_id = :layoutId AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND difficulty_average >= :minDiff AND difficulty_average <= :maxDiff AND ascensionist_count >= :minAsc ORDER BY quality_average DESC LIMIT :limit OFFSET :offset;
+
+browseByQualityAsc:
+SELECT * FROM climb_browse WHERE layout_id = :layoutId AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND difficulty_average >= :minDiff AND difficulty_average <= :maxDiff AND ascensionist_count >= :minAsc ORDER BY quality_average ASC LIMIT :limit OFFSET :offset;
+
+browseByDifficultyDesc:
+SELECT * FROM climb_browse WHERE layout_id = :layoutId AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND difficulty_average >= :minDiff AND difficulty_average <= :maxDiff AND ascensionist_count >= :minAsc ORDER BY difficulty_average DESC LIMIT :limit OFFSET :offset;
+
+browseByDifficultyAsc:
+SELECT * FROM climb_browse WHERE layout_id = :layoutId AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND difficulty_average >= :minDiff AND difficulty_average <= :maxDiff AND ascensionist_count >= :minAsc ORDER BY difficulty_average ASC LIMIT :limit OFFSET :offset;
+
+browseByAscensionistsDesc:
+SELECT * FROM climb_browse WHERE layout_id = :layoutId AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND difficulty_average >= :minDiff AND difficulty_average <= :maxDiff AND ascensionist_count >= :minAsc ORDER BY ascensionist_count DESC LIMIT :limit OFFSET :offset;
+
+browseByAscensionistsAsc:
+SELECT * FROM climb_browse WHERE layout_id = :layoutId AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND difficulty_average >= :minDiff AND difficulty_average <= :maxDiff AND ascensionist_count >= :minAsc ORDER BY ascensionist_count ASC LIMIT :limit OFFSET :offset;
+
+-- Browse query restricted to CruxCoach-side climbs (community-published
+-- + user's local drafts). Returns the FULL filtered set in one go —
+-- no pagination — because the cruxcoach-side row count is tiny next
+-- to the 190K Kilter catalogue. The previous pagination + client-side
+-- OriginFilter combo silently buried community climbs without sends
+-- at the bottom of the unsorted-by-origin pages: a freshly published
+-- climb with quality_average=NULL sat past page 100 of the
+-- quality-DESC sort, effectively invisible. Sorting is done in
+-- Kotlin (matches `sortInKotlin`'s existing handling) so the
+-- ascending / descending toggles all four sort fields without 4×
+-- new SQL variants here.
+--
+-- Mirror the pre-existing browse WHERE clause exactly so
+-- (layout, angle, grade range, ascensionist floor) filters land
+-- on the same rows the unconstrained query would have. The single
+-- added clause is `(origin = 'cruxcoach' OR source = 'local')` —
+-- same predicate the client-side BrowserOriginFilter used.
+browseCruxCoachOnly:
+SELECT * FROM climb_browse
+WHERE layout_id = :layoutId
+  AND angle = :angle
+  AND frames_count >= :minFrames AND frames_count <= :maxFrames
+  AND difficulty_average >= :minDiff AND difficulty_average <= :maxDiff
+  AND ascensionist_count >= :minAsc
+  AND (origin = 'cruxcoach' OR source = 'local');
+
+browseByNameDesc:
+SELECT * FROM climb_browse WHERE layout_id = :layoutId AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND difficulty_average >= :minDiff AND difficulty_average <= :maxDiff AND ascensionist_count >= :minAsc ORDER BY name DESC LIMIT :limit OFFSET :offset;
+
+browseByNameAsc:
+SELECT * FROM climb_browse WHERE layout_id = :layoutId AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND difficulty_average >= :minDiff AND difficulty_average <= :maxDiff AND ascensionist_count >= :minAsc ORDER BY name ASC LIMIT :limit OFFSET :offset;
+
+-- ═══ Search queries (climb_browse VIEW — additional JOIN for repeat_count) ═══
+
+searchByQualityDesc:
+SELECT * FROM climb_browse WHERE layout_id = :layoutId AND (name LIKE '%' || :query || '%' OR setter_username LIKE '%' || :query || '%') AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames ORDER BY quality_average DESC LIMIT :limit OFFSET :offset;
+
+searchByQualityAsc:
+SELECT * FROM climb_browse WHERE layout_id = :layoutId AND (name LIKE '%' || :query || '%' OR setter_username LIKE '%' || :query || '%') AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames ORDER BY quality_average ASC LIMIT :limit OFFSET :offset;
+
+searchByDifficultyDesc:
+SELECT * FROM climb_browse WHERE layout_id = :layoutId AND (name LIKE '%' || :query || '%' OR setter_username LIKE '%' || :query || '%') AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames ORDER BY difficulty_average DESC LIMIT :limit OFFSET :offset;
+
+searchByDifficultyAsc:
+SELECT * FROM climb_browse WHERE layout_id = :layoutId AND (name LIKE '%' || :query || '%' OR setter_username LIKE '%' || :query || '%') AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames ORDER BY difficulty_average ASC LIMIT :limit OFFSET :offset;
+
+searchByAscensionistsDesc:
+SELECT * FROM climb_browse WHERE layout_id = :layoutId AND (name LIKE '%' || :query || '%' OR setter_username LIKE '%' || :query || '%') AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames ORDER BY ascensionist_count DESC LIMIT :limit OFFSET :offset;
+
+searchByAscensionistsAsc:
+SELECT * FROM climb_browse WHERE layout_id = :layoutId AND (name LIKE '%' || :query || '%' OR setter_username LIKE '%' || :query || '%') AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames ORDER BY ascensionist_count ASC LIMIT :limit OFFSET :offset;
+
+searchByNameDesc:
+SELECT * FROM climb_browse WHERE layout_id = :layoutId AND (name LIKE '%' || :query || '%' OR setter_username LIKE '%' || :query || '%') AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames ORDER BY name DESC LIMIT :limit OFFSET :offset;
+
+searchByNameAsc:
+SELECT * FROM climb_browse WHERE layout_id = :layoutId AND (name LIKE '%' || :query || '%' OR setter_username LIKE '%' || :query || '%') AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames ORDER BY name ASC LIMIT :limit OFFSET :offset;
+
+getClimbsByUuids:
+SELECT * FROM climb_browse
+WHERE layout_id = :layoutId
+  AND uuid IN ?
+  AND angle = :angle
+  AND frames_count >= :minFrames AND frames_count <= :maxFrames
+  AND difficulty_average >= :minDiff AND difficulty_average <= :maxDiff
+  AND ascensionist_count >= :minAsc;
+
+getClimbsByUuidsSimple:
+SELECT * FROM climb_browse
+WHERE uuid IN ?
+  AND angle = :angle;
+
+getClimbByUuid:
+SELECT c.*, cs.difficulty_average, cs.quality_average, cs.ascensionist_count,
+    cs.benchmark_difficulty, cs.fa_username, cs.fa_at
+FROM climbs c
+LEFT JOIN climb_stats cs ON c.uuid = cs.climb_uuid AND cs.angle = ?
+WHERE c.uuid = ?;
+
+countLeds:
+SELECT COUNT(*) FROM leds;
+
+upsertLed:
+INSERT OR REPLACE INTO leds(hole_id, product_size_id, position) VALUES (?, ?, ?);
+
+getPlacementLedMap:
+SELECT p.placement_id, l.position AS led_position
+FROM placements p
+JOIN leds l ON p.hole_id = l.hole_id
+WHERE l.product_size_id = ?;
+
+countClimbs:
+SELECT COUNT(*) FROM climbs;
+
+-- O(1) "do we have any climbs at all" check. Use this anywhere the
+-- caller only needs a boolean — countClimbs is a full table-scan
+-- (190k+ rows) and degrades to seconds during an active import (writer
+-- holds the page-cache hot path), so the empty-state path on app-start
+-- noticeably stalls the browser when the user opens during sync.
+hasAnyClimbs:
+SELECT EXISTS(SELECT 1 FROM climbs LIMIT 1);
+
+getClimbCountByAngle:
+SELECT cs.angle, COUNT(*) AS climb_count
+FROM climb_stats cs
+INNER JOIN climbs c ON c.uuid = cs.climb_uuid
+WHERE c.layout_id = ?
+  AND c.is_listed = 1
+  AND c.frames_count >= ?
+  AND c.frames_count <= ?
+GROUP BY cs.angle
+ORDER BY cs.angle;
+
+getAnglesForClimb:
+SELECT cs.angle, cs.difficulty_average, cs.quality_average,
+    cs.ascensionist_count, cs.benchmark_difficulty
+FROM climb_stats cs
+WHERE cs.climb_uuid = ?
+ORDER BY cs.angle;
+
+-- Fast count: stats-only, no JOIN. Accurate when all climbs are is_listed=1
+-- and filter doesn't need frames_count check (boulder default: frames_count=1).
+countFilteredClimbsFast:
+SELECT COUNT(*)
+FROM climb_stats cs
+INNER JOIN climbs c ON c.uuid = cs.climb_uuid
+WHERE c.layout_id = ?
+  AND cs.angle = ?
+  AND cs.difficulty_average >= ? AND cs.difficulty_average <= ?
+  AND cs.ascensionist_count >= ?;
+
+-- Full COUNT queries: bypass the VIEW, JOIN only for is_listed/frames_count check.
+
+countFilteredClimbs:
+SELECT COUNT(*)
+FROM climb_stats cs
+INNER JOIN climbs c ON c.uuid = cs.climb_uuid
+WHERE c.layout_id = ?
+  AND cs.angle = ?
+  AND c.is_listed = 1
+  AND c.frames_count >= ? AND c.frames_count <= ?
+  AND cs.difficulty_average >= ? AND cs.difficulty_average <= ?
+  AND cs.ascensionist_count >= ?;
+
+countBenchmarkFilteredClimbs:
+SELECT COUNT(*)
+FROM climb_stats cs
+INNER JOIN climbs c ON c.uuid = cs.climb_uuid
+WHERE c.layout_id = ?
+  AND cs.angle = ?
+  AND c.is_listed = 1
+  AND c.frames_count >= ? AND c.frames_count <= ?
+  AND cs.difficulty_average >= ? AND cs.difficulty_average <= ?
+  AND cs.ascensionist_count >= ?
+  AND cs.benchmark_difficulty > 0;
+
+countSearchClimbs:
+SELECT COUNT(*)
+FROM climbs c
+INNER JOIN climb_stats cs ON c.uuid = cs.climb_uuid
+WHERE c.layout_id = ?
+  AND (c.name LIKE '%' || ? || '%' OR c.setter_username LIKE '%' || ? || '%')
+  AND cs.angle = ?
+  AND c.is_listed = 1
+  AND c.frames_count >= ? AND c.frames_count <= ?;
+
+countBenchmarkSearchClimbs:
+SELECT COUNT(*)
+FROM climbs c
+INNER JOIN climb_stats cs ON c.uuid = cs.climb_uuid
+WHERE c.layout_id = ?
+  AND (c.name LIKE '%' || ? || '%' OR c.setter_username LIKE '%' || ? || '%')
+  AND cs.angle = ?
+  AND c.is_listed = 1
+  AND c.frames_count >= ? AND c.frames_count <= ?
+  AND cs.benchmark_difficulty > 0;
+
+-- ═══ Hold-based search + heatmap queries (query climbs directly) ═══
+
+-- Get (uuid, frames) for heatmap computation (Kotlin-side processing).
+getAllFramesForFilter:
+SELECT c.uuid, c.frames
+FROM climbs c
+INNER JOIN climb_stats cs ON c.uuid = cs.climb_uuid
+WHERE c.layout_id = :layoutId
+  AND cs.angle = :angle
+  AND c.frames_count >= :minFrames AND c.frames_count <= :maxFrames
+  AND cs.difficulty_average >= :minDiff AND cs.difficulty_average <= :maxDiff
+  AND cs.ascensionist_count >= :minAsc
+  AND LENGTH(c.frames) > 0 AND c.is_listed = 1;
+
+-- Placement queries (for board visualization)
+upsertPlacement:
+INSERT OR REPLACE INTO placements(placement_id, hole_id, set_id, x, y)
+VALUES (?, ?, ?, ?, ?);
+
+getAllPlacements:
+SELECT * FROM placements;
+
+-- Product size queries (for edge boundaries)
+upsertProductSize:
+INSERT OR REPLACE INTO product_sizes(id, product_id, name, edge_left, edge_right, edge_bottom, edge_top, image_filename)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+
+getProductSize:
+SELECT * FROM product_sizes WHERE id = ?;
+
+getAllProductSizes:
+SELECT id, product_id, name, edge_left, edge_right, edge_bottom, edge_top, image_filename
+FROM product_sizes
+WHERE product_id = :productId
+ORDER BY id;
+
+-- Board image queries
+upsertBoardImage:
+INSERT OR REPLACE INTO board_images(id, product_size_id, layout_id, set_id, image_filename)
+VALUES (?, ?, ?, ?, ?);
+
+getBoardImages:
+SELECT * FROM board_images WHERE product_size_id = ? AND layout_id = ?;
+
+-- Per-climb board rendering (Aurora migration + cross-board community
+-- climbs): the climbs.layout_id may differ from the user's currently-
+-- installed board, so the detail screen needs to pick a (size, layout)
+-- pair that has actual image tiles for the climb's layout. Returns
+-- the candidate sizes a layout was published in; caller prefers the
+-- user's configured size when present, otherwise falls back to the
+-- first candidate.
+getProductSizesForLayout:
+SELECT DISTINCT product_size_id FROM board_images WHERE layout_id = :layoutId;
+
+
+-- Cheap "can the user's currently-configured board render this climb"
+-- predicate. Returns 1 row when the user's [productSizeId] both
+-- (a) has board_images for the climb's layout AND (b) is large enough
+-- in every edge direction to contain the climb's bbox without
+-- clipping (or the climb has no recorded bbox). Used by the detail
+-- screen to keep the *default* render target = Settings → Board so
+-- the BoardBrowser → Detail flow keeps showing the user's actual
+-- physical board, falling back to the per-climb source size only
+-- when an Aurora-imported / cross-board climb genuinely doesn't fit.
+canRenderClimbOnSize:
+SELECT 1 FROM climbs c
+JOIN product_sizes ps ON ps.id = :productSizeId
+WHERE c.uuid = :uuid
+  AND EXISTS (
+      SELECT 1 FROM board_images bi
+      WHERE bi.product_size_id = ps.id AND bi.layout_id = c.layout_id
+  )
+  AND (c.edge_left IS NULL OR (
+        ps.edge_left   <= c.edge_left  AND
+        ps.edge_right  >= c.edge_right AND
+        ps.edge_bottom <= c.edge_bottom AND
+        ps.edge_top    >= c.edge_top
+      ))
+LIMIT 1;
+
+-- Resolve the smallest product_size whose physical extent fully
+-- *contains* the climb's bounding box, for the climb-detail render
+-- on the user's currently-installed board. Containment (not exact
+-- equality) is required because cropped sub-routes have asymmetric
+-- edges that don't match any size verbatim — e.g. a community climb
+-- on the left half of a Homewall has edges -48/-4/-8/140 while every
+-- Homewall product_size is symmetric (-44/44 or -56/56) and bigger
+-- in every dimension. Pre-fix the equality match returned NULL for
+-- such climbs and the layout-only fallback picked the *first*
+-- candidate size, frequently the smallest, which then *clipped* any
+-- hold whose x or y fell outside the smaller bounding box. The
+-- visible symptom: start + finish holds disappearing off the
+-- top-left corner.
+--
+-- ORDER BY area ASC picks the tightest fit, which keeps the rendered
+-- board as zoomed-in on the climb as possible without clipping. The
+-- EXISTS guard ensures we never return a size that has no
+-- board_images rows for the climb's layout (those would render an
+-- empty background).
+getProductSizeForClimbRender:
+SELECT ps.id FROM climbs c
+JOIN product_sizes ps ON ps.edge_left   <= c.edge_left
+                     AND ps.edge_right  >= c.edge_right
+                     AND ps.edge_bottom <= c.edge_bottom
+                     AND ps.edge_top    >= c.edge_top
+WHERE c.uuid = :uuid
+  AND c.edge_left IS NOT NULL
+  AND EXISTS (
+      SELECT 1 FROM board_images bi
+      WHERE bi.product_size_id = ps.id
+        AND bi.layout_id       = c.layout_id
+  )
+ORDER BY (ps.edge_right - ps.edge_left) * (ps.edge_top - ps.edge_bottom) ASC
+LIMIT 1;
+
+-- Hole queries (for placement join)
+upsertHole:
+INSERT OR REPLACE INTO holes(id, product_size_id, x, y, mirrored_hole_id)
+VALUES (?, ?, ?, ?, ?);
+
+-- Mirror placement map: originalPlacementId → mirroredPlacementId
+-- Joins placement → hole → mirroredHole → placement (same set_id)
+getMirrorPlacementMap:
+SELECT p1.placement_id AS original_placement_id, p2.placement_id AS mirrored_placement_id
+FROM placements p1
+JOIN holes h1 ON p1.hole_id = h1.id
+JOIN holes h2 ON h1.mirrored_hole_id = h2.id
+JOIN placements p2 ON p2.hole_id = h2.id AND p2.set_id = p1.set_id
+WHERE h1.product_size_id = ?;
+
+-- Delta import helpers: bulk-read existing keys for diff comparison
+getAllClimbUuids:
+SELECT uuid FROM climbs;
+
+getAllStatKeys:
+SELECT climb_uuid, angle, ascensionist_count FROM climb_stats;
+
+-- Diagnostic: check if a specific climb UUID exists
+climbExistsByUuid:
+SELECT COUNT(*) FROM climbs WHERE uuid = ?;
+
+statExistsByUuid:
+SELECT COUNT(*) FROM climb_stats WHERE climb_uuid = ?;
+
+countStats:
+SELECT COUNT(*) FROM climb_stats;
+
+countNomatchClimbs:
+SELECT COUNT(*) FROM climbs WHERE is_nomatch = 1;
+
+-- Bulk delete: public board data (re-downloadable via sync)
+deleteAllClimbs:
+DELETE FROM climbs;
+
+deleteAllClimbStats:
+DELETE FROM climb_stats;
+
+-- Targeted bulk delete used by [BoardSyncManager.handlePostMigrationResync]
+-- to wipe ONLY the cron-blob-derived catalog rows (source='kilter')
+-- before a force-resync. Cruxcoach-authored climbs (source='local' /
+-- 'nostr', origin='cruxcoach') stay untouched. Run stats first since
+-- there's no FK cascade in SQLite without explicit constraints.
+deleteKilterSourceClimbStats:
+DELETE FROM climb_stats
+WHERE climb_uuid IN (SELECT uuid FROM climbs WHERE source = 'kilter');
+
+deleteKilterSourceClimbs:
+DELETE FROM climbs WHERE source = 'kilter';
+
+deleteAllPlacements:
+DELETE FROM placements;
+
+deleteAllProductSizes:
+DELETE FROM product_sizes;
+
+deleteAllBoardImages:
+DELETE FROM board_images;
+
+deleteAllLeds:
+DELETE FROM leds;
+
+deleteAllHoles:
+DELETE FROM holes;
+
+deleteAllHoldPositions:
+DELETE FROM board_hold_positions;
+
+deleteAllSyncState:
+DELETE FROM sync_states;
+
+deleteAllBetaLinks:
+DELETE FROM beta_links;
+
+
+-- LED grid with coordinates for animations (joins placement coords + LED positions)
+getAllLedGrid:
+SELECT p.placement_id, p.x, p.y, l.position AS led_position
+FROM placements p
+JOIN leds l ON p.hole_id = l.hole_id
+WHERE l.product_size_id = ?;
+
+
+-- ═══ FEAT-003 Community-climb queries ═══
+
+-- Insert/upsert a local climb draft (source='local'). When the editor
+-- loads a draft and saves again, we update the editor-controlled
+-- columns in place — without touching the cross-cutting provenance
+-- columns owned by the publish path (nostr_event_id, nostr_d_tag,
+-- kilter_status, kilter_synced_at, kilter_publish_via, kilter_error,
+-- is_deleted). Pre-fix this used INSERT OR REPLACE, which wiped all of
+-- those on every editor save, leaving a process-kill window where a
+-- previously-published climb's edit-in-progress looked unpublished and
+-- the retry worker would attempt to re-create it on Kilter (Kilter then
+-- 4xx-rejects because the climb already exists, marking it 'rejected'
+-- — a stranded row that confuses every subsequent UI/sync read).
+--
+-- The block runs INSERT OR IGNORE followed by an explicit
+-- column-whitelist UPDATE: a fresh uuid → INSERT applies defaults,
+-- UPDATE no-ops; an existing uuid → INSERT no-ops, UPDATE refreshes
+-- editor fields and leaves the provenance columns alone. SQLDelight
+-- runs both statements in one transaction so a process-kill between
+-- them rolls back cleanly.
+--
+-- Why source/origin/sync_status are still in the UPDATE: those are
+-- editor-domain (the editor authored this row, the editor declares it
+-- a draft until publish), so they always re-set to 'local'/'draft'/
+-- 'cruxcoach' on each save — matching pre-fix behaviour.
+--
+-- edge_* are the climb's bounding box derived from selected hold
+-- coordinates (see ClimbBounds.fromCoords); pass NULL when the editor
+-- can't resolve placement coords (rare race during layout-data load).
+insertLocalDraft {
+    INSERT OR IGNORE INTO climbs(uuid, layout_id, setter_username, name, frames,
+        frames_count, is_listed, edge_left, edge_right, edge_bottom, edge_top, created_at,
+        description, is_nomatch, frames_pace, hsm, move_count,
+        source, created_by_pubkey, frames_hash, sync_status, origin)
+    VALUES (:uuid, :layout_id, :setter_username, :name, :frames,
+        1, 1, :edge_left, :edge_right, :edge_bottom, :edge_top, :created_at,
+        :description, 0, 0, 0, :move_count,
+        'local', :created_by_pubkey, :frames_hash, 'draft', 'cruxcoach');
+    UPDATE climbs SET
+        layout_id = :layout_id,
+        setter_username = :setter_username,
+        name = :name,
+        frames = :frames,
+        frames_count = 1,
+        is_listed = 1,
+        edge_left = :edge_left,
+        edge_right = :edge_right,
+        edge_bottom = :edge_bottom,
+        edge_top = :edge_top,
+        created_at = :created_at,
+        description = :description,
+        is_nomatch = 0,
+        frames_pace = 0,
+        hsm = 0,
+        move_count = :move_count,
+        source = 'local',
+        created_by_pubkey = :created_by_pubkey,
+        frames_hash = :frames_hash,
+        sync_status = 'draft',
+        origin = 'cruxcoach'
+    WHERE uuid = :uuid;
+}
+
+-- Delete a local-only DRAFT (user explicitly discards). Two SQL guards
+-- combined enforce "drafts only":
+--   * source = 'local'      — was inserted via the editor (insertLocalDraft),
+--                             not via the live-sub upsert path
+--   * nostr_event_id IS NULL — never reached a relay
+--
+-- The second guard is a defence-in-depth backstop: the drafts drawer's
+-- query (`getDraftClimbs`) already filters out published rows, so today's
+-- UI can't route a published row through this delete path. But `source`
+-- alone stays 'local' even after publish (markClimbPublishedNostr only
+-- flips sync_status), so a future caller that bypassed the drawer would
+-- have silently torn down published metadata. Pinning on nostr_event_id
+-- IS NULL closes that brittleness at the SQL boundary.
+--
+-- Published climbs must go through CommunityClimbDeleter (Kind-5 + a
+-- tombstone-replacement Kind-30078). A hard DELETE here would leave the
+-- relay copy orphaned with no local marker to absorb the live-sub echo,
+-- and the climb would silently rematerialise on next sync.
+--
+-- climb_stats deletion mirrors the same WHERE so we never strip stats
+-- for a row we'd refuse to delete.
+deleteLocalClimb {
+    DELETE FROM climb_stats WHERE climb_uuid IN (
+        SELECT uuid FROM climbs
+        WHERE uuid = :uuid
+          AND source = 'local'
+          AND nostr_event_id IS NULL
+    );
+    DELETE FROM climbs
+    WHERE uuid = :uuid
+      AND source = 'local'
+      AND nostr_event_id IS NULL;
+}
+
+-- Bundle the data the CommunityClimbDeleter needs in one read:
+-- the d-tag + last published event-id (so the Kind-5 deletion can
+-- carry both `a`- and `e`-references to the original), the row's
+-- author (so the deleter can refuse to send if the local row isn't
+-- the user's own — defence against a UI bug or compromised pubkey
+-- mismatch), and the Kilter publish status (so the UI can warn
+-- about manual Kilter cleanup when origin='cruxcoach' AND
+-- kilter_status='synced').
+getCommunityClimbDeleteContext:
+SELECT nostr_event_id, nostr_d_tag, created_by_pubkey, kilter_status, origin
+FROM climbs
+WHERE uuid = :uuid
+LIMIT 1;
+
+-- ── Tombstone path for already-published community climbs ───────
+-- Marks a CruxCoach-authored, already-published climb as deleted.
+-- Owner-locked at the SQL layer: the WHERE refuses to flip a row
+-- whose `created_by_pubkey` doesn't match the caller's pubkey, so a
+-- bug or a malicious caller cannot tombstone someone else's climb.
+--
+-- The `created_by_pubkey` check is the real owner gate. We deliberately
+-- do NOT additionally gate on `origin = 'cruxcoach'` here — pre-fix
+-- that extra clause silently no-op'd the entire UPDATE on cross-
+-- published rows, where the row's `origin` was 'kilter' (= the
+-- Live-Sub had imported it from a Blossom blob whose cron-merge
+-- never linked the original Kind-30078 publish to the Kilter row,
+-- so origin stayed 'kilter' even though `created_by_pubkey` was
+-- correctly set). Result before fix: a Live-Sub Kind-5 / D-tombstone
+-- arrived, ran through this path, matched zero rows, and the
+-- deleted climb stayed visible in BoardBrowser indefinitely. The
+-- pubkey match is sufficient — it can only succeed when the row was
+-- published by the caller, regardless of which provenance flavour
+-- the local copy carries.
+--
+-- Sets:
+--  * is_deleted = 1, is_listed = 0   — VIEW excludes the row.
+--  * sync_status = 'deleted'         — UI/diagnostics distinguish from
+--                                      'published_nostr' / 'failed'.
+--  * created_at = :tombstone_iso     — replaces the original publish
+--                                      time so the subscriber's stale-
+--                                      event check rejects any incoming
+--                                      Original-Event with an older
+--                                      created_at. Without this, a Live-
+--                                      Sub re-import from a non-
+--                                      deleting relay would tie on
+--                                      created_at and the upsert would
+--                                      reset is_deleted to its 0 default.
+markCommunityClimbDeleted {
+    UPDATE climbs SET
+        is_deleted = 1,
+        is_listed = 0,
+        sync_status = 'deleted',
+        created_at = :tombstone_iso
+    WHERE uuid = :uuid
+      AND created_by_pubkey = :pubkey;
+    -- climb_stats intentionally preserved. The tombstone-design treats
+    -- a deletion as a *visibility flip*, not a row purge: the climb
+    -- stays in the climbs table with is_listed=0 so user-history JOINs
+    -- (climb_logs, attempts, sends) still resolve to a real row with
+    -- name/frames/setter intact, and climb_stats stays so the logbook /
+    -- detail-screen can still show grade + send-count for a climb the
+    -- user already attempted before the setter deleted it. Pre-fix
+    -- this DELETE wiped the grade from logbook entries.
+}
+
+-- True if a row exists and its is_deleted flag is set. Used by the
+-- subscriber's L3 absorption check to refuse re-importing a tombstoned
+-- climb from a Live-Sub event that came in via a non-deleting relay.
+isClimbTombstoned:
+SELECT 1 FROM climbs
+WHERE uuid = :uuid AND is_deleted = 1
+LIMIT 1;
+
+-- Cross-device defence: when a Kind-5 deletion (or Kind-30078 tombstone-
+-- replacement) lands on a device that *never* had the original climb,
+-- there's no row to flip and L3's is_deleted=1 absorption fires nowhere.
+-- The next Live-Sub Original-Event from a non-deleting relay would
+-- import the climb fresh. This INSERT OR IGNORE plants a minimal
+-- "memorial" row keyed on the same uuid so the eventual Original-Event
+-- hits L3 and is dropped. Real-row competition: if a row already
+-- exists (legitimate or from a prior import) the IGNORE no-ops; the
+-- caller follows up with markCommunityClimbDeleted to flip the real
+-- row's is_deleted flag (owner-locked).
+--
+-- Hardcoded `origin = 'cruxcoach'`: a tombstone shell is only ever
+-- meaningful for community climbs — Kilter-origin rows can never be
+-- deleted via this path (Kilter is read-only on our end), and a shell
+-- with origin='kilter' would be misclassified by every later
+-- diagnostic / browse path.
+insertTombstoneShell:
+INSERT OR IGNORE INTO climbs(
+    uuid, layout_id, setter_username, name, frames,
+    frames_count, is_listed, edge_left, edge_right, edge_bottom, edge_top,
+    created_at, description, is_nomatch, frames_pace, hsm, is_deleted,
+    move_count, source, nostr_d_tag, created_by_pubkey,
+    sync_status, origin
+) VALUES (
+    :uuid, 0, NULL, '', '',
+    1, 0, NULL, NULL, NULL, NULL,
+    :tombstone_iso, '', 0, 0, 0, 1,
+    0, 'nostr', :d_tag, :pubkey,
+    'deleted', 'cruxcoach'
+);
+
+-- Hold-frequency lookup for the editor's heatmap overlay. Returns
+-- (placement_id, occurrence_count) pairs across all listed climbs at the
+-- given layout + angle. The Kotlin side aggregates frames text → hold IDs
+-- and normalises to 0..1 — kept out of SQL because the frames format
+-- (delta-encoded `p{id}r{role},`) needs the regex-style parser to be
+-- canonical.
+getFramesForLayoutAndAngle:
+SELECT c.uuid, c.frames
+FROM climbs c
+INNER JOIN climb_stats cs ON c.uuid = cs.climb_uuid
+WHERE c.layout_id = :layoutId
+  AND cs.angle = :angle
+  AND c.is_listed = 1
+  AND c.frames_count = 1
+  AND LENGTH(c.frames) > 0;
+
+-- Upsert a community climb received from Nostr (source='nostr'). These
+-- are CruxCoach-origin by definition — only our editor publishes events
+-- in the com.cruxcoach.climb namespace, so origin is hardcoded.
+-- edge_* come from the optional `bounds` tag on the Kind-30078 event;
+-- pass NULL when the event predates Plan 2 (no bounds tag).
+upsertCommunityClimb:
+INSERT OR REPLACE INTO climbs(uuid, layout_id, setter_username, name, frames,
+    frames_count, is_listed, edge_left, edge_right, edge_bottom, edge_top, created_at,
+    description, is_nomatch, frames_pace, hsm, move_count,
+    source, nostr_event_id, nostr_d_tag, created_by_pubkey, frames_hash, sync_status, origin)
+VALUES (?, ?, ?, ?, ?,
+    1, 1, ?, ?, ?, ?, ?,
+    ?, 0, 0, 0, ?,
+    'nostr', ?, ?, ?, ?, 'synced', 'cruxcoach');
+
+-- Flip a draft to "published_nostr" once the relay accepts the event.
+-- `nostr_publish_via` and `kilter_publish_via` columns remain in the
+-- schema (migration safety, future-reserved) but are no longer
+-- populated — there's only ever one identity now: the user's own.
+--
+-- Ownership-sticky: the WHERE refuses to overwrite an existing
+-- `created_by_pubkey` belonging to a different author. A future caller
+-- that gets the pubkey wrong (or is reached through an editor bypass)
+-- silently no-ops at the SQL layer instead of re-keying a foreign row.
+-- The repository layer reads `lastClimbsChangeCount` after the UPDATE
+-- to surface that mismatch as a loud failure.
+markClimbPublishedNostr:
+UPDATE climbs SET
+    sync_status = 'published_nostr',
+    nostr_event_id = :nostr_event_id,
+    nostr_d_tag = :nostr_d_tag,
+    created_by_pubkey = :pubkey
+WHERE uuid = :uuid
+  AND (created_by_pubkey IS NULL OR created_by_pubkey = :pubkey);
+
+-- Mark a draft as failed (so the publish queue can retry / surface error).
+markClimbPublishFailed:
+UPDATE climbs SET sync_status = 'failed' WHERE uuid = ?;
+
+-- Crash-safety marker. Called immediately BEFORE the publisher hands the
+-- signed event off to the relay pool. Semantics piggy-back on 'failed'
+-- (= "needs retry"), so the existing CommunityPublishRetryWorker drains
+-- the row without any new state machine.
+--
+-- Why pre-mark instead of relying on the post-send catch block: there's
+-- a small but real window between `pool.sendEventWithStats` accepting
+-- the event and `markClimbPublishedNostr` flipping the row to
+-- 'published_nostr'. Process death (OOM kill, user force-stop, OS
+-- restart) inside that window leaves the event durable on the relay
+-- but the local row stuck at 'draft' forever — drafts aren't in the
+-- retry queue's filter. Pre-marking promotes the row into the queue
+-- BEFORE the relay round-trip starts, so the same crash now leaves a
+-- 'failed' row that the next periodic tick (or app-start runOnce)
+-- retries. Re-publish is safe because Kind-30078 is replaceable on
+-- (pubkey, kind, d-tag) — a second publish carrying the same d-tag
+-- collapses on the relay.
+--
+-- Restricted to `source='local'` + `origin='cruxcoach'` so we can never
+-- accidentally promote a Kilter-imported row into the Nostr retry queue.
+markClimbPublishInFlight:
+UPDATE climbs SET sync_status = 'failed'
+WHERE uuid = :uuid
+  AND source = 'local'
+  AND origin = 'cruxcoach';
+
+-- Read just the Kilter publish-state for a climb. Returns null if the
+-- climb isn't in the local DB. Used by CommunityClimbPublisher to decide
+-- between create-climb and update-climb on edit publish.
+getKilterPublishState:
+SELECT kilter_status, kilter_synced_at FROM climbs WHERE uuid = ?;
+
+-- All climbs authored by a given pubkey (any source). Used by the
+-- SetterDetailScreen to show every climb the setter has created in the
+-- local catalog. Pulls from climb_browse so we get the same projection
+-- the regular browse uses (no frames, but everything UI-list needs).
+-- Sort: newest first, fallback to name-asc when created_at is NULL.
+getClimbsByPubkey:
+SELECT * FROM climb_browse
+WHERE created_by_pubkey = ?
+ORDER BY name ASC;
+
+-- Setter-list aggregate: distinct pubkeys with a climb count + their
+-- current resolved setter_username. Drives the SettersListScreen.
+-- Filter on origin='cruxcoach' so only community setters appear, not
+-- every Kilter-API-imported username with a coincidentally non-null
+-- pubkey field.
+-- Implementation note: the COUNT must match what `getClimbsByPubkey`
+-- below actually returns. That query reads from the `climb_browse`
+-- VIEW, which INNER JOINs climbs against climb_stats — so a climbs
+-- row that lacks a climb_stats entry (orphaned by a partial import or
+-- a bug in the publish path) is COUNTed here but missing from the
+-- detail screen, surfacing as the confusing "list shows 2, screen
+-- shows 1" UX. EXISTS-gate the COUNT on the same INNER JOIN
+-- predicate so the two queries can never drift.
+getCommunitySetterStats:
+SELECT created_by_pubkey, setter_username, COUNT(*) AS climb_count
+FROM climbs c
+WHERE origin = 'cruxcoach'
+  AND created_by_pubkey IS NOT NULL
+  AND is_listed = 1
+  AND EXISTS (SELECT 1 FROM climb_stats cs WHERE cs.climb_uuid = c.uuid)
+GROUP BY created_by_pubkey
+ORDER BY climb_count DESC, setter_username ASC;
+
+-- Bulk-update the setter_username on every CruxCoach climb authored by
+-- the given pubkey. Two callers:
+--   1. NostrProfileManager.publishProfile — propagates the local user's
+--      new display_name to their own community climbs after profile save
+--   2. CommunityClimbSubscriber — after a climb event lands, fetches the
+--      setter's Kind 0 (cache-first) and writes the display_name back
+--      so the browse list shows pretty names without per-row lookups
+-- Only touches `setter_username` — every CruxCoach-side column stays put.
+updateSetterUsernameForPubkey:
+UPDATE climbs SET setter_username = ?
+WHERE created_by_pubkey = ? AND origin = 'cruxcoach';
+
+-- Kilter-side publish lifecycle. Separate from sync_status because the
+-- Kilter API push is a parallel best-effort path: a climb can be live
+-- on Nostr (sync_status='published_nostr') while still pending or failed
+-- on the Kilter side. Used by the future Kilter-direct-publish FEAT and
+-- by the bundled-account fallback service.
+markKilterPublishPending:
+UPDATE climbs SET kilter_status = 'pending', kilter_error = NULL WHERE uuid = ?;
+
+markKilterPublishSynced:
+UPDATE climbs SET kilter_status = 'synced',
+                  kilter_synced_at = ?,
+                  kilter_publish_via = ?,
+                  kilter_error = NULL
+WHERE uuid = ?;
+
+markKilterPublishFailed:
+UPDATE climbs SET kilter_status = 'failed', kilter_error = ? WHERE uuid = ?;
+
+-- Mark a climb whose update Kilter rejected (e.g. because UI semantics
+-- forbid editing already-published climbs). Distinct from 'failed' so
+-- the retry worker doesn't re-poke the row endlessly. UI shows a
+-- "diverged" banner: locally + on Nostr the new version, on Kilter the
+-- original.
+markKilterPublishDiverged:
+UPDATE climbs SET kilter_status = 'diverged', kilter_error = ? WHERE uuid = ?;
+
+-- Terminal-failure state for the CREATE flow when Kilter rejects the
+-- payload with a 4xx (validation, content-policy, account-state). Same
+-- intent as 'diverged' but for the create path: stop retrying. Without
+-- this, 4xx-rejected climbs stayed in the retry queue forever because
+-- the queue's WHERE clause matches `kilter_status='failed'`.
+markKilterPublishRejected:
+UPDATE climbs SET kilter_status = 'rejected', kilter_error = ? WHERE uuid = ?;
+
+-- Atomic CAS-style claim of the Kilter publish slot for a climb.
+-- Transitions kilter_status from NULL/'failed' to 'pending' and clears
+-- any stale kilter_error in one statement. Combined with
+-- [lastClimbsChangeCount] inside a transactionWithResult the caller
+-- can tell "I won the race" (changes() = 1) from "someone else has
+-- the slot" (0). Without this CAS, two flows (CommunityClimbPublisher
+-- mid-publish + KilterPublishRetryWorker) could both read
+-- `kilter_status` independently, both decide to publish, and Kilter
+-- saw two API calls per climb. Restricted to origin='cruxcoach' rows
+-- so we never accidentally claim a generic Kilter-imported climb.
+claimKilterPublishSlot:
+UPDATE climbs
+   SET kilter_status = 'pending', kilter_error = NULL
+ WHERE uuid = ?
+   AND origin = 'cruxcoach'
+   AND (kilter_status IS NULL OR kilter_status = 'failed');
+
+-- Companion to [claimKilterPublishSlot]. Returns 1 if the previous
+-- statement on this connection updated a row, 0 if it no-opped (the
+-- claim was lost to another flow). MUST be read inside the same
+-- transactionWithResult as the claim — `changes()` is per-connection
+-- and observes only the previous statement.
+lastClimbsChangeCount:
+SELECT changes();
+
+-- ═══ Kilter publish per-attempt audit-history ═══
+
+-- Append a row to the per-attempt audit trail. Called from every
+-- terminal branch of KilterClimbPublisher.submit + KilterPublishRetryWorker
+-- so the retry timeline is reconstructible after the single-value
+-- `climbs.kilter_*` columns have been overwritten by a later attempt.
+recordKilterPublishAttempt:
+INSERT INTO kilter_publish_attempts(climb_uuid, attempted_at, op, via, outcome, http_code, error_excerpt)
+VALUES (?, ?, ?, ?, ?, ?, ?);
+
+-- Per-climb attempt timeline (latest first). Used by support / forensics
+-- and the per-climb detail view's "Kilter publish history" section.
+getKilterPublishAttempts:
+SELECT * FROM kilter_publish_attempts
+WHERE climb_uuid = ?
+ORDER BY attempted_at DESC
+LIMIT ?;
+
+-- Aggregate counters for the Kilter-account UI's queue health card.
+-- Returns (pending_count, failed_count, last_attempt_at). pending =
+-- rows whose latest `kilter_status` is NULL or 'failed' under
+-- origin='cruxcoach' AND sync_status='published_nostr' (the same
+-- predicate as the retry worker's queue). failed_count is the same
+-- thing for visibility consistency. last_attempt_at uses the new audit
+-- table so a worker that ran since boot reflects in the UI.
+getKilterPublishQueueStats:
+SELECT
+    (SELECT COUNT(*) FROM climbs
+     WHERE origin = 'cruxcoach'
+       AND sync_status = 'published_nostr'
+       AND (kilter_status IS NULL OR kilter_status = 'failed')) AS pending_count,
+    (SELECT COUNT(*) FROM climbs
+     WHERE origin = 'cruxcoach'
+       AND sync_status = 'published_nostr'
+       AND kilter_status = 'failed') AS failed_count,
+    (SELECT MAX(attempted_at) FROM kilter_publish_attempts) AS last_attempt_at;
+
+-- Mid-flow recovery: rows whose `kilter_status='pending'` is older than
+-- the per-attempt grace window get downgraded to 'failed' so the retry
+-- worker's queue criterion picks them up next tick. The `pending` state
+-- is normally short-lived (the publisher's claim → submit → mark
+-- transition), but a process kill / OOM / mid-flow throw between the
+-- claim and the terminal mark used to strand the row indefinitely
+-- ('pending' is not in the retry-queue WHERE clause). Companion to
+-- [claimKilterPublishSlot]'s try/catch downgrade — covers the residual
+-- "even the catch threw" edge.
+sweepStuckKilterPending:
+UPDATE climbs
+   SET kilter_status = 'failed',
+       kilter_error = COALESCE(kilter_error, 'sweeper: stuck pending')
+ WHERE kilter_status = 'pending'
+   AND origin = 'cruxcoach'
+   AND uuid IN (
+       SELECT climb_uuid FROM kilter_publish_attempts
+        WHERE attempted_at < ?
+        GROUP BY climb_uuid
+       UNION
+       -- Rows that never recorded an attempt (claim succeeded but the
+       -- HTTP call hadn't been entered yet when the process died). The
+       -- created_at fallback is conservative — a pending row without
+       -- any attempt history that was created more than the cutoff ago
+       -- is by definition stuck.
+       SELECT uuid FROM climbs
+        WHERE kilter_status = 'pending'
+          AND origin = 'cruxcoach'
+          AND uuid NOT IN (SELECT climb_uuid FROM kilter_publish_attempts)
+   );
+
+-- Climbs that need a Kilter retry: cruxcoach-origin, not yet on Kilter
+-- (NULL or 'failed') and Nostr-published (so we know the user finalized
+-- their publish). Used by the retry queue.
+-- Drained by KilterPublishRetryWorker every 6h. LIMIT bounds the batch
+-- so a Kilter outage that builds up a queue of dozens-to-hundreds of
+-- pending climbs doesn't fire the full backlog at the API in one tick
+-- — the worker re-runs and chips at the queue across multiple ticks
+-- instead.
+-- Scoped to the active pubkey so a backup-restore from a different
+-- nsec (DataExchange override path) or an identity-switch device-side
+-- doesn't push climbs authored under another identity to the active
+-- Kilter account. Mirrors getClimbsAwaitingNostrRetry. Strict equality
+-- on `created_by_pubkey` excludes legacy NULL-pubkey rows on purpose:
+-- a `published_nostr` row must have had a pubkey at publish time, so
+-- a NULL is a data-integrity bug that deserves manual triage rather
+-- than a silent retry under whichever identity is active right now.
+getClimbsAwaitingKilterRetry:
+SELECT * FROM climbs
+WHERE origin = 'cruxcoach'
+  AND sync_status = 'published_nostr'
+  AND (kilter_status IS NULL OR kilter_status = 'failed')
+  AND created_by_pubkey = :pubkey
+ORDER BY created_at ASC
+LIMIT 25;
+
+-- Climbs the local user authored that the editor sent to relays but no
+-- relay accepted (`sync_status='failed'`). Used by the new
+-- CommunityPublishRetryWorker as the retry queue. Scoped to the current
+-- pubkey so an identity-switch device-side doesn't drain rows authored
+-- by another identity. LIMIT bounds the batch so a relay outage that
+-- accumulates dozens of stranded climbs doesn't fire them all in one
+-- worker tick — successive ticks chip at the queue.
+getClimbsAwaitingNostrRetry:
+SELECT * FROM climbs
+WHERE source = 'local'
+  AND sync_status = 'failed'
+  AND created_by_pubkey = ?
+ORDER BY created_at ASC
+LIMIT 25;
+
+-- Drafts waiting to be published (source='local' AND sync_status='draft').
+-- Scoped to the current pubkey so an identity-switch on the same device
+-- (key-management screen → restartApp) doesn't surface drafts authored
+-- under a different identity. NULL `created_by_pubkey` rows are still
+-- included so pre-key-init drafts (legacy data, signer not yet ready
+-- when the row was first written) remain visible to the first identity
+-- that opens the editor.
+getDraftClimbs:
+SELECT * FROM climbs
+WHERE source = 'local'
+  AND sync_status IN ('draft', 'failed')
+  AND (
+    -- Identity-isolation: a draft's `created_by_pubkey` must match the
+    -- caller's pubkey, OR be NULL (legacy / pre-signer-init data).
+    --
+    -- The `:pubkey IS NULL` short-circuit covers a real bug: nostrSigner
+    -- resolution is occasionally flaky (signer not yet warm, init race),
+    -- so saveDraft can write a row with `created_by_pubkey = X` while
+    -- the immediately-following getDraftClimbs(:pubkey=null) read would
+    -- otherwise filter that row out. The user then sees their just-
+    -- saved draft missing from the drawer until the next editor open
+    -- happens to resolve a stable pubkey. With this short-circuit, a
+    -- null-pubkey caller sees every draft — drafts are local-only data
+    -- so no privacy loss.
+    :pubkey IS NULL
+    OR created_by_pubkey = :pubkey
+    OR created_by_pubkey IS NULL
+  )
+ORDER BY created_at DESC;
+
+-- Single-row stats lookup for the editor's draft-restore path. Drafts have
+-- exactly one climb_stats row (one angle); LIMIT 1 is defensive against
+-- legacy data shapes. display_difficulty carries the setter grade for
+-- local drafts (see upsertLocalClimbStat). Returns NULL for both columns
+-- when the climb has no stats row yet.
+getClimbStatsForUuid:
+SELECT angle, display_difficulty FROM climb_stats WHERE climb_uuid = ? LIMIT 1;
+
+-- All climbs the current user authored (drafts + already-published nostr).
+getMyClimbs:
+SELECT * FROM climbs
+WHERE created_by_pubkey = ?
+ORDER BY created_at DESC;
+
+-- All synced community climbs (source='nostr').
+getCommunityClimbs:
+SELECT * FROM climbs
+WHERE source = 'nostr'
+ORDER BY created_at DESC;
+
+-- Lookup by frames_hash for duplicate detection at publish time.
+findClimbByFramesHash:
+SELECT uuid, name, source, created_by_pubkey FROM climbs
+WHERE frames_hash = ? AND layout_id = ?;
+
+-- ── Backup / restore for own-authored climbs (FEAT-008 Phase B) ───
+-- Drives the v3 backup envelope's `boardClimbs` + `boardClimbStats`
+-- fields. Three queries, all gated to `origin='cruxcoach'` so a
+-- Kilter-imported row can never accidentally land in a user's
+-- personal backup blob.
+
+-- Pull every CruxCoach-authored climb belonging to :pubkey, plus the
+-- legacy `created_by_pubkey IS NULL` drafts (signer-init-race orphans
+-- the editor still surfaces in the drafts drawer — they're local-only
+-- so binding them to the current pubkey on restore is correct).
+-- `is_listed` is intentionally NOT filtered: even locally-hidden own
+-- climbs deserve to be in the backup.
+-- Tombstoned rows (`is_deleted=1`) are excluded — restoring a tombstone
+-- on another device would re-broadcast a deletion intent the user
+-- already actioned, so the tombstone column is intentionally NOT round-
+-- tripped through backups.
+getOwnClimbsForBackup:
+SELECT uuid, layout_id, setter_username, name, frames,
+       edge_left, edge_right, edge_bottom, edge_top, created_at, description,
+       move_count, source, sync_status, created_by_pubkey, frames_hash,
+       nostr_event_id, nostr_d_tag, nostr_publish_via,
+       kilter_status, kilter_synced_at, kilter_publish_via, kilter_error
+FROM climbs
+WHERE origin = 'cruxcoach'
+  AND is_deleted = 0
+  AND (created_by_pubkey = :pubkey OR (created_by_pubkey IS NULL AND source = 'local'))
+ORDER BY created_at DESC;
+
+-- Pair the climbs above with their per-angle stats. JOIN on uuid +
+-- ownership re-check so the worst case (a stats row whose climb has
+-- since been tombstoned or stripped) returns no rows. fa_username /
+-- fa_at / official_kilter_difficulty are Kilter-only fields, never
+-- meaningful for own-climb stats — omitted.
+getOwnClimbStatsForBackup:
+SELECT cs.climb_uuid, cs.angle, cs.display_difficulty, cs.difficulty_average,
+       cs.quality_average, cs.ascensionist_count, cs.benchmark_difficulty
+FROM climb_stats cs
+INNER JOIN climbs c ON c.uuid = cs.climb_uuid
+WHERE c.origin = 'cruxcoach'
+  AND c.is_deleted = 0
+  AND (c.created_by_pubkey = :pubkey OR (c.created_by_pubkey IS NULL AND c.source = 'local'));
+
+-- Single-angle lookup for own climbs. The Kilter publish path needs the
+-- author's chosen angle as a top-level field (the API rejects missing
+-- angle), but the climbs row itself doesn't store it — only climb_stats
+-- does, keyed by (uuid, angle). Pick MIN(angle) so the result is stable
+-- when there's only one row (the typical own-climb case).
+getOwnClimbAngle:
+SELECT MIN(angle) AS angle FROM climb_stats WHERE climb_uuid = ?;
+
+-- Restore path. Two-step:
+--  1. INSERT OR IGNORE for the typical fresh-row case (no existing
+--     row, content + lifecycle land together).
+--  2. COALESCE-fill UPDATE for the case where an earlier board-sync
+--     (= cron-blob import) already wrote a base row carrying only
+--     the public columns (origin / created_by_pubkey / content) but
+--     not the lifecycle columns the cron deliberately doesn't track
+--     in the public blob (kilter_status, nostr_event_id, frames_hash,
+--     …). Pre-fix the bare INSERT OR IGNORE silently skipped that
+--     case and the restored backup's lifecycle metadata was lost —
+--     manifesting as post-restore "Edit" misfires (Option-C gate sees
+--     kilter_status=NULL and lets the user edit a Kilter-immutable
+--     climb), redundant Kilter republish-retries, and the wrong
+--     "Community only" badge. The COALESCE-fill only writes when the
+--     existing column is NULL, so any non-NULL local state set after
+--     the board-sync (e.g. user marked the climb tombstoned in the
+--     meantime) wins over the backup. The `origin='cruxcoach'` guard
+--     in the WHERE is belt-and-suspenders against a malformed backup
+--     trying to flip Kilter-blob rows.
+--
+-- Bookkeeping defaults on the INSERT branch: is_listed=1, is_nomatch=0,
+-- frames_pace=0, hsm=0, is_deleted=0, frames_count=1 (boulders only —
+-- multi-frame routes are FEAT-012 / 0.2.0+). `origin='cruxcoach'` is
+-- hardcoded on the INSERT; the export side filters by it so any row
+-- reaching this query is by definition cruxcoach-origin.
+--
+-- Note: SQLDelight runs the block's two statements in one transaction,
+-- so a process-kill between them rolls back cleanly — same pattern as
+-- upsertLocalClimb.
+-- Split into INSERT and COALESCE-fill UPDATE so the caller can read
+-- `lastClimbsChangeCount()` BETWEEN the two statements: the inserted-vs-
+-- existed discriminator drives the snackbar's "imported X / skipped Y"
+-- counter. A single-block `restoreOwnClimb { INSERT...; UPDATE...; }`
+-- left changes() reflecting the trailing UPDATE (always 1 for an
+-- existing row, masquerading as a fresh insert) — see the regression
+-- test `re-import is idempotent - INSERT OR IGNORE preserves the
+-- existing row` for the concrete shape.
+restoreOwnClimbInsert:
+INSERT OR IGNORE INTO climbs(
+    uuid, layout_id, setter_username, name, frames,
+    frames_count, is_listed, edge_left, edge_right, edge_bottom, edge_top, created_at,
+    description, is_nomatch, frames_pace, hsm, move_count, is_deleted,
+    source, origin, sync_status,
+    created_by_pubkey, frames_hash,
+    nostr_event_id, nostr_d_tag, nostr_publish_via,
+    kilter_status, kilter_synced_at, kilter_publish_via, kilter_error)
+VALUES (
+    :uuid, :layout_id, :setter_username, :name, :frames,
+    1, 1, :edge_left, :edge_right, :edge_bottom, :edge_top, :created_at,
+    :description, 0, 0, 0, :move_count, 0,
+    :source, 'cruxcoach', :sync_status,
+    :created_by_pubkey, :frames_hash,
+    :nostr_event_id, :nostr_d_tag, :nostr_publish_via,
+    :kilter_status, :kilter_synced_at, :kilter_publish_via, :kilter_error
+);
+
+-- Fill in the previously-NULL Nostr/Kilter publish metadata that the v3
+-- envelope carries. COALESCE preserves any non-NULL local value so a
+-- mid-restore-state import doesn't clobber locally-stamped fields with
+-- the (possibly older) backup snapshot.
+restoreOwnClimbCoalesceFill:
+UPDATE climbs SET
+    sync_status         = COALESCE(sync_status,         :sync_status),
+    created_by_pubkey   = COALESCE(created_by_pubkey,   :created_by_pubkey),
+    frames_hash         = COALESCE(frames_hash,         :frames_hash),
+    nostr_event_id      = COALESCE(nostr_event_id,      :nostr_event_id),
+    nostr_d_tag         = COALESCE(nostr_d_tag,         :nostr_d_tag),
+    nostr_publish_via   = COALESCE(nostr_publish_via,   :nostr_publish_via),
+    kilter_status       = COALESCE(kilter_status,       :kilter_status),
+    kilter_synced_at    = COALESCE(kilter_synced_at,    :kilter_synced_at),
+    kilter_publish_via  = COALESCE(kilter_publish_via,  :kilter_publish_via),
+    kilter_error        = COALESCE(kilter_error,        :kilter_error)
+WHERE uuid = :uuid AND origin = 'cruxcoach';
+
+-- Insert/refresh climb_stats for a local climb at a given angle (setter
+-- difficulty + quality not yet aggregated — sets sentinels).
+upsertLocalClimbStat:
+INSERT OR REPLACE INTO climb_stats(climb_uuid, angle, display_difficulty,
+    difficulty_average, quality_average, ascensionist_count, benchmark_difficulty,
+    fa_username, fa_at, official_kilter_difficulty)
+VALUES (?, ?, ?, ?, NULL, 0, NULL, NULL, NULL, NULL);
+
+-- Grade-consensus cache (MVP: setter_grade_id only, vote-aggregation deferred).
+upsertGradeCache:
+INSERT OR REPLACE INTO community_grade_cache(climb_d_tag, angle, setter_grade_id,
+    consensus_average, consensus_grade_id, vote_count, confidence, last_updated)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+
+getGradeCache:
+SELECT * FROM community_grade_cache WHERE climb_d_tag = ? AND angle = ?;
+
+-- ── Post-import integrity diagnostics ────────────────────────────
+-- Counts surfaced by [BoardDatabaseImporter.importFromChunks] after
+-- every successful sync. Steady-state expectation post-6.sqm:
+--   * countOrphanStats = 0 — stats whose climb_uuid has no matching
+--     climbs row indicate cron-side desync (rare: a climb tombstoned
+--     in climbs but still referenced in stats) or a partial chunk set.
+--   * countListedClimbsWithoutStats: how many is_listed=1 climbs the
+--     INNER JOIN excludes from climb_browse. Non-zero is normal for
+--     fresh community climbs, but a sudden jump signals a stats-chunk
+--     import failure or a fresh case-drift regression.
+
+countOrphanStats:
+SELECT COUNT(*) FROM climb_stats cs
+LEFT JOIN climbs c ON c.uuid = cs.climb_uuid
+WHERE c.uuid IS NULL;
+
+countListedClimbsWithoutStats:
+SELECT COUNT(*) FROM climbs c
+WHERE c.is_listed = 1
+  AND NOT EXISTS (SELECT 1 FROM climb_stats cs WHERE cs.climb_uuid = c.uuid);
+
+-- ── Post-v8 force-resync coordination ───────────────────────────
+-- 7.sqm wipes Kilter-side rows and inserts a marker row in
+-- sync_states. BoardSyncManager checks for it on app start; if
+-- present, it clears stored Blossom chunk hashes + lastSyncTimestamp
+-- and triggers a fresh full sync, then clears the marker.
+
+hasPostV8ResyncMarker:
+SELECT 1 FROM sync_states WHERE table_name = 'post_v8_force_resync' LIMIT 1;
+
+clearPostV8ResyncMarker:
+DELETE FROM sync_states WHERE table_name = 'post_v8_force_resync';
+
+-- Homewall (0.1.4) force-resync marker. See 10.sqm for the why —
+-- existing 0.1.3 installs need a one-shot hash-cache wipe so the
+-- new Homewall chunks land on first launch of 0.1.4.
+hasHomewallResyncMarker:
+SELECT 1 FROM sync_states WHERE table_name = 'homewall_force_resync' LIMIT 1;
+
+clearHomewallResyncMarker:
+DELETE FROM sync_states WHERE table_name = 'homewall_force_resync';
+
+-- ─────────────────────────────────────────────────────────────────
+-- FEAT-005 Aurora-JSON-import — name-based climb resolution
+-- ─────────────────────────────────────────────────────────────────
+-- Aurora exports reference each climb by display name (not UUID).
+-- The importer collects every distinct name from the export's
+-- ascents/attempts/circuits, looks them up via the query below in
+-- bounded batches (≤500 names per call to stay well under the
+-- SQLite 999 bound-variable cap), and resolves the public-over-draft
+-- + popularity tiebreaker in Kotlin.
+--
+-- Joins climbs to climb_stats so the caller sees the total
+-- ascensionist count per uuid; the Kotlin picker uses that as the
+-- collision tiebreaker (boardsesh proven pattern).
+lookupClimbsByNamesForAuroraImport:
+SELECT c.name, c.uuid, c.source, c.is_listed,
+       CAST(COALESCE(SUM(cs.ascensionist_count), 0) AS INTEGER) AS total_ascensionist_count
+FROM climbs c
+LEFT JOIN climb_stats cs ON cs.climb_uuid = c.uuid
+WHERE c.name IN :names
+  AND c.is_deleted = 0
+  AND (c.source = 'kilter'
+       OR (c.source = 'local' AND c.created_by_pubkey = :ownPubkey))
+GROUP BY c.uuid;
+
+-- Case-insensitive fallback for the same lookup. Aurora exports preserve
+-- whatever casing the user typed when ticking, while the Kilter catalog
+-- has its own canonical form. Empirical drift seen in 0.1.4 dogfooding:
+-- Aurora "MacroDre" / "swift" / "big day no nap" did not match catalog
+-- entries even though the climbs exist (catalog stores them with
+-- different casing). LOWER() bypasses the index — call this only as a
+-- fallback for names the case-sensitive query missed, with a tiny
+-- residual list per import.
+lookupClimbsByLowerNamesForAuroraImport:
+SELECT c.name, c.uuid, c.source, c.is_listed,
+       CAST(COALESCE(SUM(cs.ascensionist_count), 0) AS INTEGER) AS total_ascensionist_count
+FROM climbs c
+LEFT JOIN climb_stats cs ON cs.climb_uuid = c.uuid
+WHERE LOWER(c.name) IN :lowerNames
+  AND c.is_deleted = 0
+  AND (c.source = 'kilter'
+       OR (c.source = 'local' AND c.created_by_pubkey = :ownPubkey))
+GROUP BY c.uuid;
+
+-- Substring-LIKE fallback used as a *diagnostic* for names that
+-- survived both the case-sensitive and case-insensitive lookups. The
+-- intent is to surface near-matches — e.g. catalog stores
+-- "Calico Desert (V5)" while Aurora exports the bare "Calico Desert".
+-- Cap at 5 results per name; cap inputs to ~30 unresolved names per
+-- import so we don't accidentally run a full table scan loop.
+likeClimbNamesForAuroraDiagnostic:
+SELECT c.name, c.source, c.is_listed
+FROM climbs c
+WHERE LOWER(c.name) LIKE :pattern
+  AND c.is_deleted = 0
+  AND c.source = 'kilter'
+LIMIT 5;
+
+
+-- ─── Community-Climb Dead-Letter Queue ────────────────────────────
+-- Captures Kind-30078 events whose `upsertCommunityClimb` raised at
+-- the SQLite layer so the subscriber can retry them after the next
+-- start instead of leaking a permanent silent data-loss past the
+-- `since` cursor (NIP-01 Live-REQ doesn't re-deliver pre-cursor
+-- events). Created in migration 11.sqm; the schema must also live
+-- here as SQLDelight's source-of-truth for fresh-install schema.
+
+CREATE TABLE community_climb_dead_letters (
+    uuid TEXT NOT NULL PRIMARY KEY,
+    event_id TEXT NOT NULL,
+    event_created_at INTEGER NOT NULL,
+    raw_event_json TEXT NOT NULL,
+    first_failed_at_ms INTEGER NOT NULL,
+    last_failed_at_ms INTEGER NOT NULL,
+    retry_count INTEGER NOT NULL DEFAULT 1,
+    last_error_excerpt TEXT
+);
+
+CREATE INDEX idx_climb_dead_letters_retry
+    ON community_climb_dead_letters(retry_count, last_failed_at_ms);
+
+-- Initial insert. INSERT OR IGNORE so a re-fire of the same uuid
+-- (relay re-delivery within the same session before the cursor moves)
+-- doesn't reset retry_count or first_failed_at_ms. The transaction in
+-- BoardRepository.recordDeadLetterFailure routes a re-fire through
+-- [incrementDeadLetterRetry] instead.
+insertDeadLetter:
+INSERT OR IGNORE INTO community_climb_dead_letters(
+    uuid, event_id, event_created_at, raw_event_json,
+    first_failed_at_ms, last_failed_at_ms, retry_count, last_error_excerpt
+) VALUES (?, ?, ?, ?, ?, ?, 1, ?);
+
+-- Re-fire on an existing DLQ row: bump retry_count, update the last-
+-- failed timestamp + error excerpt. event payload stays as-was on
+-- the assumption the same uuid carries the same content (replaceable
+-- semantics + identical d-tag).
+incrementDeadLetterRetry:
+UPDATE community_climb_dead_letters
+   SET retry_count = retry_count + 1,
+       last_failed_at_ms = :last_failed_at_ms,
+       last_error_excerpt = :last_error_excerpt
+ WHERE uuid = :uuid;
+
+-- Lookup for the insert-or-increment transaction.
+findDeadLetter:
+SELECT * FROM community_climb_dead_letters WHERE uuid = ?;
+
+-- Drained by the subscriber's retry pass. retry_count cap is applied
+-- in code (CommunityClimbSubscriber.MAX_DEAD_LETTER_RETRIES) so we
+-- can change the cap without a schema migration. ORDER BY
+-- first_failed_at_ms keeps the queue FIFO across restarts. LIMIT
+-- bounds the per-call cost.
+getRetriableDeadLetters:
+SELECT * FROM community_climb_dead_letters
+ WHERE retry_count < :maxRetries
+ ORDER BY first_failed_at_ms ASC
+ LIMIT :limit;
+
+-- Called on a successful retry-upsert: drop the DLQ row.
+deleteDeadLetter:
+DELETE FROM community_climb_dead_letters WHERE uuid = ?;
+
+-- Aggregate counts for a future "Failed climb imports" diagnostics
+-- card (FEAT-014 / settings health surface). Cheap, indexed.
+getDeadLetterCounts:
+SELECT
+    COUNT(*) AS total_count,
+    SUM(CASE WHEN retry_count >= :maxRetries THEN 1 ELSE 0 END) AS abandoned_count
+FROM community_climb_dead_letters;

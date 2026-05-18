@@ -30,14 +30,14 @@ import com.cruxcoach.android.ui.theme.ErrorRed
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.theme.SuccessGreen
 import com.cruxcoach.android.ui.theme.WarningYellow
-import com.cruxcoach.data.repository.AuroraAscentWithClimb
+import com.cruxcoach.data.repository.AscentWithClimb
 
 @Composable
 internal fun UserAscentHistory(
-    ascents: List<AuroraAscentWithClimb>,
+    ascents: List<AscentWithClimb>,
     gradeScale: GradeScale,
-    onEdit: (AuroraAscentWithClimb) -> Unit,
-    onDelete: (AuroraAscentWithClimb) -> Unit
+    onEdit: (AscentWithClimb) -> Unit,
+    onDelete: (AscentWithClimb) -> Unit
 ) {
     Text(stringResource(R.string.board_ascenthistory_title), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
     Card(

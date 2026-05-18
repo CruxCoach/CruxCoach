@@ -53,28 +53,7 @@ actual class BoardDriverFactory(private val context: Context) {
      */
     private fun ensureHotPathIndexes(db: SupportSQLiteDatabase) {
         try {
-            db.execSQL("CREATE INDEX IF NOT EXISTS idx_aurora_climb_listed ON aurora_climb(is_listed)")
-            db.execSQL(
-                "CREATE INDEX IF NOT EXISTS idx_aurora_climb_frames_count " +
-                    "ON aurora_climb(is_listed, frames_count, uuid)"
-            )
-            db.execSQL(
-                "CREATE INDEX IF NOT EXISTS idx_aurora_climb_stat_angle " +
-                    "ON aurora_climb_stat(angle)"
-            )
-            db.execSQL(
-                "CREATE INDEX IF NOT EXISTS idx_climb_stat_browse ON aurora_climb_stat(" +
-                    "angle, difficulty_average, quality_average, ascensionist_count, " +
-                    "benchmark_difficulty, climb_uuid)"
-            )
-            db.execSQL(
-                "CREATE INDEX IF NOT EXISTS idx_climb_stat_by_popularity ON aurora_climb_stat(" +
-                    "angle, ascensionist_count, difficulty_average, climb_uuid)"
-            )
-            db.execSQL(
-                "CREATE INDEX IF NOT EXISTS idx_climb_stat_count_cover ON aurora_climb_stat(" +
-                    "angle, ascensionist_count, difficulty_average, benchmark_difficulty, climb_uuid)"
-            )
+            for (ddl in HOT_PATH_INDEX_DDL) db.execSQL(ddl)
         } catch (e: Exception) {
             // Tables may not exist yet on brand-new installs; schema callback
             // will (re-)create the indexes when the schema runs. Don't block
@@ -83,8 +62,76 @@ actual class BoardDriverFactory(private val context: Context) {
         }
     }
 
+    companion object {
+        /**
+         * Hot-path index DDLs — must stay byte-identical to the index list
+         * rebuilt in [com.cruxcoach.android.data.BoardDatabaseImporter]'s
+         * `withDeferredIndexes`. Drift between the two locations means
+         * indexes that were dropped during a bulk import won't get
+         * recreated on the next app open and every browse query will fall
+         * back to a full-table scan.
+         *
+         * The HotPathIndexDriftTest in androidUnitTest asserts both lists
+         * stay in lock-step.
+         */
+        @Suppress("MaxLineLength")
+        val HOT_PATH_INDEX_DDL: List<String> = listOf(
+            "CREATE INDEX IF NOT EXISTS idx_climbs_listed ON climbs(is_listed)",
+            "CREATE INDEX IF NOT EXISTS idx_climbs_frames_count ON climbs(is_listed, frames_count, uuid)",
+            // FEAT-003 + 0.1.4 community-climb indexes. Mirror the set in
+            // BoardDatabaseImporter.CLIMB_INDEXES — both lists are dropped
+            // before bulk import and rebuilt afterwards, and are also
+            // self-healed on app start if SQLite ever drops them. Without
+            // these entries here, a mid-import process kill would leave
+            // the device with no community-climb indexes and every
+            // origin/source/pubkey-filtered query would full-scan.
+            "CREATE INDEX IF NOT EXISTS idx_climbs_source ON climbs(source)",
+            "CREATE INDEX IF NOT EXISTS idx_climbs_frames_hash ON climbs(frames_hash)",
+            "CREATE INDEX IF NOT EXISTS idx_climbs_pubkey ON climbs(created_by_pubkey)",
+            "CREATE INDEX IF NOT EXISTS idx_climbs_origin ON climbs(origin)",
+            "CREATE INDEX IF NOT EXISTS idx_climbs_kilter_status ON climbs(kilter_status)",
+            "CREATE INDEX IF NOT EXISTS idx_climbs_nostr_via ON climbs(nostr_publish_via)",
+            "CREATE INDEX IF NOT EXISTS idx_climb_stats_angle ON climb_stats(angle)",
+            "CREATE INDEX IF NOT EXISTS idx_climb_stats_browse ON climb_stats(angle, difficulty_average, quality_average, ascensionist_count, benchmark_difficulty, climb_uuid)",
+            "CREATE INDEX IF NOT EXISTS idx_climb_stats_by_popularity ON climb_stats(angle, ascensionist_count, difficulty_average, climb_uuid)",
+            "CREATE INDEX IF NOT EXISTS idx_climb_stats_count_cover ON climb_stats(angle, ascensionist_count, difficulty_average, benchmark_difficulty, climb_uuid)",
+        )
+    }
+
     private fun vacuumIfNeeded(db: SupportSQLiteDatabase) {
         try {
+            // Skip VACUUM when a post-migration forced full board re-sync
+            // is pending. The schema migration leaves a *_force_resync
+            // marker; BoardSyncManager then re-downloads + re-imports the
+            // whole board DB (BoardDatabaseImporter drops indexes, bulk-
+            // rewrites ~190k climbs + ~326k stats, rebuilds indexes).
+            // VACUUMing here first is pure wasted work on exactly the slow
+            // upgrade path — observed ~146s blocking onOpen on a Nokia 6.1
+            // (the first hasAnyClimbs queued behind this lock). After the
+            // re-import the freshly-written DB has few free pages so a
+            // later normal open won't trigger VACUUM anyway. Skipping
+            // VACUUM never affects correctness — it is pure space
+            // reclamation.
+            val resyncPending = try {
+                db.query(
+                    "SELECT 1 FROM sync_states WHERE table_name " +
+                        "IN ('post_v8_force_resync','homewall_force_resync') LIMIT 1"
+                ).use { it.moveToFirst() }
+            } catch (e: Exception) {
+                // sync_states may not exist yet on a brand-new install
+                // (schema callback hasn't run). Nothing to VACUUM there
+                // anyway; fall through to the normal cheap freelist
+                // check instead of skipping forever.
+                false
+            }
+            if (resyncPending) {
+                Log.i(
+                    "DatabaseFactory",
+                    "Skipping VACUUM: post-migration force-resync pending (re-import rewrites the DB)"
+                )
+                return
+            }
+
             val cursor = db.query("PRAGMA freelist_count")
             val freePages = if (cursor.moveToFirst()) cursor.getLong(0) else 0L
             cursor.close()

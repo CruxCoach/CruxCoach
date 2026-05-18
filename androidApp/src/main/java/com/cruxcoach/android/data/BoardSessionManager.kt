@@ -3,7 +3,7 @@ package com.cruxcoach.android.data
 import android.util.Log
 import com.cruxcoach.android.notification.AppNotificationService
 import com.cruxcoach.data.repository.PersonalBoardRepository
-import com.cruxcoach.data.repository.BoardSession
+import com.cruxcoach.data.repository.Board_sessions
 import com.cruxcoach.util.DateTimeUtil
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -105,7 +105,7 @@ class BoardSessionManager(
         ensureTickerRunning()
     }
 
-    fun endSession(): BoardSession? {
+    fun endSession(): Board_sessions? {
         if (!_state.value.isActive) return null
 
         // If currently paused, finalize pause
@@ -119,7 +119,7 @@ class BoardSessionManager(
         val endedAt = DateTimeUtil.nowIso()
 
         // Persist to DB
-        var savedSession: BoardSession? = null
+        var savedSession: Board_sessions? = null
         try {
             val sessionId = activeSessionId
             if (sessionId != null) {
@@ -131,7 +131,7 @@ class BoardSessionManager(
                     ascentCount = s.ascentCount.toLong(),
                     bidCount = s.bidCount.toLong()
                 )
-                savedSession = BoardSession(
+                savedSession = Board_sessions(
                     id = sessionId,
                     startedAt = s.startedAt ?: endedAt,
                     endedAt = endedAt,
@@ -150,7 +150,7 @@ class BoardSessionManager(
                     ascentCount = s.ascentCount.toLong(),
                     bidCount = s.bidCount.toLong()
                 )
-                savedSession = BoardSession(
+                savedSession = Board_sessions(
                     id = id,
                     startedAt = s.startedAt ?: endedAt,
                     endedAt = endedAt,

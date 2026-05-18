@@ -94,6 +94,14 @@ object Routes {
     const val BOARD_BROWSER = "board_browser"
     const val BOARD_FILTER = "board_filter"
     const val BOARD_CLIMB_DETAIL = "board_climb_detail/{climbUuid}/{angle}"
+    const val CLIMB_CREATOR = "climb_creator?forkUuid={forkUuid}&editUuid={editUuid}"
+    fun climbCreator(forkUuid: String? = null, editUuid: String? = null): String {
+        val qs = buildList {
+            forkUuid?.let { add("forkUuid=$it") }
+            editUuid?.let { add("editUuid=$it") }
+        }
+        return if (qs.isEmpty()) "climb_creator" else "climb_creator?${qs.joinToString("&")}"
+    }
     const val BOARD_LOGBOOK = "board_logbook"
     const val BOARD_SYNC = "board_sync"
     const val BOARD_LISTS = "board_lists"
@@ -101,6 +109,7 @@ object Routes {
     const val BODY_STAT = "body_stat"
     const val DATA_IMPORT = "data_import"
     const val DATA_EXPORT = "data_export"
+    const val AURORA_MIGRATION = "aurora_migration"
     const val SETTINGS = "settings"
     const val PROFILE_ASSESSMENT = "profile_assessment"
     const val APP_SHARE = "app_share"
@@ -114,6 +123,10 @@ object Routes {
     const val ANNOUNCEMENTS = "announcements"
     const val KEY_MANAGEMENT = "key_management"
     const val KEY_IMPORT = "key_import"
+    const val NOSTR_PROFILE = "nostr_profile"
+    const val SETTER_DETAIL = "setter_detail/{setterPubkey}"
+    fun setterDetail(pubkey: String) = "setter_detail/$pubkey"
+    const val SETTERS_LIST = "setters_list"
     const val MESSAGE_THREAD = "message_thread/{eventId}"
     fun sessionDetail(sessionId: Long) = "session_detail/$sessionId"
     fun activeWorkout(sessionId: Long) = "active_workout/$sessionId"
@@ -204,7 +217,8 @@ fun CruxCoachNavHost(
             route == Routes.ANNOUNCEMENTS ||
             route == Routes.DEV_CHAT ||
             route == Routes.SETTINGS ||
-            route.startsWith("message_thread/") ->
+            route.startsWith("message_thread/") ||
+            route.startsWith("board_climb_detail/") ->
                 navController.navigate(route) { launchSingleTop = true }
             route.startsWith("board_sync") -> {
                 // Deep link: board_sync?localDbUrl=http://...
@@ -246,20 +260,29 @@ fun CruxCoachNavHost(
                 .imePadding()
         ) {
             composable(Routes.ONBOARDING) {
-                OnboardingScreen(
-                    onComplete = {
-                        navController.navigate(Routes.BOARD_BROWSER) {
-                            popUpTo(Routes.ONBOARDING) { inclusive = true }
-                        }
-                    },
-                    onNavigateToKeyImport = { navController.navigate(Routes.KEY_IMPORT) },
-                    // KeyManagementScreen as a forward push (not a popUpTo).
-                    // Onboarding's NavBackStackEntry stays on the stack, so
-                    // hitting back from KeyManagementScreen returns the user
-                    // to the same onboarding step they were on (state +
-                    // ViewModel preserved via the survived BackStackEntry).
-                    onNavigateToKeyManagement = { navController.navigate(Routes.KEY_MANAGEMENT) },
-                )
+                // Onboarding is the highest-blast-radius first-launch flow:
+                // a render throw before `setOnboardingCompleted(true)` lands
+                // would brick the app in a cold-install crash loop. The
+                // boundary surfaces a reported error UI instead.
+                com.cruxcoach.android.ui.common.ScreenErrorBoundary(
+                    screenName = "Onboarding",
+                    onNavigateBack = { navController.popBackStack() },
+                ) {
+                    OnboardingScreen(
+                        onComplete = {
+                            navController.navigate(Routes.BOARD_BROWSER) {
+                                popUpTo(Routes.ONBOARDING) { inclusive = true }
+                            }
+                        },
+                        onNavigateToKeyImport = { navController.navigate(Routes.KEY_IMPORT) },
+                        // KeyManagementScreen as a forward push (not a popUpTo).
+                        // Onboarding's NavBackStackEntry stays on the stack, so
+                        // hitting back from KeyManagementScreen returns the user
+                        // to the same onboarding step they were on (state +
+                        // ViewModel preserved via the survived BackStackEntry).
+                        onNavigateToKeyManagement = { navController.navigate(Routes.KEY_MANAGEMENT) },
+                    )
+                }
             }
 
             composable(Routes.DASHBOARD) {
@@ -373,6 +396,17 @@ fun CruxCoachNavHost(
                 )
             }
 
+            composable(Routes.AURORA_MIGRATION) {
+                com.cruxcoach.android.ui.common.ScreenErrorBoundary(
+                    screenName = "AuroraMigration",
+                    onNavigateBack = { navController.popBackStack() },
+                ) {
+                    com.cruxcoach.android.ui.aurora.AuroraMigrationScreen(
+                        onNavigateBack = { navController.popBackStack() },
+                    )
+                }
+            }
+
             composable(Routes.STATS) {
                 StatsScreen(
                     onNavigateBack = { navController.popBackStack() },
@@ -397,8 +431,45 @@ fun CruxCoachNavHost(
                     onNavigateToLogbook = { navController.navigate(Routes.BOARD_LOGBOOK) },
                     onNavigateToLists = { navController.navigate(Routes.BOARD_LISTS) },
                     onNavigateToSettings = { navController.navigate(Routes.SETTINGS) },
-                    onNavigateToFilter = { navController.navigate(Routes.BOARD_FILTER) }
+                    onNavigateToFilter = { navController.navigate(Routes.BOARD_FILTER) },
+                    onNavigateToClimbCreator = { navController.navigate(Routes.climbCreator()) },
+                    onNavigateToSetter = { pubkey ->
+                        navController.navigate(Routes.setterDetail(pubkey))
+                    },
                 )
+            }
+
+            composable(
+                Routes.CLIMB_CREATOR,
+                arguments = listOf(
+                    androidx.navigation.navArgument("forkUuid") {
+                        type = androidx.navigation.NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                    androidx.navigation.navArgument("editUuid") {
+                        type = androidx.navigation.NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                ),
+            ) {
+                com.cruxcoach.android.ui.common.ScreenErrorBoundary(
+                    screenName = "ClimbEditor",
+                    onNavigateBack = { navController.popBackStack() },
+                ) {
+                    com.cruxcoach.android.ui.board.creator.ClimbEditorScreen(
+                        onBack = { navController.popBackStack() },
+                        onPublished = { uuid -> navController.popBackStack() },
+                        onNavigateToKilterSettings = {
+                            navController.popBackStack()
+                            navController.navigate(Routes.SETTINGS)
+                        },
+                        onNavigateToNostrProfile = {
+                            navController.navigate(Routes.NOSTR_PROFILE)
+                        },
+                    )
+                }
             }
 
             composable(Routes.BOARD_FILTER) { entry ->
@@ -431,9 +502,18 @@ fun CruxCoachNavHost(
                             popUpTo(Routes.BOARD_CLIMB_DETAIL) { inclusive = true }
                         }
                     },
+                    onNavigateToFork = { uuid ->
+                        navController.navigate(Routes.climbCreator(forkUuid = uuid))
+                    },
+                    onNavigateToEdit = { uuid ->
+                        navController.navigate(Routes.climbCreator(editUuid = uuid))
+                    },
                     onNavigateToBugReport = { title, desc ->
                         navController.navigate(Routes.bugReport(title, desc))
-                    }
+                    },
+                    onNavigateToSetter = { pubkey ->
+                        navController.navigate(Routes.setterDetail(pubkey))
+                    },
                 )
             }
 
@@ -459,7 +539,10 @@ fun CruxCoachNavHost(
                     onNavigateBack = { navController.popBackStack() },
                     onNavigateToListDetail = { listId ->
                         navController.navigate(Routes.boardListDetail(listId))
-                    }
+                    },
+                    onNavigateToSetters = {
+                        navController.navigate(Routes.SETTERS_LIST)
+                    },
                 )
             }
 
@@ -484,12 +567,14 @@ fun CruxCoachNavHost(
                     onNavigateToAppShare = { navController.navigate(Routes.APP_SHARE) },
                     onNavigateToImport = { navController.navigate(Routes.DATA_IMPORT) },
                     onNavigateToExport = { navController.navigate(Routes.DATA_EXPORT) },
+                    onNavigateToAuroraMigration = { navController.navigate(Routes.AURORA_MIGRATION) },
                     onNavigateToChat = { navController.navigate(Routes.DEV_CHAT) },
                     onNavigateToAnnouncements = { navController.navigate(Routes.ANNOUNCEMENTS) },
                     onNavigateToBugReports = { navController.navigate(Routes.BUG_REPORT_LIST) },
                     onNavigateToFeatureRequests = { navController.navigate(Routes.FEATURE_REQUEST_LIST) },
                     onNavigateToCrashReports = { navController.navigate(Routes.CRASH_REPORT_LIST) },
                     onNavigateToKeyManagement = { navController.navigate(Routes.KEY_MANAGEMENT) },
+                    onNavigateToNostrProfile = { navController.navigate(Routes.NOSTR_PROFILE) },
                     onDonateClick = {
                         paymentViewModel.initForDonation(NostrConfig.DEV_PUBKEY)
                         showPaymentSheet = true
@@ -603,6 +688,50 @@ fun CruxCoachNavHost(
                 )
             }
 
+            composable(Routes.NOSTR_PROFILE) {
+                com.cruxcoach.android.ui.common.ScreenErrorBoundary(
+                    screenName = "NostrProfile",
+                    onNavigateBack = { navController.popBackStack() },
+                ) {
+                    com.cruxcoach.android.ui.settings.NostrProfileScreen(
+                        onNavigateBack = { navController.popBackStack() }
+                    )
+                }
+            }
+
+            composable(
+                Routes.SETTER_DETAIL,
+                arguments = listOf(
+                    androidx.navigation.navArgument("setterPubkey") { type = androidx.navigation.NavType.StringType }
+                ),
+            ) {
+                com.cruxcoach.android.ui.common.ScreenErrorBoundary(
+                    screenName = "SetterDetail",
+                    onNavigateBack = { navController.popBackStack() },
+                ) {
+                    com.cruxcoach.android.ui.community.SetterDetailScreen(
+                        onNavigateBack = { navController.popBackStack() },
+                        onClimbClick = { uuid, angle ->
+                            navController.navigate(Routes.boardClimbDetail(uuid, angle))
+                        },
+                    )
+                }
+            }
+
+            composable(Routes.SETTERS_LIST) {
+                com.cruxcoach.android.ui.common.ScreenErrorBoundary(
+                    screenName = "SettersList",
+                    onNavigateBack = { navController.popBackStack() },
+                ) {
+                    com.cruxcoach.android.ui.community.SettersListScreen(
+                        onNavigateBack = { navController.popBackStack() },
+                        onSetterClick = { pubkey ->
+                            navController.navigate(Routes.setterDetail(pubkey))
+                        },
+                    )
+                }
+            }
+
         }
     }
     // Sibling of the Scaffold so the dialog overlays whatever is on screen.
@@ -610,6 +739,7 @@ fun CruxCoachNavHost(
     // onboarding; only upgrading users see anything.
     WhatsNewHost(
         onNavigateToKeyManagement = { navController.navigate(Routes.KEY_MANAGEMENT) },
+        onNavigateToAuroraMigration = { navController.navigate(Routes.AURORA_MIGRATION) },
     )
     } // CompositionLocalProvider
 }

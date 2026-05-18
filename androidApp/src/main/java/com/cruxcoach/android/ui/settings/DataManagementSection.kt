@@ -9,6 +9,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableIntStateOf
@@ -36,6 +37,7 @@ internal fun DataImportExportSection(
     deleteSuccess: String?,
     onNavigateToImport: () -> Unit,
     onNavigateToExport: () -> Unit,
+    onNavigateToAuroraMigration: () -> Unit,
     onDismissDeleteSuccess: () -> Unit,
 ) {
     // Import banner
@@ -91,6 +93,39 @@ internal fun DataImportExportSection(
                 )
                 Text(
                     stringResource(R.string.settings_data_export_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+
+    Spacer(modifier = Modifier.height(8.dp))
+
+    // Aurora migration — for users coming from the old Kilter / Tension /
+    // Aurora-shared logbook. FEAT-005: imports the email-export JSON
+    // Aurora support sends after a data-request.
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onNavigateToAuroraMigration() },
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = OrangeAccent.copy(alpha = 0.08f))
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Icon(Icons.Default.SwapHoriz, contentDescription = null, tint = OrangeAccent)
+            Column {
+                Text(
+                    stringResource(R.string.settings_aurora_migration_title),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    stringResource(R.string.settings_aurora_migration_desc),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

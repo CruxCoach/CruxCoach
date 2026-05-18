@@ -1,5 +1,7 @@
 package com.cruxcoach.android.ui.board
 
+import android.bluetooth.BluetoothAdapter
+import android.content.Intent
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -68,6 +70,15 @@ fun BleConnectionSheet(
         }
     }
 
+    // System dialog that asks the user to turn Bluetooth on. The
+    // BoardBleScanner's broadcast-receiver picks up the resulting
+    // ACTION_STATE_CHANGED → bluetoothEnabled flips → the
+    // BluetoothDisabled branch unmounts and the sheet drops into the
+    // scan flow. No further action needed on the result callback.
+    val bluetoothEnableLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { /* result is observed via the state flow above */ }
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         modifier = Modifier.testTag("ble_connection_sheet")
@@ -95,9 +106,26 @@ fun BleConnectionSheet(
                     )
                 }
 
-                // State 2: Bluetooth disabled
+                // State 2: Bluetooth disabled. Auto-fire the system
+                // "turn Bluetooth on?" dialog the moment the user lands
+                // on this branch — pre-fix the user saw only a static
+                // "Bluetooth ist aus" hint and had to leave the app to
+                // toggle it manually. The same launcher is wired to a
+                // retry button below in case the system dialog was
+                // dismissed without enabling.
                 !state.isBluetoothEnabled -> {
-                    BluetoothDisabledContent()
+                    LaunchedEffect(Unit) {
+                        bluetoothEnableLauncher.launch(
+                            Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
+                        )
+                    }
+                    BluetoothDisabledContent(
+                        onRequestEnable = {
+                            bluetoothEnableLauncher.launch(
+                                Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
+                            )
+                        }
+                    )
                 }
 
                 // State 2b: Location services off (needed for BLE on Android 11 and below)
@@ -185,7 +213,7 @@ private fun PermissionContent(onRequestPermissions: () -> Unit) {
 }
 
 @Composable
-private fun BluetoothDisabledContent() {
+private fun BluetoothDisabledContent(onRequestEnable: () -> Unit) {
     Icon(
         Icons.Default.BluetoothDisabled,
         contentDescription = null,
@@ -202,6 +230,17 @@ private fun BluetoothDisabledContent() {
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
+    Button(
+        onClick = onRequestEnable,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
+    ) {
+        Text(
+            stringResource(R.string.board_ble_bt_enable_button),
+            fontWeight = FontWeight.Bold,
+        )
+    }
 }
 
 @Composable

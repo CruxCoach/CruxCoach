@@ -2,6 +2,175 @@
 <resources xmlns:tools="http://schemas.android.com/tools" tools:locale="en">
     <string name="app_name">CruxCoach</string>
 
+    <!-- Climb Creator (FEAT-003) -->
+    <string name="climb_creator_title">New climb</string>
+    <string name="climb_creator_open">Create new climb</string>
+    <string name="climb_creator_undo">Undo</string>
+    <string name="climb_creator_redo">Redo</string>
+    <string name="climb_creator_name">Name</string>
+    <string name="climb_creator_description">Description (optional)</string>
+    <string name="climb_creator_grade_label" formatted="false">Setter grade · %1$s (%2$s)</string>
+    <string name="climb_creator_angle_label">Angle</string>
+    <string name="climb_creator_angle_pick">Pick an angle</string>
+    <string name="climb_creator_save_draft">Save as draft</string>
+    <string name="climb_creator_publish">Publish</string>
+    <string name="climb_creator_count_start" formatted="false">Start: %d</string>
+    <string name="climb_creator_count_hand" formatted="false">Hand: %d</string>
+    <string name="climb_creator_count_finish" formatted="false">Finish: %d</string>
+    <string name="climb_creator_count_foot" formatted="false">Foot: %d</string>
+    <string name="climb_creator_brush_hint_delete_mode">No chip active — taps remove holds. Pick a chip to set holds.</string>
+    <string name="climb_creator_valid">All set — ready to publish.</string>
+    <string name="climb_creator_issue_no_start">Add at least one start hold (green).</string>
+    <string name="climb_creator_issue_no_finish">Add at least one finish hold (magenta).</string>
+    <string name="climb_creator_issue_too_few_holds" formatted="false">Need at least %d holds (start + finish + at least one in between).</string>
+    <string name="climb_creator_issue_too_many_holds" formatted="false">Too many holds: max %d.</string>
+    <string name="climb_creator_issue_too_many_starts" formatted="false">Too many start holds: %d (max 2).</string>
+    <string name="climb_creator_issue_too_many_finishes" formatted="false">Too many finish holds: %d (max 2).</string>
+    <string name="climb_creator_issue_name_missing">Name is required.</string>
+    <string name="climb_creator_issue_name_too_long" formatted="false">Name too long (max %d chars).</string>
+    <string name="climb_creator_issue_description_too_long" formatted="false">Description too long (max %d chars).</string>
+    <string name="climb_creator_issue_angle_missing">Pick a board angle.</string>
+    <string name="climb_creator_issue_grade_missing">Pick a setter grade.</string>
+    <string name="climb_creator_grade_unset">Setter grade · tap the slider to set</string>
+    <string name="climb_creator_draft_saved">Draft saved.</string>
+    <string name="climb_creator_also_post_note">Also post to Nostr</string>
+    <string name="climb_creator_also_post_note_hint">Posts a short message to your Nostr followers linking back to this climb.</string>
+    <string name="auto_note_default_template">I just published a new boulder on nostr:{npub_cruxcoach}:\n\n{cruxcoach_url}\n\n#climbing #bouldering</string>
+    <string name="auto_note_setting_title">Post new climbs to Nostr</string>
+    <string name="auto_note_setting_body">When enabled, every climb you publish also gets a short post to your Nostr followers, linking back to your climb. Per-climb override in the editor. Default off.</string>
+    <string name="nostr_profile_subscriber_status_title">Community climb feed</string>
+    <string name="nostr_profile_subscriber_status_running_never">Connected — waiting for the first climb event…</string>
+    <string name="nostr_profile_subscriber_status_running_active_prefix">Connected — last climb event</string>
+    <string name="nostr_profile_subscriber_status_stopped">Not connected</string>
+    <string name="nostr_profile_subscriber_status_failures" formatted="false">%1$d consecutive failures (last cause: %2$s)</string>
+    <string name="climb_creator_dup_title">A climb with these holds already exists</string>
+    <string name="climb_creator_dup_message" formatted="false">Same hold layout as “%s”. Same holds at a different angle/grade are allowed.</string>
+    <string name="climb_creator_dup_continue">Keep editing</string>
+    <string name="climb_creator_dup_publish_anyway">Publish anyway</string>
+    <string name="climb_creator_drafts_open">Open drafts</string>
+    <string name="climb_creator_drafts_title">My drafts</string>
+    <string name="climb_creator_drafts_count" formatted="false">%d</string>
+    <string name="climb_creator_drafts_loading">Loading…</string>
+    <string name="climb_creator_drafts_empty">No drafts yet. Save a climb to pick it up later.</string>
+    <string name="climb_creator_drafts_unnamed">Unnamed climb</string>
+    <string name="climb_creator_drafts_holds" formatted="false">%d holds</string>
+    <string name="climb_creator_drafts_delete_title">Delete draft?</string>
+    <string name="climb_creator_drafts_delete_message" formatted="false">“%s” will be permanently removed.</string>
+    <string name="climb_creator_drafts_delete_action">Delete draft</string>
+    <string name="climb_creator_drafts_delete_confirm">Delete</string>
+    <string name="climb_creator_heatmap_toggle">Toggle popular-holds heatmap</string>
+    <string name="climb_creator_clear">Clear editor</string>
+
+    <!-- Relative-time labels (Climb Creator + Drafts drawer) -->
+    <string name="relative_time_just_now">Just now</string>
+    <string name="relative_time_minutes_ago" formatted="false">%1$d min ago</string>
+    <string name="relative_time_hours_ago" formatted="false">%1$d h ago</string>
+    <string name="relative_time_days_ago" formatted="false">%1$d d ago</string>
+    <string name="climb_creator_save_failed">Couldn\'t save the draft. Please try again.</string>
+    <string name="climb_creator_publish_failed">Couldn\'t publish. Please try again.</string>
+    <string name="climb_creator_publish_failed_will_retry">No relay accepted the climb just now — your draft is saved and CruxCoach will keep trying in the background.</string>
+    <string name="climb_creator_publish_waiting_for_sync">Board sync is running — your climb will be published as soon as it finishes.</string>
+    <string name="climb_creator_auto_note_text_label">Note text</string>
+    <string name="climb_creator_auto_note_placeholders_hint">Placeholders kept literal: {name}, {naddr}, {npub_cruxcoach}, {cruxcoach_url}</string>
+    <string name="climb_creator_auto_note_zero_relays">Climb published, but the Auto-Note didn\'t reach any relay.</string>
+    <string name="climb_creator_publish_both_ok">Climb published on Nostr and Kilter.</string>
+    <string name="climb_creator_publish_kilter_pending">Climb published on Nostr — Kilter sync running in the background.</string>
+    <string name="climb_creator_drafts_load_failed">Couldn\'t load your drafts. Please try again.</string>
+    <string name="climb_creator_drafts_delete_failed">Couldn\'t delete the draft. Please try again.</string>
+    <string name="climb_creator_load_failed">Couldn\'t open the editor. Please try again.</string>
+    <!-- Kilter authentication errors (KilterAuthResult.Error.Reason → user-visible) -->
+    <string name="kilter_auth_invalid_credentials">Wrong email or password.</string>
+    <string name="kilter_auth_empty_response">Kilter returned an empty response. Please try again.</string>
+    <string name="kilter_auth_network_error">Couldn\'t reach Kilter. Check your connection and try again.</string>
+    <string name="kilter_auth_throttled" formatted="false">Too many login attempts — please try again later.</string>
+    <string name="kilter_auth_throttled_with_seconds" formatted="false">Too many login attempts — please wait %1$d seconds.</string>
+    <string name="kilter_auth_not_authenticated">Not signed in to Kilter.</string>
+    <string name="kilter_auth_invalid_jwt">Kilter returned an unexpected token. Please try again.</string>
+    <string name="kilter_auth_http_failure" formatted="false">Login failed (HTTP %1$d).</string>
+
+    <string name="kilter_publish_session_expired">Your Kilter session expired — we\'ll retry later.</string>
+    <string name="kilter_publish_transient">Couldn\'t reach Kilter — we\'ll retry shortly.</string>
+    <string name="kilter_publish_diverged_with_code" formatted="false">Kilter doesn\'t allow editing this already-published climb (%1$d).</string>
+    <string name="kilter_publish_rejected_with_code" formatted="false">Kilter rejected the climb (%1$d).</string>
+    <string name="climb_creator_remix_action">Remix this climb</string>
+    <string name="climb_creator_kilter_connect_nudge">Climb published (CruxCoach only) — connect Kilter so it also appears in the Kilter app.</string>
+    <string name="climb_creator_kilter_connect_action">Connect</string>
+    <string name="climb_creator_edit_action">Edit climb</string>
+    <string name="community_climb_delete_action">Delete publication</string>
+    <string name="community_climb_delete_confirm_title">Delete this climb?</string>
+    <string name="community_climb_delete_confirm_nostr_only">Your climb will be removed from CruxCoach and a deletion is sent to the Nostr relays. The local row disappears immediately; relays may take a few minutes to propagate.</string>
+    <string name="community_climb_delete_confirm_kilter_warning">Your climb will be removed from CruxCoach and a deletion is sent to the Nostr relays. You also published this climb to Kilter — Kilter does not allow removing published climbs from any client (their server enforces this for both their app and ours). Your Kilter copy stays public forever.</string>
+    <string name="community_climb_delete_confirm_button">Delete</string>
+    <string name="community_climb_delete_cancel_button">Cancel</string>
+    <string name="community_climb_delete_done_nostr_only" formatted="false">Climb deleted (%1$d of %2$d relays acknowledged).</string>
+    <string name="community_climb_delete_done_with_kilter" formatted="false">Deleted on Nostr (%1$d of %2$d relays). Remember to remove the climb manually in the Kilter app.</string>
+    <string name="community_climb_delete_failed">Deletion failed. Please try again.</string>
+    <string name="community_climb_delete_not_owner">You can only delete climbs you authored yourself.</string>
+    <string name="community_climb_delete_local_failed" formatted="false">Deleted on Nostr (%1$d of %2$d relays) but the local copy could not be removed. The climb may still appear locally — please reinstall the app or clear app data to fully remove it.</string>
+    <string name="climb_detail_badge_on_kilter">On Kilter</string>
+    <string name="climb_detail_badge_cruxcoach_only">CruxCoach community only</string>
+    <string name="climb_detail_badge_kilter_diverged">Edited only here, original on Kilter</string>
+    <string name="climb_detail_edit_locked_kilter">Locked — published to Kilter (immutable)</string>
+    <string name="climb_editor_load_failed_kilter_locked">This climb is published to Kilter and cannot be edited. Use the Remix action to start a fresh climb based on it.</string>
+
+    <!-- Nostr profile editor (settings) -->
+    <string name="nostr_profile_title">My Nostr Profile</string>
+    <string name="nostr_profile_settings_label">Nostr profile</string>
+    <string name="nostr_profile_settings_summary">Display name, picture, lightning address</string>
+    <string name="nostr_profile_explainer">Other CruxCoach users see this profile next to your community climbs. Without one they only see a short hex npub.</string>
+    <string name="nostr_profile_display_name">Display name</string>
+    <string name="nostr_profile_display_name_hint">Shown next to your climbs as the setter.</string>
+    <string name="nostr_profile_about">About</string>
+    <string name="nostr_profile_about_hint">Optional. A short bio.</string>
+    <string name="nostr_profile_lightning">Lightning address</string>
+    <string name="nostr_profile_lightning_hint">Optional. Format: name@domain — lets others zap you.</string>
+    <string name="nostr_profile_picture">Picture URL</string>
+    <string name="nostr_profile_picture_hint">Optional. Direct image URL — currently only your display name is rendered.</string>
+    <string name="nostr_profile_banner_label">Banner image URL</string>
+    <string name="nostr_profile_banner_hint">Optional. 3:1 aspect ratio looks best — header image on your profile.</string>
+    <string name="nostr_profile_nip05_label">NIP-05 identifier</string>
+    <string name="nostr_profile_nip05_hint">Optional. Format: name@domain — verifies your identity via the domain\'s well-known endpoint.</string>
+    <string name="nostr_profile_website_label">Website</string>
+    <string name="nostr_profile_website_hint">Optional. Free-form URL shown on your profile.</string>
+    <string name="nostr_profile_nip05_verified">Verified — pubkey matches</string>
+    <string name="nostr_profile_nip05_mismatch">Pubkey doesn\'t match — domain points to a different identity</string>
+    <string name="nostr_profile_nip05_unreachable">Couldn\'t verify (offline or domain not configured)</string>
+    <string name="nostr_profile_lud16_verified">Lightning address active</string>
+    <string name="nostr_profile_lud16_unreachable">Couldn\'t verify Lightning address</string>
+    <string name="nostr_profile_banner_change">Change banner</string>
+    <string name="nostr_profile_banner_remove">Remove banner</string>
+    <string name="nostr_profile_picture_change">Change profile picture</string>
+    <string name="nostr_profile_picture_remove">Remove profile picture</string>
+    <string name="nostr_profile_image_upload_failed" formatted="false">Image upload failed: %1$s</string>
+    <string name="nostr_profile_about_count" formatted="false">%1$d / %2$d</string>
+    <string name="nostr_profile_save">Save profile</string>
+    <string name="nostr_profile_saving">Saving…</string>
+    <string name="nostr_profile_saved_toast">Profile saved</string>
+    <string name="nostr_profile_save_failed">Could not publish your profile. Please try again.</string>
+    <string name="nostr_profile_import_from_kilter">Use my Kilter username</string>
+    <string name="nostr_profile_kilter_divergence_hint">Your Kilter username (\"%1$s\") stays unchanged on the Kilter app. This profile applies only to CruxCoach + Nostr.</string>
+
+    <!-- Setter detail / list (community) -->
+    <string name="setter_detail_title_fallback">Setter</string>
+    <string name="setter_detail_climb_count">%1$d climbs</string>
+    <string name="setter_detail_no_climbs">No climbs from this setter in your local catalog.</string>
+    <string name="setter_detail_load_failed">Could not load this setter\'s climbs.</string>
+    <string name="setters_list_load_failed">Could not load the setters list.</string>
+    <string name="setter_detail_climb_meta">%1$d° · %2$.1f · ⭐%3$.1f · %4$d sends</string>
+    <string name="setters_list_title">CruxCoach setters</string>
+    <string name="setters_list_empty">No CruxCoach community climbs yet. Check back later or create your own.</string>
+    <string name="setters_list_count">%1$d climbs</string>
+    <string name="setters_list_browse_button">Browse setters</string>
+    <string name="board_lists_community_banner_title">CruxCoach community</string>
+    <string name="board_lists_community_banner_subtitle">Browse setters and their climbs</string>
+    <string name="board_lists_section_title">Your lists</string>
+
+    <!-- First-publish profile hint -->
+    <string name="profile_hint_dialog_title">Set up your profile?</string>
+    <string name="profile_hint_dialog_body">Your climb will be visible to everyone. Without a profile, others only see a short identifier (npub:abc…). Setting a display name takes one minute.</string>
+    <string name="profile_hint_dialog_setup">Set up profile</string>
+    <string name="profile_hint_dialog_later">Skip for now</string>
+
     <!-- Onboarding -->
     <string name="onboarding_welcome">Welcome to CruxCoach</string>
     <string name="onboarding_welcome_subtitle">Open source Kilter Board app — browse climbs, light up the board, log sessions.</string>
@@ -39,6 +208,8 @@
     <string name="action_save">Save</string>
     <string name="action_delete">Delete</string>
     <string name="action_back">Back</string>
+    <string name="screen_error_boundary_title">Something went wrong</string>
+    <string name="screen_error_boundary_body" formatted="false">The %1$s screen ran into an unexpected error. The rest of the app is still usable — go back and try again.</string>
     <string name="action_refresh">Refresh</string>
     <string name="action_done">Done</string>
     <string name="action_share">Share</string>
@@ -51,6 +222,7 @@
     <string name="action_retry">Retry</string>
     <string name="action_reset">Reset</string>
     <string name="action_understood">Understood</string>
+    <string name="action_more_options">More options</string>
 
     <!-- Settings -->
     <string name="settings_language_title">Language</string>
@@ -392,7 +564,7 @@
     <string name="board_search_placeholder">Search climbs…</string>
     <string name="board_climbs_found">%d climbs found</string>
     <string name="board_no_data_title">No board data</string>
-    <string name="board_no_data_hint">Sync the Kilter/Tension Board database to search climbs.</string>
+    <string name="board_no_data_hint">Sync the Kilter Board database to search climbs.</string>
     <string name="board_angle">Angle</string>
     <string name="board_moves">Moves</string>
     <string name="board_quality">Quality</string>
@@ -412,6 +584,8 @@
     <string name="board_browser_search_hint">Search name or setter…</string>
     <string name="board_browser_climbs_count">%d Climbs</string>
     <string name="board_browser_climbs_loaded">%d Climbs (%d loaded)</string>
+    <string name="board_browser_preparing_db">Preparing the climb database…</string>
+    <string name="board_browser_preparing_db_hint">First launch after an update can take a minute or two on slower devices. Please keep the app open — closing it makes the preparation start over next time.</string>
     <string name="board_detail_title">Climb details</string>
     <string name="board_detail_by_setter">by %s</string>
     <string name="board_detail_error">Error</string>
@@ -419,6 +593,8 @@
     <string name="board_detail_delete_ascent_message">This ascent will be permanently deleted.</string>
     <string name="board_filter_all">All</string>
     <string name="board_filter_benchmarks_only">Benchmarks only</string>
+    <string name="board_filter_my_climbs">My climbs</string>
+    <string name="climb_card_draft_badge">Draft</string>
     <string name="board_filter_grade_range">Grade: %1$s – %2$s</string>
     <string name="board_filter_sort">Sort</string>
     <string name="board_filter_sort_asc">Ascending</string>
@@ -428,6 +604,9 @@
     <string name="board_filter_status_attempted">Attempted</string>
     <string name="board_filter_status_sent">Sent</string>
     <string name="board_filter_status_unsent">Open</string>
+    <string name="board_filter_origin">Origin</string>
+    <string name="board_filter_origin_cruxcoach">CruxCoach setters</string>
+    <string name="board_filter_origin_kilter">Kilter (official)</string>
     <string name="board_filter_type">Type</string>
     <string name="board_filter_type_boulder">Boulder</string>
     <string name="board_filter_type_routes">Routes</string>
@@ -588,7 +767,8 @@
     <string name="board_ble_permission_message">CruxCoach needs Bluetooth access to find and connect your board.</string>
     <string name="board_ble_grant_permission">Grant permission</string>
     <string name="board_ble_bt_disabled_title">Bluetooth is disabled</string>
-    <string name="board_ble_bt_disabled_message">Enable Bluetooth in system settings to connect your board.</string>
+    <string name="board_ble_bt_disabled_message">CruxCoach needs Bluetooth to talk to your board.</string>
+    <string name="board_ble_bt_enable_button">Turn Bluetooth on</string>
     <string name="board_ble_location_disabled_title">Location services disabled</string>
     <string name="board_ble_location_disabled_message">Location services (GPS) must be enabled on this device to find Bluetooth devices.</string>
     <string name="board_ble_session_active_title">Session active</string>
@@ -616,7 +796,7 @@
     <string name="board_climb_by_setter">by %s</string>
     <string name="board_climb_moves">%d moves</string>
     <string name="board_climb_no_data_title">No board data</string>
-    <string name="board_climb_no_data_message">Sync the Kilter/Tension board database to search climbs and display them on the board.</string>
+    <string name="board_climb_no_data_message">Sync the Kilter Board database to search climbs and display them on the board.</string>
     <string name="board_sync_title">Sync board data</string>
 
     <!-- Board: Detail -->
@@ -661,6 +841,13 @@
     <string name="kilter_sync_now">Sync now</string>
     <string name="kilter_push_label">Upload to Kilter</string>
     <string name="kilter_push_desc">Also upload local ascents to your Kilter account</string>
+    <string name="kilter_climb_publish_label">Publish own climbs to Kilter</string>
+    <string name="kilter_climb_publish_disconnected_hint">Connect your Kilter account to mirror your climbs there.</string>
+    <string name="kilter_publish_queue_title">Publish queue</string>
+    <string name="kilter_publish_queue_pending" formatted="false">%1$d climbs awaiting Kilter sync</string>
+    <string name="kilter_publish_queue_failed" formatted="false">%1$d failed previously</string>
+    <string name="kilter_publish_queue_last_attempt">Last attempt</string>
+    <string name="kilter_publish_queue_retry_now">Retry now</string>
     <string name="kilter_session_expired">Session expired — please sign in again</string>
     <string name="kilter_relogin_button">Sign in again</string>
     <string name="kilter_disconnect">Disconnect</string>
@@ -1111,6 +1298,16 @@
     <string name="export_waistline_hint">For import into the Waistline app</string>
     <string name="export_waistline_json_label">Waistline JSON</string>
     <string name="export_categories_exported">%1$d category(ies) exported</string>
+    <string name="export_category_profile">Profile &amp; settings</string>
+    <string name="export_category_assessments">Fitness assessments</string>
+    <string name="export_category_body_stats">Body stats</string>
+    <string name="export_category_workout_logs">Workout logs</string>
+    <string name="export_category_climb_logs">Climbing logbook</string>
+    <string name="export_category_training_plans">Training plans</string>
+    <string name="export_category_board_logbook">Board sends &amp; attempts</string>
+    <string name="export_category_board_sessions">Board sessions</string>
+    <string name="export_category_climb_lists">Climb lists &amp; favorites</string>
+    <string name="export_category_own_climbs">Own climbs &amp; drafts</string>
     <string name="export_waistline_json_success">Waistline JSON exported</string>
     <string name="export_waistline_csv_success">Waistline CSV exported</string>
     <string name="import_auto_detect_hint">Format is auto-detected</string>
@@ -1127,14 +1324,17 @@
     <string name="import_result_board_bids">%1$d board bids</string>
     <string name="import_result_board_sessions">%1$d board sessions</string>
     <string name="import_result_lists">%1$d lists</string>
+    <string name="import_result_own_climbs">%1$d own climbs</string>
     <string name="import_result_no_data">No data</string>
     <string name="import_result_summary">Imported: %1$s</string>
     <string name="import_result_duplicates_skipped"> (%1$d duplicates skipped)</string>
     <string name="import_waistline_success">Waistline import: %1$d value(s) imported</string>
     <string name="import_select_categories">Select categories to import:</string>
     <string name="import_pubkey_mismatch_title">Different CruxCoach Account</string>
-    <string name="import_pubkey_mismatch_body">This backup is from a different CruxCoach account (%1$s). Data will be imported into your current account. This may be desired for account migration.</string>
+    <string name="import_pubkey_mismatch_body">This backup was created with a different CruxCoach account (%1$s). The data will be merged into your current account. This is the right path if you lost your previous nsec key or are deliberately migrating accounts. Note: any climbs you import and later republish to Kilter will appear under your current Kilter account.</string>
     <string name="import_pubkey_mismatch_confirm">Import Anyway</string>
+    <string name="import_pubkey_override_banner_title">Import from a different key</string>
+    <string name="import_pubkey_override_banner_body">You are importing data from %1$s into your current account. Climbs you republish later will be attributed to your current Kilter account.</string>
     <string name="month_apr">Apr</string>
     <string name="month_aug">Aug</string>
     <string name="month_dec">Dec</string>
@@ -1159,6 +1359,13 @@
     <string name="settings_app_share_title">Share App</string>
     <string name="settings_profile_assessment_title">Profile &amp; Assessment</string>
     <string name="settings_section_board">Board Settings</string>
+    <string name="settings_board_layout_title">Wall</string>
+    <string name="settings_board_layout_desc">Pick which Kilter wall you have. Browse and climb-creator follow this choice.</string>
+    <string name="settings_board_layout_original">Kilter Original</string>
+    <string name="settings_board_layout_homewall">Kilter Homewall</string>
+    <string name="settings_board_model_title">Board size</string>
+    <string name="settings_board_model_change">Change</string>
+    <string name="settings_board_model_not_configured">Not configured</string>
     <string name="settings_section_data">Data Management</string>
     <string name="settings_section_dev_contact">Developer Contact</string>
     <string name="settings_section_display">Display</string>
@@ -1442,10 +1649,11 @@
     <string name="delete_remote_note_blossom_auth_failed">Storage server rejected the auth signature.</string>
     <string name="delete_remote_note_blossom_fully_rejected">Every storage server refused the deletion.</string>
     <string name="delete_remote_note_blossom_partial">Only %1$d of %2$d storage servers acknowledged the deletion.</string>
+    <string name="delete_remote_note_tombstone_publish_failed">Could not publish the deletion marker to enough index servers (pointer %1$d, key %2$d of %3$d). The backup may still be visible on other devices — please retry.</string>
     <string name="delete_remote_note_unexpected_error">Unexpected error: %1$s</string>
     <string name="settings_backup_delete_remote">Delete remote backups…</string>
     <string name="settings_backup_delete_remote_dialog_title">Delete remote backups?</string>
-    <string name="settings_backup_delete_remote_dialog_body">This will request deletion of your backup info and encrypted backup data from the public servers. Be aware:\n\n• Deletion is best-effort. Not every server honours it.\n• After this, you cannot restore your backup on another device.\n• Local data is not affected.</string>
+    <string name="settings_backup_delete_remote_dialog_body">This will hide your backup behind a deletion marker on every index server, and request the encrypted backup data to be removed from every storage server. After this:\n\n• No device — yours or anyone else\'s — can restore the backup, even if a storage server still holds the encrypted bytes.\n• Storage-server cleanup is best-effort. A partial result (e.g. 1/2 servers) is not a privacy issue: the deletion marker is what guarantees the backup is unrecoverable.\n• Local data on this device is not affected.</string>
     <string name="settings_backup_delete_remote_confirm">Delete</string>
     <string name="settings_backup_delete_remote_in_progress">Deleting…</string>
     <string name="settings_backup_delete_remote_done_header">Remote backups deleted.</string>
@@ -1465,6 +1673,8 @@
     <string name="onboarding_nostr_backup_title">Backup your data</string>
     <string name="onboarding_nostr_backup_body">Encrypted on your device, then stored online across several public servers. Only you can decrypt it. Default: off — you can enable it any time in Settings.</string>
     <string name="onboarding_restore_dialog_body">A backup was found (%1$s).\n\nRestoring it will replace any local data with the contents of the backup.</string>
+    <string name="onboarding_restore_progress_awaiting_board_sync">Waiting for the board database to finish downloading… this typically takes 1–3 minutes on a fresh install, depending on your connection.</string>
+    <string name="onboarding_restore_progress_active">Restoring your backup…</string>
 
     <!-- FEAT-002: onboarding backup choice (3-step onboarding) -->
     <string name="onboarding_backup_choice_fresh_title">Start fresh</string>
@@ -1526,4 +1736,47 @@
     <string name="whatsnew_nostr_backup_body">Your climbs and notes can now be encrypted on this device and stored online across several public servers — restore them on any device. Off by default; enable here, or anytime in Settings → Encrypted cloud backup.</string>
     <string name="whatsnew_nostr_backup_toggle">Enable backup</string>
     <string name="whatsnew_nostr_backup_consent">A CruxCoach Account key is created on this device if you don\'t already have one. Backups don\'t run automatically — you start them yourself in Settings.</string>
+
+    <!-- FEAT-005 Aurora-JSON migration -->
+    <string name="onboarding_aurora_card_title">Coming from the old Kilter app?</string>
+    <string name="onboarding_aurora_card_subtitle">Bring your Aurora ascents, attempts and circuits across via the JSON export Aurora sends after a data request.</string>
+    <string name="whatsnew_aurora_import_title">Aurora data — import it now</string>
+    <string name="whatsnew_aurora_import_body">0.1.4 ingests the email JSON Aurora sends after a data-export request. Your historical ascents, attempts and circuits land in CruxCoach\'s logbook with one tap.</string>
+    <string name="whatsnew_aurora_import_hint">Have the JSON file already? Tap "Import now". Otherwise the importer stays in Settings → Migrate from Aurora — request the export first, come back later.</string>
+    <string name="whatsnew_aurora_import_action_now">Import now</string>
+    <string name="whatsnew_aurora_import_action_later">Later</string>
+    <string name="settings_aurora_migration_title">Migrate from Aurora / old Kilter app</string>
+    <string name="settings_aurora_migration_desc">Bring your ascents, attempts and circuits across from the email export Aurora sends after a data request.</string>
+    <string name="aurora_migration_title">Aurora migration</string>
+    <string name="aurora_migration_what_happened_title">What happened to Aurora?</string>
+    <string name="aurora_migration_what_happened_body">Aurora Climbing took its API offline in early 2026 and the official Kilter app moved to a new backend. Aurora still honours one-time data-export requests by email — the file they send is what this importer reads.</string>
+    <string name="aurora_migration_step1_title">Request your Aurora export</string>
+    <string name="aurora_migration_step1_body">Email Aurora support and ask for a copy of your data. They\'ll reply with a single JSON file (usually within a couple of days).</string>
+    <string name="aurora_migration_email_button">Compose email to Aurora</string>
+    <string name="aurora_migration_email_copy_button">Copy email to clipboard</string>
+    <string name="aurora_migration_email_copy_toast">Email copied — paste into your email app and send to support@auroraclimbing.com.</string>
+    <string name="aurora_migration_email_copy_fallback_toast">No email app found. Email content copied — paste into a webmail client and send to support@auroraclimbing.com.</string>
+    <string name="aurora_migration_step2_title">Import the file</string>
+    <string name="aurora_migration_step2_body">Save Aurora\'s reply attachment to your phone, then pick it here. Re-importing the same file is safe — already-imported entries are skipped automatically.</string>
+    <string name="aurora_migration_pick_file_button">Choose Aurora JSON file…</string>
+    <string name="aurora_migration_importing">Importing…</string>
+    <string name="aurora_migration_progress_starting">Starting…</string>
+    <string name="aurora_migration_progress_parsing">Parsing the JSON…</string>
+    <string name="aurora_migration_progress_resolving" formatted="false">Matching %1$d climb names against your local board catalog…</string>
+    <string name="aurora_migration_progress_climbs" formatted="false">Importing your climbs (%1$d / %2$d)…</string>
+    <string name="aurora_migration_progress_ascents" formatted="false">Importing ascents (%1$d / %2$d)…</string>
+    <string name="aurora_migration_progress_bids" formatted="false">Importing attempts (%1$d / %2$d)…</string>
+    <string name="aurora_migration_progress_circuits" formatted="false">Importing circuits (%1$d / %2$d)…</string>
+    <string name="aurora_migration_progress_finalising">Wrapping up…</string>
+    <string name="aurora_migration_result_success">Import complete</string>
+    <string name="aurora_migration_result_failed">Import failed</string>
+    <string name="aurora_migration_result_parse_error" formatted="false">Couldn\'t read this file: %1$s</string>
+    <string name="aurora_migration_count_ascents">Ascents</string>
+    <string name="aurora_migration_count_bids">Attempts</string>
+    <string name="aurora_migration_count_circuits">Circuits</string>
+    <string name="aurora_migration_count_climbs">Your climbs</string>
+    <string name="aurora_migration_count_summary" formatted="false">%1$s: %2$d imported · %3$d already present · %4$d skipped</string>
+    <string name="aurora_migration_unresolved_title" formatted="false">%1$d climb names couldn\'t be matched against your local catalog</string>
+    <string name="aurora_migration_import_another">Import another file</string>
+    <string name="aurora_migration_file_too_large">File is too large for direct import (%1$d MB). Aurora exports are typically a few MB; if your export is much larger, contact support.</string>
 </resources>

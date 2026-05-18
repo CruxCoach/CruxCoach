@@ -25,6 +25,10 @@ security-crypto = "1.1.0"
 appcompat = "1.7.0"
 biometric = "1.1.0"
 mockk = "1.14.9"
+robolectric = "4.14.1"
+turbine = "1.2.1"
+coil = "2.7.0"
+compose-richtext = "0.20.0"
 
 [libraries]
 # Compose BOM
@@ -81,6 +85,8 @@ quartz-android = { group = "com.vitorpamplona.quartz", name = "quartz-android", 
 
 # OkHttp (WebSocket for Nostr relay communication)
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
+# OkHttp MockWebServer — used in unit tests to fake the Kilter Keycloak / API endpoints.
+okhttp-mockwebserver = { group = "com.squareup.okhttp3", name = "mockwebserver", version.ref = "okhttp" }
 
 # Encrypted SharedPreferences
 security-crypto = { group = "androidx.security", name = "security-crypto", version.ref = "security-crypto" }
@@ -89,10 +95,27 @@ biometric = { group = "androidx.biometric", name = "biometric", version.ref = "b
 # AppCompat (per-app language switching)
 appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
 
+# Coil — image loading (FEAT-010 profile editor: render banner + picture from
+# Blossom URLs). Coil 2 stays compatible with the current Compose BOM; Coil 3
+# requires a more recent BoM than 2026.02.00.
+coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
+coil-okhttp = { group = "io.coil-kt", name = "coil", version.ref = "coil" }
+
+# compose-richtext — markdown preview for the profile editor's `about`
+# field (FEAT-010 §3.5). Same library family Amethyst uses (vitorpamplona
+# vendored a fork; we use the upstream halilibo release direct).
+compose-richtext-commonmark = { group = "com.halilibo.compose-richtext", name = "richtext-commonmark", version.ref = "compose-richtext" }
+compose-richtext-ui-material3 = { group = "com.halilibo.compose-richtext", name = "richtext-ui-material3", version.ref = "compose-richtext" }
+
 # Testing
 kotlin-test = { group = "org.jetbrains.kotlin", name = "kotlin-test", version.ref = "kotlin" }
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "kotlinx-coroutines" }
 mockk = { group = "io.mockk", name = "mockk", version.ref = "mockk" }
+robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
+turbine = { group = "app.cash.turbine", name = "turbine", version.ref = "turbine" }
+androidx-compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
+androidx-compose-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
+hilt-android-testing = { group = "com.google.dagger", name = "hilt-android-testing", version.ref = "hilt" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

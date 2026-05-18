@@ -1,7 +1,7 @@
 package com.cruxcoach.android.payment
 
 import com.cruxcoach.db.secure.SecureDatabase
-import com.cruxcoach.db.secure.PaymentEvent
+import com.cruxcoach.db.secure.Payment_events
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -9,7 +9,7 @@ import javax.inject.Singleton
 class PaymentRepository @Inject constructor(
     private val database: SecureDatabase
 ) {
-    private val queries get() = database.paymentEventQueries
+    private val queries get() = database.paymentEventsQueries
 
     fun insert(
         id: String,
@@ -35,8 +35,8 @@ class PaymentRepository @Inject constructor(
         )
     }
 
-    fun getAll(): List<PaymentEvent> = queries.getAll().executeAsList()
+    fun getAll(): List<Payment_events> = queries.getAll().executeAsList()
 
-    fun getRecent(limit: Long): List<PaymentEvent> =
+    fun getRecent(limit: Long): List<Payment_events> =
         queries.getRecent(limit).executeAsList()
 }

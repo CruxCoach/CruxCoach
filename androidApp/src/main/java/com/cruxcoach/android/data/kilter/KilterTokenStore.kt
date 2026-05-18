@@ -87,6 +87,13 @@ class KilterTokenStore(
         prefs.edit().putString(keyRefreshToken, refreshToken).apply()
     }
 
+    /** Replace the cached display username — used by the app-start
+     *  username-backfill path when the previously-cached value was
+     *  pre-username-fix email-shaped. */
+    fun updateUsername(username: String) {
+        prefs.edit().putString(keyUsername, username).apply()
+    }
+
     fun getAccessToken(): String? = prefs.getString(keyAccessToken, null)
     fun getRefreshToken(): String? = prefs.getString(keyRefreshToken, null)
     fun getUserUuid(): String? = prefs.getString(keyUserUuid, null)

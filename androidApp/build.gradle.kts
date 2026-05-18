@@ -24,8 +24,8 @@ android {
         applicationId = "com.cruxcoach.android"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
-        versionName = "0.1.3"
+        versionCode = 5
+        versionName = "0.1.4"
 
         // Only bundle native libs for ARM — removes MIPS/x86 bloat from
         // quartz-android's transitive JNA + secp256k1 + libsodium.
@@ -64,6 +64,28 @@ android {
         // local.properties to point at their own Zapstore namespace.
         buildConfigField("String", "ZAPSTORE_APP_URL",
             "\"${localProps.getProperty("ZAPSTORE_APP_URL", "https://zapstore.dev/apps/com.cruxcoach.android")}\"")
+
+        // Brand-bound constants used in outgoing HTTP traffic, App Links,
+        // and the Kind-1 Auto-Note publish path. Forks override via
+        // local.properties so they can present as their own brand on the
+        // wire (User-Agent visible to Kilter operators, host of any
+        // shareable climb URL, p-tag amplification on auto-Note).
+        val appLinkHost = localProps.getProperty("APP_LINK_HOST", "cruxcoach.org")
+        buildConfigField("String", "USER_AGENT_PRODUCT",
+            "\"${localProps.getProperty("USER_AGENT_PRODUCT", "CruxCoach")}\"")
+        buildConfigField("String", "APP_LINK_HOST",
+            "\"$appLinkHost\"")
+        // Auto-Note p-tag mention of MAINTAINER_PUBKEY. Default true for
+        // upstream (the maintainer self-mention is a known growth-hack
+        // for upstream installs); forks set false so their users don't
+        // accidentally amplify whoever the fork's MAINTAINER_PUBKEY
+        // resolves to.
+        buildConfigField("Boolean", "AUTO_NOTE_PTAG_MAINTAINER",
+            localProps.getProperty("AUTO_NOTE_PTAG_MAINTAINER", "true"))
+        // Mirror the App Link host into a manifest placeholder so the
+        // <intent-filter><data android:host=…> entry stays in lockstep
+        // with what BuildConfig.APP_LINK_HOST tells the runtime parser.
+        manifestPlaceholders["appLinkHost"] = appLinkHost
     }
 
     externalNativeBuild {
@@ -102,6 +124,25 @@ android {
 
     testOptions {
         unitTests.isReturnDefaultValues = true
+        // Robolectric needs merged Android resources on the test classpath.
+        unitTests.isIncludeAndroidResources = true
+    }
+
+    // Pin OkHttp on the *unit-test* classpath to 4.12.0 so MockWebServer 4.12
+    // resolves the `okhttp3.internal.Util` it expects. Production keeps the
+    // 5.3.2 that quartz-android transitively pulls — only the test runtime
+    // needs the older internals layout. The 5.x-only artifacts (okhttp-android,
+    // okhttp-coroutines) are excluded from test classpaths so they don't drag
+    // 5.x .class files in alongside the forced 4.12 okhttp jar.
+    configurations.matching {
+        it.name.endsWith("UnitTestRuntimeClasspath") ||
+        it.name.endsWith("UnitTestCompileClasspath")
+    }.configureEach {
+        resolutionStrategy {
+            force("com.squareup.okhttp3:okhttp:4.12.0")
+        }
+        exclude(group = "com.squareup.okhttp3", module = "okhttp-android")
+        exclude(group = "com.squareup.okhttp3", module = "okhttp-coroutines")
     }
 
     buildTypes {
@@ -202,10 +243,36 @@ dependencies {
 
     // Zstd decompression is handled by native C library (see src/main/cpp/)
 
+    // FEAT-010 profile editor: image loading + markdown preview
+    implementation(libs.coil.compose)
+    implementation(libs.coil.okhttp)
+    implementation(libs.compose.richtext.commonmark)
+    implementation(libs.compose.richtext.ui.material3)
+
     // Testing
     testImplementation(libs.kotlin.test)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.mockk)
     // JDBC SQLite driver for real-SQL repository races / TOCTOU regression tests
     testImplementation(libs.sqldelight.sqlite.driver)
+    // MockWebServer for KilterApiClient HTTP-error-mapping tests.
+    // Pulls okhttp explicitly on the test classpath so okhttp3.internal.*
+    // is resolvable at test runtime (mockwebserver depends on internals
+    // that the production-only `implementation(okhttp)` doesn't expose
+    // here through the ASM-transformed test runtime).
+    testImplementation(libs.okhttp)
+    testImplementation(libs.okhttp.mockwebserver)
+    // Robolectric: Android-framework shim on JVM. Activity lifecycle,
+    // SharedPreferences, Resources, Context — needed for ViewModel tests
+    // that pull anything from the Android side.
+    testImplementation(libs.robolectric)
+    // Turbine: ergonomic StateFlow/Flow assertions in tests.
+    testImplementation(libs.turbine)
+    // Compose UI test rules + semantics-tree assertions.
+    testImplementation(platform(libs.compose.bom))
+    testImplementation(libs.androidx.compose.ui.test.junit4)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
+    // Hilt-Android-Testing: TestApplication + module-replacement plumbing
+    // for ViewModels that depend on @HiltAndroidApp injection.
+    testImplementation(libs.hilt.android.testing)
 }

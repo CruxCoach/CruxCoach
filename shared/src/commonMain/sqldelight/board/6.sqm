@@ -1,0 +1,183 @@
+-- Migration from version 6 to 7: COLLATE NOCASE on climbs.uuid and
+-- climb_stats.climb_uuid + one-shot dedup of any case-drift rows.
+--
+-- Why: The Kilter cron's blob mixes UUID casings (114k uppercase,
+-- 60k lowercase across the catalog), and SQLite's default binary
+-- collation treats 'ABC' and 'abc' as distinct primary keys. A row
+-- that flipped casing between sync generations — or a Kind-30078
+-- live-sub event referencing a Kilter UUID in the other case —
+-- coexisted with the original as a separate row. The browse VIEW
+-- (`INNER JOIN climb_stats cs ON c.uuid = cs.climb_uuid`) is also
+-- case-sensitive, so each duplicate joined a different stats subset
+-- and the user saw "fastoche" multiple times with diverging stats.
+--
+-- Fix: switch the uuid columns to COLLATE NOCASE. The PK then refuses
+-- case-shifted duplicates outright, the JOIN matches across casings,
+-- and ClimbNameResolver's brute-force case-fanout becomes redundant
+-- (kept for now; cleanup is non-blocking).
+--
+-- SQLite cannot ALTER COLUMN collation in place, so we recreate the
+-- two tables. INSERT OR REPLACE + ORDER BY collapses any existing
+-- case-shifted pairs into a single canonical row, with origin =
+-- 'cruxcoach' (user-authored, irreplaceable) winning over Kilter
+-- blob data, and newer created_at winning over older.
+
+DROP VIEW IF EXISTS climb_browse;
+
+-- ── climbs: rebuild with NOCASE on uuid ────────────────────────────
+
+CREATE TABLE climbs_new (
+    uuid TEXT NOT NULL PRIMARY KEY COLLATE NOCASE,
+    layout_id INTEGER NOT NULL,
+    setter_username TEXT,
+    name TEXT NOT NULL,
+    frames_count INTEGER NOT NULL DEFAULT 1,
+    is_listed INTEGER NOT NULL DEFAULT 1,
+    edge_left INTEGER,
+    edge_right INTEGER,
+    edge_bottom INTEGER,
+    edge_top INTEGER,
+    created_at TEXT,
+    description TEXT NOT NULL DEFAULT '',
+    is_nomatch INTEGER NOT NULL DEFAULT 0,
+    frames_pace INTEGER NOT NULL DEFAULT 0,
+    hsm INTEGER NOT NULL DEFAULT 0,
+    frames BLOB NOT NULL,
+    is_deleted INTEGER NOT NULL DEFAULT 0,
+    move_count INTEGER NOT NULL DEFAULT 0,
+    source TEXT NOT NULL DEFAULT 'kilter',
+    nostr_event_id TEXT,
+    nostr_d_tag TEXT,
+    created_by_pubkey TEXT,
+    frames_hash TEXT,
+    sync_status TEXT NOT NULL DEFAULT 'synced',
+    origin TEXT NOT NULL DEFAULT 'kilter',
+    kilter_status TEXT,
+    kilter_synced_at INTEGER,
+    kilter_publish_via TEXT,
+    kilter_error TEXT,
+    nostr_publish_via TEXT
+);
+
+-- Dedup ordering: when two source rows differ only by uuid case, the
+-- one processed LAST wins (INSERT OR REPLACE deletes the prior PK
+-- match before inserting the new row). Ranking criteria, weakest →
+-- strongest:
+--   1. created_at — older first, newest last.
+--   2. NULL created_at goes first (incomplete data loses).
+--   3. origin = 'cruxcoach' last (community climb is irreplaceable;
+--      Kilter blob can be re-derived from the next sync).
+INSERT OR REPLACE INTO climbs_new(
+    uuid, layout_id, setter_username, name, frames_count, is_listed,
+    edge_left, edge_right, edge_bottom, edge_top, created_at,
+    description, is_nomatch, frames_pace, hsm, frames, is_deleted,
+    move_count, source, nostr_event_id, nostr_d_tag, created_by_pubkey,
+    frames_hash, sync_status, origin, kilter_status, kilter_synced_at,
+    kilter_publish_via, kilter_error, nostr_publish_via)
+SELECT
+    uuid, layout_id, setter_username, name, frames_count, is_listed,
+    edge_left, edge_right, edge_bottom, edge_top, created_at,
+    description, is_nomatch, frames_pace, hsm, frames, is_deleted,
+    move_count, source, nostr_event_id, nostr_d_tag, created_by_pubkey,
+    frames_hash, sync_status, origin, kilter_status, kilter_synced_at,
+    kilter_publish_via, kilter_error, nostr_publish_via
+FROM climbs
+-- Perf: copy ONLY non-kilter (= cruxcoach, user-authored, irreplaceable)
+-- rows. The very next migration 7.sqm does `DELETE FROM climbs WHERE
+-- origin='kilter'` + `DELETE FROM climb_stats` and sets the
+-- post_v8_force_resync marker, so the entire ~190k-row Kilter catalog
+-- this rebuild used to copy+dedup is deleted milliseconds later and
+-- re-downloaded from Blossom anyway. Filtering here mirrors 7.sqm's
+-- delete exactly (`origin != 'kilter'` ≡ what 7.sqm keeps), so the
+-- post-7.sqm DB state is provably identical — only the ~131s wasted
+-- copy on slow devices (Nokia 6.1, 0.1.3→0.1.4) is removed. The
+-- NOCASE PK + INSERT OR REPLACE + ORDER BY dedup is still applied to
+-- the surviving cruxcoach rows, which 7.sqm's `UPDATE climbs SET
+-- uuid=LOWER(uuid)` relies on for collision-safety.
+WHERE origin != 'kilter'
+ORDER BY
+    CASE WHEN origin = 'cruxcoach' THEN 1 ELSE 0 END ASC,
+    CASE WHEN created_at IS NULL THEN 0 ELSE 1 END ASC,
+    created_at ASC;
+
+DROP TABLE climbs;
+ALTER TABLE climbs_new RENAME TO climbs;
+
+-- ── climb_stats: rebuild with NOCASE on climb_uuid ────────────────
+
+CREATE TABLE climb_stats_new (
+    climb_uuid TEXT NOT NULL COLLATE NOCASE,
+    angle INTEGER NOT NULL,
+    display_difficulty REAL,
+    difficulty_average REAL,
+    quality_average REAL,
+    ascensionist_count INTEGER DEFAULT 0,
+    benchmark_difficulty REAL,
+    fa_username TEXT,
+    fa_at TEXT,
+    official_kilter_difficulty INTEGER,
+    PRIMARY KEY (climb_uuid, angle)
+);
+
+-- Dedup ordering: more ascensionists = more authoritative. Ties
+-- (e.g. both rows synthesized from the same source month) collapse
+-- to whichever wins arbitrarily — content is otherwise identical.
+INSERT OR REPLACE INTO climb_stats_new(
+    climb_uuid, angle, display_difficulty, difficulty_average,
+    quality_average, ascensionist_count, benchmark_difficulty,
+    fa_username, fa_at, official_kilter_difficulty)
+SELECT
+    climb_uuid, angle, display_difficulty, difficulty_average,
+    quality_average, ascensionist_count, benchmark_difficulty,
+    fa_username, fa_at, official_kilter_difficulty
+FROM climb_stats
+-- Perf: same rationale as the climbs copy above. 7.sqm does an
+-- unconditional `DELETE FROM climb_stats` then rebuilds it empty +
+-- the forced re-sync repopulates from Blossom, so copying the ~326k
+-- Kilter stat rows here is pure wasted work. Keep only stats for the
+-- surviving (non-kilter) climbs so the intermediate state stays
+-- orphan-free; end state is identical (7.sqm wipes all stats anyway).
+WHERE climb_uuid IN (SELECT uuid FROM climbs)
+ORDER BY COALESCE(ascensionist_count, 0) ASC;
+
+DROP TABLE climb_stats;
+ALTER TABLE climb_stats_new RENAME TO climb_stats;
+
+-- ── recreate indexes (DROP TABLE removed all indexes on the table) ─
+
+CREATE INDEX idx_climbs_listed ON climbs(is_listed);
+CREATE INDEX idx_climbs_frames_count ON climbs(is_listed, frames_count, uuid);
+CREATE INDEX idx_climbs_source ON climbs(source);
+CREATE INDEX idx_climbs_frames_hash ON climbs(frames_hash);
+CREATE INDEX idx_climbs_pubkey ON climbs(created_by_pubkey);
+CREATE INDEX idx_climbs_origin ON climbs(origin);
+CREATE INDEX idx_climbs_kilter_status ON climbs(kilter_status);
+CREATE INDEX idx_climbs_nostr_via ON climbs(nostr_publish_via);
+
+CREATE INDEX idx_climb_stats_angle ON climb_stats(angle);
+CREATE INDEX idx_climb_stats_browse ON climb_stats(
+    angle, difficulty_average, quality_average, ascensionist_count,
+    benchmark_difficulty, climb_uuid
+);
+CREATE INDEX idx_climb_stats_by_popularity ON climb_stats(
+    angle, ascensionist_count, difficulty_average, climb_uuid
+);
+CREATE INDEX idx_climb_stats_count_cover ON climb_stats(
+    angle, ascensionist_count, difficulty_average, benchmark_difficulty,
+    climb_uuid
+);
+
+-- ── recreate climb_browse VIEW ────────────────────────────────────
+-- Now joins case-insensitively because c.uuid and cs.climb_uuid both
+-- carry COLLATE NOCASE from their column declarations.
+CREATE VIEW climb_browse AS
+SELECT
+    c.uuid, c.name, c.setter_username, c.frames_count, c.layout_id,
+    COALESCE(c.description, '') AS description,
+    c.is_nomatch, c.frames_pace, c.hsm, c.move_count,
+    c.source, c.created_by_pubkey, c.sync_status, c.origin, c.kilter_status,
+    cs.angle, cs.difficulty_average, cs.quality_average,
+    cs.ascensionist_count, cs.benchmark_difficulty
+FROM climbs c
+INNER JOIN climb_stats cs ON c.uuid = cs.climb_uuid
+WHERE c.is_listed = 1;

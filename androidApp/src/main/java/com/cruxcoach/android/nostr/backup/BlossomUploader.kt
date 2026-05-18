@@ -22,7 +22,9 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import java.io.IOException
+import java.net.SocketTimeoutException
 import java.security.MessageDigest
+import kotlinx.coroutines.delay
 import java.util.Base64
 import javax.inject.Inject
 import javax.inject.Named
@@ -332,60 +334,105 @@ class BlossomUploader @Inject constructor(
             }
             var ok = 0
             for (server in servers) {
-                try {
-                    val request = Request.Builder()
-                        .url(server.trimEnd('/') + "/$sha256Hex")
-                        .delete()
-                        .header("Authorization", authHeader)
-                        .build()
-                    okHttpClient.newCall(request).execute().use { resp ->
-                        // 404 + 410 count as success: the goal of the delete
-                        // is "this blob is not on the server". A server that
-                        // never accepted the upload (e.g. nostr.build returning
-                        // 415 Unsupported on the original POST) responds 404
-                        // here, and HTTP semantically calls that a failure —
-                        // but for the user's privacy intent the objective is
-                        // already met. Pre-fix the user saw "1 of 2 servers
-                        // acknowledged the deletion" when both were
-                        // effectively clean, just because one had nothing
-                        // to delete. The dev-facing log keeps the distinction
-                        // (`delete_already_absent` vs the actual 2xx success)
-                        // so logcat still surfaces the real-vs-vacuous case.
-                        val effectivelyAbsent = resp.code == 404 || resp.code == 410
-                        if (resp.isSuccessful || effectivelyAbsent) {
-                            ok += 1
-                            if (effectivelyAbsent) {
-                                Log.d(
-                                    TAG,
-                                    "event=delete_already_absent " +
-                                        "server=${server.shortHost()} code=${resp.code}",
-                                )
-                            }
-                        } else {
-                            Log.d(
-                                TAG,
-                                "event=delete_non2xx server=${server.shortHost()} code=${resp.code}",
-                            )
-                        }
-                    }
-                } catch (e: Exception) {
-                    // best-effort: a per-server I/O failure shouldn't propagate
-                    // (the active opt-out flow is best-effort by design — see
-                    // FEAT-002 §20.2). Log explicitly so a 0-success outcome
-                    // can be distinguished in logcat between "server returned
-                    // a non-2xx body" (logged via delete_non2xx above) and
-                    // "connection threw before we got a response". Pre-fix
-                    // this catch was silent which made delete-remote
-                    // diagnostics noticeably worse than upload diagnostics.
-                    Log.d(
-                        TAG,
-                        "event=delete_io_exception server=${server.shortHost()} " +
-                            "reason=${e.javaClass.simpleName}: ${e.message}",
-                    )
+                if (deleteOnce(server, sha256Hex, authHeader, attempt = 1)) {
+                    ok += 1
                 }
             }
             DeleteOutcome(attempted = servers.size, succeeded = ok, authFailed = false)
         }
+
+    /**
+     * One DELETE round to a single server. Retries exactly once on a
+     * fresh [SocketTimeoutException] — the most common transient failure
+     * on mobile networks (observed against blossom.primal.net during
+     * 2026-05-14 delete-remote testing). Other exceptions stay
+     * best-effort: they're logged and counted as a fail without retry,
+     * matching the FEAT-002 §20.2 contract that opt-out cleanup never
+     * blocks the user. Returns `true` if the server acknowledged or
+     * effectively-absented the blob.
+     */
+    private suspend fun deleteOnce(
+        server: String,
+        sha256Hex: String,
+        authHeader: String,
+        attempt: Int,
+    ): Boolean {
+        val request = Request.Builder()
+            .url(server.trimEnd('/') + "/$sha256Hex")
+            .delete()
+            .header("Authorization", authHeader)
+            .build()
+        return try {
+            okHttpClient.newCall(request).execute().use { resp ->
+                // 404 + 410 count as success: the goal of the delete
+                // is "this blob is not on the server". A server that
+                // never accepted the upload (e.g. nostr.build returning
+                // 415 Unsupported on the original POST) responds 404
+                // here, and HTTP semantically calls that a failure —
+                // but for the user's privacy intent the objective is
+                // already met. The dev-facing log keeps the distinction
+                // (`delete_already_absent` vs the actual 2xx success)
+                // so logcat still surfaces the real-vs-vacuous case.
+                val effectivelyAbsent = resp.code == 404 || resp.code == 410
+                if (resp.isSuccessful || effectivelyAbsent) {
+                    if (effectivelyAbsent) {
+                        Log.d(
+                            TAG,
+                            "event=delete_already_absent " +
+                                "server=${server.shortHost()} code=${resp.code} attempt=$attempt",
+                        )
+                    } else if (attempt > 1) {
+                        Log.d(
+                            TAG,
+                            "event=delete_retry_recovered " +
+                                "server=${server.shortHost()} code=${resp.code}",
+                        )
+                    }
+                    true
+                } else {
+                    Log.d(
+                        TAG,
+                        "event=delete_non2xx server=${server.shortHost()} code=${resp.code} attempt=$attempt",
+                    )
+                    false
+                }
+            }
+        } catch (e: SocketTimeoutException) {
+            if (attempt == 1) {
+                Log.d(
+                    TAG,
+                    "event=delete_timeout_retry server=${server.shortHost()} " +
+                        "reason=${e.javaClass.simpleName}",
+                )
+                // Backoff is short by design: the next attempt rides
+                // the same TCP connection pool, and a longer pause
+                // would mostly just delay the user-visible snackbar.
+                delay(750)
+                deleteOnce(server, sha256Hex, authHeader, attempt = 2)
+            } else {
+                Log.d(
+                    TAG,
+                    "event=delete_io_exception server=${server.shortHost()} " +
+                        "reason=${e.javaClass.simpleName}: ${e.message} attempt=$attempt",
+                )
+                false
+            }
+        } catch (e: Exception) {
+            // best-effort: a per-server non-timeout I/O failure
+            // shouldn't propagate (active opt-out flow is best-effort
+            // by design — see FEAT-002 §20.2). Log explicitly so a
+            // 0-success outcome can be distinguished in logcat between
+            // "server returned a non-2xx body" (logged via
+            // delete_non2xx above) and "connection threw before we
+            // got a response".
+            Log.d(
+                TAG,
+                "event=delete_io_exception server=${server.shortHost()} " +
+                    "reason=${e.javaClass.simpleName}: ${e.message} attempt=$attempt",
+            )
+            false
+        }
+    }
 
     data class DeleteOutcome(
         val attempted: Int,
@@ -402,7 +449,18 @@ class BlossomUploader @Inject constructor(
      * `Authorization: Nostr base64(event_json)` header Blossom expects
      * (BUD-01 §1).
      */
-    private suspend fun blossomAuthHeader(action: String, sha256: String): String {
+    /**
+     * Sign a BUD-02 auth header (Kind-24242 Nostr event, base64-encoded
+     * inside `Authorization: Nostr <b64>`). Reused by [ProfileImageUploader]
+     * for FEAT-010 profile-image uploads. The auth event commits to
+     * `(action, sha256, expiration)` and is bound only to the blob's
+     * content hash — same signature works on any Blossom server.
+     */
+    internal suspend fun blossomAuthHeader(
+        action: String,
+        sha256: String,
+        content: String = "CruxCoach backup $action",
+    ): String {
         val now = System.currentTimeMillis() / 1000
         val expiration = now + AUTH_EXPIRATION_SECONDS
         val tags = arrayOf(
@@ -414,7 +472,7 @@ class BlossomUploader @Inject constructor(
             createdAt = now,
             kind = KIND_BLOSSOM_AUTH,
             tags = tags,
-            content = "CruxCoach backup $action",
+            content = content,
         )
         val eventJson = buildEventJson(event)
         val b64 = Base64.getEncoder().encodeToString(eventJson.encodeToByteArray())
