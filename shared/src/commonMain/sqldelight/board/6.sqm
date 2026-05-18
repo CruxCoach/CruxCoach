@@ -82,6 +82,19 @@ SELECT
     frames_hash, sync_status, origin, kilter_status, kilter_synced_at,
     kilter_publish_via, kilter_error, nostr_publish_via
 FROM climbs
+-- Perf: copy ONLY non-kilter (= cruxcoach, user-authored, irreplaceable)
+-- rows. The very next migration 7.sqm does `DELETE FROM climbs WHERE
+-- origin='kilter'` + `DELETE FROM climb_stats` and sets the
+-- post_v8_force_resync marker, so the entire ~190k-row Kilter catalog
+-- this rebuild used to copy+dedup is deleted milliseconds later and
+-- re-downloaded from Blossom anyway. Filtering here mirrors 7.sqm's
+-- delete exactly (`origin != 'kilter'` ≡ what 7.sqm keeps), so the
+-- post-7.sqm DB state is provably identical — only the ~131s wasted
+-- copy on slow devices (Nokia 6.1, 0.1.3→0.1.4) is removed. The
+-- NOCASE PK + INSERT OR REPLACE + ORDER BY dedup is still applied to
+-- the surviving cruxcoach rows, which 7.sqm's `UPDATE climbs SET
+-- uuid=LOWER(uuid)` relies on for collision-safety.
+WHERE origin != 'kilter'
 ORDER BY
     CASE WHEN origin = 'cruxcoach' THEN 1 ELSE 0 END ASC,
     CASE WHEN created_at IS NULL THEN 0 ELSE 1 END ASC,
@@ -118,6 +131,13 @@ SELECT
     quality_average, ascensionist_count, benchmark_difficulty,
     fa_username, fa_at, official_kilter_difficulty
 FROM climb_stats
+-- Perf: same rationale as the climbs copy above. 7.sqm does an
+-- unconditional `DELETE FROM climb_stats` then rebuilds it empty +
+-- the forced re-sync repopulates from Blossom, so copying the ~326k
+-- Kilter stat rows here is pure wasted work. Keep only stats for the
+-- surviving (non-kilter) climbs so the intermediate state stays
+-- orphan-free; end state is identical (7.sqm wipes all stats anyway).
+WHERE climb_uuid IN (SELECT uuid FROM climbs)
 ORDER BY COALESCE(ascensionist_count, 0) ASC;
 
 DROP TABLE climb_stats;
