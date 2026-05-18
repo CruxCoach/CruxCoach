@@ -100,6 +100,38 @@ actual class BoardDriverFactory(private val context: Context) {
 
     private fun vacuumIfNeeded(db: SupportSQLiteDatabase) {
         try {
+            // Skip VACUUM when a post-migration forced full board re-sync
+            // is pending. The schema migration leaves a *_force_resync
+            // marker; BoardSyncManager then re-downloads + re-imports the
+            // whole board DB (BoardDatabaseImporter drops indexes, bulk-
+            // rewrites ~190k climbs + ~326k stats, rebuilds indexes).
+            // VACUUMing here first is pure wasted work on exactly the slow
+            // upgrade path — observed ~146s blocking onOpen on a Nokia 6.1
+            // (the first hasAnyClimbs queued behind this lock). After the
+            // re-import the freshly-written DB has few free pages so a
+            // later normal open won't trigger VACUUM anyway. Skipping
+            // VACUUM never affects correctness — it is pure space
+            // reclamation.
+            val resyncPending = try {
+                db.query(
+                    "SELECT 1 FROM sync_states WHERE table_name " +
+                        "IN ('post_v8_force_resync','homewall_force_resync') LIMIT 1"
+                ).use { it.moveToFirst() }
+            } catch (e: Exception) {
+                // sync_states may not exist yet on a brand-new install
+                // (schema callback hasn't run). Nothing to VACUUM there
+                // anyway; fall through to the normal cheap freelist
+                // check instead of skipping forever.
+                false
+            }
+            if (resyncPending) {
+                Log.i(
+                    "DatabaseFactory",
+                    "Skipping VACUUM: post-migration force-resync pending (re-import rewrites the DB)"
+                )
+                return
+            }
+
             val cursor = db.query("PRAGMA freelist_count")
             val freePages = if (cursor.moveToFirst()) cursor.getLong(0) else 0L
             cursor.close()
