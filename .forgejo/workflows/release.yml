@@ -1,8 +1,16 @@
 name: Release
 
 on:
+  # dev auto-release disabled 2026-05-18: pushing to `dev` no longer
+  # creates a vX.Y.Z-dev.<sha> prerelease. `main` still auto-releases
+  # on the deliberate dev→main merge (that path is unchanged). To cut a
+  # dev (or any-branch) build on demand, use the Actions "Run workflow"
+  # button — workflow_dispatch keeps the existing branch logic in
+  # "Extract version" (dispatch from dev → -dev.<sha> prerelease;
+  # from main → full release).
   push:
-    branches: [main, dev]
+    branches: [main]
+  workflow_dispatch:
 
 jobs:
   release:
