@@ -59,20 +59,21 @@ class BoardRepositoryImpl(
         syncStatus = it.sync_status,
     )
 
-    override fun searchClimbsByName(query: String, angle: Int, layoutId: Int, sortField: ClimbSortField, sortDirection: SortDirection, limit: Int, offset: Int, climbType: ClimbTypeFilter): List<ClimbWithStats> {
+    override fun searchClimbsByName(query: String, angle: Int, layoutId: Int, sortField: ClimbSortField, sortDirection: SortDirection, limit: Int, offset: Int, climbType: ClimbTypeFilter, selProductSizeId: Int): List<ClimbWithStats> {
         val lay = layoutId.toLong()
         val a = angle.toLong()
         val mn = climbType.minFrames()
         val mx = climbType.maxFrames()
         val l = limit.toLong()
         val o = offset.toLong()
+        val sel = selProductSizeId.toLong()
         val desc = sortDirection == SortDirection.DESC
 
         return when (sortField) {
-            ClimbSortField.QUALITY -> if (desc) q.searchByQualityDesc(lay, query, a, mn, mx, l, o) else q.searchByQualityAsc(lay, query, a, mn, mx, l, o)
-            ClimbSortField.DIFFICULTY -> if (desc) q.searchByDifficultyDesc(lay, query, a, mn, mx, l, o) else q.searchByDifficultyAsc(lay, query, a, mn, mx, l, o)
-            ClimbSortField.NAME -> if (desc) q.searchByNameDesc(lay, query, a, mn, mx, l, o) else q.searchByNameAsc(lay, query, a, mn, mx, l, o)
-            else -> if (desc) q.searchByAscensionistsDesc(lay, query, a, mn, mx, l, o) else q.searchByAscensionistsAsc(lay, query, a, mn, mx, l, o)
+            ClimbSortField.QUALITY -> if (desc) q.searchByQualityDesc(lay, query, a, mn, mx, sel, l, o) else q.searchByQualityAsc(lay, query, a, mn, mx, sel, l, o)
+            ClimbSortField.DIFFICULTY -> if (desc) q.searchByDifficultyDesc(lay, query, a, mn, mx, sel, l, o) else q.searchByDifficultyAsc(lay, query, a, mn, mx, sel, l, o)
+            ClimbSortField.NAME -> if (desc) q.searchByNameDesc(lay, query, a, mn, mx, sel, l, o) else q.searchByNameAsc(lay, query, a, mn, mx, sel, l, o)
+            else -> if (desc) q.searchByAscensionistsDesc(lay, query, a, mn, mx, sel, l, o) else q.searchByAscensionistsAsc(lay, query, a, mn, mx, sel, l, o)
         }.executeAsList().map { mapBrowse(it) }
     }
 
@@ -98,7 +99,7 @@ class BoardRepositoryImpl(
     override fun searchClimbsSorted(
         angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int,
         sortField: ClimbSortField, sortDirection: SortDirection, limit: Int, offset: Int,
-        climbType: ClimbTypeFilter
+        climbType: ClimbTypeFilter, selProductSizeId: Int
     ): List<ClimbWithStats> {
         val lay = layoutId.toLong()
         val a = angle.toLong()
@@ -107,34 +108,35 @@ class BoardRepositoryImpl(
         val asc = minAscensionists.toLong()
         val l = limit.toLong()
         val o = offset.toLong()
+        val sel = selProductSizeId.toLong()
         val desc = sortDirection == SortDirection.DESC
 
         return when (sortField) {
-            ClimbSortField.QUALITY -> if (desc) q.browseByQualityDesc(lay, a, mn, mx, minDifficulty, maxDifficulty, asc, l, o) else q.browseByQualityAsc(lay, a, mn, mx, minDifficulty, maxDifficulty, asc, l, o)
-            ClimbSortField.DIFFICULTY -> if (desc) q.browseByDifficultyDesc(lay, a, mn, mx, minDifficulty, maxDifficulty, asc, l, o) else q.browseByDifficultyAsc(lay, a, mn, mx, minDifficulty, maxDifficulty, asc, l, o)
-            ClimbSortField.NAME -> if (desc) q.browseByNameDesc(lay, a, mn, mx, minDifficulty, maxDifficulty, asc, l, o) else q.browseByNameAsc(lay, a, mn, mx, minDifficulty, maxDifficulty, asc, l, o)
-            else -> if (desc) q.browseByAscensionistsDesc(lay, a, mn, mx, minDifficulty, maxDifficulty, asc, l, o) else q.browseByAscensionistsAsc(lay, a, mn, mx, minDifficulty, maxDifficulty, asc, l, o)
+            ClimbSortField.QUALITY -> if (desc) q.browseByQualityDesc(lay, a, mn, mx, minDifficulty, maxDifficulty, asc, sel, l, o) else q.browseByQualityAsc(lay, a, mn, mx, minDifficulty, maxDifficulty, asc, sel, l, o)
+            ClimbSortField.DIFFICULTY -> if (desc) q.browseByDifficultyDesc(lay, a, mn, mx, minDifficulty, maxDifficulty, asc, sel, l, o) else q.browseByDifficultyAsc(lay, a, mn, mx, minDifficulty, maxDifficulty, asc, sel, l, o)
+            ClimbSortField.NAME -> if (desc) q.browseByNameDesc(lay, a, mn, mx, minDifficulty, maxDifficulty, asc, sel, l, o) else q.browseByNameAsc(lay, a, mn, mx, minDifficulty, maxDifficulty, asc, sel, l, o)
+            else -> if (desc) q.browseByAscensionistsDesc(lay, a, mn, mx, minDifficulty, maxDifficulty, asc, sel, l, o) else q.browseByAscensionistsAsc(lay, a, mn, mx, minDifficulty, maxDifficulty, asc, sel, l, o)
         }.executeAsList().map { mapBrowse(it) }
     }
 
-    override fun countFilteredClimbsFast(angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int): Long {
-        return q.countFilteredClimbsFast(layoutId.toLong(), angle.toLong(), minDifficulty, maxDifficulty, minAscensionists.toLong()).executeAsOne()
+    override fun countFilteredClimbsFast(angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, selProductSizeId: Int): Long {
+        return q.countFilteredClimbsFast(layoutId.toLong(), angle.toLong(), minDifficulty, maxDifficulty, minAscensionists.toLong(), selProductSizeId.toLong()).executeAsOne()
     }
 
-    override fun countFilteredClimbs(angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter): Long {
-        return q.countFilteredClimbs(layoutId.toLong(), angle.toLong(), climbType.minFrames(), climbType.maxFrames(), minDifficulty, maxDifficulty, minAscensionists.toLong()).executeAsOne()
+    override fun countFilteredClimbs(angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter, selProductSizeId: Int): Long {
+        return q.countFilteredClimbs(layoutId.toLong(), angle.toLong(), climbType.minFrames(), climbType.maxFrames(), minDifficulty, maxDifficulty, minAscensionists.toLong(), selProductSizeId.toLong()).executeAsOne()
     }
 
-    override fun countBenchmarkFilteredClimbs(angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter): Long {
-        return q.countBenchmarkFilteredClimbs(layoutId.toLong(), angle.toLong(), climbType.minFrames(), climbType.maxFrames(), minDifficulty, maxDifficulty, minAscensionists.toLong()).executeAsOne()
+    override fun countBenchmarkFilteredClimbs(angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter, selProductSizeId: Int): Long {
+        return q.countBenchmarkFilteredClimbs(layoutId.toLong(), angle.toLong(), climbType.minFrames(), climbType.maxFrames(), minDifficulty, maxDifficulty, minAscensionists.toLong(), selProductSizeId.toLong()).executeAsOne()
     }
 
-    override fun countSearchClimbs(query: String, angle: Int, layoutId: Int, climbType: ClimbTypeFilter): Long {
-        return q.countSearchClimbs(layoutId.toLong(), query, query, angle.toLong(), climbType.minFrames(), climbType.maxFrames()).executeAsOne()
+    override fun countSearchClimbs(query: String, angle: Int, layoutId: Int, climbType: ClimbTypeFilter, selProductSizeId: Int): Long {
+        return q.countSearchClimbs(layoutId.toLong(), query, query, angle.toLong(), climbType.minFrames(), climbType.maxFrames(), selProductSizeId.toLong()).executeAsOne()
     }
 
-    override fun countBenchmarkSearchClimbs(query: String, angle: Int, layoutId: Int, climbType: ClimbTypeFilter): Long {
-        return q.countBenchmarkSearchClimbs(layoutId.toLong(), query, query, angle.toLong(), climbType.minFrames(), climbType.maxFrames()).executeAsOne()
+    override fun countBenchmarkSearchClimbs(query: String, angle: Int, layoutId: Int, climbType: ClimbTypeFilter, selProductSizeId: Int): Long {
+        return q.countBenchmarkSearchClimbs(layoutId.toLong(), query, query, angle.toLong(), climbType.minFrames(), climbType.maxFrames(), selProductSizeId.toLong()).executeAsOne()
     }
 
     override fun getClimbCount(): Long {
@@ -304,12 +306,13 @@ class BoardRepositoryImpl(
 
     override fun getCruxCoachClimbs(
         layoutId: Int, angle: Int, minDifficulty: Double, maxDifficulty: Double,
-        minAscensionists: Int, climbType: ClimbTypeFilter,
+        minAscensionists: Int, climbType: ClimbTypeFilter, selProductSizeId: Int,
     ): List<ClimbWithStats> {
         return q.browseCruxCoachOnly(
             layoutId.toLong(), angle.toLong(),
             climbType.minFrames(), climbType.maxFrames(),
             minDifficulty, maxDifficulty, minAscensionists.toLong(),
+            selProductSizeId.toLong(),
         ).executeAsList().map { mapBrowse(it) }
     }
 

@@ -28,6 +28,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.R
+import com.cruxcoach.android.data.BoardConstants
 import com.cruxcoach.data.repository.AccessType
 import com.cruxcoach.data.repository.Adjustability
 
@@ -143,7 +144,7 @@ fun MapFilterSheet(
                                     FilterChip(
                                         selected = sizeId in state.filters.sizeIds,
                                         onClick = { onToggleSizeId(sizeId) },
-                                        label = { Text("$label ($count)") },
+                                        label = { Text("${BoardConstants.sizeLabel(sizeId.toLong(), label)} ($count)") },
                                     )
                                 }
                             }

@@ -24,6 +24,21 @@ interface BoardLocationRepository {
     fun getPublicMatchingBoard(layoutId: Int, productSizeId: Int): List<BoardLocation>
 
     fun getPublicOnly(): List<BoardLocation>
+
+    // ── Per-wall detail (FEAT-007 gym→board picker) ──────────────────
+    // Additive: kilter_board_wall ships in the same "locations" chunk
+    // from 0.1.6+ cron builds. Empty on pre-13.sqm chunks (guarded
+    // importer), so callers must tolerate an empty list.
+    fun countWalls(): Long
+    fun getAllWalls(): List<BoardWall>
+    fun getWallsForGym(gymUuid: String): List<BoardWall>
+    fun getWallsMatchingBoard(layoutId: Int, productSizeId: Int): List<BoardWall>
+
+    /** FEAT-007 gym search: case-insensitive name substring, bounded. */
+    fun searchLocations(query: String, limit: Int = 60): List<BoardLocation>
+
+    /** product_size_id → wall count across all gyms (picker frequency sort). */
+    fun productSizeFrequency(): Map<Int, Long>
 }
 
 data class BoardLocation(
@@ -46,6 +61,25 @@ data class BoardLocation(
     val adjustability: Adjustability,
     val fixedAngle: Int?,
     val frameMaker: String?,
+)
+
+data class BoardWall(
+    val wallUuid: String,
+    val gymUuid: String,
+    val name: String?,
+    val productName: String?,
+    val layoutId: Int?,
+    val productLayoutUuid: String?,
+    val productSizeId: Int?,
+    val sizeLabel: String?,
+    val isAdjustable: Boolean?,
+    val minAngle: Int?,
+    val maxAngle: Int?,
+    val angleIncrements: Int?,
+    val fixedAngle: Int?,
+    val accumulatedHoldSetValue: Int?,
+    val serialNumber: String?,
+    val isListed: Boolean?,
 )
 
 enum class AccessType {

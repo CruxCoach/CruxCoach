@@ -118,6 +118,8 @@ data class OnboardingState(
     val boardLayoutId: Int = com.cruxcoach.android.data.BoardConstants.KILTER_ORIGINAL_LAYOUT,
     val boardProductSizeId: Int = com.cruxcoach.android.data.BoardConstants.KILTER_DEFAULT_SIZE,
     val boardProductSizeName: String = "",
+    val boardSizeFrequency: Map<Int, Long> = emptyMap(),
+    val boardSearchEnabled: Boolean = false,
 )
 
 @HiltViewModel
@@ -131,6 +133,7 @@ class OnboardingViewModel @Inject constructor(
     private val backupPreferences: BackupPreferences,
     private val backupRepository: BackupRepository,
     private val boardSyncManager: com.cruxcoach.android.data.BoardSyncManager,
+    private val boardLocationRepository: com.cruxcoach.data.repository.BoardLocationRepository,
 ) : ViewModel() {
 
     private companion object {
@@ -144,6 +147,18 @@ class OnboardingViewModel @Inject constructor(
     private val _state = MutableStateFlow(
         OnboardingState(hasNostrKey = keyStore.hasKey()),
     )
+
+    init {
+        viewModelScope.launch {
+            val freq = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                boardLocationRepository.productSizeFrequency()
+            }
+            val enabled = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                boardLocationRepository.countWalls() > 0L
+            }
+            _state.update { it.copy(boardSizeFrequency = freq, boardSearchEnabled = enabled) }
+        }
+    }
     val state: StateFlow<OnboardingState> = _state.asStateFlow()
 
     init {
@@ -169,8 +184,8 @@ class OnboardingViewModel @Inject constructor(
         viewModelScope.launch {
             val layoutId = userPreferences.boardLayoutId.first()
             val sizeId = userPreferences.boardProductSizeId.first()
-            val name = com.cruxcoach.android.data.BoardConstants.KILTER_KNOWN_SIZES
-                .firstOrNull { it.id.toInt() == sizeId }?.name.orEmpty()
+            val name = com.cruxcoach.android.data.BoardConstants.sizeLabel(
+                com.cruxcoach.android.data.BoardConstants.KILTER_KNOWN_SIZES, sizeId)
             _state.update {
                 it.copy(
                     boardLayoutId = layoutId,
@@ -206,7 +221,9 @@ class OnboardingViewModel @Inject constructor(
                 it.copy(
                     boardLayoutId = layoutId,
                     boardProductSizeId = newSizeId,
-                    boardProductSizeName = newSize?.name.orEmpty(),
+                    boardProductSizeName = newSize
+                        ?.let { com.cruxcoach.android.data.BoardConstants.sizeLabel(it.id, it.name) }
+                        .orEmpty(),
                 )
             }
         }
@@ -216,6 +233,22 @@ class OnboardingViewModel @Inject constructor(
         viewModelScope.launch {
             userPreferences.setBoardProductSizeId(id)
             _state.update { it.copy(boardProductSizeId = id, boardProductSizeName = name) }
+        }
+    }
+
+    /** FEAT-007 Path B: apply a board chosen via gym search (atomic —
+     *  layout + size together, no layout-roll). */
+    fun selectBoardFromGym(layoutId: Int, productSizeId: Int, label: String) {
+        _state.update {
+            it.copy(
+                boardLayoutId = layoutId,
+                boardProductSizeId = productSizeId,
+                boardProductSizeName = label,
+            )
+        }
+        viewModelScope.launch {
+            userPreferences.setBoardLayoutId(layoutId)
+            userPreferences.setBoardProductSizeId(productSizeId)
         }
     }
 

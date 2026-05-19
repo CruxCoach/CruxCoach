@@ -71,3 +71,10 @@ WHERE layout_id = :layoutId
 
 getPublicLocations:
 SELECT * FROM kilter_board_location WHERE access_type = 'PUBLIC';
+
+-- FEAT-007 gym search: case-insensitive name substring, bounded.
+searchLocations:
+SELECT * FROM kilter_board_location
+WHERE name LIKE ('%' || :q || '%') COLLATE NOCASE
+ORDER BY name
+LIMIT :lim;

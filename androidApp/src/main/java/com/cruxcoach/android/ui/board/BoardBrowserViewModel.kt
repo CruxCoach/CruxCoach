@@ -9,6 +9,7 @@ import com.cruxcoach.android.ble.NearbySession
 import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.android.data.BleShareManager
 import com.cruxcoach.android.data.BleShareUiState
+import com.cruxcoach.android.data.BoardConstants
 import com.cruxcoach.android.data.BoardSessionManager
 import com.cruxcoach.android.data.BoardSessionState
 import com.cruxcoach.android.data.IntensityZoneManager
@@ -289,6 +290,25 @@ class BoardBrowserViewModel @Inject constructor(
                     refreshBoardData(force = true)
                 }
             }
+        }
+    }
+
+    /**
+     * Apply a board chosen from the browser filter's combined all-16
+     * picker. Persists the global selection (same store the settings
+     * picker and the always-on "fits my board" filter read), then
+     * reloads so the list re-filters to that board immediately.
+     */
+    fun selectBoard(productSizeId: Int) {
+        viewModelScope.launch {
+            val ps = BoardConstants.KILTER_KNOWN_SIZES
+                .firstOrNull { it.id.toInt() == productSizeId }
+            val layoutId = BoardConstants.layoutIdForProduct(
+                ps?.productId?.toInt() ?: BoardConstants.KILTER_PRODUCT_ID
+            )
+            userPreferences.setBoardLayoutId(layoutId)
+            userPreferences.setBoardProductSizeId(productSizeId)
+            refreshBoardData(force = true)
         }
     }
 
@@ -661,7 +681,8 @@ class BoardBrowserViewModel @Inject constructor(
             val minDiff = KilterGradeMapper.indexToFilterMin(f.minGradeIndex, french)
             val maxDiff = KilterGradeMapper.indexToFilterMax(f.maxGradeIndex, french)
             val all = boardRepository.getCruxCoachClimbs(
-                f.layoutId, f.angle, minDiff, maxDiff, f.minAscensionists, f.climbTypeFilter
+                f.layoutId, f.angle, minDiff, maxDiff, f.minAscensionists, f.climbTypeFilter,
+                selProductSizeId = selSizeId()
             )
             val nameFiltered = if (f.searchQuery.isBlank()) all
                 else all.filter { it.name.contains(f.searchQuery, ignoreCase = true) }
@@ -727,17 +748,22 @@ class BoardBrowserViewModel @Inject constructor(
         climbs: List<ClimbWithStats>, field: ClimbSortField, dir: SortDirection
     ): List<ClimbWithStats> = boardBrowserSortInKotlin(climbs, field, dir)
 
+    // Selected board's product_size_id (0 = none configured → the
+    // "fits my board" SQL predicate is inert). Same edge-box rule the
+    // map / canRenderClimbOnSize use, so browser ⇄ map stay consistent.
+    private fun selSizeId(): Int = _state.value.boardSize?.id?.toInt() ?: 0
+
     private fun fetchPage(f: BrowserFilterState, offset: Int): List<ClimbWithStats> {
         return if (f.searchQuery.isNotBlank()) {
             PerfLogger.traceQuery("searchClimbsByName(offset=$offset)") {
-                boardRepository.searchClimbsByName(f.searchQuery, f.angle, f.layoutId, f.sortField, f.sortDirection, PAGE_SIZE, offset, f.climbTypeFilter)
+                boardRepository.searchClimbsByName(f.searchQuery, f.angle, f.layoutId, f.sortField, f.sortDirection, PAGE_SIZE, offset, f.climbTypeFilter, selProductSizeId = selSizeId())
             }
         } else {
             val french = _state.value.gradeScale == GradeScale.FRENCH
             val minDiff = KilterGradeMapper.indexToFilterMin(f.minGradeIndex, french)
             val maxDiff = KilterGradeMapper.indexToFilterMax(f.maxGradeIndex, french)
             PerfLogger.traceQuery("searchClimbsSorted(offset=$offset)") {
-                boardRepository.searchClimbsSorted(f.angle, f.layoutId, minDiff, maxDiff, f.minAscensionists, f.sortField, f.sortDirection, PAGE_SIZE, offset, f.climbTypeFilter)
+                boardRepository.searchClimbsSorted(f.angle, f.layoutId, minDiff, maxDiff, f.minAscensionists, f.sortField, f.sortDirection, PAGE_SIZE, offset, f.climbTypeFilter, selProductSizeId = selSizeId())
             }
         }
     }
@@ -745,14 +771,14 @@ class BoardBrowserViewModel @Inject constructor(
     private fun fetchDbCount(f: BrowserFilterState): Long {
         return PerfLogger.traceQuery("fetchDbCount") {
             if (f.searchQuery.isNotBlank()) {
-                if (f.benchmarkOnly) boardRepository.countBenchmarkSearchClimbs(f.searchQuery, f.angle, f.layoutId, f.climbTypeFilter)
-                else boardRepository.countSearchClimbs(f.searchQuery, f.angle, f.layoutId, f.climbTypeFilter)
+                if (f.benchmarkOnly) boardRepository.countBenchmarkSearchClimbs(f.searchQuery, f.angle, f.layoutId, f.climbTypeFilter, selProductSizeId = selSizeId())
+                else boardRepository.countSearchClimbs(f.searchQuery, f.angle, f.layoutId, f.climbTypeFilter, selProductSizeId = selSizeId())
             } else {
                 val french = _state.value.gradeScale == GradeScale.FRENCH
                 val minDiff = KilterGradeMapper.indexToFilterMin(f.minGradeIndex, french)
                 val maxDiff = KilterGradeMapper.indexToFilterMax(f.maxGradeIndex, french)
-                if (f.benchmarkOnly) boardRepository.countBenchmarkFilteredClimbs(f.angle, f.layoutId, minDiff, maxDiff, f.minAscensionists, f.climbTypeFilter)
-                else boardRepository.countFilteredClimbs(f.angle, f.layoutId, minDiff, maxDiff, f.minAscensionists, f.climbTypeFilter)
+                if (f.benchmarkOnly) boardRepository.countBenchmarkFilteredClimbs(f.angle, f.layoutId, minDiff, maxDiff, f.minAscensionists, f.climbTypeFilter, selProductSizeId = selSizeId())
+                else boardRepository.countFilteredClimbs(f.angle, f.layoutId, minDiff, maxDiff, f.minAscensionists, f.climbTypeFilter, selProductSizeId = selSizeId())
             }
         }
     }
@@ -785,7 +811,8 @@ class BoardBrowserViewModel @Inject constructor(
                 val climb = if (f.searchQuery.isNotBlank()) {
                     boardRepository.searchClimbsByName(
                         f.searchQuery, f.angle, f.layoutId, f.sortField, f.sortDirection,
-                        limit = 1, offset = randomOffset, climbType = f.climbTypeFilter
+                        limit = 1, offset = randomOffset, climbType = f.climbTypeFilter,
+                        selProductSizeId = selSizeId()
                     )
                 } else {
                     val french = _state.value.gradeScale == GradeScale.FRENCH
@@ -794,7 +821,7 @@ class BoardBrowserViewModel @Inject constructor(
                     boardRepository.searchClimbsSorted(
                         f.angle, f.layoutId, minDiff, maxDiff, f.minAscensionists,
                         f.sortField, f.sortDirection, limit = 1, offset = randomOffset,
-                        climbType = f.climbTypeFilter
+                        climbType = f.climbTypeFilter, selProductSizeId = selSizeId()
                     )
                 }
                 climb.firstOrNull()?.uuid

@@ -134,7 +134,7 @@ internal fun BoardSyncSection(
 @Composable
 internal fun BoardModelSection(
     boardModelName: String,
-    onChangeModel: () -> Unit
+    onChangeModel: () -> Unit,
 ) {
     Text(
         stringResource(R.string.settings_board_model_title),
@@ -155,55 +155,6 @@ internal fun BoardModelSection(
         TextButton(onClick = onChangeModel) {
             Text(stringResource(R.string.settings_board_model_change), color = OrangeAccent)
         }
-    }
-}
-
-/**
- * Original-vs-Homewall picker. The layout determines which set of
- * placements + sizes the rest of the app shows; the "Board-Modell"
- * picker right below scopes the size *within* the chosen layout.
- *
- * Original is the dominant case on the Kilter ecosystem so it stays
- * the default; Homewall users opt in here once and everything
- * downstream (Browse, Climb-Creator, Stats, Aurora-import) follows.
- */
-@Composable
-internal fun KilterLayoutSection(
-    selectedLayoutId: Int,
-    onLayoutChange: (Int) -> Unit,
-) {
-    Text(
-        stringResource(R.string.settings_board_layout_title),
-        style = MaterialTheme.typography.titleMedium,
-        fontWeight = FontWeight.Bold
-    )
-    Text(
-        stringResource(R.string.settings_board_layout_desc),
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier.testTag("settings_board_layout"),
-    ) {
-        FilterChip(
-            selected = selectedLayoutId == com.cruxcoach.android.data.BoardConstants.KILTER_ORIGINAL_LAYOUT,
-            onClick = { onLayoutChange(com.cruxcoach.android.data.BoardConstants.KILTER_ORIGINAL_LAYOUT) },
-            label = { Text(stringResource(R.string.settings_board_layout_original)) },
-            colors = FilterChipDefaults.filterChipColors(
-                selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
-                selectedLabelColor = OrangeAccent,
-            ),
-        )
-        FilterChip(
-            selected = selectedLayoutId == com.cruxcoach.android.data.BoardConstants.KILTER_HOMEWALL_LAYOUT,
-            onClick = { onLayoutChange(com.cruxcoach.android.data.BoardConstants.KILTER_HOMEWALL_LAYOUT) },
-            label = { Text(stringResource(R.string.settings_board_layout_homewall)) },
-            colors = FilterChipDefaults.filterChipColors(
-                selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
-                selectedLabelColor = OrangeAccent,
-            ),
-        )
     }
 }
 

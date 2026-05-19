@@ -78,6 +78,8 @@ data class SettingsState(
     val boardLayoutId: Int = BoardConstants.KILTER_ORIGINAL_LAYOUT,
     val boardProductSizeId: Int = BoardConstants.KILTER_DEFAULT_SIZE,
     val boardProductSizeName: String = "",
+    val boardSizeFrequency: Map<Int, Long> = emptyMap(),
+    val boardSearchEnabled: Boolean = false,
     val syncInterval: SyncInterval = SyncInterval.MANUAL,
     val lastSyncTimestamp: String? = null,
     val hasAssessment: Boolean = false,
@@ -123,6 +125,7 @@ class SettingsViewModel @Inject constructor(
     private val kilterTokenStore: com.cruxcoach.android.data.kilter.KilterTokenStore,
     private val kilterSyncEngine: com.cruxcoach.android.data.kilter.KilterSyncEngine,
     private val kilterApiClient: com.cruxcoach.android.data.kilter.KilterApiClient,
+    private val boardLocationRepository: com.cruxcoach.data.repository.BoardLocationRepository,
     @param:ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -131,6 +134,11 @@ class SettingsViewModel @Inject constructor(
 
     init {
         loadSettings()
+        viewModelScope.launch {
+            val freq = withContext(Dispatchers.IO) { boardLocationRepository.productSizeFrequency() }
+            val enabled = withContext(Dispatchers.IO) { boardLocationRepository.countWalls() > 0L }
+            _state.update { it.copy(boardSizeFrequency = freq, boardSearchEnabled = enabled) }
+        }
     }
 
     private fun loadSettings() {
@@ -140,7 +148,8 @@ class SettingsViewModel @Inject constructor(
                 val profile = userRepository.getActiveProfile()
                 val layoutId = userPreferences.boardLayoutId.first()
                 val boardSizeId = userPreferences.boardProductSizeId.first()
-                val boardSizeName = boardRepository.getProductSize(boardSizeId)?.name ?: ""
+                val boardSizeName = boardRepository.getProductSize(boardSizeId)
+                    ?.let { BoardConstants.sizeLabel(it.id, it.name) } ?: ""
                 val interval = userPreferences.syncInterval.first()
                 val lastSync = userPreferences.lastSyncTimestamp.first()
                 val scale = userPreferences.gradeScale.first()
@@ -345,6 +354,23 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    /** FEAT-007 Path B: apply a board chosen via gym search. Atomic —
+     *  sets layout + size together, no layout-roll side effect (unlike
+     *  updateBoardLayout). label is the official BoardConstants wording. */
+    fun selectBoardFromGym(layoutId: Int, productSizeId: Int, label: String) {
+        _state.update {
+            it.copy(
+                boardLayoutId = layoutId,
+                boardProductSizeId = productSizeId,
+                boardProductSizeName = label,
+            )
+        }
+        viewModelScope.launch {
+            userPreferences.setBoardLayoutId(layoutId)
+            userPreferences.setBoardProductSizeId(productSizeId)
+        }
+    }
+
     /**
      * Switch the active Kilter layout (Original ↔ Homewall). The
      * product_size also has to roll over because Original sizes
@@ -367,7 +393,7 @@ class SettingsViewModel @Inject constructor(
                     BoardConstants.KILTER_HOMEWALL_LAYOUT -> BoardConstants.KILTER_HOMEWALL_DEFAULT_SIZE
                     else -> BoardConstants.KILTER_DEFAULT_SIZE
                 }
-            val newSizeName = newSize?.name ?: ""
+            val newSizeName = newSize?.let { BoardConstants.sizeLabel(it.id, it.name) } ?: ""
             userPreferences.setBoardProductSizeId(newSizeId)
             _state.update {
                 it.copy(
@@ -388,8 +414,15 @@ class SettingsViewModel @Inject constructor(
         if (_state.value.productSizes.isNotEmpty()) return
         viewModelScope.launch {
             val sizes = withContext(Dispatchers.IO) {
-                val productId = layoutToProductId(_state.value.boardLayoutId).toLong()
-                boardRepository.getAllProductSizes(productId)
+                // Combined picker needs BOTH products — the in-dialog
+                // Original/Homewall segment only appears when the list
+                // spans >1 product. (Loading a single product post-sync
+                // hid Homewall entirely.)
+                boardRepository.getAllProductSizes(
+                    BoardConstants.KILTER_PRODUCT_ID.toLong()
+                ) + boardRepository.getAllProductSizes(
+                    BoardConstants.KILTER_HOMEWALL_PRODUCT_ID.toLong()
+                )
             }
             _state.update { it.copy(productSizes = sizes) }
         }

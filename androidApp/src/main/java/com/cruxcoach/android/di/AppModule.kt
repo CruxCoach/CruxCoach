@@ -257,9 +257,10 @@ object AppModule {
         userPreferences: UserPreferences,
         @ApplicationContext context: Context,
         boardRepository: BoardRepository,
-        personalBoardRepo: PersonalBoardRepository
+        personalBoardRepo: PersonalBoardRepository,
+        boardLocationRepository: BoardLocationRepository
     ): BoardSyncManager {
-        return BoardSyncManager(importer, blossomSyncManager, userPreferences, context, boardRepository, personalBoardRepo)
+        return BoardSyncManager(importer, blossomSyncManager, userPreferences, context, boardRepository, personalBoardRepo, boardLocationRepository)
     }
 
     @Provides

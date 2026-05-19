@@ -73,15 +73,19 @@ fun MapScreen(
         OfflineMapDialog(onDismiss = { showOfflineDialog = false })
     }
 
-    LaunchedEffect(state.noLocationData) {
-        if (!state.noLocationData) return@LaunchedEffect
-        val result = snackbarHostState.showSnackbar(
-            message = context.getString(R.string.map_no_data),
-            actionLabel = context.getString(R.string.map_no_data_action),
-            duration = SnackbarDuration.Indefinite,
-        )
-        if (result == SnackbarResult.ActionPerformed) {
-            onNavigateToBoardSync()
+    // While the one-time locations backfill runs, show a real progress
+    // hint instead of the old "sync the board DB / Sync now" prompt (a
+    // full board sync never fixed this — the backfill does, automatically).
+    LaunchedEffect(state.locationsLoading, state.noLocationData) {
+        when {
+            state.locationsLoading -> snackbarHostState.showSnackbar(
+                message = context.getString(R.string.map_loading_locations),
+                duration = SnackbarDuration.Indefinite,
+            )
+            state.noLocationData -> snackbarHostState.showSnackbar(
+                message = context.getString(R.string.map_no_data),
+                duration = SnackbarDuration.Long,
+            )
         }
     }
 
@@ -203,7 +207,7 @@ fun MapScreen(
                     false
                 },
             )
-            if (state.isLoading) {
+            if (state.isLoading || state.locationsLoading) {
                 Box(
                     modifier = Modifier
                         .align(Alignment.Center)

@@ -2,6 +2,7 @@ package com.cruxcoach.android.ui.map
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.cruxcoach.android.data.BoardSyncManager
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.data.repository.AccessType
 import com.cruxcoach.data.repository.Adjustability
@@ -50,12 +51,15 @@ data class MapState(
     val userBoardSizeId: Int? = null,
     val selectedLocationId: String? = null,
     val noLocationData: Boolean = false,
+    /** True while the one-time locations backfill is fetching/importing. */
+    val locationsLoading: Boolean = false,
 )
 
 @HiltViewModel
 class MapViewModel @Inject constructor(
     private val repository: BoardLocationRepository,
     private val userPreferences: UserPreferences,
+    private val boardSyncManager: BoardSyncManager,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(MapState())
@@ -73,6 +77,23 @@ class MapViewModel @Inject constructor(
                 )
             }
             recomputeFiltered()
+
+            launch {
+                boardSyncManager.locationsBackfilling.collect { running ->
+                    _state.update { it.copy(locationsLoading = running) }
+                    if (!running) {
+                        val refreshed = withContext(Dispatchers.IO) { repository.getAll() }
+                        _state.update {
+                            it.copy(
+                                unfilteredLocations = refreshed,
+                                unfilteredStats = MapStats.from(refreshed),
+                                noLocationData = refreshed.isEmpty(),
+                            )
+                        }
+                        recomputeFiltered()
+                    }
+                }
+            }
 
             combine(
                 listOf<Flow<Any?>>(

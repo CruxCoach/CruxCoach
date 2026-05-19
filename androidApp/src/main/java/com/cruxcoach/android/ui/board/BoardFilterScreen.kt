@@ -1,5 +1,6 @@
 package com.cruxcoach.android.ui.board
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -35,7 +36,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -44,6 +47,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
+import com.cruxcoach.android.data.BoardConstants
+import com.cruxcoach.android.ui.settings.BoardModelSelectionDialog
+import com.cruxcoach.android.ui.settings.GymBoardSearchSheet
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.util.GradeDisplayHelper
 import com.cruxcoach.data.repository.ClimbSortField
@@ -59,6 +65,45 @@ fun BoardFilterScreen(
     onNavigateBack: () -> Unit,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    var showBoardPicker by remember { mutableStateOf(false) }
+    var showGymSearch by remember { mutableStateOf(false) }
+
+    if (showBoardPicker) {
+        // Combined all-16 board picker (Original/Homewall segment +
+        // frequency sort), reused from settings. Confirming sets the
+        // global board selection that drives the always-on
+        // "fits my board" list filter.
+        BoardModelSelectionDialog(
+            productSizes = BoardConstants.KILTER_KNOWN_SIZES,
+            frequency = BoardConstants.DEFAULT_SIZE_FREQUENCY,
+            selectedId = state.boardSize?.id?.toInt() ?: 0,
+            onConfirm = { id ->
+                viewModel.selectBoard(id)
+                showBoardPicker = false
+            },
+            onDismiss = { showBoardPicker = false },
+            onFindViaGym = {
+                showBoardPicker = false
+                showGymSearch = true
+            },
+        )
+    }
+
+    if (showGymSearch) {
+        // Same "don't know? find your gym" path as settings; on pick
+        // it sets the global board selection (drives the fits filter).
+        GymBoardSearchSheet(
+            onPicked = { _, productSizeId, _ ->
+                viewModel.selectBoard(productSizeId)
+                showGymSearch = false
+            },
+            onFallbackToDirect = {
+                showGymSearch = false
+                showBoardPicker = true
+            },
+            onDismiss = { showGymSearch = false },
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -113,6 +158,33 @@ fun BoardFilterScreen(
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                // Combined layout+size board selector, at the very top.
+                // Short caption + the selected board name as an orange
+                // (no-underline) link → the all-16 picker (which itself
+                // hosts the "don't know? find your gym" entry). Either
+                // path sets the global board selection that drives the
+                // always-on "fits my board" filter.
+                val boardLabel = state.boardSize
+                    ?.let { BoardConstants.sizeLabel(it.id, it.name) }
+                    ?: stringResource(R.string.settings_board_model_not_configured)
+                Column {
+                    Text(
+                        stringResource(R.string.board_filter_selected_board),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        text = boardLabel,
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Medium,
+                        color = OrangeAccent,
+                        modifier = Modifier
+                            .testTag("board_filter_board_link")
+                            .clickable { showBoardPicker = true }
+                            .padding(vertical = 2.dp),
+                    )
+                }
+
                 Text(
                     stringResource(R.string.board_filter_angle, state.filter.angle),
                     style = MaterialTheme.typography.labelMedium,

@@ -71,6 +71,7 @@ fun SettingsScreen(
     var dataExpanded by rememberSaveable { mutableStateOf(false) }
     var updaterExpanded by rememberSaveable { mutableStateOf(false) }
     var showBoardModelDialog by rememberSaveable { mutableStateOf(false) }
+    var showGymSearch by rememberSaveable { mutableStateOf(false) }
 
     // Notification-tap deep-link auto-expand: opens the updater section so
     // the inline confirmation dialog inside [UpdaterSettingsSection] can
@@ -124,36 +125,48 @@ fun SettingsScreen(
         LaunchedEffect(Unit) { viewModel.loadProductSizes() }
 
         if (showBoardModelDialog) {
-            // Filter the size list to the active layout's product so a
-            // Homewall user doesn't see Original-board sizes (and vice
-            // versa). The active layout itself is picked one section
-            // higher via the KilterLayoutSection.
-            val activeProductId = when (state.boardLayoutId) {
-                com.cruxcoach.android.data.BoardConstants.KILTER_HOMEWALL_LAYOUT ->
-                    com.cruxcoach.android.data.BoardConstants.KILTER_HOMEWALL_PRODUCT_ID
-                else -> com.cruxcoach.android.data.BoardConstants.KILTER_PRODUCT_ID
-            }
-            val dbSizes = state.productSizes.filter { it.productId.toInt() == activeProductId }
-            // Pre-sync: fall back to hardcoded standard sizes so the
-            // user can still pick their physical board model. Board
-            // model is hardware knowledge — it doesn't need a network
-            // round-trip to be answered. Once the DB syncs, dbSizes
-            // becomes non-empty and replaces the fallback.
-            val filteredSizes = if (dbSizes.isNotEmpty()) {
-                dbSizes
-            } else {
+            // Full board list (both products). Layout is no longer a
+            // separate chip — the dialog has an in-dialog Original/
+            // Homewall segment and the pick resolves its own layout.
+            // Pre-sync: KILTER_KNOWN_SIZES (all 16) so the user can pick
+            // before the DB sync; replaced by synced product_sizes once
+            // available.
+            val allSizes = state.productSizes.ifEmpty {
                 com.cruxcoach.android.data.BoardConstants.KILTER_KNOWN_SIZES
-                    .filter { it.productId.toInt() == activeProductId }
             }
             BoardModelSelectionDialog(
-                productSizes = filteredSizes,
+                productSizes = allSizes,
+                frequency = state.boardSizeFrequency
+                    .ifEmpty { com.cruxcoach.android.data.BoardConstants.DEFAULT_SIZE_FREQUENCY },
                 selectedId = state.boardProductSizeId,
                 onConfirm = { id ->
-                    val name = filteredSizes.find { it.id.toInt() == id }?.name ?: ""
-                    viewModel.updateBoardProductSize(id, name)
+                    val size = allSizes.firstOrNull { it.id.toInt() == id }
+                    val layout = com.cruxcoach.android.data.BoardConstants.layoutIdForProduct(
+                        size?.productId?.toInt()
+                            ?: com.cruxcoach.android.data.BoardConstants.KILTER_PRODUCT_ID
+                    )
+                    val name = com.cruxcoach.android.data.BoardConstants.sizeLabel(allSizes, id)
+                    viewModel.selectBoardFromGym(layout, id, name)
                     showBoardModelDialog = false
                 },
                 onDismiss = { showBoardModelDialog = false },
+                onFindViaGym = {
+                    showBoardModelDialog = false
+                    showGymSearch = true
+                },
+            )
+        }
+        if (showGymSearch) {
+            GymBoardSearchSheet(
+                onPicked = { layoutId, productSizeId, label ->
+                    viewModel.selectBoardFromGym(layoutId, productSizeId, label)
+                    showGymSearch = false
+                },
+                onFallbackToDirect = {
+                    showGymSearch = false
+                    showBoardModelDialog = true
+                },
+                onDismiss = { showGymSearch = false },
             )
         }
 
@@ -188,14 +201,9 @@ fun SettingsScreen(
             CollapsibleHeader(stringResource(R.string.settings_section_board), boardSettingsExpanded) { boardSettingsExpanded = !boardSettingsExpanded }
             AnimatedVisibility(visible = boardSettingsExpanded) {
                 Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    KilterLayoutSection(
-                        selectedLayoutId = state.boardLayoutId,
-                        onLayoutChange = { viewModel.updateBoardLayout(it) },
-                    )
-                    HorizontalDivider()
                     BoardModelSection(
                         boardModelName = state.boardProductSizeName,
-                        onChangeModel = { showBoardModelDialog = true }
+                        onChangeModel = { showBoardModelDialog = true },
                     )
                     HorizontalDivider()
                     BleAutoDisconnectSection(

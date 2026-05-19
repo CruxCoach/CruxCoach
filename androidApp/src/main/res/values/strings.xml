@@ -236,8 +236,8 @@
     <string name="map_offline_dialog_title">No internet connection</string>
     <string name="map_offline_dialog_body">The map needs internet the first time you open it. After that, areas you\'ve viewed stay available offline.\n\nConnect to Wi-Fi or mobile data and try again.</string>
     <string name="map_offline_dialog_close">Close</string>
-    <string name="map_no_data">Board location data not available — sync the board database first</string>
-    <string name="map_no_data_action">Sync now</string>
+    <string name="map_no_data">Board locations not loaded yet — they download automatically on the next app start</string>
+    <string name="map_loading_locations">Loading board locations…</string>
     <string name="map_open_filters">Open filters</string>
     <string name="map_open_stats">Open stats</string>
     <string name="map_filter_sheet_title">Filter map</string>
@@ -405,6 +405,7 @@
     <string name="settings_share_title">Share app</string>
     <string name="settings_share_desc">Share CruxCoach APK with others (without user data).</string>
     <string name="board_filter_title">Filters</string>
+    <string name="board_filter_selected_board">Selected board</string>
     <string name="settings_share_via_apps">Share via apps</string>
     <string name="settings_share_online">Share online</string>
     <string name="settings_share_online_hide">Hide online QR</string>
@@ -1420,6 +1421,16 @@
     <string name="settings_board_model_title">Board size</string>
     <string name="settings_board_model_change">Change</string>
     <string name="settings_board_model_not_configured">Not configured</string>
+    <string name="settings_board_find_via_gym">Don\'t know?</string>
+    <string name="settings_board_find_via_gym_fallback">Pick your board directly</string>
+    <string name="feat007_gym_search_title">Find your gym</string>
+    <string name="feat007_gym_search_field">Gym name…</string>
+    <string name="feat007_gym_search_min">Type at least 2 letters</string>
+    <string name="feat007_gym_search_none">No gym found.</string>
+    <string name="feat007_gym_one">This gym uses:</string>
+    <string name="feat007_gym_many">This gym has %1$d boards — pick the one you\'re at:</string>
+    <string name="feat007_gym_no_walls">No board data for this gym.</string>
+    <string name="feat007_back">Back</string>
     <string name="settings_section_data">Data Management</string>
     <string name="settings_section_dev_contact">Developer Contact</string>
     <string name="settings_section_display">Display</string>

@@ -1308,6 +1308,41 @@ class BoardDatabaseImporter(
             }
             val count = queryLong(targetDb, "SELECT COUNT(*) FROM kilter_board_location")
             Log.d("BoardDatabaseImporter", "Imported $count board locations")
+
+            // Per-wall detail (FEAT-007). Additive + guarded: pre-0.1.6
+            // chunks have no kilter_board_wall, so skip silently rather
+            // than fail the (critical) location import. Own transaction
+            // so a wall-side error never rolls back locations.
+            if (hasTable(rawDb, "kilter_board_wall")) {
+                try {
+                    targetDb.beginTransaction()
+                    try {
+                        targetDb.execSQL("DELETE FROM kilter_board_wall")
+                        targetDb.execSQL("""
+                            INSERT INTO kilter_board_wall(
+                                wall_uuid, gym_uuid, name, product_name, layout_id,
+                                product_layout_uuid, product_size_id, size_label, is_adjustable,
+                                min_angle, max_angle, angle_increments, fixed_angle,
+                                accumulated_hold_set_value, serial_number, is_listed
+                            )
+                            SELECT wall_uuid, gym_uuid, name, product_name, layout_id,
+                                   product_layout_uuid, product_size_id, size_label, is_adjustable,
+                                   min_angle, max_angle, angle_increments, fixed_angle,
+                                   accumulated_hold_set_value, serial_number, is_listed
+                            FROM loc_src.kilter_board_wall
+                        """)
+                        targetDb.setTransactionSuccessful()
+                    } finally {
+                        targetDb.endTransaction()
+                    }
+                    val wc = queryLong(targetDb, "SELECT COUNT(*) FROM kilter_board_wall")
+                    Log.d("BoardDatabaseImporter", "Imported $wc board walls")
+                } catch (e: Exception) {
+                    Log.w("BoardDatabaseImporter", "kilter_board_wall import failed (non-fatal)", e)
+                }
+            } else {
+                Log.d("BoardDatabaseImporter", "locations chunk has no kilter_board_wall (pre-0.1.6 chunk) — skipping walls")
+            }
             targetDb.execSQL("DETACH DATABASE loc_src")
         } catch (e: Exception) {
             try { targetDb.execSQL("DETACH DATABASE loc_src") } catch (_: Exception) {}
