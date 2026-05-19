@@ -81,6 +81,7 @@ fun BoardClimbDetailScreen(
     val isSharingEnabled by viewModel.isSharingEnabled.collectAsStateWithLifecycle()
     val pageCache by viewModel.pageCache.collectAsStateWithLifecycle()
     var showBleSheet by remember { mutableStateOf(false) }
+    var showRestTimerDialog by remember { mutableStateOf(false) }
 
     // BLE sheet lives here (once), not inside per-page content
     val detailQueueManager = com.cruxcoach.android.ui.common.LocalSessionQueueManager.current
@@ -276,6 +277,19 @@ fun BoardClimbDetailScreen(
         )
     }
 
+    // Per-use custom rest-timer duration (settings value stays the
+    // default + the post-logging auto-start).
+    if (showRestTimerDialog) {
+        RestTimerStartDialog(
+            initialSeconds = state.restTimerTotalSeconds,
+            onStart = {
+                viewModel.startRestTimer(it)
+                showRestTimerDialog = false
+            },
+            onDismiss = { showRestTimerDialog = false },
+        )
+    }
+
     // Remote disconnect request dialog (single instance)
     val bleConnViewModel: BleConnectionViewModel = hiltViewModel()
     val bleConnState by bleConnViewModel.state.collectAsStateWithLifecycle()
@@ -398,7 +412,7 @@ fun BoardClimbDetailScreen(
                             )
                         }
                         IconButton(
-                            onClick = { viewModel.startRestTimer() },
+                            onClick = { showRestTimerDialog = true },
                             modifier = Modifier.testTag("boarddetail_rest_timer_button")
                         ) {
                             Icon(

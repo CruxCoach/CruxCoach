@@ -222,6 +222,7 @@
     <!-- FEAT-006 Map (placeholder; full set added in phase 10) -->
     <string name="map_screen_title">Map</string>
     <string name="cd_map">Find a Kilter Board on the map</string>
+    <string name="map_filter_show_all">All</string>
     <string name="map_filter_show_original">Commercial gyms (Original)</string>
     <string name="map_filter_show_homewalls">Private homewalls</string>
     <string name="map_filter_matches_my_board">Matches my board</string>
@@ -258,7 +259,7 @@
     <string name="map_stats_label_countries">Countries</string>
     <string name="map_stats_label_public">Public</string>
     <string name="map_stats_label_adjustable">Adjustable</string>
-    <string name="map_stats_visible_of_total_template">%1$d of %2$d locations match your filters</string>
+    <string name="map_stats_total_locations">locations total</string>
     <string name="map_stats_empty">No data</string>
 
     <!-- Access enum display values -->
@@ -1411,6 +1412,8 @@
     <string name="post_workout_rpe_display">RPE: %1$s – %2$s</string>
     <string name="rest_timer_done">Rest done!</string>
     <string name="rest_timer_label">Rest</string>
+    <string name="rest_timer_set_title">Rest length</string>
+    <string name="rest_timer_start">Start</string>
     <string name="settings_app_share_title">Share App</string>
     <string name="settings_profile_assessment_title">Profile &amp; Assessment</string>
     <string name="settings_section_board">Board Settings</string>

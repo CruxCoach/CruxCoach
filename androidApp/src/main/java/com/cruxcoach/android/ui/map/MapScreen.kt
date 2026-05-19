@@ -138,6 +138,7 @@ fun MapScreen(
         MapFilterSheet(
             state = state,
             onDismiss = { showFilterSheet = false },
+            onSelectAllLayouts = viewModel::selectAllLayouts,
             onToggleShowOriginal = viewModel::toggleShowOriginal,
             onToggleShowHomewalls = viewModel::toggleShowHomewalls,
             onToggleMatchesMyBoard = viewModel::toggleMatchesMyBoard,

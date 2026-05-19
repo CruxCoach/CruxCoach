@@ -188,6 +188,14 @@ class MapViewModel @Inject constructor(
         }
     }
 
+    /** "All" layout chip: show both Original and Homewall families. */
+    fun selectAllLayouts() {
+        viewModelScope.launch {
+            userPreferences.setMapFilterShowOriginal(true)
+            userPreferences.setMapFilterShowHomewalls(true)
+        }
+    }
+
     fun toggleCountry(code: String) {
         viewModelScope.launch {
             val current = userPreferences.mapFilterCountries.first()

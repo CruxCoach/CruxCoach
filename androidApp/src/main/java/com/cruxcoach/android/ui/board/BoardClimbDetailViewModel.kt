@@ -1068,8 +1068,16 @@ class BoardClimbDetailViewModel @Inject constructor(
 
     // --- Rest timer (delegates to singleton BoardSessionManager) ---
 
+    /** Auto-start after logging + the settings default duration. */
     fun startRestTimer() {
         sessionManager.startRestTimer(_state.value.restTimerTotalSeconds)
+    }
+
+    /** Manual start from the detail screen with a per-use custom
+     *  duration. Does not touch the settings default (which stays the
+     *  pre-fill + the post-logging auto-start value). */
+    fun startRestTimer(durationSeconds: Int) {
+        sessionManager.startRestTimer(durationSeconds)
     }
 
     fun cancelRestTimer() {

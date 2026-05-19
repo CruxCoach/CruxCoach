@@ -62,14 +62,17 @@ fun StatsScreen(
         return
     }
 
-    val stats = state.stats
+    // Stats always reflect the full dataset (all boards), independent
+    // of the active map filters — the filter-count footer is where
+    // "matches your filters" lives, not here.
+    val stats = state.unfilteredStats
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item {
-            HeaderCard(stats = stats, totalUnfiltered = state.unfilteredStats.total)
+            HeaderCard(stats = stats)
         }
 
         item {
@@ -126,7 +129,7 @@ fun StatsScreen(
 }
 
 @Composable
-private fun HeaderCard(stats: MapStats, totalUnfiltered: Int) {
+private fun HeaderCard(stats: MapStats) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -142,7 +145,7 @@ private fun HeaderCard(stats: MapStats, totalUnfiltered: Int) {
                 color = ChartOrange,
             )
             Text(
-                stringResource(R.string.map_stats_visible_of_total_template, stats.total, totalUnfiltered),
+                stringResource(R.string.map_stats_total_locations),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

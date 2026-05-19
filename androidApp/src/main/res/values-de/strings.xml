@@ -222,6 +222,7 @@
     <!-- FEAT-006 Map (placeholder; full set added in phase 10) -->
     <string name="map_screen_title">Karte</string>
     <string name="cd_map">Kilter Board auf der Karte finden</string>
+    <string name="map_filter_show_all">Alle</string>
     <string name="map_filter_show_original">Kommerzielle Hallen (Original)</string>
     <string name="map_filter_show_homewalls">Private Homewalls</string>
     <string name="map_open_filters">Filter öffnen</string>
@@ -244,7 +245,7 @@
     <string name="map_stats_label_countries">Länder</string>
     <string name="map_stats_label_public">Öffentlich</string>
     <string name="map_stats_label_adjustable">Verstellbar</string>
-    <string name="map_stats_visible_of_total_template">%1$d von %2$d Standorten passen zu deinen Filtern</string>
+    <string name="map_stats_total_locations">Standorte gesamt</string>
     <string name="map_stats_empty">Keine Daten</string>
     <string name="map_filter_matches_my_board">Passt zu meinem Board</string>
     <string name="map_filter_match_disabled">Konfiguriere zuerst dein Board</string>
@@ -1458,6 +1459,8 @@
     <string name="post_workout_rpe_display">RPE: %1$s – %2$s</string>
     <string name="rest_timer_done">Pause vorbei!</string>
     <string name="rest_timer_label">Pause</string>
+    <string name="rest_timer_set_title">Pausenlänge</string>
+    <string name="rest_timer_start">Starten</string>
     <string name="settings_app_share_title">App teilen</string>
     <string name="settings_profile_assessment_title">Profil &amp; Assessment</string>
     <string name="settings_section_board">Board-Einstellungen</string>

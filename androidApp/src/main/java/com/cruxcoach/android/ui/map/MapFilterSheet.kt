@@ -45,6 +45,7 @@ import com.cruxcoach.data.repository.Adjustability
 fun MapFilterSheet(
     state: MapState,
     onDismiss: () -> Unit,
+    onSelectAllLayouts: () -> Unit,
     onToggleShowOriginal: () -> Unit,
     onToggleShowHomewalls: () -> Unit,
     onToggleMatchesMyBoard: () -> Unit,
@@ -83,6 +84,11 @@ fun MapFilterSheet(
 
                 item {
                     Section(stringResource(R.string.map_filter_section_layout)) {
+                        FilterChip(
+                            selected = state.filters.showOriginal && state.filters.showHomewalls,
+                            onClick = onSelectAllLayouts,
+                            label = { Text(stringResource(R.string.map_filter_show_all)) },
+                        )
                         FilterChip(
                             selected = state.filters.showOriginal,
                             onClick = onToggleShowOriginal,

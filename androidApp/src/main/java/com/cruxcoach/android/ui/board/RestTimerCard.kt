@@ -11,6 +11,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -18,7 +21,12 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.StrokeCap
@@ -27,6 +35,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
+import com.cruxcoach.android.ui.settings.DurationStepper
 import com.cruxcoach.android.ui.theme.ErrorRed
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.theme.SuccessGreen
@@ -134,4 +143,48 @@ internal fun formatTimerDuration(totalSeconds: Int): String {
     val min = totalSeconds / 60
     val sec = totalSeconds % 60
     return if (min > 0) "%d:%02d".format(min, sec) else "${sec}s"
+}
+
+/**
+ * Per-use custom rest duration picker for the detail screen. Pre-filled
+ * with the settings default but does NOT persist — the settings value
+ * stays the default + the post-logging auto-start duration.
+ */
+@Composable
+internal fun RestTimerStartDialog(
+    initialSeconds: Int,
+    onStart: (Int) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var seconds by remember { mutableIntStateOf(initialSeconds.coerceAtLeast(5)) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(stringResource(R.string.rest_timer_set_title), fontWeight = FontWeight.Bold)
+        },
+        text = {
+            DurationStepper(
+                seconds = seconds,
+                onChange = { seconds = it },
+                minSeconds = 5,
+                maxSeconds = 60 * 60,
+                minuteLabel = stringResource(R.string.settings_duration_minutes_label),
+                secondLabel = stringResource(R.string.settings_duration_seconds_label),
+            )
+        },
+        confirmButton = {
+            Button(
+                onClick = { onStart(seconds) },
+                colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
+                shape = RoundedCornerShape(12.dp),
+            ) {
+                Text(stringResource(R.string.rest_timer_start), fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.action_cancel))
+            }
+        },
+    )
 }

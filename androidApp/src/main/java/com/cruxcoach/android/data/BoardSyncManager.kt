@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import com.cruxcoach.android.data.BoardDatabaseImporter.ImportStep
 import com.cruxcoach.android.data.blossom.BlossomSyncManager
+import com.cruxcoach.android.notification.BoardSyncWorker
 import com.cruxcoach.android.util.isNetworkAvailable
 import com.cruxcoach.android.util.isWifiConnected
 import com.cruxcoach.util.DateTimeUtil
@@ -298,7 +299,10 @@ class BoardSyncManager(
                     return@launch
                 }
                 Log.d(TAG, "Changed chunks: ${changedChunks.map { it.name }}")
-                startBlossomSync()
+                // Run under a foreground service so the stale-data
+                // auto-sync isn't killed if the user backgrounds the
+                // app right after launch.
+                BoardSyncWorker.enqueueExpedited(appContext)
             } catch (e: Exception) {
                 Log.w(TAG, "Blossom manifest check failed — skipping auto-sync", e)
             }
@@ -391,7 +395,9 @@ class BoardSyncManager(
             return
         }
 
-        startBlossomSync()
+        // Execute under a foreground-service worker so the sync
+        // survives the app being backgrounded mid-download.
+        BoardSyncWorker.enqueueExpedited(appContext)
     }
 
     /**
