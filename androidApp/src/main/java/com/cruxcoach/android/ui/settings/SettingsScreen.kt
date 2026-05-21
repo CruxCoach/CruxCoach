@@ -145,12 +145,21 @@ fun SettingsScreen(
                 com.cruxcoach.android.data.BoardConstants.KILTER_KNOWN_SIZES
                     .filter { it.productId.toInt() == activeProductId }
             }
-            BoardModelSelectionDialog(
+            // FEAT-027: brand-aware picker. Tier 0 chooses Kilter / MoonBoard;
+            // the Kilter branch reuses the same product-size list as before.
+            BoardSelectionDialog(
+                initialBrand = state.boardBrand,
                 productSizes = filteredSizes,
-                selectedId = state.boardProductSizeId,
-                onConfirm = { id ->
+                selectedKilterSizeId = state.boardProductSizeId,
+                selectedMoonBoardVariant = state.moonBoardVariant,
+                selectedMoonBoardHoldSet = state.moonBoardHoldSet,
+                onConfirmKilter = { id ->
                     val name = filteredSizes.find { it.id.toInt() == id }?.name ?: ""
                     viewModel.updateBoardProductSize(id, name)
+                    showBoardModelDialog = false
+                },
+                onConfirmMoonBoard = { variant, holdSet ->
+                    viewModel.selectMoonBoardVariant(variant, holdSet)
                     showBoardModelDialog = false
                 },
                 onDismiss = { showBoardModelDialog = false },
@@ -188,13 +197,28 @@ fun SettingsScreen(
             CollapsibleHeader(stringResource(R.string.settings_section_board), boardSettingsExpanded) { boardSettingsExpanded = !boardSettingsExpanded }
             AnimatedVisibility(visible = boardSettingsExpanded) {
                 Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    KilterLayoutSection(
-                        selectedLayoutId = state.boardLayoutId,
-                        onLayoutChange = { viewModel.updateBoardLayout(it) },
-                    )
-                    HorizontalDivider()
+                    // The Kilter Original/Homewall toggle only applies while
+                    // the active brand is Kilter — a MoonBoard variant has no
+                    // Kilter layout. Hide it for MoonBoard (FEAT-027).
+                    if (state.boardBrand != "moonboard") {
+                        KilterLayoutSection(
+                            selectedLayoutId = state.boardLayoutId,
+                            onLayoutChange = { viewModel.updateBoardLayout(it) },
+                        )
+                        HorizontalDivider()
+                    }
                     BoardModelSection(
-                        boardModelName = state.boardProductSizeName,
+                        // For a MoonBoard, show the variant name (with hold set)
+                        // instead of the Kilter board size.
+                        boardModelName = if (state.boardBrand == "moonboard") {
+                            state.moonBoardVariant?.let { variant ->
+                                if (state.moonBoardHoldSet.isNotBlank())
+                                    "${variant.displayName} · ${state.moonBoardHoldSet}"
+                                else variant.displayName
+                            } ?: ""
+                        } else {
+                            state.boardProductSizeName
+                        },
                         onChangeModel = { showBoardModelDialog = true }
                     )
                     HorizontalDivider()
@@ -465,6 +489,20 @@ fun SettingsScreen(
                 }
             },
             text = { Text(message) },
+        )
+    }
+
+    // FEAT-027: MoonBoard catalogue-sync result, surfaced after the user
+    // selects a MoonBoard variant in the board picker.
+    state.moonBoardSyncMessage?.let { syncMessage ->
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissMoonBoardSyncMessage() },
+            confirmButton = {
+                TextButton(onClick = { viewModel.dismissMoonBoardSyncMessage() }) {
+                    Text(stringResource(R.string.action_close))
+                }
+            },
+            text = { Text(syncMessage) },
         )
     }
 }

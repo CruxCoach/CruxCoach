@@ -783,6 +783,9 @@
     <string name="board_ble_connecting">Connecting\u2026</string>
     <string name="board_ble_scanning">Searching boards…</string>
     <string name="board_ble_no_boards">No boards found. Start a scan to find nearby boards.</string>
+    <!-- FEAT-027: board brand labels in the BLE pairing UI -->
+    <string name="board_ble_brand_kilter">Kilter Board</string>
+    <string name="board_ble_brand_moonboard">MoonBoard</string>
     <string name="board_ble_start_scan">Start scan</string>
     <string name="board_ble_stop_scan">Stop scan</string>
     <string name="board_ble_board_occupied">Board is occupied</string>
@@ -1721,6 +1724,19 @@
     <string name="board_model_dialog_close">Close</string>
     <string name="board_model_dialog_confirm">Confirm</string>
     <string name="board_model_dialog_cancel">Cancel</string>
+
+    <!-- FEAT-027: unified Kilter / MoonBoard board picker -->
+    <string name="board_selection_dialog_title">Choose your board</string>
+    <string name="board_selection_brand_label">Board type</string>
+    <string name="board_selection_brand_kilter">Kilter</string>
+    <string name="board_selection_brand_moonboard">MoonBoard</string>
+    <string name="board_selection_moonboard_variant_label">MoonBoard variant</string>
+    <string name="board_selection_moonboard_holdset_label">Hold set</string>
+    <string name="board_selection_moonboard_holdset_hint">The hold set is used for display only — it does not filter the climb list.</string>
+    <!-- FEAT-027: MoonBoard catalogue sync result -->
+    <string name="moonboard_sync_already_current">MoonBoard catalogue is already up to date.</string>
+    <string name="moonboard_sync_imported">MoonBoard catalogue downloaded.</string>
+    <string name="moonboard_sync_failed">MoonBoard catalogue download failed: %1$s</string>
 
     <!-- BoardSyncInlineCard step detail labels (was mixed EN/DE) -->
     <string name="board_sync_detail_climbs_count">%,d Climbs…</string>

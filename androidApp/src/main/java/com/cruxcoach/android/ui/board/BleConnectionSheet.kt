@@ -31,6 +31,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.cruxcoach.android.ble.BlePermissionHelper
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.ble.DiscoveredBoard
+import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.android.ui.common.LocalBleShareManager
 import com.cruxcoach.android.data.SessionRole
 import androidx.compose.ui.res.stringResource
@@ -138,6 +139,11 @@ fun BleConnectionSheet(
                 state.connectionState == ConnectionState.SENDING -> {
                     ConnectedContent(
                         boardName = state.connectedBoardName ?: "Board",
+                        // FEAT-027: derive the brand from the advertising
+                        // name — MoonBoard advertises a bare "MoonBoard…"
+                        // name, Aurora boards a parsed Kilter-style name.
+                        boardBrand = if (viewModel.isConnectedBoardMoonBoard())
+                            BoardBrand.MOONBOARD else BoardBrand.KILTER,
                         isSending = state.connectionState == ConnectionState.SENDING,
                         onDisconnect = { viewModel.disconnect() }
                     )
@@ -316,6 +322,7 @@ private fun LegacyBleWarningContent(onAccept: () -> Unit) {
 @Composable
 private fun ConnectedContent(
     boardName: String,
+    boardBrand: BoardBrand,
     isSending: Boolean,
     onDisconnect: () -> Unit
 ) {
@@ -336,8 +343,10 @@ private fun ConnectedContent(
                 fontWeight = FontWeight.Bold,
                 color = SuccessGreen
             )
+            // FEAT-027: brand-aware label so the connected device shows
+            // whether it's a Kilter board or a MoonBoard.
             Text(
-                boardName,
+                "${brandLabel(boardBrand)} · $boardName",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -627,8 +636,15 @@ private fun BoardItem(board: DiscoveredBoard, onClick: () -> Unit) {
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.Bold
                 )
+                // FEAT-027: brand label so the user can tell a discovered
+                // Kilter board apart from a MoonBoard. For Kilter the serial
+                // stays the secondary line; MoonBoard has no serial.
                 Text(
-                    board.serial,
+                    text = if (board.serial.isNotBlank()) {
+                        "${brandLabel(board.boardBrand)} · ${board.serial}"
+                    } else {
+                        brandLabel(board.boardBrand)
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -657,4 +673,11 @@ private fun rssiColor(rssi: Int) = when {
     rssi >= -60 -> SuccessGreen
     rssi >= -75 -> WarningYellow
     else -> ErrorRed
+}
+
+/** Localized brand label for a discovered / connected board (FEAT-027). */
+@Composable
+private fun brandLabel(brand: BoardBrand): String = when (brand) {
+    BoardBrand.KILTER -> stringResource(R.string.board_ble_brand_kilter)
+    BoardBrand.MOONBOARD -> stringResource(R.string.board_ble_brand_moonboard)
 }

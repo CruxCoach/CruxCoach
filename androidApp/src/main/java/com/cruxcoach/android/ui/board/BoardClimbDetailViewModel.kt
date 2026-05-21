@@ -597,39 +597,48 @@ class BoardClimbDetailViewModel @Inject constructor(
                             ?: boardRepository.getClimbByUuid(uuid.uppercase(), angle)
                     }
                     if (climb != null) {
+                        // FEAT-027: a MoonBoard climb has no Aurora
+                        // product_size / board_images / placement-LED rows —
+                        // its visualization is procedural from `frames`.
+                        // Skip every Kilter-only board-geometry lookup.
+                        val isMoonBoard = climb.boardBrand == "moonboard"
                         val allFrames = BoardClimbParser.parseMultiFrames(climb.frames)
                         val isRoute = allFrames.size > 1
                         val holds = allFrames.firstOrNull() ?: emptyList()
-                        val placementMap = PerfLogger.trace("loadClimb.placements") {
-                            cachedPlacementMap ?: run {
-                                val map = boardRepository.getAllPlacements().associateBy { it.placementId.toInt() }
-                                cachedPlacementMap = map
-                                map
+                        val placementMap = if (isMoonBoard) emptyMap() else
+                            PerfLogger.trace("loadClimb.placements") {
+                                cachedPlacementMap ?: run {
+                                    val map = boardRepository.getAllPlacements().associateBy { it.placementId.toInt() }
+                                    cachedPlacementMap = map
+                                    map
+                                }
                             }
-                        }
                         val prefSizeId = userPreferences.boardProductSizeId.first()
                         val prefLayoutId = userPreferences.boardLayoutId.first()
-                        val (effectiveSizeId, effectiveLayoutId) = pickEffectiveBoardForClimb(
+                        val effectiveBoard = if (isMoonBoard) null else pickEffectiveBoardForClimb(
                             climbUuid = uuid,
                             climbLayoutId = climb.layoutId.toInt(),
                             preferredSizeId = prefSizeId,
                             preferredLayoutId = prefLayoutId,
                         )
-                        val boardSize = boardRepository.getProductSize(effectiveSizeId)
-                        val boardImages = boardRepository.getBoardImages(
-                            effectiveSizeId, effectiveLayoutId
-                        )
+                        val boardSize = effectiveBoard?.let { (sizeId, _) ->
+                            boardRepository.getProductSize(sizeId)
+                        }
+                        val boardImages = effectiveBoard?.let { (sizeId, layoutId) ->
+                            boardRepository.getBoardImages(sizeId, layoutId)
+                        } ?: emptyList()
                         val userAscents = PerfLogger.trace("loadClimb.userHistory") {
                             personalBoardRepo.getUserHistoryForClimb(uuid)
                         }
                         val isFavorited = personalBoardRepo.isClimbFavorited(uuid)
                         val angles = boardRepository.getAnglesForClimb(uuid)
 
-                        mirrorPlacementMap = PerfLogger.trace("loadClimb.mirrorMap") {
-                            boardRepository.getMirrorPlacementMap(effectiveSizeId).ifEmpty {
-                                computeMirrorMapFromPlacements(placementMap, boardSize)
+                        mirrorPlacementMap = if (effectiveBoard == null) emptyMap() else
+                            PerfLogger.trace("loadClimb.mirrorMap") {
+                                boardRepository.getMirrorPlacementMap(effectiveBoard.first).ifEmpty {
+                                    computeMirrorMapFromPlacements(placementMap, boardSize)
+                                }
                             }
-                        }
                         originalAllFrames = allFrames
 
                         val useSetterSpeed = userPreferences.routeUseSetterSpeed.first()
@@ -746,26 +755,30 @@ class BoardClimbDetailViewModel @Inject constructor(
             try {
                 withContext(Dispatchers.IO) {
                     val climb = boardRepository.getClimbByUuid(uuid, angle) ?: return@withContext
+                    // FEAT-027: skip Kilter-only board geometry for MoonBoard climbs.
+                    val isMoonBoard = climb.boardBrand == "moonboard"
                     val allFrames = BoardClimbParser.parseMultiFrames(climb.frames)
                     val isRoute = allFrames.size > 1
                     val holds = allFrames.firstOrNull() ?: emptyList()
-                    val placementMap = cachedPlacementMap ?: run {
+                    val placementMap = if (isMoonBoard) emptyMap() else cachedPlacementMap ?: run {
                         val map = boardRepository.getAllPlacements().associateBy { it.placementId.toInt() }
                         cachedPlacementMap = map
                         map
                     }
                     val prefSizeId = userPreferences.boardProductSizeId.first()
                     val prefLayoutId = userPreferences.boardLayoutId.first()
-                    val (effectiveSizeId, effectiveLayoutId) = pickEffectiveBoardForClimb(
+                    val effectiveBoard = if (isMoonBoard) null else pickEffectiveBoardForClimb(
                         climbUuid = uuid,
                         climbLayoutId = climb.layoutId.toInt(),
                         preferredSizeId = prefSizeId,
                         preferredLayoutId = prefLayoutId,
                     )
-                    val boardSize = boardRepository.getProductSize(effectiveSizeId)
-                    val boardImages = boardRepository.getBoardImages(
-                        effectiveSizeId, effectiveLayoutId
-                    )
+                    val boardSize = effectiveBoard?.let { (sizeId, _) ->
+                        boardRepository.getProductSize(sizeId)
+                    }
+                    val boardImages = effectiveBoard?.let { (sizeId, layoutId) ->
+                        boardRepository.getBoardImages(sizeId, layoutId)
+                    } ?: emptyList()
                     val userAscents = personalBoardRepo.getUserHistoryForClimb(uuid)
                     val isFavorited = personalBoardRepo.isClimbFavorited(uuid)
                     val angles = boardRepository.getAnglesForClimb(uuid)

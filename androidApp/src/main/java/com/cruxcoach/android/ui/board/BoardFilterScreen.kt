@@ -118,18 +118,43 @@ fun BoardFilterScreen(
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold
                 )
-                Slider(
-                    value = state.filter.angle.toFloat(),
-                    onValueChange = { viewModel.setAngle(it.toInt()) },
-                    onValueChangeFinished = { viewModel.commitFilterChange() },
-                    valueRange = 0f..70f,
-                    steps = 13,
-                    modifier = Modifier.testTag("board_angle_slider"),
-                    colors = SliderDefaults.colors(
-                        thumbColor = OrangeAccent,
-                        activeTrackColor = OrangeAccent
+                // FEAT-027: a MoonBoard variant is set at a fixed handful of
+                // angles (e.g. 25° / 40°) — offer those as discrete chips
+                // instead of the Kilter 0-70° continuous slider.
+                if (state.filter.moonBoardAngles.isNotEmpty()) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.testTag("board_angle_chips"),
+                    ) {
+                        state.filter.moonBoardAngles.forEach { angle ->
+                            FilterChip(
+                                selected = state.filter.angle == angle,
+                                onClick = {
+                                    viewModel.setAngle(angle)
+                                    viewModel.commitFilterChange()
+                                },
+                                label = { Text("$angle°") },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
+                                    selectedLabelColor = OrangeAccent,
+                                ),
+                            )
+                        }
+                    }
+                } else {
+                    Slider(
+                        value = state.filter.angle.toFloat(),
+                        onValueChange = { viewModel.setAngle(it.toInt()) },
+                        onValueChangeFinished = { viewModel.commitFilterChange() },
+                        valueRange = 0f..70f,
+                        steps = 13,
+                        modifier = Modifier.testTag("board_angle_slider"),
+                        colors = SliderDefaults.colors(
+                            thumbColor = OrangeAccent,
+                            activeTrackColor = OrangeAccent
+                        )
                     )
-                )
+                }
 
                 val frenchMode = state.gradeScale == GradeScale.FRENCH
                 val vScaleIndices = remember { GradeConverter.V_SCALE_INDICES }

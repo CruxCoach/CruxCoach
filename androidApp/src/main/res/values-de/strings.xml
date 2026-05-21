@@ -826,6 +826,9 @@
     <string name="board_ble_connecting">Verbinde\u2026</string>
     <string name="board_ble_scanning">Suche Boards…</string>
     <string name="board_ble_no_boards">Keine Boards gefunden. Starte einen Scan, um Boards in der Nähe zu finden.</string>
+    <!-- FEAT-027: Board-Marken-Labels in der BLE-Kopplungs-UI -->
+    <string name="board_ble_brand_kilter">Kilter Board</string>
+    <string name="board_ble_brand_moonboard">MoonBoard</string>
     <string name="board_ble_start_scan">Scan starten</string>
     <string name="board_ble_stop_scan">Scan stoppen</string>
     <string name="board_ble_board_occupied">Board ist besetzt</string>
@@ -1723,6 +1726,19 @@
     <string name="board_model_dialog_close">Schließen</string>
     <string name="board_model_dialog_confirm">Bestätigen</string>
     <string name="board_model_dialog_cancel">Abbrechen</string>
+
+    <!-- FEAT-027: vereinheitlichte Kilter-/MoonBoard-Board-Auswahl -->
+    <string name="board_selection_dialog_title">Board auswählen</string>
+    <string name="board_selection_brand_label">Board-Typ</string>
+    <string name="board_selection_brand_kilter">Kilter</string>
+    <string name="board_selection_brand_moonboard">MoonBoard</string>
+    <string name="board_selection_moonboard_variant_label">MoonBoard-Variante</string>
+    <string name="board_selection_moonboard_holdset_label">Griff-Set</string>
+    <string name="board_selection_moonboard_holdset_hint">Das Griff-Set dient nur der Anzeige — es filtert die Climb-Liste nicht.</string>
+    <!-- FEAT-027: Ergebnis des MoonBoard-Katalog-Syncs -->
+    <string name="moonboard_sync_already_current">MoonBoard-Katalog ist bereits aktuell.</string>
+    <string name="moonboard_sync_imported">MoonBoard-Katalog heruntergeladen.</string>
+    <string name="moonboard_sync_failed">MoonBoard-Katalog konnte nicht geladen werden: %1$s</string>
 
     <!-- BoardSyncInlineCard Schritt-Detail-Labels (war gemischt DE/EN) -->
     <string name="board_sync_detail_climbs_count">%,d Climbs…</string>

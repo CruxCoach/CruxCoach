@@ -312,6 +312,17 @@ class BleConnectionViewModel @Inject constructor(
         bleConnection.connect(board)
     }
 
+    /**
+     * Whether the currently-connected board is a MoonBoard (FEAT-027).
+     * Derived from the advertising name — MoonBoard advertises a bare
+     * "MoonBoard…" name, Aurora boards a Kilter-style parsed name. Used by
+     * the connection sheet to brand-label the connected device.
+     */
+    fun isConnectedBoardMoonBoard(): Boolean {
+        val name = _state.value.connectedBoardName ?: return false
+        return bleScanner.isMoonBoardName(name)
+    }
+
     fun disconnect() {
         bleConnection.disconnect()
     }

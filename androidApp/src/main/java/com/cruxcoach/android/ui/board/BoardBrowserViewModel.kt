@@ -21,6 +21,7 @@ import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.domain.board.IntensityZone
 import com.cruxcoach.domain.board.IntensityZoneEngine
 import com.cruxcoach.domain.board.IntensityZones
+import com.cruxcoach.domain.board.MoonBoardVariant
 import com.cruxcoach.domain.board.SessionType
 import com.cruxcoach.data.repository.ClimbWithStats
 import com.cruxcoach.data.repository.BoardRepository
@@ -93,6 +94,13 @@ data class SessionZoneSummary(
 data class BrowserFilterState(
     val angle: Int = 40,
     val layoutId: Int = com.cruxcoach.android.data.BoardConstants.KILTER_ORIGINAL_LAYOUT,
+    /** Active board brand — "kilter" | "moonboard" (FEAT-027). When
+     *  "moonboard" the angle picker offers the variant's discrete
+     *  [moonBoardAngles] instead of the Kilter 0-70° slider. */
+    val boardBrand: String = "kilter",
+    /** Discrete angle options for the active MoonBoard variant; empty for
+     *  Kilter (which uses the continuous slider). */
+    val moonBoardAngles: List<Int> = emptyList(),
     val minGradeIndex: Int = 0,
     val maxGradeIndex: Int = 14,
     val minAscensionists: Int = 0,
@@ -216,10 +224,17 @@ class BoardBrowserViewModel @Inject constructor(
                 val originFilter = try { OriginFilter.valueOf(snap.originFilter) } catch (_: Exception) { OriginFilter.ALL }
                 PerfLogger.milestone("BoardBrowserVM prefs loaded (batch)")
 
+                // FEAT-027: when the active board is a MoonBoard, the angle
+                // picker offers the variant's discrete angles instead of the
+                // Kilter slider.
+                val moonBoardAngles = MoonBoardVariant
+                    .fromLayoutId(snap.layoutId.toLong())?.angles.orEmpty()
                 _state.update { it.copy(
                     gradeScale = snap.gradeScale,
                     filter = it.filter.copy(
                         angle = snap.angle, layoutId = snap.layoutId,
+                        boardBrand = snap.boardBrand,
+                        moonBoardAngles = moonBoardAngles,
                         minGradeIndex = snap.minGrade, maxGradeIndex = snap.maxGrade,
                         minAscensionists = snap.minAscensionists, sortField = sortField, sortDirection = sortDir,
                         statusFilter = statusFilter, climbTypeFilter = climbType,
@@ -344,13 +359,26 @@ class BoardBrowserViewModel @Inject constructor(
                 val countChanged = hasData != _state.value.hasBoardData
                 val prefSizeId = userPreferences.boardProductSizeId.first()
                 val prefLayoutId = userPreferences.boardLayoutId.first()
+                val prefBoardBrand = userPreferences.boardBrand.first()
+                // FEAT-027: a MoonBoard layout has no Aurora product_size /
+                // board_images rows — the Kilter-only lookups below would just
+                // return empty. Skip them entirely for a MoonBoard board.
+                val isMoonBoard = prefBoardBrand == "moonboard"
                 val needsBoardReload = _state.value.boardSize == null || _state.value.boardSize!!.id.toInt() != prefSizeId
                     || _state.value.filter.layoutId != prefLayoutId
                 // Load/reload board data (placements once, boardSize + layoutId on change)
                 if (count > 0) {
-                    // Keep layout filter in sync with preferences
-                    if (_state.value.filter.layoutId != prefLayoutId) {
-                        _state.update { it.copy(filter = it.filter.copy(layoutId = prefLayoutId)) }
+                    // Keep layout filter + brand in sync with preferences.
+                    if (_state.value.filter.layoutId != prefLayoutId
+                        || _state.value.filter.boardBrand != prefBoardBrand
+                    ) {
+                        val moonBoardAngles = MoonBoardVariant
+                            .fromLayoutId(prefLayoutId.toLong())?.angles.orEmpty()
+                        _state.update { it.copy(filter = it.filter.copy(
+                            layoutId = prefLayoutId,
+                            boardBrand = prefBoardBrand,
+                            moonBoardAngles = moonBoardAngles,
+                        )) }
                     }
                     if (_state.value.placements.isEmpty()) {
                         val placements = PerfLogger.traceQuery("getAllPlacements") {
@@ -359,12 +387,16 @@ class BoardBrowserViewModel @Inject constructor(
                         _state.update { it.copy(placements = placements) }
                         PerfLogger.milestone("BoardBrowserVM placements loaded (${placements.size})")
                     }
-                    if (needsBoardReload) {
+                    if (needsBoardReload && !isMoonBoard) {
                         val boardSize = PerfLogger.traceQuery("getProductSize") {
                             boardRepository.getProductSize(prefSizeId)
                         }
                         val boardImages = boardRepository.getBoardImages(prefSizeId, prefLayoutId)
                         _state.update { it.copy(boardSize = boardSize, boardImages = boardImages) }
+                    } else if (needsBoardReload) {
+                        // MoonBoard: clear any stale Kilter board image/size so
+                        // the browse list doesn't carry over Kilter geometry.
+                        _state.update { it.copy(boardSize = null, boardImages = emptyList()) }
                     }
                 }
                 _state.update { it.copy(climbCount = count, hasBoardData = count > 0) }

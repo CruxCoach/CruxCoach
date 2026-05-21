@@ -12,8 +12,10 @@ import com.cruxcoach.android.data.DarkModeSetting
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.data.BoardSyncManager
 import com.cruxcoach.android.data.LedHoldColors
+import com.cruxcoach.android.data.MoonBoardCatalogueSync
 import com.cruxcoach.android.data.SyncInterval
 import com.cruxcoach.android.data.UserPreferences
+import com.cruxcoach.domain.board.MoonBoardVariant
 import com.cruxcoach.android.notification.AnnouncementTagParser
 import com.cruxcoach.android.notification.BoardSyncWorker
 import com.cruxcoach.data.repository.BoardRepository
@@ -78,6 +80,15 @@ data class SettingsState(
     val boardLayoutId: Int = BoardConstants.KILTER_ORIGINAL_LAYOUT,
     val boardProductSizeId: Int = BoardConstants.KILTER_DEFAULT_SIZE,
     val boardProductSizeName: String = "",
+    /** Active board brand — "kilter" | "moonboard" (FEAT-027). */
+    val boardBrand: String = "kilter",
+    /** Active MoonBoard variant, or null when the brand is Kilter (FEAT-027). */
+    val moonBoardVariant: MoonBoardVariant? = null,
+    /** Hold set installed on the user's MoonBoard — display-only (FEAT-027). */
+    val moonBoardHoldSet: String = "",
+    /** One-shot snackbar text from the most recent MoonBoard catalogue
+     *  sync, surfaced via the existing delete-success snackbar slot. */
+    val moonBoardSyncMessage: String? = null,
     val syncInterval: SyncInterval = SyncInterval.MANUAL,
     val lastSyncTimestamp: String? = null,
     val hasAssessment: Boolean = false,
@@ -118,6 +129,7 @@ class SettingsViewModel @Inject constructor(
     private val userPreferences: UserPreferences,
     private val bleConnection: BoardBleConnection,
     private val climbAdvertiser: ClimbBleAdvertiser,
+    private val moonBoardCatalogueSync: MoonBoardCatalogueSync,
     private val announcementRepository: AnnouncementRepository,
     private val queueManager: OfflineQueueManager,
     private val kilterTokenStore: com.cruxcoach.android.data.kilter.KilterTokenStore,
@@ -141,6 +153,12 @@ class SettingsViewModel @Inject constructor(
                 val layoutId = userPreferences.boardLayoutId.first()
                 val boardSizeId = userPreferences.boardProductSizeId.first()
                 val boardSizeName = boardRepository.getProductSize(boardSizeId)?.name ?: ""
+                val boardBrand = userPreferences.boardBrand.first()
+                // MoonBoard layout ids (2/4/5) are disjoint from Kilter's,
+                // so the active variant is derived directly from the
+                // single boardLayoutId pref.
+                val moonBoardVariant = MoonBoardVariant.fromLayoutId(layoutId.toLong())
+                val moonBoardHoldSet = userPreferences.moonBoardHoldSet.first()
                 val interval = userPreferences.syncInterval.first()
                 val lastSync = userPreferences.lastSyncTimestamp.first()
                 val scale = userPreferences.gradeScale.first()
@@ -195,6 +213,9 @@ class SettingsViewModel @Inject constructor(
                     boardLayoutId = layoutId,
                     boardProductSizeId = boardSizeId,
                     boardProductSizeName = boardSizeName,
+                    boardBrand = boardBrand,
+                    moonBoardVariant = moonBoardVariant,
+                    moonBoardHoldSet = moonBoardHoldSet,
                     syncInterval = interval,
                     lastSyncTimestamp = lastSync,
                     hasAssessment = hasAssessment,
@@ -339,10 +360,59 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun updateBoardProductSize(id: Int, name: String) {
-        _state.update { it.copy(boardProductSizeId = id, boardProductSizeName = name) }
+        // Also record brand = "kilter": the unified board picker can switch
+        // back from MoonBoard, and the brand pref must follow so Browse +
+        // Detail stop treating the active board as a MoonBoard (FEAT-027).
+        _state.update {
+            it.copy(
+                boardProductSizeId = id,
+                boardProductSizeName = name,
+                boardBrand = "kilter",
+                moonBoardVariant = null,
+            )
+        }
         viewModelScope.launch {
             userPreferences.setBoardProductSizeId(id)
+            userPreferences.setBoardBrand("kilter")
         }
+    }
+
+    /**
+     * Select a MoonBoard variant + hold set as the active board (FEAT-027).
+     * Persists atomically via [UserPreferences.setMoonBoardSelection] (writes
+     * the variant's layout id, brand="moonboard", hold set, and pins angle
+     * 40°), updates state, then kicks off a MoonBoard catalogue sync so the
+     * browser has climbs to show. The sync result is surfaced as a snackbar.
+     */
+    fun selectMoonBoardVariant(variant: MoonBoardVariant, holdSet: String) {
+        _state.update {
+            it.copy(
+                boardBrand = "moonboard",
+                boardLayoutId = variant.layoutId.toInt(),
+                moonBoardVariant = variant,
+                moonBoardHoldSet = holdSet,
+                // The Kilter board-size label is meaningless for a MoonBoard;
+                // SettingsScreen shows the variant name instead.
+                boardProductSizeName = variant.displayName,
+            )
+        }
+        viewModelScope.launch {
+            userPreferences.setMoonBoardSelection(variant.layoutId.toInt(), holdSet)
+            val result = withContext(Dispatchers.IO) { moonBoardCatalogueSync.sync() }
+            val message = when (result) {
+                is MoonBoardCatalogueSync.Result.AlreadyCurrent ->
+                    context.getString(R.string.moonboard_sync_already_current)
+                is MoonBoardCatalogueSync.Result.Imported ->
+                    context.getString(R.string.moonboard_sync_imported)
+                is MoonBoardCatalogueSync.Result.Failed ->
+                    context.getString(R.string.moonboard_sync_failed, result.message)
+            }
+            _state.update { it.copy(moonBoardSyncMessage = message) }
+        }
+    }
+
+    fun dismissMoonBoardSyncMessage() {
+        _state.update { it.copy(moonBoardSyncMessage = null) }
     }
 
     /**

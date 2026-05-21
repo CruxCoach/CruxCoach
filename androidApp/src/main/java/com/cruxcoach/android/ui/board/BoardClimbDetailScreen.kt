@@ -913,22 +913,34 @@ private fun ClimbDetailPageContent(
                     }
                 }
 
-                // Board visualization (Climbdex-style) with countdown overlay
+                // Board visualization (Climbdex-style) with countdown overlay.
+                // FEAT-027: MoonBoard climbs render the procedural 11x18 grid
+                // from the climb's `frames` string; Kilter climbs keep the
+                // photo-backed Aurora renderer.
                 Box(modifier = Modifier.fillMaxWidth()) {
-                    KilterBoardVisualization(
-                        holds = state.holds,
-                        placements = state.placements,
-                        boardSize = state.boardSize,
-                        boardImages = state.boardImages,
-                        ledColors = state.ledColors,
-                        previewMode = state.playback.showPreview,
-                        currentFrameHolds = if (state.playback.showPreview && state.playback.isRoute) {
-                            state.playback.allFrames.getOrElse(state.playback.currentFrameIndex) { emptyList() }
-                        } else null,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("boarddetail_visualization")
-                    )
+                    if (climb.boardBrand == "moonboard") {
+                        MoonBoardVisualization(
+                            frames = climb.frames,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("boarddetail_visualization")
+                        )
+                    } else {
+                        KilterBoardVisualization(
+                            holds = state.holds,
+                            placements = state.placements,
+                            boardSize = state.boardSize,
+                            boardImages = state.boardImages,
+                            ledColors = state.ledColors,
+                            previewMode = state.playback.showPreview,
+                            currentFrameHolds = if (state.playback.showPreview && state.playback.isRoute) {
+                                state.playback.allFrames.getOrElse(state.playback.currentFrameIndex) { emptyList() }
+                            } else null,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("boarddetail_visualization")
+                        )
+                    }
                     // Countdown overlay
                     if (state.playback.countdownSeconds > 0) {
                         Box(

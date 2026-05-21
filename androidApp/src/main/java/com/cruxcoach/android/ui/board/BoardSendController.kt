@@ -48,6 +48,13 @@ internal class BoardSendController(
             Log.d(TAG, "sendToBoard: suppressed (session queue active)")
             return
         }
+        // FEAT-027: a MoonBoard climb sends an ASCII `frames` payload — it has
+        // no Aurora `holds` list and no LED map. Gate on a non-blank frames
+        // string and route through the dedicated MoonBoard transport.
+        if (state.value.climb?.boardBrand == "moonboard") {
+            sendMoonBoardToBoard()
+            return
+        }
         val s = state.value
         if (s.holds.isEmpty() || s.ble.connectionState != ConnectionState.CONNECTED) {
             state.update { it.copy(nearby = it.nearby.copy(
@@ -101,6 +108,54 @@ internal class BoardSendController(
                 throw e
             } catch (e: Exception) {
                 Log.e(TAG, "sendToBoard failed", e)
+                state.update { it.copy(
+                    ble = it.ble.copy(isSending = false, error = e.message ?: "Fehler beim Senden"),
+                    nearby = it.nearby.copy(debugInfo = "exception: ${e.message?.take(50)}")
+                ) }
+            }
+        }
+    }
+
+    /**
+     * MoonBoard branch of [sendToBoard] (FEAT-027). Gates on a non-blank
+     * `frames` string instead of an Aurora `holds` list, skips the LED-map
+     * load entirely, and pushes the climb via [BoardBleConnection.sendMoonBoardClimb].
+     * Drives the same [BoardSendState] connect/send UI state machine so the
+     * detail screen's send-status row behaves identically across brands.
+     */
+    private fun sendMoonBoardToBoard() {
+        val s = state.value
+        val frames = s.climb?.frames
+        if (frames.isNullOrBlank() || s.ble.connectionState != ConnectionState.CONNECTED) {
+            state.update { it.copy(nearby = it.nearby.copy(
+                debugInfo = "skip: frames=${frames?.length ?: 0} conn=${s.ble.connectionState}"
+            )) }
+            return
+        }
+        if (s.ble.isSending) {
+            state.update { it.copy(nearby = it.nearby.copy(debugInfo = "skip: already sending")) }
+            return
+        }
+
+        state.update { it.copy(
+            ble = BoardSendState(connectionState = it.ble.connectionState, isSending = true),
+            nearby = it.nearby.copy(debugInfo = "sending (moonboard)...")
+        ) }
+        sendJob = scope.launch {
+            try {
+                val success = bleConnection.sendMoonBoardClimb(frames)
+                state.update { it.copy(
+                    ble = it.ble.copy(
+                        isSending = false,
+                        success = success,
+                        error = if (!success) "Senden fehlgeschlagen" else null,
+                    ),
+                    nearby = it.nearby.copy(debugInfo = "sent ok=$success")
+                ) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "sendMoonBoardToBoard failed", e)
                 state.update { it.copy(
                     ble = it.ble.copy(isSending = false, error = e.message ?: "Fehler beim Senden"),
                     nearby = it.nearby.copy(debugInfo = "exception: ${e.message?.take(50)}")
