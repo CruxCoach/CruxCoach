@@ -93,8 +93,11 @@ object MoonBoardFrameEncoder {
      * Parse `p{holdId}r{roleCode}` pairs out of a `frames` string.
      * Tolerant of trailing separators / whitespace: each id/role is
      * read as its leading run of digits.
+     *
+     * Public: also consumed by the androidApp MoonBoard renderer to
+     * resolve a climb's start / hand / finish holds for display.
      */
-    internal fun parseHolds(frames: String): List<Pair<Int, Int>> =
+    fun parseHolds(frames: String): List<Pair<Int, Int>> =
         frames.split('p')
             .filter { it.isNotBlank() }
             .mapNotNull { segment ->
