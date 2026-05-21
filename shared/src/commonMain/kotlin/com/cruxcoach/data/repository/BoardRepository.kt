@@ -59,6 +59,10 @@ data class ClimbWithStats(
      *  alone can drift ('failed' after a successful prior publish,
      *  etc.). */
     val nostrEventId: String? = null,
+    /** Board brand: 'kilter' | 'moonboard' (FEAT-027). Projected by the
+     *  `climb_browse` VIEW from `climbs.board_brand`; default 'kilter'
+     *  keeps pre-0.2.0 / Kilter-only code paths neutral. */
+    val boardBrand: String = "kilter",
 ) {
     /** True when this climb is a multi-frame route (not a boulder). */
     val isRoute: Boolean get() = framesCount > 1

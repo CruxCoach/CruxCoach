@@ -143,6 +143,10 @@ data class LedHoldColors(
 object PreferenceKeys {
     val BOARD_PRODUCT_SIZE_ID = intPreferencesKey("board_product_size_id")
     val BOARD_LAYOUT_ID = intPreferencesKey("board_layout_id")
+    /** Active board brand — "kilter" | "moonboard" (FEAT-027). */
+    val BOARD_BRAND = stringPreferencesKey("board_brand")
+    /** Hold set installed on the user's MoonBoard — picker tier 2 (FEAT-027). */
+    val MOONBOARD_HOLD_SET = stringPreferencesKey("moonboard_hold_set")
     val SYNC_INTERVAL = stringPreferencesKey("sync_interval")
     val LAST_SYNC_TIMESTAMP = stringPreferencesKey("last_sync_timestamp")
     val GRADE_SCALE = stringPreferencesKey("grade_scale")
@@ -225,6 +229,8 @@ data class BoardFilterSnapshot(
     val benchmarkOnly: Boolean,
     val originFilter: String,
     val myClimbsOnly: Boolean,
+    /** Active board brand — "kilter" | "moonboard" (FEAT-027). */
+    val boardBrand: String = "kilter",
 )
 
 class UserPreferences(
@@ -238,6 +244,7 @@ class UserPreferences(
         return BoardFilterSnapshot(
             angle = prefs[PreferenceKeys.BOARD_ANGLE] ?: 40,
             layoutId = prefs[PreferenceKeys.BOARD_LAYOUT_ID] ?: BoardConstants.KILTER_ORIGINAL_LAYOUT,
+            boardBrand = prefs[PreferenceKeys.BOARD_BRAND] ?: "kilter",
             minGrade = prefs[PreferenceKeys.BOARD_MIN_GRADE] ?: 0,
             maxGrade = prefs[PreferenceKeys.BOARD_MAX_GRADE] ?: 14,
             minAscensionists = prefs[PreferenceKeys.BOARD_MIN_ASCENSIONISTS] ?: 0,
@@ -265,6 +272,24 @@ class UserPreferences(
         prefs[PreferenceKeys.BOARD_LAYOUT_ID] ?: BoardConstants.KILTER_ORIGINAL_LAYOUT
     }
 
+    /**
+     * Active board brand — "kilter" | "moonboard" (FEAT-027). Defaults to
+     * "kilter": pre-0.2.0 installs have no MoonBoard concept and must keep
+     * behaving exactly as before.
+     */
+    val boardBrand: Flow<String> = dataStore.data.map { prefs ->
+        prefs[PreferenceKeys.BOARD_BRAND] ?: "kilter"
+    }
+
+    /**
+     * Hold set installed on the user's MoonBoard. Display-only in v0.2.0 —
+     * the community catalogue dump is not hold-set-partitioned, so it does
+     * not scope the browser. Empty until a MoonBoard variant is configured.
+     */
+    val moonBoardHoldSet: Flow<String> = dataStore.data.map { prefs ->
+        prefs[PreferenceKeys.MOONBOARD_HOLD_SET] ?: ""
+    }
+
     val syncInterval: Flow<SyncInterval> = dataStore.data.map { prefs ->
         val value = prefs[PreferenceKeys.SYNC_INTERVAL] ?: SyncInterval.MANUAL.name
         try { SyncInterval.valueOf(value) } catch (_: IllegalArgumentException) { SyncInterval.MANUAL }
@@ -288,6 +313,27 @@ class UserPreferences(
     suspend fun setBoardLayoutId(id: Int) {
         dataStore.edit { prefs ->
             prefs[PreferenceKeys.BOARD_LAYOUT_ID] = id
+        }
+    }
+
+    /** Mark the active board brand. The Kilter branch of the board picker
+     *  uses this directly; the MoonBoard branch uses [setMoonBoardSelection]. */
+    suspend fun setBoardBrand(brand: String) {
+        dataStore.edit { prefs -> prefs[PreferenceKeys.BOARD_BRAND] = brand }
+    }
+
+    /**
+     * Atomically select a MoonBoard variant as the active board: writes the
+     * variant's [layoutId], marks the brand "moonboard", records the chosen
+     * [holdSet], and pins the browse angle to 40° — valid for every v0.2.0
+     * MoonBoard variant — so the browser shows climbs immediately.
+     */
+    suspend fun setMoonBoardSelection(layoutId: Int, holdSet: String) {
+        dataStore.edit { prefs ->
+            prefs[PreferenceKeys.BOARD_LAYOUT_ID] = layoutId
+            prefs[PreferenceKeys.BOARD_BRAND] = "moonboard"
+            prefs[PreferenceKeys.MOONBOARD_HOLD_SET] = holdSet
+            prefs[PreferenceKeys.BOARD_ANGLE] = 40
         }
     }
 

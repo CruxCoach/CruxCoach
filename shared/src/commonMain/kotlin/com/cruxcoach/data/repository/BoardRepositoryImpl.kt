@@ -26,6 +26,7 @@ class BoardRepositoryImpl(
         source: String = "kilter",
         syncStatus: String? = null,
         nostrEventId: String? = null,
+        boardBrand: String = "kilter",
     ) = ClimbWithStats(
         uuid = uuid, layoutId = layoutId, setterUsername = setterUsername,
         name = name, frames = frames, framesCount = framesCount,
@@ -41,6 +42,7 @@ class BoardRepositoryImpl(
         source = source,
         syncStatus = syncStatus,
         nostrEventId = nostrEventId,
+        boardBrand = boardBrand,
     )
 
     // ── Climb Queries ──────────────────────────────────────────
@@ -57,6 +59,7 @@ class BoardRepositoryImpl(
         createdByPubkey = it.created_by_pubkey,
         source = it.source,
         syncStatus = it.sync_status,
+        boardBrand = it.board_brand,
     )
 
     override fun searchClimbsByName(query: String, angle: Int, layoutId: Int, sortField: ClimbSortField, sortDirection: SortDirection, limit: Int, offset: Int, climbType: ClimbTypeFilter): List<ClimbWithStats> {
@@ -91,6 +94,7 @@ class BoardRepositoryImpl(
                 source = it.source,
                 syncStatus = it.sync_status,
                 nostrEventId = it.nostr_event_id,
+                boardBrand = it.board_brand,
             )
         }
     }
