@@ -156,7 +156,7 @@
     <string name="setter_detail_no_climbs">No climbs from this setter in your local catalog.</string>
     <string name="setter_detail_load_failed">Could not load this setter\'s climbs.</string>
     <string name="setters_list_load_failed">Could not load the setters list.</string>
-    <string name="setter_detail_climb_meta">%1$d° · %2$.1f · ⭐%3$.1f · %4$d sends</string>
+    <string name="setter_detail_climb_meta">%1$d° · %2$s · ⭐%3$.1f · %4$d sends</string>
     <string name="setters_list_title">CruxCoach setters</string>
     <string name="setters_list_empty">No CruxCoach community climbs yet. Check back later or create your own.</string>
     <string name="setters_list_count">%1$d climbs</string>
@@ -338,20 +338,6 @@
     <string name="settings_duration_seconds_label">Seconds</string>
     <string name="settings_ble_keep_screen_on">Keep screen on</string>
     <string name="settings_ble_keep_screen_on_desc">Screen stays on in board screens so you don\'t have to unlock constantly.</string>
-    <string name="settings_ble_quick_send">Quick-Send mode</string>
-    <string name="settings_ble_quick_send_desc">Tapping the BLE icon in a climb detail auto-connects (or asks if multiple boards are nearby), sends the climb, and disconnects right after.</string>
-
-    <!-- BLE Quick-Send macro status messages -->
-    <string name="ble_quick_send_scanning">Searching for board…</string>
-    <string name="ble_quick_send_connecting">Connecting to %s…</string>
-    <string name="ble_quick_send_sending">Sending climb…</string>
-    <string name="ble_quick_send_disconnecting">Disconnecting…</string>
-    <string name="ble_quick_send_done">Climb sent — board disconnected.</string>
-    <string name="ble_quick_send_no_boards">No board found nearby. Make sure the board is powered on and Bluetooth is enabled.</string>
-    <string name="ble_quick_send_connect_failed">Could not connect to the board. Try again.</string>
-    <string name="ble_quick_send_send_failed">Climb could not be sent — board disconnected.</string>
-    <string name="ble_quick_send_bluetooth_off">Bluetooth is off. Enable it and try again.</string>
-    <string name="ble_quick_send_no_permissions">Bluetooth permissions are missing. Open Settings and grant them.</string>
 
     <!-- Settings: LED Colors -->
     <string name="settings_led_title">LED colors</string>
@@ -1073,6 +1059,7 @@
     <!-- Board Ascent Types -->
     <string name="board_ascent_send">Send</string>
     <string name="board_ascent_attempt">Attempt</string>
+    <string name="board_ascent_attempts_count">%d Attempts</string>
 
     <!-- Dropdown -->
     <string name="dropdown_selection_placeholder">Select…</string>
@@ -1179,7 +1166,8 @@
     <string name="board_rest_timer_rest">Rest</string>
     <string name="board_session_flashes">Flashes</string>
     <string name="board_session_label">Session</string>
-    <string name="board_sort_repeats">Repeats</string>
+    <string name="board_sort_quality_sends">Sends × Quality</string>
+    <string name="board_sort_random">Random</string>
     <string name="board_stats_activity">Activity</string>
     <string name="board_stats_personal_heatmap">My sends — heatmap</string>
     <string name="board_stats_heatmap_section">Heatmap — %1$s</string>

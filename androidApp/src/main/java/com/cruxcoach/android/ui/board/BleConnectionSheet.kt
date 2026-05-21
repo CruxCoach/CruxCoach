@@ -49,6 +49,21 @@ fun BleConnectionSheet(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
+    // Auto-close once the connect succeeds — the top-bar BLE icon flips
+    // to green (BluetoothConnected) so the sheet has no further purpose.
+    // Only on the transition into CONNECTED, not when the sheet was
+    // opened while already connected (user then wants the Disconnect UI).
+    // Brief delay so the user catches a glimpse of the "Verbunden" state.
+    val initialConnectionState = remember { state.connectionState }
+    LaunchedEffect(state.connectionState) {
+        if (state.connectionState == ConnectionState.CONNECTED &&
+            initialConnectionState != ConnectionState.CONNECTED
+        ) {
+            kotlinx.coroutines.delay(400L)
+            onDismiss()
+        }
+    }
+
     // Auto-start scan when sheet opens (if permissions granted and BT enabled).
     // Use the auto-connect-on-single variant: after a 2 s settling window, if
     // exactly one board was found, the VM connects without the user tapping

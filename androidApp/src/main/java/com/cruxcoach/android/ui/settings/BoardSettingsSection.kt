@@ -162,9 +162,7 @@ internal fun BoardModelSection(
 @Composable
 internal fun BleAutoDisconnectSection(
     bleAutoDisconnectSeconds: Int,
-    quickBoardSend: Boolean,
     onAutoDisconnectChange: (Int) -> Unit,
-    onQuickBoardSendChange: (Boolean) -> Unit,
 ) {
     Text(
         stringResource(R.string.settings_ble_auto_disconnect_title),
@@ -196,27 +194,6 @@ internal fun BleAutoDisconnectSection(
         secondLabel = stringResource(R.string.settings_duration_seconds_label),
     )
 
-    Spacer(modifier = Modifier.height(8.dp))
-
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(stringResource(R.string.settings_ble_quick_send), style = MaterialTheme.typography.bodyMedium)
-            Text(
-                stringResource(R.string.settings_ble_quick_send_desc),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        Switch(
-            checked = quickBoardSend,
-            onCheckedChange = onQuickBoardSendChange,
-            colors = SwitchDefaults.colors(checkedTrackColor = OrangeAccent)
-        )
-    }
 }
 
 @Composable

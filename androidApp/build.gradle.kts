@@ -27,10 +27,15 @@ android {
         versionCode = 5
         versionName = "0.1.4"
 
-        // Only bundle native libs for ARM — removes MIPS/x86 bloat from
-        // quartz-android's transitive JNA + secp256k1 + libsodium.
+        // Only bundle arm64 native libs. armeabi-v7a alone added ~10.7 MB
+        // to the APK (libmaplibre 8 MB + sqlcipher + secp256k1 + sodium +
+        // a few small libs). minSdk=26 (Android 8.0+) already targets the
+        // 64-bit ARM era; 32-bit-only Android 8+ devices are <1% in DE
+        // (mostly Android Go on entry-level SoCs, almost absent here).
+        // Affected devices simply can't install (clean "incompatible"
+        // message), no partial breakage. x86/MIPS were never targeted.
         ndk {
-            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+            abiFilters += listOf("arm64-v8a")
         }
 
         resourceConfigurations += listOf("en", "de")

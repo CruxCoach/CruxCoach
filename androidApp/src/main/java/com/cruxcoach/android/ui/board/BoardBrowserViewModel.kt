@@ -49,7 +49,9 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.random.Random
@@ -190,6 +192,18 @@ class BoardBrowserViewModel @Inject constructor(
     // Cached count: only re-fetch from DB when count-affecting filters change
     private var cachedDbCount: Long = -1
     private var cachedCountKey: String = ""
+
+    // RANDOM sort, browse mode. SQL ORDER BY RANDOM() re-shuffles per page →
+    // duplicates and gaps when scrolling. Instead: page 1 is a fast SQL
+    // random sample served immediately; the full shuffle of every *other*
+    // matching UUID builds in the background and backs pages 2+. Excluding
+    // page 1's UUIDs from that shuffle keeps the whole scroll duplicate- and
+    // gap-free. Key signature excludes status/benchmark/origin filters —
+    // those are applied client-side after pagination, so they don't change
+    // the underlying match set and must not force a re-roll.
+    private var randomKey: String? = null
+    private var randomPage1: List<ClimbWithStats>? = null
+    private var randomCacheJob: Deferred<List<String>>? = null
 
     companion object {
         private const val PAGE_SIZE = 50
@@ -645,7 +659,7 @@ class BoardBrowserViewModel @Inject constructor(
      * For SENT/ATTEMPTED: queries climb_browse directly by UUID set (small, fast).
      * For ALL/NEW/UNSENT: page-scans (high hit rate, most climbs match).
      */
-    private fun fetchFiltered(f: BrowserFilterState, dbOffset: Int): Triple<List<ClimbWithStats>, Int, Boolean> {
+    private suspend fun fetchFiltered(f: BrowserFilterState, dbOffset: Int): Triple<List<ClimbWithStats>, Int, Boolean> {
         // MY-CLIMBS FILTER: short-circuit the paginated browse path. We pull
         // every climb authored by the local pubkey on this layout in one
         // call and apply remaining filters client-side. Drafts (source=
@@ -753,7 +767,10 @@ class BoardBrowserViewModel @Inject constructor(
     // map / canRenderClimbOnSize use, so browser ⇄ map stay consistent.
     private fun selSizeId(): Int = _state.value.boardSize?.id?.toInt() ?: 0
 
-    private fun fetchPage(f: BrowserFilterState, offset: Int): List<ClimbWithStats> {
+    private suspend fun fetchPage(f: BrowserFilterState, offset: Int): List<ClimbWithStats> {
+        if (f.sortField == ClimbSortField.RANDOM && f.searchQuery.isBlank()) {
+            return fetchRandomPage(f, offset)
+        }
         return if (f.searchQuery.isNotBlank()) {
             PerfLogger.traceQuery("searchClimbsByName(offset=$offset)") {
                 boardRepository.searchClimbsByName(f.searchQuery, f.angle, f.layoutId, f.sortField, f.sortDirection, PAGE_SIZE, offset, f.climbTypeFilter, selProductSizeId = selSizeId())
@@ -766,6 +783,66 @@ class BoardBrowserViewModel @Inject constructor(
                 boardRepository.searchClimbsSorted(f.angle, f.layoutId, minDiff, maxDiff, f.minAscensionists, f.sortField, f.sortDirection, PAGE_SIZE, offset, f.climbTypeFilter, selProductSizeId = selSizeId())
             }
         }
+    }
+
+    // RANDOM browse mode. Page 1: a fast SQL random sample (browseRandom),
+    // served immediately so the list never blocks on the full enumeration.
+    // Pages 2+: a single Kotlin shuffle of every *other* matching UUID,
+    // built in the background (randomCacheJob) and awaited only when the
+    // user actually scrolls past page 1. Excluding page 1's UUIDs from the
+    // shuffle is what makes the combined scroll duplicate- and gap-free.
+    // getClimbsByUuids does not preserve input order, so we re-key by uuid.
+    private suspend fun fetchRandomPage(f: BrowserFilterState, offset: Int): List<ClimbWithStats> {
+        val french = _state.value.gradeScale == GradeScale.FRENCH
+        val minDiff = KilterGradeMapper.indexToFilterMin(f.minGradeIndex, french)
+        val maxDiff = KilterGradeMapper.indexToFilterMax(f.maxGradeIndex, french)
+        val sel = selSizeId()
+        val key = "${f.angle}|${f.layoutId}|$minDiff|$maxDiff|${f.minAscensionists}|${f.climbTypeFilter}|$sel"
+
+        if (key != randomKey) {
+            randomKey = key
+            randomPage1 = null
+            randomCacheJob?.cancel()
+            randomCacheJob = null
+        }
+
+        if (offset == 0) {
+            randomPage1?.let { return it }
+            val page1 = PerfLogger.traceQuery("randomPage1(sql)") {
+                boardRepository.searchClimbsSorted(
+                    f.angle, f.layoutId, minDiff, maxDiff, f.minAscensionists,
+                    ClimbSortField.RANDOM, SortDirection.DESC, PAGE_SIZE, 0,
+                    f.climbTypeFilter, selProductSizeId = sel
+                )
+            }
+            randomPage1 = page1
+            val page1Uuids = page1.mapTo(HashSet()) { it.uuid }
+            randomCacheJob = viewModelScope.async(Dispatchers.IO) {
+                val all = PerfLogger.traceQuery("randomUuids(bg load)") {
+                    boardRepository.getAllBrowseMatchingUuids(
+                        f.angle, f.layoutId, minDiff, maxDiff, f.minAscensionists,
+                        f.climbTypeFilter, selProductSizeId = sel
+                    )
+                }
+                val rest = all.filterNot { it in page1Uuids }.shuffled(Random.Default)
+                Log.i("BoardBrowserVM", "random sort: bg shuffle ready, ${rest.size} climbs after page 1 (key=$key)")
+                rest
+            }
+            return page1
+        }
+
+        // Pages 2+ index into the background shuffle, which sits "after"
+        // page 1 — so subtract page 1's size to translate scroll offset to
+        // shuffle index. await() blocks only until the bg job finishes.
+        val cache = randomCacheJob?.await() ?: return emptyList()
+        val cacheIdx = offset - (randomPage1?.size ?: 0)
+        if (cacheIdx < 0 || cacheIdx >= cache.size) return emptyList()
+        val slice = cache.subList(cacheIdx, minOf(cacheIdx + PAGE_SIZE, cache.size))
+        val climbs = PerfLogger.traceQuery("randomPage(uuid×${slice.size})") {
+            boardRepository.getClimbsByUuids(slice, f.angle)
+        }
+        val byUuid = climbs.associateBy { it.uuid }
+        return slice.mapNotNull { byUuid[it] }
     }
 
     private fun fetchDbCount(f: BrowserFilterState): Long {

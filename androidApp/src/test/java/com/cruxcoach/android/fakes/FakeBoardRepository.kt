@@ -172,6 +172,18 @@ class FakeBoardRepository : BoardRepository {
         return climbs.filter { it.uuid in uuids }
     }
 
+    override fun getAllBrowseMatchingUuids(
+        angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double,
+        minAscensionists: Int, climbType: ClimbTypeFilter, selProductSizeId: Int
+    ): List<String> {
+        return climbs.filter { climb ->
+            val diff = climb.difficultyAverage
+            (diff == null || diff in minDifficulty..maxDifficulty) &&
+                (climb.ascensionistCount ?: 0) >= minAscensionists &&
+                climb.matchesClimbType(climbType)
+        }.map { it.uuid }
+    }
+
     override fun getStatCount(): Long = 0L
 
     override fun countOrphanStats(): Long = 0L

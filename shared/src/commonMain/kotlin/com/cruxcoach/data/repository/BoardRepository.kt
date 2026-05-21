@@ -2,7 +2,15 @@ package com.cruxcoach.data.repository
 
 import com.cruxcoach.domain.board.BoardClimbParser
 
-enum class ClimbSortField { QUALITY, DIFFICULTY, ASCENSIONISTS, REPEATS, NAME, HOLDS, BENCHMARK_DIFFICULTY }
+enum class ClimbSortField {
+    QUALITY, DIFFICULTY, ASCENSIONISTS, REPEATS, NAME, HOLDS, BENCHMARK_DIFFICULTY,
+    /** Quality multiplied by sends: surfaces climbs that are both popular AND well-rated. */
+    QUALITY_SENDS,
+    /** SQLite RANDOM() over the filtered set. Direction is ignored. Pagination
+     *  is independently random per page — scrolling yields more random results
+     *  rather than a stable shuffled list. Adequate for browsing-for-discovery. */
+    RANDOM,
+}
 enum class SortDirection { ASC, DESC }
 
 enum class ClimbTypeFilter {
@@ -252,6 +260,10 @@ interface BoardClimbQueries {
     fun getClimbsByUuids(uuids: Collection<String>, angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter): List<ClimbWithStats>
     /** Fetch climbs by UUID list at a given angle, no additional filters. */
     fun getClimbsByUuids(uuids: Collection<String>, angle: Int): List<ClimbWithStats>
+    /** UUID-only projection of the entire browse-filter match set. Backs the
+     *  VM's UUID-shuffle cache for RANDOM sort — load once per filter
+     *  signature, shuffle in Kotlin, paginate over the cached list. */
+    fun getAllBrowseMatchingUuids(angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter, selProductSizeId: Int = 0): List<String>
     /** Find climb UUIDs whose frames contain the given placement ID. */
     fun searchClimbUuidsByHold(holdPattern: String, angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter): List<String>
     /** Find climb UUIDs whose frames contain ALL given hold patterns (single DB pass). */

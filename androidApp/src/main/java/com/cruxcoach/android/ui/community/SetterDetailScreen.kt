@@ -39,6 +39,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.cruxcoach.android.R
+import com.cruxcoach.android.data.GradeScale
+import com.cruxcoach.android.util.GradeDisplayHelper
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -133,6 +135,7 @@ fun SetterDetailScreen(
                         name = climb.name,
                         angle = climb.angle,
                         difficultyAverage = climb.difficultyAverage ?: 0.0,
+                        gradeScale = state.gradeScale,
                         qualityAverage = climb.qualityAverage ?: 0.0,
                         ascensionistCount = climb.ascensionistCount.toInt(),
                         onClick = { onClimbClick(climb.uuid, climb.angle) },
@@ -196,6 +199,7 @@ private fun SetterClimbRow(
     name: String,
     angle: Int,
     difficultyAverage: Double,
+    gradeScale: GradeScale,
     qualityAverage: Double,
     ascensionistCount: Int,
     onClick: () -> Unit,
@@ -218,7 +222,7 @@ private fun SetterClimbRow(
                 text = stringResource(
                     R.string.setter_detail_climb_meta,
                     angle,
-                    difficultyAverage,
+                    GradeDisplayHelper.formatDifficulty(difficultyAverage, gradeScale),
                     qualityAverage,
                     ascensionistCount,
                 ),

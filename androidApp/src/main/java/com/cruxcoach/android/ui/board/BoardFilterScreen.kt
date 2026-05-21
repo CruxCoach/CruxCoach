@@ -459,9 +459,10 @@ fun BoardFilterScreen(
                 ) {
                     val sortOptions = listOf(
                         ClimbSortField.ASCENSIONISTS to stringResource(R.string.board_sends),
-                        ClimbSortField.REPEATS to stringResource(R.string.board_sort_repeats),
                         ClimbSortField.QUALITY to stringResource(R.string.board_quality),
-                        ClimbSortField.HOLDS to stringResource(R.string.board_moves)
+                        ClimbSortField.QUALITY_SENDS to stringResource(R.string.board_sort_quality_sends),
+                        ClimbSortField.HOLDS to stringResource(R.string.board_moves),
+                        ClimbSortField.RANDOM to stringResource(R.string.board_sort_random),
                     )
                     sortOptions.forEach { (field, label) ->
                         FilterChip(

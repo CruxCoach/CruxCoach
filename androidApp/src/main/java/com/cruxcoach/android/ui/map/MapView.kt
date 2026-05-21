@@ -11,6 +11,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import android.util.Log
 import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.camera.CameraUpdateFactory
@@ -18,6 +19,7 @@ import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapView as MapLibreView
 import org.maplibre.android.maps.Style
+import org.maplibre.android.offline.OfflineManager
 
 /**
  * Compose wrapper around MapLibre's Android [MapLibreView].
@@ -43,9 +45,22 @@ fun MapView(
     val lifecycleOwner = LocalLifecycleOwner.current
 
     // Initialize MapLibre once per process. Idempotent — MapLibre.getInstance
-    // returns the existing singleton on subsequent calls.
+    // returns the existing singleton on subsequent calls. Also caps the
+    // ambient tile/style/glyph disk cache at 20 MB so it doesn't grow
+    // open-ended (MapLibre's default ceiling is much higher). The cap is
+    // process-global, idempotent to set, and applies to subsequent
+    // tile/glyph fetches.
     remember(context) {
         MapLibre.getInstance(context)
+        OfflineManager.getInstance(context).setMaximumAmbientCacheSize(
+            20L * 1024L * 1024L,
+            object : OfflineManager.FileSourceCallback {
+                override fun onSuccess() { /* expected: 99% of the time */ }
+                override fun onError(message: String) {
+                    Log.w("MapView", "ambient cache cap failed: $message")
+                }
+            },
+        )
         Unit
     }
 

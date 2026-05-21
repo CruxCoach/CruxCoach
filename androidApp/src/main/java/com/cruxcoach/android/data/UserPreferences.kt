@@ -98,13 +98,14 @@ data class LedHoldColors(
     val foot: Int = CRUXCOACH_FOOT
 ) {
     companion object {
-        // CruxCoach "Royal" preset (default). Byte values must exist in
-        // RGB332_PALETTE so the settings row shows a named color instead
-        // of "Benutzerdefiniert" / "Custom".
-        const val CRUXCOACH_START: Int = 0xEC   // CruxCoach Orange (FF6D00)
+        // CruxCoach standard preset (default): start=magenta,
+        // hand=blue, top/finish=green, foot=red. Byte values must
+        // exist in RGB332_PALETTE so the settings row shows a named
+        // color instead of "Benutzerdefiniert" / "Custom".
+        const val CRUXCOACH_START: Int = 0xE3    // Magenta (FF00FF)
         const val CRUXCOACH_HAND: Int = 0x03     // Blue (0000FF)
-        const val CRUXCOACH_FINISH: Int = 0xE3   // Magenta (FF00FF)
-        const val CRUXCOACH_FOOT: Int = 0x1E     // Mint Green (00FFAA)
+        const val CRUXCOACH_FINISH: Int = 0x1C   // Green (00FF00)
+        const val CRUXCOACH_FOOT: Int = 0xE0     // Red (FF0000)
 
         // Official Kilter Board preset (from placement_roles.led_color DB)
         const val KILTER_START: Int = 0x1C   // Green (00FF00)
@@ -181,13 +182,6 @@ object PreferenceKeys {
     val ALLOW_REMOTE_DISCONNECT = booleanPreferencesKey("allow_remote_disconnect")
     val EASTER_ANIMATIONS_UNLOCKED = booleanPreferencesKey("easter_animations_unlocked")
     val KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
-    /**
-     * Quick-Send-Mode: when true, tapping the BLE icon in the climb-detail
-     * screen runs a one-shot macro (scan → auto-connect-if-single → send →
-     * disconnect) instead of opening the connection sheet. Default off so
-     * upgraders see no behavior change until they opt in via Settings.
-     */
-    val QUICK_BOARD_SEND = booleanPreferencesKey("quick_board_send")
     val DARK_MODE = stringPreferencesKey("dark_mode")
     val SESSION_DISPLAY_NAME = stringPreferencesKey("session_display_name")
     val LAST_CLIMB_UUID = stringPreferencesKey("last_climb_uuid")
@@ -662,14 +656,6 @@ class UserPreferences(
 
     suspend fun setKeepScreenOn(enabled: Boolean) {
         dataStore.edit { it[PreferenceKeys.KEEP_SCREEN_ON] = enabled }
-    }
-
-    val quickBoardSend: Flow<Boolean> = dataStore.data.map {
-        it[PreferenceKeys.QUICK_BOARD_SEND] ?: false
-    }
-
-    suspend fun setQuickBoardSend(enabled: Boolean) {
-        dataStore.edit { it[PreferenceKeys.QUICK_BOARD_SEND] = enabled }
     }
 
     suspend fun isOnboardingCompleted(): Boolean =

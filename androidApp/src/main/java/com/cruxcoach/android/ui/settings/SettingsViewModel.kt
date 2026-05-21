@@ -93,7 +93,6 @@ data class SettingsState(
     val restTimer: RestTimerSettings = RestTimerSettings(),
     val climbSharing: ClimbSharingSettings = ClimbSharingSettings(),
     val keepScreenOn: Boolean = false,
-    val quickBoardSend: Boolean = false,
     val easterAnimationsUnlocked: Boolean = false,
     val isAnimating: Boolean = false,
     val crashReportOptIn: Boolean = false,
@@ -166,7 +165,6 @@ class SettingsViewModel @Inject constructor(
                 val remoteDisconnect = userPreferences.allowRemoteDisconnect.first()
                 val easterUnlocked = userPreferences.easterAnimationsUnlocked.first()
                 val keepScreenOn = userPreferences.keepScreenOn.first()
-                val quickBoardSend = userPreferences.quickBoardSend.first()
                 val crashOptIn = userPreferences.crashReportOptIn.first() ?: false
                 val announcementsOn = userPreferences.announcementsEnabled.first()
                 val catRelease = userPreferences.announcementCatRelease.first()
@@ -222,7 +220,6 @@ class SettingsViewModel @Inject constructor(
                         autoStart = timerAutoStart
                     ),
                     keepScreenOn = keepScreenOn,
-                    quickBoardSend = quickBoardSend,
                     easterAnimationsUnlocked = easterUnlocked,
                     climbSharing = ClimbSharingSettings(
                         enabled = sharingEnabled,
@@ -263,7 +260,6 @@ class SettingsViewModel @Inject constructor(
             launch { userPreferences.lastSyncTimestamp.collect { v -> _state.update { it.copy(lastSyncTimestamp = v) } } }
             launch { userPreferences.darkMode.collect { v -> _state.update { it.copy(darkMode = v) } } }
             launch { userPreferences.keepScreenOn.collect { v -> _state.update { it.copy(keepScreenOn = v) } } }
-            launch { userPreferences.quickBoardSend.collect { v -> _state.update { it.copy(quickBoardSend = v) } } }
             launch { userPreferences.nearbyClimbSharing.collect { v -> _state.update { it.copy(climbSharing = it.climbSharing.copy(enabled = v)) } } }
             launch { userPreferences.allowRemoteDisconnect.collect { v -> _state.update { it.copy(climbSharing = it.climbSharing.copy(allowRemoteDisconnect = v)) } } }
             launch { userPreferences.crashReportOptIn.collect { v -> _state.update { it.copy(crashReportOptIn = v ?: false) } } }
@@ -492,10 +488,6 @@ class SettingsViewModel @Inject constructor(
 
     fun updateKeepScreenOn(enabled: Boolean) {
         viewModelScope.launch { userPreferences.setKeepScreenOn(enabled) }
-    }
-
-    fun updateQuickBoardSend(enabled: Boolean) {
-        viewModelScope.launch { userPreferences.setQuickBoardSend(enabled) }
     }
 
     fun updateBleAutoDisconnect(seconds: Int) {

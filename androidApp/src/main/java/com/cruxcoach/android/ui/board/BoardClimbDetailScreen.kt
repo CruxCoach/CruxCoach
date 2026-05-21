@@ -313,20 +313,7 @@ fun BoardClimbDetailScreen(
         )
     }
 
-    // Quick-Send macro: silent — no snackbar progress/outcome chatter
-    // (per user feedback: the BLE-icon colour change is signal enough,
-    // and "Sending… / Done" snackbars become noise on every tap).
-    // We still observe quickSendStatus to escalate the multi-board
-    // case into the manual-pick sheet (one-shot, no snackbar) and to
-    // reset Done/Error back to Idle so the next tap starts fresh.
-    val quickSendStatus by bleConnViewModel.quickSend.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
-    LaunchedEffect(quickSendStatus) {
-        if (quickSendStatus is QuickSendStatus.NeedsManualPick) {
-            showBleSheet = true
-            bleConnViewModel.resetQuickSend()
-        }
-    }
 
     // Surface community-delete outcomes — the deleter returns success
     // even when no relay accepted (local-row tombstoned regardless),
@@ -357,15 +344,6 @@ fun BoardClimbDetailScreen(
         }
         snackbarHostState.showSnackbar(msg)
         viewModel.consumeCommunityDeleteFeedback()
-    }
-
-    LaunchedEffect(quickSendStatus) {
-        // Reset Done/Error to Idle after the snackbar fires so the next tap
-        // starts fresh; transient states (Scanning/Sending/Disconnecting/
-        // Connecting) reset themselves when the macro advances.
-        if (quickSendStatus is QuickSendStatus.Done || quickSendStatus is QuickSendStatus.Error) {
-            bleConnViewModel.resetQuickSend()
-        }
     }
 
     // Single Scaffold — shared across all pager pages
@@ -424,20 +402,13 @@ fun BoardClimbDetailScreen(
                         }
                         IconButton(
                             onClick = {
-                                // Quick-Send-Mode setting (Settings → BLE) routes the
-                                // tap through the macro: scan → auto-connect-on-single
-                                // → existing CONNECTED-collector auto-fires send →
-                                // disconnect (boulders only — routes need the
-                                // connection alive for the remaining frames during
-                                // playback, so the macro stops after connect for
-                                // those). Multi-board case escalates back into the
-                                // manual sheet via NeedsManualPick (handled in the
-                                // LaunchedEffect below).
-                                if (bleConnState.quickBoardSendEnabled) {
-                                    bleConnViewModel.startQuickSend(isRoute = state.playback.isRoute)
-                                } else {
-                                    showBleSheet = true
-                                }
+                                // Always open the sheet — it handles permission +
+                                // BT-disabled flows and auto-connects to a single
+                                // board (the existing CONNECTED-collector auto-
+                                // fires the send). The idle-disconnect timer
+                                // (Settings → BLE) tears the connection down
+                                // afterwards, replacing the old Quick-Send macro.
+                                showBleSheet = true
                             },
                             modifier = Modifier.testTag("boarddetail_ble_connect_button")
                         ) {

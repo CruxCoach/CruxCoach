@@ -73,6 +73,8 @@ class BoardRepositoryImpl(
             ClimbSortField.QUALITY -> if (desc) q.searchByQualityDesc(lay, query, a, mn, mx, sel, l, o) else q.searchByQualityAsc(lay, query, a, mn, mx, sel, l, o)
             ClimbSortField.DIFFICULTY -> if (desc) q.searchByDifficultyDesc(lay, query, a, mn, mx, sel, l, o) else q.searchByDifficultyAsc(lay, query, a, mn, mx, sel, l, o)
             ClimbSortField.NAME -> if (desc) q.searchByNameDesc(lay, query, a, mn, mx, sel, l, o) else q.searchByNameAsc(lay, query, a, mn, mx, sel, l, o)
+            ClimbSortField.QUALITY_SENDS -> if (desc) q.searchByQualitySendsDesc(lay, query, a, mn, mx, sel, l, o) else q.searchByQualitySendsAsc(lay, query, a, mn, mx, sel, l, o)
+            ClimbSortField.RANDOM -> q.searchRandom(lay, query, a, mn, mx, sel, l, o)
             else -> if (desc) q.searchByAscensionistsDesc(lay, query, a, mn, mx, sel, l, o) else q.searchByAscensionistsAsc(lay, query, a, mn, mx, sel, l, o)
         }.executeAsList().map { mapBrowse(it) }
     }
@@ -115,6 +117,8 @@ class BoardRepositoryImpl(
             ClimbSortField.QUALITY -> if (desc) q.browseByQualityDesc(lay, a, mn, mx, minDifficulty, maxDifficulty, asc, sel, l, o) else q.browseByQualityAsc(lay, a, mn, mx, minDifficulty, maxDifficulty, asc, sel, l, o)
             ClimbSortField.DIFFICULTY -> if (desc) q.browseByDifficultyDesc(lay, a, mn, mx, minDifficulty, maxDifficulty, asc, sel, l, o) else q.browseByDifficultyAsc(lay, a, mn, mx, minDifficulty, maxDifficulty, asc, sel, l, o)
             ClimbSortField.NAME -> if (desc) q.browseByNameDesc(lay, a, mn, mx, minDifficulty, maxDifficulty, asc, sel, l, o) else q.browseByNameAsc(lay, a, mn, mx, minDifficulty, maxDifficulty, asc, sel, l, o)
+            ClimbSortField.QUALITY_SENDS -> if (desc) q.browseByQualitySendsDesc(lay, a, mn, mx, minDifficulty, maxDifficulty, asc, sel, l, o) else q.browseByQualitySendsAsc(lay, a, mn, mx, minDifficulty, maxDifficulty, asc, sel, l, o)
+            ClimbSortField.RANDOM -> q.browseRandom(lay, a, mn, mx, minDifficulty, maxDifficulty, asc, sel, l, o)
             else -> if (desc) q.browseByAscensionistsDesc(lay, a, mn, mx, minDifficulty, maxDifficulty, asc, sel, l, o) else q.browseByAscensionistsAsc(lay, a, mn, mx, minDifficulty, maxDifficulty, asc, sel, l, o)
         }.executeAsList().map { mapBrowse(it) }
     }
@@ -227,6 +231,16 @@ class BoardRepositoryImpl(
         if (uuids.isEmpty()) return emptyList()
         return q.getClimbsByUuidsSimple(uuids, angle.toLong())
             .executeAsList().map { mapBrowse(it) }
+    }
+
+    override fun getAllBrowseMatchingUuids(
+        angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double,
+        minAscensionists: Int, climbType: ClimbTypeFilter, selProductSizeId: Int
+    ): List<String> {
+        return q.browseAllMatchingUuids(
+            layoutId.toLong(), angle.toLong(), climbType.minFrames(), climbType.maxFrames(),
+            minDifficulty, maxDifficulty, minAscensionists.toLong(), selProductSizeId.toLong()
+        ).executeAsList()
     }
 
     override fun searchClimbUuidsByHold(

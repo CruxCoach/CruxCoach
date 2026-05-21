@@ -208,9 +208,7 @@ fun SettingsScreen(
                     HorizontalDivider()
                     BleAutoDisconnectSection(
                         bleAutoDisconnectSeconds = state.bleAutoDisconnectSeconds,
-                        quickBoardSend = state.quickBoardSend,
                         onAutoDisconnectChange = { viewModel.updateBleAutoDisconnect(it) },
-                        onQuickBoardSendChange = { viewModel.updateQuickBoardSend(it) },
                     )
                     HorizontalDivider()
                     ClimbSharingSection(

@@ -64,6 +64,7 @@ internal class BoardSendController(
             ble = BoardSendState(connectionState = it.ble.connectionState, isSending = true),
             nearby = it.nearby.copy(debugInfo = "sending...")
         ) }
+        Log.i(TAG, "sendToBoard: start frames=${s.holds.size}")
         sendJob = scope.launch {
             try {
                 state.update { it.copy(nearby = it.nearby.copy(debugInfo = "loading LED map...")) }
@@ -81,6 +82,7 @@ internal class BoardSendController(
                 state.update { it.copy(nearby = it.nearby.copy(debugInfo = "BLE sending...")) }
                 val colors = userPreferences.ledHoldColors.first()
                 val success = bleConnection.sendClimb(s.holds, placementToLed, colors.toRoleColorMap())
+                Log.i(TAG, "sendToBoard: writes done success=$success")
                 state.update { it.copy(
                     ble = it.ble.copy(isSending = false, success = success, error = if (!success) "Senden fehlgeschlagen" else null),
                     nearby = it.nearby.copy(debugInfo = "sent ok=$success")
