@@ -46,7 +46,14 @@ CREATE TABLE climbs (
     kilter_publish_via TEXT,                        -- 'self' (user account) | 'cruxcoach' (bundled)
     kilter_error TEXT,                              -- last Kilter publish failure message
     -- v0.1.6 per-network identity tracking for Nostr
-    nostr_publish_via TEXT                          -- 'self' | 'cruxcoach' (bundled signing key)
+    nostr_publish_via TEXT,                         -- 'self' | 'cruxcoach' (bundled signing key)
+    -- FEAT-027 multi-board support: which board family this climb
+    -- belongs to. 'kilter' for the existing catalogue, 'moonboard'
+    -- for MoonBoard climbs. Explicit so renderer / BLE / onboarding
+    -- branch on a real column, not a layout_id range guess. Added by
+    -- 12.sqm with DEFAULT 'kilter' — must stay the LAST column so the
+    -- migration's ALTER TABLE ADD COLUMN matches this schema.
+    board_brand TEXT NOT NULL DEFAULT 'kilter'
 );
 
 CREATE TABLE climb_stats (
@@ -165,6 +172,7 @@ CREATE INDEX idx_climbs_pubkey ON climbs(created_by_pubkey);
 CREATE INDEX idx_climbs_origin ON climbs(origin);
 CREATE INDEX idx_climbs_kilter_status ON climbs(kilter_status);
 CREATE INDEX idx_climbs_nostr_via ON climbs(nostr_publish_via);
+CREATE INDEX idx_climbs_board_brand ON climbs(board_brand);
 
 -- FEAT-006 Kilter publish per-attempt audit trail. Augments the
 -- single-value `climbs.kilter_*` columns (which carry latest-status only)
@@ -204,6 +212,7 @@ CREATE TABLE community_grade_cache (
 CREATE VIEW climb_browse AS
 SELECT
     c.uuid, c.name, c.setter_username, c.frames_count, c.layout_id,
+    c.board_brand,
     COALESCE(c.description, '') AS description,
     c.is_nomatch, c.frames_pace, c.hsm, c.move_count,
     c.source, c.created_by_pubkey, c.sync_status, c.origin, c.kilter_status,
