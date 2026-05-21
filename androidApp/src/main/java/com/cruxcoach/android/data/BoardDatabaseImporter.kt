@@ -280,6 +280,92 @@ class BoardDatabaseImporter(
     }
 
     /**
+     * Import the MoonBoard catalogue snapshot (FEAT-027). Unlike the
+     * Kilter chunked sync, the MoonBoard snapshot is a single SQLite
+     * file carrying both `climbs` and `climb_stats` for the whole
+     * catalogue — produced one-shot from the spookykat dump by the
+     * cruxcoach-blossom-sync `build_moonboard_db.py` importer.
+     *
+     * Every row is tagged board_brand='moonboard' on insert. Uses
+     * INSERT OR REPLACE rather than the Kilter two-step
+     * preserve-CruxCoach-columns merge: the snapshot is authoritative
+     * and there are no CruxCoach-authored MoonBoard climbs in v0.2.0 to
+     * protect. If MoonBoard community climbs land later, this needs the
+     * same merge [importClimbs] does.
+     *
+     * MoonBoard uuids (uuidv5 of "moonboard:{apiId}") never collide with
+     * Kilter uuids, so this only ever touches MoonBoard rows — the
+     * Kilter catalogue is untouched. No placements/holes/leds: MoonBoard
+     * board geometry is hard-coded ([com.cruxcoach.domain.board.MoonBoardVariant]),
+     * not carried in the snapshot.
+     */
+    fun importMoonBoardSnapshot(
+        snapshotFile: File,
+        onProgress: ((step: ImportStep) -> Unit)? = null
+    ) {
+        withDeferredIndexes(
+            onRebuild = { onProgress?.invoke(ImportStep.Finalizing) }
+        ) {
+            val targetDb = openTargetDb()
+            try {
+                targetDb.execSQL("ATTACH DATABASE ? AS mb", arrayOf(snapshotFile.absolutePath))
+
+                val climbTotal = queryLong(
+                    targetDb, "SELECT COUNT(*) FROM mb.climbs WHERE is_listed = 1"
+                ).toInt()
+                onProgress?.invoke(ImportStep.ImportClimbs(0, 0, climbTotal))
+                targetDb.execSQL(
+                    """
+                    INSERT OR REPLACE INTO climbs(
+                        uuid, layout_id, setter_username, name, frames,
+                        frames_count, is_listed, edge_left, edge_right,
+                        edge_bottom, edge_top, created_at,
+                        description, is_nomatch, frames_pace, hsm, move_count,
+                        board_brand)
+                    SELECT LOWER(uuid), layout_id, setter_username, name, frames,
+                           frames_count, is_listed, edge_left, edge_right,
+                           edge_bottom, edge_top, created_at,
+                           COALESCE(description, ''), COALESCE(is_nomatch, 0),
+                           COALESCE(frames_pace, 0), COALESCE(hsm, 0), 0,
+                           'moonboard'
+                    FROM mb.climbs
+                    WHERE is_listed = 1
+                    """.trimIndent()
+                )
+                onProgress?.invoke(ImportStep.ImportClimbs(climbTotal, climbTotal, climbTotal))
+
+                val statTotal = queryLong(
+                    targetDb, "SELECT COUNT(*) FROM mb.climb_stats"
+                ).toInt()
+                onProgress?.invoke(ImportStep.ImportStats(0, 0, statTotal))
+                targetDb.execSQL(
+                    """
+                    INSERT OR REPLACE INTO climb_stats(
+                        climb_uuid, angle, display_difficulty, difficulty_average,
+                        quality_average, ascensionist_count, benchmark_difficulty,
+                        fa_username, fa_at, official_kilter_difficulty)
+                    SELECT LOWER(climb_uuid), angle, display_difficulty, difficulty_average,
+                           quality_average, ascensionist_count, benchmark_difficulty,
+                           fa_username, fa_at, NULL
+                    FROM mb.climb_stats
+                    """.trimIndent()
+                )
+                onProgress?.invoke(ImportStep.ImportStats(statTotal, statTotal, statTotal))
+            } finally {
+                runCatching { targetDb.execSQL("DETACH DATABASE mb") }
+                targetDb.close()
+            }
+        }
+        // The MoonBoard snapshot has no move_count column — rows land with
+        // 0; compute it from `frames` now, same as pre-2026-04 Kilter chunks.
+        backfillMoveCounts()
+        val climbCount = boardRepository.getClimbCount()
+        val statCount = boardRepository.getStatCount()
+        Log.i(TAG, "importMoonBoardSnapshot done: catalogue totals climbs=$climbCount stats=$statCount")
+        onProgress?.invoke(ImportStep.Done(climbCount.toInt(), statCount.toInt(), 0, 0))
+    }
+
+    /**
      * Import from a full uncompressed board DB (e.g. received via local WiFi share).
      * This is the same as the legacy online import path.
      */

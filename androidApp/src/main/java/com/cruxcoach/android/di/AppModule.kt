@@ -243,6 +243,27 @@ object AppModule {
         return BlossomSyncManager(context, okHttpClient)
     }
 
+    /**
+     * MoonBoard-configured [BlossomSyncManager] (FEAT-027). Same fetch
+     * infrastructure as the Kilter instance above, but pinned to the
+     * MoonBoard manifest d-tag + a separate chunk-hash prefs file so the
+     * two boards' sync state never cross-contaminate.
+     */
+    @Provides
+    @Singleton
+    @Named("moonboard")
+    fun provideMoonBoardBlossomSyncManager(
+        @ApplicationContext context: Context,
+        @Named("blossom") okHttpClient: OkHttpClient
+    ): BlossomSyncManager {
+        return BlossomSyncManager(
+            context,
+            okHttpClient,
+            manifestDTag = BlossomSyncManager.MOONBOARD_D_TAG,
+            prefsName = BlossomSyncManager.MOONBOARD_PREFS_NAME,
+        )
+    }
+
     @Provides
     @Singleton
     fun provideBoardSyncManager(
