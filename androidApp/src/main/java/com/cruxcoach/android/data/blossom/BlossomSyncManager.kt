@@ -103,8 +103,8 @@ class BlossomSyncManager(
                             when (arr[0].jsonPrimitive.content) {
                                 "EVENT" -> {
                                     // Do not trust the relay's filter: re-verify
-                                    // pubkey and Schnorr signature on the event
-                                    // before parsing its content as a manifest.
+                                    // pubkey, Schnorr signature, and d-tag on the
+                                    // event before parsing its content as a manifest.
                                     val event = Event.fromJson(arr[2].toString())
                                     if (event.pubKey != MANIFEST_PUBKEY) {
                                         Log.w(TAG, "Manifest pubkey mismatch from $relayUrl: ${event.pubKey}")
@@ -112,6 +112,18 @@ class BlossomSyncManager(
                                     }
                                     if (!event.verifySignature()) {
                                         Log.w(TAG, "Manifest signature invalid from $relayUrl")
+                                        return
+                                    }
+                                    // A non-compliant relay could return any
+                                    // Kind-30078 from MANIFEST_PUBKEY — e.g. the
+                                    // sibling MoonBoard catalogue manifest
+                                    // (d-tag "cruxcoach/moonboard-db"). Reject any
+                                    // event whose d-tag is not the board-DB tag,
+                                    // rather than relying on the incidental shape
+                                    // of BlossomManifest to fail the parse.
+                                    val dTag = Companion.extractDTag(event.tags)
+                                    if (dTag != MANIFEST_D_TAG) {
+                                        Log.w(TAG, "Manifest d-tag mismatch from $relayUrl: $dTag")
                                         return
                                     }
                                     val parsed = json.decodeFromString<BlossomManifest>(event.content)
@@ -387,6 +399,15 @@ class BlossomSyncManager(
             }
             return manifest
         }
+
+        /**
+         * Extracts the `d` tag value from a Nostr event's tag array, or
+         * null if absent / malformed. Used to re-verify the manifest
+         * event's d-tag client-side rather than trusting the relay
+         * honoured the REQ `#d` filter. `internal` for direct unit testing.
+         */
+        internal fun extractDTag(tags: Array<Array<String>>): String? =
+            tags.firstOrNull { it.size >= 2 && it[0] == "d" }?.get(1)
     }
 }
 
