@@ -49,6 +49,15 @@ fun BleConnectionSheet(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
+    // BleConnectionViewModel is scoped per nav-backstack entry, so the board
+    // browser and the detail screen hold separate instances — a permission
+    // grant in one leaves the other's cached hasPermissions stale at false.
+    // Android has no permission-change broadcast, so re-check the live OS
+    // permission + Bluetooth state on every sheet open.
+    LaunchedEffect(Unit) {
+        viewModel.checkState()
+    }
+
     // Auto-close once the connect succeeds — the top-bar BLE icon flips
     // to green (BluetoothConnected) so the sheet has no further purpose.
     // Only on the transition into CONNECTED, not when the sheet was
