@@ -9,6 +9,7 @@ import android.os.Looper
 import android.util.Log
 import com.cruxcoach.domain.board.BoardPacketEncoder
 import com.cruxcoach.domain.board.BoardHold
+import com.cruxcoach.domain.board.MoonBoardFrameEncoder
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -447,6 +448,36 @@ class BoardBleConnection(private val context: Context) {
     suspend fun sendRawChunks(chunks: List<ByteArray>): Boolean = writeMutex.withLock {
         if (_connectionState.value != ConnectionState.CONNECTED) return false
         return writeChunks(chunks)
+    }
+
+    /**
+     * Send a MoonBoard climb to the connected board (FEAT-027).
+     *
+     * MoonBoard speaks the Nordic UART Service — the same GATT service
+     * Aurora boards use — so [connect] and the [writeChunks] transport
+     * are reused unchanged. Only the payload differs: an ASCII
+     * `l#<token><pos>,…#` frame ([MoonBoardFrameEncoder]) instead of
+     * Aurora's binary packets, split into BLE-MTU-sized writes.
+     *
+     * @param frames the climb's `p{holdId}r{roleCode}` frames string.
+     */
+    suspend fun sendMoonBoardClimb(frames: String): Boolean = writeMutex.withLock {
+        if (_connectionState.value != ConnectionState.CONNECTED) return false
+
+        _connectionState.value = ConnectionState.SENDING
+        try {
+            val payload = MoonBoardFrameEncoder.encode(frames)
+            val chunks = payload.toList()
+                .chunked(BoardPacketEncoder.BLE_MTU)
+                .map { it.toByteArray() }
+            val success = writeChunks(chunks)
+            resetIdleTimer()
+            return success
+        } finally {
+            if (_connectionState.value == ConnectionState.SENDING) {
+                _connectionState.value = ConnectionState.CONNECTED
+            }
+        }
     }
 
     suspend fun clearBoard(): Boolean = writeMutex.withLock {

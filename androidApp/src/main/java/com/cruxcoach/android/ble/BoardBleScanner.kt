@@ -11,6 +11,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.util.Log
+import com.cruxcoach.domain.board.BoardBrand
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
@@ -25,13 +26,18 @@ data class DiscoveredBoard(
     val serial: String,
     val apiLevel: Int,
     val address: String,
-    val rssi: Int
+    val rssi: Int,
+    /** Board family — drives which BLE send protocol the connection
+     *  speaks (Aurora binary vs MoonBoard ASCII). Defaults to KILTER
+     *  so existing Aurora call sites are unaffected (FEAT-027). */
+    val boardBrand: BoardBrand = BoardBrand.KILTER,
 )
 
 /**
- * Scans for Aurora Climbing boards via BLE.
- * Filters on the Aurora ADVERTISING_SERVICE UUID.
- * Parses board name formats: "BoardName#serial@apiLevel" or "BoardName@apiLevel"
+ * Scans for Aurora Climbing boards + MoonBoard via BLE.
+ * Scans without a UUID filter; identifies boards by advertising name —
+ * Aurora boards as "BoardName#serial@apiLevel" / "BoardName@apiLevel",
+ * MoonBoard as a bare "MoonBoard…" name (FEAT-027).
  */
 class BoardBleScanner(private val context: Context) {
 
@@ -88,15 +94,30 @@ class BoardBleScanner(private val context: Context) {
                 ?: result.scanRecord?.deviceName
                 ?: return
             Log.d(TAG, "BLE scan result: name=$name addr=${device.address} rssi=${result.rssi}")
-            val parsed = parseBoardName(name) ?: return
 
-            val board = DiscoveredBoard(
-                displayName = parsed.first,
-                serial = parsed.second,
-                apiLevel = parsed.third,
-                address = device.address,
-                rssi = result.rssi
-            )
+            val board = if (isMoonBoardName(name)) {
+                // MoonBoard advertises a bare "MoonBoard…" name with no
+                // Aurora #serial@apiLevel suffix. apiLevel is an Aurora
+                // concept and stays 0 for MoonBoard.
+                DiscoveredBoard(
+                    displayName = name,
+                    serial = "",
+                    apiLevel = 0,
+                    address = device.address,
+                    rssi = result.rssi,
+                    boardBrand = BoardBrand.MOONBOARD,
+                )
+            } else {
+                val parsed = parseBoardName(name) ?: return
+                DiscoveredBoard(
+                    displayName = parsed.first,
+                    serial = parsed.second,
+                    apiLevel = parsed.third,
+                    address = device.address,
+                    rssi = result.rssi,
+                    boardBrand = BoardBrand.KILTER,
+                )
+            }
             boardMap[device.address] = board
             _discoveredBoards.value = boardMap.values.toList()
         }
@@ -171,6 +192,14 @@ class BoardBleScanner(private val context: Context) {
         }
         _isScanning.value = false
     }
+
+    /**
+     * True if a BLE advertising name looks like a MoonBoard. MoonBoard
+     * hardware (and the MoonSimulator) advertises a bare "MoonBoard…" /
+     * "Moonboard…" name with no Aurora-style #serial@apiLevel suffix.
+     */
+    fun isMoonBoardName(name: String): Boolean =
+        name.startsWith("MoonBoard") || name.startsWith("Moonboard")
 
     /**
      * Parse Aurora board BLE name.
