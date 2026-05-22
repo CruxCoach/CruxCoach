@@ -1213,6 +1213,7 @@
     <string name="cd_board_connect">Connect board</string>
     <string name="cd_board_connected">Board connected</string>
     <string name="cd_board_image">Board</string>
+    <string name="cd_moonboard_image">MoonBoard</string>
     <string name="cd_body_stats">Body Stats</string>
     <string name="cd_cancel_timer">Cancel timer</string>
     <string name="cd_change_angle">Change angle</string>

@@ -17,12 +17,13 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.cruxcoach.android.R
 import com.cruxcoach.domain.board.MoonBoardFrameEncoder
 import com.cruxcoach.domain.board.MoonBoardVariant
 import kotlin.math.min
@@ -42,18 +43,23 @@ private val MoonBoardFinishColor = Color(0xFFE23B36)
 private val MoonBoardPanelColor = Color(0xFFEAE1CC)
 private val MoonBoardGridDotColor = Color(0x40202020)
 
-/** Board card aspect (width / height) — the 11x18 lattice plus margins. */
+/** Board card aspect (width / height) for the generic (no-photo) raster. */
 private const val BOARD_ASPECT_RATIO = 0.65f
+
+/** Ring radius for a climb hold on a real board image, as a fraction of
+ *  the image width — sized to encircle a physical MoonBoard hold. */
+private const val IMAGE_HOLD_RADIUS_FRACTION = 0.028f
 
 /**
  * MoonBoard climb visualization (FEAT-027).
  *
- * v0.2.0 draws a generic, procedurally-rendered 11x18 grid — no board
- * photo, no third-party imagery. [boardImage] is the swap-in seam for
- * the planned per-variant real-board photos: when non-null it becomes
- * the background and the hold-marker overlay is unchanged. A supplied
- * photo must be perspective-corrected and cropped to the grid bounding
- * box (centre of A1 to centre of K18).
+ * [MoonBoardAssetState.Ready] draws the real board image full-bleed and
+ * highlights each climb hold at its measured position from the asset's
+ * coordinate map. [MoonBoardAssetState.Unavailable] — variants without a
+ * bundled image (Masters 2017 / 2019) — draws a generic, procedurally-
+ * rendered 11x18 grid instead. [MoonBoardAssetState.Loading] draws a
+ * blank card, so the procedural grid never flashes before the real
+ * image decodes on first open.
  *
  * Display-only — the MoonBoard climb-creator is out of v0.2.0 scope, so
  * there is no touch interaction (cf. KilterBoardVisualization's editor).
@@ -61,10 +67,14 @@ private const val BOARD_ASPECT_RATIO = 0.65f
 @Composable
 internal fun MoonBoardVisualization(
     frames: String,
-    boardImage: ImageBitmap? = null,
+    assetState: MoonBoardAssetState,
     modifier: Modifier = Modifier,
 ) {
     val climbHolds = remember(frames) { MoonBoardFrameEncoder.parseHolds(frames) }
+    val aspect = when (assetState) {
+        is MoonBoardAssetState.Ready -> assetState.asset.imageAspect
+        else -> BOARD_ASPECT_RATIO
+    }
 
     Card(
         modifier = modifier,
@@ -76,22 +86,33 @@ internal fun MoonBoardVisualization(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(BOARD_ASPECT_RATIO),
+                .aspectRatio(aspect),
         ) {
-            boardImage?.let { bitmap ->
-                Image(
-                    bitmap = bitmap,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Fit,
-                )
-            }
-            Canvas(modifier = Modifier.fillMaxSize()) {
-                val grid = gridRect(size, hasPhoto = boardImage != null)
-                if (boardImage == null) {
-                    drawGenericRaster(grid)
+            when (assetState) {
+                is MoonBoardAssetState.Ready -> {
+                    val asset = assetState.asset
+                    Image(
+                        bitmap = asset.image,
+                        contentDescription = stringResource(R.string.cd_moonboard_image),
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Fit,
+                    )
+                    Canvas(modifier = Modifier.fillMaxSize()) {
+                        drawClimbHoldsMapped(asset, climbHolds)
+                    }
                 }
-                drawClimbHolds(grid, climbHolds)
+
+                MoonBoardAssetState.Unavailable -> {
+                    Canvas(modifier = Modifier.fillMaxSize()) {
+                        val grid = gridRect(size)
+                        drawGenericRaster(grid)
+                        drawClimbHolds(grid, climbHolds)
+                    }
+                }
+
+                // Loading: blank card — the real image follows within a
+                // frame or two; no procedural-grid flash.
+                MoonBoardAssetState.Loading -> Unit
             }
         }
     }
@@ -99,18 +120,14 @@ internal fun MoonBoardVisualization(
 
 /**
  * Bounding box of the 11x18 hold lattice (centre of A1 to centre of
- * K18). For the generic raster the lattice is inset from the card
- * edges; a supplied photo is assumed pre-cropped to exactly this box.
+ * K18) for the generic raster — inset from the card edges.
  */
-private fun gridRect(size: Size, hasPhoto: Boolean): Rect {
-    if (hasPhoto) return Rect(Offset.Zero, size)
-    return Rect(
-        left = size.width * 0.09f,
-        top = size.height * 0.055f,
-        right = size.width * 0.94f,
-        bottom = size.height * 0.955f,
-    )
-}
+private fun gridRect(size: Size): Rect = Rect(
+    left = size.width * 0.09f,
+    top = size.height * 0.055f,
+    right = size.width * 0.94f,
+    bottom = size.height * 0.955f,
+)
 
 /**
  * Pixel centre of the hold at [column] (0 = A .. 10 = K) and [rowIndex]
@@ -145,32 +162,48 @@ private fun DrawScope.drawGenericRaster(grid: Rect) {
     }
 }
 
-/** Role-coloured ring at each of the climb's start / hand / finish holds. */
+/** Role colour for a climb hold's role code, or null to skip. */
+private fun roleColor(roleCode: Int): Color? = when (roleCode) {
+    MB_ROLE_START -> MoonBoardStartColor
+    MB_ROLE_HAND -> MoonBoardHandColor
+    MB_ROLE_FINISH -> MoonBoardFinishColor
+    else -> null
+}
+
+/** Filled-alpha disc + solid ring at [centre], in the role colour. */
+private fun DrawScope.drawHoldMarker(centre: Offset, color: Color, radius: Float) {
+    drawCircle(color = color.copy(alpha = 0.22f), radius = radius, center = centre, style = Fill)
+    drawCircle(
+        color = color,
+        radius = radius,
+        center = centre,
+        style = Stroke(width = radius * 0.32f),
+    )
+}
+
+/** Role-coloured ring at each climb hold — generic raster (linear grid). */
 private fun DrawScope.drawClimbHolds(grid: Rect, holds: List<Pair<Int, Int>>) {
     val maxHoldId = MoonBoardVariant.GRID_COLUMNS * MoonBoardVariant.GRID_ROWS
     val radius = cellSpacing(grid) * 0.34f
     holds.forEach { (holdId, roleCode) ->
-        val color = when (roleCode) {
-            MB_ROLE_START -> MoonBoardStartColor
-            MB_ROLE_HAND -> MoonBoardHandColor
-            MB_ROLE_FINISH -> MoonBoardFinishColor
-            else -> return@forEach
-        }
+        val color = roleColor(roleCode) ?: return@forEach
         if (holdId !in 1..maxHoldId) return@forEach
         val column = (holdId - 1) % MoonBoardVariant.GRID_COLUMNS
         val rowIndex = (holdId - 1) / MoonBoardVariant.GRID_COLUMNS
-        val centre = holdCentre(grid, column, rowIndex)
-        drawCircle(
-            color = color.copy(alpha = 0.22f),
-            radius = radius,
-            center = centre,
-            style = Fill,
-        )
-        drawCircle(
-            color = color,
-            radius = radius,
-            center = centre,
-            style = Stroke(width = radius * 0.32f),
-        )
+        drawHoldMarker(holdCentre(grid, column, rowIndex), color, radius)
+    }
+}
+
+/** Role-coloured ring at each climb hold — real board image: positions
+ *  come from the asset's measured per-hold coordinate map. */
+private fun DrawScope.drawClimbHoldsMapped(
+    asset: MoonBoardRenderAsset,
+    holds: List<Pair<Int, Int>>,
+) {
+    val radius = size.width * IMAGE_HOLD_RADIUS_FRACTION
+    holds.forEach { (holdId, roleCode) ->
+        val color = roleColor(roleCode) ?: return@forEach
+        val norm = asset.holdXy[holdId] ?: return@forEach
+        drawHoldMarker(Offset(norm.x * size.width, norm.y * size.height), color, radius)
     }
 }

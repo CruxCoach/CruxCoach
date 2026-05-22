@@ -899,13 +899,15 @@ private fun ClimbDetailPageContent(
                 }
 
                 // Board visualization (Climbdex-style) with countdown overlay.
-                // FEAT-027: MoonBoard climbs render the procedural 11x18 grid
-                // from the climb's `frames` string; Kilter climbs keep the
-                // photo-backed Aurora renderer.
+                // FEAT-027: MoonBoard climbs render the climb's `frames` over
+                // the real board image when one is bundled for the variant,
+                // falling back to a procedural 11x18 grid otherwise; Kilter
+                // climbs keep the photo-backed Aurora renderer.
                 Box(modifier = Modifier.fillMaxWidth()) {
                     if (climb.boardBrand == "moonboard") {
                         MoonBoardVisualization(
                             frames = climb.frames,
+                            assetState = rememberMoonBoardAsset(climb.layoutId),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .testTag("boarddetail_visualization")

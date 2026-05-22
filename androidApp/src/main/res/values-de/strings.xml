@@ -1260,6 +1260,7 @@
     <string name="cd_board_connect">Board verbinden</string>
     <string name="cd_board_connected">Board verbunden</string>
     <string name="cd_board_image">Board</string>
+    <string name="cd_moonboard_image">MoonBoard</string>
     <string name="cd_body_stats">Körperdaten</string>
     <string name="cd_cancel_timer">Timer abbrechen</string>
     <string name="cd_change_angle">Winkel ändern</string>
