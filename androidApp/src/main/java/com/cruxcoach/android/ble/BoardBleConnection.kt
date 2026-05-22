@@ -492,12 +492,15 @@ class BoardBleConnection(private val context: Context) {
                 .chunked(BoardPacketEncoder.BLE_MTU)
                 .map { it.toByteArray() }
             val success = writeChunks(chunks)
-            resetIdleTimer()
             return success
         } finally {
             if (_connectionState.value == ConnectionState.SENDING) {
                 _connectionState.value = ConnectionState.CONNECTED
             }
+            // Arm the idle-disconnect timer with the post-send state —
+            // resetIdleTimer() only arms while CONNECTED, so it must run
+            // AFTER the state flip above (mirrors clearBoard / sendClimb).
+            resetIdleTimer()
         }
     }
 

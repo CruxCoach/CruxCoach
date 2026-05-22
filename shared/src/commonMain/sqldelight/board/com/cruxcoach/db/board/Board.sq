@@ -51,7 +51,7 @@ CREATE TABLE climbs (
     -- belongs to. 'kilter' for the existing catalogue, 'moonboard'
     -- for MoonBoard climbs. Explicit so renderer / BLE / onboarding
     -- branch on a real column, not a layout_id range guess. Added by
-    -- 12.sqm with DEFAULT 'kilter' — must stay the LAST column so the
+    -- 14.sqm with DEFAULT 'kilter' — must stay the LAST column so the
     -- migration's ALTER TABLE ADD COLUMN matches this schema.
     board_brand TEXT NOT NULL DEFAULT 'kilter'
 );

@@ -2,7 +2,7 @@ package com.cruxcoach.domain.board
 
 /**
  * Board family a climb belongs to — the typed form of the
- * `climbs.board_brand` column (added by board-DB migration 12.sqm,
+ * `climbs.board_brand` column (added by board-DB migration 14.sqm,
  * FEAT-027).
  *
  * `kilter` is the historical catalogue and the column's DEFAULT, so
