@@ -1,0 +1,66 @@
+-- Per-wall detail for Kilter Board gyms. Additive companion to
+-- kilter_board_location: one row per physical wall, so multi-board gyms
+-- are no longer collapsed to a single representative wall. Sourced from
+-- the hangtime-climbing-boards GeoJSON mirror of Kilter's PowerSync
+-- global_gyms `walls[]`. Distributed in the same "locations" Blossom
+-- chunk. See FEAT-015 / FEAT-007 (gym→board picker).
+
+CREATE TABLE kilter_board_wall (
+    wall_uuid TEXT NOT NULL PRIMARY KEY,
+    gym_uuid TEXT NOT NULL,
+    name TEXT,
+    product_name TEXT,
+    layout_id INTEGER,
+    product_layout_uuid TEXT,
+    product_size_id INTEGER,
+    size_label TEXT,
+    is_adjustable INTEGER,
+    min_angle INTEGER,
+    max_angle INTEGER,
+    angle_increments INTEGER,
+    fixed_angle INTEGER,
+    accumulated_hold_set_value INTEGER,
+    serial_number TEXT,
+    is_listed INTEGER
+);
+
+CREATE INDEX idx_kbw_gym ON kilter_board_wall(gym_uuid);
+CREATE INDEX idx_kbw_layout_size ON kilter_board_wall(layout_id, product_size_id);
+
+-- Queries
+
+upsertWall:
+INSERT OR REPLACE INTO kilter_board_wall(
+    wall_uuid, gym_uuid, name, product_name, layout_id,
+    product_layout_uuid, product_size_id, size_label, is_adjustable,
+    min_angle, max_angle, angle_increments, fixed_angle,
+    accumulated_hold_set_value, serial_number, is_listed
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+deleteAllWalls:
+DELETE FROM kilter_board_wall;
+
+countWalls:
+SELECT COUNT(*) FROM kilter_board_wall;
+
+getAllWalls:
+SELECT * FROM kilter_board_wall;
+
+getWallsForGym:
+SELECT * FROM kilter_board_wall WHERE gym_uuid = ?;
+
+-- Walls matching the user's configured board. product_size_id may be
+-- NULL when the cron couldn't resolve the layout uuid → included so a
+-- layout-only match still surfaces (UI flags size as unknown).
+getWallsMatchingBoard:
+SELECT * FROM kilter_board_wall
+WHERE layout_id = :layoutId
+  AND (product_size_id IS NULL OR product_size_id = :productSizeId);
+
+-- FEAT-007: how common each board config is across all gyms (drives
+-- "sort picker by frequency"). NULL product_size_id excluded.
+wallCountByProductSize:
+SELECT product_size_id, COUNT(*) AS cnt
+FROM kilter_board_wall
+WHERE product_size_id IS NOT NULL
+GROUP BY product_size_id;

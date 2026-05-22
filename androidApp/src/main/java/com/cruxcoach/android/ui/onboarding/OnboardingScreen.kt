@@ -279,25 +279,45 @@ private fun BoardSetupStep(
     viewModel: OnboardingViewModel,
 ) {
     var showBoardModelDialog by rememberSaveable { mutableStateOf(false) }
-    val activeProductId = when (state.boardLayoutId) {
-        com.cruxcoach.android.data.BoardConstants.KILTER_HOMEWALL_LAYOUT ->
-            com.cruxcoach.android.data.BoardConstants.KILTER_HOMEWALL_PRODUCT_ID
-        else -> com.cruxcoach.android.data.BoardConstants.KILTER_PRODUCT_ID
-    }
+    var showGymSearch by rememberSaveable { mutableStateOf(false) }
     if (showBoardModelDialog) {
-        // Always-available pre-sync via KILTER_KNOWN_SIZES — board model
-        // is hardware knowledge that doesn't need a sync round-trip.
+        // Full board list (all 16); the dialog's in-dialog Original/
+        // Homewall segment replaces the standalone layout chip. Pre-sync
+        // via KILTER_KNOWN_SIZES — hardware knowledge, no sync needed.
         val sizes = com.cruxcoach.android.data.BoardConstants.KILTER_KNOWN_SIZES
-            .filter { it.productId.toInt() == activeProductId }
         com.cruxcoach.android.ui.settings.BoardModelSelectionDialog(
             productSizes = sizes,
+            frequency = state.boardSizeFrequency
+                .ifEmpty { com.cruxcoach.android.data.BoardConstants.DEFAULT_SIZE_FREQUENCY },
             selectedId = state.boardProductSizeId,
             onConfirm = { id ->
-                val name = sizes.find { it.id.toInt() == id }?.name ?: ""
-                viewModel.updateBoardProductSize(id, name)
+                val size = sizes.firstOrNull { it.id.toInt() == id }
+                val layout = com.cruxcoach.android.data.BoardConstants.layoutIdForProduct(
+                    size?.productId?.toInt()
+                        ?: com.cruxcoach.android.data.BoardConstants.KILTER_PRODUCT_ID
+                )
+                val name = com.cruxcoach.android.data.BoardConstants.sizeLabel(sizes, id)
+                viewModel.selectBoardFromGym(layout, id, name)
                 showBoardModelDialog = false
             },
             onDismiss = { showBoardModelDialog = false },
+            onFindViaGym = {
+                showBoardModelDialog = false
+                showGymSearch = true
+            },
+        )
+    }
+    if (showGymSearch) {
+        com.cruxcoach.android.ui.settings.GymBoardSearchSheet(
+            onPicked = { layoutId, productSizeId, label ->
+                viewModel.selectBoardFromGym(layoutId, productSizeId, label)
+                showGymSearch = false
+            },
+            onFallbackToDirect = {
+                showGymSearch = false
+                showBoardModelDialog = true
+            },
+            onDismiss = { showGymSearch = false },
         )
     }
 
@@ -347,13 +367,8 @@ private fun BoardSetupStep(
             }
         }
 
-        // Board-model picker first — hardware knowledge doesn't need
-        // a sync round-trip. The user picks Original/Homewall + size,
-        // then triggers the sync that downloads the matching catalog.
-        com.cruxcoach.android.ui.settings.KilterLayoutSection(
-            selectedLayoutId = state.boardLayoutId,
-            onLayoutChange = { viewModel.updateBoardLayout(it) },
-        )
+        // Board picker — hardware knowledge, no sync round-trip needed.
+        // Original/Homewall is now an in-dialog segment, not a chip.
         com.cruxcoach.android.ui.settings.BoardModelSection(
             boardModelName = state.boardProductSizeName,
             onChangeModel = { showBoardModelDialog = true },

@@ -109,6 +109,7 @@ class BoardDatabaseImporter(
         metaDbFiles: List<File>,
         climbsDbFiles: List<File>,
         statsDbFiles: List<File>,
+        locationsDbFiles: List<File> = emptyList(),
         onProgress: ((step: ImportStep) -> Unit)? = null
     ) {
         val snapshot = loadExistingSnapshot()
@@ -250,6 +251,14 @@ class BoardDatabaseImporter(
 
         if (boardRepository.getSyncState("metadata_v7") == null) {
             boardRepository.upsertSyncState("metadata_v7", "done")
+        }
+
+        // Import location chunks (FEAT-006). Disjoint from climb/stat/layout
+        // tables; safe to run after the deferred-index block has finished.
+        // Older clients ignore this chunk type; newer clients with no
+        // locations chunk in the manifest get an empty list and skip.
+        for (file in locationsDbFiles) {
+            openReadOnly(file) { rawDb -> importLocations(rawDb) }
         }
 
         val climbCount = boardRepository.getClimbCount()
@@ -1333,6 +1342,99 @@ class BoardDatabaseImporter(
             while (it.moveToNext()) {
                 boardRepository.upsertSyncState(it.getString(0), it.getString(1))
             }
+        }
+    }
+
+    /**
+     * Import the kilter_board_location table from a chunk SQLite file via
+     * ATTACH DATABASE. The chunk's table name is the same as ours, so a
+     * single SELECT replaces the entire row dataset (cron always publishes
+     * a complete snapshot, never deltas — the dataset is small).
+     *
+     * If the chunk is structurally invalid (table missing, etc.) we log
+     * and bail without throwing — locations are non-essential and must
+     * not break the rest of the sync.
+     */
+    private fun importLocations(rawDb: SQLiteDatabase) {
+        if (!hasTable(rawDb, "kilter_board_location")) {
+            Log.w("BoardDatabaseImporter", "locations chunk missing kilter_board_location table — skipping")
+            return
+        }
+        val chunkPath = rawDb.path ?: run {
+            Log.w("BoardDatabaseImporter", "locations chunk has no path (in-memory) — skipping")
+            return
+        }
+        val targetDb = openTargetDb()
+        try {
+            targetDb.execSQL("ATTACH DATABASE ? AS loc_src", arrayOf(chunkPath))
+            targetDb.beginTransaction()
+            try {
+                // Replace-all semantics: cron snapshot is authoritative,
+                // so old rows that fell out of the dataset (delisted gym,
+                // closed location) get removed automatically.
+                targetDb.execSQL("DELETE FROM kilter_board_location")
+                targetDb.execSQL("""
+                    INSERT INTO kilter_board_location(
+                        gym_uuid, name, lat, lng, address, city, country_code,
+                        phone, email, url, instagram,
+                        layout_name, layout_id, size_label, product_size_id,
+                        access_type, adjustability, fixed_angle, frame_maker
+                    )
+                    SELECT gym_uuid, name, lat, lng, address, city, country_code,
+                           phone, email, url, instagram,
+                           layout_name, layout_id, size_label, product_size_id,
+                           COALESCE(access_type, 'UNKNOWN'),
+                           COALESCE(adjustability, 'UNKNOWN'),
+                           fixed_angle, frame_maker
+                    FROM loc_src.kilter_board_location
+                """)
+                targetDb.setTransactionSuccessful()
+            } finally {
+                targetDb.endTransaction()
+            }
+            val count = queryLong(targetDb, "SELECT COUNT(*) FROM kilter_board_location")
+            Log.d("BoardDatabaseImporter", "Imported $count board locations")
+
+            // Per-wall detail (FEAT-007). Additive + guarded: pre-0.1.6
+            // chunks have no kilter_board_wall, so skip silently rather
+            // than fail the (critical) location import. Own transaction
+            // so a wall-side error never rolls back locations.
+            if (hasTable(rawDb, "kilter_board_wall")) {
+                try {
+                    targetDb.beginTransaction()
+                    try {
+                        targetDb.execSQL("DELETE FROM kilter_board_wall")
+                        targetDb.execSQL("""
+                            INSERT INTO kilter_board_wall(
+                                wall_uuid, gym_uuid, name, product_name, layout_id,
+                                product_layout_uuid, product_size_id, size_label, is_adjustable,
+                                min_angle, max_angle, angle_increments, fixed_angle,
+                                accumulated_hold_set_value, serial_number, is_listed
+                            )
+                            SELECT wall_uuid, gym_uuid, name, product_name, layout_id,
+                                   product_layout_uuid, product_size_id, size_label, is_adjustable,
+                                   min_angle, max_angle, angle_increments, fixed_angle,
+                                   accumulated_hold_set_value, serial_number, is_listed
+                            FROM loc_src.kilter_board_wall
+                        """)
+                        targetDb.setTransactionSuccessful()
+                    } finally {
+                        targetDb.endTransaction()
+                    }
+                    val wc = queryLong(targetDb, "SELECT COUNT(*) FROM kilter_board_wall")
+                    Log.d("BoardDatabaseImporter", "Imported $wc board walls")
+                } catch (e: Exception) {
+                    Log.w("BoardDatabaseImporter", "kilter_board_wall import failed (non-fatal)", e)
+                }
+            } else {
+                Log.d("BoardDatabaseImporter", "locations chunk has no kilter_board_wall (pre-0.1.6 chunk) — skipping walls")
+            }
+            targetDb.execSQL("DETACH DATABASE loc_src")
+        } catch (e: Exception) {
+            try { targetDb.execSQL("DETACH DATABASE loc_src") } catch (_: Exception) {}
+            Log.w("BoardDatabaseImporter", "locations chunk import failed", e)
+        } finally {
+            targetDb.close()
         }
     }
 

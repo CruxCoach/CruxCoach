@@ -46,7 +46,7 @@ class FakeBoardRepository : BoardRepository {
     override fun searchClimbsByName(
         query: String, angle: Int, layoutId: Int, sortField: ClimbSortField,
         sortDirection: SortDirection, limit: Int, offset: Int,
-        climbType: ClimbTypeFilter
+        climbType: ClimbTypeFilter, selProductSizeId: Int
     ): List<ClimbWithStats> {
         val filtered = climbs.filter {
             (it.name.contains(query, ignoreCase = true) ||
@@ -61,7 +61,7 @@ class FakeBoardRepository : BoardRepository {
         angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double,
         minAscensionists: Int, sortField: ClimbSortField,
         sortDirection: SortDirection, limit: Int, offset: Int,
-        climbType: ClimbTypeFilter
+        climbType: ClimbTypeFilter, selProductSizeId: Int
     ): List<ClimbWithStats> {
         val filtered = climbs.filter { climb ->
             val diff = climb.difficultyAverage ?: return@filter false
@@ -90,7 +90,7 @@ class FakeBoardRepository : BoardRepository {
 
     override fun countFilteredClimbs(
         angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double,
-        minAscensionists: Int, climbType: ClimbTypeFilter
+        minAscensionists: Int, climbType: ClimbTypeFilter, selProductSizeId: Int
     ): Long {
         return climbs.count { climb ->
             val diff = climb.difficultyAverage ?: return@count false
@@ -101,7 +101,7 @@ class FakeBoardRepository : BoardRepository {
     }
 
     override fun countFilteredClimbsFast(
-        angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int
+        angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, selProductSizeId: Int
     ): Long {
         return climbs.count { climb ->
             val diff = climb.difficultyAverage ?: return@count false
@@ -112,7 +112,7 @@ class FakeBoardRepository : BoardRepository {
 
     override fun countBenchmarkFilteredClimbs(
         angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double,
-        minAscensionists: Int, climbType: ClimbTypeFilter
+        minAscensionists: Int, climbType: ClimbTypeFilter, selProductSizeId: Int
     ): Long {
         return climbs.count { climb ->
             val diff = climb.difficultyAverage ?: return@count false
@@ -123,7 +123,7 @@ class FakeBoardRepository : BoardRepository {
         }.toLong()
     }
 
-    override fun countSearchClimbs(query: String, angle: Int, layoutId: Int, climbType: ClimbTypeFilter): Long {
+    override fun countSearchClimbs(query: String, angle: Int, layoutId: Int, climbType: ClimbTypeFilter, selProductSizeId: Int): Long {
         return climbs.count {
             (it.name.contains(query, ignoreCase = true) ||
                 it.setterUsername?.contains(query, ignoreCase = true) == true) &&
@@ -131,7 +131,7 @@ class FakeBoardRepository : BoardRepository {
         }.toLong()
     }
 
-    override fun countBenchmarkSearchClimbs(query: String, angle: Int, layoutId: Int, climbType: ClimbTypeFilter): Long {
+    override fun countBenchmarkSearchClimbs(query: String, angle: Int, layoutId: Int, climbType: ClimbTypeFilter, selProductSizeId: Int): Long {
         return climbs.count {
             (it.name.contains(query, ignoreCase = true) ||
                 it.setterUsername?.contains(query, ignoreCase = true) == true) &&
@@ -170,6 +170,18 @@ class FakeBoardRepository : BoardRepository {
 
     override fun getClimbsByUuids(uuids: Collection<String>, angle: Int): List<ClimbWithStats> {
         return climbs.filter { it.uuid in uuids }
+    }
+
+    override fun getAllBrowseMatchingUuids(
+        angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double,
+        minAscensionists: Int, climbType: ClimbTypeFilter, selProductSizeId: Int
+    ): List<String> {
+        return climbs.filter { climb ->
+            val diff = climb.difficultyAverage
+            (diff == null || diff in minDifficulty..maxDifficulty) &&
+                (climb.ascensionistCount ?: 0) >= minAscensionists &&
+                climb.matchesClimbType(climbType)
+        }.map { it.uuid }
     }
 
     override fun getStatCount(): Long = 0L
@@ -332,5 +344,6 @@ class FakeBoardRepository : BoardRepository {
     override fun getCruxCoachClimbs(
         layoutId: Int, angle: Int, minDifficulty: Double, maxDifficulty: Double,
         minAscensionists: Int, climbType: com.cruxcoach.data.repository.ClimbTypeFilter,
+        selProductSizeId: Int,
     ): List<com.cruxcoach.data.repository.ClimbWithStats> = emptyList()
 }

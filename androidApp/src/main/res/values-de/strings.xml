@@ -156,7 +156,7 @@
     <string name="setter_detail_no_climbs">Keine Climbs dieses Setters in deinem lokalen Katalog.</string>
     <string name="setter_detail_load_failed">Climbs konnten nicht geladen werden.</string>
     <string name="setters_list_load_failed">Setter-Liste konnte nicht geladen werden.</string>
-    <string name="setter_detail_climb_meta">%1$d° · %2$.1f · ⭐%3$.1f · %4$d Begehungen</string>
+    <string name="setter_detail_climb_meta">%1$d° · %2$s · ⭐%3$.1f · %4$d Begehungen</string>
     <string name="setters_list_title">CruxCoach-Setter</string>
     <string name="setters_list_empty">Noch keine CruxCoach-Community-Climbs. Schau später wieder rein oder leg selbst los.</string>
     <string name="setters_list_count">%1$d Climbs</string>
@@ -218,6 +218,62 @@
     <string name="action_disconnect">Trennen</string>
     <string name="action_next">Weiter</string>
     <string name="action_close">Schließen</string>
+
+    <!-- FEAT-006 Map (placeholder; full set added in phase 10) -->
+    <string name="map_screen_title">Karte</string>
+    <string name="cd_map">Kilter Board auf der Karte finden</string>
+    <string name="map_filter_show_all">Alle</string>
+    <string name="map_filter_show_original">Kommerzielle Hallen (Original)</string>
+    <string name="map_filter_show_homewalls">Private Homewalls</string>
+    <string name="map_open_filters">Filter öffnen</string>
+    <string name="map_open_stats">Statistik öffnen</string>
+    <string name="map_filter_sheet_title">Karte filtern</string>
+    <string name="map_filter_section_layout">Layout</string>
+    <string name="map_filter_section_access">Zugang</string>
+    <string name="map_filter_section_adjustability">Verstellbarkeit</string>
+    <string name="map_filter_section_size">Größe</string>
+    <string name="map_filter_section_country">Land</string>
+    <string name="map_filter_count_template">Zeigt %1$d von %2$d</string>
+    <string name="map_filter_reset">Zurücksetzen</string>
+    <string name="map_stats_layout_distribution">Layout-Verteilung</string>
+    <string name="map_stats_access_distribution">Zugangs-Verteilung</string>
+    <string name="map_stats_adjustability_distribution">Verstellbarkeits-Verteilung</string>
+    <string name="map_stats_top_countries">Top-Länder</string>
+    <string name="map_stats_size_distribution">Größen-Verteilung</string>
+    <string name="map_stats_layout_original">Original</string>
+    <string name="map_stats_layout_homewall">Homewall</string>
+    <string name="map_stats_label_countries">Länder</string>
+    <string name="map_stats_label_public">Öffentlich</string>
+    <string name="map_stats_label_adjustable">Verstellbar</string>
+    <string name="map_stats_total_locations">Standorte gesamt</string>
+    <string name="map_stats_empty">Keine Daten</string>
+    <string name="map_filter_matches_my_board">Passt zu meinem Board</string>
+    <string name="map_filter_match_disabled">Konfiguriere zuerst dein Board</string>
+    <string name="map_marker_browse_climbs">Climbs für dieses Board ansehen</string>
+    <string name="map_marker_open_in_maps">In Karten-App öffnen</string>
+    <string name="map_marker_layout">Layout</string>
+    <string name="map_marker_access">Zugang</string>
+    <string name="map_marker_adjustability">Verstellbarkeit</string>
+    <string name="map_marker_frame">Rahmen</string>
+    <string name="map_marker_field_unknown">—</string>
+    <string name="map_offline_dialog_title">Keine Internetverbindung</string>
+    <string name="map_offline_dialog_body">Die Karte benötigt beim ersten Öffnen eine Internetverbindung. Bereits angesehene Bereiche bleiben anschließend offline verfügbar.\n\nVerbinde dich mit WLAN oder mobilen Daten und versuche es erneut.</string>
+    <string name="map_offline_dialog_close">Schließen</string>
+    <string name="map_no_data">Standortdaten noch nicht geladen — werden beim nächsten App-Start automatisch geladen</string>
+    <string name="map_loading_locations">Standortdaten werden geladen…</string>
+
+    <!-- Access enum display values -->
+    <string name="map_access_public">Öffentlich</string>
+    <string name="map_access_private">Privat</string>
+    <string name="map_access_members">Mitglieder / Reservierung</string>
+
+    <!-- Adjustability enum display values -->
+    <string name="map_adjustability_fixed">Fest</string>
+    <string name="map_adjustability_fixed_angle">Fest (%1$d°)</string>
+    <string name="map_adjustability_adjustable">Verstellbar</string>
+    <string name="map_adjustability_limited">Eingeschränkt</string>
+    <string name="map_adjustability_full">Voll verstellbar</string>
+
     <string name="action_send">Senden</string>
     <string name="action_retry">Erneut versuchen</string>
     <string name="action_reset">Zurücksetzen</string>
@@ -283,20 +339,6 @@
     <string name="settings_duration_seconds_label">Sekunden</string>
     <string name="settings_ble_keep_screen_on">Bildschirm anlassen</string>
     <string name="settings_ble_keep_screen_on_desc">Bildschirm bleibt auf Board-Screens an, damit du nicht ständig entsperren musst.</string>
-    <string name="settings_ble_quick_send">Schnell-Senden</string>
-    <string name="settings_ble_quick_send_desc">Tippen auf das BLE-Symbol im Climb-Detail verbindet automatisch (bzw. fragt bei mehreren Boards), schickt den Climb und trennt direkt danach.</string>
-
-    <!-- BLE-Schnell-Senden-Status-Meldungen -->
-    <string name="ble_quick_send_scanning">Suche Board…</string>
-    <string name="ble_quick_send_connecting">Verbinde mit %s…</string>
-    <string name="ble_quick_send_sending">Sende Climb…</string>
-    <string name="ble_quick_send_disconnecting">Trenne Verbindung…</string>
-    <string name="ble_quick_send_done">Climb gesendet — Board getrennt.</string>
-    <string name="ble_quick_send_no_boards">Kein Board in der Nähe gefunden. Prüfe, ob das Board eingeschaltet und Bluetooth aktiv ist.</string>
-    <string name="ble_quick_send_connect_failed">Verbindung zum Board fehlgeschlagen. Bitte erneut versuchen.</string>
-    <string name="ble_quick_send_send_failed">Climb konnte nicht gesendet werden — Board getrennt.</string>
-    <string name="ble_quick_send_bluetooth_off">Bluetooth ist aus. Bitte aktivieren und erneut versuchen.</string>
-    <string name="ble_quick_send_no_permissions">Bluetooth-Berechtigungen fehlen. Bitte in den App-Einstellungen erteilen.</string>
 
     <!-- Settings: LED Colors -->
     <string name="settings_led_title">LED-Farben</string>
@@ -351,6 +393,7 @@
     <string name="settings_share_title">App teilen</string>
     <string name="settings_share_desc">CruxCoach APK mit anderen teilen (ohne Nutzerdaten).</string>
     <string name="board_filter_title">Filter</string>
+    <string name="board_filter_selected_board">Gewähltes Board</string>
     <string name="settings_share_via_apps">Über Apps teilen</string>
     <string name="settings_share_online">Online teilen</string>
     <string name="settings_share_online_hide">Online-QR ausblenden</string>
@@ -1065,7 +1108,8 @@
 
     <!-- Board Ascent Types -->
     <string name="board_ascent_send">Send</string>
-    <string name="board_ascent_attempt">Attempt</string>
+    <string name="board_ascent_attempt">Versuch</string>
+    <string name="board_ascent_attempts_count">%d Versuche</string>
 
     <!-- Dropdown -->
     <string name="dropdown_selection_placeholder">Auswahl…</string>
@@ -1172,7 +1216,8 @@
     <string name="board_rest_timer_rest">Pause</string>
     <string name="board_session_flashes">Flashes</string>
     <string name="board_session_label">Session</string>
-    <string name="board_sort_repeats">Repeats</string>
+    <string name="board_sort_quality_sends">Sends × Qualität</string>
+    <string name="board_sort_random">Zufällig</string>
     <string name="board_stats_activity">Aktivität</string>
     <string name="board_stats_personal_heatmap">Meine Sends — Heatmap</string>
     <string name="board_stats_heatmap_section">Heatmap — %1$s</string>
@@ -1405,6 +1450,8 @@
     <string name="post_workout_rpe_display">RPE: %1$s – %2$s</string>
     <string name="rest_timer_done">Pause vorbei!</string>
     <string name="rest_timer_label">Pause</string>
+    <string name="rest_timer_set_title">Pausenlänge</string>
+    <string name="rest_timer_start">Starten</string>
     <string name="settings_app_share_title">App teilen</string>
     <string name="settings_profile_assessment_title">Profil &amp; Assessment</string>
     <string name="settings_section_board">Board-Einstellungen</string>
@@ -1415,6 +1462,16 @@
     <string name="settings_board_model_title">Board-Größe</string>
     <string name="settings_board_model_change">Ändern</string>
     <string name="settings_board_model_not_configured">Nicht konfiguriert</string>
+    <string name="settings_board_find_via_gym">Weiß nicht?</string>
+    <string name="settings_board_find_via_gym_fallback">Board direkt wählen</string>
+    <string name="feat007_gym_search_title">Halle suchen</string>
+    <string name="feat007_gym_search_field">Hallen-Name…</string>
+    <string name="feat007_gym_search_min">Mindestens 2 Buchstaben eingeben</string>
+    <string name="feat007_gym_search_none">Keine Halle gefunden.</string>
+    <string name="feat007_gym_one">Diese Halle nutzt:</string>
+    <string name="feat007_gym_many">Diese Halle hat %1$d Boards — wähle das, vor dem du stehst:</string>
+    <string name="feat007_gym_no_walls">Für diese Halle sind keine Board-Daten hinterlegt.</string>
+    <string name="feat007_back">Zurück</string>
     <string name="settings_section_data">Datenverwaltung</string>
     <string name="settings_section_dev_contact">Entwickler-Kontakt</string>
     <string name="settings_section_display">Anzeige</string>

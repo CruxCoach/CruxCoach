@@ -2,7 +2,15 @@ package com.cruxcoach.data.repository
 
 import com.cruxcoach.domain.board.BoardClimbParser
 
-enum class ClimbSortField { QUALITY, DIFFICULTY, ASCENSIONISTS, REPEATS, NAME, HOLDS, BENCHMARK_DIFFICULTY }
+enum class ClimbSortField {
+    QUALITY, DIFFICULTY, ASCENSIONISTS, REPEATS, NAME, HOLDS, BENCHMARK_DIFFICULTY,
+    /** Quality multiplied by sends: surfaces climbs that are both popular AND well-rated. */
+    QUALITY_SENDS,
+    /** SQLite RANDOM() over the filtered set. Direction is ignored. Pagination
+     *  is independently random per page — scrolling yields more random results
+     *  rather than a stable shuffled list. Adequate for browsing-for-discovery. */
+    RANDOM,
+}
 enum class SortDirection { ASC, DESC }
 
 enum class ClimbTypeFilter {
@@ -213,14 +221,14 @@ data class ClimbFrameRow(
 
 /** Climb search, filter, and count queries. All browse/search/count methods require layoutId to scope results to a board type. */
 interface BoardClimbQueries {
-    fun searchClimbsByName(query: String, angle: Int, layoutId: Int, sortField: ClimbSortField = ClimbSortField.QUALITY, sortDirection: SortDirection = SortDirection.DESC, limit: Int = 50, offset: Int = 0, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER): List<ClimbWithStats>
-    fun searchClimbsSorted(angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, sortField: ClimbSortField, sortDirection: SortDirection, limit: Int = 50, offset: Int = 0, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER): List<ClimbWithStats>
+    fun searchClimbsByName(query: String, angle: Int, layoutId: Int, sortField: ClimbSortField = ClimbSortField.QUALITY, sortDirection: SortDirection = SortDirection.DESC, limit: Int = 50, offset: Int = 0, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER, selProductSizeId: Int = 0): List<ClimbWithStats>
+    fun searchClimbsSorted(angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, sortField: ClimbSortField, sortDirection: SortDirection, limit: Int = 50, offset: Int = 0, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER, selProductSizeId: Int = 0): List<ClimbWithStats>
     fun getClimbByUuid(uuid: String, angle: Int): ClimbWithStats?
-    fun countFilteredClimbsFast(angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int): Long
-    fun countFilteredClimbs(angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER): Long
-    fun countBenchmarkFilteredClimbs(angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER): Long
-    fun countSearchClimbs(query: String, angle: Int, layoutId: Int, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER): Long
-    fun countBenchmarkSearchClimbs(query: String, angle: Int, layoutId: Int, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER): Long
+    fun countFilteredClimbsFast(angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, selProductSizeId: Int = 0): Long
+    fun countFilteredClimbs(angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER, selProductSizeId: Int = 0): Long
+    fun countBenchmarkFilteredClimbs(angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER, selProductSizeId: Int = 0): Long
+    fun countSearchClimbs(query: String, angle: Int, layoutId: Int, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER, selProductSizeId: Int = 0): Long
+    fun countBenchmarkSearchClimbs(query: String, angle: Int, layoutId: Int, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER, selProductSizeId: Int = 0): Long
     fun getClimbCount(): Long
     /** O(1) existence check. Far cheaper than [getClimbCount] — that one
      *  full-table-scans on a 190k-row catalog, and worse, blocks on the
@@ -256,6 +264,10 @@ interface BoardClimbQueries {
     fun getClimbsByUuids(uuids: Collection<String>, angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter): List<ClimbWithStats>
     /** Fetch climbs by UUID list at a given angle, no additional filters. */
     fun getClimbsByUuids(uuids: Collection<String>, angle: Int): List<ClimbWithStats>
+    /** UUID-only projection of the entire browse-filter match set. Backs the
+     *  VM's UUID-shuffle cache for RANDOM sort — load once per filter
+     *  signature, shuffle in Kotlin, paginate over the cached list. */
+    fun getAllBrowseMatchingUuids(angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter, selProductSizeId: Int = 0): List<String>
     /** Find climb UUIDs whose frames contain the given placement ID. */
     fun searchClimbUuidsByHold(holdPattern: String, angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter): List<String>
     /** Find climb UUIDs whose frames contain ALL given hold patterns (single DB pass). */
@@ -311,7 +323,7 @@ interface BoardLayoutQueries {
      *  Kotlin via the existing sortInKotlin path. */
     fun getCruxCoachClimbs(
         layoutId: Int, angle: Int, minDifficulty: Double, maxDifficulty: Double,
-        minAscensionists: Int, climbType: ClimbTypeFilter,
+        minAscensionists: Int, climbType: ClimbTypeFilter, selProductSizeId: Int = 0,
     ): List<ClimbWithStats>
     /** Find the smallest product_size whose four edges *contain* the
      *  climb's bounding box AND has board_images for the climb's

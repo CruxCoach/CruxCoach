@@ -89,6 +89,8 @@ data class SettingsState(
     /** One-shot snackbar text from the most recent MoonBoard catalogue
      *  sync, surfaced via the existing delete-success snackbar slot. */
     val moonBoardSyncMessage: String? = null,
+    val boardSizeFrequency: Map<Int, Long> = emptyMap(),
+    val boardSearchEnabled: Boolean = false,
     val syncInterval: SyncInterval = SyncInterval.MANUAL,
     val lastSyncTimestamp: String? = null,
     val hasAssessment: Boolean = false,
@@ -102,7 +104,6 @@ data class SettingsState(
     val restTimer: RestTimerSettings = RestTimerSettings(),
     val climbSharing: ClimbSharingSettings = ClimbSharingSettings(),
     val keepScreenOn: Boolean = false,
-    val quickBoardSend: Boolean = false,
     val easterAnimationsUnlocked: Boolean = false,
     val isAnimating: Boolean = false,
     val crashReportOptIn: Boolean = false,
@@ -135,6 +136,7 @@ class SettingsViewModel @Inject constructor(
     private val kilterTokenStore: com.cruxcoach.android.data.kilter.KilterTokenStore,
     private val kilterSyncEngine: com.cruxcoach.android.data.kilter.KilterSyncEngine,
     private val kilterApiClient: com.cruxcoach.android.data.kilter.KilterApiClient,
+    private val boardLocationRepository: com.cruxcoach.data.repository.BoardLocationRepository,
     @param:ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -143,6 +145,11 @@ class SettingsViewModel @Inject constructor(
 
     init {
         loadSettings()
+        viewModelScope.launch {
+            val freq = withContext(Dispatchers.IO) { boardLocationRepository.productSizeFrequency() }
+            val enabled = withContext(Dispatchers.IO) { boardLocationRepository.countWalls() > 0L }
+            _state.update { it.copy(boardSizeFrequency = freq, boardSearchEnabled = enabled) }
+        }
     }
 
     private fun loadSettings() {
@@ -152,7 +159,8 @@ class SettingsViewModel @Inject constructor(
                 val profile = userRepository.getActiveProfile()
                 val layoutId = userPreferences.boardLayoutId.first()
                 val boardSizeId = userPreferences.boardProductSizeId.first()
-                val boardSizeName = boardRepository.getProductSize(boardSizeId)?.name ?: ""
+                val boardSizeName = boardRepository.getProductSize(boardSizeId)
+                    ?.let { BoardConstants.sizeLabel(it.id, it.name) } ?: ""
                 val boardBrand = userPreferences.boardBrand.first()
                 // MoonBoard layout ids (2/4/5) are disjoint from Kilter's,
                 // so the active variant is derived directly from the
@@ -175,7 +183,6 @@ class SettingsViewModel @Inject constructor(
                 val remoteDisconnect = userPreferences.allowRemoteDisconnect.first()
                 val easterUnlocked = userPreferences.easterAnimationsUnlocked.first()
                 val keepScreenOn = userPreferences.keepScreenOn.first()
-                val quickBoardSend = userPreferences.quickBoardSend.first()
                 val crashOptIn = userPreferences.crashReportOptIn.first() ?: false
                 val announcementsOn = userPreferences.announcementsEnabled.first()
                 val catRelease = userPreferences.announcementCatRelease.first()
@@ -234,7 +241,6 @@ class SettingsViewModel @Inject constructor(
                         autoStart = timerAutoStart
                     ),
                     keepScreenOn = keepScreenOn,
-                    quickBoardSend = quickBoardSend,
                     easterAnimationsUnlocked = easterUnlocked,
                     climbSharing = ClimbSharingSettings(
                         enabled = sharingEnabled,
@@ -275,7 +281,6 @@ class SettingsViewModel @Inject constructor(
             launch { userPreferences.lastSyncTimestamp.collect { v -> _state.update { it.copy(lastSyncTimestamp = v) } } }
             launch { userPreferences.darkMode.collect { v -> _state.update { it.copy(darkMode = v) } } }
             launch { userPreferences.keepScreenOn.collect { v -> _state.update { it.copy(keepScreenOn = v) } } }
-            launch { userPreferences.quickBoardSend.collect { v -> _state.update { it.copy(quickBoardSend = v) } } }
             launch { userPreferences.nearbyClimbSharing.collect { v -> _state.update { it.copy(climbSharing = it.climbSharing.copy(enabled = v)) } } }
             launch { userPreferences.allowRemoteDisconnect.collect { v -> _state.update { it.copy(climbSharing = it.climbSharing.copy(allowRemoteDisconnect = v)) } } }
             launch { userPreferences.crashReportOptIn.collect { v -> _state.update { it.copy(crashReportOptIn = v ?: false) } } }
@@ -377,6 +382,29 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    /** FEAT-007 Path B: apply a board chosen via gym search. Atomic —
+     *  sets layout + size together, no layout-roll side effect (unlike
+     *  updateBoardLayout). label is the official BoardConstants wording. */
+    fun selectBoardFromGym(layoutId: Int, productSizeId: Int, label: String) {
+        // FEAT-027: a gym/dialog board selection is always a Kilter board —
+        // record brand = "kilter" so switching back from MoonBoard sticks
+        // (Browse + Detail stop treating the active board as a MoonBoard).
+        _state.update {
+            it.copy(
+                boardLayoutId = layoutId,
+                boardProductSizeId = productSizeId,
+                boardProductSizeName = label,
+                boardBrand = "kilter",
+                moonBoardVariant = null,
+            )
+        }
+        viewModelScope.launch {
+            userPreferences.setBoardLayoutId(layoutId)
+            userPreferences.setBoardProductSizeId(productSizeId)
+            userPreferences.setBoardBrand("kilter")
+        }
+    }
+
     /**
      * Select a MoonBoard variant + hold set as the active board (FEAT-027).
      * Persists atomically via [UserPreferences.setMoonBoardSelection] (writes
@@ -437,7 +465,7 @@ class SettingsViewModel @Inject constructor(
                     BoardConstants.KILTER_HOMEWALL_LAYOUT -> BoardConstants.KILTER_HOMEWALL_DEFAULT_SIZE
                     else -> BoardConstants.KILTER_DEFAULT_SIZE
                 }
-            val newSizeName = newSize?.name ?: ""
+            val newSizeName = newSize?.let { BoardConstants.sizeLabel(it.id, it.name) } ?: ""
             userPreferences.setBoardProductSizeId(newSizeId)
             _state.update {
                 it.copy(
@@ -458,8 +486,15 @@ class SettingsViewModel @Inject constructor(
         if (_state.value.productSizes.isNotEmpty()) return
         viewModelScope.launch {
             val sizes = withContext(Dispatchers.IO) {
-                val productId = layoutToProductId(_state.value.boardLayoutId).toLong()
-                boardRepository.getAllProductSizes(productId)
+                // Combined picker needs BOTH products — the in-dialog
+                // Original/Homewall segment only appears when the list
+                // spans >1 product. (Loading a single product post-sync
+                // hid Homewall entirely.)
+                boardRepository.getAllProductSizes(
+                    BoardConstants.KILTER_PRODUCT_ID.toLong()
+                ) + boardRepository.getAllProductSizes(
+                    BoardConstants.KILTER_HOMEWALL_PRODUCT_ID.toLong()
+                )
             }
             _state.update { it.copy(productSizes = sizes) }
         }
@@ -529,10 +564,6 @@ class SettingsViewModel @Inject constructor(
 
     fun updateKeepScreenOn(enabled: Boolean) {
         viewModelScope.launch { userPreferences.setKeepScreenOn(enabled) }
-    }
-
-    fun updateQuickBoardSend(enabled: Boolean) {
-        viewModelScope.launch { userPreferences.setQuickBoardSend(enabled) }
     }
 
     fun updateBleAutoDisconnect(seconds: Int) {

@@ -71,6 +71,7 @@ fun SettingsScreen(
     var dataExpanded by rememberSaveable { mutableStateOf(false) }
     var updaterExpanded by rememberSaveable { mutableStateOf(false) }
     var showBoardModelDialog by rememberSaveable { mutableStateOf(false) }
+    var showGymSearch by rememberSaveable { mutableStateOf(false) }
 
     // Notification-tap deep-link auto-expand: opens the updater section so
     // the inline confirmation dialog inside [UpdaterSettingsSection] can
@@ -124,38 +125,31 @@ fun SettingsScreen(
         LaunchedEffect(Unit) { viewModel.loadProductSizes() }
 
         if (showBoardModelDialog) {
-            // Filter the size list to the active layout's product so a
-            // Homewall user doesn't see Original-board sizes (and vice
-            // versa). The active layout itself is picked one section
-            // higher via the KilterLayoutSection.
-            val activeProductId = when (state.boardLayoutId) {
-                com.cruxcoach.android.data.BoardConstants.KILTER_HOMEWALL_LAYOUT ->
-                    com.cruxcoach.android.data.BoardConstants.KILTER_HOMEWALL_PRODUCT_ID
-                else -> com.cruxcoach.android.data.BoardConstants.KILTER_PRODUCT_ID
-            }
-            val dbSizes = state.productSizes.filter { it.productId.toInt() == activeProductId }
-            // Pre-sync: fall back to hardcoded standard sizes so the
-            // user can still pick their physical board model. Board
-            // model is hardware knowledge — it doesn't need a network
-            // round-trip to be answered. Once the DB syncs, dbSizes
-            // becomes non-empty and replaces the fallback.
-            val filteredSizes = if (dbSizes.isNotEmpty()) {
-                dbSizes
-            } else {
+            // Full board list (both products). Layout is no longer a
+            // separate chip — the dialog has an in-dialog Original/
+            // Homewall segment and the pick resolves its own layout.
+            // Pre-sync: KILTER_KNOWN_SIZES (all 16) so the user can pick
+            // before the DB sync; replaced by synced product_sizes once
+            // available.
+            val allSizes = state.productSizes.ifEmpty {
                 com.cruxcoach.android.data.BoardConstants.KILTER_KNOWN_SIZES
-                    .filter { it.productId.toInt() == activeProductId }
             }
-            // FEAT-027: brand-aware picker. Tier 0 chooses Kilter / MoonBoard;
-            // the Kilter branch reuses the same product-size list as before.
+            // FEAT-027 + FEAT-007: unified board picker — brand chooser
+            // (Kilter / MoonBoard), Kilter sizes, "find via gym" entry.
             BoardSelectionDialog(
                 initialBrand = state.boardBrand,
-                productSizes = filteredSizes,
+                productSizes = allSizes,
                 selectedKilterSizeId = state.boardProductSizeId,
                 selectedMoonBoardVariant = state.moonBoardVariant,
                 selectedMoonBoardHoldSet = state.moonBoardHoldSet,
                 onConfirmKilter = { id ->
-                    val name = filteredSizes.find { it.id.toInt() == id }?.name ?: ""
-                    viewModel.updateBoardProductSize(id, name)
+                    val size = allSizes.firstOrNull { it.id.toInt() == id }
+                    val layout = com.cruxcoach.android.data.BoardConstants.layoutIdForProduct(
+                        size?.productId?.toInt()
+                            ?: com.cruxcoach.android.data.BoardConstants.KILTER_PRODUCT_ID
+                    )
+                    val name = com.cruxcoach.android.data.BoardConstants.sizeLabel(allSizes, id)
+                    viewModel.selectBoardFromGym(layout, id, name)
                     showBoardModelDialog = false
                 },
                 onConfirmMoonBoard = { variant, holdSet ->
@@ -163,6 +157,23 @@ fun SettingsScreen(
                     showBoardModelDialog = false
                 },
                 onDismiss = { showBoardModelDialog = false },
+                onFindViaGym = {
+                    showBoardModelDialog = false
+                    showGymSearch = true
+                },
+            )
+        }
+        if (showGymSearch) {
+            GymBoardSearchSheet(
+                onPicked = { layoutId, productSizeId, label ->
+                    viewModel.selectBoardFromGym(layoutId, productSizeId, label)
+                    showGymSearch = false
+                },
+                onFallbackToDirect = {
+                    showGymSearch = false
+                    showBoardModelDialog = true
+                },
+                onDismiss = { showGymSearch = false },
             )
         }
 
@@ -197,19 +208,10 @@ fun SettingsScreen(
             CollapsibleHeader(stringResource(R.string.settings_section_board), boardSettingsExpanded) { boardSettingsExpanded = !boardSettingsExpanded }
             AnimatedVisibility(visible = boardSettingsExpanded) {
                 Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    // The Kilter Original/Homewall toggle only applies while
-                    // the active brand is Kilter — a MoonBoard variant has no
-                    // Kilter layout. Hide it for MoonBoard (FEAT-027).
-                    if (state.boardBrand != "moonboard") {
-                        KilterLayoutSection(
-                            selectedLayoutId = state.boardLayoutId,
-                            onLayoutChange = { viewModel.updateBoardLayout(it) },
-                        )
-                        HorizontalDivider()
-                    }
+                    // FEAT-027: for a MoonBoard show the variant name; else the
+                    // Kilter board-size label. (0.1.5 dropped the standalone
+                    // Original/Homewall toggle — the picker resolves layout.)
                     BoardModelSection(
-                        // For a MoonBoard, show the variant name (with hold set)
-                        // instead of the Kilter board size.
                         boardModelName = if (state.boardBrand == "moonboard") {
                             state.moonBoardVariant?.let { variant ->
                                 if (state.moonBoardHoldSet.isNotBlank())
@@ -219,14 +221,12 @@ fun SettingsScreen(
                         } else {
                             state.boardProductSizeName
                         },
-                        onChangeModel = { showBoardModelDialog = true }
+                        onChangeModel = { showBoardModelDialog = true },
                     )
                     HorizontalDivider()
                     BleAutoDisconnectSection(
                         bleAutoDisconnectSeconds = state.bleAutoDisconnectSeconds,
-                        quickBoardSend = state.quickBoardSend,
                         onAutoDisconnectChange = { viewModel.updateBleAutoDisconnect(it) },
-                        onQuickBoardSendChange = { viewModel.updateQuickBoardSend(it) },
                     )
                     HorizontalDivider()
                     ClimbSharingSection(

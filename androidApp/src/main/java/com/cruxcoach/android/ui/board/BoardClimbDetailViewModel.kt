@@ -289,10 +289,7 @@ class BoardClimbDetailViewModel @Inject constructor(
         // Each init-coroutine is wrapped in try/catch so a DataStore
         // read failure or a flow-collection throw on one stream doesn't
         // silently kill the entire VM init and leave subsequent flow
-        // updates lost. Pre-fix the audit observed: the connection-state
-        // collect calls userPreferences.quickBoardSend.first() inside
-        // its body — a DataStore throw there would die the collect and
-        // every later BLE state-change would go unnoticed.
+        // updates lost.
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 PerfLogger.traceSuspend("VM.init prefs") {
@@ -357,22 +354,10 @@ class BoardClimbDetailViewModel @Inject constructor(
                         sendToBoard()
                     }
 
-                    // Quick-Send auto-disconnect for the "manually connected in
-                    // BoardBrowser → navigated into climb-detail → first send
-                    // fired" path. Boulders only: routes need the connection
-                    // alive for subsequent frames during playback, and route-
-                    // playback's onFrameChanged also writes through the same
-                    // SENDING→CONNECTED edge — disconnecting after frame 0
-                    // would strand mid-route.
-                    if (justFinishedSending && !_state.value.playback.isRoute) {
-                        val quickSendOn = runCatching {
-                            userPreferences.quickBoardSend.first()
-                        }.getOrDefault(false)
-                        if (quickSendOn) {
-                            Log.i(TAG, "quick-send auto-disconnect after boulder send")
-                            bleConnection.disconnect()
-                        }
-                    }
+                    // Auto-disconnect after a send is now driven entirely by
+                    // BoardBleConnection's idle timer (Settings → BLE auto-
+                    // disconnect). The send path re-arms it from its finally
+                    // block so the timer never fires mid-send.
                     // Don't call clearClimb() here -- BleConnectionViewModel.onBoardDisconnected()
                     // handles the transition to LAST_CLIMB advertising.
                 }
@@ -1081,8 +1066,16 @@ class BoardClimbDetailViewModel @Inject constructor(
 
     // --- Rest timer (delegates to singleton BoardSessionManager) ---
 
+    /** Auto-start after logging + the settings default duration. */
     fun startRestTimer() {
         sessionManager.startRestTimer(_state.value.restTimerTotalSeconds)
+    }
+
+    /** Manual start from the detail screen with a per-use custom
+     *  duration. Does not touch the settings default (which stays the
+     *  pre-fill + the post-logging auto-start value). */
+    fun startRestTimer(durationSeconds: Int) {
+        sessionManager.startRestTimer(durationSeconds)
     }
 
     fun cancelRestTimer() {

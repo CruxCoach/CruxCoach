@@ -4,6 +4,8 @@ import android.util.Log
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.cruxcoach.android.data.GradeScale
+import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.payment.NostrProfileManager
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.SetterClimbEntry
@@ -39,6 +41,10 @@ data class SetterDetailState(
     /** Non-null after the climbs DB read fails — distinguishes "this
      *  setter has no climbs yet" from "the read threw". */
     val errorMessage: String? = null,
+    /** Mirrors [UserPreferences.gradeScale] so the per-climb row can
+     *  resolve `difficulty_average` (e.g. 24.0) to "V8"/"7b" instead of
+     *  rendering the raw internal float. */
+    val gradeScale: GradeScale = GradeScale.V_SCALE,
 )
 
 @HiltViewModel
@@ -46,6 +52,7 @@ class SetterDetailViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val boardRepository: BoardRepository,
     private val nostrProfileManager: NostrProfileManager,
+    private val userPreferences: UserPreferences,
 ) : ViewModel() {
 
     private val pubkey: String = savedStateHandle["setterPubkey"] ?: ""
@@ -60,6 +67,11 @@ class SetterDetailViewModel @Inject constructor(
     val state: StateFlow<SetterDetailState> = _state.asStateFlow()
 
     init {
+        viewModelScope.launch {
+            userPreferences.gradeScale.collect { v ->
+                _state.update { it.copy(gradeScale = v) }
+            }
+        }
         if (pubkey.isNotBlank()) {
             loadClimbs()
             loadProfile()

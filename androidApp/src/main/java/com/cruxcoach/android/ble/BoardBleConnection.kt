@@ -113,7 +113,13 @@ class BoardBleConnection(private val context: Context) {
         disconnectJob?.cancel()
         if (suppressAutoDisconnect) return
         val seconds = autoDisconnectSeconds
-        if (seconds > 0 && _connectionState.value != ConnectionState.DISCONNECTED) {
+        // Only arm the timer while the connection is truly idle. SENDING
+        // is "writes in flight" — the send path re-arms us from its
+        // finally block once it flips state back to CONNECTED. Without
+        // this guard, a small autoDisconnectSeconds (e.g. 1 s, used as
+        // a replacement for the old Quick-Send macro) could fire mid-
+        // send on long climbs.
+        if (seconds > 0 && _connectionState.value == ConnectionState.CONNECTED) {
             disconnectJob = scope.launch {
                 delay(seconds * 1_000L)
                 disconnect()
@@ -146,6 +152,12 @@ class BoardBleConnection(private val context: Context) {
                     // discovery and fails because writeCharacteristic is still null.
                     // Keep connectionTimeoutJob running to cover service discovery too.
                     Log.d(TAG, "GATT connected, discovering services...")
+                    // Bump BLE connection priority before service discovery
+                    // — drops the connection interval from the default
+                    // ~50 ms down to ~7.5–15 ms, which makes the rest of
+                    // the connect (service discovery + every subsequent
+                    // GATT write of a send-frame) 2-4× faster.
+                    gatt.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH)
                     gatt.discoverServices()
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
@@ -173,6 +185,8 @@ class BoardBleConnection(private val context: Context) {
         }
 
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
+            // Log.i so the R8 Log.d/v stripping rule doesn't erase the diagnostic marker.
+            Log.i(TAG, "onServicesDiscovered status=$status services=${gatt.services.size}")
             connectionTimeoutJob?.cancel()
             connectionTimeoutJob = null
 
@@ -182,6 +196,7 @@ class BoardBleConnection(private val context: Context) {
                 if (writeCharacteristic != null) {
                     // NOW the GATT is fully ready — set CONNECTED so downstream
                     // auto-send and advertising see a usable connection.
+                    Log.i(TAG, "GATT ready, state→CONNECTED (writes can start)")
                     _connectionState.value = ConnectionState.CONNECTED
                     resetIdleTimer()
                     onRestartScannersAfterConnect?.invoke()
@@ -205,6 +220,7 @@ class BoardBleConnection(private val context: Context) {
             }
             writeDeferred?.complete(status)
         }
+
     }
 
     /** Finalize state after disconnect callback (or error). */
@@ -321,7 +337,8 @@ class BoardBleConnection(private val context: Context) {
             // On Android 9, the BT stack dispatches callbacks via the calling thread's Looper.
             // If called from a coroutine dispatcher without a Looper, callbacks are silently dropped.
             // The Handler overload (API 26+) forces callbacks onto the Main Looper.
-            Log.d(TAG, "connectGatt() for ${board.address} (SDK=${Build.VERSION.SDK_INT})")
+            // Log.i so this start-of-connect marker survives R8's Log.d-stripping rule.
+            Log.i(TAG, "connectGatt() for ${board.address} (SDK=${Build.VERSION.SDK_INT})")
             val newGatt = device.connectGatt(
                 context,
                 false,
@@ -418,6 +435,9 @@ class BoardBleConnection(private val context: Context) {
         lastPlacementToLed = placementToLed
 
         _connectionState.value = ConnectionState.SENDING
+        // Park any pending idle-disconnect so it can't fire mid-send.
+        // Re-armed from the finally below once we flip back to CONNECTED.
+        disconnectJob?.cancel()
         try {
             val chunks = if (roleColors != null) {
                 val holdPairs = holds.mapNotNull { hold ->
@@ -430,12 +450,13 @@ class BoardBleConnection(private val context: Context) {
             }
 
             val success = writeChunks(chunks)
-            resetIdleTimer()
             return success
         } finally {
             if (_connectionState.value == ConnectionState.SENDING) {
                 _connectionState.value = ConnectionState.CONNECTED
             }
+            // Arm the idle-disconnect timer with the post-send state.
+            resetIdleTimer()
         }
     }
 
@@ -484,15 +505,19 @@ class BoardBleConnection(private val context: Context) {
         if (_connectionState.value != ConnectionState.CONNECTED) return false
 
         _connectionState.value = ConnectionState.SENDING
+        // Park any pending idle-disconnect so it can't fire mid-send.
+        // Re-armed from the finally below once we flip back to CONNECTED.
+        disconnectJob?.cancel()
         try {
             val chunks = encoder.encodeClear()
             val success = writeChunks(chunks)
-            resetIdleTimer()
             return success
         } finally {
             if (_connectionState.value == ConnectionState.SENDING) {
                 _connectionState.value = ConnectionState.CONNECTED
             }
+            // Arm the idle-disconnect timer with the post-send state.
+            resetIdleTimer()
         }
     }
 

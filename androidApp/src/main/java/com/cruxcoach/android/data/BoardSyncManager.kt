@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import com.cruxcoach.android.data.BoardDatabaseImporter.ImportStep
 import com.cruxcoach.android.data.blossom.BlossomSyncManager
+import com.cruxcoach.android.notification.BoardSyncWorker
 import com.cruxcoach.android.util.isNetworkAvailable
 import com.cruxcoach.android.util.isWifiConnected
 import com.cruxcoach.util.DateTimeUtil
@@ -39,7 +40,8 @@ class BoardSyncManager(
     private val userPreferences: UserPreferences,
     private val appContext: Context,
     private val boardRepository: com.cruxcoach.data.repository.BoardRepository,
-    private val personalBoardRepo: com.cruxcoach.data.repository.PersonalBoardRepository
+    private val personalBoardRepo: com.cruxcoach.data.repository.PersonalBoardRepository,
+    private val boardLocationRepository: com.cruxcoach.data.repository.BoardLocationRepository
 ) {
     private companion object {
         const val TAG = "BoardSyncManager"
@@ -59,6 +61,12 @@ class BoardSyncManager(
 
     private val _state = MutableStateFlow(BoardSyncState())
     val state: StateFlow<BoardSyncState> = _state.asStateFlow()
+
+    private val _locationsBackfilling = MutableStateFlow(false)
+    /** True only while [backfillLocationsIfMissing] is actively fetching /
+     *  importing the locations chunk — lets the Map show a real progress
+     *  state instead of the misleading "sync the board DB" prompt. */
+    val locationsBackfilling: StateFlow<Boolean> = _locationsBackfilling.asStateFlow()
 
     init {
         scope.launch {
@@ -177,6 +185,62 @@ class BoardSyncManager(
         }
     }
 
+    /**
+     * Locations-only backfill for the 0.1.4 → 0.1.5 upgrade path.
+     *
+     * Pre-0.1.5 had no `locations` import branch, but [performBlossomSync]
+     * still saved the `locations` chunk's SHA after download, so
+     * [BlossomSyncManager.getChangedChunks] now reports it as up-to-date
+     * and the normal sync never fills `kilter_board_location`.
+     *
+     * Runs only on the upgrade case: board DB already imported but the
+     * locations table empty. Fresh installs are skipped on purpose —
+     * their first sync has no stored hashes, so [performBlossomSync]
+     * pulls the locations chunk like any other. Fetches ONLY the
+     * locations chunk (never forces a full resync), is idempotent
+     * (stops once count > 0, self-heals if a run failed offline), and
+     * swallows errors since the chunk is non-essential.
+     */
+    fun backfillLocationsIfMissing() {
+        scope.launch {
+            if (!importer.isImported()) return@launch           // fresh install → full sync handles locations
+            if (_state.value.isSyncing) return@launch            // a full sync is already importing everything
+            if (boardLocationRepository.count() > 0L) return@launch  // already populated → nothing to do
+            _locationsBackfilling.value = true
+            try {
+                val manifest = blossomSyncManager.fetchManifest()
+                val locationChunks = manifest.chunks.filter { chunk ->
+                    val type = chunk.type.takeIf { it != "unknown" && it.isNotEmpty() }
+                        ?: inferType(chunk.name)
+                    type == "locations"
+                }
+                if (locationChunks.isEmpty()) {
+                    Log.d(TAG, "Locations backfill: manifest has no locations chunk yet — skipping")
+                    return@launch
+                }
+                Log.i(TAG, "Locations backfill: board present, table empty — fetching ${locationChunks.size} locations chunk(s)")
+                val files = mutableListOf<File>()
+                for (chunk in locationChunks) {
+                    val out = File(appContext.cacheDir, "blossom_${chunk.name}.sqlite3")
+                    blossomSyncManager.downloadAndDecompressChunk(chunk = chunk, outputFile = out)
+                    files.add(out)
+                }
+                importer.importFromChunks(
+                    metaDbFiles = emptyList(),
+                    climbsDbFiles = emptyList(),
+                    statsDbFiles = emptyList(),
+                    locationsDbFiles = files
+                )
+                locationChunks.forEach { blossomSyncManager.saveChunkHash(it.name, it.sha256) }
+                Log.i(TAG, "Locations backfill: imported ${boardLocationRepository.count()} locations")
+            } catch (e: Exception) {
+                Log.w(TAG, "Locations backfill failed — will retry on next app start", e)
+            } finally {
+                _locationsBackfilling.value = false
+            }
+        }
+    }
+
     fun dismissWifiDialog() {
         _state.update { it.copy(showWifiDialog = false) }
     }
@@ -235,7 +299,10 @@ class BoardSyncManager(
                     return@launch
                 }
                 Log.d(TAG, "Changed chunks: ${changedChunks.map { it.name }}")
-                startBlossomSync()
+                // Run under a foreground service so the stale-data
+                // auto-sync isn't killed if the user backgrounds the
+                // app right after launch.
+                BoardSyncWorker.enqueueExpedited(appContext)
             } catch (e: Exception) {
                 Log.w(TAG, "Blossom manifest check failed — skipping auto-sync", e)
             }
@@ -328,7 +395,9 @@ class BoardSyncManager(
             return
         }
 
-        startBlossomSync()
+        // Execute under a foreground-service worker so the sync
+        // survives the app being backgrounded mid-download.
+        BoardSyncWorker.enqueueExpedited(appContext)
     }
 
     /**
@@ -447,6 +516,7 @@ class BoardSyncManager(
             val metaFiles = mutableListOf<File>()
             val climbFiles = mutableListOf<File>()
             val statFiles = mutableListOf<File>()
+            val locationFiles = mutableListOf<File>()
             for (chunk in chunksToDownload) {
                 val file = chunkFiles[chunk.name] ?: continue
                 val resolvedType = chunk.type.takeIf { it != "unknown" && it.isNotEmpty() } ?: inferType(chunk.name)
@@ -454,14 +524,16 @@ class BoardSyncManager(
                     "meta" -> metaFiles.add(file)
                     "climbs" -> climbFiles.add(file)
                     "stats" -> statFiles.add(file)
+                    "locations" -> locationFiles.add(file)
                 }
             }
 
-            Log.d(TAG, "Importing chunks: meta=${metaFiles.size}, climbs=${climbFiles.size}, stats=${statFiles.size}")
+            Log.d(TAG, "Importing chunks: meta=${metaFiles.size}, climbs=${climbFiles.size}, stats=${statFiles.size}, locations=${locationFiles.size}")
             importer.importFromChunks(
                 metaDbFiles = metaFiles,
                 climbsDbFiles = climbFiles,
                 statsDbFiles = statFiles,
+                locationsDbFiles = locationFiles,
                 onProgress = { step ->
                     _state.update { it.copy(importStep = step) }
                 }
@@ -502,6 +574,7 @@ class BoardSyncManager(
         name == "meta" -> "meta"
         name.startsWith("climbs") -> "climbs"
         name.startsWith("stats") -> "stats"
+        name.startsWith("locations") -> "locations"
         else -> "unknown"
     }
 

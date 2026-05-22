@@ -25,8 +25,13 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
-    <!-- Exact alarms for rest timer (API 31+, requires user opt-in on API 33+) -->
+    <!-- Exact alarms for the rest timer. SCHEDULE_EXACT_ALARM (API 31)
+         can be revoked on API 33+, silently degrading the timer to an
+         inexact (Doze-delayed) alarm. USE_EXACT_ALARM is the alarm/timer
+         use-case permission, granted by default on API 33+ and not
+         user-revocable, so the rest timer always fires on time. -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
 
     <!-- BLE: legacy permissions for Android 11 and below (install-time, no runtime prompt) -->
     <uses-permission android:name="android.permission.BLUETOOTH"

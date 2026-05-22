@@ -98,13 +98,14 @@ data class LedHoldColors(
     val foot: Int = CRUXCOACH_FOOT
 ) {
     companion object {
-        // CruxCoach "Royal" preset (default). Byte values must exist in
-        // RGB332_PALETTE so the settings row shows a named color instead
-        // of "Benutzerdefiniert" / "Custom".
-        const val CRUXCOACH_START: Int = 0xEC   // CruxCoach Orange (FF6D00)
+        // CruxCoach standard preset (default): start=magenta,
+        // hand=blue, top/finish=green, foot=red. Byte values must
+        // exist in RGB332_PALETTE so the settings row shows a named
+        // color instead of "Benutzerdefiniert" / "Custom".
+        const val CRUXCOACH_START: Int = 0xE3    // Magenta (FF00FF)
         const val CRUXCOACH_HAND: Int = 0x03     // Blue (0000FF)
-        const val CRUXCOACH_FINISH: Int = 0xE3   // Magenta (FF00FF)
-        const val CRUXCOACH_FOOT: Int = 0x1E     // Mint Green (00FFAA)
+        const val CRUXCOACH_FINISH: Int = 0x1C   // Green (00FF00)
+        const val CRUXCOACH_FOOT: Int = 0xE0     // Red (FF0000)
 
         // Official Kilter Board preset (from placement_roles.led_color DB)
         const val KILTER_START: Int = 0x1C   // Green (00FF00)
@@ -185,13 +186,6 @@ object PreferenceKeys {
     val ALLOW_REMOTE_DISCONNECT = booleanPreferencesKey("allow_remote_disconnect")
     val EASTER_ANIMATIONS_UNLOCKED = booleanPreferencesKey("easter_animations_unlocked")
     val KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
-    /**
-     * Quick-Send-Mode: when true, tapping the BLE icon in the climb-detail
-     * screen runs a one-shot macro (scan → auto-connect-if-single → send →
-     * disconnect) instead of opening the connection sheet. Default off so
-     * upgraders see no behavior change until they opt in via Settings.
-     */
-    val QUICK_BOARD_SEND = booleanPreferencesKey("quick_board_send")
     val DARK_MODE = stringPreferencesKey("dark_mode")
     val SESSION_DISPLAY_NAME = stringPreferencesKey("session_display_name")
     val LAST_CLIMB_UUID = stringPreferencesKey("last_climb_uuid")
@@ -209,6 +203,23 @@ object PreferenceKeys {
     // FEAT-001: NIP-65 relay discovery
     val NIP65_DISCOVERY_ENABLED = booleanPreferencesKey("nip65_discovery_enabled")
     val NIP65_RESOLVED_RELAYS = stringPreferencesKey("nip65_resolved_relays")
+
+    // FEAT-006: Map filter chips
+    // Replaces the older PUBLIC_ONLY filter — StoreRocket's "access"
+    // metadata was unreliable (commercial gyms mis-flagged as private).
+    // Layout-based filter is sourced from hangtime/PowerSync and trustworthy.
+    val MAP_FILTER_SHOW_ORIGINAL = booleanPreferencesKey("map_filter_show_original")
+    val MAP_FILTER_SHOW_HOMEWALLS = booleanPreferencesKey("map_filter_show_homewalls")
+    val MAP_FILTER_MATCHES_MY_BOARD = booleanPreferencesKey("map_filter_matches_my_board")
+
+    // Multi-select set filters — empty value (or unset key) means "no
+    // filter on this dimension". Stored as comma-separated strings so
+    // we don't need a Proto DataStore migration. Sets are typically
+    // small (a few countries / size labels) so CSV is fine.
+    val MAP_FILTER_COUNTRIES = stringPreferencesKey("map_filter_countries")
+    val MAP_FILTER_ACCESS_TYPES = stringPreferencesKey("map_filter_access_types")
+    val MAP_FILTER_ADJUSTABILITIES = stringPreferencesKey("map_filter_adjustabilities")
+    val MAP_FILTER_SIZE_IDS = stringPreferencesKey("map_filter_size_ids")
 }
 
 /**
@@ -334,6 +345,93 @@ class UserPreferences(
             prefs[PreferenceKeys.BOARD_BRAND] = "moonboard"
             prefs[PreferenceKeys.MOONBOARD_HOLD_SET] = holdSet
             prefs[PreferenceKeys.BOARD_ANGLE] = 40
+        }
+    }
+
+    // FEAT-006: Map filter chips. Default shows commercial gyms (Original
+    // layout) only — the "where can I go climb?" use case. Private
+    // homewall installations (~5% of dataset, layout_id=8) are off by
+    // default but can be opted in. Both flags can be toggled
+    // independently — turning both off intentionally yields an empty
+    // map (the user gets a visible "0 of 1080" footer to recover).
+    val mapFilterShowOriginal: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[PreferenceKeys.MAP_FILTER_SHOW_ORIGINAL] ?: true
+    }
+
+    val mapFilterShowHomewalls: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[PreferenceKeys.MAP_FILTER_SHOW_HOMEWALLS] ?: false
+    }
+
+    val mapFilterMatchesMyBoard: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[PreferenceKeys.MAP_FILTER_MATCHES_MY_BOARD] ?: false
+    }
+
+    suspend fun setMapFilterShowOriginal(enabled: Boolean) {
+        dataStore.edit { prefs ->
+            prefs[PreferenceKeys.MAP_FILTER_SHOW_ORIGINAL] = enabled
+        }
+    }
+
+    suspend fun setMapFilterShowHomewalls(enabled: Boolean) {
+        dataStore.edit { prefs ->
+            prefs[PreferenceKeys.MAP_FILTER_SHOW_HOMEWALLS] = enabled
+        }
+    }
+
+    private fun parseCsvSet(value: String?): Set<String> =
+        value?.split(',')?.mapNotNull { it.trim().takeIf(String::isNotEmpty) }?.toSet() ?: emptySet()
+
+    val mapFilterCountries: Flow<Set<String>> = dataStore.data.map { prefs ->
+        parseCsvSet(prefs[PreferenceKeys.MAP_FILTER_COUNTRIES])
+    }
+
+    val mapFilterAccessTypes: Flow<Set<String>> = dataStore.data.map { prefs ->
+        parseCsvSet(prefs[PreferenceKeys.MAP_FILTER_ACCESS_TYPES])
+    }
+
+    val mapFilterAdjustabilities: Flow<Set<String>> = dataStore.data.map { prefs ->
+        parseCsvSet(prefs[PreferenceKeys.MAP_FILTER_ADJUSTABILITIES])
+    }
+
+    /** Stored as CSV of integers; parsed to Set<Int>. */
+    val mapFilterSizeIds: Flow<Set<Int>> = dataStore.data.map { prefs ->
+        parseCsvSet(prefs[PreferenceKeys.MAP_FILTER_SIZE_IDS])
+            .mapNotNull { it.toIntOrNull() }
+            .toSet()
+    }
+
+    suspend fun setMapFilterCountries(values: Set<String>) {
+        dataStore.edit { it[PreferenceKeys.MAP_FILTER_COUNTRIES] = values.joinToString(",") }
+    }
+
+    suspend fun setMapFilterAccessTypes(values: Set<String>) {
+        dataStore.edit { it[PreferenceKeys.MAP_FILTER_ACCESS_TYPES] = values.joinToString(",") }
+    }
+
+    suspend fun setMapFilterAdjustabilities(values: Set<String>) {
+        dataStore.edit { it[PreferenceKeys.MAP_FILTER_ADJUSTABILITIES] = values.joinToString(",") }
+    }
+
+    suspend fun setMapFilterSizeIds(values: Set<Int>) {
+        dataStore.edit { it[PreferenceKeys.MAP_FILTER_SIZE_IDS] = values.joinToString(",") }
+    }
+
+    /** Reset every map-side filter to its empty/default state in one transaction. */
+    suspend fun resetMapFilters() {
+        dataStore.edit { prefs ->
+            prefs.remove(PreferenceKeys.MAP_FILTER_SHOW_ORIGINAL)
+            prefs.remove(PreferenceKeys.MAP_FILTER_SHOW_HOMEWALLS)
+            prefs.remove(PreferenceKeys.MAP_FILTER_MATCHES_MY_BOARD)
+            prefs.remove(PreferenceKeys.MAP_FILTER_COUNTRIES)
+            prefs.remove(PreferenceKeys.MAP_FILTER_ACCESS_TYPES)
+            prefs.remove(PreferenceKeys.MAP_FILTER_ADJUSTABILITIES)
+            prefs.remove(PreferenceKeys.MAP_FILTER_SIZE_IDS)
+        }
+    }
+
+    suspend fun setMapFilterMatchesMyBoard(enabled: Boolean) {
+        dataStore.edit { prefs ->
+            prefs[PreferenceKeys.MAP_FILTER_MATCHES_MY_BOARD] = enabled
         }
     }
 
@@ -604,14 +702,6 @@ class UserPreferences(
 
     suspend fun setKeepScreenOn(enabled: Boolean) {
         dataStore.edit { it[PreferenceKeys.KEEP_SCREEN_ON] = enabled }
-    }
-
-    val quickBoardSend: Flow<Boolean> = dataStore.data.map {
-        it[PreferenceKeys.QUICK_BOARD_SEND] ?: false
-    }
-
-    suspend fun setQuickBoardSend(enabled: Boolean) {
-        dataStore.edit { it[PreferenceKeys.QUICK_BOARD_SEND] = enabled }
     }
 
     suspend fun isOnboardingCompleted(): Boolean =

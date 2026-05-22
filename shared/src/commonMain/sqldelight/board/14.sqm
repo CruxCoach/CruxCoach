@@ -1,0 +1,41 @@
+-- Migration version 14 → 15: add climbs.board_brand for multi-board
+-- support (FEAT-027 — MoonBoard catalogue).
+--
+-- The catalog so far is Kilter-only: every climbs row is implicitly a
+-- Kilter Board climb, told apart only by layout_id (1 = Original,
+-- 8 = Homewall). FEAT-027 adds the MoonBoard catalogue, whose layout
+-- IDs (2 = 2016, 4 = Masters 2017, 5 = Masters 2019, 6 = Mini 2020)
+-- happen to be disjoint from the Kilter set today — but relying on a
+-- "which layout_id range" guess to tell the boards apart is a hidden
+-- convention that breaks the moment either ecosystem adds a layout.
+--
+-- board_brand makes the board family explicit, so renderer / BLE /
+-- onboarding code can branch on a real column. Every existing row is
+-- Kilter, so DEFAULT 'kilter' back-fills the whole catalog correctly
+-- on upgrade — no resync, no data loss for pre-0.2.0 users. The
+-- MoonBoard importer writes 'moonboard' explicitly.
+--
+-- Renumbered from 12.sqm to 14.sqm during the feat/0.1.5 merge —
+-- 0.1.5 owns 12.sqm (kilter_board_location) + 13.sqm (kilter_board_wall).
+
+ALTER TABLE climbs ADD COLUMN board_brand TEXT NOT NULL DEFAULT 'kilter';
+
+CREATE INDEX idx_climbs_board_brand ON climbs(board_brand);
+
+-- Recreate climb_browse so the VIEW projects board_brand — the detail
+-- screen + the brand-aware "fits my board" filter read it off browse
+-- rows. A VIEW is a stored query; ADD COLUMN above does not change it,
+-- so it must be dropped and rebuilt explicitly.
+DROP VIEW IF EXISTS climb_browse;
+CREATE VIEW climb_browse AS
+SELECT
+    c.uuid, c.name, c.setter_username, c.frames_count, c.layout_id,
+    c.board_brand,
+    COALESCE(c.description, '') AS description,
+    c.is_nomatch, c.frames_pace, c.hsm, c.move_count,
+    c.source, c.created_by_pubkey, c.sync_status, c.origin, c.kilter_status,
+    cs.angle, cs.difficulty_average, cs.quality_average,
+    cs.ascensionist_count, cs.benchmark_difficulty
+FROM climbs c
+INNER JOIN climb_stats cs ON c.uuid = cs.climb_uuid
+WHERE c.is_listed = 1;

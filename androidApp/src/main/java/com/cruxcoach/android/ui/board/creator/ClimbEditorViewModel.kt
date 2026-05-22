@@ -1055,9 +1055,9 @@ class ClimbEditorViewModel @Inject constructor(
      * are mirrored automatically by [syncLeds] which fires after every
      * [applyEditor].
      *
-     * Suspending so callers (notably [BleConnectionViewModel.silentQuickSend])
-     * can await the actual BLE write completion before disconnecting —
-     * a fire-and-forget launch would let the macro tear down GATT
+     * Suspending so the LaunchedEffect(bleConnected) in the editor
+     * screen can await the actual BLE write completion — a fire-and-
+     * forget launch would let the idle-disconnect timer tear down GATT
      * before sendClimb even started writing.
      */
     suspend fun pushCurrentHoldsToBoard() {

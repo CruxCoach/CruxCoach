@@ -113,8 +113,13 @@ internal fun AscentCard(
                         color = attemptsColor
                     )
                 } else {
+                    val attemptsText = if (ascent.bidCount > 1L) {
+                        stringResource(R.string.board_ascent_attempts_count, ascent.bidCount)
+                    } else {
+                        stringResource(R.string.board_ascent_attempt)
+                    }
                     Text(
-                        stringResource(R.string.board_ascent_attempt),
+                        attemptsText,
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
                         color = ErrorRed

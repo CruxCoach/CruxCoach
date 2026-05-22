@@ -1,0 +1,27 @@
+-- Migration from version 13 to 14: add kilter_board_wall table.
+-- Additive per-wall detail for the gym→board picker (FEAT-007).
+-- Populated from the same daily "locations" Blossom chunk; older
+-- chunks without the table are tolerated by the importer (guarded).
+-- kilter_board_location is unchanged — pre-13.sqm clients keep working.
+
+CREATE TABLE kilter_board_wall (
+    wall_uuid TEXT NOT NULL PRIMARY KEY,
+    gym_uuid TEXT NOT NULL,
+    name TEXT,
+    product_name TEXT,
+    layout_id INTEGER,
+    product_layout_uuid TEXT,
+    product_size_id INTEGER,
+    size_label TEXT,
+    is_adjustable INTEGER,
+    min_angle INTEGER,
+    max_angle INTEGER,
+    angle_increments INTEGER,
+    fixed_angle INTEGER,
+    accumulated_hold_set_value INTEGER,
+    serial_number TEXT,
+    is_listed INTEGER
+);
+
+CREATE INDEX idx_kbw_gym ON kilter_board_wall(gym_uuid);
+CREATE INDEX idx_kbw_layout_size ON kilter_board_wall(layout_id, product_size_id);

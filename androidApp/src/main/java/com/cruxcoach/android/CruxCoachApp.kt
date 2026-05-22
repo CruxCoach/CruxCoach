@@ -212,6 +212,15 @@ class CruxCoachApp : Application(), Configuration.Provider {
                 syncManager.get().handlePostMigrationResync()
             }.onFailure { PerfLogger.logCoroutine("appScope", "handlePostMigrationResync failed: ${it.message}") }
             runCatching {
+                // 0.1.4 → 0.1.5 upgrade: pre-0.1.5 saved the `locations`
+                // chunk hash without importing it, so the normal sync now
+                // treats it as up-to-date and never fills the map. Fetch
+                // just the locations chunk when the board DB exists but the
+                // locations table is empty. No-op on fresh installs (the
+                // full sync handles it) and once locations are present.
+                syncManager.get().backfillLocationsIfMissing()
+            }.onFailure { PerfLogger.logCoroutine("appScope", "backfillLocationsIfMissing failed: ${it.message}") }
+            runCatching {
                 // Note: no startup probe of the WiFi-Direct-share endpoint. The
                 // legitimate receive flow is deep-link driven (cruxcoach://import-board-db
                 // from the hotspot's landing page), gated by a user-visible consent

@@ -51,6 +51,9 @@ internal fun BoardSelectionDialog(
     selectedMoonBoardHoldSet: String,
     onConfirmKilter: (Int) -> Unit,
     onConfirmMoonBoard: (MoonBoardVariant, String) -> Unit,
+    /** "Don't know your board? find it via your gym" — FEAT-007 gym
+     *  search. Shown in the Kilter tier only; null hides it. */
+    onFindViaGym: (() -> Unit)? = null,
     onDismiss: () -> Unit,
 ) {
     var brand by remember {
@@ -151,6 +154,18 @@ internal fun BoardSelectionDialog(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
+                            if (onFindViaGym != null) {
+                                TextButton(
+                                    onClick = onFindViaGym,
+                                    contentPadding = PaddingValues(horizontal = 0.dp),
+                                ) {
+                                    Text(
+                                        stringResource(R.string.settings_board_find_via_gym),
+                                        color = OrangeAccent,
+                                        style = MaterialTheme.typography.labelLarge,
+                                    )
+                                }
+                            }
                         }
                     }
 

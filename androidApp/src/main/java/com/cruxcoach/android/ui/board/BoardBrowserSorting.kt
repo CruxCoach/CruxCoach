@@ -16,12 +16,17 @@ internal fun boardBrowserSortInKotlin(
     field: ClimbSortField,
     dir: SortDirection,
 ): List<ClimbWithStats> {
+    // RANDOM short-circuits the comparator path: a stable comparator over
+    // a random key would shuffle, but Kotlin's shuffled() is clearer and
+    // the asc/desc toggle has no meaning for random anyway.
+    if (field == ClimbSortField.RANDOM) return climbs.shuffled()
     val comparator = when (field) {
         ClimbSortField.QUALITY -> compareBy<ClimbWithStats> { it.qualityAverage ?: 0.0 }
         ClimbSortField.DIFFICULTY -> compareBy { it.difficultyAverage ?: 0.0 }
         ClimbSortField.ASCENSIONISTS -> compareBy { it.ascensionistCount ?: 0L }
         ClimbSortField.NAME -> compareBy(String.CASE_INSENSITIVE_ORDER) { it.name }
         ClimbSortField.BENCHMARK_DIFFICULTY -> compareBy { it.benchmarkDifficulty }
+        ClimbSortField.QUALITY_SENDS -> compareBy { (it.ascensionistCount ?: 0L) * (it.qualityAverage ?: 0.0) }
         else -> compareBy { it.ascensionistCount ?: 0L }
     }
     return if (dir == SortDirection.DESC) climbs.sortedWith(comparator.reversed())
