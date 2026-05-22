@@ -146,8 +146,6 @@ object PreferenceKeys {
     val BOARD_LAYOUT_ID = intPreferencesKey("board_layout_id")
     /** Active board brand — "kilter" | "moonboard" (FEAT-027). */
     val BOARD_BRAND = stringPreferencesKey("board_brand")
-    /** Hold set installed on the user's MoonBoard — picker tier 2 (FEAT-027). */
-    val MOONBOARD_HOLD_SET = stringPreferencesKey("moonboard_hold_set")
     val SYNC_INTERVAL = stringPreferencesKey("sync_interval")
     val LAST_SYNC_TIMESTAMP = stringPreferencesKey("last_sync_timestamp")
     val GRADE_SCALE = stringPreferencesKey("grade_scale")
@@ -292,15 +290,6 @@ class UserPreferences(
         prefs[PreferenceKeys.BOARD_BRAND] ?: "kilter"
     }
 
-    /**
-     * Hold set installed on the user's MoonBoard. Display-only in v0.2.0 —
-     * the community catalogue dump is not hold-set-partitioned, so it does
-     * not scope the browser. Empty until a MoonBoard variant is configured.
-     */
-    val moonBoardHoldSet: Flow<String> = dataStore.data.map { prefs ->
-        prefs[PreferenceKeys.MOONBOARD_HOLD_SET] ?: ""
-    }
-
     val syncInterval: Flow<SyncInterval> = dataStore.data.map { prefs ->
         val value = prefs[PreferenceKeys.SYNC_INTERVAL] ?: SyncInterval.MANUAL.name
         try { SyncInterval.valueOf(value) } catch (_: IllegalArgumentException) { SyncInterval.MANUAL }
@@ -335,15 +324,14 @@ class UserPreferences(
 
     /**
      * Atomically select a MoonBoard variant as the active board: writes the
-     * variant's [layoutId], marks the brand "moonboard", records the chosen
-     * [holdSet], and pins the browse angle to 40° — valid for every v0.2.0
-     * MoonBoard variant — so the browser shows climbs immediately.
+     * variant's [layoutId], marks the brand "moonboard", and pins the browse
+     * angle to 40° — valid for every v0.2.0 MoonBoard variant — so the
+     * browser shows climbs immediately.
      */
-    suspend fun setMoonBoardSelection(layoutId: Int, holdSet: String) {
+    suspend fun setMoonBoardSelection(layoutId: Int) {
         dataStore.edit { prefs ->
             prefs[PreferenceKeys.BOARD_LAYOUT_ID] = layoutId
             prefs[PreferenceKeys.BOARD_BRAND] = "moonboard"
-            prefs[PreferenceKeys.MOONBOARD_HOLD_SET] = holdSet
             prefs[PreferenceKeys.BOARD_ANGLE] = 40
         }
     }

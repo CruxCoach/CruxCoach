@@ -141,7 +141,6 @@ fun SettingsScreen(
                 productSizes = allSizes,
                 selectedKilterSizeId = state.boardProductSizeId,
                 selectedMoonBoardVariant = state.moonBoardVariant,
-                selectedMoonBoardHoldSet = state.moonBoardHoldSet,
                 onConfirmKilter = { id ->
                     val size = allSizes.firstOrNull { it.id.toInt() == id }
                     val layout = com.cruxcoach.android.data.BoardConstants.layoutIdForProduct(
@@ -152,8 +151,8 @@ fun SettingsScreen(
                     viewModel.selectBoardFromGym(layout, id, name)
                     showBoardModelDialog = false
                 },
-                onConfirmMoonBoard = { variant, holdSet ->
-                    viewModel.selectMoonBoardVariant(variant, holdSet)
+                onConfirmMoonBoard = { variant ->
+                    viewModel.selectMoonBoardVariant(variant)
                     showBoardModelDialog = false
                 },
                 onDismiss = { showBoardModelDialog = false },
@@ -213,11 +212,7 @@ fun SettingsScreen(
                     // Original/Homewall toggle — the picker resolves layout.)
                     BoardModelSection(
                         boardModelName = if (state.boardBrand == "moonboard") {
-                            state.moonBoardVariant?.let { variant ->
-                                if (state.moonBoardHoldSet.isNotBlank())
-                                    "${variant.displayName} · ${state.moonBoardHoldSet}"
-                                else variant.displayName
-                            } ?: ""
+                            state.moonBoardVariant?.displayName ?: ""
                         } else {
                             state.boardProductSizeName
                         },

@@ -24,38 +24,21 @@ enum class MoonBoardVariant(
     val displayName: String,
     /** Wall angles the variant's catalogue is set at (degrees). */
     val angles: List<Int>,
-    /**
-     * Hold sets the variant can be fitted with — the picker's second tier.
-     * Display-only in v0.2.0 (the community catalogue dump is not
-     * hold-set-partitioned, so this does not scope the browser). Names
-     * mirror BoardSesh's firmware layout table (FEAT-027 §3); the first
-     * entry is the conventional default.
-     */
-    val holdSets: List<String>,
 ) {
     MOONBOARD_2016(
         layoutId = 2L,
         displayName = "MoonBoard 2016",
         angles = listOf(40),
-        holdSets = listOf("Hold Set A", "Hold Set B", "Original School Holds"),
     ),
     MASTERS_2017(
         layoutId = 4L,
         displayName = "MoonBoard Masters 2017",
         angles = listOf(25, 40),
-        holdSets = listOf(
-            "Hold Set A", "Hold Set B", "Hold Set C",
-            "Original School Holds", "Screw-on Feet", "Wooden Holds",
-        ),
     ),
     MASTERS_2019(
         layoutId = 5L,
         displayName = "MoonBoard Masters 2019",
         angles = listOf(25, 40),
-        holdSets = listOf(
-            "Hold Set A", "Hold Set B", "Original School Holds",
-            "Screw-on Feet", "Wooden Holds", "Wooden Holds B", "Wooden Holds C",
-        ),
     );
 
     companion object {

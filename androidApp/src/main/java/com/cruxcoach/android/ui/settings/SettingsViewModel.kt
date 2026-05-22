@@ -84,8 +84,6 @@ data class SettingsState(
     val boardBrand: String = "kilter",
     /** Active MoonBoard variant, or null when the brand is Kilter (FEAT-027). */
     val moonBoardVariant: MoonBoardVariant? = null,
-    /** Hold set installed on the user's MoonBoard — display-only (FEAT-027). */
-    val moonBoardHoldSet: String = "",
     /** One-shot snackbar text from the most recent MoonBoard catalogue
      *  sync, surfaced via the existing delete-success snackbar slot. */
     val moonBoardSyncMessage: String? = null,
@@ -166,7 +164,6 @@ class SettingsViewModel @Inject constructor(
                 // so the active variant is derived directly from the
                 // single boardLayoutId pref.
                 val moonBoardVariant = MoonBoardVariant.fromLayoutId(layoutId.toLong())
-                val moonBoardHoldSet = userPreferences.moonBoardHoldSet.first()
                 val interval = userPreferences.syncInterval.first()
                 val lastSync = userPreferences.lastSyncTimestamp.first()
                 val scale = userPreferences.gradeScale.first()
@@ -222,7 +219,6 @@ class SettingsViewModel @Inject constructor(
                     boardProductSizeName = boardSizeName,
                     boardBrand = boardBrand,
                     moonBoardVariant = moonBoardVariant,
-                    moonBoardHoldSet = moonBoardHoldSet,
                     syncInterval = interval,
                     lastSyncTimestamp = lastSync,
                     hasAssessment = hasAssessment,
@@ -406,26 +402,26 @@ class SettingsViewModel @Inject constructor(
     }
 
     /**
-     * Select a MoonBoard variant + hold set as the active board (FEAT-027).
-     * Persists atomically via [UserPreferences.setMoonBoardSelection] (writes
-     * the variant's layout id, brand="moonboard", hold set, and pins angle
-     * 40°), updates state, then kicks off a MoonBoard catalogue sync so the
-     * browser has climbs to show. The sync result is surfaced as a snackbar.
+     * Select a MoonBoard variant as the active board (FEAT-027). A MoonBoard
+     * "set up" is a fixed, standardised hold configuration — the variant
+     * fully determines the board, there is no separate hold-set choice.
+     * Persists atomically via [UserPreferences.setMoonBoardSelection]
+     * (variant layout id, brand="moonboard", angle 40°), updates state, then
+     * kicks off a MoonBoard catalogue sync. The result surfaces as a snackbar.
      */
-    fun selectMoonBoardVariant(variant: MoonBoardVariant, holdSet: String) {
+    fun selectMoonBoardVariant(variant: MoonBoardVariant) {
         _state.update {
             it.copy(
                 boardBrand = "moonboard",
                 boardLayoutId = variant.layoutId.toInt(),
                 moonBoardVariant = variant,
-                moonBoardHoldSet = holdSet,
                 // The Kilter board-size label is meaningless for a MoonBoard;
                 // SettingsScreen shows the variant name instead.
                 boardProductSizeName = variant.displayName,
             )
         }
         viewModelScope.launch {
-            userPreferences.setMoonBoardSelection(variant.layoutId.toInt(), holdSet)
+            userPreferences.setMoonBoardSelection(variant.layoutId.toInt())
             val result = withContext(Dispatchers.IO) { moonBoardCatalogueSync.sync() }
             val message = when (result) {
                 is MoonBoardCatalogueSync.Result.AlreadyCurrent ->

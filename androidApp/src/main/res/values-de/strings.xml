@@ -1790,8 +1790,6 @@
     <string name="board_selection_brand_kilter">Kilter</string>
     <string name="board_selection_brand_moonboard">MoonBoard</string>
     <string name="board_selection_moonboard_variant_label">MoonBoard-Variante</string>
-    <string name="board_selection_moonboard_holdset_label">Griff-Set</string>
-    <string name="board_selection_moonboard_holdset_hint">Das Griff-Set dient nur der Anzeige — es filtert die Climb-Liste nicht.</string>
     <!-- FEAT-027: Ergebnis des MoonBoard-Katalog-Syncs -->
     <string name="moonboard_sync_already_current">MoonBoard-Katalog ist bereits aktuell.</string>
     <string name="moonboard_sync_imported">MoonBoard-Katalog heruntergeladen.</string>

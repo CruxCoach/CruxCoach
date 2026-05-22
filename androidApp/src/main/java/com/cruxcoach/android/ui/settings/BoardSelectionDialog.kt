@@ -18,29 +18,23 @@ import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.data.repository.BoardSize
 import com.cruxcoach.domain.board.MoonBoardVariant
 
-/**
- * The brand the user is configuring in [BoardSelectionDialog]. Tier-0 of
- * the picker; Kilter delegates to the existing single-tier size flow,
- * MoonBoard opens a two-tier variant → hold-set flow (FEAT-027).
- */
+/** The brand the user is configuring in [BoardSelectionDialog] — tier 0 of the picker (FEAT-027). */
 private enum class BoardBrandChoice { KILTER, MOONBOARD }
 
 /**
  * Unified board picker (FEAT-027).
  *
  * Tier 0 — brand chooser (Kilter / MoonBoard).
- *  - Kilter branch reuses [BoardModelSelectionDialog]'s product-size list
- *    verbatim; confirm reports the chosen size id via [onConfirmKilter].
- *  - MoonBoard branch is two-tier: tier 1 picks the [MoonBoardVariant],
- *    tier 2 picks one of that variant's hold sets. Confirm reports
- *    `(variant, holdSet)` via [onConfirmMoonBoard].
+ *  - Kilter branch: the product-size list plus the "find via gym" entry.
+ *  - MoonBoard branch: a single-tier variant list. A MoonBoard "set up"
+ *    is a fixed, standardised hold configuration — the variant fully
+ *    determines the board, so there is no separate hold-set choice.
  *
  * @param initialBrand which brand tab to land on (the user's active brand).
  * @param productSizes Kilter product-size list (already layout-filtered by
- *        the caller); empty list is handled gracefully by the Kilter tier.
+ *        the caller); an empty list is handled gracefully by the Kilter tier.
  * @param selectedKilterSizeId currently-configured Kilter size.
  * @param selectedMoonBoardVariant currently-configured MoonBoard variant, or null.
- * @param selectedMoonBoardHoldSet currently-configured MoonBoard hold set.
  */
 @Composable
 internal fun BoardSelectionDialog(
@@ -48,9 +42,8 @@ internal fun BoardSelectionDialog(
     productSizes: List<BoardSize>,
     selectedKilterSizeId: Int,
     selectedMoonBoardVariant: MoonBoardVariant?,
-    selectedMoonBoardHoldSet: String,
     onConfirmKilter: (Int) -> Unit,
-    onConfirmMoonBoard: (MoonBoardVariant, String) -> Unit,
+    onConfirmMoonBoard: (MoonBoardVariant) -> Unit,
     /** "Don't know your board? find it via your gym" — FEAT-007 gym
      *  search. Shown in the Kilter tier only; null hides it. */
     onFindViaGym: (() -> Unit)? = null,
@@ -62,26 +55,9 @@ internal fun BoardSelectionDialog(
             else BoardBrandChoice.KILTER
         )
     }
-
-    // Kilter-tier selection.
     var kilterSelection by remember { mutableIntStateOf(selectedKilterSizeId) }
-
-    // MoonBoard tiers. Default to the active variant, else the first variant.
     var mbVariant by remember {
         mutableStateOf(selectedMoonBoardVariant ?: MoonBoardVariant.entries.first())
-    }
-    var mbHoldSet by remember {
-        mutableStateOf(
-            selectedMoonBoardHoldSet.takeIf { it in mbVariant.holdSets }
-                ?: mbVariant.holdSets.first()
-        )
-    }
-    // Keep the hold-set valid when the variant changes — hold sets differ
-    // per variant, so a stale selection from another variant must reset.
-    LaunchedEffect(mbVariant) {
-        if (mbHoldSet !in mbVariant.holdSets) {
-            mbHoldSet = mbVariant.holdSets.first()
-        }
     }
 
     val kilterEmpty = productSizes.isEmpty()
@@ -170,7 +146,6 @@ internal fun BoardSelectionDialog(
                     }
 
                     BoardBrandChoice.MOONBOARD -> {
-                        // Tier 1 — variant.
                         Text(
                             stringResource(R.string.board_selection_moonboard_variant_label),
                             style = MaterialTheme.typography.bodyMedium,
@@ -183,27 +158,6 @@ internal fun BoardSelectionDialog(
                                 onSelect = { mbVariant = variant },
                             )
                         }
-
-                        Spacer(modifier = Modifier.height(4.dp))
-
-                        // Tier 2 — hold set.
-                        Text(
-                            stringResource(R.string.board_selection_moonboard_holdset_label),
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                        mbVariant.holdSets.forEach { holdSet ->
-                            RadioRow(
-                                label = holdSet,
-                                selected = mbHoldSet == holdSet,
-                                onSelect = { mbHoldSet = holdSet },
-                            )
-                        }
-                        Text(
-                            stringResource(R.string.board_selection_moonboard_holdset_hint),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
                     }
                 }
             }
@@ -214,7 +168,7 @@ internal fun BoardSelectionDialog(
                 onClick = {
                     when (brand) {
                         BoardBrandChoice.KILTER -> onConfirmKilter(kilterSelection)
-                        BoardBrandChoice.MOONBOARD -> onConfirmMoonBoard(mbVariant, mbHoldSet)
+                        BoardBrandChoice.MOONBOARD -> onConfirmMoonBoard(mbVariant)
                     }
                 },
                 enabled = confirmEnabled,
@@ -235,7 +189,7 @@ internal fun BoardSelectionDialog(
     )
 }
 
-/** A single radio-selectable row — shared by all three picker tiers. */
+/** A single radio-selectable row — shared by the Kilter + MoonBoard tiers. */
 @Composable
 private fun RadioRow(
     label: String,

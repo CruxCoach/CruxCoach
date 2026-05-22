@@ -1787,8 +1787,6 @@
     <string name="board_selection_brand_kilter">Kilter</string>
     <string name="board_selection_brand_moonboard">MoonBoard</string>
     <string name="board_selection_moonboard_variant_label">MoonBoard variant</string>
-    <string name="board_selection_moonboard_holdset_label">Hold set</string>
-    <string name="board_selection_moonboard_holdset_hint">The hold set is used for display only — it does not filter the climb list.</string>
     <!-- FEAT-027: MoonBoard catalogue sync result -->
     <string name="moonboard_sync_already_current">MoonBoard catalogue is already up to date.</string>
     <string name="moonboard_sync_imported">MoonBoard catalogue downloaded.</string>
