@@ -72,6 +72,12 @@ fun MapView(
             // position from preferences instead (see MapViewModel).
             onCreate(null)
             getMapAsync { map ->
+                // Defensive: lock in the OSM/OpenFreeMap attribution controls
+                // so a future style or settings refactor cannot silently drop
+                // them — ODbL §4.3 requires a visible notice in distribution
+                // (see THIRD_PARTY_LICENSES.md, NOTICE).
+                map.uiSettings.isAttributionEnabled = true
+                map.uiSettings.isLogoEnabled = true
                 map.setStyle(Style.Builder().fromUri(styleUrl)) { style ->
                     map.cameraPosition = initialCameraPosition
                     onMapReady(map, style)
