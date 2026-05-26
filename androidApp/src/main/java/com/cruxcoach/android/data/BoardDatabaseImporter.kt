@@ -1281,33 +1281,43 @@ class BoardDatabaseImporter(
         val targetDb = openTargetDb()
         try {
             targetDb.execSQL("ATTACH DATABASE ? AS loc_src", arrayOf(chunkPath))
-            targetDb.beginTransaction()
-            try {
-                // Replace-all semantics: cron snapshot is authoritative,
-                // so old rows that fell out of the dataset (delisted gym,
-                // closed location) get removed automatically.
-                targetDb.execSQL("DELETE FROM kilter_board_location")
-                targetDb.execSQL("""
-                    INSERT INTO kilter_board_location(
-                        gym_uuid, name, lat, lng, address, city, country_code,
-                        phone, email, url, instagram,
-                        layout_name, layout_id, size_label, product_size_id,
-                        access_type, adjustability, fixed_angle, frame_maker
-                    )
-                    SELECT gym_uuid, name, lat, lng, address, city, country_code,
-                           phone, email, url, instagram,
-                           layout_name, layout_id, size_label, product_size_id,
-                           COALESCE(access_type, 'UNKNOWN'),
-                           COALESCE(adjustability, 'UNKNOWN'),
-                           fixed_angle, frame_maker
-                    FROM loc_src.kilter_board_location
-                """)
-                targetDb.setTransactionSuccessful()
-            } finally {
-                targetDb.endTransaction()
+
+            // Source-side row count first. A zero-row chunk (pipeline bug,
+            // truncated upload) would otherwise wipe the populated local
+            // table and leave the user with an empty map.
+            val srcLocCount = queryLong(targetDb, "SELECT COUNT(*) FROM loc_src.kilter_board_location")
+            if (srcLocCount == 0L) {
+                Log.w("BoardDatabaseImporter", "locations chunk has 0 source rows — refusing to wipe local table")
+            } else {
+                val beforeCount = queryLong(targetDb, "SELECT COUNT(*) FROM kilter_board_location")
+                targetDb.beginTransaction()
+                try {
+                    // Replace-all semantics: cron snapshot is authoritative,
+                    // so old rows that fell out of the dataset (delisted gym,
+                    // closed location) get removed automatically.
+                    targetDb.execSQL("DELETE FROM kilter_board_location")
+                    targetDb.execSQL("""
+                        INSERT INTO kilter_board_location(
+                            gym_uuid, name, lat, lng, address, city, country_code,
+                            phone, email, url, instagram,
+                            layout_name, layout_id, size_label, product_size_id,
+                            access_type, adjustability, fixed_angle, frame_maker
+                        )
+                        SELECT gym_uuid, name, lat, lng, address, city, country_code,
+                               phone, email, url, instagram,
+                               layout_name, layout_id, size_label, product_size_id,
+                               COALESCE(access_type, 'UNKNOWN'),
+                               COALESCE(adjustability, 'UNKNOWN'),
+                               fixed_angle, frame_maker
+                        FROM loc_src.kilter_board_location
+                    """)
+                    targetDb.setTransactionSuccessful()
+                } finally {
+                    targetDb.endTransaction()
+                }
+                val afterCount = queryLong(targetDb, "SELECT COUNT(*) FROM kilter_board_location")
+                Log.i("BoardDatabaseImporter", "kilter_board_location: $beforeCount → $afterCount (source=$srcLocCount)")
             }
-            val count = queryLong(targetDb, "SELECT COUNT(*) FROM kilter_board_location")
-            Log.d("BoardDatabaseImporter", "Imported $count board locations")
 
             // Per-wall detail (FEAT-007). Additive + guarded: pre-0.1.6
             // chunks have no kilter_board_wall, so skip silently rather
@@ -1315,28 +1325,34 @@ class BoardDatabaseImporter(
             // so a wall-side error never rolls back locations.
             if (hasTable(rawDb, "kilter_board_wall")) {
                 try {
-                    targetDb.beginTransaction()
-                    try {
-                        targetDb.execSQL("DELETE FROM kilter_board_wall")
-                        targetDb.execSQL("""
-                            INSERT INTO kilter_board_wall(
-                                wall_uuid, gym_uuid, name, product_name, layout_id,
-                                product_layout_uuid, product_size_id, size_label, is_adjustable,
-                                min_angle, max_angle, angle_increments, fixed_angle,
-                                accumulated_hold_set_value, serial_number, is_listed
-                            )
-                            SELECT wall_uuid, gym_uuid, name, product_name, layout_id,
-                                   product_layout_uuid, product_size_id, size_label, is_adjustable,
-                                   min_angle, max_angle, angle_increments, fixed_angle,
-                                   accumulated_hold_set_value, serial_number, is_listed
-                            FROM loc_src.kilter_board_wall
-                        """)
-                        targetDb.setTransactionSuccessful()
-                    } finally {
-                        targetDb.endTransaction()
+                    val srcWallCount = queryLong(targetDb, "SELECT COUNT(*) FROM loc_src.kilter_board_wall")
+                    if (srcWallCount == 0L) {
+                        Log.w("BoardDatabaseImporter", "kilter_board_wall chunk has 0 source rows — refusing to wipe local table")
+                    } else {
+                        val beforeWalls = queryLong(targetDb, "SELECT COUNT(*) FROM kilter_board_wall")
+                        targetDb.beginTransaction()
+                        try {
+                            targetDb.execSQL("DELETE FROM kilter_board_wall")
+                            targetDb.execSQL("""
+                                INSERT INTO kilter_board_wall(
+                                    wall_uuid, gym_uuid, name, product_name, layout_id,
+                                    product_layout_uuid, product_size_id, size_label, is_adjustable,
+                                    min_angle, max_angle, angle_increments, fixed_angle,
+                                    accumulated_hold_set_value, serial_number, is_listed
+                                )
+                                SELECT wall_uuid, gym_uuid, name, product_name, layout_id,
+                                       product_layout_uuid, product_size_id, size_label, is_adjustable,
+                                       min_angle, max_angle, angle_increments, fixed_angle,
+                                       accumulated_hold_set_value, serial_number, is_listed
+                                FROM loc_src.kilter_board_wall
+                            """)
+                            targetDb.setTransactionSuccessful()
+                        } finally {
+                            targetDb.endTransaction()
+                        }
+                        val afterWalls = queryLong(targetDb, "SELECT COUNT(*) FROM kilter_board_wall")
+                        Log.i("BoardDatabaseImporter", "kilter_board_wall: $beforeWalls → $afterWalls (source=$srcWallCount)")
                     }
-                    val wc = queryLong(targetDb, "SELECT COUNT(*) FROM kilter_board_wall")
-                    Log.d("BoardDatabaseImporter", "Imported $wc board walls")
                 } catch (e: Exception) {
                     Log.w("BoardDatabaseImporter", "kilter_board_wall import failed (non-fatal)", e)
                 }
