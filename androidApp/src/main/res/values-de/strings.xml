@@ -256,6 +256,7 @@
     <string name="map_marker_adjustability">Verstellbarkeit</string>
     <string name="map_marker_frame">Rahmen</string>
     <string name="map_marker_field_unknown">—</string>
+    <string name="map_marker_intent_failed">Keine App für diese Aktion verfügbar.</string>
     <string name="map_offline_dialog_title">Keine Internetverbindung</string>
     <string name="map_offline_dialog_body">Die Karte benötigt beim ersten Öffnen eine Internetverbindung. Bereits angesehene Bereiche bleiben anschließend offline verfügbar.\n\nVerbinde dich mit WLAN oder mobilen Daten und versuche es erneut.</string>
     <string name="map_offline_dialog_close">Schließen</string>

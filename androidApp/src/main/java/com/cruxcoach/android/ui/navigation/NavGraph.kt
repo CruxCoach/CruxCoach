@@ -443,17 +443,22 @@ fun CruxCoachNavHost(
             }
 
             composable(Routes.BOARD_MAP) {
-                MapScreen(
+                com.cruxcoach.android.ui.common.ScreenErrorBoundary(
+                    screenName = "BoardMap",
                     onNavigateBack = { navController.popBackStack() },
-                    onNavigateToBoardBrowser = {
-                        // popBackStack lands the user on the BoardBrowser
-                        // already on the back stack. The browser's
-                        // ViewModel re-reads board prefs that the Map
-                        // screen wrote via applyBoardConfigForBrowse.
-                        navController.popBackStack(Routes.BOARD_BROWSER, false)
-                    },
-                    onNavigateToBoardSync = { navController.navigate(Routes.BOARD_SYNC) },
-                )
+                ) {
+                    MapScreen(
+                        onNavigateBack = { navController.popBackStack() },
+                        onNavigateToBoardBrowser = {
+                            // popBackStack lands the user on the BoardBrowser
+                            // already on the back stack. The browser's
+                            // ViewModel re-reads board prefs that the Map
+                            // screen wrote via applyBoardConfigForBrowse.
+                            navController.popBackStack(Routes.BOARD_BROWSER, false)
+                        },
+                        onNavigateToBoardSync = { navController.navigate(Routes.BOARD_SYNC) },
+                    )
+                }
             }
 
             composable(

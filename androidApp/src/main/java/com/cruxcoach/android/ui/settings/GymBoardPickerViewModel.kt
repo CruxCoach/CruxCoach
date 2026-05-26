@@ -1,5 +1,6 @@
 package com.cruxcoach.android.ui.settings
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.data.BoardConstants
@@ -7,6 +8,7 @@ import com.cruxcoach.data.repository.BoardLocation
 import com.cruxcoach.data.repository.BoardLocationRepository
 import com.cruxcoach.data.repository.BoardWall
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -15,6 +17,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
+
+private const val TAG = "GymBoardPickerVM"
 
 /** A selectable board derived from a gym's physical wall. */
 data class GymWallOption(
@@ -52,9 +56,16 @@ class GymBoardPickerViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            val enabled = withContext(Dispatchers.IO) { repository.countWalls() > 0L }
-            frequency = withContext(Dispatchers.IO) { repository.productSizeFrequency() }
-            _state.update { it.copy(enabled = enabled) }
+            try {
+                val enabled = withContext(Dispatchers.IO) { repository.countWalls() > 0L }
+                frequency = withContext(Dispatchers.IO) { repository.productSizeFrequency() }
+                _state.update { it.copy(enabled = enabled) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "init read failed — gym picker disabled this session", e)
+                _state.update { it.copy(enabled = false) }
+            }
         }
     }
 
@@ -67,32 +78,48 @@ class GymBoardPickerViewModel @Inject constructor(
         }
         viewModelScope.launch {
             _state.update { it.copy(searching = true) }
-            val res = withContext(Dispatchers.IO) { repository.searchLocations(trimmed, 60) }
-            // Drop the query result if the user kept typing.
-            if (_state.value.query.trim() == trimmed) {
-                _state.update { it.copy(results = res, searching = false) }
+            try {
+                val res = withContext(Dispatchers.IO) { repository.searchLocations(trimmed, 60) }
+                // Drop the query result if the user kept typing.
+                if (_state.value.query.trim() == trimmed) {
+                    _state.update { it.copy(results = res, searching = false) }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "searchLocations failed", e)
+                if (_state.value.query.trim() == trimmed) {
+                    _state.update { it.copy(results = emptyList(), searching = false) }
+                }
             }
         }
     }
 
     fun selectGym(gym: BoardLocation) {
         viewModelScope.launch {
-            val walls = withContext(Dispatchers.IO) { repository.getWallsForGym(gym.id) }
-            val opts = walls
-                .filter { it.layoutId != null && it.productSizeId != null }
-                .map { w ->
-                    GymWallOption(
-                        layoutId = w.layoutId!!,
-                        productSizeId = w.productSizeId!!,
-                        label = BoardConstants.sizeLabel(
-                            w.productSizeId!!.toLong(),
-                            w.sizeLabel ?: w.productName ?: "",
-                        ),
-                    )
-                }
-                // Most common board config first.
-                .sortedByDescending { frequency[it.productSizeId] ?: 0L }
-            _state.update { it.copy(selectedGym = gym, wallOptions = opts) }
+            try {
+                val walls = withContext(Dispatchers.IO) { repository.getWallsForGym(gym.id) }
+                val opts = walls
+                    .filter { it.layoutId != null && it.productSizeId != null }
+                    .map { w ->
+                        GymWallOption(
+                            layoutId = w.layoutId!!,
+                            productSizeId = w.productSizeId!!,
+                            label = BoardConstants.sizeLabel(
+                                w.productSizeId!!.toLong(),
+                                w.sizeLabel ?: w.productName ?: "",
+                            ),
+                        )
+                    }
+                    // Most common board config first.
+                    .sortedByDescending { frequency[it.productSizeId] ?: 0L }
+                _state.update { it.copy(selectedGym = gym, wallOptions = opts) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "selectGym(${gym.id}) failed", e)
+                _state.update { it.copy(selectedGym = gym, wallOptions = emptyList()) }
+            }
         }
     }
 

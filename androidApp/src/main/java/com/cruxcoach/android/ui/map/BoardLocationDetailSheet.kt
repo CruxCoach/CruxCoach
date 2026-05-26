@@ -1,7 +1,11 @@
 package com.cruxcoach.android.ui.map
 
+import android.content.ActivityNotFoundException
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.util.Log
+import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -81,8 +85,11 @@ fun BoardLocationDetailSheet(
                 value = location.phone,
                 onClick = location.phone?.takeIf { it.isNotBlank() }?.let { phone ->
                     {
-                        context.startActivity(
-                            Intent(Intent.ACTION_DIAL, "tel:$phone".toUri())
+                        safeStartActivity(
+                            context,
+                            Intent(Intent.ACTION_DIAL, "tel:$phone".toUri()),
+                            gymId = location.id,
+                            action = "dial",
                         )
                     }
                 },
@@ -92,8 +99,11 @@ fun BoardLocationDetailSheet(
                 value = location.email,
                 onClick = location.email?.takeIf { it.isNotBlank() }?.let { email ->
                     {
-                        context.startActivity(
-                            Intent(Intent.ACTION_SENDTO, "mailto:$email".toUri())
+                        safeStartActivity(
+                            context,
+                            Intent(Intent.ACTION_SENDTO, "mailto:$email".toUri()),
+                            gymId = location.id,
+                            action = "email",
                         )
                     }
                 },
@@ -104,20 +114,26 @@ fun BoardLocationDetailSheet(
                 onClick = location.url?.takeIf { it.isNotBlank() }?.let { url ->
                     {
                         val safe = if (url.startsWith("http")) url else "https://$url"
-                        context.startActivity(Intent(Intent.ACTION_VIEW, safe.toUri()))
+                        safeStartActivity(
+                            context,
+                            Intent(Intent.ACTION_VIEW, safe.toUri()),
+                            gymId = location.id,
+                            action = "web",
+                        )
                     }
                 },
             )
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
 
-            LabelValueRow(stringResource(R.string.map_marker_layout), location.layoutDisplay())
+            val placeholder = stringResource(R.string.map_marker_field_unknown)
+            LabelValueRow(stringResource(R.string.map_marker_layout), location.layoutDisplay(placeholder))
             LabelValueRow(stringResource(R.string.map_marker_access), accessDisplay(location.accessType))
             LabelValueRow(
                 stringResource(R.string.map_marker_adjustability),
                 adjustabilityDisplay(location.adjustability, location.fixedAngle),
             )
-            LabelValueRow(stringResource(R.string.map_marker_frame), location.frameMaker.placeholderIfMissing())
+            LabelValueRow(stringResource(R.string.map_marker_frame), location.frameMaker.placeholderIfMissing(placeholder))
 
             Spacer(modifier = Modifier.height(8.dp))
 
@@ -135,7 +151,12 @@ fun BoardLocationDetailSheet(
                 onClick = {
                     val name = Uri.encode(location.name)
                     val uri = "geo:${location.lat},${location.lng}?q=${location.lat},${location.lng}($name)"
-                    context.startActivity(Intent(Intent.ACTION_VIEW, uri.toUri()))
+                    safeStartActivity(
+                        context,
+                        Intent(Intent.ACTION_VIEW, uri.toUri()),
+                        gymId = location.id,
+                        action = "maps",
+                    )
                 },
                 modifier = Modifier.fillMaxWidth(),
             ) {
@@ -203,11 +224,30 @@ private fun LabelValueRow(label: String, value: String) {
     }
 }
 
-private fun String?.placeholderIfMissing(): String =
-    if (isNullOrBlank()) "—" else this
+private const val TAG_SHEET = "BoardLocationSheet"
 
-private fun BoardLocation.layoutDisplay(): String {
-    val name = layoutName ?: return "—"
+private fun safeStartActivity(
+    context: Context,
+    intent: Intent,
+    gymId: String,
+    action: String,
+) {
+    try {
+        context.startActivity(intent)
+    } catch (e: ActivityNotFoundException) {
+        Log.w(TAG_SHEET, "gym=$gymId action=$action: no handler for ${intent.action}", e)
+        Toast.makeText(context, R.string.map_marker_intent_failed, Toast.LENGTH_SHORT).show()
+    } catch (e: SecurityException) {
+        Log.w(TAG_SHEET, "gym=$gymId action=$action: security exception", e)
+        Toast.makeText(context, R.string.map_marker_intent_failed, Toast.LENGTH_SHORT).show()
+    }
+}
+
+private fun String?.placeholderIfMissing(placeholder: String): String =
+    if (isNullOrBlank()) placeholder else this
+
+private fun BoardLocation.layoutDisplay(placeholder: String): String {
+    val name = layoutName ?: return placeholder
     val size = sizeLabel
     return if (size.isNullOrBlank()) name else "$name ($size)"
 }

@@ -234,6 +234,7 @@
     <string name="map_marker_adjustability">Adjustability</string>
     <string name="map_marker_frame">Frame</string>
     <string name="map_marker_field_unknown">—</string>
+    <string name="map_marker_intent_failed">No app available for this action.</string>
     <string name="map_offline_dialog_title">No internet connection</string>
     <string name="map_offline_dialog_body">The map needs internet the first time you open it. After that, areas you\'ve viewed stay available offline.\n\nConnect to Wi-Fi or mobile data and try again.</string>
     <string name="map_offline_dialog_close">Close</string>
