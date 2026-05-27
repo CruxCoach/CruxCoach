@@ -52,6 +52,8 @@ Browse climbs, control your Kilter Board via Bluetooth, log ascents, import your
 ## All Features
 
 - **85,000+ climbs** with filters for grade, angle, quality, moves, and setter
+- **Board-Locations Map** *(0.1.5+)* — interactive world map of every known Kilter Board installation, with filters for layout, country, public-vs-private, adjustability and size; tap a marker for contact details and a direct link into the climbs that fit that exact board
+- **Find-your-gym board picker** *(0.1.5+)* — set the right board configuration in Settings by searching for your gym, no product-size codes to memorise; always-on board-fit filter then narrows the catalog to climbs your board can actually do
 - **BLE board control** — light up holds on your Kilter Board
 - **Climb lists** — favorites, projects, custom lists
 - **Log ascents** with grade opinions, attempts, and notes
