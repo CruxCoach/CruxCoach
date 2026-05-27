@@ -40,9 +40,21 @@ object WhatsNewItems {
      *  export sitting in their Downloads. */
     val AURORA_JSON_IMPORT = WhatsNewItem(id = "aurora-json-import", sinceVersionCode = 5)
 
+    /** FEAT-015 — Board Locations Map (0.1.5). Headline feature; users
+     *  upgrading from 0.1.4 have no other entry point to discover the
+     *  new map icon in the BoardBrowser search header. */
+    val BOARD_LOCATIONS_MAP = WhatsNewItem(id = "board-locations-map", sinceVersionCode = 6)
+
+    /** FEAT-007 Phase 1 — Find-your-gym board picker (0.1.5). Lives one
+     *  tap deeper in *Settings → Board-Größe → Ändern* so it needs an
+     *  explicit discovery surface. */
+    val GYM_BOARD_PICKER = WhatsNewItem(id = "gym-board-picker", sinceVersionCode = 6)
+
     val registry: List<WhatsNewItem> = listOf(
         NOSTR_BACKUP,
         AURORA_JSON_IMPORT,
+        BOARD_LOCATIONS_MAP,
+        GYM_BOARD_PICKER,
     )
 }
 
@@ -123,6 +135,8 @@ class WhatsNewViewModel @Inject constructor(
 fun WhatsNewHost(
     onNavigateToKeyManagement: () -> Unit = {},
     onNavigateToAuroraMigration: () -> Unit = {},
+    onNavigateToBoardMap: () -> Unit = {},
+    onNavigateToSettings: () -> Unit = {},
     vm: WhatsNewViewModel = hiltViewModel(),
 ) {
     val pending by vm.pending.collectAsState()
@@ -138,6 +152,16 @@ fun WhatsNewHost(
             AuroraJsonImportWhatsNewDialog(
                 onDismiss = { vm.dismissCurrent() },
                 onNavigateToAuroraMigration = onNavigateToAuroraMigration,
+            )
+        WhatsNewItems.BOARD_LOCATIONS_MAP.id ->
+            BoardLocationsMapWhatsNewDialog(
+                onDismiss = { vm.dismissCurrent() },
+                onNavigateToBoardMap = onNavigateToBoardMap,
+            )
+        WhatsNewItems.GYM_BOARD_PICKER.id ->
+            GymBoardPickerWhatsNewDialog(
+                onDismiss = { vm.dismissCurrent() },
+                onNavigateToSettings = onNavigateToSettings,
             )
         else -> {
             // Unknown id (shouldn't happen unless registry/dispatch

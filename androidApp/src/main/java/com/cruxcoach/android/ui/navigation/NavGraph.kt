@@ -762,6 +762,8 @@ fun CruxCoachNavHost(
     WhatsNewHost(
         onNavigateToKeyManagement = { navController.navigate(Routes.KEY_MANAGEMENT) },
         onNavigateToAuroraMigration = { navController.navigate(Routes.AURORA_MIGRATION) },
+        onNavigateToBoardMap = { navController.navigate(Routes.BOARD_MAP) },
+        onNavigateToSettings = { navController.navigate(Routes.SETTINGS) },
     )
     } // CompositionLocalProvider
 }

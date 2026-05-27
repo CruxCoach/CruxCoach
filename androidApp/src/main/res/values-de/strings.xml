@@ -1807,6 +1807,21 @@
     <string name="whatsnew_aurora_import_hint">Datei schon zur Hand? Auf „Jetzt importieren" tippen. Sonst bleibt der Importer in Einstellungen → Migration aus Aurora — Export anfragen, später wiederkommen.</string>
     <string name="whatsnew_aurora_import_action_now">Jetzt importieren</string>
     <string name="whatsnew_aurora_import_action_later">Später</string>
+
+    <!-- FEAT-015 Board-Locations-Map (0.1.5) -->
+    <string name="whatsnew_board_map_title">Neu: Kilter Boards auf der Karte</string>
+    <string name="whatsnew_board_map_body">0.1.5 stellt alle bekannten Kilter-Board-Installationen weltweit auf eine interaktive Karte. Tippe das Karten-Icon neben der Griffsuche im Board-Browser, navigiere zum Marker, hol dir Adresse, Telefon, E-Mail — und einen Direktlink zu allen Climbs für das exakte Layout und die Größe dieses Boards.</string>
+    <string name="whatsnew_board_map_hint">Filter für Layout, Land, öffentlich/privat, Verstellbarkeit und Größe sind dabei. „Passt zu meinem Board" reduziert die Marker auf Hallen, deren Hardware zu deinem konfigurierten Board passt.</string>
+    <string name="whatsnew_board_map_action_now">Karte öffnen</string>
+    <string name="whatsnew_board_map_action_later">Später</string>
+
+    <!-- FEAT-007 Phase 1 Gym-Picker (0.1.5) -->
+    <string name="whatsnew_gym_picker_title">Neu: Board über die Halle wählen</string>
+    <string name="whatsnew_gym_picker_body">In Einstellungen → Board-Größe öffnet „Ändern" jetzt einen „Halle suchen"-Pfad. Halle suchen, Wand antippen, fertig — ohne den Product-Size-Code aus der Dropdown raten zu müssen.</string>
+    <string name="whatsnew_gym_picker_hint">Die manuelle Liste bleibt als Fallback für Setter und Homewall-Besitzer, die ihre Hardware ohnehin kennen.</string>
+    <string name="whatsnew_gym_picker_action_now">Einstellungen öffnen</string>
+    <string name="whatsnew_gym_picker_action_later">Später</string>
+
     <string name="settings_aurora_migration_title">Migration aus Aurora / alter Kilter-App</string>
     <string name="settings_aurora_migration_desc">Begehungen, Versuche und Circuits aus dem E-Mail-Export übernehmen, den Aurora auf Anfrage zusendet.</string>
     <string name="aurora_migration_title">Aurora-Migration</string>
