@@ -240,6 +240,8 @@
     <string name="map_offline_dialog_close">Close</string>
     <string name="map_no_data">Board locations not loaded yet — they download automatically on the next app start</string>
     <string name="map_loading_locations">Loading board locations…</string>
+    <string name="map_init_error" formatted="false">Map failed to load: %1$s</string>
+    <string name="map_tile_provider_unreachable">Map tile service is currently unreachable — check your connection or try again later.</string>
     <string name="map_open_filters">Open filters</string>
     <string name="map_open_stats">Open stats</string>
     <string name="map_filter_sheet_title">Filter map</string>

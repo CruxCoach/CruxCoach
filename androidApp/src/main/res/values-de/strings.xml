@@ -262,6 +262,8 @@
     <string name="map_offline_dialog_close">Schließen</string>
     <string name="map_no_data">Standortdaten noch nicht geladen — werden beim nächsten App-Start automatisch geladen</string>
     <string name="map_loading_locations">Standortdaten werden geladen…</string>
+    <string name="map_init_error" formatted="false">Karte konnte nicht geladen werden: %1$s</string>
+    <string name="map_tile_provider_unreachable">Kartenanbieter ist derzeit nicht erreichbar — prüfe deine Verbindung oder versuche es später erneut.</string>
 
     <!-- Access enum display values -->
     <string name="map_access_public">Öffentlich</string>
