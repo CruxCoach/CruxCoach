@@ -1,8 +1,11 @@
 package com.cruxcoach.data.repository
 
+import com.cruxcoach.domain.board.BoardBrand
+
 /**
- * Read-only access to the Kilter Board location dataset populated by the
- * daily Blossom sync (manifest chunk type="locations"). See FEAT-006.
+ * Read-only access to the board-installation location dataset populated by
+ * the daily Blossom sync (manifest chunk type="locations"). See FEAT-006.
+ * Spans Kilter + MoonBoard gyms from 0.2.0 (discriminated by board_brand).
  *
  * Functions are synchronous and meant to be called from a background
  * dispatcher — matches the existing BoardRepository style.
@@ -61,6 +64,10 @@ data class BoardLocation(
     val adjustability: Adjustability,
     val fixedAngle: Int?,
     val frameMaker: String?,
+    /** Board family this installation belongs to (kilter_board_location.
+     *  board_brand). Drives the map's brand filter + decides how the gym
+     *  picker resolves a tapped gym (Kilter walls vs MoonBoard variant). */
+    val boardBrand: BoardBrand = BoardBrand.KILTER,
 )
 
 data class BoardWall(

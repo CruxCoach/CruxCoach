@@ -3,6 +3,7 @@ package com.cruxcoach.android.ui.map
 import com.cruxcoach.data.repository.AccessType
 import com.cruxcoach.data.repository.Adjustability
 import com.cruxcoach.data.repository.BoardLocation
+import com.cruxcoach.domain.board.BoardBrand
 
 /**
  * Single source of truth for all map-side filtering. Applied Kotlin-
@@ -25,12 +26,14 @@ data class MapFilters(
     val accessTypes: Set<AccessType> = emptySet(),
     val adjustabilities: Set<Adjustability> = emptySet(),
     val sizeIds: Set<Int> = emptySet(),
+    /** Board families to show. Empty = all brands (the wildcard). */
+    val brands: Set<BoardBrand> = emptySet(),
 ) {
     /** True when no user-applied filter is active beyond the homewall default. */
     val isAtDefault: Boolean
         get() = showOriginal && !showHomewalls && !matchesMyBoard &&
             countries.isEmpty() && accessTypes.isEmpty() &&
-            adjustabilities.isEmpty() && sizeIds.isEmpty()
+            adjustabilities.isEmpty() && sizeIds.isEmpty() && brands.isEmpty()
 
     fun apply(
         locations: List<BoardLocation>,
@@ -39,14 +42,20 @@ data class MapFilters(
     ): List<BoardLocation> {
         if (locations.isEmpty()) return locations
         return locations.filter { loc ->
-            // Layout family gate (Original=1 / Homewall=8). Unknown layout
-            // (null) passes only when at least one of the two is enabled.
-            val layoutAllowed = when (loc.layoutId) {
-                1 -> showOriginal
-                8 -> showHomewalls
-                else -> showOriginal || showHomewalls
+            // Brand gate (empty = all brands).
+            if (brands.isNotEmpty() && loc.boardBrand !in brands) return@filter false
+
+            // Layout family gate (Original=1 / Homewall=8) is a Kilter-only
+            // concept — MoonBoard gyms are gated by the brand filter above,
+            // not by the Original/Homewall toggles, so they always pass here.
+            if (loc.boardBrand == BoardBrand.KILTER) {
+                val layoutAllowed = when (loc.layoutId) {
+                    1 -> showOriginal
+                    8 -> showHomewalls
+                    else -> showOriginal || showHomewalls
+                }
+                if (!layoutAllowed) return@filter false
             }
-            if (!layoutAllowed) return@filter false
 
             if (matchesMyBoard && userBoardLayoutId != null) {
                 if (loc.layoutId != userBoardLayoutId) return@filter false

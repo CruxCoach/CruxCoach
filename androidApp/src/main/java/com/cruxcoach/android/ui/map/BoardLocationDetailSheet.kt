@@ -43,6 +43,7 @@ import com.cruxcoach.android.R
 import com.cruxcoach.data.repository.AccessType
 import com.cruxcoach.data.repository.Adjustability
 import com.cruxcoach.data.repository.BoardLocation
+import com.cruxcoach.domain.board.BoardBrand
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -66,8 +67,18 @@ fun BoardLocationDetailSheet(
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.SemiBold,
             )
-            val subtitle = listOfNotNull(location.city, location.countryCode)
-                .joinToString(separator = ", ")
+            // MoonBoard gyms carry no country ("??") — drop the placeholder
+            // and tag the brand instead so the header still reads cleanly.
+            val geoParts = listOfNotNull(
+                location.city?.takeIf { it.isNotBlank() },
+                location.countryCode.takeIf { it.isNotBlank() && it != "??" },
+            )
+            val subtitle = if (location.boardBrand == BoardBrand.MOONBOARD) {
+                (listOf(stringResource(R.string.board_selection_brand_moonboard)) + geoParts)
+                    .joinToString(separator = " · ")
+            } else {
+                geoParts.joinToString(separator = ", ")
+            }
             if (subtitle.isNotBlank()) {
                 Text(
                     subtitle,

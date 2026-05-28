@@ -3,6 +3,7 @@ package com.cruxcoach.data.repository
 import com.cruxcoach.db.board.BoardDatabase
 import com.cruxcoach.db.board.Kilter_board_location
 import com.cruxcoach.db.board.Kilter_board_wall
+import com.cruxcoach.domain.board.BoardBrand
 
 class BoardLocationRepositoryImpl(
     private val database: BoardDatabase
@@ -70,6 +71,7 @@ class BoardLocationRepositoryImpl(
         adjustability = Adjustability.fromString(adjustability),
         fixedAngle = fixed_angle?.toInt(),
         frameMaker = frame_maker,
+        boardBrand = BoardBrand.fromWire(board_brand),
     )
 
     private fun Kilter_board_wall.toDomain() = BoardWall(

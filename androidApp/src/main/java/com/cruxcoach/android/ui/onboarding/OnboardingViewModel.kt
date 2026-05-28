@@ -244,6 +244,13 @@ class OnboardingViewModel @Inject constructor(
     /** FEAT-007 Path B: apply a board chosen via gym search (atomic —
      *  layout + size together, no layout-roll). */
     fun selectBoardFromGym(layoutId: Int, productSizeId: Int, label: String) {
+        // A MoonBoard gym resolves to a variant layout id (2/4/5/6) — route it
+        // through the MoonBoard setup so the brand + variant stick instead of
+        // recording it as a Kilter board.
+        com.cruxcoach.domain.board.MoonBoardVariant.fromLayoutId(layoutId.toLong())?.let {
+            selectMoonBoardVariant(it)
+            return
+        }
         _state.update {
             it.copy(
                 boardBrand = "kilter",

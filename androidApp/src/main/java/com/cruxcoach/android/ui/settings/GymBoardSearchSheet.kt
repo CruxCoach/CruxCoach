@@ -20,6 +20,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.OrangeAccent
+import com.cruxcoach.data.repository.BoardLocation
+import com.cruxcoach.domain.board.BoardBrand
 
 /**
  * FEAT-007 Path B sheet — "I don't know my board → find my gym".
@@ -80,9 +82,9 @@ internal fun GymBoardSearchSheet(
                                 Spacer(Modifier.width(10.dp))
                                 Column(Modifier.weight(1f)) {
                                     Text(gym.name, fontWeight = FontWeight.Bold)
-                                    gym.city?.takeIf { it.isNotBlank() }?.let {
+                                    gymSubtitle(gym).takeIf { it.isNotEmpty() }?.let {
                                         Text(
-                                            "$it, ${gym.countryCode}",
+                                            it,
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         )
@@ -150,11 +152,7 @@ internal fun GymBoardSearchSheet(
                     else -> {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             s.results.forEach { g ->
-                                val sub = listOfNotNull(
-                                    g.city?.takeIf { it.isNotBlank() },
-                                    g.countryCode,
-                                ).joinToString(", ")
-                                GymRow(g.name, sub) { vm.selectGym(g) }
+                                GymRow(g.name, gymSubtitle(g)) { vm.selectGym(g) }
                             }
                         }
                     }
@@ -167,6 +165,21 @@ internal fun GymBoardSearchSheet(
             }
         },
     )
+}
+
+/** Result subtitle. Drops the placeholder "??" country (MoonBoard gyms have
+ *  no country in the feed) and tags MoonBoard gyms with the brand so they're
+ *  distinguishable from Kilter gyms in a mixed result list. */
+private fun gymSubtitle(g: BoardLocation): String {
+    val parts = buildList {
+        g.city?.takeIf { it.isNotBlank() }?.let { add(it) }
+        g.countryCode.takeIf { it.isNotBlank() && it != "??" }?.let { add(it) }
+    }
+    return if (g.boardBrand == BoardBrand.MOONBOARD) {
+        (listOf("MoonBoard") + parts).joinToString(" · ")
+    } else {
+        parts.joinToString(", ")
+    }
 }
 
 /** Tappable gym search result — clearly a row you can pick (chevron + ripple). */

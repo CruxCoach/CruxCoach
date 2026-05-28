@@ -4,6 +4,7 @@ import app.cash.sqldelight.ColumnAdapter
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.cruxcoach.db.board.BoardDatabase
 import com.cruxcoach.db.board.Climbs
+import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.FramesBinaryCodec
 import java.nio.file.Files
 import kotlin.test.AfterTest
@@ -60,6 +61,7 @@ class BoardLocationRepositoryImplTest {
         accessType: String = "PUBLIC",
         adjustability: String = "ADJUSTABLE",
         city: String? = null,
+        boardBrand: String = "kilter",
     ) {
         db.kilterBoardLocationQueries.upsertLocation(
             gym_uuid = gymUuid,
@@ -71,6 +73,7 @@ class BoardLocationRepositoryImplTest {
             size_label = null, product_size_id = productSizeId,
             access_type = accessType, adjustability = adjustability,
             fixed_angle = null, frame_maker = null,
+            board_brand = boardBrand,
         )
     }
 
@@ -87,6 +90,14 @@ class BoardLocationRepositoryImplTest {
     fun `getById returns null for unknown gym`() {
         seed("g1")
         assertNull(repo.getById("g-missing"))
+    }
+
+    @Test
+    fun `board_brand round-trips and defaults to KILTER`() {
+        seed("g-kilter")
+        seed("g-moon", boardBrand = "moonboard")
+        assertEquals(BoardBrand.KILTER, repo.getById("g-kilter")!!.boardBrand)
+        assertEquals(BoardBrand.MOONBOARD, repo.getById("g-moon")!!.boardBrand)
     }
 
     @Test

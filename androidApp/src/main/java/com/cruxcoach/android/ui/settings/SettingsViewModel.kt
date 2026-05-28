@@ -382,6 +382,14 @@ class SettingsViewModel @Inject constructor(
      *  sets layout + size together, no layout-roll side effect (unlike
      *  updateBoardLayout). label is the official BoardConstants wording. */
     fun selectBoardFromGym(layoutId: Int, productSizeId: Int, label: String) {
+        // A MoonBoard gym resolves to a variant layout id (2/4/5/6). Route it
+        // through the MoonBoard setup so the brand flips, the variant sticks,
+        // and the catalogue sync kicks off — the Kilter size/label below would
+        // be meaningless for it.
+        MoonBoardVariant.fromLayoutId(layoutId.toLong())?.let {
+            selectMoonBoardVariant(it)
+            return
+        }
         // FEAT-027: a gym/dialog board selection is always a Kilter board —
         // record brand = "kilter" so switching back from MoonBoard sticks
         // (Browse + Detail stop treating the active board as a MoonBoard).

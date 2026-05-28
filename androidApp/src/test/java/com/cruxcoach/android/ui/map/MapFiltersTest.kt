@@ -3,6 +3,7 @@ package com.cruxcoach.android.ui.map
 import com.cruxcoach.data.repository.AccessType
 import com.cruxcoach.data.repository.Adjustability
 import com.cruxcoach.data.repository.BoardLocation
+import com.cruxcoach.domain.board.BoardBrand
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -17,6 +18,7 @@ class MapFiltersTest {
         accessType: AccessType = AccessType.PUBLIC,
         adjustability: Adjustability = Adjustability.ADJUSTABLE,
         sizeLabel: String? = "12x12",
+        boardBrand: BoardBrand = BoardBrand.KILTER,
     ) = BoardLocation(
         id = id,
         name = "Gym $id",
@@ -28,6 +30,7 @@ class MapFiltersTest {
         accessType = accessType,
         adjustability = adjustability,
         fixedAngle = null, frameMaker = null,
+        boardBrand = boardBrand,
     )
 
     @Test
@@ -132,6 +135,54 @@ class MapFiltersTest {
     }
 
     @Test
+    fun `MoonBoard gym passes layout gate regardless of Original Homewall toggles`() {
+        // The Original/Homewall toggles are a Kilter concept; a MoonBoard gym
+        // (layout 5 = Masters 2019) must not be hidden by them — only the
+        // brand filter governs it. Both layout toggles off → MoonBoard stays.
+        val items = listOf(
+            loc("kilter", layoutId = 1, boardBrand = BoardBrand.KILTER),
+            loc("moon", layoutId = 5, boardBrand = BoardBrand.MOONBOARD),
+        )
+        val out = MapFilters(showOriginal = false, showHomewalls = false).apply(items)
+        assertEquals(listOf("moon"), out.map { it.id })
+    }
+
+    @Test
+    fun `brand filter excludes other brands`() {
+        val items = listOf(
+            loc("kilter", layoutId = 1, boardBrand = BoardBrand.KILTER),
+            loc("moon", layoutId = 5, boardBrand = BoardBrand.MOONBOARD),
+        )
+        assertEquals(
+            listOf("moon"),
+            MapFilters(brands = setOf(BoardBrand.MOONBOARD)).apply(items).map { it.id },
+        )
+        assertEquals(
+            listOf("kilter"),
+            MapFilters(brands = setOf(BoardBrand.KILTER)).apply(items).map { it.id },
+        )
+    }
+
+    @Test
+    fun `empty brand set is wildcard across brands`() {
+        val items = listOf(
+            loc("kilter", layoutId = 1, boardBrand = BoardBrand.KILTER),
+            loc("moon", layoutId = 5, boardBrand = BoardBrand.MOONBOARD),
+        )
+        assertEquals(2, MapFilters().apply(items).size)
+    }
+
+    @Test
+    fun `matchesMyBoard matches a MoonBoard variant by layout`() {
+        val items = listOf(
+            loc("moon2019", layoutId = 5, productSizeId = null, boardBrand = BoardBrand.MOONBOARD),
+            loc("moon2017", layoutId = 4, productSizeId = null, boardBrand = BoardBrand.MOONBOARD),
+        )
+        val out = MapFilters(matchesMyBoard = true).apply(items, userBoardLayoutId = 5)
+        assertEquals(listOf("moon2019"), out.map { it.id })
+    }
+
+    @Test
     fun `isAtDefault is true for fresh instance`() {
         assertTrue(MapFilters().isAtDefault)
     }
@@ -141,5 +192,6 @@ class MapFiltersTest {
         assertEquals(false, MapFilters(matchesMyBoard = true).isAtDefault)
         assertEquals(false, MapFilters(countries = setOf("DE")).isAtDefault)
         assertEquals(false, MapFilters(showHomewalls = true).isAtDefault)
+        assertEquals(false, MapFilters(brands = setOf(BoardBrand.MOONBOARD)).isAtDefault)
     }
 }

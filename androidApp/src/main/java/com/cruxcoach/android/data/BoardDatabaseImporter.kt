@@ -1418,6 +1418,15 @@ class BoardDatabaseImporter(
                 Log.w("BoardDatabaseImporter", "locations chunk has 0 source rows — refusing to wipe local table")
             } else {
                 val beforeCount = queryLong(targetDb, "SELECT COUNT(*) FROM kilter_board_location")
+                // board_brand landed in the locations chunk alongside
+                // MoonBoard gyms (0.2.0 cron). Pre-0.2.0 chunks lack the
+                // column → fall back to the schema default 'kilter', which
+                // is correct since every such row is a Kilter installation.
+                val srcLocCols = rawDb.rawQuery(
+                    "PRAGMA table_info(kilter_board_location)", null
+                ).use { c -> buildSet { while (c.moveToNext()) add(c.getString(1)) } }
+                val brandExpr = if ("board_brand" in srcLocCols)
+                    "COALESCE(board_brand, 'kilter')" else "'kilter'"
                 targetDb.beginTransaction()
                 try {
                     // Replace-all semantics: cron snapshot is authoritative,
@@ -1429,14 +1438,16 @@ class BoardDatabaseImporter(
                             gym_uuid, name, lat, lng, address, city, country_code,
                             phone, email, url, instagram,
                             layout_name, layout_id, size_label, product_size_id,
-                            access_type, adjustability, fixed_angle, frame_maker
+                            access_type, adjustability, fixed_angle, frame_maker,
+                            board_brand
                         )
                         SELECT gym_uuid, name, lat, lng, address, city, country_code,
                                phone, email, url, instagram,
                                layout_name, layout_id, size_label, product_size_id,
                                COALESCE(access_type, 'UNKNOWN'),
                                COALESCE(adjustability, 'UNKNOWN'),
-                               fixed_angle, frame_maker
+                               fixed_angle, frame_maker,
+                               $brandExpr
                         FROM loc_src.kilter_board_location
                     """)
                     targetDb.setTransactionSuccessful()

@@ -9,6 +9,8 @@ import com.cruxcoach.data.repository.AccessType
 import com.cruxcoach.data.repository.Adjustability
 import com.cruxcoach.data.repository.BoardLocation
 import com.cruxcoach.data.repository.BoardLocationRepository
+import com.cruxcoach.domain.board.BoardBrand
+import com.cruxcoach.domain.board.MoonBoardVariant
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -121,6 +123,7 @@ class MapViewModel @Inject constructor(
                         userPreferences.boardLayoutId,
                         userPreferences.boardProductSizeId,
                         userPreferences.isBoardProductSizeDefault,
+                        userPreferences.mapFilterBrands,
                     )
                 ) { values ->
                     @Suppress("UNCHECKED_CAST")
@@ -135,6 +138,7 @@ class MapViewModel @Inject constructor(
                         layoutId = values[7] as Int,
                         sizeId = values[8] as Int,
                         canFilterByMyBoard = !(values[9] as Boolean),
+                        brandKeys = values[10] as Set<String>,
                     )
                 }.collect { inputs ->
                     _state.update {
@@ -147,6 +151,7 @@ class MapViewModel @Inject constructor(
                                 accessTypes = inputs.accessTypeKeys.mapNotNullTo(mutableSetOf()) { runCatching { AccessType.valueOf(it) }.getOrNull() },
                                 adjustabilities = inputs.adjustabilityKeys.mapNotNullTo(mutableSetOf()) { runCatching { Adjustability.valueOf(it) }.getOrNull() },
                                 sizeIds = inputs.sizeIds,
+                                brands = inputs.brandKeys.mapTo(mutableSetOf()) { BoardBrand.fromWire(it) },
                             ),
                             canFilterByMyBoard = inputs.canFilterByMyBoard,
                             userBoardLayoutId = inputs.layoutId,
@@ -260,6 +265,20 @@ class MapViewModel @Inject constructor(
         }
     }
 
+    fun toggleBrand(brand: BoardBrand) {
+        viewModelScope.launch {
+            val current = userPreferences.mapFilterBrands.first()
+            val key = brand.wireValue
+            val next = if (key in current) current - key else current + key
+            userPreferences.setMapFilterBrands(next)
+        }
+    }
+
+    /** "All" brand chip: clear the brand filter (empty = every brand). */
+    fun selectAllBrands() {
+        viewModelScope.launch { userPreferences.setMapFilterBrands(emptySet()) }
+    }
+
     fun resetFilters() {
         viewModelScope.launch {
             userPreferences.resetMapFilters()
@@ -268,9 +287,17 @@ class MapViewModel @Inject constructor(
 
     fun applyBoardConfigForBrowse(layoutId: Int, productSizeId: Int?) {
         viewModelScope.launch {
-            userPreferences.setBoardLayoutId(layoutId)
-            if (productSizeId != null) {
-                userPreferences.setBoardProductSizeId(productSizeId)
+            // A MoonBoard gym (layout 2/4/5/6) must switch the active brand to
+            // MoonBoard so the browser shows MoonBoard climbs, not an empty
+            // Kilter slice at that layout id.
+            val variant = MoonBoardVariant.fromLayoutId(layoutId.toLong())
+            if (variant != null) {
+                userPreferences.setMoonBoardSelection(variant.layoutId.toInt())
+            } else {
+                userPreferences.setBoardLayoutId(layoutId)
+                if (productSizeId != null) {
+                    userPreferences.setBoardProductSizeId(productSizeId)
+                }
             }
         }
     }
@@ -286,5 +313,6 @@ class MapViewModel @Inject constructor(
         val layoutId: Int,
         val sizeId: Int,
         val canFilterByMyBoard: Boolean,
+        val brandKeys: Set<String>,
     )
 }

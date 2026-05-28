@@ -42,10 +42,14 @@ object MapMarkerLayer {
 
     private const val PROP_ID = "id"
     private const val PROP_LAYOUT_ID = "layoutId"
+    private const val PROP_BRAND = "brand"
 
     private val ORANGE = Color.parseColor("#FF6B1A")
     private val GREY = Color.parseColor("#9E9E9E")
     private val WHITE = Color.parseColor("#FFFFFF")
+    // MoonBoard family — a distinct blue so the two ecosystems are
+    // tellable apart at a glance (mirrors the website's brand colouring).
+    private val MOON_BLUE = Color.parseColor("#2D9CDB")
 
     /** Initial layer + source setup. Idempotent — safe after a style reload. */
     fun install(style: Style) {
@@ -78,16 +82,26 @@ object MapMarkerLayer {
                 CircleLayer(LAYER_POINTS, SOURCE_ID).apply {
                     setProperties(
                         PropertyFactory.circleColor(
-                            // Color carries the *board family* signal — that's
-                            // the most actionable information per dot. Original
-                            // installations are the typical "find a place to
-                            // climb" target; homewalls are private and appear
-                            // grey when the user opts to show them.
+                            // Color carries the *board family* signal — the
+                            // most actionable information per dot. MoonBoard
+                            // gyms are blue; within Kilter, Original
+                            // installations (the typical "find a place to
+                            // climb" target) are orange and the private
+                            // homewalls grey.
                             Expression.match(
-                                Expression.get(PROP_LAYOUT_ID),
+                                Expression.get(PROP_BRAND),
+                                // default (unknown brand)
                                 Expression.color(GREY),
-                                Expression.stop(1L, Expression.color(ORANGE)),
-                                Expression.stop(8L, Expression.color(GREY)),
+                                Expression.stop("moonboard", Expression.color(MOON_BLUE)),
+                                Expression.stop(
+                                    "kilter",
+                                    Expression.match(
+                                        Expression.get(PROP_LAYOUT_ID),
+                                        Expression.color(GREY),
+                                        Expression.stop(1L, Expression.color(ORANGE)),
+                                        Expression.stop(8L, Expression.color(GREY)),
+                                    ),
+                                ),
                             )
                         ),
                         // Smaller dots when zoomed out (many overlap in
@@ -183,6 +197,7 @@ object MapMarkerLayer {
         return Feature.fromGeometry(point).apply {
             addStringProperty(PROP_ID, id)
             addNumberProperty(PROP_LAYOUT_ID, (layoutId ?: -1).toLong())
+            addStringProperty(PROP_BRAND, boardBrand.wireValue)
         }
     }
 

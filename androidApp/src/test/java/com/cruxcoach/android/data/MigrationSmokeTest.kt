@@ -172,6 +172,7 @@ class MigrationSmokeTest {
             size_label = "12x12", product_size_id = 10L,
             access_type = "PUBLIC", adjustability = "ADJUSTABLE",
             fixed_angle = null, frame_maker = "Kilter",
+            board_brand = "kilter",
         )
         val rows = db.kilterBoardLocationQueries.getAllLocations().executeAsList()
         assertEquals(1, rows.size)
@@ -183,5 +184,6 @@ class MigrationSmokeTest {
         assertEquals(10L, row.product_size_id)
         assertEquals("PUBLIC", row.access_type)
         assertEquals("ADJUSTABLE", row.adjustability)
+        assertEquals("kilter", row.board_brand)
     }
 }

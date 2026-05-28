@@ -31,6 +31,7 @@ import com.cruxcoach.android.R
 import com.cruxcoach.android.data.BoardConstants
 import com.cruxcoach.data.repository.AccessType
 import com.cruxcoach.data.repository.Adjustability
+import com.cruxcoach.domain.board.BoardBrand
 
 /**
  * Bottom sheet that exposes every map-side filter dimension. Stays
@@ -45,6 +46,8 @@ import com.cruxcoach.data.repository.Adjustability
 fun MapFilterSheet(
     state: MapState,
     onDismiss: () -> Unit,
+    onSelectAllBrands: () -> Unit,
+    onToggleBrand: (BoardBrand) -> Unit,
     onSelectAllLayouts: () -> Unit,
     onToggleShowOriginal: () -> Unit,
     onToggleShowHomewalls: () -> Unit,
@@ -80,6 +83,26 @@ fun MapFilterSheet(
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                     )
+                }
+
+                item {
+                    Section(stringResource(R.string.board_selection_brand_label)) {
+                        FilterChip(
+                            selected = state.filters.brands.isEmpty(),
+                            onClick = onSelectAllBrands,
+                            label = { Text(stringResource(R.string.map_filter_show_all)) },
+                        )
+                        FilterChip(
+                            selected = BoardBrand.KILTER in state.filters.brands,
+                            onClick = { onToggleBrand(BoardBrand.KILTER) },
+                            label = { Text(stringResource(R.string.board_selection_brand_kilter)) },
+                        )
+                        FilterChip(
+                            selected = BoardBrand.MOONBOARD in state.filters.brands,
+                            onClick = { onToggleBrand(BoardBrand.MOONBOARD) },
+                            label = { Text(stringResource(R.string.board_selection_brand_moonboard)) },
+                        )
+                    }
                 }
 
                 item {

@@ -36,14 +36,21 @@ class GymBoardPickerViewModelTest {
     @Before fun setUp() { Dispatchers.setMain(dispatcher) }
     @After fun tearDown() { Dispatchers.resetMain() }
 
-    private fun loc(id: String, name: String = "Gym $id") = BoardLocation(
+    private fun loc(
+        id: String,
+        name: String = "Gym $id",
+        layoutId: Int? = 1,
+        boardBrand: com.cruxcoach.domain.board.BoardBrand =
+            com.cruxcoach.domain.board.BoardBrand.KILTER,
+    ) = BoardLocation(
         id = id, name = name, lat = 0.0, lng = 0.0,
         address = null, city = null, countryCode = "DE",
         phone = null, email = null, url = null, instagram = null,
-        layoutName = null, layoutId = 1,
+        layoutName = null, layoutId = layoutId,
         sizeLabel = null, productSizeId = null,
         accessType = AccessType.PUBLIC, adjustability = Adjustability.ADJUSTABLE,
         fixedAngle = null, frameMaker = null,
+        boardBrand = boardBrand,
     )
 
     private fun wall(
@@ -62,13 +69,10 @@ class GymBoardPickerViewModelTest {
     )
 
     @Test
-    fun `init disables picker when no walls`() = runTest {
+    fun `init disables picker when no locations`() = runTest {
+        // No locations synced at all → nothing to search, picker stays off.
         val vm = GymBoardPickerViewModel(repo)
         vm.state.test {
-            // First emission is the default state (enabled=false).
-            // No walls → init doesn't change enabled, so we either see
-            // one emission with enabled=false and idle, or two with
-            // both having enabled=false. Either way: never true.
             val first = awaitItem()
             assertEquals(false, first.enabled)
             cancelAndIgnoreRemainingEvents()
@@ -76,14 +80,61 @@ class GymBoardPickerViewModelTest {
     }
 
     @Test
-    fun `init enables picker when at least one wall present`() = runTest {
-        repo.walls += wall(gymUuid = "g1")
+    fun `init enables picker when locations present`() = runTest {
+        // Gated on locations, not walls — a MoonBoard-only dataset (no
+        // walls) must still enable the "find my gym" path.
+        repo.locations += loc("g1")
         val vm = GymBoardPickerViewModel(repo)
         vm.state.test {
             // Drain emissions until enabled flips.
             var seen = awaitItem()
             while (!seen.enabled) seen = awaitItem()
             assertEquals(true, seen.enabled)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `selectGym on MoonBoard gym with resolved variant offers that variant`() = runTest {
+        // Masters 2019 = layout 5. A resolved-variant MoonBoard gym offers
+        // exactly that board, keyed by its layout id (no product size).
+        repo.locations += loc(
+            "mb1", name = "Boulderwelt", layoutId = 5,
+            boardBrand = com.cruxcoach.domain.board.BoardBrand.MOONBOARD,
+        )
+        val vm = GymBoardPickerViewModel(repo)
+        vm.state.test {
+            var seen = awaitItem()
+            while (!seen.enabled) seen = awaitItem()
+            vm.selectGym(repo.locations.first { it.id == "mb1" })
+            while (awaitItem().wallOptions.isEmpty()) { /* await resolution */ }
+            val opts = vm.state.value.wallOptions
+            assertEquals(1, opts.size)
+            assertEquals(5, opts.first().layoutId)
+            assertEquals(MOONBOARD_NO_SIZE, opts.first().productSizeId)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
+    fun `selectGym on MoonBoard gym with unknown variant offers all variants`() = runTest {
+        // Variant-unknown MoonBoard gym (layout null) lets the climber pick
+        // from every supported variant.
+        repo.locations += loc(
+            "mb2", name = "Home Board", layoutId = null,
+            boardBrand = com.cruxcoach.domain.board.BoardBrand.MOONBOARD,
+        )
+        val vm = GymBoardPickerViewModel(repo)
+        vm.state.test {
+            var seen = awaitItem()
+            while (!seen.enabled) seen = awaitItem()
+            vm.selectGym(repo.locations.first { it.id == "mb2" })
+            while (awaitItem().wallOptions.isEmpty()) { /* await resolution */ }
+            val opts = vm.state.value.wallOptions
+            assertEquals(
+                com.cruxcoach.domain.board.MoonBoardVariant.entries.size,
+                opts.size,
+            )
             cancelAndIgnoreRemainingEvents()
         }
     }

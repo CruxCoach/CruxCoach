@@ -218,6 +218,8 @@ object PreferenceKeys {
     val MAP_FILTER_ACCESS_TYPES = stringPreferencesKey("map_filter_access_types")
     val MAP_FILTER_ADJUSTABILITIES = stringPreferencesKey("map_filter_adjustabilities")
     val MAP_FILTER_SIZE_IDS = stringPreferencesKey("map_filter_size_ids")
+    // Board family filter (BoardBrand.wireValue CSV). Empty = all brands.
+    val MAP_FILTER_BRANDS = stringPreferencesKey("map_filter_brands")
 }
 
 /**
@@ -388,6 +390,12 @@ class UserPreferences(
             .toSet()
     }
 
+    /** Board-family filter as BoardBrand wire values (e.g. "kilter",
+     *  "moonboard"). Empty = show all brands. */
+    val mapFilterBrands: Flow<Set<String>> = dataStore.data.map { prefs ->
+        parseCsvSet(prefs[PreferenceKeys.MAP_FILTER_BRANDS])
+    }
+
     suspend fun setMapFilterCountries(values: Set<String>) {
         dataStore.edit { it[PreferenceKeys.MAP_FILTER_COUNTRIES] = values.joinToString(",") }
     }
@@ -404,6 +412,10 @@ class UserPreferences(
         dataStore.edit { it[PreferenceKeys.MAP_FILTER_SIZE_IDS] = values.joinToString(",") }
     }
 
+    suspend fun setMapFilterBrands(values: Set<String>) {
+        dataStore.edit { it[PreferenceKeys.MAP_FILTER_BRANDS] = values.joinToString(",") }
+    }
+
     /** Reset every map-side filter to its empty/default state in one transaction. */
     suspend fun resetMapFilters() {
         dataStore.edit { prefs ->
@@ -414,6 +426,7 @@ class UserPreferences(
             prefs.remove(PreferenceKeys.MAP_FILTER_ACCESS_TYPES)
             prefs.remove(PreferenceKeys.MAP_FILTER_ADJUSTABILITIES)
             prefs.remove(PreferenceKeys.MAP_FILTER_SIZE_IDS)
+            prefs.remove(PreferenceKeys.MAP_FILTER_BRANDS)
         }
     }
 

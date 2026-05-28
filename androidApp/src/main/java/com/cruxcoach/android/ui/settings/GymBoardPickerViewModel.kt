@@ -7,6 +7,8 @@ import com.cruxcoach.android.data.BoardConstants
 import com.cruxcoach.data.repository.BoardLocation
 import com.cruxcoach.data.repository.BoardLocationRepository
 import com.cruxcoach.data.repository.BoardWall
+import com.cruxcoach.domain.board.BoardBrand
+import com.cruxcoach.domain.board.MoonBoardVariant
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -20,12 +22,19 @@ import javax.inject.Inject
 
 private const val TAG = "GymBoardPickerVM"
 
-/** A selectable board derived from a gym's physical wall. */
+/** A selectable board derived from a gym's physical wall (Kilter) or its
+ *  MoonBoard variant. MoonBoard has no product size, so [productSizeId] is
+ *  the [MOONBOARD_NO_SIZE] sentinel there; the apply path keys off the
+ *  layout id to tell the brands apart. */
 data class GymWallOption(
     val layoutId: Int,
     val productSizeId: Int,
     val label: String,
 )
+
+/** Placeholder product size for MoonBoard options — MoonBoard variants are
+ *  distinct boards, not sizes of one board, so there is nothing to carry. */
+const val MOONBOARD_NO_SIZE = 0
 
 data class GymBoardPickerState(
     /** False when no wall data is synced yet → host hides Path B. */
@@ -57,7 +66,12 @@ class GymBoardPickerViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             try {
-                val enabled = withContext(Dispatchers.IO) { repository.countWalls() > 0L }
+                // Any synced location enables the picker. Walls give Kilter
+                // gyms their rich per-board resolution, but a MoonBoard gym
+                // (no walls) resolves via its variant instead — so gate on
+                // locations, not walls, or MoonBoard-only data would hide
+                // the whole "find my gym" path.
+                val enabled = withContext(Dispatchers.IO) { repository.count() > 0L }
                 frequency = withContext(Dispatchers.IO) { repository.productSizeFrequency() }
                 _state.update { it.copy(enabled = enabled) }
             } catch (e: CancellationException) {
@@ -96,6 +110,13 @@ class GymBoardPickerViewModel @Inject constructor(
     }
 
     fun selectGym(gym: BoardLocation) {
+        // MoonBoard gyms carry no per-wall rows — they resolve to one of the
+        // distinct MoonBoard variants instead. The gym's own brand decides
+        // the resolution, so no brand has to be threaded in from the caller.
+        if (gym.boardBrand == BoardBrand.MOONBOARD) {
+            _state.update { it.copy(selectedGym = gym, wallOptions = moonBoardOptions(gym)) }
+            return
+        }
         viewModelScope.launch {
             try {
                 val walls = withContext(Dispatchers.IO) { repository.getWallsForGym(gym.id) }
@@ -120,6 +141,22 @@ class GymBoardPickerViewModel @Inject constructor(
                 Log.w(TAG, "selectGym(${gym.id}) failed", e)
                 _state.update { it.copy(selectedGym = gym, wallOptions = emptyList()) }
             }
+        }
+    }
+
+    /** Variant options for a MoonBoard gym. A gym whose variant the cron
+     *  could resolve from its description offers exactly that board; an
+     *  unresolved one offers every supported variant so the climber picks
+     *  the board actually in front of them. */
+    private fun moonBoardOptions(gym: BoardLocation): List<GymWallOption> {
+        val resolved = gym.layoutId?.toLong()?.let { MoonBoardVariant.fromLayoutId(it) }
+        val variants = if (resolved != null) listOf(resolved) else MoonBoardVariant.entries
+        return variants.map {
+            GymWallOption(
+                layoutId = it.layoutId.toInt(),
+                productSizeId = MOONBOARD_NO_SIZE,
+                label = it.displayName,
+            )
         }
     }
 
