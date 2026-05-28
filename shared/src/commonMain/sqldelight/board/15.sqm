@@ -1,0 +1,65 @@
+-- Migration version 15 → 16: denormalize layout_id onto climb_stats and
+-- re-partition the browse/count indexes by it (FEAT-027 follow-up).
+--
+-- After the MoonBoard catalogue landed, the board DB roughly doubled
+-- (~333k climbs / ~469k climb_stats). The browse/count queries filter
+-- `layout_id = ? AND angle = ?`, but every climb_stats index led with
+-- `angle` alone — an `angle` bucket shared across the Kilter Original,
+-- Kilter Homewall and MoonBoard catalogues. A query for one board had to
+-- scan past every other board's same-angle rows, which is what turned
+-- browse / fetchDbCount into ~3s queries.
+--
+-- Fix: climb_stats carries its climb's layout_id (denormalized), and the
+-- three browse/count indexes lead with it. Each board then seeks straight
+-- into its own (layout_id, angle) slice — O(result size), not O(catalogue
+-- size). One DB, one sync; the partitioning is purely an index concern,
+-- so cross-layout climb rendering (edge-containment fit filter) is
+-- untouched.
+--
+-- The importers write climb_stats.layout_id directly on every sync; this
+-- migration back-fills existing installs from the climbs table.
+
+ALTER TABLE climb_stats ADD COLUMN layout_id INTEGER NOT NULL DEFAULT 0;
+
+-- Back-fill from the owning climb. COALESCE keeps orphan stats rows (no
+-- matching climb) at layout_id 0 rather than failing the NOT NULL column.
+UPDATE climb_stats
+SET layout_id = COALESCE(
+    (SELECT c.layout_id FROM climbs c WHERE c.uuid = climb_stats.climb_uuid),
+    0
+);
+
+-- Rebuild the three browse/count indexes with layout_id as the leading
+-- column. DROP+CREATE because ADD COLUMN does not touch existing indexes.
+DROP INDEX IF EXISTS idx_climb_stats_browse;
+DROP INDEX IF EXISTS idx_climb_stats_by_popularity;
+DROP INDEX IF EXISTS idx_climb_stats_count_cover;
+
+CREATE INDEX idx_climb_stats_browse ON climb_stats(
+    layout_id, angle, difficulty_average, quality_average, ascensionist_count,
+    benchmark_difficulty, climb_uuid
+);
+CREATE INDEX idx_climb_stats_by_popularity ON climb_stats(
+    layout_id, angle, ascensionist_count, difficulty_average, climb_uuid
+);
+CREATE INDEX idx_climb_stats_count_cover ON climb_stats(
+    layout_id, angle, ascensionist_count, difficulty_average, benchmark_difficulty, climb_uuid
+);
+
+-- Recreate climb_browse so the VIEW sources layout_id from climb_stats —
+-- this lets the browse queries (SELECT ... FROM climb_browse WHERE
+-- layout_id = ?) be served by the new idx_climb_stats_by_popularity
+-- without a climbs-table lookup just to read layout_id.
+DROP VIEW IF EXISTS climb_browse;
+CREATE VIEW climb_browse AS
+SELECT
+    c.uuid, c.name, c.setter_username, c.frames_count, cs.layout_id,
+    c.board_brand,
+    COALESCE(c.description, '') AS description,
+    c.is_nomatch, c.frames_pace, c.hsm, c.move_count,
+    c.source, c.created_by_pubkey, c.sync_status, c.origin, c.kilter_status,
+    cs.angle, cs.difficulty_average, cs.quality_average,
+    cs.ascensionist_count, cs.benchmark_difficulty
+FROM climbs c
+INNER JOIN climb_stats cs ON c.uuid = cs.climb_uuid
+WHERE c.is_listed = 1;

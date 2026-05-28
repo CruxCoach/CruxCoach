@@ -35,15 +35,16 @@ class BoardBrandTest {
         assertEquals(MoonBoardVariant.MOONBOARD_2016, MoonBoardVariant.fromLayoutId(2L))
         assertEquals(MoonBoardVariant.MASTERS_2017, MoonBoardVariant.fromLayoutId(4L))
         assertEquals(MoonBoardVariant.MASTERS_2019, MoonBoardVariant.fromLayoutId(5L))
+        assertEquals(MoonBoardVariant.MINI_2020, MoonBoardVariant.fromLayoutId(6L))
     }
 
     @Test
     fun moonBoardVariantReturnsNullForUnsupportedLayout() {
-        // Kilter layouts (1 = Original, 8 = Homewall) and the deferred
-        // Mini 2020 (layout 6) are not v0.2.0 MoonBoard variants.
+        // Kilter layouts (1 = Original, 8 = Homewall) are not MoonBoard
+        // variants. Mini 2020 (layout 6) joined the supported set with
+        // the bundled-image pipeline.
         assertNull(MoonBoardVariant.fromLayoutId(1L))
         assertNull(MoonBoardVariant.fromLayoutId(8L))
-        assertNull(MoonBoardVariant.fromLayoutId(6L))
         assertNull(MoonBoardVariant.fromLayoutId(999L))
     }
 
@@ -53,6 +54,7 @@ class BoardBrandTest {
         assertEquals(listOf(40), MoonBoardVariant.MOONBOARD_2016.angles)
         assertEquals(listOf(25, 40), MoonBoardVariant.MASTERS_2017.angles)
         assertEquals(listOf(25, 40), MoonBoardVariant.MASTERS_2019.angles)
+        assertEquals(listOf(40), MoonBoardVariant.MINI_2020.angles)
     }
 
     @Test

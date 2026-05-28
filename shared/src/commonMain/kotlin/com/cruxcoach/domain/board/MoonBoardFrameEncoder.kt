@@ -21,6 +21,13 @@ package com.cruxcoach.domain.board
  * encoder emits 3 tokens (S / P / E). The board's decoder accepts a
  * wider set (S/R/P/L/M/F/E) but the extra roles never appear in a
  * MoonBoard climb's `frames`.
+ *
+ * Per-variant: the serpentine arithmetic walks `variant.gridRows` per
+ * column — 18 for standard 11×18 boards, 12 for Mini 2020. The base
+ * format is identical across variants per BoardSesh's RE notes (see
+ * 06-boardsesh-comparison.md §5). Mini-hardware dynamic-capture is
+ * still outstanding; the Mini path is the natural extrapolation of
+ * the documented standard-board protocol.
  */
 object MoonBoardFrameEncoder {
 
@@ -34,7 +41,9 @@ object MoonBoardFrameEncoder {
     private const val FRAME_PREFIX = "l#"
     private const val FRAME_SUFFIX = "#"
 
-    private val MAX_HOLD_ID = MoonBoardVariant.GRID_COLUMNS * MoonBoardVariant.GRID_ROWS
+    /** Universal hold-id column basis — every MoonBoard variant uses
+     *  the same 11-column hold-id numbering. Only the row height varies. */
+    private const val COLS = 11
 
     /** Wire token for a role code, or null for roles the board can't show. */
     private fun roleToken(roleCode: Int): Char? = when (roleCode) {
@@ -47,44 +56,50 @@ object MoonBoardFrameEncoder {
     /**
      * Convert a 1-based grid hold id — `(row-1)*11 + colIndex + 1`,
      * column A-K, row 1 at the bottom — to the 0-indexed serpentine
-     * LED-strip position. The strip snakes column by column: even
-     * columns run bottom-to-top, odd columns top-to-bottom.
+     * LED-strip position for the given [variant]. The strip snakes
+     * column by column: even columns run bottom-to-top, odd columns
+     * top-to-bottom. The per-column height is [MoonBoardVariant.gridRows]
+     * (18 for the standard 11×18 boards, 12 for Mini 2020).
      *
      * Inverse of the board-protocol decoder's serial→hold mapping;
      * ported from BoardSesh's `getMoonboardSerialPosition`.
      *
-     * @throws IllegalArgumentException if [holdId] is outside 1..198.
+     * @throws IllegalArgumentException if [holdId] is outside the
+     *   variant's valid range (1..variant.gridRows*11).
      */
-    fun serialPosition(holdId: Int): Int {
-        require(holdId in 1..MAX_HOLD_ID) {
-            "MoonBoard hold id out of range (1..$MAX_HOLD_ID): $holdId"
+    fun serialPosition(holdId: Int, variant: MoonBoardVariant): Int {
+        val maxHoldId = COLS * variant.gridRows
+        require(holdId in 1..maxHoldId) {
+            "MoonBoard hold id out of range (1..$maxHoldId) for ${variant.name}: $holdId"
         }
         val zeroBased = holdId - 1
-        val column = zeroBased % MoonBoardVariant.GRID_COLUMNS
-        val row = zeroBased / MoonBoardVariant.GRID_COLUMNS
+        val column = zeroBased % COLS
+        val row = zeroBased / COLS
         return if (column % 2 == 0) {
-            column * MoonBoardVariant.GRID_ROWS + row
+            column * variant.gridRows + row
         } else {
-            column * MoonBoardVariant.GRID_ROWS + (MoonBoardVariant.GRID_ROWS - 1 - row)
+            column * variant.gridRows + (variant.gridRows - 1 - row)
         }
     }
 
     /**
      * Encode a climb's `frames` string (`p{holdId}r{roleCode}` pairs,
-     * no separator) into the MoonBoard BLE wire frame.
+     * no separator) into the MoonBoard BLE wire frame for [variant].
      *
      * Holds with an out-of-range id or a role the board can't render
      * are skipped — the wire frame can only carry what the hardware
      * understands, so a malformed entry must not abort the whole send.
      */
-    fun encode(frames: String): ByteArray = encodeToString(frames).encodeToByteArray()
+    fun encode(frames: String, variant: MoonBoardVariant): ByteArray =
+        encodeToString(frames, variant).encodeToByteArray()
 
     /** [encode] without the UTF-8 step — exposed for testing + logging. */
-    fun encodeToString(frames: String): String {
+    fun encodeToString(frames: String, variant: MoonBoardVariant): String {
+        val maxHoldId = COLS * variant.gridRows
         val tokens = parseHolds(frames).mapNotNull { (holdId, roleCode) ->
             val token = roleToken(roleCode) ?: return@mapNotNull null
-            if (holdId !in 1..MAX_HOLD_ID) return@mapNotNull null
-            "$token${serialPosition(holdId)}"
+            if (holdId !in 1..maxHoldId) return@mapNotNull null
+            "$token${serialPosition(holdId, variant)}"
         }
         return FRAME_PREFIX + tokens.joinToString(",") + FRAME_SUFFIX
     }

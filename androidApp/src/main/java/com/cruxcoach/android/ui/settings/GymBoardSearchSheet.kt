@@ -44,8 +44,8 @@ internal fun GymBoardSearchSheet(
         text = {
             // Single scroll container for the whole dialog body (search
             // field scrolls with content) — same pattern as
-            // BoardModelSelectionDialog. Inner lists are plain Columns;
-            // a nested verticalScroll of the same orientation would crash.
+            // BoardSelectionDialog. Inner lists are plain Columns; a
+            // nested verticalScroll of the same orientation would crash.
             Column(
                 modifier = Modifier
                     .heightIn(max = 460.dp)

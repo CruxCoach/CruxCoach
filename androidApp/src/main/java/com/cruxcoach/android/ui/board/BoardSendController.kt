@@ -145,7 +145,19 @@ internal class BoardSendController(
         ) }
         sendJob = scope.launch {
             try {
-                val success = bleConnection.sendMoonBoardClimb(frames)
+                // Resolve the active MoonBoard variant — drives the
+                // encoder's per-column-height serpentine arithmetic (18
+                // for standard 11×18 boards, 12 for Mini 2020). Falls
+                // back to MOONBOARD_2016 if the layout id doesn't map
+                // to a known MoonBoard variant — the gate above already
+                // ensured this is a moonboard climb, so the only way
+                // fromLayoutId returns null is a stale / corrupt
+                // user-prefs value; 2016 is the safest default.
+                val layoutId = userPreferences.boardLayoutId.first().toLong()
+                val variant = com.cruxcoach.domain.board.MoonBoardVariant
+                    .fromLayoutId(layoutId)
+                    ?: com.cruxcoach.domain.board.MoonBoardVariant.MOONBOARD_2016
+                val success = bleConnection.sendMoonBoardClimb(frames, variant)
                 state.update { it.copy(
                     ble = it.ble.copy(
                         isSending = false,

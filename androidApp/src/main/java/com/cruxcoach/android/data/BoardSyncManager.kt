@@ -413,6 +413,13 @@ class BoardSyncManager(
         scope.launch {
             try {
                 performBlossomSync()
+                // Refresh SQLite query-planner stats now the catalogue may
+                // have grown substantially (Kilter + MoonBoard imports both
+                // skip ANALYZE inline to keep the "finalizing" phase short).
+                // Runs detached, after performBlossomSync already signalled
+                // syncComplete, so it never extends the visible sync.
+                runCatching { importer.analyzeDatabase() }
+                    .onFailure { Log.w(TAG, "Post-sync ANALYZE failed", it) }
             } catch (e: Exception) {
                 Log.w(TAG, "Blossom sync failed", e)
                 // Distinguish network failures (where the "prüfe Internet"
@@ -443,7 +450,11 @@ class BoardSyncManager(
 
     private suspend fun performBlossomSync() {
         // 1. Fetch manifest
-        _state.update { it.copy(importStep = ImportStep.FetchingManifest) }
+        _state.update { it.copy(
+            importStep = ImportStep.FetchingManifest,
+            moonBoardStep = null,
+            moonBoardError = null,
+        ) }
         Log.d(TAG, "Fetching Blossom manifest...")
         val manifest = blossomSyncManager.fetchManifest()
         // Persist manifest timestamp so CommunityClimbSubscriber can seed
@@ -456,6 +467,14 @@ class BoardSyncManager(
         val chunksToDownload = blossomSyncManager.getChangedChunks(manifest)
         if (chunksToDownload.isEmpty()) {
             Log.d(TAG, "All Kilter Blossom chunks are up to date")
+            // Kilter catalogue unchanged — mark its checklist section
+            // complete so the MoonBoard section is the only one still
+            // showing progress while it re-checks.
+            _state.update { it.copy(importStep = ImportStep.Done(
+                boardRepository.getClimbCount().toInt(),
+                boardRepository.getStatCount().toInt(),
+                0,
+            )) }
             // MoonBoard rides on the same board-data sync (FEAT-027) — re-check
             // it even when the Kilter catalogue itself is unchanged.
             syncMoonBoardCatalogue()
@@ -533,12 +552,14 @@ class BoardSyncManager(
             }
 
             Log.d(TAG, "Importing chunks: meta=${metaFiles.size}, climbs=${climbFiles.size}, stats=${statFiles.size}, locations=${locationFiles.size}")
+            var kilterDone: ImportStep.Done? = null
             importer.importFromChunks(
                 metaDbFiles = metaFiles,
                 climbsDbFiles = climbFiles,
                 statsDbFiles = statFiles,
                 locationsDbFiles = locationFiles,
                 onProgress = { step ->
+                    if (step is ImportStep.Done) kilterDone = step
                     _state.update { it.copy(importStep = step) }
                 }
             )
@@ -558,6 +579,15 @@ class BoardSyncManager(
             }
 
             // 7. MoonBoard catalogue — synced as part of the board-data sync.
+            //    Mark the Kilter section complete first so the card shows
+            //    Kilter done + MoonBoard in progress as two distinct sections.
+            _state.update { it.copy(
+                importStep = kilterDone ?: ImportStep.Done(
+                    boardRepository.getClimbCount().toInt(),
+                    boardRepository.getStatCount().toInt(),
+                    0,
+                )
+            ) }
             syncMoonBoardCatalogue()
 
             val timestamp = DateTimeUtil.nowIso()
@@ -580,25 +610,36 @@ class BoardSyncManager(
      * Sync the MoonBoard catalogue as part of the board-data sync (FEAT-027).
      * Idempotent — when the published MoonBoard manifest is unchanged it
      * short-circuits to AlreadyCurrent, so periodic re-checks are cheap.
-     * Progress is forwarded to [BoardSyncState.importStep] so the MoonBoard
-     * download shows in the same sync UI as the Kilter catalogue. Failures
-     * are logged + swallowed — a MoonBoard hiccup must never fail the
-     * Kilter board sync.
+     * Progress is forwarded to [BoardSyncState.moonBoardStep] so the
+     * MoonBoard download shows as its own section in the sync card,
+     * separate from the Kilter [BoardSyncState.importStep]. Failures are
+     * logged + surfaced via [BoardSyncState.moonBoardError] — a MoonBoard
+     * hiccup must never fail the Kilter board sync.
      */
     private suspend fun syncMoonBoardCatalogue() {
         try {
             when (val result = moonBoardCatalogueSync.sync(
-                onProgress = { step -> _state.update { it.copy(importStep = step) } }
+                onProgress = { step -> _state.update { it.copy(moonBoardStep = step) } }
             )) {
-                is MoonBoardCatalogueSync.Result.AlreadyCurrent ->
+                is MoonBoardCatalogueSync.Result.AlreadyCurrent -> {
                     Log.d(TAG, "MoonBoard catalogue already current")
+                    // No import ran — mark the section complete anyway so
+                    // the user sees the MoonBoard catalogue is accounted for.
+                    _state.update { it.copy(moonBoardStep = ImportStep.Done(0, 0, 0)) }
+                }
                 is MoonBoardCatalogueSync.Result.Imported ->
                     Log.i(TAG, "MoonBoard catalogue imported (total catalogue climbs=${result.climbCount})")
-                is MoonBoardCatalogueSync.Result.Failed ->
+                is MoonBoardCatalogueSync.Result.Failed -> {
                     Log.w(TAG, "MoonBoard catalogue sync failed: ${result.message}")
+                    _state.update { it.copy(moonBoardStep = null, moonBoardError = result.message) }
+                }
             }
         } catch (e: Exception) {
             Log.w(TAG, "MoonBoard catalogue sync threw — Kilter board sync unaffected", e)
+            _state.update { it.copy(
+                moonBoardStep = null,
+                moonBoardError = e.message ?: e.javaClass.simpleName,
+            ) }
         }
     }
 
@@ -750,6 +791,17 @@ data class BoardSyncState(
     val showNetworkDialog: Boolean = false,
     val showWifiDialog: Boolean = false,
     val importStep: ImportStep? = null,
+    /**
+     * Progress of the MoonBoard catalogue sync (FEAT-027), tracked
+     * separately from [importStep] so the sync card can show the Kilter
+     * and MoonBoard catalogues as two distinct sections. Null until the
+     * MoonBoard phase starts.
+     */
+    val moonBoardStep: ImportStep? = null,
+    /** Set when the MoonBoard catalogue sync failed — surfaced as a
+     *  non-fatal note; the Kilter sync is never failed by a MoonBoard
+     *  hiccup. */
+    val moonBoardError: String? = null,
     val alreadyImported: Boolean = false,
     val lastSyncTimestamp: String? = null,
     /**

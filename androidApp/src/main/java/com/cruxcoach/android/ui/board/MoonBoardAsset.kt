@@ -78,11 +78,14 @@ private val moonBoardJson = Json { ignoreUnknownKeys = true }
 internal fun parseMoonBoardLayout(jsonText: String): MoonBoardLayoutJson =
     moonBoardJson.decodeFromString(jsonText)
 
-/** Bundled asset base name for a variant, or null when no real-board
- *  image ships yet (Masters 2017 / 2019 -> procedural-grid fallback). */
-private fun MoonBoardVariant.assetBaseName(): String? = when (this) {
+/** Bundled asset base name for a variant. All four v0.2.0 variants
+ *  ship a real-board image; see [MoonBoardVariant]'s Mini-2020 caveat
+ *  for the deferred procedural-fallback / BLE-encoder bits. */
+private fun MoonBoardVariant.assetBaseName(): String = when (this) {
     MoonBoardVariant.MOONBOARD_2016 -> "moonboard_2016"
-    else -> null
+    MoonBoardVariant.MASTERS_2017 -> "moonboard_2017"
+    MoonBoardVariant.MASTERS_2019 -> "moonboard_2019"
+    MoonBoardVariant.MINI_2020 -> "mini_moonboard_2020"
 }
 
 /**
@@ -98,9 +101,10 @@ internal object MoonBoardAssetCache {
     @Volatile
     private var cached: MoonBoardRenderAsset? = null
 
-    /** True when [variant] has a bundled board image to decode. */
-    fun hasBundledImage(variant: MoonBoardVariant): Boolean =
-        variant.assetBaseName() != null
+    /** True when [variant] has a bundled board image to decode. Every
+     *  v0.2.0 11×18 variant now ships one — kept as an API in case Mini
+     *  MoonBoard 2020 lands without an image first. */
+    fun hasBundledImage(variant: MoonBoardVariant): Boolean = true
 
     fun get(variant: MoonBoardVariant?): MoonBoardRenderAsset? =
         if (variant != null && variant == cachedVariant) cached else null
@@ -110,7 +114,7 @@ internal object MoonBoardAssetCache {
         assetManager: AssetManager,
     ): MoonBoardRenderAsset? {
         if (variant == cachedVariant) return cached
-        val base = variant.assetBaseName() ?: return null
+        val base = variant.assetBaseName()
         return withContext(Dispatchers.IO) {
             val asset = decode(base, assetManager)
             cachedVariant = variant

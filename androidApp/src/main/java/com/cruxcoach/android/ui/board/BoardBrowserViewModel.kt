@@ -337,6 +337,20 @@ class BoardBrowserViewModel @Inject constructor(
             )
             userPreferences.setBoardLayoutId(layoutId)
             userPreferences.setBoardProductSizeId(productSizeId)
+            // Reset brand: the user may be switching from MoonBoard back
+            // to Kilter via the filter-screen picker.
+            userPreferences.setBoardBrand("kilter")
+            refreshBoardData(force = true)
+        }
+    }
+
+    /** FEAT-027: switch the active board to a MoonBoard variant via the
+     *  filter-screen picker — mirrors [selectBoard] for Kilter. The
+     *  MoonBoard catalogue is part of the board-data sync, so no extra
+     *  download is needed; the next browse fetch flips brand atomically. */
+    fun selectMoonBoardVariant(variant: MoonBoardVariant) {
+        viewModelScope.launch {
+            userPreferences.setMoonBoardSelection(variant.layoutId.toInt())
             refreshBoardData(force = true)
         }
     }

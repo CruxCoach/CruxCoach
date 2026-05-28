@@ -110,7 +110,14 @@ fun SyncStatusBannerSlot() {
         exit = slideOutVertically { -it } + fadeOut()
     ) {
         when {
-            isSyncing -> SyncProgressBanner(syncState.importStep, onClick = navigateToSync)
+            isSyncing -> SyncProgressBanner(
+                // During the MoonBoard phase importStep is already Done
+                // (the Kilter section is complete); moonBoardStep carries
+                // the real in-progress status. Show that so the banner
+                // never reads "done" while a sync is still running.
+                syncState.moonBoardStep ?: syncState.importStep,
+                onClick = navigateToSync,
+            )
             hasError -> SyncErrorBanner(
                 message = syncState.errorMessage ?: "",
                 onDismiss = { dismissedError = syncState.errorMessage },
@@ -274,7 +281,10 @@ private fun stepLabel(step: ImportStep?): String = when (step) {
     }
     is ImportStep.ImportLayout -> stringResource(R.string.sync_importing_layout)
     is ImportStep.Finalizing -> stringResource(R.string.sync_finalizing)
-    is ImportStep.Done -> stringResource(R.string.sync_done)
+    // The progress banner only renders while a sync is in flight, so a
+    // Done step here means "this phase finished, another still running" —
+    // never the whole sync. Label it finalizing, not "done".
+    is ImportStep.Done -> stringResource(R.string.sync_finalizing)
     null -> stringResource(R.string.sync_running)
 }
 

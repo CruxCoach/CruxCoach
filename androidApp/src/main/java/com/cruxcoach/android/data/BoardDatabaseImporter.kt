@@ -63,11 +63,11 @@ class BoardDatabaseImporter(
             "idx_climb_stats_angle" to
                     "CREATE INDEX idx_climb_stats_angle ON climb_stats(angle)",
             "idx_climb_stats_browse" to
-                    "CREATE INDEX idx_climb_stats_browse ON climb_stats(angle, difficulty_average, quality_average, ascensionist_count, benchmark_difficulty, climb_uuid)",
+                    "CREATE INDEX idx_climb_stats_browse ON climb_stats(layout_id, angle, difficulty_average, quality_average, ascensionist_count, benchmark_difficulty, climb_uuid)",
             "idx_climb_stats_by_popularity" to
-                    "CREATE INDEX idx_climb_stats_by_popularity ON climb_stats(angle, ascensionist_count, difficulty_average, climb_uuid)",
+                    "CREATE INDEX idx_climb_stats_by_popularity ON climb_stats(layout_id, angle, ascensionist_count, difficulty_average, climb_uuid)",
             "idx_climb_stats_count_cover" to
-                    "CREATE INDEX idx_climb_stats_count_cover ON climb_stats(angle, ascensionist_count, difficulty_average, benchmark_difficulty, climb_uuid)"
+                    "CREATE INDEX idx_climb_stats_count_cover ON climb_stats(layout_id, angle, ascensionist_count, difficulty_average, benchmark_difficulty, climb_uuid)"
         )
     }
 
@@ -312,12 +312,28 @@ class BoardDatabaseImporter(
         snapshotFile: File,
         onProgress: ((step: ImportStep) -> Unit)? = null
     ) {
+        // Snapshots built 2026-05+ carry a precomputed move_count column.
+        // When present it is copied straight through and the post-import
+        // backfill is skipped — the Kilter chunk path ([importClimbs]) does
+        // the same via its own `hasMoveCount` check.
+        var snapshotHasMoveCount = false
         withDeferredIndexes(
             onRebuild = { onProgress?.invoke(ImportStep.Finalizing) }
         ) {
             val targetDb = openTargetDb()
             try {
                 targetDb.execSQL("ATTACH DATABASE ? AS mb", arrayOf(snapshotFile.absolutePath))
+
+                snapshotHasMoveCount = targetDb.rawQuery(
+                    "PRAGMA mb.table_info(climbs)", null
+                ).use { c ->
+                    var found = false
+                    while (c.moveToNext()) {
+                        if (c.getString(1) == "move_count") found = true
+                    }
+                    found
+                }
+                val moveCountExpr = if (snapshotHasMoveCount) "COALESCE(move_count, 0)" else "0"
 
                 val climbTotal = queryLong(
                     targetDb, "SELECT COUNT(*) FROM mb.climbs WHERE is_listed = 1"
@@ -335,7 +351,7 @@ class BoardDatabaseImporter(
                            frames_count, is_listed, edge_left, edge_right,
                            edge_bottom, edge_top, created_at,
                            COALESCE(description, ''), COALESCE(is_nomatch, 0),
-                           COALESCE(frames_pace, 0), COALESCE(hsm, 0), 0,
+                           COALESCE(frames_pace, 0), COALESCE(hsm, 0), $moveCountExpr,
                            'moonboard'
                     FROM mb.climbs
                     WHERE is_listed = 1
@@ -352,10 +368,11 @@ class BoardDatabaseImporter(
                     INSERT OR REPLACE INTO climb_stats(
                         climb_uuid, angle, display_difficulty, difficulty_average,
                         quality_average, ascensionist_count, benchmark_difficulty,
-                        fa_username, fa_at, official_kilter_difficulty)
+                        fa_username, fa_at, official_kilter_difficulty, layout_id)
                     SELECT LOWER(climb_uuid), angle, display_difficulty, difficulty_average,
                            quality_average, ascensionist_count, benchmark_difficulty,
-                           fa_username, fa_at, NULL
+                           fa_username, fa_at, NULL,
+                           COALESCE((SELECT c.layout_id FROM climbs c WHERE c.uuid = LOWER(climb_uuid)), 0)
                     FROM mb.climb_stats
                     """.trimIndent()
                 )
@@ -365,9 +382,10 @@ class BoardDatabaseImporter(
                 targetDb.close()
             }
         }
-        // The MoonBoard snapshot has no move_count column — rows land with
-        // 0; compute it from `frames` now, same as pre-2026-04 Kilter chunks.
-        backfillMoveCounts()
+        // Older snapshots ship no move_count column — compute it from
+        // `frames` post-import (same as pre-2026-04 Kilter chunks). Newer
+        // snapshots carry it precomputed, so the backfill is skipped.
+        if (!snapshotHasMoveCount) backfillMoveCounts()
         val climbCount = boardRepository.getClimbCount()
         val statCount = boardRepository.getStatCount()
         Log.i(TAG, "importMoonBoardSnapshot done: catalogue totals climbs=$climbCount stats=$statCount")
@@ -1023,10 +1041,11 @@ class BoardDatabaseImporter(
                         INSERT OR REPLACE INTO climb_stats(
                             climb_uuid, angle, display_difficulty, difficulty_average,
                             quality_average, ascensionist_count, benchmark_difficulty,
-                            fa_username, fa_at)
+                            fa_username, fa_at, layout_id)
                         SELECT LOWER(climb_uuid), angle, display_difficulty, difficulty_average,
                                quality_average, ascensionist_count, benchmark_difficulty,
-                               fa_username, fa_at
+                               fa_username, fa_at,
+                               COALESCE((SELECT c.layout_id FROM climbs c WHERE c.uuid = LOWER(climb_uuid)), 0)
                         FROM src.$srcTable
                         WHERE rowid BETWEEN $batchStart AND $batchEnd
                     """)
@@ -1195,6 +1214,29 @@ class BoardDatabaseImporter(
             } finally {
                 db2.close()
             }
+        }
+    }
+
+    /**
+     * Refresh SQLite query-planner statistics (`sqlite_stat1`).
+     *
+     * Both import paths ([importFromChunks] for Kilter, [importMoonBoardSnapshot]
+     * for MoonBoard) go through [withDeferredIndexes], which deliberately skips
+     * `ANALYZE` inline — a full pass adds 10-30s to the visible "finalizing"
+     * phase. Per the note there, it must instead run once, detached, after a
+     * sync completes: without fresh stats the planner mis-plans multi-table
+     * filtered counts once the catalogue is large. The MoonBoard catalogue
+     * alone adds ~245k climbs, which turned `countFilteredClimbs` into a ~3s
+     * query and janked the UI. Safe to call on a background dispatcher.
+     */
+    fun analyzeDatabase() {
+        val db = openTargetDb()
+        try {
+            val t0 = System.currentTimeMillis()
+            db.execSQL("ANALYZE")
+            Log.i(TAG, "ANALYZE done in ${System.currentTimeMillis() - t0}ms")
+        } finally {
+            db.close()
         }
     }
 

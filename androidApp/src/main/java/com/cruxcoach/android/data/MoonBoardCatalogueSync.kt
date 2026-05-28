@@ -55,6 +55,7 @@ class MoonBoardCatalogueSync @Inject constructor(
         onProgress: ((BoardDatabaseImporter.ImportStep) -> Unit)? = null
     ): Result = withContext(Dispatchers.IO) {
         try {
+            onProgress?.invoke(BoardDatabaseImporter.ImportStep.FetchingManifest)
             val manifest = blossomSync.fetchManifest()
             val changed = blossomSync.getChangedChunks(manifest)
             if (changed.isEmpty()) {

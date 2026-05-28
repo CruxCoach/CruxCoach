@@ -481,13 +481,19 @@ class BoardBleConnection(private val context: Context) {
      * Aurora's binary packets, split into BLE-MTU-sized writes.
      *
      * @param frames the climb's `p{holdId}r{roleCode}` frames string.
+     * @param variant the MoonBoard variant of the active board; drives the
+     *   per-column-height serpentine arithmetic in the encoder (18 for the
+     *   standard 11×18 boards, 12 for Mini 2020).
      */
-    suspend fun sendMoonBoardClimb(frames: String): Boolean = writeMutex.withLock {
+    suspend fun sendMoonBoardClimb(
+        frames: String,
+        variant: com.cruxcoach.domain.board.MoonBoardVariant,
+    ): Boolean = writeMutex.withLock {
         if (_connectionState.value != ConnectionState.CONNECTED) return false
 
         _connectionState.value = ConnectionState.SENDING
         try {
-            val payload = MoonBoardFrameEncoder.encode(frames)
+            val payload = MoonBoardFrameEncoder.encode(frames, variant)
             val chunks = payload.toList()
                 .chunked(BoardPacketEncoder.BLE_MTU)
                 .map { it.toByteArray() }

@@ -48,8 +48,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
 import com.cruxcoach.android.data.BoardConstants
-import com.cruxcoach.android.ui.settings.BoardModelSelectionDialog
+import com.cruxcoach.android.ui.settings.BoardSelectionDialog
 import com.cruxcoach.android.ui.settings.GymBoardSearchSheet
+import com.cruxcoach.domain.board.MoonBoardVariant
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.util.GradeDisplayHelper
 import com.cruxcoach.data.repository.ClimbSortField
@@ -69,16 +70,23 @@ fun BoardFilterScreen(
     var showGymSearch by remember { mutableStateOf(false) }
 
     if (showBoardPicker) {
-        // Combined all-16 board picker (Original/Homewall segment +
-        // frequency sort), reused from settings. Confirming sets the
-        // global board selection that drives the always-on
-        // "fits my board" list filter.
-        BoardModelSelectionDialog(
+        // Unified picker — Kilter Original / Kilter Homewall / MoonBoard.
+        // Confirming sets the global board selection that drives the
+        // always-on "fits my board" filter and the brand-aware browse.
+        BoardSelectionDialog(
+            initialBrand = state.filter.boardBrand,
             productSizes = BoardConstants.KILTER_KNOWN_SIZES,
+            selectedKilterSizeId = state.boardSize?.id?.toInt() ?: 0,
+            selectedMoonBoardVariant = if (state.filter.boardBrand == "moonboard") {
+                MoonBoardVariant.fromLayoutId(state.filter.layoutId.toLong())
+            } else null,
             frequency = BoardConstants.DEFAULT_SIZE_FREQUENCY,
-            selectedId = state.boardSize?.id?.toInt() ?: 0,
-            onConfirm = { id ->
+            onConfirmKilter = { id ->
                 viewModel.selectBoard(id)
+                showBoardPicker = false
+            },
+            onConfirmMoonBoard = { variant ->
+                viewModel.selectMoonBoardVariant(variant)
                 showBoardPicker = false
             },
             onDismiss = { showBoardPicker = false },

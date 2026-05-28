@@ -141,6 +141,7 @@ fun SettingsScreen(
                 productSizes = allSizes,
                 selectedKilterSizeId = state.boardProductSizeId,
                 selectedMoonBoardVariant = state.moonBoardVariant,
+                frequency = com.cruxcoach.android.data.BoardConstants.DEFAULT_SIZE_FREQUENCY,
                 onConfirmKilter = { id ->
                     val size = allSizes.firstOrNull { it.id.toInt() == id }
                     val layout = com.cruxcoach.android.data.BoardConstants.layoutIdForProduct(

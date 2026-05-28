@@ -25,7 +25,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
 import com.cruxcoach.android.data.BoardDatabaseImporter.ImportStep
 import com.cruxcoach.android.data.BoardSyncState
-import com.cruxcoach.android.ui.settings.BoardModelSelectionDialog
+import com.cruxcoach.android.ui.settings.BoardSelectionDialog
 import com.cruxcoach.android.ui.theme.*
 
 /**
@@ -171,10 +171,14 @@ fun BoardSyncInlineCard(
         }
     }
     if (modelState.showDialog && modelState.productSizes.isNotEmpty()) {
-        BoardModelSelectionDialog(
+        BoardSelectionDialog(
+            initialBrand = modelState.boardBrand,
             productSizes = modelState.productSizes,
-            selectedId = modelState.selectedId,
-            onConfirm = { viewModel.confirmBoardModel(it) },
+            selectedKilterSizeId = modelState.selectedId,
+            selectedMoonBoardVariant = modelState.selectedMoonBoardVariant,
+            frequency = com.cruxcoach.android.data.BoardConstants.DEFAULT_SIZE_FREQUENCY,
+            onConfirmKilter = { viewModel.confirmBoardModel(it) },
+            onConfirmMoonBoard = { viewModel.confirmMoonBoardVariant(it) },
             onDismiss = { viewModel.dismissModelDialog() },
         )
     }
@@ -350,10 +354,47 @@ private fun DatabaseImportSection(
             }
 
             if (state.isSyncing) {
+                Text(
+                    stringResource(R.string.board_sync_section_kilter),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 SyncProgressChecklist(
                     step = state.importStep,
                     modifier = Modifier.testTag("board_sync_progress"),
                 )
+
+                Text(
+                    stringResource(R.string.board_sync_section_moonboard),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                SyncProgressChecklist(
+                    step = state.moonBoardStep,
+                    showLayoutStep = false,
+                    modifier = Modifier.testTag("board_sync_progress_moonboard"),
+                )
+                state.moonBoardError?.let {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Icon(
+                            Icons.Default.Warning,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            stringResource(R.string.board_sync_moonboard_error),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                }
             }
 
             if (!state.isSyncing) {
@@ -375,6 +416,9 @@ private enum class StepStatus { PENDING, ACTIVE, DONE }
 private fun SyncProgressChecklist(
     step: ImportStep?,
     modifier: Modifier = Modifier,
+    /** The MoonBoard snapshot has no separate placement-import phase, so
+     *  its checklist omits the layout row. */
+    showLayoutStep: Boolean = true,
 ) {
     val stepIndex = when (step) {
         is ImportStep.FetchingManifest, is ImportStep.CheckingUpdate -> 0
@@ -436,7 +480,7 @@ private fun SyncProgressChecklist(
                     R.string.board_sync_detail_progress, step.scanned, step.total,
                 )
             }
-        } else if (step is ImportStep.Done) {
+        } else if (step is ImportStep.Done && step.climbs > 0) {
             "%,d".format(step.climbs)
         } else null
         val climbProgress = if (step is ImportStep.ImportClimbs && step.total > 0 && step.scanned > 0) {
@@ -463,7 +507,7 @@ private fun SyncProgressChecklist(
                     R.string.board_sync_detail_progress, step.scanned, step.total,
                 )
             }
-        } else if (step is ImportStep.Done) {
+        } else if (step is ImportStep.Done && step.stats > 0) {
             "%,d".format(step.stats)
         } else null
         val statProgress = if (step is ImportStep.ImportStats && step.total > 0 && step.scanned > 0) {
@@ -471,18 +515,20 @@ private fun SyncProgressChecklist(
         } else null
         SyncStepRow(stringResource(R.string.board_sync_step_import_stats), statStatus, statDetail, statProgress)
 
-        val layoutIdx = 4
-        val layoutStatus = when {
-            stepIndex > layoutIdx -> StepStatus.DONE
-            stepIndex == layoutIdx -> StepStatus.ACTIVE
-            else -> StepStatus.PENDING
+        if (showLayoutStep) {
+            val layoutIdx = 4
+            val layoutStatus = when {
+                stepIndex > layoutIdx -> StepStatus.DONE
+                stepIndex == layoutIdx -> StepStatus.ACTIVE
+                else -> StepStatus.PENDING
+            }
+            val layoutDetail = if (step is ImportStep.ImportLayout && step.count > 0) {
+                "%,d".format(step.count)
+            } else if (step is ImportStep.Done && step.placements > 0) {
+                stringResource(R.string.board_sync_detail_placements_count, step.placements)
+            } else null
+            SyncStepRow(stringResource(R.string.board_sync_step_import_layout), layoutStatus, layoutDetail)
         }
-        val layoutDetail = if (step is ImportStep.ImportLayout && step.count > 0) {
-            "%,d".format(step.count)
-        } else if (step is ImportStep.Done) {
-            stringResource(R.string.board_sync_detail_placements_count, step.placements)
-        } else null
-        SyncStepRow(stringResource(R.string.board_sync_step_import_layout), layoutStatus, layoutDetail)
 
         val finalizeIdx = 5
         val finalizeStatus = when {

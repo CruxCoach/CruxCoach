@@ -281,16 +281,18 @@ private fun BoardSetupStep(
     var showBoardModelDialog by rememberSaveable { mutableStateOf(false) }
     var showGymSearch by rememberSaveable { mutableStateOf(false) }
     if (showBoardModelDialog) {
-        // Full board list (all 16); the dialog's in-dialog Original/
-        // Homewall segment replaces the standalone layout chip. Pre-sync
-        // via KILTER_KNOWN_SIZES — hardware knowledge, no sync needed.
+        // Unified picker — Kilter Original / Kilter Homewall / MoonBoard.
+        // Pre-sync via KILTER_KNOWN_SIZES (all 16) — hardware knowledge,
+        // no sync needed; the picker filters it per category.
         val sizes = com.cruxcoach.android.data.BoardConstants.KILTER_KNOWN_SIZES
-        com.cruxcoach.android.ui.settings.BoardModelSelectionDialog(
+        com.cruxcoach.android.ui.settings.BoardSelectionDialog(
+            initialBrand = state.boardBrand,
             productSizes = sizes,
+            selectedKilterSizeId = state.boardProductSizeId,
+            selectedMoonBoardVariant = state.moonBoardVariant,
             frequency = state.boardSizeFrequency
                 .ifEmpty { com.cruxcoach.android.data.BoardConstants.DEFAULT_SIZE_FREQUENCY },
-            selectedId = state.boardProductSizeId,
-            onConfirm = { id ->
+            onConfirmKilter = { id ->
                 val size = sizes.firstOrNull { it.id.toInt() == id }
                 val layout = com.cruxcoach.android.data.BoardConstants.layoutIdForProduct(
                     size?.productId?.toInt()
@@ -298,6 +300,10 @@ private fun BoardSetupStep(
                 )
                 val name = com.cruxcoach.android.data.BoardConstants.sizeLabel(sizes, id)
                 viewModel.selectBoardFromGym(layout, id, name)
+                showBoardModelDialog = false
+            },
+            onConfirmMoonBoard = { variant ->
+                viewModel.selectMoonBoardVariant(variant)
                 showBoardModelDialog = false
             },
             onDismiss = { showBoardModelDialog = false },

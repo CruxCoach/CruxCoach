@@ -841,7 +841,7 @@
     <string name="board_climb_by_setter">by %s</string>
     <string name="board_climb_moves">%d moves</string>
     <string name="board_climb_no_data_title">No board data</string>
-    <string name="board_climb_no_data_message">Sync the Kilter Board database to search climbs and display them on the board.</string>
+    <string name="board_climb_no_data_message">Sync the board catalogues to search climbs and display them on the board.</string>
     <string name="board_sync_title">Sync board data</string>
 
     <!-- Board: Detail -->
@@ -867,8 +867,8 @@
     <string name="board_sync_no_network_banner">No network available</string>
     <string name="board_sync_no_wifi_banner">No WiFi — Online download only available over WiFi</string>
     <string name="board_sync_to_browser">Done</string>
-    <string name="board_sync_db_title">Kilter Board Database</string>
-    <string name="board_sync_db_description">Downloads the current Kilter Board climb database (~30 MB). WiFi recommended.</string>
+    <string name="board_sync_db_title">Board databases</string>
+    <string name="board_sync_db_description">Downloads the current Kilter and MoonBoard climb catalogues (~30 MB). WiFi recommended.</string>
     <string name="board_sync_db_synced">Database synced</string>
     <string name="board_sync_last_sync">Last sync: %s</string>
     <string name="board_sync_redownload">Re-download</string>
@@ -925,6 +925,9 @@
     <string name="sync_finalizing">Finalizing…</string>
     <string name="board_sync_step_fetch_manifest">Fetching manifest\u2026</string>
     <string name="board_sync_step_download_chunk" formatted="false">Downloading %s (%d/%d)</string>
+    <string name="board_sync_section_kilter">Kilter catalogue</string>
+    <string name="board_sync_section_moonboard">MoonBoard catalogue</string>
+    <string name="board_sync_moonboard_error">MoonBoard catalogue could not be loaded — Kilter climbs are unaffected.</string>
 
     <!-- Climb Labels -->
     <string name="climb_label_boulder">Boulders</string>
@@ -1788,6 +1791,11 @@
     <string name="board_selection_brand_kilter">Kilter</string>
     <string name="board_selection_brand_moonboard">MoonBoard</string>
     <string name="board_selection_moonboard_variant_label">MoonBoard variant</string>
+    <!-- Unified board picker — three top-level categories -->
+    <string name="board_category_label">Board</string>
+    <string name="board_category_kilter_original">Kilter Original</string>
+    <string name="board_category_kilter_homewall">Kilter Homewall</string>
+    <string name="board_category_moonboard">MoonBoard</string>
     <!-- FEAT-027: MoonBoard catalogue sync result -->
     <string name="moonboard_sync_already_current">MoonBoard catalogue is already up to date.</string>
     <string name="moonboard_sync_imported">MoonBoard catalogue downloaded.</string>

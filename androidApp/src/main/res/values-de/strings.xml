@@ -885,7 +885,7 @@
     <string name="board_climb_by_setter">von %s</string>
     <string name="board_climb_moves">%d Züge</string>
     <string name="board_climb_no_data_title">Keine Board-Daten</string>
-    <string name="board_climb_no_data_message">Synchronisiere die Kilter Board-Datenbank, um Climbs zu suchen und auf dem Board anzuzeigen.</string>
+    <string name="board_climb_no_data_message">Synchronisiere die Board-Kataloge, um Climbs zu suchen und auf dem Board anzuzeigen.</string>
     <string name="board_sync_title">Board-Daten synchronisieren</string>
 
     <!-- Board: Detail -->
@@ -911,8 +911,8 @@
     <string name="board_sync_no_network_banner">Kein Netzwerk verfügbar</string>
     <string name="board_sync_no_wifi_banner">Kein WLAN — Online-Download nur über WLAN möglich</string>
     <string name="board_sync_to_browser">Fertig</string>
-    <string name="board_sync_db_title">Kilter Board-Datenbank</string>
-    <string name="board_sync_db_description">Lädt die aktuelle Kilter Board Climb-Datenbank herunter (~30 MB). WLAN empfohlen.</string>
+    <string name="board_sync_db_title">Board-Datenbanken</string>
+    <string name="board_sync_db_description">Lädt die aktuellen Kilter- und MoonBoard-Kletterkataloge herunter (~30 MB). WLAN empfohlen.</string>
     <string name="board_sync_db_synced">Datenbank synchronisiert</string>
     <string name="board_sync_last_sync">Letzter Sync: %s</string>
     <string name="board_sync_redownload">Neu herunterladen</string>
@@ -969,6 +969,9 @@
     <string name="board_sync_step_import_layout">Layout-Daten importieren</string>
     <string name="board_sync_step_finalize">Finalisieren</string>
     <string name="sync_finalizing">Finalisieren…</string>
+    <string name="board_sync_section_kilter">Kilter-Katalog</string>
+    <string name="board_sync_section_moonboard">MoonBoard-Katalog</string>
+    <string name="board_sync_moonboard_error">MoonBoard-Katalog konnte nicht geladen werden — Kilter-Climbs sind nicht betroffen.</string>
 
     <!-- Climb Labels -->
     <string name="climb_label_boulder">Boulder</string>
@@ -1791,6 +1794,11 @@
     <string name="board_selection_brand_kilter">Kilter</string>
     <string name="board_selection_brand_moonboard">MoonBoard</string>
     <string name="board_selection_moonboard_variant_label">MoonBoard-Variante</string>
+    <!-- Vereinheitlichter Board-Picker — drei Hauptkategorien -->
+    <string name="board_category_label">Board</string>
+    <string name="board_category_kilter_original">Kilter Original</string>
+    <string name="board_category_kilter_homewall">Kilter Homewall</string>
+    <string name="board_category_moonboard">MoonBoard</string>
     <!-- FEAT-027: Ergebnis des MoonBoard-Katalog-Syncs -->
     <string name="moonboard_sync_already_current">MoonBoard-Katalog ist bereits aktuell.</string>
     <string name="moonboard_sync_imported">MoonBoard-Katalog heruntergeladen.</string>

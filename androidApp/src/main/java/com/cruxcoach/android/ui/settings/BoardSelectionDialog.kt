@@ -14,27 +14,36 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.R
+import com.cruxcoach.android.data.BoardConstants
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.data.repository.BoardSize
 import com.cruxcoach.domain.board.MoonBoardVariant
 
-/** The brand the user is configuring in [BoardSelectionDialog] — tier 0 of the picker (FEAT-027). */
-private enum class BoardBrandChoice { KILTER, MOONBOARD }
+/**
+ * Tier-0 board category of the unified picker (FEAT-027 follow-up).
+ *
+ * Replaces the old 2-way brand chooser so onboarding and Settings present
+ * the *same* three-way choice. Kilter Original and Kilter Homewall are one
+ * brand but physically distinct boards (own layout, own hold geometry),
+ * so they are first-class categories rather than a buried sub-segment.
+ */
+private enum class BoardCategory { KILTER_ORIGINAL, KILTER_HOMEWALL, MOONBOARD }
 
 /**
- * Unified board picker (FEAT-027).
+ * Unified board picker — used by both onboarding and Settings.
  *
- * Tier 0 — brand chooser (Kilter / MoonBoard).
- *  - Kilter branch: the product-size list plus the "find via gym" entry.
- *  - MoonBoard branch: a single-tier variant list. A MoonBoard "set up"
- *    is a fixed, standardised hold configuration — the variant fully
- *    determines the board, so there is no separate hold-set choice.
+ * Tier 0: Kilter Original / Kilter Homewall / MoonBoard.
+ * Tier 1: the Kilter categories show their product-size list (common
+ * first); MoonBoard shows its variant list. A MoonBoard variant is a
+ * fixed, standardised hold configuration, so it fully determines the
+ * board — no separate size choice.
  *
- * @param initialBrand which brand tab to land on (the user's active brand).
- * @param productSizes Kilter product-size list (already layout-filtered by
- *        the caller); an empty list is handled gracefully by the Kilter tier.
- * @param selectedKilterSizeId currently-configured Kilter size.
- * @param selectedMoonBoardVariant currently-configured MoonBoard variant, or null.
+ * @param initialBrand the active brand ("kilter" | "moonboard") — picks
+ *        the landing category together with [selectedKilterSizeId].
+ * @param productSizes the FULL Kilter size list (both products); the
+ *        dialog filters it per category. Empty is handled gracefully.
+ * @param frequency optional product-size-id → popularity, for "common
+ *        boards first" ordering of the Kilter lists.
  */
 @Composable
 internal fun BoardSelectionDialog(
@@ -44,23 +53,47 @@ internal fun BoardSelectionDialog(
     selectedMoonBoardVariant: MoonBoardVariant?,
     onConfirmKilter: (Int) -> Unit,
     onConfirmMoonBoard: (MoonBoardVariant) -> Unit,
+    frequency: Map<Int, Long> = emptyMap(),
     /** "Don't know your board? find it via your gym" — FEAT-007 gym
-     *  search. Shown in the Kilter tier only; null hides it. */
+     *  search. Shown in the Kilter categories only; null hides it. */
     onFindViaGym: (() -> Unit)? = null,
     onDismiss: () -> Unit,
 ) {
-    var brand by remember {
-        mutableStateOf(
-            if (initialBrand == "moonboard") BoardBrandChoice.MOONBOARD
-            else BoardBrandChoice.KILTER
-        )
+    val initialCategory = remember(initialBrand, selectedKilterSizeId, productSizes) {
+        when {
+            initialBrand == "moonboard" -> BoardCategory.MOONBOARD
+            productSizes.firstOrNull { it.id.toInt() == selectedKilterSizeId }
+                ?.productId?.toInt() == BoardConstants.KILTER_HOMEWALL_PRODUCT_ID ->
+                BoardCategory.KILTER_HOMEWALL
+            else -> BoardCategory.KILTER_ORIGINAL
+        }
     }
+    var category by remember { mutableStateOf(initialCategory) }
     var kilterSelection by remember { mutableIntStateOf(selectedKilterSizeId) }
     var mbVariant by remember {
         mutableStateOf(selectedMoonBoardVariant ?: MoonBoardVariant.entries.first())
     }
 
-    val kilterEmpty = productSizes.isEmpty()
+    val isKilter = category != BoardCategory.MOONBOARD
+    val kilterProductId = if (category == BoardCategory.KILTER_HOMEWALL) {
+        BoardConstants.KILTER_HOMEWALL_PRODUCT_ID
+    } else {
+        BoardConstants.KILTER_PRODUCT_ID
+    }
+    val shownSizes = remember(category, productSizes, frequency) {
+        productSizes
+            .filter { it.productId.toInt() == kilterProductId }
+            .sortedByDescending { frequency[it.id.toInt()] ?: 0L }
+    }
+    val kilterEmpty = isKilter && shownSizes.isEmpty()
+
+    // Switching category: if the current size pick doesn't belong to the
+    // new category's product, fall to that category's most common size.
+    LaunchedEffect(category) {
+        if (isKilter && shownSizes.none { it.id.toInt() == kilterSelection }) {
+            shownSizes.firstOrNull()?.let { kilterSelection = it.id.toInt() }
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -77,101 +110,92 @@ internal fun BoardSelectionDialog(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                // Tier 0 — brand chooser.
+                // Tier 0 — board category. Stacked chips: the three labels
+                // are too long to share one row on a narrow dialog.
                 Text(
-                    stringResource(R.string.board_selection_brand_label),
+                    stringResource(R.string.board_category_label),
                     style = MaterialTheme.typography.bodyMedium,
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(
-                        selected = brand == BoardBrandChoice.KILTER,
-                        onClick = { brand = BoardBrandChoice.KILTER },
-                        label = { Text(stringResource(R.string.board_selection_brand_kilter)) },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
-                            selectedLabelColor = OrangeAccent,
-                        ),
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CategoryChip(
+                        label = stringResource(R.string.board_category_kilter_original),
+                        selected = category == BoardCategory.KILTER_ORIGINAL,
+                        onSelect = { category = BoardCategory.KILTER_ORIGINAL },
                     )
-                    FilterChip(
-                        selected = brand == BoardBrandChoice.MOONBOARD,
-                        onClick = { brand = BoardBrandChoice.MOONBOARD },
-                        label = { Text(stringResource(R.string.board_selection_brand_moonboard)) },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
-                            selectedLabelColor = OrangeAccent,
-                        ),
+                    CategoryChip(
+                        label = stringResource(R.string.board_category_kilter_homewall),
+                        selected = category == BoardCategory.KILTER_HOMEWALL,
+                        onSelect = { category = BoardCategory.KILTER_HOMEWALL },
+                    )
+                    CategoryChip(
+                        label = stringResource(R.string.board_category_moonboard),
+                        selected = category == BoardCategory.MOONBOARD,
+                        onSelect = { category = BoardCategory.MOONBOARD },
                     )
                 }
 
                 HorizontalDivider()
 
-                when (brand) {
-                    BoardBrandChoice.KILTER -> {
-                        if (kilterEmpty) {
-                            Text(
-                                stringResource(R.string.board_model_dialog_body_missing_inline),
-                                style = MaterialTheme.typography.bodyMedium,
-                            )
-                        } else {
-                            Text(
-                                stringResource(R.string.board_model_dialog_title_pick),
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.SemiBold,
-                            )
-                            productSizes.forEach { size ->
-                                RadioRow(
-                                    label = size.name,
-                                    selected = kilterSelection == size.id.toInt(),
-                                    onSelect = { kilterSelection = size.id.toInt() },
-                                )
-                            }
-                            Text(
-                                stringResource(R.string.board_model_dialog_hint),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            if (onFindViaGym != null) {
-                                TextButton(
-                                    onClick = onFindViaGym,
-                                    contentPadding = PaddingValues(horizontal = 0.dp),
-                                ) {
-                                    Text(
-                                        stringResource(R.string.settings_board_find_via_gym),
-                                        color = OrangeAccent,
-                                        style = MaterialTheme.typography.labelLarge,
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    BoardBrandChoice.MOONBOARD -> {
+                if (isKilter) {
+                    if (kilterEmpty) {
                         Text(
-                            stringResource(R.string.board_selection_moonboard_variant_label),
+                            stringResource(R.string.board_model_dialog_body_missing_inline),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    } else {
+                        Text(
+                            stringResource(R.string.board_model_dialog_title_pick),
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.SemiBold,
                         )
-                        MoonBoardVariant.entries.forEach { variant ->
+                        shownSizes.forEach { size ->
                             RadioRow(
-                                label = variant.displayName,
-                                selected = mbVariant == variant,
-                                onSelect = { mbVariant = variant },
+                                label = BoardConstants.sizeLabel(size.id, size.name),
+                                selected = kilterSelection == size.id.toInt(),
+                                onSelect = { kilterSelection = size.id.toInt() },
                             )
                         }
+                        Text(
+                            stringResource(R.string.board_model_dialog_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        if (onFindViaGym != null) {
+                            TextButton(
+                                onClick = onFindViaGym,
+                                contentPadding = PaddingValues(horizontal = 0.dp),
+                            ) {
+                                Text(
+                                    stringResource(R.string.settings_board_find_via_gym),
+                                    color = OrangeAccent,
+                                    style = MaterialTheme.typography.labelLarge,
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    Text(
+                        stringResource(R.string.board_selection_moonboard_variant_label),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    MoonBoardVariant.entries.forEach { variant ->
+                        RadioRow(
+                            label = variant.displayName,
+                            selected = mbVariant == variant,
+                            onSelect = { mbVariant = variant },
+                        )
                     }
                 }
             }
         },
         confirmButton = {
-            val confirmEnabled = brand == BoardBrandChoice.MOONBOARD || !kilterEmpty
             Button(
                 onClick = {
-                    when (brand) {
-                        BoardBrandChoice.KILTER -> onConfirmKilter(kilterSelection)
-                        BoardBrandChoice.MOONBOARD -> onConfirmMoonBoard(mbVariant)
-                    }
+                    if (isKilter) onConfirmKilter(kilterSelection)
+                    else onConfirmMoonBoard(mbVariant)
                 },
-                enabled = confirmEnabled,
+                enabled = !kilterEmpty,
                 colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
                 shape = RoundedCornerShape(12.dp),
             ) {
@@ -186,6 +210,25 @@ internal fun BoardSelectionDialog(
                 Text(stringResource(R.string.board_model_dialog_cancel))
             }
         },
+    )
+}
+
+/** Tier-0 category chip — full-width so the three stack cleanly. */
+@Composable
+private fun CategoryChip(
+    label: String,
+    selected: Boolean,
+    onSelect: () -> Unit,
+) {
+    FilterChip(
+        selected = selected,
+        onClick = onSelect,
+        label = { Text(label) },
+        modifier = Modifier.fillMaxWidth(),
+        colors = FilterChipDefaults.filterChipColors(
+            selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
+            selectedLabelColor = OrangeAccent,
+        ),
     )
 }
 

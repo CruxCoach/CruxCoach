@@ -118,6 +118,11 @@ data class OnboardingState(
     val boardLayoutId: Int = com.cruxcoach.android.data.BoardConstants.KILTER_ORIGINAL_LAYOUT,
     val boardProductSizeId: Int = com.cruxcoach.android.data.BoardConstants.KILTER_DEFAULT_SIZE,
     val boardProductSizeName: String = "",
+    /** Active board family — "kilter" or "moonboard" (FEAT-027). Decides
+     *  which category the unified board picker lands on. */
+    val boardBrand: String = "kilter",
+    /** Selected MoonBoard variant when [boardBrand] == "moonboard". */
+    val moonBoardVariant: com.cruxcoach.domain.board.MoonBoardVariant? = null,
     val boardSizeFrequency: Map<Int, Long> = emptyMap(),
     val boardSearchEnabled: Boolean = false,
 )
@@ -241,6 +246,8 @@ class OnboardingViewModel @Inject constructor(
     fun selectBoardFromGym(layoutId: Int, productSizeId: Int, label: String) {
         _state.update {
             it.copy(
+                boardBrand = "kilter",
+                moonBoardVariant = null,
                 boardLayoutId = layoutId,
                 boardProductSizeId = productSizeId,
                 boardProductSizeName = label,
@@ -249,6 +256,27 @@ class OnboardingViewModel @Inject constructor(
         viewModelScope.launch {
             userPreferences.setBoardLayoutId(layoutId)
             userPreferences.setBoardProductSizeId(productSizeId)
+            // Reset the brand in case the user toggled to MoonBoard and
+            // back inside the picker before confirming a Kilter board.
+            userPreferences.setBoardBrand("kilter")
+        }
+    }
+
+    /** Apply a MoonBoard variant chosen in the BOARD_SETUP picker
+     *  (FEAT-027). Persisted immediately, mirroring [selectBoardFromGym];
+     *  the board-data sync later in onboarding pulls the MoonBoard
+     *  catalogue alongside the Kilter one. */
+    fun selectMoonBoardVariant(variant: com.cruxcoach.domain.board.MoonBoardVariant) {
+        _state.update {
+            it.copy(
+                boardBrand = "moonboard",
+                boardLayoutId = variant.layoutId.toInt(),
+                moonBoardVariant = variant,
+                boardProductSizeName = variant.displayName,
+            )
+        }
+        viewModelScope.launch {
+            userPreferences.setMoonBoardSelection(variant.layoutId.toInt())
         }
     }
 
@@ -602,8 +630,13 @@ class OnboardingViewModel @Inject constructor(
                 // `isBoardProductSizeDefault`) would re-prompt the model
                 // dialog right after the first board sync — duplicating
                 // the choice the user just made in the BOARD_SETUP step.
-                userPreferences.setBoardLayoutId(s.boardLayoutId)
-                userPreferences.setBoardProductSizeId(s.boardProductSizeId)
+                if (s.boardBrand == "moonboard") {
+                    userPreferences.setMoonBoardSelection(s.boardLayoutId)
+                } else {
+                    userPreferences.setBoardLayoutId(s.boardLayoutId)
+                    userPreferences.setBoardProductSizeId(s.boardProductSizeId)
+                    userPreferences.setBoardBrand("kilter")
+                }
                 userPreferences.setOnboardingCompleted(true)
                 // Suppress the "what's new" dialog for features the user
                 // already chose during onboarding — they would otherwise

@@ -7,7 +7,13 @@ import kotlinx.serialization.Serializable
 data class BlossomManifest(
     val v: Int,
     val board: String,
-    @SerialName("product_id") val productId: Int,
+    /**
+     * Aurora product ID — Kilter-only. The MoonBoard catalogue manifest
+     * has no Aurora product, so this field is absent there: nullable so
+     * the same parser serves both `cruxcoach/board-db` and
+     * `cruxcoach/moonboard-db` manifests.
+     */
+    @SerialName("product_id") val productId: Int? = null,
     @SerialName("created_at") val createdAt: Long,
     val compression: String,
     val chunks: List<BlossomChunk>

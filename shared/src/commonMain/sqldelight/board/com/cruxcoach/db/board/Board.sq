@@ -69,6 +69,12 @@ CREATE TABLE climb_stats (
     fa_username TEXT,
     fa_at TEXT,
     official_kilter_difficulty INTEGER,
+    -- Denormalized copy of climbs.layout_id, kept in lock-step by the
+    -- importers and migration 15.sqm. Lets the browse/count indexes lead
+    -- with layout_id so a query for one board never scans another board's
+    -- same-angle rows — the Kilter + MoonBoard catalogues sharing one
+    -- `angle` bucket is what made post-MoonBoard browse queries ~3s.
+    layout_id INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (climb_uuid, angle)
 );
 
@@ -148,21 +154,25 @@ CREATE TABLE beta_links (
 CREATE INDEX idx_beta_links_climb ON beta_links(climb_uuid);
 CREATE INDEX idx_climb_stats_angle ON climb_stats(angle);
 CREATE INDEX idx_climbs_listed ON climbs(is_listed);
+-- All three climb_stats browse/count indexes lead with layout_id so a
+-- query for one board (Kilter Original / Homewall / a MoonBoard variant)
+-- seeks straight into its (layout_id, angle) slice instead of scanning the
+-- `angle` bucket shared across every board's catalogue.
 CREATE INDEX idx_climb_stats_browse ON climb_stats(
-    angle, difficulty_average, quality_average, ascensionist_count,
+    layout_id, angle, difficulty_average, quality_average, ascensionist_count,
     benchmark_difficulty, climb_uuid
 );
--- Optimized for default sort (ASCENSIONISTS DESC): angle equality + sort column
--- lets SQLite scan backward without temp sort for LIMIT queries.
+-- Optimized for default sort (ASCENSIONISTS DESC): (layout_id, angle) equality
+-- + sort column lets SQLite scan backward without temp sort for LIMIT queries.
 CREATE INDEX idx_climb_stats_by_popularity ON climb_stats(
-    angle, ascensionist_count, difficulty_average, climb_uuid
+    layout_id, angle, ascensionist_count, difficulty_average, climb_uuid
 );
 CREATE INDEX idx_climbs_frames_count ON climbs(is_listed, frames_count, uuid);
 
--- Covering index for COUNT queries: angle equality → range filters → climb_uuid for JOIN.
--- Allows SQLite to satisfy countFilteredClimbs entirely from the index (no table lookup).
+-- Covering index for COUNT queries: (layout_id, angle) equality → range
+-- filters → climb_uuid for JOIN.
 CREATE INDEX idx_climb_stats_count_cover ON climb_stats(
-    angle, ascensionist_count, difficulty_average, benchmark_difficulty, climb_uuid
+    layout_id, angle, ascensionist_count, difficulty_average, benchmark_difficulty, climb_uuid
 );
 
 -- FEAT-003 community-climb indexes
@@ -211,7 +221,7 @@ CREATE TABLE community_grade_cache (
 -- SQLite flattens simple INNER JOIN views into the outer query (no materialization).
 CREATE VIEW climb_browse AS
 SELECT
-    c.uuid, c.name, c.setter_username, c.frames_count, c.layout_id,
+    c.uuid, c.name, c.setter_username, c.frames_count, cs.layout_id,
     c.board_brand,
     COALESCE(c.description, '') AS description,
     c.is_nomatch, c.frames_pace, c.hsm, c.move_count,
@@ -470,7 +480,7 @@ getClimbCountByAngle:
 SELECT cs.angle, COUNT(*) AS climb_count
 FROM climb_stats cs
 INNER JOIN climbs c ON c.uuid = cs.climb_uuid
-WHERE c.layout_id = ?
+WHERE cs.layout_id = ?
   AND c.is_listed = 1
   AND c.frames_count >= ?
   AND c.frames_count <= ?
@@ -490,7 +500,7 @@ countFilteredClimbsFast:
 SELECT COUNT(*)
 FROM climb_stats cs
 INNER JOIN climbs c ON c.uuid = cs.climb_uuid
-WHERE c.layout_id = ?
+WHERE cs.layout_id = ?
   AND cs.angle = ?
   AND cs.difficulty_average >= ? AND cs.difficulty_average <= ?
   AND cs.ascensionist_count >= ?
@@ -502,7 +512,7 @@ countFilteredClimbs:
 SELECT COUNT(*)
 FROM climb_stats cs
 INNER JOIN climbs c ON c.uuid = cs.climb_uuid
-WHERE c.layout_id = ?
+WHERE cs.layout_id = ?
   AND cs.angle = ?
   AND c.is_listed = 1
   AND c.frames_count >= ? AND c.frames_count <= ?
@@ -514,7 +524,7 @@ countBenchmarkFilteredClimbs:
 SELECT COUNT(*)
 FROM climb_stats cs
 INNER JOIN climbs c ON c.uuid = cs.climb_uuid
-WHERE c.layout_id = ?
+WHERE cs.layout_id = ?
   AND cs.angle = ?
   AND c.is_listed = 1
   AND c.frames_count >= ? AND c.frames_count <= ?
@@ -527,7 +537,7 @@ countSearchClimbs:
 SELECT COUNT(*)
 FROM climbs c
 INNER JOIN climb_stats cs ON c.uuid = cs.climb_uuid
-WHERE c.layout_id = ?
+WHERE cs.layout_id = ?
   AND (c.name LIKE '%' || ? || '%' OR c.setter_username LIKE '%' || ? || '%')
   AND cs.angle = ?
   AND c.is_listed = 1
@@ -538,7 +548,7 @@ countBenchmarkSearchClimbs:
 SELECT COUNT(*)
 FROM climbs c
 INNER JOIN climb_stats cs ON c.uuid = cs.climb_uuid
-WHERE c.layout_id = ?
+WHERE cs.layout_id = ?
   AND (c.name LIKE '%' || ? || '%' OR c.setter_username LIKE '%' || ? || '%')
   AND cs.angle = ?
   AND c.is_listed = 1
@@ -553,7 +563,7 @@ getAllFramesForFilter:
 SELECT c.uuid, c.frames
 FROM climbs c
 INNER JOIN climb_stats cs ON c.uuid = cs.climb_uuid
-WHERE c.layout_id = :layoutId
+WHERE cs.layout_id = :layoutId
   AND cs.angle = :angle
   AND c.frames_count >= :minFrames AND c.frames_count <= :maxFrames
   AND cs.difficulty_average >= :minDiff AND cs.difficulty_average <= :maxDiff
@@ -959,7 +969,7 @@ getFramesForLayoutAndAngle:
 SELECT c.uuid, c.frames
 FROM climbs c
 INNER JOIN climb_stats cs ON c.uuid = cs.climb_uuid
-WHERE c.layout_id = :layoutId
+WHERE cs.layout_id = :layoutId
   AND cs.angle = :angle
   AND c.is_listed = 1
   AND c.frames_count = 1
