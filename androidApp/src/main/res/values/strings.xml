@@ -234,11 +234,14 @@
     <string name="map_marker_adjustability">Adjustability</string>
     <string name="map_marker_frame">Frame</string>
     <string name="map_marker_field_unknown">—</string>
+    <string name="map_marker_intent_failed">No app available for this action.</string>
     <string name="map_offline_dialog_title">No internet connection</string>
     <string name="map_offline_dialog_body">The map needs internet the first time you open it. After that, areas you\'ve viewed stay available offline.\n\nConnect to Wi-Fi or mobile data and try again.</string>
     <string name="map_offline_dialog_close">Close</string>
     <string name="map_no_data">Board locations not loaded yet — they download automatically on the next app start</string>
     <string name="map_loading_locations">Loading board locations…</string>
+    <string name="map_init_error" formatted="false">Map failed to load: %1$s</string>
+    <string name="map_tile_provider_unreachable">Map tile service is currently unreachable — check your connection or try again later.</string>
     <string name="map_open_filters">Open filters</string>
     <string name="map_open_stats">Open stats</string>
     <string name="map_filter_sheet_title">Filter map</string>
@@ -1824,6 +1827,21 @@
     <string name="whatsnew_aurora_import_hint">Have the JSON file already? Tap "Import now". Otherwise the importer stays in Settings → Migrate from Aurora — request the export first, come back later.</string>
     <string name="whatsnew_aurora_import_action_now">Import now</string>
     <string name="whatsnew_aurora_import_action_later">Later</string>
+
+    <!-- FEAT-015 board-locations map (0.1.5) -->
+    <string name="whatsnew_board_map_title">New: Kilter Boards on a map</string>
+    <string name="whatsnew_board_map_body">0.1.5 puts every known Kilter Board installation on an interactive world map. Tap the map icon next to hold-search in the board browser, pan around, tap a marker for the gym\'s address, phone, email, and a direct link into the climbs for that board\'s exact layout and size.</string>
+    <string name="whatsnew_board_map_hint">Filters cover layout family, country, public-vs-private, adjustability and size. The "Matches my board" filter narrows the markers to gyms whose hardware fits the board you configured in Settings.</string>
+    <string name="whatsnew_board_map_action_now">Open map</string>
+    <string name="whatsnew_board_map_action_later">Later</string>
+
+    <!-- FEAT-007 Phase 1 gym-board picker (0.1.5) -->
+    <string name="whatsnew_gym_picker_title">New: pick your board by gym</string>
+    <string name="whatsnew_gym_picker_body">In Settings → Board-Größe, "Ändern" now offers a "Halle suchen" path. Search your gym, pick the wall, done — no more guessing the product-size code from the dropdown.</string>
+    <string name="whatsnew_gym_picker_hint">The manual list is still there as a fallback for setters and home-wall owners who know their hardware off the top of their head.</string>
+    <string name="whatsnew_gym_picker_action_now">Open Settings</string>
+    <string name="whatsnew_gym_picker_action_later">Later</string>
+
     <string name="settings_aurora_migration_title">Migrate from Aurora / old Kilter app</string>
     <string name="settings_aurora_migration_desc">Bring your ascents, attempts and circuits across from the email export Aurora sends after a data request.</string>
     <string name="aurora_migration_title">Aurora migration</string>

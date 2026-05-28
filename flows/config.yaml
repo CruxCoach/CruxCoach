@@ -26,4 +26,6 @@ executionOrder:
     - editor-overflow
     - drafts-drawer-open
     - settings-navigate
+    - map-navigate
+    - settings-board-picker
     - lists-navigate

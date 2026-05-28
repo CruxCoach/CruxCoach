@@ -28,6 +28,37 @@ dontkillmyapp.com (Urbandroid Team) — OEM background-killer taxonomy used in
     (https://creativecommons.org/licenses/by-sa/4.0/). See
     THIRD_PARTY_LICENSES.md for the full attribution.
 
+MapLibre Native (Android) — Copyright (c) MapLibre contributors. Used as the
+    map-rendering engine for the board-locations map (FEAT-015). Licensed
+    under the BSD 2-Clause "Simplified" License
+    (https://github.com/maplibre/maplibre-native/blob/main/LICENSE.md).
+    See THIRD_PARTY_LICENSES.md for the full attribution.
+
+mapbox-android-gestures — Copyright (c) Mapbox, Inc. Transitive dependency
+    of MapLibre Native for touch-gesture handling. Licensed under Apache
+    License 2.0 (https://www.apache.org/licenses/LICENSE-2.0). See the
+    NOTICE file accompanying that dependency for the required attribution,
+    mirrored in THIRD_PARTY_LICENSES.md.
+
+OpenFreeMap — © OpenFreeMap contributors. Used as the default vector-tile
+    provider for the board-locations map. Tile data is delivered under
+    the OpenFreeMap terms of use
+    (https://openfreemap.org/). Style and schema are based on
+    OpenMapTiles (BSD-3-Clause). See THIRD_PARTY_LICENSES.md and LEGAL.md.
+
+OpenStreetMap — © OpenStreetMap contributors. Underlying geographic data
+    used by the map provider listed above. Licensed under the Open
+    Database License (ODbL) v1.0
+    (https://opendatacommons.org/licenses/odbl/1-0/). Attribution is
+    surfaced in the map UI (MapLibre default attribution control) and
+    mirrored in THIRD_PARTY_LICENSES.md and LEGAL.md.
+
+@hangtime/climbing-boards (Kilter / Aurora gym GeoJSON dataset) — Bundled
+    via the daily Blossom locations chunk. Source feeds further attribute
+    StoreRocket for the gym contact records. CruxCoach does not modify
+    the upstream data semantics beyond minor normalisation. See LEGAL.md
+    and THIRD_PARTY_LICENSES.md for the maintained inventory.
+
 ================================================================================
 For runtime Maven/Gradle dependencies, see the build system's license report.
 For a maintained inventory of vendored sources and bundled assets, see

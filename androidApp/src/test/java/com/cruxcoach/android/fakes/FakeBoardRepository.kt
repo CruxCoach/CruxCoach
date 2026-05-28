@@ -26,6 +26,24 @@ private fun ClimbWithStats.matchesClimbType(filter: ClimbTypeFilter): Boolean = 
  * In-memory fake of [BoardRepository] for ViewModel unit tests.
  * Focuses on methods used by BoardBrowserViewModel; other methods
  * return sensible defaults (empty lists, 0 counts).
+ *
+ * # Known limitation: `selProductSizeId` is silently ignored
+ *
+ * The real BoardRepository implements the always-on board-fit filter
+ * (FEAT-007 — never user-togglable) via a SQL edge-box predicate that
+ * requires the per-product `boardSizes` geometry (`edgeLeft`/`Right`/
+ * `Bottom`/`Top`). That geometry is not represented on [ClimbWithStats]
+ * here, so this fake treats `selProductSizeId` as a no-op: passing any
+ * value returns the unfiltered set. As a result, any test that depends
+ * on board-fit *filtering* behaviour is **not exercised** by this fake;
+ * such tests need a JDBC-backed integration setup against real
+ * SQLDelight queries.
+ *
+ * Production callers and most VM tests pass `selProductSizeId = 0`
+ * (the documented "no filter" sentinel), so the limitation only
+ * matters for tests intentionally trying to exercise the edge-box
+ * path. Keep `selProductSizeId = 0` in fake-backed tests unless you
+ * are accepting that the value is ignored.
  */
 class FakeBoardRepository : BoardRepository {
 

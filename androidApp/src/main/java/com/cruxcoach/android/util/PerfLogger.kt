@@ -128,6 +128,11 @@ object PerfLogger {
         Log.w(TAG, "[+${uptimeMs()}ms] $msg")
     }
 
+    /** Log a warning with uptime prefix and an attached throwable. */
+    fun warn(msg: String, t: Throwable) {
+        Log.w(TAG, "[+${uptimeMs()}ms] $msg", t)
+    }
+
     /** Time a synchronous block and log it. Returns the block's result. */
     inline fun <T> trace(label: String, block: () -> T): T {
         val thread = if (Looper.myLooper() == Looper.getMainLooper()) "MAIN" else "IO"

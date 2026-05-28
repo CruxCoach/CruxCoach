@@ -68,6 +68,80 @@ These images are **not** covered by the CruxCoach GPLv3 source license.
 - **Modifications:** Adapted into Kotlin enums + Android `ComponentName` lookups;
   not redistributed verbatim.
 
+### @hangtime/climbing-boards — Gym/wall locations GeoJSON
+
+- **Used in:** [`BoardDatabaseImporter.importLocations()`](androidApp/src/main/java/com/cruxcoach/android/data/BoardDatabaseImporter.kt),
+  consumed by [`BoardLocationRepository`](shared/src/commonMain/kotlin/com/cruxcoach/data/repository/BoardLocationRepository.kt)
+  (board-locations map, FEAT-015).
+- **Source:** https://www.npmjs.com/package/@hangtime/climbing-boards
+- **Upstream provenance:** Daily mirror of the Kilter PowerSync `global_gyms`
+  bucket, augmented with StoreRocket contact data. CruxCoach does not directly
+  contact the original sources at runtime; the upstream package builds a
+  static GeoJSON which CruxCoach mirrors via the Blossom locations chunk.
+- **Scope of use:** Public gym entities (lat/lng, address, name, phone,
+  email, website, accessibility, board hardware metadata). No personal
+  user data is included.
+- **Modifications:** Re-encoded into the SQLite-shaped chunk schema in
+  `shared/src/commonMain/sqldelight/board/12.sqm` / `13.sqm`; wall and
+  product-size joins are applied at chunk build time, not at app runtime.
+- **Take-down:** A gym or rights holder may request removal at any time
+  via the contacts in `SECURITY.md`. Requests are forwarded upstream
+  to the dataset maintainer where applicable.
+
+---
+
+## Map Rendering & Tile Data
+
+### MapLibre Native (Android)
+
+- **Used in:** [`MapView.kt`](androidApp/src/main/java/com/cruxcoach/android/ui/map/MapView.kt),
+  [`MapMarkerLayer.kt`](androidApp/src/main/java/com/cruxcoach/android/ui/map/MapMarkerLayer.kt),
+  [`MapScreen.kt`](androidApp/src/main/java/com/cruxcoach/android/ui/map/MapScreen.kt) — the
+  rendering engine for the board-locations map (FEAT-015).
+- **Upstream:** https://github.com/maplibre/maplibre-native
+- **License:** BSD 2-Clause (Simplified)
+- **License text:** https://github.com/maplibre/maplibre-native/blob/main/LICENSE.md
+- **Distribution form:** runtime Maven dependency (`org.maplibre.gl:android-sdk`)
+  pulled at build time; not vendored into the repository tree.
+
+### mapbox-android-gestures
+
+- **Used by:** transitive dependency of MapLibre Native, providing
+  touch-gesture interpretation for pan/zoom/rotate.
+- **Upstream:** https://github.com/mapbox/mapbox-gestures-android
+- **License:** Apache License 2.0
+- **License text:** https://www.apache.org/licenses/LICENSE-2.0
+- **NOTICE:** Apache 2.0 §4(d) requires preserving any `NOTICE` file from
+  the dependency. The upstream NOTICE attribution is reproduced via
+  [`NOTICE`](NOTICE) at the repository root.
+- **Distribution form:** runtime Maven dependency; not vendored.
+
+### OpenFreeMap (vector tile provider)
+
+- **Used in:** [`MapStyleProvider.kt`](androidApp/src/main/java/com/cruxcoach/android/ui/map/MapStyleProvider.kt) — default style URL
+  resolves to OpenFreeMap's hosted tiles.
+- **Upstream:** https://openfreemap.org/
+- **License & terms:** Free for any use, with attribution and the
+  request that high-traffic users self-host. The style/schema is
+  based on **OpenMapTiles** (BSD-3-Clause).
+- **Attribution:** Surfaced in-app via MapLibre's default attribution
+  control (`UiSettings.isAttributionEnabled = true`, locked in
+  defensively in `MapView.kt`).
+
+### OpenStreetMap (geographic base data)
+
+- **Used as:** the underlying data source for the OpenFreeMap tile
+  service above. Every map tile delivered by OpenFreeMap is derived
+  from OSM.
+- **Upstream:** https://www.openstreetmap.org/
+- **License:** Open Database License (ODbL) v1.0
+- **License text:** https://opendatacommons.org/licenses/odbl/1-0/
+- **Attribution requirement (ODbL §4.3):** A "© OpenStreetMap
+  contributors" notice must accompany the produced work. CruxCoach
+  satisfies this in two places: (1) the MapLibre default attribution
+  control rendered inside the map UI, and (2) this file plus the root
+  [`NOTICE`](NOTICE) in the distribution.
+
 ---
 
 ## Notes for Maintainers

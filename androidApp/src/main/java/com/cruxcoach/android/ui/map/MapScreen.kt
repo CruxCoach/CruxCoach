@@ -89,6 +89,29 @@ fun MapScreen(
         }
     }
 
+    // Init-failure surface — no more silent infinite spinner.
+    LaunchedEffect(state.errorMessage) {
+        val err = state.errorMessage ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(
+            message = context.getString(R.string.map_init_error, err),
+            duration = SnackbarDuration.Long,
+        )
+        viewModel.clearError()
+    }
+
+    // One-shot tile-provider reachability probe. If OpenFreeMap is down /
+    // rate-limited the user would otherwise see only a grey canvas with
+    // markers and no explanation — surface a snackbar instead.
+    LaunchedEffect(styleUrl) {
+        val ok = MapStyleProvider.isReachable(styleUrl)
+        if (!ok) {
+            snackbarHostState.showSnackbar(
+                message = context.getString(R.string.map_tile_provider_unreachable),
+                duration = SnackbarDuration.Long,
+            )
+        }
+    }
+
     LaunchedEffect(styleUrl) {
         val (map, _) = mapHandle ?: return@LaunchedEffect
         map.setStyle(Style.Builder().fromUri(styleUrl)) { newStyle ->

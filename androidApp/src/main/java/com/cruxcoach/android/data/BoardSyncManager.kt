@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.time.Clock
@@ -56,6 +57,10 @@ class BoardSyncManager(
         /** Denormalized-field refresh batch size — keeps per-transaction
          *  write-lock hold time short so user writes can interleave. */
         const val REFRESH_BATCH_SIZE = 100
+        /** Wall-clock cap on locations backfill — stalled chunk downloads
+         *  (captive portal, dead TCP socket) would otherwise pin the
+         *  in-app "Standorte werden geladen" snackbar indefinitely. */
+        const val BACKFILL_TIMEOUT_MS = 120_000L
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -204,39 +209,59 @@ class BoardSyncManager(
      */
     fun backfillLocationsIfMissing() {
         scope.launch {
-            if (!importer.isImported()) return@launch           // fresh install → full sync handles locations
-            if (_state.value.isSyncing) return@launch            // a full sync is already importing everything
-            if (boardLocationRepository.count() > 0L) return@launch  // already populated → nothing to do
-            _locationsBackfilling.value = true
+            // Track cache files outside the timeout block so finally can clean
+            // them up regardless of which path exits.
+            val backfillFiles = mutableListOf<File>()
             try {
-                val manifest = blossomSyncManager.fetchManifest()
-                val locationChunks = manifest.chunks.filter { chunk ->
-                    val type = chunk.type.takeIf { it != "unknown" && it.isNotEmpty() }
-                        ?: inferType(chunk.name)
-                    type == "locations"
+                if (!importer.isImported()) return@launch           // fresh install → full sync handles locations
+                if (_state.value.isSyncing) return@launch            // a full sync is already importing everything
+                if (boardLocationRepository.count() > 0L) return@launch  // already populated → nothing to do
+                _locationsBackfilling.value = true
+                val completed = withTimeoutOrNull(BACKFILL_TIMEOUT_MS) {
+                    val manifest = blossomSyncManager.fetchManifest()
+                    val locationChunks = manifest.chunks.filter { chunk ->
+                        val type = chunk.type.takeIf { it != "unknown" && it.isNotEmpty() }
+                            ?: inferType(chunk.name)
+                        type == "locations"
+                    }
+                    if (locationChunks.isEmpty()) {
+                        Log.d(TAG, "Locations backfill: manifest has no locations chunk yet — skipping")
+                        return@withTimeoutOrNull true
+                    }
+                    Log.i(TAG, "Locations backfill: board present, table empty — fetching ${locationChunks.size} locations chunk(s)")
+                    for (chunk in locationChunks) {
+                        // Disambiguating prefix: a concurrent full sync writes
+                        // its chunk cache to `blossom_${chunk.name}.sqlite3`
+                        // (BlossomSyncManager-side). The backfill path now
+                        // routes through `blossom_backfill_${chunk.name}.sqlite3`
+                        // so the two coroutines cannot collide on the same
+                        // chunk-cache file during the FEAT-015 upgrade window.
+                        val out = File(appContext.cacheDir, "blossom_backfill_${chunk.name}.sqlite3")
+                        blossomSyncManager.downloadAndDecompressChunk(chunk = chunk, outputFile = out)
+                        backfillFiles.add(out)
+                    }
+                    importer.importFromChunks(
+                        metaDbFiles = emptyList(),
+                        climbsDbFiles = emptyList(),
+                        statsDbFiles = emptyList(),
+                        locationsDbFiles = backfillFiles
+                    )
+                    locationChunks.forEach { blossomSyncManager.saveChunkHash(it.name, it.sha256) }
+                    Log.i(TAG, "Locations backfill: imported ${boardLocationRepository.count()} locations")
+                    true
                 }
-                if (locationChunks.isEmpty()) {
-                    Log.d(TAG, "Locations backfill: manifest has no locations chunk yet — skipping")
-                    return@launch
+                if (completed == null) {
+                    Log.w(TAG, "Locations backfill timed out after ${BACKFILL_TIMEOUT_MS}ms — will retry on next app start")
                 }
-                Log.i(TAG, "Locations backfill: board present, table empty — fetching ${locationChunks.size} locations chunk(s)")
-                val files = mutableListOf<File>()
-                for (chunk in locationChunks) {
-                    val out = File(appContext.cacheDir, "blossom_${chunk.name}.sqlite3")
-                    blossomSyncManager.downloadAndDecompressChunk(chunk = chunk, outputFile = out)
-                    files.add(out)
-                }
-                importer.importFromChunks(
-                    metaDbFiles = emptyList(),
-                    climbsDbFiles = emptyList(),
-                    statsDbFiles = emptyList(),
-                    locationsDbFiles = files
-                )
-                locationChunks.forEach { blossomSyncManager.saveChunkHash(it.name, it.sha256) }
-                Log.i(TAG, "Locations backfill: imported ${boardLocationRepository.count()} locations")
             } catch (e: Exception) {
                 Log.w(TAG, "Locations backfill failed — will retry on next app start", e)
             } finally {
+                // Always cleanup the backfill-prefixed cache files so they
+                // don't accumulate across retries.
+                backfillFiles.forEach { file ->
+                    runCatching { if (file.exists()) file.delete() }
+                        .onFailure { Log.w(TAG, "Failed to delete backfill cache file ${file.name}", it) }
+                }
                 _locationsBackfilling.value = false
             }
         }

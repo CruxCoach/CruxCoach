@@ -1,5 +1,6 @@
 package com.cruxcoach.android.ui.map
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.data.BoardSyncManager
@@ -9,6 +10,7 @@ import com.cruxcoach.data.repository.Adjustability
 import com.cruxcoach.data.repository.BoardLocation
 import com.cruxcoach.data.repository.BoardLocationRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -20,6 +22,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
+
+private const val TAG = "MapViewModel"
 
 private const val INITIAL_LAT = 20.0
 private const val INITIAL_LNG = 0.0
@@ -53,6 +57,9 @@ data class MapState(
     val noLocationData: Boolean = false,
     /** True while the one-time locations backfill is fetching/importing. */
     val locationsLoading: Boolean = false,
+    /** Non-null when the init pipeline threw — UI surfaces this and exits
+     *  the loading state so the user is not stuck on an infinite spinner. */
+    val errorMessage: String? = null,
 )
 
 @HiltViewModel
@@ -67,81 +74,104 @@ class MapViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            val all = withContext(Dispatchers.IO) { repository.getAll() }
-            _state.update {
-                it.copy(
-                    unfilteredLocations = all,
-                    unfilteredStats = MapStats.from(all),
-                    isLoading = false,
-                    noLocationData = all.isEmpty(),
-                )
-            }
-            recomputeFiltered()
-
-            launch {
-                boardSyncManager.locationsBackfilling.collect { running ->
-                    _state.update { it.copy(locationsLoading = running) }
-                    if (!running) {
-                        val refreshed = withContext(Dispatchers.IO) { repository.getAll() }
-                        _state.update {
-                            it.copy(
-                                unfilteredLocations = refreshed,
-                                unfilteredStats = MapStats.from(refreshed),
-                                noLocationData = refreshed.isEmpty(),
-                            )
-                        }
-                        recomputeFiltered()
-                    }
-                }
-            }
-
-            combine(
-                listOf<Flow<Any?>>(
-                    userPreferences.mapFilterShowOriginal,
-                    userPreferences.mapFilterShowHomewalls,
-                    userPreferences.mapFilterMatchesMyBoard,
-                    userPreferences.mapFilterCountries,
-                    userPreferences.mapFilterAccessTypes,
-                    userPreferences.mapFilterAdjustabilities,
-                    userPreferences.mapFilterSizeIds,
-                    userPreferences.boardLayoutId,
-                    userPreferences.boardProductSizeId,
-                    userPreferences.isBoardProductSizeDefault,
-                )
-            ) { values ->
-                @Suppress("UNCHECKED_CAST")
-                FilterInputs(
-                    showOriginal = values[0] as Boolean,
-                    showHomewalls = values[1] as Boolean,
-                    matchesMyBoard = values[2] as Boolean,
-                    countries = values[3] as Set<String>,
-                    accessTypeKeys = values[4] as Set<String>,
-                    adjustabilityKeys = values[5] as Set<String>,
-                    sizeIds = values[6] as Set<Int>,
-                    layoutId = values[7] as Int,
-                    sizeId = values[8] as Int,
-                    canFilterByMyBoard = !(values[9] as Boolean),
-                )
-            }.collect { inputs ->
+            try {
+                val all = withContext(Dispatchers.IO) { repository.getAll() }
                 _state.update {
                     it.copy(
-                        filters = MapFilters(
-                            showOriginal = inputs.showOriginal,
-                            showHomewalls = inputs.showHomewalls,
-                            matchesMyBoard = inputs.matchesMyBoard,
-                            countries = inputs.countries,
-                            accessTypes = inputs.accessTypeKeys.mapNotNullTo(mutableSetOf()) { runCatching { AccessType.valueOf(it) }.getOrNull() },
-                            adjustabilities = inputs.adjustabilityKeys.mapNotNullTo(mutableSetOf()) { runCatching { Adjustability.valueOf(it) }.getOrNull() },
-                            sizeIds = inputs.sizeIds,
-                        ),
-                        canFilterByMyBoard = inputs.canFilterByMyBoard,
-                        userBoardLayoutId = inputs.layoutId,
-                        userBoardSizeId = inputs.sizeId,
+                        unfilteredLocations = all,
+                        unfilteredStats = MapStats.from(all),
+                        isLoading = false,
+                        noLocationData = all.isEmpty(),
                     )
                 }
                 recomputeFiltered()
+
+                launch {
+                    try {
+                        boardSyncManager.locationsBackfilling.collect { running ->
+                            _state.update { it.copy(locationsLoading = running) }
+                            if (!running) {
+                                val refreshed = withContext(Dispatchers.IO) { repository.getAll() }
+                                _state.update {
+                                    it.copy(
+                                        unfilteredLocations = refreshed,
+                                        unfilteredStats = MapStats.from(refreshed),
+                                        noLocationData = refreshed.isEmpty(),
+                                    )
+                                }
+                                recomputeFiltered()
+                            }
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        Log.w(TAG, "backfill-flow collector failed", e)
+                    }
+                }
+
+                combine(
+                    listOf<Flow<Any?>>(
+                        userPreferences.mapFilterShowOriginal,
+                        userPreferences.mapFilterShowHomewalls,
+                        userPreferences.mapFilterMatchesMyBoard,
+                        userPreferences.mapFilterCountries,
+                        userPreferences.mapFilterAccessTypes,
+                        userPreferences.mapFilterAdjustabilities,
+                        userPreferences.mapFilterSizeIds,
+                        userPreferences.boardLayoutId,
+                        userPreferences.boardProductSizeId,
+                        userPreferences.isBoardProductSizeDefault,
+                    )
+                ) { values ->
+                    @Suppress("UNCHECKED_CAST")
+                    FilterInputs(
+                        showOriginal = values[0] as Boolean,
+                        showHomewalls = values[1] as Boolean,
+                        matchesMyBoard = values[2] as Boolean,
+                        countries = values[3] as Set<String>,
+                        accessTypeKeys = values[4] as Set<String>,
+                        adjustabilityKeys = values[5] as Set<String>,
+                        sizeIds = values[6] as Set<Int>,
+                        layoutId = values[7] as Int,
+                        sizeId = values[8] as Int,
+                        canFilterByMyBoard = !(values[9] as Boolean),
+                    )
+                }.collect { inputs ->
+                    _state.update {
+                        it.copy(
+                            filters = MapFilters(
+                                showOriginal = inputs.showOriginal,
+                                showHomewalls = inputs.showHomewalls,
+                                matchesMyBoard = inputs.matchesMyBoard,
+                                countries = inputs.countries,
+                                accessTypes = inputs.accessTypeKeys.mapNotNullTo(mutableSetOf()) { runCatching { AccessType.valueOf(it) }.getOrNull() },
+                                adjustabilities = inputs.adjustabilityKeys.mapNotNullTo(mutableSetOf()) { runCatching { Adjustability.valueOf(it) }.getOrNull() },
+                                sizeIds = inputs.sizeIds,
+                            ),
+                            canFilterByMyBoard = inputs.canFilterByMyBoard,
+                            userBoardLayoutId = inputs.layoutId,
+                            userBoardSizeId = inputs.sizeId,
+                        )
+                    }
+                    recomputeFiltered()
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "MapViewModel.init failed — surfacing error state", e)
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        errorMessage = e.message ?: e::class.simpleName ?: "Unbekannter Fehler",
+                    )
+                }
             }
         }
+    }
+
+    /** Clear the error banner after the UI has surfaced it (e.g. snackbar dismissed). */
+    fun clearError() {
+        _state.update { it.copy(errorMessage = null) }
     }
 
     private fun recomputeFiltered() {

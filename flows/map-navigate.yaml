@@ -1,0 +1,27 @@
+appId: com.cruxcoach.android
+name: map-navigate
+tags:
+  - smoke
+---
+- launchApp:
+    stopApp: false
+- waitForAnimationToEnd:
+    timeout: 5000
+# Tap the BoardBrowser → Map icon. testTag is what we assert against
+# because the icon-only IconButton has no visible label and its
+# contentDescription string can co-occur (substring) with other DE
+# UI text on this screen.
+- tapOn:
+    id: "board_map_button"
+- waitForAnimationToEnd:
+    timeout: 5000
+# Top-level Map screen: the "Karte" top-bar title is shared with no
+# other route in the DE UI. Pair with the filter / stats action
+# contentDescriptions (icon-only buttons on the AppBar) to disambiguate.
+- assertVisible: "Karte"
+- assertVisible: "Filter öffnen"
+- assertVisible: "Statistik öffnen"
+- pressKey: Back
+# We should be back on the BoardBrowser; "Filter" is the browser's
+# filter-chips header, the same anchor the settings-navigate flow uses.
+- assertVisible: "Filter"

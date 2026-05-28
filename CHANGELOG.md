@@ -4,6 +4,114 @@ All notable changes to CruxCoach will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.1.5] - 2026-05-27
+
+> 0.1.5 puts Kilter Boards on a map and stops asking you for hardware
+> trivia in the picker. Open the map from the board browser to discover
+> installations worldwide, tap a marker for contact details + a direct
+> path to the climbs that fit that exact board. In Settings → Board the
+> picker can now find your gym instead of making you guess the
+> product-size code.
+
+### Added
+- **Board Locations Map** (FEAT-015) — interactive world map of all
+  known Kilter Board installations, rendered locally with MapLibre +
+  OpenFreeMap (no Google Maps, no API key, no proprietary tiles).
+  Filters for layout family (Original / Homewall), Public-only,
+  *Matches my board*, country, access type, adjustability, and size.
+  Tap a marker for a detail sheet with address, phone, email, website,
+  Instagram, and a "Browse climbs for this board" deep-link into the
+  catalog filtered to that exact layout + size. Stats tab aggregates
+  the visible markers by country, access type, adjustability, and
+  size. Public-only by default; Homewall installations off until the
+  user opts in.
+- **Find-your-gym picker** (FEAT-007 Phase 1) — *Settings → Board-Größe
+  → Ändern → Halle suchen* searches the locations dataset by gym name
+  and lists the physical walls at the matching gym, ordered by how
+  common that wall configuration is across all gyms. Picking a wall
+  applies the right layout + product-size in one tap, no hardware
+  knowledge required. The dialog still has a manual size list as the
+  fallback path.
+- **Always-on Board-Fit filter** in the climb browser — climbs that
+  cannot exist on the user's configured board (wrong edge geometry)
+  are filtered out of every list view. The filter is intentionally
+  not user-togglable.
+- **Map data attribution** — `NOTICE`, `THIRD_PARTY_LICENSES.md`, and
+  `LEGAL.md` now cover MapLibre Native, mapbox-android-gestures,
+  OpenFreeMap, OpenMapTiles, OpenStreetMap (ODbL), and the
+  `@hangtime/climbing-boards` dataset.
+
+### Changed
+- **Connection-sheet permission flow** — opening the BLE connection
+  sheet now re-checks the runtime permissions instead of relying on
+  the cached pre-onboarding answer, so users who revoked permission
+  in OS settings get prompted again at the right moment.
+- **Singleton-init failure logging** — the eleven `runCatching {
+  ... }.onFailure { ... }` sites in `CruxCoachApp.onCreate` now log
+  via `Log.w` with attached stack traces instead of `Log.d` (which
+  R8 strips from release builds). Triaging "X failed silently on
+  startup" reports is no longer a guessing game.
+
+### Fixed
+- **Map screen no longer dead-ends silently.** `MapViewModel.init`
+  now catches DB / flow throws (e.g. the brief schema-migration
+  window on a 0.1.4 → 0.1.5 upgrade), exits the loading state, and
+  surfaces a snackbar instead of staring at an infinite spinner.
+- **Tile-server outage now visible.** A 4 s reachability probe runs
+  once when the map opens; if OpenFreeMap is unreachable the user
+  gets a *"Kartenanbieter nicht erreichbar"* snackbar instead of a
+  grey canvas with markers and no explanation.
+- **Marker actions no longer crash.** Phone / email / web / "open
+  in Maps" intents on `BoardLocationDetailSheet` are wrapped in a
+  safe-launch helper that catches `ActivityNotFoundException` and
+  shows a toast, so devices without a dialer / mail / browser don't
+  bring the app down.
+- **Backfill cannot wipe locations on an empty source chunk.**
+  `BoardDatabaseImporter` now refuses to `DELETE FROM` the local
+  `kilter_board_location` / `kilter_board_wall` tables when the
+  attached source chunk has zero rows; a pipeline glitch can no
+  longer silently empty the map after a sync.
+- **Backfill cache files no longer race the full sync.** The
+  one-time locations backfill writes its chunk cache to
+  `blossom_backfill_…sqlite3` instead of the same path the regular
+  full-sync uses, closing the cross-coroutine cache collision
+  window during the 0.1.4 → 0.1.5 upgrade.
+- **Backfill cannot hang forever.** A 120 s wall-clock cap on
+  `backfillLocationsIfMissing` retires stalled chunk downloads
+  (captive portal, dead TCP socket) that previously pinned the
+  in-app *"Standorte werden geladen"* indicator until the next
+  process restart.
+- **Picker no longer disables silently on transient DB failure.**
+  `GymBoardPickerViewModel` wraps its three coroutine launches in
+  `try/catch`, so a brief read error in `countWalls()` /
+  `productSizeFrequency()` / `searchLocations()` no longer leaves
+  the picker permanently dark with no log trail.
+- **Audit trail for `replace-all` imports.** `importLocations` /
+  `kilter_board_wall` imports now log a release-visible
+  *before → after row count* line, so support requests about
+  "my map is empty / suddenly different" have something to grep.
+
+### Security
+- **Marker-action input sanitisation** (FEAT-015 hardening) — the
+  phone / email / website rows in `BoardLocationDetailSheet` now
+  validate their inputs before launching an intent. Phone strings
+  are stripped to a dialer-safe character class (`[0-9+\-() ]`) and
+  rejected entirely if no digits remain; mailto launches go through
+  `EXTRA_EMAIL` against `ACTION_SENDTO` with a `Patterns.EMAIL_ADDRESS`
+  check, closing the previous header-injection arm (`?subject=…&bcc=…`)
+  where a malicious upstream entry could pre-compose the user's
+  mail client; website launches parse the URI and accept only the
+  http / https schemes (`httpx://`, `javascript:`, `intent://`,
+  `file://` are now rejected, where the previous `startsWith("http")`
+  guard would let `httpx://attacker.example` through).
+
+### Internal
+- **Test coverage backfill** — new unit tests for `MapFilters.apply`,
+  `MapStats.from`, `GymBoardPickerViewModel`; a JDBC-driver
+  integration test suite for `BoardLocationRepositoryImpl`;
+  `MigrationSmokeTest` extended to cover the FEAT-015 tables;
+  `FakeBoardLocationRepository` test fake added.
+
 ## [0.1.4] - 2026-05-18
 
 > 0.1.4 turns CruxCoach from a Kilter-catalog viewer into a small

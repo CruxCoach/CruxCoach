@@ -47,6 +47,7 @@ CruxCoach distributes board reference data and community-created climb data via 
 | Board layouts, hold positions, mounting holes, LED mappings | Hardware reference data | Derived from product specifications | Functional facts about physical hardware |
 | Climbs (hold sequences + grades) | Community-created factual data | User-generated content | Factual data, created by climbers |
 | Climb statistics (difficulty averages, ascent counts) | Aggregated community data | Community activity metrics | Statistical facts |
+| Gym & wall locations (FEAT-015) | Public-business directory data | [`@hangtime/climbing-boards`](https://www.npmjs.com/package/@hangtime/climbing-boards) (Kilter PowerSync `global_gyms` mirror + StoreRocket contact records) | Factual / functional information about commercial gym entities, used to render the in-app board-locations map. No user personal data. |
 
 ### What we do NOT distribute
 
@@ -70,6 +71,47 @@ endorsement. See the in-directory
 scope, and removal-request contacts, and
 [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md) for the maintained
 attribution inventory.
+
+### Map rendering & tile data
+
+The FEAT-015 board-locations map is rendered by **MapLibre Native (Android)**
+(BSD-2-Clause), using vector tiles served by **OpenFreeMap**
+(https://openfreemap.org/), whose style and schema derive from
+**OpenMapTiles** (BSD-3-Clause). The underlying geographic data is
+**© OpenStreetMap contributors**, licensed under the
+[Open Database License (ODbL) v1.0](https://opendatacommons.org/licenses/odbl/1-0/).
+
+ODbL §4.3 ("Notice for using or Redistributing the Database") requires a
+visible attribution. CruxCoach satisfies this requirement in two places:
+
+1. **In-app:** MapLibre's default attribution control is enabled
+   (`androidApp/src/main/java/com/cruxcoach/android/ui/map/MapView.kt`
+   defensively sets `uiSettings.isAttributionEnabled = true` and
+   `uiSettings.isLogoEnabled = true`).
+2. **In distribution:** the project root [`NOTICE`](NOTICE) and
+   [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md) carry the
+   attribution for OpenStreetMap, OpenFreeMap, OpenMapTiles, MapLibre,
+   and the Apache 2.0 NOTICE for the transitive
+   `mapbox-android-gestures` dependency.
+
+CruxCoach does not vendor MapLibre, mapbox-android-gestures, OpenFreeMap
+style files, or OpenStreetMap data into the repository tree; these are
+pulled at build time (Maven) or fetched at runtime (tile HTTP requests).
+
+### Gym & wall locations dataset
+
+The board-locations map (FEAT-015) sources gym entities — names,
+coordinates, addresses, contact details (phone / email / website /
+Instagram), accessibility classification, board-hardware metadata — from
+the [`@hangtime/climbing-boards`](https://www.npmjs.com/package/@hangtime/climbing-boards)
+npm package. That dataset is itself a daily mirror of the Kilter
+PowerSync `global_gyms` bucket, augmented with StoreRocket contact
+records. The data covers commercial gym entities only; no end-user
+personal data is included. CruxCoach distributes this data via the
+daily Blossom locations chunk; the upstream maintainers handle update
+correctness and removal at the dataset level. Gym operators or rights
+holders may request removal at any time via the contacts in `SECURITY.md`,
+which are forwarded upstream where applicable.
 
 ### Integrity & verifiability
 

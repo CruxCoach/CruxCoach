@@ -1,7 +1,12 @@
 package com.cruxcoach.android.ui.map
 
+import android.content.ActivityNotFoundException
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.util.Log
+import android.util.Patterns
+import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -79,10 +84,18 @@ fun BoardLocationDetailSheet(
             DetailRow(
                 icon = Icons.Filled.Phone,
                 value = location.phone,
-                onClick = location.phone?.takeIf { it.isNotBlank() }?.let { phone ->
+                onClick = sanitisedPhoneOrNull(location.phone)?.let { phone ->
                     {
-                        context.startActivity(
-                            Intent(Intent.ACTION_DIAL, "tel:$phone".toUri())
+                        // Uri.fromParts builds an opaque tel: URI — the SSP
+                        // is not parsed for `?key=value` parameters, so a
+                        // crafted phone string can't inject extra dialer
+                        // semantics. sanitisedPhoneOrNull strips anything
+                        // outside the dialer-safe character set first.
+                        safeStartActivity(
+                            context,
+                            Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", phone, null)),
+                            gymId = location.id,
+                            action = "dial",
                         )
                     }
                 },
@@ -90,10 +103,19 @@ fun BoardLocationDetailSheet(
             DetailRow(
                 icon = Icons.Filled.Email,
                 value = location.email,
-                onClick = location.email?.takeIf { it.isNotBlank() }?.let { email ->
+                onClick = validatedEmailOrNull(location.email)?.let { email ->
                     {
-                        context.startActivity(
-                            Intent(Intent.ACTION_SENDTO, "mailto:$email".toUri())
+                        // ACTION_SENDTO + EXTRA_EMAIL keeps the recipient
+                        // out of the URI's query component, so a malicious
+                        // "?subject=…&bcc=…" suffix in the email field
+                        // can't pre-compose the user's mail client. The
+                        // recipient itself was validated by Patterns.EMAIL_ADDRESS.
+                        safeStartActivity(
+                            context,
+                            Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:"))
+                                .putExtra(Intent.EXTRA_EMAIL, arrayOf(email)),
+                            gymId = location.id,
+                            action = "email",
                         )
                     }
                 },
@@ -101,23 +123,33 @@ fun BoardLocationDetailSheet(
             DetailRow(
                 icon = Icons.Filled.Language,
                 value = location.url,
-                onClick = location.url?.takeIf { it.isNotBlank() }?.let { url ->
+                onClick = validatedHttpUrlOrNull(location.url)?.let { url ->
                     {
-                        val safe = if (url.startsWith("http")) url else "https://$url"
-                        context.startActivity(Intent(Intent.ACTION_VIEW, safe.toUri()))
+                        // validatedHttpUrlOrNull guarantees scheme is
+                        // http or https (after a possible https:// upgrade
+                        // for scheme-less inputs), so ACTION_VIEW cannot
+                        // be hijacked into a custom-scheme handler that
+                        // happens to be installed on the device.
+                        safeStartActivity(
+                            context,
+                            Intent(Intent.ACTION_VIEW, url),
+                            gymId = location.id,
+                            action = "web",
+                        )
                     }
                 },
             )
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
 
-            LabelValueRow(stringResource(R.string.map_marker_layout), location.layoutDisplay())
+            val placeholder = stringResource(R.string.map_marker_field_unknown)
+            LabelValueRow(stringResource(R.string.map_marker_layout), location.layoutDisplay(placeholder))
             LabelValueRow(stringResource(R.string.map_marker_access), accessDisplay(location.accessType))
             LabelValueRow(
                 stringResource(R.string.map_marker_adjustability),
                 adjustabilityDisplay(location.adjustability, location.fixedAngle),
             )
-            LabelValueRow(stringResource(R.string.map_marker_frame), location.frameMaker.placeholderIfMissing())
+            LabelValueRow(stringResource(R.string.map_marker_frame), location.frameMaker.placeholderIfMissing(placeholder))
 
             Spacer(modifier = Modifier.height(8.dp))
 
@@ -135,7 +167,12 @@ fun BoardLocationDetailSheet(
                 onClick = {
                     val name = Uri.encode(location.name)
                     val uri = "geo:${location.lat},${location.lng}?q=${location.lat},${location.lng}($name)"
-                    context.startActivity(Intent(Intent.ACTION_VIEW, uri.toUri()))
+                    safeStartActivity(
+                        context,
+                        Intent(Intent.ACTION_VIEW, uri.toUri()),
+                        gymId = location.id,
+                        action = "maps",
+                    )
                 },
                 modifier = Modifier.fillMaxWidth(),
             ) {
@@ -203,11 +240,71 @@ private fun LabelValueRow(label: String, value: String) {
     }
 }
 
-private fun String?.placeholderIfMissing(): String =
-    if (isNullOrBlank()) "—" else this
+private const val TAG_SHEET = "BoardLocationSheet"
 
-private fun BoardLocation.layoutDisplay(): String {
-    val name = layoutName ?: return "—"
+/**
+ * Strip the input down to dialer-safe characters. Returns null when the
+ * cleaned value is empty so the calling row stays non-clickable instead
+ * of launching a no-op `tel:` intent. This is the input-sanitisation
+ * arm of the FEAT-015 untrusted-data defence — see CHANGELOG 0.1.5
+ * "Security".
+ */
+private fun sanitisedPhoneOrNull(raw: String?): String? {
+    val trimmed = raw?.trim().orEmpty()
+    if (trimmed.isEmpty()) return null
+    val cleaned = trimmed.filter { it == '+' || it == '-' || it == '(' || it == ')' || it == ' ' || it.isDigit() }
+    return cleaned.takeIf { it.any(Char::isDigit) }
+}
+
+/**
+ * Pass only RFC-compliant addresses to ACTION_SENDTO. A malformed entry
+ * (e.g. a value with `?subject=…&bcc=…` injected for mailto-header
+ * abuse) fails this check and the row becomes non-clickable.
+ */
+private fun validatedEmailOrNull(raw: String?): String? {
+    val trimmed = raw?.trim().orEmpty()
+    if (trimmed.isEmpty()) return null
+    return trimmed.takeIf { Patterns.EMAIL_ADDRESS.matcher(it).matches() }
+}
+
+/**
+ * Accept the URL only if its parsed scheme is `http` or `https`. A
+ * raw `httpx://` or custom-scheme value cannot bypass via a leading
+ * `http`-prefix substring match (the previous startsWith("http") guard
+ * accepted those). Scheme-less inputs are upgraded to `https://`
+ * before re-parsing.
+ */
+private fun validatedHttpUrlOrNull(raw: String?): Uri? {
+    val trimmed = raw?.trim().orEmpty()
+    if (trimmed.isEmpty()) return null
+    val candidate = if (trimmed.contains("://")) trimmed else "https://$trimmed"
+    val uri = runCatching { Uri.parse(candidate) }.getOrNull() ?: return null
+    val scheme = uri.scheme?.lowercase()
+    return if (scheme == "http" || scheme == "https") uri else null
+}
+
+private fun safeStartActivity(
+    context: Context,
+    intent: Intent,
+    gymId: String,
+    action: String,
+) {
+    try {
+        context.startActivity(intent)
+    } catch (e: ActivityNotFoundException) {
+        Log.w(TAG_SHEET, "gym=$gymId action=$action: no handler for ${intent.action}", e)
+        Toast.makeText(context, R.string.map_marker_intent_failed, Toast.LENGTH_SHORT).show()
+    } catch (e: SecurityException) {
+        Log.w(TAG_SHEET, "gym=$gymId action=$action: security exception", e)
+        Toast.makeText(context, R.string.map_marker_intent_failed, Toast.LENGTH_SHORT).show()
+    }
+}
+
+private fun String?.placeholderIfMissing(placeholder: String): String =
+    if (isNullOrBlank()) placeholder else this
+
+private fun BoardLocation.layoutDisplay(placeholder: String): String {
+    val name = layoutName ?: return placeholder
     val size = sizeLabel
     return if (size.isNullOrBlank()) name else "$name ($size)"
 }
