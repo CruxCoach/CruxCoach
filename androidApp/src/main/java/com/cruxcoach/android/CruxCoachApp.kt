@@ -196,6 +196,14 @@ class CruxCoachApp : Application(), Configuration.Provider {
             // user with stale schedules until the next app start that
             // happened not to throw on the way through.
             runCatching {
+                // 0.1.x → 0.2.0: the CruxCoach default LED colors changed.
+                // Move users still sitting on a previous default preset onto
+                // the new default; custom colors and the Kilter preset are
+                // left untouched. One-shot + idempotent (self-guards via a
+                // persisted flag). See UserPreferences.
+                userPreferences.migrateLegacyLedDefaultsIfNeeded()
+            }.onFailure { PerfLogger.warn("[appScope] migrateLegacyLedDefaults failed", it) }
+            runCatching {
                 // Recover from a partial-import state left by a previous run
                 // that was killed mid-sync (restartApp during identity-switch,
                 // OOM, force-stop). Must run before syncIfStale because the

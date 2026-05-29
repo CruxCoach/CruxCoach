@@ -119,6 +119,21 @@ data class LedHoldColors(
             finish = KILTER_FINISH,
             foot = KILTER_FOOT
         )
+
+        // Previously-shipped CruxCoach DEFAULT presets, by release:
+        //   v0.1.0–0.1.1: start=Orange, hand=Blue, finish=Magenta, foot=Teal (0x1D)
+        //   v0.1.2–0.1.4: same, but foot=Mint Green (0x1E) — the named-palette fix
+        // The current default (the CRUXCOACH_* constants above) replaced these
+        // in 0.2.0. Used solely by the one-time default-color migration
+        // (UserPreferences.migrateLegacyLedDefaultsIfNeeded) to recognise a
+        // user sitting on an OLD default preset — as opposed to a deliberate
+        // custom choice or the Kilter preset — and move them onto the new
+        // default. All three sets are mutually disjoint, so an exact full-tuple
+        // match can't false-positive on a customiser or a Kilter-preset user.
+        val LEGACY_CRUXCOACH_DEFAULTS: List<LedHoldColors> = listOf(
+            LedHoldColors(start = 0xEC, hand = 0x03, finish = 0xE3, foot = 0x1D),
+            LedHoldColors(start = 0xEC, hand = 0x03, finish = 0xE3, foot = 0x1E),
+        )
     }
     fun toRoleColorMap(): Map<Int, Int> = mapOf(
         HoldRole.START to start,
@@ -153,6 +168,11 @@ object PreferenceKeys {
     val LED_COLOR_HAND = intPreferencesKey("led_color_hand")
     val LED_COLOR_FINISH = intPreferencesKey("led_color_finish")
     val LED_COLOR_FOOT = intPreferencesKey("led_color_foot")
+    // One-time guard for the 0.2.0 LED default-color migration
+    // (migrateLegacyLedDefaultsIfNeeded). Set once on the first 0.2.0 launch
+    // so a later user who deliberately recreates an old default tuple is not
+    // disturbed. Never read by UI.
+    val LED_DEFAULTS_MIGRATED = booleanPreferencesKey("led_defaults_migrated_v020")
     val BLE_AUTO_DISCONNECT_MINUTES = intPreferencesKey("ble_auto_disconnect_minutes")
     // Seconds-precision successor to BLE_AUTO_DISCONNECT_MINUTES. Read
     // by bleAutoDisconnectSeconds, which transparently migrates the
@@ -596,6 +616,47 @@ class UserPreferences(
             prefs[PreferenceKeys.LED_COLOR_HAND] = kilter.hand
             prefs[PreferenceKeys.LED_COLOR_FINISH] = kilter.finish
             prefs[PreferenceKeys.LED_COLOR_FOOT] = kilter.foot
+        }
+    }
+
+    /**
+     * One-time 0.2.0 migration: move users sitting on a *previous* CruxCoach
+     * default LED preset onto the current default, without disturbing custom
+     * colors or the Kilter preset.
+     *
+     * The current default is never persisted — a fresh install, a never-
+     * customised user, and anyone who tapped "reset" all have null LED keys
+     * and therefore already render the current [LedHoldColors.CRUXCOACH_*]
+     * colors via the [ledHoldColors] fallback. The only way the four keys can
+     * be *present and equal an old default* is a user who explicitly set them
+     * (e.g. manually dialled the old default back in). For exactly that case
+     * we remove the four keys so the row rejoins the null-fallback on the
+     * current default — matching every other "I'm on the default" user.
+     *
+     * Acts only on an exact full-tuple match against
+     * [LedHoldColors.LEGACY_CRUXCOACH_DEFAULTS]; partial sets, genuine custom
+     * colors, and the Kilter preset are left untouched (all disjoint from the
+     * legacy tuples). Guarded by [PreferenceKeys.LED_DEFAULTS_MIGRATED] so it
+     * runs exactly once — a post-0.2.0 user who deliberately recreates an old
+     * tuple keeps it. Idempotent and safe to call on every cold start.
+     */
+    suspend fun migrateLegacyLedDefaultsIfNeeded() {
+        dataStore.edit { prefs ->
+            if (prefs[PreferenceKeys.LED_DEFAULTS_MIGRATED] == true) return@edit
+            val start = prefs[PreferenceKeys.LED_COLOR_START]
+            val hand = prefs[PreferenceKeys.LED_COLOR_HAND]
+            val finish = prefs[PreferenceKeys.LED_COLOR_FINISH]
+            val foot = prefs[PreferenceKeys.LED_COLOR_FOOT]
+            if (start != null && hand != null && finish != null && foot != null) {
+                val stored = LedHoldColors(start = start, hand = hand, finish = finish, foot = foot)
+                if (stored in LedHoldColors.LEGACY_CRUXCOACH_DEFAULTS) {
+                    prefs.remove(PreferenceKeys.LED_COLOR_START)
+                    prefs.remove(PreferenceKeys.LED_COLOR_HAND)
+                    prefs.remove(PreferenceKeys.LED_COLOR_FINISH)
+                    prefs.remove(PreferenceKeys.LED_COLOR_FOOT)
+                }
+            }
+            prefs[PreferenceKeys.LED_DEFAULTS_MIGRATED] = true
         }
     }
 
