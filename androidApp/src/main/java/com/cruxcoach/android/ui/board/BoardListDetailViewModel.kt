@@ -109,7 +109,14 @@ class BoardListDetailViewModel @Inject constructor(
         val uuids = uuidPairs.map { it.first }
         val addedAtMap = uuidPairs.associate { it.first to it.second }
         val climbs = boardRepository.getClimbsByUuids(uuids, angle)
-        val climbMap = climbs.associateBy { it.uuid }
+        // Recover entries with no row at the requested angle — notably
+        // MoonBoard Masters problems set only at 25° — via an angle-agnostic
+        // fallback, so cross-board / cross-angle lists don't silently drop
+        // climbs. Kilter entries keep their angle-correct row from above.
+        val resolved = climbs.associateBy { it.uuid }
+        val missing = uuids.filter { it !in resolved }
+        val climbMap = if (missing.isEmpty()) resolved
+            else resolved + boardRepository.getClimbsByUuidsAnyAngle(missing).associateBy { it.uuid }
         return uuidPairs.mapNotNull { (uuid, addedAt) ->
             climbMap[uuid]?.let { climb -> Climb_list_entries(addedAt = addedAt, climb = climb) }
         }

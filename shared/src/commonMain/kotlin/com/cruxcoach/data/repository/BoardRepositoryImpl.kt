@@ -236,6 +236,11 @@ class BoardRepositoryImpl(
         return q.getClimbsByUuidsSimple(uuids, angle.toLong())
             .executeAsList().map { mapBrowse(it) }
     }
+    override fun getClimbsByUuidsAnyAngle(uuids: Collection<String>): List<ClimbWithStats> {
+        if (uuids.isEmpty()) return emptyList()
+        return q.getClimbsByUuidsAnyAngle(uuids)
+            .executeAsList().map { mapBrowse(it) }
+    }
 
     override fun getAllBrowseMatchingUuids(
         angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double,

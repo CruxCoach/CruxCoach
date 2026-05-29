@@ -412,6 +412,21 @@ class SessionQueueManager(
                     Log.w(TAG, "Climb not found: ${item.climbUuid}")
                     return@launch
                 }
+                // Brand-aware transport: a MoonBoard climb sends an ASCII
+                // frames payload via the Nordic-UART path, not the Kilter
+                // placement→LED map. Resolve the variant from the climb's own
+                // layout (the queue can hold any active-board climb).
+                if (climb.boardBrand == "moonboard") {
+                    if (climb.frames.isBlank()) return@launch
+                    val variant = com.cruxcoach.domain.board.MoonBoardVariant.fromLayoutId(climb.layoutId)
+                        ?: com.cruxcoach.domain.board.MoonBoardVariant.MOONBOARD_2016
+                    bleConnection.sendMoonBoardClimb(climb.frames, variant)
+                    lastSentClimbKey = key
+                    Log.d(TAG, "sendCurrentClimbToBoard: sent MoonBoard ${item.climbUuid.take(8)} angle=${item.angle}")
+                    onFirstQueueClimbSent?.invoke()
+                    onFirstQueueClimbSent = null
+                    return@launch
+                }
                 val holds = BoardClimbParser.parseFrames(climb.frames)
                 if (holds.isEmpty()) return@launch
                 val productSizeId = userPreferences.boardProductSizeId.first()

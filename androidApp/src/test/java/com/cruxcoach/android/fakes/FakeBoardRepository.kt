@@ -190,6 +190,10 @@ class FakeBoardRepository : BoardRepository {
         return climbs.filter { it.uuid in uuids }
     }
 
+    override fun getClimbsByUuidsAnyAngle(uuids: Collection<String>): List<ClimbWithStats> {
+        return climbs.filter { it.uuid in uuids }.distinctBy { it.uuid }
+    }
+
     override fun getAllBrowseMatchingUuids(
         angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double,
         minAscensionists: Int, climbType: ClimbTypeFilter, selProductSizeId: Int

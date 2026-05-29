@@ -270,6 +270,10 @@ interface BoardClimbQueries {
     fun getClimbsByUuids(uuids: Collection<String>, angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter): List<ClimbWithStats>
     /** Fetch climbs by UUID list at a given angle, no additional filters. */
     fun getClimbsByUuids(uuids: Collection<String>, angle: Int): List<ClimbWithStats>
+    /** Fetch climbs by UUID list regardless of angle — one representative row
+     *  per climb. Fallback for list display so MoonBoard problems set only at
+     *  a non-default angle (e.g. Masters 25°) aren't dropped. */
+    fun getClimbsByUuidsAnyAngle(uuids: Collection<String>): List<ClimbWithStats>
     /** UUID-only projection of the entire browse-filter match set. Backs the
      *  VM's UUID-shuffle cache for RANDOM sort — load once per filter
      *  signature, shuffle in Kotlin, paginate over the cached list. */

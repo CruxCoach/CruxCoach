@@ -446,6 +446,15 @@ SELECT * FROM climb_browse
 WHERE uuid IN ?
   AND angle = :angle;
 
+-- One row per climb regardless of angle (GROUP BY collapses a climb's
+-- per-angle stats rows to a single representative). Used as the
+-- angle-agnostic fallback for list display: MoonBoard Masters problems set
+-- only at 25° would otherwise be dropped by the fixed-angle query above.
+getClimbsByUuidsAnyAngle:
+SELECT * FROM climb_browse
+WHERE uuid IN ?
+GROUP BY uuid;
+
 getClimbByUuid:
 SELECT c.*, cs.difficulty_average, cs.quality_average, cs.ascensionist_count,
     cs.benchmark_difficulty, cs.fa_username, cs.fa_at
