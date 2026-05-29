@@ -145,15 +145,17 @@ internal class BoardSendController(
         ) }
         sendJob = scope.launch {
             try {
-                // Resolve the active MoonBoard variant — drives the
-                // encoder's per-column-height serpentine arithmetic (18
-                // for standard 11×18 boards, 12 for Mini 2020). Falls
-                // back to MOONBOARD_2016 if the layout id doesn't map
-                // to a known MoonBoard variant — the gate above already
-                // ensured this is a moonboard climb, so the only way
-                // fromLayoutId returns null is a stale / corrupt
-                // user-prefs value; 2016 is the safest default.
-                val layoutId = userPreferences.boardLayoutId.first().toLong()
+                // Resolve the MoonBoard variant from the CLIMB being sent,
+                // not the active-board pref — the encoder's per-column-height
+                // serpentine differs (18 for standard 11×18 boards, 12 for
+                // Mini 2020), and a list / deep-link can surface a climb of a
+                // different variant than the one currently configured. Using
+                // the climb's own layout_id guarantees the wire frame matches
+                // the holds we're rendering. Falls back to the active pref,
+                // then MOONBOARD_2016, only if the climb carries no usable
+                // layout id (stale/corrupt row).
+                val layoutId = s.climb?.layoutId?.toLong()
+                    ?: userPreferences.boardLayoutId.first().toLong()
                 val variant = com.cruxcoach.domain.board.MoonBoardVariant
                     .fromLayoutId(layoutId)
                     ?: com.cruxcoach.domain.board.MoonBoardVariant.MOONBOARD_2016

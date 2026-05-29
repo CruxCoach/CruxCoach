@@ -750,8 +750,9 @@ class BoardRepositoryImpl(
                 frames_hash = draft.framesHash,
             )
             // Stub climb_stats so the climb appears in the browse VIEW.
-            // Setter difficulty is the only known signal until vote-aggregation
-            // ships in 0.2.0; quality_average remains NULL.
+            // Setter difficulty is the only known signal; community
+            // vote-aggregation (FEAT-009) is backlogged, so quality_average
+            // stays NULL until that lands in a later release.
             q.upsertLocalClimbStat(
                 climb_uuid = draft.uuid,
                 angle = angle,
