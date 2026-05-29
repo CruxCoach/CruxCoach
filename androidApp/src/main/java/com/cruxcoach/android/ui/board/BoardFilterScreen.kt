@@ -50,6 +50,7 @@ import com.cruxcoach.android.R
 import com.cruxcoach.android.data.BoardConstants
 import com.cruxcoach.android.ui.settings.BoardSelectionDialog
 import com.cruxcoach.android.ui.settings.GymBoardSearchSheet
+import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.MoonBoardVariant
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.util.GradeDisplayHelper
@@ -77,7 +78,7 @@ fun BoardFilterScreen(
             initialBrand = state.filter.boardBrand,
             productSizes = BoardConstants.KILTER_KNOWN_SIZES,
             selectedKilterSizeId = state.boardSize?.id?.toInt() ?: 0,
-            selectedMoonBoardVariant = if (state.filter.boardBrand == "moonboard") {
+            selectedMoonBoardVariant = if (BoardBrand.fromWire(state.filter.boardBrand) == BoardBrand.MOONBOARD) {
                 MoonBoardVariant.fromLayoutId(state.filter.layoutId.toLong())
             } else null,
             frequency = BoardConstants.DEFAULT_SIZE_FREQUENCY,

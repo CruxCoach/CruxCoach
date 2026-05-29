@@ -1,5 +1,6 @@
 package com.cruxcoach.domain.community
 
+import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.BoardClimbParser
 import com.cruxcoach.domain.board.HoldRole
 
@@ -58,6 +59,11 @@ data class ClimbEditorState(
      */
     val activeBrush: Int? = HoldRole.START,
 )
+
+/** Typed board family this draft targets — the bridge from the persisted
+ *  `boardBrand` String to the [BoardBrand] capability model (brush palette,
+ *  renderer, BLE transport, publish destinations). */
+val ClimbEditorState.brand: BoardBrand get() = BoardBrand.fromWire(boardBrand)
 
 /**
  * Apply the active brush to a hold:

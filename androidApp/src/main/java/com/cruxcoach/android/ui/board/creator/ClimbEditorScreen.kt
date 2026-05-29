@@ -76,6 +76,7 @@ import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.BoardHold
 import com.cruxcoach.domain.board.HoldRole
 import com.cruxcoach.domain.community.ClimbValidation
+import com.cruxcoach.domain.community.brand
 import com.cruxcoach.domain.community.encodeFrames
 
 /**
@@ -291,8 +292,9 @@ fun ClimbEditorScreen(
                             )
                             // Heatmap is a Kilter-only co-occurrence overlay
                             // (placement-id keyed). The MoonBoard renderer has
-                            // no heatmap layer, so the toggle is hidden there.
-                            if (state.editor.boardBrand != BoardBrand.MOONBOARD.wireValue) {
+                            // no heatmap layer, so the toggle only shows for
+                            // boards that actually have one.
+                            if (state.editor.brand.hasHeatmap) {
                                 DropdownMenuItem(
                                     text = { Text(stringResource(R.string.climb_creator_heatmap_toggle)) },
                                     leadingIcon = {
@@ -337,7 +339,7 @@ fun ClimbEditorScreen(
             // draws the bundled board photo with tap-to-cycle holds (no LED
             // address map, no drag-move, no co-occurrence heatmap); Kilter
             // keeps the full Aurora placement renderer.
-            val isMoonBoard = state.editor.boardBrand == BoardBrand.MOONBOARD.wireValue
+            val isMoonBoard = state.editor.brand == BoardBrand.MOONBOARD
             if (isMoonBoard) {
                 MoonBoardVisualization(
                     frames = state.editor.encodeFrames(),
@@ -564,7 +566,7 @@ private fun HoldCountStatus(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            if (boardBrand == BoardBrand.MOONBOARD.wireValue) {
+            if (BoardBrand.fromWire(boardBrand) == BoardBrand.MOONBOARD) {
                 // MoonBoard: fixed three-role palette (start/hand/finish), no
                 // foot holds, route role codes (42/43/44). Chip colours mirror
                 // MoonBoardVisualization's fixed palette so the chips match the

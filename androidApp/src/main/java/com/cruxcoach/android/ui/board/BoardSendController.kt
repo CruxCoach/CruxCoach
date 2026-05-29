@@ -7,6 +7,8 @@ import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.data.SessionQueueManager
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.data.repository.BoardRepository
+import com.cruxcoach.data.repository.brand
+import com.cruxcoach.domain.board.BoardBrand
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -51,7 +53,7 @@ internal class BoardSendController(
         // FEAT-027: a MoonBoard climb sends an ASCII `frames` payload — it has
         // no Aurora `holds` list and no LED map. Gate on a non-blank frames
         // string and route through the dedicated MoonBoard transport.
-        if (state.value.climb?.boardBrand == "moonboard") {
+        if (state.value.climb?.brand == BoardBrand.MOONBOARD) {
             sendMoonBoardToBoard()
             return
         }
@@ -81,7 +83,7 @@ internal class BoardSendController(
                 // reached for non-MoonBoard climbs, so the check catches the
                 // "active board is a MoonBoard" mismatch.)
                 val activeBrand = userPreferences.boardBrand.first()
-                if (s.climb != null && s.climb.boardBrand != activeBrand) {
+                if (s.climb != null && s.climb.brand != BoardBrand.fromWire(activeBrand)) {
                     state.update { it.copy(
                         ble = it.ble.copy(isSending = false, error = "Dieser Climb gehört zu einem anderen Board-Typ als dein aktives Board."),
                         nearby = it.nearby.copy(debugInfo = "board-brand mismatch")
@@ -165,7 +167,7 @@ internal class BoardSendController(
                 // a different MoonBoard variant) is configured; sending it
                 // would light wrong/garbled holds. Refuse with a clear message.
                 val activeBrand = userPreferences.boardBrand.first()
-                if (activeBrand != "moonboard") {
+                if (BoardBrand.fromWire(activeBrand) != BoardBrand.MOONBOARD) {
                     state.update { it.copy(
                         ble = it.ble.copy(isSending = false, error = "Dein aktives Board ist kein MoonBoard — wechsle in den Einstellungen, um diesen Climb zu senden."),
                         nearby = it.nearby.copy(debugInfo = "active board not moonboard")

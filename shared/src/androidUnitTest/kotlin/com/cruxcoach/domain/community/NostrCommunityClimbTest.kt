@@ -60,6 +60,34 @@ class NostrCommunityClimbTest {
     }
 
     @Test
+    fun moonboard_layout_tags_board_label_and_hashtag_as_moonboard() {
+        // A MoonBoard climb (layout 2 = 2016) must be tagged honestly: the
+        // board label + hashtag reflect MoonBoard, not the hardcoded
+        // "kilterboard" that every event used to carry. Subscribers still
+        // ingest by layout_id; these are human/discovery metadata.
+        val mbState = ClimbEditorState(
+            boardBrand = "moonboard",
+            selectedHolds = mapOf(
+                5 to HoldRole.ROUTE_START,
+                7 to HoldRole.ROUTE_HAND,
+                9 to HoldRole.ROUTE_FINISH,
+            ),
+            name = "Mooncrux",
+            description = "",
+            setterGradeId = 22,
+            angle = 40,
+        )
+        val ev = buildCommunityClimbEvent(
+            pubkey = pubkey, createdAt = 1714000000L, uuid = uuid,
+            layoutId = 2L, sizeLabel = "MoonBoard 2016", state = mbState,
+        )
+        assertTrue(ev.tags.any { it[0] == "l" && it[1] == CommunityClimbTags.LABEL_MOONBOARD })
+        assertTrue(ev.tags.none { it[0] == "l" && it[1] == CommunityClimbTags.LABEL_KILTER_BOARD })
+        assertTrue(ev.tags.any { it[0] == "t" && it[1] == "moonboard" })
+        assertTrue(ev.tags.none { it[0] == "t" && it[1] == "kilterboard" })
+    }
+
+    @Test
     fun content_contains_uuid_pubkey_prefix_and_escaped_description() {
         val ev = buildCommunityClimbEvent(
             pubkey = pubkey, createdAt = 1714000000L, uuid = uuid,

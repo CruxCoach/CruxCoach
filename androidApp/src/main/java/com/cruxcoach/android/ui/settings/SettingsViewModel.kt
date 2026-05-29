@@ -15,6 +15,7 @@ import com.cruxcoach.android.data.LedHoldColors
 import com.cruxcoach.android.data.MoonBoardCatalogueSync
 import com.cruxcoach.android.data.SyncInterval
 import com.cruxcoach.android.data.UserPreferences
+import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.MoonBoardVariant
 import com.cruxcoach.android.notification.AnnouncementTagParser
 import com.cruxcoach.android.notification.BoardSyncWorker
@@ -81,7 +82,7 @@ data class SettingsState(
     val boardProductSizeId: Int = BoardConstants.KILTER_DEFAULT_SIZE,
     val boardProductSizeName: String = "",
     /** Active board brand — "kilter" | "moonboard" (FEAT-027). */
-    val boardBrand: String = "kilter",
+    val boardBrand: String = BoardBrand.KILTER.wireValue,
     /** Active MoonBoard variant, or null when the brand is Kilter (FEAT-027). */
     val moonBoardVariant: MoonBoardVariant? = null,
     /** One-shot snackbar text from the most recent MoonBoard catalogue
@@ -368,13 +369,13 @@ class SettingsViewModel @Inject constructor(
             it.copy(
                 boardProductSizeId = id,
                 boardProductSizeName = name,
-                boardBrand = "kilter",
+                boardBrand = BoardBrand.KILTER.wireValue,
                 moonBoardVariant = null,
             )
         }
         viewModelScope.launch {
             userPreferences.setBoardProductSizeId(id)
-            userPreferences.setBoardBrand("kilter")
+            userPreferences.setBoardBrand(BoardBrand.KILTER.wireValue)
         }
     }
 
@@ -398,14 +399,14 @@ class SettingsViewModel @Inject constructor(
                 boardLayoutId = layoutId,
                 boardProductSizeId = productSizeId,
                 boardProductSizeName = label,
-                boardBrand = "kilter",
+                boardBrand = BoardBrand.KILTER.wireValue,
                 moonBoardVariant = null,
             )
         }
         viewModelScope.launch {
             userPreferences.setBoardLayoutId(layoutId)
             userPreferences.setBoardProductSizeId(productSizeId)
-            userPreferences.setBoardBrand("kilter")
+            userPreferences.setBoardBrand(BoardBrand.KILTER.wireValue)
         }
     }
 
@@ -420,7 +421,7 @@ class SettingsViewModel @Inject constructor(
     fun selectMoonBoardVariant(variant: MoonBoardVariant) {
         _state.update {
             it.copy(
-                boardBrand = "moonboard",
+                boardBrand = BoardBrand.MOONBOARD.wireValue,
                 boardLayoutId = variant.layoutId.toInt(),
                 moonBoardVariant = variant,
                 // The Kilter board-size label is meaningless for a MoonBoard;
@@ -463,7 +464,7 @@ class SettingsViewModel @Inject constructor(
             // brand coherent so switching here from a MoonBoard flips the
             // active brand back to Kilter (otherwise Browse/Detail would keep
             // treating the board as a MoonBoard).
-            userPreferences.setBoardBrand("kilter")
+            userPreferences.setBoardBrand(BoardBrand.KILTER.wireValue)
             val targetProductId = layoutToProductId(layoutId)
             val newSize = withContext(Dispatchers.IO) {
                 boardRepository.getAllProductSizes(targetProductId.toLong())
@@ -481,7 +482,7 @@ class SettingsViewModel @Inject constructor(
                     boardLayoutId = layoutId,
                     boardProductSizeId = newSizeId,
                     boardProductSizeName = newSizeName,
-                    boardBrand = "kilter",
+                    boardBrand = BoardBrand.KILTER.wireValue,
                     moonBoardVariant = null,
                 )
             }

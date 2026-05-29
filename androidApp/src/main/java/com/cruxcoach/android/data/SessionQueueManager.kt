@@ -6,6 +6,8 @@ import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.ble.QueueItem
 import com.cruxcoach.android.ble.SessionQueueProtocol
 import com.cruxcoach.data.repository.BoardRepository
+import com.cruxcoach.data.repository.brand
+import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.BoardClimbParser
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -416,7 +418,7 @@ class SessionQueueManager(
                 // frames payload via the Nordic-UART path, not the Kilter
                 // placement→LED map. Resolve the variant from the climb's own
                 // layout (the queue can hold any active-board climb).
-                if (climb.boardBrand == "moonboard") {
+                if (climb.brand == BoardBrand.MOONBOARD) {
                     if (climb.frames.isBlank()) return@launch
                     val variant = com.cruxcoach.domain.board.MoonBoardVariant.fromLayoutId(climb.layoutId)
                         ?: com.cruxcoach.domain.board.MoonBoardVariant.MOONBOARD_2016

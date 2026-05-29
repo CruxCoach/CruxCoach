@@ -19,6 +19,7 @@ import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.data.SessionGattBridge
 import com.cruxcoach.android.data.SessionQueueManager
 import com.cruxcoach.android.data.UserPreferences
+import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.IntensityZone
 import com.cruxcoach.domain.board.IntensityZoneEngine
 import com.cruxcoach.domain.board.IntensityZones
@@ -339,7 +340,7 @@ class BoardBrowserViewModel @Inject constructor(
             userPreferences.setBoardProductSizeId(productSizeId)
             // Reset brand: the user may be switching from MoonBoard back
             // to Kilter via the filter-screen picker.
-            userPreferences.setBoardBrand("kilter")
+            userPreferences.setBoardBrand(BoardBrand.KILTER.wireValue)
             refreshBoardData(force = true)
         }
     }
@@ -411,7 +412,7 @@ class BoardBrowserViewModel @Inject constructor(
                 // FEAT-027: a MoonBoard layout has no Aurora product_size /
                 // board_images rows — the Kilter-only lookups below would just
                 // return empty. Skip them entirely for a MoonBoard board.
-                val isMoonBoard = prefBoardBrand == "moonboard"
+                val isMoonBoard = !BoardBrand.fromWire(prefBoardBrand).usesAuroraPlacements
                 val needsBoardReload = _state.value.boardSize == null || _state.value.boardSize!!.id.toInt() != prefSizeId
                     || _state.value.filter.layoutId != prefLayoutId
                 // Load/reload board data (placements once, boardSize + layoutId on change)

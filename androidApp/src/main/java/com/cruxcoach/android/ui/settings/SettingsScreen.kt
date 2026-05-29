@@ -35,6 +35,7 @@ import com.cruxcoach.android.ui.devcontact.DevContactSection
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.OrangeAccent
+import com.cruxcoach.domain.board.BoardBrand
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -212,7 +213,7 @@ fun SettingsScreen(
                     // Kilter board-size label. (0.1.5 dropped the standalone
                     // Original/Homewall toggle — the picker resolves layout.)
                     BoardModelSection(
-                        boardModelName = if (state.boardBrand == "moonboard") {
+                        boardModelName = if (BoardBrand.fromWire(state.boardBrand) == BoardBrand.MOONBOARD) {
                             state.moonBoardVariant?.displayName ?: ""
                         } else {
                             state.boardProductSizeName

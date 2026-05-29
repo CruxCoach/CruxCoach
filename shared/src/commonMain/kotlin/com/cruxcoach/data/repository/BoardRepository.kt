@@ -1,6 +1,18 @@
 package com.cruxcoach.data.repository
 
+import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.BoardClimbParser
+
+/**
+ * Typed board family for rows that carry the persisted `board_brand` String.
+ * These extensions are the single bridge from the storage representation
+ * (String, at the SQLite/DTO boundary) to the typed [BoardBrand] capability
+ * model, so call sites use `row.brand.usesAuroraPlacements` etc. instead of
+ * re-deriving board behaviour from raw string comparisons.
+ */
+val ClimbWithStats.brand: BoardBrand get() = BoardBrand.fromWire(boardBrand)
+val AscentWithClimb.brand: BoardBrand get() = BoardBrand.fromWire(boardBrand)
+val RawBid.brand: BoardBrand get() = BoardBrand.fromWire(boardBrand)
 
 enum class ClimbSortField {
     QUALITY, DIFFICULTY, ASCENSIONISTS, REPEATS, NAME, HOLDS, BENCHMARK_DIFFICULTY,

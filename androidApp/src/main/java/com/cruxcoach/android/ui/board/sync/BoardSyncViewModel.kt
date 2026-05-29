@@ -7,6 +7,7 @@ import com.cruxcoach.android.data.BoardSyncManager
 import com.cruxcoach.android.data.BoardSyncState
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.data.repository.BoardSize
+import com.cruxcoach.domain.board.BoardBrand
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -21,7 +22,7 @@ data class BoardModelSelectionState(
     val productSizes: List<BoardSize> = emptyList(),
     val selectedId: Int = BoardConstants.KILTER_DEFAULT_SIZE,
     /** Active brand — drives the unified picker's initial category. */
-    val boardBrand: String = "kilter",
+    val boardBrand: String = BoardBrand.KILTER.wireValue,
     /** Active MoonBoard variant when [boardBrand] == "moonboard". */
     val selectedMoonBoardVariant: com.cruxcoach.domain.board.MoonBoardVariant? = null,
 )
@@ -89,7 +90,7 @@ class BoardSyncViewModel @Inject constructor(
             // in onboarding/Settings — don't re-prompt them with this
             // Kilter-flavoured post-Kilter-sync nudge.
             val brand = userPreferences.boardBrand.first()
-            if (brand != "kilter") return@launch
+            if (BoardBrand.fromWire(brand) != BoardBrand.KILTER) return@launch
             val isDefault = userPreferences.isBoardProductSizeDefault.first()
             if (!isDefault) return@launch
 
@@ -124,7 +125,7 @@ class BoardSyncViewModel @Inject constructor(
             )
             userPreferences.setBoardLayoutId(layout)
             userPreferences.setBoardProductSizeId(id)
-            userPreferences.setBoardBrand("kilter")
+            userPreferences.setBoardBrand(BoardBrand.KILTER.wireValue)
         }
     }
 

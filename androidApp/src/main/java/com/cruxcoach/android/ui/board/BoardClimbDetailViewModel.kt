@@ -17,6 +17,7 @@ import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.domain.board.IntensityZones
 import com.cruxcoach.data.repository.AscentWithClimb
 import com.cruxcoach.data.repository.ClimbWithStats
+import com.cruxcoach.data.repository.brand
 import com.cruxcoach.data.repository.BoardPlacement
 import com.cruxcoach.data.repository.BoardImage
 import com.cruxcoach.data.repository.AngleOption
@@ -586,7 +587,7 @@ class BoardClimbDetailViewModel @Inject constructor(
                         // product_size / board_images / placement-LED rows —
                         // its visualization is procedural from `frames`.
                         // Skip every Kilter-only board-geometry lookup.
-                        val isMoonBoard = climb.boardBrand == "moonboard"
+                        val isMoonBoard = !climb.brand.usesAuroraPlacements
                         val allFrames = BoardClimbParser.parseMultiFrames(climb.frames)
                         val isRoute = allFrames.size > 1
                         val holds = allFrames.firstOrNull() ?: emptyList()
@@ -741,7 +742,7 @@ class BoardClimbDetailViewModel @Inject constructor(
                 withContext(Dispatchers.IO) {
                     val climb = boardRepository.getClimbByUuid(uuid, angle) ?: return@withContext
                     // FEAT-027: skip Kilter-only board geometry for MoonBoard climbs.
-                    val isMoonBoard = climb.boardBrand == "moonboard"
+                    val isMoonBoard = !climb.brand.usesAuroraPlacements
                     val allFrames = BoardClimbParser.parseMultiFrames(climb.frames)
                     val isRoute = allFrames.size > 1
                     val holds = allFrames.firstOrNull() ?: emptyList()

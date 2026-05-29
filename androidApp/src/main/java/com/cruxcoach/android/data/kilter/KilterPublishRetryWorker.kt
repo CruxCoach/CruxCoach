@@ -204,7 +204,7 @@ class KilterPublishRetryWorker @AssistedInject constructor(
                     name = row.name,
                     description = row.description,
                     framesClimbConcat = climbConcat,
-                    productName = productNameForLayout(row.layoutId),
+                    productName = kilterProductName(row.layoutId),
                     productLayoutUuid = productLayoutUuid,
                     angle = angle,
                     edgeLeft = boardSize.edgeLeft.toInt(),
@@ -218,7 +218,7 @@ class KilterPublishRetryWorker @AssistedInject constructor(
                     name = row.name,
                     description = row.description,
                     framesClimbConcat = climbConcat,
-                    productName = productNameForLayout(row.layoutId),
+                    productName = kilterProductName(row.layoutId),
                     productLayoutUuid = productLayoutUuid,
                     angle = angle,
                     edgeLeft = boardSize.edgeLeft.toInt(),
@@ -348,15 +348,6 @@ class KilterPublishRetryWorker @AssistedInject constructor(
                 errorExcerpt = errorExcerpt?.take(200),
             )
         }.onFailure { Log.w(TAG, "recordKilterPublishAttempt threw for uuid=$uuid", it) }
-    }
-
-    /** Same mapping as KilterClimbPublisher.productNameFor. Kept duplicated
-     *  rather than extracted because the retry-worker module would
-     *  otherwise need to depend on the publisher class purely for one
-     *  pure-function lookup. */
-    private fun productNameForLayout(layoutId: Long): String = when (layoutId) {
-        com.cruxcoach.android.data.BoardConstants.KILTER_HOMEWALL_LAYOUT.toLong() -> "Kilter Board Homewall"
-        else -> "Kilter Board Original"
     }
 
     companion object {

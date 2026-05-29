@@ -17,6 +17,7 @@ import com.cruxcoach.android.R
 import com.cruxcoach.android.data.BoardConstants
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.data.repository.BoardSize
+import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.MoonBoardVariant
 
 /**
@@ -61,7 +62,7 @@ internal fun BoardSelectionDialog(
 ) {
     val initialCategory = remember(initialBrand, selectedKilterSizeId, productSizes) {
         when {
-            initialBrand == "moonboard" -> BoardCategory.MOONBOARD
+            BoardBrand.fromWire(initialBrand) == BoardBrand.MOONBOARD -> BoardCategory.MOONBOARD
             productSizes.firstOrNull { it.id.toInt() == selectedKilterSizeId }
                 ?.productId?.toInt() == BoardConstants.KILTER_HOMEWALL_PRODUCT_ID ->
                 BoardCategory.KILTER_HOMEWALL

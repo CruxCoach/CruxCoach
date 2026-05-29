@@ -13,6 +13,7 @@ import com.cruxcoach.android.data.GradeScale
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.*
+import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.IntensityZones
 import java.time.LocalDate
 
@@ -57,9 +58,9 @@ private fun distributionChartViewLabel(view: DistributionChartView): String = wh
 }
 
 @Composable
-private fun boardBrandLabel(brand: String): String = when (brand) {
-    "kilter" -> stringResource(R.string.board_selection_brand_kilter)
-    "moonboard" -> stringResource(R.string.board_selection_brand_moonboard)
+private fun boardBrandLabel(brand: String): String = when (BoardBrand.fromWire(brand)) {
+    BoardBrand.KILTER -> stringResource(R.string.board_selection_brand_kilter)
+    BoardBrand.MOONBOARD -> stringResource(R.string.board_selection_brand_moonboard)
     else -> brand.replaceFirstChar { it.uppercase() }
 }
 

@@ -19,6 +19,7 @@ import com.cruxcoach.android.nostr.backup.BackupInfo
 import com.cruxcoach.android.nostr.backup.BackupPreferences
 import com.cruxcoach.android.nostr.backup.BackupRepository
 import com.cruxcoach.android.nostr.backup.BackupSyncWorker
+import com.cruxcoach.domain.board.BoardBrand
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -120,7 +121,7 @@ data class OnboardingState(
     val boardProductSizeName: String = "",
     /** Active board family — "kilter" or "moonboard" (FEAT-027). Decides
      *  which category the unified board picker lands on. */
-    val boardBrand: String = "kilter",
+    val boardBrand: String = BoardBrand.KILTER.wireValue,
     /** Selected MoonBoard variant when [boardBrand] == "moonboard". */
     val moonBoardVariant: com.cruxcoach.domain.board.MoonBoardVariant? = null,
     val boardSizeFrequency: Map<Int, Long> = emptyMap(),
@@ -210,7 +211,7 @@ class OnboardingViewModel @Inject constructor(
         viewModelScope.launch {
             userPreferences.setBoardLayoutId(layoutId)
             // Original/Homewall are Kilter layouts — keep brand coherent.
-            userPreferences.setBoardBrand("kilter")
+            userPreferences.setBoardBrand(BoardBrand.KILTER.wireValue)
             val targetProductId = when (layoutId) {
                 com.cruxcoach.android.data.BoardConstants.KILTER_HOMEWALL_LAYOUT ->
                     com.cruxcoach.android.data.BoardConstants.KILTER_HOMEWALL_PRODUCT_ID
@@ -231,7 +232,7 @@ class OnboardingViewModel @Inject constructor(
                     boardProductSizeName = newSize
                         ?.let { com.cruxcoach.android.data.BoardConstants.sizeLabel(it.id, it.name) }
                         .orEmpty(),
-                    boardBrand = "kilter",
+                    boardBrand = BoardBrand.KILTER.wireValue,
                     moonBoardVariant = null,
                 )
             }
@@ -257,7 +258,7 @@ class OnboardingViewModel @Inject constructor(
         }
         _state.update {
             it.copy(
-                boardBrand = "kilter",
+                boardBrand = BoardBrand.KILTER.wireValue,
                 moonBoardVariant = null,
                 boardLayoutId = layoutId,
                 boardProductSizeId = productSizeId,
@@ -269,7 +270,7 @@ class OnboardingViewModel @Inject constructor(
             userPreferences.setBoardProductSizeId(productSizeId)
             // Reset the brand in case the user toggled to MoonBoard and
             // back inside the picker before confirming a Kilter board.
-            userPreferences.setBoardBrand("kilter")
+            userPreferences.setBoardBrand(BoardBrand.KILTER.wireValue)
         }
     }
 
@@ -280,7 +281,7 @@ class OnboardingViewModel @Inject constructor(
     fun selectMoonBoardVariant(variant: com.cruxcoach.domain.board.MoonBoardVariant) {
         _state.update {
             it.copy(
-                boardBrand = "moonboard",
+                boardBrand = BoardBrand.MOONBOARD.wireValue,
                 boardLayoutId = variant.layoutId.toInt(),
                 moonBoardVariant = variant,
                 boardProductSizeName = variant.displayName,
@@ -641,12 +642,12 @@ class OnboardingViewModel @Inject constructor(
                 // `isBoardProductSizeDefault`) would re-prompt the model
                 // dialog right after the first board sync — duplicating
                 // the choice the user just made in the BOARD_SETUP step.
-                if (s.boardBrand == "moonboard") {
+                if (BoardBrand.fromWire(s.boardBrand) == BoardBrand.MOONBOARD) {
                     userPreferences.setMoonBoardSelection(s.boardLayoutId)
                 } else {
                     userPreferences.setBoardLayoutId(s.boardLayoutId)
                     userPreferences.setBoardProductSizeId(s.boardProductSizeId)
-                    userPreferences.setBoardBrand("kilter")
+                    userPreferences.setBoardBrand(BoardBrand.KILTER.wireValue)
                 }
                 userPreferences.setOnboardingCompleted(true)
                 // Suppress the "what's new" dialog for features the user

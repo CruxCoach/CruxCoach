@@ -6,8 +6,10 @@ import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.data.IntensityZoneManager
 import com.cruxcoach.android.data.UserPreferences
+import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.IntensityZones
 import com.cruxcoach.data.repository.AscentWithClimb
+import com.cruxcoach.data.repository.brand
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.PersonalBoardRepository
 import android.content.Context
@@ -229,7 +231,7 @@ class BoardLogbookViewModel @Inject constructor(
                 // per-board stats selector is shown. Kilter first, then the
                 // rest, for a stable chip order.
                 val brands = all.map { it.boardBrand }.distinct()
-                    .sortedBy { if (it == "kilter") 0 else 1 }
+                    .sortedBy { if (BoardBrand.fromWire(it) == BoardBrand.KILTER) 0 else 1 }
                 _state.update {
                     // Clamp a stale filter: if the selected board no longer has
                     // any ascents (e.g. all its logs were deleted) drop back to
@@ -348,7 +350,7 @@ class BoardLogbookViewModel @Inject constructor(
                 val s = _state.value
                 // Per-board split: restrict to the selected family when set.
                 val scoped = s.boardFilter
-                    ?.let { bf -> allAscents.filter { it.boardBrand == bf } }
+                    ?.let { bf -> allAscents.filter { it.brand == BoardBrand.fromWire(bf) } }
                     ?: allAscents
                 val stats = withContext(Dispatchers.Default) {
                     BoardStatsComputer.computeStats(
@@ -399,7 +401,7 @@ class BoardLogbookViewModel @Inject constructor(
                         // (reliably set; legacy rows default to 'kilter')
                         // fixes that without dropping legacy NULL-layout rows.
                         HeatmapMode.PERSONAL -> personalBoardRepo.getUserAscentsAll()
-                            .filter { it.boardBrand == activeBrand }
+                            .filter { it.brand == BoardBrand.fromWire(activeBrand) }
                             .map { it.climbFrames }
                             .filter { it.isNotBlank() }
                         else -> boardRepository.getAllFramesForHeatmap(

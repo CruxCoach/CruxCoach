@@ -20,6 +20,7 @@ import com.cruxcoach.domain.board.MoonBoardFrameEncoder
 import com.cruxcoach.domain.board.MoonBoardVariant
 import com.cruxcoach.domain.community.ClimbEditorState
 import com.cruxcoach.domain.community.ClimbValidation
+import com.cruxcoach.domain.community.brand
 import com.cruxcoach.domain.community.encodeFrames
 import com.cruxcoach.domain.community.paintWithBrush
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -315,7 +316,7 @@ class ClimbEditorViewModel @Inject constructor(
             // so this is a no-op for existing Kilter users.
             if (snapshot != null &&
                 _state.value.editor.selectedHolds.isEmpty() &&
-                snapshot.state.boardBrand == _state.value.editor.boardBrand
+                snapshot.state.brand == _state.value.editor.brand
             ) {
                 applyEditor(snapshot.state)
             }
@@ -358,7 +359,7 @@ class ClimbEditorViewModel @Inject constructor(
      *  to the `p{id}r42…` wire format the MoonBoard renderer + BLE encoder
      *  read; Kilter normalizes to boulder roles (12/13/14/15). */
     private fun parseHoldsForBrand(frames: String, brand: String): Map<Int, Int> =
-        if (brand == BoardBrand.MOONBOARD.wireValue) {
+        if (BoardBrand.fromWire(brand) == BoardBrand.MOONBOARD) {
             MoonBoardFrameEncoder.parseHolds(frames).associate { it.first to it.second }
         } else {
             com.cruxcoach.domain.board.BoardClimbParser.parseFrames(frames)
@@ -368,7 +369,7 @@ class ClimbEditorViewModel @Inject constructor(
     /** Default paint brush per brand: green Start in each board's native
      *  role numbering. */
     private fun defaultBrushFor(brand: String): Int =
-        if (brand == BoardBrand.MOONBOARD.wireValue) HoldRole.ROUTE_START else HoldRole.START
+        if (BoardBrand.fromWire(brand) == BoardBrand.MOONBOARD) HoldRole.ROUTE_START else HoldRole.START
 
     /**
      * Edit-in-place: same uuid, no "Remix" suffix. Re-publish via
@@ -1006,7 +1007,7 @@ class ClimbEditorViewModel @Inject constructor(
         // overlaid by KilterBoardVisualization only — the MoonBoard renderer
         // has no heatmap layer, and MoonBoard hold-ids aren't placement ids.
         // Skip the compute entirely for MoonBoard drafts.
-        if (_state.value.editor.boardBrand == BoardBrand.MOONBOARD.wireValue) return
+        if (!_state.value.editor.brand.hasHeatmap) return
         heatmapJob?.cancel()
         heatmapJob = viewModelScope.launch {
             kotlinx.coroutines.delay(HEATMAP_DEBOUNCE_MS)
@@ -1145,7 +1146,7 @@ class ClimbEditorViewModel @Inject constructor(
      */
     private suspend fun syncLeds() {
         val cur = _state.value
-        if (cur.editor.boardBrand == BoardBrand.MOONBOARD.wireValue) {
+        if (cur.editor.brand == BoardBrand.MOONBOARD) {
             // MoonBoard preview: the board lights its own LEDs from the
             // climb frame (no per-hold LED address map like Kilter). Re-use
             // the same transport BoardSendController uses for sending a

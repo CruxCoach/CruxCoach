@@ -58,6 +58,8 @@ import com.cruxcoach.android.ui.common.SyncStatusBannerSlot
 import com.cruxcoach.android.ui.theme.*
 import com.cruxcoach.android.util.GradeDisplayHelper
 import com.cruxcoach.data.repository.AngleOption
+import com.cruxcoach.data.repository.brand
+import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.IntensityZones
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
@@ -911,7 +913,7 @@ private fun ClimbDetailPageContent(
                 // falling back to a procedural 11x18 grid otherwise; Kilter
                 // climbs keep the photo-backed Aurora renderer.
                 Box(modifier = Modifier.fillMaxWidth()) {
-                    if (climb.boardBrand == "moonboard") {
+                    if (climb.brand == BoardBrand.MOONBOARD) {
                         MoonBoardVisualization(
                             frames = climb.frames,
                             assetState = rememberMoonBoardAsset(climb.layoutId),

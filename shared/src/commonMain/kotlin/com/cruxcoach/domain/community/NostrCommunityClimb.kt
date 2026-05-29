@@ -1,5 +1,7 @@
 package com.cruxcoach.domain.community
 
+import com.cruxcoach.domain.board.BoardBrand
+
 /**
  * Per-spec namespaces for community-climb Kind-30078 events
  * (FEAT-003 §4.1 / §4.6).
@@ -13,6 +15,7 @@ object CommunityClimbTags {
     const val NS_ASCENT = "com.cruxcoach.ascent"
     const val LABEL_CLIMB = "climb"
     const val LABEL_KILTER_BOARD = "kilterboard-og"
+    const val LABEL_MOONBOARD = "moonboard"
 }
 
 /**
@@ -78,11 +81,24 @@ fun buildCommunityClimbEvent(
     val dTag = communityClimbDTag(pubkey, uuid)
     val pubkeyPrefix = pubkey.take(8)
 
+    // Board family is derived from layoutId (the reliable signal — the
+    // draft-retry path may not carry state.boardBrand), so a MoonBoard
+    // climb is tagged honestly (board label + hashtag) instead of always
+    // claiming kilterboard. Subscribers still ingest by layout_id; the
+    // label/hashtag are human/discovery metadata.
+    val brand = BoardBrand.fromLayoutId(layoutId)
+    val boardLabel = if (brand == BoardBrand.MOONBOARD) {
+        CommunityClimbTags.LABEL_MOONBOARD
+    } else {
+        CommunityClimbTags.LABEL_KILTER_BOARD
+    }
+    val boardHashtag = if (brand == BoardBrand.MOONBOARD) "moonboard" else "kilterboard"
+
     val tags = mutableListOf(
         listOf("d", dTag),
         listOf("L", CommunityClimbTags.NS_CLIMB),
         listOf("l", CommunityClimbTags.LABEL_CLIMB, CommunityClimbTags.NS_CLIMB),
-        listOf("l", CommunityClimbTags.LABEL_KILTER_BOARD, CommunityClimbTags.NS_BOARD),
+        listOf("l", boardLabel, CommunityClimbTags.NS_BOARD),
         listOf("l", sizeLabel, CommunityClimbTags.NS_SIZE),
         listOf("frames", frames),
         listOf("frames_hash", "sha256:$framesHash"),
@@ -97,7 +113,7 @@ fun buildCommunityClimbEvent(
     // a grade-less publish, producing an event subscribers couldn't
     // ingest.
     tags += listOf("setter_grade", state.setterGradeId.toString(), state.angle.toString())
-    tags += listOf("t", "kilterboard")
+    tags += listOf("t", boardHashtag)
     tags += listOf("t", "climbing")
 
     val content = buildContentJson(uuid, pubkeyPrefix, state.name, state.description)

@@ -13,6 +13,24 @@ import javax.inject.Singleton
 import kotlinx.coroutines.flow.first
 
 /**
+ * layout_id → Kilter product_name mapping. The Kilter API resolves
+ * placement IDs against the product named here — sending "Original"
+ * for a Homewall climb means the API can't find any of the climb's
+ * placement IDs in the product's set table and returns 500. Names
+ * match the strings AuroraImporter.KILTER_LAYOUT_NAMES uses on the
+ * import side (1 = Original, 8 = Homewall); other layouts default
+ * to Original and let the server reject (we don't ship support for
+ * any third Kilter product yet).
+ *
+ * Shared by [KilterClimbPublisher] and [KilterPublishRetryWorker] so
+ * the mapping lives in exactly one place.
+ */
+internal fun kilterProductName(layoutId: Long): String = when (layoutId) {
+    com.cruxcoach.android.data.BoardConstants.KILTER_HOMEWALL_LAYOUT.toLong() -> "Kilter Board Homewall"
+    else -> "Kilter Board Original"
+}
+
+/**
  * Posts CruxCoach-authored climbs to Kilter's official server DB via the
  * user's own account. Each post uses the same `climb_uuid` that the
  * Nostr Kind-30078 event already carries, so when the daily Kilter-API
@@ -142,7 +160,7 @@ class KilterClimbPublisher @Inject constructor(
                 name = state.name,
                 description = state.description,
                 framesClimbConcat = framesClimbConcat,
-                productName = productNameFor(layoutId),
+                productName = kilterProductName(layoutId),
                 productLayoutUuid = productLayoutUuid,
                 angle = publishAngle,
                 edgeLeft = boardSize.edgeLeft.toInt(),
@@ -156,7 +174,7 @@ class KilterClimbPublisher @Inject constructor(
                 name = state.name,
                 description = state.description,
                 framesClimbConcat = framesClimbConcat,
-                productName = productNameFor(layoutId),
+                productName = kilterProductName(layoutId),
                 productLayoutUuid = productLayoutUuid,
                 angle = publishAngle,
                 edgeLeft = boardSize.edgeLeft.toInt(),
@@ -259,21 +277,6 @@ class KilterClimbPublisher @Inject constructor(
             }.onFailure { Log.w(TAG, "downgrade-to-failed also threw for uuid=$uuid", it) }
             Outcome.Failed(appContext.getString(R.string.kilter_publish_transient))
         }
-    }
-
-    /**
-     * layout_id → Kilter product_name mapping. The Kilter API resolves
-     * placement IDs against the product named here — sending "Original"
-     * for a Homewall climb means the API can't find any of the climb's
-     * placement IDs in the product's set table and returns 500. Names
-     * match the strings AuroraImporter.KILTER_LAYOUT_NAMES uses on the
-     * import side (1 = Original, 8 = Homewall); other layouts default
-     * to Original and let the server reject (we don't ship support for
-     * any third Kilter product yet).
-     */
-    private fun productNameFor(layoutId: Long): String = when (layoutId) {
-        com.cruxcoach.android.data.BoardConstants.KILTER_HOMEWALL_LAYOUT.toLong() -> "Kilter Board Homewall"
-        else -> "Kilter Board Original"
     }
 
     /** Best-effort audit-trail write — wrapped in runCatching so a SQLite
