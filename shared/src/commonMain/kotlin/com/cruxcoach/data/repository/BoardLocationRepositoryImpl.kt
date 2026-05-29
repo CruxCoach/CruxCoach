@@ -72,6 +72,7 @@ class BoardLocationRepositoryImpl(
         fixedAngle = fixed_angle?.toInt(),
         frameMaker = frame_maker,
         boardBrand = BoardBrand.fromWire(board_brand),
+        wellpass = wellpass?.let { it == 1L },
     )
 
     private fun Kilter_board_wall.toDomain() = BoardWall(

@@ -48,6 +48,8 @@ fun MapFilterSheet(
     onDismiss: () -> Unit,
     onSelectAllBrands: () -> Unit,
     onToggleBrand: (BoardBrand) -> Unit,
+    onToggleOtherBrands: () -> Unit,
+    onToggleWellpassOnly: () -> Unit,
     onSelectAllLayouts: () -> Unit,
     onToggleShowOriginal: () -> Unit,
     onToggleShowHomewalls: () -> Unit,
@@ -101,6 +103,21 @@ fun MapFilterSheet(
                             selected = BoardBrand.MOONBOARD in state.filters.brands,
                             onClick = { onToggleBrand(BoardBrand.MOONBOARD) },
                             label = { Text(stringResource(R.string.board_selection_brand_moonboard)) },
+                        )
+                        FilterChip(
+                            selected = state.filters.brands.any { !it.isInteractive },
+                            onClick = onToggleOtherBrands,
+                            label = { Text(stringResource(R.string.map_filter_brand_other)) },
+                        )
+                    }
+                }
+
+                item {
+                    Section(stringResource(R.string.map_filter_section_membership)) {
+                        FilterChip(
+                            selected = state.filters.wellpassOnly,
+                            onClick = onToggleWellpassOnly,
+                            label = { Text(stringResource(R.string.map_filter_wellpass)) },
                         )
                     }
                 }

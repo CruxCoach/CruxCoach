@@ -229,6 +229,10 @@
     <string name="map_filter_match_disabled">Configure your board first</string>
     <string name="map_marker_browse_climbs">Browse climbs for this board</string>
     <string name="map_venue_section_boards">Boards at this location</string>
+    <string name="map_venue_wellpass_badge">✓ egym Wellpass</string>
+    <string name="map_filter_brand_other">Other boards</string>
+    <string name="map_filter_section_membership">Membership</string>
+    <string name="map_filter_wellpass">egym Wellpass</string>
     <string name="map_marker_open_in_maps">Open in Maps</string>
     <string name="map_marker_layout">Layout</string>
     <string name="map_marker_access">Access</string>

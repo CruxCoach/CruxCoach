@@ -162,6 +162,8 @@ fun MapScreen(
             onDismiss = { showFilterSheet = false },
             onSelectAllBrands = viewModel::selectAllBrands,
             onToggleBrand = viewModel::toggleBrand,
+            onToggleOtherBrands = viewModel::toggleOtherBrands,
+            onToggleWellpassOnly = viewModel::toggleWellpassOnly,
             onSelectAllLayouts = viewModel::selectAllLayouts,
             onToggleShowOriginal = viewModel::toggleShowOriginal,
             onToggleShowHomewalls = viewModel::toggleShowHomewalls,

@@ -1427,6 +1427,9 @@ class BoardDatabaseImporter(
                 ).use { c -> buildSet { while (c.moveToNext()) add(c.getString(1)) } }
                 val brandExpr = if ("board_brand" in srcLocCols)
                     "COALESCE(board_brand, 'kilter')" else "'kilter'"
+                // wellpass landed in the 0.2.0 Phase-2 chunk; pre-Phase-2
+                // chunks lack it → NULL (unknown), matching the schema default.
+                val wellpassExpr = if ("wellpass" in srcLocCols) "wellpass" else "NULL"
                 targetDb.beginTransaction()
                 try {
                     // Replace-all semantics: cron snapshot is authoritative,
@@ -1439,7 +1442,7 @@ class BoardDatabaseImporter(
                             phone, email, url, instagram,
                             layout_name, layout_id, size_label, product_size_id,
                             access_type, adjustability, fixed_angle, frame_maker,
-                            board_brand
+                            board_brand, wellpass
                         )
                         SELECT gym_uuid, name, lat, lng, address, city, country_code,
                                phone, email, url, instagram,
@@ -1447,7 +1450,7 @@ class BoardDatabaseImporter(
                                COALESCE(access_type, 'UNKNOWN'),
                                COALESCE(adjustability, 'UNKNOWN'),
                                fixed_angle, frame_maker,
-                               $brandExpr
+                               $brandExpr, $wellpassExpr
                         FROM loc_src.kilter_board_location
                     """)
                     targetDb.setTransactionSuccessful()

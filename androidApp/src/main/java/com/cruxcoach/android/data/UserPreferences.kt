@@ -240,6 +240,8 @@ object PreferenceKeys {
     val MAP_FILTER_SIZE_IDS = stringPreferencesKey("map_filter_size_ids")
     // Board family filter (BoardBrand.wireValue CSV). Empty = all brands.
     val MAP_FILTER_BRANDS = stringPreferencesKey("map_filter_brands")
+    // egym-Wellpass-only filter (FEAT-015 Phase 2). Off = no Wellpass gate.
+    val MAP_FILTER_WELLPASS_ONLY = booleanPreferencesKey("map_filter_wellpass_only")
 }
 
 /**
@@ -416,6 +418,11 @@ class UserPreferences(
         parseCsvSet(prefs[PreferenceKeys.MAP_FILTER_BRANDS])
     }
 
+    /** egym-Wellpass-only filter. Off (false) = no Wellpass gate. */
+    val mapFilterWellpassOnly: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[PreferenceKeys.MAP_FILTER_WELLPASS_ONLY] ?: false
+    }
+
     suspend fun setMapFilterCountries(values: Set<String>) {
         dataStore.edit { it[PreferenceKeys.MAP_FILTER_COUNTRIES] = values.joinToString(",") }
     }
@@ -436,6 +443,10 @@ class UserPreferences(
         dataStore.edit { it[PreferenceKeys.MAP_FILTER_BRANDS] = values.joinToString(",") }
     }
 
+    suspend fun setMapFilterWellpassOnly(enabled: Boolean) {
+        dataStore.edit { it[PreferenceKeys.MAP_FILTER_WELLPASS_ONLY] = enabled }
+    }
+
     /** Reset every map-side filter to its empty/default state in one transaction. */
     suspend fun resetMapFilters() {
         dataStore.edit { prefs ->
@@ -447,6 +458,7 @@ class UserPreferences(
             prefs.remove(PreferenceKeys.MAP_FILTER_ADJUSTABILITIES)
             prefs.remove(PreferenceKeys.MAP_FILTER_SIZE_IDS)
             prefs.remove(PreferenceKeys.MAP_FILTER_BRANDS)
+            prefs.remove(PreferenceKeys.MAP_FILTER_WELLPASS_ONLY)
         }
     }
 

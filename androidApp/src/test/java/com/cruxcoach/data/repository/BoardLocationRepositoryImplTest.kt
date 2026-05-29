@@ -62,6 +62,7 @@ class BoardLocationRepositoryImplTest {
         adjustability: String = "ADJUSTABLE",
         city: String? = null,
         boardBrand: String = "kilter",
+        wellpass: Long? = null,
     ) {
         db.kilterBoardLocationQueries.upsertLocation(
             gym_uuid = gymUuid,
@@ -73,7 +74,7 @@ class BoardLocationRepositoryImplTest {
             size_label = null, product_size_id = productSizeId,
             access_type = accessType, adjustability = adjustability,
             fixed_angle = null, frame_maker = null,
-            board_brand = boardBrand,
+            board_brand = boardBrand, wellpass = wellpass,
         )
     }
 
@@ -96,8 +97,21 @@ class BoardLocationRepositoryImplTest {
     fun `board_brand round-trips and defaults to KILTER`() {
         seed("g-kilter")
         seed("g-moon", boardBrand = "moonboard")
+        seed("g-tension", boardBrand = "tension")
         assertEquals(BoardBrand.KILTER, repo.getById("g-kilter")!!.boardBrand)
         assertEquals(BoardBrand.MOONBOARD, repo.getById("g-moon")!!.boardBrand)
+        // Foreign info-layer brand round-trips (not mis-tagged as Kilter).
+        assertEquals(BoardBrand.TENSION, repo.getById("g-tension")!!.boardBrand)
+    }
+
+    @Test
+    fun `wellpass round-trips as nullable tri-state`() {
+        seed("g-yes", wellpass = 1L)
+        seed("g-no", wellpass = 0L)
+        seed("g-unknown", wellpass = null)
+        assertEquals(true, repo.getById("g-yes")!!.wellpass)
+        assertEquals(false, repo.getById("g-no")!!.wellpass)
+        assertNull(repo.getById("g-unknown")!!.wellpass)
     }
 
     @Test

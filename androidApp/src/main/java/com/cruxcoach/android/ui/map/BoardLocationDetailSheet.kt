@@ -94,6 +94,20 @@ fun BoardLocationDetailSheet(
                 )
             }
 
+            if (venue.boards.any { it.wellpass == true }) {
+                Surface(
+                    color = MaterialTheme.colorScheme.tertiaryContainer,
+                    shape = RoundedCornerShape(8.dp),
+                ) {
+                    Text(
+                        stringResource(R.string.map_venue_wellpass_badge),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                    )
+                }
+            }
+
             HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
 
             // Shared contact rows. "—" placeholder when missing → predictable

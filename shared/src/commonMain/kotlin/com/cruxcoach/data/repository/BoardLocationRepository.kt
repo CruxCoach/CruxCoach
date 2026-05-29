@@ -68,6 +68,9 @@ data class BoardLocation(
      *  board_brand). Drives the map's brand filter + decides how the gym
      *  picker resolves a tapped gym (Kilter walls vs MoonBoard variant). */
     val boardBrand: BoardBrand = BoardBrand.KILTER,
+    /** egym Wellpass acceptance — true = accepts, false = explicitly not,
+     *  null = unknown / not curated (the common case). */
+    val wellpass: Boolean? = null,
 )
 
 data class BoardWall(

@@ -18,16 +18,31 @@ class BoardBrandTest {
         assertEquals(BoardBrand.MOONBOARD, BoardBrand.fromWire("moonboard"))
         assertEquals("kilter", BoardBrand.KILTER.wireValue)
         assertEquals("moonboard", BoardBrand.MOONBOARD.wireValue)
+        // Map-only info-layer families (FEAT-015 Phase 2) round-trip too.
+        assertEquals(BoardBrand.TENSION, BoardBrand.fromWire("tension"))
+        assertEquals(BoardBrand.TWELVECLIMB, BoardBrand.fromWire("12climb"))
     }
 
     @Test
     fun boardBrandDefaultsToKilterForUnknownOrNull() {
-        // A missing / legacy / unknown brand can only be a pre-multi-board
-        // row, which is Kilter by definition — never unclassifiable.
+        // A missing / legacy / unrecognised brand falls back to Kilter — a
+        // null brand can only be a pre-multi-board row (Kilter by
+        // definition), and a genuinely unknown string is shown as the
+        // historical default rather than dropped.
         assertEquals(BoardBrand.KILTER, BoardBrand.fromWire(null))
         assertEquals(BoardBrand.KILTER, BoardBrand.fromWire(""))
-        assertEquals(BoardBrand.KILTER, BoardBrand.fromWire("tension"))
+        assertEquals(BoardBrand.KILTER, BoardBrand.fromWire("nonexistent-board"))
         assertEquals(BoardBrand.KILTER, BoardBrand.fromWire("MoonBoard")) // case-sensitive
+    }
+
+    @Test
+    fun infoLayerBrandsAreTheNonInteractiveFamilies() {
+        assertEquals(false, BoardBrand.KILTER in BoardBrand.INFO_LAYER)
+        assertEquals(false, BoardBrand.MOONBOARD in BoardBrand.INFO_LAYER)
+        assertEquals(true, BoardBrand.TENSION in BoardBrand.INFO_LAYER)
+        assertEquals(true, BoardBrand.AURORA in BoardBrand.INFO_LAYER)
+        assertEquals(true, BoardBrand.KILTER.isInteractive)
+        assertEquals(false, BoardBrand.TENSION.isInteractive)
     }
 
     @Test

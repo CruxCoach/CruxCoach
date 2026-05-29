@@ -251,6 +251,10 @@
     <string name="map_filter_match_disabled">Konfiguriere zuerst dein Board</string>
     <string name="map_marker_browse_climbs">Climbs für dieses Board ansehen</string>
     <string name="map_venue_section_boards">Boards an diesem Standort</string>
+    <string name="map_venue_wellpass_badge">✓ egym Wellpass</string>
+    <string name="map_filter_brand_other">Andere Boards</string>
+    <string name="map_filter_section_membership">Mitgliedschaft</string>
+    <string name="map_filter_wellpass">egym Wellpass</string>
     <string name="map_marker_open_in_maps">In Karten-App öffnen</string>
     <string name="map_marker_layout">Layout</string>
     <string name="map_marker_access">Zugang</string>

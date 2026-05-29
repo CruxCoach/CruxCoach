@@ -699,9 +699,12 @@ private fun rssiColor(rssi: Int) = when {
     else -> ErrorRed
 }
 
-/** Localized brand label for a discovered / connected board (FEAT-027). */
+/** Localized brand label for a discovered / connected board (FEAT-027).
+ *  Only the interactive families (Kilter / MoonBoard) ever reach BLE; the
+ *  map-only info-layer brands fall back to their raw name defensively. */
 @Composable
 private fun brandLabel(brand: BoardBrand): String = when (brand) {
     BoardBrand.KILTER -> stringResource(R.string.board_ble_brand_kilter)
     BoardBrand.MOONBOARD -> stringResource(R.string.board_ble_brand_moonboard)
+    else -> brand.wireValue
 }

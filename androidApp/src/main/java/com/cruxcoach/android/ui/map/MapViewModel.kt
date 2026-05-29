@@ -127,6 +127,7 @@ class MapViewModel @Inject constructor(
                         userPreferences.boardProductSizeId,
                         userPreferences.isBoardProductSizeDefault,
                         userPreferences.mapFilterBrands,
+                        userPreferences.mapFilterWellpassOnly,
                     )
                 ) { values ->
                     @Suppress("UNCHECKED_CAST")
@@ -142,6 +143,7 @@ class MapViewModel @Inject constructor(
                         sizeId = values[8] as Int,
                         canFilterByMyBoard = !(values[9] as Boolean),
                         brandKeys = values[10] as Set<String>,
+                        wellpassOnly = values[11] as Boolean,
                     )
                 }.collect { inputs ->
                     _state.update {
@@ -155,6 +157,7 @@ class MapViewModel @Inject constructor(
                                 adjustabilities = inputs.adjustabilityKeys.mapNotNullTo(mutableSetOf()) { runCatching { Adjustability.valueOf(it) }.getOrNull() },
                                 sizeIds = inputs.sizeIds,
                                 brands = inputs.brandKeys.mapTo(mutableSetOf()) { BoardBrand.fromWire(it) },
+                                wellpassOnly = inputs.wellpassOnly,
                             ),
                             canFilterByMyBoard = inputs.canFilterByMyBoard,
                             userBoardLayoutId = inputs.layoutId,
@@ -278,9 +281,27 @@ class MapViewModel @Inject constructor(
         }
     }
 
+    /** "Other boards" chip: toggle the whole map-only info-layer family set
+     *  (Tension, Aurora, …) in one tap, since they share a single chip. */
+    fun toggleOtherBrands() {
+        viewModelScope.launch {
+            val current = userPreferences.mapFilterBrands.first()
+            val otherKeys = BoardBrand.INFO_LAYER.map { it.wireValue }.toSet()
+            val next = if (otherKeys.all { it in current }) current - otherKeys else current + otherKeys
+            userPreferences.setMapFilterBrands(next)
+        }
+    }
+
     /** "All" brand chip: clear the brand filter (empty = every brand). */
     fun selectAllBrands() {
         viewModelScope.launch { userPreferences.setMapFilterBrands(emptySet()) }
+    }
+
+    fun toggleWellpassOnly() {
+        viewModelScope.launch {
+            val current = userPreferences.mapFilterWellpassOnly.first()
+            userPreferences.setMapFilterWellpassOnly(!current)
+        }
     }
 
     fun resetFilters() {
@@ -318,5 +339,6 @@ class MapViewModel @Inject constructor(
         val sizeId: Int,
         val canFilterByMyBoard: Boolean,
         val brandKeys: Set<String>,
+        val wellpassOnly: Boolean,
     )
 }

@@ -28,12 +28,15 @@ data class MapFilters(
     val sizeIds: Set<Int> = emptySet(),
     /** Board families to show. Empty = all brands (the wildcard). */
     val brands: Set<BoardBrand> = emptySet(),
+    /** When true, keep only venues/boards that accept egym Wellpass. */
+    val wellpassOnly: Boolean = false,
 ) {
     /** True when no user-applied filter is active beyond the homewall default. */
     val isAtDefault: Boolean
         get() = showOriginal && !showHomewalls && !matchesMyBoard &&
             countries.isEmpty() && accessTypes.isEmpty() &&
-            adjustabilities.isEmpty() && sizeIds.isEmpty() && brands.isEmpty()
+            adjustabilities.isEmpty() && sizeIds.isEmpty() && brands.isEmpty() &&
+            !wellpassOnly
 
     fun apply(
         locations: List<BoardLocation>,
@@ -44,6 +47,11 @@ data class MapFilters(
         return locations.filter { loc ->
             // Brand gate (empty = all brands).
             if (brands.isNotEmpty() && loc.boardBrand !in brands) return@filter false
+
+            // egym-Wellpass gate. Only venues curated as accepting Wellpass
+            // (wellpass == true) pass; unknown (null) and explicit-no are
+            // both excluded when the filter is on.
+            if (wellpassOnly && loc.wellpass != true) return@filter false
 
             // Layout family gate (Original=1 / Homewall=8) is a Kilter-only
             // concept — MoonBoard gyms are gated by the brand filter above,
