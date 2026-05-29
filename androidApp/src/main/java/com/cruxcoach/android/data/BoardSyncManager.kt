@@ -790,12 +790,16 @@ class BoardSyncManager(
                 personalBoardRepo.runInTransaction {
                     for ((climbUuid, angle) in batch) {
                         val climb = boardRepository.getClimbByUuid(climbUuid, angle.toInt()) ?: continue
+                        // Also back-fills board_brand + layout_id, self-healing
+                        // legacy / restored rows that defaulted to kilter/NULL.
                         personalBoardRepo.updateAscentDenormalized(
                             climbUuid, angle, climb.name, climb.difficultyAverage,
-                            climb.frames, climb.framesCount
+                            climb.frames, climb.framesCount,
+                            climb.boardBrand, climb.layoutId
                         )
                         personalBoardRepo.updateBidDenormalized(
-                            climbUuid, angle, climb.name, climb.difficultyAverage
+                            climbUuid, angle, climb.name, climb.difficultyAverage,
+                            climb.boardBrand, climb.layoutId
                         )
                     }
                 }

@@ -28,7 +28,8 @@ class FakePersonalBoardRepository : PersonalBoardRepository {
         comment: String?, climbedAt: String, synced: Boolean,
         gymUuid: String?, wallUuid: String?, productLayoutUuid: String?,
         climbName: String, difficultyAverage: Double?,
-        climbFrames: String, framesCount: Long
+        climbFrames: String, framesCount: Long,
+        boardBrand: String, layoutId: Long?,
     ) {}
 
     override fun deleteAscent(uuid: String) {}
@@ -53,7 +54,8 @@ class FakePersonalBoardRepository : PersonalBoardRepository {
         isMirror: Boolean, bidCount: Long, comment: String?,
         climbedAt: String, synced: Boolean,
         gymUuid: String?, wallUuid: String?, productLayoutUuid: String?,
-        climbName: String, difficultyAverage: Double?
+        climbName: String, difficultyAverage: Double?,
+        boardBrand: String, layoutId: Long?,
     ) {}
 
     override fun deleteBid(uuid: String) {}
@@ -91,8 +93,8 @@ class FakePersonalBoardRepository : PersonalBoardRepository {
     // -- Denormalization --
 
     override fun getAllClimbKeys(): List<Pair<String, Long>> = emptyList()
-    override fun updateAscentDenormalized(climbUuid: String, angle: Long, climbName: String, difficultyAverage: Double?, climbFrames: String, framesCount: Long) {}
-    override fun updateBidDenormalized(climbUuid: String, angle: Long, climbName: String, difficultyAverage: Double?) {}
+    override fun updateAscentDenormalized(climbUuid: String, angle: Long, climbName: String, difficultyAverage: Double?, climbFrames: String, framesCount: Long, boardBrand: String, layoutId: Long?) {}
+    override fun updateBidDenormalized(climbUuid: String, angle: Long, climbName: String, difficultyAverage: Double?, boardBrand: String, layoutId: Long?) {}
 
     // -- Bulk operations --
 

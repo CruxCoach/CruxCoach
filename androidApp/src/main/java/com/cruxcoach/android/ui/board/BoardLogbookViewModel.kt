@@ -276,11 +276,13 @@ class BoardLogbookViewModel @Inject constructor(
             if (entry.isSend) {
                 personalBoardRepo.updateAscentDenormalized(
                     entry.climbUuid, entry.angle, climb.name, climb.difficultyAverage,
-                    climb.frames, climb.framesCount
+                    climb.frames, climb.framesCount,
+                    climb.boardBrand, climb.layoutId
                 )
             } else {
                 personalBoardRepo.updateBidDenormalized(
-                    entry.climbUuid, entry.angle, climb.name, climb.difficultyAverage
+                    entry.climbUuid, entry.angle, climb.name, climb.difficultyAverage,
+                    climb.boardBrand, climb.layoutId
                 )
             }
         }

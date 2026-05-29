@@ -1,0 +1,30 @@
+-- Migration version 7 → 8 (secure/personal DB): add board_brand + layout_id
+-- to ascents and bids so the logbook, stats and personal heatmap can be
+-- scoped per board (FEAT-027 follow-up — board-aware logbook).
+--
+-- WHY this is needed: the personal DB (ascents/bids) and the board DB
+-- (climbs) are separate SQLite files and cannot be SQL-joined, so an
+-- ascent row cannot recover its board family at query time. Without it,
+-- BoardStatsComputer runs every ascent's difficulty_average through the
+-- Kilter V-scale mapper — a MoonBoard (Font-scale) send is then rendered
+-- with a wrong grade, and the personal heatmap overlays the Kilter 12x12
+-- and MoonBoard 11x18 grids. Denormalising board_brand (+ layout_id, like
+-- the existing product_layout_uuid / climb_frames denormalisation) fixes
+-- both.
+--
+-- MIGRATION OF EXISTING LOGS: board_brand DEFAULT 'kilter' back-fills every
+-- pre-0.2.0 row correctly — no non-Kilter board could be logged before
+-- 0.2.0 (MoonBoard + the foreign brands are brand-new this release). No
+-- bulk pass, no cross-DB join, no data loss. layout_id is left NULL
+-- ("unknown") on existing rows — harmless: the logbook groups legacy rows
+-- under Kilter via board_brand, and the Kilter heatmap renders them as
+-- before. New logs capture both from the climb; the existing post-sync
+-- denormalisation refresh (updateAscentDenormalized / updateBidDenormalized)
+-- back-fills layout_id opportunistically for legacy rows whose climb is
+-- still in the catalogue.
+
+ALTER TABLE ascents ADD COLUMN board_brand TEXT NOT NULL DEFAULT 'kilter';
+ALTER TABLE ascents ADD COLUMN layout_id INTEGER;
+
+ALTER TABLE bids ADD COLUMN board_brand TEXT NOT NULL DEFAULT 'kilter';
+ALTER TABLE bids ADD COLUMN layout_id INTEGER;

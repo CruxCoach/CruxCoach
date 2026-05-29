@@ -32,7 +32,12 @@ CREATE TABLE ascents (
     -- from an Aurora JSON import; deterministic
     -- "aurora-json:ascent:<32-hex>" otherwise. Partial unique index
     -- below rejects duplicate re-imports.
-    external_id TEXT
+    external_id TEXT,
+    -- Board family + layout this ascent was logged on, denormalized from
+    -- the board DB (cross-DB join impossible). DEFAULT 'kilter' back-fills
+    -- pre-0.2.0 rows correctly; layout_id NULL = unknown (legacy). See 7.sqm.
+    board_brand TEXT NOT NULL DEFAULT 'kilter',
+    layout_id INTEGER
 );
 
 CREATE INDEX idx_ascents_climb ON ascents(climb_uuid);
@@ -50,8 +55,9 @@ insertAscent:
 INSERT OR REPLACE INTO ascents(uuid, climb_uuid, angle, is_mirror,
     attempt_id, bid_count, quality, difficulty, is_benchmark, comment, climbed_at, synced,
     gym_uuid, wall_uuid, product_layout_uuid,
-    climb_name, difficulty_average, climb_frames, frames_count)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+    climb_name, difficulty_average, climb_frames, frames_count,
+    board_brand, layout_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 deleteAscent:
 DELETE FROM ascents WHERE uuid = ?;
@@ -156,7 +162,8 @@ SELECT changes();
 -- ═══ Denormalization refresh (after board sync) ═══
 
 updateAscentDenormalized:
-UPDATE ascents SET climb_name = ?, difficulty_average = ?, climb_frames = ?, frames_count = ?
+UPDATE ascents SET climb_name = ?, difficulty_average = ?, climb_frames = ?, frames_count = ?,
+    board_brand = ?, layout_id = ?
 WHERE climb_uuid = ? AND angle = ?;
 
 -- ═══ Bulk operations ═══

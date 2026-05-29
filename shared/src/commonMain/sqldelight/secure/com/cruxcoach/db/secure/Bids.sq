@@ -18,7 +18,11 @@ CREATE TABLE bids (
     -- Optimistic-locking token — see ascents for the full rationale.
     row_version INTEGER NOT NULL DEFAULT 0,
     -- FEAT-005 idempotency marker — see ascents.external_id.
-    external_id TEXT
+    external_id TEXT,
+    -- Board family + layout, denormalized — see ascents (7.sqm). DEFAULT
+    -- 'kilter' back-fills pre-0.2.0 rows; layout_id NULL = unknown (legacy).
+    board_brand TEXT NOT NULL DEFAULT 'kilter',
+    layout_id INTEGER
 );
 
 CREATE INDEX idx_bids_climb ON bids(climb_uuid);
@@ -32,8 +36,9 @@ insertBid:
 INSERT OR REPLACE INTO bids(uuid, climb_uuid, angle, is_mirror,
     bid_count, comment, climbed_at, synced,
     gym_uuid, wall_uuid, product_layout_uuid,
-    climb_name, difficulty_average)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+    climb_name, difficulty_average,
+    board_brand, layout_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 deleteBid:
 DELETE FROM bids WHERE uuid = ?;
@@ -71,7 +76,8 @@ SELECT * FROM bids ORDER BY climbed_at DESC;
 -- ═══ Denormalization refresh ═══
 
 updateBidDenormalized:
-UPDATE bids SET climb_name = ?, difficulty_average = ?
+UPDATE bids SET climb_name = ?, difficulty_average = ?,
+    board_brand = ?, layout_id = ?
 WHERE climb_uuid = ? AND angle = ?;
 
 -- ═══ Bulk operations ═══

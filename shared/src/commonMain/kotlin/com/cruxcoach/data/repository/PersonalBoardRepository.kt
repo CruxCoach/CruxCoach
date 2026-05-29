@@ -16,7 +16,11 @@ interface PersonalBoardRepository {
         comment: String?, climbedAt: String, synced: Boolean,
         gymUuid: String? = null, wallUuid: String? = null, productLayoutUuid: String? = null,
         climbName: String, difficultyAverage: Double?,
-        climbFrames: String, framesCount: Long
+        climbFrames: String, framesCount: Long,
+        // Board family + layout this ascent was logged on. Defaults suit the
+        // Kilter-only callers (Kilter sync, backup restore) which leave them
+        // implicit; the manual-log path passes the climb's real values.
+        boardBrand: String = "kilter", layoutId: Long? = null,
     )
 
     fun deleteAscent(uuid: String)
@@ -53,7 +57,8 @@ interface PersonalBoardRepository {
         isMirror: Boolean, bidCount: Long, comment: String?,
         climbedAt: String, synced: Boolean,
         gymUuid: String? = null, wallUuid: String? = null, productLayoutUuid: String? = null,
-        climbName: String, difficultyAverage: Double?
+        climbName: String, difficultyAverage: Double?,
+        boardBrand: String = "kilter", layoutId: Long? = null,
     )
 
     fun deleteBid(uuid: String)
@@ -102,9 +107,11 @@ interface PersonalBoardRepository {
     /** Returns all distinct (climbUuid, angle) pairs across ascents and bids. */
     fun getAllClimbKeys(): List<Pair<String, Long>>
 
-    /** Batch-update denormalized fields after a board sync. */
-    fun updateAscentDenormalized(climbUuid: String, angle: Long, climbName: String, difficultyAverage: Double?, climbFrames: String, framesCount: Long)
-    fun updateBidDenormalized(climbUuid: String, angle: Long, climbName: String, difficultyAverage: Double?)
+    /** Batch-update denormalized fields after a board sync. Also back-fills
+     *  board_brand + layout_id from the matched climb, self-healing legacy /
+     *  restored rows that defaulted to kilter/NULL. */
+    fun updateAscentDenormalized(climbUuid: String, angle: Long, climbName: String, difficultyAverage: Double?, climbFrames: String, framesCount: Long, boardBrand: String, layoutId: Long?)
+    fun updateBidDenormalized(climbUuid: String, angle: Long, climbName: String, difficultyAverage: Double?, boardBrand: String, layoutId: Long?)
 
     // ── Bulk operations ─────────────────────────────────────────
 

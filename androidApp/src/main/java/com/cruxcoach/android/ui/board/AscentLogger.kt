@@ -91,7 +91,9 @@ internal class AscentLogger(
                             climbName = climb.name,
                             difficultyAverage = climb.difficultyAverage,
                             climbFrames = climb.frames,
-                            framesCount = climb.framesCount
+                            framesCount = climb.framesCount,
+                            boardBrand = climb.boardBrand,
+                            layoutId = climb.layoutId,
                         )
                     } else {
                         personalBoardRepo.insertBid(
@@ -104,7 +106,9 @@ internal class AscentLogger(
                             climbedAt = now,
                             synced = false,
                             climbName = climb.name,
-                            difficultyAverage = climb.difficultyAverage
+                            difficultyAverage = climb.difficultyAverage,
+                            boardBrand = climb.boardBrand,
+                            layoutId = climb.layoutId,
                         )
                     }
                 }

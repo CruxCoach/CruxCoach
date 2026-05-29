@@ -19,7 +19,8 @@ class PersonalBoardRepositoryImpl(
         comment: String?, climbedAt: String, synced: Boolean,
         gymUuid: String?, wallUuid: String?, productLayoutUuid: String?,
         climbName: String, difficultyAverage: Double?,
-        climbFrames: String, framesCount: Long
+        climbFrames: String, framesCount: Long,
+        boardBrand: String, layoutId: Long?,
     ) {
         database.ascentsQueries.insertAscent(
             uuid = uuid,
@@ -40,7 +41,9 @@ class PersonalBoardRepositoryImpl(
             climb_name = climbName,
             difficulty_average = difficultyAverage,
             climb_frames = climbFrames,
-            frames_count = framesCount
+            frames_count = framesCount,
+            board_brand = boardBrand,
+            layout_id = layoutId,
         )
     }
 
@@ -227,7 +230,8 @@ class PersonalBoardRepositoryImpl(
         isMirror: Boolean, bidCount: Long, comment: String?,
         climbedAt: String, synced: Boolean,
         gymUuid: String?, wallUuid: String?, productLayoutUuid: String?,
-        climbName: String, difficultyAverage: Double?
+        climbName: String, difficultyAverage: Double?,
+        boardBrand: String, layoutId: Long?,
     ) {
         database.bidsQueries.insertBid(
             uuid = uuid,
@@ -242,7 +246,9 @@ class PersonalBoardRepositoryImpl(
             wall_uuid = wallUuid,
             product_layout_uuid = productLayoutUuid,
             climb_name = climbName,
-            difficulty_average = difficultyAverage
+            difficulty_average = difficultyAverage,
+            board_brand = boardBrand,
+            layout_id = layoutId,
         )
     }
 
@@ -510,13 +516,16 @@ class PersonalBoardRepositoryImpl(
     override fun updateAscentDenormalized(
         climbUuid: String, angle: Long,
         climbName: String, difficultyAverage: Double?,
-        climbFrames: String, framesCount: Long
+        climbFrames: String, framesCount: Long,
+        boardBrand: String, layoutId: Long?
     ) {
         database.ascentsQueries.updateAscentDenormalized(
             climb_name = climbName,
             difficulty_average = difficultyAverage,
             climb_frames = climbFrames,
             frames_count = framesCount,
+            board_brand = boardBrand,
+            layout_id = layoutId,
             climb_uuid = climbUuid,
             angle = angle
         )
@@ -524,11 +533,14 @@ class PersonalBoardRepositoryImpl(
 
     override fun updateBidDenormalized(
         climbUuid: String, angle: Long,
-        climbName: String, difficultyAverage: Double?
+        climbName: String, difficultyAverage: Double?,
+        boardBrand: String, layoutId: Long?
     ) {
         database.bidsQueries.updateBidDenormalized(
             climb_name = climbName,
             difficulty_average = difficultyAverage,
+            board_brand = boardBrand,
+            layout_id = layoutId,
             climb_uuid = climbUuid,
             angle = angle
         )
