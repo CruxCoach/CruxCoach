@@ -230,7 +230,13 @@ class BoardLogbookViewModel @Inject constructor(
                 // rest, for a stable chip order.
                 val brands = all.map { it.boardBrand }.distinct()
                     .sortedBy { if (it == "kilter") 0 else 1 }
-                _state.update { it.copy(availableBoardBrands = brands) }
+                _state.update {
+                    // Clamp a stale filter: if the selected board no longer has
+                    // any ascents (e.g. all its logs were deleted) drop back to
+                    // "all" so stats don't render empty with no way to recover.
+                    val clampedFilter = it.boardFilter?.takeIf { bf -> bf in brands }
+                    it.copy(availableBoardBrands = brands, boardFilter = clampedFilter)
+                }
                 recomputeStats()
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e

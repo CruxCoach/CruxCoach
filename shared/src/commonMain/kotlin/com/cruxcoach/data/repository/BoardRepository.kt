@@ -415,7 +415,10 @@ data class RawBid(
     val productLayoutUuid: String? = null,
     /** Optimistic-locking token snapshot at read time. Pass to
      *  [PersonalBoardRepository.markBidSyncedIfUnchanged]. */
-    val rowVersion: Long = 0L
+    val rowVersion: Long = 0L,
+    /** Board family + layout (7.sqm) — carried for backup round-trip. */
+    val boardBrand: String = "kilter",
+    val layoutId: Long? = null,
 )
 
 data class RawClimbListEntry(

@@ -99,7 +99,9 @@ class PersonalBoardRepositoryImpl(
                 climbFrames = row.climb_frames,
                 difficultyAverage = row.difficulty_average,
                 framesCount = row.frames_count,
-                isSend = true
+                isSend = true,
+                boardBrand = row.board_brand,
+                layoutId = row.layout_id,
             )
         }
     }
@@ -309,7 +311,9 @@ class PersonalBoardRepositoryImpl(
                 gymUuid = row.gym_uuid,
                 wallUuid = row.wall_uuid,
                 productLayoutUuid = row.product_layout_uuid,
-                rowVersion = row.row_version
+                rowVersion = row.row_version,
+                boardBrand = row.board_brand,
+                layoutId = row.layout_id,
             )
         }
     }

@@ -222,8 +222,11 @@ private fun BoardCard(
             if (board.boardBrand == BoardBrand.KILTER && !board.frameMaker.isNullOrBlank()) {
                 LabelValueRow(stringResource(R.string.map_marker_frame), board.frameMaker!!)
             }
+            // "Browse climbs" only for families CruxCoach has a catalogue
+            // for (Kilter / MoonBoard). Foreign info-layer brands are
+            // map-only — no catalogue to deep-link into.
             val layoutId = board.layoutId
-            if (layoutId != null) {
+            if (layoutId != null && board.boardBrand.isInteractive) {
                 Spacer(Modifier.height(4.dp))
                 Button(
                     onClick = { onBrowseClimbs(layoutId, board.productSizeId) },
@@ -295,11 +298,14 @@ private fun BoardLocation.contactScore(): Int =
     listOf(phone, email, url, address).count { !it.isNullOrBlank() }
 
 /** Human label for one board within a venue card. MoonBoard → variant name;
- *  Kilter → layout + size. */
-private fun BoardLocation.boardTitle(): String = when (boardBrand) {
-    BoardBrand.MOONBOARD ->
+ *  foreign info-layer brands → brand name; Kilter → layout + size. */
+private fun BoardLocation.boardTitle(): String = when {
+    boardBrand == BoardBrand.MOONBOARD ->
         layoutId?.toLong()?.let { MoonBoardVariant.fromLayoutId(it)?.displayName }
             ?: layoutName ?: "MoonBoard"
+    // Map-only foreign families (Tension, Aurora, …) — title-cased brand
+    // name, never the Kilter fallback below.
+    !boardBrand.isInteractive -> boardBrand.wireValue.replaceFirstChar { it.uppercase() }
     else -> {
         val name = layoutName
         val size = sizeLabel

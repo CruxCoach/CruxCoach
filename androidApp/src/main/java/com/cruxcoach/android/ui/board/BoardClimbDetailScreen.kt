@@ -493,22 +493,31 @@ fun BoardClimbDetailScreen(
                                     modifier = Modifier.testTag("boarddetail_mirror_toggle"),
                                 )
                                 HorizontalDivider()
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.climb_creator_remix_action)) },
-                                    leadingIcon = {
-                                        Icon(
-                                            Icons.AutoMirrored.Filled.CallSplit,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        )
-                                    },
-                                    enabled = state.climb != null,
-                                    onClick = {
-                                        moreExpanded = false
-                                        state.climb?.uuid?.let(onNavigateToFork)
-                                    },
-                                    modifier = Modifier.testTag("boarddetail_fork_button"),
-                                )
+                                // Remix forks into the Kilter-only climb editor.
+                                // Gate it off for MoonBoard climbs (per-climb
+                                // brand, not active board) — the editor has no
+                                // Aurora placements/images for a MoonBoard
+                                // layout and would persist a corrupt
+                                // kilter-tagged climb. Mirrors the create-FAB
+                                // gate; closes the second creator entry point.
+                                if (state.climb?.boardBrand != "moonboard") {
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.climb_creator_remix_action)) },
+                                        leadingIcon = {
+                                            Icon(
+                                                Icons.AutoMirrored.Filled.CallSplit,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        },
+                                        enabled = state.climb != null,
+                                        onClick = {
+                                            moreExpanded = false
+                                            state.climb?.uuid?.let(onNavigateToFork)
+                                        },
+                                        modifier = Modifier.testTag("boarddetail_fork_button"),
+                                    )
+                                }
                                 if (canEdit) {
                                     if (!kilterImmutable) {
                                         DropdownMenuItem(

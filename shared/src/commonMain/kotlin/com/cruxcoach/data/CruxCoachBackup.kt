@@ -342,7 +342,11 @@ object CruxCoachBackup {
         val climbName: String = "",
         val difficultyAverage: Double? = null,
         val climbFrames: String = "",
-        val framesCount: Long = 1
+        val framesCount: Long = 1,
+        // Board family + layout (7.sqm). Defaulted for backups written before
+        // this field existed — those are Kilter by definition.
+        val boardBrand: String = "kilter",
+        val layoutId: Long? = null
     )
 
     @Serializable
@@ -355,7 +359,9 @@ object CruxCoachBackup {
         val comment: String? = null,
         val climbedAt: String,
         val climbName: String = "",
-        val difficultyAverage: Double? = null
+        val difficultyAverage: Double? = null,
+        val boardBrand: String = "kilter",
+        val layoutId: Long? = null
     )
 
     @Serializable
@@ -538,7 +544,8 @@ object CruxCoachBackup {
                     quality = a.quality, difficulty = a.difficulty,
                     comment = a.comment, climbedAt = a.climbedAt, climbName = a.climbName,
                     difficultyAverage = a.difficultyAverage,
-                    climbFrames = a.climbFrames, framesCount = a.framesCount
+                    climbFrames = a.climbFrames, framesCount = a.framesCount,
+                    boardBrand = a.boardBrand, layoutId = a.layoutId
                 )
             }
         } else emptyList()
@@ -548,7 +555,8 @@ object CruxCoachBackup {
                 BidExport(
                     uuid = b.uuid, climbUuid = b.climbUuid, angle = b.angle,
                     isMirror = b.isMirror, bidCount = b.bidCount,
-                    comment = b.comment, climbedAt = b.climbedAt
+                    comment = b.comment, climbedAt = b.climbedAt,
+                    boardBrand = b.boardBrand, layoutId = b.layoutId
                 )
             }
         } else emptyList()
@@ -821,7 +829,9 @@ object CruxCoachBackup {
                             climbName = ascent.climbName,
                             difficultyAverage = ascent.difficultyAverage,
                             climbFrames = ascent.climbFrames,
-                            framesCount = ascent.framesCount
+                            framesCount = ascent.framesCount,
+                            boardBrand = ascent.boardBrand,
+                            layoutId = ascent.layoutId
                         )
                         ascentCount++
                     }
@@ -845,7 +855,9 @@ object CruxCoachBackup {
                             comment = bid.comment, climbedAt = bid.climbedAt,
                             synced = false,
                             climbName = bid.climbName,
-                            difficultyAverage = bid.difficultyAverage
+                            difficultyAverage = bid.difficultyAverage,
+                            boardBrand = bid.boardBrand,
+                            layoutId = bid.layoutId
                         )
                         bidCount++
                     }
