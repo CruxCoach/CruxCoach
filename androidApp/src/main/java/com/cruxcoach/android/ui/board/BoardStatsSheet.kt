@@ -56,6 +56,39 @@ private fun distributionChartViewLabel(view: DistributionChartView): String = wh
     DistributionChartView.PERIOD_COMPARISON -> stringResource(R.string.board_stats_period_comparison)
 }
 
+@Composable
+private fun boardBrandLabel(brand: String): String = when (brand) {
+    "kilter" -> stringResource(R.string.board_selection_brand_kilter)
+    "moonboard" -> stringResource(R.string.board_selection_brand_moonboard)
+    else -> brand.replaceFirstChar { it.uppercase() }
+}
+
+/** Board-family selector for the per-board stats split. "Alle" (null) +
+ *  one chip per board the user has logged on. Only shown for multi-board
+ *  users (the caller gates on availableBoardBrands.size > 1). */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun BoardFilterChips(
+    brands: List<String>,
+    selected: String?,
+    onSelect: (String?) -> Unit,
+) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FilterChip(
+            selected = selected == null,
+            onClick = { onSelect(null) },
+            label = { Text(stringResource(R.string.map_filter_show_all)) },
+        )
+        brands.forEach { brand ->
+            FilterChip(
+                selected = selected == brand,
+                onClick = { onSelect(brand) },
+                label = { Text(boardBrandLabel(brand)) },
+            )
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 internal fun BoardStatsSheet(
@@ -73,6 +106,9 @@ internal fun BoardStatsSheet(
     placements: Map<Int, com.cruxcoach.data.repository.BoardPlacement> = emptyMap(),
     boardSize: com.cruxcoach.data.repository.BoardSize? = null,
     boardImages: List<com.cruxcoach.data.repository.BoardImage> = emptyList(),
+    boardFilter: String? = null,
+    availableBoardBrands: List<String> = emptyList(),
+    onBoardFilterSelect: (String?) -> Unit = {},
     onIntervalSelect: (StatsTimeInterval) -> Unit,
     onGradeChartViewSelect: (GradeChartView) -> Unit,
     onTimeChartViewSelect: (TimeChartView) -> Unit,
@@ -102,6 +138,15 @@ internal fun BoardStatsSheet(
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold
             )
+
+            // Per-board split: only when the user has logged on >1 board.
+            if (availableBoardBrands.size > 1) {
+                BoardFilterChips(
+                    brands = availableBoardBrands,
+                    selected = boardFilter,
+                    onSelect = onBoardFilterSelect,
+                )
+            }
 
             // Time interval chips + custom date
             StatsIntervalChips(

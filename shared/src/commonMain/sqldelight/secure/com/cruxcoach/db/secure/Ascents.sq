@@ -87,13 +87,13 @@ getUserLogbookPage:
 SELECT uuid, climb_uuid, angle, is_mirror,
        bid_count, quality, difficulty, comment, climbed_at,
        climb_name, climb_frames, frames_count,
-       difficulty_average, 1 AS is_send
+       difficulty_average, 1 AS is_send, board_brand, layout_id
 FROM ascents
 UNION ALL
 SELECT uuid, climb_uuid, angle, is_mirror,
        bid_count, NULL, NULL, comment, climbed_at,
        climb_name, '' AS climb_frames, 1 AS frames_count,
-       difficulty_average, 0 AS is_send
+       difficulty_average, 0 AS is_send, board_brand, layout_id
 FROM bids
 ORDER BY climbed_at DESC
 LIMIT :limit OFFSET :offset;
@@ -103,13 +103,13 @@ getUserLogbookAllLight:
 SELECT uuid, climb_uuid, angle, is_mirror,
        bid_count, quality, difficulty, comment, climbed_at,
        climb_name, '' AS climb_frames, frames_count,
-       difficulty_average, 1 AS is_send
+       difficulty_average, 1 AS is_send, board_brand, layout_id
 FROM ascents
 UNION ALL
 SELECT uuid, climb_uuid, angle, is_mirror,
        bid_count, NULL, NULL, comment, climbed_at,
        climb_name, '' AS climb_frames, 1 AS frames_count,
-       difficulty_average, 0 AS is_send
+       difficulty_average, 0 AS is_send, board_brand, layout_id
 FROM bids
 ORDER BY climbed_at DESC;
 
@@ -118,13 +118,13 @@ getUserHistoryForClimb:
 SELECT uuid, climb_uuid, angle, is_mirror,
        bid_count, quality, difficulty, comment, climbed_at,
        climb_name, climb_frames, frames_count,
-       difficulty_average, 1 AS is_send
+       difficulty_average, 1 AS is_send, board_brand, layout_id
 FROM ascents WHERE climb_uuid = :climbUuid
 UNION ALL
 SELECT uuid, climb_uuid, angle, is_mirror,
        bid_count, NULL, NULL, comment, climbed_at,
        climb_name, '' AS climb_frames, 1 AS frames_count,
-       difficulty_average, 0 AS is_send
+       difficulty_average, 0 AS is_send, board_brand, layout_id
 FROM bids WHERE climb_uuid = :climbUuid
 ORDER BY climbed_at DESC;
 

@@ -113,7 +113,12 @@ data class BoardLogbookState(
     val boardSize: com.cruxcoach.data.repository.BoardSize? = null,
     val boardImages: List<com.cruxcoach.data.repository.BoardImage> = emptyList(),
     val heatmapMode: HeatmapMode = HeatmapMode.PERSONAL,
-    val heatmapData: Map<Int, Float> = emptyMap()
+    val heatmapData: Map<Int, Float> = emptyMap(),
+    // Per-board stats split: which board family the stats + heatmap are
+    // scoped to. null = all boards combined. Only meaningful (and the
+    // selector only shown) when the user has logged on more than one board.
+    val boardFilter: String? = null,
+    val availableBoardBrands: List<String> = emptyList(),
 )
 
 @HiltViewModel
@@ -220,6 +225,12 @@ class BoardLogbookViewModel @Inject constructor(
                     personalBoardRepo.getUserLogbookAllLight()
                 }
                 allAscents = all
+                // Boards the user has actually logged on — drives whether the
+                // per-board stats selector is shown. Kilter first, then the
+                // rest, for a stable chip order.
+                val brands = all.map { it.boardBrand }.distinct()
+                    .sortedBy { if (it == "kilter") 0 else 1 }
+                _state.update { it.copy(availableBoardBrands = brands) }
                 recomputeStats()
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
@@ -318,13 +329,24 @@ class BoardLogbookViewModel @Inject constructor(
         if (opening && allAscents.isEmpty()) preloadStats()
     }
 
+    /** Scope the stats + heatmap to one board family, or null for all. */
+    fun setBoardFilter(brand: String?) {
+        if (_state.value.boardFilter == brand) return
+        _state.update { it.copy(boardFilter = brand) }
+        recomputeStats()
+    }
+
     private fun recomputeStats() {
         viewModelScope.launch {
             try {
                 val s = _state.value
+                // Per-board split: restrict to the selected family when set.
+                val scoped = s.boardFilter
+                    ?.let { bf -> allAscents.filter { it.boardBrand == bf } }
+                    ?: allAscents
                 val stats = withContext(Dispatchers.Default) {
                     BoardStatsComputer.computeStats(
-                        allAscents, s.statsInterval, s.gradeScale,
+                        scoped, s.statsInterval, s.gradeScale,
                         s.customDateFrom, s.customDateTo, context
                     )
                 }
@@ -353,7 +375,10 @@ class BoardLogbookViewModel @Inject constructor(
                     return@launch
                 }
                 val layoutId = userPreferences.boardLayoutId.first()
-                val activeBrand = userPreferences.boardBrand.first()
+                // Heatmap is always single-grid: use the selected board filter
+                // when set, else the active board's brand (never "all", which
+                // would re-overlay disjoint grids).
+                val activeBrand = _state.value.boardFilter ?: userPreferences.boardBrand.first()
                 val data = withContext(Dispatchers.IO) {
                     val frameRows: List<String> = when (mode) {
                         // allAscents comes from getUserLogbookAllLight() which

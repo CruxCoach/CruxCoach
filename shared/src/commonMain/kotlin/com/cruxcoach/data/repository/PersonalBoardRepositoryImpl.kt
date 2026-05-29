@@ -136,7 +136,9 @@ class PersonalBoardRepositoryImpl(
                 climbFrames = row.climb_frames,
                 difficultyAverage = row.difficulty_average,
                 framesCount = row.frames_count,
-                isSend = row.is_send == 1L
+                isSend = row.is_send == 1L,
+                boardBrand = row.board_brand,
+                layoutId = row.layout_id,
             )
         }
     }
@@ -157,7 +159,9 @@ class PersonalBoardRepositoryImpl(
                 climbFrames = row.climb_frames,
                 difficultyAverage = row.difficulty_average,
                 framesCount = row.frames_count,
-                isSend = row.is_send == 1L
+                isSend = row.is_send == 1L,
+                boardBrand = row.board_brand,
+                layoutId = row.layout_id,
             )
         }
     }
@@ -178,7 +182,9 @@ class PersonalBoardRepositoryImpl(
                 climbFrames = row.climb_frames,
                 difficultyAverage = row.difficulty_average,
                 framesCount = row.frames_count,
-                isSend = row.is_send == 1L
+                isSend = row.is_send == 1L,
+                boardBrand = row.board_brand,
+                layoutId = row.layout_id,
             )
         }
     }
