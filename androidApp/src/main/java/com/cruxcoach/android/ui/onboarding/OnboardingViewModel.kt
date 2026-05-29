@@ -209,6 +209,8 @@ class OnboardingViewModel @Inject constructor(
         if (_state.value.boardLayoutId == layoutId) return
         viewModelScope.launch {
             userPreferences.setBoardLayoutId(layoutId)
+            // Original/Homewall are Kilter layouts — keep brand coherent.
+            userPreferences.setBoardBrand("kilter")
             val targetProductId = when (layoutId) {
                 com.cruxcoach.android.data.BoardConstants.KILTER_HOMEWALL_LAYOUT ->
                     com.cruxcoach.android.data.BoardConstants.KILTER_HOMEWALL_PRODUCT_ID
@@ -229,6 +231,8 @@ class OnboardingViewModel @Inject constructor(
                     boardProductSizeName = newSize
                         ?.let { com.cruxcoach.android.data.BoardConstants.sizeLabel(it.id, it.name) }
                         .orEmpty(),
+                    boardBrand = "kilter",
+                    moonBoardVariant = null,
                 )
             }
         }

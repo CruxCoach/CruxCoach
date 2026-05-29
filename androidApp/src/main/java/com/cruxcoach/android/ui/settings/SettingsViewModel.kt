@@ -459,6 +459,11 @@ class SettingsViewModel @Inject constructor(
         if (_state.value.boardLayoutId == layoutId) return
         viewModelScope.launch {
             userPreferences.setBoardLayoutId(layoutId)
+            // Original/Homewall (layout 1/8) are Kilter layouts — keep the
+            // brand coherent so switching here from a MoonBoard flips the
+            // active brand back to Kilter (otherwise Browse/Detail would keep
+            // treating the board as a MoonBoard).
+            userPreferences.setBoardBrand("kilter")
             val targetProductId = layoutToProductId(layoutId)
             val newSize = withContext(Dispatchers.IO) {
                 boardRepository.getAllProductSizes(targetProductId.toLong())
@@ -476,6 +481,8 @@ class SettingsViewModel @Inject constructor(
                     boardLayoutId = layoutId,
                     boardProductSizeId = newSizeId,
                     boardProductSizeName = newSizeName,
+                    boardBrand = "kilter",
+                    moonBoardVariant = null,
                 )
             }
         }

@@ -74,6 +74,20 @@ internal class BoardSendController(
         Log.i(TAG, "sendToBoard: start frames=${s.holds.size}")
         sendJob = scope.launch {
             try {
+                // Board-match guard: you can only send a climb to a connected
+                // board of the same family. A climb opened from a mixed list
+                // or deep link can differ from the active board; sending it
+                // would light the wrong holds. (This Kilter branch is only
+                // reached for non-MoonBoard climbs, so the check catches the
+                // "active board is a MoonBoard" mismatch.)
+                val activeBrand = userPreferences.boardBrand.first()
+                if (s.climb != null && s.climb.boardBrand != activeBrand) {
+                    state.update { it.copy(
+                        ble = it.ble.copy(isSending = false, error = "Dieser Climb gehört zu einem anderen Board-Typ als dein aktives Board."),
+                        nearby = it.nearby.copy(debugInfo = "board-brand mismatch")
+                    ) }
+                    return@launch
+                }
                 state.update { it.copy(nearby = it.nearby.copy(debugInfo = "loading LED map...")) }
                 val productSizeId = userPreferences.boardProductSizeId.first()
                 val placementToLed = withContext(Dispatchers.IO) {
@@ -145,6 +159,27 @@ internal class BoardSendController(
         ) }
         sendJob = scope.launch {
             try {
+                // Board-match guard: a MoonBoard climb can only go to a
+                // connected MoonBoard of the same variant. A cross-board list
+                // / deep link can surface a MoonBoard climb while a Kilter (or
+                // a different MoonBoard variant) is configured; sending it
+                // would light wrong/garbled holds. Refuse with a clear message.
+                val activeBrand = userPreferences.boardBrand.first()
+                if (activeBrand != "moonboard") {
+                    state.update { it.copy(
+                        ble = it.ble.copy(isSending = false, error = "Dein aktives Board ist kein MoonBoard — wechsle in den Einstellungen, um diesen Climb zu senden."),
+                        nearby = it.nearby.copy(debugInfo = "active board not moonboard")
+                    ) }
+                    return@launch
+                }
+                val activeLayout = userPreferences.boardLayoutId.first().toLong()
+                if (s.climb?.layoutId?.toLong() != null && s.climb.layoutId.toLong() != activeLayout) {
+                    state.update { it.copy(
+                        ble = it.ble.copy(isSending = false, error = "Dieser Climb gehört zu einer anderen MoonBoard-Variante als dein aktives Board."),
+                        nearby = it.nearby.copy(debugInfo = "moonboard variant mismatch")
+                    ) }
+                    return@launch
+                }
                 // Resolve the MoonBoard variant from the CLIMB being sent,
                 // not the active-board pref — the encoder's per-column-height
                 // serpentine differs (18 for standard 11×18 boards, 12 for

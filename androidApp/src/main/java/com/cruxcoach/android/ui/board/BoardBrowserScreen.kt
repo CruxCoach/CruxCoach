@@ -602,13 +602,20 @@ fun BoardBrowserScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 horizontalAlignment = Alignment.End,
             ) {
-                FloatingActionButton(
-                    onClick = onNavigateToClimbCreator,
-                    containerColor = OrangeAccent,
-                    contentColor = DarkBackground,
-                    modifier = Modifier.testTag("board_create_fab")
-                ) {
-                    Icon(Icons.Default.Create, contentDescription = stringResource(R.string.climb_creator_open))
+                // FEAT-027: the climb creator is Kilter-only — MoonBoard
+                // authoring is out of scope (a MoonBoard layout has no Aurora
+                // placements / board images, and the editor would persist a
+                // corrupt kilter-tagged climb). Hide the create FAB when the
+                // active board is a MoonBoard.
+                if (state.filter.boardBrand != "moonboard") {
+                    FloatingActionButton(
+                        onClick = onNavigateToClimbCreator,
+                        containerColor = OrangeAccent,
+                        contentColor = DarkBackground,
+                        modifier = Modifier.testTag("board_create_fab")
+                    ) {
+                        Icon(Icons.Default.Create, contentDescription = stringResource(R.string.climb_creator_open))
+                    }
                 }
                 FloatingActionButton(
                     onClick = { searchVisible = !searchVisible },
