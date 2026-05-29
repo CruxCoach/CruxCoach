@@ -76,7 +76,9 @@ class PersonalBoardRepositoryImpl(
                 climbFrames = row.climb_frames,
                 difficultyAverage = row.difficulty_average,
                 framesCount = row.frames_count,
-                isSend = true
+                isSend = true,
+                boardBrand = row.board_brand,
+                layoutId = row.layout_id,
             )
         }
     }

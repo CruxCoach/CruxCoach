@@ -353,13 +353,22 @@ class BoardLogbookViewModel @Inject constructor(
                     return@launch
                 }
                 val layoutId = userPreferences.boardLayoutId.first()
+                val activeBrand = userPreferences.boardBrand.first()
                 val data = withContext(Dispatchers.IO) {
                     val frameRows: List<String> = when (mode) {
                         // allAscents comes from getUserLogbookAllLight() which
                         // strips climb_frames to save memory for the list UI —
                         // the heavy SELECT * variant is the only one that carries
                         // the frames we need to render the personal heatmap.
+                        //
+                        // Scope to the active board's family: a Kilter 12x12
+                        // grid and a MoonBoard 11x18 grid use disjoint hold
+                        // ids, so overlaying both boards' ascents was
+                        // physically meaningless. Filtering by board_brand
+                        // (reliably set; legacy rows default to 'kilter')
+                        // fixes that without dropping legacy NULL-layout rows.
                         HeatmapMode.PERSONAL -> personalBoardRepo.getUserAscentsAll()
+                            .filter { it.boardBrand == activeBrand }
                             .map { it.climbFrames }
                             .filter { it.isNotBlank() }
                         else -> boardRepository.getAllFramesForHeatmap(

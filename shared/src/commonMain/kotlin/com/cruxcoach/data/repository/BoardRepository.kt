@@ -98,7 +98,13 @@ data class AscentWithClimb(
     val climbFrames: String,
     val difficultyAverage: Double?,
     val framesCount: Long = 1,
-    val isSend: Boolean = true
+    val isSend: Boolean = true,
+    // Board family + layout this ascent was logged on (denormalized onto
+    // ascents/bids in 7.sqm). Defaults suit the light/projection queries that
+    // don't select them; getUserAscentsAll (SELECT *) populates the real
+    // values so the personal heatmap can scope to a single board's grid.
+    val boardBrand: String = "kilter",
+    val layoutId: Long? = null,
 )
 
 data class HoldPosition(
