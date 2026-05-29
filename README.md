@@ -52,9 +52,10 @@ Browse climbs, control your Kilter Board via Bluetooth, log ascents, import your
 ## All Features
 
 - **85,000+ climbs** with filters for grade, angle, quality, moves, and setter
-- **Board-Locations Map** *(0.1.5+)* — interactive world map of every known Kilter Board installation, with filters for layout, country, public-vs-private, adjustability and size; tap a marker for contact details and a direct link into the climbs that fit that exact board
-- **Find-your-gym board picker** *(0.1.5+)* — set the right board configuration in Settings by searching for your gym, no product-size codes to memorise; always-on board-fit filter then narrows the catalog to climbs your board can actually do
-- **BLE board control** — light up holds on your Kilter Board
+- **MoonBoard support** *(0.2.0+)* — browse the MoonBoard problem catalogue (MoonBoard 2016, Masters 2017, Masters 2019, Mini 2020) with the same filters as Kilter, and send problems to your board over Bluetooth; pick your MoonBoard in onboarding or Settings alongside the Kilter variants
+- **Board-Locations Map** *(0.2.0+)* — interactive world map of every known Kilter **and MoonBoard** installation, with filters for board brand, layout, country, public-vs-private, adjustability and size; tap a marker for contact details and a direct link into the climbs that fit that exact board
+- **Find-your-gym board picker** *(0.2.0+)* — set the right board configuration in Settings by searching for your gym, no product-size codes to memorise; always-on board-fit filter then narrows the catalog to climbs your board can actually do
+- **BLE board control** — light up holds on your Kilter Board or MoonBoard
 - **Climb lists** — favorites, projects, custom lists
 - **Log ascents** with grade opinions, attempts, and notes
 - **Hold Search** — tap holds on the Kilter Board to find climbs that use them

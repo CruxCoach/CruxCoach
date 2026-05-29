@@ -228,6 +228,7 @@
     <string name="map_filter_matches_my_board">Matches my board</string>
     <string name="map_filter_match_disabled">Configure your board first</string>
     <string name="map_marker_browse_climbs">Browse climbs for this board</string>
+    <string name="map_venue_section_boards">Boards at this location</string>
     <string name="map_marker_open_in_maps">Open in Maps</string>
     <string name="map_marker_layout">Layout</string>
     <string name="map_marker_access">Access</string>
@@ -1828,14 +1829,21 @@
     <string name="whatsnew_aurora_import_action_now">Import now</string>
     <string name="whatsnew_aurora_import_action_later">Later</string>
 
-    <!-- FEAT-015 board-locations map (0.1.5) -->
-    <string name="whatsnew_board_map_title">New: Kilter Boards on a map</string>
-    <string name="whatsnew_board_map_body">0.1.5 puts every known Kilter Board installation on an interactive world map. Tap the map icon next to hold-search in the board browser, pan around, tap a marker for the gym\'s address, phone, email, and a direct link into the climbs for that board\'s exact layout and size.</string>
-    <string name="whatsnew_board_map_hint">Filters cover layout family, country, public-vs-private, adjustability and size. The "Matches my board" filter narrows the markers to gyms whose hardware fits the board you configured in Settings.</string>
+    <!-- FEAT-027 MoonBoard support (0.2.0) — headline -->
+    <string name="whatsnew_moonboard_title">New: MoonBoard support</string>
+    <string name="whatsnew_moonboard_body">0.2.0 adds MoonBoard alongside Kilter. Browse the MoonBoard problem catalogue with the same grade, angle and setter filters, open a problem, and light it up on your board over Bluetooth. MoonBoard 2016, Masters 2017, Masters 2019 and Mini 2020 are supported.</string>
+    <string name="whatsnew_moonboard_hint">Pick your MoonBoard in Settings → board type, or during onboarding. The board-fit filter and the locations map work for MoonBoard too.</string>
+    <string name="whatsnew_moonboard_action_now">Pick my board</string>
+    <string name="whatsnew_moonboard_action_later">Later</string>
+
+    <!-- FEAT-015 board-locations map (0.2.0) -->
+    <string name="whatsnew_board_map_title">New: boards on a map</string>
+    <string name="whatsnew_board_map_body">0.2.0 puts every known Kilter and MoonBoard installation on an interactive world map. Tap the map icon next to hold-search in the board browser, pan around, tap a marker for the gym\'s address, phone, email, and a direct link into the climbs for that board\'s exact layout and size.</string>
+    <string name="whatsnew_board_map_hint">Filters cover board brand, layout family, country, public-vs-private, adjustability and size. The "Matches my board" filter narrows the markers to gyms whose hardware fits the board you configured in Settings.</string>
     <string name="whatsnew_board_map_action_now">Open map</string>
     <string name="whatsnew_board_map_action_later">Later</string>
 
-    <!-- FEAT-007 Phase 1 gym-board picker (0.1.5) -->
+    <!-- FEAT-007 Phase 1 gym-board picker (0.2.0) -->
     <string name="whatsnew_gym_picker_title">New: pick your board by gym</string>
     <string name="whatsnew_gym_picker_body">In Settings → Board-Größe, "Ändern" now offers a "Halle suchen" path. Search your gym, pick the wall, done — no more guessing the product-size code from the dropdown.</string>
     <string name="whatsnew_gym_picker_hint">The manual list is still there as a fallback for setters and home-wall owners who know their hardware off the top of their head.</string>

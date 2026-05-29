@@ -15,30 +15,31 @@ import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.R
 
 /**
- * "What's new in 0.2.0" dialog announcing the FEAT-007 Phase 1 board
- * picker — *Settings → Board-Größe → Ändern → Halle suchen*. Discovery
- * surface only; the actual picker dialog lives one tap deeper in the
- * Settings screen.
+ * "What's new in 0.2.0" dialog announcing FEAT-027 MoonBoard support — the
+ * release headline. Same shape as [BoardLocationsMapWhatsNewDialog]: a pure
+ * discovery surface for users upgrading from 0.1.4. "Pick my board"
+ * navigates to Settings where the board-type picker now offers MoonBoard;
+ * "Later" dismisses without nagging again.
  */
 @Composable
-internal fun GymBoardPickerWhatsNewDialog(
+internal fun MoonBoardWhatsNewDialog(
     onDismiss: () -> Unit,
     onNavigateToSettings: () -> Unit,
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Text(stringResource(R.string.whatsnew_gym_picker_title))
+            Text(stringResource(R.string.whatsnew_moonboard_title))
         },
         text = {
             Column {
                 Text(
-                    stringResource(R.string.whatsnew_gym_picker_body),
+                    stringResource(R.string.whatsnew_moonboard_body),
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    stringResource(R.string.whatsnew_gym_picker_hint),
+                    stringResource(R.string.whatsnew_moonboard_hint),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -49,12 +50,12 @@ internal fun GymBoardPickerWhatsNewDialog(
                 onDismiss()
                 onNavigateToSettings()
             }) {
-                Text(stringResource(R.string.whatsnew_gym_picker_action_now))
+                Text(stringResource(R.string.whatsnew_moonboard_action_now))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.whatsnew_gym_picker_action_later))
+                Text(stringResource(R.string.whatsnew_moonboard_action_later))
             }
         },
     )

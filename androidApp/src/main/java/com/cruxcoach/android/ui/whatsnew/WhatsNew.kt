@@ -40,12 +40,18 @@ object WhatsNewItems {
      *  export sitting in their Downloads. */
     val AURORA_JSON_IMPORT = WhatsNewItem(id = "aurora-json-import", sinceVersionCode = 5)
 
-    /** FEAT-015 — Board Locations Map (0.1.5). Headline feature; users
+    /** FEAT-027 — MoonBoard support (0.2.0). The release headline; the
+     *  first thing an upgrading user should see, so it leads the 0.2.0
+     *  (versionCode 6) batch. 0.1.5 never shipped standalone, so its map +
+     *  picker entries also carry versionCode 6 and follow this one. */
+    val MOONBOARD_SUPPORT = WhatsNewItem(id = "moonboard-support", sinceVersionCode = 6)
+
+    /** FEAT-015 — Board Locations Map (0.2.0). Headline feature; users
      *  upgrading from 0.1.4 have no other entry point to discover the
      *  new map icon in the BoardBrowser search header. */
     val BOARD_LOCATIONS_MAP = WhatsNewItem(id = "board-locations-map", sinceVersionCode = 6)
 
-    /** FEAT-007 Phase 1 — Find-your-gym board picker (0.1.5). Lives one
+    /** FEAT-007 Phase 1 — Find-your-gym board picker (0.2.0). Lives one
      *  tap deeper in *Settings → Board-Größe → Ändern* so it needs an
      *  explicit discovery surface. */
     val GYM_BOARD_PICKER = WhatsNewItem(id = "gym-board-picker", sinceVersionCode = 6)
@@ -53,6 +59,7 @@ object WhatsNewItems {
     val registry: List<WhatsNewItem> = listOf(
         NOSTR_BACKUP,
         AURORA_JSON_IMPORT,
+        MOONBOARD_SUPPORT,
         BOARD_LOCATIONS_MAP,
         GYM_BOARD_PICKER,
     )
@@ -143,6 +150,11 @@ fun WhatsNewHost(
     val current = pending.firstOrNull() ?: return
 
     when (current.id) {
+        WhatsNewItems.MOONBOARD_SUPPORT.id ->
+            MoonBoardWhatsNewDialog(
+                onDismiss = { vm.dismissCurrent() },
+                onNavigateToSettings = onNavigateToSettings,
+            )
         WhatsNewItems.NOSTR_BACKUP.id ->
             NostrBackupWhatsNewDialog(
                 onDismiss = { vm.dismissCurrent() },

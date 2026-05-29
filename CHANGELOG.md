@@ -4,16 +4,41 @@ All notable changes to CruxCoach will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [0.1.5] - 2026-05-27
+## [0.2.0] - Unreleased
 
-> 0.1.5 puts Kilter Boards on a map and stops asking you for hardware
-> trivia in the picker. Open the map from the board browser to discover
-> installations worldwide, tap a marker for contact details + a direct
-> path to the climbs that fit that exact board. In Settings → Board the
-> picker can now find your gym instead of making you guess the
-> product-size code.
+> 0.2.0 is the multi-board release. CruxCoach now speaks **MoonBoard** as
+> well as Kilter: browse the MoonBoard problem catalogue with the same
+> filters you already know, light up problems on your physical board over
+> Bluetooth, and pick your MoonBoard in onboarding or Settings next to the
+> Kilter variants. The board-locations map and the find-your-gym picker
+> that grew on the 0.1.5 line ship here too — now spanning both board
+> families, with the map showing MoonBoard gyms worldwide. The default LED
+> colours also got a refresh, with a one-time migration that leaves your
+> custom colours alone.
+>
+> (0.1.5 was never released on its own — its work is folded into 0.2.0.)
 
 ### Added
+- **MoonBoard support** (FEAT-027) — CruxCoach's first non-Aurora board.
+  Browse the MoonBoard problem catalogue with the same browser surface as
+  Kilter (grade / angle / setter / ascensionist filters all apply), open a
+  problem detail screen, and send it to your physical MoonBoard over
+  Bluetooth (Nordic UART). Four variants ship: **MoonBoard 2016 (40°)**,
+  **Masters 2017** and **Masters 2019** (25° + 40°), and **Mini 2020**.
+  Pick a MoonBoard in onboarding or Settings; the always-on
+  *"passt auf mein Board"* fit filter is brand-aware.
+- **Real board imagery for MoonBoard** (FEAT-029) — each variant renders
+  on CruxCoach's own measured board photo with a per-hold coordinate map
+  instead of a generic grid; a procedural 11×18 grid remains the fallback.
+- **Unified board picker** — every picker site (onboarding + Settings +
+  the map's "browse this board") now offers the same three categories:
+  Kilter Original / Kilter Homewall / MoonBoard.
+- **MoonBoard gyms on the map** — the board-locations map and the
+  find-your-gym picker now span both families. A **brand filter**
+  (Kilter / MoonBoard / all) joins the existing filters, MoonBoard gyms
+  render in a distinct colour, and searching a MoonBoard gym resolves it
+  to the right variant. Offline model unchanged — locations still arrive
+  in the synced data, no live fetch.
 - **Board Locations Map** (FEAT-015) — interactive world map of all
   known Kilter Board installations, rendered locally with MapLibre +
   OpenFreeMap (no Google Maps, no API key, no proprietary tiles).
@@ -42,6 +67,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `@hangtime/climbing-boards` dataset.
 
 ### Changed
+- **Default LED colours refreshed** — the CruxCoach preset is now
+  start = magenta, hand = blue, finish = green, foot = red (previously
+  orange / blue / magenta / mint). A one-time migration on first launch
+  moves anyone still sitting on a *previous* default preset onto the new
+  one; genuinely custom colours and the official Kilter preset are left
+  untouched.
+- **Board database re-partitioned for two catalogues** — folding in the
+  MoonBoard catalogue roughly doubled the board DB. Browse/count queries
+  are now partitioned by board layout (layout_id denormalised onto
+  `climb_stats` with rebuilt covering indexes), so a query for one board
+  no longer scans past the others and detail/browser load stays fast.
+- **BLE transport rework** + board-browser sort options, plus a slimmer
+  APK (arm64-only native libs).
 - **Connection-sheet permission flow** — opening the BLE connection
   sheet now re-checks the runtime permissions instead of relying on
   the cached pre-onboarding answer, so users who revoked permission
@@ -53,9 +91,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   startup" reports is no longer a guessing game.
 
 ### Fixed
+- **MoonBoard browser was empty** on first open — the Blossom manifest
+  parser required a `productId` the MoonBoard catalogue chunk doesn't
+  carry; it is now optional, so MoonBoard climbs import and list.
+- **Slow MoonBoard detail / browser open** — a shared per-angle index was
+  scanned across all catalogues; the layout-partitioned indexes (above)
+  bring opening a MoonBoard problem back to near-instant.
+- **BLE menu stayed open after a MoonBoard auto-connect** — the
+  connection sheet now closes on auto-connect for MoonBoard the same way
+  it does for Kilter.
+- **Sync banner briefly read "done" mid-sync** — during the MoonBoard
+  phase the two-catalogue sync banner no longer leaks the Kilter phase's
+  completed state; it shows the active phase through to finalising.
 - **Map screen no longer dead-ends silently.** `MapViewModel.init`
   now catches DB / flow throws (e.g. the brief schema-migration
-  window on a 0.1.4 → 0.1.5 upgrade), exits the loading state, and
+  window on a 0.1.4 → 0.2.0 upgrade), exits the loading state, and
   surfaces a snackbar instead of staring at an infinite spinner.
 - **Tile-server outage now visible.** A 4 s reachability probe runs
   once when the map opens; if OpenFreeMap is unreachable the user
@@ -75,7 +125,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   one-time locations backfill writes its chunk cache to
   `blossom_backfill_…sqlite3` instead of the same path the regular
   full-sync uses, closing the cross-coroutine cache collision
-  window during the 0.1.4 → 0.1.5 upgrade.
+  window during the 0.1.4 → 0.2.0 upgrade.
 - **Backfill cannot hang forever.** A 120 s wall-clock cap on
   `backfillLocationsIfMissing` retires stalled chunk downloads
   (captive portal, dead TCP socket) that previously pinned the
@@ -111,6 +161,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   integration test suite for `BoardLocationRepositoryImpl`;
   `MigrationSmokeTest` extended to cover the FEAT-015 tables;
   `FakeBoardLocationRepository` test fake added.
+- **MoonBoard + multi-brand test coverage** — `BoardBrand` /
+  `MoonBoardVariant` domain tests, the MoonBoard BLE frame encoder,
+  brand-aware `MapFilters` and gym-picker variant resolution, the
+  `board_brand` location schema/repository round-trip, and the
+  one-time LED default-colour migration (every branch).
 
 ## [0.1.4] - 2026-05-18
 

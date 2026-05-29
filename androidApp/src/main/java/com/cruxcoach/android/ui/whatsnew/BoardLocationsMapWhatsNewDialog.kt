@@ -15,9 +15,10 @@ import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.R
 
 /**
- * "What's new in 0.1.5" dialog announcing the FEAT-015 board-locations
- * map. Same shape as [AuroraJsonImportWhatsNewDialog]: pure discovery
- * surface for users upgrading from 0.1.4, no settings to capture. Two
+ * "What's new in 0.2.0" dialog announcing the FEAT-015 board-locations
+ * map (now spanning Kilter + MoonBoard). Same shape as
+ * [AuroraJsonImportWhatsNewDialog]: pure discovery surface for users
+ * upgrading from 0.1.4, no settings to capture. Two
  * buttons: "Karte öffnen" navigates straight to the new BOARD_MAP
  * route, "Später" dismisses without nagging again.
  */
