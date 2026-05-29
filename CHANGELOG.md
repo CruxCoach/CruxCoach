@@ -39,6 +39,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   render in a distinct colour, and searching a MoonBoard gym resolves it
   to the right variant. Offline model unchanged — locations still arrive
   in the synced data, no live fetch.
+- **Map venue grouping + clustering** — boards at the same place (a gym
+  with both a Kilter and a MoonBoard, or Original + Homewall) collapse to
+  one pin whose detail sheet lists each board; dense regions cluster into
+  count bubbles that expand on tap. Keeps the map legible now that two
+  catalogues' worth of installations are plotted.
+- **Foreign-brand map layer + egym Wellpass** — Tension, Grasshopper,
+  Decoy, So-iLL, Touchstone, Aurora and 12climb installations appear as a
+  toggleable "Other boards" info layer (map-only, no catalogue/send). A
+  new **egym Wellpass** filter + venue badge flags gyms that accept it.
+  Curated overrides correct a handful of mis-classified venues.
 - **Board Locations Map** (FEAT-015) — interactive world map of all
   known Kilter Board installations, rendered locally with MapLibre +
   OpenFreeMap (no Google Maps, no API key, no proprietary tiles).
@@ -91,6 +101,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   startup" reports is no longer a guessing game.
 
 ### Fixed
+- **MoonBoard send used the wrong variant** when the climb's board differed
+  from the configured one (e.g. opening a Mini 2020 climb from a list while
+  set to MoonBoard 2016) — the BLE encoder now takes the variant from the
+  climb being sent, not the active-board preference, so the lit holds match.
 - **MoonBoard browser was empty** on first open — the Blossom manifest
   parser required a `productId` the MoonBoard catalogue chunk doesn't
   carry; it is now optional, so MoonBoard climbs import and list.
