@@ -602,20 +602,20 @@ fun BoardBrowserScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 horizontalAlignment = Alignment.End,
             ) {
-                // FEAT-027: the climb creator is Kilter-only — MoonBoard
-                // authoring is out of scope (a MoonBoard layout has no Aurora
-                // placements / board images, and the editor would persist a
-                // corrupt kilter-tagged climb). Hide the create FAB when the
-                // active board is a MoonBoard.
-                if (state.filter.boardBrand != "moonboard") {
-                    FloatingActionButton(
-                        onClick = onNavigateToClimbCreator,
-                        containerColor = OrangeAccent,
-                        contentColor = DarkBackground,
-                        modifier = Modifier.testTag("board_create_fab")
-                    ) {
-                        Icon(Icons.Default.Create, contentDescription = stringResource(R.string.climb_creator_open))
-                    }
+                // Climb authoring is supported for both interactive boards:
+                // Kilter (Aurora placements + LED preview, mirrors to the
+                // user's own Kilter account) and MoonBoard (bundled photo +
+                // tap-to-paint, CruxCoach-community-only publish). The editor
+                // resolves brand from the active board layout. Info-layer
+                // brands (map-only) never reach the browser, so no extra gate
+                // is needed here.
+                FloatingActionButton(
+                    onClick = onNavigateToClimbCreator,
+                    containerColor = OrangeAccent,
+                    contentColor = DarkBackground,
+                    modifier = Modifier.testTag("board_create_fab")
+                ) {
+                    Icon(Icons.Default.Create, contentDescription = stringResource(R.string.climb_creator_open))
                 }
                 FloatingActionButton(
                     onClick = { searchVisible = !searchVisible },

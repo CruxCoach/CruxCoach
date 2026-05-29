@@ -176,6 +176,11 @@ class ClimbCreatorRepository @Inject constructor(
     }
 
     private fun computeBounds(state: ClimbEditorState): ClimbBounds? {
+        // MoonBoard hold-ids aren't Aurora placement-ids (and small ids could
+        // collide with low Kilter placement-ids), so resolving coordinates
+        // here would produce a bogus bounds. Skip — null is handled
+        // gracefully everywhere a bounds is consumed.
+        if (state.boardBrand == com.cruxcoach.domain.board.BoardBrand.MOONBOARD.wireValue) return null
         val ids = state.selectedHolds.keys
         if (ids.isEmpty()) return null
         val all = runCatching { boardRepository.getAllPlacements() }.getOrNull().orEmpty()

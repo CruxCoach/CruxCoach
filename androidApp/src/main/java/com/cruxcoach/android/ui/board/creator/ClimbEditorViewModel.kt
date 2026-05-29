@@ -13,9 +13,14 @@ import com.cruxcoach.data.repository.BoardPlacement
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.BoardSize
 import com.cruxcoach.data.repository.CommunityClimbRow
+import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.BoardHold
+import com.cruxcoach.domain.board.HoldRole
+import com.cruxcoach.domain.board.MoonBoardFrameEncoder
+import com.cruxcoach.domain.board.MoonBoardVariant
 import com.cruxcoach.domain.community.ClimbEditorState
 import com.cruxcoach.domain.community.ClimbValidation
+import com.cruxcoach.domain.community.encodeFrames
 import com.cruxcoach.domain.community.paintWithBrush
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
@@ -37,6 +42,10 @@ private const val TAG = "ClimbEditor"
  */
 data class ClimbEditorUiState(
     val isLoading: Boolean = true,
+    /** Active board layout the editor targets (from prefs). Drives both
+     *  the brand split (`editor.boardBrand`) and the MoonBoard renderer's
+     *  variant lookup (`rememberMoonBoardAsset(layoutId)`). */
+    val layoutId: Long = 1L,
     val boardSize: BoardSize? = null,
     val placements: Map<Int, BoardPlacement> = emptyMap(),
     val boardImages: List<BoardImage> = emptyList(),
@@ -298,7 +307,16 @@ class ClimbEditorViewModel @Inject constructor(
         // doesn't go through this method, so it's also unaffected.
         if (editUuid == null && forkUuid == null) {
             val snapshot = withContext(Dispatchers.IO) { autosave.load() }
-            if (snapshot != null && _state.value.editor.selectedHolds.isEmpty()) {
+            // Brand-match guard: only restore an autosave that targets the
+            // currently-active board. A stale snapshot from a Kilter session
+            // must not pour Kilter placement-ids into a MoonBoard editor (or
+            // vice-versa) — their hold-id spaces + role codes don't align.
+            // Pre-MoonBoard snapshots deserialize with boardBrand="kilter",
+            // so this is a no-op for existing Kilter users.
+            if (snapshot != null &&
+                _state.value.editor.selectedHolds.isEmpty() &&
+                snapshot.state.boardBrand == _state.value.editor.boardBrand
+            ) {
                 applyEditor(snapshot.state)
             }
         }
@@ -320,15 +338,37 @@ class ClimbEditorViewModel @Inject constructor(
     }
 
     private fun seedFromFork(source: CommunityClimbRow) {
-        val holds = com.cruxcoach.domain.board.BoardClimbParser.parseFrames(source.framesText)
-            .associate { it.placementId to it.roleId }
+        // Brand is fixed by the active board (set in loadBoardData, which
+        // runs before nav-arg handling). Remix/Edit entry points only
+        // surface for the active board's own climbs, so source == active.
+        val brand = _state.value.editor.boardBrand
+        val holds = parseHoldsForBrand(source.framesText, brand)
         val seeded = ClimbEditorState(
             selectedHolds = holds,
+            boardBrand = brand,
+            activeBrush = defaultBrushFor(brand),
             name = source.name + if (!source.name.endsWith("Remix")) " Remix" else "",
             description = source.description,
         )
         applyEditor(seeded)
     }
+
+    /** Parse frames into the editor's id→role map using brand-native roles:
+     *  MoonBoard keeps route roles (42/43/44) so [encodeFrames] round-trips
+     *  to the `p{id}r42…` wire format the MoonBoard renderer + BLE encoder
+     *  read; Kilter normalizes to boulder roles (12/13/14/15). */
+    private fun parseHoldsForBrand(frames: String, brand: String): Map<Int, Int> =
+        if (brand == BoardBrand.MOONBOARD.wireValue) {
+            MoonBoardFrameEncoder.parseHolds(frames).associate { it.first to it.second }
+        } else {
+            com.cruxcoach.domain.board.BoardClimbParser.parseFrames(frames)
+                .associate { it.placementId to it.roleId }
+        }
+
+    /** Default paint brush per brand: green Start in each board's native
+     *  role numbering. */
+    private fun defaultBrushFor(brand: String): Int =
+        if (brand == BoardBrand.MOONBOARD.wireValue) HoldRole.ROUTE_START else HoldRole.START
 
     /**
      * Edit-in-place: same uuid, no "Remix" suffix. Re-publish via
@@ -337,12 +377,14 @@ class ClimbEditorViewModel @Inject constructor(
      * Kind-30078 event instead of duplicating it.
      */
     private suspend fun seedFromEdit(source: CommunityClimbRow) {
-        val holds = com.cruxcoach.domain.board.BoardClimbParser.parseFrames(source.framesText)
-            .associate { it.placementId to it.roleId }
+        val brand = _state.value.editor.boardBrand
+        val holds = parseHoldsForBrand(source.framesText, brand)
         val stats = withContext(Dispatchers.IO) { boardRepository.getClimbStatsForUuid(source.uuid) }
         val currentAngle = _state.value.editor.angle
         val seeded = ClimbEditorState(
             selectedHolds = holds,
+            boardBrand = brand,
+            activeBrush = defaultBrushFor(brand),
             name = source.name,
             description = source.description,
             angle = stats?.first ?: currentAngle,
@@ -374,7 +416,31 @@ class ClimbEditorViewModel @Inject constructor(
     private suspend fun loadBoardData() {
         val sizeId = userPreferences.boardProductSizeId.first()
         val layoutId = userPreferences.boardLayoutId.first()
+        val layoutIdLong = layoutId.toLong()
         val defaultAngle = userPreferences.boardAngle.first()
+        val brand = BoardBrand.fromLayoutId(layoutIdLong)
+
+        if (brand == BoardBrand.MOONBOARD) {
+            // MoonBoard authoring: no Aurora placement/LED/image rows exist
+            // (the board renders from the bundled image + measured holdXy
+            // map, resolved screen-side via rememberMoonBoardAsset). Skip the
+            // Kilter board-data load entirely; the editor stores brand-native
+            // route roles (42/43/44) so the default brush is the green Start.
+            _state.update {
+                val seedAngle = it.editor.angle ?: defaultAngle
+                it.copy(
+                    isLoading = false,
+                    layoutId = layoutIdLong,
+                    editor = it.editor.copy(
+                        angle = seedAngle,
+                        boardBrand = BoardBrand.MOONBOARD.wireValue,
+                        activeBrush = HoldRole.ROUTE_START,
+                    ),
+                )
+            }
+            return
+        }
+
         val (size, placements, images, ledMap) = withContext(Dispatchers.IO) {
             val size = boardRepository.getProductSize(sizeId)
             // Filter to set_ids actually rendered for this layout — see
@@ -391,11 +457,12 @@ class ClimbEditorViewModel @Inject constructor(
             val seedAngle = it.editor.angle ?: defaultAngle
             it.copy(
                 isLoading = false,
+                layoutId = layoutIdLong,
                 boardSize = size,
                 placements = placements,
                 boardImages = images,
                 placementToLed = ledMap,
-                editor = it.editor.copy(angle = seedAngle),
+                editor = it.editor.copy(angle = seedAngle, boardBrand = brand.wireValue),
             )
         }
     }
@@ -935,6 +1002,11 @@ class ClimbEditorViewModel @Inject constructor(
 
     private fun recomputeHeatmap() {
         if (!_state.value.heatmapEnabled) return
+        // The co-occurrence heatmap is keyed on Aurora placement ids and is
+        // overlaid by KilterBoardVisualization only — the MoonBoard renderer
+        // has no heatmap layer, and MoonBoard hold-ids aren't placement ids.
+        // Skip the compute entirely for MoonBoard drafts.
+        if (_state.value.editor.boardBrand == BoardBrand.MOONBOARD.wireValue) return
         heatmapJob?.cancel()
         heatmapJob = viewModelScope.launch {
             kotlinx.coroutines.delay(HEATMAP_DEBOUNCE_MS)
@@ -1073,6 +1145,21 @@ class ClimbEditorViewModel @Inject constructor(
      */
     private suspend fun syncLeds() {
         val cur = _state.value
+        if (cur.editor.boardBrand == BoardBrand.MOONBOARD.wireValue) {
+            // MoonBoard preview: the board lights its own LEDs from the
+            // climb frame (no per-hold LED address map like Kilter). Re-use
+            // the same transport BoardSendController uses for sending a
+            // catalogue MoonBoard climb. encodeFrames emits p{id}r42… which
+            // MoonBoardFrameEncoder.encode (inside sendMoonBoardClimb) reads.
+            val variant = MoonBoardVariant.fromLayoutId(cur.layoutId) ?: return
+            val frames = cur.editor.encodeFrames()
+            val result = runCatching { bleConnection.sendMoonBoardClimb(frames, variant) }
+            result.fold(
+                onSuccess = { Log.i(TAG, "syncLeds(moonboard): sendMoonBoardClimb ok=$it holds=${cur.editor.selectedHolds.size}") },
+                onFailure = { Log.w(TAG, "syncLeds(moonboard): sendMoonBoardClimb threw", it) },
+            )
+            return
+        }
         val ledMap = cur.placementToLed
         if (ledMap.isEmpty()) {
             Log.w(TAG, "syncLeds: placementToLed empty — board cannot light up; check loadBoardData ran")

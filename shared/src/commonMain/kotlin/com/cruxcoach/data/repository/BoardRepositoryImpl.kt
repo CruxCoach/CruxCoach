@@ -730,6 +730,13 @@ class BoardRepositoryImpl(
         private val EMPTY_PAIR: Pair<IntArray, IntArray> = EMPTY_INT_ARRAY to EMPTY_INT_ARRAY
     }
 
+    /** `board_brand` wire value for a layout, derived once so authored
+     *  drafts + ingested community climbs persist the right family
+     *  (MoonBoard variants → "moonboard", everything else → "kilter")
+     *  without threading brand through every call site. */
+    private fun brandForLayout(layoutId: Long): String =
+        com.cruxcoach.domain.board.BoardBrand.fromLayoutId(layoutId).wireValue
+
     override fun insertLocalDraft(
         draft: LocalClimbDraft,
         layoutId: Long,
@@ -753,6 +760,7 @@ class BoardRepositoryImpl(
                 move_count = draft.moveCount,
                 created_by_pubkey = draft.createdByPubkey,
                 frames_hash = draft.framesHash,
+                board_brand = brandForLayout(layoutId),
             )
             // Stub climb_stats so the climb appears in the browse VIEW.
             // Setter difficulty is the only known signal; community
@@ -803,6 +811,7 @@ class BoardRepositoryImpl(
                 nostr_d_tag = nostrDTag,
                 created_by_pubkey = createdByPubkey,
                 frames_hash = framesHash,
+                board_brand = brandForLayout(layoutId),
             )
             q.upsertClimbStat(
                 climb_uuid = uuid,

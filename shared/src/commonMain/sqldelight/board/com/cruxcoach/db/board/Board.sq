@@ -800,11 +800,11 @@ insertLocalDraft {
     INSERT OR IGNORE INTO climbs(uuid, layout_id, setter_username, name, frames,
         frames_count, is_listed, edge_left, edge_right, edge_bottom, edge_top, created_at,
         description, is_nomatch, frames_pace, hsm, move_count,
-        source, created_by_pubkey, frames_hash, sync_status, origin)
+        source, created_by_pubkey, frames_hash, sync_status, origin, board_brand)
     VALUES (:uuid, :layout_id, :setter_username, :name, :frames,
         1, 1, :edge_left, :edge_right, :edge_bottom, :edge_top, :created_at,
         :description, 0, 0, 0, :move_count,
-        'local', :created_by_pubkey, :frames_hash, 'draft', 'cruxcoach');
+        'local', :created_by_pubkey, :frames_hash, 'draft', 'cruxcoach', :board_brand);
     UPDATE climbs SET
         layout_id = :layout_id,
         setter_username = :setter_username,
@@ -826,7 +826,8 @@ insertLocalDraft {
         created_by_pubkey = :created_by_pubkey,
         frames_hash = :frames_hash,
         sync_status = 'draft',
-        origin = 'cruxcoach'
+        origin = 'cruxcoach',
+        board_brand = :board_brand
     WHERE uuid = :uuid;
 }
 
@@ -993,11 +994,11 @@ upsertCommunityClimb:
 INSERT OR REPLACE INTO climbs(uuid, layout_id, setter_username, name, frames,
     frames_count, is_listed, edge_left, edge_right, edge_bottom, edge_top, created_at,
     description, is_nomatch, frames_pace, hsm, move_count,
-    source, nostr_event_id, nostr_d_tag, created_by_pubkey, frames_hash, sync_status, origin)
+    source, nostr_event_id, nostr_d_tag, created_by_pubkey, frames_hash, sync_status, origin, board_brand)
 VALUES (?, ?, ?, ?, ?,
     1, 1, ?, ?, ?, ?, ?,
     ?, 0, 0, 0, ?,
-    'nostr', ?, ?, ?, ?, 'synced', 'cruxcoach');
+    'nostr', ?, ?, ?, ?, 'synced', 'cruxcoach', ?);
 
 -- Flip a draft to "published_nostr" once the relay accepts the event.
 -- `nostr_publish_via` and `kilter_publish_via` columns remain in the

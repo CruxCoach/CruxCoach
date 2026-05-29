@@ -110,9 +110,19 @@ class CommunityClimbPublisher @Inject constructor(
         val pubkey = nostrSigner.getPublicKeyHex()
         val createdAt = System.currentTimeMillis() / 1000
 
+        // Brand is derived from layoutId (the reliable signal — the
+        // draft-retry path builds ClimbEditorState without boardBrand). Drives
+        // both the bounds skip below and the official-app-push skip in Step 2.
+        val isMoonBoard = com.cruxcoach.domain.board.BoardBrand.fromLayoutId(layoutId) ==
+            com.cruxcoach.domain.board.BoardBrand.MOONBOARD
+
         // Step 1: Nostr — mandatory. Failure throws; the user can retry
         // from the editor.
-        val bounds = computeBounds(state)
+        // computeBounds resolves Aurora placement coordinates; MoonBoard
+        // hold-ids aren't placement-ids (and could collide with low Kilter
+        // placement-ids), so skip it — a null bounds tag is handled
+        // gracefully by every subscriber.
+        val bounds = if (isMoonBoard) null else computeBounds(state)
         val payload = buildCommunityClimbEvent(
             pubkey = pubkey,
             createdAt = createdAt,
@@ -174,7 +184,13 @@ class CommunityClimbPublisher @Inject constructor(
         // Nostr" so the UI can show the connect-Kilter hint. If the user
         // has explicitly disabled Kilter publishing in settings, we don't
         // nudge.
-        val publishToKilter = userPreferences.kilterClimbPublishEnabled.first()
+        //
+        // MoonBoard climbs are CruxCoach-community-only: there is no
+        // CruxCoach→official-MoonBoard-app publish path (unlike Kilter, which
+        // mirrors to the user's own Kilter account). The climb still went out
+        // over Nostr above; we simply skip the official-app leg (isMoonBoard
+        // derived from layoutId at the top of publish()).
+        val publishToKilter = !isMoonBoard && userPreferences.kilterClimbPublishEnabled.first()
         val hasKilterToken = kilterTokenStore.getAccessToken() != null
         var nudgeToConnect = false
         var kilterOutcome: KilterClimbPublisher.Outcome? = null

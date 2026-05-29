@@ -95,6 +95,7 @@ class CruxCoachBackupOwnClimbsRoundTripTest {
             created_by_pubkey = ownPubkey,
             // 64 lowercase hex characters — must match HEX64_REGEX in validate().
             frames_hash = "f".repeat(64),
+            board_brand = "kilter",
         )
         // Stats row at angle 40, setter grade id 18 (V5 / 6c+).
         db.boardQueries.upsertClimbStat(

@@ -11,7 +11,23 @@ import com.cruxcoach.domain.board.HoldRole
  * FEAT-003 Non-Goals); route-specific roles 42-45 are not produced.
  */
 data class ClimbEditorState(
-    val selectedHolds: Map<Int, Int> = emptyMap(),  // placementId → roleId (12/13/14/15)
+    /**
+     * Hold map: id → brand-native roleId. Kilter boulder roles are 12/13/14/15
+     * (start/hand/finish/foot); MoonBoard uses route roles 42/43/44
+     * (start/hand/finish, no foot). [encodeFrames] emits these verbatim, so
+     * what is stored is exactly what goes on the wire — Kilter `p{id}r12…`,
+     * MoonBoard `p{holdId}r42…`. Validation normalizes when counting so both
+     * palettes share one set of rules.
+     */
+    val selectedHolds: Map<Int, Int> = emptyMap(),
+    /**
+     * Board the draft targets: `"kilter"` (default — every pre-MoonBoard
+     * caller stays unchanged) or `"moonboard"`. Drives the brush palette,
+     * board renderer, BLE-preview transport, and publish destinations
+     * (MoonBoard publishes to the CruxCoach Nostr community only — no push
+     * to the official MoonBoard app, unlike Kilter).
+     */
+    val boardBrand: String = "kilter",
     val name: String = "",
     val description: String = "",
     /**

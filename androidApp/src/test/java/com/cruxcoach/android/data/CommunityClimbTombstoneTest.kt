@@ -72,6 +72,7 @@ class CommunityClimbTombstoneTest {
             created_by_pubkey = pubkey,
             frames_hash = "hash-$uuid",
             created_at = "2026-05-01T10:00:00Z",
+            board_brand = "kilter",
         )
         db.boardQueries.upsertClimbStat(
             climb_uuid = uuid, angle = 40L, display_difficulty = 14.5,

@@ -2,6 +2,7 @@ package com.cruxcoach.android.ui.board
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -11,7 +12,10 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -20,13 +24,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.R
 import com.cruxcoach.domain.board.MoonBoardFrameEncoder
 import com.cruxcoach.domain.board.MoonBoardVariant
 import kotlin.math.min
+import kotlin.math.roundToInt
 
 // Role codes carried in a MoonBoard climb's `frames` string
 // (p{holdId}r{roleCode} pairs) — Aurora-aligned, see MoonBoardFrameEncoder.
@@ -61,20 +69,26 @@ private const val IMAGE_HOLD_RADIUS_FRACTION = 0.028f
  * blank card, so the procedural grid never flashes before the real
  * image decodes on first open.
  *
- * Display-only — the MoonBoard climb-creator is out of v0.2.0 scope, so
- * there is no touch interaction (cf. KilterBoardVisualization's editor).
+ * When [onHoldTapped] is supplied the board becomes INTERACTIVE (the climb
+ * editor): a tap maps to the nearest lattice hold and is reported back so the
+ * caller can cycle its role; [editable] also draws a faint tappable lattice
+ * over the photo. Without [onHoldTapped] it is display-only (detail screen).
  */
 @Composable
 internal fun MoonBoardVisualization(
     frames: String,
     assetState: MoonBoardAssetState,
     modifier: Modifier = Modifier,
+    editable: Boolean = false,
+    onHoldTapped: ((holdId: Int) -> Unit)? = null,
 ) {
     val climbHolds = remember(frames) { MoonBoardFrameEncoder.parseHolds(frames) }
     val aspect = when (assetState) {
         is MoonBoardAssetState.Ready -> assetState.asset.imageAspect
         else -> BOARD_ASPECT_RATIO
     }
+    var boxSize by remember { mutableStateOf(IntSize.Zero) }
+    val showLattice = editable || onHoldTapped != null
 
     Card(
         modifier = modifier,
@@ -86,7 +100,16 @@ internal fun MoonBoardVisualization(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(aspect),
+                .aspectRatio(aspect)
+                .onSizeChanged { boxSize = it }
+                .let { base ->
+                    if (onHoldTapped == null) base
+                    else base.pointerInput(assetState) {
+                        detectTapGestures { offset ->
+                            holdIdAt(offset, boxSize, assetState)?.let(onHoldTapped)
+                        }
+                    }
+                },
         ) {
             when (assetState) {
                 is MoonBoardAssetState.Ready -> {
@@ -98,6 +121,7 @@ internal fun MoonBoardVisualization(
                         contentScale = ContentScale.Fit,
                     )
                     Canvas(modifier = Modifier.fillMaxSize()) {
+                        if (showLattice) drawTappableLatticeMapped(asset)
                         drawClimbHoldsMapped(asset, climbHolds)
                     }
                 }
@@ -115,6 +139,63 @@ internal fun MoonBoardVisualization(
                 MoonBoardAssetState.Loading -> Unit
             }
         }
+    }
+}
+
+/**
+ * Map a tap (in [boxSize] pixel space) to the nearest MoonBoard hold id, or
+ * null if the tap is too far from any lattice point. Ready → nearest measured
+ * coordinate from the asset map; Unavailable → nearest 11x18 lattice point.
+ */
+private fun holdIdAt(offset: Offset, boxSize: IntSize, assetState: MoonBoardAssetState): Int? {
+    if (boxSize.width <= 0 || boxSize.height <= 0) return null
+    val nx = offset.x / boxSize.width
+    val ny = offset.y / boxSize.height
+    if (nx !in 0f..1f || ny !in 0f..1f) return null
+    return when (assetState) {
+        is MoonBoardAssetState.Ready -> {
+            // Nearest measured hold within ~1.6× the marker radius.
+            val threshold = IMAGE_HOLD_RADIUS_FRACTION * 1.6f
+            assetState.asset.holdXy.minByOrNull { (_, p) ->
+                val dx = p.x - nx; val dy = p.y - ny; dx * dx + dy * dy
+            }?.takeIf { (_, p) ->
+                val dx = p.x - nx; val dy = p.y - ny
+                kotlin.math.sqrt(dx * dx + dy * dy) <= threshold
+            }?.key
+        }
+        else -> {
+            // Invert the linear lattice (generic raster). holdId uses the
+            // universal (row-1)*11 + col + 1 numbering.
+            val grid = gridRect(Size(boxSize.width.toFloat(), boxSize.height.toFloat()))
+            val colStep = grid.width / (MoonBoardVariant.GRID_COLUMNS - 1)
+            val rowStep = grid.height / (MoonBoardVariant.GRID_ROWS - 1)
+            val px = offset.x; val py = offset.y
+            val col = ((px - grid.left) / colStep).roundToInt()
+            val rowIndex = (MoonBoardVariant.GRID_ROWS - 1) - ((py - grid.top) / rowStep).roundToInt()
+            if (col !in 0 until MoonBoardVariant.GRID_COLUMNS ||
+                rowIndex !in 0 until MoonBoardVariant.GRID_ROWS
+            ) return null
+            // Reject taps that land between lattice points (> half a cell away).
+            val centre = holdCentre(grid, col, rowIndex)
+            if (kotlin.math.abs(px - centre.x) > colStep / 2 ||
+                kotlin.math.abs(py - centre.y) > rowStep / 2
+            ) return null
+            rowIndex * MoonBoardVariant.GRID_COLUMNS + col + 1
+        }
+    }
+}
+
+/** Faint tappable dot at each measured hold position — editor affordance so
+ *  the user sees where holds can be toggled on the photo. */
+private fun DrawScope.drawTappableLatticeMapped(asset: MoonBoardRenderAsset) {
+    val radius = size.width * IMAGE_HOLD_RADIUS_FRACTION * 0.4f
+    asset.holdXy.values.forEach { p ->
+        drawCircle(
+            color = MoonBoardGridDotColor,
+            radius = radius,
+            center = Offset(p.x * size.width, p.y * size.height),
+            style = Fill,
+        )
     }
 }
 

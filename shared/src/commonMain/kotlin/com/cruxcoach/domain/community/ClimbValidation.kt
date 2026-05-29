@@ -61,8 +61,11 @@ object ClimbValidation {
     ): List<Issue> {
         val issues = mutableListOf<Issue>()
 
-        val starts = holds.values.count { it == HoldRole.START }
-        val finishes = holds.values.count { it == HoldRole.FINISH }
+        // Count via HoldRole.normalize so brand-native role codes all map to
+        // the same start/finish identity: Kilter boulder roles (12/14) are
+        // unchanged, MoonBoard's route roles (42/44) normalize to 12/14.
+        val starts = holds.values.count { HoldRole.normalize(it) == HoldRole.START }
+        val finishes = holds.values.count { HoldRole.normalize(it) == HoldRole.FINISH }
         val total = holds.size
 
         if (starts == 0) issues += Issue.NoStartHold

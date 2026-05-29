@@ -89,6 +89,7 @@ class InsertLocalDraftPreservationTest {
             move_count = 3L,
             created_by_pubkey = "pubkey-hex",
             frames_hash = framesHash,
+            board_brand = "kilter",
         )
     }
 

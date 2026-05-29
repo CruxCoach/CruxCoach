@@ -45,5 +45,19 @@ enum class BoardBrand(val wireValue: String) {
          */
         fun fromWire(value: String?): BoardBrand =
             entries.firstOrNull { it.wireValue == value } ?: KILTER
+
+        /**
+         * Derive the board family from a layout id — the single source of
+         * truth for "which board does this layout belong to". MoonBoard
+         * variant layouts (2/4/5/6 via [MoonBoardVariant.fromLayoutId]) →
+         * [MOONBOARD]; everything else (Kilter Original 1, Homewall 8, …) →
+         * [KILTER]. Used wherever only a layout_id is in hand and the brand
+         * must be inferred rather than threaded through — notably the
+         * local-draft insert and community-climb ingest write paths, so an
+         * authored or received MoonBoard climb lands with the right
+         * `board_brand` automatically.
+         */
+        fun fromLayoutId(layoutId: Long): BoardBrand =
+            if (MoonBoardVariant.fromLayoutId(layoutId) != null) MOONBOARD else KILTER
     }
 }

@@ -46,6 +46,21 @@ class BoardBrandTest {
     }
 
     @Test
+    fun boardBrandDerivesFromLayoutId() {
+        // The single source of truth used by the draft-insert + community-
+        // ingest write paths to persist the right board_brand from a layout
+        // id alone. MoonBoard variants → MOONBOARD; Kilter layouts (and any
+        // non-MoonBoard id) → KILTER.
+        assertEquals(BoardBrand.MOONBOARD, BoardBrand.fromLayoutId(2L))
+        assertEquals(BoardBrand.MOONBOARD, BoardBrand.fromLayoutId(4L))
+        assertEquals(BoardBrand.MOONBOARD, BoardBrand.fromLayoutId(5L))
+        assertEquals(BoardBrand.MOONBOARD, BoardBrand.fromLayoutId(6L))
+        assertEquals(BoardBrand.KILTER, BoardBrand.fromLayoutId(1L))
+        assertEquals(BoardBrand.KILTER, BoardBrand.fromLayoutId(8L))
+        assertEquals(BoardBrand.KILTER, BoardBrand.fromLayoutId(999L))
+    }
+
+    @Test
     fun moonBoardVariantResolvesByLayoutId() {
         assertEquals(MoonBoardVariant.MOONBOARD_2016, MoonBoardVariant.fromLayoutId(2L))
         assertEquals(MoonBoardVariant.MASTERS_2017, MoonBoardVariant.fromLayoutId(4L))

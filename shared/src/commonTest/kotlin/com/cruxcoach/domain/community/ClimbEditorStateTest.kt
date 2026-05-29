@@ -38,6 +38,24 @@ class ClimbEditorStateTest {
     }
 
     @Test
+    fun encodeFrames_moonboard_emits_route_roles_verbatim() {
+        // A MoonBoard draft stores brand-native route roles (42/43/44);
+        // encodeFrames must emit them unchanged so the result is exactly the
+        // p{holdId}r{routeRole} wire format MoonBoardFrameEncoder + the
+        // MoonBoard renderer read. No normalization to boulder roles here.
+        val state = ClimbEditorState(
+            boardBrand = "moonboard",
+            selectedHolds = mapOf(
+                30 to HoldRole.ROUTE_START,
+                7 to HoldRole.ROUTE_START,
+                95 to HoldRole.ROUTE_HAND,
+                180 to HoldRole.ROUTE_FINISH,
+            ),
+        )
+        assertEquals("p7r42p30r42p95r43p180r44", state.encodeFrames())
+    }
+
+    @Test
     fun activeBrush_defaults_to_START_on_fresh_state() {
         // Regression: a freshly-opened editor must pre-select the green
         // Start chip so first-time users discover the chip-row controls

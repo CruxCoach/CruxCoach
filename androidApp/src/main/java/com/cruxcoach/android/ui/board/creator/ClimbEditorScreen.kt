@@ -69,10 +69,14 @@ import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.ui.board.BleConnectionSheet
 import com.cruxcoach.android.ui.board.BleConnectionViewModel
 import com.cruxcoach.android.ui.board.KilterBoardVisualization
+import com.cruxcoach.android.ui.board.MoonBoardVisualization
+import com.cruxcoach.android.ui.board.rememberMoonBoardAsset
 import com.cruxcoach.android.ui.theme.SuccessGreen
+import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.BoardHold
 import com.cruxcoach.domain.board.HoldRole
 import com.cruxcoach.domain.community.ClimbValidation
+import com.cruxcoach.domain.community.encodeFrames
 
 /**
  * Climb-creator screen. Composes:
@@ -285,24 +289,29 @@ fun ClimbEditorScreen(
                                     viewModel.openDraftsSheet()
                                 },
                             )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.climb_creator_heatmap_toggle)) },
-                                leadingIcon = {
-                                    Icon(
-                                        if (state.heatmapEnabled) Icons.Filled.Whatshot else Icons.Outlined.Whatshot,
-                                        contentDescription = null,
-                                        tint = if (state.heatmapEnabled) {
-                                            MaterialTheme.colorScheme.primary
-                                        } else {
-                                            MaterialTheme.colorScheme.onSurfaceVariant
-                                        },
-                                    )
-                                },
-                                onClick = {
-                                    overflowExpanded = false
-                                    viewModel.toggleHeatmap()
-                                },
-                            )
+                            // Heatmap is a Kilter-only co-occurrence overlay
+                            // (placement-id keyed). The MoonBoard renderer has
+                            // no heatmap layer, so the toggle is hidden there.
+                            if (state.editor.boardBrand != BoardBrand.MOONBOARD.wireValue) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.climb_creator_heatmap_toggle)) },
+                                    leadingIcon = {
+                                        Icon(
+                                            if (state.heatmapEnabled) Icons.Filled.Whatshot else Icons.Outlined.Whatshot,
+                                            contentDescription = null,
+                                            tint = if (state.heatmapEnabled) {
+                                                MaterialTheme.colorScheme.primary
+                                            } else {
+                                                MaterialTheme.colorScheme.onSurfaceVariant
+                                            },
+                                        )
+                                    },
+                                    onClick = {
+                                        overflowExpanded = false
+                                        viewModel.toggleHeatmap()
+                                    },
+                                )
+                            }
                         }
                     }
                 },
@@ -324,27 +333,42 @@ fun ClimbEditorScreen(
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            // Live board visualization
-            val activeHolds = state.editor.selectedHolds.map { (pid, role) -> BoardHold(pid, role) }
-            KilterBoardVisualization(
-                holds = activeHolds,
-                placements = state.placements,
-                boardSize = state.boardSize,
-                boardImages = state.boardImages,
-                heatmapData = if (state.heatmapEnabled) state.heatmap else null,
-                selectedHolds = state.editor.selectedHolds.keys,
-                onHoldTapped = viewModel::toggleHold,
-                onHoldMoved = viewModel::moveHold,
-                ledColors = state.ledColors,
-                solidHoldFill = true,
-                allowZoom = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
+            // Live board visualization — brand-specific renderer. MoonBoard
+            // draws the bundled board photo with tap-to-cycle holds (no LED
+            // address map, no drag-move, no co-occurrence heatmap); Kilter
+            // keeps the full Aurora placement renderer.
+            val isMoonBoard = state.editor.boardBrand == BoardBrand.MOONBOARD.wireValue
+            if (isMoonBoard) {
+                MoonBoardVisualization(
+                    frames = state.editor.encodeFrames(),
+                    assetState = rememberMoonBoardAsset(state.layoutId),
+                    editable = true,
+                    onHoldTapped = viewModel::toggleHold,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            } else {
+                val activeHolds = state.editor.selectedHolds.map { (pid, role) -> BoardHold(pid, role) }
+                KilterBoardVisualization(
+                    holds = activeHolds,
+                    placements = state.placements,
+                    boardSize = state.boardSize,
+                    boardImages = state.boardImages,
+                    heatmapData = if (state.heatmapEnabled) state.heatmap else null,
+                    selectedHolds = state.editor.selectedHolds.keys,
+                    onHoldTapped = viewModel::toggleHold,
+                    onHoldMoved = viewModel::moveHold,
+                    ledColors = state.ledColors,
+                    solidHoldFill = true,
+                    allowZoom = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
 
             HoldCountStatus(
                 holds = state.editor.selectedHolds,
                 activeBrush = state.editor.activeBrush,
                 ledColors = state.ledColors,
+                boardBrand = state.editor.boardBrand,
                 onBrushTap = viewModel::toggleBrush,
             )
 
@@ -525,12 +549,9 @@ private fun HoldCountStatus(
     holds: Map<Int, Int>,
     activeBrush: Int?,
     ledColors: com.cruxcoach.android.data.LedHoldColors,
+    boardBrand: String,
     onBrushTap: (role: Int) -> Unit,
 ) {
-    val starts = holds.values.count { it == HoldRole.START }
-    val hands = holds.values.count { it == HoldRole.HAND }
-    val feet = holds.values.count { it == HoldRole.FOOT }
-    val finishes = holds.values.count { it == HoldRole.FINISH }
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         if (activeBrush == null) {
             Text(
@@ -543,29 +564,57 @@ private fun HoldCountStatus(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            if (boardBrand == BoardBrand.MOONBOARD.wireValue) {
+                // MoonBoard: fixed three-role palette (start/hand/finish), no
+                // foot holds, route role codes (42/43/44). Chip colours mirror
+                // MoonBoardVisualization's fixed palette so the chips match the
+                // board markers (MoonBoard LEDs aren't user-recolourable).
+                BrushChip(
+                    label = stringResource(R.string.climb_creator_count_start, holds.values.count { it == HoldRole.ROUTE_START }),
+                    role = HoldRole.ROUTE_START,
+                    roleColor = androidx.compose.ui.graphics.Color(0xFF2FB84A),
+                    isActive = activeBrush == HoldRole.ROUTE_START,
+                    onClick = onBrushTap,
+                )
+                BrushChip(
+                    label = stringResource(R.string.climb_creator_count_hand, holds.values.count { it == HoldRole.ROUTE_HAND }),
+                    role = HoldRole.ROUTE_HAND,
+                    roleColor = androidx.compose.ui.graphics.Color(0xFF2F6BE0),
+                    isActive = activeBrush == HoldRole.ROUTE_HAND,
+                    onClick = onBrushTap,
+                )
+                BrushChip(
+                    label = stringResource(R.string.climb_creator_count_finish, holds.values.count { it == HoldRole.ROUTE_FINISH }),
+                    role = HoldRole.ROUTE_FINISH,
+                    roleColor = androidx.compose.ui.graphics.Color(0xFFE23B36),
+                    isActive = activeBrush == HoldRole.ROUTE_FINISH,
+                    onClick = onBrushTap,
+                )
+                return@Row
+            }
             BrushChip(
-                label = stringResource(R.string.climb_creator_count_start, starts),
+                label = stringResource(R.string.climb_creator_count_start, holds.values.count { it == HoldRole.START }),
                 role = HoldRole.START,
                 roleColor = com.cruxcoach.android.ui.theme.rgb332ToComposeColor(ledColors.start),
                 isActive = activeBrush == HoldRole.START,
                 onClick = onBrushTap,
             )
             BrushChip(
-                label = stringResource(R.string.climb_creator_count_hand, hands),
+                label = stringResource(R.string.climb_creator_count_hand, holds.values.count { it == HoldRole.HAND }),
                 role = HoldRole.HAND,
                 roleColor = com.cruxcoach.android.ui.theme.rgb332ToComposeColor(ledColors.hand),
                 isActive = activeBrush == HoldRole.HAND,
                 onClick = onBrushTap,
             )
             BrushChip(
-                label = stringResource(R.string.climb_creator_count_foot, feet),
+                label = stringResource(R.string.climb_creator_count_foot, holds.values.count { it == HoldRole.FOOT }),
                 role = HoldRole.FOOT,
                 roleColor = com.cruxcoach.android.ui.theme.rgb332ToComposeColor(ledColors.foot),
                 isActive = activeBrush == HoldRole.FOOT,
                 onClick = onBrushTap,
             )
             BrushChip(
-                label = stringResource(R.string.climb_creator_count_finish, finishes),
+                label = stringResource(R.string.climb_creator_count_finish, holds.values.count { it == HoldRole.FINISH }),
                 role = HoldRole.FINISH,
                 roleColor = com.cruxcoach.android.ui.theme.rgb332ToComposeColor(ledColors.finish),
                 isActive = activeBrush == HoldRole.FINISH,
