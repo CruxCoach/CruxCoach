@@ -44,6 +44,9 @@ private const val INITIAL_ZOOM = 1.0
 data class MapState(
     val unfilteredLocations: List<BoardLocation> = emptyList(),
     val filteredLocations: List<BoardLocation> = emptyList(),
+    /** [filteredLocations] collapsed to one entry per physical venue — what
+     *  the map renders (MapLibre then clusters these). */
+    val filteredVenues: List<MapVenue> = emptyList(),
     val stats: MapStats = MapStats.Empty,
     val unfilteredStats: MapStats = MapStats.Empty,
     val isLoading: Boolean = true,
@@ -55,7 +58,7 @@ data class MapState(
     val canFilterByMyBoard: Boolean = false,
     val userBoardLayoutId: Int? = null,
     val userBoardSizeId: Int? = null,
-    val selectedLocationId: String? = null,
+    val selectedVenueId: String? = null,
     val noLocationData: Boolean = false,
     /** True while the one-time locations backfill is fetching/importing. */
     val locationsLoading: Boolean = false,
@@ -192,13 +195,14 @@ class MapViewModel @Inject constructor(
         _state.update {
             it.copy(
                 filteredLocations = filtered,
+                filteredVenues = groupIntoVenues(filtered),
                 stats = MapStats.from(filtered),
             )
         }
     }
 
-    fun selectLocation(id: String?) {
-        _state.update { it.copy(selectedLocationId = id) }
+    fun selectVenue(id: String?) {
+        _state.update { it.copy(selectedVenueId = id) }
     }
 
     fun toggleShowOriginal() {

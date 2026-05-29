@@ -120,22 +120,21 @@ fun MapScreen(
         }
     }
 
-    LaunchedEffect(mapHandle, state.filteredLocations) {
+    LaunchedEffect(mapHandle, state.filteredVenues) {
         val (_, style) = mapHandle ?: return@LaunchedEffect
-        MapMarkerLayer.setData(style, state.filteredLocations)
+        MapMarkerLayer.setData(style, state.filteredVenues)
     }
 
-    val selectedLocation = remember(state.selectedLocationId, state.filteredLocations, state.unfilteredLocations) {
-        val id = state.selectedLocationId ?: return@remember null
-        state.filteredLocations.firstOrNull { it.id == id }
-            ?: state.unfilteredLocations.firstOrNull { it.id == id }
+    val selectedVenue = remember(state.selectedVenueId, state.filteredVenues) {
+        val id = state.selectedVenueId ?: return@remember null
+        state.filteredVenues.firstOrNull { it.id == id }
     }
 
-    LaunchedEffect(mapHandle, selectedLocation) {
+    LaunchedEffect(mapHandle, selectedVenue) {
         val (map, style) = mapHandle ?: return@LaunchedEffect
-        MapMarkerLayer.setSelected(style, selectedLocation)
-        if (selectedLocation != null) {
-            val target = LatLng(selectedLocation.lat, selectedLocation.lng)
+        MapMarkerLayer.setSelected(style, selectedVenue)
+        if (selectedVenue != null) {
+            val target = LatLng(selectedVenue.lat, selectedVenue.lng)
             val update = if (map.cameraPosition.zoom < 8.0) {
                 CameraUpdateFactory.newLatLngZoom(target, 9.0)
             } else {
@@ -145,13 +144,13 @@ fun MapScreen(
         }
     }
 
-    if (selectedLocation != null) {
+    if (selectedVenue != null) {
         BoardLocationDetailSheet(
-            location = selectedLocation,
-            onDismiss = { viewModel.selectLocation(null) },
+            venue = selectedVenue,
+            onDismiss = { viewModel.selectVenue(null) },
             onBrowseClimbs = { layoutId, sizeId ->
                 viewModel.applyBoardConfigForBrowse(layoutId, sizeId)
-                viewModel.selectLocation(null)
+                viewModel.selectVenue(null)
                 onNavigateToBoardBrowser()
             },
         )
@@ -225,9 +224,22 @@ fun MapScreen(
                     mapHandle = map to style
                 },
                 onMapTap = { map, x, y ->
-                    val hit = MapMarkerLayer.locationAt(map, x, y, state.filteredLocations)
+                    // Cluster first: tapping a count bubble eases the camera to
+                    // the zoom where it splits apart. Then individual venues.
+                    val style = mapHandle?.second
+                    if (style != null) {
+                        val cluster = MapMarkerLayer.clusterExpansionAt(map, style, x, y)
+                        if (cluster != null) {
+                            map.easeCamera(
+                                CameraUpdateFactory.newLatLngZoom(cluster.center, cluster.zoom),
+                                450,
+                            )
+                            return@MapView true
+                        }
+                    }
+                    val hit = MapMarkerLayer.venueAt(map, x, y, state.filteredVenues)
                     if (hit != null) {
-                        viewModel.selectLocation(hit.id)
+                        viewModel.selectVenue(hit.id)
                         return@MapView true
                     }
                     false

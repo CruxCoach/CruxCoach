@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Language
@@ -28,6 +29,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -44,16 +46,31 @@ import com.cruxcoach.data.repository.AccessType
 import com.cruxcoach.data.repository.Adjustability
 import com.cruxcoach.data.repository.BoardLocation
 import com.cruxcoach.domain.board.BoardBrand
+import com.cruxcoach.domain.board.MoonBoardVariant
 
+/**
+ * Bottom sheet for a tapped [MapVenue]. A venue may host several boards
+ * (a gym with both a Kilter and a MoonBoard, or Original + Homewall), so the
+ * sheet shows shared venue info once — name, location, contact — then lists
+ * each board with its own "browse climbs" action.
+ *
+ * Contact rows are sourced from the board at the venue that carries the most
+ * contact detail (MoonBoard rows ship none, so a co-located Kilter row wins).
+ * All outbound intents go through the hardened safe-launch / input-validation
+ * helpers (FEAT-015 security hardening).
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BoardLocationDetailSheet(
-    location: BoardLocation,
+    venue: MapVenue,
     onDismiss: () -> Unit,
     onBrowseClimbs: (layoutId: Int, productSizeId: Int?) -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val context = LocalContext.current
+    // Representative board for the shared contact block: the one with the
+    // most populated contact fields.
+    val contact = venue.boards.maxByOrNull { it.contactScore() } ?: venue.boards.first()
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(
@@ -63,22 +80,12 @@ fun BoardLocationDetailSheet(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text(
-                location.name,
+                venue.name,
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.SemiBold,
             )
-            // MoonBoard gyms carry no country ("??") — drop the placeholder
-            // and tag the brand instead so the header still reads cleanly.
-            val geoParts = listOfNotNull(
-                location.city?.takeIf { it.isNotBlank() },
-                location.countryCode.takeIf { it.isNotBlank() && it != "??" },
-            )
-            val subtitle = if (location.boardBrand == BoardBrand.MOONBOARD) {
-                (listOf(stringResource(R.string.board_selection_brand_moonboard)) + geoParts)
-                    .joinToString(separator = " · ")
-            } else {
-                geoParts.joinToString(separator = ", ")
-            }
+            val subtitle = listOfNotNull(venue.city, venue.countryCode.takeIf { it.isNotBlank() && it != "??" })
+                .joinToString(separator = ", ")
             if (subtitle.isNotBlank()) {
                 Text(
                     subtitle,
@@ -89,23 +96,18 @@ fun BoardLocationDetailSheet(
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
 
-            // Contact rows always shown with "—" placeholder when missing —
-            // gives the user a predictable layout.
-            DetailRow(icon = Icons.Filled.LocationOn, value = location.address)
+            // Shared contact rows. "—" placeholder when missing → predictable
+            // layout. Each clickable row is gated by an input validator.
+            DetailRow(icon = Icons.Filled.LocationOn, value = contact.address)
             DetailRow(
                 icon = Icons.Filled.Phone,
-                value = location.phone,
-                onClick = sanitisedPhoneOrNull(location.phone)?.let { phone ->
+                value = contact.phone,
+                onClick = sanitisedPhoneOrNull(contact.phone)?.let { phone ->
                     {
-                        // Uri.fromParts builds an opaque tel: URI — the SSP
-                        // is not parsed for `?key=value` parameters, so a
-                        // crafted phone string can't inject extra dialer
-                        // semantics. sanitisedPhoneOrNull strips anything
-                        // outside the dialer-safe character set first.
                         safeStartActivity(
                             context,
                             Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", phone, null)),
-                            gymId = location.id,
+                            gymId = contact.id,
                             action = "dial",
                         )
                     }
@@ -113,19 +115,14 @@ fun BoardLocationDetailSheet(
             )
             DetailRow(
                 icon = Icons.Filled.Email,
-                value = location.email,
-                onClick = validatedEmailOrNull(location.email)?.let { email ->
+                value = contact.email,
+                onClick = validatedEmailOrNull(contact.email)?.let { email ->
                     {
-                        // ACTION_SENDTO + EXTRA_EMAIL keeps the recipient
-                        // out of the URI's query component, so a malicious
-                        // "?subject=…&bcc=…" suffix in the email field
-                        // can't pre-compose the user's mail client. The
-                        // recipient itself was validated by Patterns.EMAIL_ADDRESS.
                         safeStartActivity(
                             context,
                             Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:"))
                                 .putExtra(Intent.EXTRA_EMAIL, arrayOf(email)),
-                            gymId = location.id,
+                            gymId = contact.id,
                             action = "email",
                         )
                     }
@@ -133,18 +130,13 @@ fun BoardLocationDetailSheet(
             )
             DetailRow(
                 icon = Icons.Filled.Language,
-                value = location.url,
-                onClick = validatedHttpUrlOrNull(location.url)?.let { url ->
+                value = contact.url,
+                onClick = validatedHttpUrlOrNull(contact.url)?.let { url ->
                     {
-                        // validatedHttpUrlOrNull guarantees scheme is
-                        // http or https (after a possible https:// upgrade
-                        // for scheme-less inputs), so ACTION_VIEW cannot
-                        // be hijacked into a custom-scheme handler that
-                        // happens to be installed on the device.
                         safeStartActivity(
                             context,
                             Intent(Intent.ACTION_VIEW, url),
-                            gymId = location.id,
+                            gymId = contact.id,
                             action = "web",
                         )
                     }
@@ -153,35 +145,27 @@ fun BoardLocationDetailSheet(
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
 
-            val placeholder = stringResource(R.string.map_marker_field_unknown)
-            LabelValueRow(stringResource(R.string.map_marker_layout), location.layoutDisplay(placeholder))
-            LabelValueRow(stringResource(R.string.map_marker_access), accessDisplay(location.accessType))
-            LabelValueRow(
-                stringResource(R.string.map_marker_adjustability),
-                adjustabilityDisplay(location.adjustability, location.fixedAngle),
+            // One card per board at this venue. A single-board venue shows
+            // exactly one card; a mixed venue lists each, brand-ordered.
+            Text(
+                stringResource(R.string.map_venue_section_boards),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            LabelValueRow(stringResource(R.string.map_marker_frame), location.frameMaker.placeholderIfMissing(placeholder))
+            venue.boards.forEach { board ->
+                BoardCard(board = board, onBrowseClimbs = onBrowseClimbs)
+            }
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // "Browse climbs" only when we successfully mapped the layout.
-            val resolvedLayoutId = location.layoutId
-            if (resolvedLayoutId != null) {
-                Button(
-                    onClick = { onBrowseClimbs(resolvedLayoutId, location.productSizeId) },
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text(stringResource(R.string.map_marker_browse_climbs))
-                }
-            }
             OutlinedButton(
                 onClick = {
-                    val name = Uri.encode(location.name)
-                    val uri = "geo:${location.lat},${location.lng}?q=${location.lat},${location.lng}($name)"
+                    val name = Uri.encode(venue.name)
+                    val uri = "geo:${venue.lat},${venue.lng}?q=${venue.lat},${venue.lng}($name)"
                     safeStartActivity(
                         context,
                         Intent(Intent.ACTION_VIEW, uri.toUri()),
-                        gymId = location.id,
+                        gymId = venue.id,
                         action = "maps",
                     )
                 },
@@ -193,6 +177,47 @@ fun BoardLocationDetailSheet(
             }
 
             Spacer(modifier = Modifier.height(12.dp))
+        }
+    }
+}
+
+@Composable
+private fun BoardCard(
+    board: BoardLocation,
+    onBrowseClimbs: (layoutId: Int, productSizeId: Int?) -> Unit,
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                board.boardTitle(),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+            )
+            LabelValueRow(stringResource(R.string.map_marker_access), accessDisplay(board.accessType))
+            LabelValueRow(
+                stringResource(R.string.map_marker_adjustability),
+                adjustabilityDisplay(board.adjustability, board.fixedAngle),
+            )
+            if (board.boardBrand == BoardBrand.KILTER && !board.frameMaker.isNullOrBlank()) {
+                LabelValueRow(stringResource(R.string.map_marker_frame), board.frameMaker!!)
+            }
+            val layoutId = board.layoutId
+            if (layoutId != null) {
+                Spacer(Modifier.height(4.dp))
+                Button(
+                    onClick = { onBrowseClimbs(layoutId, board.productSizeId) },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(stringResource(R.string.map_marker_browse_climbs))
+                }
+            }
         }
     }
 }
@@ -244,21 +269,38 @@ private fun LabelValueRow(label: String, value: String) {
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Text(
-            value,
-            style = MaterialTheme.typography.bodyMedium,
-        )
+        Text(value, style = MaterialTheme.typography.bodyMedium)
     }
 }
 
 private const val TAG_SHEET = "BoardLocationSheet"
 
+/** How many contact fields this board carries — used to pick the venue's
+ *  representative contact row. */
+private fun BoardLocation.contactScore(): Int =
+    listOf(phone, email, url, address).count { !it.isNullOrBlank() }
+
+/** Human label for one board within a venue card. MoonBoard → variant name;
+ *  Kilter → layout + size. */
+private fun BoardLocation.boardTitle(): String = when (boardBrand) {
+    BoardBrand.MOONBOARD ->
+        layoutId?.toLong()?.let { MoonBoardVariant.fromLayoutId(it)?.displayName }
+            ?: layoutName ?: "MoonBoard"
+    else -> {
+        val name = layoutName
+        val size = sizeLabel
+        when {
+            name == null -> "Kilter"
+            size.isNullOrBlank() -> "Kilter — $name"
+            else -> "Kilter — $name ($size)"
+        }
+    }
+}
+
 /**
  * Strip the input down to dialer-safe characters. Returns null when the
- * cleaned value is empty so the calling row stays non-clickable instead
- * of launching a no-op `tel:` intent. This is the input-sanitisation
- * arm of the FEAT-015 untrusted-data defence — see CHANGELOG 0.1.5
- * "Security".
+ * cleaned value is empty so the calling row stays non-clickable instead of
+ * launching a no-op `tel:` intent.
  */
 private fun sanitisedPhoneOrNull(raw: String?): String? {
     val trimmed = raw?.trim().orEmpty()
@@ -267,24 +309,14 @@ private fun sanitisedPhoneOrNull(raw: String?): String? {
     return cleaned.takeIf { it.any(Char::isDigit) }
 }
 
-/**
- * Pass only RFC-compliant addresses to ACTION_SENDTO. A malformed entry
- * (e.g. a value with `?subject=…&bcc=…` injected for mailto-header
- * abuse) fails this check and the row becomes non-clickable.
- */
+/** Pass only RFC-compliant addresses to ACTION_SENDTO. */
 private fun validatedEmailOrNull(raw: String?): String? {
     val trimmed = raw?.trim().orEmpty()
     if (trimmed.isEmpty()) return null
     return trimmed.takeIf { Patterns.EMAIL_ADDRESS.matcher(it).matches() }
 }
 
-/**
- * Accept the URL only if its parsed scheme is `http` or `https`. A
- * raw `httpx://` or custom-scheme value cannot bypass via a leading
- * `http`-prefix substring match (the previous startsWith("http") guard
- * accepted those). Scheme-less inputs are upgraded to `https://`
- * before re-parsing.
- */
+/** Accept the URL only if its parsed scheme is http or https. */
 private fun validatedHttpUrlOrNull(raw: String?): Uri? {
     val trimmed = raw?.trim().orEmpty()
     if (trimmed.isEmpty()) return null
@@ -309,15 +341,6 @@ private fun safeStartActivity(
         Log.w(TAG_SHEET, "gym=$gymId action=$action: security exception", e)
         Toast.makeText(context, R.string.map_marker_intent_failed, Toast.LENGTH_SHORT).show()
     }
-}
-
-private fun String?.placeholderIfMissing(placeholder: String): String =
-    if (isNullOrBlank()) placeholder else this
-
-private fun BoardLocation.layoutDisplay(placeholder: String): String {
-    val name = layoutName ?: return placeholder
-    val size = sizeLabel
-    return if (size.isNullOrBlank()) name else "$name ($size)"
 }
 
 @Composable
