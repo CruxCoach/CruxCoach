@@ -5,8 +5,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * Parser smoke-tests using small in-line JSON fixtures patterned after
- * the boardsesh test suite (`boardsesh/packages/web/app/lib/data-sync/aurora/__tests__/json-import.test.ts`).
+ * Parser smoke-tests using small in-line JSON fixtures covering the
+ * Aurora email-export shape.
  * Larger end-to-end fixtures are not committed to the repo because
  * real Aurora exports contain user-PII (real names, gym addresses);
  * synthetic minimal JSON proves the schema parses without leaking

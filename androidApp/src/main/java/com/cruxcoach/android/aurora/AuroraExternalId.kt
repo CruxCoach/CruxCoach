@@ -4,14 +4,13 @@ import java.security.MessageDigest
 
 /**
  * Deterministic, namespaced `external_id` builders for FEAT-005. The
- * format mirrors `boardsesh/packages/web/app/lib/data-sync/aurora/json-import.ts:143-155`
- * (Apache 2.0): `<entity>:<32-hex-chars-of-sha256>`.
+ * format is `<entity>:<32-hex-chars-of-sha256>`.
  *
  * Hash inputs deliberately *exclude* the user pubkey — re-importing
  * the same Aurora export under a different Nostr identity should still
  * dedup, otherwise a key rotation creates phantom duplicates.
  *
- * The 32-char truncation matches boardsesh's choice: collision
+ * The 32-char truncation is deliberate: collision
  * probability for ~50k rows is far below practical concern (birthday
  * bound on a 128-bit space). Using the full 64 hex chars would only
  * waste storage; the partial UNIQUE INDEX in `secure/5.sqm` works
@@ -29,8 +28,7 @@ object AuroraExternalId {
         "aurora-json:circuit:" + sha256("$name:$createdAtIso").take(32)
 
     /**
-     * Deterministic UUID for an Aurora-imported draft climb. Mirrors
-     * boardsesh's `generateClimbImportUuid` —
+     * Deterministic UUID for an Aurora-imported draft climb.
      * `(layoutId, name, createdAt)` is enough to dedup; userId is left
      * out so re-importing under a rotated Nostr key doesn't fork the
      * draft. UUIDv3 (name-based, MD5) via [java.util.UUID.nameUUIDFromBytes]

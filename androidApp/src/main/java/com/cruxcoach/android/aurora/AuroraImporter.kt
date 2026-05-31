@@ -22,8 +22,7 @@ import javax.inject.Singleton
 /**
  * Main entry point for FEAT-005 Aurora-JSON-import.
  *
- * Pipeline (mirrors `boardsesh/packages/web/app/lib/data-sync/aurora/json-import.ts`,
- * Apache 2.0):
+ * Pipeline:
  *
  *   1. Parse JSON → [AuroraExportData] via [AuroraExportParser].
  *   2. Resolve names from ascents/attempts/circuits → board-DB UUIDs:
@@ -482,8 +481,8 @@ class AuroraImporter @Inject constructor(
                 val resolvedClimbs = circuit.climbs.mapNotNull { resolution.byName[it] }
 
                 // Skip writing the circuit if every climb resolves to nothing —
-                // boardsesh handles this by leaving an existing entry alone
-                // rather than wiping a previously-resolved import.
+                // leave an existing entry alone rather than wiping a
+                // previously-resolved import.
                 if (resolvedClimbs.isEmpty() && circuit.climbs.isNotEmpty()) {
                     failed++
                     return@forEachIndexed

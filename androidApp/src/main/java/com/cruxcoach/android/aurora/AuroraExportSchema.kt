@@ -5,9 +5,8 @@ import kotlinx.serialization.Serializable
 /**
  * kotlinx-serialization mirror of the Aurora email-export JSON shape.
  *
- * Field set verified against `boardsesh/packages/web/app/lib/data-sync/aurora/json-import.ts`
- * (Apache 2.0) — same Zod schema we'd port if we wrote a TypeScript
- * client. Spec reference: `docs/specs/0.1.4/FEAT-005-aurora-json-import.md` §2.
+ * Field set verified against the Aurora email-export wire format. Spec
+ * reference: `docs/specs/0.1.4/FEAT-005-aurora-json-import.md` §2.
  *
  * Top-level keys not consumed by the importer (`follows`, `walls`,
  * `blocks`, `beta_links`, `agreements`) are silently dropped at parse
@@ -44,8 +43,8 @@ data class AuroraAscent(
     /** Attempt count: `1` = flash, `>1` = redpoint. */
     val count: Int,
     /** User rating 1–5. The email export is already on the 5-point
-     *  scale; only Aurora's *live API* returned 1–3 (boardsesh
-     *  cross-checked). No conversion needed here. */
+     *  scale; only Aurora's *live API* returned 1–3. No conversion
+     *  needed here. */
     val stars: Int,
     /** Font/V grade as plain text (`"6A"`, `"6A/V3"`). Resolved to a
      *  numeric difficulty ID at import time via the existing

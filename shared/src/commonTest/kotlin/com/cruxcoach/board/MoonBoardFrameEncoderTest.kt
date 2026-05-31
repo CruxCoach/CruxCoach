@@ -8,11 +8,10 @@ import kotlin.test.assertFailsWith
 
 /**
  * Unit tests for [MoonBoardFrameEncoder] — the FEAT-027 MoonBoard BLE
- * wire-frame encoder. The serial-position arithmetic is verified
- * against BoardSesh's `getMoonboardSerialPosition` reference for the
- * standard 11×18 boards, and against the natural per-column-height
- * extrapolation for Mini 2020 (variant gridRows = 12; dynamic-capture
- * against real Mini hardware still pending).
+ * wire-frame encoder. The serial-position arithmetic is verified against
+ * known-good frames for the standard 11×18 boards, and against the natural
+ * per-column-height extrapolation for Mini 2020 (variant gridRows = 12;
+ * dynamic-capture against real Mini hardware still pending).
  */
 class MoonBoardFrameEncoderTest {
 

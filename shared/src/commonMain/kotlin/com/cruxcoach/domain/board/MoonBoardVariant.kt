@@ -26,8 +26,8 @@ package com.cruxcoach.domain.board
  * Per-variant grid dims are a 0.2.x polish.
  *
  * [layoutId] matches `climbs.layout_id` in the board DB, assigned by the
- * MoonBoard importer (`build_moonboard_db.py`) per BoardSesh's
- * `HOLDSETUP_TO_LAYOUT` mapping (Apache-2.0; see that repo's NOTICE).
+ * MoonBoard importer (`build_moonboard_db.py`) from the hold-setup → layout
+ * mapping dictated by the MoonBoard hardware.
  */
 enum class MoonBoardVariant(
     val layoutId: Long,
@@ -66,9 +66,8 @@ enum class MoonBoardVariant(
         // Mini physically has 12 rows (1..12). The dump uses rows 2..12;
         // row 1 is included in the coord-map for completeness so a
         // future climb that uses row-1 holds still has a position. The
-        // BLE serpentine multiplier is 12, not 18 — verified against
-        // BoardSesh's variant grid notes (06-boardsesh-comparison.md
-        // §5); dynamic-capture against a real Mini board still pending.
+        // BLE serpentine multiplier is 12, not 18; dynamic-capture
+        // against a real Mini board still pending.
         gridRows = 12,
     );
 

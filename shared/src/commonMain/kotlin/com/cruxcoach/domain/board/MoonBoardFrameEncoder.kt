@@ -6,9 +6,7 @@ package com.cruxcoach.domain.board
  * BLE dependency. The transport (scan / connect / chunked write) lives
  * in the androidApp BLE layer; this object owns only the byte format.
  *
- * Wire format — verified against BoardSesh's `bluetooth-moonboard.ts`
- * encoder and the `moonboard-protocol` C++ decoder
- * (see ~/moonboard-re/analysis/06-boardsesh-comparison.md §2):
+ * Wire format:
  *
  *     l#<token><serialPos>,<token><serialPos>,...#
  *
@@ -24,8 +22,7 @@ package com.cruxcoach.domain.board
  *
  * Per-variant: the serpentine arithmetic walks `variant.gridRows` per
  * column — 18 for standard 11×18 boards, 12 for Mini 2020. The base
- * format is identical across variants per BoardSesh's RE notes (see
- * 06-boardsesh-comparison.md §5). Mini-hardware dynamic-capture is
+ * format is identical across variants. Mini-hardware dynamic-capture is
  * still outstanding; the Mini path is the natural extrapolation of
  * the documented standard-board protocol.
  */
@@ -61,8 +58,7 @@ object MoonBoardFrameEncoder {
      * top-to-bottom. The per-column height is [MoonBoardVariant.gridRows]
      * (18 for the standard 11×18 boards, 12 for Mini 2020).
      *
-     * Inverse of the board-protocol decoder's serial→hold mapping;
-     * ported from BoardSesh's `getMoonboardSerialPosition`.
+     * Inverse of the board-protocol decoder's serial→hold mapping.
      *
      * @throws IllegalArgumentException if [holdId] is outside the
      *   variant's valid range (1..variant.gridRows*11).

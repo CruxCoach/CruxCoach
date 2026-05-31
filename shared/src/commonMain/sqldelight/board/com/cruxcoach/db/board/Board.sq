@@ -1518,7 +1518,7 @@ DELETE FROM sync_states WHERE table_name = 'homewall_force_resync';
 --
 -- Joins climbs to climb_stats so the caller sees the total
 -- ascensionist count per uuid; the Kotlin picker uses that as the
--- collision tiebreaker (boardsesh proven pattern).
+-- collision tiebreaker.
 lookupClimbsByNamesForAuroraImport:
 SELECT c.name, c.uuid, c.source, c.is_listed,
        CAST(COALESCE(SUM(cs.ascensionist_count), 0) AS INTEGER) AS total_ascensionist_count
