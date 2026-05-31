@@ -98,6 +98,9 @@ When a new or renamed Kilter board size is released:
 | Files | MoonBoard variant |
 |-------|-------------------|
 | `moonboard_2016.webp` + `moonboard_2016.json` | MoonBoard 2016 |
+| `moonboard_2017.webp` + `moonboard_2017.json` | MoonBoard Masters 2017 |
+| `moonboard_2019.webp` + `moonboard_2019.json` | MoonBoard Masters 2019 |
+| `mini_moonboard_2020.json` (coordinate map only) | MoonBoard Mini 2020 |
 
 `moonboard_<variant>.webp` is the board image; `moonboard_<variant>.json`
 is a per-hold coordinate map. They are decoded together on-device by
@@ -105,8 +108,9 @@ is a per-hold coordinate map. They are decoded together on-device by
 `androidApp/src/main/java/com/cruxcoach/android/ui/board/MoonBoardAsset.kt`)
 and consumed by `MoonBoardVisualization`.
 
-Variants without a bundled image (Masters 2017 / 2019) fall back to the
-procedural 11x18 grid.
+MoonBoard Mini 2020 ships a coordinate map only (no bundled board photo),
+so it falls back to the procedural 11x18 grid; if decoding a bundled image
+fails for any variant, the renderer also falls back to that grid.
 
 ## Coordinate map (`moonboard_<variant>.json`)
 
@@ -133,16 +137,29 @@ carry the plain grid node.
 
 ## Origin — MoonBoard
 
-The MoonBoard board image is **CruxCoach's own work** — created in-house,
-full rights held by the project. It is **not** extracted from the
-official MoonBoard app's asset bundle and shares none of its pixels.
-This deliberately avoids the third-party-asset exposure that the Kilter
-images carry (see *Origin* above) and resolves FEAT-027 §10's
-"hold image rendering" open question in favour of an original asset.
+The MoonBoard board *image file* bundled here is **CruxCoach's own work** —
+created in-house, **not** extracted from the official MoonBoard app's asset
+bundle, and sharing none of its pixels. This deliberately avoids the
+third-party-asset exposure that the Kilter images carry (see *Origin*
+above) and resolves FEAT-027 §10's "hold image rendering" open question in
+favour of an original asset.
 
-The MoonBoard product and its hardware layouts are the property of
-**Moon Climbing Ltd**. CruxCoach is not affiliated with, endorsed by, or
-officially connected to Moon Climbing Ltd.
+CruxCoach holds the rights to its own image *file*, but **not** to the
+underlying board design it portrays: the MoonBoard product, its hardware
+hold layouts, and the MoonBoard name are the property of **Moon Climbing
+Ltd**. The image is bundled solely as referential / descriptive material to
+identify the user's physical MoonBoard, in a non-commercial, open-source
+context — § 23(1) No. 3 MarkenG (referential use to indicate intended
+purpose) and the analogous nominative fair-use doctrine elsewhere, the same
+basis as the Kilter section above. CruxCoach is not affiliated with,
+endorsed by, or officially connected to Moon Climbing Ltd.
+
+## Removal requests — MoonBoard
+
+If you represent Moon Climbing Ltd and would like the MoonBoard imagery
+removed or replaced, please contact the maintainer via the channels listed
+in `SECURITY.md`, or open an issue on the Codeberg repository. Removal or
+replacement will be handled promptly.
 
 ## Updating — MoonBoard
 

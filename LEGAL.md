@@ -2,7 +2,9 @@
 
 ## What This Project Is
 
-CruxCoach is a free, open-source climbing app for use with the Kilter Board climbing training system. It provides climb browsing, BLE board control, session tracking, logbook management, progress analytics, and Kilter account sync. It is non-commercial and maintained by volunteers.
+CruxCoach is a free, open-source climbing app for use with the Kilter Board and MoonBoard climbing training systems. It provides climb browsing, BLE board control, session tracking, logbook management, progress analytics, Kilter account sync, and CruxCoach-community climb authoring. It is non-commercial and maintained by volunteers.
+
+The legal reasoning below is written primarily around the Kilter Board (the project's original target). The same principles — factual/functional climb data, community-created content, referential trademark use, and interoperability via BLE — apply equally to the MoonBoard; MoonBoard-specific provenance details are still being documented.
 
 ---
 
@@ -51,10 +53,10 @@ CruxCoach distributes board reference data and community-created climb data via 
 
 ### What we do NOT distribute
 
-- Kilter's proprietary software, source code, or firmware
-- Kilter's wordmark, logo, or marketing/branding artwork
+- Kilter's or Moon Climbing's proprietary software, source code, or firmware
+- Kilter's or MoonBoard's wordmark, logo, or marketing/branding artwork
 - User personal data (email, profile photos, account details)
-- Kilter's app binary or any portion thereof
+- Kilter's or the MoonBoard app's binary or any portion thereof
 
 ### Bundled Kilter layout images
 
@@ -144,9 +146,9 @@ EU and German law independently establish the right to analyse and interoperate 
 
 ### Trademark
 
-"Kilter Board" and "Kilter" are trademarks of Kilter Grips, LLC. CruxCoach uses these marks solely to indicate compatibility with the Kilter Board hardware, as permitted under **§ 23(1) No. 3 MarkenG** (referential use to indicate intended purpose) and **Art. 14(1)(c) EUTMR (2017/1001)**.
+"Kilter Board" and "Kilter" are trademarks of Kilter Grips, LLC. "MoonBoard" and "Moon" are trademarks of Moon Climbing Ltd. CruxCoach uses these marks solely to indicate compatibility with the respective board hardware, as permitted under **§ 23(1) No. 3 MarkenG** (referential use to indicate intended purpose) and **Art. 14(1)(c) EUTMR (2017/1001)**.
 
-CruxCoach is an independent, community-developed open-source project. It is not affiliated with, endorsed by, sponsored by, or in any way officially connected with Kilter Grips, LLC, Aurora Climbing, or any board manufacturer. All product and company names are trademarks of their respective holders.
+CruxCoach is an independent, community-developed open-source project. It is not affiliated with, endorsed by, sponsored by, or in any way officially connected with Kilter Grips, LLC, Aurora Climbing, Moon Climbing Ltd, or any board manufacturer. All product and company names are trademarks of their respective holders.
 
 ---
 

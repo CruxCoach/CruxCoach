@@ -1,8 +1,8 @@
 # CruxCoach
 
-Open-source Kilter Board climbing app for Android.
+Open-source Kilter Board & MoonBoard climbing app for Android.
 
-Browse climbs, control your Kilter Board via Bluetooth, log ascents, import your Kilter logbook, and track your progress — no third-party cloud services, full control over your data.
+Browse climbs, control your Kilter Board or MoonBoard via Bluetooth, log ascents, import your Kilter logbook, and track your progress — no third-party cloud services, full control over your data.
 
 ## 📲 Get the app
 
@@ -134,9 +134,12 @@ Domain logic lives in a shared Kotlin Multiplatform module (~60–70% of code). 
 
 ## Board Compatibility
 
-Currently supported: **Kilter Board** (all sizes and angles).
+Currently supported:
 
-> Primarily tested on the 12x12 Original layout. Other sizes should work but are less tested — feedback welcome!
+- **Kilter Board** — all sizes and angles (catalogue, BLE send, logbook, climb authoring).
+- **MoonBoard** — 2016, Masters 2017, Masters 2019, and Mini 2020 (catalogue, BLE send, CruxCoach-community climb authoring).
+
+> Primarily tested on the Kilter 12x12 Original layout and MoonBoard 2016. Other sizes/variants should work but are less tested — feedback welcome!
 
 See [LEGAL.md](LEGAL.md) for our position on interoperability and data usage.
 

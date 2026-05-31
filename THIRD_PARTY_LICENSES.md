@@ -74,6 +74,8 @@ These images are **not** covered by the CruxCoach GPLv3 source license.
   consumed by [`BoardLocationRepository`](shared/src/commonMain/kotlin/com/cruxcoach/data/repository/BoardLocationRepository.kt)
   (board-locations map, FEAT-015).
 - **Source:** https://www.npmjs.com/package/@hangtime/climbing-boards
+- **License:** Unlicense (public-domain dedication) — no attribution or
+  share-alike obligation; GPL-3.0-compatible.
 - **Upstream provenance:** Daily mirror of the Kilter PowerSync `global_gyms`
   bucket, augmented with StoreRocket contact data. CruxCoach does not directly
   contact the original sources at runtime; the upstream package builds a

@@ -22,6 +22,17 @@ Kilter Board layout images — Property of Kilter Grips, LLC (formerly Aurora
     see androidApp/src/main/assets/board_images/README.md, LEGAL.md, and
     THIRD_PARTY_LICENSES.md.
 
+MoonBoard board images — The bundled image files
+    (androidApp/src/main/assets/board_images/moonboard_*.webp) are CruxCoach's
+    own original work, created in-house — not extracted from the official
+    MoonBoard app. The MoonBoard product, its hardware hold layouts, and the
+    MoonBoard name are the property of Moon Climbing Ltd; the images depict
+    that layout and are bundled solely as referential offline board
+    visualization. No affiliation, sponsorship, or endorsement is claimed.
+    Moon Climbing Ltd may request removal at any time — see
+    androidApp/src/main/assets/board_images/README.md, LEGAL.md, and
+    THIRD_PARTY_LICENSES.md.
+
 dontkillmyapp.com (Urbandroid Team) — OEM background-killer taxonomy used in
     androidApp/src/main/java/com/cruxcoach/android/notification/
     NotificationReliabilityHelper.kt. Licensed under CC BY-SA 4.0
