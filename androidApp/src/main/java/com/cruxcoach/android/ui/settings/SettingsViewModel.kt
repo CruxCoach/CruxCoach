@@ -430,15 +430,27 @@ class SettingsViewModel @Inject constructor(
             )
         }
         viewModelScope.launch {
-            userPreferences.setMoonBoardSelection(variant.layoutId.toInt())
-            val result = withContext(Dispatchers.IO) { moonBoardCatalogueSync.sync() }
-            val message = when (result) {
-                is MoonBoardCatalogueSync.Result.AlreadyCurrent ->
-                    context.getString(R.string.moonboard_sync_already_current)
-                is MoonBoardCatalogueSync.Result.Imported ->
-                    context.getString(R.string.moonboard_sync_imported)
-                is MoonBoardCatalogueSync.Result.Failed ->
-                    context.getString(R.string.moonboard_sync_failed, result.message)
+            val message = try {
+                userPreferences.setMoonBoardSelection(variant.layoutId.toInt())
+                val result = withContext(Dispatchers.IO) { moonBoardCatalogueSync.sync() }
+                when (result) {
+                    is MoonBoardCatalogueSync.Result.AlreadyCurrent ->
+                        context.getString(R.string.moonboard_sync_already_current)
+                    is MoonBoardCatalogueSync.Result.Imported ->
+                        context.getString(R.string.moonboard_sync_imported)
+                    // result.message is a debug detail (may carry relay URLs /
+                    // SQLite text / cache paths) — show a generic localized
+                    // message instead of interpolating it into the UI.
+                    is MoonBoardCatalogueSync.Result.Failed ->
+                        context.getString(R.string.moonboard_sync_failed_generic)
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Defense-in-depth: sync() no longer throws, but the prefs
+                // write could — never leave the user without a result message.
+                android.util.Log.w("SettingsVM", "MoonBoard variant selection failed", e)
+                context.getString(R.string.moonboard_sync_failed_generic)
             }
             _state.update { it.copy(moonBoardSyncMessage = message) }
         }

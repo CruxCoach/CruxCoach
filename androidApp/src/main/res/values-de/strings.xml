@@ -268,6 +268,7 @@
     <string name="map_no_data">Standortdaten noch nicht geladen — werden beim nächsten App-Start automatisch geladen</string>
     <string name="map_loading_locations">Standortdaten werden geladen…</string>
     <string name="map_init_error" formatted="false">Karte konnte nicht geladen werden: %1$s</string>
+    <string name="map_init_error_generic">Karte konnte nicht geladen werden. Bitte versuche es erneut.</string>
     <string name="map_tile_provider_unreachable">Kartenanbieter ist derzeit nicht erreichbar — prüfe deine Verbindung oder versuche es später erneut.</string>
 
     <!-- Access enum display values -->
@@ -1811,6 +1812,17 @@
     <string name="moonboard_sync_already_current">MoonBoard-Katalog ist bereits aktuell.</string>
     <string name="moonboard_sync_imported">MoonBoard-Katalog heruntergeladen.</string>
     <string name="moonboard_sync_failed">MoonBoard-Katalog konnte nicht geladen werden: %1$s</string>
+    <string name="moonboard_sync_failed_generic">MoonBoard-Katalog konnte nicht geladen werden. Bitte später erneut versuchen.</string>
+    <string name="board_send_error_brand_mismatch">Dieser Climb gehört zu einem anderen Board-Typ als dein aktives Board.</string>
+    <string name="board_send_error_no_led_data">Keine LED-Daten. Bitte Board-Daten neu synchronisieren.</string>
+    <string name="board_send_error_send_failed">Senden fehlgeschlagen.</string>
+    <string name="board_send_error_generic">Fehler beim Senden.</string>
+    <string name="board_send_error_active_not_moonboard">Dein aktives Board ist kein MoonBoard — wechsle es in den Einstellungen, um diesen Climb zu senden.</string>
+    <string name="board_send_error_moonboard_variant_mismatch">Dieser Climb gehört zu einer anderen MoonBoard-Variante als dein aktives Board.</string>
+    <string name="board_sync_error_download">Download fehlgeschlagen. Bitte prüfe deine Internetverbindung und versuche es erneut.</string>
+    <string name="board_sync_error_update_offline">Aktualisierung nicht möglich. Bestehende Daten bleiben erhalten.</string>
+    <string name="board_sync_error_import">Import fehlgeschlagen. Bitte später erneut versuchen.</string>
+    <string name="board_sync_error_update_failed">Aktualisierung fehlgeschlagen. Bestehende Daten bleiben erhalten.</string>
 
     <!-- BoardSyncInlineCard Schritt-Detail-Labels (war gemischt DE/EN) -->
     <string name="board_sync_detail_climbs_count">%,d Climbs…</string>

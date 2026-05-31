@@ -982,14 +982,15 @@ private fun ClimbDetailPageContent(
                                 Text(stringResource(R.string.board_detail_sent), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = SuccessGreen)
                             }
                             state.ble.error != null -> {
+                                val bleErrorText = stringResource(state.ble.error)
                                 Text(
-                                    state.ble.error ?: "",
+                                    bleErrorText,
                                     style = MaterialTheme.typography.bodySmall,
                                     color = ErrorRed,
                                     modifier = Modifier.clickable {
                                         onNavigateToBugReport(
                                             context.getString(R.string.error_bug_report_ble_title),
-                                            state.ble.error ?: ""
+                                            bleErrorText
                                         )
                                     }
                                 )

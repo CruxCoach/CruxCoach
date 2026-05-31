@@ -1,6 +1,7 @@
 package com.cruxcoach.android.ui.board
 
 import android.util.Log
+import com.cruxcoach.android.R
 import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.ClimbBleAdvertiser
 import com.cruxcoach.android.ble.ConnectionState
@@ -85,7 +86,7 @@ internal class BoardSendController(
                 val activeBrand = userPreferences.boardBrand.first()
                 if (s.climb != null && s.climb.brand != BoardBrand.fromWire(activeBrand)) {
                     state.update { it.copy(
-                        ble = it.ble.copy(isSending = false, error = "Dieser Climb gehört zu einem anderen Board-Typ als dein aktives Board."),
+                        ble = it.ble.copy(isSending = false, error = R.string.board_send_error_brand_mismatch),
                         nearby = it.nearby.copy(debugInfo = "board-brand mismatch")
                     ) }
                     return@launch
@@ -97,7 +98,7 @@ internal class BoardSendController(
                 }
                 if (placementToLed.isEmpty()) {
                     state.update { it.copy(
-                        ble = it.ble.copy(isSending = false, error = "Keine LED-Daten. Bitte Board-Daten neu synchronisieren."),
+                        ble = it.ble.copy(isSending = false, error = R.string.board_send_error_no_led_data),
                         nearby = it.nearby.copy(debugInfo = "no LED data")
                     ) }
                     return@launch
@@ -107,7 +108,7 @@ internal class BoardSendController(
                 val success = bleConnection.sendClimb(s.holds, placementToLed, colors.toRoleColorMap())
                 Log.i(TAG, "sendToBoard: writes done success=$success")
                 state.update { it.copy(
-                    ble = it.ble.copy(isSending = false, success = success, error = if (!success) "Senden fehlgeschlagen" else null),
+                    ble = it.ble.copy(isSending = false, success = success, error = if (!success) R.string.board_send_error_send_failed else null),
                     nearby = it.nearby.copy(debugInfo = "sent ok=$success")
                 ) }
                 // Advertise climb to nearby devices if sharing is enabled
@@ -127,7 +128,7 @@ internal class BoardSendController(
             } catch (e: Exception) {
                 Log.e(TAG, "sendToBoard failed", e)
                 state.update { it.copy(
-                    ble = it.ble.copy(isSending = false, error = e.message ?: "Fehler beim Senden"),
+                    ble = it.ble.copy(isSending = false, error = R.string.board_send_error_generic),
                     nearby = it.nearby.copy(debugInfo = "exception: ${e.message?.take(50)}")
                 ) }
             }
@@ -159,6 +160,7 @@ internal class BoardSendController(
             ble = BoardSendState(connectionState = it.ble.connectionState, isSending = true),
             nearby = it.nearby.copy(debugInfo = "sending (moonboard)...")
         ) }
+        Log.i(TAG, "sendMoonBoardToBoard: start frames=${frames.length}")
         sendJob = scope.launch {
             try {
                 // Board-match guard: a MoonBoard climb can only go to a
@@ -169,7 +171,7 @@ internal class BoardSendController(
                 val activeBrand = userPreferences.boardBrand.first()
                 if (BoardBrand.fromWire(activeBrand) != BoardBrand.MOONBOARD) {
                     state.update { it.copy(
-                        ble = it.ble.copy(isSending = false, error = "Dein aktives Board ist kein MoonBoard — wechsle in den Einstellungen, um diesen Climb zu senden."),
+                        ble = it.ble.copy(isSending = false, error = R.string.board_send_error_active_not_moonboard),
                         nearby = it.nearby.copy(debugInfo = "active board not moonboard")
                     ) }
                     return@launch
@@ -177,7 +179,7 @@ internal class BoardSendController(
                 val activeLayout = userPreferences.boardLayoutId.first().toLong()
                 if (s.climb?.layoutId?.toLong() != null && s.climb.layoutId.toLong() != activeLayout) {
                     state.update { it.copy(
-                        ble = it.ble.copy(isSending = false, error = "Dieser Climb gehört zu einer anderen MoonBoard-Variante als dein aktives Board."),
+                        ble = it.ble.copy(isSending = false, error = R.string.board_send_error_moonboard_variant_mismatch),
                         nearby = it.nearby.copy(debugInfo = "moonboard variant mismatch")
                     ) }
                     return@launch
@@ -197,11 +199,12 @@ internal class BoardSendController(
                     .fromLayoutId(layoutId)
                     ?: com.cruxcoach.domain.board.MoonBoardVariant.MOONBOARD_2016
                 val success = bleConnection.sendMoonBoardClimb(frames, variant)
+                Log.i(TAG, "sendMoonBoardToBoard: writes done success=$success variant=$variant")
                 state.update { it.copy(
                     ble = it.ble.copy(
                         isSending = false,
                         success = success,
-                        error = if (!success) "Senden fehlgeschlagen" else null,
+                        error = if (!success) R.string.board_send_error_send_failed else null,
                     ),
                     nearby = it.nearby.copy(debugInfo = "sent ok=$success")
                 ) }
@@ -210,7 +213,7 @@ internal class BoardSendController(
             } catch (e: Exception) {
                 Log.e(TAG, "sendMoonBoardToBoard failed", e)
                 state.update { it.copy(
-                    ble = it.ble.copy(isSending = false, error = e.message ?: "Fehler beim Senden"),
+                    ble = it.ble.copy(isSending = false, error = R.string.board_send_error_generic),
                     nearby = it.nearby.copy(debugInfo = "exception: ${e.message?.take(50)}")
                 ) }
             }

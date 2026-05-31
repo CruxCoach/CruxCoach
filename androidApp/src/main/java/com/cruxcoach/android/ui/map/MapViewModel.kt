@@ -173,7 +173,11 @@ class MapViewModel @Inject constructor(
                 _state.update {
                     it.copy(
                         isLoading = false,
-                        errorMessage = e.message ?: e::class.simpleName ?: "Unbekannter Fehler",
+                        // Internal flag only (exception class name, never the
+                        // raw e.message — which can carry cache paths). The
+                        // screen renders a generic localized message; the full
+                        // exception is in the log above.
+                        errorMessage = e::class.simpleName ?: "error",
                     )
                 }
             }

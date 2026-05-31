@@ -91,9 +91,11 @@ fun MapScreen(
 
     // Init-failure surface — no more silent infinite spinner.
     LaunchedEffect(state.errorMessage) {
-        val err = state.errorMessage ?: return@LaunchedEffect
+        if (state.errorMessage == null) return@LaunchedEffect
+        // Generic localized message — errorMessage is an internal flag, not
+        // user-facing text (avoids leaking raw exception text into the UI).
         snackbarHostState.showSnackbar(
-            message = context.getString(R.string.map_init_error, err),
+            message = context.getString(R.string.map_init_error_generic),
             duration = SnackbarDuration.Long,
         )
         viewModel.clearError()

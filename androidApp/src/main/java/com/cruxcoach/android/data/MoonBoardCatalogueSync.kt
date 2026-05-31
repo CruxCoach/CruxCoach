@@ -107,8 +107,22 @@ class MoonBoardCatalogueSync @Inject constructor(
 
             Log.i(TAG, "MoonBoard catalogue imported (total catalogue climbs=$importedClimbs)")
             Result.Imported(importedClimbs)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            // Cooperative cancellation must propagate, not be swallowed.
+            throw e
         } catch (e: BlossomSyncException) {
             Log.w(TAG, "MoonBoard catalogue sync failed", e)
+            Result.Failed(e.message ?: "MoonBoard catalogue sync failed")
+        } catch (e: Exception) {
+            // Widened from BlossomSyncException-only: the manifest single-chunk
+            // require(), importMoonBoardSnapshot (SQLite/IO) and saveChunkHash
+            // can all throw NON-Blossom exceptions. Previously those escaped
+            // this method's Result contract and silently killed the caller's
+            // coroutine (which has no try/catch), so the user got no result
+            // message and the UI looked hung. Now every failure returns
+            // Result.Failed. Raw text is logged only; Result.Failed.message is
+            // a debug detail — callers must NOT render it verbatim to users.
+            Log.w(TAG, "MoonBoard catalogue sync failed (unexpected)", e)
             Result.Failed(e.message ?: "MoonBoard catalogue sync failed")
         }
     }

@@ -109,6 +109,15 @@ internal object MoonBoardAssetCache {
     fun get(variant: MoonBoardVariant?): MoonBoardRenderAsset? =
         if (variant != null && variant == cachedVariant) cached else null
 
+    /** True when a decode was already ATTEMPTED for [variant] but produced
+     *  no asset (missing/corrupt bundle, or an OOM during bitmap decode).
+     *  Distinguishes a failed decode from a not-yet-decoded variant so the
+     *  renderer can fall back to the procedural grid ([MoonBoardAssetState
+     *  .Unavailable]) instead of spinning on Loading — and a blank card —
+     *  forever. A successful decode sets [cached] non-null. */
+    fun decodeFailed(variant: MoonBoardVariant?): Boolean =
+        variant != null && variant == cachedVariant && cached == null
+
     suspend fun getOrDecode(
         variant: MoonBoardVariant,
         assetManager: AssetManager,
@@ -161,15 +170,26 @@ internal fun rememberMoonBoardAsset(layoutId: Long): MoonBoardAssetState {
     }
     val context = LocalContext.current
     var asset by remember(layoutId) { mutableStateOf(MoonBoardAssetCache.get(variant)) }
+    // Tracks whether the decode has been attempted and FAILED, so a failed
+    // decode demotes to the procedural grid (Unavailable) rather than the
+    // blank Loading card. Seeded from the cache so a re-mount of an
+    // already-failed variant resolves immediately.
+    var decodeFailed by remember(layoutId) {
+        mutableStateOf(MoonBoardAssetCache.decodeFailed(variant))
+    }
     LaunchedEffect(layoutId) {
-        if (asset == null && variant != null && hasImage) {
-            asset = MoonBoardAssetCache.getOrDecode(variant, context.assets)
+        if (asset == null && !decodeFailed && variant != null && hasImage) {
+            val decoded = MoonBoardAssetCache.getOrDecode(variant, context.assets)
+            asset = decoded
+            decodeFailed = decoded == null
         }
     }
     val current = asset
     return when {
         current != null -> MoonBoardAssetState.Ready(current)
-        hasImage -> MoonBoardAssetState.Loading
+        // Still decoding: has an image, not yet failed.
+        hasImage && !decodeFailed -> MoonBoardAssetState.Loading
+        // No bundled image, OR decode failed → procedural 11x18 grid.
         else -> MoonBoardAssetState.Unavailable
     }
 }

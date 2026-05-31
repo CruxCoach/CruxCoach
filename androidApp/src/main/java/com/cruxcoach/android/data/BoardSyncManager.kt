@@ -2,6 +2,7 @@ package com.cruxcoach.android.data
 
 import android.content.Context
 import android.util.Log
+import com.cruxcoach.android.R
 import com.cruxcoach.android.data.BoardDatabaseImporter.ImportStep
 import com.cruxcoach.android.data.blossom.BlossomSyncManager
 import com.cruxcoach.android.notification.BoardSyncWorker
@@ -454,15 +455,19 @@ class BoardSyncManager(
                     e is java.net.ConnectException ||
                     e is java.net.SocketTimeoutException ||
                     (e is java.io.IOException && e !is java.io.FileNotFoundException)
+                // Localized (en/de) + no raw exception text in the UI: the
+                // ErrorCard renders this verbatim, so a hardcoded German string
+                // or an interpolated e.message (SQLite/IO text, cache paths)
+                // would leak to every user. The raw exception is logged above.
                 val msg = when {
                     isNetworkError && !importer.isImported() ->
-                        "Download fehlgeschlagen. Bitte prüfe deine Internetverbindung und versuche es erneut."
+                        appContext.getString(R.string.board_sync_error_download)
                     isNetworkError ->
-                        "Aktualisierung nicht möglich. Bestehende Daten bleiben erhalten."
+                        appContext.getString(R.string.board_sync_error_update_offline)
                     !importer.isImported() ->
-                        "Import fehlgeschlagen: ${e.message ?: e.javaClass.simpleName}"
+                        appContext.getString(R.string.board_sync_error_import)
                     else ->
-                        "Aktualisierung fehlgeschlagen: ${e.message ?: e.javaClass.simpleName}. Bestehende Daten bleiben erhalten."
+                        appContext.getString(R.string.board_sync_error_update_failed)
                 }
                 _state.update { it.copy(
                     isSyncing = false,

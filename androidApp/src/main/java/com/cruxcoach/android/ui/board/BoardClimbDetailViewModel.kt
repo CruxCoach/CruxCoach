@@ -82,7 +82,11 @@ data class BoardSendState(
     val connectionState: ConnectionState = ConnectionState.DISCONNECTED,
     val isSending: Boolean = false,
     val success: Boolean = false,
-    val error: String? = null
+    /** Localized error as a string-resource id (resolved at the UI layer),
+     *  not raw text — keeps BLE send errors out of hardcoded German and
+     *  prevents raw exception messages leaking into the climber-facing send
+     *  status. Null = no error. */
+    @androidx.annotation.StringRes val error: Int? = null
 )
 
 /** Climb list / favorites dialog state. */

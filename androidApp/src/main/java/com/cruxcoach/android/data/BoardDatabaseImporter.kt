@@ -35,9 +35,9 @@ class BoardDatabaseImporter(
         // HotPathIndexDriftTest asserts both sets agree.
         internal val CLIMB_INDEXES = arrayOf(
             "idx_climbs_listed" to
-                    "CREATE INDEX idx_climbs_listed ON climbs(is_listed)",
+                    "CREATE INDEX IF NOT EXISTS idx_climbs_listed ON climbs(is_listed)",
             "idx_climbs_frames_count" to
-                    "CREATE INDEX idx_climbs_frames_count ON climbs(is_listed, frames_count, uuid)",
+                    "CREATE INDEX IF NOT EXISTS idx_climbs_frames_count ON climbs(is_listed, frames_count, uuid)",
             // FEAT-003 + 0.1.4 community-climb indexes. Added to the
             // bulk-import drop/rebuild dance so each INSERT during a fresh
             // 270k-row import doesn't pay 6 extra index-maintenance writes
@@ -46,28 +46,28 @@ class BoardDatabaseImporter(
             // were live throughout. Keep this list byte-equivalent (modulo
             // `IF NOT EXISTS`) to DatabaseFactory.HOT_PATH_INDEX_DDL.
             "idx_climbs_source" to
-                    "CREATE INDEX idx_climbs_source ON climbs(source)",
+                    "CREATE INDEX IF NOT EXISTS idx_climbs_source ON climbs(source)",
             "idx_climbs_frames_hash" to
-                    "CREATE INDEX idx_climbs_frames_hash ON climbs(frames_hash)",
+                    "CREATE INDEX IF NOT EXISTS idx_climbs_frames_hash ON climbs(frames_hash)",
             "idx_climbs_pubkey" to
-                    "CREATE INDEX idx_climbs_pubkey ON climbs(created_by_pubkey)",
+                    "CREATE INDEX IF NOT EXISTS idx_climbs_pubkey ON climbs(created_by_pubkey)",
             "idx_climbs_origin" to
-                    "CREATE INDEX idx_climbs_origin ON climbs(origin)",
+                    "CREATE INDEX IF NOT EXISTS idx_climbs_origin ON climbs(origin)",
             "idx_climbs_kilter_status" to
-                    "CREATE INDEX idx_climbs_kilter_status ON climbs(kilter_status)",
+                    "CREATE INDEX IF NOT EXISTS idx_climbs_kilter_status ON climbs(kilter_status)",
             "idx_climbs_nostr_via" to
-                    "CREATE INDEX idx_climbs_nostr_via ON climbs(nostr_publish_via)",
+                    "CREATE INDEX IF NOT EXISTS idx_climbs_nostr_via ON climbs(nostr_publish_via)",
         )
 
         internal val STAT_INDEXES = arrayOf(
             "idx_climb_stats_angle" to
-                    "CREATE INDEX idx_climb_stats_angle ON climb_stats(angle)",
+                    "CREATE INDEX IF NOT EXISTS idx_climb_stats_angle ON climb_stats(angle)",
             "idx_climb_stats_browse" to
-                    "CREATE INDEX idx_climb_stats_browse ON climb_stats(layout_id, angle, difficulty_average, quality_average, ascensionist_count, benchmark_difficulty, climb_uuid)",
+                    "CREATE INDEX IF NOT EXISTS idx_climb_stats_browse ON climb_stats(layout_id, angle, difficulty_average, quality_average, ascensionist_count, benchmark_difficulty, climb_uuid)",
             "idx_climb_stats_by_popularity" to
-                    "CREATE INDEX idx_climb_stats_by_popularity ON climb_stats(layout_id, angle, ascensionist_count, difficulty_average, climb_uuid)",
+                    "CREATE INDEX IF NOT EXISTS idx_climb_stats_by_popularity ON climb_stats(layout_id, angle, ascensionist_count, difficulty_average, climb_uuid)",
             "idx_climb_stats_count_cover" to
-                    "CREATE INDEX idx_climb_stats_count_cover ON climb_stats(layout_id, angle, ascensionist_count, difficulty_average, benchmark_difficulty, climb_uuid)"
+                    "CREATE INDEX IF NOT EXISTS idx_climb_stats_count_cover ON climb_stats(layout_id, angle, ascensionist_count, difficulty_average, benchmark_difficulty, climb_uuid)"
         )
     }
 
