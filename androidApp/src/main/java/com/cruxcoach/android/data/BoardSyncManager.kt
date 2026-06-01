@@ -8,6 +8,7 @@ import com.cruxcoach.android.data.blossom.BlossomSyncManager
 import com.cruxcoach.android.notification.BoardSyncWorker
 import com.cruxcoach.android.util.isNetworkAvailable
 import com.cruxcoach.android.util.isWifiConnected
+import com.cruxcoach.android.util.safeLaunch
 import com.cruxcoach.util.DateTimeUtil
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -76,7 +77,7 @@ class BoardSyncManager(
     val locationsBackfilling: StateFlow<Boolean> = _locationsBackfilling.asStateFlow()
 
     init {
-        scope.launch {
+        scope.safeLaunch(TAG) {
             val imported = importer.isImported()
             val lastSync = userPreferences.lastSyncTimestamp.first()
             _state.update { it.copy(

@@ -28,6 +28,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import com.cruxcoach.android.util.safeLaunch
 import javax.inject.Inject
 
 /**
@@ -155,7 +156,7 @@ class OnboardingViewModel @Inject constructor(
     )
 
     init {
-        viewModelScope.launch {
+        viewModelScope.safeLaunch("OnboardingViewModel") {
             val freq = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 boardLocationRepository.productSizeFrequency()
             }
@@ -171,7 +172,7 @@ class OnboardingViewModel @Inject constructor(
         // Resume the restore flow if the user came back from KeyImportScreen
         // via app-restart. The marker is only set right before that navigation
         // and is cleared after the restore attempt resolves.
-        viewModelScope.launch {
+        viewModelScope.safeLaunch("OnboardingViewModel") {
             if (backupPreferences.isBackupRestoreIntent()) {
                 _state.update {
                     it.copy(
@@ -187,7 +188,7 @@ class OnboardingViewModel @Inject constructor(
         // Seed the board-model fields from the persisted preferences so
         // the user's prior choice survives onboarding restarts (e.g.
         // backup-restore round trip).
-        viewModelScope.launch {
+        viewModelScope.safeLaunch("OnboardingViewModel") {
             val layoutId = userPreferences.boardLayoutId.first()
             val sizeId = userPreferences.boardProductSizeId.first()
             val name = com.cruxcoach.android.data.BoardConstants.sizeLabel(

@@ -447,6 +447,51 @@ class UserPreferences(
         dataStore.edit { it[PreferenceKeys.MAP_FILTER_WELLPASS_ONLY] = enabled }
     }
 
+    /**
+     * Atomically toggle [value] in the CSV string-set under [key]: the read,
+     * modify, and write all happen inside one `dataStore.edit {}` transaction.
+     * The previous read-then-set pattern in the ViewModel could lose an
+     * update when two rapid taps both read the same pre-write snapshot and the
+     * second `set` overwrote the first. Mirrors the atomic compare-and-write
+     * precedent in `advanceNostrSyncCursor`.
+     */
+    private suspend fun toggleCsvSetMember(
+        key: androidx.datastore.preferences.core.Preferences.Key<String>,
+        value: String,
+    ) {
+        dataStore.edit { prefs ->
+            val current = parseCsvSet(prefs[key])
+            val next = if (value in current) current - value else current + value
+            prefs[key] = next.joinToString(",")
+        }
+    }
+
+    suspend fun toggleMapFilterCountry(code: String) =
+        toggleCsvSetMember(PreferenceKeys.MAP_FILTER_COUNTRIES, code)
+
+    suspend fun toggleMapFilterAccessType(key: String) =
+        toggleCsvSetMember(PreferenceKeys.MAP_FILTER_ACCESS_TYPES, key)
+
+    suspend fun toggleMapFilterAdjustability(key: String) =
+        toggleCsvSetMember(PreferenceKeys.MAP_FILTER_ADJUSTABILITIES, key)
+
+    suspend fun toggleMapFilterSizeId(sizeId: Int) =
+        toggleCsvSetMember(PreferenceKeys.MAP_FILTER_SIZE_IDS, sizeId.toString())
+
+    suspend fun toggleMapFilterBrand(key: String) =
+        toggleCsvSetMember(PreferenceKeys.MAP_FILTER_BRANDS, key)
+
+    /** Atomically toggle a whole group of members in the brand CSV set in one
+     *  transaction — the "other boards" chip toggles all info-layer brands at
+     *  once. Adds the group when not all present, otherwise removes it. */
+    suspend fun toggleMapFilterBrandGroup(keys: Set<String>) {
+        dataStore.edit { prefs ->
+            val current = parseCsvSet(prefs[PreferenceKeys.MAP_FILTER_BRANDS])
+            val next = if (keys.all { it in current }) current - keys else current + keys
+            prefs[PreferenceKeys.MAP_FILTER_BRANDS] = next.joinToString(",")
+        }
+    }
+
     /** Reset every map-side filter to its empty/default state in one transaction. */
     suspend fun resetMapFilters() {
         dataStore.edit { prefs ->

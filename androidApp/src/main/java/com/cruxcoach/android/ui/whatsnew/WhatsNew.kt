@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import com.cruxcoach.android.util.safeLaunch
 import javax.inject.Inject
 
 /**
@@ -92,12 +93,12 @@ class WhatsNewViewModel @Inject constructor(
     val pending: StateFlow<List<WhatsNewItem>> = _pending.asStateFlow()
 
     init {
-        viewModelScope.launch {
+        viewModelScope.safeLaunch("WhatsNewViewModel") {
             val current = BuildConfig.VERSION_CODE
             val lastSeen = userPreferences.lastSeenAppVersionCode.first()
             val onboardingDone = userPreferences.isOnboardingCompleted()
 
-            if (lastSeen == null && !onboardingDone) return@launch
+            if (lastSeen == null && !onboardingDone) return@safeLaunch
 
             val effectiveLastSeen = lastSeen ?: 0
             val toShow = WhatsNewItems.registry

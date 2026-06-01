@@ -242,57 +242,36 @@ class MapViewModel @Inject constructor(
         }
     }
 
+    // Toggles delegate to atomic UserPreferences helpers (read+modify+write
+    // in one dataStore.edit{}), so two rapid taps on a chip can't lose an
+    // update via a read-then-set race.
     fun toggleCountry(code: String) {
-        viewModelScope.launch {
-            val current = userPreferences.mapFilterCountries.first()
-            val next = if (code in current) current - code else current + code
-            userPreferences.setMapFilterCountries(next)
-        }
+        viewModelScope.launch { userPreferences.toggleMapFilterCountry(code) }
     }
 
     fun toggleAccessType(type: AccessType) {
-        viewModelScope.launch {
-            val current = userPreferences.mapFilterAccessTypes.first()
-            val key = type.name
-            val next = if (key in current) current - key else current + key
-            userPreferences.setMapFilterAccessTypes(next)
-        }
+        viewModelScope.launch { userPreferences.toggleMapFilterAccessType(type.name) }
     }
 
     fun toggleAdjustability(adj: Adjustability) {
-        viewModelScope.launch {
-            val current = userPreferences.mapFilterAdjustabilities.first()
-            val key = adj.name
-            val next = if (key in current) current - key else current + key
-            userPreferences.setMapFilterAdjustabilities(next)
-        }
+        viewModelScope.launch { userPreferences.toggleMapFilterAdjustability(adj.name) }
     }
 
     fun toggleSizeId(sizeId: Int) {
-        viewModelScope.launch {
-            val current = userPreferences.mapFilterSizeIds.first()
-            val next = if (sizeId in current) current - sizeId else current + sizeId
-            userPreferences.setMapFilterSizeIds(next)
-        }
+        viewModelScope.launch { userPreferences.toggleMapFilterSizeId(sizeId) }
     }
 
     fun toggleBrand(brand: BoardBrand) {
-        viewModelScope.launch {
-            val current = userPreferences.mapFilterBrands.first()
-            val key = brand.wireValue
-            val next = if (key in current) current - key else current + key
-            userPreferences.setMapFilterBrands(next)
-        }
+        viewModelScope.launch { userPreferences.toggleMapFilterBrand(brand.wireValue) }
     }
 
     /** "Other boards" chip: toggle the whole map-only info-layer family set
      *  (Tension, Aurora, …) in one tap, since they share a single chip. */
     fun toggleOtherBrands() {
         viewModelScope.launch {
-            val current = userPreferences.mapFilterBrands.first()
-            val otherKeys = BoardBrand.INFO_LAYER.map { it.wireValue }.toSet()
-            val next = if (otherKeys.all { it in current }) current - otherKeys else current + otherKeys
-            userPreferences.setMapFilterBrands(next)
+            userPreferences.toggleMapFilterBrandGroup(
+                BoardBrand.INFO_LAYER.map { it.wireValue }.toSet()
+            )
         }
     }
 

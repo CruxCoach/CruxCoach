@@ -37,6 +37,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import com.cruxcoach.android.util.safeLaunch
 import kotlinx.coroutines.withContext
 import com.cruxcoach.android.data.BoardConstants
 import com.cruxcoach.android.nostr.OfflineQueueManager
@@ -144,7 +145,7 @@ class SettingsViewModel @Inject constructor(
 
     init {
         loadSettings()
-        viewModelScope.launch {
+        viewModelScope.safeLaunch("SettingsViewModel") {
             val freq = withContext(Dispatchers.IO) { boardLocationRepository.productSizeFrequency() }
             val enabled = withContext(Dispatchers.IO) { boardLocationRepository.countWalls() > 0L }
             _state.update { it.copy(boardSizeFrequency = freq, boardSearchEnabled = enabled) }
@@ -152,7 +153,7 @@ class SettingsViewModel @Inject constructor(
     }
 
     private fun loadSettings() {
-        viewModelScope.launch {
+        viewModelScope.safeLaunch("SettingsViewModel") {
             // Batch-load ALL initial values in one IO block to avoid flash of defaults
             val initialState = withContext(Dispatchers.IO) {
                 val profile = userRepository.getActiveProfile()
