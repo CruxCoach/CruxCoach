@@ -83,6 +83,17 @@ These images are **not** covered by the CruxCoach GPLv3 source license.
 - **Scope of use:** Public gym entities (lat/lng, address, name, phone,
   email, website, accessibility, board hardware metadata). No personal
   user data is included.
+- **Redistribution basis:** The package is published under the Unlicense
+  (public-domain dedication), so it carries no attribution or copyleft
+  obligation. Its records are *factual* public-business-directory data about
+  commercial gyms — not climbs, user data, or copyrightable expression — for
+  which copyright/database protection is thin to none (see the climb-data
+  reasoning in `LEGAL.md`). CruxCoach mirrors only this factual location layer
+  and never itself accesses any Kilter/Aurora API to obtain it. The upstream
+  maintainer derives part of the dataset from Kilter's PowerSync bucket; if a
+  rights holder objects to that upstream sourcing, the Take-down path below
+  applies and the entire location layer can be dropped without affecting core
+  app function.
 - **Modifications:** Re-encoded into the SQLite-shaped chunk schema in
   `shared/src/commonMain/sqldelight/board/12.sqm` / `13.sqm`; wall and
   product-size joins are applied at chunk build time, not at app runtime.
