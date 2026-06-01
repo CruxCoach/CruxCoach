@@ -261,15 +261,15 @@ class FakeBoardRepository : BoardRepository {
 
     // -- BoardLayoutQueries --
 
-    override fun getAllPlacements(): List<BoardPlacement> = emptyList()
-    override fun getPlacementsForLayout(productSizeId: Int, layoutId: Int): List<BoardPlacement> = emptyList()
-    override fun getProductSize(id: Int): BoardSize? = null
-    override fun getAllProductSizes(productId: Long): List<BoardSize> = emptyList()
-    override fun getBoardImages(productSizeId: Int, layoutId: Int): List<BoardImage> = emptyList()
-    override fun getPlacementLedMap(productSizeId: Int): Map<Int, Int> = emptyMap()
-    override fun getMirrorPlacementMap(productSizeId: Int): Map<Int, Int> = emptyMap()
+    override fun getAllPlacements(boardBrand: String): List<BoardPlacement> = emptyList()
+    override fun getPlacementsForLayout(productSizeId: Int, layoutId: Int, boardBrand: String): List<BoardPlacement> = emptyList()
+    override fun getProductSize(id: Int, boardBrand: String): BoardSize? = null
+    override fun getAllProductSizes(productId: Long, boardBrand: String): List<BoardSize> = emptyList()
+    override fun getBoardImages(productSizeId: Int, layoutId: Int, boardBrand: String): List<BoardImage> = emptyList()
+    override fun getPlacementLedMap(productSizeId: Int, boardBrand: String): Map<Int, Int> = emptyMap()
+    override fun getMirrorPlacementMap(productSizeId: Int, boardBrand: String): Map<Int, Int> = emptyMap()
     override fun countLeds(): Long = 0L
-    override fun getLedGrid(productSizeId: Int): List<LedGridPoint> = emptyList()
+    override fun getLedGrid(productSizeId: Int, boardBrand: String): List<LedGridPoint> = emptyList()
 
     // -- BoardWriteOperations --
 
@@ -289,12 +289,12 @@ class FakeBoardRepository : BoardRepository {
         officialKilterDifficulty: Long?
     ) {}
 
-    override fun upsertHoldPosition(holeId: Long, productSizeId: Long, x: Long, y: Long, ledPosition: Long, placementId: Long) {}
-    override fun upsertLed(holeId: Long, productSizeId: Long, position: Long) {}
-    override fun upsertHole(id: Long, productSizeId: Long, x: Long, y: Long, mirroredHoleId: Long?) {}
-    override fun upsertPlacement(placementId: Long, holeId: Long, setId: Long, x: Long, y: Long) {}
-    override fun upsertProductSize(id: Long, productId: Long, name: String, edgeLeft: Long, edgeRight: Long, edgeBottom: Long, edgeTop: Long, imageFilename: String?) {}
-    override fun upsertBoardImage(id: Long, productSizeId: Long, layoutId: Long, setId: Long, imageFilename: String) {}
+    override fun upsertHoldPosition(holeId: Long, productSizeId: Long, x: Long, y: Long, ledPosition: Long, placementId: Long, boardBrand: String) {}
+    override fun upsertLed(holeId: Long, productSizeId: Long, position: Long, boardBrand: String) {}
+    override fun upsertHole(id: Long, productSizeId: Long, x: Long, y: Long, mirroredHoleId: Long?, boardBrand: String) {}
+    override fun upsertPlacement(placementId: Long, holeId: Long, setId: Long, x: Long, y: Long, boardBrand: String) {}
+    override fun upsertProductSize(id: Long, productId: Long, name: String, edgeLeft: Long, edgeRight: Long, edgeBottom: Long, edgeTop: Long, imageFilename: String?, boardBrand: String) {}
+    override fun upsertBoardImage(id: Long, productSizeId: Long, layoutId: Long, setId: Long, imageFilename: String, boardBrand: String) {}
     override fun upsertSyncState(tableName: String, lastSynchronizedAt: String) {}
     override fun getSyncState(tableName: String): String? = null
     override fun getAllClimbUuids(): Set<String> = climbs.map { it.uuid }.toSet()
@@ -360,9 +360,9 @@ class FakeBoardRepository : BoardRepository {
     override fun getOwnClimbAngle(uuid: String): Long? = null
     override fun restoreOwnClimb(row: com.cruxcoach.data.repository.OwnClimbBackupRow): Boolean = true
     override fun restoreOwnClimbStat(row: com.cruxcoach.data.repository.OwnClimbStatBackupRow) {}
-    override fun getProductSizesForLayout(layoutId: Int): List<Int> = emptyList()
-    override fun canRenderClimbOnSize(uuid: String, productSizeId: Int): Boolean = true
-    override fun getProductSizeForClimbRender(uuid: String): Int? = null
+    override fun getProductSizesForLayout(layoutId: Int, boardBrand: String): List<Int> = emptyList()
+    override fun canRenderClimbOnSize(uuid: String, productSizeId: Int, boardBrand: String): Boolean = true
+    override fun getProductSizeForClimbRender(uuid: String, boardBrand: String): Int? = null
     override fun getCruxCoachClimbs(
         layoutId: Int, angle: Int, minDifficulty: Double, maxDifficulty: Double,
         minAscensionists: Int, climbType: com.cruxcoach.data.repository.ClimbTypeFilter,
