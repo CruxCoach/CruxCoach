@@ -300,7 +300,7 @@ interface BoardClimbQueries {
 
 /** Board layout, placement, LED, and product-size queries. */
 interface BoardLayoutQueries {
-    fun getAllPlacements(): List<BoardPlacement>
+    fun getAllPlacements(boardBrand: String = "kilter"): List<BoardPlacement>
     /** Placements restricted to the set_ids that the active layout actually
      *  paints onto the board photo (one row per layered board_image). The
      *  unfiltered [getAllPlacements] mixes in placements from every set
@@ -311,21 +311,21 @@ interface BoardLayoutQueries {
      *  user like empty board space. Falls back to all placements when no
      *  board_images row exists for the (productSize, layout) combination
      *  yet (very early sync state, mostly tests). */
-    fun getPlacementsForLayout(productSizeId: Int, layoutId: Int): List<BoardPlacement>
-    fun getProductSize(id: Int): BoardSize?
+    fun getPlacementsForLayout(productSizeId: Int, layoutId: Int, boardBrand: String = "kilter"): List<BoardPlacement>
+    fun getProductSize(id: Int, boardBrand: String = "kilter"): BoardSize?
     /** Product-sizes for a single Aurora `product_id`. The post-sync model
      *  picker and the Settings board-size dropdown both filter by the
      *  user's currently-active layout — Original (Kilter id=1) and
      *  Homewall (Kilter id=7) ship with disjoint size sets. Pre-fix this
      *  hardcoded id=1, silently dropping Homewall sizes from every UI
      *  reachable through this method. */
-    fun getAllProductSizes(productId: Long): List<BoardSize>
-    fun getBoardImages(productSizeId: Int, layoutId: Int): List<BoardImage>
+    fun getAllProductSizes(productId: Long, boardBrand: String = "kilter"): List<BoardSize>
+    fun getBoardImages(productSizeId: Int, layoutId: Int, boardBrand: String = "kilter"): List<BoardImage>
     /** Sizes that have board-image tiles for the given layout. Used by
      *  the climb-detail screen to render an Aurora-imported or cross-
      *  board community climb on the right physical board even when the
      *  user's preferred layout differs from the climb's. */
-    fun getProductSizesForLayout(layoutId: Int): List<Int>
+    fun getProductSizesForLayout(layoutId: Int, boardBrand: String = "kilter"): List<Int>
     /** True when the user's currently-configured [productSizeId] can
      *  validly host this climb's render — same layout, has images,
      *  big enough to contain the climb's bbox. The detail screen
@@ -334,7 +334,7 @@ interface BoardLayoutQueries {
      *  the climb's source size when that's not possible (Aurora-
      *  imported cross-board climb, smaller user-board than the
      *  climb's bbox, etc.). */
-    fun canRenderClimbOnSize(uuid: String, productSizeId: Int): Boolean
+    fun canRenderClimbOnSize(uuid: String, productSizeId: Int, boardBrand: String = "kilter"): Boolean
     /** Full set of CruxCoach-side climbs (community + local-drafts)
      *  that satisfy the user's browse filters. Returns the entire
      *  matching set in one call — the client-side OriginFilter that
@@ -359,11 +359,11 @@ interface BoardLayoutQueries {
      *  per-current-pref. Returns null when the climb has no edges
      *  or no containing size exists; caller falls back to layout-
      *  only heuristics. */
-    fun getProductSizeForClimbRender(uuid: String): Int?
-    fun getPlacementLedMap(productSizeId: Int): Map<Int, Int>
-    fun getMirrorPlacementMap(productSizeId: Int): Map<Int, Int>
+    fun getProductSizeForClimbRender(uuid: String, boardBrand: String = "kilter"): Int?
+    fun getPlacementLedMap(productSizeId: Int, boardBrand: String = "kilter"): Map<Int, Int>
+    fun getMirrorPlacementMap(productSizeId: Int, boardBrand: String = "kilter"): Map<Int, Int>
     fun countLeds(): Long
-    fun getLedGrid(productSizeId: Int): List<LedGridPoint>
+    fun getLedGrid(productSizeId: Int, boardBrand: String = "kilter"): List<LedGridPoint>
 }
 
 /** Write operations: upserts, sync state, transactions (public board data only). */
@@ -379,13 +379,13 @@ interface BoardWriteOperations {
                         faUsername: String? = null, faAt: String? = null,
                         officialKilterDifficulty: Long? = null)
     fun upsertHoldPosition(holeId: Long, productSizeId: Long, x: Long, y: Long,
-                           ledPosition: Long, placementId: Long)
-    fun upsertLed(holeId: Long, productSizeId: Long, position: Long)
-    fun upsertHole(id: Long, productSizeId: Long, x: Long, y: Long, mirroredHoleId: Long?)
-    fun upsertPlacement(placementId: Long, holeId: Long, setId: Long, x: Long, y: Long)
+                           ledPosition: Long, placementId: Long, boardBrand: String = "kilter")
+    fun upsertLed(holeId: Long, productSizeId: Long, position: Long, boardBrand: String = "kilter")
+    fun upsertHole(id: Long, productSizeId: Long, x: Long, y: Long, mirroredHoleId: Long?, boardBrand: String = "kilter")
+    fun upsertPlacement(placementId: Long, holeId: Long, setId: Long, x: Long, y: Long, boardBrand: String = "kilter")
     fun upsertProductSize(id: Long, productId: Long, name: String, edgeLeft: Long,
-                          edgeRight: Long, edgeBottom: Long, edgeTop: Long, imageFilename: String?)
-    fun upsertBoardImage(id: Long, productSizeId: Long, layoutId: Long, setId: Long, imageFilename: String)
+                          edgeRight: Long, edgeBottom: Long, edgeTop: Long, imageFilename: String?, boardBrand: String = "kilter")
+    fun upsertBoardImage(id: Long, productSizeId: Long, layoutId: Long, setId: Long, imageFilename: String, boardBrand: String = "kilter")
     fun upsertSyncState(tableName: String, lastSynchronizedAt: String)
     fun getSyncState(tableName: String): String?
     fun getAllClimbUuids(): Set<String>

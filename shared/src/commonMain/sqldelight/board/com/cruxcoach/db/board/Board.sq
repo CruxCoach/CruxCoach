@@ -317,8 +317,8 @@ INSERT OR REPLACE INTO climb_stats(climb_uuid, angle, display_difficulty,
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 upsertHoldPosition:
-INSERT OR REPLACE INTO board_hold_positions(hole_id, product_size_id, x, y, led_position, placement_id)
-VALUES (?, ?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO board_hold_positions(board_brand, hole_id, product_size_id, x, y, led_position, placement_id)
+VALUES (?, ?, ?, ?, ?, ?, ?);
 
 upsertSyncState:
 INSERT OR REPLACE INTO sync_states(table_name, last_synchronized_at) VALUES (?, ?);
@@ -476,13 +476,13 @@ countLeds:
 SELECT COUNT(*) FROM leds;
 
 upsertLed:
-INSERT OR REPLACE INTO leds(hole_id, product_size_id, position) VALUES (?, ?, ?);
+INSERT OR REPLACE INTO leds(board_brand, hole_id, product_size_id, position) VALUES (?, ?, ?, ?);
 
 getPlacementLedMap:
 SELECT p.placement_id, l.position AS led_position
 FROM placements p
-JOIN leds l ON p.hole_id = l.hole_id
-WHERE l.product_size_id = ?;
+JOIN leds l ON p.hole_id = l.hole_id AND p.board_brand = l.board_brand
+WHERE l.product_size_id = ? AND l.board_brand = ?;
 
 countClimbs:
 SELECT COUNT(*) FROM climbs;
@@ -591,33 +591,33 @@ WHERE cs.layout_id = :layoutId
 
 -- Placement queries (for board visualization)
 upsertPlacement:
-INSERT OR REPLACE INTO placements(placement_id, hole_id, set_id, x, y)
-VALUES (?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO placements(board_brand, placement_id, hole_id, set_id, x, y)
+VALUES (?, ?, ?, ?, ?, ?);
 
 getAllPlacements:
-SELECT * FROM placements;
+SELECT * FROM placements WHERE board_brand = ?;
 
 -- Product size queries (for edge boundaries)
 upsertProductSize:
-INSERT OR REPLACE INTO product_sizes(id, product_id, name, edge_left, edge_right, edge_bottom, edge_top, image_filename)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO product_sizes(board_brand, id, product_id, name, edge_left, edge_right, edge_bottom, edge_top, image_filename)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 getProductSize:
-SELECT * FROM product_sizes WHERE id = ?;
+SELECT * FROM product_sizes WHERE id = ? AND board_brand = ?;
 
 getAllProductSizes:
 SELECT id, product_id, name, edge_left, edge_right, edge_bottom, edge_top, image_filename
 FROM product_sizes
-WHERE product_id = :productId
+WHERE product_id = :productId AND board_brand = :brand
 ORDER BY id;
 
 -- Board image queries
 upsertBoardImage:
-INSERT OR REPLACE INTO board_images(id, product_size_id, layout_id, set_id, image_filename)
-VALUES (?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO board_images(board_brand, id, product_size_id, layout_id, set_id, image_filename)
+VALUES (?, ?, ?, ?, ?, ?);
 
 getBoardImages:
-SELECT * FROM board_images WHERE product_size_id = ? AND layout_id = ?;
+SELECT * FROM board_images WHERE product_size_id = ? AND layout_id = ? AND board_brand = ?;
 
 -- Per-climb board rendering (Aurora migration + cross-board community
 -- climbs): the climbs.layout_id may differ from the user's currently-
@@ -627,7 +627,7 @@ SELECT * FROM board_images WHERE product_size_id = ? AND layout_id = ?;
 -- user's configured size when present, otherwise falls back to the
 -- first candidate.
 getProductSizesForLayout:
-SELECT DISTINCT product_size_id FROM board_images WHERE layout_id = :layoutId;
+SELECT DISTINCT product_size_id FROM board_images WHERE layout_id = :layoutId AND board_brand = :brand;
 
 
 -- Cheap "can the user's currently-configured board render this climb"
@@ -641,11 +641,11 @@ SELECT DISTINCT product_size_id FROM board_images WHERE layout_id = :layoutId;
 -- when an Aurora-imported / cross-board climb genuinely doesn't fit.
 canRenderClimbOnSize:
 SELECT 1 FROM climbs c
-JOIN product_sizes ps ON ps.id = :productSizeId
+JOIN product_sizes ps ON ps.id = :productSizeId AND ps.board_brand = :brand
 WHERE c.uuid = :uuid
   AND EXISTS (
       SELECT 1 FROM board_images bi
-      WHERE bi.product_size_id = ps.id AND bi.layout_id = c.layout_id
+      WHERE bi.product_size_id = ps.id AND bi.layout_id = c.layout_id AND bi.board_brand = :brand
   )
   AND (c.edge_left IS NULL OR (
         ps.edge_left   <= c.edge_left  AND
@@ -680,30 +680,32 @@ JOIN product_sizes ps ON ps.edge_left   <= c.edge_left
                      AND ps.edge_right  >= c.edge_right
                      AND ps.edge_bottom <= c.edge_bottom
                      AND ps.edge_top    >= c.edge_top
+                     AND ps.board_brand = :brand
 WHERE c.uuid = :uuid
   AND c.edge_left IS NOT NULL
   AND EXISTS (
       SELECT 1 FROM board_images bi
       WHERE bi.product_size_id = ps.id
         AND bi.layout_id       = c.layout_id
+        AND bi.board_brand     = :brand
   )
 ORDER BY (ps.edge_right - ps.edge_left) * (ps.edge_top - ps.edge_bottom) ASC
 LIMIT 1;
 
 -- Hole queries (for placement join)
 upsertHole:
-INSERT OR REPLACE INTO holes(id, product_size_id, x, y, mirrored_hole_id)
-VALUES (?, ?, ?, ?, ?);
+INSERT OR REPLACE INTO holes(board_brand, id, product_size_id, x, y, mirrored_hole_id)
+VALUES (?, ?, ?, ?, ?, ?);
 
 -- Mirror placement map: originalPlacementId → mirroredPlacementId
 -- Joins placement → hole → mirroredHole → placement (same set_id)
 getMirrorPlacementMap:
 SELECT p1.placement_id AS original_placement_id, p2.placement_id AS mirrored_placement_id
 FROM placements p1
-JOIN holes h1 ON p1.hole_id = h1.id
-JOIN holes h2 ON h1.mirrored_hole_id = h2.id
-JOIN placements p2 ON p2.hole_id = h2.id AND p2.set_id = p1.set_id
-WHERE h1.product_size_id = ?;
+JOIN holes h1 ON p1.hole_id = h1.id AND h1.board_brand = p1.board_brand
+JOIN holes h2 ON h1.mirrored_hole_id = h2.id AND h2.board_brand = h1.board_brand
+JOIN placements p2 ON p2.hole_id = h2.id AND p2.set_id = p1.set_id AND p2.board_brand = p1.board_brand
+WHERE h1.product_size_id = ? AND p1.board_brand = ?;
 
 -- Delta import helpers: bulk-read existing keys for diff comparison
 getAllClimbUuids:
@@ -773,8 +775,8 @@ DELETE FROM beta_links;
 getAllLedGrid:
 SELECT p.placement_id, p.x, p.y, l.position AS led_position
 FROM placements p
-JOIN leds l ON p.hole_id = l.hole_id
-WHERE l.product_size_id = ?;
+JOIN leds l ON p.hole_id = l.hole_id AND p.board_brand = l.board_brand
+WHERE l.product_size_id = ? AND l.board_brand = ?;
 
 
 -- ═══ FEAT-003 Community-climb queries ═══

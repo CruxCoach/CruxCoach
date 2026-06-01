@@ -290,41 +290,41 @@ class BoardRepositoryImpl(
 
     // ── Board Layout Queries ───────────────────────────────────
 
-    override fun getAllPlacements(): List<BoardPlacement> {
-        return q.getAllPlacements().executeAsList().map {
+    override fun getAllPlacements(boardBrand: String): List<BoardPlacement> {
+        return q.getAllPlacements(boardBrand).executeAsList().map {
             BoardPlacement(placementId = it.placement_id, holeId = it.hole_id, setId = it.set_id, x = it.x, y = it.y)
         }
     }
 
-    override fun getPlacementsForLayout(productSizeId: Int, layoutId: Int): List<BoardPlacement> {
-        val activeSetIds = q.getBoardImages(productSizeId.toLong(), layoutId.toLong())
+    override fun getPlacementsForLayout(productSizeId: Int, layoutId: Int, boardBrand: String): List<BoardPlacement> {
+        val activeSetIds = q.getBoardImages(productSizeId.toLong(), layoutId.toLong(), boardBrand)
             .executeAsList()
             .map { it.set_id }
             .toSet()
-        val all = getAllPlacements()
+        val all = getAllPlacements(boardBrand)
         return if (activeSetIds.isEmpty()) all else all.filter { it.setId in activeSetIds }
     }
 
-    override fun getProductSize(id: Int): BoardSize? {
-        return q.getProductSize(id.toLong()).executeAsOneOrNull()?.let {
+    override fun getProductSize(id: Int, boardBrand: String): BoardSize? {
+        return q.getProductSize(id.toLong(), boardBrand).executeAsOneOrNull()?.let {
             BoardSize(it.id, it.product_id, it.name, it.edge_left, it.edge_right, it.edge_bottom, it.edge_top, it.image_filename)
         }
     }
 
-    override fun getAllProductSizes(productId: Long): List<BoardSize> {
-        return q.getAllProductSizes(productId).executeAsList().map {
+    override fun getAllProductSizes(productId: Long, boardBrand: String): List<BoardSize> {
+        return q.getAllProductSizes(productId, boardBrand).executeAsList().map {
             BoardSize(it.id, it.product_id, it.name, it.edge_left, it.edge_right, it.edge_bottom, it.edge_top, it.image_filename)
         }
     }
 
-    override fun getBoardImages(productSizeId: Int, layoutId: Int): List<BoardImage> {
-        return q.getBoardImages(productSizeId.toLong(), layoutId.toLong()).executeAsList().map {
+    override fun getBoardImages(productSizeId: Int, layoutId: Int, boardBrand: String): List<BoardImage> {
+        return q.getBoardImages(productSizeId.toLong(), layoutId.toLong(), boardBrand).executeAsList().map {
             BoardImage(id = it.id, productSizeId = it.product_size_id, layoutId = it.layout_id, setId = it.set_id, imageFilename = it.image_filename)
         }
     }
 
-    override fun getProductSizesForLayout(layoutId: Int): List<Int> {
-        return q.getProductSizesForLayout(layoutId.toLong()).executeAsList().map { it.toInt() }
+    override fun getProductSizesForLayout(layoutId: Int, boardBrand: String): List<Int> {
+        return q.getProductSizesForLayout(layoutId.toLong(), boardBrand).executeAsList().map { it.toInt() }
     }
 
     override fun getCruxCoachClimbs(
@@ -339,22 +339,22 @@ class BoardRepositoryImpl(
         ).executeAsList().map { mapBrowse(it) }
     }
 
-    override fun canRenderClimbOnSize(uuid: String, productSizeId: Int): Boolean {
-        return q.canRenderClimbOnSize(productSizeId.toLong(), uuid).executeAsOneOrNull() != null
+    override fun canRenderClimbOnSize(uuid: String, productSizeId: Int, boardBrand: String): Boolean {
+        return q.canRenderClimbOnSize(productSizeId.toLong(), boardBrand, uuid).executeAsOneOrNull() != null
     }
 
-    override fun getProductSizeForClimbRender(uuid: String): Int? {
-        return q.getProductSizeForClimbRender(uuid).executeAsOneOrNull()?.toInt()
+    override fun getProductSizeForClimbRender(uuid: String, boardBrand: String): Int? {
+        return q.getProductSizeForClimbRender(boardBrand, uuid).executeAsOneOrNull()?.toInt()
     }
 
-    override fun getPlacementLedMap(productSizeId: Int): Map<Int, Int> {
-        return q.getPlacementLedMap(productSizeId.toLong()).executeAsList().associate {
+    override fun getPlacementLedMap(productSizeId: Int, boardBrand: String): Map<Int, Int> {
+        return q.getPlacementLedMap(productSizeId.toLong(), boardBrand).executeAsList().associate {
             it.placement_id.toInt() to it.led_position.toInt()
         }
     }
 
-    override fun getMirrorPlacementMap(productSizeId: Int): Map<Int, Int> {
-        return q.getMirrorPlacementMap(productSizeId.toLong()).executeAsList().associate {
+    override fun getMirrorPlacementMap(productSizeId: Int, boardBrand: String): Map<Int, Int> {
+        return q.getMirrorPlacementMap(productSizeId.toLong(), boardBrand).executeAsList().associate {
             it.original_placement_id.toInt() to it.mirrored_placement_id.toInt()
         }
     }
@@ -363,8 +363,8 @@ class BoardRepositoryImpl(
         return q.countLeds().executeAsOne()
     }
 
-    override fun getLedGrid(productSizeId: Int): List<LedGridPoint> {
-        return q.getAllLedGrid(productSizeId.toLong()).executeAsList().map {
+    override fun getLedGrid(productSizeId: Int, boardBrand: String): List<LedGridPoint> {
+        return q.getAllLedGrid(productSizeId.toLong(), boardBrand).executeAsList().map {
             LedGridPoint(placementId = it.placement_id, x = it.x, y = it.y, ledPosition = it.led_position)
         }
     }
@@ -441,28 +441,28 @@ class BoardRepositoryImpl(
             officialKilterDifficulty)
     }
 
-    override fun upsertHoldPosition(holeId: Long, productSizeId: Long, x: Long, y: Long, ledPosition: Long, placementId: Long) {
-        q.upsertHoldPosition(holeId, productSizeId, x, y, ledPosition, placementId)
+    override fun upsertHoldPosition(holeId: Long, productSizeId: Long, x: Long, y: Long, ledPosition: Long, placementId: Long, boardBrand: String) {
+        q.upsertHoldPosition(boardBrand, holeId, productSizeId, x, y, ledPosition, placementId)
     }
 
-    override fun upsertLed(holeId: Long, productSizeId: Long, position: Long) {
-        q.upsertLed(holeId, productSizeId, position)
+    override fun upsertLed(holeId: Long, productSizeId: Long, position: Long, boardBrand: String) {
+        q.upsertLed(boardBrand, holeId, productSizeId, position)
     }
 
-    override fun upsertHole(id: Long, productSizeId: Long, x: Long, y: Long, mirroredHoleId: Long?) {
-        q.upsertHole(id, productSizeId, x, y, mirroredHoleId)
+    override fun upsertHole(id: Long, productSizeId: Long, x: Long, y: Long, mirroredHoleId: Long?, boardBrand: String) {
+        q.upsertHole(boardBrand, id, productSizeId, x, y, mirroredHoleId)
     }
 
-    override fun upsertPlacement(placementId: Long, holeId: Long, setId: Long, x: Long, y: Long) {
-        q.upsertPlacement(placementId, holeId, setId, x, y)
+    override fun upsertPlacement(placementId: Long, holeId: Long, setId: Long, x: Long, y: Long, boardBrand: String) {
+        q.upsertPlacement(boardBrand, placementId, holeId, setId, x, y)
     }
 
-    override fun upsertProductSize(id: Long, productId: Long, name: String, edgeLeft: Long, edgeRight: Long, edgeBottom: Long, edgeTop: Long, imageFilename: String?) {
-        q.upsertProductSize(id, productId, name, edgeLeft, edgeRight, edgeBottom, edgeTop, imageFilename)
+    override fun upsertProductSize(id: Long, productId: Long, name: String, edgeLeft: Long, edgeRight: Long, edgeBottom: Long, edgeTop: Long, imageFilename: String?, boardBrand: String) {
+        q.upsertProductSize(boardBrand, id, productId, name, edgeLeft, edgeRight, edgeBottom, edgeTop, imageFilename)
     }
 
-    override fun upsertBoardImage(id: Long, productSizeId: Long, layoutId: Long, setId: Long, imageFilename: String) {
-        q.upsertBoardImage(id, productSizeId, layoutId, setId, imageFilename)
+    override fun upsertBoardImage(id: Long, productSizeId: Long, layoutId: Long, setId: Long, imageFilename: String, boardBrand: String) {
+        q.upsertBoardImage(boardBrand, id, productSizeId, layoutId, setId, imageFilename)
     }
 
     // ── Sync State ─────────────────────────────────────────────
