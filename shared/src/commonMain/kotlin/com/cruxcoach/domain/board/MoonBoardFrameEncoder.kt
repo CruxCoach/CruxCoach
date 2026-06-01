@@ -29,8 +29,8 @@ package com.cruxcoach.domain.board
 object MoonBoardFrameEncoder {
 
     // Aurora-aligned role codes as stored in the `frames` column
-    // (p{holdId}r{roleCode}). Match HOLD_STATE_CODES in the
-    // cruxcoach-blossom-sync MoonBoard importer.
+    // (p{holdId}r{roleCode}). Match HOLD_STATE_CODES in the board-DB
+    // MoonBoard importer.
     private const val ROLE_START = 42
     private const val ROLE_HAND = 43
     private const val ROLE_FINISH = 44

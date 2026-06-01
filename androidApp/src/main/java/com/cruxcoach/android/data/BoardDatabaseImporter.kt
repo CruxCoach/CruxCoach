@@ -293,7 +293,7 @@ class BoardDatabaseImporter(
      * Kilter chunked sync, the MoonBoard snapshot is a single SQLite
      * file carrying both `climbs` and `climb_stats` for the whole
      * catalogue — produced one-shot from the spookykat dump by the
-     * cruxcoach-blossom-sync `build_moonboard_db.py` importer.
+     * out-of-repo board-DB build pipeline.
      *
      * Every row is tagged board_brand='moonboard' on insert. Uses
      * INSERT OR REPLACE rather than the Kilter two-step

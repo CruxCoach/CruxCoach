@@ -26,8 +26,8 @@ package com.cruxcoach.domain.board
  * Per-variant grid dims are a 0.2.x polish.
  *
  * [layoutId] matches `climbs.layout_id` in the board DB, assigned by the
- * MoonBoard importer (`build_moonboard_db.py`) from the hold-setup → layout
- * mapping dictated by the MoonBoard hardware.
+ * MoonBoard importer from the hold-setup → layout mapping dictated by the
+ * MoonBoard hardware.
  */
 enum class MoonBoardVariant(
     val layoutId: Long,

@@ -148,7 +148,9 @@ EU and German law independently establish the right to analyse and interoperate 
 
 "Kilter Board" and "Kilter" are trademarks of Kilter Grips, LLC. "MoonBoard" and "Moon" are trademarks of Moon Climbing Ltd. CruxCoach uses these marks solely to indicate compatibility with the respective board hardware, as permitted under **§ 23(1) No. 3 MarkenG** (referential use to indicate intended purpose) and **Art. 14(1)(c) EUTMR (2017/1001)**.
 
-CruxCoach is an independent, community-developed open-source project. It is not affiliated with, endorsed by, sponsored by, or in any way officially connected with Kilter Grips, LLC, Aurora Climbing, Moon Climbing Ltd, or any board manufacturer. All product and company names are trademarks of their respective holders.
+The board-locations map (FEAT-015) additionally displays the names of other board brands (e.g. Tension, Grasshopper, Decoy, So iLL, Touchstone, Aurora, 12climb) and the **egym Wellpass** membership brand, purely to label third-party gym/board locations. These names are trademarks of their respective owners and are used referentially under the same provisions; CruxCoach claims no affiliation with, endorsement by, or sponsorship from any of them.
+
+CruxCoach is an independent, community-developed open-source project. It is not affiliated with, endorsed by, sponsored by, or in any way officially connected with Kilter Grips, LLC, Aurora Climbing, Moon Climbing Ltd, egym, or any board manufacturer. All product and company names are trademarks of their respective holders.
 
 ---
 
