@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Timer
@@ -37,15 +38,18 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -63,7 +67,9 @@ import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.IntensityZones
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
+import com.cruxcoach.android.util.ClimbShareLink
 import com.cruxcoach.android.util.PerfLogger
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -316,6 +322,11 @@ fun BoardClimbDetailScreen(
     }
 
     val snackbarHostState = remember { SnackbarHostState() }
+    // Share-link: clipboard + a coroutine scope to surface the "copied"
+    // snackbar from the (non-composable) menu onClick.
+    val clipboardManager = LocalClipboardManager.current
+    val shareScope = rememberCoroutineScope()
+    val linkCopiedMessage = stringResource(R.string.board_detail_link_copied)
 
     // Surface community-delete outcomes — the deleter returns success
     // even when no relay accepted (local-row tombstoned regardless),
@@ -494,6 +505,33 @@ fun BoardClimbDetailScreen(
                                     },
                                     modifier = Modifier.testTag("boarddetail_mirror_toggle"),
                                 )
+                                // Share: copy the cruxcoach.org/c/<naddr> App-Link
+                                // (the same link the climb-creator Kind-1 note uses).
+                                // Only published community climbs carry a resolvable
+                                // Nostr event behind the naddr — native Kilter
+                                // catalogue climbs have no shareable link.
+                                val shareClimb = state.climb
+                                val sharePubkey = shareClimb?.createdByPubkey
+                                val shareUuid = shareClimb?.uuid
+                                if (sharePubkey != null && shareUuid != null && shareClimb?.nostrEventId != null) {
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.board_detail_share_link)) },
+                                        leadingIcon = {
+                                            Icon(
+                                                Icons.Default.Share,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        },
+                                        onClick = {
+                                            moreExpanded = false
+                                            val link = ClimbShareLink.build(sharePubkey, shareUuid)
+                                            clipboardManager.setText(AnnotatedString(link))
+                                            shareScope.launch { snackbarHostState.showSnackbar(linkCopiedMessage) }
+                                        },
+                                        modifier = Modifier.testTag("boarddetail_share_link"),
+                                    )
+                                }
                                 HorizontalDivider()
                                 // Remix forks into the climb editor, which is
                                 // now brand-aware (Kilter + MoonBoard). The

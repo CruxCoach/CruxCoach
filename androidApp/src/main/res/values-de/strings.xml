@@ -900,6 +900,8 @@
     <!-- Board: Detail -->
     <string name="board_detail_sending">Sende an Board\u2026</string>
     <string name="board_detail_sent">An Board gesendet</string>
+    <string name="board_detail_share_link">Link kopieren</string>
+    <string name="board_detail_link_copied">Link in die Zwischenablage kopiert</string>
     <string name="board_detail_climb_shared">Climb wird geteilt</string>
 
     <!-- Board: Stats -->
