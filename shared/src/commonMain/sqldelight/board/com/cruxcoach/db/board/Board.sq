@@ -79,64 +79,74 @@ CREATE TABLE climb_stats (
 );
 
 CREATE TABLE board_hold_positions (
+    board_brand TEXT NOT NULL DEFAULT 'kilter',
     hole_id INTEGER NOT NULL,
     product_size_id INTEGER NOT NULL,
     x INTEGER NOT NULL,
     y INTEGER NOT NULL,
     led_position INTEGER NOT NULL,
     placement_id INTEGER NOT NULL,
-    PRIMARY KEY (hole_id, product_size_id)
+    PRIMARY KEY (board_brand, hole_id, product_size_id)
 );
 
 -- Placement → coordinate mapping (pre-joined from placements + holes)
 CREATE TABLE placements (
-    placement_id INTEGER NOT NULL PRIMARY KEY,
+    board_brand TEXT NOT NULL DEFAULT 'kilter',
+    placement_id INTEGER NOT NULL,
     hole_id INTEGER NOT NULL,
     set_id INTEGER NOT NULL,
     x INTEGER NOT NULL,
-    y INTEGER NOT NULL
+    y INTEGER NOT NULL,
+    PRIMARY KEY (board_brand, placement_id)
 );
 
 -- Board size definitions with edge boundaries for coordinate transformation
 CREATE TABLE product_sizes (
-    id INTEGER NOT NULL PRIMARY KEY,
+    board_brand TEXT NOT NULL DEFAULT 'kilter',
+    id INTEGER NOT NULL,
     product_id INTEGER NOT NULL,
     name TEXT NOT NULL,
     edge_left INTEGER NOT NULL,
     edge_right INTEGER NOT NULL,
     edge_bottom INTEGER NOT NULL,
     edge_top INTEGER NOT NULL,
-    image_filename TEXT
+    image_filename TEXT,
+    PRIMARY KEY (board_brand, id)
 );
 
 -- Board images per size+layout+set combination
 CREATE TABLE board_images (
-    id INTEGER NOT NULL PRIMARY KEY,
+    board_brand TEXT NOT NULL DEFAULT 'kilter',
+    id INTEGER NOT NULL,
     product_size_id INTEGER NOT NULL,
     layout_id INTEGER NOT NULL,
     set_id INTEGER NOT NULL,
-    image_filename TEXT NOT NULL
+    image_filename TEXT NOT NULL,
+    PRIMARY KEY (board_brand, id)
 );
 
 -- LED position per hole per board size
 CREATE TABLE leds (
+    board_brand TEXT NOT NULL DEFAULT 'kilter',
     hole_id INTEGER NOT NULL,
     product_size_id INTEGER NOT NULL,
     position INTEGER NOT NULL,
-    PRIMARY KEY (hole_id, product_size_id)
+    PRIMARY KEY (board_brand, hole_id, product_size_id)
 );
 
 -- Raw hole coordinates (joined with placements to derive positions)
 CREATE TABLE holes (
-    id INTEGER NOT NULL PRIMARY KEY,
+    board_brand TEXT NOT NULL DEFAULT 'kilter',
+    id INTEGER NOT NULL,
     product_size_id INTEGER NOT NULL,
     x INTEGER NOT NULL,
     y INTEGER NOT NULL,
-    mirrored_hole_id INTEGER
+    mirrored_hole_id INTEGER,
+    PRIMARY KEY (board_brand, id)
 );
 
-CREATE INDEX idx_placements_set ON placements(set_id);
-CREATE INDEX idx_board_images_size ON board_images(product_size_id);
+CREATE INDEX idx_placements_set ON placements(board_brand, set_id);
+CREATE INDEX idx_board_images_size ON board_images(board_brand, product_size_id);
 
 CREATE TABLE sync_states (
     table_name TEXT NOT NULL PRIMARY KEY,

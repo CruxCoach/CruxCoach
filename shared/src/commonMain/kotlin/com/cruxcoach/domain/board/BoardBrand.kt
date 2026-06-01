@@ -13,22 +13,42 @@ enum class BoardBrand(val wireValue: String) {
     KILTER("kilter"),
     MOONBOARD("moonboard"),
 
-    // Map-only "info layer" families (FEAT-015 Phase 2). CruxCoach ships no
-    // climb catalogue or BLE send for these, so they appear on the
-    // board-locations map only — never in the browser, picker, or active-
-    // board pref. wireValues mirror the locations pipeline + the
-    // cruxcoach.org map's brand keys.
+    // Aurora-family boards (FEAT-031). These share Aurora's placement / LED /
+    // frame model and the Aurora BLE protocol with Kilter; their catalogues
+    // are mirrored per board via Blossom (manifest d-tag cruxcoach/<board>-db)
+    // and they are fully interactive — browse, render, heatmap, BLE send.
     TENSION("tension"),
     GRASSHOPPER("grasshopper"),
     DECOY("decoy"),
     SOILL("soill"),
     TOUCHSTONE("touchstone"),
+
+    // Map-only "info layer" families (FEAT-015 Phase 2). CruxCoach ships no
+    // climb catalogue or BLE send for these, so they appear on the
+    // board-locations map only — never in the browser, picker, or active-
+    // board pref. wireValues mirror the locations pipeline + the
+    // cruxcoach.org map's brand keys. (AURORA = the original Aurora board and
+    // 12climb stay here until their catalogues are wired — FEAT-031 covers
+    // only the five boards above.)
     AURORA("aurora"),
     TWELVECLIMB("12climb");
 
-    /** True for families CruxCoach actually drives (catalogue + BLE). The
-     *  rest are map-only info-layer brands. */
-    val isInteractive: Boolean get() = this == KILTER || this == MOONBOARD
+    /** True for families CruxCoach actually drives (catalogue + BLE): Kilter,
+     *  MoonBoard, and the five Aurora-family boards (FEAT-031). AURORA and
+     *  12climb remain map-only info-layer brands. */
+    val isInteractive: Boolean get() = usesAuroraProtocol || this == MOONBOARD
+
+    /** Kilter + the Aurora-family boards (Tension, Grasshopper, Decoy, So iLL,
+     *  Touchstone): climbs are Aurora placement-id frames, holes are lit from
+     *  a placement→LED map, and the Aurora BLE protocol is shared. MoonBoard
+     *  is interactive too but photo / coordinate-map based, so it is NOT
+     *  Aurora-protocol. This is the single predicate the placement-geometry,
+     *  LED and heatmap capabilities below delegate to. */
+    val usesAuroraProtocol: Boolean
+        get() = when (this) {
+            KILTER, TENSION, GRASSHOPPER, DECOY, SOILL, TOUCHSTONE -> true
+            else -> false
+        }
 
     // ── Capability model ────────────────────────────────────────────────
     // The single, typed answer to "what can this board family do?". Call
@@ -41,28 +61,34 @@ enum class BoardBrand(val wireValue: String) {
     // is false for them.
 
     /** Climbs are stored as Aurora placement-id frames with measured
-     *  placement geometry + per-placement LED addresses (Kilter). MoonBoard
-     *  renders from a bundled photo + a measured hold-coordinate map, so it
-     *  has no placement rows — anything that resolves placement geometry
-     *  (board images, edge bounds, the co-occurrence heatmap, the LED map)
-     *  must be skipped when this is false. */
-    val usesAuroraPlacements: Boolean get() = this == KILTER
+     *  placement geometry + per-placement LED addresses (Kilter + the
+     *  Aurora-family boards). MoonBoard renders from a bundled photo + a
+     *  measured hold-coordinate map, so it has no placement rows — anything
+     *  that resolves placement geometry (board images, edge bounds, the
+     *  co-occurrence heatmap, the LED map) must be skipped when this is
+     *  false. */
+    val usesAuroraPlacements: Boolean get() = usesAuroraProtocol
 
     /** The connected board lights individual holds from a placement→LED
-     *  address map (Kilter). MoonBoard derives its own LEDs from the climb
-     *  frame, so the editor/send path uses a different transport and never
-     *  builds an LED map. */
-    val usesLedPreview: Boolean get() = this == KILTER
+     *  address map (Kilter + the Aurora-family boards, which share the Aurora
+     *  BLE protocol). MoonBoard derives its own LEDs from the climb frame, so
+     *  the editor/send path uses a different transport and never builds an LED
+     *  map. */
+    val usesLedPreview: Boolean get() = usesAuroraProtocol
 
     /** Supports the popular-co-occurring-holds heatmap, which is keyed on
-     *  Aurora placement-ids. MoonBoard hold-ids aren't placement-ids, so it
-     *  has no heatmap layer. */
-    val hasHeatmap: Boolean get() = this == KILTER
+     *  Aurora placement-ids (Kilter + the Aurora-family boards). MoonBoard
+     *  hold-ids aren't placement-ids, so it has no heatmap layer. */
+    val hasHeatmap: Boolean get() = usesAuroraProtocol
 
-    /** Climbs can be authored in the in-app editor. Both interactive
-     *  families qualify (Kilter via Aurora placements, MoonBoard via the
-     *  tap-to-paint photo renderer); info-layer brands cannot. */
-    val supportsAuthoring: Boolean get() = isInteractive
+    /** Climbs can be authored in the in-app editor. Kilter (Aurora placements,
+     *  with optional publish to the user's Kilter account) and MoonBoard (the
+     *  tap-to-paint photo renderer). The Aurora-family boards are browse /
+     *  render / BLE-send only for now: authoring them would need the active
+     *  board's brand threaded into the insert path, because [fromLayoutId]
+     *  cannot disambiguate their layout-ids from Kilter's — a FEAT-031
+     *  follow-up, deliberately out of the catalogue+render+send first cut. */
+    val supportsAuthoring: Boolean get() = this == KILTER || this == MOONBOARD
 
     /** Authored climbs can be mirrored to the board vendor's own app
      *  (Kilter → the user's Kilter account). MoonBoard is CruxCoach-community
@@ -96,6 +122,13 @@ enum class BoardBrand(val wireValue: String) {
          * local-draft insert and community-climb ingest write paths, so an
          * authored or received MoonBoard climb lands with the right
          * `board_brand` automatically.
+         *
+         * NOTE: this only disambiguates Kilter vs MoonBoard. The Aurora-family
+         * boards (Tension, Grasshopper, Decoy, So iLL, Touchstone) reuse low
+         * layout-ids that OVERLAP Kilter's, so a layout_id alone can't tell
+         * them apart — they would resolve to [KILTER] here. Any Aurora-family
+         * write path must thread the active board's brand explicitly instead
+         * of calling this (which is why [supportsAuthoring] excludes them).
          */
         fun fromLayoutId(layoutId: Long): BoardBrand =
             if (MoonBoardVariant.fromLayoutId(layoutId) != null) MOONBOARD else KILTER

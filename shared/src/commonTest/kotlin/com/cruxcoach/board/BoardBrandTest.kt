@@ -18,7 +18,7 @@ class BoardBrandTest {
         assertEquals(BoardBrand.MOONBOARD, BoardBrand.fromWire("moonboard"))
         assertEquals("kilter", BoardBrand.KILTER.wireValue)
         assertEquals("moonboard", BoardBrand.MOONBOARD.wireValue)
-        // Map-only info-layer families (FEAT-015 Phase 2) round-trip too.
+        // Aurora-family + info-layer families round-trip too.
         assertEquals(BoardBrand.TENSION, BoardBrand.fromWire("tension"))
         assertEquals(BoardBrand.TWELVECLIMB, BoardBrand.fromWire("12climb"))
     }
@@ -36,13 +36,51 @@ class BoardBrandTest {
     }
 
     @Test
-    fun infoLayerBrandsAreTheNonInteractiveFamilies() {
-        assertEquals(false, BoardBrand.KILTER in BoardBrand.INFO_LAYER)
-        assertEquals(false, BoardBrand.MOONBOARD in BoardBrand.INFO_LAYER)
-        assertEquals(true, BoardBrand.TENSION in BoardBrand.INFO_LAYER)
-        assertEquals(true, BoardBrand.AURORA in BoardBrand.INFO_LAYER)
-        assertEquals(true, BoardBrand.KILTER.isInteractive)
-        assertEquals(false, BoardBrand.TENSION.isInteractive)
+    fun interactiveAndInfoLayerFamilies() {
+        // FEAT-031: Kilter, MoonBoard and the five Aurora-family boards are
+        // interactive; only AURORA (the original board) and 12climb remain
+        // map-only info-layer brands.
+        for (b in listOf(
+            BoardBrand.KILTER, BoardBrand.MOONBOARD, BoardBrand.TENSION,
+            BoardBrand.GRASSHOPPER, BoardBrand.DECOY, BoardBrand.SOILL,
+            BoardBrand.TOUCHSTONE,
+        )) {
+            assertEquals(true, b.isInteractive, "$b should be interactive")
+            assertEquals(false, b in BoardBrand.INFO_LAYER, "$b not info-layer")
+        }
+        for (b in listOf(BoardBrand.AURORA, BoardBrand.TWELVECLIMB)) {
+            assertEquals(false, b.isInteractive, "$b should be info-layer")
+            assertEquals(true, b in BoardBrand.INFO_LAYER, "$b in INFO_LAYER")
+        }
+    }
+
+    @Test
+    fun auroraProtocolCapabilities() {
+        // The Aurora-protocol boards (Kilter + the five) share placement / LED
+        // / heatmap geometry. MoonBoard is interactive but photo-based, so it
+        // is NOT Aurora-protocol; info-layer brands have no capabilities.
+        for (b in listOf(
+            BoardBrand.KILTER, BoardBrand.TENSION, BoardBrand.GRASSHOPPER,
+            BoardBrand.DECOY, BoardBrand.SOILL, BoardBrand.TOUCHSTONE,
+        )) {
+            assertEquals(true, b.usesAuroraProtocol, "$b uses Aurora protocol")
+            assertEquals(true, b.usesAuroraPlacements, "$b uses placements")
+            assertEquals(true, b.usesLedPreview, "$b uses LED preview")
+            assertEquals(true, b.hasHeatmap, "$b has heatmap")
+        }
+        assertEquals(false, BoardBrand.MOONBOARD.usesAuroraProtocol)
+        assertEquals(false, BoardBrand.MOONBOARD.usesAuroraPlacements)
+        assertEquals(false, BoardBrand.AURORA.usesAuroraProtocol)
+
+        // Authoring stays scoped to Kilter + MoonBoard for the first cut
+        // (Aurora-family authoring is a follow-up — see BoardBrand docs).
+        assertEquals(true, BoardBrand.KILTER.supportsAuthoring)
+        assertEquals(true, BoardBrand.MOONBOARD.supportsAuthoring)
+        assertEquals(false, BoardBrand.TENSION.supportsAuthoring)
+        // Official-app publish remains Kilter-only.
+        assertEquals(true, BoardBrand.KILTER.supportsOfficialAppPublish)
+        assertEquals(false, BoardBrand.TENSION.supportsOfficialAppPublish)
+        assertEquals(false, BoardBrand.MOONBOARD.supportsOfficialAppPublish)
     }
 
     @Test
