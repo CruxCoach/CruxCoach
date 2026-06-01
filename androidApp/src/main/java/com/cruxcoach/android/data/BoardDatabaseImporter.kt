@@ -393,6 +393,148 @@ class BoardDatabaseImporter(
     }
 
     /**
+     * Import a full Aurora-family board snapshot (FEAT-031): Tension,
+     * Grasshopper, Decoy, So iLL, Touchstone. Unlike [importMoonBoardSnapshot]
+     * these boards carry full Aurora geometry (product_sizes, board_images,
+     * placements, leds), so the renderer + LED send work data-driven exactly
+     * like Kilter. Every row — climbs and geometry alike — is stamped with
+     * [boardBrand] (the wire value, e.g. "tension") so the namespaced
+     * (board_brand, id) geometry tables and climbs.board_brand resolve per
+     * board and never collide with Kilter's same-numbered Aurora ids (18.sqm).
+     *
+     * The snapshot is the raw Aurora shape produced by the cron's
+     * build_board_db.py: climbs, climb_stats, placements[id,hole_id,set_id],
+     * holes[id,x,y], product_sizes, product_sizes_layouts_sets, leds. Brand
+     * identity comes from the per-board manifest d-tag (cruxcoach/<board>-db),
+     * NOT inferred from layout_id (Aurora layout_ids overlap Kilter's, so
+     * [com.cruxcoach.domain.board.BoardBrand.fromLayoutId] cannot tell them
+     * apart — see its doc).
+     */
+    fun importAuroraSnapshot(
+        snapshotFile: File,
+        boardBrand: String,
+        onProgress: ((step: ImportStep) -> Unit)? = null
+    ) {
+        // Snapshots built by build_board_db.py carry is_nomatch; move_count is
+        // computed post-import (the bundle has no move_count column).
+        var snapshotHasMoveCount = false
+        val brand = arrayOf<Any?>(boardBrand)
+        withDeferredIndexes(
+            onRebuild = { onProgress?.invoke(ImportStep.Finalizing) }
+        ) {
+            val targetDb = openTargetDb()
+            try {
+                targetDb.execSQL("ATTACH DATABASE ? AS ab", arrayOf(snapshotFile.absolutePath))
+
+                snapshotHasMoveCount = targetDb.rawQuery(
+                    "PRAGMA ab.table_info(climbs)", null
+                ).use { c ->
+                    var found = false
+                    while (c.moveToNext()) { if (c.getString(1) == "move_count") found = true }
+                    found
+                }
+                val moveCountExpr = if (snapshotHasMoveCount) "COALESCE(move_count, 0)" else "0"
+
+                // ── climbs (board_brand = the board's wire value) ──
+                val climbTotal = queryLong(
+                    targetDb, "SELECT COUNT(*) FROM ab.climbs WHERE is_listed = 1"
+                ).toInt()
+                onProgress?.invoke(ImportStep.ImportClimbs(0, 0, climbTotal))
+                targetDb.execSQL(
+                    """
+                    INSERT OR REPLACE INTO climbs(
+                        uuid, layout_id, setter_username, name, frames,
+                        frames_count, is_listed, edge_left, edge_right,
+                        edge_bottom, edge_top, created_at,
+                        description, is_nomatch, frames_pace, hsm, move_count,
+                        board_brand)
+                    SELECT LOWER(uuid), layout_id, setter_username, name, frames,
+                           frames_count, is_listed, edge_left, edge_right,
+                           edge_bottom, edge_top, created_at,
+                           COALESCE(description, ''), COALESCE(is_nomatch, 0),
+                           COALESCE(frames_pace, 0), COALESCE(hsm, 0), $moveCountExpr,
+                           ?
+                    FROM ab.climbs
+                    WHERE is_listed = 1
+                    """.trimIndent(),
+                    brand
+                )
+                onProgress?.invoke(ImportStep.ImportClimbs(climbTotal, climbTotal, climbTotal))
+
+                // ── climb_stats (layout_id denormalized from the climb) ──
+                val statTotal = queryLong(targetDb, "SELECT COUNT(*) FROM ab.climb_stats").toInt()
+                onProgress?.invoke(ImportStep.ImportStats(0, 0, statTotal))
+                targetDb.execSQL(
+                    """
+                    INSERT OR REPLACE INTO climb_stats(
+                        climb_uuid, angle, display_difficulty, difficulty_average,
+                        quality_average, ascensionist_count, benchmark_difficulty,
+                        fa_username, fa_at, official_kilter_difficulty, layout_id)
+                    SELECT LOWER(climb_uuid), angle, display_difficulty, difficulty_average,
+                           quality_average, ascensionist_count, benchmark_difficulty,
+                           fa_username, fa_at, NULL,
+                           COALESCE((SELECT c.layout_id FROM climbs c WHERE c.uuid = LOWER(climb_uuid)), 0)
+                    FROM ab.climb_stats
+                    """.trimIndent()
+                )
+                onProgress?.invoke(ImportStep.ImportStats(statTotal, statTotal, statTotal))
+
+                // ── geometry, all brand-namespaced (board_brand leads each PK) ──
+                targetDb.execSQL(
+                    """
+                    INSERT OR REPLACE INTO product_sizes(
+                        board_brand, id, product_id, name,
+                        edge_left, edge_right, edge_bottom, edge_top, image_filename)
+                    SELECT ?, id, product_id, name,
+                           edge_left, edge_right, edge_bottom, edge_top, image_filename
+                    FROM ab.product_sizes
+                    """.trimIndent(),
+                    brand
+                )
+                targetDb.execSQL(
+                    """
+                    INSERT OR REPLACE INTO board_images(
+                        board_brand, id, product_size_id, layout_id, set_id, image_filename)
+                    SELECT ?, id, product_size_id, layout_id, set_id, image_filename
+                    FROM ab.product_sizes_layouts_sets
+                    WHERE image_filename IS NOT NULL
+                    """.trimIndent(),
+                    brand
+                )
+                // CruxCoach placements carry x/y pre-joined from holes (the raw
+                // Aurora placements table has only hole_id), mirroring the
+                // Kilter chunk path.
+                targetDb.execSQL(
+                    """
+                    INSERT OR REPLACE INTO placements(
+                        board_brand, placement_id, hole_id, set_id, x, y)
+                    SELECT ?, p.id, p.hole_id, p.set_id, h.x, h.y
+                    FROM ab.placements p
+                    JOIN ab.holes h ON p.hole_id = h.id
+                    """.trimIndent(),
+                    brand
+                )
+                targetDb.execSQL(
+                    """
+                    INSERT OR REPLACE INTO leds(board_brand, hole_id, product_size_id, position)
+                    SELECT ?, hole_id, product_size_id, position
+                    FROM ab.leds
+                    """.trimIndent(),
+                    brand
+                )
+            } finally {
+                runCatching { targetDb.execSQL("DETACH DATABASE ab") }
+                targetDb.close()
+            }
+        }
+        if (!snapshotHasMoveCount) backfillMoveCounts()
+        val climbCount = boardRepository.getClimbCount()
+        val statCount = boardRepository.getStatCount()
+        Log.i(TAG, "importAuroraSnapshot($boardBrand) done: catalogue totals climbs=$climbCount stats=$statCount")
+        onProgress?.invoke(ImportStep.Done(climbCount.toInt(), statCount.toInt(), 0, 0))
+    }
+
+    /**
      * Import from a full uncompressed board DB (e.g. received via local WiFi share).
      * This is the same as the legacy online import path.
      */
