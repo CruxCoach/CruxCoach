@@ -37,6 +37,7 @@ object CruxCoachBackup {
     private const val MAX_UNIT_LEN = 20
     private const val MAX_EXTERNAL_ID_LEN = 100
     private const val MAX_DATE_LEN = 40
+    private const val MAX_BRAND_LEN = 32
 
     // 8-4-4-4-12 canonical — app-generated IDs (UUID.randomUUID().toString()).
     private val UUID_REGEX =
@@ -177,6 +178,13 @@ object CruxCoachBackup {
             requireLen("ascent.climbName", a.climbName, MAX_NAME_LEN)
             requireLen("ascent.climbFrames", a.climbFrames, MAX_CLIMB_FRAMES_LEN)
             requireLen("ascent.climbedAt", a.climbedAt, MAX_DATE_LEN)
+            // Board context (FEAT-027 P2): like ownClimb.layoutId. boardBrand
+            // is length-capped (not whitelisted) so it stays valid across app
+            // versions + future boards; an unknown value is sanitised to Kilter
+            // by BoardBrand.fromWire at read time, the cap just blocks a giant
+            // string from a crafted backup.
+            requireLen("ascent.boardBrand", a.boardBrand, MAX_BRAND_LEN)
+            requireRange("ascent.layoutId", a.layoutId, 0L..1_000L)
         }
 
         for (b in boardBids) {
@@ -188,6 +196,9 @@ object CruxCoachBackup {
             requireLen("bid.comment", b.comment, MAX_COMMENT_LEN)
             requireLen("bid.climbName", b.climbName, MAX_NAME_LEN)
             requireLen("bid.climbedAt", b.climbedAt, MAX_DATE_LEN)
+            // Board context (FEAT-027 P2) — see the ascent loop above.
+            requireLen("bid.boardBrand", b.boardBrand, MAX_BRAND_LEN)
+            requireRange("bid.layoutId", b.layoutId, 0L..1_000L)
         }
 
         for (s in boardSessions) {

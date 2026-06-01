@@ -336,14 +336,41 @@ private fun validatedEmailOrNull(raw: String?): String? {
     return trimmed.takeIf { Patterns.EMAIL_ADDRESS.matcher(it).matches() }
 }
 
-/** Accept the URL only if its parsed scheme is http or https. */
+/** Accept the URL only if its parsed scheme is http(s) AND its host is not a
+ *  private / loopback / link-local address. The gym website comes from the
+ *  third-party locations dataset, so a crafted record could otherwise point
+ *  the browser at an internal host (e.g. a router admin page). */
 private fun validatedHttpUrlOrNull(raw: String?): Uri? {
     val trimmed = raw?.trim().orEmpty()
     if (trimmed.isEmpty()) return null
     val candidate = if (trimmed.contains("://")) trimmed else "https://$trimmed"
     val uri = runCatching { Uri.parse(candidate) }.getOrNull() ?: return null
     val scheme = uri.scheme?.lowercase()
-    return if (scheme == "http" || scheme == "https") uri else null
+    if (scheme != "http" && scheme != "https") return null
+    if (isPrivateOrLoopbackHost(uri.host)) return null
+    return uri
+}
+
+/** True for hosts that should never be opened from third-party dataset URLs:
+ *  localhost, IPv4 loopback/private/link-local ranges, and IPv6 loopback /
+ *  unique-local / link-local. Non-IP public hostnames pass. */
+private fun isPrivateOrLoopbackHost(host: String?): Boolean {
+    val h = host?.trim()?.lowercase()?.removeSurrounding("[", "]") ?: return true
+    if (h.isEmpty() || h == "localhost") return true
+    // IPv6 loopback / unique-local (fc00::/7) / link-local (fe80::/10)
+    if (':' in h) {
+        return h == "::1" || h.startsWith("fc") || h.startsWith("fd") || h.startsWith("fe80")
+    }
+    // IPv4 dotted-quad
+    val octets = h.split(".").mapNotNull { it.toIntOrNull() }
+    if (octets.size != 4 || octets.any { it !in 0..255 }) return false // not an IPv4 literal → treat as public hostname
+    val (a, b, _, _) = octets
+    return a == 127 ||                       // loopback 127.0.0.0/8
+        a == 10 ||                           // private 10.0.0.0/8
+        (a == 172 && b in 16..31) ||         // private 172.16.0.0/12
+        (a == 192 && b == 168) ||            // private 192.168.0.0/16
+        (a == 169 && b == 254) ||            // link-local 169.254.0.0/16
+        a == 0                               // 0.0.0.0/8
 }
 
 private fun safeStartActivity(

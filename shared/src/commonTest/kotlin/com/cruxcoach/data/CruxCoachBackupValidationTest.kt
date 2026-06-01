@@ -45,7 +45,9 @@ class CruxCoachBackupValidationTest {
         difficultyAverage: Double? = 20.0,
         comment: String? = null,
         climbName: String = "Test",
-        climbFrames: String = "p100r15"
+        climbFrames: String = "p100r15",
+        boardBrand: String? = null,
+        layoutId: Long? = null
     ): String = """{
         "exportedAt":"2026-04-21",
         "boardAscents":[{
@@ -54,6 +56,8 @@ class CruxCoachBackupValidationTest {
             "quality":$quality,"difficulty":$difficulty,
             "framesCount":$framesCount,"difficultyAverage":$difficultyAverage,
             ${comment?.let { "\"comment\":\"$it\"," } ?: ""}
+            ${boardBrand?.let { "\"boardBrand\":\"$it\"," } ?: ""}
+            ${layoutId?.let { "\"layoutId\":$it," } ?: ""}
             "climbedAt":"2026-04-21T12:00:00Z",
             "climbName":"$climbName","climbFrames":"$climbFrames"
         }]
@@ -63,6 +67,29 @@ class CruxCoachBackupValidationTest {
     fun accepts_well_formed_ascent() {
         val preview = CruxCoachBackup.preview(ascent())
         assertEquals(1, preview.boardAscents)
+    }
+
+    @Test
+    fun accepts_ascent_with_moonboard_board_context() {
+        // Board context (FEAT-027) round-trips through validation: a MoonBoard
+        // ascent with a valid layoutId passes.
+        val preview = CruxCoachBackup.preview(ascent(boardBrand = "moonboard", layoutId = 2))
+        assertEquals(1, preview.boardAscents)
+    }
+
+    @Test
+    fun rejects_ascent_with_overlong_board_brand() {
+        // A crafted backup can't smuggle a giant string into ascents.board_brand.
+        assertFailsWith<IllegalArgumentException> {
+            CruxCoachBackup.preview(ascent(boardBrand = "x".repeat(33)))
+        }
+    }
+
+    @Test
+    fun rejects_ascent_with_out_of_range_layout_id() {
+        assertFailsWith<IllegalArgumentException> {
+            CruxCoachBackup.preview(ascent(layoutId = 9_999))
+        }
     }
 
     @Test
