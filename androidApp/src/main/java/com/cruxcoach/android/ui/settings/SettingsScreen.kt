@@ -157,6 +157,11 @@ fun SettingsScreen(
                     viewModel.selectMoonBoardVariant(variant)
                     showBoardModelDialog = false
                 },
+                onConfirmAurora = { board ->
+                    viewModel.selectAuroraBoard(board)
+                    showBoardModelDialog = false
+                },
+                showAuroraBoards = true,
                 onDismiss = { showBoardModelDialog = false },
                 onFindViaGym = {
                     showBoardModelDialog = false

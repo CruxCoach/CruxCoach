@@ -327,6 +327,12 @@ class BoardRepositoryImpl(
         return q.getProductSizesForLayout(layoutId.toLong(), boardBrand).executeAsList().map { it.toInt() }
     }
 
+    override fun getDefaultLayoutForBrand(boardBrand: String): Int? =
+        q.getMostCommonLayoutForBrand(boardBrand).executeAsOneOrNull()?.toInt()
+
+    override fun getDefaultProductSizeForBrand(boardBrand: String): Pair<Int, String>? =
+        q.getDefaultProductSizeForBrand(boardBrand).executeAsOneOrNull()?.let { it.id.toInt() to it.name }
+
     override fun getCruxCoachClimbs(
         layoutId: Int, angle: Int, minDifficulty: Double, maxDifficulty: Double,
         minAscensionists: Int, climbType: ClimbTypeFilter, selProductSizeId: Int,

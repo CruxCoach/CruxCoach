@@ -96,6 +96,22 @@ enum class BoardBrand(val wireValue: String) {
      *  the official-app leg of publishing is skipped when this is false. */
     val supportsOfficialAppPublish: Boolean get() = this == KILTER
 
+    /** Human-facing brand name (proper noun — not localized). Used by the
+     *  board picker, what's-new and map chips so a newly-promoted board needs
+     *  no per-board string resource. */
+    val displayName: String
+        get() = when (this) {
+            KILTER -> "Kilter"
+            MOONBOARD -> "MoonBoard"
+            TENSION -> "Tension"
+            GRASSHOPPER -> "Grasshopper"
+            DECOY -> "Decoy"
+            SOILL -> "So iLL"
+            TOUCHSTONE -> "Touchstone"
+            AURORA -> "Aurora"
+            TWELVECLIMB -> "12 Climb"
+        }
+
     companion object {
         /** The map-only info-layer families, as a group (drives the map's
          *  "other boards" filter chip). */

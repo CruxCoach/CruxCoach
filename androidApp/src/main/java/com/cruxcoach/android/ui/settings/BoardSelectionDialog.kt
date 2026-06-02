@@ -30,6 +30,13 @@ import com.cruxcoach.domain.board.MoonBoardVariant
  */
 private enum class BoardCategory { KILTER_ORIGINAL, KILTER_HOMEWALL, MOONBOARD }
 
+/** The interactive Aurora-family boards offered as tier-0 picks alongside
+ *  Kilter + MoonBoard (FEAT-031). Data-driven over [BoardBrand] so a board
+ *  promoted to interactive (usesAuroraProtocol, excl. Kilter itself) appears
+ *  automatically with no further picker wiring. */
+private val AURORA_PICK_BRANDS: List<BoardBrand> =
+    BoardBrand.entries.filter { it.usesAuroraProtocol && it != BoardBrand.KILTER }
+
 /**
  * Unified board picker — used by both onboarding and Settings.
  *
@@ -54,6 +61,15 @@ internal fun BoardSelectionDialog(
     selectedMoonBoardVariant: MoonBoardVariant?,
     onConfirmKilter: (Int) -> Unit,
     onConfirmMoonBoard: (MoonBoardVariant) -> Unit,
+    /** FEAT-031: confirm an Aurora-family board (Tension etc.). Defaults to a
+     *  no-op so call sites that don't yet offer Aurora boards (onboarding)
+     *  compile unchanged. */
+    onConfirmAurora: (BoardBrand) -> Unit = {},
+    /** FEAT-031: show the interactive Aurora-family boards as tier-0 picks.
+     *  Off by default — only the Settings board picker wires [onConfirmAurora]
+     *  + the catalogue-sync trigger, so other call sites (filter, onboarding)
+     *  stay Kilter/MoonBoard-only rather than offering a dead-end chip. */
+    showAuroraBoards: Boolean = false,
     frequency: Map<Int, Long> = emptyMap(),
     /** "Don't know your board? find it via your gym" — FEAT-007 gym
      *  search. Shown in the Kilter categories only; null hides it. */
@@ -74,8 +90,18 @@ internal fun BoardSelectionDialog(
     var mbVariant by remember {
         mutableStateOf(selectedMoonBoardVariant ?: MoonBoardVariant.entries.first())
     }
+    // FEAT-031: an Aurora-family board (Tension etc.) as the active pick. When
+    // non-null it takes precedence over [category]; selecting a Kilter/MoonBoard
+    // chip clears it. Seeded from the active brand so re-opening lands on it.
+    var auroraBrand by remember {
+        mutableStateOf(
+            BoardBrand.fromWire(initialBrand)
+                .takeIf { showAuroraBoards && it.usesAuroraProtocol && it != BoardBrand.KILTER }
+        )
+    }
 
-    val isKilter = category != BoardCategory.MOONBOARD
+    val isAurora = auroraBrand != null
+    val isKilter = !isAurora && category != BoardCategory.MOONBOARD
     val kilterProductId = if (category == BoardCategory.KILTER_HOMEWALL) {
         BoardConstants.KILTER_HOMEWALL_PRODUCT_ID
     } else {
@@ -120,24 +146,44 @@ internal fun BoardSelectionDialog(
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     CategoryChip(
                         label = stringResource(R.string.board_category_kilter_original),
-                        selected = category == BoardCategory.KILTER_ORIGINAL,
-                        onSelect = { category = BoardCategory.KILTER_ORIGINAL },
+                        selected = !isAurora && category == BoardCategory.KILTER_ORIGINAL,
+                        onSelect = { category = BoardCategory.KILTER_ORIGINAL; auroraBrand = null },
                     )
                     CategoryChip(
                         label = stringResource(R.string.board_category_kilter_homewall),
-                        selected = category == BoardCategory.KILTER_HOMEWALL,
-                        onSelect = { category = BoardCategory.KILTER_HOMEWALL },
+                        selected = !isAurora && category == BoardCategory.KILTER_HOMEWALL,
+                        onSelect = { category = BoardCategory.KILTER_HOMEWALL; auroraBrand = null },
                     )
                     CategoryChip(
                         label = stringResource(R.string.board_category_moonboard),
-                        selected = category == BoardCategory.MOONBOARD,
-                        onSelect = { category = BoardCategory.MOONBOARD },
+                        selected = !isAurora && category == BoardCategory.MOONBOARD,
+                        onSelect = { category = BoardCategory.MOONBOARD; auroraBrand = null },
                     )
+                    // FEAT-031: interactive Aurora-family boards, data-driven so a
+                    // newly-promoted board appears with no further picker wiring.
+                    // Gated to call sites that wire onConfirmAurora (Settings).
+                    if (showAuroraBoards) {
+                        AURORA_PICK_BRANDS.forEach { brand ->
+                            CategoryChip(
+                                label = brand.displayName,
+                                selected = auroraBrand == brand,
+                                onSelect = { auroraBrand = brand },
+                            )
+                        }
+                    }
                 }
 
                 HorizontalDivider()
 
-                if (isKilter) {
+                if (isAurora) {
+                    Text(
+                        stringResource(
+                            R.string.board_selection_aurora_download_hint,
+                            auroraBrand!!.displayName,
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                } else if (isKilter) {
                     if (kilterEmpty) {
                         Text(
                             stringResource(R.string.board_model_dialog_body_missing_inline),
@@ -193,8 +239,11 @@ internal fun BoardSelectionDialog(
         confirmButton = {
             Button(
                 onClick = {
-                    if (isKilter) onConfirmKilter(kilterSelection)
-                    else onConfirmMoonBoard(mbVariant)
+                    when {
+                        isAurora -> onConfirmAurora(auroraBrand!!)
+                        isKilter -> onConfirmKilter(kilterSelection)
+                        else -> onConfirmMoonBoard(mbVariant)
+                    }
                 },
                 enabled = !kilterEmpty,
                 colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),

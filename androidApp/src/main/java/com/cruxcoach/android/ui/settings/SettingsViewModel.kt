@@ -12,6 +12,7 @@ import com.cruxcoach.android.data.DarkModeSetting
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.data.BoardSyncManager
 import com.cruxcoach.android.data.LedHoldColors
+import com.cruxcoach.android.data.AuroraCatalogueSync
 import com.cruxcoach.android.data.MoonBoardCatalogueSync
 import com.cruxcoach.android.data.SyncInterval
 import com.cruxcoach.android.data.UserPreferences
@@ -131,6 +132,7 @@ class SettingsViewModel @Inject constructor(
     private val bleConnection: BoardBleConnection,
     private val climbAdvertiser: ClimbBleAdvertiser,
     private val moonBoardCatalogueSync: MoonBoardCatalogueSync,
+    private val auroraCatalogueSync: AuroraCatalogueSync,
     private val announcementRepository: AnnouncementRepository,
     private val queueManager: OfflineQueueManager,
     private val kilterTokenStore: com.cruxcoach.android.data.kilter.KilterTokenStore,
@@ -459,6 +461,62 @@ class SettingsViewModel @Inject constructor(
 
     fun dismissMoonBoardSyncMessage() {
         _state.update { it.copy(moonBoardSyncMessage = null) }
+    }
+
+    /**
+     * Select an Aurora-family board (Tension, Grasshopper, Decoy, So iLL,
+     * Touchstone) as the active board (FEAT-031). Unlike Kilter/MoonBoard
+     * there is no hardcoded size — the board's sizes are only known after its
+     * catalogue is synced. So: flip the brand, run the per-board catalogue
+     * sync, then derive a sensible default (most-climbed layout + largest
+     * product_size) from the just-synced rows and persist it so Browse +
+     * Detail work immediately. The user can refine the exact size later. The
+     * result reuses the shared board-sync snackbar slot.
+     */
+    fun selectAuroraBoard(board: BoardBrand) {
+        _state.update {
+            it.copy(boardBrand = board.wireValue, moonBoardVariant = null)
+        }
+        viewModelScope.launch {
+            val message = try {
+                userPreferences.setBoardBrand(board.wireValue)
+                when (val result = withContext(Dispatchers.IO) { auroraCatalogueSync.sync(board) }) {
+                    is AuroraCatalogueSync.Result.Failed ->
+                        context.getString(R.string.aurora_sync_failed_generic)
+                    is AuroraCatalogueSync.Result.AlreadyCurrent,
+                    is AuroraCatalogueSync.Result.Imported -> {
+                        val layout = withContext(Dispatchers.IO) {
+                            boardRepository.getDefaultLayoutForBrand(board.wireValue)
+                        }
+                        val size = withContext(Dispatchers.IO) {
+                            boardRepository.getDefaultProductSizeForBrand(board.wireValue)
+                        }
+                        if (layout != null && size != null) {
+                            userPreferences.setBoardLayoutId(layout)
+                            userPreferences.setBoardProductSizeId(size.first)
+                            _state.update {
+                                it.copy(
+                                    boardLayoutId = layout,
+                                    boardProductSizeId = size.first,
+                                    boardProductSizeName = size.second,
+                                )
+                            }
+                        }
+                        if (result is AuroraCatalogueSync.Result.AlreadyCurrent) {
+                            context.getString(R.string.aurora_sync_already_current)
+                        } else {
+                            context.getString(R.string.aurora_sync_imported)
+                        }
+                    }
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                android.util.Log.w("SettingsVM", "Aurora board selection failed", e)
+                context.getString(R.string.aurora_sync_failed_generic)
+            }
+            _state.update { it.copy(moonBoardSyncMessage = message) }
+        }
     }
 
     /**

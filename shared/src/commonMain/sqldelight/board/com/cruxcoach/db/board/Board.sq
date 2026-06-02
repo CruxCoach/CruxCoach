@@ -629,6 +629,20 @@ SELECT * FROM board_images WHERE product_size_id = ? AND layout_id = ? AND board
 getProductSizesForLayout:
 SELECT DISTINCT product_size_id FROM board_images WHERE layout_id = :layoutId AND board_brand = :brand;
 
+-- FEAT-031: derive a sensible default (layout, size) for an Aurora board
+-- right after its catalogue is synced, so the picker can configure the
+-- active board without a separate size step (Aurora sizes are only known
+-- post-sync). Most-climbed layout + the largest product_size for the brand
+-- (largest contains the most climbs without clipping; user can refine later).
+getMostCommonLayoutForBrand:
+SELECT layout_id FROM climbs WHERE board_brand = ? GROUP BY layout_id ORDER BY COUNT(*) DESC LIMIT 1;
+
+getDefaultProductSizeForBrand:
+SELECT id, name FROM product_sizes
+WHERE board_brand = ?
+ORDER BY (edge_right - edge_left) * (edge_top - edge_bottom) DESC, id
+LIMIT 1;
+
 
 -- Cheap "can the user's currently-configured board render this climb"
 -- predicate. Returns 1 row when the user's [productSizeId] both

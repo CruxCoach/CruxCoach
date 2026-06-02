@@ -326,6 +326,13 @@ interface BoardLayoutQueries {
      *  board community climb on the right physical board even when the
      *  user's preferred layout differs from the climb's. */
     fun getProductSizesForLayout(layoutId: Int, boardBrand: String = "kilter"): List<Int>
+    /** FEAT-031: a sensible default active-board config for an Aurora board,
+     *  derived from its just-synced catalogue — the most-climbed layout and
+     *  the largest product_size. Lets the picker configure the active board
+     *  in one step (Aurora sizes are only known post-sync). Null when the
+     *  board has no catalogue rows yet. */
+    fun getDefaultLayoutForBrand(boardBrand: String): Int?
+    fun getDefaultProductSizeForBrand(boardBrand: String): Pair<Int, String>?
     /** True when the user's currently-configured [productSizeId] can
      *  validly host this climb's render — same layout, has images,
      *  big enough to contain the climb's bbox. The detail screen
