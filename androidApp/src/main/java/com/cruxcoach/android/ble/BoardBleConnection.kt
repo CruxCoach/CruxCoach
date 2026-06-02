@@ -291,7 +291,9 @@ class BoardBleConnection(private val context: Context) {
         gattClosed = false
         _connectionState.value = ConnectionState.CONNECTING
         _connectedBoardName.value = board.displayName
-        encoder = BoardPacketEncoder(board.apiLevel)
+        // FEAT-031: ledsPerHold (Kilter = 2, other Aurora boards = 1) feeds the
+        // @2 LED power-budget scaling; harmless on @3 (where it is unused).
+        encoder = BoardPacketEncoder(board.apiLevel, BoardPacketEncoder.ledsPerHoldFor(board.boardBrand))
 
         // Stop external scanners before GATT connect (radio contention on Android <12)
         onStopScannersForConnect?.invoke()

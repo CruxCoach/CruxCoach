@@ -1,10 +1,13 @@
 package com.cruxcoach.board
 
+import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.BoardPacketEncoder
 import com.cruxcoach.domain.board.BoardHold
 import com.cruxcoach.domain.board.HoldRole
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class BoardPacketEncoderTest {
@@ -125,5 +128,86 @@ class BoardPacketEncoderTest {
         assertEquals(0x2C.toByte(), packet[5]) // pos low byte
         assertEquals(0x01.toByte(), packet[6]) // pos high byte
         assertEquals(0x03.toByte(), packet[7]) // color
+    }
+
+    // ── FEAT-031 @2 (API level < 3) power-scaling, against the BoardSesh spec ──
+    // DEVICE-VERIFICATION OWED: these lock the wire bytes to the spec; the @2
+    // path is NOT verified on real @2 hardware.
+
+    @Test
+    fun v3SingleHoldEncodesThreeBytesUnchanged() {
+        // Lock the @3 wire format (must stay byte-identical): 3 bytes/LED,
+        // API3_ONLY type. Position 16 → posLo 0x10, posHi 0x00, colour 0x1C.
+        val packet = encoder.encodeClimb(listOf(16 to 0x1C)).flatMap { it.toList() }
+        assertEquals(9, packet.size) // 4 header + type + 3 LED + end
+        assertEquals(0x54.toByte(), packet[4]) // 'T' API3 ONLY
+        assertEquals(0x10.toByte(), packet[5])
+        assertEquals(0x00.toByte(), packet[6])
+        assertEquals(0x1C.toByte(), packet[7]) // RGB332 colour unchanged
+        assertEquals(0x03.toByte(), packet.last())
+    }
+
+    @Test
+    fun v2EncodesTwoBytesPerLedPerSpec() {
+        // @2 hardware: 2 bytes/LED (not 3). Position 10, green (0x1C), full scale.
+        // green 0x1C → (0,255,0); scaledColourV2 → (0,3,0); posHi 0.
+        // colourByte = (0<<6)|(3<<4)|(0<<2)|0 = 0x30.
+        val v2 = BoardPacketEncoder(apiLevel = 2)
+        val packet = v2.encodeClimb(listOf(10 to 0x1C)).flatMap { it.toList() }
+        assertEquals(8, packet.size) // 4 header + type + 2 LED + end
+        assertEquals(0x03.toByte(), packet[1]) // dataLen = type + 2 LED bytes
+        assertEquals(0x50.toByte(), packet[4]) // 'P' API2 ONLY
+        assertEquals(0x0A.toByte(), packet[5]) // posLo = 10
+        assertEquals(0x30.toByte(), packet[6]) // (g2=3)<<4 | posHi=0
+        assertEquals(0x03.toByte(), packet.last())
+    }
+
+    @Test
+    fun v2EncodePositionAndColourPacksPosHi() {
+        // Position 300 = 0x12C → posLo 0x2C, posHi 1. Blue (0x03) → b2=3.
+        // colourByte = (0<<6)|(0<<4)|(3<<2)|posHi(1) = 0x0D.
+        val (lo, colourByte) = BoardPacketEncoder.encodePositionAndColorV2(300, 0x03, 1.0)!!
+        assertEquals(0x2C.toByte(), lo)
+        assertEquals(0x0D.toByte(), colourByte)
+    }
+
+    @Test
+    fun v2SkipsPositionAbove10BitLimit() {
+        assertNull(BoardPacketEncoder.encodePositionAndColorV2(1024, 0x1C, 1.0))
+        assertNotNull(BoardPacketEncoder.encodePositionAndColorV2(1023, 0x1C, 1.0))
+    }
+
+    @Test
+    fun v2ScaledColourMatchesSpec() {
+        // floor(value * scale) >> 6  → 0..3
+        assertEquals(3, BoardPacketEncoder.scaledColorV2(255, 1.0))
+        assertEquals(2, BoardPacketEncoder.scaledColorV2(128, 1.0)) // 128>>6 = 2
+        assertEquals(1, BoardPacketEncoder.scaledColorV2(255, 0.5)) // floor(127.5)=127>>6 = 1
+        assertEquals(0, BoardPacketEncoder.scaledColorV2(0, 1.0))
+        assertEquals(0, BoardPacketEncoder.scaledColorV2(255, 0.2)) // floor(51)>>6 = 0
+    }
+
+    @Test
+    fun v2Rgb332DecodesToEightBit() {
+        assertEquals(Triple(0, 255, 0), BoardPacketEncoder.rgb332ToRgb888(0x1C))   // green
+        assertEquals(Triple(0, 0, 255), BoardPacketEncoder.rgb332ToRgb888(0x03))   // blue
+        assertEquals(Triple(255, 0, 255), BoardPacketEncoder.rgb332ToRgb888(0xE3)) // magenta
+    }
+
+    @Test
+    fun v2ComputeScaleFitsThePowerBudget() {
+        // A typical climb fits at full brightness.
+        assertEquals(1.0, BoardPacketEncoder.computeV2Scale(listOf(0x1C), ledsPerHold = 2), 0.0001)
+        // BoardSesh boundary: a green LED contributes 0.1 power; ledsPerHold 2.
+        // 90 → 2*9.0 = 18.0 ≤ 18 → 1.0; 91 → 18.2 > 18, so it drops to 0.6.
+        assertEquals(1.0, BoardPacketEncoder.computeV2Scale(List(90) { 0x1C }, 2), 0.0001)
+        assertEquals(0.6, BoardPacketEncoder.computeV2Scale(List(91) { 0x1C }, 2), 0.0001)
+    }
+
+    @Test
+    fun ledsPerHoldByBrand() {
+        assertEquals(2, BoardPacketEncoder.ledsPerHoldFor(BoardBrand.KILTER))
+        assertEquals(1, BoardPacketEncoder.ledsPerHoldFor(BoardBrand.TENSION))
+        assertEquals(1, BoardPacketEncoder.ledsPerHoldFor(BoardBrand.MOONBOARD))
     }
 }
