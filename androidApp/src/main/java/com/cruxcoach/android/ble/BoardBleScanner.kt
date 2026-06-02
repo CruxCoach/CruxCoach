@@ -115,7 +115,10 @@ class BoardBleScanner(private val context: Context) {
                     apiLevel = parsed.third,
                     address = device.address,
                     rssi = result.rssi,
-                    boardBrand = BoardBrand.KILTER,
+                    // FEAT-031: infer the Aurora-family brand from the advertised
+                    // name so the correct LED map + colours are selected; KILTER
+                    // for "Kilter Board" and any unrecognised Aurora-named board.
+                    boardBrand = auroraBrandFromName(parsed.first),
                 )
             }
             boardMap[device.address] = board
@@ -200,6 +203,27 @@ class BoardBleScanner(private val context: Context) {
      */
     fun isMoonBoardName(name: String): Boolean =
         name.startsWith("MoonBoard") || name.startsWith("Moonboard")
+
+    /**
+     * Infer the Aurora-family brand from an advertised board name (FEAT-031).
+     * Normalises like BoardSesh's parser — lowercase, strip spaces/hyphens —
+     * then matches the family prefix ("Tension Board" → TENSION, "So iLL
+     * Board" / "So-iLL Board" → SOILL). Defaults to [BoardBrand.KILTER] for
+     * "Kilter Board" and any unrecognised Aurora-named board (the historical
+     * default; the Aurora BLE transport is identical across the family, so a
+     * misread only mis-selects the LED map/colour table, never the protocol).
+     */
+    fun auroraBrandFromName(displayName: String): BoardBrand {
+        val n = displayName.lowercase().replace(" ", "").replace("-", "")
+        return when {
+            n.startsWith("tension") -> BoardBrand.TENSION
+            n.startsWith("grasshopper") -> BoardBrand.GRASSHOPPER
+            n.startsWith("decoy") -> BoardBrand.DECOY
+            n.startsWith("soill") -> BoardBrand.SOILL
+            n.startsWith("touchstone") -> BoardBrand.TOUCHSTONE
+            else -> BoardBrand.KILTER
+        }
+    }
 
     /**
      * Parse Aurora board BLE name.

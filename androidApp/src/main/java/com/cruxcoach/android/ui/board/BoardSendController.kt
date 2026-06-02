@@ -94,7 +94,11 @@ internal class BoardSendController(
                 state.update { it.copy(nearby = it.nearby.copy(debugInfo = "loading LED map...")) }
                 val productSizeId = userPreferences.boardProductSizeId.first()
                 val placementToLed = withContext(Dispatchers.IO) {
-                    boardRepository.getPlacementLedMap(productSizeId)
+                    // FEAT-031: scope the LED map to the active board's brand so an
+                    // Aurora board (Tension etc.) lights its OWN holds, not Kilter's
+                    // same-numbered product_size rows. activeBrand == climb.brand here
+                    // (guarded above), so it is the connected board's brand.
+                    boardRepository.getPlacementLedMap(productSizeId, activeBrand)
                 }
                 if (placementToLed.isEmpty()) {
                     state.update { it.copy(
