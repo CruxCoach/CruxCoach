@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import com.cruxcoach.android.R
 import com.cruxcoach.android.data.BoardDatabaseImporter.ImportStep
+import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.android.data.blossom.BlossomSyncManager
 import com.cruxcoach.android.notification.BoardSyncWorker
 import com.cruxcoach.android.util.isNetworkAvailable
@@ -45,7 +46,8 @@ class BoardSyncManager(
     private val boardRepository: com.cruxcoach.data.repository.BoardRepository,
     private val personalBoardRepo: com.cruxcoach.data.repository.PersonalBoardRepository,
     private val boardLocationRepository: com.cruxcoach.data.repository.BoardLocationRepository,
-    private val moonBoardCatalogueSync: MoonBoardCatalogueSync
+    private val moonBoardCatalogueSync: MoonBoardCatalogueSync,
+    private val auroraCatalogueSync: AuroraCatalogueSync,
 ) {
     private companion object {
         const val TAG = "BoardSyncManager"
@@ -509,6 +511,7 @@ class BoardSyncManager(
             // MoonBoard rides on the same board-data sync (FEAT-027) — re-check
             // it even when the Kilter catalogue itself is unchanged.
             syncMoonBoardCatalogue()
+            syncActiveAuroraBoard()
             val timestamp = DateTimeUtil.nowIso()
             userPreferences.setLastSyncTimestamp(timestamp)
             _state.update { it.copy(
@@ -620,6 +623,7 @@ class BoardSyncManager(
                 )
             ) }
             syncMoonBoardCatalogue()
+            syncActiveAuroraBoard()
 
             val timestamp = DateTimeUtil.nowIso()
             userPreferences.setLastSyncTimestamp(timestamp)
@@ -674,6 +678,38 @@ class BoardSyncManager(
         }
     }
 
+    /**
+     * Sync the active Aurora-family board's catalogue as part of the board-data
+     * sync (FEAT-031), so Tension / Grasshopper / Decoy / So iLL / Touchstone
+     * get ongoing catalogue updates and their own progress section in the sync
+     * card. Single-active-board model: only the currently-selected Aurora board
+     * is synced. Idempotent and isolated — a failure never fails the Kilter
+     * sync (mirrors [syncMoonBoardCatalogue]).
+     */
+    private suspend fun syncActiveAuroraBoard() {
+        val brand = BoardBrand.fromWire(userPreferences.boardBrand.first())
+        // Kilter + MoonBoard have their own lanes above; only the non-Kilter
+        // Aurora family is handled here.
+        if (!brand.usesAuroraProtocol || brand == BoardBrand.KILTER) return
+        try {
+            when (val result = auroraCatalogueSync.sync(brand) { step -> reportBoardStep(brand, step) }) {
+                is AuroraCatalogueSync.Result.AlreadyCurrent ->
+                    reportBoardStep(brand, ImportStep.Done(0, 0, 0))
+                is AuroraCatalogueSync.Result.Imported ->
+                    Log.i(TAG, "${brand.wireValue} catalogue imported (total catalogue climbs=${result.climbCount})")
+                is AuroraCatalogueSync.Result.Failed -> {
+                    Log.w(TAG, "${brand.wireValue} catalogue sync failed: ${result.message}")
+                    reportBoardStep(brand, null)
+                    reportBoardError(brand, result.message)
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Aurora catalogue sync threw — Kilter board sync unaffected", e)
+            reportBoardStep(brand, null)
+            reportBoardError(brand, e.message ?: e.javaClass.simpleName)
+        }
+    }
+
     /** Infer chunk type from name for v1 manifests without type field. */
     private fun inferType(name: String): String = when {
         name == "meta" -> "meta"
@@ -681,6 +717,25 @@ class BoardSyncManager(
         name.startsWith("stats") -> "stats"
         name.startsWith("locations") -> "locations"
         else -> "unknown"
+    }
+
+    /**
+     * Report an Aurora-family board's catalogue-sync progress into the shared
+     * per-board state map (FEAT-031). Lets a sync triggered elsewhere (e.g. the
+     * Settings board picker via AuroraCatalogueSync) surface in the same sync
+     * card as the Kilter + MoonBoard streams. Pass null to clear it.
+     */
+    fun reportBoardStep(brand: BoardBrand, step: ImportStep?) {
+        _state.update {
+            it.copy(auroraSteps = if (step == null) it.auroraSteps - brand else it.auroraSteps + (brand to step))
+        }
+    }
+
+    /** Report (or clear, with null) an Aurora board's non-fatal sync error. */
+    fun reportBoardError(brand: BoardBrand, error: String?) {
+        _state.update {
+            it.copy(auroraErrors = if (error == null) it.auroraErrors - brand else it.auroraErrors + (brand to error))
+        }
     }
 
     /**
@@ -852,5 +907,32 @@ data class BoardSyncState(
      * Used by [SyncStatusBannerSlot] to render the success banner for a
      * fixed window across screens (not per-screen restart).
      */
-    val lastSyncCompletedAtMillis: Long? = null
-)
+    val lastSyncCompletedAtMillis: Long? = null,
+    /**
+     * FEAT-031: per-Aurora-board catalogue-sync progress + non-fatal errors,
+     * keyed by board family (Tension / Grasshopper / Decoy / So iLL /
+     * Touchstone). Kilter + MoonBoard keep their dedicated [importStep] /
+     * [moonBoardStep] / [moonBoardError] fields above; [boardSteps] /
+     * [boardErrors] unify all of them into one per-board map for the sync card.
+     */
+    val auroraSteps: Map<BoardBrand, ImportStep> = emptyMap(),
+    val auroraErrors: Map<BoardBrand, String> = emptyMap(),
+) {
+    /** Unified per-board sync progress (FEAT-031): the Kilter + MoonBoard
+     *  streams plus every Aurora board, keyed by brand and ordered
+     *  Kilter → MoonBoard → Aurora. Drives the per-board sync-card sections so
+     *  the UI is map-driven rather than two hardcoded streams. */
+    val boardSteps: Map<BoardBrand, ImportStep>
+        get() = buildMap {
+            importStep?.let { put(BoardBrand.KILTER, it) }
+            moonBoardStep?.let { put(BoardBrand.MOONBOARD, it) }
+            putAll(auroraSteps)
+        }
+
+    /** Unified per-board non-fatal sync errors (FEAT-031). */
+    val boardErrors: Map<BoardBrand, String>
+        get() = buildMap {
+            moonBoardError?.let { put(BoardBrand.MOONBOARD, it) }
+            putAll(auroraErrors)
+        }
+}

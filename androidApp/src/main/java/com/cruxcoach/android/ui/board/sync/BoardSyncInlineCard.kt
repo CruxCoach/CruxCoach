@@ -25,6 +25,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
 import com.cruxcoach.android.data.BoardDatabaseImporter.ImportStep
 import com.cruxcoach.android.data.BoardSyncState
+import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.android.ui.settings.BoardSelectionDialog
 import com.cruxcoach.android.ui.theme.*
 
@@ -354,45 +355,41 @@ private fun DatabaseImportSection(
             }
 
             if (state.isSyncing) {
-                Text(
-                    stringResource(R.string.board_sync_section_kilter),
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                SyncProgressChecklist(
-                    step = state.importStep,
-                    modifier = Modifier.testTag("board_sync_progress"),
-                )
-
-                Text(
-                    stringResource(R.string.board_sync_section_moonboard),
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                SyncProgressChecklist(
-                    step = state.moonBoardStep,
-                    showLayoutStep = false,
-                    modifier = Modifier.testTag("board_sync_progress_moonboard"),
-                )
-                state.moonBoardError?.let {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Icon(
-                            Icons.Default.Warning,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.size(16.dp),
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            stringResource(R.string.board_sync_moonboard_error),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.error,
-                        )
+                // FEAT-031: one progress section per board with an active sync
+                // stream (Kilter, MoonBoard, and each Aurora board), driven by
+                // the per-board state map instead of two hardcoded sections.
+                state.boardSteps.forEach { (brand, step) ->
+                    Text(
+                        brand.displayName,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    SyncProgressChecklist(
+                        step = step,
+                        // Only placement boards (Kilter + Aurora) have a layout
+                        // step; MoonBoard ships no geometry.
+                        showLayoutStep = brand.usesAuroraProtocol,
+                        modifier = Modifier.testTag("board_sync_progress_${brand.wireValue}"),
+                    )
+                    state.boardErrors[brand]?.let {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Icon(
+                                Icons.Default.Warning,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(16.dp),
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                stringResource(R.string.board_sync_section_error),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
                     }
                 }
             }

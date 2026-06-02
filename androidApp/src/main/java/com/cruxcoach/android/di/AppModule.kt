@@ -38,6 +38,7 @@ import com.cruxcoach.android.data.BoardStateManager
 import com.cruxcoach.android.data.ClimbNameResolver
 import com.cruxcoach.android.data.RestTimerAlarmScheduler
 import com.cruxcoach.android.data.BoardSyncManager
+import com.cruxcoach.android.data.AuroraCatalogueSync
 import com.cruxcoach.android.data.MoonBoardCatalogueSync
 import com.cruxcoach.android.data.blossom.BlossomSyncManager
 import com.cruxcoach.android.data.NearbyPresenceManager
@@ -281,9 +282,10 @@ object AppModule {
         boardRepository: BoardRepository,
         personalBoardRepo: PersonalBoardRepository,
         boardLocationRepository: BoardLocationRepository,
-        moonBoardCatalogueSync: MoonBoardCatalogueSync
+        moonBoardCatalogueSync: MoonBoardCatalogueSync,
+        auroraCatalogueSync: AuroraCatalogueSync,
     ): BoardSyncManager {
-        return BoardSyncManager(importer, blossomSyncManager, userPreferences, context, boardRepository, personalBoardRepo, boardLocationRepository, moonBoardCatalogueSync)
+        return BoardSyncManager(importer, blossomSyncManager, userPreferences, context, boardRepository, personalBoardRepo, boardLocationRepository, moonBoardCatalogueSync, auroraCatalogueSync)
     }
 
     @Provides

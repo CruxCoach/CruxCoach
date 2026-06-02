@@ -980,9 +980,9 @@
     <string name="board_sync_step_import_layout">Layout-Daten importieren</string>
     <string name="board_sync_step_finalize">Finalisieren</string>
     <string name="sync_finalizing">Finalisieren…</string>
-    <string name="board_sync_section_kilter">Kilter-Katalog</string>
-    <string name="board_sync_section_moonboard">MoonBoard-Katalog</string>
-    <string name="board_sync_moonboard_error">MoonBoard-Katalog konnte nicht geladen werden — Kilter-Climbs sind nicht betroffen.</string>
+    <!-- FEAT-031: per-board sync sections are titled by the board's name; a
+         board's non-fatal sync error uses this. -->
+    <string name="board_sync_section_error">Katalog konnte nicht geladen werden — deine anderen Boards sind nicht betroffen.</string>
 
     <!-- Climb Labels -->
     <string name="climb_label_boulder">Boulder</string>

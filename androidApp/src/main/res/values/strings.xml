@@ -936,9 +936,9 @@
     <string name="sync_finalizing">Finalizing…</string>
     <string name="board_sync_step_fetch_manifest">Fetching manifest\u2026</string>
     <string name="board_sync_step_download_chunk" formatted="false">Downloading %s (%d/%d)</string>
-    <string name="board_sync_section_kilter">Kilter catalogue</string>
-    <string name="board_sync_section_moonboard">MoonBoard catalogue</string>
-    <string name="board_sync_moonboard_error">MoonBoard catalogue could not be loaded — Kilter climbs are unaffected.</string>
+    <!-- FEAT-031: per-board sync sections are titled by the board's name
+         (BoardBrand.displayName); a board's non-fatal sync error uses this. -->
+    <string name="board_sync_section_error">Catalogue could not be loaded — your other boards are unaffected.</string>
 
     <!-- Climb Labels -->
     <string name="climb_label_boulder">Boulders</string>
