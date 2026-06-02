@@ -1861,6 +1861,10 @@
     <string name="whatsnew_moonboard_hint">Wähle dein MoonBoard in Einstellungen → Board-Typ oder beim Onboarding. Der Board-Fit-Filter und die Standortkarte funktionieren auch für MoonBoard.</string>
     <string name="whatsnew_moonboard_action_now">Board wählen</string>
     <string name="whatsnew_moonboard_action_later">Später</string>
+    <!-- FEAT-031: Aurora-Boards (What's New) -->
+    <string name="whatsnew_aurora_title">Neu: Tension, Grasshopper &amp; mehr</string>
+    <string name="whatsnew_aurora_body">0.2.0 bringt zusätzlich die Aurora-Boards — Tension, Grasshopper, Decoy, So iLL und Touchstone — neben Kilter und MoonBoard. Durchsuche den Katalog jedes Boards mit denselben Filtern für Grad, Winkel und Setter, öffne einen Boulder und lass ihn per Bluetooth auf deinem Board aufleuchten.</string>
+    <string name="whatsnew_aurora_hint">Wähle dein Board in Einstellungen → Board-Typ. Der Katalog wird bei der ersten Auswahl heruntergeladen; Board-Fit-Filter und Standortkarte funktionieren auch für diese Boards.</string>
 
     <!-- FEAT-015 Board-Locations-Map (0.2.0) -->
     <string name="whatsnew_board_map_title">Neu: Boards auf der Karte</string>

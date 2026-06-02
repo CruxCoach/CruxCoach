@@ -57,12 +57,19 @@ object WhatsNewItems {
      *  explicit discovery surface. */
     val GYM_BOARD_PICKER = WhatsNewItem(id = "gym-board-picker", sinceVersionCode = 6)
 
+    /** FEAT-031 — Aurora-family boards (0.2.0): Tension, Grasshopper, Decoy,
+     *  So iLL and Touchstone become selectable, browsable + LED-send alongside
+     *  Kilter. Discovery surface so upgrading users find them in the Settings
+     *  board picker. Same 0.2.0 (versionCode 6) batch. */
+    val AURORA_BOARDS = WhatsNewItem(id = "aurora-boards", sinceVersionCode = 6)
+
     val registry: List<WhatsNewItem> = listOf(
         NOSTR_BACKUP,
         AURORA_JSON_IMPORT,
         MOONBOARD_SUPPORT,
         BOARD_LOCATIONS_MAP,
         GYM_BOARD_PICKER,
+        AURORA_BOARDS,
     )
 }
 
@@ -173,6 +180,11 @@ fun WhatsNewHost(
             )
         WhatsNewItems.GYM_BOARD_PICKER.id ->
             GymBoardPickerWhatsNewDialog(
+                onDismiss = { vm.dismissCurrent() },
+                onNavigateToSettings = onNavigateToSettings,
+            )
+        WhatsNewItems.AURORA_BOARDS.id ->
+            AuroraBoardsWhatsNewDialog(
                 onDismiss = { vm.dismissCurrent() },
                 onNavigateToSettings = onNavigateToSettings,
             )

@@ -55,6 +55,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.data.GradeScale
+import com.cruxcoach.android.data.LedHoldColors
 import com.cruxcoach.android.ui.common.BleStatusArea
 import com.cruxcoach.android.ui.common.LocalSessionQueueManager
 import com.cruxcoach.android.ui.common.RestTimerBannerSlot
@@ -965,7 +966,10 @@ private fun ClimbDetailPageContent(
                             placements = state.placements,
                             boardSize = state.boardSize,
                             boardImages = state.boardImages,
-                            ledColors = state.ledColors,
+                            // FEAT-031: Aurora boards draw their own per-board
+                            // colours; Kilter keeps the user's configured palette.
+                            ledColors = if (climb.brand == BoardBrand.KILTER) state.ledColors
+                                        else LedHoldColors.standardFor(climb.brand),
                             previewMode = state.playback.showPreview,
                             currentFrameHolds = if (state.playback.showPreview && state.playback.isRoute) {
                                 state.playback.allFrames.getOrElse(state.playback.currentFrameIndex) { emptyList() }

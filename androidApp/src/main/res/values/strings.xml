@@ -1858,6 +1858,10 @@
     <string name="whatsnew_moonboard_hint">Pick your MoonBoard in Settings → board type, or during onboarding. The board-fit filter and the locations map work for MoonBoard too.</string>
     <string name="whatsnew_moonboard_action_now">Pick my board</string>
     <string name="whatsnew_moonboard_action_later">Later</string>
+    <!-- FEAT-031: Aurora-family boards what's-new -->
+    <string name="whatsnew_aurora_title">New: Tension, Grasshopper &amp; more</string>
+    <string name="whatsnew_aurora_body">0.2.0 also adds the Aurora-family boards — Tension, Grasshopper, Decoy, So iLL and Touchstone — alongside Kilter and MoonBoard. Browse each board\'s catalogue with the same grade, angle and setter filters, open a climb, and light it up on your board over Bluetooth.</string>
+    <string name="whatsnew_aurora_hint">Pick your board in Settings → board type. Its catalogue downloads on first selection; the board-fit filter and the locations map work for these boards too.</string>
 
     <!-- FEAT-015 board-locations map (0.2.0) -->
     <string name="whatsnew_board_map_title">New: boards on a map</string>
