@@ -5,6 +5,7 @@ import com.cruxcoach.android.R
 import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.ClimbBleAdvertiser
 import com.cruxcoach.android.ble.ConnectionState
+import com.cruxcoach.android.data.LedHoldColors
 import com.cruxcoach.android.data.SessionQueueManager
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.data.repository.BoardRepository
@@ -108,7 +109,15 @@ internal class BoardSendController(
                     return@launch
                 }
                 state.update { it.copy(nearby = it.nearby.copy(debugInfo = "BLE sending...")) }
-                val colors = userPreferences.ledHoldColors.first()
+                // FEAT-031: Kilter stays user-configurable; the Aurora family
+                // lights in its own conventional scheme (MoonBoard uses its own
+                // send path). brand == climb.brand == active board (guarded above).
+                val brand = BoardBrand.fromWire(activeBrand)
+                val colors = if (brand == BoardBrand.KILTER) {
+                    userPreferences.ledHoldColors.first()
+                } else {
+                    LedHoldColors.standardFor(brand)
+                }
                 val success = bleConnection.sendClimb(s.holds, placementToLed, colors.toRoleColorMap())
                 Log.i(TAG, "sendToBoard: writes done success=$success")
                 state.update { it.copy(

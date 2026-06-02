@@ -12,6 +12,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.cruxcoach.android.notification.AnnouncementTagParser
 import com.cruxcoach.android.nostr.SignerMode
+import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.HoldRole
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
@@ -119,6 +120,36 @@ data class LedHoldColors(
             finish = KILTER_FINISH,
             foot = KILTER_FOOT
         )
+
+        // Aurora family (Tension/Grasshopper/Decoy/So iLL/Touchstone): the
+        // shared non-Kilter Aurora scheme — start green, hands blue, finish
+        // red, feet magenta (per the boards' placement_roles.led_color /
+        // BoardSesh hold-state palette).
+        const val AURORA_START: Int = 0x1C   // Green (00FF00)
+        const val AURORA_HAND: Int = 0x03    // Blue (0000FF)
+        const val AURORA_FINISH: Int = 0xE0  // Red (FF0000)
+        const val AURORA_FOOT: Int = 0xE3    // Magenta (FF00FF)
+
+        /**
+         * The conventional LED colours for a board family (FEAT-031): each
+         * board lights in its own usual scheme rather than Kilter's. Kilter
+         * stays USER-configurable (callers should prefer the user's
+         * [ledHoldColors] for Kilter); the Aurora family + MoonBoard use their
+         * standard palettes. The authoritative per-board source is the
+         * catalogue's placement_roles.led_color — once that is synced per board
+         * it should override these conventional defaults.
+         */
+        fun standardFor(brand: BoardBrand): LedHoldColors = when (brand) {
+            BoardBrand.KILTER -> kilterStandard()
+            BoardBrand.TENSION, BoardBrand.GRASSHOPPER, BoardBrand.DECOY,
+            BoardBrand.SOILL, BoardBrand.TOUCHSTONE ->
+                LedHoldColors(AURORA_START, AURORA_HAND, AURORA_FINISH, AURORA_FOOT)
+            // MoonBoard's classic 3-colour scheme (green start, blue hands,
+            // red top); no distinct foot role, so feet reuse the hand colour.
+            BoardBrand.MOONBOARD ->
+                LedHoldColors(start = 0x1C, hand = 0x03, finish = 0xE0, foot = 0x03)
+            else -> LedHoldColors()
+        }
 
         // Previously-shipped CruxCoach DEFAULT presets, by release:
         //   v0.1.0–0.1.1: start=Orange, hand=Blue, finish=Magenta, foot=Teal (0x1D)
