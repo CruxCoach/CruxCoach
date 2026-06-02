@@ -171,3 +171,80 @@ When a new variant's image is produced:
 1. Drop `moonboard_<variant>.webp` + `moonboard_<variant>.json` here.
 2. Map the variant to its asset base name in `assetBaseName()` in
    `MoonBoardAsset.kt`.
+
+---
+
+# Aurora-family board images
+
+CruxCoach renders five further Aurora-protocol boards (FEAT-031). Their
+background images live in per-brand subfolders:
+
+| Folder | Board | `product_size` ids bundled |
+|--------|-------|----------------------------|
+| `tension/`     | Tension Board   | 1–9 |
+| `grasshopper/` | Grasshopper Board | 2–6 |
+| `decoy/`       | Decoy Board     | 1–3 |
+| `soill/`       | So iLL Board    | 1–2 |
+| `touchstone/`  | Touchstone Board | 1 |
+
+Each file is `board_images/<brand>/board_<product_size_id>.webp`, decoded
+on-device by the same `BoardImageCache` as the Kilter images (the cache is
+keyed by the full asset path). The per-brand subfolder is required because
+`product_size` ids collide across brands — every board numbers its sizes from
+1 — while the Kilter set keeps the historical flat `board_<id>.webp` layout.
+
+## Naming — why `product_size_id`, not `image_filename`
+
+The Blossom catalogue chunk ships only the `image_filename` *string* (in
+`product_sizes_layouts_sets`); the actual pixels are these bundled assets.
+CruxCoach names them by `product_size.id` — not by `image_filename` — because
+the renderer draws exactly one background per physical board size and looks it
+up by size id, the same convention as the Kilter section above. A missing file
+degrades gracefully to a placements-only view; it never crashes or blanks.
+
+## Origin
+
+Each source image was extracted from the corresponding board's own official
+Android app (the `com.auroraclimbing.*` family): specifically the
+`product_sizes_layouts_sets` image for that size's dominant layout (the layout
+most of its climbs use) and base hold set — the standard configuration the
+board ships with — then re-encoded as WebP to reduce APK size. They are
+**not** CruxCoach's original work. The raw app bundles are never stored in
+this repository; only the processed WebP files are committed.
+
+## Rights holders
+
+Each board product, its physical hold layout, the official layout imagery, and
+the board name are the property of the respective board maker — **Tension
+Climbing**, **Grasshopper**, **Decoy**, **So iLL**, and **Touchstone
+Climbing** — and the board apps are published on the **Aurora Climbing** app
+platform. CruxCoach is not affiliated with, endorsed by, sponsored by, or
+officially connected to any of them.
+
+The images are bundled solely as referential / descriptive material to
+identify the user's physical board, in a non-commercial, open-source context —
+§ 23(1) No. 3 MarkenG (referential use to indicate intended purpose) and the
+analogous nominative / referential fair-use doctrine elsewhere, the same basis
+as the Kilter and MoonBoard sections above. See `LEGAL.md`.
+
+## Removal requests — Aurora-family boards
+
+If you represent any of the rights holders above and would like the
+corresponding imagery removed or replaced, please contact the maintainer via
+the channels listed in `SECURITY.md`, or open an issue on the Codeberg
+repository. Removal or replacement (per board) will be handled promptly.
+
+## Updating — Aurora-family boards
+
+The assets are produced by an out-of-repo pipeline:
+
+1. Obtain the board's official app and read its bundled `db.sqlite3`.
+2. For each `is_listed = 1` `product_size`, pick the
+   `product_sizes_layouts_sets` image for the dominant layout and the base
+   (lowest-id) hold set.
+3. Re-encode as WebP (quality ~80) and drop it at
+   `board_images/<brand>/board_<product_size_id>.webp`.
+
+No code change is needed for a new size — the renderer attempts the
+brand-namespaced path for every Aurora-family board and falls back to
+placements-only when the asset is absent.

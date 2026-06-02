@@ -1,6 +1,7 @@
 package com.cruxcoach.data.repository
 
 import com.cruxcoach.db.board.BoardDatabase
+import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.SupportedBoard
 
 class BoardRepositoryImpl(
@@ -307,13 +308,13 @@ class BoardRepositoryImpl(
 
     override fun getProductSize(id: Int, boardBrand: String): BoardSize? {
         return q.getProductSize(id.toLong(), boardBrand).executeAsOneOrNull()?.let {
-            BoardSize(it.id, it.product_id, it.name, it.edge_left, it.edge_right, it.edge_bottom, it.edge_top, it.image_filename)
+            BoardSize(it.id, it.product_id, it.name, it.edge_left, it.edge_right, it.edge_bottom, it.edge_top, it.image_filename, BoardBrand.fromWire(boardBrand))
         }
     }
 
     override fun getAllProductSizes(productId: Long, boardBrand: String): List<BoardSize> {
         return q.getAllProductSizes(productId, boardBrand).executeAsList().map {
-            BoardSize(it.id, it.product_id, it.name, it.edge_left, it.edge_right, it.edge_bottom, it.edge_top, it.image_filename)
+            BoardSize(it.id, it.product_id, it.name, it.edge_left, it.edge_right, it.edge_bottom, it.edge_top, it.image_filename, BoardBrand.fromWire(boardBrand))
         }
     }
 

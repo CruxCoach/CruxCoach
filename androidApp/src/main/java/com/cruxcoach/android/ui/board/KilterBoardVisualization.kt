@@ -46,6 +46,7 @@ import com.cruxcoach.android.ui.theme.rgb332ToComposeColor
 import com.cruxcoach.data.repository.BoardPlacement
 import com.cruxcoach.data.repository.BoardImage
 import com.cruxcoach.data.repository.BoardSize
+import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.BoardHold
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -58,26 +59,28 @@ private val BUNDLED_BOARD_SIZES = setOf(
 )
 
 /**
- * Single-entry bitmap cache keyed by board-size ID.
- * Each board type has one combined image: board_images/board_{sizeId}.webp
+ * Single-entry bitmap cache keyed by the full asset path. Each board size has
+ * one combined image: Kilter uses board_images/board_<id>.webp, while the other
+ * Aurora-family boards are namespaced board_images/<brand>/board_<id>.webp.
+ * product_size ids collide across brands, so the path — not the id — is the key.
  */
 internal object BoardImageCache {
     @Volatile
-    private var cachedSizeId: Long = -1L
+    private var cachedPath: String = ""
     @Volatile
     private var cachedBitmap: ImageBitmap? = null
 
-    fun get(sizeId: Long): ImageBitmap? =
-        if (sizeId == cachedSizeId) cachedBitmap else null
+    fun get(path: String): ImageBitmap? =
+        if (path == cachedPath) cachedBitmap else null
 
     suspend fun getOrDecode(
-        sizeId: Long,
+        path: String,
         assetManager: android.content.res.AssetManager
     ): ImageBitmap? {
-        if (sizeId == cachedSizeId) return cachedBitmap
+        if (path == cachedPath) return cachedBitmap
         return kotlinx.coroutines.withContext(Dispatchers.IO) {
-            val bitmap = tryDecodeAsset(assetManager, "board_images/board_${sizeId}.webp")
-            cachedSizeId = sizeId
+            val bitmap = tryDecodeAsset(assetManager, path)
+            cachedPath = path
             cachedBitmap = bitmap
             bitmap
         }
@@ -92,6 +95,7 @@ internal object BoardImageCache {
         null
     }
 }
+
 
 // Heatmap color gradient: green → yellow → orange → red
 private val HEATMAP_COLORS = listOf(
@@ -165,8 +169,17 @@ internal fun KilterBoardVisualization(
     val boardHeight = edgeTop - edgeBottom
     val aspectRatio = boardWidth / boardHeight
 
+    val brand = boardSize?.boardBrand ?: BoardBrand.KILTER
     val sizeId = boardSize?.id ?: 10L
-    val hasBundledImage = sizeId in BUNDLED_BOARD_SIZES
+    // Kilter's bundled set is enumerated; the other Aurora-family boards
+    // attempt-and-fallback — the asset is present for listed sizes, and a miss
+    // decodes to null (placements-only), never a crash or a blank lock-up.
+    val hasBundledImage = when {
+        brand == BoardBrand.KILTER -> sizeId in BUNDLED_BOARD_SIZES
+        brand.usesAuroraProtocol -> true
+        else -> false
+    }
+    val boardImagePath = boardImageAssetPath(brand, sizeId)
 
     // Two-finger zoom/pan state. Kept at composable scope so taps in the
     // child pointerInput can inverse-transform their positions to canvas
@@ -214,13 +227,13 @@ internal fun KilterBoardVisualization(
         ) {
             // Layer 1: Board image — loaded from bundled WebP asset
             val assetManager = context.assets
-            var boardBitmap by remember(sizeId) {
-                mutableStateOf(if (hasBundledImage) BoardImageCache.get(sizeId) else null)
+            var boardBitmap by remember(boardImagePath) {
+                mutableStateOf(if (hasBundledImage) BoardImageCache.get(boardImagePath) else null)
             }
             if (hasBundledImage) {
-                LaunchedEffect(sizeId) {
+                LaunchedEffect(boardImagePath) {
                     if (boardBitmap == null) {
-                        boardBitmap = BoardImageCache.getOrDecode(sizeId, assetManager)
+                        boardBitmap = BoardImageCache.getOrDecode(boardImagePath, assetManager)
                     }
                 }
             }

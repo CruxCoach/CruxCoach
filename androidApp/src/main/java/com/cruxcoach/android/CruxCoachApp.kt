@@ -182,7 +182,8 @@ class CruxCoachApp : Application(), Configuration.Provider {
             PerfLogger.trace("BoardImageCache.prewarm") {
                 // Pre-warm with default 12×12 board image; replaced when user's
                 // preferred board type is loaded from preferences
-                com.cruxcoach.android.ui.board.BoardImageCache.getOrDecode(10L, assets)
+                // default Kilter 12×12 (product_size 10); path per boardImageAssetPath(KILTER, 10)
+                com.cruxcoach.android.ui.board.BoardImageCache.getOrDecode("board_images/board_10.webp", assets)
             }
         }
 

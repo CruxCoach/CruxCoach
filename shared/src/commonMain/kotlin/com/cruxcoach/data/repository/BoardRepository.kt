@@ -180,7 +180,11 @@ data class BoardSize(
     val edgeRight: Long,
     val edgeBottom: Long,
     val edgeTop: Long,
-    val imageFilename: String?
+    val imageFilename: String?,
+    /** Owning board family. Drives the brand-namespaced background asset
+     *  path in the renderer; defaults to [BoardBrand.KILTER] for the
+     *  historical single-board callers (and the pre-0.2.0 data model). */
+    val boardBrand: BoardBrand = BoardBrand.KILTER,
 )
 
 data class BoardImage(

@@ -48,6 +48,26 @@ Used to decompress board manifests downloaded from Blossom relays.
   removal or replacement at any time via the contacts in
   [`SECURITY.md`](SECURITY.md). Requests will be handled promptly.
 
+### Aurora-family board layout images
+
+- **Location:** [`board_images/`](androidApp/src/main/assets/board_images/) —
+  `tension/`, `grasshopper/`, `decoy/`, `soill/`, `touchstone/`
+- **Files:** `board_<product_size_id>.webp` per board (Tension 1–9,
+  Grasshopper 2–6, Decoy 1–3, So iLL 1–2, Touchstone 1)
+- **Source:** extracted from each board's official Aurora Climbing app
+  (`com.auroraclimbing.*`) — the `product_sizes_layouts_sets` image for the
+  dominant layout's base hold set — and re-encoded as WebP.
+- **Rights holders:** the respective board makers (Tension Climbing,
+  Grasshopper, Decoy, So iLL, Touchstone Climbing); apps published on the
+  Aurora Climbing platform.
+- **Basis for bundling:** referential / interoperability use under
+  § 23(1) No. 3 MarkenG (DE) and analogous nominative fair-use doctrines —
+  see [`LEGAL.md`](LEGAL.md#bundled-aurora-family-layout-images).
+- **Details:** [`board_images/README.md`](androidApp/src/main/assets/board_images/README.md)
+- **Takedown:** any rights holder may request removal or replacement at any
+  time via the contacts in [`SECURITY.md`](SECURITY.md). Requests will be
+  handled promptly (per board).
+
 These images are **not** covered by the CruxCoach GPLv3 source license.
 
 ---

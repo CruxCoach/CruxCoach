@@ -33,6 +33,18 @@ MoonBoard board images — The bundled image files
     androidApp/src/main/assets/board_images/README.md, LEGAL.md, and
     THIRD_PARTY_LICENSES.md.
 
+Aurora-family board layout images — The bundled images under
+    androidApp/src/main/assets/board_images/{tension,grasshopper,decoy,soill,
+    touchstone}/ were extracted from the respective boards' official Aurora
+    Climbing apps for offline board visualization only. Each board product,
+    its hardware layout, and its name are the property of the respective maker
+    (Tension Climbing, Grasshopper, Decoy, So iLL, Touchstone Climbing); the
+    apps are published on the Aurora Climbing platform. No affiliation,
+    sponsorship, or endorsement is claimed. Any rights holder may request
+    removal at any time — see
+    androidApp/src/main/assets/board_images/README.md, LEGAL.md, and
+    THIRD_PARTY_LICENSES.md.
+
 dontkillmyapp.com (Urbandroid Team) — OEM background-killer taxonomy used in
     androidApp/src/main/java/com/cruxcoach/android/notification/
     NotificationReliabilityHelper.kt. Licensed under CC BY-SA 4.0

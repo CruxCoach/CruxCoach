@@ -74,6 +74,24 @@ scope, and removal-request contacts, and
 [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md) for the maintained
 attribution inventory.
 
+### Bundled Aurora-family layout images
+
+CruxCoach renders five further Aurora-protocol boards — **Tension**,
+**Grasshopper**, **Decoy**, **So iLL**, and **Touchstone** (FEAT-031). A small
+per-board set of their layout images is bundled under
+[`androidApp/src/main/assets/board_images/`](androidApp/src/main/assets/board_images/)
+(in `tension/`, `grasshopper/`, `decoy/`, `soill/`, and `touchstone/`
+subfolders) for the same offline referential visualization as the Kilter
+images above. Each was extracted from the corresponding board's official
+Aurora Climbing app and remains the property of its respective maker; the
+board apps are published on the **Aurora Climbing** platform. Inclusion is
+strictly for interoperability and referential purposes — permitted under
+**§ 23(1) No. 3 MarkenG** in Germany and analogous referential/nominative
+fair-use doctrines elsewhere. CruxCoach claims no ownership, affiliation, or
+endorsement. See the in-directory
+[`README.md`](androidApp/src/main/assets/board_images/README.md) for origin,
+per-board rights holders, and removal-request contacts.
+
 ### Map rendering & tile data
 
 The FEAT-015 board-locations map is rendered by **MapLibre Native (Android)**
