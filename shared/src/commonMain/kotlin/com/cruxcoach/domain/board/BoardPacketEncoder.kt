@@ -53,6 +53,25 @@ class BoardPacketEncoder(private val apiLevel: Int = 3) {
             val b2 = (b / 64).coerceIn(0, 3)
             return (r3 shl 5) or (g3 shl 2) or b2
         }
+
+        /**
+         * Parse a hex colour ("RRGGBB" or "#RRGGBB" — the FEAT-031
+         * placement_roles.led_color form) into the RGB332 board colour byte,
+         * or null if absent / malformed (caller falls back to a default).
+         */
+        fun hexToColorByte(hex: String?): Int? {
+            val h = hex?.trim()?.removePrefix("#") ?: return null
+            if (h.length < 6) return null
+            return try {
+                encodeColor(
+                    h.substring(0, 2).toInt(16),
+                    h.substring(2, 4).toInt(16),
+                    h.substring(4, 6).toInt(16),
+                )
+            } catch (e: NumberFormatException) {
+                null
+            }
+        }
     }
 
     /**

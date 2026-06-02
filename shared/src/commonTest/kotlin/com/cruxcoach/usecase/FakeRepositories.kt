@@ -188,6 +188,7 @@ class FakeBoardRepository : BoardRepository {
     override fun getAllProductSizes(productId: Long, boardBrand: String): List<BoardSize> = emptyList()
     override fun getBoardImages(productSizeId: Int, layoutId: Int, boardBrand: String): List<BoardImage> = emptyList()
     override fun getPlacementLedMap(productSizeId: Int, boardBrand: String): Map<Int, Int> = emptyMap()
+    override fun getRoleColorMapForBrand(boardBrand: String): Map<Int, Int> = emptyMap()
     override fun getMirrorPlacementMap(productSizeId: Int, boardBrand: String): Map<Int, Int> = emptyMap()
     override fun countLeds(): Long = 0L
     override fun getLedGrid(productSizeId: Int, boardBrand: String): List<LedGridPoint> = emptyList()
@@ -216,6 +217,7 @@ class FakeBoardRepository : BoardRepository {
     override fun upsertPlacement(placementId: Long, holeId: Long, setId: Long, x: Long, y: Long, boardBrand: String) {}
     override fun upsertProductSize(id: Long, productId: Long, name: String, edgeLeft: Long, edgeRight: Long, edgeBottom: Long, edgeTop: Long, imageFilename: String?, boardBrand: String) {}
     override fun upsertBoardImage(id: Long, productSizeId: Long, layoutId: Long, setId: Long, imageFilename: String, boardBrand: String) {}
+    override fun upsertPlacementRole(boardBrand: String, id: Long, name: String?, ledColor: String?, screenColor: String?) {}
     override fun upsertSyncState(tableName: String, lastSynchronizedAt: String) { syncStates[tableName] = lastSynchronizedAt }
     override fun getSyncState(tableName: String): String? = syncStates[tableName]
     override fun getAllClimbUuids(): Set<String> = storedClimbs.keys

@@ -522,6 +522,26 @@ class BoardDatabaseImporter(
                     """.trimIndent(),
                     brand
                 )
+                // placement_roles (FEAT-031) — present only when the board's
+                // chunk opts in. Drives per-board LED + render colours
+                // (placement_roles.led_color). Guarded: current chunks may not
+                // carry it yet, in which case colours fall back to the
+                // conventional per-brand defaults.
+                val hasPlacementRoles = queryLong(
+                    targetDb,
+                    "SELECT COUNT(*) FROM ab.sqlite_master WHERE type='table' AND name='placement_roles'"
+                ) > 0
+                if (hasPlacementRoles) {
+                    targetDb.execSQL(
+                        """
+                        INSERT OR REPLACE INTO placement_roles(
+                            board_brand, id, name, led_color, screen_color)
+                        SELECT ?, id, name, led_color, screen_color
+                        FROM ab.placement_roles
+                        """.trimIndent(),
+                        brand
+                    )
+                }
             } finally {
                 runCatching { targetDb.execSQL("DETACH DATABASE ab") }
                 targetDb.close()

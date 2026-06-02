@@ -145,6 +145,19 @@ CREATE TABLE holes (
     PRIMARY KEY (board_brand, id)
 );
 
+-- Per-board role → colour mapping (FEAT-031). Populated from a board's
+-- catalogue when its chunk carries placement_roles; drives the LED + render
+-- colours so each board uses its own scheme. `id` is the role value used in
+-- climbs.frames (p{placement}r{id}); led_color/screen_color are hex strings.
+CREATE TABLE placement_roles (
+    board_brand TEXT NOT NULL DEFAULT 'kilter',
+    id INTEGER NOT NULL,
+    name TEXT,
+    led_color TEXT,
+    screen_color TEXT,
+    PRIMARY KEY (board_brand, id)
+);
+
 CREATE INDEX idx_placements_set ON placements(board_brand, set_id);
 CREATE INDEX idx_board_images_size ON board_images(board_brand, product_size_id);
 
@@ -483,6 +496,15 @@ SELECT p.placement_id, l.position AS led_position
 FROM placements p
 JOIN leds l ON p.hole_id = l.hole_id AND p.board_brand = l.board_brand
 WHERE l.product_size_id = ? AND l.board_brand = ?;
+
+-- FEAT-031: per-board role → colour (placement_roles). Keyed by the real
+-- frame role-id so it works whatever code scheme a board uses.
+upsertPlacementRole:
+INSERT OR REPLACE INTO placement_roles(board_brand, id, name, led_color, screen_color)
+VALUES (?, ?, ?, ?, ?);
+
+getPlacementRolesForBrand:
+SELECT id, name, led_color, screen_color FROM placement_roles WHERE board_brand = ?;
 
 countClimbs:
 SELECT COUNT(*) FROM climbs;

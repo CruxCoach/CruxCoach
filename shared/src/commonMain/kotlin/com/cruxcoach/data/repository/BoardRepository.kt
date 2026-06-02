@@ -368,6 +368,11 @@ interface BoardLayoutQueries {
      *  only heuristics. */
     fun getProductSizeForClimbRender(uuid: String, boardBrand: String = "kilter"): Int?
     fun getPlacementLedMap(productSizeId: Int, boardBrand: String = "kilter"): Map<Int, Int>
+    /** FEAT-031: per-board role-id → board colour byte, derived from the
+     *  synced placement_roles.led_color. Empty when the board's catalogue
+     *  hasn't shipped placement_roles yet — callers then fall back to the
+     *  conventional [LedHoldColors] defaults. */
+    fun getRoleColorMapForBrand(boardBrand: String): Map<Int, Int>
     fun getMirrorPlacementMap(productSizeId: Int, boardBrand: String = "kilter"): Map<Int, Int>
     fun countLeds(): Long
     fun getLedGrid(productSizeId: Int, boardBrand: String = "kilter"): List<LedGridPoint>
@@ -393,6 +398,7 @@ interface BoardWriteOperations {
     fun upsertProductSize(id: Long, productId: Long, name: String, edgeLeft: Long,
                           edgeRight: Long, edgeBottom: Long, edgeTop: Long, imageFilename: String?, boardBrand: String = "kilter")
     fun upsertBoardImage(id: Long, productSizeId: Long, layoutId: Long, setId: Long, imageFilename: String, boardBrand: String = "kilter")
+    fun upsertPlacementRole(boardBrand: String, id: Long, name: String?, ledColor: String?, screenColor: String?)
     fun upsertSyncState(tableName: String, lastSynchronizedAt: String)
     fun getSyncState(tableName: String): String?
     fun getAllClimbUuids(): Set<String>

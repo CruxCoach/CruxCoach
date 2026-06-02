@@ -109,16 +109,26 @@ internal class BoardSendController(
                     return@launch
                 }
                 state.update { it.copy(nearby = it.nearby.copy(debugInfo = "BLE sending...")) }
-                // FEAT-031: Kilter stays user-configurable; the Aurora family
-                // lights in its own conventional scheme (MoonBoard uses its own
-                // send path). brand == climb.brand == active board (guarded above).
+                // FEAT-031 colours, in priority order:
+                //  1. the board's OWN catalogue colours (placement_roles.led_color),
+                //     keyed by the real frame role-id — once the board's chunk ships
+                //     placement_roles this is exact + per-board;
+                //  2. else the conventional per-brand defaults — Kilter stays
+                //     user-configurable, the Aurora family uses its standard scheme
+                //     (MoonBoard uses its own send path).
+                // brand == climb.brand == active board (guarded above).
                 val brand = BoardBrand.fromWire(activeBrand)
-                val colors = if (brand == BoardBrand.KILTER) {
-                    userPreferences.ledHoldColors.first()
-                } else {
-                    LedHoldColors.standardFor(brand)
+                val roleColorMap = withContext(Dispatchers.IO) {
+                    boardRepository.getRoleColorMapForBrand(activeBrand)
+                }.ifEmpty {
+                    val fallback = if (brand == BoardBrand.KILTER) {
+                        userPreferences.ledHoldColors.first()
+                    } else {
+                        LedHoldColors.standardFor(brand)
+                    }
+                    fallback.toRoleColorMap()
                 }
-                val success = bleConnection.sendClimb(s.holds, placementToLed, colors.toRoleColorMap())
+                val success = bleConnection.sendClimb(s.holds, placementToLed, roleColorMap)
                 Log.i(TAG, "sendToBoard: writes done success=$success")
                 state.update { it.copy(
                     ble = it.ble.copy(isSending = false, success = success, error = if (!success) R.string.board_send_error_send_failed else null),

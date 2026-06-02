@@ -359,6 +359,13 @@ class BoardRepositoryImpl(
         }
     }
 
+    override fun getRoleColorMapForBrand(boardBrand: String): Map<Int, Int> =
+        q.getPlacementRolesForBrand(boardBrand).executeAsList().mapNotNull { row ->
+            val byte = com.cruxcoach.domain.board.BoardPacketEncoder.hexToColorByte(row.led_color)
+                ?: return@mapNotNull null
+            row.id.toInt() to byte
+        }.toMap()
+
     override fun getMirrorPlacementMap(productSizeId: Int, boardBrand: String): Map<Int, Int> {
         return q.getMirrorPlacementMap(productSizeId.toLong(), boardBrand).executeAsList().associate {
             it.original_placement_id.toInt() to it.mirrored_placement_id.toInt()
@@ -469,6 +476,10 @@ class BoardRepositoryImpl(
 
     override fun upsertBoardImage(id: Long, productSizeId: Long, layoutId: Long, setId: Long, imageFilename: String, boardBrand: String) {
         q.upsertBoardImage(boardBrand, id, productSizeId, layoutId, setId, imageFilename)
+    }
+
+    override fun upsertPlacementRole(boardBrand: String, id: Long, name: String?, ledColor: String?, screenColor: String?) {
+        q.upsertPlacementRole(boardBrand, id, name, ledColor, screenColor)
     }
 
     // ── Sync State ─────────────────────────────────────────────
