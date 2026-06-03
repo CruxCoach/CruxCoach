@@ -31,6 +31,10 @@ import javax.inject.Inject
  * never drift apart.
  */
 data class BoardPickerState(
+    /** False until the real board prefs have loaded. The dialog must not seed
+     *  its (unkeyed) remembered selection from the placeholder default, or it
+     *  would always open on Kilter regardless of the actual active board. */
+    val loaded: Boolean = false,
     val initialBrand: String = BoardBrand.KILTER.wireValue,
     val productSizes: List<BoardSize> = BoardConstants.KILTER_KNOWN_SIZES,
     val selectedKilterSizeId: Int = 0,
@@ -58,6 +62,7 @@ class BoardPickerViewModel @Inject constructor(
         productSizes,
     ) { brand, layoutId, sizeId, sizes ->
         BoardPickerState(
+            loaded = true,
             initialBrand = brand,
             productSizes = sizes,
             selectedKilterSizeId = sizeId,
@@ -117,6 +122,9 @@ internal fun BoardPickerDialog(
 ) {
     val viewModel: BoardPickerViewModel = hiltViewModel()
     val state by viewModel.state.collectAsState()
+    // Wait for the real prefs before composing the dialog — it seeds its
+    // selection once (unkeyed remember), so it must not see the placeholder.
+    if (!state.loaded) return
     BoardSelectionDialog(
         initialBrand = state.initialBrand,
         productSizes = state.productSizes,
