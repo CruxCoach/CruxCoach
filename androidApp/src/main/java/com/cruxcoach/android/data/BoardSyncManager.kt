@@ -522,7 +522,7 @@ class BoardSyncManager(
             // MoonBoard rides on the same board-data sync (FEAT-027) — re-check
             // it even when the Kilter catalogue itself is unchanged.
             syncMoonBoardCatalogue()
-            syncActiveAuroraBoard()
+            syncAllLoadedAuroraBoards()
             val timestamp = DateTimeUtil.nowIso()
             userPreferences.setLastSyncTimestamp(timestamp)
             _state.update { it.copy(
@@ -634,7 +634,7 @@ class BoardSyncManager(
                 )
             ) }
             syncMoonBoardCatalogue()
-            syncActiveAuroraBoard()
+            syncAllLoadedAuroraBoards()
 
             val timestamp = DateTimeUtil.nowIso()
             userPreferences.setLastSyncTimestamp(timestamp)
@@ -706,6 +706,22 @@ class BoardSyncManager(
     }
 
     /**
+     * Sync every Aurora board the user already has data for, plus the active
+     * one even if still empty (FEAT-031). Drives the bulk re-download button +
+     * the daily/weekly scheduled sync: all loaded boards stay current, not just
+     * Kilter + the active board. Un-loaded boards are left alone — the user
+     * loads those individually from the status list.
+     */
+    private suspend fun syncAllLoadedAuroraBoards() {
+        val counts = withContext(Dispatchers.IO) { boardRepository.getClimbCountsByBrand() }
+        val active = BoardBrand.fromWire(userPreferences.boardBrand.first())
+        BoardBrand.entries.filter {
+            it.usesAuroraProtocol && it != BoardBrand.KILTER &&
+                ((counts[it.wireValue] ?: 0L) > 0L || it == active)
+        }.forEach { syncAuroraBoard(it) }
+    }
+
+    /**
      * Sync one specific Aurora board's catalogue — not necessarily the active
      * one, so the sync status list (FEAT-031) can load/retry any board on
      * demand. Reports into the per-board progress/error map; isolated — never
@@ -754,6 +770,9 @@ class BoardSyncManager(
         }
         Log.i(TAG, "Active board ${brand.wireValue} has no catalogue — auto-loading")
         if (!claimSyncSlot(ImportStep.FetchingManifest)) return
+        // Board-specific load: clear the Kilter importStep the slot-claim set so
+        // only this board's row shows progress (not a phantom Kilter row).
+        _state.update { it.copy(importStep = null) }
         try {
             if (brand == BoardBrand.MOONBOARD) syncMoonBoardCatalogue() else syncAuroraBoard(brand)
         } finally {
@@ -770,6 +789,9 @@ class BoardSyncManager(
     fun loadBoardCatalogue(brand: BoardBrand) {
         if (brand == BoardBrand.KILTER) { startApiSync(); return }
         if (!claimSyncSlot(ImportStep.FetchingManifest)) return
+        // Board-specific load: clear the Kilter importStep the slot-claim set so
+        // only this board's row shows progress (not a phantom Kilter row).
+        _state.update { it.copy(importStep = null) }
         scope.launch {
             try {
                 if (brand == BoardBrand.MOONBOARD) syncMoonBoardCatalogue() else syncAuroraBoard(brand)

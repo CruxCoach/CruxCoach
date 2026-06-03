@@ -297,42 +297,8 @@ private fun DatabaseImportSection(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
-            if (state.alreadyImported && !state.isSyncing) {
-                // FEAT-031: per-board catalogue status — one row per board
-                // (Kilter, MoonBoard + the Aurora family), the active board
-                // highlighted, with a load/retry action for any not yet loaded.
-                BoardCatalogueStatusList(
-                    boardCounts = boardCounts,
-                    activeBrand = activeBrand,
-                    onLoadBoard = onLoadBoard,
-                )
-
-                state.lastSyncTimestamp?.let { ts ->
-                    Text(
-                        stringResource(R.string.board_sync_last_sync, formatTimestamp(ts)),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-
-                OutlinedButton(
-                    onClick = onStartSync,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("board_sync_update"),
-                    shape = RoundedCornerShape(12.dp),
-                ) {
-                    Icon(
-                        Icons.Default.Refresh,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(stringResource(R.string.board_sync_redownload), fontWeight = FontWeight.Bold)
-                }
-            }
-
             if (!state.alreadyImported && !state.isSyncing) {
+                // Fresh install — nothing imported yet: the primary download CTA.
                 Button(
                     onClick = onStartSync,
                     modifier = Modifier
@@ -349,44 +315,42 @@ private fun DatabaseImportSection(
                     Spacer(Modifier.width(8.dp))
                     Text(stringResource(R.string.board_sync_update_online), fontWeight = FontWeight.Bold)
                 }
-            }
+            } else {
+                // FEAT-031: the board overview is ALWAYS present — one row per
+                // board (Kilter, MoonBoard + the Aurora family). A board that is
+                // currently syncing shows its progress inline within its own row,
+                // so the overview is never replaced by a full-screen checklist.
+                BoardCatalogueStatusList(
+                    boardCounts = boardCounts,
+                    activeBrand = activeBrand,
+                    boardSteps = state.boardSteps,
+                    boardErrors = state.boardErrors,
+                    syncing = state.isSyncing,
+                    onLoadBoard = onLoadBoard,
+                )
 
-            if (state.isSyncing) {
-                // FEAT-031: one progress section per board with an active sync
-                // stream (Kilter, MoonBoard, and each Aurora board), driven by
-                // the per-board state map instead of two hardcoded sections.
-                state.boardSteps.forEach { (brand, step) ->
-                    Text(
-                        brand.displayName,
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    SyncProgressChecklist(
-                        step = step,
-                        // Only placement boards (Kilter + Aurora) have a layout
-                        // step; MoonBoard ships no geometry.
-                        showLayoutStep = brand.usesAuroraProtocol,
-                        modifier = Modifier.testTag("board_sync_progress_${brand.wireValue}"),
-                    )
-                    state.boardErrors[brand]?.let {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Icon(
-                                Icons.Default.Warning,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.size(16.dp),
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Text(
-                                stringResource(R.string.board_sync_section_error),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.error,
-                            )
-                        }
+                if (!state.isSyncing) {
+                    state.lastSyncTimestamp?.let { ts ->
+                        Text(
+                            stringResource(R.string.board_sync_last_sync, formatTimestamp(ts)),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    OutlinedButton(
+                        onClick = onStartSync,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("board_sync_update"),
+                        shape = RoundedCornerShape(12.dp),
+                    ) {
+                        Icon(
+                            Icons.Default.Refresh,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(stringResource(R.string.board_sync_redownload), fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -415,18 +379,24 @@ private fun DatabaseImportSection(
 private fun BoardCatalogueStatusList(
     boardCounts: Map<String, Long>,
     activeBrand: BoardBrand,
+    boardSteps: Map<BoardBrand, ImportStep>,
+    boardErrors: Map<BoardBrand, String>,
+    syncing: Boolean,
     onLoadBoard: (BoardBrand) -> Unit,
 ) {
     val boards = remember {
         listOf(BoardBrand.KILTER, BoardBrand.MOONBOARD) +
             BoardBrand.entries.filter { it.usesAuroraProtocol && it != BoardBrand.KILTER }
     }
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         boards.forEach { brand ->
             BoardStatusRow(
                 brand = brand,
                 count = boardCounts[brand.wireValue] ?: 0L,
                 isActive = brand == activeBrand,
+                step = boardSteps[brand],
+                hasError = boardErrors.containsKey(brand),
+                anySyncing = syncing,
                 onLoad = { onLoadBoard(brand) },
             )
         }
@@ -438,277 +408,138 @@ private fun BoardStatusRow(
     brand: BoardBrand,
     count: Long,
     isActive: Boolean,
+    step: ImportStep?,
+    hasError: Boolean,
+    anySyncing: Boolean,
     onLoad: () -> Unit,
 ) {
+    // This board is mid-sync when it has a non-terminal step in the map.
+    val boardSyncing = step != null && step !is ImportStep.Done
     val loaded = count > 0L
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
+
+    // Inline progress label (reuses the step strings) + bar fraction.
+    val progressLabel: String? = when (step) {
+        is ImportStep.FetchingManifest, is ImportStep.CheckingUpdate ->
+            stringResource(R.string.board_sync_step_fetch_manifest)
+        is ImportStep.Download, is ImportStep.DownloadChunk, is ImportStep.Extract ->
+            stringResource(R.string.board_sync_step_download_db)
+        is ImportStep.ImportClimbs -> stringResource(R.string.board_sync_step_import_climbs)
+        is ImportStep.ImportStats -> stringResource(R.string.board_sync_step_import_stats)
+        is ImportStep.ImportLayout -> stringResource(R.string.board_sync_step_import_layout)
+        is ImportStep.Finalizing -> stringResource(R.string.board_sync_step_finalize)
+        else -> null
+    }
+    val progressFraction: Float? = when (step) {
+        is ImportStep.DownloadChunk -> if (step.cumulativeTotalBytes > 0)
+            (step.cumulativeBytesRead.toFloat() / step.cumulativeTotalBytes).coerceIn(0f, 1f) else null
+        is ImportStep.ImportClimbs -> if (step.total > 0 && step.scanned > 0)
+            (step.scanned.toFloat() / step.total).coerceIn(0f, 1f) else null
+        is ImportStep.ImportStats -> if (step.total > 0 && step.scanned > 0)
+            (step.scanned.toFloat() / step.total).coerceIn(0f, 1f) else null
+        else -> null
+    }
+
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .testTag("board_status_${brand.wireValue}"),
     ) {
-        when {
-            loaded -> Icon(
-                Icons.Default.CheckCircle, contentDescription = null,
-                tint = SuccessGreen, modifier = Modifier.size(20.dp),
-            )
-            isActive -> Icon(
-                Icons.Default.Warning, contentDescription = null,
-                tint = OrangeAccent, modifier = Modifier.size(20.dp),
-            )
-            else -> Icon(
-                Icons.Default.RadioButtonUnchecked, contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                modifier = Modifier.size(20.dp),
-            )
-        }
-        Spacer(Modifier.width(8.dp))
-
-        Text(
-            brand.displayName,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal,
-            color = if (loaded || isActive) MaterialTheme.colorScheme.onSurface
-                    else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-            modifier = Modifier.weight(1f),
-        )
-
-        if (loaded) {
-            Text(
-                "%,d".format(count),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        } else {
-            Text(
-                if (isActive) stringResource(R.string.board_sync_status_not_loaded)
-                else stringResource(R.string.board_sync_status_dash),
-                style = MaterialTheme.typography.labelSmall,
-                color = if (isActive) OrangeAccent
-                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-            )
-            IconButton(
-                onClick = onLoad,
-                modifier = Modifier
-                    .size(32.dp)
-                    .testTag("board_status_load_${brand.wireValue}"),
-            ) {
-                Icon(
-                    if (isActive) Icons.Default.Refresh else Icons.Default.CloudDownload,
-                    contentDescription = stringResource(R.string.board_sync_load_board, brand.displayName),
-                    tint = OrangeAccent,
-                    modifier = Modifier.size(18.dp),
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            when {
+                boardSyncing -> CircularProgressIndicator(
+                    color = OrangeAccent, modifier = Modifier.size(20.dp), strokeWidth = 2.dp,
+                )
+                loaded -> Icon(
+                    Icons.Default.CheckCircle, contentDescription = null,
+                    tint = SuccessGreen, modifier = Modifier.size(20.dp),
+                )
+                hasError -> Icon(
+                    Icons.Default.Warning, contentDescription = null,
+                    tint = ErrorRed, modifier = Modifier.size(20.dp),
+                )
+                isActive -> Icon(
+                    Icons.Default.Warning, contentDescription = null,
+                    tint = OrangeAccent, modifier = Modifier.size(20.dp),
+                )
+                else -> Icon(
+                    Icons.Default.RadioButtonUnchecked, contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                    modifier = Modifier.size(20.dp),
                 )
             }
-        }
-    }
-}
+            Spacer(Modifier.width(8.dp))
 
-private enum class StepStatus { PENDING, ACTIVE, DONE }
-
-@Composable
-private fun SyncProgressChecklist(
-    step: ImportStep?,
-    modifier: Modifier = Modifier,
-    /** The MoonBoard snapshot has no separate placement-import phase, so
-     *  its checklist omits the layout row. */
-    showLayoutStep: Boolean = true,
-) {
-    val stepIndex = when (step) {
-        is ImportStep.FetchingManifest, is ImportStep.CheckingUpdate -> 0
-        is ImportStep.DownloadChunk, is ImportStep.Download -> 1
-        is ImportStep.Extract -> 1
-        is ImportStep.ImportClimbs -> 2
-        is ImportStep.ImportStats -> 3
-        is ImportStep.ImportLayout -> 4
-        is ImportStep.Finalizing -> 5
-        is ImportStep.Done -> 6
-        else -> -1
-    }
-
-    Column(
-        modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        val manifestStatus = when {
-            stepIndex > 0 -> StepStatus.DONE
-            stepIndex == 0 -> StepStatus.ACTIVE
-            else -> StepStatus.PENDING
-        }
-        SyncStepRow(stringResource(R.string.board_sync_step_fetch_manifest), manifestStatus)
-
-        val dlStatus = when {
-            stepIndex > 1 -> StepStatus.DONE
-            stepIndex == 1 -> StepStatus.ACTIVE
-            else -> StepStatus.PENDING
-        }
-        val dlDetail = if (step is ImportStep.DownloadChunk && step.cumulativeTotalBytes > 0) {
-            val readMb = step.cumulativeBytesRead / 1_048_576.0
-            val totalMb = step.cumulativeTotalBytes / 1_048_576.0
-            val pct = (step.cumulativeBytesRead * 100 / step.cumulativeTotalBytes).toInt()
-            "%.1f / %.1f MB (%d%%)".format(readMb, totalMb, pct)
-        } else if (step is ImportStep.DownloadChunk) {
-            "${step.chunkIndex + 1}/${step.totalChunks}"
-        } else null
-        val dlProgress = if (step is ImportStep.DownloadChunk && step.cumulativeTotalBytes > 0) {
-            step.cumulativeBytesRead.toFloat() / step.cumulativeTotalBytes.toFloat()
-        } else null
-        SyncStepRow(stringResource(R.string.board_sync_step_download_db), dlStatus, dlDetail, dlProgress)
-
-        val climbIdx = 2
-        val climbStatus = when {
-            stepIndex > climbIdx -> StepStatus.DONE
-            stepIndex == climbIdx -> StepStatus.ACTIVE
-            else -> StepStatus.PENDING
-        }
-        val climbDetail = if (step is ImportStep.ImportClimbs && step.total > 0) {
-            if (step.scanned == 0) {
-                stringResource(R.string.board_sync_detail_climbs_count, step.total)
-            } else {
-                val isDelta = step.scanned != step.inserted
-                if (isDelta) stringResource(
-                    R.string.board_sync_detail_progress_with_new,
-                    step.scanned, step.total, step.inserted,
-                )
-                else stringResource(
-                    R.string.board_sync_detail_progress, step.scanned, step.total,
-                )
-            }
-        } else if (step is ImportStep.Done && step.climbs > 0) {
-            "%,d".format(step.climbs)
-        } else null
-        val climbProgress = if (step is ImportStep.ImportClimbs && step.total > 0 && step.scanned > 0) {
-            step.scanned.toFloat() / step.total.toFloat()
-        } else null
-        SyncStepRow(stringResource(R.string.board_sync_step_import_climbs), climbStatus, climbDetail, climbProgress)
-
-        val statIdx = 3
-        val statStatus = when {
-            stepIndex > statIdx -> StepStatus.DONE
-            stepIndex == statIdx -> StepStatus.ACTIVE
-            else -> StepStatus.PENDING
-        }
-        val statDetail = if (step is ImportStep.ImportStats && step.total > 0) {
-            if (step.scanned == 0) {
-                stringResource(R.string.board_sync_detail_stats_count, step.total)
-            } else {
-                val isDelta = step.scanned != step.inserted
-                if (isDelta) stringResource(
-                    R.string.board_sync_detail_progress_with_new,
-                    step.scanned, step.total, step.inserted,
-                )
-                else stringResource(
-                    R.string.board_sync_detail_progress, step.scanned, step.total,
-                )
-            }
-        } else if (step is ImportStep.Done && step.stats > 0) {
-            "%,d".format(step.stats)
-        } else null
-        val statProgress = if (step is ImportStep.ImportStats && step.total > 0 && step.scanned > 0) {
-            step.scanned.toFloat() / step.total.toFloat()
-        } else null
-        SyncStepRow(stringResource(R.string.board_sync_step_import_stats), statStatus, statDetail, statProgress)
-
-        if (showLayoutStep) {
-            val layoutIdx = 4
-            val layoutStatus = when {
-                stepIndex > layoutIdx -> StepStatus.DONE
-                stepIndex == layoutIdx -> StepStatus.ACTIVE
-                else -> StepStatus.PENDING
-            }
-            val layoutDetail = if (step is ImportStep.ImportLayout && step.count > 0) {
-                "%,d".format(step.count)
-            } else if (step is ImportStep.Done && step.placements > 0) {
-                stringResource(R.string.board_sync_detail_placements_count, step.placements)
-            } else null
-            SyncStepRow(stringResource(R.string.board_sync_step_import_layout), layoutStatus, layoutDetail)
-        }
-
-        val finalizeIdx = 5
-        val finalizeStatus = when {
-            stepIndex > finalizeIdx -> StepStatus.DONE
-            stepIndex == finalizeIdx -> StepStatus.ACTIVE
-            else -> StepStatus.PENDING
-        }
-        SyncStepRow(stringResource(R.string.board_sync_step_finalize), finalizeStatus)
-
-        if (step is ImportStep.Done && step.nomatchCount > 0) {
             Text(
-                stringResource(R.string.board_sync_detail_nomatch, step.nomatchCount),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                brand.displayName,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal,
+                color = if (loaded || isActive || boardSyncing) MaterialTheme.colorScheme.onSurface
+                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                modifier = Modifier.weight(1f),
             )
+
+            when {
+                boardSyncing -> Text(
+                    progressLabel ?: stringResource(R.string.board_sync_step_fetch_manifest),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = OrangeAccent,
+                )
+                loaded -> Text(
+                    "%,d".format(count),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                else -> Text(
+                    if (isActive || hasError) stringResource(R.string.board_sync_status_not_loaded)
+                    else stringResource(R.string.board_sync_status_dash),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (isActive || hasError) OrangeAccent
+                            else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                )
+            }
+
+            // Per-board reload (loaded) / download (empty). Hidden while any
+            // sync runs so the row shows progress, not a dead button.
+            if (!anySyncing) {
+                Spacer(Modifier.width(4.dp))
+                IconButton(
+                    onClick = onLoad,
+                    modifier = Modifier
+                        .size(32.dp)
+                        .testTag("board_status_load_${brand.wireValue}"),
+                ) {
+                    Icon(
+                        if (loaded) Icons.Default.Refresh else Icons.Default.CloudDownload,
+                        contentDescription = stringResource(
+                            if (loaded) R.string.board_sync_reload_board else R.string.board_sync_load_board,
+                            brand.displayName,
+                        ),
+                        tint = OrangeAccent,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            }
         }
-    }
-}
 
-@Composable
-private fun SyncStepRow(
-    label: String,
-    status: StepStatus,
-    detail: String? = null,
-    progress: Float? = null,
-) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        when (status) {
-            StepStatus.DONE -> Icon(
-                Icons.Default.CheckCircle,
-                contentDescription = null,
-                tint = SuccessGreen,
-                modifier = Modifier.size(18.dp),
-            )
-            StepStatus.ACTIVE -> CircularProgressIndicator(
-                color = OrangeAccent,
-                modifier = Modifier.size(18.dp),
-                strokeWidth = 2.dp,
-            )
-            StepStatus.PENDING -> Icon(
-                Icons.Default.CheckCircle,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.25f),
-                modifier = Modifier.size(18.dp),
-            )
-        }
-
-        Spacer(Modifier.width(8.dp))
-
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                label,
-                style = MaterialTheme.typography.bodySmall,
-                fontWeight = if (status == StepStatus.ACTIVE) FontWeight.Bold else FontWeight.Normal,
-                color = when (status) {
-                    StepStatus.DONE -> SuccessGreen
-                    StepStatus.ACTIVE -> MaterialTheme.colorScheme.onSurface
-                    StepStatus.PENDING -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                },
-            )
-            if (status == StepStatus.ACTIVE && progress != null) {
+        if (boardSyncing) {
+            if (progressFraction != null) {
                 LinearProgressIndicator(
-                    progress = { progress.coerceIn(0f, 1f) },
+                    progress = { progressFraction },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 2.dp),
+                        .padding(start = 28.dp, top = 2.dp),
+                    color = OrangeAccent,
+                    trackColor = OrangeAccent.copy(alpha = 0.2f),
+                )
+            } else {
+                LinearProgressIndicator(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 28.dp, top = 2.dp),
                     color = OrangeAccent,
                     trackColor = OrangeAccent.copy(alpha = 0.2f),
                 )
             }
-        }
-
-        detail?.let {
-            Spacer(Modifier.width(8.dp))
-            Text(
-                it,
-                style = MaterialTheme.typography.labelSmall,
-                color = when (status) {
-                    StepStatus.DONE -> SuccessGreen
-                    StepStatus.ACTIVE -> OrangeAccent
-                    StepStatus.PENDING -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                },
-            )
         }
     }
 }

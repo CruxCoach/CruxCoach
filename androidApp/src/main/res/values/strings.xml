@@ -886,6 +886,7 @@
     <string name="board_sync_status_not_loaded">not loaded</string>
     <string name="board_sync_status_dash">—</string>
     <string name="board_sync_load_board">Load %1$s</string>
+    <string name="board_sync_reload_board">Reload %1$s</string>
     <string name="board_sync_update_online">Update online</string>
     <string name="board_sync_local_import_title">Import board database?</string>
     <string name="board_sync_local_import_message">A board database is being offered from %1$s. Only confirm if you deliberately connected to a CruxCoach-Share hotspot from someone you trust. The import replaces your current climb database.</string>
