@@ -89,13 +89,11 @@ fun BoardFilterScreen(
     }
 
     if (showGymSearch) {
-        // Same "don't know? find your gym" path as settings; on pick
-        // it sets the global board selection (drives the fits filter).
+        // Same "don't know? find your gym" path as settings; the sheet
+        // persists the pick via the shared board-picker VM (all brands),
+        // and the browse list reloads reactively from the board prefs.
         GymBoardSearchSheet(
-            onPicked = { _, productSizeId, _ ->
-                viewModel.selectBoard(productSizeId)
-                showGymSearch = false
-            },
+            onClose = { showGymSearch = false },
             onFallbackToDirect = {
                 showGymSearch = false
                 showBoardPicker = true

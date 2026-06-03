@@ -279,52 +279,6 @@ class OnboardingViewModel @Inject constructor(
         }
     }
 
-    /** FEAT-007 Path B: apply a board chosen via gym search (atomic —
-     *  layout + size together, no layout-roll). */
-    fun selectBoardFromGym(layoutId: Int, productSizeId: Int, label: String) {
-        // A MoonBoard gym resolves to a variant layout id (2/4/5/6) — route it
-        // through the MoonBoard setup so the brand + variant stick instead of
-        // recording it as a Kilter board.
-        com.cruxcoach.domain.board.MoonBoardVariant.fromLayoutId(layoutId.toLong())?.let {
-            selectMoonBoardVariant(it)
-            return
-        }
-        _state.update {
-            it.copy(
-                boardBrand = BoardBrand.KILTER.wireValue,
-                moonBoardVariant = null,
-                boardLayoutId = layoutId,
-                boardProductSizeId = productSizeId,
-                boardProductSizeName = label,
-            )
-        }
-        viewModelScope.launch {
-            userPreferences.setBoardLayoutId(layoutId)
-            userPreferences.setBoardProductSizeId(productSizeId)
-            // Reset the brand in case the user toggled to MoonBoard and
-            // back inside the picker before confirming a Kilter board.
-            userPreferences.setBoardBrand(BoardBrand.KILTER.wireValue)
-        }
-    }
-
-    /** Apply a MoonBoard variant chosen in the BOARD_SETUP picker
-     *  (FEAT-027). Persisted immediately, mirroring [selectBoardFromGym];
-     *  the board-data sync later in onboarding pulls the MoonBoard
-     *  catalogue alongside the Kilter one. */
-    fun selectMoonBoardVariant(variant: com.cruxcoach.domain.board.MoonBoardVariant) {
-        _state.update {
-            it.copy(
-                boardBrand = BoardBrand.MOONBOARD.wireValue,
-                boardLayoutId = variant.layoutId.toInt(),
-                moonBoardVariant = variant,
-                boardProductSizeName = variant.displayName,
-            )
-        }
-        viewModelScope.launch {
-            userPreferences.setMoonBoardSelection(variant.layoutId.toInt())
-        }
-    }
-
     fun nextStep() {
         val next = when (_state.value.currentStep) {
             OnboardingStep.BOARD_SETUP -> OnboardingStep.PRIVACY

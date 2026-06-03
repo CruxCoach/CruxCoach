@@ -13,7 +13,6 @@ import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.data.BoardSyncManager
 import com.cruxcoach.android.data.LedHoldColors
 import com.cruxcoach.android.data.AuroraCatalogueSync
-import com.cruxcoach.android.data.MoonBoardCatalogueSync
 import com.cruxcoach.android.data.SyncInterval
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.domain.board.BoardBrand
@@ -133,7 +132,6 @@ class SettingsViewModel @Inject constructor(
     private val userPreferences: UserPreferences,
     private val bleConnection: BoardBleConnection,
     private val climbAdvertiser: ClimbBleAdvertiser,
-    private val moonBoardCatalogueSync: MoonBoardCatalogueSync,
     private val auroraCatalogueSync: AuroraCatalogueSync,
     private val announcementRepository: AnnouncementRepository,
     private val queueManager: OfflineQueueManager,
@@ -410,83 +408,6 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             userPreferences.setBoardProductSizeId(id)
             userPreferences.setBoardBrand(BoardBrand.KILTER.wireValue)
-        }
-    }
-
-    /** FEAT-007 Path B: apply a board chosen via gym search. Atomic —
-     *  sets layout + size together, no layout-roll side effect (unlike
-     *  updateBoardLayout). label is the official BoardConstants wording. */
-    fun selectBoardFromGym(layoutId: Int, productSizeId: Int, label: String) {
-        // A MoonBoard gym resolves to a variant layout id (2/4/5/6). Route it
-        // through the MoonBoard setup so the brand flips, the variant sticks,
-        // and the catalogue sync kicks off — the Kilter size/label below would
-        // be meaningless for it.
-        MoonBoardVariant.fromLayoutId(layoutId.toLong())?.let {
-            selectMoonBoardVariant(it)
-            return
-        }
-        // FEAT-027: a gym/dialog board selection is always a Kilter board —
-        // record brand = "kilter" so switching back from MoonBoard sticks
-        // (Browse + Detail stop treating the active board as a MoonBoard).
-        _state.update {
-            it.copy(
-                boardLayoutId = layoutId,
-                boardProductSizeId = productSizeId,
-                boardProductSizeName = label,
-                boardBrand = BoardBrand.KILTER.wireValue,
-                moonBoardVariant = null,
-            )
-        }
-        viewModelScope.launch {
-            userPreferences.setBoardLayoutId(layoutId)
-            userPreferences.setBoardProductSizeId(productSizeId)
-            userPreferences.setBoardBrand(BoardBrand.KILTER.wireValue)
-        }
-    }
-
-    /**
-     * Select a MoonBoard variant as the active board (FEAT-027). A MoonBoard
-     * "set up" is a fixed, standardised hold configuration — the variant
-     * fully determines the board, there is no separate hold-set choice.
-     * Persists atomically via [UserPreferences.setMoonBoardSelection]
-     * (variant layout id, brand="moonboard", angle 40°), updates state, then
-     * kicks off a MoonBoard catalogue sync. The result surfaces as a snackbar.
-     */
-    fun selectMoonBoardVariant(variant: MoonBoardVariant) {
-        _state.update {
-            it.copy(
-                boardBrand = BoardBrand.MOONBOARD.wireValue,
-                boardLayoutId = variant.layoutId.toInt(),
-                moonBoardVariant = variant,
-                // The Kilter board-size label is meaningless for a MoonBoard;
-                // SettingsScreen shows the variant name instead.
-                boardProductSizeName = variant.displayName,
-            )
-        }
-        viewModelScope.launch {
-            val message = try {
-                userPreferences.setMoonBoardSelection(variant.layoutId.toInt())
-                val result = withContext(Dispatchers.IO) { moonBoardCatalogueSync.sync() }
-                when (result) {
-                    is MoonBoardCatalogueSync.Result.AlreadyCurrent ->
-                        context.getString(R.string.moonboard_sync_already_current)
-                    is MoonBoardCatalogueSync.Result.Imported ->
-                        context.getString(R.string.moonboard_sync_imported)
-                    // result.message is a debug detail (may carry relay URLs /
-                    // SQLite text / cache paths) — show a generic localized
-                    // message instead of interpolating it into the UI.
-                    is MoonBoardCatalogueSync.Result.Failed ->
-                        context.getString(R.string.moonboard_sync_failed_generic)
-                }
-            } catch (e: kotlinx.coroutines.CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                // Defense-in-depth: sync() no longer throws, but the prefs
-                // write could — never leave the user without a result message.
-                android.util.Log.w("SettingsVM", "MoonBoard variant selection failed", e)
-                context.getString(R.string.moonboard_sync_failed_generic)
-            }
-            _state.update { it.copy(moonBoardSyncMessage = message) }
         }
     }
 

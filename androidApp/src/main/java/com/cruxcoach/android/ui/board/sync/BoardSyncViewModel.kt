@@ -172,4 +172,12 @@ class BoardSyncViewModel @Inject constructor(
     fun dismissModelDialog() {
         _modelState.update { it.copy(showDialog = false) }
     }
+
+    /** FEAT-031: re-open the post-sync board picker. Used by the inline card's
+     *  gym-search escape hatch to come back to the direct picker on fallback —
+     *  the state set by [checkFirstSyncModelSelection] is still in place, so we
+     *  only need to flip the visibility flag back on. */
+    fun showModelDialog() {
+        _modelState.update { it.copy(showDialog = true) }
+    }
 }

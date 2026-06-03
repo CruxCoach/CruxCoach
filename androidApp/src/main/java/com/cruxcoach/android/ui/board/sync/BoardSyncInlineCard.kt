@@ -28,6 +28,7 @@ import com.cruxcoach.android.data.BoardDatabaseImporter.ImportStep
 import com.cruxcoach.android.data.BoardSyncState
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.android.ui.settings.BoardPickerDialog
+import com.cruxcoach.android.ui.settings.GymBoardSearchSheet
 import com.cruxcoach.android.ui.theme.*
 
 /**
@@ -177,12 +178,30 @@ fun BoardSyncInlineCard(
             viewModel.checkFirstSyncModelSelection()
         }
     }
+    // FEAT-007 gym-search escape hatch — wired on all four picker call sites
+    // (Settings, Filter, Onboarding, sync card) so the "Weiß nicht?" link is
+    // consistently present. Falls back to the direct picker on demand.
+    var showGymSearch by remember { mutableStateOf(false) }
     if (modelState.showDialog) {
         // FEAT-031: the one shared board picker (same as Settings / Filter /
         // Onboarding) — identical state + the full board list incl. Aurora.
         BoardPickerDialog(
             onDismiss = { viewModel.dismissModelDialog() },
             onSelected = { viewModel.dismissModelDialog() },
+            onFindViaGym = {
+                viewModel.dismissModelDialog()
+                showGymSearch = true
+            },
+        )
+    }
+    if (showGymSearch) {
+        GymBoardSearchSheet(
+            onClose = { showGymSearch = false },
+            onFallbackToDirect = {
+                showGymSearch = false
+                viewModel.showModelDialog()
+            },
+            onDismiss = { showGymSearch = false },
         )
     }
 

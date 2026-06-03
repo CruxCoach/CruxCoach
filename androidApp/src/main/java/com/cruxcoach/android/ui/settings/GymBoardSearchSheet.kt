@@ -19,22 +19,27 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
+import com.cruxcoach.android.data.BoardConstants
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.data.repository.BoardLocation
 import com.cruxcoach.domain.board.BoardBrand
+import com.cruxcoach.domain.board.MoonBoardVariant
 
 /**
  * FEAT-007 Path B sheet — "I don't know my board → find my gym".
- * Local offline search; pick the gym, then the wall in front of you
- * (1 wall = one tap, multi-board gyms = choose). On pick the host
- * applies it via its own ViewModel and the sheet closes.
+ * Local offline search; pick the gym, then the board in front of you
+ * (1 wall = one tap, multi-board gyms = choose). Covers every brand
+ * (FEAT-031): the pick is routed through the shared [BoardPickerViewModel]
+ * — the single selection source for Kilter, MoonBoard and the Aurora
+ * family — then [onClose] closes the sheet.
  */
 @Composable
 internal fun GymBoardSearchSheet(
-    onPicked: (layoutId: Int, productSizeId: Int, label: String) -> Unit,
+    onClose: () -> Unit,
     onFallbackToDirect: () -> Unit,
     onDismiss: () -> Unit,
     vm: GymBoardPickerViewModel = hiltViewModel(),
+    boardPickerViewModel: BoardPickerViewModel = hiltViewModel(),
 ) {
     val s by vm.state.collectAsStateWithLifecycle()
 
@@ -112,8 +117,22 @@ internal fun GymBoardSearchSheet(
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 s.wallOptions.forEach { opt ->
                                     BoardOptionCard(opt.label) {
-                                        onPicked(opt.layoutId, opt.productSizeId, opt.label)
-                                        onDismiss()
+                                        // Route every brand through the shared
+                                        // picker VM so one selection source
+                                        // covers all boards (FEAT-031).
+                                        when (opt.boardBrand) {
+                                            BoardBrand.MOONBOARD ->
+                                                MoonBoardVariant.fromLayoutId(opt.layoutId.toLong())
+                                                    ?.let { boardPickerViewModel.selectMoonBoard(it) }
+                                            BoardBrand.KILTER ->
+                                                boardPickerViewModel.selectKilter(opt.productSizeId)
+                                            else ->
+                                                boardPickerViewModel.selectAurora(
+                                                    opt.boardBrand,
+                                                    BoardConstants.auroraVariant(opt.boardBrand, opt.layoutId),
+                                                )
+                                        }
+                                        onClose()
                                     }
                                 }
                             }

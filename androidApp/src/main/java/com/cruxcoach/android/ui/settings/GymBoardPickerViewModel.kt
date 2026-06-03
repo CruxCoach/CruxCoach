@@ -22,14 +22,17 @@ import javax.inject.Inject
 
 private const val TAG = "GymBoardPickerVM"
 
-/** A selectable board derived from a gym's physical wall (Kilter) or its
- *  MoonBoard variant. MoonBoard has no product size, so [productSizeId] is
- *  the [MOONBOARD_NO_SIZE] sentinel there; the apply path keys off the
- *  layout id to tell the brands apart. */
+/** A selectable board derived from a gym (FEAT-007/031): a Kilter physical
+ *  wall, a MoonBoard variant, or an Aurora-family board/variant. [boardBrand]
+ *  is the gym's own brand and tells the apply path which selection action to
+ *  route through. MoonBoard has no product size, so [productSizeId] is the
+ *  [MOONBOARD_NO_SIZE] sentinel there; a single-layout Aurora board likewise
+ *  carries layout 0 / size 0 and lets the synced chunk derive the default. */
 data class GymWallOption(
     val layoutId: Int,
     val productSizeId: Int,
     val label: String,
+    val boardBrand: BoardBrand,
 )
 
 /** Placeholder product size for MoonBoard options — MoonBoard variants are
@@ -110,11 +113,21 @@ class GymBoardPickerViewModel @Inject constructor(
     }
 
     fun selectGym(gym: BoardLocation) {
+        val gymBrand = gym.boardBrand
         // MoonBoard gyms carry no per-wall rows — they resolve to one of the
         // distinct MoonBoard variants instead. The gym's own brand decides
         // the resolution, so no brand has to be threaded in from the caller.
-        if (gym.boardBrand == BoardBrand.MOONBOARD) {
+        if (gymBrand == BoardBrand.MOONBOARD) {
             _state.update { it.copy(selectedGym = gym, wallOptions = moonBoardOptions(gym)) }
+            return
+        }
+        // Foreign Aurora-family gyms (Tension, Grasshopper, …) are info-only
+        // points with no walls — resolve them from the static variant catalog
+        // instead (FEAT-031). A multi-layout board (Tension) offers one option
+        // per variant; a single-layout board offers exactly one, with layout 0
+        // / size 0 so the synced chunk derives the real default at select time.
+        if (gymBrand.usesAuroraProtocol && gymBrand != BoardBrand.KILTER) {
+            _state.update { it.copy(selectedGym = gym, wallOptions = auroraOptions(gymBrand)) }
             return
         }
         viewModelScope.launch {
@@ -130,6 +143,7 @@ class GymBoardPickerViewModel @Inject constructor(
                                 w.productSizeId!!.toLong(),
                                 w.sizeLabel ?: w.productName ?: "",
                             ),
+                            boardBrand = BoardBrand.KILTER,
                         )
                     }
                     // Most common board config first.
@@ -141,6 +155,34 @@ class GymBoardPickerViewModel @Inject constructor(
                 Log.w(TAG, "selectGym(${gym.id}) failed", e)
                 _state.update { it.copy(selectedGym = gym, wallOptions = emptyList()) }
             }
+        }
+    }
+
+    /** Board options for a foreign Aurora gym (FEAT-031). A multi-layout board
+     *  (currently only Tension) yields one option per catalog variant; a
+     *  single-layout board (Grasshopper / Decoy / So iLL / Touchstone) has no
+     *  catalog entry, so produce exactly one option labelled by the brand —
+     *  layout 0 / size 0, letting the apply path's [BoardConstants.auroraVariant]
+     *  lookup return null and the synced chunk supply the default. */
+    private fun auroraOptions(brand: BoardBrand): List<GymWallOption> {
+        val variants = BoardConstants.auroraVariants(brand)
+        if (variants.isEmpty()) {
+            return listOf(
+                GymWallOption(
+                    layoutId = 0,
+                    productSizeId = 0,
+                    label = brand.displayName,
+                    boardBrand = brand,
+                ),
+            )
+        }
+        return variants.map {
+            GymWallOption(
+                layoutId = it.layoutId,
+                productSizeId = it.defaultSizeId,
+                label = it.displayName,
+                boardBrand = brand,
+            )
         }
     }
 
@@ -156,6 +198,7 @@ class GymBoardPickerViewModel @Inject constructor(
                 layoutId = it.layoutId.toInt(),
                 productSizeId = MOONBOARD_NO_SIZE,
                 label = it.displayName,
+                boardBrand = BoardBrand.MOONBOARD,
             )
         }
     }

@@ -53,6 +53,7 @@ private val AURORA_PICK_BRANDS: List<BoardBrand> =
  * @param frequency optional product-size-id → popularity, for "common
  *        boards first" ordering of the Kilter lists.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun BoardSelectionDialog(
     initialBrand: String,
@@ -143,10 +144,28 @@ internal fun BoardSelectionDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Text(
-                stringResource(R.string.board_selection_dialog_title),
-                fontWeight = FontWeight.Bold,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    stringResource(R.string.board_selection_dialog_title),
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f),
+                )
+                // FEAT-007 gym search — "Don't know your board?". Shown for every
+                // board (moved out of the Kilter sub-block) so the escape hatch is
+                // always one tap away regardless of the active category.
+                if (onFindViaGym != null) {
+                    TextButton(
+                        onClick = onFindViaGym,
+                        contentPadding = PaddingValues(horizontal = 0.dp),
+                    ) {
+                        Text(
+                            stringResource(R.string.settings_board_find_via_gym),
+                            color = OrangeAccent,
+                            style = MaterialTheme.typography.labelLarge,
+                        )
+                    }
+                }
+            }
         },
         text = {
             Column(
@@ -155,37 +174,68 @@ internal fun BoardSelectionDialog(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                // Tier 0 — board category. Stacked chips: the three labels
-                // are too long to share one row on a narrow dialog.
+                // Tier 0 — board category. A single dropdown: the labels are too
+                // long to share one chip row on a narrow dialog, and the list grows
+                // with each interactive Aurora board (FEAT-031).
                 Text(
                     stringResource(R.string.board_category_label),
                     style = MaterialTheme.typography.bodyMedium,
                 )
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    CategoryChip(
-                        label = stringResource(R.string.board_category_kilter_original),
-                        selected = !isAurora && category == BoardCategory.KILTER_ORIGINAL,
-                        onSelect = { category = BoardCategory.KILTER_ORIGINAL; auroraBrand = null },
-                    )
-                    CategoryChip(
-                        label = stringResource(R.string.board_category_kilter_homewall),
-                        selected = !isAurora && category == BoardCategory.KILTER_HOMEWALL,
-                        onSelect = { category = BoardCategory.KILTER_HOMEWALL; auroraBrand = null },
-                    )
-                    CategoryChip(
-                        label = stringResource(R.string.board_category_moonboard),
-                        selected = !isAurora && category == BoardCategory.MOONBOARD,
-                        onSelect = { category = BoardCategory.MOONBOARD; auroraBrand = null },
-                    )
-                    // FEAT-031: interactive Aurora-family boards, data-driven so a
-                    // newly-promoted board appears with no further picker wiring.
-                    // Gated to call sites that wire onConfirmAurora (Settings).
+                // Each entry pairs its menu label with the state-write the old chip
+                // did, in the same order. Aurora brands are appended only when
+                // offered (Settings), so other call sites stay Kilter/MoonBoard.
+                val kilterOriginalLabel = stringResource(R.string.board_category_kilter_original)
+                val kilterHomewallLabel = stringResource(R.string.board_category_kilter_homewall)
+                val moonBoardLabel = stringResource(R.string.board_category_moonboard)
+                val boardOptions = buildList {
+                    add(kilterOriginalLabel to {
+                        category = BoardCategory.KILTER_ORIGINAL; auroraBrand = null
+                    })
+                    add(kilterHomewallLabel to {
+                        category = BoardCategory.KILTER_HOMEWALL; auroraBrand = null
+                    })
+                    add(moonBoardLabel to {
+                        category = BoardCategory.MOONBOARD; auroraBrand = null
+                    })
                     if (showAuroraBoards) {
                         AURORA_PICK_BRANDS.forEach { brand ->
-                            CategoryChip(
-                                label = brand.displayName,
-                                selected = auroraBrand == brand,
-                                onSelect = { auroraBrand = brand },
+                            add(brand.displayName to { auroraBrand = brand })
+                        }
+                    }
+                }
+                // The collapsed field mirrors the active selection: an Aurora brand
+                // wins over [category] (same precedence as the rest of the dialog).
+                val selectedBoardLabel = when {
+                    isAurora -> auroraBrand!!.displayName
+                    category == BoardCategory.KILTER_ORIGINAL -> kilterOriginalLabel
+                    category == BoardCategory.KILTER_HOMEWALL -> kilterHomewallLabel
+                    else -> moonBoardLabel
+                }
+                var boardMenuExpanded by remember { mutableStateOf(false) }
+                ExposedDropdownMenuBox(
+                    expanded = boardMenuExpanded,
+                    onExpandedChange = { boardMenuExpanded = it },
+                ) {
+                    OutlinedTextField(
+                        value = selectedBoardLabel,
+                        onValueChange = {},
+                        readOnly = true,
+                        trailingIcon = {
+                            ExposedDropdownMenuDefaults.TrailingIcon(expanded = boardMenuExpanded)
+                        },
+                        colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+                        modifier = Modifier
+                            .menuAnchor()
+                            .fillMaxWidth(),
+                    )
+                    ExposedDropdownMenu(
+                        expanded = boardMenuExpanded,
+                        onDismissRequest = { boardMenuExpanded = false },
+                    ) {
+                        boardOptions.forEach { (label, onSelect) ->
+                            DropdownMenuItem(
+                                text = { Text(label) },
+                                onClick = { onSelect(); boardMenuExpanded = false },
                             )
                         }
                     }
@@ -248,18 +298,6 @@ internal fun BoardSelectionDialog(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        if (onFindViaGym != null) {
-                            TextButton(
-                                onClick = onFindViaGym,
-                                contentPadding = PaddingValues(horizontal = 0.dp),
-                            ) {
-                                Text(
-                                    stringResource(R.string.settings_board_find_via_gym),
-                                    color = OrangeAccent,
-                                    style = MaterialTheme.typography.labelLarge,
-                                )
-                            }
-                        }
                     }
                 } else {
                     Text(
@@ -301,25 +339,6 @@ internal fun BoardSelectionDialog(
                 Text(stringResource(R.string.board_model_dialog_cancel))
             }
         },
-    )
-}
-
-/** Tier-0 category chip — full-width so the three stack cleanly. */
-@Composable
-private fun CategoryChip(
-    label: String,
-    selected: Boolean,
-    onSelect: () -> Unit,
-) {
-    FilterChip(
-        selected = selected,
-        onClick = onSelect,
-        label = { Text(label) },
-        modifier = Modifier.fillMaxWidth(),
-        colors = FilterChipDefaults.filterChipColors(
-            selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
-            selectedLabelColor = OrangeAccent,
-        ),
     )
 }
 

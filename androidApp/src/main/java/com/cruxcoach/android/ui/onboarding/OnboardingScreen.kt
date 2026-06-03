@@ -78,7 +78,7 @@ fun OnboardingScreen(
             label = "onboarding_step",
         ) { step ->
             when (step) {
-                OnboardingStep.BOARD_SETUP -> BoardSetupStep(state, viewModel)
+                OnboardingStep.BOARD_SETUP -> BoardSetupStep(state)
                 OnboardingStep.PRIVACY -> PrivacyStep(state, viewModel, onNavigateToKeyManagement)
                 OnboardingStep.KILTER -> KilterStep(state, viewModel)
             }
@@ -276,7 +276,6 @@ fun OnboardingScreen(
 @Composable
 private fun BoardSetupStep(
     state: OnboardingState,
-    viewModel: OnboardingViewModel,
 ) {
     var showBoardModelDialog by rememberSaveable { mutableStateOf(false) }
     var showGymSearch by rememberSaveable { mutableStateOf(false) }
@@ -295,10 +294,7 @@ private fun BoardSetupStep(
     }
     if (showGymSearch) {
         com.cruxcoach.android.ui.settings.GymBoardSearchSheet(
-            onPicked = { layoutId, productSizeId, label ->
-                viewModel.selectBoardFromGym(layoutId, productSizeId, label)
-                showGymSearch = false
-            },
+            onClose = { showGymSearch = false },
             onFallbackToDirect = {
                 showGymSearch = false
                 showBoardModelDialog = true

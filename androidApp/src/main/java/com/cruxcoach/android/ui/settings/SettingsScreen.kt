@@ -141,10 +141,7 @@ fun SettingsScreen(
         }
         if (showGymSearch) {
             GymBoardSearchSheet(
-                onPicked = { layoutId, productSizeId, label ->
-                    viewModel.selectBoardFromGym(layoutId, productSizeId, label)
-                    showGymSearch = false
-                },
+                onClose = { showGymSearch = false },
                 onFallbackToDirect = {
                     showGymSearch = false
                     showBoardModelDialog = true
