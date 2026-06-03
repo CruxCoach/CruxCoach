@@ -163,9 +163,9 @@ class SettingsViewModel @Inject constructor(
                 val profile = userRepository.getActiveProfile()
                 val layoutId = userPreferences.boardLayoutId.first()
                 val boardSizeId = userPreferences.boardProductSizeId.first()
-                val boardSizeName = boardRepository.getProductSize(boardSizeId)
-                    ?.let { BoardConstants.sizeLabel(it.id, it.name) } ?: ""
                 val boardBrand = userPreferences.boardBrand.first()
+                val boardSizeName = boardRepository.getProductSize(boardSizeId, boardBrand)
+                    ?.let { BoardConstants.sizeLabel(it.id, it.name, it.boardBrand) } ?: ""
                 // MoonBoard layout ids (2/4/5) are disjoint from Kilter's,
                 // so the active variant is derived directly from the
                 // single boardLayoutId pref.
@@ -302,7 +302,7 @@ class SettingsViewModel @Inject constructor(
                             variant?.displayName ?: ""
                         } else {
                             withContext(Dispatchers.IO) { boardRepository.getProductSize(sizeId, brand) }
-                                ?.let { BoardConstants.sizeLabel(it.id, it.name) } ?: ""
+                                ?.let { BoardConstants.sizeLabel(it.id, it.name, it.boardBrand) } ?: ""
                         }
                         _state.update {
                             it.copy(

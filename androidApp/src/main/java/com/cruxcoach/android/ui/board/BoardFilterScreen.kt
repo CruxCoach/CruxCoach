@@ -172,7 +172,7 @@ fun BoardFilterScreen(
                         ?: stringResource(R.string.settings_board_model_not_configured)
                 } else {
                     state.boardSize
-                        ?.let { BoardConstants.sizeLabel(it.id, it.name) }
+                        ?.let { BoardConstants.sizeLabel(it.id, it.name, it.boardBrand) }
                         ?: stringResource(R.string.settings_board_model_not_configured)
                 }
                 Column {

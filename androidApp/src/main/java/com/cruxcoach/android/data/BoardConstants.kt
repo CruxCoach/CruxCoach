@@ -1,6 +1,7 @@
 package com.cruxcoach.android.data
 
 import com.cruxcoach.data.repository.BoardSize
+import com.cruxcoach.domain.board.BoardBrand
 
 object BoardConstants {
     const val PAGE_SIZE = 50
@@ -120,14 +121,22 @@ object BoardConstants {
      * raw Aurora name (already unambiguous for Original + future-proof
      * for any product_size_id we don't yet have a curated label for).
      */
-    fun sizeLabel(productSizeId: Long, fallbackName: String): String =
-        KILTER_SIZE_LABELS[productSizeId] ?: fallbackName
+    fun sizeLabel(
+        productSizeId: Long,
+        fallbackName: String,
+        boardBrand: BoardBrand = BoardBrand.KILTER,
+    ): String =
+        // KILTER_SIZE_LABELS is keyed by Kilter product_size ids; the Aurora
+        // family reuses the same id space for different sizes, so apply the
+        // curated labels only for Kilter — others use their own raw name.
+        if (boardBrand == BoardBrand.KILTER) KILTER_SIZE_LABELS[productSizeId] ?: fallbackName
+        else fallbackName
 
     /** Resolve a product_size_id against a size list to its unambiguous
      *  display label (empty string if not found). Single place that maps
      *  "selected id → human label" for the current-selection echo. */
     fun sizeLabel(sizes: List<BoardSize>, productSizeId: Int): String =
         sizes.firstOrNull { it.id.toInt() == productSizeId }
-            ?.let { sizeLabel(it.id, it.name) }
+            ?.let { sizeLabel(it.id, it.name, it.boardBrand) }
             .orEmpty()
 }
