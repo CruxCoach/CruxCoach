@@ -65,6 +65,12 @@ class GymBoardPickerViewModel @Inject constructor(
     val state: StateFlow<GymBoardPickerState> = _state.asStateFlow()
 
     private var frequency: Map<Int, Long> = emptyMap()
+    // All location rows per physical gym (key = name + coarse coords). The same
+    // gym can appear once per board brand — a Kilter row plus a foreign
+    // info-layer row per Aurora board (Tension, Grasshopper, …) — so the search
+    // list shows ONE entry per gym and selecting it aggregates the board options
+    // across every brand present at that gym (FEAT-031).
+    private var rowsByGym: Map<String, List<BoardLocation>> = emptyMap()
 
     init {
         viewModelScope.launch {
@@ -99,7 +105,12 @@ class GymBoardPickerViewModel @Inject constructor(
                 val res = withContext(Dispatchers.IO) { repository.searchLocations(trimmed, 60) }
                 // Drop the query result if the user kept typing.
                 if (_state.value.query.trim() == trimmed) {
-                    _state.update { it.copy(results = res, searching = false) }
+                    // Collapse per-brand rows of the same physical gym into one
+                    // search entry (keep all rows for the selection step).
+                    val grouped = res.groupBy { gymKey(it) }
+                    rowsByGym = grouped
+                    val deduped = grouped.values.map { it.first() }
+                    _state.update { it.copy(results = deduped, searching = false) }
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -113,42 +124,51 @@ class GymBoardPickerViewModel @Inject constructor(
     }
 
     fun selectGym(gym: BoardLocation) {
-        val gymBrand = gym.boardBrand
-        // MoonBoard gyms carry no per-wall rows — they resolve to one of the
-        // distinct MoonBoard variants instead. The gym's own brand decides
-        // the resolution, so no brand has to be threaded in from the caller.
-        if (gymBrand == BoardBrand.MOONBOARD) {
-            _state.update { it.copy(selectedGym = gym, wallOptions = moonBoardOptions(gym)) }
-            return
-        }
-        // Foreign Aurora-family gyms (Tension, Grasshopper, …) are info-only
-        // points with no walls — resolve them from the static variant catalog
-        // instead (FEAT-031). A multi-layout board (Tension) offers one option
-        // per variant; a single-layout board offers exactly one, with layout 0
-        // / size 0 so the synced chunk derives the real default at select time.
-        if (gymBrand.usesAuroraProtocol && gymBrand != BoardBrand.KILTER) {
-            _state.update { it.copy(selectedGym = gym, wallOptions = auroraOptions(gymBrand)) }
-            return
-        }
+        // Gather options across EVERY board brand present at this physical gym
+        // (the merged search entry can stand for a Kilter row + foreign rows for
+        // Tension/Grasshopper/etc.). So a gym with Tension + Grasshopper shows
+        // once and offers both boards' configs (FEAT-031).
+        val rows = rowsByGym[gymKey(gym)] ?: listOf(gym)
+        val multiBrand = rows.map { it.boardBrand }.distinct().size > 1
         viewModelScope.launch {
             try {
-                val walls = withContext(Dispatchers.IO) { repository.getWallsForGym(gym.id) }
-                val opts = walls
-                    .filter { it.layoutId != null && it.productSizeId != null }
-                    .map { w ->
-                        GymWallOption(
-                            layoutId = w.layoutId!!,
-                            productSizeId = w.productSizeId!!,
-                            label = BoardConstants.sizeLabel(
-                                w.productSizeId!!.toLong(),
-                                w.sizeLabel ?: w.productName ?: "",
-                            ),
-                            boardBrand = BoardBrand.KILTER,
-                        )
+                val opts = mutableListOf<GymWallOption>()
+                for (row in rows) {
+                    val brand = row.boardBrand
+                    when {
+                        // MoonBoard gyms carry no walls — resolve to variants.
+                        brand == BoardBrand.MOONBOARD -> opts += moonBoardOptions(row)
+                        // Foreign Aurora gyms are info-only — resolve from the
+                        // static variant catalog (multi-layout boards offer one
+                        // option per variant; single-layout boards offer one,
+                        // layout 0 / size 0 so the chunk derives the default).
+                        brand.usesAuroraProtocol && brand != BoardBrand.KILTER ->
+                            opts += auroraOptions(brand)
+                        // Kilter gyms resolve their physical walls.
+                        else -> {
+                            val walls = withContext(Dispatchers.IO) { repository.getWallsForGym(row.id) }
+                            opts += walls
+                                .filter { it.layoutId != null && it.productSizeId != null }
+                                .map { w ->
+                                    val size = BoardConstants.sizeLabel(
+                                        w.productSizeId!!.toLong(),
+                                        w.sizeLabel ?: w.productName ?: "",
+                                    )
+                                    GymWallOption(
+                                        layoutId = w.layoutId!!,
+                                        productSizeId = w.productSizeId!!,
+                                        // Prefix the brand only at mixed-brand gyms,
+                                        // so a bare "12x12" isn't ambiguous there.
+                                        label = if (multiBrand) "Kilter $size" else size,
+                                        boardBrand = BoardBrand.KILTER,
+                                    )
+                                }
+                                .sortedByDescending { frequency[it.productSizeId] ?: 0L }
+                        }
                     }
-                    // Most common board config first.
-                    .sortedByDescending { frequency[it.productSizeId] ?: 0L }
-                _state.update { it.copy(selectedGym = gym, wallOptions = opts) }
+                }
+                val deduped = opts.distinctBy { Triple(it.boardBrand, it.layoutId, it.productSizeId) }
+                _state.update { it.copy(selectedGym = gym, wallOptions = deduped) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -157,6 +177,12 @@ class GymBoardPickerViewModel @Inject constructor(
             }
         }
     }
+
+    /** Key that collapses per-brand rows of the same physical gym: name +
+     *  coarse coordinates (~1 km) so foreign info-layer rows from different
+     *  board brands merge while distinct chain locations stay separate. */
+    private fun gymKey(loc: BoardLocation): String =
+        loc.name.trim().lowercase() + "|" + (loc.lat * 100).toInt() + "|" + (loc.lng * 100).toInt()
 
     /** Board options for a foreign Aurora gym (FEAT-031). A multi-layout board
      *  (currently only Tension) yields one option per catalog variant; a
