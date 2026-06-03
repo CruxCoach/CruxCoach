@@ -9,6 +9,7 @@ import com.cruxcoach.android.nostr.NostrRelayPool
 import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.BoardSize
+import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.BoardClimbParser
 import com.cruxcoach.domain.community.AutoNoteTemplate
 import com.cruxcoach.domain.community.ClimbBounds
@@ -102,6 +103,7 @@ class CommunityClimbPublisher @Inject constructor(
     suspend fun publish(
         uuid: String,
         layoutId: Long,
+        boardBrand: BoardBrand,
         state: ClimbEditorState,
         sizeLabel: String,
         isEdit: Boolean = false,
@@ -110,11 +112,11 @@ class CommunityClimbPublisher @Inject constructor(
         val pubkey = nostrSigner.getPublicKeyHex()
         val createdAt = System.currentTimeMillis() / 1000
 
-        // Brand is derived from layoutId (the reliable signal — the
-        // draft-retry path builds ClimbEditorState without boardBrand). Drives
-        // both the bounds skip below and the official-app-push skip in Step 2.
-        val isMoonBoard = com.cruxcoach.domain.board.BoardBrand.fromLayoutId(layoutId) ==
-            com.cruxcoach.domain.board.BoardBrand.MOONBOARD
+        // Brand is the climb's REAL board family, threaded in by the caller
+        // — NOT re-derived from layoutId, which can't tell the Aurora-family
+        // boards apart from Kilter (overlapping layout-ids). Drives both the
+        // bounds skip below and the official-app-push skip in Step 2.
+        val isMoonBoard = boardBrand == BoardBrand.MOONBOARD
 
         // Step 1: Nostr — mandatory. Failure throws; the user can retry
         // from the editor.
@@ -130,6 +132,7 @@ class CommunityClimbPublisher @Inject constructor(
             layoutId = layoutId,
             sizeLabel = sizeLabel,
             state = state,
+            brand = boardBrand,
             bounds = bounds,
         )
         val tags: Array<Array<String>> = payload.tags.map { it.toTypedArray() }.toTypedArray()
@@ -271,9 +274,9 @@ class CommunityClimbPublisher @Inject constructor(
      *    CancellationException is re-thrown explicitly so cooperative
      *    cancellation still works.
      */
-    suspend fun publishAllPending(sizeLabel: String, layoutId: Long): Int {
+    suspend fun publishAllPending(sizeLabel: String, layoutId: Long, boardBrand: BoardBrand): Int {
         val pubkey = runCatching { nostrSigner.getPublicKeyHex() }.getOrNull()
-        val drafts = runCatching { boardRepository.getDraftClimbs(pubkey) }
+        val drafts = runCatching { boardRepository.getDraftClimbs(pubkey, boardBrand.wireValue) }
             .onFailure { Log.w(TAG, "publishAllPending: getDraftClimbs failed; batch aborted", it) }
             .getOrElse { return 0 }
         var published = 0
@@ -286,7 +289,7 @@ class CommunityClimbPublisher @Inject constructor(
                 angle = null,
             )
             try {
-                publish(row.uuid, layoutId, state, sizeLabel)
+                publish(row.uuid, layoutId, boardBrand, state, sizeLabel)
                 published++
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e

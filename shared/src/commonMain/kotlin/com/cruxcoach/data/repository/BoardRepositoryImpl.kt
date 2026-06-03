@@ -140,12 +140,12 @@ class BoardRepositoryImpl(
         return q.countBenchmarkFilteredClimbs(layoutId.toLong(), boardBrand, angle.toLong(), climbType.minFrames(), climbType.maxFrames(), minDifficulty, maxDifficulty, minAscensionists.toLong(), selProductSizeId.toLong()).executeAsOne()
     }
 
-    override fun countSearchClimbs(query: String, angle: Int, layoutId: Int, climbType: ClimbTypeFilter, selProductSizeId: Int): Long {
-        return q.countSearchClimbs(layoutId.toLong(), query, query, angle.toLong(), climbType.minFrames(), climbType.maxFrames(), selProductSizeId.toLong()).executeAsOne()
+    override fun countSearchClimbs(query: String, angle: Int, layoutId: Int, boardBrand: String, climbType: ClimbTypeFilter, selProductSizeId: Int): Long {
+        return q.countSearchClimbs(layoutId.toLong(), boardBrand, query, query, angle.toLong(), climbType.minFrames(), climbType.maxFrames(), selProductSizeId.toLong()).executeAsOne()
     }
 
-    override fun countBenchmarkSearchClimbs(query: String, angle: Int, layoutId: Int, climbType: ClimbTypeFilter, selProductSizeId: Int): Long {
-        return q.countBenchmarkSearchClimbs(layoutId.toLong(), query, query, angle.toLong(), climbType.minFrames(), climbType.maxFrames(), selProductSizeId.toLong()).executeAsOne()
+    override fun countBenchmarkSearchClimbs(query: String, angle: Int, layoutId: Int, boardBrand: String, climbType: ClimbTypeFilter, selProductSizeId: Int): Long {
+        return q.countBenchmarkSearchClimbs(layoutId.toLong(), boardBrand, query, query, angle.toLong(), climbType.minFrames(), climbType.maxFrames(), selProductSizeId.toLong()).executeAsOne()
     }
 
     override fun getClimbCount(): Long {
@@ -559,6 +559,7 @@ class BoardRepositoryImpl(
             createdByPubkey = row.created_by_pubkey,
             kilterStatus = row.kilter_status,
             origin = row.origin,
+            boardBrand = row.board_brand,
         )
     }
 
@@ -815,6 +816,7 @@ class BoardRepositoryImpl(
         difficultyAverage: Double?,
         qualityAverage: Double?,
         bounds: com.cruxcoach.domain.community.ClimbBounds?,
+        boardBrand: String,
     ) {
         q.transaction {
             q.upsertCommunityClimb(
@@ -834,7 +836,11 @@ class BoardRepositoryImpl(
                 nostr_d_tag = nostrDTag,
                 created_by_pubkey = createdByPubkey,
                 frames_hash = framesHash,
-                board_brand = brandForLayout(layoutId),
+                // Persist the climb's REAL brand from the event tag — NOT
+                // brandForLayout(layoutId), which can't tell the Aurora-family
+                // boards apart from Kilter (overlapping layout-ids) and would
+                // mis-key Grasshopper/Decoy (layout_id=1) as Kilter Original.
+                board_brand = boardBrand,
             )
             q.upsertClimbStat(
                 climb_uuid = uuid,
@@ -1103,8 +1109,11 @@ class BoardRepositoryImpl(
     override fun getClimbsAwaitingKilterRetry(pubkey: String): List<CommunityClimbRow> =
         q.getClimbsAwaitingKilterRetry(pubkey).executeAsList().map { it.toCommunityRow() }
 
-    override fun getDraftClimbs(pubkey: String?): List<CommunityClimbRow> =
-        q.getDraftClimbs(pubkey).executeAsList().map { it.toCommunityRow() }
+    override fun getDraftClimbs(pubkey: String?, boardBrand: String): List<CommunityClimbRow> =
+        // NB: generated query param order is (boardBrand, pubkey) — SQLDelight
+        // orders by first appearance in the SQL, and `:boardBrand` is the
+        // first bind there. The public interface keeps (pubkey, boardBrand).
+        q.getDraftClimbs(boardBrand = boardBrand, pubkey = pubkey).executeAsList().map { it.toCommunityRow() }
 
     override fun getMyClimbs(pubkey: String): List<CommunityClimbRow> =
         q.getMyClimbs(pubkey).executeAsList().map { it.toCommunityRow() }
@@ -1115,6 +1124,15 @@ class BoardRepositoryImpl(
     override fun getClimbStatsForUuid(uuid: String): Pair<Int, Int?>? {
         val row = q.getClimbStatsForUuid(uuid).executeAsOneOrNull() ?: return null
         return row.angle.toInt() to row.display_difficulty?.toInt()
+    }
+
+    override fun getClimbPublishContext(uuid: String): ClimbPublishContext? {
+        val row = q.getClimbPublishContext(uuid).executeAsOneOrNull() ?: return null
+        return ClimbPublishContext(
+            boardBrand = row.board_brand,
+            layoutId = row.layout_id,
+            sizeLabel = row.size_label,
+        )
     }
 
     override fun findClimbByFramesHash(framesHash: String, layoutId: Long): CommunityClimbRow? {
@@ -1136,6 +1154,8 @@ class BoardRepositoryImpl(
             moveCount = 0,
             kilterSyncedAt = null,
             layoutId = layoutId,
+            // Dup-detection projection doesn't select board_brand; not needed here.
+            boardBrand = "",
         )
     }
 
@@ -1293,5 +1313,6 @@ class BoardRepositoryImpl(
             moveCount = move_count,
             kilterSyncedAt = kilter_synced_at,
             layoutId = layout_id,
+            boardBrand = board_brand,
         )
 }

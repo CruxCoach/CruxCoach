@@ -241,7 +241,7 @@ class RandomClimbPickerTest {
         repo.addClimb(climb("b", name = "Test Slab"))
         repo.addClimb(climb("c", name = "Other"))
 
-        val count = repo.countSearchClimbs("Test", angle = 40, layoutId = 1, climbType = ClimbTypeFilter.BOULDER)
+        val count = repo.countSearchClimbs("Test", angle = 40, layoutId = 1, boardBrand = "kilter", climbType = ClimbTypeFilter.BOULDER)
         assertEquals(2L, count)
 
         val validPicks = (0 until count.toInt()).count { offset ->

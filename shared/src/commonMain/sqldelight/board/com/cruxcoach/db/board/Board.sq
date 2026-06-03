@@ -591,6 +591,7 @@ SELECT COUNT(*)
 FROM climbs c
 INNER JOIN climb_stats cs ON c.uuid = cs.climb_uuid
 WHERE cs.layout_id = ?
+  AND c.board_brand = :boardBrand
   AND (c.name LIKE '%' || ? || '%' OR c.setter_username LIKE '%' || ? || '%')
   AND cs.angle = ?
   AND c.is_listed = 1
@@ -602,6 +603,7 @@ SELECT COUNT(*)
 FROM climbs c
 INNER JOIN climb_stats cs ON c.uuid = cs.climb_uuid
 WHERE cs.layout_id = ?
+  AND c.board_brand = :boardBrand
   AND (c.name LIKE '%' || ? || '%' OR c.setter_username LIKE '%' || ? || '%')
   AND cs.angle = ?
   AND c.is_listed = 1
@@ -949,7 +951,7 @@ deleteLocalClimb {
 -- about manual Kilter cleanup when origin='cruxcoach' AND
 -- kilter_status='synced').
 getCommunityClimbDeleteContext:
-SELECT nostr_event_id, nostr_d_tag, created_by_pubkey, kilter_status, origin
+SELECT nostr_event_id, nostr_d_tag, created_by_pubkey, kilter_status, origin, board_brand
 FROM climbs
 WHERE uuid = :uuid
 LIMIT 1;
@@ -1354,6 +1356,14 @@ getDraftClimbs:
 SELECT * FROM climbs
 WHERE source = 'local'
   AND sync_status IN ('draft', 'failed')
+  -- Board-isolation: only the active board's drafts. Without this the
+  -- drawer leaks every board's drafts into whatever board is open (e.g.
+  -- Tension drafts showing on Kilter). `board_brand` is per-row on
+  -- `climbs`; the active board's wire value is threaded from
+  -- userPreferences. Unlike `created_by_pubkey` there is no NULL/legacy
+  -- short-circuit: the column is NOT NULL DEFAULT 'kilter', so pre-split
+  -- rows already carry 'kilter' and match when Kilter is active.
+  AND board_brand = :boardBrand
   AND (
     -- Identity-isolation: a draft's `created_by_pubkey` must match the
     -- caller's pubkey, OR be NULL (legacy / pre-signer-init data).
@@ -1380,6 +1390,58 @@ ORDER BY created_at DESC;
 -- when the climb has no stats row yet.
 getClimbStatsForUuid:
 SELECT angle, display_difficulty FROM climb_stats WHERE climb_uuid = ? LIMIT 1;
+
+-- Per-climb publish context for CommunityPublishRetryWorker (FEAT-031).
+-- The retry queue may hold drafts for a board that ISN'T the active one,
+-- so each row must be re-published with the CLIMB'S OWN brand + layout —
+-- never the active board's. board_brand comes from `climbs`, layout_id
+-- from the denormalized `climb_stats.layout_id` (falls back to
+-- `climbs.layout_id` when the stats row is missing/0, e.g. a draft whose
+-- stats row predates the 15.sqm denormalization). The size label is
+-- best-effort: the largest product_size for the climb's (board_brand)
+-- that actually has board_images for the climb's layout — the same
+-- "biggest containing variant for this layout" heuristic as
+-- getDefaultProductSizeForBrand, but pinned to the climb's layout rather
+-- than the brand's most-climbed one. NULL when nothing resolves; the
+-- worker then falls back to the active board's product-size name. The
+-- brand + layout, however, are always the climb's.
+getClimbPublishContext:
+SELECT
+    base.board_brand AS board_brand,
+    base.layout_id AS layout_id,
+    -- LEFT JOIN (not a scalar subquery in the projection) so SQLDelight
+    -- types size_label NULLABLE — the largest size may not resolve (a
+    -- draft on a board/layout with no board_images yet), and the worker
+    -- must fall back to the active board's size name in that case rather
+    -- than NPE on a non-null cast. Picks the biggest product_size for the
+    -- climb's (board_brand) that has board_images for the climb's layout
+    -- — same heuristic as getDefaultProductSizeForBrand, pinned to the
+    -- climb's own layout.
+    sz.name AS size_label
+FROM (
+    SELECT
+        c.uuid AS uuid,
+        c.board_brand AS board_brand,
+        -- NULLIF(...,0) so a denormalized stats row that never got the
+        -- 15.sqm layout backfill (layout_id=0) falls through to
+        -- climbs.layout_id; COALESCE keeps the result NOT NULL.
+        COALESCE(NULLIF(cs.layout_id, 0), c.layout_id) AS layout_id
+    FROM climbs c
+    LEFT JOIN climb_stats cs ON cs.climb_uuid = c.uuid
+    WHERE c.uuid = ?
+    LIMIT 1
+) base
+LEFT JOIN product_sizes sz ON sz.id = (
+    SELECT ps.id FROM product_sizes ps
+    WHERE ps.board_brand = base.board_brand
+      AND ps.id IN (
+        SELECT bi.product_size_id FROM board_images bi
+        WHERE bi.board_brand = base.board_brand
+          AND bi.layout_id = base.layout_id
+      )
+    ORDER BY (ps.edge_right - ps.edge_left) * (ps.edge_top - ps.edge_bottom) DESC, ps.id
+    LIMIT 1
+) AND sz.board_brand = base.board_brand;
 
 -- All climbs the current user authored (drafts + already-published nostr).
 getMyClimbs:

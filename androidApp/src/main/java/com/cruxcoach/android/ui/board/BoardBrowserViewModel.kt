@@ -918,8 +918,8 @@ class BoardBrowserViewModel @Inject constructor(
     private fun fetchDbCount(f: BrowserFilterState): Long {
         return PerfLogger.traceQuery("fetchDbCount") {
             if (f.searchQuery.isNotBlank()) {
-                if (f.benchmarkOnly) boardRepository.countBenchmarkSearchClimbs(f.searchQuery, f.angle, f.layoutId, f.climbTypeFilter, selProductSizeId = selSizeId())
-                else boardRepository.countSearchClimbs(f.searchQuery, f.angle, f.layoutId, f.climbTypeFilter, selProductSizeId = selSizeId())
+                if (f.benchmarkOnly) boardRepository.countBenchmarkSearchClimbs(f.searchQuery, f.angle, f.layoutId, f.boardBrand, f.climbTypeFilter, selProductSizeId = selSizeId())
+                else boardRepository.countSearchClimbs(f.searchQuery, f.angle, f.layoutId, f.boardBrand, f.climbTypeFilter, selProductSizeId = selSizeId())
             } else {
                 val french = _state.value.gradeScale == GradeScale.FRENCH
                 val minDiff = KilterGradeMapper.indexToFilterMin(f.minGradeIndex, french)

@@ -289,7 +289,7 @@ class ClimbEditorViewModel @Inject constructor(
                             description = c.description, framesText = c.frames, source = "kilter",
                             syncStatus = "synced", createdByPubkey = null, nostrEventId = null,
                             nostrDTag = null, framesHash = null, createdAt = null, moveCount = c.storedMoveCount,
-                            kilterSyncedAt = null, layoutId = c.layoutId,
+                            kilterSyncedAt = null, layoutId = c.layoutId, boardBrand = c.boardBrand,
                         )
                     }
             }
@@ -595,8 +595,9 @@ class ClimbEditorViewModel @Inject constructor(
                 // pin loadedDraftUuid so a follow-up "Save" updates this
                 // row in place instead of creating a duplicate.
                 val pubkey = runCatching { nostrSigner.getPublicKeyHex() }.getOrNull()
+                val brand = userPreferences.boardBrand.first()
                 val drafts = withContext(Dispatchers.IO) {
-                    boardRepository.getDraftClimbs(pubkey)
+                    boardRepository.getDraftClimbs(pubkey, brand)
                 }
                 _state.update { s ->
                     s.copy(drafts = drafts, loadedDraftUuid = uuid)
@@ -888,7 +889,8 @@ class ClimbEditorViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val pubkey = runCatching { nostrSigner.getPublicKeyHex() }.getOrNull()
-                val drafts = withContext(Dispatchers.IO) { boardRepository.getDraftClimbs(pubkey) }
+                val brand = userPreferences.boardBrand.first()
+                val drafts = withContext(Dispatchers.IO) { boardRepository.getDraftClimbs(pubkey, brand) }
                 _state.update { it.copy(drafts = drafts, draftsSheetOpen = true) }
             } catch (e: Exception) {
                 Log.w(TAG, "openDraftsSheet failed", e)
@@ -980,7 +982,8 @@ class ClimbEditorViewModel @Inject constructor(
                 }
                 // Refresh the drawer's list.
                 val pubkey = runCatching { nostrSigner.getPublicKeyHex() }.getOrNull()
-                val drafts = boardRepository.getDraftClimbs(pubkey)
+                val brand = userPreferences.boardBrand.first()
+                val drafts = boardRepository.getDraftClimbs(pubkey, brand)
                 _state.update { s ->
                     s.copy(drafts = drafts, loadedDraftUuid = if (wasLoaded) null else s.loadedDraftUuid)
                 }

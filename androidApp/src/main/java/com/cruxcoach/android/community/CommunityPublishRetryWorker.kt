@@ -14,6 +14,7 @@ import androidx.work.WorkerParameters
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.data.repository.BoardRepository
+import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.community.ClimbEditorState
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
@@ -73,11 +74,18 @@ class CommunityPublishRetryWorker @AssistedInject constructor(
             return androidx.work.ListenableWorker.Result.success()
         }
 
-        val sizeId = userPreferences.boardProductSizeId.first()
-        val boardSize = runCatching { boardRepository.getProductSize(sizeId) }.getOrNull()
-            ?: return androidx.work.ListenableWorker.Result.retry()
-        val sizeLabel = boardSize.name
-        val layoutId = userPreferences.boardLayoutId.first().toLong()
+        // Active board's size name — ONLY a fallback for rows whose own
+        // (brand, layout) can't resolve a size label below. The brand +
+        // layout used to publish are always the CLIMB'S OWN (resolved per
+        // row via getClimbPublishContext), never the active board's:
+        // a queued draft may belong to a board that isn't currently active,
+        // and publishing it with the active layout/brand would mislabel it
+        // (e.g. a Grasshopper draft going out as a Kilter climb because both
+        // are layout_id=1). Best-effort — null is tolerated, the row's own
+        // context usually supplies the label anyway.
+        val activeSizeId = userPreferences.boardProductSizeId.first()
+        val fallbackSizeLabel =
+            runCatching { boardRepository.getProductSize(activeSizeId) }.getOrNull()?.name
 
         var attempted = 0
         var ok = 0
@@ -93,6 +101,14 @@ class CommunityPublishRetryWorker @AssistedInject constructor(
                     setterGradeId = stats?.second,
                     angle = stats?.first,
                 )
+                // Resolve the CLIMB'S OWN publish coordinates — its brand +
+                // layout (both authoritative) plus a best-effort size label.
+                // Fall back to the row's stored layoutId / the active board's
+                // size name only when the context lookup comes up empty.
+                val ctx = runCatching { boardRepository.getClimbPublishContext(row.uuid) }.getOrNull()
+                val boardBrand = BoardBrand.fromWire(ctx?.boardBrand)
+                val layoutId = ctx?.layoutId ?: row.layoutId
+                val sizeLabel = ctx?.sizeLabel ?: fallbackSizeLabel ?: ""
                 // CommunityClimbPublisher.publish throws on accepted == 0
                 // (after marking the row failed again). The retry worker's
                 // job is to make that throw isolated — one bad row shouldn't
@@ -100,12 +116,13 @@ class CommunityPublishRetryWorker @AssistedInject constructor(
                 communityClimbPublisher.publish(
                     uuid = row.uuid,
                     layoutId = layoutId,
+                    boardBrand = boardBrand,
                     state = state,
                     sizeLabel = sizeLabel,
                     isEdit = true, // existing row in DB; publisher's `isEdit` skips dup-check
                 )
                 ok++
-                Log.i(TAG, "row ok uuid=${row.uuid}")
+                Log.i(TAG, "row ok uuid=${row.uuid} brand=${boardBrand.wireValue} layout=$layoutId")
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Throwable) {

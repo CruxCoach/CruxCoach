@@ -10,6 +10,22 @@ import com.cruxcoach.domain.board.BoardBrand
  */
 object CommunityClimbTags {
     const val NS_CLIMB = "com.cruxcoach.climb"
+
+    /**
+     * Back-compat namespace gate for the multi-board split (FEAT-031).
+     *
+     * Pre-0.2.0 apps subscribe with
+     * `{"kinds":[30078,5],"#L":["com.cruxcoach.climb"]}` and ingest every
+     * matching event by its `layout_id`. The new (non-Kilter) boards reuse
+     * low layout-ids that OVERLAP Kilter's (Grasshopper/Decoy layout_id=1
+     * collides with Kilter Original), so emitting their climbs under
+     * [NS_CLIMB] would leak them into old apps as broken Kilter climbs.
+     * Non-Kilter climbs therefore carry this v2 `L` namespace instead,
+     * which old apps' filter never matches; only brand-aware ≥0.2.0
+     * subscribers (which also subscribe on this namespace and ingest by the
+     * `board_brand` tag) pick them up. Kilter stays on [NS_CLIMB].
+     */
+    const val NS_CLIMB_V2 = "com.cruxcoach.climb.v2"
     const val NS_BOARD = "com.cruxcoach.board"
     const val NS_SIZE = "com.cruxcoach.size"
     const val NS_ASCENT = "com.cruxcoach.ascent"
@@ -63,6 +79,15 @@ fun buildCommunityClimbEvent(
     layoutId: Long,
     sizeLabel: String,
     state: ClimbEditorState,
+    // The REAL board family for this climb. Drives the back-compat `L`
+    // namespace + the explicit `board_brand` machine tag, so it must be the
+    // active board's brand — NOT re-derived from layoutId, which cannot tell
+    // the Aurora-family boards apart from Kilter (their layout-ids overlap).
+    // Defaults to [BoardBrand.fromLayoutId] only so existing Kilter/MoonBoard
+    // call sites keep compiling + behaving identically; any non-Kilter Aurora
+    // caller MUST pass the real brand or its climbs leak onto the legacy
+    // namespace.
+    brand: BoardBrand = BoardBrand.fromLayoutId(layoutId),
     bounds: ClimbBounds? = null,
 ): NostrCommunityClimb {
     require(state.angle != null) { "angle is required at publish time" }
@@ -81,28 +106,46 @@ fun buildCommunityClimbEvent(
     val dTag = communityClimbDTag(pubkey, uuid)
     val pubkeyPrefix = pubkey.take(8)
 
-    // Board family is derived from layoutId (the reliable signal — the
-    // draft-retry path may not carry state.boardBrand), so a MoonBoard
-    // climb is tagged honestly (board label + hashtag) instead of always
-    // claiming kilterboard. Subscribers still ingest by layout_id; the
-    // label/hashtag are human/discovery metadata.
-    val brand = BoardBrand.fromLayoutId(layoutId)
-    val boardLabel = if (brand == BoardBrand.MOONBOARD) {
-        CommunityClimbTags.LABEL_MOONBOARD
+    // Back-compat namespace gate (FEAT-031). Kilter climbs stay on the
+    // legacy `L` namespace that pre-0.2.0 apps subscribe to; every new
+    // (non-Kilter) board is namespaced OUT of that filter via NS_CLIMB_V2
+    // so its climbs can't leak into old apps as broken Kilter climbs (the
+    // new boards reuse layout-ids that collide with Kilter's, and old apps
+    // ingest by layout_id). See [CommunityClimbTags.NS_CLIMB_V2].
+    val ns = if (brand == BoardBrand.KILTER) {
+        CommunityClimbTags.NS_CLIMB
     } else {
-        CommunityClimbTags.LABEL_KILTER_BOARD
+        CommunityClimbTags.NS_CLIMB_V2
     }
-    val boardHashtag = if (brand == BoardBrand.MOONBOARD) "moonboard" else "kilterboard"
+
+    // Human/discovery board label + hashtag, honest per brand. Kilter and
+    // MoonBoard keep their established values; the Aurora-family boards use
+    // their wireValue for both (no per-board label constants needed). These
+    // are metadata only — brand-aware subscribers ingest off the
+    // `board_brand` machine tag added below, not these.
+    val boardLabel = when (brand) {
+        BoardBrand.KILTER -> CommunityClimbTags.LABEL_KILTER_BOARD
+        BoardBrand.MOONBOARD -> CommunityClimbTags.LABEL_MOONBOARD
+        else -> brand.wireValue
+    }
+    val boardHashtag = when (brand) {
+        BoardBrand.KILTER -> "kilterboard"
+        BoardBrand.MOONBOARD -> "moonboard"
+        else -> brand.wireValue
+    }
 
     val tags = mutableListOf(
         listOf("d", dTag),
-        listOf("L", CommunityClimbTags.NS_CLIMB),
-        listOf("l", CommunityClimbTags.LABEL_CLIMB, CommunityClimbTags.NS_CLIMB),
+        listOf("L", ns),
+        listOf("l", CommunityClimbTags.LABEL_CLIMB, ns),
         listOf("l", boardLabel, CommunityClimbTags.NS_BOARD),
         listOf("l", sizeLabel, CommunityClimbTags.NS_SIZE),
         listOf("frames", frames),
         listOf("frames_hash", "sha256:$framesHash"),
         listOf("layout_id", layoutId.toString()),
+        // Explicit machine tag so brand-aware subscribers ingest by brand
+        // (not by the colliding layout_id). Always present — Kilter too.
+        listOf("board_brand", brand.wireValue),
     )
     bounds?.let { tags += listOf("bounds", it.encode()) }
     // Per spec §4.5 the angle goes alongside the grade so multi-angle

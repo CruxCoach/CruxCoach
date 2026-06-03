@@ -357,12 +357,20 @@ class CommunityClimbSubscriber @Inject constructor(
     private fun buildFilter(sinceEpoch: Long?): String {
         val sinceClause = if (sinceEpoch != null && sinceEpoch > 0) ",\"since\":$sinceEpoch" else ""
         // Subscribe to Kind-30078 (climb events) AND Kind-5 (NIP-09
-        // deletions). The deleter publishes both kinds with an
-        // ["L","com.cruxcoach.climb"] tag, so the same #L filter
-        // catches both — no second REQ subscription needed. Foreign
-        // Kind-5 events without our label tag are filtered server-side
-        // and never reach handleEvent.
-        return """{"kinds":[$KIND_30078,$KIND_DELETION],"#L":["$NAMESPACE_LABEL"]$sinceClause}"""
+        // deletions). The deleter publishes both kinds with a matching
+        // ["L", <ns>] tag, so the same #L filter catches both — no second
+        // REQ subscription needed. Foreign Kind-5 events without our label
+        // tag are filtered server-side and never reach handleEvent.
+        //
+        // Dual-namespace (FEAT-031 back-compat gate): fetch BOTH the legacy
+        // Kilter namespace and the v2 (new-board) namespace in one REQ.
+        // Kilter climbs/deletions stay on NAMESPACE_LABEL; every non-Kilter
+        // board (the five Aurora boards + MoonBoard) is namespaced under
+        // NAMESPACE_LABEL_V2 so pre-0.2.0 apps (which only subscribe on the
+        // legacy label) never see them as broken Kilter climbs. We're a
+        // ≥0.2.0 subscriber, so we ask for both and ingest by the
+        // `board_brand` machine tag, not by layout_id.
+        return """{"kinds":[$KIND_30078,$KIND_DELETION],"#L":["$NAMESPACE_LABEL","$NAMESPACE_LABEL_V2"]$sinceClause}"""
     }
 
     @VisibleForTesting
@@ -651,6 +659,7 @@ class CommunityClimbSubscriber @Inject constructor(
                 difficultyAverage = grade.toDouble(),
                 qualityAverage = null,
                 bounds = parsedClimb.bounds,
+                boardBrand = parsedClimb.boardBrand,
             )
             // Successful upsert wins. Drop a previous DLQ entry (if any
             // — the row may have failed earlier in this session before
@@ -921,6 +930,11 @@ class CommunityClimbSubscriber @Inject constructor(
         val angle: Int?,
         val bounds: ClimbBounds?,
         val contentPubkeyPrefix: String?,
+        /** Board family from the event's ["board_brand", x] machine tag
+         *  (FEAT-031). Defaults to "kilter" when the tag is absent —
+         *  legacy Kilter events predate the tag. The subscriber ingests
+         *  by this brand, not by the (potentially colliding) layout_id. */
+        val boardBrand: String,
         /** True when the event is a tombstone-replacement carrying
          *  `["deleted","true"]` tag or `{"deleted":true}` in content.
          *  Tombstone-replacement events bypass the strict frames /
@@ -938,13 +952,19 @@ class CommunityClimbSubscriber @Inject constructor(
                 var angle: Int? = null
                 var bounds: ClimbBounds? = null
                 var foundLabel = false
+                var boardBrand = "kilter"
                 var deletedTag = false
 
                 for (tag in event.tags) {
                     if (tag.size < 2) continue
                     when (tag[0]) {
                         "d" -> dTag = tag[1]
-                        "L" -> if (tag[1] == "com.cruxcoach.climb") foundLabel = true
+                        // Accept BOTH the legacy Kilter namespace and the v2
+                        // (new-board) namespace (FEAT-031 dual-namespace gate).
+                        "L" -> if (tag[1] == NAMESPACE_LABEL || tag[1] == NAMESPACE_LABEL_V2) foundLabel = true
+                        // Explicit brand machine tag — the authoritative
+                        // ingest key (layout_id collides across boards).
+                        "board_brand" -> boardBrand = tag[1]
                         "frames" -> framesText = tag[1]
                         "frames_hash" -> framesHashRaw = tag[1]
                         "layout_id" -> layoutId = tag[1].toLongOrNull()
@@ -965,7 +985,7 @@ class CommunityClimbSubscriber @Inject constructor(
                         "deleted" -> if (tag[1].equals("true", ignoreCase = true)) deletedTag = true
                     }
                 }
-                require(foundLabel) { "not a com.cruxcoach.climb event" }
+                require(foundLabel) { "not a com.cruxcoach.climb[.v2] event" }
                 require(dTag != null) { "d-tag missing" }
 
                 val contentObj = runCatching {
@@ -1018,6 +1038,7 @@ class CommunityClimbSubscriber @Inject constructor(
                     angle = angle,
                     bounds = bounds,
                     contentPubkeyPrefix = contentPubkeyPrefix,
+                    boardBrand = boardBrand,
                     deleted = deleted,
                 )
             }
@@ -1034,6 +1055,10 @@ class CommunityClimbSubscriber @Inject constructor(
     private companion object {
         const val TAG = "CommunityClimbSub"
         const val NAMESPACE_LABEL = "com.cruxcoach.climb"
+        // v2 back-compat namespace (FEAT-031): the non-Kilter boards publish
+        // under this `L` label so pre-0.2.0 apps' single-namespace #L filter
+        // never matches them. Mirrors CommunityClimbTags.NS_CLIMB_V2.
+        const val NAMESPACE_LABEL_V2 = "com.cruxcoach.climb.v2"
         const val STARTUP_GRACE_MS = 2_000L
         const val BACKOFF_MS = 5_000L
         // Exponential backoff ladder for the runSubscriptionLoop's

@@ -75,6 +75,7 @@ class KilterPublishRetryWorkerTest {
         moveCount = 3L,
         kilterSyncedAt = kilterSyncedAt,
         layoutId = 1L,
+        boardBrand = "kilter",
     )
 
     private fun worker() = KilterPublishRetryWorker(

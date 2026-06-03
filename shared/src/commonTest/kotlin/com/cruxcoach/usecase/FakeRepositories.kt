@@ -146,8 +146,8 @@ class FakeBoardRepository : BoardRepository {
     override fun countFilteredClimbsFast(angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, selProductSizeId: Int): Long = 0L
     override fun countFilteredClimbs(angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter, selProductSizeId: Int): Long = 0L
     override fun countBenchmarkFilteredClimbs(angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter, selProductSizeId: Int): Long = 0L
-    override fun countSearchClimbs(query: String, angle: Int, layoutId: Int, climbType: ClimbTypeFilter, selProductSizeId: Int): Long = 0L
-    override fun countBenchmarkSearchClimbs(query: String, angle: Int, layoutId: Int, climbType: ClimbTypeFilter, selProductSizeId: Int): Long = 0L
+    override fun countSearchClimbs(query: String, angle: Int, layoutId: Int, boardBrand: String, climbType: ClimbTypeFilter, selProductSizeId: Int): Long = 0L
+    override fun countBenchmarkSearchClimbs(query: String, angle: Int, layoutId: Int, boardBrand: String, climbType: ClimbTypeFilter, selProductSizeId: Int): Long = 0L
     override fun getClimbCount(): Long = storedClimbs.size.toLong()
     override fun getClimbCountsByBrand(): Map<String, Long> = emptyMap()
     override fun hasAnyClimbs(): Boolean = storedClimbs.isNotEmpty()
@@ -238,7 +238,7 @@ class FakeBoardRepository : BoardRepository {
     override fun getClimbAuthorPubkey(uuid: String): String? = null
     override fun isLocallyAuthored(uuid: String): Boolean = false
     override fun computeEditorHeatmap(layoutId: Long, angle: Long, seedHolds: Set<Int>, targetRole: Int?): Map<Int, Float> = emptyMap()
-    override fun upsertCommunityClimb(uuid: String, layoutId: Long, setterUsername: String?, name: String, framesText: String, description: String, moveCount: Long, nostrEventId: String, nostrDTag: String, createdByPubkey: String, framesHash: String, createdAt: String, angle: Long, difficultyAverage: Double?, qualityAverage: Double?, bounds: com.cruxcoach.domain.community.ClimbBounds?) {}
+    override fun upsertCommunityClimb(uuid: String, layoutId: Long, setterUsername: String?, name: String, framesText: String, description: String, moveCount: Long, nostrEventId: String, nostrDTag: String, createdByPubkey: String, framesHash: String, createdAt: String, angle: Long, difficultyAverage: Double?, qualityAverage: Double?, bounds: com.cruxcoach.domain.community.ClimbBounds?, boardBrand: String) {}
     override fun markClimbPublishedNostr(uuid: String, nostrEventId: String, nostrDTag: String, pubkey: String) {}
     override fun markClimbPublishFailed(uuid: String) {}
     override fun markClimbPublishInFlight(uuid: String) {}
@@ -273,10 +273,11 @@ class FakeBoardRepository : BoardRepository {
     override fun getRetriableCommunityClimbDeadLetters(maxRetries: Long, limit: Long): List<com.cruxcoach.data.repository.CommunityClimbDeadLetter> = emptyList()
     override fun deleteCommunityClimbDeadLetter(uuid: String) {}
     override fun getCommunityClimbDeadLetterCounts(maxRetries: Long): com.cruxcoach.data.repository.DeadLetterCounts = com.cruxcoach.data.repository.DeadLetterCounts(0L, 0L)
-    override fun getDraftClimbs(pubkey: String?): List<CommunityClimbRow> = emptyList()
+    override fun getDraftClimbs(pubkey: String?, boardBrand: String): List<CommunityClimbRow> = emptyList()
     override fun getMyClimbs(pubkey: String): List<CommunityClimbRow> = emptyList()
     override fun getCommunityClimbs(): List<CommunityClimbRow> = emptyList()
     override fun getClimbStatsForUuid(uuid: String): Pair<Int, Int?>? = null
+    override fun getClimbPublishContext(uuid: String): ClimbPublishContext? = null
     override fun findClimbByFramesHash(framesHash: String, layoutId: Long): CommunityClimbRow? = null
     override fun upsertSetterGrade(climbDTag: String, angle: Long, setterGradeId: Int, lastUpdatedEpochMs: Long) {}
     override fun getOwnClimbsForBackup(pubkey: String): List<com.cruxcoach.data.repository.OwnClimbBackupRow> = emptyList()

@@ -145,7 +145,7 @@ class SetterFilterTest {
             climb("3", name = "Gamma", setter = "MikeSmith")
         )
 
-        val count = repo.countSearchClimbs("JohnDoe", angle = 40, layoutId = 1)
+        val count = repo.countSearchClimbs("JohnDoe", angle = 40, layoutId = 1, boardBrand = "kilter")
         assertEquals(2L, count)
     }
 
@@ -158,7 +158,7 @@ class SetterFilterTest {
             climb("2", name = "Beta", setter = "MikeSmith")
         )
 
-        val count = repo.countSearchClimbs("JohnDoe", angle = 40, layoutId = 1)
+        val count = repo.countSearchClimbs("JohnDoe", angle = 40, layoutId = 1, boardBrand = "kilter")
         assertEquals(1L, count)
     }
 

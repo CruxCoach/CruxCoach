@@ -249,8 +249,8 @@ interface BoardClimbQueries {
     fun countFilteredClimbsFast(angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, selProductSizeId: Int = 0): Long
     fun countFilteredClimbs(angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER, selProductSizeId: Int = 0): Long
     fun countBenchmarkFilteredClimbs(angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER, selProductSizeId: Int = 0): Long
-    fun countSearchClimbs(query: String, angle: Int, layoutId: Int, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER, selProductSizeId: Int = 0): Long
-    fun countBenchmarkSearchClimbs(query: String, angle: Int, layoutId: Int, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER, selProductSizeId: Int = 0): Long
+    fun countSearchClimbs(query: String, angle: Int, layoutId: Int, boardBrand: String, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER, selProductSizeId: Int = 0): Long
+    fun countBenchmarkSearchClimbs(query: String, angle: Int, layoutId: Int, boardBrand: String, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER, selProductSizeId: Int = 0): Long
     fun getClimbCount(): Long
     /** Per-brand catalogue sizes (FEAT-031), keyed by `board_brand` wire value.
      *  Brands with no imported climbs are absent from the map. */
@@ -492,6 +492,13 @@ data class CommunityClimbDeleteContext(
     val createdByPubkey: String?,
     val kilterStatus: String?,
     val origin: String,
+    /** Board family (`climbs.board_brand`) of the climb being deleted.
+     *  Drives the deletion event's back-compat `L` namespace: 'kilter'
+     *  → NS_CLIMB (legacy), any non-Kilter board → NS_CLIMB_V2, so that
+     *  ≥0.2.0 subscribers (which subscribe on both namespaces) catch
+     *  new-board deletions while old apps never see them. Defaults to
+     *  'kilter' for pre-0.2.0 rows with no brand. */
+    val boardBrand: String = "kilter",
 )
 
 data class LocalClimbDraft(
@@ -647,6 +654,22 @@ data class OwnClimbStatBackupRow(
     val benchmarkDifficulty: Double?,
 )
 
+/**
+ * The CLIMB'S OWN publish coordinates, read per-row by
+ * [CommunityPublishRetryWorker] so a queued draft for a non-active board
+ * is re-published with its own brand + layout instead of the currently-
+ * active board's (FEAT-031). [boardBrand] (from `climbs.board_brand`) and
+ * [layoutId] (from `climb_stats.layout_id`, falling back to
+ * `climbs.layout_id`) are always the climb's. [sizeLabel] is best-effort:
+ * the largest product_size for that brand+layout, or null when none
+ * resolves — the worker then substitutes the active board's size name.
+ */
+data class ClimbPublishContext(
+    val boardBrand: String,
+    val layoutId: Long,
+    val sizeLabel: String?,
+)
+
 data class CommunityClimbRow(
     val uuid: String,
     val name: String,
@@ -668,6 +691,10 @@ data class CommunityClimbRow(
      *  whose `product_name` doesn't match the placement IDs' product, so
      *  the retry worker has to derive the product name from this. */
     val layoutId: Long,
+    /** Board family the climb belongs to (`climbs.board_brand` wire value,
+     *  e.g. "kilter" / "tension"). Carried for completeness so callers can
+     *  tell which board a row came from without a second lookup. */
+    val boardBrand: String,
 )
 
 /** Climb-creation + community-climb queries (FEAT-003). */
@@ -785,6 +812,12 @@ interface CommunityClimbQueries {
         difficultyAverage: Double?,
         qualityAverage: Double?,
         bounds: com.cruxcoach.domain.community.ClimbBounds?,
+        /** Real board family from the event's `board_brand` tag (FEAT-031).
+         *  Persisted verbatim to `climbs.board_brand` so ingestion keys the
+         *  climb on its brand, NOT on its layout_id — the new boards reuse
+         *  layout-ids that collide with Kilter's. Defaults to 'kilter' for
+         *  legacy events that carry no `board_brand` tag. */
+        boardBrand: String = "kilter",
     )
 
     // ─── Community-climb dead-letter queue (M16) ──────────────────────
@@ -954,13 +987,16 @@ interface CommunityClimbQueries {
      */
     fun getClimbsAwaitingNostrRetry(pubkey: String): List<CommunityClimbRow>
     /**
-     * Drafts (`source='local'`, sync_status `draft`/`failed`) authored
+     * Drafts (`source='local'`, sync_status `draft`/`failed`) for the active
+     * board [boardBrand] (wire value, e.g. "kilter"/"tension"), authored
      * by [pubkey] or with a NULL `created_by_pubkey` (legacy / pre-key-init).
-     * Pass null to fetch only legacy NULL-pubkey drafts. Restricts visibility
-     * across identity switches: drafts authored under identity A are
-     * invisible to identity B opened in the editor on the same device.
+     * Pass null for [pubkey] to fetch only legacy NULL-pubkey drafts.
+     * Restricts visibility across identity switches: drafts authored under
+     * identity A are invisible to identity B opened in the editor on the same
+     * device. Scoping to [boardBrand] also stops one board's drafts (e.g.
+     * Tension) from leaking into another board's drawer (e.g. Kilter).
      */
-    fun getDraftClimbs(pubkey: String?): List<CommunityClimbRow>
+    fun getDraftClimbs(pubkey: String?, boardBrand: String): List<CommunityClimbRow>
     fun getMyClimbs(pubkey: String): List<CommunityClimbRow>
     fun getCommunityClimbs(): List<CommunityClimbRow>
     /** Single-row stats lookup used by the editor when restoring a draft.
@@ -969,6 +1005,10 @@ interface CommunityClimbQueries {
      *  upsertLocalClimbStat persisted; both null means the row predates
      *  having stats and the editor falls back to its default angle. */
     fun getClimbStatsForUuid(uuid: String): Pair<Int, Int?>?
+    /** The climb's OWN brand + layout + (best-effort) size label, for the
+     *  Nostr retry worker — see [ClimbPublishContext]. Null when the climb
+     *  isn't in the local DB. */
+    fun getClimbPublishContext(uuid: String): ClimbPublishContext?
     /** Look up an existing climb by frames_hash for duplicate detection. */
     fun findClimbByFramesHash(framesHash: String, layoutId: Long): CommunityClimbRow?
     /** Cache the setter-grade entry for a community climb (MVP — no vote aggregation). */

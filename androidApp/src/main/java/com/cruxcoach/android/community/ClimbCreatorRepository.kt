@@ -228,9 +228,15 @@ class ClimbCreatorRepository @Inject constructor(
             saveDraft(state)
         }
         val layoutId = userPreferences.boardLayoutId.first().toLong()
+        // The editor's active brand — set in ClimbEditorViewModel.loadBoardData
+        // from userPreferences.boardBrand (NOT fromLayoutId, which can't tell
+        // Aurora boards from Kilter). Threaded into publish() so the climb
+        // lands on the right back-compat L-namespace + board_brand tag.
+        val boardBrand = com.cruxcoach.domain.board.BoardBrand.fromWire(state.boardBrand)
         val result = publisher.publish(
             uuid = uuid,
             layoutId = layoutId,
+            boardBrand = boardBrand,
             state = state,
             sizeLabel = sizeLabel,
             isEdit = isEdit,
