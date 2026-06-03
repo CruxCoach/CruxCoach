@@ -431,6 +431,7 @@ class BoardBrowserViewModel @Inject constructor(
                 val isMoonBoard = !BoardBrand.fromWire(prefBoardBrand).usesAuroraPlacements
                 val needsBoardReload = _state.value.boardSize == null || _state.value.boardSize!!.id.toInt() != prefSizeId
                     || _state.value.filter.layoutId != prefLayoutId
+                    || _state.value.filter.boardBrand != prefBoardBrand
                 // Load/reload board data (placements once, boardSize + layoutId on change)
                 if (count > 0) {
                     // Keep layout filter + brand in sync with preferences.
@@ -445,18 +446,21 @@ class BoardBrowserViewModel @Inject constructor(
                             moonBoardAngles = moonBoardAngles,
                         )) }
                     }
-                    if (_state.value.placements.isEmpty()) {
+                    // FEAT-031: placements are namespaced by board_brand; reload
+                    // them (with the active brand) on a board change, not just
+                    // once — otherwise an Aurora board reuses Kilter placements.
+                    if (_state.value.placements.isEmpty() || needsBoardReload) {
                         val placements = PerfLogger.traceQuery("getAllPlacements") {
-                            boardRepository.getAllPlacements()
+                            boardRepository.getAllPlacements(prefBoardBrand)
                         }.associate { it.placementId.toInt() to it }
                         _state.update { it.copy(placements = placements) }
                         PerfLogger.milestone("BoardBrowserVM placements loaded (${placements.size})")
                     }
                     if (needsBoardReload && !isMoonBoard) {
                         val boardSize = PerfLogger.traceQuery("getProductSize") {
-                            boardRepository.getProductSize(prefSizeId)
+                            boardRepository.getProductSize(prefSizeId, prefBoardBrand)
                         }
-                        val boardImages = boardRepository.getBoardImages(prefSizeId, prefLayoutId)
+                        val boardImages = boardRepository.getBoardImages(prefSizeId, prefLayoutId, prefBoardBrand)
                         _state.update { it.copy(boardSize = boardSize, boardImages = boardImages) }
                     } else if (needsBoardReload) {
                         // MoonBoard: clear any stale Kilter board image/size so

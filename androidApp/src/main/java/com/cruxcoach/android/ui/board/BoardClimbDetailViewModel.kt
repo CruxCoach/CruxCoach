@@ -595,10 +595,15 @@ class BoardClimbDetailViewModel @Inject constructor(
                         val allFrames = BoardClimbParser.parseMultiFrames(climb.frames)
                         val isRoute = allFrames.size > 1
                         val holds = allFrames.firstOrNull() ?: emptyList()
+                        // FEAT-031: fetch geometry for the CLIMB's own board
+                        // brand (Aurora layout/size/placement ids are namespaced
+                        // by board_brand; defaulting to "kilter" renders the
+                        // wrong board for Tension/Grasshopper/etc.).
+                        val brand = climb.brand.wireValue
                         val placementMap = if (isMoonBoard) emptyMap() else
                             PerfLogger.trace("loadClimb.placements") {
                                 cachedPlacementMap ?: run {
-                                    val map = boardRepository.getAllPlacements().associateBy { it.placementId.toInt() }
+                                    val map = boardRepository.getAllPlacements(brand).associateBy { it.placementId.toInt() }
                                     cachedPlacementMap = map
                                     map
                                 }
@@ -610,12 +615,13 @@ class BoardClimbDetailViewModel @Inject constructor(
                             climbLayoutId = climb.layoutId.toInt(),
                             preferredSizeId = prefSizeId,
                             preferredLayoutId = prefLayoutId,
+                            boardBrand = brand,
                         )
                         val boardSize = effectiveBoard?.let { (sizeId, _) ->
-                            boardRepository.getProductSize(sizeId)
+                            boardRepository.getProductSize(sizeId, brand)
                         }
                         val boardImages = effectiveBoard?.let { (sizeId, layoutId) ->
-                            boardRepository.getBoardImages(sizeId, layoutId)
+                            boardRepository.getBoardImages(sizeId, layoutId, brand)
                         } ?: emptyList()
                         val userAscents = PerfLogger.trace("loadClimb.userHistory") {
                             personalBoardRepo.getUserHistoryForClimb(uuid)
@@ -750,8 +756,9 @@ class BoardClimbDetailViewModel @Inject constructor(
                     val allFrames = BoardClimbParser.parseMultiFrames(climb.frames)
                     val isRoute = allFrames.size > 1
                     val holds = allFrames.firstOrNull() ?: emptyList()
+                    val brand = climb.brand.wireValue
                     val placementMap = if (isMoonBoard) emptyMap() else cachedPlacementMap ?: run {
-                        val map = boardRepository.getAllPlacements().associateBy { it.placementId.toInt() }
+                        val map = boardRepository.getAllPlacements(brand).associateBy { it.placementId.toInt() }
                         cachedPlacementMap = map
                         map
                     }
@@ -762,12 +769,13 @@ class BoardClimbDetailViewModel @Inject constructor(
                         climbLayoutId = climb.layoutId.toInt(),
                         preferredSizeId = prefSizeId,
                         preferredLayoutId = prefLayoutId,
+                        boardBrand = brand,
                     )
                     val boardSize = effectiveBoard?.let { (sizeId, _) ->
-                        boardRepository.getProductSize(sizeId)
+                        boardRepository.getProductSize(sizeId, brand)
                     }
                     val boardImages = effectiveBoard?.let { (sizeId, layoutId) ->
-                        boardRepository.getBoardImages(sizeId, layoutId)
+                        boardRepository.getBoardImages(sizeId, layoutId, brand)
                     } ?: emptyList()
                     val userAscents = personalBoardRepo.getUserHistoryForClimb(uuid)
                     val isFavorited = personalBoardRepo.isClimbFavorited(uuid)
@@ -929,8 +937,9 @@ class BoardClimbDetailViewModel @Inject constructor(
         climbLayoutId: Int,
         preferredSizeId: Int,
         preferredLayoutId: Int,
+        boardBrand: String,
     ): Pair<Int, Int> {
-        if (boardRepository.canRenderClimbOnSize(climbUuid, preferredSizeId)) {
+        if (boardRepository.canRenderClimbOnSize(climbUuid, preferredSizeId, boardBrand)) {
             // Use the climb's layout (not preferredLayoutId) so a
             // multi-layout size still renders the right image set —
             // canRenderClimbOnSize already verified images exist for
@@ -939,10 +948,10 @@ class BoardClimbDetailViewModel @Inject constructor(
             // climb, this collapses to the user's full settings pair.
             return preferredSizeId to climbLayoutId
         }
-        boardRepository.getProductSizeForClimbRender(climbUuid)?.let { containing ->
+        boardRepository.getProductSizeForClimbRender(climbUuid, boardBrand)?.let { containing ->
             return containing to climbLayoutId
         }
-        val candidateSizes = boardRepository.getProductSizesForLayout(climbLayoutId)
+        val candidateSizes = boardRepository.getProductSizesForLayout(climbLayoutId, boardBrand)
         return when {
             preferredSizeId in candidateSizes -> preferredSizeId to climbLayoutId
             candidateSizes.isNotEmpty() -> candidateSizes.first() to climbLayoutId
