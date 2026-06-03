@@ -46,6 +46,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.SharingStarted
@@ -262,6 +264,20 @@ class BoardBrowserViewModel @Inject constructor(
                 filtersLoaded = true
                 PerfLogger.milestone("BoardBrowserVM filters applied, calling refreshBoardData")
                 refreshBoardData()
+                // FEAT-031: reload the browse list when the active board
+                // changes. The shared board picker persists the new selection
+                // from any screen; observe the board prefs directly so the
+                // browser reflects it (race-free, unlike a post-confirm callback).
+                launch {
+                    combine(
+                        userPreferences.boardBrand,
+                        userPreferences.boardLayoutId,
+                        userPreferences.boardProductSizeId,
+                    ) { brand, layout, size -> Triple(brand, layout, size) }
+                        .drop(1)
+                        .distinctUntilChanged()
+                        .collect { refreshBoardData(force = true) }
+                }
                 // Eagerly load status UUIDs in background (non-blocking)
                 launch(Dispatchers.IO) {
                     PerfLogger.traceSuspend("ensureStatusLoaded") { ensureStatusLoaded() }

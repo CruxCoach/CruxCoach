@@ -281,32 +281,12 @@ private fun BoardSetupStep(
     var showBoardModelDialog by rememberSaveable { mutableStateOf(false) }
     var showGymSearch by rememberSaveable { mutableStateOf(false) }
     if (showBoardModelDialog) {
-        // Unified picker — Kilter Original / Kilter Homewall / MoonBoard.
-        // Pre-sync via KILTER_KNOWN_SIZES (all 16) — hardware knowledge,
-        // no sync needed; the picker filters it per category.
-        val sizes = com.cruxcoach.android.data.BoardConstants.KILTER_KNOWN_SIZES
-        com.cruxcoach.android.ui.settings.BoardSelectionDialog(
-            initialBrand = state.boardBrand,
-            productSizes = sizes,
-            selectedKilterSizeId = state.boardProductSizeId,
-            selectedMoonBoardVariant = state.moonBoardVariant,
-            frequency = state.boardSizeFrequency
-                .ifEmpty { com.cruxcoach.android.data.BoardConstants.DEFAULT_SIZE_FREQUENCY },
-            onConfirmKilter = { id ->
-                val size = sizes.firstOrNull { it.id.toInt() == id }
-                val layout = com.cruxcoach.android.data.BoardConstants.layoutIdForProduct(
-                    size?.productId?.toInt()
-                        ?: com.cruxcoach.android.data.BoardConstants.KILTER_PRODUCT_ID
-                )
-                val name = com.cruxcoach.android.data.BoardConstants.sizeLabel(sizes, id)
-                viewModel.selectBoardFromGym(layout, id, name)
-                showBoardModelDialog = false
-            },
-            onConfirmMoonBoard = { variant ->
-                viewModel.selectMoonBoardVariant(variant)
-                showBoardModelDialog = false
-            },
+        // FEAT-031: the one shared board picker (same as Settings / Filter /
+        // sync card) — identical state + the full board list incl. the Aurora
+        // family. The selection persists via the shared VM.
+        com.cruxcoach.android.ui.settings.BoardPickerDialog(
             onDismiss = { showBoardModelDialog = false },
+            onSelected = { showBoardModelDialog = false },
             onFindViaGym = {
                 showBoardModelDialog = false
                 showGymSearch = true

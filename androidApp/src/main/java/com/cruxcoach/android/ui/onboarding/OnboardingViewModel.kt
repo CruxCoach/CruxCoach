@@ -27,6 +27,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import com.cruxcoach.android.util.safeLaunch
 import javax.inject.Inject
@@ -164,6 +166,36 @@ class OnboardingViewModel @Inject constructor(
                 boardLocationRepository.countWalls() > 0L
             }
             _state.update { it.copy(boardSizeFrequency = freq, boardSearchEnabled = enabled) }
+        }
+        // FEAT-031: the shared board picker persists selections from any screen;
+        // mirror the choice into onboarding's state so its board step reflects it.
+        viewModelScope.launch {
+            combine(
+                userPreferences.boardBrand,
+                userPreferences.boardLayoutId,
+                userPreferences.boardProductSizeId,
+            ) { brand, layoutId, sizeId -> Triple(brand, layoutId, sizeId) }
+                .distinctUntilChanged()
+                .collect { (brand, layoutId, sizeId) ->
+                    val variant = com.cruxcoach.domain.board.MoonBoardVariant.fromLayoutId(layoutId.toLong())
+                    val parsed = BoardBrand.fromWire(brand)
+                    val name = when {
+                        parsed == BoardBrand.MOONBOARD -> variant?.displayName ?: ""
+                        parsed.usesAuroraProtocol && parsed != BoardBrand.KILTER -> parsed.displayName
+                        else -> com.cruxcoach.android.data.BoardConstants.sizeLabel(
+                            com.cruxcoach.android.data.BoardConstants.KILTER_KNOWN_SIZES, sizeId,
+                        )
+                    }
+                    _state.update {
+                        it.copy(
+                            boardBrand = brand,
+                            boardLayoutId = layoutId,
+                            boardProductSizeId = sizeId,
+                            moonBoardVariant = variant,
+                            boardProductSizeName = name,
+                        )
+                    }
+                }
         }
     }
     val state: StateFlow<OnboardingState> = _state.asStateFlow()

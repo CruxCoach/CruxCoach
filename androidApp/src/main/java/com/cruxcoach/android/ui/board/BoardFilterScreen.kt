@@ -48,7 +48,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
 import com.cruxcoach.android.data.BoardConstants
-import com.cruxcoach.android.ui.settings.BoardSelectionDialog
+import com.cruxcoach.android.ui.settings.BoardPickerDialog
 import com.cruxcoach.android.ui.settings.GymBoardSearchSheet
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.MoonBoardVariant
@@ -74,23 +74,13 @@ fun BoardFilterScreen(
         // Unified picker — Kilter Original / Kilter Homewall / MoonBoard.
         // Confirming sets the global board selection that drives the
         // always-on "fits my board" filter and the brand-aware browse.
-        BoardSelectionDialog(
-            initialBrand = state.filter.boardBrand,
-            productSizes = BoardConstants.KILTER_KNOWN_SIZES,
-            selectedKilterSizeId = state.boardSize?.id?.toInt() ?: 0,
-            selectedMoonBoardVariant = if (BoardBrand.fromWire(state.filter.boardBrand) == BoardBrand.MOONBOARD) {
-                MoonBoardVariant.fromLayoutId(state.filter.layoutId.toLong())
-            } else null,
-            frequency = BoardConstants.DEFAULT_SIZE_FREQUENCY,
-            onConfirmKilter = { id ->
-                viewModel.selectBoard(id)
-                showBoardPicker = false
-            },
-            onConfirmMoonBoard = { variant ->
-                viewModel.selectMoonBoardVariant(variant)
-                showBoardPicker = false
-            },
+        // FEAT-031: the one shared board picker (same as Settings / Onboarding /
+        // sync card) — identical state + the full board list incl. the Aurora
+        // family. Selection persists via the shared VM; the browse list reloads
+        // reactively when the board prefs change.
+        BoardPickerDialog(
             onDismiss = { showBoardPicker = false },
+            onSelected = { showBoardPicker = false },
             onFindViaGym = {
                 showBoardPicker = false
                 showGymSearch = true
@@ -173,9 +163,18 @@ fun BoardFilterScreen(
                 // hosts the "don't know? find your gym" entry). Either
                 // path sets the global board selection that drives the
                 // always-on "fits my board" filter.
-                val boardLabel = state.boardSize
-                    ?.let { BoardConstants.sizeLabel(it.id, it.name) }
-                    ?: stringResource(R.string.settings_board_model_not_configured)
+                // FEAT-027/031: a MoonBoard has no Aurora product_size row, so
+                // boardSize is null — label it by its variant name instead (the
+                // same brand-aware logic as the Settings board section). Kilter
+                // and the Aurora family keep the product-size label.
+                val boardLabel = if (BoardBrand.fromWire(state.filter.boardBrand) == BoardBrand.MOONBOARD) {
+                    MoonBoardVariant.fromLayoutId(state.filter.layoutId.toLong())?.displayName
+                        ?: stringResource(R.string.settings_board_model_not_configured)
+                } else {
+                    state.boardSize
+                        ?.let { BoardConstants.sizeLabel(it.id, it.name) }
+                        ?: stringResource(R.string.settings_board_model_not_configured)
+                }
                 Column {
                     Text(
                         stringResource(R.string.board_filter_selected_board),

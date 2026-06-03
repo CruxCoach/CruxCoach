@@ -41,6 +41,8 @@ import kotlinx.coroutines.launch
 import com.cruxcoach.android.util.safeLaunch
 import kotlinx.coroutines.withContext
 import com.cruxcoach.android.data.BoardConstants
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import com.cruxcoach.android.nostr.OfflineQueueManager
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.board.BoardEasterAnimations
@@ -284,6 +286,35 @@ class SettingsViewModel @Inject constructor(
             launch { userPreferences.nearbyClimbSharing.collect { v -> _state.update { it.copy(climbSharing = it.climbSharing.copy(enabled = v)) } } }
             launch { userPreferences.allowRemoteDisconnect.collect { v -> _state.update { it.copy(climbSharing = it.climbSharing.copy(allowRemoteDisconnect = v)) } } }
             launch { userPreferences.crashReportOptIn.collect { v -> _state.update { it.copy(crashReportOptIn = v ?: false) } } }
+            // FEAT-031: keep the board section in sync with the shared board
+            // picker, which persists the selection from any screen. Derive the
+            // displayed board from the board prefs reactively (race-free).
+            launch {
+                combine(
+                    userPreferences.boardBrand,
+                    userPreferences.boardLayoutId,
+                    userPreferences.boardProductSizeId,
+                ) { brand, layoutId, sizeId -> Triple(brand, layoutId, sizeId) }
+                    .distinctUntilChanged()
+                    .collect { (brand, layoutId, sizeId) ->
+                        val variant = MoonBoardVariant.fromLayoutId(layoutId.toLong())
+                        val name = if (BoardBrand.fromWire(brand) == BoardBrand.MOONBOARD) {
+                            variant?.displayName ?: ""
+                        } else {
+                            withContext(Dispatchers.IO) { boardRepository.getProductSize(sizeId, brand) }
+                                ?.let { BoardConstants.sizeLabel(it.id, it.name) } ?: ""
+                        }
+                        _state.update {
+                            it.copy(
+                                boardBrand = brand,
+                                boardLayoutId = layoutId,
+                                boardProductSizeId = sizeId,
+                                moonBoardVariant = variant,
+                                boardProductSizeName = name,
+                            )
+                        }
+                    }
+            }
             launch { kilterSyncEngine.sessionExpired.collect { expired -> _state.update { it.copy(kilterAccount = it.kilterAccount.copy(sessionExpired = expired)) } } }
             launch { userPreferences.announcementsEnabled.collect { v -> _state.update { it.copy(announcementsEnabled = v) } } }
             launch { userPreferences.announcementCatRelease.collect { v -> _state.update { it.copy(announcementCatRelease = v) } } }

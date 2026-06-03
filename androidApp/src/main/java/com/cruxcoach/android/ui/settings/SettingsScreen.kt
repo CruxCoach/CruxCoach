@@ -126,43 +126,13 @@ fun SettingsScreen(
         LaunchedEffect(Unit) { viewModel.loadProductSizes() }
 
         if (showBoardModelDialog) {
-            // Full board list (both products). Layout is no longer a
-            // separate chip — the dialog has an in-dialog Original/
-            // Homewall segment and the pick resolves its own layout.
-            // Pre-sync: KILTER_KNOWN_SIZES (all 16) so the user can pick
-            // before the DB sync; replaced by synced product_sizes once
-            // available.
-            val allSizes = state.productSizes.ifEmpty {
-                com.cruxcoach.android.data.BoardConstants.KILTER_KNOWN_SIZES
-            }
-            // FEAT-027 + FEAT-007: unified board picker — brand chooser
-            // (Kilter / MoonBoard), Kilter sizes, "find via gym" entry.
-            BoardSelectionDialog(
-                initialBrand = state.boardBrand,
-                productSizes = allSizes,
-                selectedKilterSizeId = state.boardProductSizeId,
-                selectedMoonBoardVariant = state.moonBoardVariant,
-                frequency = com.cruxcoach.android.data.BoardConstants.DEFAULT_SIZE_FREQUENCY,
-                onConfirmKilter = { id ->
-                    val size = allSizes.firstOrNull { it.id.toInt() == id }
-                    val layout = com.cruxcoach.android.data.BoardConstants.layoutIdForProduct(
-                        size?.productId?.toInt()
-                            ?: com.cruxcoach.android.data.BoardConstants.KILTER_PRODUCT_ID
-                    )
-                    val name = com.cruxcoach.android.data.BoardConstants.sizeLabel(allSizes, id)
-                    viewModel.selectBoardFromGym(layout, id, name)
-                    showBoardModelDialog = false
-                },
-                onConfirmMoonBoard = { variant ->
-                    viewModel.selectMoonBoardVariant(variant)
-                    showBoardModelDialog = false
-                },
-                onConfirmAurora = { board ->
-                    viewModel.selectAuroraBoard(board)
-                    showBoardModelDialog = false
-                },
-                showAuroraBoards = true,
+            // FEAT-031: the one shared board picker — identical state + options
+            // (Kilter / MoonBoard / Aurora family) across every call site. The
+            // selection persists via the shared VM; this screen's board section
+            // updates reactively from the prefs.
+            BoardPickerDialog(
                 onDismiss = { showBoardModelDialog = false },
+                onSelected = { showBoardModelDialog = false },
                 onFindViaGym = {
                     showBoardModelDialog = false
                     showGymSearch = true

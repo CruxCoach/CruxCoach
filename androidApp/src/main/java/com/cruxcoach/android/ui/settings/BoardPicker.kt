@@ -1,0 +1,133 @@
+package com.cruxcoach.android.ui.settings
+
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.cruxcoach.android.data.AuroraBoardSelector
+import com.cruxcoach.android.data.BoardConstants
+import com.cruxcoach.android.data.UserPreferences
+import com.cruxcoach.data.repository.BoardRepository
+import com.cruxcoach.data.repository.BoardSize
+import com.cruxcoach.domain.board.BoardBrand
+import com.cruxcoach.domain.board.MoonBoardVariant
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import javax.inject.Inject
+
+/**
+ * Reactive state shared by every board picker (FEAT-031). Derived straight from
+ * the persisted board prefs + DB sizes, so every picker call site (Settings,
+ * Filter, Onboarding, sync card) shows identical selection + options and can
+ * never drift apart.
+ */
+data class BoardPickerState(
+    val initialBrand: String = BoardBrand.KILTER.wireValue,
+    val productSizes: List<BoardSize> = BoardConstants.KILTER_KNOWN_SIZES,
+    val selectedKilterSizeId: Int = 0,
+    val selectedMoonBoardVariant: MoonBoardVariant? = null,
+)
+
+/**
+ * Single source of truth for the board picker. All four pickers use this same
+ * VM + the shared selection actions, so their state is identical by
+ * construction and selecting in one is reflected everywhere via the prefs.
+ */
+@HiltViewModel
+class BoardPickerViewModel @Inject constructor(
+    private val userPreferences: UserPreferences,
+    private val boardRepository: BoardRepository,
+    private val auroraBoardSelector: AuroraBoardSelector,
+) : ViewModel() {
+
+    private val productSizes = MutableStateFlow(BoardConstants.KILTER_KNOWN_SIZES)
+
+    val state: StateFlow<BoardPickerState> = combine(
+        userPreferences.boardBrand,
+        userPreferences.boardLayoutId,
+        userPreferences.boardProductSizeId,
+        productSizes,
+    ) { brand, layoutId, sizeId, sizes ->
+        BoardPickerState(
+            initialBrand = brand,
+            productSizes = sizes,
+            selectedKilterSizeId = sizeId,
+            selectedMoonBoardVariant = MoonBoardVariant.fromLayoutId(layoutId.toLong()),
+        )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), BoardPickerState())
+
+    init {
+        // Prefer the synced DB sizes (both Kilter products); fall back to the
+        // bundled known-sizes constant when the catalogue isn't imported yet.
+        viewModelScope.launch {
+            val sizes = withContext(Dispatchers.IO) {
+                boardRepository.getAllProductSizes(
+                    BoardConstants.KILTER_PRODUCT_ID.toLong(), BoardBrand.KILTER.wireValue,
+                ) + boardRepository.getAllProductSizes(
+                    BoardConstants.KILTER_HOMEWALL_PRODUCT_ID.toLong(), BoardBrand.KILTER.wireValue,
+                )
+            }
+            if (sizes.isNotEmpty()) productSizes.value = sizes
+        }
+    }
+
+    fun selectKilter(sizeId: Int) {
+        viewModelScope.launch {
+            val size = productSizes.value.firstOrNull { it.id.toInt() == sizeId }
+            val layout = BoardConstants.layoutIdForProduct(
+                size?.productId?.toInt() ?: BoardConstants.KILTER_PRODUCT_ID,
+            )
+            userPreferences.setBoardBrand(BoardBrand.KILTER.wireValue)
+            userPreferences.setBoardLayoutId(layout)
+            userPreferences.setBoardProductSizeId(sizeId)
+        }
+    }
+
+    fun selectMoonBoard(variant: MoonBoardVariant) {
+        viewModelScope.launch { userPreferences.setMoonBoardSelection(variant.layoutId.toInt()) }
+    }
+
+    fun selectAurora(board: BoardBrand) {
+        viewModelScope.launch { auroraBoardSelector.select(board) }
+    }
+}
+
+/**
+ * The one board picker, used by every call site (FEAT-031). Reads its state
+ * from the shared [BoardPickerViewModel] so all pickers are identical and
+ * always offer the same boards (Kilter, MoonBoard + the Aurora family).
+ *
+ * @param onSelected invoked after a board is confirmed — the host uses it to
+ *        close the dialog; board content updates reactively via the prefs.
+ */
+@Composable
+internal fun BoardPickerDialog(
+    onDismiss: () -> Unit,
+    onSelected: () -> Unit = {},
+    onFindViaGym: (() -> Unit)? = null,
+) {
+    val viewModel: BoardPickerViewModel = hiltViewModel()
+    val state by viewModel.state.collectAsState()
+    BoardSelectionDialog(
+        initialBrand = state.initialBrand,
+        productSizes = state.productSizes,
+        selectedKilterSizeId = state.selectedKilterSizeId,
+        selectedMoonBoardVariant = state.selectedMoonBoardVariant,
+        frequency = BoardConstants.DEFAULT_SIZE_FREQUENCY,
+        showAuroraBoards = true,
+        onConfirmKilter = { viewModel.selectKilter(it); onSelected() },
+        onConfirmMoonBoard = { viewModel.selectMoonBoard(it); onSelected() },
+        onConfirmAurora = { viewModel.selectAurora(it); onSelected() },
+        onFindViaGym = onFindViaGym,
+        onDismiss = onDismiss,
+    )
+}

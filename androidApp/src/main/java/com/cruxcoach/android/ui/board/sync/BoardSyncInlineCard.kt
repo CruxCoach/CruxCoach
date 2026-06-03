@@ -26,7 +26,7 @@ import com.cruxcoach.android.R
 import com.cruxcoach.android.data.BoardDatabaseImporter.ImportStep
 import com.cruxcoach.android.data.BoardSyncState
 import com.cruxcoach.domain.board.BoardBrand
-import com.cruxcoach.android.ui.settings.BoardSelectionDialog
+import com.cruxcoach.android.ui.settings.BoardPickerDialog
 import com.cruxcoach.android.ui.theme.*
 
 /**
@@ -171,16 +171,12 @@ fun BoardSyncInlineCard(
             viewModel.checkFirstSyncModelSelection()
         }
     }
-    if (modelState.showDialog && modelState.productSizes.isNotEmpty()) {
-        BoardSelectionDialog(
-            initialBrand = modelState.boardBrand,
-            productSizes = modelState.productSizes,
-            selectedKilterSizeId = modelState.selectedId,
-            selectedMoonBoardVariant = modelState.selectedMoonBoardVariant,
-            frequency = com.cruxcoach.android.data.BoardConstants.DEFAULT_SIZE_FREQUENCY,
-            onConfirmKilter = { viewModel.confirmBoardModel(it) },
-            onConfirmMoonBoard = { viewModel.confirmMoonBoardVariant(it) },
+    if (modelState.showDialog) {
+        // FEAT-031: the one shared board picker (same as Settings / Filter /
+        // Onboarding) — identical state + the full board list incl. Aurora.
+        BoardPickerDialog(
             onDismiss = { viewModel.dismissModelDialog() },
+            onSelected = { viewModel.dismissModelDialog() },
         )
     }
 
