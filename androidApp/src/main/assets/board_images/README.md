@@ -205,12 +205,12 @@ degrades gracefully to a placements-only view; it never crashes or blanks.
 ## Origin
 
 Each source image was extracted from the corresponding board's own official
-Android app (the `com.auroraclimbing.*` family): specifically the
-`product_sizes_layouts_sets` image for that size's dominant layout (the layout
-most of its climbs use) and base hold set — the standard configuration the
-board ships with — then re-encoded as WebP to reduce APK size. They are
-**not** CruxCoach's original work. The raw app bundles are never stored in
-this repository; only the processed WebP files are committed.
+Android app (the `com.auroraclimbing.*` family): the `product_sizes`
+background plate alpha-composited with every `product_sizes_layouts_sets`
+hold-set image for that (size, layout) — the same layering the official app
+renders — then re-encoded as WebP to reduce APK size. They are **not**
+CruxCoach's original work. The raw app bundles are never stored in this
+repository; only the processed WebP files are committed.
 
 ## Rights holders
 
@@ -236,15 +236,23 @@ repository. Removal or replacement (per board) will be handled promptly.
 
 ## Updating — Aurora-family boards
 
-The assets are produced by an out-of-repo pipeline:
+The assets are produced by an out-of-repo pipeline
+(`~/aurora-re/composite_board_images.py`):
 
 1. Obtain the board's official app and read its bundled `db.sqlite3`.
-2. For each `is_listed = 1` `product_size`, pick the
-   `product_sizes_layouts_sets` image for the dominant layout and the base
-   (lowest-id) hold set.
-3. Re-encode as WebP (quality ~80) and drop it at
-   `board_images/<brand>/board_<product_size_id>.webp`.
+2. For each `is_listed = 1` `product_size` and each of its layouts, alpha-stack
+   the `product_sizes` background plate + **every** `product_sizes_layouts_sets`
+   image for that (size, layout) — the same layering the official app does — so
+   all hold sprites show, not just one set's. (Stacking only the base set left
+   the board sparse with big gaps.)
+3. Re-encode as WebP (quality ~80, capped at 1080px wide) and drop it at
+   `board_images/<brand>/board_<product_size_id>.webp`, or
+   `board_<size>_<layout>.webp` when a size carries more than one layout
+   (Tension TB2 Mirror/Spray, Decoy layout 1/2). For multi-layout sizes the
+   densest layout's composite is also written as the size-only fallback.
 
-No code change is needed for a new size — the renderer attempts the
-brand-namespaced path for every Aurora-family board and falls back to
-placements-only when the asset is absent.
+The renderer (`boardImageCandidatePaths`) tries the layout-specific path first
+(the active layout comes from the size's `boardImages` set list), then the
+size-only path, then falls back to a placements-only view if neither asset is
+present. So no code change is needed for a new size, and a board not yet
+regenerated keeps working off its old single-set image.

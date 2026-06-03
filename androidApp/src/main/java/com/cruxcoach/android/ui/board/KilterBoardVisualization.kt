@@ -73,14 +73,21 @@ internal object BoardImageCache {
     fun get(path: String): ImageBitmap? =
         if (path == cachedPath) cachedBitmap else null
 
+    /**
+     * Decode the first [candidates] path that resolves to an asset, keyed in
+     * the cache by the first (most-specific) candidate. The renderer passes
+     * the layout-specific composite first and the size-only image as a
+     * fallback, so a board not yet regenerated still loads its old asset.
+     */
     suspend fun getOrDecode(
-        path: String,
+        candidates: List<String>,
         assetManager: android.content.res.AssetManager
     ): ImageBitmap? {
-        if (path == cachedPath) return cachedBitmap
+        val key = candidates.firstOrNull() ?: return null
+        if (key == cachedPath) return cachedBitmap
         return kotlinx.coroutines.withContext(Dispatchers.IO) {
-            val bitmap = tryDecodeAsset(assetManager, path)
-            cachedPath = path
+            val bitmap = candidates.firstNotNullOfOrNull { tryDecodeAsset(assetManager, it) }
+            cachedPath = key
             cachedBitmap = bitmap
             bitmap
         }
@@ -96,6 +103,13 @@ internal object BoardImageCache {
     }
 }
 
+
+// Mounting-hole grid dot. The official Aurora apps draw a dot at EVERY
+// board position (the `holes`/`placements` grid), which is what makes their
+// board read as a complete, full surface; drawing only the climb's holds
+// leaves big gaps and looks unfinished. Light + semi-transparent so it sits
+// quietly under the LED hold rings on the dark board image (FEAT-031).
+private val MountingDotColor = Color(0x40FFFFFF)
 
 // Heatmap color gradient: green → yellow → orange → red
 private val HEATMAP_COLORS = listOf(
@@ -179,7 +193,11 @@ internal fun KilterBoardVisualization(
         brand.usesAuroraProtocol -> true
         else -> false
     }
-    val boardImagePath = boardImageAssetPath(brand, sizeId)
+    // The active layout (from the size's set images) picks the layout-specific
+    // composite — Tension TB2 Mirror vs Spray share a size but not their holds.
+    val layoutId = boardImages.firstOrNull()?.layoutId
+    val boardImageCandidates = boardImageCandidatePaths(brand, sizeId, layoutId)
+    val boardImagePath = boardImageCandidates.first()
 
     // Two-finger zoom/pan state. Kept at composable scope so taps in the
     // child pointerInput can inverse-transform their positions to canvas
@@ -233,7 +251,7 @@ internal fun KilterBoardVisualization(
             if (hasBundledImage) {
                 LaunchedEffect(boardImagePath) {
                     if (boardBitmap == null) {
-                        boardBitmap = BoardImageCache.getOrDecode(boardImagePath, assetManager)
+                        boardBitmap = BoardImageCache.getOrDecode(boardImageCandidates, assetManager)
                     }
                 }
             }
@@ -382,6 +400,20 @@ internal fun KilterBoardVisualization(
                     if (px !in 0f..size.width || py !in 0f..size.height) return@forEach
 
                     val pid = placement.placementId.toInt()
+
+                    // Layer 2.5: Mounting-hole grid — a faint dot at every
+                    // placement so a board WITHOUT a bundled composite still
+                    // reads as a full surface instead of a few floating holds.
+                    // When the composite is present it already shows every
+                    // hold, so the dots would just be noise — skip them.
+                    if (boardBitmap == null) {
+                        drawCircle(
+                            color = MountingDotColor,
+                            radius = xScale * 1.25f,
+                            center = Offset(px, py),
+                            style = Fill,
+                        )
+                    }
 
                     // Layer 3: Heatmap markers — small tinted dots that
                     // hint at popularity without obscuring the hold image.
