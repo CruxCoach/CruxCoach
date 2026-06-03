@@ -762,7 +762,7 @@ class BoardBrowserViewModel @Inject constructor(
             val minDiff = KilterGradeMapper.indexToFilterMin(f.minGradeIndex, french)
             val maxDiff = KilterGradeMapper.indexToFilterMax(f.maxGradeIndex, french)
             val all = boardRepository.getCruxCoachClimbs(
-                f.layoutId, f.angle, minDiff, maxDiff, f.minAscensionists, f.climbTypeFilter,
+                f.layoutId, f.boardBrand, f.angle, minDiff, maxDiff, f.minAscensionists, f.climbTypeFilter,
                 selProductSizeId = selSizeId()
             )
             val nameFiltered = if (f.searchQuery.isBlank()) all
@@ -781,7 +781,7 @@ class BoardBrowserViewModel @Inject constructor(
             val minDiff = KilterGradeMapper.indexToFilterMin(f.minGradeIndex, french)
             val maxDiff = KilterGradeMapper.indexToFilterMax(f.maxGradeIndex, french)
             val all = boardRepository.getClimbsByUuids(
-                hs.holdFilterUuids, f.angle, f.layoutId, minDiff, maxDiff, f.minAscensionists, f.climbTypeFilter
+                hs.holdFilterUuids, f.angle, f.layoutId, f.boardBrand, minDiff, maxDiff, f.minAscensionists, f.climbTypeFilter
             )
             val filtered = applyOriginFilter(applyBenchmarkFilter(applyStatusFilter(all, f.statusFilter), f.benchmarkOnly), f.originFilter)
             val sorted = sortInKotlin(filtered, f.sortField, f.sortDirection)
@@ -797,7 +797,7 @@ class BoardBrowserViewModel @Inject constructor(
             val minDiff = KilterGradeMapper.indexToFilterMin(f.minGradeIndex, french)
             val maxDiff = KilterGradeMapper.indexToFilterMax(f.maxGradeIndex, french)
             val all = boardRepository.getClimbsByUuids(
-                uuids, f.angle, f.layoutId, minDiff, maxDiff, f.minAscensionists, f.climbTypeFilter
+                uuids, f.angle, f.layoutId, f.boardBrand, minDiff, maxDiff, f.minAscensionists, f.climbTypeFilter
             )
             val filtered = applyOriginFilter(applyBenchmarkFilter(all, f.benchmarkOnly), f.originFilter)
             val sorted = sortInKotlin(filtered, f.sortField, f.sortDirection)
@@ -840,14 +840,14 @@ class BoardBrowserViewModel @Inject constructor(
         }
         return if (f.searchQuery.isNotBlank()) {
             PerfLogger.traceQuery("searchClimbsByName(offset=$offset)") {
-                boardRepository.searchClimbsByName(f.searchQuery, f.angle, f.layoutId, f.sortField, f.sortDirection, PAGE_SIZE, offset, f.climbTypeFilter, selProductSizeId = selSizeId())
+                boardRepository.searchClimbsByName(f.searchQuery, f.angle, f.layoutId, f.boardBrand, f.sortField, f.sortDirection, PAGE_SIZE, offset, f.climbTypeFilter, selProductSizeId = selSizeId())
             }
         } else {
             val french = _state.value.gradeScale == GradeScale.FRENCH
             val minDiff = KilterGradeMapper.indexToFilterMin(f.minGradeIndex, french)
             val maxDiff = KilterGradeMapper.indexToFilterMax(f.maxGradeIndex, french)
             PerfLogger.traceQuery("searchClimbsSorted(offset=$offset)") {
-                boardRepository.searchClimbsSorted(f.angle, f.layoutId, minDiff, maxDiff, f.minAscensionists, f.sortField, f.sortDirection, PAGE_SIZE, offset, f.climbTypeFilter, selProductSizeId = selSizeId())
+                boardRepository.searchClimbsSorted(f.angle, f.layoutId, f.boardBrand, minDiff, maxDiff, f.minAscensionists, f.sortField, f.sortDirection, PAGE_SIZE, offset, f.climbTypeFilter, selProductSizeId = selSizeId())
             }
         }
     }
@@ -877,7 +877,7 @@ class BoardBrowserViewModel @Inject constructor(
             randomPage1?.let { return it }
             val page1 = PerfLogger.traceQuery("randomPage1(sql)") {
                 boardRepository.searchClimbsSorted(
-                    f.angle, f.layoutId, minDiff, maxDiff, f.minAscensionists,
+                    f.angle, f.layoutId, f.boardBrand, minDiff, maxDiff, f.minAscensionists,
                     ClimbSortField.RANDOM, SortDirection.DESC, PAGE_SIZE, 0,
                     f.climbTypeFilter, selProductSizeId = sel
                 )
@@ -887,7 +887,7 @@ class BoardBrowserViewModel @Inject constructor(
             randomCacheJob = viewModelScope.async(Dispatchers.IO) {
                 val all = PerfLogger.traceQuery("randomUuids(bg load)") {
                     boardRepository.getAllBrowseMatchingUuids(
-                        f.angle, f.layoutId, minDiff, maxDiff, f.minAscensionists,
+                        f.angle, f.layoutId, f.boardBrand, minDiff, maxDiff, f.minAscensionists,
                         f.climbTypeFilter, selProductSizeId = sel
                     )
                 }
@@ -921,8 +921,8 @@ class BoardBrowserViewModel @Inject constructor(
                 val french = _state.value.gradeScale == GradeScale.FRENCH
                 val minDiff = KilterGradeMapper.indexToFilterMin(f.minGradeIndex, french)
                 val maxDiff = KilterGradeMapper.indexToFilterMax(f.maxGradeIndex, french)
-                if (f.benchmarkOnly) boardRepository.countBenchmarkFilteredClimbs(f.angle, f.layoutId, minDiff, maxDiff, f.minAscensionists, f.climbTypeFilter, selProductSizeId = selSizeId())
-                else boardRepository.countFilteredClimbs(f.angle, f.layoutId, minDiff, maxDiff, f.minAscensionists, f.climbTypeFilter, selProductSizeId = selSizeId())
+                if (f.benchmarkOnly) boardRepository.countBenchmarkFilteredClimbs(f.angle, f.layoutId, f.boardBrand, minDiff, maxDiff, f.minAscensionists, f.climbTypeFilter, selProductSizeId = selSizeId())
+                else boardRepository.countFilteredClimbs(f.angle, f.layoutId, f.boardBrand, minDiff, maxDiff, f.minAscensionists, f.climbTypeFilter, selProductSizeId = selSizeId())
             }
         }
     }
@@ -954,7 +954,7 @@ class BoardBrowserViewModel @Inject constructor(
             val uuid = withContext(Dispatchers.IO) {
                 val climb = if (f.searchQuery.isNotBlank()) {
                     boardRepository.searchClimbsByName(
-                        f.searchQuery, f.angle, f.layoutId, f.sortField, f.sortDirection,
+                        f.searchQuery, f.angle, f.layoutId, f.boardBrand, f.sortField, f.sortDirection,
                         limit = 1, offset = randomOffset, climbType = f.climbTypeFilter,
                         selProductSizeId = selSizeId()
                     )
@@ -963,7 +963,7 @@ class BoardBrowserViewModel @Inject constructor(
                     val minDiff = KilterGradeMapper.indexToFilterMin(f.minGradeIndex, french)
                     val maxDiff = KilterGradeMapper.indexToFilterMax(f.maxGradeIndex, french)
                     boardRepository.searchClimbsSorted(
-                        f.angle, f.layoutId, minDiff, maxDiff, f.minAscensionists,
+                        f.angle, f.layoutId, f.boardBrand, minDiff, maxDiff, f.minAscensionists,
                         f.sortField, f.sortDirection, limit = 1, offset = randomOffset,
                         climbType = f.climbTypeFilter, selProductSizeId = selSizeId()
                     )

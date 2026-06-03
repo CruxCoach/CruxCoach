@@ -63,7 +63,7 @@ class BoardRepositoryImpl(
         boardBrand = it.board_brand,
     )
 
-    override fun searchClimbsByName(query: String, angle: Int, layoutId: Int, sortField: ClimbSortField, sortDirection: SortDirection, limit: Int, offset: Int, climbType: ClimbTypeFilter, selProductSizeId: Int): List<ClimbWithStats> {
+    override fun searchClimbsByName(query: String, angle: Int, layoutId: Int, boardBrand: String, sortField: ClimbSortField, sortDirection: SortDirection, limit: Int, offset: Int, climbType: ClimbTypeFilter, selProductSizeId: Int): List<ClimbWithStats> {
         val lay = layoutId.toLong()
         val a = angle.toLong()
         val mn = climbType.minFrames()
@@ -74,12 +74,12 @@ class BoardRepositoryImpl(
         val desc = sortDirection == SortDirection.DESC
 
         return when (sortField) {
-            ClimbSortField.QUALITY -> if (desc) q.searchByQualityDesc(lay, query, a, mn, mx, sel, l, o) else q.searchByQualityAsc(lay, query, a, mn, mx, sel, l, o)
-            ClimbSortField.DIFFICULTY -> if (desc) q.searchByDifficultyDesc(lay, query, a, mn, mx, sel, l, o) else q.searchByDifficultyAsc(lay, query, a, mn, mx, sel, l, o)
-            ClimbSortField.NAME -> if (desc) q.searchByNameDesc(lay, query, a, mn, mx, sel, l, o) else q.searchByNameAsc(lay, query, a, mn, mx, sel, l, o)
-            ClimbSortField.QUALITY_SENDS -> if (desc) q.searchByQualitySendsDesc(lay, query, a, mn, mx, sel, l, o) else q.searchByQualitySendsAsc(lay, query, a, mn, mx, sel, l, o)
-            ClimbSortField.RANDOM -> q.searchRandom(lay, query, a, mn, mx, sel, l, o)
-            else -> if (desc) q.searchByAscensionistsDesc(lay, query, a, mn, mx, sel, l, o) else q.searchByAscensionistsAsc(lay, query, a, mn, mx, sel, l, o)
+            ClimbSortField.QUALITY -> if (desc) q.searchByQualityDesc(lay, boardBrand, query, a, mn, mx, sel, l, o) else q.searchByQualityAsc(lay, boardBrand, query, a, mn, mx, sel, l, o)
+            ClimbSortField.DIFFICULTY -> if (desc) q.searchByDifficultyDesc(lay, boardBrand, query, a, mn, mx, sel, l, o) else q.searchByDifficultyAsc(lay, boardBrand, query, a, mn, mx, sel, l, o)
+            ClimbSortField.NAME -> if (desc) q.searchByNameDesc(lay, boardBrand, query, a, mn, mx, sel, l, o) else q.searchByNameAsc(lay, boardBrand, query, a, mn, mx, sel, l, o)
+            ClimbSortField.QUALITY_SENDS -> if (desc) q.searchByQualitySendsDesc(lay, boardBrand, query, a, mn, mx, sel, l, o) else q.searchByQualitySendsAsc(lay, boardBrand, query, a, mn, mx, sel, l, o)
+            ClimbSortField.RANDOM -> q.searchRandom(lay, boardBrand, query, a, mn, mx, sel, l, o)
+            else -> if (desc) q.searchByAscensionistsDesc(lay, boardBrand, query, a, mn, mx, sel, l, o) else q.searchByAscensionistsAsc(lay, boardBrand, query, a, mn, mx, sel, l, o)
         }.executeAsList().map { mapBrowse(it) }
     }
 
@@ -104,7 +104,7 @@ class BoardRepositoryImpl(
     }
 
     override fun searchClimbsSorted(
-        angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int,
+        angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int,
         sortField: ClimbSortField, sortDirection: SortDirection, limit: Int, offset: Int,
         climbType: ClimbTypeFilter, selProductSizeId: Int
     ): List<ClimbWithStats> {
@@ -119,25 +119,25 @@ class BoardRepositoryImpl(
         val desc = sortDirection == SortDirection.DESC
 
         return when (sortField) {
-            ClimbSortField.QUALITY -> if (desc) q.browseByQualityDesc(lay, a, mn, mx, minDifficulty, maxDifficulty, asc, sel, l, o) else q.browseByQualityAsc(lay, a, mn, mx, minDifficulty, maxDifficulty, asc, sel, l, o)
-            ClimbSortField.DIFFICULTY -> if (desc) q.browseByDifficultyDesc(lay, a, mn, mx, minDifficulty, maxDifficulty, asc, sel, l, o) else q.browseByDifficultyAsc(lay, a, mn, mx, minDifficulty, maxDifficulty, asc, sel, l, o)
-            ClimbSortField.NAME -> if (desc) q.browseByNameDesc(lay, a, mn, mx, minDifficulty, maxDifficulty, asc, sel, l, o) else q.browseByNameAsc(lay, a, mn, mx, minDifficulty, maxDifficulty, asc, sel, l, o)
-            ClimbSortField.QUALITY_SENDS -> if (desc) q.browseByQualitySendsDesc(lay, a, mn, mx, minDifficulty, maxDifficulty, asc, sel, l, o) else q.browseByQualitySendsAsc(lay, a, mn, mx, minDifficulty, maxDifficulty, asc, sel, l, o)
-            ClimbSortField.RANDOM -> q.browseRandom(lay, a, mn, mx, minDifficulty, maxDifficulty, asc, sel, l, o)
-            else -> if (desc) q.browseByAscensionistsDesc(lay, a, mn, mx, minDifficulty, maxDifficulty, asc, sel, l, o) else q.browseByAscensionistsAsc(lay, a, mn, mx, minDifficulty, maxDifficulty, asc, sel, l, o)
+            ClimbSortField.QUALITY -> if (desc) q.browseByQualityDesc(lay, boardBrand, a, mn, mx, minDifficulty, maxDifficulty, asc, sel, l, o) else q.browseByQualityAsc(lay, boardBrand, a, mn, mx, minDifficulty, maxDifficulty, asc, sel, l, o)
+            ClimbSortField.DIFFICULTY -> if (desc) q.browseByDifficultyDesc(lay, boardBrand, a, mn, mx, minDifficulty, maxDifficulty, asc, sel, l, o) else q.browseByDifficultyAsc(lay, boardBrand, a, mn, mx, minDifficulty, maxDifficulty, asc, sel, l, o)
+            ClimbSortField.NAME -> if (desc) q.browseByNameDesc(lay, boardBrand, a, mn, mx, minDifficulty, maxDifficulty, asc, sel, l, o) else q.browseByNameAsc(lay, boardBrand, a, mn, mx, minDifficulty, maxDifficulty, asc, sel, l, o)
+            ClimbSortField.QUALITY_SENDS -> if (desc) q.browseByQualitySendsDesc(lay, boardBrand, a, mn, mx, minDifficulty, maxDifficulty, asc, sel, l, o) else q.browseByQualitySendsAsc(lay, boardBrand, a, mn, mx, minDifficulty, maxDifficulty, asc, sel, l, o)
+            ClimbSortField.RANDOM -> q.browseRandom(lay, boardBrand, a, mn, mx, minDifficulty, maxDifficulty, asc, sel, l, o)
+            else -> if (desc) q.browseByAscensionistsDesc(lay, boardBrand, a, mn, mx, minDifficulty, maxDifficulty, asc, sel, l, o) else q.browseByAscensionistsAsc(lay, boardBrand, a, mn, mx, minDifficulty, maxDifficulty, asc, sel, l, o)
         }.executeAsList().map { mapBrowse(it) }
     }
 
-    override fun countFilteredClimbsFast(angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, selProductSizeId: Int): Long {
-        return q.countFilteredClimbsFast(layoutId.toLong(), angle.toLong(), minDifficulty, maxDifficulty, minAscensionists.toLong(), selProductSizeId.toLong()).executeAsOne()
+    override fun countFilteredClimbsFast(angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, selProductSizeId: Int): Long {
+        return q.countFilteredClimbsFast(layoutId.toLong(), boardBrand, angle.toLong(), minDifficulty, maxDifficulty, minAscensionists.toLong(), selProductSizeId.toLong()).executeAsOne()
     }
 
-    override fun countFilteredClimbs(angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter, selProductSizeId: Int): Long {
-        return q.countFilteredClimbs(layoutId.toLong(), angle.toLong(), climbType.minFrames(), climbType.maxFrames(), minDifficulty, maxDifficulty, minAscensionists.toLong(), selProductSizeId.toLong()).executeAsOne()
+    override fun countFilteredClimbs(angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter, selProductSizeId: Int): Long {
+        return q.countFilteredClimbs(layoutId.toLong(), boardBrand, angle.toLong(), climbType.minFrames(), climbType.maxFrames(), minDifficulty, maxDifficulty, minAscensionists.toLong(), selProductSizeId.toLong()).executeAsOne()
     }
 
-    override fun countBenchmarkFilteredClimbs(angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter, selProductSizeId: Int): Long {
-        return q.countBenchmarkFilteredClimbs(layoutId.toLong(), angle.toLong(), climbType.minFrames(), climbType.maxFrames(), minDifficulty, maxDifficulty, minAscensionists.toLong(), selProductSizeId.toLong()).executeAsOne()
+    override fun countBenchmarkFilteredClimbs(angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter, selProductSizeId: Int): Long {
+        return q.countBenchmarkFilteredClimbs(layoutId.toLong(), boardBrand, angle.toLong(), climbType.minFrames(), climbType.maxFrames(), minDifficulty, maxDifficulty, minAscensionists.toLong(), selProductSizeId.toLong()).executeAsOne()
     }
 
     override fun countSearchClimbs(query: String, angle: Int, layoutId: Int, climbType: ClimbTypeFilter, selProductSizeId: Int): Long {
@@ -222,12 +222,12 @@ class BoardRepositoryImpl(
     }
 
     override fun getClimbsByUuids(
-        uuids: Collection<String>, angle: Int, layoutId: Int, minDifficulty: Double,
+        uuids: Collection<String>, angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double,
         maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter
     ): List<ClimbWithStats> {
         if (uuids.isEmpty()) return emptyList()
         return q.getClimbsByUuids(
-            layoutId.toLong(), uuids, angle.toLong(), climbType.minFrames(), climbType.maxFrames(),
+            layoutId.toLong(), boardBrand, uuids, angle.toLong(), climbType.minFrames(), climbType.maxFrames(),
             minDifficulty, maxDifficulty, minAscensionists.toLong()
         ).executeAsList().map { mapBrowse(it) }
     }
@@ -244,11 +244,11 @@ class BoardRepositoryImpl(
     }
 
     override fun getAllBrowseMatchingUuids(
-        angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double,
+        angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double,
         minAscensionists: Int, climbType: ClimbTypeFilter, selProductSizeId: Int
     ): List<String> {
         return q.browseAllMatchingUuids(
-            layoutId.toLong(), angle.toLong(), climbType.minFrames(), climbType.maxFrames(),
+            layoutId.toLong(), boardBrand, angle.toLong(), climbType.minFrames(), climbType.maxFrames(),
             minDifficulty, maxDifficulty, minAscensionists.toLong(), selProductSizeId.toLong()
         ).executeAsList()
     }
@@ -335,11 +335,11 @@ class BoardRepositoryImpl(
         q.getDefaultProductSizeForBrand(boardBrand).executeAsOneOrNull()?.let { it.id.toInt() to it.name }
 
     override fun getCruxCoachClimbs(
-        layoutId: Int, angle: Int, minDifficulty: Double, maxDifficulty: Double,
+        layoutId: Int, boardBrand: String, angle: Int, minDifficulty: Double, maxDifficulty: Double,
         minAscensionists: Int, climbType: ClimbTypeFilter, selProductSizeId: Int,
     ): List<ClimbWithStats> {
         return q.browseCruxCoachOnly(
-            layoutId.toLong(), angle.toLong(),
+            layoutId.toLong(), boardBrand, angle.toLong(),
             climbType.minFrames(), climbType.maxFrames(),
             minDifficulty, maxDifficulty, minAscensionists.toLong(),
             selProductSizeId.toLong(),
