@@ -739,20 +739,67 @@ class BoardDatabaseImporter(
     private fun resolveStatsTable(db: SQLiteDatabase): String =
         if (hasTable(db, "climb_stats")) "climb_stats" else "aurora_climb_stat"
 
-    /** Compute move count for a single-frame boulder from its frames string. */
+    /** Compute move count for a single-frame boulder from its frames string,
+     *  using Kilter's fixed role IDs (12/13/14/15). Fallback for brands whose
+     *  chunk ships no placement_roles table. */
     private fun computeMoveCount(frames: String): Long {
         if (frames.isEmpty() || frames.contains(",")) return 0
         return BoardClimbParser.estimateMoveCount(BoardClimbParser.parseFrames(frames)).toLong()
     }
 
     /**
+     * A board's foot/start role IDs, derived from placement_roles.name.
+     * Aurora boards number their roles board-locally (Tension: 1=start,
+     * 2=middle, 3=finish, 4=foot — plus a mirrored set 5-8) instead of
+     * Kilter's fixed 12/13/14/15, so move_count has to be counted against
+     * each board's own role table rather than the hard-coded HoldRole ids.
+     */
+    private class RoleSemantics(val footIds: Set<Int>, val startIds: Set<Int>)
+
+    /** Build a per-brand role map from the (already-imported) placement_roles
+     *  table. Brands with no rows (e.g. Kilter) are simply absent — callers
+     *  fall back to [computeMoveCount]'s fixed-id path for those. */
+    private fun loadRoleSemantics(db: SQLiteDatabase): Map<String, RoleSemantics> {
+        val foot = mutableMapOf<String, MutableSet<Int>>()
+        val start = mutableMapOf<String, MutableSet<Int>>()
+        db.rawQuery("SELECT board_brand, id, name FROM placement_roles", null).use { c ->
+            while (c.moveToNext()) {
+                val brand = c.getString(0) ?: continue
+                val id = c.getInt(1)
+                when (c.getString(2)?.lowercase()) {
+                    "foot" -> foot.getOrPut(brand) { mutableSetOf() }.add(id)
+                    "start" -> start.getOrPut(brand) { mutableSetOf() }.add(id)
+                }
+            }
+        }
+        return (foot.keys + start.keys).associateWith {
+            RoleSemantics(foot[it].orEmpty(), start[it].orEmpty())
+        }
+    }
+
+    /** Move count for an Aurora climb via its board's role table:
+     *  total holds − foot − start (= hand + finish), mirroring the
+     *  Kilter [BoardClimbParser.estimateMoveCount] semantics. */
+    private fun computeMoveCount(frames: String, sem: RoleSemantics): Long {
+        if (frames.isEmpty() || frames.contains(",")) return 0
+        val holds = BoardClimbParser.parseFrames(frames)
+        val moves = holds.size -
+            holds.count { it.roleId in sem.footIds } -
+            holds.count { it.roleId in sem.startIds }
+        return moves.coerceAtLeast(0).toLong()
+    }
+
+    /**
      * Batch-update move_count for all boulders (single-frame climbs) where
      * move_count is still 0. Called after bulk ATTACH imports where frames
-     * were inserted via SQL without Kotlin-side parsing.
+     * were inserted via SQL without Kotlin-side parsing. Counts moves with
+     * each climb's own board role IDs (placement_roles), so Aurora boards —
+     * whose role IDs differ from Kilter's — get correct counts instead of 0.
      */
     internal fun backfillMoveCounts() {
         val db = openTargetDb()
         try {
+            val roleSem = loadRoleSemantics(db)
             val stmt = db.compileStatement(
                 "UPDATE climbs SET move_count = ? WHERE uuid = ?"
             )
@@ -760,7 +807,7 @@ class BoardDatabaseImporter(
             var lastUuid = ""
             while (true) {
                 val cursor = db.rawQuery(
-                    """SELECT uuid, frames FROM climbs
+                    """SELECT uuid, frames, board_brand FROM climbs
                        WHERE move_count = 0 AND frames_count = 1 AND uuid > ?
                        ORDER BY uuid LIMIT $BULK_BATCH_SIZE""",
                     arrayOf(lastUuid)
@@ -772,7 +819,9 @@ class BoardDatabaseImporter(
                         while (it.moveToNext()) {
                             lastUuid = it.getString(0)
                             val frames = it.getString(1) ?: ""
-                            val moves = computeMoveCount(frames)
+                            val sem = roleSem[it.getString(2)]
+                            val moves = if (sem != null) computeMoveCount(frames, sem)
+                                        else computeMoveCount(frames)
                             if (moves > 0) {
                                 stmt.bindLong(1, moves)
                                 stmt.bindString(2, lastUuid)
