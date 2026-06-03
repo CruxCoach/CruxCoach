@@ -36,9 +36,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.data.BoardDatabaseImporter.ImportStep
 import com.cruxcoach.android.data.BoardSyncManager
+import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.android.ui.theme.ErrorRed
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.theme.SuccessGreen
@@ -110,14 +112,22 @@ fun SyncStatusBannerSlot() {
         exit = slideOutVertically { -it } + fadeOut()
     ) {
         when {
-            isSyncing -> SyncProgressBanner(
-                // During the MoonBoard phase importStep is already Done
-                // (the Kilter section is complete); moonBoardStep carries
-                // the real in-progress status. Show that so the banner
-                // never reads "done" while a sync is still running.
-                syncState.moonBoardStep ?: syncState.importStep,
-                onClick = navigateToSync,
-            )
+            isSyncing -> {
+                // Show the board that's actually mid-sync + its step, so the
+                // banner matches the per-board status list. boardSteps is
+                // ordered Kilter → MoonBoard → Aurora; the first non-terminal
+                // entry is the one currently running (earlier ones finished).
+                // Falls back to the last known stream so the banner never
+                // reads "done" while a sync is still in flight.
+                val active = syncState.boardSteps.entries
+                    .firstOrNull { it.value !is ImportStep.Done }
+                    ?: syncState.boardSteps.entries.lastOrNull()
+                SyncProgressBanner(
+                    brand = active?.key,
+                    step = active?.value,
+                    onClick = navigateToSync,
+                )
+            }
             hasError -> SyncErrorBanner(
                 message = syncState.errorMessage ?: "",
                 onDismiss = { dismissedError = syncState.errorMessage },
@@ -129,7 +139,7 @@ fun SyncStatusBannerSlot() {
 }
 
 @Composable
-private fun SyncProgressBanner(step: ImportStep?, onClick: () -> Unit) {
+private fun SyncProgressBanner(brand: BoardBrand?, step: ImportStep?, onClick: () -> Unit) {
     Surface(
         color = OrangeAccent.copy(alpha = 0.12f),
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
@@ -146,11 +156,16 @@ private fun SyncProgressBanner(step: ImportStep?, onClick: () -> Unit) {
                     tint = OrangeAccent,
                     modifier = Modifier.size(18.dp)
                 )
+                // "<Board> · <current step>" — names the board being synced so
+                // the banner mirrors the per-board status list.
                 Text(
-                    stepLabel(step),
+                    if (brand != null) "${brand.displayName} · ${stepLabel(step)}" else stepLabel(step),
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
-                    color = OrangeAccent
+                    color = OrangeAccent,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
                 )
             }
             val progress = stepProgress(step)
