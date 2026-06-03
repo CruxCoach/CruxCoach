@@ -39,6 +39,8 @@ data class BoardPickerState(
     val productSizes: List<BoardSize> = BoardConstants.KILTER_KNOWN_SIZES,
     val selectedKilterSizeId: Int = 0,
     val selectedMoonBoardVariant: MoonBoardVariant? = null,
+    /** Active layout_id — seeds the Aurora variant selection (FEAT-031). */
+    val selectedAuroraLayoutId: Int = 0,
 )
 
 /**
@@ -67,6 +69,7 @@ class BoardPickerViewModel @Inject constructor(
             productSizes = sizes,
             selectedKilterSizeId = sizeId,
             selectedMoonBoardVariant = MoonBoardVariant.fromLayoutId(layoutId.toLong()),
+            selectedAuroraLayoutId = layoutId,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), BoardPickerState())
 
@@ -101,8 +104,8 @@ class BoardPickerViewModel @Inject constructor(
         viewModelScope.launch { userPreferences.setMoonBoardSelection(variant.layoutId.toInt()) }
     }
 
-    fun selectAurora(board: BoardBrand) {
-        viewModelScope.launch { auroraBoardSelector.select(board) }
+    fun selectAurora(board: BoardBrand, variant: BoardConstants.AuroraVariant?) {
+        viewModelScope.launch { auroraBoardSelector.select(board, variant) }
     }
 }
 
@@ -130,11 +133,12 @@ internal fun BoardPickerDialog(
         productSizes = state.productSizes,
         selectedKilterSizeId = state.selectedKilterSizeId,
         selectedMoonBoardVariant = state.selectedMoonBoardVariant,
+        selectedAuroraLayoutId = state.selectedAuroraLayoutId,
         frequency = BoardConstants.DEFAULT_SIZE_FREQUENCY,
         showAuroraBoards = true,
         onConfirmKilter = { viewModel.selectKilter(it); onSelected() },
         onConfirmMoonBoard = { viewModel.selectMoonBoard(it); onSelected() },
-        onConfirmAurora = { viewModel.selectAurora(it); onSelected() },
+        onConfirmAurora = { brand, variant -> viewModel.selectAurora(brand, variant); onSelected() },
         onFindViaGym = onFindViaGym,
         onDismiss = onDismiss,
     )

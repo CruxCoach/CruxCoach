@@ -31,19 +31,40 @@ class AuroraBoardSelector @Inject constructor(
         val productSizeName: String? = null,
     )
 
-    suspend fun select(board: BoardBrand): Outcome {
+    suspend fun select(
+        board: BoardBrand,
+        variant: BoardConstants.AuroraVariant? = null,
+    ): Outcome {
         userPreferences.setBoardBrand(board.wireValue)
+        // A catalog-driven variant pick (e.g. Tension TB1 vs TB2 Mirror/Spray)
+        // is persisted up-front, before the download: the static catalog is
+        // sync-independent, so the selection sticks even if the catalogue
+        // fetch fails — the climbs simply arrive on a later successful sync.
+        // (Conservative: never leave a TB2 owner unable to select their board.)
+        if (variant != null) {
+            userPreferences.setBoardLayoutId(variant.layoutId)
+            userPreferences.setBoardProductSizeId(variant.defaultSizeId)
+        }
         return when (val result = withContext(Dispatchers.IO) { auroraCatalogueSync.sync(board) }) {
-            is AuroraCatalogueSync.Result.Failed -> Outcome(Status.FAILED)
+            is AuroraCatalogueSync.Result.Failed -> Outcome(
+                status = Status.FAILED,
+                layoutId = variant?.layoutId,
+                productSizeId = variant?.defaultSizeId,
+                productSizeName = variant?.displayName,
+            )
             is AuroraCatalogueSync.Result.AlreadyCurrent,
             is AuroraCatalogueSync.Result.Imported -> {
-                val layout = withContext(Dispatchers.IO) {
+                // With no explicit variant (single-layout boards) derive the
+                // default layout + size from the freshly-loaded chunk.
+                val layout = variant?.layoutId ?: withContext(Dispatchers.IO) {
                     boardRepository.getDefaultLayoutForBrand(board.wireValue)
                 }
-                val size = withContext(Dispatchers.IO) {
+                val size: Pair<Int, String>? = if (variant != null) {
+                    variant.defaultSizeId to variant.displayName
+                } else withContext(Dispatchers.IO) {
                     boardRepository.getDefaultProductSizeForBrand(board.wireValue)
                 }
-                if (layout != null && size != null) {
+                if (variant == null && layout != null && size != null) {
                     userPreferences.setBoardLayoutId(layout)
                     userPreferences.setBoardProductSizeId(size.first)
                 }

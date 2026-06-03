@@ -1824,6 +1824,7 @@
     <string name="aurora_sync_imported">Board-Katalog heruntergeladen.</string>
     <string name="aurora_sync_failed_generic">Board-Katalog konnte nicht geladen werden. Bitte später erneut versuchen.</string>
     <string name="board_selection_aurora_download_hint">Wir laden den %1$s-Katalog herunter und richten ihn als dein Board ein. Die genaue Größe kannst du später in den Einstellungen anpassen.</string>
+    <string name="board_selection_variant_label">Welches Board?</string>
     <string name="board_send_error_brand_mismatch">Dieser Climb gehört zu einem anderen Board-Typ als dein aktives Board.</string>
     <string name="board_send_error_no_led_data">Keine LED-Daten. Bitte Board-Daten neu synchronisieren.</string>
     <string name="board_send_error_send_failed">Senden fehlgeschlagen.</string>

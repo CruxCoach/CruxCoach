@@ -20,6 +20,42 @@ object BoardConstants {
         else KILTER_ORIGINAL_LAYOUT
 
     /**
+     * A selectable Aurora board variant (FEAT-031): a layout that maps to a
+     * distinct physical product/generation, with a sensible default size.
+     */
+    data class AuroraVariant(
+        val layoutId: Int,
+        val productId: Int,
+        val displayName: String,
+        val defaultSizeId: Int,
+    )
+
+    /**
+     * Static catalog of Aurora-family board variants. Only boards with more
+     * than one layout need an entry — currently just Tension (the others ship
+     * a single layout). This is deliberately NOT data-driven: it must cover
+     * every variant regardless of the Blossom/sync state, so a catalogue
+     * download problem can never hide a user's board. The chunk still provides
+     * the geometry that renders on top; the picker just needs the variant list
+     * + a default to fall back on. Kilter keeps its own Original/Homewall path.
+     */
+    val AURORA_VARIANTS: Map<BoardBrand, List<AuroraVariant>> = mapOf(
+        BoardBrand.TENSION to listOf(
+            AuroraVariant(layoutId = 9,  productId = 4, displayName = "Tension Board",            defaultSizeId = 1),
+            AuroraVariant(layoutId = 10, productId = 5, displayName = "Tension Board 2 (Mirror)", defaultSizeId = 6),
+            AuroraVariant(layoutId = 11, productId = 5, displayName = "Tension Board 2 (Spray)",  defaultSizeId = 6),
+        ),
+    )
+
+    /** Variants for a board, or empty when it has a single layout
+     *  (Grasshopper / Decoy / So iLL / Touchstone) — those skip the variant tier. */
+    fun auroraVariants(brand: BoardBrand): List<AuroraVariant> = AURORA_VARIANTS[brand] ?: emptyList()
+
+    /** The variant whose layout matches [layoutId], or null. */
+    fun auroraVariant(brand: BoardBrand, layoutId: Int): AuroraVariant? =
+        AURORA_VARIANTS[brand]?.firstOrNull { it.layoutId == layoutId }
+
+    /**
      * Hardware constants for the standard Kilter board sizes — Aurora's
      * `product_sizes` table mirrored here as a *fallback* for the
      * size-picker dialog so the user can pick their physical board

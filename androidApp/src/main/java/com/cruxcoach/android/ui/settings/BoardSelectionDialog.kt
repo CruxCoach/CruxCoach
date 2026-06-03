@@ -59,12 +59,15 @@ internal fun BoardSelectionDialog(
     productSizes: List<BoardSize>,
     selectedKilterSizeId: Int,
     selectedMoonBoardVariant: MoonBoardVariant?,
+    /** FEAT-031: the active board's layout_id, used to seed the selected
+     *  Aurora variant (e.g. Tension TB2 Mirror) when re-opening the picker. */
+    selectedAuroraLayoutId: Int = 0,
     onConfirmKilter: (Int) -> Unit,
     onConfirmMoonBoard: (MoonBoardVariant) -> Unit,
-    /** FEAT-031: confirm an Aurora-family board (Tension etc.). Defaults to a
-     *  no-op so call sites that don't yet offer Aurora boards (onboarding)
-     *  compile unchanged. */
-    onConfirmAurora: (BoardBrand) -> Unit = {},
+    /** FEAT-031: confirm an Aurora-family board (Tension etc.) + the chosen
+     *  variant (null for single-layout boards). Defaults to a no-op so call
+     *  sites that don't offer Aurora boards (onboarding) compile unchanged. */
+    onConfirmAurora: (BoardBrand, BoardConstants.AuroraVariant?) -> Unit = { _, _ -> },
     /** FEAT-031: show the interactive Aurora-family boards as tier-0 picks.
      *  Off by default — only the Settings board picker wires [onConfirmAurora]
      *  + the catalogue-sync trigger, so other call sites (filter, onboarding)
@@ -98,6 +101,17 @@ internal fun BoardSelectionDialog(
             BoardBrand.fromWire(initialBrand)
                 .takeIf { showAuroraBoards && it.usesAuroraProtocol && it != BoardBrand.KILTER }
         )
+    }
+    // FEAT-031: the chosen variant for a multi-layout Aurora board (Tension:
+    // TB1 / TB2 Mirror / TB2 Spray). null for single-layout boards. Re-seeded
+    // whenever the board changes — to the active layout's variant if re-opening
+    // on that board, else the board's first variant.
+    var auroraVariant by remember { mutableStateOf<BoardConstants.AuroraVariant?>(null) }
+    LaunchedEffect(auroraBrand) {
+        auroraVariant = auroraBrand?.let { b ->
+            val variants = BoardConstants.auroraVariants(b)
+            variants.firstOrNull { it.layoutId == selectedAuroraLayoutId } ?: variants.firstOrNull()
+        }
     }
 
     val isAurora = auroraBrand != null
@@ -176,6 +190,24 @@ internal fun BoardSelectionDialog(
                 HorizontalDivider()
 
                 if (isAurora) {
+                    // FEAT-031: variant tier for multi-layout boards (Tension:
+                    // TB1 / TB2 Mirror / TB2 Spray). Single-layout boards have
+                    // no entry in the catalog, so this is skipped for them.
+                    val variants = BoardConstants.auroraVariants(auroraBrand!!)
+                    if (variants.size > 1) {
+                        Text(
+                            stringResource(R.string.board_selection_variant_label),
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        variants.forEach { v ->
+                            RadioRow(
+                                label = v.displayName,
+                                selected = auroraVariant?.layoutId == v.layoutId,
+                                onSelect = { auroraVariant = v },
+                            )
+                        }
+                    }
                     Text(
                         stringResource(
                             R.string.board_selection_aurora_download_hint,
@@ -240,7 +272,7 @@ internal fun BoardSelectionDialog(
             Button(
                 onClick = {
                     when {
-                        isAurora -> onConfirmAurora(auroraBrand!!)
+                        isAurora -> onConfirmAurora(auroraBrand!!, auroraVariant)
                         isKilter -> onConfirmKilter(kilterSelection)
                         else -> onConfirmMoonBoard(mbVariant)
                     }
