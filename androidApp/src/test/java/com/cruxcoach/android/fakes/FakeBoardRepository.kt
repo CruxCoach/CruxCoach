@@ -159,6 +159,7 @@ class FakeBoardRepository : BoardRepository {
     }
 
     override fun getClimbCount(): Long = climbs.size.toLong()
+    override fun getClimbCountsByBrand(): Map<String, Long> = emptyMap()
     override fun hasAnyClimbs(): Boolean = climbs.isNotEmpty()
     override fun climbExistsByUuid(uuid: String): Boolean = climbs.any { it.uuid == uuid }
     override fun statExistsByUuid(uuid: String): Boolean = false

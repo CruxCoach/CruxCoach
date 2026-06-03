@@ -152,6 +152,11 @@ class BoardRepositoryImpl(
         return q.countClimbs().executeAsOne()
     }
 
+    override fun getClimbCountsByBrand(): Map<String, Long> {
+        return q.countClimbsByBrand().executeAsList()
+            .associate { it.boardBrand to it.climbCount }
+    }
+
     override fun hasAnyClimbs(): Boolean {
         return q.hasAnyClimbs().executeAsOne()
     }

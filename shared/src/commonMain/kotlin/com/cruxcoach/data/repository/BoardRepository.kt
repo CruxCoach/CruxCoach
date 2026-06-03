@@ -252,6 +252,9 @@ interface BoardClimbQueries {
     fun countSearchClimbs(query: String, angle: Int, layoutId: Int, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER, selProductSizeId: Int = 0): Long
     fun countBenchmarkSearchClimbs(query: String, angle: Int, layoutId: Int, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER, selProductSizeId: Int = 0): Long
     fun getClimbCount(): Long
+    /** Per-brand catalogue sizes (FEAT-031), keyed by `board_brand` wire value.
+     *  Brands with no imported climbs are absent from the map. */
+    fun getClimbCountsByBrand(): Map<String, Long>
     /** O(1) existence check. Far cheaper than [getClimbCount] — that one
      *  full-table-scans on a 190k-row catalog, and worse, blocks on the
      *  bulk importer's writer-lock during sync (~28s on slower-eMMC).

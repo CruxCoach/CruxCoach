@@ -511,6 +511,13 @@ SELECT id, name, led_color, screen_color FROM placement_roles WHERE board_brand 
 countClimbs:
 SELECT COUNT(*) FROM climbs;
 
+-- Per-brand catalogue size (FEAT-031). Drives the board-sync status list +
+-- the "is the active board's catalogue loaded?" launch check. One grouped
+-- scan; called on demand (sync-complete / sync screen open), not per-frame.
+-- Brands with no rows are simply absent from the result (= not loaded).
+countClimbsByBrand:
+SELECT board_brand AS boardBrand, COUNT(*) AS climbCount FROM climbs GROUP BY board_brand;
+
 -- O(1) "do we have any climbs at all" check. Use this anywhere the
 -- caller only needs a boolean — countClimbs is a full table-scan
 -- (190k+ rows) and degrades to seconds during an active import (writer

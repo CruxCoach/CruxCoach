@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import java.util.concurrent.atomic.AtomicLong
@@ -302,6 +303,12 @@ class BoardSyncManager(
                 boardRepository.upsertSyncState("move_count_backfill_v2", "done")
                 Log.d(TAG, "Move count backfill complete")
             }
+
+            // FEAT-031: make sure the active non-Kilter board's catalogue is
+            // present before the Kilter-gated staleness logic below — otherwise
+            // an Aurora/MoonBoard board whose first download failed never gets
+            // retried while Kilter stays unchanged (empty-browser bug).
+            ensureActiveBoardCatalogue()
 
             if (_state.value.isSyncing) return@launch
 
@@ -695,6 +702,16 @@ class BoardSyncManager(
         // Kilter + MoonBoard have their own lanes above; only the non-Kilter
         // Aurora family is handled here.
         if (!brand.usesAuroraProtocol || brand == BoardBrand.KILTER) return
+        syncAuroraBoard(brand)
+    }
+
+    /**
+     * Sync one specific Aurora board's catalogue — not necessarily the active
+     * one, so the sync status list (FEAT-031) can load/retry any board on
+     * demand. Reports into the per-board progress/error map; isolated — never
+     * throws into the caller, a failure never fails the Kilter sync.
+     */
+    private suspend fun syncAuroraBoard(brand: BoardBrand) {
         try {
             when (val result = auroraCatalogueSync.sync(brand) { step -> reportBoardStep(brand, step) }) {
                 is AuroraCatalogueSync.Result.AlreadyCurrent ->
@@ -712,6 +729,65 @@ class BoardSyncManager(
             reportBoardStep(brand, null)
             reportBoardError(brand, e.message ?: e.javaClass.simpleName)
         }
+    }
+
+    /**
+     * FEAT-031: guarantee the *active* non-Kilter board's catalogue is present,
+     * independent of the Kilter manifest/staleness gate that drives the rest of
+     * [syncIfStale]. Kilter has its own lane; MoonBoard + Aurora catalogues were
+     * otherwise only synced when the Kilter manifest happened to change, so an
+     * active board whose first download failed (transient network) stayed empty
+     * indefinitely — the empty-browser symptom. Runs only when that board has
+     * zero local climbs, and only on WiFi (a manual load from the status list
+     * can override the WiFi gate).
+     */
+    private suspend fun ensureActiveBoardCatalogue() {
+        val brand = BoardBrand.fromWire(userPreferences.boardBrand.first())
+        if (brand == BoardBrand.KILTER) return  // Kilter handled by the main lane
+        val loaded = withContext(Dispatchers.IO) {
+            (boardRepository.getClimbCountsByBrand()[brand.wireValue] ?: 0L) > 0L
+        }
+        if (loaded) return
+        if (!isWifiConnected(appContext)) {
+            Log.d(TAG, "${brand.wireValue} catalogue missing but no WiFi — deferring to manual load")
+            return
+        }
+        Log.i(TAG, "Active board ${brand.wireValue} has no catalogue — auto-loading")
+        if (!claimSyncSlot(ImportStep.FetchingManifest)) return
+        try {
+            if (brand == BoardBrand.MOONBOARD) syncMoonBoardCatalogue() else syncAuroraBoard(brand)
+        } finally {
+            finishSyncSlot()
+        }
+    }
+
+    /**
+     * Load (or retry) a specific board's catalogue on demand from the sync
+     * status list (FEAT-031), without changing the active board. Unlike the
+     * auto path it's explicit user intent, so it bypasses the WiFi gate.
+     * Reports into the per-board map so the row shows the same step checklist.
+     */
+    fun loadBoardCatalogue(brand: BoardBrand) {
+        if (brand == BoardBrand.KILTER) { startApiSync(); return }
+        if (!claimSyncSlot(ImportStep.FetchingManifest)) return
+        scope.launch {
+            try {
+                if (brand == BoardBrand.MOONBOARD) syncMoonBoardCatalogue() else syncAuroraBoard(brand)
+            } finally {
+                finishSyncSlot()
+            }
+        }
+    }
+
+    /** Release the sync slot after a board-scoped catalogue load, flipping the
+     *  card back to the idle status list (the per-board Done step persists). */
+    private fun finishSyncSlot() {
+        _state.update { it.copy(
+            isSyncing = false,
+            syncComplete = true,
+            importStep = null,
+            lastSyncCompletedAtMillis = System.currentTimeMillis(),
+        ) }
     }
 
     /** Infer chunk type from name for v1 manifests without type field. */
