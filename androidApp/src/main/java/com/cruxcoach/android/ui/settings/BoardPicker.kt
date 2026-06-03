@@ -41,6 +41,9 @@ data class BoardPickerState(
     val selectedMoonBoardVariant: MoonBoardVariant? = null,
     /** Active layout_id — seeds the Aurora variant selection (FEAT-031). */
     val selectedAuroraLayoutId: Int = 0,
+    /** Wire values of Aurora brands whose catalogue is already loaded — hides
+     *  the "we'll download …" hint for boards the user already has (FEAT-031). */
+    val loadedAuroraBrands: Set<String> = emptySet(),
 )
 
 /**
@@ -56,13 +59,15 @@ class BoardPickerViewModel @Inject constructor(
 ) : ViewModel() {
 
     private val productSizes = MutableStateFlow(BoardConstants.KILTER_KNOWN_SIZES)
+    private val loadedBrands = MutableStateFlow<Set<String>>(emptySet())
 
     val state: StateFlow<BoardPickerState> = combine(
         userPreferences.boardBrand,
         userPreferences.boardLayoutId,
         userPreferences.boardProductSizeId,
         productSizes,
-    ) { brand, layoutId, sizeId, sizes ->
+        loadedBrands,
+    ) { brand, layoutId, sizeId, sizes, loaded ->
         BoardPickerState(
             loaded = true,
             initialBrand = brand,
@@ -70,6 +75,7 @@ class BoardPickerViewModel @Inject constructor(
             selectedKilterSizeId = sizeId,
             selectedMoonBoardVariant = MoonBoardVariant.fromLayoutId(layoutId.toLong()),
             selectedAuroraLayoutId = layoutId,
+            loadedAuroraBrands = loaded,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), BoardPickerState())
 
@@ -85,6 +91,10 @@ class BoardPickerViewModel @Inject constructor(
                 )
             }
             if (sizes.isNotEmpty()) productSizes.value = sizes
+            // Which boards are actually loaded — hides the download hint for them.
+            loadedBrands.value = withContext(Dispatchers.IO) {
+                boardRepository.getClimbCountsByBrand().filterValues { it > 0L }.keys
+            }
         }
     }
 
@@ -134,6 +144,7 @@ internal fun BoardPickerDialog(
         selectedKilterSizeId = state.selectedKilterSizeId,
         selectedMoonBoardVariant = state.selectedMoonBoardVariant,
         selectedAuroraLayoutId = state.selectedAuroraLayoutId,
+        loadedAuroraBrands = state.loadedAuroraBrands,
         frequency = BoardConstants.DEFAULT_SIZE_FREQUENCY,
         showAuroraBoards = true,
         onConfirmKilter = { viewModel.selectKilter(it); onSelected() },

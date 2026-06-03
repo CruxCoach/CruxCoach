@@ -62,6 +62,10 @@ internal fun BoardSelectionDialog(
     /** FEAT-031: the active board's layout_id, used to seed the selected
      *  Aurora variant (e.g. Tension TB2 Mirror) when re-opening the picker. */
     selectedAuroraLayoutId: Int = 0,
+    /** FEAT-031: wire values of Aurora brands whose catalogue is already
+     *  imported. Drives whether the "we'll download …" hint is shown — once a
+     *  board is loaded the hint is misleading, so it's hidden. */
+    loadedAuroraBrands: Set<String> = emptySet(),
     onConfirmKilter: (Int) -> Unit,
     onConfirmMoonBoard: (MoonBoardVariant) -> Unit,
     /** FEAT-031: confirm an Aurora-family board (Tension etc.) + the chosen
@@ -208,13 +212,18 @@ internal fun BoardSelectionDialog(
                             )
                         }
                     }
-                    Text(
-                        stringResource(
-                            R.string.board_selection_aurora_download_hint,
-                            auroraBrand!!.displayName,
-                        ),
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
+                    // The download hint is only meaningful before the board is
+                    // loaded — once its catalogue is imported it reads wrong
+                    // ("we'll download …"), so hide it for loaded boards.
+                    if (auroraBrand!!.wireValue !in loadedAuroraBrands) {
+                        Text(
+                            stringResource(
+                                R.string.board_selection_aurora_download_hint,
+                                auroraBrand!!.displayName,
+                            ),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
                 } else if (isKilter) {
                     if (kilterEmpty) {
                         Text(
