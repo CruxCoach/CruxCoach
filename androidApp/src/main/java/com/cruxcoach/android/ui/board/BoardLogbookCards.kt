@@ -20,6 +20,7 @@ import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.ui.theme.*
 import com.cruxcoach.android.util.GradeDisplayHelper
 import com.cruxcoach.data.repository.AscentWithClimb
+import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.IntensityZones
 import java.time.LocalDate
 
@@ -88,7 +89,14 @@ internal fun AscentCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Board badge: tells a multi-board user at a glance which
+                    // board this send was on (Kilter / Tension / MoonBoard …).
+                    // Unobtrusive — same muted colour as the meta line.
+                    BoardBrandBadge(BoardBrand.fromWire(ascent.boardBrand))
                     Text(
                         "${ascent.angle}°",
                         style = MaterialTheme.typography.bodySmall,
@@ -144,6 +152,26 @@ internal fun AscentCard(
                 )
             }
         }
+    }
+}
+
+/** Tiny, muted pill naming the board family a logbook entry was logged on.
+ *  Uses [BoardBrand.displayName] (proper noun, not localized) so a newly
+ *  promoted board needs no per-board string. Sits on the card's meta line
+ *  next to angle/date. */
+@Composable
+private fun BoardBrandBadge(brand: BoardBrand) {
+    Surface(
+        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.12f),
+        shape = RoundedCornerShape(4.dp)
+    ) {
+        Text(
+            text = brand.displayName,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
+        )
     }
 }
 

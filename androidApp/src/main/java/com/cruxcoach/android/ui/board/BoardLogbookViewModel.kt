@@ -121,6 +121,10 @@ data class BoardLogbookState(
     // selector only shown) when the user has logged on more than one board.
     val boardFilter: String? = null,
     val availableBoardBrands: List<String> = emptyList(),
+    // Per-board headline comparison (send count / top grade per board) over the
+    // selected interval. Computed across ALL boards (not scoped to boardFilter)
+    // so the user can compare them side by side; only surfaced when >1 board.
+    val boardComparison: List<BoardComparisonEntry> = emptyList(),
 )
 
 @HiltViewModel
@@ -355,13 +359,20 @@ class BoardLogbookViewModel @Inject constructor(
                 val scoped = s.boardFilter
                     ?.let { bf -> allAscents.filter { it.brand == BoardBrand.fromWire(bf) } }
                     ?: allAscents
-                val stats = withContext(Dispatchers.Default) {
-                    BoardStatsComputer.computeStats(
+                val (stats, comparison) = withContext(Dispatchers.Default) {
+                    val st = BoardStatsComputer.computeStats(
                         scoped, s.statsInterval, s.gradeScale,
                         s.customDateFrom, s.customDateTo, context
                     )
+                    // Comparison spans ALL boards (unscoped) so the rows stay
+                    // stable as the user toggles the per-board filter.
+                    val cmp = BoardStatsComputer.computeBoardComparison(
+                        allAscents, s.statsInterval, s.gradeScale,
+                        s.customDateFrom, s.customDateTo
+                    )
+                    st to cmp
                 }
-                _state.update { it.copy(stats = stats) }
+                _state.update { it.copy(stats = stats, boardComparison = comparison) }
                 recomputeHeatmap()
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e

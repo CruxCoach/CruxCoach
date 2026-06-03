@@ -95,6 +95,7 @@ fun BoardLogbookScreen(
             boardImages = state.boardImages,
             boardFilter = state.boardFilter,
             availableBoardBrands = state.availableBoardBrands,
+            boardComparison = state.boardComparison,
             onBoardFilterSelect = { viewModel.setBoardFilter(it) },
             onIntervalSelect = { viewModel.setStatsInterval(it) },
             onGradeChartViewSelect = { viewModel.setGradeChartView(it) },

@@ -106,6 +106,41 @@ object BoardStatsComputer {
         )
     }
 
+    /**
+     * Per-board summary for the multi-board comparison row in the stats sheet:
+     * one entry per board family the user has logged on, with its send count
+     * and hardest sent grade over the selected interval. Deliberately NOT
+     * scoped to the per-board filter — the whole point is to compare boards
+     * side by side. Sorted by send count desc so the most-used board leads.
+     */
+    fun computeBoardComparison(
+        ascents: List<AscentWithClimb>,
+        interval: StatsTimeInterval,
+        gradeScale: GradeScale,
+        customFrom: LocalDate? = null,
+        customTo: LocalDate? = null,
+        clock: Clock = Clock.systemDefaultZone(),
+    ): List<BoardComparisonEntry> {
+        val filtered = filterByInterval(ascents, interval, customFrom, customTo, clock)
+        return filtered
+            .groupBy { it.boardBrand }
+            .map { (brand, entries) ->
+                val sends = entries.filter { it.isSend }
+                val hardestDiff = sends.mapNotNull { it.difficultyAverage }.maxOrNull()
+                BoardComparisonEntry(
+                    boardBrand = brand,
+                    sendCount = sends.size,
+                    attemptCount = entries.count { !it.isSend },
+                    hardestGrade = hardestDiff?.let {
+                        GradeDisplayHelper.formatDifficulty(it, gradeScale)
+                    },
+                    hardestDifficultyInt = hardestDiff?.toInt() ?: 0,
+                )
+            }
+            .sortedWith(compareByDescending<BoardComparisonEntry> { it.sendCount }
+                .thenByDescending { it.attemptCount })
+    }
+
     fun filterByInterval(
         ascents: List<AscentWithClimb>,
         interval: StatsTimeInterval,

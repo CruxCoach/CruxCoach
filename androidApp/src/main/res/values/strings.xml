@@ -1194,6 +1194,8 @@
     <string name="board_stats_heatmap_section">Heatmap — %1$s</string>
     <string name="board_stats_heatmap_empty">No data for this heatmap mode yet. Log some sends or try another mode.</string>
     <string name="board_stats_angle_distribution">Angle Distribution</string>
+    <string name="board_stats_board_comparison">Board Comparison</string>
+    <string name="board_stats_board_comparison_board">Board</string>
     <string name="board_stats_attempt">Attempt</string>
     <string name="board_stats_current_streak">Current Streak</string>
     <string name="board_stats_date_range">Date range…</string>

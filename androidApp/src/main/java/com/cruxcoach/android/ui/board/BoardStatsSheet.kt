@@ -1,5 +1,6 @@
 package com.cruxcoach.android.ui.board
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -58,10 +59,12 @@ private fun distributionChartViewLabel(view: DistributionChartView): String = wh
 }
 
 @Composable
-private fun boardBrandLabel(brand: String): String = when (BoardBrand.fromWire(brand)) {
+private fun boardBrandLabel(brand: String): String = when (val b = BoardBrand.fromWire(brand)) {
     BoardBrand.KILTER -> stringResource(R.string.board_selection_brand_kilter)
     BoardBrand.MOONBOARD -> stringResource(R.string.board_selection_brand_moonboard)
-    else -> brand.replaceFirstChar { it.uppercase() }
+    // Aurora-family + any future brand: the proper-noun display name (e.g.
+    // "So iLL", "Grasshopper") rather than a naive capitalize of the wire value.
+    else -> b.displayName
 }
 
 /** Board-family selector for the per-board stats split. "Alle" (null) +
@@ -90,6 +93,92 @@ private fun BoardFilterChips(
     }
 }
 
+/** Compact per-board comparison: one row per board the user has logged on,
+ *  showing sends and hardest sent grade over the current interval. Rows are
+ *  tappable to scope the stats to that board (mirrors the filter chips), and
+ *  the active board's row is highlighted. Kept as a summary list (not a chart)
+ *  so it stays light at the top of the sheet. */
+@Composable
+private fun BoardComparisonSection(
+    entries: List<BoardComparisonEntry>,
+    selected: String?,
+    onSelect: (String?) -> Unit,
+) {
+    ChartSection(stringResource(R.string.board_stats_board_comparison)) {
+        // Column header.
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 2.dp),
+        ) {
+            Text(
+                stringResource(R.string.board_stats_board_comparison_board),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                stringResource(R.string.board_sends),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.width(64.dp),
+                textAlign = androidx.compose.ui.text.style.TextAlign.End,
+            )
+            Text(
+                stringResource(R.string.board_logbook_best_grade),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.width(72.dp),
+                textAlign = androidx.compose.ui.text.style.TextAlign.End,
+            )
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        entries.forEach { entry ->
+            val isActive = selected == entry.boardBrand
+            Surface(
+                color = if (isActive) OrangeAccent.copy(alpha = 0.15f)
+                        else androidx.compose.ui.graphics.Color.Transparent,
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        // Toggle: tapping the active board returns to "all".
+                        onSelect(if (isActive) null else entry.boardBrand)
+                    },
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                ) {
+                    Text(
+                        boardBrandLabel(entry.boardBrand),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium,
+                        color = if (isActive) OrangeAccent else MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text(
+                        "${entry.sendCount}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = SuccessGreen,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.End,
+                        modifier = Modifier.width(64.dp),
+                    )
+                    Text(
+                        entry.hardestGrade ?: "-",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = GradeHard,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.End,
+                        modifier = Modifier.width(72.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 internal fun BoardStatsSheet(
@@ -109,6 +198,7 @@ internal fun BoardStatsSheet(
     boardImages: List<com.cruxcoach.data.repository.BoardImage> = emptyList(),
     boardFilter: String? = null,
     availableBoardBrands: List<String> = emptyList(),
+    boardComparison: List<BoardComparisonEntry> = emptyList(),
     onBoardFilterSelect: (String?) -> Unit = {},
     onIntervalSelect: (StatsTimeInterval) -> Unit,
     onGradeChartViewSelect: (GradeChartView) -> Unit,
@@ -147,6 +237,16 @@ internal fun BoardStatsSheet(
                     selected = boardFilter,
                     onSelect = onBoardFilterSelect,
                 )
+                // Compact board comparison: sends / top grade per board, so a
+                // multi-board user can size them up side by side. Tapping a row
+                // scopes the stats to that board (same as its filter chip).
+                if (boardComparison.size > 1) {
+                    BoardComparisonSection(
+                        entries = boardComparison,
+                        selected = boardFilter,
+                        onSelect = onBoardFilterSelect,
+                    )
+                }
             }
 
             // Time interval chips + custom date

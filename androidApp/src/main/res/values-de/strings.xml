@@ -1241,6 +1241,8 @@
     <string name="board_stats_heatmap_section">Heatmap — %1$s</string>
     <string name="board_stats_heatmap_empty">Noch keine Daten für diesen Heatmap-Modus. Logge ein paar Sends oder probiere einen anderen Modus.</string>
     <string name="board_stats_angle_distribution">Winkel-Verteilung</string>
+    <string name="board_stats_board_comparison">Board-Vergleich</string>
+    <string name="board_stats_board_comparison_board">Board</string>
     <string name="board_stats_attempt">Versuch</string>
     <string name="board_stats_current_streak">Aktueller Streak</string>
     <string name="board_stats_date_range">Zeitraum…</string>
