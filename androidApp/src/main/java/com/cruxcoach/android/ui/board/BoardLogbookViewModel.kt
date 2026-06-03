@@ -173,11 +173,14 @@ class BoardLogbookViewModel @Inject constructor(
             try {
                 val sizeId = userPreferences.boardProductSizeId.first()
                 val layoutId = userPreferences.boardLayoutId.first()
+                // Active brand + layout-scoped placements (FEAT-031) — the
+                // defaults loaded Kilter geometry for every Aurora board.
+                val brand = userPreferences.boardBrand.first()
                 val (placements, boardSize, boardImages) = withContext(Dispatchers.IO) {
                     Triple(
-                        boardRepository.getAllPlacements().associate { it.placementId.toInt() to it },
-                        boardRepository.getProductSize(sizeId),
-                        boardRepository.getBoardImages(sizeId, layoutId)
+                        boardRepository.getPlacementsForLayout(sizeId, layoutId, brand).associate { it.placementId.toInt() to it },
+                        boardRepository.getProductSize(sizeId, brand),
+                        boardRepository.getBoardImages(sizeId, layoutId, brand)
                     )
                 }
                 _state.update {

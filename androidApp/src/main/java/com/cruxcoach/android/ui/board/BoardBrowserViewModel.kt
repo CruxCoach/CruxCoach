@@ -450,8 +450,11 @@ class BoardBrowserViewModel @Inject constructor(
                     // them (with the active brand) on a board change, not just
                     // once — otherwise an Aurora board reuses Kilter placements.
                     if (_state.value.placements.isEmpty() || needsBoardReload) {
-                        val placements = PerfLogger.traceQuery("getAllPlacements") {
-                            boardRepository.getAllPlacements(prefBoardBrand)
+                        // Scope to the active layout's sets (FEAT-031) — the
+                        // unfiltered set mixes in other layouts/products (e.g.
+                        // Tension TB2 holds bleeding onto the TB1 Full Wall).
+                        val placements = PerfLogger.traceQuery("getPlacementsForLayout") {
+                            boardRepository.getPlacementsForLayout(prefSizeId, prefLayoutId, prefBoardBrand)
                         }.associate { it.placementId.toInt() to it }
                         _state.update { it.copy(placements = placements) }
                         PerfLogger.milestone("BoardBrowserVM placements loaded (${placements.size})")

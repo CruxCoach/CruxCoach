@@ -419,7 +419,11 @@ class ClimbEditorViewModel @Inject constructor(
         val layoutId = userPreferences.boardLayoutId.first()
         val layoutIdLong = layoutId.toLong()
         val defaultAngle = userPreferences.boardAngle.first()
-        val brand = BoardBrand.fromLayoutId(layoutIdLong)
+        // Derive the brand from the stored board_brand, NOT fromLayoutId:
+        // Aurora boards share layout ids with Kilter (Tension is layout 9
+        // etc.), so fromLayoutId mis-resolves every Aurora board to Kilter
+        // and the editor would load Kilter geometry for a Tension board.
+        val brand = BoardBrand.fromWire(userPreferences.boardBrand.first())
 
         if (brand == BoardBrand.MOONBOARD) {
             // MoonBoard authoring: no Aurora placement/LED/image rows exist
@@ -442,16 +446,17 @@ class ClimbEditorViewModel @Inject constructor(
             return
         }
 
+        val brandWire = brand.wireValue
         val (size, placements, images, ledMap) = withContext(Dispatchers.IO) {
-            val size = boardRepository.getProductSize(sizeId)
-            // Filter to set_ids actually rendered for this layout — see
-            // BoardRepository.getPlacementsForLayout for the why. Without
+            val size = boardRepository.getProductSize(sizeId, brandWire)
+            // Filter to set_ids actually rendered for this (brand, layout) —
+            // see BoardRepository.getPlacementsForLayout for the why. Without
             // this the editor's tap-detection snaps to placements that
             // belong to other sets and aren't visible in the photo.
-            val placements = boardRepository.getPlacementsForLayout(sizeId, layoutId)
+            val placements = boardRepository.getPlacementsForLayout(sizeId, layoutId, brandWire)
                 .associateBy { it.placementId.toInt() }
-            val images = boardRepository.getBoardImages(sizeId, layoutId)
-            val led = boardRepository.getPlacementLedMap(sizeId)
+            val images = boardRepository.getBoardImages(sizeId, layoutId, brandWire)
+            val led = boardRepository.getPlacementLedMap(sizeId, brandWire)
             BoardLoad(size, placements, images, led)
         }
         _state.update {
