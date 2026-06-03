@@ -291,11 +291,15 @@ class BoardSyncManager(
                 return@launch
             }
 
-            // One-time backfill after v1→v2 migration added move_count column
-            if (boardRepository.getSyncState("move_count_backfill") == null) {
-                Log.d(TAG, "Running one-time move_count backfill...")
+            // One-time backfill after v1→v2 migration added move_count column.
+            // Bumped to _v2 for FEAT-031: the original backfill counted moves
+            // with Kilter's fixed role IDs, leaving every Aurora climb at 0.
+            // Re-running once recomputes those with each board's placement_roles
+            // (the WHERE move_count = 0 filter skips already-counted climbs).
+            if (boardRepository.getSyncState("move_count_backfill_v2") == null) {
+                Log.d(TAG, "Running one-time move_count backfill (v2, role-aware)...")
                 importer.backfillMoveCounts()
-                boardRepository.upsertSyncState("move_count_backfill", "done")
+                boardRepository.upsertSyncState("move_count_backfill_v2", "done")
                 Log.d(TAG, "Move count backfill complete")
             }
 
