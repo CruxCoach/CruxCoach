@@ -6,15 +6,21 @@ import com.cruxcoach.android.data.BoardConstants
 import com.cruxcoach.android.data.BoardSyncManager
 import com.cruxcoach.android.data.BoardSyncState
 import com.cruxcoach.android.data.UserPreferences
+import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.BoardSize
 import com.cruxcoach.domain.board.BoardBrand
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 data class BoardModelSelectionState(
@@ -35,13 +41,36 @@ data class BoardModelSelectionState(
 @HiltViewModel
 class BoardSyncViewModel @Inject constructor(
     private val syncManager: BoardSyncManager,
-    private val userPreferences: UserPreferences
+    private val userPreferences: UserPreferences,
+    private val boardRepository: BoardRepository,
 ) : ViewModel() {
 
     val state: StateFlow<BoardSyncState> = syncManager.state
 
     private val _modelState = MutableStateFlow(BoardModelSelectionState())
     val modelState: StateFlow<BoardModelSelectionState> = _modelState.asStateFlow()
+
+    /** Per-brand catalogue sizes (FEAT-031), keyed by wire value. Drives the
+     *  idle board-status list. Refreshed on demand + after each sync. */
+    private val _boardCounts = MutableStateFlow<Map<String, Long>>(emptyMap())
+    val boardCounts: StateFlow<Map<String, Long>> = _boardCounts.asStateFlow()
+
+    /** Active board brand — the status list highlights it and flags it as the
+     *  one whose missing catalogue is auto-loaded. */
+    val activeBrand: StateFlow<BoardBrand> = userPreferences.boardBrand
+        .map { BoardBrand.fromWire(it) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), BoardBrand.KILTER)
+
+    /** Recompute per-board catalogue sizes off the main thread. Call on first
+     *  composition and whenever a sync completes. */
+    fun refreshBoardCounts() {
+        viewModelScope.launch {
+            _boardCounts.value = withContext(Dispatchers.IO) { boardRepository.getClimbCountsByBrand() }
+        }
+    }
+
+    /** Load (or retry) a board's catalogue from the status list. */
+    fun loadBoard(brand: BoardBrand) = syncManager.loadBoardCatalogue(brand)
 
     fun checkNetwork() = syncManager.checkNetwork()
     fun dismissWifiDialog() = syncManager.dismissWifiDialog()

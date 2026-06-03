@@ -8,6 +8,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.NetworkWifi
+import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SignalWifiOff
 import androidx.compose.material.icons.filled.Warning
@@ -52,9 +53,14 @@ fun BoardSyncInlineCard(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val modelState by viewModel.modelState.collectAsStateWithLifecycle()
+    val boardCounts by viewModel.boardCounts.collectAsStateWithLifecycle()
+    val activeBrand by viewModel.activeBrand.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     LaunchedEffect(Unit) { viewModel.checkNetwork() }
+    // Recompute per-board catalogue sizes on first show and after each sync
+    // completes, so the status list reflects a just-loaded board.
+    LaunchedEffect(state.lastSyncCompletedAtMillis) { viewModel.refreshBoardCounts() }
     if (autoStartIfNeeded) {
         // One-shot on first composition. The VM's startApiSyncIfNeeded
         // guards on alreadyImported + isSyncing so a re-entry to the
@@ -187,7 +193,10 @@ fun BoardSyncInlineCard(
         }
         DatabaseImportSection(
             state = state,
+            boardCounts = boardCounts,
+            activeBrand = activeBrand,
             onStartSync = { viewModel.startApiSync() },
+            onLoadBoard = { viewModel.loadBoard(it) },
             onDismissError = { viewModel.clearError() },
             onReportBug = { error ->
                 onNavigateToBugReport(
@@ -249,7 +258,10 @@ private fun NoWifiWarningBanner() {
 @Composable
 private fun DatabaseImportSection(
     state: BoardSyncState,
+    boardCounts: Map<String, Long>,
+    activeBrand: BoardBrand,
     onStartSync: () -> Unit,
+    onLoadBoard: (BoardBrand) -> Unit,
     onDismissError: () -> Unit,
     onReportBug: (error: String) -> Unit,
 ) {
@@ -286,32 +298,21 @@ private fun DatabaseImportSection(
             )
 
             if (state.alreadyImported && !state.isSyncing) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.testTag("board_sync_complete"),
-                ) {
-                    Icon(
-                        Icons.Default.CheckCircle,
-                        contentDescription = null,
-                        tint = SuccessGreen,
-                        modifier = Modifier.size(20.dp),
+                // FEAT-031: per-board catalogue status — one row per board
+                // (Kilter, MoonBoard + the Aurora family), the active board
+                // highlighted, with a load/retry action for any not yet loaded.
+                BoardCatalogueStatusList(
+                    boardCounts = boardCounts,
+                    activeBrand = activeBrand,
+                    onLoadBoard = onLoadBoard,
+                )
+
+                state.lastSyncTimestamp?.let { ts ->
+                    Text(
+                        stringResource(R.string.board_sync_last_sync, formatTimestamp(ts)),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Spacer(Modifier.width(8.dp))
-                    Column {
-                        Text(
-                            stringResource(R.string.board_sync_db_synced),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = SuccessGreen,
-                            fontWeight = FontWeight.Bold,
-                        )
-                        state.lastSyncTimestamp?.let { ts ->
-                            Text(
-                                stringResource(R.string.board_sync_last_sync, formatTimestamp(ts)),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
                 }
 
                 OutlinedButton(
@@ -398,6 +399,106 @@ private fun DatabaseImportSection(
                         onReportBug = { onReportBug(error) },
                     )
                 }
+            }
+        }
+    }
+}
+
+/**
+ * FEAT-031: per-board catalogue status list — Kilter, MoonBoard, then the
+ * Aurora family, in that order. Loaded boards show their climb count; the
+ * active board's catalogue auto-loads when missing, and any not-yet-loaded
+ * board can be loaded/retried inline. Replaces the old single Kilter-centric
+ * "synced" line so all three board categories are visible + actionable.
+ */
+@Composable
+private fun BoardCatalogueStatusList(
+    boardCounts: Map<String, Long>,
+    activeBrand: BoardBrand,
+    onLoadBoard: (BoardBrand) -> Unit,
+) {
+    val boards = remember {
+        listOf(BoardBrand.KILTER, BoardBrand.MOONBOARD) +
+            BoardBrand.entries.filter { it.usesAuroraProtocol && it != BoardBrand.KILTER }
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        boards.forEach { brand ->
+            BoardStatusRow(
+                brand = brand,
+                count = boardCounts[brand.wireValue] ?: 0L,
+                isActive = brand == activeBrand,
+                onLoad = { onLoadBoard(brand) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun BoardStatusRow(
+    brand: BoardBrand,
+    count: Long,
+    isActive: Boolean,
+    onLoad: () -> Unit,
+) {
+    val loaded = count > 0L
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("board_status_${brand.wireValue}"),
+    ) {
+        when {
+            loaded -> Icon(
+                Icons.Default.CheckCircle, contentDescription = null,
+                tint = SuccessGreen, modifier = Modifier.size(20.dp),
+            )
+            isActive -> Icon(
+                Icons.Default.Warning, contentDescription = null,
+                tint = OrangeAccent, modifier = Modifier.size(20.dp),
+            )
+            else -> Icon(
+                Icons.Default.RadioButtonUnchecked, contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                modifier = Modifier.size(20.dp),
+            )
+        }
+        Spacer(Modifier.width(8.dp))
+
+        Text(
+            brand.displayName,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal,
+            color = if (loaded || isActive) MaterialTheme.colorScheme.onSurface
+                    else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+            modifier = Modifier.weight(1f),
+        )
+
+        if (loaded) {
+            Text(
+                "%,d".format(count),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            Text(
+                if (isActive) stringResource(R.string.board_sync_status_not_loaded)
+                else stringResource(R.string.board_sync_status_dash),
+                style = MaterialTheme.typography.labelSmall,
+                color = if (isActive) OrangeAccent
+                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+            )
+            IconButton(
+                onClick = onLoad,
+                modifier = Modifier
+                    .size(32.dp)
+                    .testTag("board_status_load_${brand.wireValue}"),
+            ) {
+                Icon(
+                    if (isActive) Icons.Default.Refresh else Icons.Default.CloudDownload,
+                    contentDescription = stringResource(R.string.board_sync_load_board, brand.displayName),
+                    tint = OrangeAccent,
+                    modifier = Modifier.size(18.dp),
+                )
             }
         }
     }
