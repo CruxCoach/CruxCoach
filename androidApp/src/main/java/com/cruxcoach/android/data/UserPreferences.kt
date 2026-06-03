@@ -82,6 +82,13 @@ enum class SyncInterval(@androidx.annotation.StringRes val labelRes: Int) {
     MANUAL(com.cruxcoach.android.R.string.sync_interval_manual),
 }
 
+enum class HistoryRetention(val days: Int) {
+    OFF(0),
+    DAYS_30(30),
+    DAYS_90(90),
+    DAYS_365(365),
+}
+
 enum class DarkModeSetting(val label: String) {
     SYSTEM("System"),
     LIGHT("Hell"),
@@ -193,6 +200,7 @@ object PreferenceKeys {
     /** Active board brand — "kilter" | "moonboard" (FEAT-027). */
     val BOARD_BRAND = stringPreferencesKey("board_brand")
     val SYNC_INTERVAL = stringPreferencesKey("sync_interval")
+    val CLIMB_HISTORY_RETENTION_DAYS = intPreferencesKey("climb_history_retention_days")
     val LAST_SYNC_TIMESTAMP = stringPreferencesKey("last_sync_timestamp")
     val GRADE_SCALE = stringPreferencesKey("grade_scale")
     val LED_COLOR_START = intPreferencesKey("led_color_start")
@@ -348,6 +356,11 @@ class UserPreferences(
     val syncInterval: Flow<SyncInterval> = dataStore.data.map { prefs ->
         val value = prefs[PreferenceKeys.SYNC_INTERVAL] ?: SyncInterval.MANUAL.name
         try { SyncInterval.valueOf(value) } catch (_: IllegalArgumentException) { SyncInterval.MANUAL }
+    }
+
+    val historyRetention: Flow<HistoryRetention> = dataStore.data.map { prefs ->
+        val days = prefs[PreferenceKeys.CLIMB_HISTORY_RETENTION_DAYS] ?: HistoryRetention.DAYS_30.days
+        HistoryRetention.entries.firstOrNull { it.days == days } ?: HistoryRetention.DAYS_30
     }
 
     val lastSyncTimestamp: Flow<String?> = dataStore.data.map { prefs ->
@@ -547,6 +560,12 @@ class UserPreferences(
     suspend fun setSyncInterval(interval: SyncInterval) {
         dataStore.edit { prefs ->
             prefs[PreferenceKeys.SYNC_INTERVAL] = interval.name
+        }
+    }
+
+    suspend fun setHistoryRetention(value: HistoryRetention) {
+        dataStore.edit { prefs ->
+            prefs[PreferenceKeys.CLIMB_HISTORY_RETENTION_DAYS] = value.days
         }
     }
 

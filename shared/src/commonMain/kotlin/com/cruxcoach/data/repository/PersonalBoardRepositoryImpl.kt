@@ -1,7 +1,13 @@
 package com.cruxcoach.data.repository
 
+import app.cash.sqldelight.coroutines.asFlow
+import app.cash.sqldelight.coroutines.mapToList
 import com.cruxcoach.db.secure.SecureDatabase
 import com.cruxcoach.util.DateTimeUtil
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
 
 class PersonalBoardRepositoryImpl(
     private val database: SecureDatabase
@@ -556,6 +562,63 @@ class PersonalBoardRepositoryImpl(
             climb_uuid = climbUuid,
             angle = angle
         )
+    }
+
+    // ── Climb history ("Verlauf") ───────────────────────────────
+
+    override suspend fun recordClimbHistory(
+        climbUuid: String, climbName: String, angle: Long, difficultyAverage: Double?,
+        boardBrand: String, layoutId: Long?, climbedAt: String, recordedAt: String,
+    ) {
+        withContext(Dispatchers.Default) {
+            database.climbHistoryQueries.insert(
+                climbUuid = climbUuid,
+                climbName = climbName,
+                angle = angle,
+                difficultyAverage = difficultyAverage,
+                boardBrand = boardBrand,
+                layoutId = layoutId,
+                climbedAt = climbedAt,
+                recordedAt = recordedAt,
+            )
+        }
+    }
+
+    override fun observeClimbHistory(): Flow<List<ClimbHistoryEntry>> {
+        return database.climbHistoryQueries.selectAllRecent()
+            .asFlow()
+            .mapToList(Dispatchers.Default)
+            .map { rows ->
+                rows.map { row ->
+                    ClimbHistoryEntry(
+                        id = row.id,
+                        climbUuid = row.climb_uuid,
+                        climbName = row.climb_name,
+                        angle = row.angle.toInt(),
+                        difficultyAverage = row.difficulty_average,
+                        boardBrand = row.board_brand,
+                        layoutId = row.layout_id,
+                        climbedAt = row.climbed_at,
+                        recordedAt = row.recorded_at,
+                    )
+                }
+            }
+    }
+
+    override suspend fun clearClimbHistory() {
+        withContext(Dispatchers.Default) {
+            database.climbHistoryQueries.deleteAll()
+        }
+    }
+
+    override suspend fun pruneClimbHistory(cutoffIso: String) {
+        withContext(Dispatchers.Default) {
+            database.climbHistoryQueries.deleteOlderThan(cutoffIso)
+        }
+    }
+
+    override suspend fun climbHistoryCount(): Long = withContext(Dispatchers.Default) {
+        database.climbHistoryQueries.countAll().executeAsOne()
     }
 
     // ── Bulk operations ─────────────────────────────────────────

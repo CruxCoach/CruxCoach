@@ -1,0 +1,53 @@
+-- "Verlauf" (history) — a local, append-only record of climbs the user
+-- logged as SENT. Private, per-key DB file. Distinct from `ascents`: this
+-- is a lightweight, denormalized activity log for the history screen, never
+-- synced to Kilter and (deliberately) never included in any backup/export.
+--
+-- Denormalized fields (climb_name, difficulty_average, board_brand,
+-- layout_id) are captured at record time from the climb so the history
+-- screen renders without a cross-DB join.
+
+CREATE TABLE climb_history (
+    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    climb_uuid TEXT NOT NULL,
+    climb_name TEXT NOT NULL,
+    angle INTEGER NOT NULL,
+    difficulty_average REAL,
+    -- Board family + layout this climb was logged on, denormalized from the
+    -- board DB (cross-DB join impossible). DEFAULT 'kilter' matches the
+    -- ascents/bids convention; layout_id NULL = unknown.
+    board_brand TEXT NOT NULL DEFAULT 'kilter',
+    layout_id INTEGER,
+    -- When the user climbed it (ISO LocalDateTime, mirrors ascents.climbed_at).
+    climbed_at TEXT NOT NULL,
+    -- When this history row was written (ISO LocalDateTime). Drives ordering
+    -- and the retention prune so re-logged older sends still sort newest-first.
+    recorded_at TEXT NOT NULL
+);
+
+CREATE INDEX climb_history_recorded_at ON climb_history(recorded_at DESC);
+
+-- ═══ Insert ═══
+
+insert:
+INSERT INTO climb_history(climb_uuid, climb_name, angle, difficulty_average,
+    board_brand, layout_id, climbed_at, recorded_at)
+VALUES (:climbUuid, :climbName, :angle, :difficultyAverage,
+    :boardBrand, :layoutId, :climbedAt, :recordedAt);
+
+-- ═══ Queries ═══
+
+selectAllRecent:
+SELECT * FROM climb_history ORDER BY recorded_at DESC;
+
+countAll:
+SELECT COUNT(*) FROM climb_history;
+
+-- ═══ Bulk operations ═══
+
+deleteAll:
+DELETE FROM climb_history;
+
+-- Retention prune: drop rows older than the cutoff (ISO LocalDateTime).
+deleteOlderThan:
+DELETE FROM climb_history WHERE recorded_at < :cutoff;

@@ -55,6 +55,7 @@ import com.cruxcoach.android.ui.board.BoardBrowserScreen
 import com.cruxcoach.android.ui.board.BoardBrowserViewModel
 import com.cruxcoach.android.ui.board.BoardFilterScreen
 import com.cruxcoach.android.ui.board.BoardClimbDetailScreen
+import com.cruxcoach.android.ui.board.BoardClimbHistoryScreen
 import com.cruxcoach.android.ui.board.BoardListDetailScreen
 import com.cruxcoach.android.ui.board.BoardListsScreen
 import com.cruxcoach.android.ui.board.BoardLogbookScreen
@@ -106,6 +107,7 @@ object Routes {
     const val BOARD_LOGBOOK = "board_logbook"
     const val BOARD_SYNC = "board_sync"
     const val BOARD_LISTS = "board_lists"
+    const val BOARD_LOGBOOK_HISTORY = "board_logbook_history"
     const val BOARD_LIST_DETAIL = "board_list_detail/{listId}"
     const val BOARD_MAP = "board_map"
     const val BODY_STAT = "body_stat"
@@ -432,6 +434,7 @@ fun CruxCoachNavHost(
                     onNavigateToSync = { navController.navigate(Routes.BOARD_SYNC) },
                     onNavigateToLogbook = { navController.navigate(Routes.BOARD_LOGBOOK) },
                     onNavigateToLists = { navController.navigate(Routes.BOARD_LISTS) },
+                    onNavigateToHistory = { navController.navigate(Routes.BOARD_LOGBOOK_HISTORY) },
                     onNavigateToSettings = { navController.navigate(Routes.SETTINGS) },
                     onNavigateToFilter = { navController.navigate(Routes.BOARD_FILTER) },
                     onNavigateToClimbCreator = { navController.navigate(Routes.climbCreator()) },
@@ -564,6 +567,16 @@ fun CruxCoachNavHost(
                     },
                     onNavigateToSetters = {
                         navController.navigate(Routes.SETTERS_LIST)
+                    },
+                    onNavigateToHistory = { navController.navigate(Routes.BOARD_LOGBOOK_HISTORY) },
+                )
+            }
+
+            composable(Routes.BOARD_LOGBOOK_HISTORY) {
+                BoardClimbHistoryScreen(
+                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateToClimb = { uuid, angle ->
+                        navController.navigate(Routes.boardClimbDetail(uuid, angle))
                     },
                 )
             }

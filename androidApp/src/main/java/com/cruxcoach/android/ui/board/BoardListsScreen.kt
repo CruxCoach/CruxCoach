@@ -11,6 +11,7 @@ import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -41,6 +42,7 @@ fun BoardListsScreen(
     onNavigateBack: () -> Unit,
     onNavigateToListDetail: (Long) -> Unit,
     onNavigateToSetters: () -> Unit = {},
+    onNavigateToHistory: () -> Unit,
     viewModel: BoardListsViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -132,6 +134,10 @@ fun BoardListsScreen(
                     style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            }
+
+            item(key = "history") {
+                HistoryCard(onClick = onNavigateToHistory)
             }
 
             if (state.lists.isEmpty()) {
@@ -277,6 +283,50 @@ private fun ListCard(
                         modifier = Modifier.size(20.dp)
                     )
                 }
+            }
+        }
+    }
+}
+
+/**
+ * "Verlauf" (recently-viewed climbs) entry at the top of the lists. Same card
+ * style as [ListCard] — surfaceVariant tint, leading icon, title + subtitle —
+ * but with a History icon and no delete action, since it isn't a user list.
+ */
+@Composable
+private fun HistoryCard(onClick: () -> Unit) {
+    Card(
+        onClick = onClick,
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("board_history_card"),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+        ),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Default.History,
+                contentDescription = null,
+                tint = OrangeAccent,
+                modifier = Modifier.size(28.dp)
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    "Verlauf",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    "Zuletzt angesehene Boulder",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }

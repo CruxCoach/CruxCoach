@@ -1,5 +1,7 @@
 package com.cruxcoach.data.repository
 
+import kotlinx.coroutines.flow.Flow
+
 /**
  * Personal board data — ascents, bids, sessions, climb lists.
  * Backed by the per-key SecureDatabase. No cross-DB JOINs;
@@ -112,6 +114,27 @@ interface PersonalBoardRepository {
      *  restored rows that defaulted to kilter/NULL. */
     fun updateAscentDenormalized(climbUuid: String, angle: Long, climbName: String, difficultyAverage: Double?, climbFrames: String, framesCount: Long, boardBrand: String, layoutId: Long?)
     fun updateBidDenormalized(climbUuid: String, angle: Long, climbName: String, difficultyAverage: Double?, boardBrand: String, layoutId: Long?)
+
+    // ── Climb history ("Verlauf") ───────────────────────────────
+    // Local, append-only log of SENT climbs for the history screen. Never
+    // synced to Kilter; never backed up/exported.
+
+    /** Append one SENT climb to the local history log. */
+    suspend fun recordClimbHistory(
+        climbUuid: String, climbName: String, angle: Long, difficultyAverage: Double?,
+        boardBrand: String, layoutId: Long?, climbedAt: String, recordedAt: String,
+    )
+
+    /** History entries, newest-recorded first; re-emits on every change. */
+    fun observeClimbHistory(): Flow<List<ClimbHistoryEntry>>
+
+    /** Wipe the entire history log. */
+    suspend fun clearClimbHistory()
+
+    /** Retention prune: drop history rows recorded before [cutoffIso] (ISO LocalDateTime). */
+    suspend fun pruneClimbHistory(cutoffIso: String)
+
+    suspend fun climbHistoryCount(): Long
 
     // ── Bulk operations ─────────────────────────────────────────
 

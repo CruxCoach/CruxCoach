@@ -2,11 +2,14 @@ package com.cruxcoach.android.fakes
 
 import com.cruxcoach.data.repository.AscentWithClimb
 import com.cruxcoach.data.repository.Board_sessions
+import com.cruxcoach.data.repository.ClimbHistoryEntry
 import com.cruxcoach.data.repository.Climb_lists
 import com.cruxcoach.data.repository.PersonalBoardRepository
 import com.cruxcoach.data.repository.RawAscent
 import com.cruxcoach.data.repository.RawBid
 import com.cruxcoach.data.repository.RawClimbListEntry
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 
 /**
  * In-memory fake of [PersonalBoardRepository] for unit tests.
@@ -95,6 +98,14 @@ class FakePersonalBoardRepository : PersonalBoardRepository {
     override fun getAllClimbKeys(): List<Pair<String, Long>> = emptyList()
     override fun updateAscentDenormalized(climbUuid: String, angle: Long, climbName: String, difficultyAverage: Double?, climbFrames: String, framesCount: Long, boardBrand: String, layoutId: Long?) {}
     override fun updateBidDenormalized(climbUuid: String, angle: Long, climbName: String, difficultyAverage: Double?, boardBrand: String, layoutId: Long?) {}
+
+    // -- Climb history --
+
+    override suspend fun recordClimbHistory(climbUuid: String, climbName: String, angle: Long, difficultyAverage: Double?, boardBrand: String, layoutId: Long?, climbedAt: String, recordedAt: String) {}
+    override fun observeClimbHistory(): Flow<List<ClimbHistoryEntry>> = flowOf(emptyList())
+    override suspend fun clearClimbHistory() {}
+    override suspend fun pruneClimbHistory(cutoffIso: String) {}
+    override suspend fun climbHistoryCount(): Long = 0L
 
     // -- Bulk operations --
 

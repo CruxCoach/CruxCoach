@@ -95,6 +95,18 @@ internal class AscentLogger(
                             boardBrand = climb.boardBrand,
                             layoutId = climb.layoutId,
                         )
+                        // Append the SEND to the local "Verlauf" history log.
+                        // Only sends are recorded here — never attempts/bids.
+                        personalBoardRepo.recordClimbHistory(
+                            climbUuid = climb.uuid,
+                            climbName = climb.name,
+                            angle = s.angle.toLong(),
+                            difficultyAverage = climb.difficultyAverage,
+                            boardBrand = climb.boardBrand,
+                            layoutId = climb.layoutId,
+                            climbedAt = now,
+                            recordedAt = now,
+                        )
                     } else {
                         personalBoardRepo.insertBid(
                             uuid = uuid,

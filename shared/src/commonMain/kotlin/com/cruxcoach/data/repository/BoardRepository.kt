@@ -463,6 +463,24 @@ data class RawClimbListEntry(
     val addedAt: String
 )
 
+/**
+ * One row of the local "Verlauf" (history) log — a SENT climb the user
+ * recorded. Denormalized at record time (climb metadata + board family) so
+ * the history screen renders without a cross-DB join. Local-only: never
+ * synced to Kilter, never backed up/exported.
+ */
+data class ClimbHistoryEntry(
+    val id: Long,
+    val climbUuid: String,
+    val climbName: String,
+    val angle: Int,
+    val difficultyAverage: Double?,
+    val boardBrand: String,
+    val layoutId: Long?,
+    val climbedAt: String,
+    val recordedAt: String,
+)
+
 // ── Community-climb support (FEAT-003) ─────────────────────
 
 /** Snapshot of the fields needed to publish a NIP-09 deletion + a
