@@ -165,13 +165,26 @@ fun BoardFilterScreen(
                 // boardSize is null — label it by its variant name instead (the
                 // same brand-aware logic as the Settings board section). Kilter
                 // and the Aurora family keep the product-size label.
-                val boardLabel = if (BoardBrand.fromWire(state.filter.boardBrand) == BoardBrand.MOONBOARD) {
-                    MoonBoardVariant.fromLayoutId(state.filter.layoutId.toLong())?.displayName
-                        ?: stringResource(R.string.settings_board_model_not_configured)
-                } else {
-                    state.boardSize
-                        ?.let { BoardConstants.sizeLabel(it.id, it.name, it.boardBrand) }
-                        ?: stringResource(R.string.settings_board_model_not_configured)
+                val brand = BoardBrand.fromWire(state.filter.boardBrand)
+                val boardLabel = when {
+                    brand == BoardBrand.MOONBOARD ->
+                        MoonBoardVariant.fromLayoutId(state.filter.layoutId.toLong())?.displayName
+                            ?: stringResource(R.string.settings_board_model_not_configured)
+                    // Aurora family: name WHICH board (Tension / Grasshopper / …),
+                    // with the variant where one exists (Tension TB2 Mirror/Spray),
+                    // then the product size — same as the Settings board section.
+                    // Kilter is the default brand, so it stays size-only.
+                    brand != BoardBrand.KILTER -> {
+                        val type = BoardConstants.auroraVariant(brand, state.filter.layoutId)?.displayName
+                            ?: brand.displayName
+                        val size = state.boardSize
+                            ?.let { BoardConstants.sizeLabel(it.id, it.name, it.boardBrand) }
+                        if (size != null) "$type · $size" else type
+                    }
+                    else ->
+                        state.boardSize
+                            ?.let { BoardConstants.sizeLabel(it.id, it.name, it.boardBrand) }
+                            ?: stringResource(R.string.settings_board_model_not_configured)
                 }
                 Column {
                     Text(
