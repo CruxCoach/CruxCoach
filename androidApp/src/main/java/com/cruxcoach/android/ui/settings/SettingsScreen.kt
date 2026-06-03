@@ -35,6 +35,7 @@ import com.cruxcoach.android.ui.devcontact.DevContactSection
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.OrangeAccent
+import com.cruxcoach.android.data.BoardConstants
 import com.cruxcoach.domain.board.BoardBrand
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -185,10 +186,23 @@ fun SettingsScreen(
                     // Kilter board-size label. (0.1.5 dropped the standalone
                     // Original/Homewall toggle — the picker resolves layout.)
                     BoardModelSection(
-                        boardModelName = if (BoardBrand.fromWire(state.boardBrand) == BoardBrand.MOONBOARD) {
-                            state.moonBoardVariant?.displayName ?: ""
-                        } else {
-                            state.boardProductSizeName
+                        // Always show WHICH board it is, not just the size
+                        // (FEAT-031): MoonBoard shows its variant; an Aurora board
+                        // shows its name/variant + size; Kilter shows the size.
+                        boardModelName = run {
+                            val brand = BoardBrand.fromWire(state.boardBrand)
+                            when {
+                                brand == BoardBrand.MOONBOARD ->
+                                    state.moonBoardVariant?.displayName ?: ""
+                                brand.usesAuroraProtocol && brand != BoardBrand.KILTER -> {
+                                    val boardName = BoardConstants
+                                        .auroraVariant(brand, state.boardLayoutId)?.displayName
+                                        ?: brand.displayName
+                                    if (state.boardProductSizeName.isNotBlank())
+                                        "$boardName · ${state.boardProductSizeName}" else boardName
+                                }
+                                else -> state.boardProductSizeName
+                            }
                         },
                         onChangeModel = { showBoardModelDialog = true },
                     )

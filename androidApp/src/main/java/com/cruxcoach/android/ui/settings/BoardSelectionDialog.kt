@@ -231,6 +231,9 @@ internal fun BoardSelectionDialog(
                     ExposedDropdownMenu(
                         expanded = boardMenuExpanded,
                         onDismissRequest = { boardMenuExpanded = false },
+                        // Cap the height so the growing board list (FEAT-031)
+                        // stays on-screen and scrolls instead of overflowing.
+                        modifier = Modifier.heightIn(max = 280.dp),
                     ) {
                         boardOptions.forEach { (label, onSelect) ->
                             DropdownMenuItem(
