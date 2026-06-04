@@ -7,6 +7,7 @@ import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.CommunityClimbDeleteContext
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.community.CommunityClimbTags
+import com.cruxcoach.domain.community.communityClimbDTag
 import com.vitorpamplona.quartz.nip01Core.core.Event
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -127,15 +128,16 @@ class CommunityClimbDeleter @Inject constructor(
             return Outcome.NotOwner
         }
 
-        val dTag = ctx.nostrDTag
-        if (dTag.isNullOrBlank()) {
-            // Climb was never published — fall back to the local-only
-            // delete path. saveDraft sets sync_status='draft' but
-            // ClimbEditorViewModel.deleteDraft is the right surface
-            // for those; the deleter targets published rows.
-            Log.w(TAG, "delete: climb has no d-tag (never published) uuid=$uuid")
-            return Outcome.NotFound
-        }
+        // The d-tag is a pure function of author pubkey + uuid. A fresh-install
+        // synced row for an OWN published climb carries no nostr_d_tag (the
+        // Blossom blob doesn't ship it), but we've already verified
+        // origin=='cruxcoach' and (owner == signer), so reconstruct it from the
+        // signer rather than refusing the tombstone. Routing to the local-only
+        // draft delete is handled upstream (BoardClimbDetailScreen gates that on
+        // source=='local'); by the time we reach here the climb is a published
+        // cruxcoach row the owner is deleting.
+        val dTag = ctx.nostrDTag?.takeIf { it.isNotBlank() }
+            ?: communityClimbDTag(signer, uuid)
 
         val tombstoneEpoch = System.currentTimeMillis() / 1000L
         val tombstoneIso = java.time.Instant.ofEpochSecond(tombstoneEpoch).toString()

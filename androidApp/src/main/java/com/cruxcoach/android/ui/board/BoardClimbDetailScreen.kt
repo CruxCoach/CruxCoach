@@ -605,22 +605,36 @@ fun BoardClimbDetailScreen(
                                         )
                                     }
                                     HorizontalDivider()
-                                    // Branch on whether this row was ever
-                                    // actually published. Climbs with no
-                                    // `nostr_event_id` have never reached a
-                                    // relay — calling requestCommunityDelete
-                                    // on those surfaces as "Löschen
-                                    // fehlgeschlagen" since there's no
-                                    // Kind-30078 to tombstone. Route them to
-                                    // the local-only delete path with a
-                                    // matching label so the user sees the
-                                    // right confirm copy too.
-                                    // sync_status alone wasn't reliable — a
-                                    // successful prior publish can drift to
-                                    // 'failed' on a later attempt and still
-                                    // have a live event on relays.
+                                    // Discriminate "own published" from "own
+                                    // never-published draft" by `source`, NOT
+                                    // by `nostr_event_id`.
+                                    //
+                                    // An own published climb is ADDRESSABLE: its
+                                    // Kind-30078 d-tag is deterministically
+                                    // `communityClimbDTag(ourPubkey, uuid)`, so
+                                    // the deleter can NIP-09 tombstone it by
+                                    // address ("a"-tag) even when this device
+                                    // never stored a `nostr_event_id`. On a
+                                    // FRESH INSTALL the community-synced chunk
+                                    // for the user's own climb carries no
+                                    // nostr_event_id, so the old
+                                    // `nostrEventId.isNullOrBlank()` test
+                                    // mis-classified it as a draft and routed it
+                                    // to the local-only delete — which leaves
+                                    // the event live on relays forever. Such a
+                                    // synced row has `source='nostr'`, so it is
+                                    // correctly treated as published here.
+                                    //
+                                    // The local-only draft path is reserved for
+                                    // climbs the user never published — a local
+                                    // creation that never reached a relay:
+                                    // `source='local'` AND no event id. This
+                                    // mirrors the deleteLocalClimb SQL gate
+                                    // (`source='local' AND nostr_event_id IS
+                                    // NULL`) exactly, so the UI label and the
+                                    // server-side guard never disagree.
                                     val isUnpublishedDraft = state.climb?.let {
-                                        it.nostrEventId.isNullOrBlank()
+                                        it.source == "local" && it.nostrEventId.isNullOrBlank()
                                     } ?: false
                                     if (isUnpublishedDraft) {
                                         DropdownMenuItem(
