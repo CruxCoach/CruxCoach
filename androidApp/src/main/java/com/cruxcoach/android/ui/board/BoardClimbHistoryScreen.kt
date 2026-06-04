@@ -109,6 +109,7 @@ fun BoardClimbHistoryScreen(
                     items(state.entries, key = { it.id }) { entry ->
                         HistoryEntryCard(
                             entry = entry,
+                            gradeScale = state.gradeScale,
                             onClick = { onNavigateToClimb(entry.climbUuid, entry.angle) }
                         )
                     }
@@ -154,11 +155,12 @@ private fun RetentionSelectorRow(
 @Composable
 private fun HistoryEntryCard(
     entry: ClimbHistoryEntry,
+    gradeScale: GradeScale,
     onClick: () -> Unit
 ) {
     // App-standard grade formatting (same call AscentCard uses for a
-    // difficulty_average Double); "?" when the grade is unknown.
-    val gradeScale = GradeScale.V_SCALE
+    // difficulty_average Double), in the user's chosen scale; "?" when the
+    // grade is unknown.
     val grade = entry.difficultyAverage?.let {
         GradeDisplayHelper.formatDifficulty(it, gradeScale)
     } ?: "?"

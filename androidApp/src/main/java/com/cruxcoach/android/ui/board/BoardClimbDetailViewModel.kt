@@ -282,6 +282,7 @@ class BoardClimbDetailViewModel @Inject constructor(
         scope = viewModelScope,
         state = _state,
         boardRepository = boardRepository,
+        personalBoardRepo = personalBoardRepo,
         bleConnection = bleConnection,
         userPreferences = userPreferences,
         climbAdvertiser = climbAdvertiser,

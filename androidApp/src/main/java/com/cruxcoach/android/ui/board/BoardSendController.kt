@@ -8,7 +8,9 @@ import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.data.LedHoldColors
 import com.cruxcoach.android.data.SessionQueueManager
 import com.cruxcoach.android.data.UserPreferences
+import com.cruxcoach.util.DateTimeUtil
 import com.cruxcoach.data.repository.BoardRepository
+import com.cruxcoach.data.repository.PersonalBoardRepository
 import com.cruxcoach.data.repository.brand
 import com.cruxcoach.domain.board.BoardBrand
 import kotlinx.coroutines.CancellationException
@@ -31,6 +33,7 @@ internal class BoardSendController(
     private val scope: CoroutineScope,
     private val state: MutableStateFlow<ClimbDetailState>,
     private val boardRepository: BoardRepository,
+    private val personalBoardRepo: PersonalBoardRepository,
     private val bleConnection: BoardBleConnection,
     private val userPreferences: UserPreferences,
     private val climbAdvertiser: ClimbBleAdvertiser,
@@ -43,6 +46,32 @@ internal class BoardSendController(
     /** Cancel any in-flight send (used when switching climbs). */
     fun cancelSend() {
         sendJob?.cancel()
+    }
+
+    /** Record a successful board-send into the local "Verlauf" history.
+     *
+     * The Verlauf is "climbs you SENT to the board" — the engagement event the
+     * user asked for (sent, not just clicked) — so it fires on every
+     * successful push (Aurora/Kilter AND MoonBoard), independent of whether an
+     * ascent is later logged. Deduped by (climb, angle) at the DB layer
+     * (INSERT OR REPLACE), so re-sending the same climb just bumps its entry to
+     * most-recent rather than flooding the list. Best-effort: a history write
+     * must never fail the send. */
+    private suspend fun recordSentToHistory(s: ClimbDetailState) {
+        val climb = s.climb ?: return
+        val now = DateTimeUtil.nowIso()
+        runCatching {
+            personalBoardRepo.recordClimbHistory(
+                climbUuid = climb.uuid,
+                climbName = climb.name,
+                angle = s.angle.toLong(),
+                difficultyAverage = climb.difficultyAverage,
+                boardBrand = climb.boardBrand,
+                layoutId = climb.layoutId,
+                climbedAt = now,
+                recordedAt = now,
+            )
+        }.onFailure { Log.w(TAG, "recordClimbHistory(send) failed", it) }
     }
 
     fun sendToBoard() {
@@ -134,6 +163,7 @@ internal class BoardSendController(
                     ble = it.ble.copy(isSending = false, success = success, error = if (!success) R.string.board_send_error_send_failed else null),
                     nearby = it.nearby.copy(debugInfo = "sent ok=$success")
                 ) }
+                if (success) recordSentToHistory(s)
                 // Advertise climb to nearby devices if sharing is enabled
                 val sharingEnabled = isSharingEnabled()
                 val climb = state.value.climb
@@ -231,6 +261,7 @@ internal class BoardSendController(
                     ),
                     nearby = it.nearby.copy(debugInfo = "sent ok=$success")
                 ) }
+                if (success) recordSentToHistory(s)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

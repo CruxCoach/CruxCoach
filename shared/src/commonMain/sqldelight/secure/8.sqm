@@ -24,7 +24,10 @@ CREATE TABLE climb_history (
     board_brand TEXT NOT NULL DEFAULT 'kilter',
     layout_id INTEGER,
     climbed_at TEXT NOT NULL,
-    recorded_at TEXT NOT NULL
+    recorded_at TEXT NOT NULL,
+    -- Deduped most-recent list: re-sending a climb at the same angle replaces
+    -- its row (INSERT OR REPLACE) instead of piling up duplicates.
+    UNIQUE(climb_uuid, angle)
 );
 
 CREATE INDEX climb_history_recorded_at ON climb_history(recorded_at DESC);

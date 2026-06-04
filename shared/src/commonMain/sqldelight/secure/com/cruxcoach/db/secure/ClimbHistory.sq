@@ -22,7 +22,11 @@ CREATE TABLE climb_history (
     climbed_at TEXT NOT NULL,
     -- When this history row was written (ISO LocalDateTime). Drives ordering
     -- and the retention prune so re-logged older sends still sort newest-first.
-    recorded_at TEXT NOT NULL
+    recorded_at TEXT NOT NULL,
+    -- One row per (climb, angle): re-sending the same climb (push to board or
+    -- log) updates the existing row's recorded_at via INSERT OR REPLACE, so
+    -- the history is a deduped most-recent list, not a flood of duplicates.
+    UNIQUE(climb_uuid, angle)
 );
 
 CREATE INDEX climb_history_recorded_at ON climb_history(recorded_at DESC);
@@ -30,7 +34,7 @@ CREATE INDEX climb_history_recorded_at ON climb_history(recorded_at DESC);
 -- ═══ Insert ═══
 
 insert:
-INSERT INTO climb_history(climb_uuid, climb_name, angle, difficulty_average,
+INSERT OR REPLACE INTO climb_history(climb_uuid, climb_name, angle, difficulty_average,
     board_brand, layout_id, climbed_at, recorded_at)
 VALUES (:climbUuid, :climbName, :angle, :difficultyAverage,
     :boardBrand, :layoutId, :climbedAt, :recordedAt);

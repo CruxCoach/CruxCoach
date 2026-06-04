@@ -3,6 +3,7 @@ package com.cruxcoach.android.ui.board
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.data.HistoryRetention
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.data.repository.ClimbHistoryEntry
@@ -24,6 +25,9 @@ import javax.inject.Inject
 data class BoardClimbHistoryState(
     val entries: List<ClimbHistoryEntry> = emptyList(),
     val retention: HistoryRetention = HistoryRetention.DAYS_30,
+    /** The user's preferred grade scale, so the history renders grades the
+     *  same way the rest of the app does (not hard-coded to V-scale). */
+    val gradeScale: GradeScale = GradeScale.FRENCH,
 )
 
 @HiltViewModel
@@ -54,6 +58,12 @@ class BoardClimbHistoryViewModel @Inject constructor(
             userPreferences.historyRetention.collect { retention ->
                 _state.update { it.copy(retention = retention) }
                 pruneToRetention(retention)
+            }
+        }
+        // Grade scale — mirror the user's app-wide preference for grade display.
+        viewModelScope.launch {
+            userPreferences.gradeScale.collect { scale ->
+                _state.update { it.copy(gradeScale = scale) }
             }
         }
     }
