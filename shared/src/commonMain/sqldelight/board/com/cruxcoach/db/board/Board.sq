@@ -486,6 +486,88 @@ SELECT * FROM climb_browse
 WHERE uuid IN ?
 GROUP BY uuid;
 
+-- ═══ Board-scoped list / setter resolution (active-board scoping) ═══
+--
+-- The plain getClimbsByUuids*/getClimbsByPubkey queries above resolve a
+-- uuid/pubkey set against the WHOLE catalogue regardless of which board the
+-- user currently has active — list membership + setter authorship live in
+-- the secure DB keyed by uuid/pubkey only, so a Tension entry would surface
+-- while the user is on Kilter (and vice-versa). The queries below scope the
+-- resolution to the ACTIVE board (:brand + :layoutId), with ONE exception:
+--
+--   Kilter-only cross-board "fit": when :brand = 'kilter', a Kilter climb
+--   authored on a DIFFERENT layout is still shown if it physically FITS the
+--   active product size (:selProductSizeId), using the IDENTICAL edge-
+--   containment predicate the board browser uses. NULL climb edges = fits
+--   everything. Non-Kilter boards get NO cross-size exception, and the fit
+--   branch is gated `board_brand = 'kilter'` on BOTH sides so cross-brand
+--   isolation (e.g. MoonBoard can never "fit" Kilter) falls out for free.
+--
+-- The board-scope predicate is duplicated verbatim across the three queries
+-- below (SQLDelight can't share a WHERE fragment); keep them in lock-step.
+-- We stay on the climb_browse VIEW so the generated row type matches the
+-- existing uuid/pubkey resolution and the Impl row-mappers are reused. The
+-- VIEW doesn't expose edge_* columns, so the fit-EXISTS joins `climbs c` for
+-- the climb's bbox (same shape as the browse queries' product-size filter).
+
+-- Fixed-angle board-scoped uuid resolution. Mirrors getClimbsByUuidsSimple
+-- (SELECT * + angle filter) but adds the active-board scope.
+getClimbsByUuidsForBoard:
+SELECT * FROM climb_browse
+WHERE uuid IN :uuids
+  AND angle = :angle
+  AND (
+        (board_brand = :brand AND layout_id = :layoutId)
+        OR (
+             :brand = 'kilter' AND board_brand = 'kilter'
+             AND EXISTS (
+                 SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid
+                 WHERE ps.id = :selProductSizeId
+                   AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top))
+             )
+           )
+      );
+
+-- Angle-agnostic board-scoped fallback (one representative row per uuid).
+-- STILL board-scoped — the GROUP BY must not re-leak other-board climbs that
+-- the fixed-angle query above correctly excluded. Mirrors
+-- getClimbsByUuidsAnyAngle but with the active-board scope.
+getClimbsByUuidsForBoardAnyAngle:
+SELECT * FROM climb_browse
+WHERE uuid IN :uuids
+  AND (
+        (board_brand = :brand AND layout_id = :layoutId)
+        OR (
+             :brand = 'kilter' AND board_brand = 'kilter'
+             AND EXISTS (
+                 SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid
+                 WHERE ps.id = :selProductSizeId
+                   AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top))
+             )
+           )
+      )
+GROUP BY uuid;
+
+-- Board-scoped setter resolution. Mirrors getClimbsByPubkey (one entry per
+-- climb_stats row, i.e. per angle) but restricted to the active board with
+-- the Kilter-only fit exception. Drives the SetterDetailScreen so a setter's
+-- Tension climbs don't appear while the user is on Kilter.
+getClimbsByPubkeyForBoard:
+SELECT * FROM climb_browse
+WHERE created_by_pubkey = :pubkey
+  AND (
+        (board_brand = :brand AND layout_id = :layoutId)
+        OR (
+             :brand = 'kilter' AND board_brand = 'kilter'
+             AND EXISTS (
+                 SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid
+                 WHERE ps.id = :selProductSizeId
+                   AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top))
+             )
+           )
+      )
+ORDER BY name ASC;
+
 getClimbByUuid:
 SELECT c.*, cs.difficulty_average, cs.quality_average, cs.ascensionist_count,
     cs.benchmark_difficulty, cs.fa_username, cs.fa_at
@@ -1171,11 +1253,20 @@ ORDER BY name ASC;
 -- detail screen, surfacing as the confusing "list shows 2, screen
 -- shows 1" UX. EXISTS-gate the COUNT on the same INNER JOIN
 -- predicate so the two queries can never drift.
+-- Fix 4 hardening: gate on a non-NULL, non-empty created_by_pubkey as the
+-- AUTHORITATIVE cruxcoach signal. A community climb always carries a setter
+-- pubkey (the editor/subscriber writes it on every insert), whereas `origin`
+-- is mutable provenance that future Kilter-harvest / migration drift could
+-- flip. Keeping origin='cruxcoach' AS WELL (belt-and-braces) while requiring
+-- a real pubkey means the setters list can't be silently emptied by an origin
+-- regression, nor populated by a Kilter row with a coincidentally non-null
+-- pubkey field.
 getCommunitySetterStats:
 SELECT created_by_pubkey, setter_username, COUNT(*) AS climb_count
 FROM climbs c
 WHERE origin = 'cruxcoach'
   AND created_by_pubkey IS NOT NULL
+  AND created_by_pubkey != ''
   AND is_listed = 1
   AND EXISTS (SELECT 1 FROM climb_stats cs WHERE cs.climb_uuid = c.uuid)
 GROUP BY created_by_pubkey

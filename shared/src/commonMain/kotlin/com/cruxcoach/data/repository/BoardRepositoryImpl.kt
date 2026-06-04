@@ -252,6 +252,24 @@ class BoardRepositoryImpl(
             .executeAsList().map { mapBrowse(it) }
     }
 
+    override fun getClimbsByUuidsForBoard(
+        uuids: Collection<String>, angle: Int, boardBrand: String, layoutId: Int, selProductSizeId: Int
+    ): List<ClimbWithStats> {
+        if (uuids.isEmpty()) return emptyList()
+        return q.getClimbsByUuidsForBoard(
+            uuids, angle.toLong(), boardBrand, layoutId.toLong(), selProductSizeId.toLong()
+        ).executeAsList().map { mapBrowse(it) }
+    }
+
+    override fun getClimbsByUuidsForBoardAnyAngle(
+        uuids: Collection<String>, boardBrand: String, layoutId: Int, selProductSizeId: Int
+    ): List<ClimbWithStats> {
+        if (uuids.isEmpty()) return emptyList()
+        return q.getClimbsByUuidsForBoardAnyAngle(
+            uuids, boardBrand, layoutId.toLong(), selProductSizeId.toLong()
+        ).executeAsList().map { mapBrowse(it) }
+    }
+
     override fun getAllBrowseMatchingUuids(
         angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double,
         minAscensionists: Int, climbType: ClimbTypeFilter, selProductSizeId: Int
@@ -977,6 +995,27 @@ class BoardRepositoryImpl(
 
     override fun getClimbsByPubkey(pubkey: String): List<SetterClimbEntry> {
         return q.getClimbsByPubkey(pubkey).executeAsList().map { row ->
+            SetterClimbEntry(
+                uuid = row.uuid,
+                name = row.name,
+                angle = row.angle.toInt(),
+                difficultyAverage = row.difficulty_average,
+                qualityAverage = row.quality_average,
+                ascensionistCount = row.ascensionist_count ?: 0L,
+            )
+        }
+    }
+
+    override fun getClimbsByPubkeyForBoard(
+        pubkey: String, angle: Int, boardBrand: String, layoutId: Int, selProductSizeId: Int
+    ): List<SetterClimbEntry> {
+        // `angle` is accepted for signature symmetry with the uuid queries but
+        // is intentionally NOT a SQL filter: the setter list shows the climb at
+        // every angle it was set at (one entry per climb_stats row, same as the
+        // unscoped getClimbsByPubkey), each entry carrying its own angle.
+        return q.getClimbsByPubkeyForBoard(
+            pubkey, boardBrand, layoutId.toLong(), selProductSizeId.toLong()
+        ).executeAsList().map { row ->
             SetterClimbEntry(
                 uuid = row.uuid,
                 name = row.name,

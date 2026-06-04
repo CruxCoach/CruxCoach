@@ -196,6 +196,25 @@ class FakeBoardRepository : BoardRepository {
         return climbs.filter { it.uuid in uuids }.distinctBy { it.uuid }
     }
 
+    /** Mirrors the production board-scope: same-board match by brand + layout,
+     *  plus a Kilter-only cross-layout pass (the fake can't model edge fit, so
+     *  it admits any Kilter climb when on Kilter — adequate for tests). */
+    private fun matchesBoardScope(climb: ClimbWithStats, boardBrand: String, layoutId: Int): Boolean {
+        val sameBoard = climb.boardBrand == boardBrand && climb.layoutId == layoutId.toLong()
+        val kilterFit = boardBrand == "kilter" && climb.boardBrand == "kilter"
+        return sameBoard || kilterFit
+    }
+
+    override fun getClimbsByUuidsForBoard(
+        uuids: Collection<String>, angle: Int, boardBrand: String, layoutId: Int, selProductSizeId: Int
+    ): List<ClimbWithStats> =
+        climbs.filter { it.uuid in uuids && matchesBoardScope(it, boardBrand, layoutId) }
+
+    override fun getClimbsByUuidsForBoardAnyAngle(
+        uuids: Collection<String>, boardBrand: String, layoutId: Int, selProductSizeId: Int
+    ): List<ClimbWithStats> =
+        climbs.filter { it.uuid in uuids && matchesBoardScope(it, boardBrand, layoutId) }.distinctBy { it.uuid }
+
     override fun getAllBrowseMatchingUuids(
         angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double,
         minAscensionists: Int, climbType: ClimbTypeFilter, selProductSizeId: Int
@@ -345,6 +364,7 @@ class FakeBoardRepository : BoardRepository {
     override fun getKilterPublishState(uuid: String): com.cruxcoach.data.repository.KilterPublishState? = null
     override fun updateSetterUsernameForPubkey(pubkey: String, displayName: String) {}
     override fun getClimbsByPubkey(pubkey: String): List<com.cruxcoach.data.repository.SetterClimbEntry> = emptyList()
+    override fun getClimbsByPubkeyForBoard(pubkey: String, angle: Int, boardBrand: String, layoutId: Int, selProductSizeId: Int): List<com.cruxcoach.data.repository.SetterClimbEntry> = emptyList()
     override fun getOwnClimbsForBrowse(pubkey: String, layoutId: Int, preferredAngle: Int): List<com.cruxcoach.data.repository.ClimbWithStats> = emptyList()
     override fun getCommunitySetterStats(): List<com.cruxcoach.data.repository.SetterStat> = emptyList()
     override fun getClimbsAwaitingKilterRetry(pubkey: String): List<com.cruxcoach.data.repository.CommunityClimbRow> = emptyList()

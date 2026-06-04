@@ -301,6 +301,16 @@ interface BoardClimbQueries {
      *  per climb. Fallback for list display so MoonBoard problems set only at
      *  a non-default angle (e.g. Masters 25°) aren't dropped. */
     fun getClimbsByUuidsAnyAngle(uuids: Collection<String>): List<ClimbWithStats>
+    /** Active-board-scoped uuid resolution at [angle] (user lists). Returns only
+     *  climbs on the active board ([boardBrand] + [layoutId]); when
+     *  [boardBrand] == "kilter" ALSO includes Kilter climbs from other layouts
+     *  that physically FIT [selProductSizeId] (edge-containment, NULL edges =
+     *  fits all). Non-Kilter boards get no cross-size exception. */
+    fun getClimbsByUuidsForBoard(uuids: Collection<String>, angle: Int, boardBrand: String, layoutId: Int, selProductSizeId: Int): List<ClimbWithStats>
+    /** Angle-agnostic board-scoped fallback (one row per uuid). Same scoping
+     *  rules as [getClimbsByUuidsForBoard] — stays board-scoped so the
+     *  GROUP BY collapse never re-leaks other-board climbs. */
+    fun getClimbsByUuidsForBoardAnyAngle(uuids: Collection<String>, boardBrand: String, layoutId: Int, selProductSizeId: Int): List<ClimbWithStats>
     /** UUID-only projection of the entire browse-filter match set. Backs the
      *  VM's UUID-shuffle cache for RANDOM sort — load once per filter
      *  signature, shuffle in Kotlin, paginate over the cached list. */
@@ -905,6 +915,12 @@ interface CommunityClimbQueries {
      *  entry carries its angle — same climb at multiple angles becomes
      *  multiple entries, matching the climb_stats row layout. */
     fun getClimbsByPubkey(pubkey: String): List<SetterClimbEntry>
+    /** Active-board-scoped variant of [getClimbsByPubkey] (SetterDetailScreen).
+     *  Restricts the setter's climbs to the active board ([boardBrand] +
+     *  [layoutId]); when [boardBrand] == "kilter" ALSO includes the setter's
+     *  Kilter climbs from other layouts that FIT [selProductSizeId]
+     *  (edge-containment, NULL edges = fits all). Non-Kilter: no cross-size. */
+    fun getClimbsByPubkeyForBoard(pubkey: String, angle: Int, boardBrand: String, layoutId: Int, selProductSizeId: Int): List<SetterClimbEntry>
     /** My-climbs filter (board browser). Returns one [ClimbWithStats] per
      *  uuid authored by [pubkey] on [layoutId], ignoring angle/grade/asc
      *  filters so drafts saved at any angle remain discoverable. The row

@@ -15,6 +15,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -28,6 +32,11 @@ data class BoardListDetailState(
     val entries: List<Climb_list_entries> = emptyList(),
     val totalCount: Long = 0,
     val canLoadMore: Boolean = false,
+    /** Secure-DB uuid offset reached so far (entry-driven pagination cursor).
+     *  Pages advance over the board-agnostic uuid list, not over the
+     *  board-scoped visible-entry count, so off-board entries that resolve to
+     *  nothing don't desync the cursor. */
+    val uuidOffset: Int = 0,
     val angle: Int = 40,
     val gradeScale: GradeScale = GradeScale.V_SCALE,
     val zones: IntensityZones? = null
@@ -64,6 +73,19 @@ class BoardListDetailViewModel @Inject constructor(
                 _state.update { it.copy(zones = zones) }
             }
         }
+        // Re-query when the active board changes while this screen is open —
+        // the list is now board-scoped, so a board switch must re-resolve the
+        // visible entries (mirrors BoardBrowserViewModel's board-flow collect).
+        viewModelScope.launch {
+            combine(
+                userPreferences.boardBrand,
+                userPreferences.boardLayoutId,
+                userPreferences.boardProductSizeId,
+            ) { brand, layout, size -> Triple(brand, layout, size) }
+                .drop(1) // initial load is handled by loadList()
+                .distinctUntilChanged()
+                .collect { loadList() }
+        }
         loadList()
     }
 
@@ -72,14 +94,24 @@ class BoardListDetailViewModel @Inject constructor(
             withContext(Dispatchers.IO) {
                 val list = personalBoardRepo.getClimbListById(listId)
                 val angle = _state.value.angle
-                val entries = loadEntries(listId, angle, PAGE_SIZE, 0)
+                val board = boardSnapshot()
+                val page = loadEntries(listId, angle, board, PAGE_SIZE, 0)
+                // totalCount is the board-AGNOSTIC secure-DB entry count — it
+                // counts entries on every board, so it's only a coarse header
+                // hint, NOT the pagination boundary (see loadMore). After
+                // board-scoping, scoped entries.size can be < this count even
+                // when the page is full, so canLoadMore is entry-driven below.
                 val count = personalBoardRepo.countClimbListEntries(listId)
                 _state.update { it.copy(
                     isLoading = false,
                     listName = list?.name ?: "",
-                    entries = entries,
+                    entries = page.entries,
                     totalCount = count,
-                    canLoadMore = entries.size.toLong() < count
+                    uuidOffset = page.lastUuidOffset,
+                    // Entry-driven: a full uuid page (PAGE_SIZE uuids consumed)
+                    // means more uuid pages may exist. We page over the
+                    // secure-DB uuid offset, not over the scoped result size.
+                    canLoadMore = page.lastUuidOffset >= PAGE_SIZE,
                 ) }
             }
         }
@@ -91,35 +123,67 @@ class BoardListDetailViewModel @Inject constructor(
         _state.update { it.copy(isLoadingMore = true) }
         viewModelScope.launch {
             withContext(Dispatchers.IO) {
-                val newEntries = loadEntries(listId, s.angle, PAGE_SIZE, s.entries.size)
-                val combined = s.entries + newEntries
+                val board = boardSnapshot()
+                // Page over the secure-DB uuid OFFSET, not over the (possibly
+                // smaller, board-scoped) visible entry count — otherwise scoped
+                // entries that filtered out a board's uuids would desync the
+                // offset and re-fetch / skip uuid pages.
+                val page = loadEntries(listId, s.angle, board, PAGE_SIZE, s.uuidOffset)
+                val consumed = page.lastUuidOffset - s.uuidOffset
+                val combined = s.entries + page.entries
                 _state.update { it.copy(
                     isLoadingMore = false,
                     entries = combined,
-                    canLoadMore = combined.size.toLong() < s.totalCount
+                    uuidOffset = page.lastUuidOffset,
+                    // Keep loading while the last uuid page came back full;
+                    // stop when a short/empty uuid page signals the list end.
+                    canLoadMore = consumed >= PAGE_SIZE,
                 ) }
             }
         }
     }
 
-    /** Two-phase: get UUIDs from SecureDB, then climb details from BoardDB. */
-    private fun loadEntries(listId: Long, angle: Int, limit: Int, offset: Int): List<Climb_list_entries> {
+    /** Active board snapshot (brand + layout + product size) for scoping the
+     *  list resolution. Snapshot via .first() so the page query is consistent. */
+    private suspend fun boardSnapshot(): BoardSnapshot = BoardSnapshot(
+        brand = userPreferences.boardBrand.first(),
+        layoutId = userPreferences.boardLayoutId.first(),
+        productSizeId = userPreferences.boardProductSizeId.first(),
+    )
+
+    private data class BoardSnapshot(val brand: String, val layoutId: Int, val productSizeId: Int)
+
+    /** Result of resolving one uuid page: the scoped visible entries plus the
+     *  secure-DB uuid offset reached (used as the next page's offset). */
+    private data class EntryPage(val entries: List<Climb_list_entries>, val lastUuidOffset: Int)
+
+    /** Two-phase: get UUIDs from SecureDB, then BOARD-SCOPED climb details
+     *  from BoardDB. Off-board entries resolve to nothing and are dropped,
+     *  so the page is entry-driven over the uuid offset. */
+    private fun loadEntries(
+        listId: Long, angle: Int, board: BoardSnapshot, limit: Int, offset: Int
+    ): EntryPage {
         val uuidPairs = personalBoardRepo.getClimbListEntryUuids(listId, limit, offset)
-        if (uuidPairs.isEmpty()) return emptyList()
+        if (uuidPairs.isEmpty()) return EntryPage(emptyList(), offset)
         val uuids = uuidPairs.map { it.first }
-        val addedAtMap = uuidPairs.associate { it.first to it.second }
-        val climbs = boardRepository.getClimbsByUuids(uuids, angle)
+        // Board-scoped resolution: only entries on the active board (or, for
+        // Kilter, other Kilter layouts that fit the active size) surface.
+        val climbs = boardRepository.getClimbsByUuidsForBoard(
+            uuids, angle, board.brand, board.layoutId, board.productSizeId
+        )
         // Recover entries with no row at the requested angle — notably
         // MoonBoard Masters problems set only at 25° — via an angle-agnostic
-        // fallback, so cross-board / cross-angle lists don't silently drop
-        // climbs. Kilter entries keep their angle-correct row from above.
+        // fallback that STAYS board-scoped so other-board climbs don't re-leak.
         val resolved = climbs.associateBy { it.uuid }
         val missing = uuids.filter { it !in resolved }
         val climbMap = if (missing.isEmpty()) resolved
-            else resolved + boardRepository.getClimbsByUuidsAnyAngle(missing).associateBy { it.uuid }
-        return uuidPairs.mapNotNull { (uuid, addedAt) ->
+            else resolved + boardRepository.getClimbsByUuidsForBoardAnyAngle(
+                missing, board.brand, board.layoutId, board.productSizeId
+            ).associateBy { it.uuid }
+        val entries = uuidPairs.mapNotNull { (uuid, addedAt) ->
             climbMap[uuid]?.let { climb -> Climb_list_entries(addedAt = addedAt, climb = climb) }
         }
+        return EntryPage(entries, offset + uuidPairs.size)
     }
 
     fun removeFromList(climbUuid: String) {

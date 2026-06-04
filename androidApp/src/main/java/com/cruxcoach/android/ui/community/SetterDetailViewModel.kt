@@ -15,6 +15,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -73,6 +77,18 @@ class SetterDetailViewModel @Inject constructor(
             }
         }
         if (pubkey.isNotBlank()) {
+            // Re-query when the active board changes while this screen is open —
+            // the setter list is now board-scoped (mirrors BoardBrowserViewModel).
+            viewModelScope.launch {
+                combine(
+                    userPreferences.boardBrand,
+                    userPreferences.boardLayoutId,
+                    userPreferences.boardProductSizeId,
+                ) { brand, layout, size -> Triple(brand, layout, size) }
+                    .drop(1) // initial load handled below
+                    .distinctUntilChanged()
+                    .collect { loadClimbs() }
+            }
             loadClimbs()
             loadProfile()
         } else {
@@ -92,7 +108,17 @@ class SetterDetailViewModel @Inject constructor(
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true, errorMessage = null) }
             val result = withContext(Dispatchers.IO) {
-                runCatching { boardRepository.getClimbsByPubkey(pubkey) }
+                // Snapshot the active board (brand + layout + size) and scope the
+                // setter's climbs to it. Kilter-only fit exception is applied in
+                // the query: while on Kilter, the setter's climbs from other
+                // Kilter layouts that fit the active size are still shown.
+                val brand = userPreferences.boardBrand.first()
+                val layoutId = userPreferences.boardLayoutId.first()
+                val sizeId = userPreferences.boardProductSizeId.first()
+                val angle = userPreferences.boardAngle.first()
+                runCatching {
+                    boardRepository.getClimbsByPubkeyForBoard(pubkey, angle, brand, layoutId, sizeId)
+                }
             }
             result.fold(
                 onSuccess = { rows ->
