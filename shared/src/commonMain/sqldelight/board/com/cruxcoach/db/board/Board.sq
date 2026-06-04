@@ -323,11 +323,17 @@ UPDATE climbs SET
     move_count = ?
 WHERE uuid = ?;
 
+-- layout_id is denormalized from the owning climbs row (single source of
+-- truth) so community-ingested + restored stats rows are visible to the
+-- layout-scoped browse/count queries. Reusing the named :climb_uuid keeps
+-- the generated signature identical to the old all-positional form, so no
+-- caller changes. COALESCE → 0 if the climb row isn't present yet.
 upsertClimbStat:
 INSERT OR REPLACE INTO climb_stats(climb_uuid, angle, display_difficulty,
     difficulty_average, quality_average, ascensionist_count, benchmark_difficulty,
-    fa_username, fa_at, official_kilter_difficulty)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+    fa_username, fa_at, official_kilter_difficulty, layout_id)
+VALUES (:climb_uuid, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+    COALESCE((SELECT layout_id FROM climbs WHERE uuid = :climb_uuid), 0));
 
 upsertHoldPosition:
 INSERT OR REPLACE INTO board_hold_positions(board_brand, hole_id, product_size_id, x, y, led_position, placement_id)
@@ -1594,12 +1600,15 @@ UPDATE climbs SET
 WHERE uuid = :uuid AND origin = 'cruxcoach';
 
 -- Insert/refresh climb_stats for a local climb at a given angle (setter
--- difficulty + quality not yet aggregated — sets sentinels).
+-- difficulty + quality not yet aggregated — sets sentinels). layout_id is
+-- denormalized from the climbs row so freshly-created local drafts are
+-- visible to the layout-scoped browse queries (same fix as upsertClimbStat).
 upsertLocalClimbStat:
 INSERT OR REPLACE INTO climb_stats(climb_uuid, angle, display_difficulty,
     difficulty_average, quality_average, ascensionist_count, benchmark_difficulty,
-    fa_username, fa_at, official_kilter_difficulty)
-VALUES (?, ?, ?, ?, NULL, 0, NULL, NULL, NULL, NULL);
+    fa_username, fa_at, official_kilter_difficulty, layout_id)
+VALUES (:climb_uuid, ?, ?, ?, NULL, 0, NULL, NULL, NULL, NULL,
+    COALESCE((SELECT layout_id FROM climbs WHERE uuid = :climb_uuid), 0));
 
 -- Grade-consensus cache (MVP: setter_grade_id only, vote-aggregation deferred).
 upsertGradeCache:

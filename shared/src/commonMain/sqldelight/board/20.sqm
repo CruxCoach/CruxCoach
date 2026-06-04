@@ -1,0 +1,22 @@
+-- Migration version 20 → 21: back-fill climb_stats.layout_id for rows the
+-- community-ingest (upsertClimbStat) and local-draft (upsertLocalClimbStat)
+-- paths inserted with the DEFAULT 0.
+--
+-- 15.sqm denormalized layout_id onto climb_stats and re-pointed the browse/
+-- count queries at it, but only the bulk importer was taught to write it —
+-- the community and local-draft INSERTs kept omitting the column, so every
+-- climb created/ingested through those paths AFTER 15.sqm landed with
+-- layout_id 0. The layout-scoped browse/count queries (`WHERE cs.layout_id =
+-- ?`) then never match them, so a user's own set / Nostr-published climbs
+-- silently disappear from the board browser even though they're in the DB.
+--
+-- The two INSERT queries now denormalize layout_id from the climbs row; this
+-- migration heals the rows already on disk. Same COALESCE-from-climbs back-
+-- fill as 15.sqm, scoped to the broken (layout_id = 0) rows so the bulk
+-- catalogue (already correct) is untouched.
+UPDATE climb_stats
+SET layout_id = COALESCE(
+    (SELECT c.layout_id FROM climbs c WHERE c.uuid = climb_stats.climb_uuid),
+    0
+)
+WHERE layout_id = 0;
