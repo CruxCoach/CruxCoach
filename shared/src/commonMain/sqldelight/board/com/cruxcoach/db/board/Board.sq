@@ -544,6 +544,15 @@ FROM climb_stats cs
 WHERE cs.climb_uuid = ?
 ORDER BY cs.angle;
 
+-- Distinct angles this board (layout) is actually used at, read from the
+-- denormalized climb_stats.layout_id. Drives the variable-angle picker on
+-- adjustable boards: a climb can be sent/logged at ANY angle the board
+-- supports, not only the angles it already has community stats for. Purely
+-- data-driven (the angles real climbs use on that board) so no nonsensical
+-- angle is ever offered.
+getSupportedAnglesForLayout:
+SELECT DISTINCT angle FROM climb_stats WHERE layout_id = ? ORDER BY angle;
+
 -- Fast count: stats-only, no JOIN. Accurate when all climbs are is_listed=1
 -- and filter doesn't need frames_count check (boulder default: frames_count=1).
 countFilteredClimbsFast:

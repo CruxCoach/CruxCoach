@@ -1180,6 +1180,17 @@ private fun AngleDropdownStatItem(
                                 fontWeight = if (isSelected) FontWeight.Bold
                                     else FontWeight.Normal
                             )
+                            // The angle the setter created the climb at, kept
+                            // visible as info while every board angle stays
+                            // pickable.
+                            if (option.isSetterAngle) {
+                                Text(
+                                    text = stringResource(R.string.board_angle_setter_tag),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
                             Text(
                                 text = "${option.ascensionistCount ?: 0}",
                                 style = MaterialTheme.typography.bodySmall,

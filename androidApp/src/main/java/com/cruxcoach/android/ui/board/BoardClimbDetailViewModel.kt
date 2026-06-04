@@ -17,6 +17,8 @@ import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.domain.board.IntensityZones
 import com.cruxcoach.data.repository.AscentWithClimb
 import com.cruxcoach.data.repository.ClimbWithStats
+import com.cruxcoach.domain.board.BoardBrand
+import com.cruxcoach.domain.board.MoonBoardVariant
 import com.cruxcoach.data.repository.brand
 import com.cruxcoach.data.repository.BoardPlacement
 import com.cruxcoach.data.repository.BoardImage
@@ -576,6 +578,44 @@ class BoardClimbDetailViewModel @Inject constructor(
         loadClimb(currentClimbUuid, angle)
     }
 
+    /**
+     * Build the angle picker for [climb]. A climb can be climbed at every
+     * angle its board physically supports, not just the angles it already has
+     * community stats for. The statted angles (which carry the community
+     * grade/quality) are merged with the board's supported angles; any extra
+     * angle becomes a pickable option with no grade. The setter's own angle
+     * (a community climb is created at a single angle) is flagged so it stays
+     * visible as info while the climb opens up to the full range.
+     *
+     * The supported set is board-specific so no nonsensical angle is offered:
+     *  - Aurora-protocol boards adjust continuously → every angle that board's
+     *    catalogue is actually used at (data-driven from climb_stats).
+     *  - MoonBoard is fixed-config → only the handful of angles the specific
+     *    variant is built for (e.g. Masters 2017 = 25°/40°, 2016 = 40°).
+     */
+    private fun buildAngleOptions(climb: ClimbWithStats, statted: List<AngleOption>): List<AngleOption> {
+        val brand = BoardBrand.fromWire(climb.boardBrand)
+        // A community climb has one stats row = the angle the setter chose;
+        // imported climbs are angle-agnostic, so there's no single setter angle.
+        val setterAngle = if (climb.origin == "cruxcoach") statted.firstOrNull()?.angle else null
+        val supported: Set<Int> = when {
+            brand.usesAuroraProtocol ->
+                boardRepository.getSupportedAnglesForLayout(climb.layoutId.toInt()).toSet()
+            brand == BoardBrand.MOONBOARD ->
+                MoonBoardVariant.fromLayoutId(climb.layoutId)?.angles?.toSet() ?: emptySet()
+            else -> emptySet()
+        }
+        val byAngle = statted.associateBy { it.angle }
+        val allAngles = (byAngle.keys + supported).toSortedSet()
+        // Defensive: if nothing resolved, fall back to the statted angles so
+        // the picker is never emptier than before.
+        val source = allAngles.ifEmpty { byAngle.keys.toSortedSet() }
+        return source.map { a ->
+            (byAngle[a] ?: AngleOption(a, null, null, null, 0.0))
+                .copy(isSetterAngle = a == setterAngle)
+        }
+    }
+
     private fun loadClimb(uuid: String, angle: Int, advertise: Boolean = true) {
         loadJob = viewModelScope.launch {
             try {
@@ -628,7 +668,7 @@ class BoardClimbDetailViewModel @Inject constructor(
                             personalBoardRepo.getUserHistoryForClimb(uuid)
                         }
                         val isFavorited = personalBoardRepo.isClimbFavorited(uuid)
-                        val angles = boardRepository.getAnglesForClimb(uuid)
+                        val angles = buildAngleOptions(climb, boardRepository.getAnglesForClimb(uuid))
 
                         mirrorPlacementMap = if (effectiveBoard == null) emptyMap() else
                             PerfLogger.trace("loadClimb.mirrorMap") {
@@ -780,7 +820,7 @@ class BoardClimbDetailViewModel @Inject constructor(
                     } ?: emptyList()
                     val userAscents = personalBoardRepo.getUserHistoryForClimb(uuid)
                     val isFavorited = personalBoardRepo.isClimbFavorited(uuid)
-                    val angles = boardRepository.getAnglesForClimb(uuid)
+                    val angles = buildAngleOptions(climb, boardRepository.getAnglesForClimb(uuid))
 
                     val pageState = _state.value.copy(
                         isLoading = false,

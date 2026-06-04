@@ -172,6 +172,7 @@ class FakeBoardRepository : BoardRepository {
     override fun statExistsByUuid(uuid: String): Boolean = false
     override fun getClimbCountByAngle(layoutId: Int, climbType: ClimbTypeFilter): List<AngleClimbCount> = emptyList()
     override fun getAnglesForClimb(climbUuid: String): List<AngleOption> = emptyList()
+    override fun getSupportedAnglesForLayout(layoutId: Int): List<Int> = emptyList()
     override fun countNomatchClimbs(): Long = 0L
     override fun getClimbsByUuids(uuids: Collection<String>, angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter): List<ClimbWithStats> = emptyList()
     override fun getClimbsByUuids(uuids: Collection<String>, angle: Int): List<ClimbWithStats> = emptyList()

@@ -222,6 +222,10 @@ class BoardRepositoryImpl(
         }
     }
 
+    override fun getSupportedAnglesForLayout(layoutId: Int): List<Int> {
+        return q.getSupportedAnglesForLayout(layoutId.toLong()).executeAsList().map { it.toInt() }
+    }
+
     override fun countNomatchClimbs(): Long {
         return q.countNomatchClimbs().executeAsOne()
     }

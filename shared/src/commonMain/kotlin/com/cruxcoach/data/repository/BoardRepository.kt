@@ -161,7 +161,12 @@ data class AngleOption(
     val difficultyAverage: Double?,
     val qualityAverage: Double?,
     val ascensionistCount: Long?,
-    val benchmarkDifficulty: Double
+    val benchmarkDifficulty: Double,
+    /** True for the angle the setter created this (community) climb at —
+     *  surfaced as info in the picker while the climb stays climbable at
+     *  every angle the board supports. Always false for angle-agnostic
+     *  imported climbs (no single setter angle). */
+    val isSetterAngle: Boolean = false
 )
 
 data class BoardPlacement(
@@ -285,6 +290,9 @@ interface BoardClimbQueries {
     fun statExistsByUuid(uuid: String): Boolean
     fun getClimbCountByAngle(layoutId: Int, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER): List<AngleClimbCount>
     fun getAnglesForClimb(climbUuid: String): List<AngleOption>
+    /** Distinct angles the given board layout is used at — the data-driven
+     *  angle range for the variable-angle picker on adjustable boards. */
+    fun getSupportedAnglesForLayout(layoutId: Int): List<Int>
     fun countNomatchClimbs(): Long
     fun getClimbsByUuids(uuids: Collection<String>, angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter): List<ClimbWithStats>
     /** Fetch climbs by UUID list at a given angle, no additional filters. */

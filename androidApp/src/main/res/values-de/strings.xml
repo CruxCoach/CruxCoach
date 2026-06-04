@@ -618,6 +618,7 @@
     <string name="board_no_data_title">Keine Board-Daten</string>
     <string name="board_no_data_hint">Synchronisiere die Board-Datenbank, um Climbs zu suchen.</string>
     <string name="board_angle">Winkel</string>
+    <string name="board_angle_setter_tag">Setter</string>
     <string name="board_moves">Züge</string>
     <string name="board_quality">Qualität</string>
     <string name="board_sends">Sends</string>

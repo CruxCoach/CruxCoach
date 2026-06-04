@@ -617,6 +617,7 @@
     <string name="board_no_data_title">No board data</string>
     <string name="board_no_data_hint">Sync the board database to search climbs.</string>
     <string name="board_angle">Angle</string>
+    <string name="board_angle_setter_tag">Setter</string>
     <string name="board_moves">Moves</string>
     <string name="board_quality">Quality</string>
     <string name="board_sends">Sends</string>
