@@ -289,7 +289,7 @@ private fun ListCard(
 }
 
 /**
- * "Verlauf" (recently-viewed climbs) entry at the top of the lists. Same card
+ * "Verlauf" (recently-sent climbs) entry at the top of the lists. Same card
  * style as [ListCard] — surfaceVariant tint, leading icon, title + subtitle —
  * but with a History icon and no delete action, since it isn't a user list.
  */
@@ -323,7 +323,7 @@ private fun HistoryCard(onClick: () -> Unit) {
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    "Zuletzt angesehene Boulder",
+                    "Zuletzt gesendete Boulder",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

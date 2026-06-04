@@ -20,7 +20,6 @@ import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.CellTower
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.GridView
-import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.outlined.Map
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -72,7 +71,6 @@ fun BoardBrowserScreen(
     onNavigateToSync: () -> Unit = {},
     onNavigateToLogbook: () -> Unit = {},
     onNavigateToLists: () -> Unit = {},
-    onNavigateToHistory: () -> Unit = {},
     onNavigateToSettings: () -> Unit = {},
     onNavigateToFilter: () -> Unit = {},
     onNavigateToClimbCreator: () -> Unit = {},
@@ -325,12 +323,6 @@ fun BoardBrowserScreen(
                     modifier = Modifier.testTag("board_lists_button")
                 ) {
                     Icon(Icons.AutoMirrored.Filled.FormatListBulleted, contentDescription = stringResource(R.string.board_lists_title))
-                }
-                IconButton(
-                    onClick = onNavigateToHistory,
-                    modifier = Modifier.testTag("board_history_button")
-                ) {
-                    Icon(Icons.Default.History, contentDescription = "Verlauf")
                 }
                 IconButton(
                     onClick = onNavigateToSettings,

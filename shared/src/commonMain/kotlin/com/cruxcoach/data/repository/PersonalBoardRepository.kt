@@ -131,6 +131,9 @@ interface PersonalBoardRepository {
     /** Wipe the entire history log. */
     suspend fun clearClimbHistory()
 
+    /** Delete a user-selected set of history entries (single or multi-select). */
+    suspend fun deleteClimbHistory(ids: List<Long>)
+
     /** Retention prune: drop history rows recorded before [cutoffIso] (ISO LocalDateTime). */
     suspend fun pruneClimbHistory(cutoffIso: String)
 

@@ -28,7 +28,13 @@ data class BoardClimbHistoryState(
     /** The user's preferred grade scale, so the history renders grades the
      *  same way the rest of the app does (not hard-coded to V-scale). */
     val gradeScale: GradeScale = GradeScale.FRENCH,
-)
+    /** Ids of entries the user has ticked for single/multi-select delete.
+     *  Empty = no selection (cards just navigate on tap). */
+    val selectedIds: Set<Long> = emptySet(),
+) {
+    val hasSelection: Boolean get() = selectedIds.isNotEmpty()
+    val allSelected: Boolean get() = entries.isNotEmpty() && selectedIds.size == entries.size
+}
 
 @HiltViewModel
 class BoardClimbHistoryViewModel @Inject constructor(
@@ -48,7 +54,15 @@ class BoardClimbHistoryViewModel @Inject constructor(
         // every change, so this also reflects clears + prunes immediately).
         viewModelScope.launch {
             personalBoardRepo.observeClimbHistory().collect { entries ->
-                _state.update { it.copy(entries = entries) }
+                // Drop any selected ids that no longer exist (pruned/cleared
+                // elsewhere) so the selection can't go stale.
+                val liveIds = entries.mapTo(HashSet()) { it.id }
+                _state.update {
+                    it.copy(
+                        entries = entries,
+                        selectedIds = it.selectedIds.intersect(liveIds)
+                    )
+                }
             }
         }
         // Retention setting. On every emission (init + later changes) prune to
@@ -90,6 +104,44 @@ class BoardClimbHistoryViewModel @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 Log.w(TAG, "clearHistory failed", e)
+            }
+        }
+    }
+
+    /** Tick/untick a single entry for deletion. */
+    fun toggleSelection(id: Long) {
+        _state.update { s ->
+            val next = if (id in s.selectedIds) s.selectedIds - id else s.selectedIds + id
+            s.copy(selectedIds = next)
+        }
+    }
+
+    /** Select all entries, or clear the selection if everything is already
+     *  selected (the icon doubles as a toggle, like the logbook). */
+    fun toggleSelectAll() {
+        _state.update { s ->
+            if (s.allSelected) s.copy(selectedIds = emptySet())
+            else s.copy(selectedIds = s.entries.mapTo(HashSet()) { it.id })
+        }
+    }
+
+    fun clearSelection() {
+        _state.update { it.copy(selectedIds = emptySet()) }
+    }
+
+    /** Delete just the ticked entries (single tap = one id, multi-select =
+     *  many), then clear the selection. */
+    fun deleteSelected() {
+        val ids = _state.value.selectedIds.toList()
+        if (ids.isEmpty()) return
+        viewModelScope.launch {
+            try {
+                personalBoardRepo.deleteClimbHistory(ids)
+                _state.update { it.copy(selectedIds = emptySet()) }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "deleteSelected failed count=${ids.size}", e)
             }
         }
     }

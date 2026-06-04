@@ -611,6 +611,13 @@ class PersonalBoardRepositoryImpl(
         }
     }
 
+    override suspend fun deleteClimbHistory(ids: List<Long>) {
+        if (ids.isEmpty()) return
+        withContext(Dispatchers.Default) {
+            database.climbHistoryQueries.deleteByIds(ids)
+        }
+    }
+
     override suspend fun pruneClimbHistory(cutoffIso: String) {
         withContext(Dispatchers.Default) {
             database.climbHistoryQueries.deleteOlderThan(cutoffIso)

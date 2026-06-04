@@ -104,6 +104,7 @@ class FakePersonalBoardRepository : PersonalBoardRepository {
     override suspend fun recordClimbHistory(climbUuid: String, climbName: String, angle: Long, difficultyAverage: Double?, boardBrand: String, layoutId: Long?, climbedAt: String, recordedAt: String) {}
     override fun observeClimbHistory(): Flow<List<ClimbHistoryEntry>> = flowOf(emptyList())
     override suspend fun clearClimbHistory() {}
+    override suspend fun deleteClimbHistory(ids: List<Long>) {}
     override suspend fun pruneClimbHistory(cutoffIso: String) {}
     override suspend fun climbHistoryCount(): Long = 0L
 

@@ -52,6 +52,10 @@ SELECT COUNT(*) FROM climb_history;
 deleteAll:
 DELETE FROM climb_history;
 
+-- Delete a user-selected set of entries (single or multi-select in the UI).
+deleteByIds:
+DELETE FROM climb_history WHERE id IN :ids;
+
 -- Retention prune: drop rows older than the cutoff (ISO LocalDateTime).
 deleteOlderThan:
 DELETE FROM climb_history WHERE recorded_at < :cutoff;

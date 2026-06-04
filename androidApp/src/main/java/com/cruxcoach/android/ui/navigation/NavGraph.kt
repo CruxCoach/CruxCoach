@@ -434,7 +434,6 @@ fun CruxCoachNavHost(
                     onNavigateToSync = { navController.navigate(Routes.BOARD_SYNC) },
                     onNavigateToLogbook = { navController.navigate(Routes.BOARD_LOGBOOK) },
                     onNavigateToLists = { navController.navigate(Routes.BOARD_LISTS) },
-                    onNavigateToHistory = { navController.navigate(Routes.BOARD_LOGBOOK_HISTORY) },
                     onNavigateToSettings = { navController.navigate(Routes.SETTINGS) },
                     onNavigateToFilter = { navController.navigate(Routes.BOARD_FILTER) },
                     onNavigateToClimbCreator = { navController.navigate(Routes.climbCreator()) },
@@ -568,7 +567,11 @@ fun CruxCoachNavHost(
                     onNavigateToSetters = {
                         navController.navigate(Routes.SETTERS_LIST)
                     },
-                    onNavigateToHistory = { navController.navigate(Routes.BOARD_LOGBOOK_HISTORY) },
+                    // History stays reachable from "Meine Listen" (the list icon);
+                    // only the top-bar Verlauf shortcut was removed.
+                    onNavigateToHistory = {
+                        navController.navigate(Routes.BOARD_LOGBOOK_HISTORY)
+                    },
                 )
             }
 
