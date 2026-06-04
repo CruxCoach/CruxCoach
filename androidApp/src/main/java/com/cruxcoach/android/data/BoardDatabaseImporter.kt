@@ -904,13 +904,27 @@ class BoardDatabaseImporter(
             // 'cruxcoach' (e.g. via CommunityClimbSubscriber on a row the
             // cron later refreshes) must survive a Blossom blob refresh.
             val hasOrigin = "origin" in srcCols
-            val originExpr = if (hasOrigin) "COALESCE(origin, 'kilter')" else "'kilter'"
+            val baseOriginExpr = if (hasOrigin) "COALESCE(origin, 'kilter')" else "'kilter'"
             // Plan C: cron writes created_by_pubkey for cruxcoach-origin
             // climbs so the SettersListScreen + profile-resolution chain
             // works for fresh installs. Defensive — pre-Plan-C blobs
             // don't have it.
             val hasCreatedByPubkey = "created_by_pubkey" in srcCols
             val pubkeyExpr = if (hasCreatedByPubkey) "created_by_pubkey" else "NULL"
+            // A climb that carries a setter pubkey is CruxCoach-authored — a
+            // native Kilter climb never has one — so recognise it as
+            // origin='cruxcoach' even when the blob's own origin column says
+            // 'kilter'. The published blob's origin can lag the cruxcoach
+            // classification (it's COALESCE(origin,'kilter') over the cron's
+            // work DB), but created_by_pubkey is authoritative. Without this a
+            // fresh install (whose only source is the blob) imports community
+            // climbs as 'kilter' and stops recognising them as CruxCoach
+            // climbs — no edit/publish actions, missing from the cruxcoach
+            // filter. 21.sqm heals rows imported before this landed.
+            val originExpr = if (hasCreatedByPubkey)
+                "CASE WHEN created_by_pubkey IS NOT NULL AND created_by_pubkey != '' " +
+                    "THEN 'cruxcoach' ELSE $baseOriginExpr END"
+            else baseOriginExpr
 
             // Two-step bulk merge per batch:
             //

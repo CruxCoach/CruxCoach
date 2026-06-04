@@ -1,0 +1,20 @@
+-- Migration version 21 -> 22: re-classify CruxCoach-authored climbs that were
+-- imported from the Blossom blob as origin='kilter'.
+--
+-- The published blob can carry a CruxCoach-authored climb with origin='kilter'
+-- (the blob's origin column is COALESCE(origin,'kilter') over the cron's work
+-- DB and can lag the cruxcoach classification) while still carrying its setter
+-- pubkey in created_by_pubkey. On a fresh install the blob is the only source,
+-- so these climbs imported as origin='kilter' and stopped being recognised as
+-- CruxCoach climbs — no edit/publish actions, missing from the cruxcoach
+-- filter, no setter link.
+--
+-- A native Kilter climb never carries a created_by_pubkey, so that column is an
+-- authoritative cruxcoach signal. The importer now derives origin from it on
+-- insert; this heals the rows already on disk. Scoped to origin='kilter' rows
+-- WITH a pubkey, so the Kilter catalogue (no pubkey) is untouched and any row
+-- already correctly 'cruxcoach' is left as-is.
+UPDATE climbs SET origin = 'cruxcoach'
+WHERE origin = 'kilter'
+  AND created_by_pubkey IS NOT NULL
+  AND created_by_pubkey != '';
