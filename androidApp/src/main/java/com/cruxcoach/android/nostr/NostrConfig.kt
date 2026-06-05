@@ -12,10 +12,18 @@ object NostrConfig {
     val DEV_LIGHTNING_ADDRESS: String = BuildConfig.MAINTAINER_LIGHTNING_ADDRESS
     val ANNOUNCE_NAMESPACE: String = BuildConfig.ANNOUNCE_NAMESPACE
 
+    // Community-climb publish + live-subscribe set. nos.lol is the relay that
+    // empirically RETAINS one-time community-climb Kind-30078 events long-term
+    // (damus/primal age them out); wellorder + snort are added for redundancy
+    // so a community climb never depends on a single relay surviving. wellorder
+    // is the same retention-friendly operator we already trust for the manifest.
+    // Probed 2026-06-05: community-climb events were on nos.lol only.
     val DEFAULT_RELAYS = listOf(
         RelayConfig(url = "wss://relay.damus.io"),
         RelayConfig(url = "wss://nos.lol"),
-        RelayConfig(url = "wss://relay.primal.net")
+        RelayConfig(url = "wss://relay.primal.net"),
+        RelayConfig(url = "wss://nostr-pub.wellorder.net"),
+        RelayConfig(url = "wss://relay.snort.social")
     )
 
     /**
