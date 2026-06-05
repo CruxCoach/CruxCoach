@@ -14,9 +14,15 @@ package com.cruxcoach.domain.board
  * dump: the three 11x18 boards plus Mini 2020 (11x12 sub-grid, hold
  * IDs 1..132). Mini's frames are encoded with the same universal
  * formula (`(row-1)*11 + col + 1`) so the dump's hold IDs land in
- * 12..132 (rows 2..12, no row 1). Mini 2025 (smaller grid again) and
- * Masters 2024 (released after the dump, no catalogue data) remain
- * deferred to 0.2.x — see FEAT-027 §3.
+ * 12..132 (rows 2..12, no row 1).
+ *
+ * MoonBoard 2024 (layout 3, the 198-hold 11x18 set released after the
+ * dump) ships too — it carries no official catalogue (released post-dump),
+ * but CruxCoach imports the BoardSesh-only user climbs for it (origin=
+ * 'boardsesh') via the board-data sync. It reuses the standard 11x18
+ * grid (same coord arithmetic as 2016/2017/2019), so no new frame/render
+ * code is needed. Mini 2025 (smaller grid again) remains deferred to
+ * 0.2.x — see FEAT-027 §3.
  *
  * Mini 2020 caveat: the procedural-grid fallback + the BLE wire
  * encoder still assume 11x18 ([MoonBoardFrameEncoder],
@@ -69,6 +75,21 @@ enum class MoonBoardVariant(
         // BLE serpentine multiplier is 12, not 18; dynamic-capture
         // against a real Mini board still pending.
         gridRows = 12,
+    ),
+    MOONBOARD_2024(
+        // The 2024 198-hold set (BoardSesh "moonboard" layoutId 3). 198 =
+        // 11x18 — the same grid as 2016/2017/2019, so the standard 11x18
+        // coord-map + frame encoder apply unchanged. No official catalogue
+        // exists (released after the spookykat dump); the only climbs are
+        // the BoardSesh-imported user climbs (origin='boardsesh'). Every
+        // imported layout-3 climb is set at 40° (verified across all 19 in
+        // the BoardSesh fetch), so the picker offers 40° only; the real
+        // per-climb angle still comes from climb_stats.angle. Widen to
+        // listOf(25, 40) here if 25° layout-3 content ever appears.
+        layoutId = 3L,
+        displayName = "MoonBoard 2024",
+        angles = listOf(40),
+        gridRows = 18,
     );
 
     companion object {

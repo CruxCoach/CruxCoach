@@ -94,8 +94,12 @@ internal fun parseStatusFilter(raw: String): Set<ClimbStatusFilter> {
 internal fun serializeStatusFilter(statuses: Set<ClimbStatusFilter>): String =
     statuses.joinToString(",") { it.name }
 
-/** Provenance filter — corresponds to the `origin` column on `climbs`. */
-enum class OriginFilter { ALL, CRUXCOACH, KILTER }
+/** Provenance filter — corresponds to the `origin` column on `climbs`.
+ *  BOARDSESH = climbs imported from BoardSesh's public GraphQL (user-
+ *  created on BoardSesh, never pushed to Kilter/Aurora); they carry
+ *  `origin='boardsesh'` and are a distinct provenance from both the
+ *  Kilter catalogue and CruxCoach-community climbs. */
+enum class OriginFilter { ALL, CRUXCOACH, KILTER, BOARDSESH }
 
 /** Pure-logic origin-bucketing extracted from [BoardBrowserViewModel] so it
  *  can be unit-tested without spinning up the full Hilt-injected ViewModel.
@@ -114,6 +118,10 @@ internal object BrowserOriginFilter {
             OriginFilter.ALL -> climbs
             OriginFilter.CRUXCOACH -> climbs.filter { it.origin == "cruxcoach" || it.source == "local" }
             OriginFilter.KILTER -> climbs.filter { it.origin == "kilter" && it.source != "local" }
+            // BoardSesh-imported climbs are their own provenance — never folded
+            // into the cruxcoach or kilter buckets (both filters above exclude
+            // origin=='boardsesh' already), so they surface only here and under ALL.
+            OriginFilter.BOARDSESH -> climbs.filter { it.origin == "boardsesh" }
         }
     }
 }
@@ -744,6 +752,16 @@ class BoardBrowserViewModel @Inject constructor(
             return directCount.toLong()
         }
 
+        // ORIGIN SHORT-CIRCUITS (CRUXCOACH / BOARDSESH): fetchFiltered pulls
+        // the whole origin-scoped set and returns its exact size as
+        // directCount. Without this the count falls through to the
+        // unconstrained DB count below (~190K) instead of the handful of
+        // origin-scoped rows actually shown.
+        if (filter.originFilter == OriginFilter.CRUXCOACH ||
+            filter.originFilter == OriginFilter.BOARDSESH) {
+            return directCount.toLong()
+        }
+
         // DIRECT-UUID statuses (subset of {SENT, ATTEMPTED}): directCount is the
         // exact total from getClimbsByUuids over the unioned UUID set.
         if (isDirectUuidStatus(filter.statusFilter)) {
@@ -840,6 +858,28 @@ class BoardBrowserViewModel @Inject constructor(
             val minDiff = KilterGradeMapper.indexToFilterMin(f.minGradeIndex, french)
             val maxDiff = KilterGradeMapper.indexToFilterMax(f.maxGradeIndex, french)
             val all = boardRepository.getCruxCoachClimbs(
+                f.layoutId, f.boardBrand, f.angle, minDiff, maxDiff, f.minAscensionists, f.climbTypeFilter,
+                selProductSizeId = selSizeId()
+            )
+            val nameFiltered = if (f.searchQuery.isBlank()) all
+                else all.filter { it.name.contains(f.searchQuery, ignoreCase = true) }
+            val statusFiltered = applyStatusFilter(nameFiltered, f.statusFilter)
+            val benchFiltered = applyBenchmarkFilter(statusFiltered, f.benchmarkOnly)
+            val sorted = sortInKotlin(benchFiltered, f.sortField, f.sortDirection)
+            return Triple(sorted.take(PAGE_SIZE), sorted.size, sorted.size <= PAGE_SIZE)
+        }
+
+        // BOARDSESH ORIGIN FILTER: same short-circuit as CRUXCOACH above.
+        // BoardSesh-imported climbs have quality_average=NULL and 0 sends,
+        // so the paginated browse path sorts them past the visible pages of
+        // the 190K-row catalogue and they vanish. Pull the whole boardsesh
+        // set (a couple hundred rows) in one query and sort client-side.
+        if (f.originFilter == OriginFilter.BOARDSESH) {
+            if (dbOffset > 0) return Triple(emptyList(), dbOffset, true)
+            val french = _state.value.gradeScale == GradeScale.FRENCH
+            val minDiff = KilterGradeMapper.indexToFilterMin(f.minGradeIndex, french)
+            val maxDiff = KilterGradeMapper.indexToFilterMax(f.maxGradeIndex, french)
+            val all = boardRepository.getBoardSeshClimbs(
                 f.layoutId, f.boardBrand, f.angle, minDiff, maxDiff, f.minAscensionists, f.climbTypeFilter,
                 selProductSizeId = selSizeId()
             )

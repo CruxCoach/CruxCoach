@@ -393,6 +393,26 @@ WHERE layout_id = :layoutId
   AND (origin = 'cruxcoach' OR source = 'local')
   AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top))));
 
+-- Browse query restricted to BoardSesh-imported climbs (origin='boardsesh').
+-- Same shape and rationale as [browseCruxCoachOnly]: BoardSesh climbs carry
+-- quality_average=NULL and ascensionist_count=0, so under the default
+-- paginate-then-post-filter browse path they sort to the very bottom of the
+-- 190K-row catalogue and never reach a visible page. Pull the entire
+-- boardsesh set in one un-paginated SELECT (a couple hundred rows total) and
+-- let the VM sort in Kotlin. The ONLY predicate difference from
+-- browseCruxCoachOnly is `origin = 'boardsesh'` (no source='local' arm —
+-- imported climbs are never local drafts).
+browseBoardSeshOnly:
+SELECT * FROM climb_browse
+WHERE layout_id = :layoutId
+  AND board_brand = :boardBrand
+  AND angle = :angle
+  AND frames_count >= :minFrames AND frames_count <= :maxFrames
+  AND difficulty_average >= :minDiff AND difficulty_average <= :maxDiff
+  AND ascensionist_count >= :minAsc
+  AND origin = 'boardsesh'
+  AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top))));
+
 browseByNameDesc:
 SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND difficulty_average >= :minDiff AND difficulty_average <= :maxDiff AND ascensionist_count >= :minAsc AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top)))) ORDER BY name DESC LIMIT :limit OFFSET :offset;
 

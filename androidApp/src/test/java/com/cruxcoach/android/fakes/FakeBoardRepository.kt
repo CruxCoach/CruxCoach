@@ -395,4 +395,9 @@ class FakeBoardRepository : BoardRepository {
         minAscensionists: Int, climbType: com.cruxcoach.data.repository.ClimbTypeFilter,
         selProductSizeId: Int,
     ): List<com.cruxcoach.data.repository.ClimbWithStats> = emptyList()
+    override fun getBoardSeshClimbs(
+        layoutId: Int, boardBrand: String, angle: Int, minDifficulty: Double, maxDifficulty: Double,
+        minAscensionists: Int, climbType: com.cruxcoach.data.repository.ClimbTypeFilter,
+        selProductSizeId: Int,
+    ): List<com.cruxcoach.data.repository.ClimbWithStats> = emptyList()
 }

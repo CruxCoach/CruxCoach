@@ -882,6 +882,24 @@ private fun ClimbDetailPageContent(
                                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
                                         )
                                     }
+                                } else if (climb.origin == "boardsesh") {
+                                    // BoardSesh-imported climb: attribute the
+                                    // source. No Kilter/Nostr state applies
+                                    // (it was never published to either), so a
+                                    // single static provenance badge.
+                                    Spacer(Modifier.size(4.dp))
+                                    val badgeColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = badgeColor.copy(alpha = 0.15f),
+                                    ) {
+                                        Text(
+                                            stringResource(R.string.climb_detail_badge_boardsesh),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = badgeColor,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                        )
+                                    }
                                 }
                             }
                             Column(

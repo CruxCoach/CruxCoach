@@ -379,6 +379,15 @@ interface BoardLayoutQueries {
         layoutId: Int, boardBrand: String, angle: Int, minDifficulty: Double, maxDifficulty: Double,
         minAscensionists: Int, climbType: ClimbTypeFilter, selProductSizeId: Int = 0,
     ): List<ClimbWithStats>
+    /** Full set of BoardSesh-imported climbs (origin='boardsesh') that
+     *  satisfy the browse filters. Returns the whole matching set in one
+     *  call for the same reason as [getCruxCoachClimbs]: BoardSesh climbs
+     *  have no sends/quality and would otherwise be buried at the bottom
+     *  of the paginated catalogue and never shown. Caller sorts in Kotlin. */
+    fun getBoardSeshClimbs(
+        layoutId: Int, boardBrand: String, angle: Int, minDifficulty: Double, maxDifficulty: Double,
+        minAscensionists: Int, climbType: ClimbTypeFilter, selProductSizeId: Int = 0,
+    ): List<ClimbWithStats>
     /** Find the smallest product_size whose four edges *contain* the
      *  climb's bounding box AND has board_images for the climb's
      *  layout. This pins each climb to the physical board variant

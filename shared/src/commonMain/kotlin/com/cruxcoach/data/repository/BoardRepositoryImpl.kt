@@ -373,6 +373,18 @@ class BoardRepositoryImpl(
         ).executeAsList().map { mapBrowse(it) }
     }
 
+    override fun getBoardSeshClimbs(
+        layoutId: Int, boardBrand: String, angle: Int, minDifficulty: Double, maxDifficulty: Double,
+        minAscensionists: Int, climbType: ClimbTypeFilter, selProductSizeId: Int,
+    ): List<ClimbWithStats> {
+        return q.browseBoardSeshOnly(
+            layoutId.toLong(), boardBrand, angle.toLong(),
+            climbType.minFrames(), climbType.maxFrames(),
+            minDifficulty, maxDifficulty, minAscensionists.toLong(),
+            selProductSizeId.toLong(),
+        ).executeAsList().map { mapBrowse(it) }
+    }
+
     override fun canRenderClimbOnSize(uuid: String, productSizeId: Int, boardBrand: String): Boolean {
         return q.canRenderClimbOnSize(productSizeId.toLong(), boardBrand, uuid).executeAsOneOrNull() != null
     }

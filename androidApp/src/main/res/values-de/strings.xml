@@ -110,6 +110,7 @@
     <string name="climb_detail_badge_on_kilter">Auf Kilter</string>
     <string name="climb_detail_badge_cruxcoach_only">Nur CruxCoach-Community</string>
     <string name="climb_detail_badge_kilter_diverged">Nur hier bearbeitet, auf Kilter Originalversion</string>
+    <string name="climb_detail_badge_boardsesh">Quelle: BoardSesh</string>
     <string name="climb_detail_edit_locked_kilter">Gesperrt — auf Kilter veröffentlicht (unveränderbar)</string>
     <string name="climb_editor_load_failed_kilter_locked">Dieser Climb ist auf Kilter veröffentlicht und kann nicht bearbeitet werden. Nutze die Remix-Aktion, um einen frischen Climb darauf basierend zu starten.</string>
 
@@ -660,6 +661,7 @@
     <string name="board_filter_origin">Quelle</string>
     <string name="board_filter_origin_cruxcoach">CruxCoach-Setter</string>
     <string name="board_filter_origin_kilter">Kilter (offiziell)</string>
+    <string name="board_filter_origin_boardsesh">BoardSesh</string>
     <string name="board_filter_type">Typ</string>
     <string name="board_filter_type_boulder">Boulder</string>
     <string name="board_filter_type_routes">Routen</string>

@@ -904,6 +904,14 @@ class BoardDatabaseImporter(
             // 'cruxcoach' (e.g. via CommunityClimbSubscriber on a row the
             // cron later refreshes) must survive a Blossom blob refresh.
             val hasOrigin = "origin" in srcCols
+            // baseOriginExpr preserves whatever origin the blob carries
+            // ('kilter' | 'cruxcoach' | 'boardsesh'), defaulting legacy
+            // chunks to 'kilter'. NOTE: BoardSesh-imported rows must be
+            // written by the cron with created_by_pubkey=NULL — the
+            // originExpr below reclassifies ANY row with a non-empty pubkey
+            // to 'cruxcoach', which would otherwise silently fold BoardSesh
+            // climbs into the CruxCoach-community provenance on every fresh
+            // install. With a NULL pubkey the blob's 'boardsesh' survives.
             val baseOriginExpr = if (hasOrigin) "COALESCE(origin, 'kilter')" else "'kilter'"
             // Plan C: cron writes created_by_pubkey for cruxcoach-origin
             // climbs so the SettersListScreen + profile-resolution chain

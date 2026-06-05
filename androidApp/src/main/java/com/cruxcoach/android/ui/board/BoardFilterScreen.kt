@@ -467,6 +467,7 @@ fun BoardFilterScreen(
                         OriginFilter.ALL to stringResource(R.string.board_filter_all),
                         OriginFilter.CRUXCOACH to stringResource(R.string.board_filter_origin_cruxcoach),
                         OriginFilter.KILTER to stringResource(R.string.board_filter_origin_kilter),
+                        OriginFilter.BOARDSESH to stringResource(R.string.board_filter_origin_boardsesh),
                     )
                     originOptions.forEach { (filter, label) ->
                         FilterChip(
