@@ -61,7 +61,38 @@ import kotlinx.coroutines.withContext
 import kotlin.random.Random
 import javax.inject.Inject
 
-enum class ClimbStatusFilter { ALL, SENT, ATTEMPTED, NEW, UNSENT }
+/** Status of a climb relative to the local user. The three buckets are
+ *  DISJOINT — `getUserAttemptedClimbUuids` `EXCEPT`s sent climbs, so every
+ *  climb is in exactly one — which is what makes the multi-select union both
+ *  unambiguous and O(1)-countable.
+ *
+ *  The browser status filter is a multi-select [Set] of these: an **empty
+ *  set means "no status constraint"** (the "Alle" chip). The legacy
+ *  single-select preset "Offen" (= unsent) is just {NEW, ATTEMPTED} and
+ *  "Alle" is the empty set, so both drop out as redundant chips. */
+enum class ClimbStatusFilter { NEW, ATTEMPTED, SENT }
+
+/** Parse the persisted status-filter preference into a [Set]. Accepts the
+ *  current comma-joined form ("NEW,SENT"), an empty string ("" = Alle), and
+ *  migrates the legacy single-select tokens written by builds ≤ 0.2.0
+ *  ("ALL" → {}, "UNSENT" → {NEW, ATTEMPTED}). Unknown tokens are ignored. */
+internal fun parseStatusFilter(raw: String): Set<ClimbStatusFilter> {
+    if (raw.isBlank()) return emptySet()
+    val out = LinkedHashSet<ClimbStatusFilter>()
+    for (token in raw.split(',')) {
+        when (val t = token.trim()) {
+            "", "ALL" -> { /* no constraint */ }
+            "UNSENT" -> { out += ClimbStatusFilter.NEW; out += ClimbStatusFilter.ATTEMPTED }
+            else -> runCatching { ClimbStatusFilter.valueOf(t) }.getOrNull()?.let { out += it }
+        }
+    }
+    return out
+}
+
+/** Serialize the multi-select status filter for persistence. Empty set →
+ *  "" (round-trips back to "Alle" via [parseStatusFilter]). */
+internal fun serializeStatusFilter(statuses: Set<ClimbStatusFilter>): String =
+    statuses.joinToString(",") { it.name }
 
 /** Provenance filter — corresponds to the `origin` column on `climbs`. */
 enum class OriginFilter { ALL, CRUXCOACH, KILTER }
@@ -113,7 +144,8 @@ data class BrowserFilterState(
     val searchQuery: String = "",
     val sortField: ClimbSortField = ClimbSortField.ASCENSIONISTS,
     val sortDirection: SortDirection = SortDirection.DESC,
-    val statusFilter: ClimbStatusFilter = ClimbStatusFilter.ALL,
+    /** Multi-select status filter; empty = no constraint ("Alle"). */
+    val statusFilter: Set<ClimbStatusFilter> = emptySet(),
     val climbTypeFilter: ClimbTypeFilter = ClimbTypeFilter.BOULDER,
     val benchmarkOnly: Boolean = false,
     val originFilter: OriginFilter = OriginFilter.ALL,
@@ -237,7 +269,7 @@ class BoardBrowserViewModel @Inject constructor(
                 }
                 val sortField = try { ClimbSortField.valueOf(snap.sortField) } catch (_: Exception) { ClimbSortField.ASCENSIONISTS }
                 val sortDir = try { SortDirection.valueOf(snap.sortDirection) } catch (_: Exception) { SortDirection.DESC }
-                val statusFilter = try { ClimbStatusFilter.valueOf(snap.statusFilter) } catch (_: Exception) { ClimbStatusFilter.ALL }
+                val statusFilter = parseStatusFilter(snap.statusFilter)
                 val climbType = try { ClimbTypeFilter.valueOf(snap.climbType) } catch (_: Exception) { ClimbTypeFilter.BOULDER }
                 val originFilter = try { OriginFilter.valueOf(snap.originFilter) } catch (_: Exception) { OriginFilter.ALL }
                 PerfLogger.milestone("BoardBrowserVM prefs loaded (batch)")
@@ -397,10 +429,13 @@ class BoardBrowserViewModel @Inject constructor(
             _state.update { it.copy(filter = it.filter.copy(searchQuery = setter)) }
         }
 
-        // Immediate UI update: remove logged climbs from status-filtered list
+        // Immediate UI update: when the active filter excludes sent climbs
+        // (a non-empty selection without SENT — e.g. Neu, Versucht, or
+        // Neu+Versucht), a just-logged send/bid should drop out of view at
+        // once. The subsequent full re-search reconciles the exact set.
         if (changedUuids.isNotEmpty()) {
-            val filter = _state.value.filter.statusFilter
-            if (filter == ClimbStatusFilter.NEW || filter == ClimbStatusFilter.UNSENT) {
+            val statuses = _state.value.filter.statusFilter
+            if (statuses.isNotEmpty() && ClimbStatusFilter.SENT !in statuses) {
                 _state.update { it.copy(
                     climbs = it.climbs.filter { climb -> climb.uuid !in changedUuids }
                 ) }
@@ -489,7 +524,7 @@ class BoardBrowserViewModel @Inject constructor(
             userPreferences.setBoardFilters(
                 angle = f.angle, minGrade = f.minGradeIndex, maxGrade = f.maxGradeIndex,
                 minAscensionists = f.minAscensionists, sortField = f.sortField.name,
-                sortDirection = f.sortDirection.name, statusFilter = f.statusFilter.name,
+                sortDirection = f.sortDirection.name, statusFilter = serializeStatusFilter(f.statusFilter),
                 climbType = f.climbTypeFilter.name, benchmarkOnly = f.benchmarkOnly,
                 originFilter = f.originFilter.name,
                 myClimbsOnly = f.myClimbsOnly,
@@ -543,8 +578,21 @@ class BoardBrowserViewModel @Inject constructor(
         searchClimbs()
     }
 
-    fun updateStatusFilter(filter: ClimbStatusFilter) {
-        _state.update { it.copy(filter = it.filter.copy(statusFilter = filter)) }
+    /** Toggle one status bucket in/out of the multi-select status filter. */
+    fun toggleStatusFilter(status: ClimbStatusFilter) {
+        _state.update { s ->
+            val cur = s.filter.statusFilter
+            val next = if (status in cur) cur - status else cur + status
+            s.copy(filter = s.filter.copy(statusFilter = next))
+        }
+        persistFilters()
+        searchClimbs()
+    }
+
+    /** Clear the status filter (the "Alle" chip) — empty set = no constraint. */
+    fun clearStatusFilter() {
+        if (_state.value.filter.statusFilter.isEmpty()) return
+        _state.update { it.copy(filter = it.filter.copy(statusFilter = emptySet())) }
         persistFilters()
         searchClimbs()
     }
@@ -590,14 +638,35 @@ class BoardBrowserViewModel @Inject constructor(
         }
     }
 
-    private fun applyStatusFilter(climbs: List<ClimbWithStats>, filter: ClimbStatusFilter): List<ClimbWithStats> {
-        return when (filter) {
-            ClimbStatusFilter.ALL -> climbs
-            ClimbStatusFilter.SENT -> climbs.filter { it.uuid in sentUuids }
-            ClimbStatusFilter.ATTEMPTED -> climbs.filter { it.uuid in attemptedUuids }
-            ClimbStatusFilter.NEW -> climbs.filter { it.uuid !in sentUuids && it.uuid !in attemptedUuids }
-            ClimbStatusFilter.UNSENT -> climbs.filter { it.uuid !in sentUuids }
-        }
+    /** Client-side multi-select status filter (OR-union over the selected
+     *  disjoint buckets). Empty selection = no constraint. */
+    private fun applyStatusFilter(climbs: List<ClimbWithStats>, statuses: Set<ClimbStatusFilter>): List<ClimbWithStats> {
+        if (statuses.isEmpty()) return climbs
+        return climbs.filter { statusOf(it.uuid) in statuses }
+    }
+
+    /** The single disjoint bucket a climb falls into. `attemptedUuids` already
+     *  excludes sends (the `EXCEPT` in `getUserAttemptedClimbUuids`), so the
+     *  three checks are mutually exclusive. */
+    private fun statusOf(uuid: String): ClimbStatusFilter = when {
+        uuid in sentUuids -> ClimbStatusFilter.SENT
+        uuid in attemptedUuids -> ClimbStatusFilter.ATTEMPTED
+        else -> ClimbStatusFilter.NEW
+    }
+
+    /** True when the selection can be served by a direct UUID query — a
+     *  non-empty subset of {SENT, ATTEMPTED}. NEW is the unbounded complement
+     *  of the logged sets, so any selection containing it must page-scan. */
+    private fun isDirectUuidStatus(statuses: Set<ClimbStatusFilter>): Boolean =
+        statuses.isNotEmpty() && ClimbStatusFilter.NEW !in statuses
+
+    /** Union of the logged-UUID sets for a direct-UUID selection. The two sets
+     *  are disjoint, so this is just their concatenation. */
+    private fun directStatusUuids(statuses: Set<ClimbStatusFilter>): Set<String> {
+        val out = HashSet<String>(sentUuids.size + attemptedUuids.size)
+        if (ClimbStatusFilter.SENT in statuses) out += sentUuids
+        if (ClimbStatusFilter.ATTEMPTED in statuses) out += attemptedUuids
+        return out
     }
 
     private fun applyBenchmarkFilter(climbs: List<ClimbWithStats>, benchmarkOnly: Boolean): List<ClimbWithStats> {
@@ -623,7 +692,7 @@ class BoardBrowserViewModel @Inject constructor(
             try {
                 val filter = _state.value.filter
                 val (results, newDbOffset, dbExhausted) = withContext(Dispatchers.IO) {
-                    if (filter.statusFilter != ClimbStatusFilter.ALL) ensureStatusLoaded()
+                    if (filter.statusFilter.isNotEmpty()) ensureStatusLoaded()
                     PerfLogger.traceQuery("searchClimbs.fetchFiltered") {
                         fetchFiltered(filter, dbOffset = 0)
                     }
@@ -675,9 +744,9 @@ class BoardBrowserViewModel @Inject constructor(
             return directCount.toLong()
         }
 
-        // SENT/ATTEMPTED: directCount is the total from getClimbsByUuids (accurate)
-        if (filter.statusFilter == ClimbStatusFilter.SENT ||
-            filter.statusFilter == ClimbStatusFilter.ATTEMPTED) {
+        // DIRECT-UUID statuses (subset of {SENT, ATTEMPTED}): directCount is the
+        // exact total from getClimbsByUuids over the unioned UUID set.
+        if (isDirectUuidStatus(filter.statusFilter)) {
             return directCount.toLong()
         }
 
@@ -691,12 +760,18 @@ class BoardBrowserViewModel @Inject constructor(
             cachedCountKey = countKey
         }
 
-        return when (filter.statusFilter) {
-            ClimbStatusFilter.ALL -> cachedDbCount
-            ClimbStatusFilter.NEW -> cachedDbCount - sentUuids.size - attemptedUuids.size
-            ClimbStatusFilter.UNSENT -> cachedDbCount - sentUuids.size
-            else -> cachedDbCount
-        }
+        // Reaching here means the selection is empty (Alle) or includes NEW
+        // (the direct-UUID early-return above handled the rest). The three
+        // buckets are disjoint, so the count is the sum of the selected ones.
+        // (NEW is approximated as DB-count minus the global logged sets — the
+        // same estimate the single-select NEW/UNSENT presets always used.)
+        val statuses = filter.statusFilter
+        if (statuses.isEmpty()) return cachedDbCount
+        var count = 0L
+        if (ClimbStatusFilter.SENT in statuses) count += sentUuids.size
+        if (ClimbStatusFilter.ATTEMPTED in statuses) count += attemptedUuids.size
+        if (ClimbStatusFilter.NEW in statuses) count += (cachedDbCount - sentUuids.size - attemptedUuids.size)
+        return count
     }
 
     fun loadMore() {
@@ -791,9 +866,12 @@ class BoardBrowserViewModel @Inject constructor(
             return Triple(sorted.take(PAGE_SIZE), sorted.size, sorted.size <= PAGE_SIZE)
         }
 
-        // SENT / ATTEMPTED: direct UUID query — no page scanning needed
-        if (f.statusFilter == ClimbStatusFilter.SENT || f.statusFilter == ClimbStatusFilter.ATTEMPTED) {
-            val uuids = if (f.statusFilter == ClimbStatusFilter.SENT) sentUuids else attemptedUuids
+        // DIRECT-UUID statuses (non-empty subset of {SENT, ATTEMPTED}): query
+        // the union of the relevant logged-UUID sets directly — no page scan.
+        // The sets are disjoint, so the union needs no dedup and the count is
+        // exact (sorted.size).
+        if (isDirectUuidStatus(f.statusFilter)) {
+            val uuids = directStatusUuids(f.statusFilter)
             if (uuids.isEmpty()) return Triple(emptyList(), 0, true)
             if (dbOffset > 0) return Triple(emptyList(), dbOffset, true)
             val french = _state.value.gradeScale == GradeScale.FRENCH
@@ -807,14 +885,15 @@ class BoardBrowserViewModel @Inject constructor(
             return Triple(sorted.take(PAGE_SIZE), sorted.size, sorted.size <= PAGE_SIZE)
         }
 
-        // ALL: no client-side filtering needed (except benchmark)
-        if (f.statusFilter == ClimbStatusFilter.ALL) {
+        // ALLE (empty selection): no client-side status filtering (benchmark/origin only)
+        if (f.statusFilter.isEmpty()) {
             val rawPage = fetchPage(f, dbOffset)
             val filtered = applyOriginFilter(applyBenchmarkFilter(rawPage, f.benchmarkOnly), f.originFilter)
             return Triple(filtered, dbOffset + rawPage.size, rawPage.size < PAGE_SIZE)
         }
 
-        // NEW / UNSENT: page-scan with client-side filtering (high hit rate)
+        // Selection includes NEW (the unbounded complement of the logged sets):
+        // page-scan with client-side filtering (high hit rate — most climbs are new)
         val collected = mutableListOf<ClimbWithStats>()
         var currentOffset = dbOffset
         repeat(MAX_STATUS_SCAN_PAGES) {

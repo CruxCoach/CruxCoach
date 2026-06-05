@@ -351,17 +351,35 @@ fun BoardFilterScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.horizontalScroll(rememberScrollState())
                 ) {
+                    // "Alle" = clear the (multi-select) status filter. Highlighted
+                    // when no status bucket is active; tapping it resets to "all".
+                    FilterChip(
+                        selected = state.filter.statusFilter.isEmpty(),
+                        onClick = { viewModel.clearStatusFilter() },
+                        label = {
+                            Text(
+                                stringResource(R.string.board_filter_all),
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                        },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
+                            selectedLabelColor = OrangeAccent
+                        ),
+                        modifier = Modifier.height(32.dp)
+                    )
+                    // The three disjoint status buckets are individually
+                    // toggleable and combine as an OR-union. "Offen" (= Neu +
+                    // Versucht) drops out as a redundant preset.
                     val statusOptions = listOf(
                         ClimbStatusFilter.NEW to stringResource(R.string.board_filter_status_new),
-                        ClimbStatusFilter.UNSENT to stringResource(R.string.board_filter_status_unsent),
-                        ClimbStatusFilter.SENT to stringResource(R.string.board_filter_status_sent),
                         ClimbStatusFilter.ATTEMPTED to stringResource(R.string.board_filter_status_attempted),
-                        ClimbStatusFilter.ALL to stringResource(R.string.board_filter_all)
+                        ClimbStatusFilter.SENT to stringResource(R.string.board_filter_status_sent),
                     )
-                    statusOptions.forEach { (filter, label) ->
+                    statusOptions.forEach { (status, label) ->
                         FilterChip(
-                            selected = state.filter.statusFilter == filter,
-                            onClick = { viewModel.updateStatusFilter(filter) },
+                            selected = status in state.filter.statusFilter,
+                            onClick = { viewModel.toggleStatusFilter(status) },
                             label = { Text(label, style = MaterialTheme.typography.labelSmall) },
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
