@@ -106,16 +106,10 @@ internal object MoonBoardAssetCache {
     @Volatile
     private var cached: MoonBoardRenderAsset? = null
 
-    /** True when [variant] has a bundled board image to decode. The four
-     *  spookykat-dump variants ship one; MoonBoard 2024 does NOT (its
-     *  catalogue/coord-map was released after the dump) — return false so
-     *  the renderer demotes straight to the procedural 11×18 grid
-     *  (geometrically correct for 2024) instead of spinning on Loading and
-     *  showing a blank card while a guaranteed-to-fail decode is attempted.
-     *  Flip to `true` (drop the guard) once `moonboard_2024.{json,webp}`
-     *  ships in assets/board_images/. */
-    fun hasBundledImage(variant: MoonBoardVariant): Boolean =
-        variant != MoonBoardVariant.MOONBOARD_2024
+    /** True when [variant] has a bundled board image to decode. All five
+     *  variants now ship one — the four spookykat-dump boards plus MoonBoard
+     *  2024, whose coord-map was fit from the supplied 2024 board render. */
+    fun hasBundledImage(variant: MoonBoardVariant): Boolean = true
 
     fun get(variant: MoonBoardVariant?): MoonBoardRenderAsset? =
         if (variant != null && variant == cachedVariant) cached else null

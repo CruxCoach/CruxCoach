@@ -408,6 +408,11 @@ WHERE layout_id = :layoutId
   AND board_brand = :boardBrand
   AND angle = :angle
   AND frames_count >= :minFrames AND frames_count <= :maxFrames
+  -- Same grade-range predicate as browseCruxCoachOnly and the default browse:
+  -- ungraded BoardSesh climbs (difficulty_average NULL — 0-ascent user climbs
+  -- with no consensus grade in ANY field, incl. test/scratch climbs) are hidden
+  -- exactly like native ungraded climbs. Provenance is a filter, not a grade
+  -- bypass. Graded imports (all MoonBoard 2024, the ascended Kilter ones) show.
   AND difficulty_average >= :minDiff AND difficulty_average <= :maxDiff
   AND ascensionist_count >= :minAsc
   AND origin = 'boardsesh'
