@@ -19,6 +19,7 @@ class MapFiltersTest {
         adjustability: Adjustability = Adjustability.ADJUSTABLE,
         sizeLabel: String? = "12x12",
         boardBrand: BoardBrand = BoardBrand.KILTER,
+        wellpass: Boolean? = null,
     ) = BoardLocation(
         id = id,
         name = "Gym $id",
@@ -31,6 +32,7 @@ class MapFiltersTest {
         adjustability = adjustability,
         fixedAngle = null, frameMaker = null,
         boardBrand = boardBrand,
+        wellpass = wellpass,
     )
 
     @Test
@@ -180,6 +182,27 @@ class MapFiltersTest {
         )
         val out = MapFilters(matchesMyBoard = true).apply(items, userBoardLayoutId = 5)
         assertEquals(listOf("moon2019"), out.map { it.id })
+    }
+
+    @Test
+    fun `wellpassOnly keeps only wellpass-true locations`() {
+        val items = listOf(
+            loc("yes", wellpass = true),
+            loc("no", wellpass = false),
+            loc("unknown", wellpass = null),
+        )
+        val out = MapFilters(wellpassOnly = true).apply(items)
+        assertEquals(listOf("yes"), out.map { it.id })
+    }
+
+    @Test
+    fun `wellpassOnly off is a wildcard across wellpass states`() {
+        val items = listOf(
+            loc("yes", wellpass = true),
+            loc("no", wellpass = false),
+            loc("unknown", wellpass = null),
+        )
+        assertEquals(3, MapFilters().apply(items).size)
     }
 
     @Test

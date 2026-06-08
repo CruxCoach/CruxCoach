@@ -15,16 +15,18 @@ import java.io.File
  */
 class MoonBoardAssetTest {
 
-    private fun loadLayout(): MoonBoardLayoutJson {
-        // Unit tests run with the module dir as working dir; the second
-        // candidate covers a repo-root invocation.
+    // Unit tests run with the module dir as working dir; the second candidate
+    // covers a repo-root invocation.
+    private fun loadVariant(name: String): MoonBoardLayoutJson {
         val file = listOf(
-            File("src/main/assets/board_images/moonboard_2016.json"),
-            File("androidApp/src/main/assets/board_images/moonboard_2016.json"),
+            File("src/main/assets/board_images/$name.json"),
+            File("androidApp/src/main/assets/board_images/$name.json"),
         ).firstOrNull { it.exists() }
-            ?: error("moonboard_2016.json not found (cwd=${File(".").absolutePath})")
+            ?: error("$name.json not found (cwd=${File(".").absolutePath})")
         return parseMoonBoardLayout(file.readText())
     }
+
+    private fun loadLayout(): MoonBoardLayoutJson = loadVariant("moonboard_2016")
 
     @Test
     fun `layout parses and covers all 198 grid positions`() {
@@ -51,5 +53,24 @@ class MoonBoardAssetTest {
     @Test
     fun `image aspect ratio is portrait`() {
         assertTrue(loadLayout().imageAspect in 0.5f..0.8f)
+    }
+
+    @Test
+    fun `all four bundled variant maps parse with contiguous in-range holds`() {
+        listOf("moonboard_2016", "moonboard_2017", "moonboard_2019", "moonboard_2024").forEach { name ->
+            val layout = loadVariant(name)
+            assertEquals("$name: variant tag", name, layout.variant)
+            assertTrue("$name: has holds", layout.holds.isNotEmpty())
+            assertEquals(
+                "$name: holdIds must be 1..N contiguous (no gaps/dupes)",
+                (1..layout.holds.size).toList(),
+                layout.holds.map { it.holdId }.sorted(),
+            )
+            layout.holds.forEach { h ->
+                assertTrue("$name holdId=${h.holdId} x=${h.x} out of 0..1", h.x in 0f..1f)
+                assertTrue("$name holdId=${h.holdId} y=${h.y} out of 0..1", h.y in 0f..1f)
+            }
+            assertTrue("$name: portrait aspect", layout.imageAspect in 0.4f..0.9f)
+        }
     }
 }

@@ -354,7 +354,7 @@ private fun validatedHttpUrlOrNull(raw: String?): Uri? {
 /** True for hosts that should never be opened from third-party dataset URLs:
  *  localhost, IPv4 loopback/private/link-local ranges, and IPv6 loopback /
  *  unique-local / link-local. Non-IP public hostnames pass. */
-private fun isPrivateOrLoopbackHost(host: String?): Boolean {
+internal fun isPrivateOrLoopbackHost(host: String?): Boolean {
     val h = host?.trim()?.lowercase()?.removeSurrounding("[", "]") ?: return true
     if (h.isEmpty() || h == "localhost") return true
     // IPv6 loopback / unique-local (fc00::/7) / link-local (fe80::/10)

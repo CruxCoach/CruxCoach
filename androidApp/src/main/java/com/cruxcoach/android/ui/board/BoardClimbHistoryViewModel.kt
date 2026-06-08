@@ -165,10 +165,16 @@ class BoardClimbHistoryViewModel @Inject constructor(
      *  (Clock.System.now().toLocalDateTime(currentSystemDefault()).toString()).
      *  Same time-of-day, only the date shifted back, so pruneClimbHistory's
      *  lexicographic cutoff comparison stays valid. */
-    private fun cutoffIso(days: Int): String {
-        val tz = TimeZone.currentSystemDefault()
-        val now = Clock.System.now().toLocalDateTime(tz)
-        val cutoffDate = now.date.minus(days, DateTimeUnit.DAY)
-        return LocalDateTime(cutoffDate, now.time).toString()
-    }
+    private fun cutoffIso(days: Int): String =
+        computeHistoryCutoffIso(
+            Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()),
+            days,
+        )
 }
+
+/** Date [days] before [now], same time-of-day, as a LocalDateTime ISO string —
+ *  the lexicographic cutoff pruneClimbHistory compares against. Extracted with
+ *  `now` injected so the calendar arithmetic (leap days, month lengths) is
+ *  unit-testable without the system clock. */
+internal fun computeHistoryCutoffIso(now: LocalDateTime, days: Int): String =
+    LocalDateTime(now.date.minus(days, DateTimeUnit.DAY), now.time).toString()
