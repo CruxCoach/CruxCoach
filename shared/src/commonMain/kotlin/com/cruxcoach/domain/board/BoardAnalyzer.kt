@@ -132,7 +132,7 @@ object BoardAnalyzer {
         val handCount = roleCounts[HoldRole.HAND] ?: 0
 
         if (handCount > 0 && footCount.toFloat() / handCount < 0.3f) {
-            weaknesses.add("Wenig Fußarbeit: Meiste gesendete Climbs haben wenige Fußtritte")
+            weaknesses.add("Wenig Fußarbeit: Meiste geschaffte Climbs haben wenige Fußtritte")
         }
 
         // Check bid count distribution for flash rate

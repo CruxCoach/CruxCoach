@@ -552,7 +552,7 @@
     <!-- Climb Log -->
     <string name="climb_log_title">Loggen</string>
     <string name="climb_log_grade">Grad</string>
-    <string name="climb_log_sent">Gesendet</string>
+    <string name="climb_log_sent">Geschafft</string>
     <string name="climb_log_flash">Flash</string>
     <string name="climb_log_attempts">Versuche</string>
     <string name="climb_log_style">Stil (optional)</string>
@@ -656,7 +656,7 @@
     <string name="board_filter_status">Status</string>
     <string name="board_filter_status_new">Neu</string>
     <string name="board_filter_status_attempted">Versucht</string>
-    <string name="board_filter_status_sent">Gesendet</string>
+    <string name="board_filter_status_sent">Geschafft</string>
     <string name="board_filter_status_unsent">Offen</string>
     <string name="board_filter_origin">Quelle</string>
     <string name="board_filter_origin_cruxcoach">CruxCoach-Setter</string>

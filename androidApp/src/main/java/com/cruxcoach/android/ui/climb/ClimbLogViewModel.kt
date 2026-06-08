@@ -186,7 +186,7 @@ class ClimbLogViewModel @Inject constructor(
                     boardType = null,
                     notes = "",
                     isSaving = false,
-                    savedMessage = "$displayGrade ${if (state.sent) "gesendet" else "versucht"}!",
+                    savedMessage = "$displayGrade ${if (state.sent) "geschafft" else "versucht"}!",
                     error = null
                 ) }
                 loadTodayClimbs()

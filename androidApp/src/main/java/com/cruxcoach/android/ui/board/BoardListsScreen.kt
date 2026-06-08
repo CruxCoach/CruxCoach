@@ -323,7 +323,7 @@ private fun HistoryCard(onClick: () -> Unit) {
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    "Zuletzt gesendete Boulder",
+                    "Zuletzt geschaffte Boulder",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
