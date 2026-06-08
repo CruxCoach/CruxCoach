@@ -81,14 +81,16 @@ enum class BoardBrand(val wireValue: String) {
      *  hold-ids aren't placement-ids, so it has no heatmap layer. */
     val hasHeatmap: Boolean get() = usesAuroraProtocol
 
-    /** Climbs can be authored in the in-app editor. Kilter (Aurora placements,
-     *  with optional publish to the user's Kilter account) and MoonBoard (the
-     *  tap-to-paint photo renderer). The Aurora-family boards are browse /
-     *  render / BLE-send only for now: authoring them would need the active
-     *  board's brand threaded into the insert path, because [fromLayoutId]
-     *  cannot disambiguate their layout-ids from Kilter's — a FEAT-031
-     *  follow-up, deliberately out of the catalogue+render+send first cut. */
-    val supportsAuthoring: Boolean get() = this == KILTER || this == MOONBOARD
+    /** Climbs can be authored in the in-app editor — every interactive board.
+     *  Kilter additionally pushes to the user's own Kilter account (see
+     *  [supportsOfficialAppPublish]); every other interactive board (MoonBoard +
+     *  the Aurora family: Tension/Grasshopper/Decoy/So iLL/Touchstone) publishes
+     *  to the CruxCoach Nostr community only. The draft-insert and publish paths
+     *  thread the active board's brand explicitly — not [fromLayoutId], which
+     *  can't disambiguate the Aurora-family layout-ids from Kilter's — so each
+     *  authored climb is tagged with, and stays on, its own board. Info-layer
+     *  brands (aurora, 12climb) aren't interactive: no catalogue, no editor. */
+    val supportsAuthoring: Boolean get() = isInteractive
 
     /** Authored climbs can be mirrored to the board vendor's own app
      *  (Kilter → the user's Kilter account). MoonBoard is CruxCoach-community
@@ -143,8 +145,10 @@ enum class BoardBrand(val wireValue: String) {
          * boards (Tension, Grasshopper, Decoy, So iLL, Touchstone) reuse low
          * layout-ids that OVERLAP Kilter's, so a layout_id alone can't tell
          * them apart — they would resolve to [KILTER] here. Any Aurora-family
-         * write path must thread the active board's brand explicitly instead
-         * of calling this (which is why [supportsAuthoring] excludes them).
+         * write path must therefore thread the active board's brand explicitly
+         * instead of calling this — which the draft-insert (insertLocalDraft)
+         * and publish (buildCommunityClimbEvent) paths do, so authoring works
+         * correctly for every interactive board.
          */
         fun fromLayoutId(layoutId: Long): BoardBrand =
             if (MoonBoardVariant.fromLayoutId(layoutId) != null) MOONBOARD else KILTER

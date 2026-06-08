@@ -12,7 +12,7 @@ import com.cruxcoach.android.data.DarkModeSetting
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.data.BoardSyncManager
 import com.cruxcoach.android.data.LedHoldColors
-import com.cruxcoach.android.data.AuroraCatalogueSync
+import com.cruxcoach.android.data.AuroraBoardSelector
 import com.cruxcoach.android.data.SyncInterval
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.domain.board.BoardBrand
@@ -132,7 +132,7 @@ class SettingsViewModel @Inject constructor(
     private val userPreferences: UserPreferences,
     private val bleConnection: BoardBleConnection,
     private val climbAdvertiser: ClimbBleAdvertiser,
-    private val auroraCatalogueSync: AuroraCatalogueSync,
+    private val auroraBoardSelector: AuroraBoardSelector,
     private val announcementRepository: AnnouncementRepository,
     private val queueManager: OfflineQueueManager,
     private val kilterTokenStore: com.cruxcoach.android.data.kilter.KilterTokenStore,
@@ -426,40 +426,25 @@ class SettingsViewModel @Inject constructor(
      * result reuses the shared board-sync snackbar slot.
      */
     fun selectAuroraBoard(board: BoardBrand) {
+        // Optimistic brand flip for a snappy header; the authoritative re-read
+        // below reconciles _state with whatever the selector actually
+        // persisted — covering the no-strand path where a failed first-time
+        // sync leaves the *previous* board active.
         _state.update {
             it.copy(boardBrand = board.wireValue, moonBoardVariant = null)
         }
         viewModelScope.launch {
+            // Single source of truth for "select an Aurora board": sync the
+            // catalogue + derive/persist the default (layout, size). Shared with
+            // every other picker so they behave identically (FEAT-031).
             val message = try {
-                userPreferences.setBoardBrand(board.wireValue)
-                when (val result = withContext(Dispatchers.IO) { auroraCatalogueSync.sync(board) }) {
-                    is AuroraCatalogueSync.Result.Failed ->
+                when (auroraBoardSelector.select(board).status) {
+                    AuroraBoardSelector.Status.FAILED ->
                         context.getString(R.string.aurora_sync_failed_generic)
-                    is AuroraCatalogueSync.Result.AlreadyCurrent,
-                    is AuroraCatalogueSync.Result.Imported -> {
-                        val layout = withContext(Dispatchers.IO) {
-                            boardRepository.getDefaultLayoutForBrand(board.wireValue)
-                        }
-                        val size = withContext(Dispatchers.IO) {
-                            boardRepository.getDefaultProductSizeForBrand(board.wireValue)
-                        }
-                        if (layout != null && size != null) {
-                            userPreferences.setBoardLayoutId(layout)
-                            userPreferences.setBoardProductSizeId(size.first)
-                            _state.update {
-                                it.copy(
-                                    boardLayoutId = layout,
-                                    boardProductSizeId = size.first,
-                                    boardProductSizeName = size.second,
-                                )
-                            }
-                        }
-                        if (result is AuroraCatalogueSync.Result.AlreadyCurrent) {
-                            context.getString(R.string.aurora_sync_already_current)
-                        } else {
-                            context.getString(R.string.aurora_sync_imported)
-                        }
-                    }
+                    AuroraBoardSelector.Status.ALREADY_CURRENT ->
+                        context.getString(R.string.aurora_sync_already_current)
+                    AuroraBoardSelector.Status.IMPORTED ->
+                        context.getString(R.string.aurora_sync_imported)
                 }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
@@ -467,7 +452,27 @@ class SettingsViewModel @Inject constructor(
                 android.util.Log.w("SettingsVM", "Aurora board selection failed", e)
                 context.getString(R.string.aurora_sync_failed_generic)
             }
-            _state.update { it.copy(moonBoardSyncMessage = message) }
+            // Reconcile the header with the prefs the selector left behind
+            // (success switched the board; a first-time failure kept the old
+            // one). Re-reading instead of trusting the optimistic state keeps
+            // _state and prefs in lock-step — mirrors the init load.
+            val finalState = withContext(Dispatchers.IO) {
+                val brand = userPreferences.boardBrand.first()
+                val layoutId = userPreferences.boardLayoutId.first()
+                val sizeId = userPreferences.boardProductSizeId.first()
+                val sizeName = boardRepository.getProductSize(sizeId, brand)
+                    ?.let { BoardConstants.sizeLabel(it.id, it.name, it.boardBrand) } ?: ""
+                Triple(brand, layoutId to sizeId, sizeName)
+            }
+            _state.update {
+                it.copy(
+                    boardBrand = finalState.first,
+                    boardLayoutId = finalState.second.first,
+                    boardProductSizeId = finalState.second.second,
+                    boardProductSizeName = finalState.third,
+                    moonBoardSyncMessage = message,
+                )
+            }
         }
     }
 

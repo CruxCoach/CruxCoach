@@ -72,6 +72,18 @@ class BoardPacketEncoderTest {
     }
 
     @Test
+    fun roleToColor_auroraCodes_mapToPaletteNotWhite() {
+        // Aurora-family frames carry codes 1-4; the placement_roles-absent
+        // fallback must light a real colour, never 0xFF white.
+        assertEquals(0x1C, BoardPacketEncoder.roleToColor(1)) // start  → Green
+        assertEquals(0x1F, BoardPacketEncoder.roleToColor(2)) // middle → Cyan (hand)
+        assertEquals(0xE3, BoardPacketEncoder.roleToColor(3)) // finish → Magenta
+        assertEquals(0xF4, BoardPacketEncoder.roleToColor(4)) // foot   → Orange
+        // Genuinely unknown codes still fall back to white.
+        assertEquals(0xFF, BoardPacketEncoder.roleToColor(99))
+    }
+
+    @Test
     fun encodeColorRgb() {
         // Green: (0,255,0) → r3=0, g3=7, b2=0 → 0b00011100 = 0x1C
         assertEquals(0x1C, BoardPacketEncoder.encodeColor(0, 255, 0))

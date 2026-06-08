@@ -8,6 +8,7 @@ import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.domain.board.BoardClimbParser
 import com.cruxcoach.domain.community.ClimbBounds
+import com.cruxcoach.domain.community.CommunityClimbTags
 import com.vitorpamplona.quartz.nip01Core.core.Event
 import com.vitorpamplona.quartz.nip01Core.crypto.verifyId
 import com.vitorpamplona.quartz.nip01Core.crypto.verifySignature
@@ -1100,11 +1101,13 @@ class CommunityClimbSubscriber @Inject constructor(
 
     private companion object {
         const val TAG = "CommunityClimbSub"
-        const val NAMESPACE_LABEL = "com.cruxcoach.climb"
-        // v2 back-compat namespace (FEAT-031): the non-Kilter boards publish
-        // under this `L` label so pre-0.2.0 apps' single-namespace #L filter
-        // never matches them. Mirrors CommunityClimbTags.NS_CLIMB_V2.
-        const val NAMESPACE_LABEL_V2 = "com.cruxcoach.climb.v2"
+        // Derived from the canonical publish-side constants (a const val may
+        // reference another const val) so subscribe and publish can't drift:
+        // a rename of CommunityClimbTags.NS_CLIMB* updates both sides at once.
+        // NS_CLIMB = Kilter/legacy; NS_CLIMB_V2 = the non-Kilter back-compat
+        // namespace (FEAT-031) that pre-0.2.0 apps' single-#L filter never matches.
+        const val NAMESPACE_LABEL = CommunityClimbTags.NS_CLIMB
+        const val NAMESPACE_LABEL_V2 = CommunityClimbTags.NS_CLIMB_V2
         const val STARTUP_GRACE_MS = 2_000L
         const val BACKOFF_MS = 5_000L
         // Exponential backoff ladder for the runSubscriptionLoop's

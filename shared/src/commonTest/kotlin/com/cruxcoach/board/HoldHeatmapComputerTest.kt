@@ -322,6 +322,31 @@ class HoldHeatmapComputerTest {
         normalized.values.forEach { v -> assertTrue(v in 0f..1f) }
     }
 
+    // ═══ Aurora-family role codes (1-4) — regression for the empty heatmap ═══
+
+    @Test
+    fun computeHeatmapByRole_auroraCodes_matchByRoleClass() {
+        // Tension/Grasshopper/Decoy/So iLL/Touchstone frames carry codes 1-4,
+        // not Kilter's 12-15. Querying by HoldRole.START must still find them.
+        val aurora = frames(
+            100 to 1, 101 to 1,   // start
+            200 to 2, 201 to 2,   // middle/hand
+            300 to 4,             // foot
+            400 to 3,             // finish
+        )
+        assertEquals(mapOf(100 to 1, 101 to 1), HoldHeatmapComputer.computeHeatmapByRole(listOf(aurora), HoldRole.START))
+        assertEquals(mapOf(200 to 1, 201 to 1), HoldHeatmapComputer.computeHeatmapByRole(listOf(aurora), HoldRole.HAND))
+        assertEquals(mapOf(300 to 1), HoldHeatmapComputer.computeHeatmapByRole(listOf(aurora), HoldRole.FOOT))
+        assertEquals(mapOf(400 to 1), HoldHeatmapComputer.computeHeatmapByRole(listOf(aurora), HoldRole.FINISH))
+    }
+
+    @Test
+    fun computeHeatmapByRole_auroraMirrorSet_matchByRoleClass() {
+        val mirrored = frames(500 to 5, 600 to 8) // mirrored start + foot
+        assertEquals(mapOf(500 to 1), HoldHeatmapComputer.computeHeatmapByRole(listOf(mirrored), HoldRole.START))
+        assertEquals(mapOf(600 to 1), HoldHeatmapComputer.computeHeatmapByRole(listOf(mirrored), HoldRole.FOOT))
+    }
+
     // ═══ Helper ═══
 
     private fun assertApprox(expected: Float, actual: Float, tolerance: Float = 0.01f) {

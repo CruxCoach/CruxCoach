@@ -23,13 +23,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Browse the MoonBoard problem catalogue with the same browser surface as
   Kilter (grade / angle / setter / ascensionist filters all apply), open a
   problem detail screen, and send it to your physical MoonBoard over
-  Bluetooth (Nordic UART). Four variants ship: **MoonBoard 2016 (40°)**,
-  **Masters 2017** and **Masters 2019** (25° + 40°), and **Mini 2020**.
+  Bluetooth (Nordic UART). Five variants ship: **MoonBoard 2016 (40°)**,
+  **Masters 2017** and **Masters 2019** (25° + 40°), **Mini 2020**, and
+  **MoonBoard 2024 (40°)**. The 2024 set landed after our problem-catalogue
+  dump, so for now it carries only the BoardSesh-community problems; the
+  other four ship the full MoonBoard catalogue.
   Pick a MoonBoard in onboarding or Settings; the always-on
   *"passt auf mein Board"* fit filter is brand-aware.
 - **Real board imagery for MoonBoard** (FEAT-029) — each variant renders
   on CruxCoach's own measured board photo with a per-hold coordinate map
-  instead of a generic grid; a procedural 11×18 grid remains the fallback.
+  instead of a generic grid; a procedural grid (11 columns × the variant's
+  row count — 18, or 12 for Mini 2020) remains the fallback.
 - **Unified board picker** — every picker site (onboarding + Settings +
   the map's "browse this board") now offers the same three categories:
   Kilter Original / Kilter Homewall / MoonBoard.
@@ -44,11 +48,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   one pin whose detail sheet lists each board; dense regions cluster into
   count bubbles that expand on tap. Keeps the map legible now that two
   catalogues' worth of installations are plotted.
-- **Foreign-brand map layer + egym Wellpass** — Tension, Grasshopper,
-  Decoy, So-iLL, Touchstone, Aurora and 12climb installations appear as a
-  toggleable "Other boards" info layer (map-only, no catalogue/send). A
-  new **egym Wellpass** filter + venue badge flags gyms that accept it.
-  Curated overrides correct a handful of mis-classified venues.
+- **Tension, Grasshopper, Decoy, So iLL and Touchstone** (FEAT-031) — five
+  more Aurora-protocol boards join Kilter and MoonBoard as fully interactive:
+  browse each board's catalogue with the same filters, open a problem, render
+  it on the board, read the hold heatmap, light it up over Bluetooth, and set
+  your own climbs (published to the CruxCoach community). Pick one in Settings →
+  board model. Their catalogues sync from Blossom like Kilter's; Tension also
+  pulls a daily delta. Authored climbs stay on their own board — a Tension climb
+  never shows up on Kilter, and Kilter keeps receiving Kilter climbs published
+  by any version.
+- **Foreign-brand map layer + egym Wellpass** — Aurora and 12climb
+  installations appear as a toggleable "Other boards" info layer on the map
+  (locations only — no catalogue or Bluetooth send for these two). A new
+  **egym Wellpass** filter + venue badge flags gyms that accept it. Curated
+  overrides correct a handful of mis-classified venues.
 - **Board Locations Map** (FEAT-015) — interactive world map of all
   known Kilter Board installations, rendered locally with MapLibre +
   OpenFreeMap (no Google Maps, no API key, no proprietary tiles).

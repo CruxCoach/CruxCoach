@@ -72,12 +72,23 @@ class BoardBrandTest {
         assertEquals(false, BoardBrand.MOONBOARD.usesAuroraPlacements)
         assertEquals(false, BoardBrand.AURORA.usesAuroraProtocol)
 
-        // Authoring stays scoped to Kilter + MoonBoard for the first cut
-        // (Aurora-family authoring is a follow-up — see BoardBrand docs).
+        // Authoring is enabled for every INTERACTIVE board (Kilter, MoonBoard +
+        // the Aurora family); the info-layer brands (aurora, 12climb) can't
+        // author — no catalogue, no editor. supportsAuthoring == isInteractive.
         assertEquals(true, BoardBrand.KILTER.supportsAuthoring)
         assertEquals(true, BoardBrand.MOONBOARD.supportsAuthoring)
-        assertEquals(false, BoardBrand.TENSION.supportsAuthoring)
-        // Official-app publish remains Kilter-only.
+        assertEquals(true, BoardBrand.TENSION.supportsAuthoring)
+        assertEquals(true, BoardBrand.GRASSHOPPER.supportsAuthoring)
+        assertEquals(true, BoardBrand.DECOY.supportsAuthoring)
+        assertEquals(true, BoardBrand.SOILL.supportsAuthoring)
+        assertEquals(true, BoardBrand.TOUCHSTONE.supportsAuthoring)
+        assertEquals(false, BoardBrand.AURORA.supportsAuthoring)
+        assertEquals(false, BoardBrand.TWELVECLIMB.supportsAuthoring)
+        BoardBrand.entries.forEach {
+            assertEquals(it.isInteractive, it.supportsAuthoring)
+        }
+        // Official-app publish (push to the vendor's own app) remains
+        // Kilter-only — Aurora/MoonBoard authoring is CruxCoach-community only.
         assertEquals(true, BoardBrand.KILTER.supportsOfficialAppPublish)
         assertEquals(false, BoardBrand.TENSION.supportsOfficialAppPublish)
         assertEquals(false, BoardBrand.MOONBOARD.supportsOfficialAppPublish)

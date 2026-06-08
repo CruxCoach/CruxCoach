@@ -235,7 +235,7 @@ class FakeBoardRepository : BoardRepository {
 
     // -- CommunityClimbQueries (FEAT-003) --
 
-    override fun insertLocalDraft(draft: LocalClimbDraft, layoutId: Long, angle: Long, setterGradeId: Int?, bounds: com.cruxcoach.domain.community.ClimbBounds?) {}
+    override fun insertLocalDraft(draft: LocalClimbDraft, layoutId: Long, angle: Long, setterGradeId: Int?, bounds: com.cruxcoach.domain.community.ClimbBounds?, boardBrand: String?) {}
     override fun deleteLocalClimb(uuid: String) {}
     override fun markCommunityClimbDeleted(uuid: String, pubkey: String, tombstoneIso: String) {}
     override fun isClimbTombstoned(uuid: String): Boolean = false

@@ -1827,6 +1827,7 @@
     <string name="aurora_sync_failed_generic">Board catalogue download failed. Please try again later.</string>
     <string name="board_selection_aurora_download_hint">We\'ll download the %1$s catalogue and set it up as your board. You can fine-tune the size later in Settings.</string>
     <string name="board_selection_variant_label">Which board?</string>
+    <string name="board_selection_aurora_size_label">Which size?</string>
     <string name="board_send_error_brand_mismatch">This climb belongs to a different board type than your active board.</string>
     <string name="board_send_error_no_led_data">No LED data. Please re-sync the board data.</string>
     <string name="board_send_error_send_failed">Send failed.</string>

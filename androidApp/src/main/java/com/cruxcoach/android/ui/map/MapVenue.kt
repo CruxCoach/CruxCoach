@@ -60,6 +60,12 @@ enum class VenueBrandKey(val wire: String) {
  * ~11 m rounding (4 decimal places). Mirrors the cruxcoach.org map's
  * `venueKey` so the in-app map groups boards into venues the same way the
  * website does — two boards within ~11 m collapse to one pin.
+ *
+ * Intentionally tighter than the board picker's gym key
+ * ([com.cruxcoach.android.ui.settings.GymBoardPickerViewModel]'s `gymKey`,
+ * name + ~1 km): the map clusters by precise geography (co-located boards =
+ * one pin), the picker groups by gym identity (same named gym across brands =
+ * one list entry). Different jobs, deliberately different granularity.
  */
 internal fun venueKey(lat: Double, lng: Double): String {
     fun q(v: Double) = (v * 1e4).roundToInt()

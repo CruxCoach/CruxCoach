@@ -92,6 +92,10 @@ class ClimbCreatorRepository @Inject constructor(
             // in one place rather than per-call-site.
             setterGradeId = state.setterGradeId ?: KilterGradeMapper.DEFAULT_SETTER_GRADE_ID,
             bounds = bounds,
+            // Persist the active board's real brand so the draft stays visible
+            // in this board's drafts drawer — layout-id alone can't tell the
+            // Aurora-family boards apart from Kilter.
+            boardBrand = state.boardBrand,
         )
         return uuid
     }
@@ -132,6 +136,7 @@ class ClimbCreatorRepository @Inject constructor(
             // See saveDraft for why the default lives here, not in the UI.
             setterGradeId = state.setterGradeId ?: KilterGradeMapper.DEFAULT_SETTER_GRADE_ID,
             bounds = bounds,
+            boardBrand = state.boardBrand,
         )
     }
 

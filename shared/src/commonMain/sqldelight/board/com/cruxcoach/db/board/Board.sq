@@ -1625,7 +1625,13 @@ SELECT uuid, layout_id, setter_username, name, frames,
        edge_left, edge_right, edge_bottom, edge_top, created_at, description,
        move_count, source, sync_status, created_by_pubkey, frames_hash,
        nostr_event_id, nostr_d_tag, nostr_publish_via,
-       kilter_status, kilter_synced_at, kilter_publish_via, kilter_error
+       kilter_status, kilter_synced_at, kilter_publish_via, kilter_error,
+       -- FEAT-031: the board family this own-climb was authored on. Without
+       -- it a MoonBoard/Aurora draft restores to the column DEFAULT 'kilter'
+       -- (its layout_id stays MoonBoard's) → a brand/layout mismatch that
+       -- misroutes render/BLE/editor caps. Round-tripped so the restored
+       -- draft keeps its brand.
+       board_brand
 FROM climbs
 WHERE origin = 'cruxcoach'
   AND is_deleted = 0
@@ -1699,7 +1705,8 @@ INSERT OR IGNORE INTO climbs(
     source, origin, sync_status,
     created_by_pubkey, frames_hash,
     nostr_event_id, nostr_d_tag, nostr_publish_via,
-    kilter_status, kilter_synced_at, kilter_publish_via, kilter_error)
+    kilter_status, kilter_synced_at, kilter_publish_via, kilter_error,
+    board_brand)
 VALUES (
     :uuid, :layout_id, :setter_username, :name, :frames,
     1, 1, :edge_left, :edge_right, :edge_bottom, :edge_top, :created_at,
@@ -1707,7 +1714,11 @@ VALUES (
     :source, 'cruxcoach', :sync_status,
     :created_by_pubkey, :frames_hash,
     :nostr_event_id, :nostr_d_tag, :nostr_publish_via,
-    :kilter_status, :kilter_synced_at, :kilter_publish_via, :kilter_error
+    :kilter_status, :kilter_synced_at, :kilter_publish_via, :kilter_error,
+    -- Restored verbatim from the backup; an old (pre-FEAT-031) envelope
+    -- with no board_brand maps to 'kilter' on the Kotlin side, matching
+    -- the column DEFAULT — so legacy backups are unaffected.
+    :board_brand
 );
 
 -- Fill in the previously-NULL Nostr/Kilter publish metadata that the v3

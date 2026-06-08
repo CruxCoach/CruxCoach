@@ -64,7 +64,7 @@ import com.cruxcoach.domain.board.MoonBoardVariant
 fun BoardLocationDetailSheet(
     venue: MapVenue,
     onDismiss: () -> Unit,
-    onBrowseClimbs: (layoutId: Int, productSizeId: Int?) -> Unit,
+    onBrowseClimbs: (brand: BoardBrand, layoutId: Int, productSizeId: Int?) -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val context = LocalContext.current
@@ -198,7 +198,7 @@ fun BoardLocationDetailSheet(
 @Composable
 private fun BoardCard(
     board: BoardLocation,
-    onBrowseClimbs: (layoutId: Int, productSizeId: Int?) -> Unit,
+    onBrowseClimbs: (brand: BoardBrand, layoutId: Int, productSizeId: Int?) -> Unit,
 ) {
     Surface(
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
@@ -229,7 +229,7 @@ private fun BoardCard(
             if (layoutId != null && board.boardBrand.isInteractive) {
                 Spacer(Modifier.height(4.dp))
                 Button(
-                    onClick = { onBrowseClimbs(layoutId, board.productSizeId) },
+                    onClick = { onBrowseClimbs(board.boardBrand, layoutId, board.productSizeId) },
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text(stringResource(R.string.map_marker_browse_climbs))

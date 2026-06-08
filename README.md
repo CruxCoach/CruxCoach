@@ -52,7 +52,8 @@ Browse climbs, control your Kilter Board or MoonBoard via Bluetooth, log ascents
 ## All Features
 
 - **85,000+ climbs** with filters for grade, angle, quality, moves, and setter
-- **MoonBoard support** *(0.2.0+)* — browse the MoonBoard problem catalogue (MoonBoard 2016, Masters 2017, Masters 2019, Mini 2020) with the same filters as Kilter, and send problems to your board over Bluetooth; pick your MoonBoard in onboarding or Settings alongside the Kilter variants
+- **MoonBoard support** *(0.2.0+)* — browse the MoonBoard problem catalogue (MoonBoard 2016, Masters 2017, Masters 2019, Mini 2020, and MoonBoard 2024) with the same filters as Kilter, and send problems to your board over Bluetooth; pick your MoonBoard in onboarding or Settings alongside the Kilter variants
+- **More boards** *(0.2.0+)* — Tension, Grasshopper, Decoy, So iLL and Touchstone work like Kilter: browse the catalogue, render climbs, read the hold heatmap, send to the board over Bluetooth, and set your own climbs. Pick one in Settings
 - **Board-Locations Map** *(0.2.0+)* — interactive world map of every known Kilter **and MoonBoard** installation, with filters for board brand, layout, country, public-vs-private, adjustability and size; tap a marker for contact details and a direct link into the climbs that fit that exact board
 - **Find-your-gym board picker** *(0.2.0+)* — set the right board configuration in Settings by searching for your gym, no product-size codes to memorise; always-on board-fit filter then narrows the catalog to climbs your board can actually do
 - **BLE board control** — light up holds on your Kilter Board or MoonBoard
@@ -137,7 +138,8 @@ Domain logic lives in a shared Kotlin Multiplatform module (~60–70% of code). 
 Currently supported:
 
 - **Kilter Board** — all sizes and angles (catalogue, BLE send, logbook, climb authoring).
-- **MoonBoard** — 2016, Masters 2017, Masters 2019, and Mini 2020 (catalogue, BLE send, CruxCoach-community climb authoring).
+- **MoonBoard** — 2016, Masters 2017, Masters 2019, Mini 2020, and 2024 (catalogue, BLE send, CruxCoach-community climb authoring). The 2024 set carries BoardSesh-community problems only for now — no official catalogue yet.
+- **Tension, Grasshopper, Decoy, So iLL, Touchstone** — catalogue browse, render, hold heatmap, BLE send, and CruxCoach-community climb authoring (these share the Aurora protocol with Kilter).
 
 > Primarily tested on the Kilter 12x12 Original layout and MoonBoard 2016. Other sizes/variants should work but are less tested — feedback welcome!
 

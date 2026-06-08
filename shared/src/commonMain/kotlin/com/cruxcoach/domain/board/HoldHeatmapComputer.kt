@@ -18,13 +18,20 @@ object HoldHeatmapComputer {
         return heatmap
     }
 
-    /** Hold usage count filtered by role (e.g., only start holds, only feet). */
+    /**
+     * Hold usage count filtered by role (e.g., only start holds, only feet).
+     * Matches by canonical role *class* ([HoldRole.roleClass]) so a query for
+     * [HoldRole.START] also counts Aurora-family start holds (code 1) — the
+     * per-role heatmap was previously empty on Tension/Grasshopper/Decoy/So
+     * iLL/Touchstone, whose frames carry codes 1-4 rather than Kilter's 12-15.
+     */
     fun computeHeatmapByRole(framesList: List<String>, role: Int): Map<Int, Int> {
         val heatmap = mutableMapOf<Int, Int>()
+        val targetClass = HoldRole.roleClass(role)
         for (frames in framesList) {
             val holds = BoardClimbParser.parseFrames(frames)
             for (hold in holds) {
-                if (hold.roleId == role) {
+                if (HoldRole.roleClass(hold.roleId) == targetClass) {
                     heatmap[hold.placementId] = (heatmap[hold.placementId] ?: 0) + 1
                 }
             }

@@ -28,12 +28,17 @@ object BoardConstants {
         val productId: Int,
         val displayName: String,
         val defaultSizeId: Int,
+        /** Aurora `layouts.is_mirrored`: the layout is left-right symmetric, so
+         *  every climb can also be climbed mirrored (TB1 + TB2 Mirror = true,
+         *  TB2 Spray = false). Surfaced via [isLayoutMirrorable]. */
+        val isMirrored: Boolean,
     )
 
     /**
      * Static catalog of Aurora-family board variants. Only boards with more
-     * than one layout need an entry — currently just Tension (the others ship
-     * a single layout). This is deliberately NOT data-driven: it must cover
+     * than one layout need an entry — currently Tension (TB1 / TB2 Mirror /
+     * TB2 Spray) and Decoy (Dungeon Trainer / Dots); the rest ship a single
+     * layout. This is deliberately NOT data-driven: it must cover
      * every variant regardless of the Blossom/sync state, so a catalogue
      * download problem can never hide a user's board. The chunk still provides
      * the geometry that renders on top; the picker just needs the variant list
@@ -41,19 +46,63 @@ object BoardConstants {
      */
     val AURORA_VARIANTS: Map<BoardBrand, List<AuroraVariant>> = mapOf(
         BoardBrand.TENSION to listOf(
-            AuroraVariant(layoutId = 9,  productId = 4, displayName = "Tension Board",            defaultSizeId = 1),
-            AuroraVariant(layoutId = 10, productId = 5, displayName = "Tension Board 2 (Mirror)", defaultSizeId = 6),
-            AuroraVariant(layoutId = 11, productId = 5, displayName = "Tension Board 2 (Spray)",  defaultSizeId = 6),
+            AuroraVariant(layoutId = 9,  productId = 4, displayName = "Tension Board",            defaultSizeId = 1, isMirrored = true),
+            AuroraVariant(layoutId = 10, productId = 5, displayName = "Tension Board 2 (Mirror)", defaultSizeId = 6, isMirrored = true),
+            AuroraVariant(layoutId = 11, productId = 5, displayName = "Tension Board 2 (Spray)",  defaultSizeId = 6, isMirrored = false),
+        ),
+        // Decoy ships two listed layouts under product_id=1 (RE-verified from
+        // the bundled board DB): Dungeon Trainer (layout 2, ~7.4k climbs) and
+        // Dots (layout 1, ~60 climbs, an R&D wall). Both are left-right
+        // symmetric (layouts.is_mirrored=1) and share product_size 1 (12x12,
+        // the largest). Dungeon Trainer is listed first so it stays the picker
+        // default (variants.firstOrNull) — matching the previous most-climbed
+        // auto-pick; Dots is the opt-in second choice (it was unreachable
+        // before, as Decoy had no variant entry).
+        BoardBrand.DECOY to listOf(
+            AuroraVariant(layoutId = 2, productId = 1, displayName = "Decoy Dungeon Trainer", defaultSizeId = 1, isMirrored = true),
+            AuroraVariant(layoutId = 1, productId = 1, displayName = "Decoy Dots",            defaultSizeId = 1, isMirrored = true),
         ),
     )
 
     /** Variants for a board, or empty when it has a single layout
-     *  (Grasshopper / Decoy / So iLL / Touchstone) — those skip the variant tier. */
+     *  (Grasshopper / So iLL / Touchstone) — those skip the variant tier. */
     fun auroraVariants(brand: BoardBrand): List<AuroraVariant> = AURORA_VARIANTS[brand] ?: emptyList()
 
     /** The variant whose layout matches [layoutId], or null. */
     fun auroraVariant(brand: BoardBrand, layoutId: Int): AuroraVariant? =
         AURORA_VARIANTS[brand]?.firstOrNull { it.layoutId == layoutId }
+
+    /**
+     * Whether a climb on (brand, layoutId) can be climbed mirrored — i.e. the
+     * layout is left-right symmetric, so reflecting every hold across the
+     * vertical centre yields a valid second problem. Mirrors Aurora's
+     * `layouts.is_mirrored` (RE-verified 2026-06-08).
+     *
+     * The climb-detail mirror toggle is gated on this so it never appears on a
+     * non-mirrorable layout — notably **Tension TB2 Spray** (layout 11), which
+     * shares the physically-symmetric TB2 holds with the Mirror layout but is
+     * an asymmetric spray wall: a flip there would light unpaired holds and
+     * produce a broken, non-canonical problem.
+     *
+     *  - Tension: per-variant — TB1 (9) + TB2 Mirror (10) = true, TB2 Spray (11) = false.
+     *  - Grasshopper / Decoy / So iLL: their layout(s) are symmetric → true.
+     *  - Touchstone: its single layout is asymmetric → false.
+     *  - Kilter / MoonBoard: asymmetric / fixed-config boards, no mirror in the
+     *    vendor app → false.
+     *  - Map-only info-layer brands (Aurora / 12climb): no catalogue → false.
+     *
+     * Exhaustive over [BoardBrand] on purpose: a newly-added board must make a
+     * deliberate mirrorability decision here rather than silently defaulting.
+     */
+    fun isLayoutMirrorable(brand: BoardBrand, layoutId: Int): Boolean = when (brand) {
+        BoardBrand.TENSION -> auroraVariant(brand, layoutId)?.isMirrored ?: false
+        BoardBrand.GRASSHOPPER, BoardBrand.DECOY, BoardBrand.SOILL -> true
+        BoardBrand.TOUCHSTONE,
+        BoardBrand.KILTER,
+        BoardBrand.MOONBOARD,
+        BoardBrand.AURORA,
+        BoardBrand.TWELVECLIMB -> false
+    }
 
     /**
      * Hardware constants for the standard Kilter board sizes — Aurora's

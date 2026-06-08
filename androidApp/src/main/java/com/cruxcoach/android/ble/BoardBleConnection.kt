@@ -9,6 +9,7 @@ import android.os.Looper
 import android.util.Log
 import com.cruxcoach.domain.board.BoardPacketEncoder
 import com.cruxcoach.domain.board.BoardHold
+import com.cruxcoach.domain.board.HoldRole
 import com.cruxcoach.domain.board.MoonBoardFrameEncoder
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -442,9 +443,17 @@ class BoardBleConnection(private val context: Context) {
         disconnectJob?.cancel()
         try {
             val chunks = if (roleColors != null) {
+                // Resolve each hold's colour by canonical role CLASS, not raw
+                // code. A climb authored on an Aurora board carries the editor's
+                // Kilter-style codes (12-15) while the board's colour map is
+                // keyed by its native codes (1-4), so a raw-id lookup would miss
+                // and fall back to the wrong palette. roleClass folds 1-4 /
+                // 12-15 / 42-44 onto the same role, so authored and catalogue
+                // climbs light identically in the board's own colours.
+                val byClass = roleColors.entries.associate { HoldRole.roleClass(it.key) to it.value }
                 val holdPairs = holds.mapNotNull { hold ->
                     val led = placementToLed[hold.placementId] ?: return@mapNotNull null
-                    led to (roleColors[hold.roleId] ?: BoardPacketEncoder.roleToColor(hold.roleId))
+                    led to (byClass[HoldRole.roleClass(hold.roleId)] ?: BoardPacketEncoder.roleToColor(hold.roleId))
                 }
                 encoder.encodeClimb(holdPairs)
             } else {

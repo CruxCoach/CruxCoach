@@ -44,6 +44,12 @@ data class BoardPickerState(
     /** Wire values of Aurora brands whose catalogue is already loaded — hides
      *  the "we'll download …" hint for boards the user already has (FEAT-031). */
     val loadedAuroraBrands: Set<String> = emptySet(),
+    /** Active product_size_id — seeds the Aurora size tier so re-opening the
+     *  picker shows the current size selected (FEAT-031). */
+    val selectedAuroraProductSizeId: Int = 0,
+    /** Synced product sizes for Aurora variants, keyed "brand:productId", so the
+     *  picker can offer a size tier once a board's catalogue is loaded (FEAT-031). */
+    val auroraProductSizes: Map<String, List<BoardSize>> = emptyMap(),
 )
 
 /**
@@ -60,14 +66,18 @@ class BoardPickerViewModel @Inject constructor(
 
     private val productSizes = MutableStateFlow(BoardConstants.KILTER_KNOWN_SIZES)
     private val loadedBrands = MutableStateFlow<Set<String>>(emptySet())
+    private val auroraProductSizes = MutableStateFlow<Map<String, List<BoardSize>>>(emptyMap())
 
     val state: StateFlow<BoardPickerState> = combine(
         userPreferences.boardBrand,
         userPreferences.boardLayoutId,
         userPreferences.boardProductSizeId,
-        productSizes,
-        loadedBrands,
-    ) { brand, layoutId, sizeId, sizes, loaded ->
+        // Nested so the outer combine stays within the typed 4-arg overload.
+        combine(productSizes, loadedBrands, auroraProductSizes) { sizes, loaded, auroraSizes ->
+            Triple(sizes, loaded, auroraSizes)
+        },
+    ) { brand, layoutId, sizeId, sizeData ->
+        val (sizes, loaded, auroraSizes) = sizeData
         BoardPickerState(
             loaded = true,
             initialBrand = brand,
@@ -76,6 +86,8 @@ class BoardPickerViewModel @Inject constructor(
             selectedMoonBoardVariant = MoonBoardVariant.fromLayoutId(layoutId.toLong()),
             selectedAuroraLayoutId = layoutId,
             loadedAuroraBrands = loaded,
+            selectedAuroraProductSizeId = sizeId,
+            auroraProductSizes = auroraSizes,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), BoardPickerState())
 
@@ -92,8 +104,29 @@ class BoardPickerViewModel @Inject constructor(
             }
             if (sizes.isNotEmpty()) productSizes.value = sizes
             // Which boards are actually loaded — hides the download hint for them.
-            loadedBrands.value = withContext(Dispatchers.IO) {
+            val loaded = withContext(Dispatchers.IO) {
                 boardRepository.getClimbCountsByBrand().filterValues { it > 0L }.keys
+            }
+            loadedBrands.value = loaded
+            // Product sizes for the Aurora variants of loaded boards, so the
+            // picker can offer a size tier (e.g. Tension TB2 12x12 / 10x12 /
+            // 12x8 / 10x8) instead of pinning the variant default (FEAT-031).
+            // Keyed "brand:productId" to avoid productId collisions across
+            // brands (Decoy product 1 vs Tension products 4/5).
+            auroraProductSizes.value = withContext(Dispatchers.IO) {
+                buildMap {
+                    BoardConstants.AURORA_VARIANTS.forEach { (brand, variants) ->
+                        if (brand.wireValue !in loaded) return@forEach
+                        variants.map { it.productId }.distinct().forEach { productId ->
+                            val productSizes = boardRepository.getAllProductSizes(
+                                productId.toLong(), brand.wireValue,
+                            )
+                            if (productSizes.isNotEmpty()) {
+                                put("${brand.wireValue}:$productId", productSizes)
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -104,9 +137,10 @@ class BoardPickerViewModel @Inject constructor(
             val layout = BoardConstants.layoutIdForProduct(
                 size?.productId?.toInt() ?: BoardConstants.KILTER_PRODUCT_ID,
             )
-            userPreferences.setBoardBrand(BoardBrand.KILTER.wireValue)
-            userPreferences.setBoardLayoutId(layout)
-            userPreferences.setBoardProductSizeId(sizeId)
+            // Atomic brand+layout+size write — see UserPreferences.setBoardSelection:
+            // separate writes can flash a transient (kilter, stale-layout) tuple
+            // through the board-flow collectors.
+            userPreferences.setBoardSelection(BoardBrand.KILTER.wireValue, layout, sizeId)
         }
     }
 
@@ -114,8 +148,8 @@ class BoardPickerViewModel @Inject constructor(
         viewModelScope.launch { userPreferences.setMoonBoardSelection(variant.layoutId.toInt()) }
     }
 
-    fun selectAurora(board: BoardBrand, variant: BoardConstants.AuroraVariant?) {
-        viewModelScope.launch { auroraBoardSelector.select(board, variant) }
+    fun selectAurora(board: BoardBrand, variant: BoardConstants.AuroraVariant?, productSizeId: Int? = null) {
+        viewModelScope.launch { auroraBoardSelector.select(board, variant, productSizeId) }
     }
 }
 
@@ -144,12 +178,14 @@ internal fun BoardPickerDialog(
         selectedKilterSizeId = state.selectedKilterSizeId,
         selectedMoonBoardVariant = state.selectedMoonBoardVariant,
         selectedAuroraLayoutId = state.selectedAuroraLayoutId,
+        selectedAuroraProductSizeId = state.selectedAuroraProductSizeId,
         loadedAuroraBrands = state.loadedAuroraBrands,
+        auroraProductSizes = state.auroraProductSizes,
         frequency = BoardConstants.DEFAULT_SIZE_FREQUENCY,
         showAuroraBoards = true,
         onConfirmKilter = { viewModel.selectKilter(it); onSelected() },
         onConfirmMoonBoard = { viewModel.selectMoonBoard(it); onSelected() },
-        onConfirmAurora = { brand, variant -> viewModel.selectAurora(brand, variant); onSelected() },
+        onConfirmAurora = { brand, variant, sizeId -> viewModel.selectAurora(brand, variant, sizeId); onSelected() },
         onFindViaGym = onFindViaGym,
         onDismiss = onDismiss,
     )

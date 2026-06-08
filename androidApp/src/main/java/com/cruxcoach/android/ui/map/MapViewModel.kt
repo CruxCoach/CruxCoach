@@ -59,6 +59,9 @@ data class MapState(
     val canFilterByMyBoard: Boolean = false,
     val userBoardLayoutId: Int? = null,
     val userBoardSizeId: Int? = null,
+    /** Active board brand — scopes "matches my board" so a Kilter layout id
+     *  doesn't also match an Aurora venue sharing that id (FEAT-031). */
+    val userBoardBrand: BoardBrand? = null,
     val selectedVenueId: String? = null,
     val noLocationData: Boolean = false,
     /** True while the one-time locations backfill is fetching/importing. */
@@ -129,6 +132,7 @@ class MapViewModel @Inject constructor(
                         userPreferences.isBoardProductSizeDefault,
                         userPreferences.mapFilterBrands,
                         userPreferences.mapFilterWellpassOnly,
+                        userPreferences.boardBrand,
                     )
                 ) { values ->
                     @Suppress("UNCHECKED_CAST")
@@ -145,6 +149,7 @@ class MapViewModel @Inject constructor(
                         canFilterByMyBoard = !(values[9] as Boolean),
                         brandKeys = values[10] as Set<String>,
                         wellpassOnly = values[11] as Boolean,
+                        boardBrandWire = values[12] as String,
                     )
                 }.collect { inputs ->
                     _state.update {
@@ -163,6 +168,7 @@ class MapViewModel @Inject constructor(
                             canFilterByMyBoard = inputs.canFilterByMyBoard,
                             userBoardLayoutId = inputs.layoutId,
                             userBoardSizeId = inputs.sizeId,
+                            userBoardBrand = BoardBrand.fromWire(inputs.boardBrandWire),
                         )
                     }
                     recomputeFiltered()
@@ -199,6 +205,7 @@ class MapViewModel @Inject constructor(
             locations = s.unfilteredLocations,
             userBoardLayoutId = s.userBoardLayoutId,
             userBoardSizeId = s.userBoardSizeId,
+            userBoardBrand = s.userBoardBrand,
         )
         _state.update {
             it.copy(
@@ -294,19 +301,22 @@ class MapViewModel @Inject constructor(
         }
     }
 
-    fun applyBoardConfigForBrowse(layoutId: Int, productSizeId: Int?) {
+    fun applyBoardConfigForBrowse(brand: BoardBrand, layoutId: Int, productSizeId: Int?) {
         viewModelScope.safeLaunch(TAG) {
-            // A MoonBoard gym (layout 2/4/5/6) must switch the active brand to
-            // MoonBoard so the browser shows MoonBoard climbs, not an empty
-            // Kilter slice at that layout id.
-            val variant = MoonBoardVariant.fromLayoutId(layoutId.toLong())
-            if (variant != null) {
-                userPreferences.setMoonBoardSelection(variant.layoutId.toInt())
+            if (brand == BoardBrand.MOONBOARD) {
+                // MoonBoard needs its brand + the 40° browse angle (the
+                // dedicated atomic setter). fromLayoutId is just a sanity
+                // re-resolve of the tapped layout.
+                val variant = MoonBoardVariant.fromLayoutId(layoutId.toLong())
+                userPreferences.setMoonBoardSelection((variant?.layoutId ?: layoutId.toLong()).toInt())
             } else {
-                userPreferences.setBoardLayoutId(layoutId)
-                if (productSizeId != null) {
-                    userPreferences.setBoardProductSizeId(productSizeId)
-                }
+                // Kilter + every Aurora family share one (brand, layout, size)
+                // shape. Writing the tapped board's BRAND (rather than inferring
+                // it from the layout id, which collides across Kilter/Aurora) is
+                // what lands the browser on the tapped board instead of a Kilter
+                // slice. Atomic so the board-flow collectors never see a
+                // (new-brand, stale-layout) tuple.
+                userPreferences.setBoardSelection(brand.wireValue, layoutId, productSizeId)
             }
         }
     }
@@ -324,5 +334,6 @@ class MapViewModel @Inject constructor(
         val canFilterByMyBoard: Boolean,
         val brandKeys: Set<String>,
         val wellpassOnly: Boolean,
+        val boardBrandWire: String,
     )
 }

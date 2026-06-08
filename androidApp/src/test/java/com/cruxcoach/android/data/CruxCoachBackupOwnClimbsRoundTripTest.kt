@@ -84,9 +84,14 @@ class CruxCoachBackupOwnClimbsRoundTripTest {
         dbFile.parentFile?.delete()
     }
 
-    private fun seedDraft(uuid: String, name: String = "Test Draft"): String {
+    private fun seedDraft(
+        uuid: String,
+        name: String = "Test Draft",
+        boardBrand: String = "kilter",
+        layoutId: Long = 1L,
+    ): String {
         db.boardQueries.insertLocalDraft(
-            uuid = uuid, layout_id = 1L, setter_username = "alice",
+            uuid = uuid, layout_id = layoutId, setter_username = "alice",
             name = name, frames = "p1164r12p1233r15p1392r14",
             edge_left = 1L, edge_right = 144L, edge_bottom = 1L, edge_top = 156L,
             created_at = "2026-05-01T10:00:00Z",
@@ -95,7 +100,7 @@ class CruxCoachBackupOwnClimbsRoundTripTest {
             created_by_pubkey = ownPubkey,
             // 64 lowercase hex characters — must match HEX64_REGEX in validate().
             frames_hash = "f".repeat(64),
-            board_brand = "kilter",
+            board_brand = boardBrand,
         )
         // Stats row at angle 40, setter grade id 18 (V5 / 6c+).
         db.boardQueries.upsertClimbStat(
@@ -227,11 +232,42 @@ class CruxCoachBackupOwnClimbsRoundTripTest {
         assertEquals(before.kilter_status, after.kilter_status)
         assertEquals(before.kilter_synced_at, after.kilter_synced_at)
         assertEquals(before.kilter_publish_via, after.kilter_publish_via)
+        // Board family (FEAT-031)
+        assertEquals(before.board_brand, after.board_brand)
         // Stats
         val statsAfter = db.boardQueries.getClimbStatsForUuid(uuid).executeAsOneOrNull()
         assertNotNull(statsAfter, "stats row restored")
         assertEquals(40, statsAfter.angle.toInt())
         assertEquals(18.0, statsAfter.display_difficulty)
+    }
+
+    // ── FEAT-031: a non-Kilter own-climb keeps its board brand on restore ──
+    // Regression guard for the backup chain that dropped board_brand: a
+    // MoonBoard draft used to restore as 'kilter' (column DEFAULT) while
+    // keeping its MoonBoard layout_id — a brand/layout mismatch. The default
+    // masked it because every prior test seeded board_brand='kilter'.
+
+    @Test
+    fun `non-Kilter own-climb keeps its board_brand through export-import`() {
+        val uuid = "33333333-4444-5555-6666-777777777771"
+        // MoonBoard layout id (2) — distinct from Kilter's so a default-to-kilter
+        // regression would leave board_brand='kilter' on a MoonBoard layout.
+        seedDraft(uuid, name = "MoonBoard Draft", boardBrand = "moonboard", layoutId = 2L)
+        val before = rowFor(uuid)
+        assertEquals("moonboard", before.board_brand, "seed sanity")
+
+        val json = mockedExport(boardRepo)
+
+        driver.execute(null, "DELETE FROM climbs WHERE uuid = '$uuid'", 0)
+        driver.execute(null, "DELETE FROM climb_stats WHERE climb_uuid = '$uuid'", 0)
+        assertNull(db.boardQueries.getClimbByUuid(40L, uuid).executeAsOneOrNull(), "wipe sanity")
+
+        val result = mockedImport(boardRepo, json)
+        assertEquals(1, result.ownClimbs, "one own climb imported")
+
+        val after = rowFor(uuid)
+        assertEquals("moonboard", after.board_brand, "board_brand survived the round-trip")
+        assertEquals(before.layout_id, after.layout_id, "layout_id unchanged")
     }
 
     // ── Identity isolation: export filter scopes to current pubkey ──

@@ -1,8 +1,10 @@
 package com.cruxcoach.android.ui.map
 
+import com.cruxcoach.android.data.BoardConstants
 import com.cruxcoach.data.repository.AccessType
 import com.cruxcoach.data.repository.Adjustability
 import com.cruxcoach.data.repository.BoardLocation
+import com.cruxcoach.domain.board.BoardBrand
 
 /**
  * Pre-aggregated counts driving the stats tab. Computed once per
@@ -44,9 +46,14 @@ data class MapStats(
             val countryCounts = HashMap<String, Int>()
             val sizeCounts = HashMap<String, Int>()
             for (loc in locations) {
-                when (loc.layoutId) {
-                    1 -> original++
-                    8 -> homewall++
+                // Original/Homewall is a Kilter-only split; brand-scope the
+                // count so an Aurora venue at a colliding layout id isn't
+                // miscounted as a Kilter Original/Homewall (FEAT-031).
+                if (loc.boardBrand == BoardBrand.KILTER) {
+                    when (loc.layoutId) {
+                        BoardConstants.KILTER_ORIGINAL_LAYOUT -> original++
+                        BoardConstants.KILTER_HOMEWALL_LAYOUT -> homewall++
+                    }
                 }
                 when (loc.accessType) {
                     AccessType.PUBLIC -> pub++

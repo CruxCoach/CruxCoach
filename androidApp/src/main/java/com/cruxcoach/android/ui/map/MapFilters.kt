@@ -1,5 +1,6 @@
 package com.cruxcoach.android.ui.map
 
+import com.cruxcoach.android.data.BoardConstants
 import com.cruxcoach.data.repository.AccessType
 import com.cruxcoach.data.repository.Adjustability
 import com.cruxcoach.data.repository.BoardLocation
@@ -42,6 +43,7 @@ data class MapFilters(
         locations: List<BoardLocation>,
         userBoardLayoutId: Int? = null,
         userBoardSizeId: Int? = null,
+        userBoardBrand: BoardBrand? = null,
     ): List<BoardLocation> {
         if (locations.isEmpty()) return locations
         return locations.filter { loc ->
@@ -53,19 +55,24 @@ data class MapFilters(
             // both excluded when the filter is on.
             if (wellpassOnly && loc.wellpass != true) return@filter false
 
-            // Layout family gate (Original=1 / Homewall=8) is a Kilter-only
+            // Layout family gate (Original / Homewall) is a Kilter-only
             // concept — MoonBoard gyms are gated by the brand filter above,
             // not by the Original/Homewall toggles, so they always pass here.
             if (loc.boardBrand == BoardBrand.KILTER) {
                 val layoutAllowed = when (loc.layoutId) {
-                    1 -> showOriginal
-                    8 -> showHomewalls
+                    BoardConstants.KILTER_ORIGINAL_LAYOUT -> showOriginal
+                    BoardConstants.KILTER_HOMEWALL_LAYOUT -> showHomewalls
                     else -> showOriginal || showHomewalls
                 }
                 if (!layoutAllowed) return@filter false
             }
 
             if (matchesMyBoard && userBoardLayoutId != null) {
+                // Brand-scope the match: Aurora layout ids overlap Kilter's, so
+                // without the brand check a Kilter Original (layout 1) would also
+                // match a Tension venue that happens to carry layout id 1.
+                // userBoardBrand == null (legacy callers) skips the brand gate.
+                if (userBoardBrand != null && loc.boardBrand != userBoardBrand) return@filter false
                 if (loc.layoutId != userBoardLayoutId) return@filter false
                 if (userBoardSizeId != null) {
                     val sizeOk = loc.productSizeId == null || loc.productSizeId == userBoardSizeId

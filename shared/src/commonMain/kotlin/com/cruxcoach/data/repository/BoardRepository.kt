@@ -664,6 +664,11 @@ data class OwnClimbBackupRow(
     val kilterSyncedAt: Long?,
     val kilterPublishVia: String?,
     val kilterError: String?,
+    // FEAT-031: board family the draft was authored on, round-tripped so a
+    // MoonBoard/Aurora own-climb doesn't restore as Kilter. Defaults to
+    // "kilter" for legacy backups that predate the field (set on the export
+    // side from OwnClimbExport.boardBrand).
+    val boardBrand: String = "kilter",
 )
 
 /**
@@ -738,6 +743,11 @@ interface CommunityClimbQueries {
         angle: Long,
         setterGradeId: Int?,
         bounds: com.cruxcoach.domain.community.ClimbBounds?,
+        /** Active board's wire brand. Aurora-family boards (Tension,
+         *  Grasshopper, Decoy, So iLL, Touchstone) reuse Kilter's low layout-ids,
+         *  so the brand can't be inferred from [layoutId] — pass the editor's
+         *  real brand. Null = derive from layoutId (Kilter / MoonBoard only). */
+        boardBrand: String? = null,
     )
     /** Delete a local draft (drafts user explicitly discards). */
     fun deleteLocalClimb(uuid: String)

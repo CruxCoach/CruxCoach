@@ -63,20 +63,31 @@ internal fun BoardSelectionDialog(
     /** FEAT-031: the active board's layout_id, used to seed the selected
      *  Aurora variant (e.g. Tension TB2 Mirror) when re-opening the picker. */
     selectedAuroraLayoutId: Int = 0,
+    /** FEAT-031: the active board's product_size_id, used to seed the Aurora
+     *  size tier so re-opening shows the current size selected. */
+    selectedAuroraProductSizeId: Int = 0,
     /** FEAT-031: wire values of Aurora brands whose catalogue is already
      *  imported. Drives whether the "we'll download …" hint is shown — once a
      *  board is loaded the hint is misleading, so it's hidden. */
     loadedAuroraBrands: Set<String> = emptySet(),
+    /** FEAT-031: synced product sizes for Aurora variants, keyed
+     *  "brand:productId". Drives the post-sync size tier (e.g. Tension TB2
+     *  12x12 / 10x12 / 12x8 / 10x8); empty pre-sync so the tier stays hidden. */
+    auroraProductSizes: Map<String, List<BoardSize>> = emptyMap(),
     onConfirmKilter: (Int) -> Unit,
     onConfirmMoonBoard: (MoonBoardVariant) -> Unit,
     /** FEAT-031: confirm an Aurora-family board (Tension etc.) + the chosen
-     *  variant (null for single-layout boards). Defaults to a no-op so call
-     *  sites that don't offer Aurora boards (onboarding) compile unchanged. */
-    onConfirmAurora: (BoardBrand, BoardConstants.AuroraVariant?) -> Unit = { _, _ -> },
+     *  variant (null for single-layout boards) + the chosen product size (null
+     *  when no size tier is shown, i.e. pre-sync — the selector then uses the
+     *  variant default). Defaults to a no-op so call sites that don't offer
+     *  Aurora boards (onboarding) compile unchanged. */
+    onConfirmAurora: (BoardBrand, BoardConstants.AuroraVariant?, Int?) -> Unit = { _, _, _ -> },
     /** FEAT-031: show the interactive Aurora-family boards as tier-0 picks.
-     *  Off by default — only the Settings board picker wires [onConfirmAurora]
-     *  + the catalogue-sync trigger, so other call sites (filter, onboarding)
-     *  stay Kilter/MoonBoard-only rather than offering a dead-end chip. */
+     *  Off by default; the shared [BoardPickerDialog] wrapper turns it ON and
+     *  wires [onConfirmAurora] + the catalogue-sync trigger, so both call sites
+     *  that go through it (Settings AND onboarding) offer Aurora boards. Direct
+     *  call sites that leave it off (e.g. the browse filter's quick board
+     *  switch) stay Kilter/MoonBoard-only rather than showing a dead-end chip. */
     showAuroraBoards: Boolean = false,
     frequency: Map<Int, Long> = emptyMap(),
     /** "Don't know your board? find it via your gym" — FEAT-007 gym
@@ -116,6 +127,21 @@ internal fun BoardSelectionDialog(
         auroraVariant = auroraBrand?.let { b ->
             val variants = BoardConstants.auroraVariants(b)
             variants.firstOrNull { it.layoutId == selectedAuroraLayoutId } ?: variants.firstOrNull()
+        }
+    }
+    // FEAT-031: the chosen product size for the active Aurora variant. Seeded to
+    // the active size when it belongs to this variant's product, else the
+    // variant default; null when no size tier is shown (pre-sync / single-size).
+    var auroraSizeId by remember { mutableStateOf<Int?>(null) }
+    LaunchedEffect(auroraVariant, auroraProductSizes) {
+        val variant = auroraVariant
+        val brand = auroraBrand
+        auroraSizeId = if (variant == null || brand == null) {
+            null
+        } else {
+            val sizes = auroraProductSizes["${brand.wireValue}:${variant.productId}"].orEmpty()
+            if (sizes.any { it.id.toInt() == selectedAuroraProductSizeId }) selectedAuroraProductSizeId
+            else variant.defaultSizeId
         }
     }
 
@@ -265,6 +291,29 @@ internal fun BoardSelectionDialog(
                             )
                         }
                     }
+                    // FEAT-031: size tier — once the board's catalogue is synced,
+                    // let the user pick the exact product size (e.g. Tension TB2
+                    // 12x12 / 10x12 / 12x8 / 10x8) instead of being pinned to the
+                    // variant default. Hidden pre-sync (no sizes) and for
+                    // single-size boards. Size labels come from the synced
+                    // product_sizes (sizeLabel's curated map is Kilter-only).
+                    val auroraSizes = auroraVariant?.let {
+                        auroraProductSizes["${auroraBrand!!.wireValue}:${it.productId}"]
+                    }.orEmpty()
+                    if (auroraSizes.size > 1) {
+                        Text(
+                            stringResource(R.string.board_selection_aurora_size_label),
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        auroraSizes.forEach { size ->
+                            RadioRow(
+                                label = size.name,
+                                selected = auroraSizeId == size.id.toInt(),
+                                onSelect = { auroraSizeId = size.id.toInt() },
+                            )
+                        }
+                    }
                     // The download hint is only meaningful before the board is
                     // loaded — once its catalogue is imported it reads wrong
                     // ("we'll download …"), so hide it for loaded boards.
@@ -322,7 +371,7 @@ internal fun BoardSelectionDialog(
             Button(
                 onClick = {
                     when {
-                        isAurora -> onConfirmAurora(auroraBrand!!, auroraVariant)
+                        isAurora -> onConfirmAurora(auroraBrand!!, auroraVariant, auroraSizeId)
                         isKilter -> onConfirmKilter(kilterSelection)
                         else -> onConfirmMoonBoard(mbVariant)
                     }

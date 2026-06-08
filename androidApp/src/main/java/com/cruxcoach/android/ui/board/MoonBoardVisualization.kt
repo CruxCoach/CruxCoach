@@ -65,7 +65,8 @@ private const val IMAGE_HOLD_RADIUS_FRACTION = 0.028f
  * highlights each climb hold at its measured position from the asset's
  * coordinate map. [MoonBoardAssetState.Unavailable] — variants without a
  * bundled image (Masters 2017 / 2019) — draws a generic, procedurally-
- * rendered 11x18 grid instead. [MoonBoardAssetState.Loading] draws a
+ * rendered 11×N grid instead (N = the [variant]'s row count: 18 for the
+ * standard board, 12 for Mini MoonBoard 2020). [MoonBoardAssetState.Loading] draws a
  * blank card, so the procedural grid never flashes before the real
  * image decodes on first open.
  *
@@ -81,8 +82,13 @@ internal fun MoonBoardVisualization(
     modifier: Modifier = Modifier,
     editable: Boolean = false,
     onHoldTapped: ((holdId: Int) -> Unit)? = null,
+    /** Resolved MoonBoard variant — supplies the per-variant grid row count
+     *  for the procedural (no-photo) fallback: Mini MoonBoard 2020 has 12 rows,
+     *  every other variant 18. Null falls back to the standard 18-row grid. */
+    variant: MoonBoardVariant? = null,
 ) {
     val climbHolds = remember(frames) { MoonBoardFrameEncoder.parseHolds(frames) }
+    val gridRows = variant?.gridRows ?: MoonBoardVariant.GRID_ROWS
     val aspect = when (assetState) {
         is MoonBoardAssetState.Ready -> assetState.asset.imageAspect
         else -> BOARD_ASPECT_RATIO
@@ -104,9 +110,9 @@ internal fun MoonBoardVisualization(
                 .onSizeChanged { boxSize = it }
                 .let { base ->
                     if (onHoldTapped == null) base
-                    else base.pointerInput(assetState) {
+                    else base.pointerInput(assetState, gridRows) {
                         detectTapGestures { offset ->
-                            holdIdAt(offset, boxSize, assetState)?.let(onHoldTapped)
+                            holdIdAt(offset, boxSize, assetState, gridRows)?.let(onHoldTapped)
                         }
                     }
                 },
@@ -129,8 +135,8 @@ internal fun MoonBoardVisualization(
                 MoonBoardAssetState.Unavailable -> {
                     Canvas(modifier = Modifier.fillMaxSize()) {
                         val grid = gridRect(size)
-                        drawGenericRaster(grid)
-                        drawClimbHolds(grid, climbHolds)
+                        drawGenericRaster(grid, gridRows)
+                        drawClimbHolds(grid, climbHolds, gridRows)
                     }
                 }
 
@@ -147,7 +153,7 @@ internal fun MoonBoardVisualization(
  * null if the tap is too far from any lattice point. Ready → nearest measured
  * coordinate from the asset map; Unavailable → nearest 11x18 lattice point.
  */
-private fun holdIdAt(offset: Offset, boxSize: IntSize, assetState: MoonBoardAssetState): Int? {
+private fun holdIdAt(offset: Offset, boxSize: IntSize, assetState: MoonBoardAssetState, gridRows: Int): Int? {
     if (boxSize.width <= 0 || boxSize.height <= 0) return null
     val nx = offset.x / boxSize.width
     val ny = offset.y / boxSize.height
@@ -168,15 +174,15 @@ private fun holdIdAt(offset: Offset, boxSize: IntSize, assetState: MoonBoardAsse
             // universal (row-1)*11 + col + 1 numbering.
             val grid = gridRect(Size(boxSize.width.toFloat(), boxSize.height.toFloat()))
             val colStep = grid.width / (MoonBoardVariant.GRID_COLUMNS - 1)
-            val rowStep = grid.height / (MoonBoardVariant.GRID_ROWS - 1)
+            val rowStep = grid.height / (gridRows - 1)
             val px = offset.x; val py = offset.y
             val col = ((px - grid.left) / colStep).roundToInt()
-            val rowIndex = (MoonBoardVariant.GRID_ROWS - 1) - ((py - grid.top) / rowStep).roundToInt()
+            val rowIndex = (gridRows - 1) - ((py - grid.top) / rowStep).roundToInt()
             if (col !in 0 until MoonBoardVariant.GRID_COLUMNS ||
-                rowIndex !in 0 until MoonBoardVariant.GRID_ROWS
+                rowIndex !in 0 until gridRows
             ) return null
             // Reject taps that land between lattice points (> half a cell away).
-            val centre = holdCentre(grid, col, rowIndex)
+            val centre = holdCentre(grid, col, rowIndex, gridRows)
             if (kotlin.math.abs(px - centre.x) > colStep / 2 ||
                 kotlin.math.abs(py - centre.y) > rowStep / 2
             ) return null
@@ -212,31 +218,32 @@ private fun gridRect(size: Size): Rect = Rect(
 
 /**
  * Pixel centre of the hold at [column] (0 = A .. 10 = K) and [rowIndex]
- * (0 = row 1 at the bottom .. 17 = row 18 at the top).
+ * (0 = row 1 at the bottom .. [gridRows]-1 = top row). [gridRows] is the
+ * variant's row count (18 standard, 12 for Mini MoonBoard 2020).
  */
-private fun holdCentre(grid: Rect, column: Int, rowIndex: Int): Offset {
+private fun holdCentre(grid: Rect, column: Int, rowIndex: Int, gridRows: Int): Offset {
     val x = grid.left + column * grid.width / (MoonBoardVariant.GRID_COLUMNS - 1)
-    val y = grid.top + (MoonBoardVariant.GRID_ROWS - 1 - rowIndex) *
-        grid.height / (MoonBoardVariant.GRID_ROWS - 1)
+    val y = grid.top + (gridRows - 1 - rowIndex) *
+        grid.height / (gridRows - 1)
     return Offset(x, y)
 }
 
 /** Spacing between adjacent lattice points (smaller of the two axes). */
-private fun cellSpacing(grid: Rect): Float = min(
+private fun cellSpacing(grid: Rect, gridRows: Int): Float = min(
     grid.width / (MoonBoardVariant.GRID_COLUMNS - 1),
-    grid.height / (MoonBoardVariant.GRID_ROWS - 1),
+    grid.height / (gridRows - 1),
 )
 
-/** Light board panel + a faint dot at each of the 11x18 lattice points. */
-private fun DrawScope.drawGenericRaster(grid: Rect) {
+/** Light board panel + a faint dot at each of the 11x[gridRows] lattice points. */
+private fun DrawScope.drawGenericRaster(grid: Rect, gridRows: Int) {
     drawRect(color = MoonBoardPanelColor)
-    val dotRadius = cellSpacing(grid) * 0.13f
+    val dotRadius = cellSpacing(grid, gridRows) * 0.13f
     for (column in 0 until MoonBoardVariant.GRID_COLUMNS) {
-        for (rowIndex in 0 until MoonBoardVariant.GRID_ROWS) {
+        for (rowIndex in 0 until gridRows) {
             drawCircle(
                 color = MoonBoardGridDotColor,
                 radius = dotRadius,
-                center = holdCentre(grid, column, rowIndex),
+                center = holdCentre(grid, column, rowIndex, gridRows),
                 style = Fill,
             )
         }
@@ -263,15 +270,15 @@ private fun DrawScope.drawHoldMarker(centre: Offset, color: Color, radius: Float
 }
 
 /** Role-coloured ring at each climb hold — generic raster (linear grid). */
-private fun DrawScope.drawClimbHolds(grid: Rect, holds: List<Pair<Int, Int>>) {
-    val maxHoldId = MoonBoardVariant.GRID_COLUMNS * MoonBoardVariant.GRID_ROWS
-    val radius = cellSpacing(grid) * 0.34f
+private fun DrawScope.drawClimbHolds(grid: Rect, holds: List<Pair<Int, Int>>, gridRows: Int) {
+    val maxHoldId = MoonBoardVariant.GRID_COLUMNS * gridRows
+    val radius = cellSpacing(grid, gridRows) * 0.34f
     holds.forEach { (holdId, roleCode) ->
         val color = roleColor(roleCode) ?: return@forEach
         if (holdId !in 1..maxHoldId) return@forEach
         val column = (holdId - 1) % MoonBoardVariant.GRID_COLUMNS
         val rowIndex = (holdId - 1) / MoonBoardVariant.GRID_COLUMNS
-        drawHoldMarker(holdCentre(grid, column, rowIndex), color, radius)
+        drawHoldMarker(holdCentre(grid, column, rowIndex, gridRows), color, radius)
     }
 }
 

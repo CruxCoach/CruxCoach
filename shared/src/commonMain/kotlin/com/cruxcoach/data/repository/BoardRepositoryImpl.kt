@@ -791,10 +791,12 @@ class BoardRepositoryImpl(
         private val EMPTY_PAIR: Pair<IntArray, IntArray> = EMPTY_INT_ARRAY to EMPTY_INT_ARRAY
     }
 
-    /** `board_brand` wire value for a layout, derived once so authored
-     *  drafts + ingested community climbs persist the right family
-     *  (MoonBoard variants → "moonboard", everything else → "kilter")
-     *  without threading brand through every call site. */
+    /** `board_brand` wire value inferred from a layout — the FALLBACK used only
+     *  when a caller can't supply the real brand. It maps MoonBoard variants →
+     *  "moonboard" and everything else → "kilter", so it CANNOT tell the
+     *  Aurora-family boards (Tension/Grasshopper/Decoy/So iLL/Touchstone) apart
+     *  from Kilter (overlapping layout-ids). Aurora-family callers must pass the
+     *  real brand into [insertLocalDraft]. */
     private fun brandForLayout(layoutId: Long): String =
         com.cruxcoach.domain.board.BoardBrand.fromLayoutId(layoutId).wireValue
 
@@ -804,6 +806,7 @@ class BoardRepositoryImpl(
         angle: Long,
         setterGradeId: Int?,
         bounds: com.cruxcoach.domain.community.ClimbBounds?,
+        boardBrand: String?,
     ) {
         q.transaction {
             q.insertLocalDraft(
@@ -821,7 +824,11 @@ class BoardRepositoryImpl(
                 move_count = draft.moveCount,
                 created_by_pubkey = draft.createdByPubkey,
                 frames_hash = draft.framesHash,
-                board_brand = brandForLayout(layoutId),
+                // Use the caller-supplied active-board brand; fall back to the
+                // layout-derived guess only for Kilter/MoonBoard callers that
+                // pass null. Aurora-family drafts would otherwise be mis-tagged
+                // "kilter" and hidden from the active board's drafts drawer.
+                board_brand = boardBrand ?: brandForLayout(layoutId),
             )
             // Stub climb_stats so the climb appears in the browse VIEW.
             // Setter difficulty is the only known signal; community
@@ -1263,6 +1270,7 @@ class BoardRepositoryImpl(
                 kilterSyncedAt = row.kilter_synced_at,
                 kilterPublishVia = row.kilter_publish_via,
                 kilterError = row.kilter_error,
+                boardBrand = row.board_brand,
             )
         }
 
@@ -1308,6 +1316,7 @@ class BoardRepositoryImpl(
                 kilter_synced_at = row.kilterSyncedAt,
                 kilter_publish_via = row.kilterPublishVia,
                 kilter_error = row.kilterError,
+                board_brand = row.boardBrand,
             )
             // Capture changes() BEFORE the COALESCE-fill UPDATE — that
             // UPDATE always reports 1 affected row for an existing

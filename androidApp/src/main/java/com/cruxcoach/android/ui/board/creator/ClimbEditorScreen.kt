@@ -75,6 +75,7 @@ import com.cruxcoach.android.ui.theme.SuccessGreen
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.BoardHold
 import com.cruxcoach.domain.board.HoldRole
+import com.cruxcoach.domain.board.MoonBoardVariant
 import com.cruxcoach.domain.community.ClimbValidation
 import com.cruxcoach.domain.community.brand
 import com.cruxcoach.domain.community.encodeFrames
@@ -344,6 +345,7 @@ fun ClimbEditorScreen(
                 MoonBoardVisualization(
                     frames = state.editor.encodeFrames(),
                     assetState = rememberMoonBoardAsset(state.layoutId),
+                    variant = MoonBoardVariant.fromLayoutId(state.layoutId),
                     editable = true,
                     onHoldTapped = viewModel::toggleHold,
                     modifier = Modifier.fillMaxWidth(),

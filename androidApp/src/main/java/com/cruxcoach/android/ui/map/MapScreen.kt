@@ -150,8 +150,8 @@ fun MapScreen(
         BoardLocationDetailSheet(
             venue = selectedVenue,
             onDismiss = { viewModel.selectVenue(null) },
-            onBrowseClimbs = { layoutId, sizeId ->
-                viewModel.applyBoardConfigForBrowse(layoutId, sizeId)
+            onBrowseClimbs = { brand, layoutId, sizeId ->
+                viewModel.applyBoardConfigForBrowse(brand, layoutId, sizeId)
                 viewModel.selectVenue(null)
                 onNavigateToBoardBrowser()
             },

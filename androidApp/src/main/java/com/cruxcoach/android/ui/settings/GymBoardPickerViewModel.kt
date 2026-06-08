@@ -181,16 +181,22 @@ class GymBoardPickerViewModel @Inject constructor(
 
     /** Key that collapses per-brand rows of the same physical gym: name +
      *  coarse coordinates (~1 km) so foreign info-layer rows from different
-     *  board brands merge while distinct chain locations stay separate. */
+     *  board brands merge while distinct chain locations stay separate.
+     *
+     *  Deliberately coarser than the map's geographic `venueKey`
+     *  ([com.cruxcoach.android.ui.map.venueKey], ~11 m): the picker groups by
+     *  gym IDENTITY (name across brands → one list entry), the map clusters by
+     *  precise geography (one pin). The name component is why two different
+     *  gyms at one address don't merge here even though they'd share a map pin. */
     private fun gymKey(loc: BoardLocation): String =
         loc.name.trim().lowercase() + "|" + (loc.lat * 100).toInt() + "|" + (loc.lng * 100).toInt()
 
     /** Board options for a foreign Aurora gym (FEAT-031). A multi-layout board
-     *  (currently only Tension) yields one option per catalog variant; a
-     *  single-layout board (Grasshopper / Decoy / So iLL / Touchstone) has no
-     *  catalog entry, so produce exactly one option labelled by the brand —
-     *  layout 0 / size 0, letting the apply path's [BoardConstants.auroraVariant]
-     *  lookup return null and the synced chunk supply the default. */
+     *  (Tension, Decoy) yields one option per catalog variant; a single-layout
+     *  board (Grasshopper / So iLL / Touchstone) has no catalog entry, so produce
+     *  exactly one option labelled by the brand — layout 0 / size 0, letting the
+     *  apply path's [BoardConstants.auroraVariant] lookup return null and the
+     *  synced chunk supply the default. */
     private fun auroraOptions(brand: BoardBrand): List<GymWallOption> {
         val variants = BoardConstants.auroraVariants(brand)
         if (variants.isEmpty()) {

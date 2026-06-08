@@ -236,6 +236,10 @@ object CruxCoachBackup {
             requireLen("ownClimb.kilterPublishVia", c.kilterPublishVia, MAX_GRADE_LEN)
             requireLen("ownClimb.nostrPublishVia", c.nostrPublishVia, MAX_GRADE_LEN)
             requireLen("ownClimb.kilterError", c.kilterError, MAX_NOTES_LEN)
+            // Cap, don't whitelist (same posture as ascent/bid.boardBrand) —
+            // an unknown future brand sanitizes to Kilter via BoardBrand.fromWire
+            // at read time rather than failing the whole restore.
+            requireLen("ownClimb.boardBrand", c.boardBrand, MAX_BRAND_LEN)
             // source must be one of the values the schema's CHECK-style
             // comments enumerate. 'kilter' is rejected even though it's
             // a valid column value, because origin='cruxcoach' rows are
@@ -426,6 +430,12 @@ object CruxCoachBackup {
         val kilterSyncedAt: Long? = null,
         val kilterPublishVia: String? = null,
         val kilterError: String? = null,
+        // FEAT-031 multiboard. Defaulted so a pre-FEAT-031 v3 envelope (no
+        // boardBrand key) deserializes to "kilter" — matching the climbs
+        // column DEFAULT and the pre-multiboard reality (all own-climbs were
+        // Kilter). Carried so a MoonBoard/Aurora draft round-trips its brand
+        // instead of silently becoming Kilter on restore.
+        val boardBrand: String = "kilter",
     )
 
     @Serializable
@@ -621,6 +631,7 @@ object CruxCoachBackup {
                     kilterSyncedAt = row.kilterSyncedAt,
                     kilterPublishVia = row.kilterPublishVia,
                     kilterError = row.kilterError,
+                    boardBrand = row.boardBrand,
                 )
             }
         } else emptyList()
@@ -991,6 +1002,7 @@ object CruxCoachBackup {
                     kilterSyncedAt = climb.kilterSyncedAt,
                     kilterPublishVia = climb.kilterPublishVia,
                     kilterError = climb.kilterError,
+                    boardBrand = climb.boardBrand,
                 )
                 if (boardRepository.restoreOwnClimb(row)) ownClimbsImported++ else ownClimbsSkipped++
             }

@@ -602,13 +602,15 @@ fun BoardBrowserScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 horizontalAlignment = Alignment.End,
             ) {
-                // Climb authoring is supported for both interactive boards:
-                // Kilter (Aurora placements + LED preview, mirrors to the
-                // user's own Kilter account) and MoonBoard (bundled photo +
-                // tap-to-paint, CruxCoach-community-only publish). The editor
-                // resolves brand from the active board layout. Info-layer
-                // brands (map-only) never reach the browser, so no extra gate
-                // is needed here.
+                // Climb authoring is supported for every interactive board:
+                // Kilter (also mirrors to the user's own Kilter account),
+                // MoonBoard, and the Aurora family (Tension / Grasshopper /
+                // Decoy / So iLL / Touchstone) — the latter all publish to the
+                // CruxCoach community only. The editor resolves the brand from
+                // the active board and threads it into the draft-insert +
+                // publish paths, so each climb stays on its own board. Only the
+                // info-layer brands (aurora, 12climb, map-only) lack authoring,
+                // and they never reach the browser, so no extra gate is needed.
                 FloatingActionButton(
                     onClick = onNavigateToClimbCreator,
                     containerColor = OrangeAccent,

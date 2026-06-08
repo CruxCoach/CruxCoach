@@ -9,6 +9,7 @@ import com.cruxcoach.android.ble.ClimbBleAdvertiser
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.data.BleShareManager
 import com.cruxcoach.android.data.BleShareUiState
+import com.cruxcoach.android.data.BoardConstants
 import com.cruxcoach.android.data.BoardSessionManager
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.data.IntensityZoneManager
@@ -133,6 +134,11 @@ data class ClimbDetailState(
     val ledColors: LedHoldColors = LedHoldColors(),
     val gradeScale: GradeScale = GradeScale.V_SCALE,
     val isMirrored: Boolean = false,
+    /** Whether the active climb's layout is left-right symmetric (Aurora
+     *  `layouts.is_mirrored`). Gates the mirror toggle so it never appears on a
+     *  non-mirrorable layout (Tension TB2 Spray, Kilter, MoonBoard, …). Resolved
+     *  per climb via [BoardConstants.isLayoutMirrorable]. */
+    val isMirrorable: Boolean = false,
     val isFavorited: Boolean = false,
     val restTimerTotalSeconds: Int = 180,
     val restTimerAutoStart: Boolean = false,
@@ -669,6 +675,9 @@ class BoardClimbDetailViewModel @Inject constructor(
                         }
                         val isFavorited = personalBoardRepo.isClimbFavorited(uuid)
                         val angles = buildAngleOptions(climb, boardRepository.getAnglesForClimb(uuid))
+                        val isMirrorable = BoardConstants.isLayoutMirrorable(
+                            climb.brand, climb.layoutId.toInt()
+                        )
 
                         mirrorPlacementMap = if (effectiveBoard == null) emptyMap() else
                             PerfLogger.trace("loadClimb.mirrorMap") {
@@ -695,6 +704,7 @@ class BoardClimbDetailViewModel @Inject constructor(
                                 angle = angle,
                                 isFavorited = isFavorited,
                                 availableAngles = angles,
+                                isMirrorable = isMirrorable,
                                 // Seed setter profile synchronously with the
                                 // local fallback (`setter_username` from the
                                 // blob, or the npub-short stub). Async Kind 0
@@ -821,6 +831,9 @@ class BoardClimbDetailViewModel @Inject constructor(
                     val userAscents = personalBoardRepo.getUserHistoryForClimb(uuid)
                     val isFavorited = personalBoardRepo.isClimbFavorited(uuid)
                     val angles = buildAngleOptions(climb, boardRepository.getAnglesForClimb(uuid))
+                    val isMirrorable = BoardConstants.isLayoutMirrorable(
+                        climb.brand, climb.layoutId.toInt()
+                    )
 
                     val pageState = _state.value.copy(
                         isLoading = false,
@@ -834,6 +847,7 @@ class BoardClimbDetailViewModel @Inject constructor(
                         isFavorited = isFavorited,
                         availableAngles = angles,
                         isMirrored = false,
+                        isMirrorable = isMirrorable,
                         error = null,
                         ascent = AscentFormState(),
                         listDialog = ListDialogState(),

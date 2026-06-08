@@ -181,10 +181,15 @@ data class LedHoldColors(
         HoldRole.ROUTE_START to start,
         HoldRole.ROUTE_HAND to hand,
         HoldRole.ROUTE_FINISH to finish,
-        HoldRole.ROUTE_FOOT to foot
+        HoldRole.ROUTE_FOOT to foot,
+        // Aurora-family role codes (Tension/Grasshopper/Decoy/So iLL/Touchstone:
+        // 1=start, 2=middle/hand, 3=finish, 4=foot). Included so this
+        // placement_roles-absent fallback map colours Aurora holds directly
+        // instead of missing every key and dropping to the Kilter palette.
+        1 to start, 2 to hand, 3 to finish, 4 to foot,
     )
 
-    fun colorForRole(roleId: Int): Int = when (HoldRole.normalize(roleId)) {
+    fun colorForRole(roleId: Int): Int = when (HoldRole.roleClass(roleId)) {
         HoldRole.START -> start
         HoldRole.HAND -> hand
         HoldRole.FINISH -> finish
@@ -401,6 +406,25 @@ class UserPreferences(
             prefs[PreferenceKeys.BOARD_LAYOUT_ID] = layoutId
             prefs[PreferenceKeys.BOARD_BRAND] = "moonboard"
             prefs[PreferenceKeys.BOARD_ANGLE] = 40
+        }
+    }
+
+    /**
+     * Atomically set the active board's brand + layout + product size in a
+     * single DataStore edit. The board-flow collectors combine these three
+     * keys with `distinctUntilChanged`, so writing them separately can emit a
+     * transient (new brand, stale layout) tuple that fires a query against a
+     * mismatched (brand, layout) pair before it settles. Used by the Kilter
+     * and Aurora picker paths (FEAT-031) — mirrors [setMoonBoardSelection]'s
+     * one-edit atomicity.
+     */
+    suspend fun setBoardSelection(brand: String, layoutId: Int, productSizeId: Int? = null) {
+        dataStore.edit { prefs ->
+            prefs[PreferenceKeys.BOARD_BRAND] = brand
+            prefs[PreferenceKeys.BOARD_LAYOUT_ID] = layoutId
+            // Null size = "keep the current product size" (the map browse path
+            // has a layout but not always a size); still one atomic edit.
+            if (productSizeId != null) prefs[PreferenceKeys.BOARD_PRODUCT_SIZE_ID] = productSizeId
         }
     }
 

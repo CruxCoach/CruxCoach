@@ -66,6 +66,7 @@ import com.cruxcoach.data.repository.AngleOption
 import com.cruxcoach.data.repository.brand
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.IntensityZones
+import com.cruxcoach.domain.board.MoonBoardVariant
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.android.util.ClimbShareLink
@@ -476,36 +477,40 @@ fun BoardClimbDetailScreen(
                                 expanded = moreExpanded,
                                 onDismissRequest = { moreExpanded = false },
                             ) {
-                                // Mirror toggle — moved out of the detail body
-                                // (it was a full-width centered IconButton row
-                                // that cost a whole vertical band between the
-                                // stat header and the board). It's a display-
-                                // only toggle that applies to any climb, so it
-                                // sits at the top of the overflow, above the
-                                // owner-gated Edit/Delete actions.
-                                DropdownMenuItem(
-                                    text = {
-                                        Text(
-                                            stringResource(
-                                                if (state.isMirrored) R.string.cd_mirror_off
-                                                else R.string.cd_mirror_on
+                                // Mirror toggle — a display-only left/right flip
+                                // of the climb. Only shown for layouts that are
+                                // actually mirrorable (Aurora `is_mirrored`):
+                                // Tension TB1 / TB2 Mirror, Grasshopper, Decoy,
+                                // So iLL. Hidden for non-mirrorable layouts
+                                // (Tension TB2 Spray, Touchstone, Kilter,
+                                // MoonBoard) where a flip is meaningless or would
+                                // light unpaired holds. Sits at the top of the
+                                // overflow, above the owner-gated Edit/Delete.
+                                if (state.isMirrorable) {
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                stringResource(
+                                                    if (state.isMirrored) R.string.cd_mirror_off
+                                                    else R.string.cd_mirror_on
+                                                )
                                             )
-                                        )
-                                    },
-                                    leadingIcon = {
-                                        Icon(
-                                            Icons.Default.SwapHoriz,
-                                            contentDescription = null,
-                                            tint = if (state.isMirrored) OrangeAccent
-                                                   else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        )
-                                    },
-                                    onClick = {
-                                        moreExpanded = false
-                                        viewModel.toggleMirror()
-                                    },
-                                    modifier = Modifier.testTag("boarddetail_mirror_toggle"),
-                                )
+                                        },
+                                        leadingIcon = {
+                                            Icon(
+                                                Icons.Default.SwapHoriz,
+                                                contentDescription = null,
+                                                tint = if (state.isMirrored) OrangeAccent
+                                                       else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        },
+                                        onClick = {
+                                            moreExpanded = false
+                                            viewModel.toggleMirror()
+                                        },
+                                        modifier = Modifier.testTag("boarddetail_mirror_toggle"),
+                                    )
+                                }
                                 // Share: copy the cruxcoach.org/c/<naddr> App-Link
                                 // (the same link the climb-creator Kind-1 note uses).
                                 // Only published community climbs carry a resolvable
@@ -988,6 +993,7 @@ private fun ClimbDetailPageContent(
                         MoonBoardVisualization(
                             frames = climb.frames,
                             assetState = rememberMoonBoardAsset(climb.layoutId),
+                            variant = MoonBoardVariant.fromLayoutId(climb.layoutId),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .testTag("boarddetail_visualization")

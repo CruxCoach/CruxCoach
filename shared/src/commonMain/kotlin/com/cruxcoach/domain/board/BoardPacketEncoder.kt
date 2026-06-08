@@ -57,12 +57,19 @@ class BoardPacketEncoder(
         const val COLOR_FINISH: Int = 0xE3  // Magenta (FF00FF)
         const val COLOR_FOOT: Int = 0xF4    // Orange (FFA500)
 
-        fun roleToColor(roleId: Int): Int = when (roleId) {
+        // Last-resort role→colour fallback (Kilter palette) used only when no
+        // per-board placement_roles colour is available. Folds every board's
+        // role codes to a class via [HoldRole.roleClass] so Aurora-family holds
+        // (codes 1-4) light a real colour instead of the 0xFF white that an
+        // exact Kilter-code (12-15) match produced before. The primary BLE path
+        // still keys placement_roles by the raw id, so exact per-board colours
+        // win when present.
+        fun roleToColor(roleId: Int): Int = when (HoldRole.roleClass(roleId)) {
             HoldRole.START -> COLOR_START
             HoldRole.HAND -> COLOR_HAND
             HoldRole.FINISH -> COLOR_FINISH
             HoldRole.FOOT -> COLOR_FOOT
-            else -> 0xFF // White fallback
+            else -> 0xFF // White fallback for genuinely unknown codes
         }
 
         fun encodeColor(r: Int, g: Int, b: Int): Int {
