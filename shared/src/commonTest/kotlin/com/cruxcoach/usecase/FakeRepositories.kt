@@ -243,6 +243,7 @@ class FakeBoardRepository : BoardRepository {
     override fun getCommunityClimbDeleteContext(uuid: String): com.cruxcoach.data.repository.CommunityClimbDeleteContext? = null
     override fun getClimbCreatedAt(uuid: String): String? = null
     override fun getClimbAuthorPubkey(uuid: String): String? = null
+    override fun isNonCommunityClimb(uuid: String): Boolean = false
     override fun isLocallyAuthored(uuid: String): Boolean = false
     override fun computeEditorHeatmap(layoutId: Long, angle: Long, seedHolds: Set<Int>, targetRole: Int?): Map<Int, Float> = emptyMap()
     override fun upsertCommunityClimb(uuid: String, layoutId: Long, setterUsername: String?, name: String, framesText: String, description: String, moveCount: Long, nostrEventId: String, nostrDTag: String, createdByPubkey: String, framesHash: String, createdAt: String, angle: Long, difficultyAverage: Double?, qualityAverage: Double?, bounds: com.cruxcoach.domain.community.ClimbBounds?, boardBrand: String) {}

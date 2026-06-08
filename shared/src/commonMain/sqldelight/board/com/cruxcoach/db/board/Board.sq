@@ -275,6 +275,19 @@ SELECT created_at FROM climbs WHERE uuid = ? LIMIT 1;
 getClimbAuthorPubkey:
 SELECT created_by_pubkey FROM climbs WHERE uuid = ? LIMIT 1;
 
+-- True iff a row already exists for this uuid that is NOT a genuine community
+-- climb: catalogue content (kilter/boardsesh) or any NULL-author row. A real
+-- community row has BOTH origin='cruxcoach' AND a non-NULL created_by_pubkey.
+-- getClimbAuthorPubkey returns NULL both for "no row" and for a catalogue row
+-- with no author, so the cross-author guard treats a catalogue climb as
+-- claimable; this lets the live subscriber explicitly reject an incoming
+-- community Kind-30078 that tries to re-key/overwrite official catalogue content.
+isNonCommunityClimb:
+SELECT 1 FROM climbs
+WHERE uuid = :uuid
+  AND (origin IS NULL OR origin != 'cruxcoach' OR created_by_pubkey IS NULL)
+LIMIT 1;
+
 -- Backstop self-filter for the live subscriber. True iff a row exists
 -- with source='local' — by definition only the editor's `insertLocalDraft`
 -- writes that source value, so any uuid in this state was authored locally.

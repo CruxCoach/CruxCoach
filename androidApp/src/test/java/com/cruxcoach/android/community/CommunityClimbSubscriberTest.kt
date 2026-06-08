@@ -115,6 +115,31 @@ class CommunityClimbSubscriberTest {
         assertFalse(CommunityClimbValidation.authorOwnershipMatches(authorA, authorB))
     }
 
+    // ----- isWithinClockSkew (cursor-poisoning guard) -----
+
+    @Test
+    fun isWithinClockSkew_accepts_now_and_past_events() {
+        val now = 1_700_000_000L
+        assertTrue(CommunityClimbValidation.isWithinClockSkew(now, now))
+        assertTrue(CommunityClimbValidation.isWithinClockSkew(now - 86_400L, now))
+    }
+
+    @Test
+    fun isWithinClockSkew_accepts_small_future_drift_within_one_hour() {
+        val now = 1_700_000_000L
+        assertTrue(CommunityClimbValidation.isWithinClockSkew(now + 1800L, now))
+        assertTrue(CommunityClimbValidation.isWithinClockSkew(now + 3600L, now))
+    }
+
+    @Test
+    fun isWithinClockSkew_rejects_far_future_event() {
+        // a forged far-future timestamp must not advance the `since` cursor and
+        // permanently disable the subscription.
+        val now = 1_700_000_000L
+        assertFalse(CommunityClimbValidation.isWithinClockSkew(now + 3601L, now))
+        assertFalse(CommunityClimbValidation.isWithinClockSkew(now + 86_400L * 365L, now))
+    }
+
     // ── Skip-matrix bounds ──────────────────────────────────────────────
 
     @Test

@@ -791,6 +791,16 @@ interface CommunityClimbQueries {
      * uuid-only primary key on `climbs` would otherwise allow.
      */
     fun getClimbAuthorPubkey(uuid: String): String?
+
+    /**
+     * True iff a row already exists for this uuid that is NOT a genuine
+     * community climb (catalogue content, or any NULL-author row). A real
+     * community row has both origin='cruxcoach' AND a non-NULL author, so the
+     * NULL returned by [getClimbAuthorPubkey] is ambiguous ("no row" vs
+     * "catalogue row with no author"); the live subscriber uses this to reject
+     * a community Kind-30078 that would re-key/overwrite catalogue content.
+     */
+    fun isNonCommunityClimb(uuid: String): Boolean
     /**
      * True iff a row exists locally with `source='local'` — i.e. authored
      * via the editor's `insertLocalDraft`. Used as a backstop self-filter

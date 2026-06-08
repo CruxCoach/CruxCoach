@@ -9,6 +9,7 @@ import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.domain.board.BoardClimbParser
 import com.cruxcoach.domain.community.ClimbBounds
 import com.vitorpamplona.quartz.nip01Core.core.Event
+import com.vitorpamplona.quartz.nip01Core.crypto.verifyId
 import com.vitorpamplona.quartz.nip01Core.crypto.verifySignature
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
@@ -260,8 +261,8 @@ class CommunityClimbSubscriber @Inject constructor(
             // anything that doesn't match the original signed bytes.
             try {
                 val event = Event.fromJson(row.rawEventJson)
-                if (!event.verifySignature()) {
-                    Log.w(TAG, "DLQ retry: signature invalid for uuid=${row.uuid} — abandoning")
+                if (!event.verifySignature() || !event.verifyId()) {
+                    Log.w(TAG, "DLQ retry: signature/id invalid for uuid=${row.uuid} — abandoning")
                     runCatching { boardRepository.deleteCommunityClimbDeadLetter(row.uuid) }
                     continue
                 }
@@ -415,8 +416,21 @@ class CommunityClimbSubscriber @Inject constructor(
             Log.w(TAG, "failed to parse event JSON")
             return
         }
-        if (!event.verifySignature()) {
-            Log.w(TAG, "skip event with invalid signature id=${event.id}")
+        if (!event.verifySignature() || !event.verifyId()) {
+            // verifyId fails when tags/content were altered after signing: a
+            // relay can serve a validly-signed event whose body it tampered with
+            // unless the id (= hash of the serialized content) is re-checked.
+            Log.w(TAG, "skip event with invalid signature/id id=${event.id}")
+            return
+        }
+        // Clock-skew bound: a far-future event must never be ingested as the
+        // newest climb nor advance the `since` cursor — a forged far-future
+        // timestamp would push the cursor past every real event and silently
+        // disable the live subscription. Applied before kind dispatch so both
+        // the climb and deletion paths (which call advanceCursorIfNewer) are covered.
+        val nowSec = System.currentTimeMillis() / 1000L
+        if (!CommunityClimbValidation.isWithinClockSkew(event.createdAt, nowSec)) {
+            Log.w(TAG, "skip future-dated event createdAt=${event.createdAt} now=$nowSec id=${event.id}")
             return
         }
         when (event.kind) {
@@ -522,6 +536,25 @@ class CommunityClimbSubscriber @Inject constructor(
                 TAG,
                 "skip cross-author event uuid=${parsedClimb.uuid} " +
                     "existing=${existingAuthor!!.take(8)} incoming=${parsedClimb.pubkey.take(8)}",
+            )
+            return
+        }
+
+        // Catalogue guard: a community Kind-30078 must never re-key or overwrite
+        // catalogue content (kilter/boardsesh) or any NULL-author row. The
+        // cross-author guard above treats a NULL existing author as claimable,
+        // and getClimbAuthorPubkey returns NULL for BOTH "no row" and a
+        // catalogue row with no author — so without this an official climb is
+        // hijackable. A genuine community row (origin='cruxcoach' + non-NULL
+        // author) is excluded by isNonCommunityClimb, so legitimate same-author
+        // updates and brand-new community climbs are unaffected.
+        if (runCatching { boardRepository.isNonCommunityClimb(parsedClimb.uuid) }
+                .getOrDefault(false)
+        ) {
+            Log.w(
+                TAG,
+                "skip community event targeting non-community climb " +
+                    "uuid=${parsedClimb.uuid} incoming=${parsedClimb.pubkey.take(8)}",
             )
             return
         }
@@ -1162,6 +1195,22 @@ internal object CommunityClimbValidation {
      */
     fun authorOwnershipMatches(existingPubkey: String?, signedPubkey: String): Boolean =
         existingPubkey == null || existingPubkey == signedPubkey
+
+    /** Reject events claiming creation more than this far in the future.
+     *  Events are stamped at publish time, so meaningful positive skew is a
+     *  forged timestamp; 1 h tolerates client clock drift. */
+    const val MAX_FUTURE_SKEW_SECONDS = 60L * 60L
+
+    /** True iff [createdAtSec] is not implausibly far in the future relative to
+     *  [nowSec]. A far-future event must be dropped before it is ingested as the
+     *  newest climb or allowed to advance the `since` cursor — otherwise a forged
+     *  far-future timestamp pushes the cursor past every real event and silently
+     *  disables the live subscription. */
+    fun isWithinClockSkew(
+        createdAtSec: Long,
+        nowSec: Long,
+        maxFutureSkewSec: Long = MAX_FUTURE_SKEW_SECONDS,
+    ): Boolean = createdAtSec <= nowSec + maxFutureSkewSec
 
     // ── Skip-matrix helpers (extracted for unit testability) ─────────
 

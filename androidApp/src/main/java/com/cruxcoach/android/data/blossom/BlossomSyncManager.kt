@@ -6,6 +6,7 @@ import android.util.Log
 import com.cruxcoach.android.nostr.NostrConfig
 import com.cruxcoach.android.util.ZstdNative
 import com.vitorpamplona.quartz.nip01Core.core.Event
+import com.vitorpamplona.quartz.nip01Core.crypto.verifyId
 import com.vitorpamplona.quartz.nip01Core.crypto.verifySignature
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -127,6 +128,14 @@ class BlossomSyncManager(
                                     }
                                     if (!event.verifySignature()) {
                                         Log.w(TAG, "Manifest signature invalid from $relayUrl")
+                                        return
+                                    }
+                                    // Bind the signature to the body: verifyId
+                                    // recomputes the event id from its serialized
+                                    // content, so a relay cannot substitute the
+                                    // manifest body under a validly-signed id.
+                                    if (!event.verifyId()) {
+                                        Log.w(TAG, "Manifest id/content mismatch from $relayUrl")
                                         return
                                     }
                                     // A non-compliant relay could return any

@@ -603,6 +603,9 @@ class BoardRepositoryImpl(
     override fun getClimbAuthorPubkey(uuid: String): String? =
         q.getClimbAuthorPubkey(uuid).executeAsOneOrNull()?.created_by_pubkey
 
+    override fun isNonCommunityClimb(uuid: String): Boolean =
+        q.isNonCommunityClimb(uuid).executeAsOneOrNull() != null
+
     override fun isLocallyAuthored(uuid: String): Boolean =
         q.isLocallyAuthored(uuid).executeAsOneOrNull() != null
 
