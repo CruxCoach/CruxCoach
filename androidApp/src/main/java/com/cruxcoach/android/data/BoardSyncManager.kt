@@ -118,18 +118,18 @@ class BoardSyncManager(
      * connectivity at all means we'll retry on the next app start.
      */
     fun recoverPartialImportIfNeeded() {
-        scope.launch {
+        scope.safeLaunch(TAG) {
             // EXISTS-based fast path: getClimbCount() blocks tens of
             // seconds during an active import, and this hook fires at
             // app-start where the user is already waiting on UI render.
-            if (!boardRepository.hasAnyClimbs()) return@launch
-            if (boardRepository.getAllPlacements().isNotEmpty()) return@launch
+            if (!boardRepository.hasAnyClimbs()) return@safeLaunch
+            if (boardRepository.getAllPlacements().isNotEmpty()) return@safeLaunch
 
             Log.w(TAG, "Partial board DB detected (climbs>0, placements=0) — interrupted import; triggering recovery sync")
 
             if (!isNetworkAvailable(appContext)) {
                 Log.w(TAG, "Recovery needed but no network — will retry on next app start")
-                return@launch
+                return@safeLaunch
             }
 
             startBackgroundSync()
@@ -150,10 +150,10 @@ class BoardSyncManager(
      * will redownload every chunk fresh.
      */
     fun handlePostMigrationResync() {
-        scope.launch {
+        scope.safeLaunch(TAG) {
             val v8 = boardRepository.hasPostV8ResyncMarker()
             val homewall = boardRepository.hasHomewallResyncMarker()
-            if (!v8 && !homewall) return@launch
+            if (!v8 && !homewall) return@safeLaunch
             val reason = listOfNotNull(
                 "post-v8".takeIf { v8 },
                 "homewall".takeIf { homewall },
@@ -170,7 +170,7 @@ class BoardSyncManager(
             // this branch.
             if (!isNetworkAvailable(appContext)) {
                 Log.i(TAG, "$reason resync: no network at app start; marker kept, retry on next launch")
-                return@launch
+                return@safeLaunch
             }
             Log.i(TAG, "$reason migration: forcing chunk-hash + timestamp reset for clean re-sync")
             // Wipe the cron-derived catalog rows so the resync runs
@@ -285,11 +285,11 @@ class BoardSyncManager(
      * and silently starts a Blossom sync if WiFi is available.
      */
     fun syncIfStale() {
-        scope.launch {
+        scope.safeLaunch(TAG) {
             val imported = importer.isImported()
             if (!imported) {
                 Log.d(TAG, "No data yet — skipping auto-sync")
-                return@launch
+                return@safeLaunch
             }
 
             // One-time backfill after v1→v2 migration added move_count column.
@@ -310,20 +310,20 @@ class BoardSyncManager(
             // retried while Kilter stays unchanged (empty-browser bug).
             ensureActiveBoardCatalogue()
 
-            if (_state.value.isSyncing) return@launch
+            if (_state.value.isSyncing) return@safeLaunch
 
             val interval = userPreferences.syncInterval.first()
-            if (interval == SyncInterval.MANUAL) return@launch
+            if (interval == SyncInterval.MANUAL) return@safeLaunch
 
             val lastSync = userPreferences.lastSyncTimestamp.first()
             if (!isStale(lastSync, interval)) {
                 Log.d(TAG, "Data fresh — no sync needed")
-                return@launch
+                return@safeLaunch
             }
 
             if (!isWifiConnected(appContext)) {
                 Log.d(TAG, "Data stale but no WiFi — skipping auto-sync")
-                return@launch
+                return@safeLaunch
             }
 
             // Check Blossom manifest for changed chunks
@@ -337,7 +337,7 @@ class BoardSyncManager(
                     val timestamp = DateTimeUtil.nowIso()
                     userPreferences.setLastSyncTimestamp(timestamp)
                     _state.update { it.copy(lastSyncTimestamp = timestamp) }
-                    return@launch
+                    return@safeLaunch
                 }
                 Log.d(TAG, "Changed chunks: ${changedChunks.map { it.name }}")
                 // Run under a foreground service so the stale-data

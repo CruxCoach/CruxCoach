@@ -43,8 +43,13 @@ class BoardLocationRepositoryImpl(
         w.getWallsMatchingBoard(layoutId.toLong(), productSizeId.toLong())
             .executeAsList().map { it.toDomain() }
 
-    override fun searchLocations(query: String, limit: Int): List<BoardLocation> =
-        q.searchLocations(query, limit.toLong()).executeAsList().map { it.toDomain() }
+    override fun searchLocations(query: String, limit: Int): List<BoardLocation> {
+        // Escape LIKE metacharacters so '%' / '_' typed by the user match
+        // literally (the query uses ESCAPE '\'). Escape the backslash FIRST so
+        // we don't double-escape the escapes we add below.
+        val escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        return q.searchLocations(escaped, limit.toLong()).executeAsList().map { it.toDomain() }
+    }
 
     override fun productSizeFrequency(): Map<Int, Long> =
         w.wallCountByProductSize().executeAsList()

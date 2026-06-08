@@ -257,8 +257,12 @@ class BoardDatabaseImporter(
         // tables; safe to run after the deferred-index block has finished.
         // Older clients ignore this chunk type; newer clients with no
         // locations chunk in the manifest get an empty list and skip.
+        // Non-essential source: a single corrupt/unreadable locations chunk must
+        // NOT sink the whole sync (climbs/stats/layout are already imported).
+        // Mirrors the error isolation in BoardSyncManager.backfillLocationsIfMissing.
         for (file in locationsDbFiles) {
-            openReadOnly(file) { rawDb -> importLocations(rawDb) }
+            runCatching { openReadOnly(file) { rawDb -> importLocations(rawDb) } }
+                .onFailure { Log.w(TAG, "locations chunk import failed (non-essential) — skipping ${file.name}", it) }
         }
 
         val climbCount = boardRepository.getClimbCount()

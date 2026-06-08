@@ -82,9 +82,11 @@ WHERE layout_id = :layoutId
 getPublicLocations:
 SELECT * FROM kilter_board_location WHERE access_type = 'PUBLIC';
 
--- FEAT-007 gym search: case-insensitive name substring, bounded.
+-- FEAT-007 gym search: case-insensitive name substring, bounded. ESCAPE '\' so
+-- a user typing % or _ matches literally (the repo layer escapes those + the
+-- escape char) instead of being treated as a LIKE wildcard.
 searchLocations:
 SELECT * FROM kilter_board_location
-WHERE name LIKE ('%' || :q || '%') COLLATE NOCASE
+WHERE name COLLATE NOCASE LIKE ('%' || :q || '%') ESCAPE '\'
 ORDER BY name
 LIMIT :lim;
