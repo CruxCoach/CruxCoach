@@ -6,6 +6,8 @@ import com.cruxcoach.android.data.blossom.BlossomSyncException
 import com.cruxcoach.android.data.blossom.BlossomSyncManager
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 import javax.inject.Inject
@@ -33,6 +35,12 @@ class MoonBoardCatalogueSync @Inject constructor(
     private val importer: BoardDatabaseImporter,
     @Named("moonboard") private val blossomSync: BlossomSyncManager,
 ) {
+    // Single-board serialisation: serialise concurrent MoonBoard syncs so they
+    // can't race on the shared cache file / double-import (mirrors
+    // AuroraCatalogueSync). The DB write itself is already serialised by the
+    // @Synchronized importer.
+    private val syncMutex = Mutex()
+
     sealed class Result {
         /** Local catalogue already matches the published snapshot — no download. */
         data object AlreadyCurrent : Result()
@@ -53,7 +61,8 @@ class MoonBoardCatalogueSync @Inject constructor(
      */
     suspend fun sync(
         onProgress: ((BoardDatabaseImporter.ImportStep) -> Unit)? = null
-    ): Result = withContext(Dispatchers.IO) {
+    ): Result = syncMutex.withLock {
+        withContext(Dispatchers.IO) {
         try {
             onProgress?.invoke(BoardDatabaseImporter.ImportStep.FetchingManifest)
             val manifest = blossomSync.fetchManifest()
@@ -125,6 +134,7 @@ class MoonBoardCatalogueSync @Inject constructor(
             Log.w(TAG, "MoonBoard catalogue sync failed (unexpected)", e)
             Result.Failed(e.message ?: "MoonBoard catalogue sync failed")
         }
+    }
     }
 
     companion object {

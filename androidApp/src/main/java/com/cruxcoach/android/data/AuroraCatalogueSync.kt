@@ -7,9 +7,12 @@ import com.cruxcoach.android.data.blossom.BlossomSyncManager
 import com.cruxcoach.domain.board.BoardBrand
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Named
 import javax.inject.Singleton
@@ -37,6 +40,13 @@ class AuroraCatalogueSync @Inject constructor(
     private val importer: BoardDatabaseImporter,
     @Named("blossom") private val okHttpClient: OkHttpClient,
 ) {
+    // Per-board serialisation: a second sync of the SAME board (callers:
+    // BoardSyncManager, AuroraBoardSelector, SettingsViewModel) would otherwise
+    // race on the shared per-board cache file + double-import. Different boards
+    // still run in parallel; the DB write itself is already serialised by the
+    // @Synchronized importer.
+    private val boardLocks = ConcurrentHashMap<BoardBrand, Mutex>()
+
     sealed class Result {
         /** Local catalogue already matches the published snapshot — no download. */
         data object AlreadyCurrent : Result()
@@ -58,7 +68,8 @@ class AuroraCatalogueSync @Inject constructor(
     suspend fun sync(
         board: BoardBrand,
         onProgress: ((BoardDatabaseImporter.ImportStep) -> Unit)? = null
-    ): Result = withContext(Dispatchers.IO) {
+    ): Result = boardLocks.getOrPut(board) { Mutex() }.withLock {
+        withContext(Dispatchers.IO) {
         require(board.usesAuroraProtocol && board != BoardBrand.KILTER) {
             "AuroraCatalogueSync only handles the non-Kilter Aurora family, got $board"
         }
@@ -133,6 +144,7 @@ class AuroraCatalogueSync @Inject constructor(
             Log.w(TAG, "${board.wireValue} catalogue sync failed (unexpected)", e)
             Result.Failed(e.message ?: "Aurora catalogue sync failed")
         }
+    }
     }
 
     companion object {

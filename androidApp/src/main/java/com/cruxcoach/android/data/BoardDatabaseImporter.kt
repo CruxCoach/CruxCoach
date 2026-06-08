@@ -105,6 +105,11 @@ class BoardDatabaseImporter(
      *
      * Import order: climbs first, then stats, then meta (layout data).
      */
+    // @Synchronized: all five board-DB writers serialise on this @Singleton
+    // importer's monitor (reentrant — the imports call backfillMoveCounts
+    // internally). Single writer at a time → no concurrent ATTACH/index-DDL,
+    // no SQLITE_BUSY from a backfill racing a sync (#3 concurrency cluster).
+    @Synchronized
     fun importFromChunks(
         metaDbFiles: List<File>,
         climbsDbFiles: List<File>,
@@ -312,6 +317,7 @@ class BoardDatabaseImporter(
      * board geometry is hard-coded ([com.cruxcoach.domain.board.MoonBoardVariant]),
      * not carried in the snapshot.
      */
+    @Synchronized
     fun importMoonBoardSnapshot(
         snapshotFile: File,
         onProgress: ((step: ImportStep) -> Unit)? = null
@@ -414,6 +420,7 @@ class BoardDatabaseImporter(
      * [com.cruxcoach.domain.board.BoardBrand.fromLayoutId] cannot tell them
      * apart — see its doc).
      */
+    @Synchronized
     fun importAuroraSnapshot(
         snapshotFile: File,
         boardBrand: String,
@@ -562,6 +569,7 @@ class BoardDatabaseImporter(
      * Import from a full uncompressed board DB (e.g. received via local WiFi share).
      * This is the same as the legacy online import path.
      */
+    @Synchronized
     fun importFromLocalDb(
         dbFile: File,
         onProgress: ((step: ImportStep) -> Unit)? = null
@@ -800,6 +808,7 @@ class BoardDatabaseImporter(
      * each climb's own board role IDs (placement_roles), so Aurora boards —
      * whose role IDs differ from Kilter's — get correct counts instead of 0.
      */
+    @Synchronized
     internal fun backfillMoveCounts() {
         val db = openTargetDb()
         try {
