@@ -1048,6 +1048,13 @@ class CommunityClimbSubscriber @Inject constructor(
                 val uuid = (contentObj["uuid"]?.jsonPrimitive?.contentOrNull
                     ?: dTagUuid(dTag!!)
                     ?: error("uuid not derivable from event")).lowercase()
+                // A community event is self-signed by ANY keypair, so this uuid is
+                // attacker-controlled — yet it becomes the climbs PK AND is
+                // interpolated UNENCODED into a Compose nav route (tap-to-open).
+                // Restrict to the route-safe hex/dash charset (canonical UUID
+                // 8-4-4-4-12 or a 32-hex catalogue id) so a crafted uuid can't
+                // break/inject the route; reject (→ drop/DLQ the event) otherwise.
+                require(uuid.matches(UUID_ROUTE_SAFE)) { "uuid has unsafe chars: ${uuid.take(16)}" }
                 val name = contentObj["name"]?.jsonPrimitive?.contentOrNull.orEmpty()
                 val description = contentObj["description"]?.jsonPrimitive?.contentOrNull.orEmpty()
                 val contentPubkeyPrefix = contentObj["pubkey_prefix"]?.jsonPrimitive?.contentOrNull
@@ -1082,6 +1089,12 @@ class CommunityClimbSubscriber @Inject constructor(
                 return if (parts.size >= 4 && parts[0] == "cruxcoach" && parts[1] == "climb")
                     parts.last() else null
             }
+
+            /** Route-safe uuid charset: lowercase hex + dashes — covers both a
+             *  canonical UUID (8-4-4-4-12) and a 32-hex catalogue id, and excludes
+             *  '/', '?', '#', whitespace etc. that could break/inject a Compose
+             *  nav route. The length bound is a sanity cap. */
+            private val UUID_ROUTE_SAFE = Regex("^[0-9a-f-]{16,64}$")
         }
     }
 

@@ -60,6 +60,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.random.Random
 import javax.inject.Inject
+import com.cruxcoach.android.util.safeLaunch
 
 /** Status of a climb relative to the local user. The three buckets are
  *  DISJOINT — `getUserAttemptedClimbUuids` `EXCEPT`s sent climbs, so every
@@ -257,13 +258,14 @@ class BoardBrowserViewModel @Inject constructor(
     private var randomCacheJob: Deferred<List<String>>? = null
 
     companion object {
+        private const val TAG = "BoardBrowserVM"
         private const val PAGE_SIZE = 50
         private const val MAX_STATUS_SCAN_PAGES = 10
     }
 
     init {
         PerfLogger.milestone("BoardBrowserVM.init START")
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             // Without try/catch a DataStore read failure would leave
             // isLoading=true forever (the spinner never resolves and
             // refreshBoardData is never called). Catch + log + flip
@@ -335,7 +337,7 @@ class BoardBrowserViewModel @Inject constructor(
         }
         // Combine peripheral state into a single atomic update.
         // Prevents 4 separate state emissions on init → fewer recompositions.
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             combine(
                 bleConnection.connectionState,
                 bleConnection.connectedBoardName,
@@ -350,7 +352,7 @@ class BoardBrowserViewModel @Inject constructor(
             }.collect {}
         }
         // Resolve current queue climb name
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             sessionQueueManager.state.collect { queueState ->
                 val item = queueState.currentClimb
                 if (item != null) {
@@ -368,7 +370,7 @@ class BoardBrowserViewModel @Inject constructor(
             }
         }
         // Auto-refresh board data when a sync completes
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             var lastGen = syncManager.state.value.syncGeneration
             syncManager.state.collect { syncState ->
                 if (syncState.syncGeneration > lastGen && !syncState.isSyncing) {
@@ -386,7 +388,7 @@ class BoardBrowserViewModel @Inject constructor(
      * reloads so the list re-filters to that board immediately.
      */
     fun selectBoard(productSizeId: Int) {
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             val ps = BoardConstants.KILTER_KNOWN_SIZES
                 .firstOrNull { it.id.toInt() == productSizeId }
             val layoutId = BoardConstants.layoutIdForProduct(
@@ -406,7 +408,7 @@ class BoardBrowserViewModel @Inject constructor(
      *  MoonBoard catalogue is part of the board-data sync, so no extra
      *  download is needed; the next browse fetch flips brand atomically. */
     fun selectMoonBoardVariant(variant: MoonBoardVariant) {
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             userPreferences.setMoonBoardSelection(variant.layoutId.toInt())
             refreshBoardData(force = true)
         }
@@ -453,7 +455,7 @@ class BoardBrowserViewModel @Inject constructor(
         // Invalidate caches so new ascents/bids are picked up
         statusLoaded = false
         cachedCountKey = ""
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             val changed = withContext(Dispatchers.IO) {
                 // hasAnyClimbs() = O(1) EXISTS probe; getClimbCount() is a
                 // full table-scan that blocks tens of seconds on the bulk
@@ -528,7 +530,7 @@ class BoardBrowserViewModel @Inject constructor(
 
     private fun persistFilters() {
         val f = _state.value.filter
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             userPreferences.setBoardFilters(
                 angle = f.angle, minGrade = f.minGradeIndex, maxGrade = f.maxGradeIndex,
                 minAscensionists = f.minAscensionists, sortField = f.sortField.name,
@@ -690,7 +692,7 @@ class BoardBrowserViewModel @Inject constructor(
         if (!_state.value.hasBoardData) return
 
         searchJob?.cancel()
-        searchJob = viewModelScope.launch {
+        searchJob = viewModelScope.safeLaunch(TAG) {
             val hasExisting = _state.value.climbs.isNotEmpty()
             _state.update { it.copy(
                 isLoading = !hasExisting,
@@ -721,7 +723,7 @@ class BoardBrowserViewModel @Inject constructor(
                     PerfLogger.reportStartupTimeline()
                 }
                 // Fire-and-forget: resolve count in separate coroutine (non-blocking)
-                viewModelScope.launch {
+                viewModelScope.safeLaunch(TAG) {
                     val count = resolveCount(filter, newDbOffset)
                     _state.update { it.copy(filteredCount = count) }
                 }
@@ -796,7 +798,7 @@ class BoardBrowserViewModel @Inject constructor(
         val s = _state.value
         if (!s.hasBoardData || s.isLoadingMore || !s.canLoadMore) return
 
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             _state.update { it.copy(isLoadingMore = true) }
             try {
                 val (nextFiltered, newDbOffset, dbExhausted) = withContext(Dispatchers.IO) {
@@ -1072,7 +1074,7 @@ class BoardBrowserViewModel @Inject constructor(
         val count = _state.value.filteredCount
         if (count <= 0) return
         val randomOffset = Random.nextInt(count.toInt())
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             val uuid = withContext(Dispatchers.IO) {
                 val climb = if (f.searchQuery.isNotBlank()) {
                     boardRepository.searchClimbsByName(
@@ -1114,7 +1116,7 @@ class BoardBrowserViewModel @Inject constructor(
             s.copy(holdSearch = s.holdSearch.copy(selectedHolds = next))
         }
         holdSearchJob?.cancel()
-        holdSearchJob = viewModelScope.launch {
+        holdSearchJob = viewModelScope.safeLaunch(TAG) {
             _state.update { it.copy(holdSearch = it.holdSearch.copy(isSearching = true)) }
             val count = withContext(Dispatchers.IO) { countHoldMatches() }
             _state.update { it.copy(holdSearch = it.holdSearch.copy(matchCount = count, isSearching = false)) }
@@ -1134,7 +1136,7 @@ class BoardBrowserViewModel @Inject constructor(
     fun applyHoldFilter() {
         val selected = _state.value.holdSearch.selectedHolds
         if (selected.isEmpty()) return
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             _state.update { it.copy(holdSearch = it.holdSearch.copy(isSearching = true)) }
             val uuids = withContext(Dispatchers.IO) { findUuidsMatchingAllHolds(selected) }
             _state.update { it.copy(holdSearch = it.holdSearch.copy(
@@ -1151,7 +1153,7 @@ class BoardBrowserViewModel @Inject constructor(
         heatmapJob?.cancel()
         _state.update { it.copy(holdSearch = it.holdSearch.copy(heatmapMode = mode, heatmapData = emptyMap())) }
         if (mode == HeatmapMode.OFF) return
-        heatmapJob = viewModelScope.launch {
+        heatmapJob = viewModelScope.safeLaunch(TAG) {
             val heatmap = withContext(Dispatchers.Default) { computeHeatmap(mode) }
             if (_state.value.holdSearch.heatmapMode == mode) {
                 _state.update { it.copy(holdSearch = it.holdSearch.copy(heatmapData = heatmap)) }
@@ -1219,7 +1221,7 @@ class BoardBrowserViewModel @Inject constructor(
 
     fun playEasterAnimation(type: EasterAnimation) {
         animationJob?.cancel()
-        animationJob = viewModelScope.launch {
+        animationJob = viewModelScope.safeLaunch(TAG) {
             _isAnimating.value = true
             try {
                 val animSizeId = userPreferences.boardProductSizeId.first()
@@ -1228,14 +1230,14 @@ class BoardBrowserViewModel @Inject constructor(
                 }
                 _animationDebug.value = "grid=${grid.size}"
                 if (grid.isEmpty()) {
-                    return@launch
+                    return@safeLaunch
                 }
                 val frames = when (type) {
                     EasterAnimation.EGG -> BoardEasterAnimations.easterEgg(grid)
                 }
                 _animationDebug.value = "grid=${grid.size} frames=${frames.size} leds/f=${frames.firstOrNull()?.leds?.size ?: 0}"
                 if (frames.isEmpty() || frames.all { it.leds.isEmpty() }) {
-                    return@launch
+                    return@safeLaunch
                 }
                 val encoder = com.cruxcoach.domain.board.BoardPacketEncoder(3)
                 repeat(3) {
@@ -1265,7 +1267,7 @@ class BoardBrowserViewModel @Inject constructor(
         animationJob?.cancel()
         animationJob = null
         _isAnimating.value = false
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             runCatching { bleConnection.clearBoard() }
                 .onFailure { android.util.Log.w("BoardBrowserVM", "stopAnimation clearBoard failed", it) }
         }
@@ -1303,7 +1305,7 @@ class BoardBrowserViewModel @Inject constructor(
     fun endSession(): com.cruxcoach.data.repository.Board_sessions? {
         val session = sessionManager.endSession()
         if (session != null) {
-            viewModelScope.launch {
+            viewModelScope.safeLaunch(TAG) {
                 val gradeScale = userPreferences.gradeScale.first()
                 val summary = withContext(Dispatchers.IO) {
                     val ascents = personalBoardRepo.getUserAscentsBetween(

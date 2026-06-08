@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
+import com.cruxcoach.android.util.safeLaunch
 
 data class BoardListDetailState(
     val isLoading: Boolean = true,
@@ -58,17 +59,17 @@ class BoardListDetailViewModel @Inject constructor(
     val state: StateFlow<BoardListDetailState> = _state.asStateFlow()
 
     init {
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             userPreferences.boardAngle.collect { angle ->
                 _state.update { it.copy(angle = angle) }
             }
         }
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             userPreferences.gradeScale.collect { scale ->
                 _state.update { it.copy(gradeScale = scale) }
             }
         }
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             zoneManager.zones.collect { zones ->
                 _state.update { it.copy(zones = zones) }
             }
@@ -76,7 +77,7 @@ class BoardListDetailViewModel @Inject constructor(
         // Re-query when the active board changes while this screen is open —
         // the list is now board-scoped, so a board switch must re-resolve the
         // visible entries (mirrors BoardBrowserViewModel's board-flow collect).
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             combine(
                 userPreferences.boardBrand,
                 userPreferences.boardLayoutId,
@@ -90,7 +91,7 @@ class BoardListDetailViewModel @Inject constructor(
     }
 
     private fun loadList() {
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             withContext(Dispatchers.IO) {
                 val list = personalBoardRepo.getClimbListById(listId)
                 val angle = _state.value.angle
@@ -121,7 +122,7 @@ class BoardListDetailViewModel @Inject constructor(
         val s = _state.value
         if (s.isLoadingMore || !s.canLoadMore) return
         _state.update { it.copy(isLoadingMore = true) }
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             withContext(Dispatchers.IO) {
                 val board = boardSnapshot()
                 // Page over the secure-DB uuid OFFSET, not over the (possibly
@@ -187,7 +188,7 @@ class BoardListDetailViewModel @Inject constructor(
     }
 
     fun removeFromList(climbUuid: String) {
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             withContext(Dispatchers.IO) {
                 personalBoardRepo.removeClimbFromList(listId, climbUuid)
             }
@@ -199,6 +200,7 @@ class BoardListDetailViewModel @Inject constructor(
     }
 
     companion object {
+        private const val TAG = "BoardListDetailVM"
         private const val PAGE_SIZE = 50
     }
 }

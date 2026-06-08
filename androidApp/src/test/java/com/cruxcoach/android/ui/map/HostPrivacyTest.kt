@@ -48,4 +48,29 @@ class HostPrivacyTest {
         assertFalse(isPrivateOrLoopbackHost("172.32.0.1")) // just above it
         assertFalse(isPrivateOrLoopbackHost("192.167.0.1")) // not 192.168
     }
+
+    @Test
+    fun rejects_alternate_ipv4_encodings_of_loopback_and_private() {
+        assertTrue(isPrivateOrLoopbackHost("2130706433")) // decimal dword 127.0.0.1
+        assertTrue(isPrivateOrLoopbackHost("0x7f000001")) // hex dword 127.0.0.1
+        assertTrue(isPrivateOrLoopbackHost("0177.0.0.1")) // octal first octet
+        assertTrue(isPrivateOrLoopbackHost("127.1")) // legacy short form
+        assertTrue(isPrivateOrLoopbackHost("0x7f.0.0.1")) // hex octet
+        assertTrue(isPrivateOrLoopbackHost("0xc0a80001")) // 192.168.0.1 hex dword
+    }
+
+    @Test
+    fun rejects_ipv4_mapped_ipv6_loopback() {
+        assertTrue(isPrivateOrLoopbackHost("::ffff:127.0.0.1"))
+        assertTrue(isPrivateOrLoopbackHost("[::ffff:127.0.0.1]"))
+        assertTrue(isPrivateOrLoopbackHost("::ffff:7f00:0001")) // hex-group form
+    }
+
+    @Test
+    fun still_accepts_public_hosts_after_hardening() {
+        assertFalse(isPrivateOrLoopbackHost("example.com"))
+        assertFalse(isPrivateOrLoopbackHost("8.8.8.8"))
+        assertFalse(isPrivateOrLoopbackHost("0x08080808")) // 8.8.8.8 in hex — public
+        assertFalse(isPrivateOrLoopbackHost("cafe.example.com"))
+    }
 }

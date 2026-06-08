@@ -21,6 +21,7 @@ import kotlinx.datetime.TimeZone
 import kotlinx.datetime.minus
 import kotlinx.datetime.toLocalDateTime
 import javax.inject.Inject
+import com.cruxcoach.android.util.safeLaunch
 
 data class BoardClimbHistoryState(
     val entries: List<ClimbHistoryEntry> = emptyList(),
@@ -52,7 +53,7 @@ class BoardClimbHistoryViewModel @Inject constructor(
     init {
         // History entries (newest-recorded first; the repo flow re-emits on
         // every change, so this also reflects clears + prunes immediately).
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             personalBoardRepo.observeClimbHistory().collect { entries ->
                 // Drop any selected ids that no longer exist (pruned/cleared
                 // elsewhere) so the selection can't go stale.
@@ -68,14 +69,14 @@ class BoardClimbHistoryViewModel @Inject constructor(
         // Retention setting. On every emission (init + later changes) prune to
         // the cutoff so the on-disk log can't drift past the chosen window;
         // OFF disables retention entirely (keep everything).
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             userPreferences.historyRetention.collect { retention ->
                 _state.update { it.copy(retention = retention) }
                 pruneToRetention(retention)
             }
         }
         // Grade scale — mirror the user's app-wide preference for grade display.
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             userPreferences.gradeScale.collect { scale ->
                 _state.update { it.copy(gradeScale = scale) }
             }
@@ -85,7 +86,7 @@ class BoardClimbHistoryViewModel @Inject constructor(
     /** Persist the chosen retention window; the historyRetention collector
      *  above then runs the prune. */
     fun setRetention(retention: HistoryRetention) {
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             try {
                 userPreferences.setHistoryRetention(retention)
             } catch (e: kotlinx.coroutines.CancellationException) {
@@ -97,7 +98,7 @@ class BoardClimbHistoryViewModel @Inject constructor(
     }
 
     fun clearHistory() {
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             try {
                 personalBoardRepo.clearClimbHistory()
             } catch (e: kotlinx.coroutines.CancellationException) {
@@ -134,7 +135,7 @@ class BoardClimbHistoryViewModel @Inject constructor(
     fun deleteSelected() {
         val ids = _state.value.selectedIds.toList()
         if (ids.isEmpty()) return
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             try {
                 personalBoardRepo.deleteClimbHistory(ids)
                 _state.update { it.copy(selectedIds = emptySet()) }
@@ -148,7 +149,7 @@ class BoardClimbHistoryViewModel @Inject constructor(
 
     private fun pruneToRetention(retention: HistoryRetention) {
         if (retention == HistoryRetention.OFF) return
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             try {
                 personalBoardRepo.pruneClimbHistory(cutoffIso(retention.days))
             } catch (e: kotlinx.coroutines.CancellationException) {

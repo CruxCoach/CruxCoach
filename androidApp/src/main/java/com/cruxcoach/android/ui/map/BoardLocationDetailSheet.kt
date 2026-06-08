@@ -357,20 +357,65 @@ private fun validatedHttpUrlOrNull(raw: String?): Uri? {
 internal fun isPrivateOrLoopbackHost(host: String?): Boolean {
     val h = host?.trim()?.lowercase()?.removeSurrounding("[", "]") ?: return true
     if (h.isEmpty() || h == "localhost") return true
-    // IPv6 loopback / unique-local (fc00::/7) / link-local (fe80::/10)
     if (':' in h) {
-        return h == "::1" || h.startsWith("fc") || h.startsWith("fd") || h.startsWith("fe80")
+        // IPv4-mapped IPv6: ::ffff:a.b.c.d  or  ::ffff:hhhh:hhhh → check the
+        // embedded IPv4. Otherwise loopback / unique-local / link-local.
+        val mapped = h.substringAfterLast("::ffff:", "")
+        if (mapped.isNotEmpty()) {
+            ipv4LiteralToInt(mapped)?.let { return isPrivateOrLoopbackIpv4(it) }
+            val g = mapped.split(":")
+            if (g.size == 2) {
+                val hi = g[0].toLongOrNull(16)
+                val lo = g[1].toLongOrNull(16)
+                if (hi != null && lo != null && hi <= 0xFFFF && lo <= 0xFFFF) {
+                    return isPrivateOrLoopbackIpv4((hi shl 16) or lo)
+                }
+            }
+        }
+        return h == "::1" || h == "::" || h.startsWith("fc") || h.startsWith("fd") || h.startsWith("fe80")
     }
-    // IPv4 dotted-quad
-    val octets = h.split(".").mapNotNull { it.toIntOrNull() }
-    if (octets.size != 4 || octets.any { it !in 0..255 }) return false // not an IPv4 literal → treat as public hostname
-    val (a, b, _, _) = octets
-    return a == 127 ||                       // loopback 127.0.0.0/8
-        a == 10 ||                           // private 10.0.0.0/8
-        (a == 172 && b in 16..31) ||         // private 172.16.0.0/12
-        (a == 192 && b == 168) ||            // private 192.168.0.0/16
-        (a == 169 && b == 254) ||            // link-local 169.254.0.0/16
-        a == 0                               // 0.0.0.0/8
+    // IPv4: accept every inet_aton-style encoding the OS/browser actually
+    // resolves (decimal/hex/octal dword + short forms), not just the canonical
+    // dotted-quad — else 0x7f000001 / 2130706433 / 0177.0.0.1 bypass the check.
+    val ipv4 = ipv4LiteralToInt(h) ?: return false // not numeric → real (public) hostname
+    return isPrivateOrLoopbackIpv4(ipv4)
+}
+
+private fun isPrivateOrLoopbackIpv4(v: Long): Boolean {
+    val a = (v ushr 24) and 0xFF
+    val b = (v ushr 16) and 0xFF
+    return a == 127L ||                  // loopback 127.0.0.0/8
+        a == 10L ||                      // private 10.0.0.0/8
+        a == 0L ||                       // 0.0.0.0/8
+        (a == 172L && b in 16L..31L) ||  // private 172.16.0.0/12
+        (a == 192L && b == 168L) ||      // private 192.168.0.0/16
+        (a == 169L && b == 254L)         // link-local 169.254.0.0/16
+}
+
+/** Parse an IPv4 literal in any inet_aton form — 1-4 dot-parts, each decimal /
+ *  0x-hex / leading-0 octal, with the legacy short-form packing — to its 32-bit
+ *  value. Returns null when [s] is not a numeric IPv4 literal (a real hostname). */
+private fun ipv4LiteralToInt(s: String): Long? {
+    if (s.isEmpty() || s.any { it !in "0123456789abcdefx." }) return null
+    val parts = s.split(".")
+    if (parts.size > 4) return null
+    val nums = parts.map { p -> parseIpv4Part(p) ?: return null }
+    return when (nums.size) {
+        1 -> nums[0].takeIf { it in 0..0xFFFFFFFFL }
+        2 -> if (nums[0] <= 0xFF && nums[1] <= 0xFFFFFF) (nums[0] shl 24) or nums[1] else null
+        3 -> if (nums[0] <= 0xFF && nums[1] <= 0xFF && nums[2] <= 0xFFFF)
+            (nums[0] shl 24) or (nums[1] shl 16) or nums[2] else null
+        4 -> if (nums.all { it <= 0xFF })
+            (nums[0] shl 24) or (nums[1] shl 16) or (nums[2] shl 8) or nums[3] else null
+        else -> null
+    }
+}
+
+private fun parseIpv4Part(p: String): Long? = when {
+    p.isEmpty() -> null
+    p.startsWith("0x") -> p.drop(2).ifEmpty { null }?.toLongOrNull(16)
+    p.length > 1 && p[0] == '0' -> p.toLongOrNull(8)
+    else -> p.toLongOrNull(10)
 }
 
 private fun safeStartActivity(

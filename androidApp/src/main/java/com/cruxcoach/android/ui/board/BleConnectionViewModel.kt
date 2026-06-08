@@ -28,6 +28,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
+import com.cruxcoach.android.util.safeLaunch
 
 data class BleConnectionState(
     val hasPermissions: Boolean = false,
@@ -82,17 +83,17 @@ class BleConnectionViewModel @Inject constructor(
     val state: StateFlow<BleConnectionState> = _state.asStateFlow()
 
     init {
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             bleScanner.discoveredBoards.collect { boards ->
                 _state.update { it.copy(discoveredBoards = boards) }
             }
         }
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             bleScanner.isScanning.collect { scanning ->
                 _state.update { it.copy(isScanning = scanning) }
             }
         }
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             bleConnection.connectionState.collect { connState ->
                 _state.update { it.copy(connectionState = connState) }
                 // Auto-advertise "board connected" so nearby users can send disconnect requests
@@ -116,34 +117,34 @@ class BleConnectionViewModel @Inject constructor(
                 }
             }
         }
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             bleConnection.connectedBoardName.collect { name ->
                 _state.update { it.copy(connectedBoardName = name) }
             }
         }
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             bleScanner.bluetoothEnabled.collect { enabled ->
                 _state.update { it.copy(isBluetoothEnabled = enabled) }
             }
         }
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             bleConnection.autoDisconnectSeconds = userPreferences.bleAutoDisconnectSeconds.first()
             userPreferences.bleAutoDisconnectSeconds.collect { seconds ->
                 bleConnection.autoDisconnectSeconds = seconds
             }
         }
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             userPreferences.nearbyClimbSharing.collect { enabled ->
                 _state.update { it.copy(climbSharingEnabled = enabled) }
             }
         }
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             userPreferences.allowRemoteDisconnect.collect { allowed ->
                 _state.update { it.copy(allowRemoteDisconnect = allowed) }
             }
         }
         // Receive disconnect requests from nearby users (works on any screen)
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             nearbyClimbScanner.disconnectRequests.collect {
                 val s = _state.value
                 val now = System.currentTimeMillis()
@@ -166,7 +167,7 @@ class BleConnectionViewModel @Inject constructor(
         // HOST: SessionGattBridge already sent the DisconnectRequest — wait for board to become vacant.
         // PARTICIPANT: GATT connection to host succeeded — connect to board for LED control.
         var previousQueueRole = SessionRole.NONE
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             sessionQueueManager.state.collect { queueState ->
                 val newRole = queueState.role
                 if (newRole != previousQueueRole) {
@@ -212,7 +213,7 @@ class BleConnectionViewModel @Inject constructor(
     }
 
     fun startScan() {
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             // Wait for any pending GATT close to finish before scanning.
             // Android suppresses connectable scan results for a device whose GATT
             // handle is still open — the board won't appear until close() completes.
@@ -275,7 +276,7 @@ class BleConnectionViewModel @Inject constructor(
     fun startScanWithAutoConnect() {
         autoConnectScanJob?.cancel()
         _state.update { it.copy(isAutoConnectScan = true) }
-        autoConnectScanJob = viewModelScope.launch {
+        autoConnectScanJob = viewModelScope.safeLaunch(TAG) {
             startScan()
             val boards = awaitBoardsForAutoConnect()
             val s = _state.value
@@ -284,7 +285,7 @@ class BleConnectionViewModel @Inject constructor(
             // thread.
             if (s.connectionState != ConnectionState.DISCONNECTED || !s.isScanning) {
                 _state.update { it.copy(isAutoConnectScan = false) }
-                return@launch
+                return@safeLaunch
             }
             if (boards.size == 1) {
                 Log.i("BleConnectionVM", "auto-connect: single board, connecting")
@@ -343,7 +344,7 @@ class BleConnectionViewModel @Inject constructor(
         // Watch nearby advertising — wait until there are no active climb connections
         // (LastClimb entries are OK — they just mean LEDs still on from a disconnected device).
         autoConnectJob?.cancel()
-        autoConnectJob = viewModelScope.launch {
+        autoConnectJob = viewModelScope.safeLaunch(TAG) {
             nearbyClimbScanner.nearbyClimbs.first { climbs ->
                 climbs.none { !it.isLastClimb } && _state.value.isRequestingDisconnect
             }
@@ -361,7 +362,7 @@ class BleConnectionViewModel @Inject constructor(
 
         // Timeout: no response after 20s
         disconnectTimeoutJob?.cancel()
-        disconnectTimeoutJob = viewModelScope.launch {
+        disconnectTimeoutJob = viewModelScope.safeLaunch(TAG) {
             delay(20_000L)
             autoConnectJob?.cancel()
             bleScanner.stopScan()
@@ -405,7 +406,7 @@ class BleConnectionViewModel @Inject constructor(
             return
         }
         autoConnectJob?.cancel()
-        autoConnectJob = viewModelScope.launch {
+        autoConnectJob = viewModelScope.safeLaunch(TAG) {
             Log.d(TAG, "startAutoConnectForSession: waiting for board to become vacant")
             nearbyClimbScanner.nearbyClimbs.first { climbs ->
                 val vacant = climbs.none { !it.isLastClimb }
@@ -416,11 +417,11 @@ class BleConnectionViewModel @Inject constructor(
             val currentRole = sessionQueueManager.state.value.role
             if (currentRole == SessionRole.NONE) {
                 Log.d(TAG, "startAutoConnectForSession: role is NONE, aborting")
-                return@launch
+                return@safeLaunch
             }
             if (_state.value.connectionState != ConnectionState.DISCONNECTED) {
                 Log.d(TAG, "startAutoConnectForSession: connected while waiting, aborting")
-                return@launch
+                return@safeLaunch
             }
             Log.d(TAG, "startAutoConnectForSession: board vacant, awaiting GATT close then scanning")
             bleConnection.awaitGattClosed()
@@ -432,7 +433,7 @@ class BleConnectionViewModel @Inject constructor(
         }
         // Timeout: stop trying after 30s
         disconnectTimeoutJob?.cancel()
-        disconnectTimeoutJob = viewModelScope.launch {
+        disconnectTimeoutJob = viewModelScope.safeLaunch(TAG) {
             delay(30_000L)
             autoConnectJob?.cancel()
             bleScanner.stopScan()

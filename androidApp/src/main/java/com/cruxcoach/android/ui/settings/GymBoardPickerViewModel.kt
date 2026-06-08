@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
+import com.cruxcoach.android.util.safeLaunch
 
 private const val TAG = "GymBoardPickerVM"
 
@@ -73,7 +74,7 @@ class GymBoardPickerViewModel @Inject constructor(
     private var rowsByGym: Map<String, List<BoardLocation>> = emptyMap()
 
     init {
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             try {
                 // Any synced location enables the picker. Walls give Kilter
                 // gyms their rich per-board resolution, but a MoonBoard gym
@@ -99,7 +100,7 @@ class GymBoardPickerViewModel @Inject constructor(
             _state.update { it.copy(results = emptyList(), searching = false) }
             return
         }
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             _state.update { it.copy(searching = true) }
             try {
                 val res = withContext(Dispatchers.IO) { repository.searchLocations(trimmed, 60) }
@@ -130,7 +131,7 @@ class GymBoardPickerViewModel @Inject constructor(
         // once and offers both boards' configs (FEAT-031).
         val rows = rowsByGym[gymKey(gym)] ?: listOf(gym)
         val multiBrand = rows.map { it.boardBrand }.distinct().size > 1
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             try {
                 val opts = mutableListOf<GymWallOption>()
                 for (row in rows) {

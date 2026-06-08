@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
+import com.cruxcoach.android.util.safeLaunch
 
 private const val TAG = "MapViewModel"
 
@@ -78,7 +79,7 @@ class MapViewModel @Inject constructor(
     val state: StateFlow<MapState> = _state.asStateFlow()
 
     init {
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             try {
                 val all = withContext(Dispatchers.IO) { repository.getAll() }
                 _state.update {
@@ -213,14 +214,14 @@ class MapViewModel @Inject constructor(
     }
 
     fun toggleShowOriginal() {
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             val current = userPreferences.mapFilterShowOriginal.first()
             userPreferences.setMapFilterShowOriginal(!current)
         }
     }
 
     fun toggleShowHomewalls() {
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             val current = userPreferences.mapFilterShowHomewalls.first()
             userPreferences.setMapFilterShowHomewalls(!current)
         }
@@ -228,7 +229,7 @@ class MapViewModel @Inject constructor(
 
     fun toggleMatchesMyBoard() {
         if (!_state.value.canFilterByMyBoard) return
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             val current = userPreferences.mapFilterMatchesMyBoard.first()
             userPreferences.setMapFilterMatchesMyBoard(!current)
         }
@@ -236,7 +237,7 @@ class MapViewModel @Inject constructor(
 
     /** "All" layout chip: show both Original and Homewall families. */
     fun selectAllLayouts() {
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             userPreferences.setMapFilterShowOriginal(true)
             userPreferences.setMapFilterShowHomewalls(true)
         }
@@ -246,29 +247,29 @@ class MapViewModel @Inject constructor(
     // in one dataStore.edit{}), so two rapid taps on a chip can't lose an
     // update via a read-then-set race.
     fun toggleCountry(code: String) {
-        viewModelScope.launch { userPreferences.toggleMapFilterCountry(code) }
+        viewModelScope.safeLaunch(TAG) { userPreferences.toggleMapFilterCountry(code) }
     }
 
     fun toggleAccessType(type: AccessType) {
-        viewModelScope.launch { userPreferences.toggleMapFilterAccessType(type.name) }
+        viewModelScope.safeLaunch(TAG) { userPreferences.toggleMapFilterAccessType(type.name) }
     }
 
     fun toggleAdjustability(adj: Adjustability) {
-        viewModelScope.launch { userPreferences.toggleMapFilterAdjustability(adj.name) }
+        viewModelScope.safeLaunch(TAG) { userPreferences.toggleMapFilterAdjustability(adj.name) }
     }
 
     fun toggleSizeId(sizeId: Int) {
-        viewModelScope.launch { userPreferences.toggleMapFilterSizeId(sizeId) }
+        viewModelScope.safeLaunch(TAG) { userPreferences.toggleMapFilterSizeId(sizeId) }
     }
 
     fun toggleBrand(brand: BoardBrand) {
-        viewModelScope.launch { userPreferences.toggleMapFilterBrand(brand.wireValue) }
+        viewModelScope.safeLaunch(TAG) { userPreferences.toggleMapFilterBrand(brand.wireValue) }
     }
 
     /** "Other boards" chip: toggle the whole map-only info-layer family set
      *  (Tension, Aurora, …) in one tap, since they share a single chip. */
     fun toggleOtherBrands() {
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             userPreferences.toggleMapFilterBrandGroup(
                 BoardBrand.INFO_LAYER.map { it.wireValue }.toSet()
             )
@@ -277,24 +278,24 @@ class MapViewModel @Inject constructor(
 
     /** "All" brand chip: clear the brand filter (empty = every brand). */
     fun selectAllBrands() {
-        viewModelScope.launch { userPreferences.setMapFilterBrands(emptySet()) }
+        viewModelScope.safeLaunch(TAG) { userPreferences.setMapFilterBrands(emptySet()) }
     }
 
     fun toggleWellpassOnly() {
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             val current = userPreferences.mapFilterWellpassOnly.first()
             userPreferences.setMapFilterWellpassOnly(!current)
         }
     }
 
     fun resetFilters() {
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             userPreferences.resetMapFilters()
         }
     }
 
     fun applyBoardConfigForBrowse(layoutId: Int, productSizeId: Int?) {
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             // A MoonBoard gym (layout 2/4/5/6) must switch the active brand to
             // MoonBoard so the browser shows MoonBoard climbs, not an empty
             // Kilter slice at that layout id.

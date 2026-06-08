@@ -28,6 +28,7 @@ import com.cruxcoach.domain.board.HoldRole
 import com.cruxcoach.data.repository.ClimbTypeFilter
 import java.time.LocalDate
 import javax.inject.Inject
+import com.cruxcoach.android.util.safeLaunch
 
 enum class StatsTimeInterval(@param:androidx.annotation.StringRes val labelResId: Int, val days: Int?) {
     ALL(com.cruxcoach.android.R.string.stats_interval_all, null),
@@ -155,7 +156,7 @@ class BoardLogbookViewModel @Inject constructor(
     }
 
     init {
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             userPreferences.gradeScale.collect { scale ->
                 _state.update { it.copy(gradeScale = scale) }
                 if (allAscents.isNotEmpty()) {
@@ -163,7 +164,7 @@ class BoardLogbookViewModel @Inject constructor(
                 }
             }
         }
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             zoneManager.zones.collect { zones ->
                 _state.update { it.copy(zones = zones) }
             }
@@ -173,7 +174,7 @@ class BoardLogbookViewModel @Inject constructor(
     }
 
     private fun loadBoardData() {
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             try {
                 val sizeId = userPreferences.boardProductSizeId.first()
                 val layoutId = userPreferences.boardLayoutId.first()
@@ -203,7 +204,7 @@ class BoardLogbookViewModel @Inject constructor(
     }
 
     private fun loadAscents() {
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             _state.update { it.copy(isLoading = true, error = null) }
             try {
                 val (ascents, count) = withContext(Dispatchers.IO) {
@@ -228,7 +229,7 @@ class BoardLogbookViewModel @Inject constructor(
     }
 
     private fun preloadStats() {
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             try {
                 val all = withContext(Dispatchers.IO) {
                     personalBoardRepo.getUserLogbookAllLight()
@@ -259,7 +260,7 @@ class BoardLogbookViewModel @Inject constructor(
         val s = _state.value
         if (s.isLoadingMore || !s.canLoadMore) return
 
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             _state.update { it.copy(isLoadingMore = true) }
             try {
                 val nextPage = withContext(Dispatchers.IO) {
@@ -352,7 +353,7 @@ class BoardLogbookViewModel @Inject constructor(
     }
 
     private fun recomputeStats() {
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             try {
                 val s = _state.value
                 // Per-board split: restrict to the selected family when set.
@@ -389,12 +390,12 @@ class BoardLogbookViewModel @Inject constructor(
     }
 
     private fun recomputeHeatmap() {
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             try {
                 val mode = _state.value.heatmapMode
                 if (mode == HeatmapMode.OFF) {
                     _state.update { it.copy(heatmapData = emptyMap()) }
-                    return@launch
+                    return@safeLaunch
                 }
                 val layoutId = userPreferences.boardLayoutId.first()
                 // Heatmap is always single-grid: use the selected board filter
@@ -479,7 +480,7 @@ class BoardLogbookViewModel @Inject constructor(
         val s = _state.value
         val uuid = s.editingAscentUuid ?: return
 
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             try {
                 withContext(Dispatchers.IO) {
                     personalBoardRepo.updateAscent(
@@ -513,7 +514,7 @@ class BoardLogbookViewModel @Inject constructor(
     fun confirmDeleteAscent() {
         val uuid = _state.value.showDeleteConfirm ?: return
         val entry = _state.value.ascents.find { it.uuid == uuid }
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             try {
                 withContext(Dispatchers.IO) {
                     if (entry?.isSend == false) personalBoardRepo.deleteBid(uuid)
@@ -566,7 +567,7 @@ class BoardLogbookViewModel @Inject constructor(
         if (uuids.isEmpty()) return
         val bidUuids = _state.value.ascents.filter { !it.isSend && it.uuid in _state.value.selectedUuids }.map { it.uuid }.toSet()
 
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             // Per-row try/catch so a single delete failure doesn't strand
             // the rest of the batch in selected-but-not-deleted state.
             // The per-row counter informs a future "X of N deletes failed"
@@ -595,7 +596,7 @@ class BoardLogbookViewModel @Inject constructor(
     }
 
     private fun reloadAscents() {
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             try {
                 val (ascents, count) = withContext(Dispatchers.IO) {
                     val list = personalBoardRepo.getUserLogbookPage(PAGE_SIZE, 0)
