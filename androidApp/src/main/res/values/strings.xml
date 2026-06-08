@@ -1921,4 +1921,17 @@
     <string name="aurora_migration_unresolved_title" formatted="false">%1$d climb names couldn\'t be matched against your local catalog</string>
     <string name="aurora_migration_import_another">Import another file</string>
     <string name="aurora_migration_file_too_large">File is too large for direct import (%1$d MB). Aurora exports are typically a few MB; if your export is much larger, contact support.</string>
+
+    <!-- Board climb history / Verlauf (FEAT-032) -->
+    <string name="history_title">History</string>
+    <string name="history_selected_count">%1$d selected</string>
+    <string name="history_empty_title">No history yet</string>
+    <string name="history_empty_body">Sent boulders appear here once you climb them.</string>
+    <string name="history_delete_title">Delete entries</string>
+    <string name="cd_navigate_back">Back</string>
+    <string name="cd_clear_selection">Clear selection</string>
+    <plurals name="history_delete_body">
+        <item quantity="one">Delete %1$d entry from history?</item>
+        <item quantity="other">Delete %1$d entries from history?</item>
+    </plurals>
 </resources>

@@ -15,11 +15,14 @@ import androidx.compose.runtime.*
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.cruxcoach.android.R
 import com.cruxcoach.android.data.BoardConstants
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.data.HistoryRetention
@@ -46,8 +49,8 @@ fun BoardClimbHistoryScreen(
         val count = state.selectedIds.size
         AlertDialog(
             onDismissRequest = { showDeleteSelectedConfirm = false },
-            title = { Text("Einträge löschen", fontWeight = FontWeight.Bold) },
-            text = { Text("$count ${if (count == 1) "Eintrag" else "Einträge"} aus dem Verlauf löschen?") },
+            title = { Text(stringResource(R.string.history_delete_title), fontWeight = FontWeight.Bold) },
+            text = { Text(pluralStringResource(R.plurals.history_delete_body, count, count)) },
             confirmButton = {
                 Button(
                     onClick = {
@@ -56,11 +59,11 @@ fun BoardClimbHistoryScreen(
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = ErrorRed),
                     shape = RoundedCornerShape(12.dp)
-                ) { Text("Löschen", fontWeight = FontWeight.Bold) }
+                ) { Text(stringResource(R.string.action_delete), fontWeight = FontWeight.Bold) }
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteSelectedConfirm = false }) {
-                    Text("Abbrechen")
+                    Text(stringResource(R.string.action_cancel))
                 }
             }
         )
@@ -71,12 +74,12 @@ fun BoardClimbHistoryScreen(
             Column {
                 TopAppBar(
                     title = {
-                        if (state.hasSelection) Text("${state.selectedIds.size} ausgewählt")
-                        else Text("Verlauf")
+                        if (state.hasSelection) Text(stringResource(R.string.history_selected_count, state.selectedIds.size))
+                        else Text(stringResource(R.string.history_title))
                     },
                     navigationIcon = {
                         IconButton(onClick = onNavigateBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Zurück")
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.cd_navigate_back))
                         }
                     },
                     actions = {
@@ -84,7 +87,7 @@ fun BoardClimbHistoryScreen(
                             IconButton(onClick = { viewModel.toggleSelectAll() }) {
                                 Icon(
                                     Icons.Default.SelectAll,
-                                    contentDescription = if (state.allSelected) "Auswahl aufheben" else "Alle auswählen",
+                                    contentDescription = if (state.allSelected) stringResource(R.string.cd_deselect_all) else stringResource(R.string.cd_select_all),
                                     tint = if (state.allSelected) OrangeAccent else MaterialTheme.colorScheme.onSurface
                                 )
                             }
@@ -94,7 +97,7 @@ fun BoardClimbHistoryScreen(
                             ) {
                                 Icon(
                                     Icons.Default.Delete,
-                                    contentDescription = "Auswahl löschen",
+                                    contentDescription = stringResource(R.string.cd_clear_selection),
                                     tint = if (state.hasSelection) ErrorRed
                                     else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
                                 )
@@ -298,14 +301,14 @@ private fun EmptyHistoryMessage() {
             )
             Spacer(modifier = Modifier.height(16.dp))
             Text(
-                "Noch kein Verlauf",
+                stringResource(R.string.history_empty_title),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                "Geschickte Boulder erscheinen hier, sobald du sie kletterst.",
+                stringResource(R.string.history_empty_body),
                 style = MaterialTheme.typography.bodyMedium,
                 textAlign = TextAlign.Center,
                 color = MaterialTheme.colorScheme.onSurfaceVariant

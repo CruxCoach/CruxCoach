@@ -345,8 +345,13 @@ internal fun SummaryCard(
 
 internal fun formatDate(isoDate: String): String {
     return try {
-        val parts = isoDate.take(10).split("-")
-        if (parts.size == 3) "${parts[2]}.${parts[1]}.${parts[0]}" else isoDate.take(10)
+        // Locale-aware date instead of a hardcoded German dd.MM.yyyy. java.text.*
+        // works on every API level (no java.time core-library desugaring needed).
+        val parsed = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+            .parse(isoDate.take(10))!!
+        java.text.DateFormat
+            .getDateInstance(java.text.DateFormat.MEDIUM, java.util.Locale.getDefault())
+            .format(parsed)
     } catch (_: Exception) {
         isoDate.take(10)
     }
