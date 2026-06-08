@@ -3,6 +3,7 @@ package com.cruxcoach.android.ui.map
 import com.cruxcoach.data.repository.AccessType
 import com.cruxcoach.data.repository.Adjustability
 import com.cruxcoach.data.repository.BoardLocation
+import com.cruxcoach.domain.board.BoardBrand
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
 import org.junit.Test
@@ -15,6 +16,7 @@ class MapStatsTest {
         adjustability: Adjustability = Adjustability.ADJUSTABLE,
         countryCode: String = "DE",
         sizeLabel: String? = "12x12",
+        boardBrand: BoardBrand = BoardBrand.KILTER,
     ) = BoardLocation(
         id = java.util.UUID.randomUUID().toString(),
         name = "x", lat = 0.0, lng = 0.0,
@@ -24,6 +26,7 @@ class MapStatsTest {
         sizeLabel = sizeLabel, productSizeId = null,
         accessType = accessType, adjustability = adjustability,
         fixedAngle = null, frameMaker = null,
+        boardBrand = boardBrand,
     )
 
     @Test
@@ -42,6 +45,21 @@ class MapStatsTest {
         assertEquals(4, s.total)
         assertEquals(2, s.originalCount)
         assertEquals(1, s.homewallCount)
+    }
+
+    @Test
+    fun `Original and Homewall counts are Kilter-scoped - colliding Aurora layouts are not counted`() {
+        // FEAT-031 fix #5: Aurora layout ids overlap Kilter's, so a Tension venue
+        // at layout 1 / 8 must NOT inflate the Kilter Original / Homewall counts.
+        val items = listOf(
+            loc(layoutId = 1, boardBrand = BoardBrand.KILTER),
+            loc(layoutId = 1, boardBrand = BoardBrand.TENSION),
+            loc(layoutId = 8, boardBrand = BoardBrand.TENSION),
+        )
+        val s = MapStats.from(items)
+        assertEquals(3, s.total)
+        assertEquals(1, s.originalCount)   // only the Kilter layout-1 venue
+        assertEquals(0, s.homewallCount)   // the Tension layout-8 venue is not Kilter Homewall
     }
 
     @Test

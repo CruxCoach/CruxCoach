@@ -99,6 +99,33 @@ class MapFiltersTest {
     }
 
     @Test
+    fun `matchesMyBoard is brand-scoped - Aurora location at a colliding Kilter layout id is excluded`() {
+        // FEAT-031 fix #5: Aurora layout ids overlap Kilter's (Tension also uses
+        // layout 1), so without the brand gate a Kilter user on layout 1 would
+        // wrongly match a Tension venue sharing that id.
+        val items = listOf(
+            loc("kilter1", layoutId = 1, boardBrand = BoardBrand.KILTER),
+            loc("tension1", layoutId = 1, boardBrand = BoardBrand.TENSION),
+        )
+        val out = MapFilters(matchesMyBoard = true).apply(
+            items, userBoardLayoutId = 1, userBoardBrand = BoardBrand.KILTER,
+        )
+        assertEquals(listOf("kilter1"), out.map { it.id })
+    }
+
+    @Test
+    fun `matchesMyBoard with null userBoardBrand keeps legacy layout-only behavior`() {
+        // Back-compat: a caller that supplies no brand skips the brand gate, so
+        // both the Kilter and the colliding-layout Tension venue still match.
+        val items = listOf(
+            loc("kilter1", layoutId = 1, boardBrand = BoardBrand.KILTER),
+            loc("tension1", layoutId = 1, boardBrand = BoardBrand.TENSION),
+        )
+        val out = MapFilters(matchesMyBoard = true).apply(items, userBoardLayoutId = 1)
+        assertEquals(setOf("kilter1", "tension1"), out.map { it.id }.toSet())
+    }
+
+    @Test
     fun `country filter set excludes non-members`() {
         val items = listOf(loc("a", countryCode = "DE"), loc("b", countryCode = "FR"))
         val out = MapFilters(countries = setOf("DE")).apply(items)

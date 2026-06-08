@@ -393,24 +393,6 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun updateBoardProductSize(id: Int, name: String) {
-        // Also record brand = "kilter": the unified board picker can switch
-        // back from MoonBoard, and the brand pref must follow so Browse +
-        // Detail stop treating the active board as a MoonBoard (FEAT-027).
-        _state.update {
-            it.copy(
-                boardProductSizeId = id,
-                boardProductSizeName = name,
-                boardBrand = BoardBrand.KILTER.wireValue,
-                moonBoardVariant = null,
-            )
-        }
-        viewModelScope.launch {
-            userPreferences.setBoardProductSizeId(id)
-            userPreferences.setBoardBrand(BoardBrand.KILTER.wireValue)
-        }
-    }
-
     fun dismissMoonBoardSyncMessage() {
         _state.update { it.copy(moonBoardSyncMessage = null) }
     }
@@ -484,43 +466,6 @@ class SettingsViewModel @Inject constructor(
      * the sensible default; the user can refine via the "Board-Modell"
      * picker right below.
      */
-    fun updateBoardLayout(layoutId: Int) {
-        if (_state.value.boardLayoutId == layoutId) return
-        viewModelScope.launch {
-            userPreferences.setBoardLayoutId(layoutId)
-            // Original/Homewall (layout 1/8) are Kilter layouts — keep the
-            // brand coherent so switching here from a MoonBoard flips the
-            // active brand back to Kilter (otherwise Browse/Detail would keep
-            // treating the board as a MoonBoard).
-            userPreferences.setBoardBrand(BoardBrand.KILTER.wireValue)
-            val targetProductId = layoutToProductId(layoutId)
-            val newSize = withContext(Dispatchers.IO) {
-                boardRepository.getAllProductSizes(targetProductId.toLong())
-                    .firstOrNull()
-            }
-            val newSizeId = newSize?.id?.toInt()
-                ?: when (layoutId) {
-                    BoardConstants.KILTER_HOMEWALL_LAYOUT -> BoardConstants.KILTER_HOMEWALL_DEFAULT_SIZE
-                    else -> BoardConstants.KILTER_DEFAULT_SIZE
-                }
-            val newSizeName = newSize?.let { BoardConstants.sizeLabel(it.id, it.name) } ?: ""
-            userPreferences.setBoardProductSizeId(newSizeId)
-            _state.update {
-                it.copy(
-                    boardLayoutId = layoutId,
-                    boardProductSizeId = newSizeId,
-                    boardProductSizeName = newSizeName,
-                    boardBrand = BoardBrand.KILTER.wireValue,
-                    moonBoardVariant = null,
-                )
-            }
-        }
-    }
-
-    private fun layoutToProductId(layoutId: Int): Int = when (layoutId) {
-        BoardConstants.KILTER_HOMEWALL_LAYOUT -> BoardConstants.KILTER_HOMEWALL_PRODUCT_ID
-        else -> BoardConstants.KILTER_PRODUCT_ID
-    }
 
     fun loadProductSizes() {
         if (_state.value.productSizes.isNotEmpty()) return

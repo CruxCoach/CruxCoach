@@ -235,50 +235,6 @@ class OnboardingViewModel @Inject constructor(
         }
     }
 
-    /** See SettingsViewModel.updateBoardLayout for the rationale —
-     *  switching the layout also rolls the product_size to a sensible
-     *  default for the new layout, since Original sizes don't exist on
-     *  Homewall and vice-versa. */
-    fun updateBoardLayout(layoutId: Int) {
-        if (_state.value.boardLayoutId == layoutId) return
-        viewModelScope.launch {
-            userPreferences.setBoardLayoutId(layoutId)
-            // Original/Homewall are Kilter layouts — keep brand coherent.
-            userPreferences.setBoardBrand(BoardBrand.KILTER.wireValue)
-            val targetProductId = when (layoutId) {
-                com.cruxcoach.android.data.BoardConstants.KILTER_HOMEWALL_LAYOUT ->
-                    com.cruxcoach.android.data.BoardConstants.KILTER_HOMEWALL_PRODUCT_ID
-                else -> com.cruxcoach.android.data.BoardConstants.KILTER_PRODUCT_ID
-            }
-            val newSize = com.cruxcoach.android.data.BoardConstants.KILTER_KNOWN_SIZES
-                .firstOrNull { it.productId.toInt() == targetProductId }
-            val newSizeId = newSize?.id?.toInt() ?: when (layoutId) {
-                com.cruxcoach.android.data.BoardConstants.KILTER_HOMEWALL_LAYOUT ->
-                    com.cruxcoach.android.data.BoardConstants.KILTER_HOMEWALL_DEFAULT_SIZE
-                else -> com.cruxcoach.android.data.BoardConstants.KILTER_DEFAULT_SIZE
-            }
-            userPreferences.setBoardProductSizeId(newSizeId)
-            _state.update {
-                it.copy(
-                    boardLayoutId = layoutId,
-                    boardProductSizeId = newSizeId,
-                    boardProductSizeName = newSize
-                        ?.let { com.cruxcoach.android.data.BoardConstants.sizeLabel(it.id, it.name) }
-                        .orEmpty(),
-                    boardBrand = BoardBrand.KILTER.wireValue,
-                    moonBoardVariant = null,
-                )
-            }
-        }
-    }
-
-    fun updateBoardProductSize(id: Int, name: String) {
-        viewModelScope.launch {
-            userPreferences.setBoardProductSizeId(id)
-            _state.update { it.copy(boardProductSizeId = id, boardProductSizeName = name) }
-        }
-    }
-
     fun nextStep() {
         val next = when (_state.value.currentStep) {
             OnboardingStep.BOARD_SETUP -> OnboardingStep.PRIVACY
