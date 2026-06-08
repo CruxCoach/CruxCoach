@@ -67,10 +67,16 @@ class AuroraBoardSelector @Inject constructor(
                 val layout = variant?.layoutId ?: withContext(Dispatchers.IO) {
                     boardRepository.getDefaultLayoutForBrand(brand)
                 }
-                val size: Pair<Int, String>? = if (variant != null) {
-                    variantSize!! to variant.displayName
-                } else withContext(Dispatchers.IO) {
-                    boardRepository.getDefaultProductSizeForBrand(brand)
+                val size: Pair<Int, String>? = when {
+                    variant != null -> variantSize!! to variant.displayName
+                    // Single-layout board with an explicit size from the picker's
+                    // size tier (e.g. Grasshopper Ninja / So iLL 8x12) — honour
+                    // it instead of the largest-by-default.
+                    productSizeId != null -> productSizeId to
+                        (withContext(Dispatchers.IO) { boardRepository.getProductSize(productSizeId, brand) }?.name ?: "")
+                    else -> withContext(Dispatchers.IO) {
+                        boardRepository.getDefaultProductSizeForBrand(brand)
+                    }
                 }
                 // A no-variant board is made the active board ONLY here, after a
                 // successful sync derived a coherent (layout, size) — and the

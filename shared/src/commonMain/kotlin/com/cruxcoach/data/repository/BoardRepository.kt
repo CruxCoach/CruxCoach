@@ -192,6 +192,26 @@ data class BoardSize(
     val boardBrand: BoardBrand = BoardBrand.KILTER,
 )
 
+/**
+ * Collapse same-dimension duplicate product sizes to the most-complete one.
+ *
+ * Some boards list the same physical size more than once with different hold-set
+ * builds — e.g. Grasshopper has a 3-set and a 5-set "Master" (8×12), both listed.
+ * For board selection we want ONE entry per physical size, showing the most
+ * complete board image, so we group by (product + edge bbox) and keep the size
+ * with the highest set count. A no-op for boards whose sizes all differ in
+ * dimensions (Tension, Decoy, So iLL). Result is sorted by id for stable order.
+ *
+ * Pure (no DB) so the de-dup rule is unit-tested directly.
+ */
+fun dedupeProductSizesByDimension(sizesWithSetCount: List<Pair<BoardSize, Int>>): List<BoardSize> =
+    sizesWithSetCount
+        .groupBy { (size, _) ->
+            listOf(size.productId, size.edgeLeft, size.edgeRight, size.edgeBottom, size.edgeTop)
+        }
+        .mapNotNull { (_, group) -> group.maxByOrNull { it.second }?.first }
+        .sortedBy { it.id }
+
 data class BoardImage(
     val id: Long,
     val productSizeId: Long,
@@ -345,6 +365,13 @@ interface BoardLayoutQueries {
      *  hardcoded id=1, silently dropping Homewall sizes from every UI
      *  reachable through this method. */
     fun getAllProductSizes(productId: Long, boardBrand: String = "kilter"): List<BoardSize>
+    /** Picker-ready product sizes for a brand: every size the user might own,
+     *  with same-dimension duplicates collapsed to the most-complete one (the
+     *  size whose board image composites the most hold-sets). Sorted by id.
+     *  Drives the size tier for every interactive board (variant or single-
+     *  layout), so e.g. a Grasshopper Ninja owner can pick Ninja instead of
+     *  being pinned to the largest size. */
+    fun getSelectableProductSizesForBrand(boardBrand: String): List<BoardSize>
     fun getBoardImages(productSizeId: Int, layoutId: Int, boardBrand: String = "kilter"): List<BoardImage>
     /** Sizes that have board-image tiles for the given layout. Used by
      *  the climb-detail screen to render an Aurora-imported or cross-

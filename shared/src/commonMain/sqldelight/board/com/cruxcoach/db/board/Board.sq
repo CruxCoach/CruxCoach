@@ -782,6 +782,19 @@ FROM product_sizes
 WHERE product_id = :productId AND board_brand = :brand
 ORDER BY id;
 
+-- Every product size for a brand (across all its products), each with how many
+-- distinct hold-sets its board image composites. Powers the picker's size tier
+-- for ANY interactive board, not just the variant boards. The set_count lets
+-- the caller collapse same-dimension duplicates (e.g. Grasshopper's 3-set vs
+-- 5/6-set Master/Ninja) down to the most-complete board per dimension.
+getSelectableProductSizesForBrand:
+SELECT ps.id, ps.product_id, ps.name, ps.edge_left, ps.edge_right, ps.edge_bottom, ps.edge_top, ps.image_filename,
+       (SELECT COUNT(DISTINCT bi.set_id) FROM board_images bi
+        WHERE bi.board_brand = ps.board_brand AND bi.product_size_id = ps.id) AS set_count
+FROM product_sizes ps
+WHERE ps.board_brand = :brand
+ORDER BY ps.id;
+
 -- Board image queries
 upsertBoardImage:
 INSERT OR REPLACE INTO board_images(board_brand, id, product_size_id, layout_id, set_id, image_filename)

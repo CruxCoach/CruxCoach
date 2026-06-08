@@ -194,6 +194,7 @@ class FakeBoardRepository : BoardRepository {
     override fun getPlacementsForLayout(productSizeId: Int, layoutId: Int, boardBrand: String): List<BoardPlacement> = emptyList()
     override fun getProductSize(id: Int, boardBrand: String): BoardSize? = null
     override fun getAllProductSizes(productId: Long, boardBrand: String): List<BoardSize> = emptyList()
+    override fun getSelectableProductSizesForBrand(boardBrand: String): List<BoardSize> = emptyList()
     override fun getBoardImages(productSizeId: Int, layoutId: Int, boardBrand: String): List<BoardImage> = emptyList()
     override fun getPlacementLedMap(productSizeId: Int, boardBrand: String): Map<Int, Int> = emptyMap()
     override fun getRoleColorMapForBrand(boardBrand: String): Map<Int, Int> = emptyMap()

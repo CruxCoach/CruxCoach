@@ -47,9 +47,11 @@ data class BoardPickerState(
     /** Active product_size_id — seeds the Aurora size tier so re-opening the
      *  picker shows the current size selected (FEAT-031). */
     val selectedAuroraProductSizeId: Int = 0,
-    /** Synced product sizes for Aurora variants, keyed "brand:productId", so the
-     *  picker can offer a size tier once a board's catalogue is loaded (FEAT-031). */
-    val auroraProductSizes: Map<String, List<BoardSize>> = emptyMap(),
+    /** Picker-ready, deduped product sizes per Aurora brand (keyed by wire
+     *  value), so the picker can offer a size tier for ANY interactive board
+     *  once its catalogue is loaded — variant boards (Tension/Decoy) and
+     *  single-layout boards (Grasshopper/So iLL) alike (FEAT-031). */
+    val auroraBrandSizes: Map<String, List<BoardSize>> = emptyMap(),
 )
 
 /**
@@ -66,14 +68,14 @@ class BoardPickerViewModel @Inject constructor(
 
     private val productSizes = MutableStateFlow(BoardConstants.KILTER_KNOWN_SIZES)
     private val loadedBrands = MutableStateFlow<Set<String>>(emptySet())
-    private val auroraProductSizes = MutableStateFlow<Map<String, List<BoardSize>>>(emptyMap())
+    private val auroraBrandSizes = MutableStateFlow<Map<String, List<BoardSize>>>(emptyMap())
 
     val state: StateFlow<BoardPickerState> = combine(
         userPreferences.boardBrand,
         userPreferences.boardLayoutId,
         userPreferences.boardProductSizeId,
         // Nested so the outer combine stays within the typed 4-arg overload.
-        combine(productSizes, loadedBrands, auroraProductSizes) { sizes, loaded, auroraSizes ->
+        combine(productSizes, loadedBrands, auroraBrandSizes) { sizes, loaded, auroraSizes ->
             Triple(sizes, loaded, auroraSizes)
         },
     ) { brand, layoutId, sizeId, sizeData ->
@@ -87,7 +89,7 @@ class BoardPickerViewModel @Inject constructor(
             selectedAuroraLayoutId = layoutId,
             loadedAuroraBrands = loaded,
             selectedAuroraProductSizeId = sizeId,
-            auroraProductSizes = auroraSizes,
+            auroraBrandSizes = auroraSizes,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), BoardPickerState())
 
@@ -108,24 +110,20 @@ class BoardPickerViewModel @Inject constructor(
                 boardRepository.getClimbCountsByBrand().filterValues { it > 0L }.keys
             }
             loadedBrands.value = loaded
-            // Product sizes for the Aurora variants of loaded boards, so the
-            // picker can offer a size tier (e.g. Tension TB2 12x12 / 10x12 /
-            // 12x8 / 10x8) instead of pinning the variant default (FEAT-031).
-            // Keyed "brand:productId" to avoid productId collisions across
-            // brands (Decoy product 1 vs Tension products 4/5).
-            auroraProductSizes.value = withContext(Dispatchers.IO) {
+            // Picker-ready (deduped) product sizes for every interactive
+            // Aurora board whose catalogue is loaded, so the size tier works
+            // for variant boards (Tension/Decoy) AND single-layout boards
+            // (Grasshopper/So iLL) — not just the ones with an AURORA_VARIANTS
+            // entry. Keyed by brand; the dialog narrows to the active variant's
+            // product when a variant is selected.
+            auroraBrandSizes.value = withContext(Dispatchers.IO) {
                 buildMap {
-                    BoardConstants.AURORA_VARIANTS.forEach { (brand, variants) ->
-                        if (brand.wireValue !in loaded) return@forEach
-                        variants.map { it.productId }.distinct().forEach { productId ->
-                            val productSizes = boardRepository.getAllProductSizes(
-                                productId.toLong(), brand.wireValue,
-                            )
-                            if (productSizes.isNotEmpty()) {
-                                put("${brand.wireValue}:$productId", productSizes)
-                            }
+                    BoardBrand.entries
+                        .filter { it.usesAuroraProtocol && it != BoardBrand.KILTER && it.wireValue in loaded }
+                        .forEach { brand ->
+                            val sizes = boardRepository.getSelectableProductSizesForBrand(brand.wireValue)
+                            if (sizes.isNotEmpty()) put(brand.wireValue, sizes)
                         }
-                    }
                 }
             }
         }
@@ -180,7 +178,7 @@ internal fun BoardPickerDialog(
         selectedAuroraLayoutId = state.selectedAuroraLayoutId,
         selectedAuroraProductSizeId = state.selectedAuroraProductSizeId,
         loadedAuroraBrands = state.loadedAuroraBrands,
-        auroraProductSizes = state.auroraProductSizes,
+        auroraBrandSizes = state.auroraBrandSizes,
         frequency = BoardConstants.DEFAULT_SIZE_FREQUENCY,
         showAuroraBoards = true,
         onConfirmKilter = { viewModel.selectKilter(it); onSelected() },

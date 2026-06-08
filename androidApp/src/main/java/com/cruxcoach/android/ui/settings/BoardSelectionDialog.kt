@@ -70,10 +70,11 @@ internal fun BoardSelectionDialog(
      *  imported. Drives whether the "we'll download …" hint is shown — once a
      *  board is loaded the hint is misleading, so it's hidden. */
     loadedAuroraBrands: Set<String> = emptySet(),
-    /** FEAT-031: synced product sizes for Aurora variants, keyed
-     *  "brand:productId". Drives the post-sync size tier (e.g. Tension TB2
-     *  12x12 / 10x12 / 12x8 / 10x8); empty pre-sync so the tier stays hidden. */
-    auroraProductSizes: Map<String, List<BoardSize>> = emptyMap(),
+    /** FEAT-031: picker-ready (deduped) product sizes per Aurora brand, keyed by
+     *  wire value. Drives the post-sync size tier for EVERY interactive board —
+     *  variant boards (Tension/Decoy) and single-layout boards (Grasshopper/So
+     *  iLL); empty pre-sync so the tier stays hidden. */
+    auroraBrandSizes: Map<String, List<BoardSize>> = emptyMap(),
     onConfirmKilter: (Int) -> Unit,
     onConfirmMoonBoard: (MoonBoardVariant) -> Unit,
     /** FEAT-031: confirm an Aurora-family board (Tension etc.) + the chosen
@@ -133,15 +134,22 @@ internal fun BoardSelectionDialog(
     // the active size when it belongs to this variant's product, else the
     // variant default; null when no size tier is shown (pre-sync / single-size).
     var auroraSizeId by remember { mutableStateOf<Int?>(null) }
-    LaunchedEffect(auroraVariant, auroraProductSizes) {
-        val variant = auroraVariant
+    LaunchedEffect(auroraVariant, auroraBrand, auroraBrandSizes) {
         val brand = auroraBrand
-        auroraSizeId = if (variant == null || brand == null) {
-            null
-        } else {
-            val sizes = auroraProductSizes["${brand.wireValue}:${variant.productId}"].orEmpty()
-            if (sizes.any { it.id.toInt() == selectedAuroraProductSizeId }) selectedAuroraProductSizeId
-            else variant.defaultSizeId
+        val variant = auroraVariant
+        val sizes = if (brand == null) emptyList() else {
+            val all = auroraBrandSizes[brand.wireValue].orEmpty()
+            // Variant boards: only that variant's product. Single-layout
+            // boards: the whole brand's sizes.
+            variant?.let { v -> all.filter { it.productId.toInt() == v.productId } } ?: all
+        }
+        auroraSizeId = when {
+            sizes.isEmpty() -> null
+            sizes.any { it.id.toInt() == selectedAuroraProductSizeId } -> selectedAuroraProductSizeId
+            variant != null -> variant.defaultSizeId
+            // Single-layout board: default to the largest size, matching the
+            // catalogue-derived default (getDefaultProductSizeForBrand).
+            else -> sizes.maxByOrNull { (it.edgeRight - it.edgeLeft) * (it.edgeTop - it.edgeBottom) }?.id?.toInt()
         }
     }
 
@@ -292,14 +300,17 @@ internal fun BoardSelectionDialog(
                         }
                     }
                     // FEAT-031: size tier — once the board's catalogue is synced,
-                    // let the user pick the exact product size (e.g. Tension TB2
-                    // 12x12 / 10x12 / 12x8 / 10x8) instead of being pinned to the
-                    // variant default. Hidden pre-sync (no sizes) and for
-                    // single-size boards. Size labels come from the synced
-                    // product_sizes (sizeLabel's curated map is Kilter-only).
-                    val auroraSizes = auroraVariant?.let {
-                        auroraProductSizes["${auroraBrand!!.wireValue}:${it.productId}"]
-                    }.orEmpty()
+                    // let the user pick the exact product size (e.g. Grasshopper
+                    // GrandMaster / Master / Ninja, or Tension TB2 12x12 / 10x12
+                    // / 12x8 / 10x8) instead of being pinned to the largest. For
+                    // a variant board it shows that variant's product; for a
+                    // single-layout board (Grasshopper / So iLL) the whole
+                    // brand. Hidden pre-sync and for single-size boards. Labels
+                    // come from the synced product_sizes (sizeLabel is Kilter-only).
+                    val brandSizes = auroraBrandSizes[auroraBrand!!.wireValue].orEmpty()
+                    val auroraSizes = auroraVariant?.let { v ->
+                        brandSizes.filter { it.productId.toInt() == v.productId }
+                    } ?: brandSizes
                     if (auroraSizes.size > 1) {
                         Text(
                             stringResource(R.string.board_selection_aurora_size_label),

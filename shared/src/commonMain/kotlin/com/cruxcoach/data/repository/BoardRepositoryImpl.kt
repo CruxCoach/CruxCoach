@@ -345,6 +345,14 @@ class BoardRepositoryImpl(
         }
     }
 
+    override fun getSelectableProductSizesForBrand(boardBrand: String): List<BoardSize> {
+        val brand = BoardBrand.fromWire(boardBrand)
+        val sizesWithSetCount = q.getSelectableProductSizesForBrand(boardBrand).executeAsList().map {
+            BoardSize(it.id, it.product_id, it.name, it.edge_left, it.edge_right, it.edge_bottom, it.edge_top, it.image_filename, brand) to it.set_count.toInt()
+        }
+        return dedupeProductSizesByDimension(sizesWithSetCount)
+    }
+
     override fun getBoardImages(productSizeId: Int, layoutId: Int, boardBrand: String): List<BoardImage> {
         return q.getBoardImages(productSizeId.toLong(), layoutId.toLong(), boardBrand).executeAsList().map {
             BoardImage(id = it.id, productSizeId = it.product_size_id, layoutId = it.layout_id, setId = it.set_id, imageFilename = it.image_filename)
