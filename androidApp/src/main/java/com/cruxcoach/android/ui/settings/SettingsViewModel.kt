@@ -53,7 +53,7 @@ data class ProfileFormState(
     val age: String = "",
     val weightKg: String = "",
     val heightCm: String = "",
-    val maxGradeIndex: Int = 4,
+    val maxGradeIndex: Int = 6,
     val sessionsPerWeek: Int = 3,
     val profileId: Long = 0
 )
@@ -198,7 +198,7 @@ class SettingsViewModel @Inject constructor(
 
                 val profileForm = if (profile != null) {
                     val gradeIndex = GradeConverter.gradeToIndex(profile.maxBoulderGrade)
-                        .let { if (it < 0) 4 else it }
+                        .let { if (it < 0) 6 else it }
                     ProfileFormState(
                         name = profile.name,
                         age = profile.age.toString(),
@@ -617,6 +617,10 @@ class SettingsViewModel @Inject constructor(
         if (!bleConnection.isConnected()) return
         animationJob?.cancel()
         animationJob = viewModelScope.launch {
+            // Aurora-protocol boards only (Kilter + the Aurora family): the
+            // animation builds Aurora LED-grid frames a MoonBoard can't render,
+            // and would otherwise reach a MoonBoard via the trailing clearBoard().
+            if (!BoardBrand.fromWire(userPreferences.boardBrand.first()).usesAuroraProtocol) return@launch
             _state.update { it.copy(isAnimating = true) }
             try {
                 val grid = withContext(Dispatchers.IO) {

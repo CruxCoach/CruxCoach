@@ -432,8 +432,17 @@ class SessionQueueManager(
                 val holds = BoardClimbParser.parseFrames(climb.frames)
                 if (holds.isEmpty()) return@launch
                 val productSizeId = userPreferences.boardProductSizeId.first()
-                val ledMap = boardRepository.getPlacementLedMap(productSizeId)
-                bleConnection.sendClimb(holds, ledMap)
+                // Brand-scope the LED map + colours, keyed off the CLIMB's own
+                // brand (mirrors BoardSendController). Aurora boards reuse
+                // Kilter's product_size ids, so the no-brand default would load
+                // Kilter's LED partition and the wrong per-board colours.
+                val brandWire = climb.brand.wireValue
+                val ledMap = boardRepository.getPlacementLedMap(productSizeId, brandWire)
+                val roleColors = boardRepository.getRoleColorMapForBrand(brandWire).ifEmpty {
+                    (if (climb.brand == BoardBrand.KILTER) userPreferences.ledHoldColors.first()
+                     else LedHoldColors.standardFor(climb.brand)).toRoleColorMap()
+                }
+                bleConnection.sendClimb(holds, ledMap, roleColors)
                 lastSentClimbKey = key
                 Log.d(TAG, "sendCurrentClimbToBoard: sent ${item.climbUuid.take(8)} angle=${item.angle}")
                 // Clear last-projected-climb banner on first queue send

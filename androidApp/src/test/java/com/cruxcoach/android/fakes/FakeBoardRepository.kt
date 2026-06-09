@@ -244,7 +244,7 @@ class FakeBoardRepository : BoardRepository {
     override fun deleteKilterCatalogData() {}
 
     override fun searchClimbUuidsByHold(
-        holdPattern: String, angle: Int, layoutId: Int, minDifficulty: Double,
+        holdPattern: String, angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double,
         maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter
     ): List<String> {
         return climbs.filter { climb ->
@@ -256,7 +256,7 @@ class FakeBoardRepository : BoardRepository {
     }
 
     override fun searchClimbUuidsByAllHolds(
-        holdPatterns: List<String>, angle: Int, layoutId: Int, minDifficulty: Double,
+        holdPatterns: List<String>, angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double,
         maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter
     ): Set<String> {
         if (holdPatterns.isEmpty()) return emptySet()
@@ -269,7 +269,7 @@ class FakeBoardRepository : BoardRepository {
     }
 
     override fun getAllFramesForHeatmap(
-        angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double,
+        angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double,
         minAscensionists: Int, climbType: ClimbTypeFilter
     ): List<ClimbFrameRow> {
         return climbs.filter { climb ->
@@ -368,7 +368,7 @@ class FakeBoardRepository : BoardRepository {
     override fun updateSetterUsernameForPubkey(pubkey: String, displayName: String) {}
     override fun getClimbsByPubkey(pubkey: String): List<com.cruxcoach.data.repository.SetterClimbEntry> = emptyList()
     override fun getClimbsByPubkeyForBoard(pubkey: String, angle: Int, boardBrand: String, layoutId: Int, selProductSizeId: Int): List<com.cruxcoach.data.repository.SetterClimbEntry> = emptyList()
-    override fun getOwnClimbsForBrowse(pubkey: String, layoutId: Int, preferredAngle: Int): List<com.cruxcoach.data.repository.ClimbWithStats> = emptyList()
+    override fun getOwnClimbsForBrowse(pubkey: String, layoutId: Int, preferredAngle: Int, boardBrand: String): List<com.cruxcoach.data.repository.ClimbWithStats> = emptyList()
     override fun getCommunitySetterStats(): List<com.cruxcoach.data.repository.SetterStat> = emptyList()
     override fun getClimbsAwaitingKilterRetry(pubkey: String): List<com.cruxcoach.data.repository.CommunityClimbRow> = emptyList()
     override fun getClimbsAwaitingNostrRetry(pubkey: String): List<com.cruxcoach.data.repository.CommunityClimbRow> = emptyList()
@@ -381,7 +381,7 @@ class FakeBoardRepository : BoardRepository {
     override fun getCommunityClimbs(): List<com.cruxcoach.data.repository.CommunityClimbRow> = emptyList()
     override fun getClimbStatsForUuid(uuid: String): Pair<Int, Int?>? = null
     override fun getClimbPublishContext(uuid: String): com.cruxcoach.data.repository.ClimbPublishContext? = null
-    override fun findClimbByFramesHash(framesHash: String, layoutId: Long): com.cruxcoach.data.repository.CommunityClimbRow? = null
+    override fun findClimbByFramesHash(framesHash: String, layoutId: Long, boardBrand: String): com.cruxcoach.data.repository.CommunityClimbRow? = null
     override fun upsertSetterGrade(climbDTag: String, angle: Long, setterGradeId: Int, lastUpdatedEpochMs: Long) {}
     override fun getOwnClimbsForBackup(pubkey: String): List<com.cruxcoach.data.repository.OwnClimbBackupRow> = emptyList()
     override fun getOwnClimbStatsForBackup(pubkey: String): List<com.cruxcoach.data.repository.OwnClimbStatBackupRow> = emptyList()

@@ -131,6 +131,17 @@ enum class BoardBrand(val wireValue: String) {
             entries.firstOrNull { it.wireValue == value } ?: KILTER
 
         /**
+         * Strict parse for UNTRUSTED wire input (community-climb ingest):
+         * returns null for null/empty/unrecognised instead of defaulting to
+         * [KILTER], so a forged or unknown `board_brand` tag can be REJECTED
+         * rather than silently mis-filed onto the Kilter board. DB-column reads
+         * keep using the lenient [fromWire] (a missing column legitimately means
+         * a pre-split Kilter row); only the ingest gate needs this.
+         */
+        fun fromWireOrNull(value: String?): BoardBrand? =
+            entries.firstOrNull { it.wireValue == value }
+
+        /**
          * Derive the board family from a layout id — the single source of
          * truth for "which board does this layout belong to". MoonBoard
          * variant layouts (2/4/5/6 via [MoonBoardVariant.fromLayoutId]) →

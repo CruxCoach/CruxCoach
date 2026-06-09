@@ -334,16 +334,27 @@ class BoardDatabaseImporter(
             try {
                 targetDb.execSQL("ATTACH DATABASE ? AS mb", arrayOf(snapshotFile.absolutePath))
 
-                snapshotHasMoveCount = targetDb.rawQuery(
-                    "PRAGMA mb.table_info(climbs)", null
-                ).use { c ->
-                    var found = false
+                // One scan for the optional columns: move_count (precomputed),
+                // and — crucially for the community/origin browse filters —
+                // origin + created_by_pubkey. The MoonBoard snapshot now carries
+                // BoardSesh-imported climbs (origin='boardsesh'); without copying
+                // origin they defaulted to the catalogue value, so the BoardSesh
+                // filter (origin='boardsesh') found nothing even though the
+                // climbs were present in the ALL list.
+                var snapshotHasOrigin = false
+                var snapshotHasPubkey = false
+                targetDb.rawQuery("PRAGMA mb.table_info(climbs)", null).use { c ->
                     while (c.moveToNext()) {
-                        if (c.getString(1) == "move_count") found = true
+                        when (c.getString(1)) {
+                            "move_count" -> snapshotHasMoveCount = true
+                            "origin" -> snapshotHasOrigin = true
+                            "created_by_pubkey" -> snapshotHasPubkey = true
+                        }
                     }
-                    found
                 }
                 val moveCountExpr = if (snapshotHasMoveCount) "COALESCE(move_count, 0)" else "0"
+                val originExpr = if (snapshotHasOrigin) "COALESCE(origin, 'kilter')" else "'kilter'"
+                val pubkeyExpr = if (snapshotHasPubkey) "created_by_pubkey" else "NULL"
 
                 val climbTotal = queryLong(
                     targetDb, "SELECT COUNT(*) FROM mb.climbs WHERE is_listed = 1"
@@ -356,13 +367,13 @@ class BoardDatabaseImporter(
                         frames_count, is_listed, edge_left, edge_right,
                         edge_bottom, edge_top, created_at,
                         description, is_nomatch, frames_pace, hsm, move_count,
-                        board_brand)
+                        board_brand, origin, created_by_pubkey)
                     SELECT LOWER(uuid), layout_id, setter_username, name, frames,
                            frames_count, is_listed, edge_left, edge_right,
                            edge_bottom, edge_top, created_at,
                            COALESCE(description, ''), COALESCE(is_nomatch, 0),
                            COALESCE(frames_pace, 0), COALESCE(hsm, 0), $moveCountExpr,
-                           'moonboard'
+                           'moonboard', $originExpr, $pubkeyExpr
                     FROM mb.climbs
                     WHERE is_listed = 1
                     """.trimIndent()
@@ -437,14 +448,26 @@ class BoardDatabaseImporter(
             try {
                 targetDb.execSQL("ATTACH DATABASE ? AS ab", arrayOf(snapshotFile.absolutePath))
 
-                snapshotHasMoveCount = targetDb.rawQuery(
-                    "PRAGMA ab.table_info(climbs)", null
-                ).use { c ->
-                    var found = false
-                    while (c.moveToNext()) { if (c.getString(1) == "move_count") found = true }
-                    found
+                // Optional columns in one scan — move_count plus origin +
+                // created_by_pubkey, so Aurora community climbs (origin='cruxcoach'
+                // / 'boardsesh', once the cron merges them into Aurora chunks)
+                // keep their provenance for the origin browse filters instead of
+                // defaulting to the catalogue value. No-op for today's
+                // catalogue-only Aurora chunks, which carry no origin column.
+                var snapshotHasOrigin = false
+                var snapshotHasPubkey = false
+                targetDb.rawQuery("PRAGMA ab.table_info(climbs)", null).use { c ->
+                    while (c.moveToNext()) {
+                        when (c.getString(1)) {
+                            "move_count" -> snapshotHasMoveCount = true
+                            "origin" -> snapshotHasOrigin = true
+                            "created_by_pubkey" -> snapshotHasPubkey = true
+                        }
+                    }
                 }
                 val moveCountExpr = if (snapshotHasMoveCount) "COALESCE(move_count, 0)" else "0"
+                val originExpr = if (snapshotHasOrigin) "COALESCE(origin, 'kilter')" else "'kilter'"
+                val pubkeyExpr = if (snapshotHasPubkey) "created_by_pubkey" else "NULL"
 
                 // ── climbs (board_brand = the board's wire value) ──
                 val climbTotal = queryLong(
@@ -458,13 +481,13 @@ class BoardDatabaseImporter(
                         frames_count, is_listed, edge_left, edge_right,
                         edge_bottom, edge_top, created_at,
                         description, is_nomatch, frames_pace, hsm, move_count,
-                        board_brand)
+                        board_brand, origin, created_by_pubkey)
                     SELECT LOWER(uuid), layout_id, setter_username, name, frames,
                            frames_count, is_listed, edge_left, edge_right,
                            edge_bottom, edge_top, created_at,
                            COALESCE(description, ''), COALESCE(is_nomatch, 0),
                            COALESCE(frames_pace, 0), COALESCE(hsm, 0), $moveCountExpr,
-                           ?
+                           ?, $originExpr, $pubkeyExpr
                     FROM ab.climbs
                     WHERE is_listed = 1
                     """.trimIndent(),

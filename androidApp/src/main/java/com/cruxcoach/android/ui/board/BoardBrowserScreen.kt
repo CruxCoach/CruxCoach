@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.data.SessionQueueState
+import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.android.ui.common.LocalSessionQueueManager
 import com.cruxcoach.android.ui.common.RestTimerBannerSlot
 import com.cruxcoach.android.ui.common.BleStatusArea
@@ -477,20 +478,26 @@ fun BoardBrowserScreen(
                         singleLine = true,
                         shape = RoundedCornerShape(10.dp)
                     )
-                    val holdsTint = if (state.holdSearch.holdFilterActive) OrangeAccent
-                        else MaterialTheme.colorScheme.onSurfaceVariant
-                    IconButton(
-                        onClick = { viewModel.toggleHoldSearchSheet() },
-                        modifier = Modifier
-                            .size(40.dp)
-                            .testTag("board_hold_search")
-                    ) {
-                        Icon(
-                            Icons.Default.GridView,
-                            contentDescription = stringResource(R.string.cd_hold_search),
-                            tint = holdsTint,
-                            modifier = Modifier.size(22.dp)
-                        )
+                    // Hold-search uses the placement-id heatmap machinery, which
+                    // only Aurora-protocol boards have. Gate explicitly on the
+                    // capability so non-Aurora boards (MoonBoard) don't show an
+                    // affordance that would run a meaningless cross-board search.
+                    if (BoardBrand.fromWire(state.filter.boardBrand).hasHeatmap) {
+                        val holdsTint = if (state.holdSearch.holdFilterActive) OrangeAccent
+                            else MaterialTheme.colorScheme.onSurfaceVariant
+                        IconButton(
+                            onClick = { viewModel.toggleHoldSearchSheet() },
+                            modifier = Modifier
+                                .size(40.dp)
+                                .testTag("board_hold_search")
+                        ) {
+                            Icon(
+                                Icons.Default.GridView,
+                                contentDescription = stringResource(R.string.cd_hold_search),
+                                tint = holdsTint,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
                     }
                     // FEAT-006: discover Kilter Boards on a map. Lives next
                     // to hold-search as a peer "find climbs by another

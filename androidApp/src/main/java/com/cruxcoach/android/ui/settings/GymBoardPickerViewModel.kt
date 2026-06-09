@@ -129,7 +129,12 @@ class GymBoardPickerViewModel @Inject constructor(
         // (the merged search entry can stand for a Kilter row + foreign rows for
         // Tension/Grasshopper/etc.). So a gym with Tension + Grasshopper shows
         // once and offers both boards' configs (FEAT-031).
-        val rows = rowsByGym[gymKey(gym)] ?: listOf(gym)
+        val rows = (rowsByGym[gymKey(gym)] ?: listOf(gym))
+            // Info-layer brands (aurora, 12climb) are map-only: no walls, not
+            // selectable. Drop them up front so they neither fall into the
+            // Kilter else-branch nor inflate multiBrand (which drives the
+            // disambiguating "Kilter " size prefix at a mixed gym).
+            .filter { it.boardBrand.isInteractive }
         val multiBrand = rows.map { it.boardBrand }.distinct().size > 1
         viewModelScope.safeLaunch(TAG) {
             try {
@@ -200,14 +205,25 @@ class GymBoardPickerViewModel @Inject constructor(
     private fun auroraOptions(brand: BoardBrand): List<GymWallOption> {
         val variants = BoardConstants.auroraVariants(brand)
         if (variants.isEmpty()) {
-            return listOf(
+            // Single-layout board: offer one option per bundled size (Grasshopper
+            // Master/Ninja/GrandMaster, So iLL 8x12/12x12) instead of a single
+            // sizeless default, so a gym pick is a real size choice. layout 0 =
+            // "the synced chunk derives the layout"; the size is explicit.
+            val sizes = BoardConstants.auroraBundledSizes(brand)
+            if (sizes.isEmpty()) {
+                return listOf(
+                    GymWallOption(layoutId = 0, productSizeId = 0,
+                                  label = brand.displayName, boardBrand = brand),
+                )
+            }
+            return sizes.map { s ->
                 GymWallOption(
                     layoutId = 0,
-                    productSizeId = 0,
-                    label = brand.displayName,
+                    productSizeId = s.id.toInt(),
+                    label = "${brand.displayName} ${BoardConstants.auroraSizeLabel(brand, s)}",
                     boardBrand = brand,
-                ),
-            )
+                )
+            }
         }
         return variants.map {
             GymWallOption(

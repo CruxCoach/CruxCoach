@@ -6,6 +6,7 @@ import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.nostr.NostrRelayPool
 import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.data.repository.BoardRepository
+import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.BoardClimbParser
 import com.cruxcoach.domain.community.ClimbBounds
 import com.cruxcoach.domain.community.CommunityClimbTags
@@ -58,6 +59,46 @@ import kotlinx.serialization.json.jsonPrimitive
  *    stats" rule, ungraded climbs would land as NULL difficulty rows
  *    and pollute default browse.
  */
+
+/**
+ * Resolve + VALIDATE the board brand of an incoming community climb event (C1).
+ * Extracted as a pure function so the brand-forgery guard is unit-testable.
+ *
+ * [boardBrandTag] is the raw, self-signed `board_brand` tag (null if absent);
+ * [foundV1]/[foundV2] record which namespace label(s) the event carried.
+ *
+ * For a real climb (`deleted == false`): a PRESENT tag must name a known
+ * INTERACTIVE board — unknown / map-only / null-when-required is rejected (so a
+ * forged value can never silently map to KILTER via [BoardBrand.fromWire]) — and
+ * the brand must match the namespace the publisher always pairs it with (Kilter
+ * on the legacy v1 label, every other board on v2). A missing tag is the
+ * pre-FEAT-031 Kilter-only era. Throws [IllegalArgumentException] on any
+ * violation (the caller drops / dead-letters the event).
+ *
+ * Tombstones (`deleted == true`) carry no `board_brand` and key off the uuid, so
+ * they skip the strict checks and resolve leniently — identical to the behaviour
+ * before C1, so legitimate deletions are never rejected.
+ */
+internal fun resolveIngestBoardBrand(
+    boardBrandTag: String?,
+    foundV1: Boolean,
+    foundV2: Boolean,
+    deleted: Boolean,
+): BoardBrand {
+    if (deleted) return BoardBrand.fromWire(boardBrandTag)
+    val brand = if (boardBrandTag == null) {
+        BoardBrand.KILTER
+    } else {
+        BoardBrand.fromWireOrNull(boardBrandTag)
+            ?: throw IllegalArgumentException("unknown board_brand tag: $boardBrandTag")
+    }
+    require(brand.isInteractive) { "non-interactive board_brand: ${brand.wireValue}" }
+    require(if (brand == BoardBrand.KILTER) foundV1 else foundV2) {
+        "board_brand ${brand.wireValue} inconsistent with namespace (v1=$foundV1 v2=$foundV2)"
+    }
+    return brand
+}
+
 @Singleton
 class CommunityClimbSubscriber @Inject constructor(
     private val pool: NostrRelayPool,
@@ -985,8 +1026,12 @@ class CommunityClimbSubscriber @Inject constructor(
                 var setterGradeId: Int? = null
                 var angle: Int? = null
                 var bounds: ClimbBounds? = null
-                var foundLabel = false
-                var boardBrand = "kilter"
+                // Track WHICH namespace matched (v1 legacy-Kilter vs v2
+                // new-board) and the RAW board_brand tag separately, so the
+                // brand can be validated against the namespace below (C1).
+                var foundV1 = false
+                var foundV2 = false
+                var boardBrandTag: String? = null
                 var deletedTag = false
 
                 for (tag in event.tags) {
@@ -995,10 +1040,15 @@ class CommunityClimbSubscriber @Inject constructor(
                         "d" -> dTag = tag[1]
                         // Accept BOTH the legacy Kilter namespace and the v2
                         // (new-board) namespace (FEAT-031 dual-namespace gate).
-                        "L" -> if (tag[1] == NAMESPACE_LABEL || tag[1] == NAMESPACE_LABEL_V2) foundLabel = true
+                        "L" -> when (tag[1]) {
+                            NAMESPACE_LABEL -> foundV1 = true
+                            NAMESPACE_LABEL_V2 -> foundV2 = true
+                        }
                         // Explicit brand machine tag — the authoritative
                         // ingest key (layout_id collides across boards).
-                        "board_brand" -> boardBrand = tag[1]
+                        // UNTRUSTED (self-signed): validated below, never
+                        // trusted raw.
+                        "board_brand" -> boardBrandTag = tag[1]
                         "frames" -> framesText = tag[1]
                         "frames_hash" -> framesHashRaw = tag[1]
                         "layout_id" -> layoutId = tag[1].toLongOrNull()
@@ -1019,7 +1069,7 @@ class CommunityClimbSubscriber @Inject constructor(
                         "deleted" -> if (tag[1].equals("true", ignoreCase = true)) deletedTag = true
                     }
                 }
-                require(foundLabel) { "not a com.cruxcoach.climb[.v2] event" }
+                require(foundV1 || foundV2) { "not a com.cruxcoach.climb[.v2] event" }
                 require(dTag != null) { "d-tag missing" }
 
                 val contentObj = runCatching {
@@ -1040,6 +1090,21 @@ class CommunityClimbSubscriber @Inject constructor(
                     require(framesText != null && framesText!!.isNotBlank()) { "frames tag missing" }
                     require(layoutId != null) { "layout_id tag missing" }
                 }
+
+                // C1 — VALIDATE the untrusted board_brand before it becomes the
+                // ingest key. board_brand is a self-signed, attacker-controlled
+                // tag; without this a forged value would (a) silently map to
+                // KILTER (fromWire's lenient fallback) and inject a foreign-hold
+                // climb into every Kilter browse, or (b) ride the wrong board.
+                // Rules: a PRESENT tag must name a known INTERACTIVE board
+                // (reject unknown / map-only); a MISSING tag is the pre-FEAT-031
+                // Kilter-only era; and the brand must match the namespace the
+                // publisher pairs it with (Kilter→v1, every other board→v2), so
+                // a mismatched pair is a forged/garbled event. Tombstones carry
+                // no board_brand and key off the uuid, so they skip the strict
+                // check (the deletion still rides the matching namespace).
+                val resolvedBrand: BoardBrand =
+                    resolveIngestBoardBrand(boardBrandTag, foundV1, foundV2, deleted)
 
                 // Canonical lowercase: the board DB's uuid is BINARY-
                 // collated lowercase (see 7.sqm); event content / d-tag
@@ -1079,7 +1144,7 @@ class CommunityClimbSubscriber @Inject constructor(
                     angle = angle,
                     bounds = bounds,
                     contentPubkeyPrefix = contentPubkeyPrefix,
-                    boardBrand = boardBrand,
+                    boardBrand = resolvedBrand.wireValue,
                     deleted = deleted,
                 )
             }

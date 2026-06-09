@@ -3,10 +3,17 @@ package com.cruxcoach.util
 /**
  * Unified grade conversion between V-Scale, French/Fontainebleau, and a fine-grained index.
  *
- * The unified index (0..22) covers 23 grades used for slider/filter stepping.
- * Font grade names match the official Kilter Board difficulty_grades table.
- * V-Scale grades map to a subset of these indices; intermediate Font grades
- * (6a+, 6b+, 6c+, 7b) sit between V-Scale steps and are skipped in V-Scale mode.
+ * The unified index (0..24) covers 25 grades used for slider/filter stepping.
+ * Font grade names match the official Kilter Board difficulty_grades table and
+ * run contiguously from 4a (the lowest graded Kilter/Aurora difficulty, 10) to
+ * 8c+ (33), plus a 9a (34) top stop. V-Scale grades map to a subset of these
+ * indices; intermediate Font grades (4a, 4c, 5a, 6a+, 6b+, 6c+, 7b) sit between
+ * V-Scale steps and are skipped in V-Scale mode.
+ *
+ * NOTE: index 0 is 4a — the true display floor (KilterGradeMapper clamps any
+ * difficulty < 10 to 4a). Keeping 4a as the floor is what makes the filter's
+ * "no lower bound" sentinel at index 0 semantically correct, and what stops 4a
+ * climbs leaking in under a "from 4b" selection.
  */
 object GradeConverter {
 
@@ -17,33 +24,35 @@ object GradeConverter {
     )
 
     val GRADES: List<GradeEntry> = listOf(
-        GradeEntry(0,  "4b",   "V0"),
-        GradeEntry(1,  "4c",   null),   // V0 intermediate (slider uses 4b as V0 stop)
-        GradeEntry(2,  "5b",   "V1"),
-        GradeEntry(3,  "5c",   "V2"),
-        GradeEntry(4,  "6a",   "V3"),
-        GradeEntry(5,  "6a+",  null),   // V3 intermediate
-        GradeEntry(6,  "6b",   "V4"),
-        GradeEntry(7,  "6b+",  null),   // V4 intermediate
-        GradeEntry(8,  "6c",   "V5"),
-        GradeEntry(9,  "6c+",  null),   // V5 intermediate
-        GradeEntry(10, "7a",   "V6"),
-        GradeEntry(11, "7a+",  "V7"),
-        GradeEntry(12, "7b",   null),   // V8 intermediate
-        GradeEntry(13, "7b+",  "V8"),
-        GradeEntry(14, "7c",   "V9"),
-        GradeEntry(15, "7c+",  "V10"),
-        GradeEntry(16, "8a",   "V11"),
-        GradeEntry(17, "8a+",  "V12"),
-        GradeEntry(18, "8b",   "V13"),
-        GradeEntry(19, "8b+",  "V14"),
-        GradeEntry(20, "8c",   "V15"),
-        GradeEntry(21, "8c+",  "V16"),
-        GradeEntry(22, "9a",   "V17")
+        GradeEntry(0,  "4a",   null),   // V0 floor — lowest Kilter Font grade (diff 10)
+        GradeEntry(1,  "4b",   "V0"),   // V0 stop
+        GradeEntry(2,  "4c",   null),   // V0 intermediate
+        GradeEntry(3,  "5a",   null),   // V1 intermediate (lower Font grade of the V1 bucket)
+        GradeEntry(4,  "5b",   "V1"),   // V1 stop
+        GradeEntry(5,  "5c",   "V2"),
+        GradeEntry(6,  "6a",   "V3"),
+        GradeEntry(7,  "6a+",  null),   // V3 intermediate
+        GradeEntry(8,  "6b",   "V4"),
+        GradeEntry(9,  "6b+",  null),   // V4 intermediate
+        GradeEntry(10, "6c",   "V5"),
+        GradeEntry(11, "6c+",  null),   // V5 intermediate
+        GradeEntry(12, "7a",   "V6"),
+        GradeEntry(13, "7a+",  "V7"),
+        GradeEntry(14, "7b",   null),   // V8 intermediate
+        GradeEntry(15, "7b+",  "V8"),
+        GradeEntry(16, "7c",   "V9"),
+        GradeEntry(17, "7c+",  "V10"),
+        GradeEntry(18, "8a",   "V11"),
+        GradeEntry(19, "8a+",  "V12"),
+        GradeEntry(20, "8b",   "V13"),
+        GradeEntry(21, "8b+",  "V14"),
+        GradeEntry(22, "8c",   "V15"),
+        GradeEntry(23, "8c+",  "V16"),
+        GradeEntry(24, "9a",   "V17")
     )
 
-    /** Max unified index */
-    const val MAX_INDEX = 22
+    /** Max unified index — derived so it tracks [GRADES] automatically. */
+    val MAX_INDEX = GRADES.size - 1
 
     /** Indices that have a direct V-Scale equivalent (for V-Scale mode stepping) */
     val V_SCALE_INDICES: List<Int> = GRADES.filter { it.vScale != null }.map { it.index }

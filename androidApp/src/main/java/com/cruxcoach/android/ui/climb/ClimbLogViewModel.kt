@@ -21,7 +21,7 @@ import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 data class ClimbLogUiState(
-    val gradeIndex: Int = 4,  // unified index: 4 = 6a (V3)
+    val gradeIndex: Int = 6,  // unified index: 6 = 6a (V3)
     val sent: Boolean = false,
     val flash: Boolean = false,
     val attempts: Int = 1,

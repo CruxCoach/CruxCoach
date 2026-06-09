@@ -681,9 +681,15 @@ class BoardClimbDetailViewModel @Inject constructor(
 
                         mirrorPlacementMap = if (effectiveBoard == null) emptyMap() else
                             PerfLogger.trace("loadClimb.mirrorMap") {
-                                boardRepository.getMirrorPlacementMap(effectiveBoard.first).ifEmpty {
-                                    computeMirrorMapFromPlacements(placementMap, boardSize)
-                                }
+                                // Derive the mirror map geometrically (pure
+                                // horizontal reflection of placements). The DB
+                                // getMirrorPlacementMap path reads the `holes`
+                                // table, which is never populated for any board,
+                                // so it always returned empty and fell through to
+                                // this fallback anyway — and it was brand-blind
+                                // (defaulted to Kilter). Call the geometric path
+                                // directly: correct for every mirrorable board.
+                                computeMirrorMapFromPlacements(placementMap, boardSize)
                             }
                         originalAllFrames = allFrames
 

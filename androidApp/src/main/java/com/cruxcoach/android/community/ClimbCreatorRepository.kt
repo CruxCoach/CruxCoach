@@ -188,7 +188,11 @@ class ClimbCreatorRepository @Inject constructor(
         if (state.boardBrand == com.cruxcoach.domain.board.BoardBrand.MOONBOARD.wireValue) return null
         val ids = state.selectedHolds.keys
         if (ids.isEmpty()) return null
-        val all = runCatching { boardRepository.getAllPlacements() }.getOrNull().orEmpty()
+        // Resolve coordinates from THIS board's placement table — placement-ids
+        // overlap across boards (layout_id=1 alone is five brands), so the
+        // default Kilter scope would derive edge_* from Kilter coordinates for
+        // an Aurora-family draft and persist a physically wrong bbox.
+        val all = runCatching { boardRepository.getAllPlacements(state.boardBrand) }.getOrNull().orEmpty()
         if (all.isEmpty()) return null
         val coords = all.asSequence()
             .filter { it.placementId.toInt() in ids }
@@ -206,7 +210,7 @@ class ClimbCreatorRepository @Inject constructor(
         val layoutId = userPreferences.boardLayoutId.first().toLong()
         val frames = state.encodeFrames()
         val hash = FramesHash.of(frames, layoutId)
-        return boardRepository.findClimbByFramesHash(hash, layoutId)
+        return boardRepository.findClimbByFramesHash(hash, layoutId, state.boardBrand)
     }
 
     /**

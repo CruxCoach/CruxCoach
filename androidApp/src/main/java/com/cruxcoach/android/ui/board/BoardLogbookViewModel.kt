@@ -422,6 +422,7 @@ class BoardLogbookViewModel @Inject constructor(
                         else -> boardRepository.getAllFramesForHeatmap(
                             angle = 40,
                             layoutId = layoutId,
+                            boardBrand = activeBrand,
                             minDifficulty = 0.0,
                             maxDifficulty = Double.MAX_VALUE,
                             minAscensionists = 0,

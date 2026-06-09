@@ -335,12 +335,13 @@ interface BoardClimbQueries {
      *  VM's UUID-shuffle cache for RANDOM sort — load once per filter
      *  signature, shuffle in Kotlin, paginate over the cached list. */
     fun getAllBrowseMatchingUuids(angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter, selProductSizeId: Int = 0): List<String>
-    /** Find climb UUIDs whose frames contain the given placement ID. */
-    fun searchClimbUuidsByHold(holdPattern: String, angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter): List<String>
+    /** Find climb UUIDs whose frames contain the given placement ID. Brand-scoped
+     *  so a board only matches its own climbs (layout_id collides across boards). */
+    fun searchClimbUuidsByHold(holdPattern: String, angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter): List<String>
     /** Find climb UUIDs whose frames contain ALL given hold patterns (single DB pass). */
-    fun searchClimbUuidsByAllHolds(holdPatterns: List<String>, angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter): Set<String>
-    /** Get all frames for heatmap computation within current browse filters. */
-    fun getAllFramesForHeatmap(angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter): List<ClimbFrameRow>
+    fun searchClimbUuidsByAllHolds(holdPatterns: List<String>, angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter): Set<String>
+    /** Get all frames for heatmap computation within current browse filters (brand-scoped). */
+    fun getAllFramesForHeatmap(angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter): List<ClimbFrameRow>
 }
 
 /** Board layout, placement, LED, and product-size queries. */
@@ -981,7 +982,7 @@ interface CommunityClimbQueries {
      *  uuid authored by [pubkey] on [layoutId], ignoring angle/grade/asc
      *  filters so drafts saved at any angle remain discoverable. The row
      *  is picked at [preferredAngle] when available, else any angle. */
-    fun getOwnClimbsForBrowse(pubkey: String, layoutId: Int, preferredAngle: Int): List<ClimbWithStats>
+    fun getOwnClimbsForBrowse(pubkey: String, layoutId: Int, preferredAngle: Int, boardBrand: String): List<ClimbWithStats>
     /** Distinct cruxcoach setters with their climb-count, ordered desc. */
     fun getCommunitySetterStats(): List<SetterStat>
     fun markKilterPublishPending(uuid: String)
@@ -1089,8 +1090,10 @@ interface CommunityClimbQueries {
      *  Nostr retry worker — see [ClimbPublishContext]. Null when the climb
      *  isn't in the local DB. */
     fun getClimbPublishContext(uuid: String): ClimbPublishContext?
-    /** Look up an existing climb by frames_hash for duplicate detection. */
-    fun findClimbByFramesHash(framesHash: String, layoutId: Long): CommunityClimbRow?
+    /** Look up an existing climb by frames_hash for duplicate detection, scoped
+     *  to [boardBrand] (frames_hash folds in layout_id but not the brand, and
+     *  layout_id=1 is shared across boards). */
+    fun findClimbByFramesHash(framesHash: String, layoutId: Long, boardBrand: String): CommunityClimbRow?
     /** Cache the setter-grade entry for a community climb (MVP — no vote aggregation). */
     fun upsertSetterGrade(climbDTag: String, angle: Long, setterGradeId: Int, lastUpdatedEpochMs: Long)
 

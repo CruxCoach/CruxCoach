@@ -148,7 +148,7 @@ data class BrowserFilterState(
      *  Kilter (which uses the continuous slider). */
     val moonBoardAngles: List<Int> = emptyList(),
     val minGradeIndex: Int = 0,
-    val maxGradeIndex: Int = 14,
+    val maxGradeIndex: Int = 16,
     val minAscensionists: Int = 0,
     val searchQuery: String = "",
     val sortField: ClimbSortField = ClimbSortField.ASCENSIONISTS,
@@ -835,7 +835,7 @@ class BoardBrowserViewModel @Inject constructor(
             if (dbOffset > 0) return Triple(emptyList(), dbOffset, true)
             val pubkey = runCatching { nostrSigner.getPublicKeyHex() }.getOrNull()
             if (pubkey.isNullOrBlank()) return Triple(emptyList(), 0, true)
-            val all = boardRepository.getOwnClimbsForBrowse(pubkey, f.layoutId, f.angle)
+            val all = boardRepository.getOwnClimbsForBrowse(pubkey, f.layoutId, f.angle, f.boardBrand)
             val nameFiltered = if (f.searchQuery.isBlank()) all
                 else all.filter { it.name.contains(f.searchQuery, ignoreCase = true) }
             val statusFiltered = applyStatusFilter(nameFiltered, f.statusFilter)
@@ -1177,7 +1177,7 @@ class BoardBrowserViewModel @Inject constructor(
         val patterns = selectedHolds.map { HoldHeatmapComputer.holdLikePattern(it) }
         // Single DB pass: load frames once, check all hold patterns per row
         val result = boardRepository.searchClimbUuidsByAllHolds(
-            patterns, f.angle, f.layoutId, minDiff, maxDiff, f.minAscensionists, f.climbTypeFilter
+            patterns, f.angle, f.layoutId, f.boardBrand, minDiff, maxDiff, f.minAscensionists, f.climbTypeFilter
         )
         val elapsed = System.currentTimeMillis() - start
         PerfLogger.log("🔍 holdSearch: ${patterns.size} patterns, ${result.size} matches in ${elapsed}ms")
@@ -1191,12 +1191,16 @@ class BoardBrowserViewModel @Inject constructor(
         val maxDiff = KilterGradeMapper.indexToFilterMax(f.maxGradeIndex, french)
         val frameRows = when (mode) {
             HeatmapMode.PERSONAL -> {
-                val ascents = personalBoardRepo.getUserAscentsAll()
-                ascents.map { it.climbFrames }
+                // Scope "my sends" to the active board (brand + layout) like the
+                // other modes: an ascent logged on a different board must not
+                // tint this board's grid.
+                personalBoardRepo.getUserAscentsAll()
+                    .filter { it.boardBrand == f.boardBrand && it.layoutId == f.layoutId.toLong() }
+                    .map { it.climbFrames }
             }
             else -> {
                 boardRepository.getAllFramesForHeatmap(
-                    f.angle, f.layoutId, minDiff, maxDiff, f.minAscensionists, f.climbTypeFilter
+                    f.angle, f.layoutId, f.boardBrand, minDiff, maxDiff, f.minAscensionists, f.climbTypeFilter
                 ).map { it.frames }
             }
         }
@@ -1222,6 +1226,11 @@ class BoardBrowserViewModel @Inject constructor(
     fun playEasterAnimation(type: EasterAnimation) {
         animationJob?.cancel()
         animationJob = viewModelScope.safeLaunch(TAG) {
+            // The LED-grid easter animation is Aurora-protocol only (Kilter +
+            // the Aurora family). A MoonBoard connects at API level 0 with no
+            // Aurora LED grid, so don't run it — this also keeps the trailing
+            // Aurora-encoder clearBoard() from ever reaching a MoonBoard.
+            if (!BoardBrand.fromWire(userPreferences.boardBrand.first()).usesAuroraProtocol) return@safeLaunch
             _isAnimating.value = true
             try {
                 val animSizeId = userPreferences.boardProductSizeId.first()

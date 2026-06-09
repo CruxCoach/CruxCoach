@@ -1,6 +1,7 @@
 package com.cruxcoach.android.data
 
 import android.content.Context
+import androidx.datastore.core.DataMigration
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
@@ -19,7 +20,44 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
-val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "cruxcoach_prefs")
+val Context.dataStore: DataStore<Preferences> by preferencesDataStore(
+    name = "cruxcoach_prefs",
+    produceMigrations = { listOf(boardGradeScaleMigrationV1) },
+)
+
+/**
+ * One-time remap of the persisted board-filter grade bounds after the unified
+ * grade scale gained its two missing low Font grades — 4a (new index 0) and 5a
+ * (new index 3). Every stored index shifts up: +1 for the 4a insert, and +1
+ * more once at/above the old 5b position for the 5a insert. Gated by
+ * [PreferenceKeys.BOARD_GRADE_SCALE_VERSION] so it runs exactly once.
+ *
+ * Only these two ints need touching — profile grades are persisted as Font
+ * strings and re-derive their index via [com.cruxcoach.util.GradeConverter.gradeToIndex],
+ * which is stable across the reindex.
+ */
+private val boardGradeScaleMigrationV1 = object : DataMigration<Preferences> {
+    override suspend fun shouldMigrate(currentData: Preferences): Boolean =
+        (currentData[PreferenceKeys.BOARD_GRADE_SCALE_VERSION] ?: 0) < 1
+
+    override suspend fun migrate(currentData: Preferences): Preferences {
+        val prefs = currentData.toMutablePreferences()
+        currentData[PreferenceKeys.BOARD_MIN_GRADE]?.let {
+            prefs[PreferenceKeys.BOARD_MIN_GRADE] = remapOldGradeIndexToV1(it)
+        }
+        currentData[PreferenceKeys.BOARD_MAX_GRADE]?.let {
+            prefs[PreferenceKeys.BOARD_MAX_GRADE] = remapOldGradeIndexToV1(it)
+        }
+        prefs[PreferenceKeys.BOARD_GRADE_SCALE_VERSION] = 1
+        return prefs
+    }
+
+    override suspend fun cleanUp() {}
+}
+
+/** Old unified index (0..22, floor 4b) → new unified index (0..24, floor 4a). */
+internal fun remapOldGradeIndexToV1(old: Int): Int =
+    (old + if (old >= 2) 2 else 1).coerceIn(0, 24)
 
 /**
  * Per-key DataStore keys — preferences that belong to a specific Nostr identity.
@@ -128,14 +166,22 @@ data class LedHoldColors(
             foot = KILTER_FOOT
         )
 
-        // Aurora family (Tension/Grasshopper/Decoy/So iLL/Touchstone): the
-        // shared non-Kilter Aurora scheme — start green, hands blue, finish
-        // red, feet magenta (per the boards' placement_roles.led_color /
-        // BoardSesh hold-state palette).
+        // Aurora family (Tension/Grasshopper/Decoy/Touchstone): the shared
+        // non-Kilter Aurora scheme — start green, hands blue, finish red, feet
+        // magenta (per the boards' placement_roles.led_color / BoardSesh
+        // hold-state palette). So iLL differs — see SOILL_* below.
         const val AURORA_START: Int = 0x1C   // Green (00FF00)
         const val AURORA_HAND: Int = 0x03    // Blue (0000FF)
         const val AURORA_FINISH: Int = 0xE0  // Red (FF0000)
         const val AURORA_FOOT: Int = 0xE3    // Magenta (FF00FF)
+
+        // So iLL ships a distinct placement_roles palette (RE-verified): start
+        // green (== AURORA_START), middle magenta, finish WHITE, foot cyan —
+        // three of four differ from the shared Aurora scheme, so it gets its own
+        // fallback used until its synced placement_roles override it.
+        const val SOILL_HAND: Int = 0xE3     // Magenta (FF00FF)
+        const val SOILL_FINISH: Int = 0xFF   // White (FFFFFF)
+        const val SOILL_FOOT: Int = 0x1F     // Cyan (00FFFF)
 
         /**
          * The conventional LED colours for a board family (FEAT-031): each
@@ -149,8 +195,10 @@ data class LedHoldColors(
         fun standardFor(brand: BoardBrand): LedHoldColors = when (brand) {
             BoardBrand.KILTER -> kilterStandard()
             BoardBrand.TENSION, BoardBrand.GRASSHOPPER, BoardBrand.DECOY,
-            BoardBrand.SOILL, BoardBrand.TOUCHSTONE ->
+            BoardBrand.TOUCHSTONE ->
                 LedHoldColors(AURORA_START, AURORA_HAND, AURORA_FINISH, AURORA_FOOT)
+            BoardBrand.SOILL ->
+                LedHoldColors(start = AURORA_START, hand = SOILL_HAND, finish = SOILL_FINISH, foot = SOILL_FOOT)
             // MoonBoard's classic 3-colour scheme (green start, blue hands,
             // red top); no distinct foot role, so feet reuse the hand colour.
             BoardBrand.MOONBOARD ->
@@ -225,6 +273,9 @@ object PreferenceKeys {
     val BOARD_ANGLE = intPreferencesKey("board_angle")
     val BOARD_MIN_GRADE = intPreferencesKey("board_min_grade")
     val BOARD_MAX_GRADE = intPreferencesKey("board_max_grade")
+    // Schema version for the board-filter grade indices. Bumped to 1 when the
+    // unified scale gained 4a + 5a (see boardGradeScaleMigrationV1).
+    val BOARD_GRADE_SCALE_VERSION = intPreferencesKey("board_grade_scale_version")
     val BOARD_MIN_ASCENSIONISTS = intPreferencesKey("board_min_ascensionists")
     val BOARD_SORT_FIELD = stringPreferencesKey("board_sort_field")
     val BOARD_SORT_DIRECTION = stringPreferencesKey("board_sort_direction")
@@ -322,8 +373,8 @@ class UserPreferences(
             angle = prefs[PreferenceKeys.BOARD_ANGLE] ?: 40,
             layoutId = prefs[PreferenceKeys.BOARD_LAYOUT_ID] ?: BoardConstants.KILTER_ORIGINAL_LAYOUT,
             boardBrand = prefs[PreferenceKeys.BOARD_BRAND] ?: "kilter",
-            minGrade = prefs[PreferenceKeys.BOARD_MIN_GRADE] ?: 0,
-            maxGrade = prefs[PreferenceKeys.BOARD_MAX_GRADE] ?: 14,
+            minGrade = prefs[PreferenceKeys.BOARD_MIN_GRADE] ?: 0,   // 0 = 4a (floor)
+            maxGrade = prefs[PreferenceKeys.BOARD_MAX_GRADE] ?: 16,  // 16 = 7c
             minAscensionists = prefs[PreferenceKeys.BOARD_MIN_ASCENSIONISTS] ?: 0,
             gradeScale = try { GradeScale.valueOf(prefs[PreferenceKeys.GRADE_SCALE] ?: GradeScale.FRENCH.name) } catch (_: IllegalArgumentException) { GradeScale.FRENCH },
             sortField = prefs[PreferenceKeys.BOARD_SORT_FIELD] ?: "ASCENSIONISTS",
@@ -794,7 +845,7 @@ class UserPreferences(
     // Board browser filter persistence
     val boardAngle: Flow<Int> = dataStore.data.map { it[PreferenceKeys.BOARD_ANGLE] ?: 40 }
     val boardMinGrade: Flow<Int> = dataStore.data.map { it[PreferenceKeys.BOARD_MIN_GRADE] ?: 0 }
-    val boardMaxGrade: Flow<Int> = dataStore.data.map { it[PreferenceKeys.BOARD_MAX_GRADE] ?: 14 }
+    val boardMaxGrade: Flow<Int> = dataStore.data.map { it[PreferenceKeys.BOARD_MAX_GRADE] ?: 16 }
     val boardMinAscensionists: Flow<Int> = dataStore.data.map { it[PreferenceKeys.BOARD_MIN_ASCENSIONISTS] ?: 0 }
     val boardSortField: Flow<String> = dataStore.data.map { it[PreferenceKeys.BOARD_SORT_FIELD] ?: "ASCENSIONISTS" }
     val boardSortDirection: Flow<String> = dataStore.data.map { it[PreferenceKeys.BOARD_SORT_DIRECTION] ?: "DESC" }

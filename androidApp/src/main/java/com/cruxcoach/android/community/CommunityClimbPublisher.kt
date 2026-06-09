@@ -124,7 +124,7 @@ class CommunityClimbPublisher @Inject constructor(
         // hold-ids aren't placement-ids (and could collide with low Kilter
         // placement-ids), so skip it — a null bounds tag is handled
         // gracefully by every subscriber.
-        val bounds = if (isMoonBoard) null else computeBounds(state)
+        val bounds = if (isMoonBoard) null else computeBounds(state, boardBrand)
         val payload = buildCommunityClimbEvent(
             pubkey = pubkey,
             createdAt = createdAt,
@@ -177,7 +177,7 @@ class CommunityClimbPublisher @Inject constructor(
         // `autoNotePublished` carries the relay-accepted-at-least-once
         // signal back to the editor; null means the user didn't opt in.
         val autoNotePublished: Boolean? = if (autoNote != null) {
-            runCatching { publishKind1Note(payload.dTag, pubkey, state.name, autoNote) }
+            runCatching { publishKind1Note(payload.dTag, pubkey, state.name, boardBrand, autoNote) }
                 .onFailure { Log.w(TAG, "auto-note publish threw — recoverable", it) }
                 .getOrDefault(false)
         } else null
@@ -188,12 +188,13 @@ class CommunityClimbPublisher @Inject constructor(
         // has explicitly disabled Kilter publishing in settings, we don't
         // nudge.
         //
-        // MoonBoard climbs are CruxCoach-community-only: there is no
-        // CruxCoach→official-MoonBoard-app publish path (unlike Kilter, which
-        // mirrors to the user's own Kilter account). The climb still went out
-        // over Nostr above; we simply skip the official-app leg (isMoonBoard
-        // derived from layoutId at the top of publish()).
-        val publishToKilter = !isMoonBoard && userPreferences.kilterClimbPublishEnabled.first()
+        // The official-app (Kilter account) leg is Kilter-only. MoonBoard AND
+        // the Aurora family (Tension/Grasshopper/Decoy/So iLL/Touchstone) are
+        // CruxCoach-community-only — there is no CruxCoach→vendor-app publish for
+        // them. Gate on the brand's own capability (KILTER-only) so an authored
+        // Aurora climb is never pushed — mislabeled as Kilter — to the user's
+        // Kilter account. The climb still went out over Nostr above.
+        val publishToKilter = boardBrand.supportsOfficialAppPublish && userPreferences.kilterClimbPublishEnabled.first()
         val hasKilterToken = kilterTokenStore.getAccessToken() != null
         var nudgeToConnect = false
         var kilterOutcome: KilterClimbPublisher.Outcome? = null
@@ -338,6 +339,7 @@ class CommunityClimbPublisher @Inject constructor(
         dTag: String,
         authorPubkeyHex: String,
         climbName: String,
+        boardBrand: BoardBrand,
         spec: AutoNoteSpec,
     ): Boolean {
         val naddr = NAddress.create(
@@ -364,7 +366,7 @@ class CommunityClimbPublisher @Inject constructor(
         // — every fork install would otherwise unconditionally amplify
         // whoever the fork's MAINTAINER_PUBKEY resolves to.
         val tagList = mutableListOf(
-            arrayOf("t", "kilterboard"),
+            arrayOf("t", com.cruxcoach.domain.community.boardHashtag(boardBrand)),
             arrayOf("t", "climbing"),
         )
         if (com.cruxcoach.android.BuildConfig.AUTO_NOTE_PTAG_MAINTAINER) {
@@ -390,10 +392,12 @@ class CommunityClimbPublisher @Inject constructor(
         return accepted > 0
     }
 
-    private fun computeBounds(state: ClimbEditorState): ClimbBounds? {
+    private fun computeBounds(state: ClimbEditorState, boardBrand: BoardBrand): ClimbBounds? {
         val ids = state.selectedHolds.keys
         if (ids.isEmpty()) return null
-        val all = runCatching { boardRepository.getAllPlacements() }.getOrNull().orEmpty()
+        // Brand-scope placements: an Aurora climb's bounds must come from its own
+        // board's placement coords, not Kilter's (the no-arg default).
+        val all = runCatching { boardRepository.getAllPlacements(boardBrand.wireValue) }.getOrNull().orEmpty()
         if (all.isEmpty()) return null
         val coords = all.asSequence()
             .filter { it.placementId.toInt() in ids }

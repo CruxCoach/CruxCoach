@@ -59,6 +59,18 @@ data class NostrCommunityClimb(
 }
 
 /**
+ * Per-brand discovery hashtag for a climb (the `t` tag). Kilter + MoonBoard keep
+ * their established tags; every other Aurora board uses its wire value. Shared by
+ * the Kind-30078 climb event and the optional Kind-1 announcement note so they
+ * never drift (a Tension climb must not surface under #kilterboard).
+ */
+fun boardHashtag(brand: BoardBrand): String = when (brand) {
+    BoardBrand.KILTER -> "kilterboard"
+    BoardBrand.MOONBOARD -> "moonboard"
+    else -> brand.wireValue
+}
+
+/**
  * Build a [NostrCommunityClimb] from editor state + signer pubkey. The
  * caller is responsible for actual signing + relay publish — this just
  * shapes the payload deterministically (so frames_hash + d-tag are
@@ -128,11 +140,7 @@ fun buildCommunityClimbEvent(
         BoardBrand.MOONBOARD -> CommunityClimbTags.LABEL_MOONBOARD
         else -> brand.wireValue
     }
-    val boardHashtag = when (brand) {
-        BoardBrand.KILTER -> "kilterboard"
-        BoardBrand.MOONBOARD -> "moonboard"
-        else -> brand.wireValue
-    }
+    val boardHashtag = boardHashtag(brand)
 
     val tags = mutableListOf(
         listOf("d", dTag),

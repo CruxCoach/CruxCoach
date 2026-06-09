@@ -366,7 +366,11 @@ internal fun BoardStatsSheet(
             // Start / Hand / Foot / Finish). Sits at the very bottom of
             // the sheet because the board rendering is the heaviest
             // visual and pushes the charts above into the initial view.
-            if (placements.isNotEmpty()) {
+            // Explicit capability gate: the placement-id heatmap only applies to
+            // Aurora-protocol boards (Kilter + the Aurora family). MoonBoard has
+            // no Aurora placements (hasHeatmap=false) — previously this was hidden
+            // only incidentally via empty placements; gate on the capability.
+            if (boardSize?.boardBrand?.hasHeatmap == true && placements.isNotEmpty()) {
                 val sectionTitle = stringResource(
                     R.string.board_stats_heatmap_section,
                     heatmapModeLabel(heatmapMode)

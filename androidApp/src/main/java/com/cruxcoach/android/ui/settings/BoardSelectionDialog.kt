@@ -319,7 +319,7 @@ internal fun BoardSelectionDialog(
                         )
                         auroraSizes.forEach { size ->
                             RadioRow(
-                                label = size.name,
+                                label = BoardConstants.auroraSizeLabel(auroraBrand!!, size),
                                 selected = auroraSizeId == size.id.toInt(),
                                 onSelect = { auroraSizeId = size.id.toInt() },
                             )

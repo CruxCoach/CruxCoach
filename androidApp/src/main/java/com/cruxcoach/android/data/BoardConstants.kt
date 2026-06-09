@@ -51,18 +51,138 @@ object BoardConstants {
             AuroraVariant(layoutId = 11, productId = 5, displayName = "Tension Board 2 (Spray)",  defaultSizeId = 6, isMirrored = false),
         ),
         // Decoy ships two listed layouts under product_id=1 (RE-verified from
-        // the bundled board DB): Dungeon Trainer (layout 2, ~7.4k climbs) and
-        // Dots (layout 1, ~60 climbs, an R&D wall). Both are left-right
-        // symmetric (layouts.is_mirrored=1) and share product_size 1 (12x12,
-        // the largest). Dungeon Trainer is listed first so it stays the picker
-        // default (variants.firstOrNull) — matching the previous most-climbed
-        // auto-pick; Dots is the opt-in second choice (it was unreachable
-        // before, as Decoy had no variant entry).
+        // the bundled board DB): Dungeon Trainer (layout 2, 7970 climbs) and
+        // Dots (layout 1, 76 climbs, an R&D wall). Both are left-right
+        // symmetric (layouts.is_mirrored=1). Decoy has 3 product_sizes (id1
+        // 12x12, id2 8x12, id3 8x10); defaultSizeId=1 (12x12, the largest) is
+        // the picker default and the size tier offers all three. Dungeon Trainer
+        // is listed first so it stays the picker default (variants.firstOrNull)
+        // — matching the previous most-climbed auto-pick; Dots is the opt-in
+        // second choice (it was unreachable before, as Decoy had no variant entry).
         BoardBrand.DECOY to listOf(
             AuroraVariant(layoutId = 2, productId = 1, displayName = "Decoy Dungeon Trainer", defaultSizeId = 1, isMirrored = true),
             AuroraVariant(layoutId = 1, productId = 1, displayName = "Decoy Dots",            defaultSizeId = 1, isMirrored = true),
         ),
     )
+
+    private fun auroraSize(id: Int, name: String, l: Int, r: Int, b: Int, t: Int, brand: BoardBrand, productId: Int = 1) =
+        BoardSize(id.toLong(), productId = productId.toLong(), name = name,
+                  edgeLeft = l.toLong(), edgeRight = r.toLong(),
+                  edgeBottom = b.toLong(), edgeTop = t.toLong(),
+                  imageFilename = null, boardBrand = brand)
+
+    /**
+     * Pre-sync product-size tier for EVERY interactive Aurora board, so the
+     * picker offers each board's real sizes IMMEDIATELY — before its catalogue is
+     * synced — just as [AURORA_VARIANTS] surfaces the variants up front.
+     * Single-layout boards (Grasshopper / So iLL / Touchstone) expose their sizes
+     * directly; variant boards (Tension TB1+TB2, Decoy) bundle every product's
+     * sizes and the dialog narrows to the active variant's product.
+     *
+     * Sourced from the PUBLISHED chunks (build_board_db output — the app's actual
+     * catalogue), NOT the aurora-re extract: the two DIVERGE on product_size ids
+     * (Grasshopper GrandMaster is id 4 in the chunk but id 1 in aurora-re). The
+     * ids + edges below are exactly the deduped-by-dimension set the catalogue
+     * yields post-sync — Aurora chunks omit board_images, so set_count is 0 and
+     * the dedup keeps the lowest id per dimension — so the pre-sync and post-sync
+     * lists are identical. Known non-product phantoms ([AURORA_EXCLUDED_SIZES],
+     * e.g. Tension id 10) are omitted here and filtered from the catalogue too.
+     * Verified against the manufacturers' size pages (Tension TB2 = 4 sizes,
+     * 12 wide max; Decoy = 8x10 / 8x12 / 12x12). Aurora ids are stable upstream.
+     */
+    val AURORA_BUNDLED_SIZES: Map<BoardBrand, List<BoardSize>> = mapOf(
+        BoardBrand.TENSION to listOf(
+            // TB1 (product 4) — the original Tension Board is ONE 8 ft x 12 ft
+            // wall; these are kickboard/height CONFIGS (all 96 units wide), not
+            // W x H sizes, so they carry no appended dimension.
+            auroraSize(1, "Full Wall",       0, 96, 0, 156, BoardBrand.TENSION, productId = 4),
+            auroraSize(2, "Half Kickboard",  0, 96, 4, 156, BoardBrand.TENSION, productId = 4),
+            auroraSize(3, "No Kickboard",    0, 96, 8, 156, BoardBrand.TENSION, productId = 4),
+            auroraSize(4, "Short",           0, 96, 8, 132, BoardBrand.TENSION, productId = 4),
+            auroraSize(5, "Short & Narrow", 16, 80, 8, 132, BoardBrand.TENSION, productId = 4),
+            // TB2 (product 5) — the 4 official sizes, already labelled
+            // HEIGHT x WIDTH (Tension's house convention). id 10 "12 high x 16
+            // wide" is an Aurora phantom (no such product) → AURORA_EXCLUDED_SIZES.
+            auroraSize(6, "12 high x 12 wide", -68, 68, 0, 144, BoardBrand.TENSION, productId = 5),
+            auroraSize(7, "10 high x 12 wide", -68, 68, 0, 120, BoardBrand.TENSION, productId = 5),
+            auroraSize(8, "12 high x 8 wide",  -44, 44, 0, 144, BoardBrand.TENSION, productId = 5),
+            auroraSize(9, "10 high x 8 wide",  -44, 44, 0, 120, BoardBrand.TENSION, productId = 5),
+        ),
+        BoardBrand.DECOY to listOf(
+            auroraSize(1, "12 x 12", -68, 68, 0, 144, BoardBrand.DECOY),
+            auroraSize(2, "8 x 12",  -44, 44, 0, 144, BoardBrand.DECOY),
+            auroraSize(3, "8 x 10",  -44, 44, 0, 120, BoardBrand.DECOY),
+        ),
+        BoardBrand.GRASSHOPPER to listOf(
+            // ids 4/5/6 (NOT 2/3/4): ids 5/6 are dimension duplicates of 2/3 with
+            // MORE board_images, so they win the catalogue's max-set_count dedup.
+            // The bundle must match those survivors or the list — and the id-keyed
+            // W x H labels below — would shift the moment the board syncs. Ordered
+            // by id to match the catalogue's ORDER BY id (GrandMaster/Master/Ninja).
+            auroraSize(4, "GrandMaster", -68, 68, 0, 144, BoardBrand.GRASSHOPPER),
+            auroraSize(5, "Master",      -44, 44, 0, 144, BoardBrand.GRASSHOPPER),
+            auroraSize(6, "Ninja",       -44, 44, 0, 120, BoardBrand.GRASSHOPPER),
+        ),
+        BoardBrand.SOILL to listOf(
+            auroraSize(1, "8 x 12",  -48, 48, -16, 144, BoardBrand.SOILL),
+            auroraSize(2, "12 x 12", -72, 72, -16, 144, BoardBrand.SOILL),
+        ),
+        BoardBrand.TOUCHSTONE to listOf(
+            auroraSize(1, "Full Size", -72, 72, -12, 144, BoardBrand.TOUCHSTONE),
+        ),
+    )
+
+    /** Bundled (pre-sync) product sizes for an interactive Aurora board, or
+     *  empty for Kilter / MoonBoard (which have their own size paths). */
+    fun auroraBundledSizes(brand: BoardBrand): List<BoardSize> = AURORA_BUNDLED_SIZES[brand] ?: emptyList()
+
+    /**
+     * Aurora product sizes that ship in the live /sync feed (is_listed=1, so
+     * build_board_db keeps them) yet are NOT real commercial products — the
+     * picker must hide them. Verified against the manufacturer pages AND the
+     * aurora-re APK extract.
+     *
+     * - (TENSION, 10) "12 high x 16 wide": no 16-wide TB2 exists — the official
+     *   page lists exactly 4 sizes, 12 wide max — and it is ABSENT from the APK
+     *   extract. Its geometry (width span 184) is the exact linear extrapolation
+     *   of TB2's width ladder (88 → 136 → 184), i.e. a templated Aurora phantom,
+     *   not a measured wall. The cron drops it at source too (build_board_db.py);
+     *   this guards installs whose chunk was cached before that ran.
+     */
+    val AURORA_EXCLUDED_SIZES: Set<Pair<BoardBrand, Int>> = setOf(
+        BoardBrand.TENSION to 10,
+    )
+
+    /** True when [sizeId] for [brand] is a known non-product phantom to hide
+     *  from the picker (see [AURORA_EXCLUDED_SIZES]). */
+    fun isExcludedAuroraSize(brand: BoardBrand, sizeId: Int): Boolean =
+        (brand to sizeId) in AURORA_EXCLUDED_SIZES
+
+    /**
+     * Physical W x H for Aurora product sizes whose catalogue name is DESCRIPTIVE
+     * (Grasshopper Master/Ninja/GrandMaster) or otherwise dimensionless
+     * (Touchstone "Full Size") rather than already a dimension. Standard product
+     * dimensions — NOT computable from the hold-grid edges (boards use different
+     * grid units + kickboard offsets), so kept as metadata keyed by the stable
+     * (brand, product_size_id). Boards whose names already carry the dimension
+     * (So iLL "8 x 12", Decoy "12 x 12", Tension TB2 "12 high x 12 wide") are
+     * absent, as are config-style names (Tension TB1 Full Wall / Half Kickboard /
+     * … are kickboard configs, not W x H).
+     */
+    private val AURORA_SIZE_DIMENSIONS: Map<Pair<BoardBrand, Int>, String> = mapOf(
+        (BoardBrand.GRASSHOPPER to 4) to "12 x 12",  // GrandMaster
+        (BoardBrand.GRASSHOPPER to 5) to "8 x 12",   // Master
+        (BoardBrand.GRASSHOPPER to 6) to "8 x 10",   // Ninja
+        (BoardBrand.TOUCHSTONE to 1) to "12 x 12",   // Full Size — single fixed wall
+    )
+
+    /** Picker label for an Aurora size: appends the physical W x H when the name
+     *  is descriptive (Grasshopper "GrandMaster" → "GrandMaster (12 x 12)") and
+     *  returns the name unchanged when it already conveys the dimension. Used at
+     *  BOTH render sites (Settings/onboarding dialog + gym sheet) so the label is
+     *  identical pre- and post-sync. */
+    fun auroraSizeLabel(brand: BoardBrand, size: BoardSize): String =
+        AURORA_SIZE_DIMENSIONS[brand to size.id.toInt()]?.let { "${size.name} ($it)" } ?: size.name
 
     /** Variants for a board, or empty when it has a single layout
      *  (Grasshopper / So iLL / Touchstone) — those skip the variant tier. */

@@ -130,6 +130,11 @@ internal fun GymBoardSearchSheet(
                                                 boardPickerViewModel.selectAurora(
                                                     opt.boardBrand,
                                                     BoardConstants.auroraVariant(opt.boardBrand, opt.layoutId),
+                                                    // Honour the chosen size: single-layout boards now
+                                                    // carry a real product_size_id; variants carry their
+                                                    // defaultSizeId (same as the selector's own fallback).
+                                                    // 0 = no explicit size → selector derives the default.
+                                                    opt.productSizeId.takeIf { it > 0 },
                                                 )
                                         }
                                         onClose()

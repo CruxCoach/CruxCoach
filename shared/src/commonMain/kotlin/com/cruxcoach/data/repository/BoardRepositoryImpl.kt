@@ -281,11 +281,11 @@ class BoardRepositoryImpl(
     }
 
     override fun searchClimbUuidsByHold(
-        holdPattern: String, angle: Int, layoutId: Int, minDifficulty: Double,
+        holdPattern: String, angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double,
         maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter
     ): List<String> {
         return q.getAllFramesForFilter(
-            layoutId.toLong(), angle.toLong(), climbType.minFrames(), climbType.maxFrames(),
+            layoutId.toLong(), boardBrand, angle.toLong(), climbType.minFrames(), climbType.maxFrames(),
             minDifficulty, maxDifficulty, minAscensionists.toLong()
         ).executeAsList()
             .filter { it.frames.contains(holdPattern) }
@@ -293,12 +293,12 @@ class BoardRepositoryImpl(
     }
 
     override fun searchClimbUuidsByAllHolds(
-        holdPatterns: List<String>, angle: Int, layoutId: Int, minDifficulty: Double,
+        holdPatterns: List<String>, angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double,
         maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter
     ): Set<String> {
         if (holdPatterns.isEmpty()) return emptySet()
         return q.getAllFramesForFilter(
-            layoutId.toLong(), angle.toLong(), climbType.minFrames(), climbType.maxFrames(),
+            layoutId.toLong(), boardBrand, angle.toLong(), climbType.minFrames(), climbType.maxFrames(),
             minDifficulty, maxDifficulty, minAscensionists.toLong()
         ).executeAsList()
             .filter { row -> holdPatterns.all { pattern -> row.frames.contains(pattern) } }
@@ -307,11 +307,11 @@ class BoardRepositoryImpl(
     }
 
     override fun getAllFramesForHeatmap(
-        angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double,
+        angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double,
         minAscensionists: Int, climbType: ClimbTypeFilter
     ): List<ClimbFrameRow> {
         return q.getAllFramesForFilter(
-            layoutId.toLong(), angle.toLong(), climbType.minFrames(), climbType.maxFrames(),
+            layoutId.toLong(), boardBrand, angle.toLong(), climbType.minFrames(), climbType.maxFrames(),
             minDifficulty, maxDifficulty, minAscensionists.toLong()
         ).executeAsList().map { ClimbFrameRow(it.uuid, it.frames) }
     }
@@ -373,24 +373,35 @@ class BoardRepositoryImpl(
         layoutId: Int, boardBrand: String, angle: Int, minDifficulty: Double, maxDifficulty: Double,
         minAscensionists: Int, climbType: ClimbTypeFilter, selProductSizeId: Int,
     ): List<ClimbWithStats> {
-        return q.browseCruxCoachOnly(
-            layoutId.toLong(), boardBrand, angle.toLong(),
+        // Angle-agnostic (Req-1): a CruxCoach climb is authored at ONE setter
+        // angle but is climbable at every angle of its board, so the provenance
+        // filter surfaces it whatever the angle slider reads. Dedupe to one row
+        // per uuid, preferring the active angle's grade row.
+        return q.browseCruxCoachOnlyAnyAngle(
+            layoutId.toLong(), boardBrand,
             climbType.minFrames(), climbType.maxFrames(),
             minDifficulty, maxDifficulty, minAscensionists.toLong(),
             selProductSizeId.toLong(),
-        ).executeAsList().map { mapBrowse(it) }
+        ).executeAsList()
+            .groupBy { it.uuid }
+            .map { (_, rows) -> mapBrowse(rows.firstOrNull { it.angle == angle.toLong() } ?: rows.first()) }
     }
 
     override fun getBoardSeshClimbs(
         layoutId: Int, boardBrand: String, angle: Int, minDifficulty: Double, maxDifficulty: Double,
         minAscensionists: Int, climbType: ClimbTypeFilter, selProductSizeId: Int,
     ): List<ClimbWithStats> {
-        return q.browseBoardSeshOnly(
-            layoutId.toLong(), boardBrand, angle.toLong(),
+        // Angle-agnostic (Req-1): same rationale as getCruxCoachClimbs — a
+        // BoardSesh-imported climb is climbable at every angle, so surface it
+        // whatever the slider reads; dedupe per uuid preferring the active angle.
+        return q.browseBoardSeshOnlyAnyAngle(
+            layoutId.toLong(), boardBrand,
             climbType.minFrames(), climbType.maxFrames(),
             minDifficulty, maxDifficulty, minAscensionists.toLong(),
             selProductSizeId.toLong(),
-        ).executeAsList().map { mapBrowse(it) }
+        ).executeAsList()
+            .groupBy { it.uuid }
+            .map { (_, rows) -> mapBrowse(rows.firstOrNull { it.angle == angle.toLong() } ?: rows.first()) }
     }
 
     override fun canRenderClimbOnSize(uuid: String, productSizeId: Int, boardBrand: String): Boolean {
@@ -1061,6 +1072,7 @@ class BoardRepositoryImpl(
         pubkey: String,
         layoutId: Int,
         preferredAngle: Int,
+        boardBrand: String,
     ): List<ClimbWithStats> {
         // Reuse the existing setter-detail query: it pulls climb_browse rows
         // for this pubkey across every angle. We dedupe to one row per uuid,
@@ -1068,8 +1080,11 @@ class BoardRepositoryImpl(
         // line up with the browser's current angle when possible. Falls back
         // to any angle so a draft saved at 40° remains visible while the
         // user browses at 35° — the whole point of the My-climbs filter.
+        // Scope by board_brand too (C4): layout_id=1 is shared across five
+        // brands, so without it the user's own climb authored on one board
+        // would surface under a DIFFERENT active board.
         val all = q.getClimbsByPubkey(pubkey).executeAsList()
-            .filter { it.layout_id == layoutId.toLong() }
+            .filter { it.layout_id == layoutId.toLong() && it.board_brand == boardBrand }
         val grouped = all.groupBy { it.uuid }
         val target = preferredAngle.toLong()
         return grouped.values.map { rows ->
@@ -1208,8 +1223,8 @@ class BoardRepositoryImpl(
         )
     }
 
-    override fun findClimbByFramesHash(framesHash: String, layoutId: Long): CommunityClimbRow? {
-        val row = q.findClimbByFramesHash(framesHash, layoutId).executeAsOneOrNull() ?: return null
+    override fun findClimbByFramesHash(framesHash: String, layoutId: Long, boardBrand: String): CommunityClimbRow? {
+        val row = q.findClimbByFramesHash(framesHash, layoutId, boardBrand).executeAsOneOrNull() ?: return null
         // Lightweight projection — we only need uuid + name + source + pubkey for dup-detection
         return CommunityClimbRow(
             uuid = row.uuid,

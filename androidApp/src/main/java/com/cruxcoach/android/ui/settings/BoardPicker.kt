@@ -110,18 +110,29 @@ class BoardPickerViewModel @Inject constructor(
                 boardRepository.getClimbCountsByBrand().filterValues { it > 0L }.keys
             }
             loadedBrands.value = loaded
-            // Picker-ready (deduped) product sizes for every interactive
-            // Aurora board whose catalogue is loaded, so the size tier works
-            // for variant boards (Tension/Decoy) AND single-layout boards
-            // (Grasshopper/So iLL) — not just the ones with an AURORA_VARIANTS
-            // entry. Keyed by brand; the dialog narrows to the active variant's
-            // product when a variant is selected.
+            // Picker-ready (deduped) product sizes for every interactive Aurora
+            // board, so the size tier works for variant boards (Tension/Decoy)
+            // AND single-layout boards (Grasshopper/So iLL/Touchstone). Keyed by
+            // brand; the dialog narrows to the active variant's product when a
+            // variant is selected. A LOADED board uses its catalogue sizes
+            // (authoritative, drift-proof); an UN-synced board falls back to the
+            // bundled sizes (BoardConstants.AURORA_BUNDLED_SIZES) so its options
+            // show IMMEDIATELY, before the first sync — the bundle mirrors the
+            // catalogue's deduped output, so the list doesn't change once synced.
             auroraBrandSizes.value = withContext(Dispatchers.IO) {
                 buildMap {
                     BoardBrand.entries
-                        .filter { it.usesAuroraProtocol && it != BoardBrand.KILTER && it.wireValue in loaded }
+                        .filter { it.usesAuroraProtocol && it != BoardBrand.KILTER }
                         .forEach { brand ->
-                            val sizes = boardRepository.getSelectableProductSizesForBrand(brand.wireValue)
+                            val sizes = (if (brand.wireValue in loaded)
+                                boardRepository.getSelectableProductSizesForBrand(brand.wireValue)
+                            else
+                                BoardConstants.auroraBundledSizes(brand))
+                                // Hide known Aurora phantoms (e.g. Tension's
+                                // bogus "12 high x 16 wide") from the catalogue;
+                                // the bundle never contains them, so this is a
+                                // no-op there but keeps both paths uniform.
+                                .filterNot { BoardConstants.isExcludedAuroraSize(brand, it.id.toInt()) }
                             if (sizes.isNotEmpty()) put(brand.wireValue, sizes)
                         }
                 }
