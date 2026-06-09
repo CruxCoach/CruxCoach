@@ -34,11 +34,24 @@ data class GymWallOption(
     val productSizeId: Int,
     val label: String,
     val boardBrand: BoardBrand,
+    /** Fixed installed angle for a Kilter wall whose `is_adjustable` is false —
+     *  used to seed the browse angle on apply. Null for adjustable walls and
+     *  every non-Kilter board (their angle is per-climb / the user's choice). */
+    val fixedAngle: Int? = null,
+    /** Marks the most-likely option in an unresolved multi-option list (e.g. the
+     *  modal MoonBoard variant) so the UI can flag it as the recommended pick. */
+    val isRecommended: Boolean = false,
 )
 
 /** Placeholder product size for MoonBoard options — MoonBoard variants are
  *  distinct boards, not sizes of one board, so there is nothing to carry. */
 const val MOONBOARD_NO_SIZE = 0
+
+/** Most-likely-first ordering for the unresolved MoonBoard variant list, keyed
+ *  by layout_id: 2016 (modal) → Masters 2019 → Masters 2017 → 2024 → Mini.
+ *  Drives the gym picker's variant order + recommended flag (FEAT-007). */
+private val MOONBOARD_VARIANT_RANK: Map<Long, Int> =
+    mapOf(2L to 0, 5L to 1, 4L to 2, 3L to 3, 6L to 4)
 
 data class GymBoardPickerState(
     /** False when no wall data is synced yet → host hides Path B. */
@@ -167,6 +180,11 @@ class GymBoardPickerViewModel @Inject constructor(
                                         // so a bare "12x12" isn't ambiguous there.
                                         label = if (multiBrand) "Kilter $size" else size,
                                         boardBrand = BoardBrand.KILTER,
+                                        // Seed the browse angle only for a FIXED wall
+                                        // (is_adjustable=false): there the reported
+                                        // angle is a real board property. Adjustable
+                                        // walls leave the angle to the user.
+                                        fixedAngle = if (w.isAdjustable == false) w.fixedAngle else null,
                                     )
                                 }
                                 .sortedByDescending { frequency[it.productSizeId] ?: 0L }
@@ -225,11 +243,19 @@ class GymBoardPickerViewModel @Inject constructor(
                 )
             }
         }
-        return variants.map {
+        return variants.map { variant ->
+            // Surface the default size that WILL be applied (Decoy 12×12, TB2
+            // "12 high x 12 wide") so the gym pick is never a SILENT size
+            // assumption. The user can still change it via the manual picker
+            // (the persistent "pick directly" link). Falls back to the bare
+            // name when the default isn't in the bundle.
+            val sizeName = BoardConstants.auroraBundledSizes(brand)
+                .firstOrNull { it.id.toInt() == variant.defaultSizeId }
+                ?.let { BoardConstants.auroraSizeLabel(brand, it) }
             GymWallOption(
-                layoutId = it.layoutId,
-                productSizeId = it.defaultSizeId,
-                label = it.displayName,
+                layoutId = variant.layoutId,
+                productSizeId = variant.defaultSizeId,
+                label = if (sizeName != null) "${variant.displayName} ($sizeName)" else variant.displayName,
                 boardBrand = brand,
             )
         }
@@ -241,15 +267,29 @@ class GymBoardPickerViewModel @Inject constructor(
      *  the board actually in front of them. */
     private fun moonBoardOptions(gym: BoardLocation): List<GymWallOption> {
         val resolved = gym.layoutId?.toLong()?.let { MoonBoardVariant.fromLayoutId(it) }
-        val variants = if (resolved != null) listOf(resolved) else MoonBoardVariant.entries
-        return variants.map {
-            GymWallOption(
-                layoutId = it.layoutId.toInt(),
-                productSizeId = MOONBOARD_NO_SIZE,
-                label = it.displayName,
-                boardBrand = BoardBrand.MOONBOARD,
+        if (resolved != null) {
+            return listOf(
+                GymWallOption(
+                    layoutId = resolved.layoutId.toInt(),
+                    productSizeId = MOONBOARD_NO_SIZE,
+                    label = resolved.displayName,
+                    boardBrand = BoardBrand.MOONBOARD,
+                ),
             )
         }
+        // Unresolved: offer every variant, most-likely first, with the modal
+        // 2016 set flagged recommended — a cold 1-of-5 becomes confirm/correct.
+        return MoonBoardVariant.entries
+            .sortedBy { MOONBOARD_VARIANT_RANK[it.layoutId] ?: Int.MAX_VALUE }
+            .mapIndexed { index, variant ->
+                GymWallOption(
+                    layoutId = variant.layoutId.toInt(),
+                    productSizeId = MOONBOARD_NO_SIZE,
+                    label = variant.displayName,
+                    boardBrand = BoardBrand.MOONBOARD,
+                    isRecommended = index == 0,
+                )
+            }
     }
 
     fun clearGymSelection() {

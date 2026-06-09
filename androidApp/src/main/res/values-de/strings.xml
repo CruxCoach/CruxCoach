@@ -1496,6 +1496,8 @@
     <string name="feat007_gym_many">Diese Halle hat %1$d Boards — wähle das, vor dem du stehst:</string>
     <string name="feat007_gym_no_walls">Für diese Halle sind keine Board-Daten hinterlegt.</string>
     <string name="feat007_back">Zurück</string>
+    <string name="feat007_gym_loading">Hallendaten werden noch geladen — gleich nochmal versuchen.</string>
+    <string name="feat007_gym_recommended">am häufigsten</string>
     <string name="settings_section_data">Datenverwaltung</string>
     <string name="settings_section_dev_contact">Entwickler-Kontakt</string>
     <string name="settings_section_display">Anzeige</string>

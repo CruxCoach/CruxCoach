@@ -140,16 +140,17 @@ class BoardPickerViewModel @Inject constructor(
         }
     }
 
-    fun selectKilter(sizeId: Int) {
+    fun selectKilter(sizeId: Int, fixedAngle: Int? = null) {
         viewModelScope.launch {
             val size = productSizes.value.firstOrNull { it.id.toInt() == sizeId }
             val layout = BoardConstants.layoutIdForProduct(
                 size?.productId?.toInt() ?: BoardConstants.KILTER_PRODUCT_ID,
             )
-            // Atomic brand+layout+size write — see UserPreferences.setBoardSelection:
+            // Atomic brand+layout+size(+angle) write — see UserPreferences.setBoardSelection:
             // separate writes can flash a transient (kilter, stale-layout) tuple
-            // through the board-flow collectors.
-            userPreferences.setBoardSelection(BoardBrand.KILTER.wireValue, layout, sizeId)
+            // through the board-flow collectors. fixedAngle is non-null only for a
+            // fixed-angle gym wall, seeding the browse angle to its real value.
+            userPreferences.setBoardSelection(BoardBrand.KILTER.wireValue, layout, sizeId, fixedAngle)
         }
     }
 

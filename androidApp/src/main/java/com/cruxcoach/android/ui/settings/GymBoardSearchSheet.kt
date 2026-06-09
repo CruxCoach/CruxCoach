@@ -43,6 +43,38 @@ internal fun GymBoardSearchSheet(
 ) {
     val s by vm.state.collectAsStateWithLifecycle()
 
+    // Apply a chosen board option (routes every brand through the shared picker
+    // VM) and close the sheet. Hoisted so a tapped card and the single-option
+    // auto-apply below take the exact same path.
+    val apply: (GymWallOption) -> Unit = { opt ->
+        when (opt.boardBrand) {
+            BoardBrand.MOONBOARD ->
+                MoonBoardVariant.fromLayoutId(opt.layoutId.toLong())
+                    ?.let { boardPickerViewModel.selectMoonBoard(it) }
+            BoardBrand.KILTER ->
+                // fixedAngle is non-null only for a fixed-angle wall → seeds the
+                // browse angle; adjustable walls leave it to the user.
+                boardPickerViewModel.selectKilter(opt.productSizeId, opt.fixedAngle)
+            else ->
+                boardPickerViewModel.selectAurora(
+                    opt.boardBrand,
+                    BoardConstants.auroraVariant(opt.boardBrand, opt.layoutId),
+                    // 0 = no explicit size → selector derives the default.
+                    opt.productSizeId.takeIf { it > 0 },
+                )
+        }
+        onClose()
+    }
+
+    // A gym that resolves to exactly ONE board (97% of Kilter gyms, Touchstone's
+    // single size, any cron-resolved MoonBoard/Decoy variant) needs no
+    // confirmation tap — apply it the moment the gym is picked.
+    LaunchedEffect(s.selectedGym?.id, s.wallOptions.size) {
+        if (s.selectedGym != null && s.wallOptions.size == 1) {
+            apply(s.wallOptions.first())
+        }
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
@@ -116,29 +148,7 @@ internal fun GymBoardSearchSheet(
                             Spacer(Modifier.height(10.dp))
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 s.wallOptions.forEach { opt ->
-                                    BoardOptionCard(opt.label) {
-                                        // Route every brand through the shared
-                                        // picker VM so one selection source
-                                        // covers all boards (FEAT-031).
-                                        when (opt.boardBrand) {
-                                            BoardBrand.MOONBOARD ->
-                                                MoonBoardVariant.fromLayoutId(opt.layoutId.toLong())
-                                                    ?.let { boardPickerViewModel.selectMoonBoard(it) }
-                                            BoardBrand.KILTER ->
-                                                boardPickerViewModel.selectKilter(opt.productSizeId)
-                                            else ->
-                                                boardPickerViewModel.selectAurora(
-                                                    opt.boardBrand,
-                                                    BoardConstants.auroraVariant(opt.boardBrand, opt.layoutId),
-                                                    // Honour the chosen size: single-layout boards now
-                                                    // carry a real product_size_id; variants carry their
-                                                    // defaultSizeId (same as the selector's own fallback).
-                                                    // 0 = no explicit size → selector derives the default.
-                                                    opt.productSizeId.takeIf { it > 0 },
-                                                )
-                                        }
-                                        onClose()
-                                    }
+                                    BoardOptionCard(opt.label, opt.isRecommended) { apply(opt) }
                                 }
                             }
                         }
@@ -154,6 +164,18 @@ internal fun GymBoardSearchSheet(
                         }
                     }
 
+                    // No gym/wall data synced yet (fresh install before the
+                    // location chunk arrives): searching would hit an empty DB,
+                    // so say so instead of silently returning "no gym found".
+                    // The persistent fallback below still leads to the manual
+                    // picker. Consumes the previously-computed-but-unused flag.
+                    !s.enabled -> {
+                        Text(
+                            stringResource(R.string.feat007_gym_loading),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
+
                     s.query.trim().length < 2 -> {
                         Text(
                             stringResource(R.string.feat007_gym_search_min),
@@ -167,10 +189,6 @@ internal fun GymBoardSearchSheet(
                             stringResource(R.string.feat007_gym_search_none),
                             style = MaterialTheme.typography.bodyMedium,
                         )
-                        Spacer(Modifier.height(4.dp))
-                        TextButton(onClick = onFallbackToDirect) {
-                            Text(stringResource(R.string.settings_board_find_via_gym_fallback), color = OrangeAccent)
-                        }
                     }
 
                     else -> {
@@ -180,6 +198,16 @@ internal fun GymBoardSearchSheet(
                             }
                         }
                     }
+                }
+
+                // Persistent escape hatch: the manual board picker is always one
+                // tap away, not only when a search returns nothing.
+                Spacer(Modifier.height(8.dp))
+                TextButton(onClick = onFallbackToDirect) {
+                    Text(
+                        stringResource(R.string.settings_board_find_via_gym_fallback),
+                        color = OrangeAccent,
+                    )
                 }
             }
         },
@@ -245,7 +273,7 @@ private fun GymRow(name: String, sub: String, onClick: () -> Unit) {
  * selects that board immediately.
  */
 @Composable
-private fun BoardOptionCard(label: String, onClick: () -> Unit) {
+private fun BoardOptionCard(label: String, recommended: Boolean = false, onClick: () -> Unit) {
     Card(
         onClick = onClick,
         shape = RoundedCornerShape(12.dp),
@@ -260,12 +288,20 @@ private fun BoardOptionCard(label: String, onClick: () -> Unit) {
         ) {
             Icon(Icons.Default.GridView, contentDescription = null, tint = OrangeAccent)
             Spacer(Modifier.width(14.dp))
-            Text(
-                label,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.weight(1f),
-            )
+            Column(Modifier.weight(1f)) {
+                Text(
+                    label,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                if (recommended) {
+                    Text(
+                        stringResource(R.string.feat007_gym_recommended),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = OrangeAccent,
+                    )
+                }
+            }
             Icon(
                 Icons.AutoMirrored.Filled.KeyboardArrowRight,
                 contentDescription = null, tint = OrangeAccent,

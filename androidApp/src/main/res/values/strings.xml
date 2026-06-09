@@ -1449,6 +1449,8 @@
     <string name="feat007_gym_many">This gym has %1$d boards — pick the one you\'re at:</string>
     <string name="feat007_gym_no_walls">No board data for this gym.</string>
     <string name="feat007_back">Back</string>
+    <string name="feat007_gym_loading">Gym data is still loading — try again in a moment.</string>
+    <string name="feat007_gym_recommended">most common</string>
     <string name="settings_section_data">Data Management</string>
     <string name="settings_section_dev_contact">Developer Contact</string>
     <string name="settings_section_display">Display</string>

@@ -469,13 +469,18 @@ class UserPreferences(
      * and Aurora picker paths (FEAT-031) — mirrors [setMoonBoardSelection]'s
      * one-edit atomicity.
      */
-    suspend fun setBoardSelection(brand: String, layoutId: Int, productSizeId: Int? = null) {
+    suspend fun setBoardSelection(brand: String, layoutId: Int, productSizeId: Int? = null, angle: Int? = null) {
         dataStore.edit { prefs ->
             prefs[PreferenceKeys.BOARD_BRAND] = brand
             prefs[PreferenceKeys.BOARD_LAYOUT_ID] = layoutId
             // Null size = "keep the current product size" (the map browse path
             // has a layout but not always a size); still one atomic edit.
             if (productSizeId != null) prefs[PreferenceKeys.BOARD_PRODUCT_SIZE_ID] = productSizeId
+            // Non-null angle = a FIXED-angle wall reported by the gym pick → seed
+            // the browse angle to the wall's real angle instead of the generic
+            // 40° default. Adjustable walls pass null (angle stays the user's
+            // per-session choice). Written in the same atomic edit.
+            if (angle != null) prefs[PreferenceKeys.BOARD_ANGLE] = angle
         }
     }
 
