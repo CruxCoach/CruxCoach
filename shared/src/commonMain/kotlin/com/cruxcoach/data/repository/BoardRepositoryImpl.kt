@@ -161,6 +161,10 @@ class BoardRepositoryImpl(
         return q.hasAnyClimbs().executeAsOne()
     }
 
+    override fun hasClimbsForBrand(boardBrand: String): Boolean {
+        return q.hasClimbsForBrand(boardBrand).executeAsOne()
+    }
+
     override fun getStatCount(): Long {
         return q.countStats().executeAsOne()
     }
@@ -222,8 +226,8 @@ class BoardRepositoryImpl(
         }
     }
 
-    override fun getSupportedAnglesForLayout(layoutId: Int): List<Int> {
-        return q.getSupportedAnglesForLayout(layoutId.toLong()).executeAsList().map { it.toInt() }
+    override fun getSupportedAnglesForLayout(layoutId: Int, boardBrand: String): List<Int> {
+        return q.getSupportedAnglesForLayout(layoutId.toLong(), boardBrand).executeAsList().map { it.toInt() }
     }
 
     override fun countNomatchClimbs(): Long {
@@ -313,6 +317,21 @@ class BoardRepositoryImpl(
         return q.getAllFramesForFilter(
             layoutId.toLong(), boardBrand, angle.toLong(), climbType.minFrames(), climbType.maxFrames(),
             minDifficulty, maxDifficulty, minAscensionists.toLong()
+        ).executeAsList().map { ClimbFrameRow(it.uuid, it.frames) }
+    }
+
+    override fun getAllFramesForHeatmapAllAngles(
+        layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double,
+        minAscensionists: Int, climbType: ClimbTypeFilter
+    ): List<ClimbFrameRow> {
+        return q.getAllFramesForHeatmapAllAngles(
+            boardBrand = boardBrand,
+            minFrames = climbType.minFrames(),
+            maxFrames = climbType.maxFrames(),
+            layoutId = layoutId.toLong(),
+            minDiff = minDifficulty,
+            maxDiff = maxDifficulty,
+            minAsc = minAscensionists.toLong()
         ).executeAsList().map { ClimbFrameRow(it.uuid, it.frames) }
     }
 

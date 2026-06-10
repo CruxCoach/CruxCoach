@@ -57,8 +57,9 @@ SELECT difficulty_average FROM bids WHERE climbed_at >= ?;
 
 -- ═══ Kilter sync ═══
 
+-- Kilter-only by design — see ascents.getUnsyncedAscents.
 getUnsyncedBids:
-SELECT * FROM bids WHERE synced = 0;
+SELECT * FROM bids WHERE synced = 0 AND board_brand = 'kilter';
 
 -- Optimistic mark — see ascents.markAscentSyncedIfUnchanged.
 markBidSyncedIfUnchanged:

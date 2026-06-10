@@ -680,6 +680,14 @@ SELECT board_brand AS boardBrand, COUNT(*) AS climbCount FROM climbs GROUP BY bo
 hasAnyClimbs:
 SELECT EXISTS(SELECT 1 FROM climbs LIMIT 1);
 
+-- Brand-scoped twin of hasAnyClimbs: "is THIS board's catalogue imported?".
+-- hasAnyClimbs is brand-agnostic, so after a board switch it stays true on
+-- the strength of the Kilter catalogue while the new board has zero rows —
+-- the browser then renders an unexplained blank list instead of a
+-- "load catalogue" empty state.
+hasClimbsForBrand:
+SELECT EXISTS(SELECT 1 FROM climbs WHERE board_brand = ? LIMIT 1);
+
 getClimbCountByAngle:
 SELECT cs.angle, COUNT(*) AS climb_count
 FROM climb_stats cs
@@ -703,9 +711,16 @@ ORDER BY cs.angle;
 -- adjustable boards: a climb can be sent/logged at ANY angle the board
 -- supports, not only the angles it already has community stats for. Purely
 -- data-driven (the angles real climbs use on that board) so no nonsensical
--- angle is ever offered.
+-- angle is ever offered. Brand-scoped via climbs: layout ids collide across
+-- brands (layout 1 = Kilter Original AND Grasshopper/So iLL/Touchstone/
+-- Decoy Dots), so an unscoped DISTINCT would union another brand's angle
+-- range into the picker.
 getSupportedAnglesForLayout:
-SELECT DISTINCT angle FROM climb_stats WHERE layout_id = ? ORDER BY angle;
+SELECT DISTINCT cs.angle
+FROM climb_stats cs
+INNER JOIN climbs c ON c.uuid = cs.climb_uuid
+WHERE cs.layout_id = ? AND c.board_brand = ?
+ORDER BY cs.angle;
 
 -- Fast count: stats-only, no JOIN. Accurate when all climbs are is_listed=1
 -- and filter doesn't need frames_count check (boulder default: frames_count=1).
@@ -791,6 +806,24 @@ WHERE cs.layout_id = :layoutId
   AND cs.difficulty_average >= :minDiff AND cs.difficulty_average <= :maxDiff
   AND cs.ascensionist_count >= :minAsc
   AND LENGTH(c.frames) > 0 AND c.is_listed = 1;
+
+-- Any-angle variant of getAllFramesForFilter for the logbook stats heatmap:
+-- hold usage is angle-independent, and the previous hardcoded 40° pin hid
+-- every climb on layouts whose community logs sit at other angles. EXISTS
+-- instead of a JOIN so a climb with stats rows at N angles contributes one
+-- frames row (a JOIN would weight it N× in the heat computation).
+getAllFramesForHeatmapAllAngles:
+SELECT c.uuid, c.frames
+FROM climbs c
+WHERE c.board_brand = :boardBrand
+  AND c.is_listed = 1
+  AND LENGTH(c.frames) > 0
+  AND c.frames_count >= :minFrames AND c.frames_count <= :maxFrames
+  AND EXISTS (SELECT 1 FROM climb_stats cs
+              WHERE cs.climb_uuid = c.uuid
+                AND cs.layout_id = :layoutId
+                AND cs.difficulty_average >= :minDiff AND cs.difficulty_average <= :maxDiff
+                AND cs.ascensionist_count >= :minAsc);
 
 -- Placement queries (for board visualization)
 upsertPlacement:
@@ -1455,10 +1488,12 @@ getKilterPublishQueueStats:
 SELECT
     (SELECT COUNT(*) FROM climbs
      WHERE origin = 'cruxcoach'
+       AND board_brand = 'kilter'
        AND sync_status = 'published_nostr'
        AND (kilter_status IS NULL OR kilter_status = 'failed')) AS pending_count,
     (SELECT COUNT(*) FROM climbs
      WHERE origin = 'cruxcoach'
+       AND board_brand = 'kilter'
        AND sync_status = 'published_nostr'
        AND kilter_status = 'failed') AS failed_count,
     (SELECT MAX(attempted_at) FROM kilter_publish_attempts) AS last_attempt_at;
@@ -1510,9 +1545,15 @@ UPDATE climbs
 -- a `published_nostr` row must have had a pubkey at publish time, so
 -- a NULL is a data-integrity bug that deserves manual triage rather
 -- than a silent retry under whichever identity is active right now.
+-- board_brand gate: only Kilter climbs ever have an official-app leg
+-- (BoardBrand.supportsOfficialAppPublish). MoonBoard/Aurora community
+-- climbs end in exactly this state (published_nostr, kilter_status
+-- NULL) by design and must never be pushed to the user's Kilter
+-- account.
 getClimbsAwaitingKilterRetry:
 SELECT * FROM climbs
 WHERE origin = 'cruxcoach'
+  AND board_brand = 'kilter'
   AND sync_status = 'published_nostr'
   AND (kilter_status IS NULL OR kilter_status = 'failed')
   AND created_by_pubkey = :pubkey
@@ -1862,6 +1903,13 @@ DELETE FROM sync_states WHERE table_name = 'homewall_force_resync';
 -- Joins climbs to climb_stats so the caller sees the total
 -- ascensionist count per uuid; the Kotlin picker uses that as the
 -- collision tiebreaker.
+--
+-- board_brand: the export references climbs of ONE board's app (the
+-- Kilter app for FEAT-005 JSON exports). The multiboard catalogues all
+-- share this table with the default source='kilter', so a name-only
+-- match could resolve to a same-named MoonBoard/Tension climb and the
+-- popularity tiebreaker would happily attach the user's ascents to a
+-- foreign board's climb (wrong grade/render/board).
 lookupClimbsByNamesForAuroraImport:
 SELECT c.name, c.uuid, c.source, c.is_listed,
        CAST(COALESCE(SUM(cs.ascensionist_count), 0) AS INTEGER) AS total_ascensionist_count
@@ -1869,6 +1917,7 @@ FROM climbs c
 LEFT JOIN climb_stats cs ON cs.climb_uuid = c.uuid
 WHERE c.name IN :names
   AND c.is_deleted = 0
+  AND c.board_brand = :boardBrand
   AND (c.source = 'kilter'
        OR (c.source = 'local' AND c.created_by_pubkey = :ownPubkey))
 GROUP BY c.uuid;
@@ -1888,6 +1937,7 @@ FROM climbs c
 LEFT JOIN climb_stats cs ON cs.climb_uuid = c.uuid
 WHERE LOWER(c.name) IN :lowerNames
   AND c.is_deleted = 0
+  AND c.board_brand = :boardBrand
   AND (c.source = 'kilter'
        OR (c.source = 'local' AND c.created_by_pubkey = :ownPubkey))
 GROUP BY c.uuid;
@@ -1904,6 +1954,7 @@ FROM climbs c
 WHERE LOWER(c.name) LIKE :pattern
   AND c.is_deleted = 0
   AND c.source = 'kilter'
+  AND c.board_brand = :boardBrand
 LIMIT 5;
 
 

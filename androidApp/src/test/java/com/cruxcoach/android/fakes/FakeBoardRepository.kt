@@ -161,12 +161,13 @@ class FakeBoardRepository : BoardRepository {
     override fun getClimbCount(): Long = climbs.size.toLong()
     override fun getClimbCountsByBrand(): Map<String, Long> = emptyMap()
     override fun hasAnyClimbs(): Boolean = climbs.isNotEmpty()
+    override fun hasClimbsForBrand(boardBrand: String): Boolean = climbs.isNotEmpty()
     override fun climbExistsByUuid(uuid: String): Boolean = climbs.any { it.uuid == uuid }
     override fun statExistsByUuid(uuid: String): Boolean = false
 
     override fun getClimbCountByAngle(layoutId: Int, climbType: ClimbTypeFilter): List<AngleClimbCount> = emptyList()
     override fun getAnglesForClimb(climbUuid: String): List<AngleOption> = emptyList()
-    override fun getSupportedAnglesForLayout(layoutId: Int): List<Int> = emptyList()
+    override fun getSupportedAnglesForLayout(layoutId: Int, boardBrand: String): List<Int> = emptyList()
 
     override fun countNomatchClimbs(): Long = 0L
 
@@ -270,6 +271,18 @@ class FakeBoardRepository : BoardRepository {
 
     override fun getAllFramesForHeatmap(
         angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double,
+        minAscensionists: Int, climbType: ClimbTypeFilter
+    ): List<ClimbFrameRow> {
+        return climbs.filter { climb ->
+            val diff = climb.difficultyAverage ?: return@filter false
+            diff in minDifficulty..maxDifficulty &&
+                (climb.ascensionistCount ?: 0) >= minAscensionists &&
+                climb.frames.isNotEmpty()
+        }.map { ClimbFrameRow(it.uuid, it.frames) }
+    }
+
+    override fun getAllFramesForHeatmapAllAngles(
+        layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double,
         minAscensionists: Int, climbType: ClimbTypeFilter
     ): List<ClimbFrameRow> {
         return climbs.filter { climb ->

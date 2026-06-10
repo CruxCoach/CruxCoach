@@ -361,7 +361,12 @@ object CruxCoachBackup {
         // Board family + layout (7.sqm). Defaulted for backups written before
         // this field existed — those are Kilter by definition.
         val boardBrand: String = "kilter",
-        val layoutId: Long? = null
+        val layoutId: Long? = null,
+        // Kilter-sync state, so a restore doesn't re-arm a /logs/bulk
+        // re-upload of the whole logbook. Defaulted false for backups
+        // written before this field existed (their rows re-upload once —
+        // the pre-fix behavior).
+        val synced: Boolean = false
     )
 
     @Serializable
@@ -376,7 +381,9 @@ object CruxCoachBackup {
         val climbName: String = "",
         val difficultyAverage: Double? = null,
         val boardBrand: String = "kilter",
-        val layoutId: Long? = null
+        val layoutId: Long? = null,
+        // See AscentExport.synced.
+        val synced: Boolean = false
     )
 
     @Serializable
@@ -566,7 +573,8 @@ object CruxCoachBackup {
                     comment = a.comment, climbedAt = a.climbedAt, climbName = a.climbName,
                     difficultyAverage = a.difficultyAverage,
                     climbFrames = a.climbFrames, framesCount = a.framesCount,
-                    boardBrand = a.boardBrand, layoutId = a.layoutId
+                    boardBrand = a.boardBrand, layoutId = a.layoutId,
+                    synced = a.synced
                 )
             }
         } else emptyList()
@@ -577,7 +585,8 @@ object CruxCoachBackup {
                     uuid = b.uuid, climbUuid = b.climbUuid, angle = b.angle,
                     isMirror = b.isMirror, bidCount = b.bidCount,
                     comment = b.comment, climbedAt = b.climbedAt,
-                    boardBrand = b.boardBrand, layoutId = b.layoutId
+                    boardBrand = b.boardBrand, layoutId = b.layoutId,
+                    synced = b.synced
                 )
             }
         } else emptyList()
@@ -847,7 +856,7 @@ object CruxCoachBackup {
                             bidCount = ascent.bidCount, quality = ascent.quality,
                             difficulty = ascent.difficulty, isBenchmark = false,
                             comment = ascent.comment, climbedAt = ascent.climbedAt,
-                            synced = false,
+                            synced = ascent.synced,
                             climbName = ascent.climbName,
                             difficultyAverage = ascent.difficultyAverage,
                             climbFrames = ascent.climbFrames,
@@ -875,7 +884,7 @@ object CruxCoachBackup {
                             climbUuid = bid.climbUuid.lowercase(), angle = bid.angle,
                             isMirror = bid.isMirror, bidCount = bid.bidCount,
                             comment = bid.comment, climbedAt = bid.climbedAt,
-                            synced = false,
+                            synced = bid.synced,
                             climbName = bid.climbName,
                             difficultyAverage = bid.difficultyAverage,
                             boardBrand = bid.boardBrand,

@@ -111,6 +111,11 @@ data class AscentWithClimb(
     val difficultyAverage: Double?,
     val framesCount: Long = 1,
     val isSend: Boolean = true,
+    // Kilter-sync flag, carried for the backup round-trip so a restore
+    // doesn't re-arm /logs/bulk uploads for already-synced rows. Defaults
+    // suit the logbook projection queries that don't select it;
+    // getUserAscentsAll (SELECT *) populates the real value.
+    val synced: Boolean = false,
     // Board family + layout this ascent was logged on (denormalized onto
     // ascents/bids in 7.sqm). Defaults suit the light/projection queries that
     // don't select them; getUserAscentsAll (SELECT *) populates the real
@@ -286,6 +291,9 @@ interface BoardClimbQueries {
      *  Use this anywhere the caller only needs a boolean (empty-state
      *  decision in BoardBrowser, fresh-install probe). */
     fun hasAnyClimbs(): Boolean
+    /** Brand-scoped [hasAnyClimbs]: whether the given board's catalogue has
+     *  any imported climbs. Same O(1) EXISTS probe, scoped by board_brand. */
+    fun hasClimbsForBrand(boardBrand: String): Boolean
     fun getStatCount(): Long
     /** Stats with no matching climbs row (cron desync indicator). */
     fun countOrphanStats(): Long
@@ -311,8 +319,9 @@ interface BoardClimbQueries {
     fun getClimbCountByAngle(layoutId: Int, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER): List<AngleClimbCount>
     fun getAnglesForClimb(climbUuid: String): List<AngleOption>
     /** Distinct angles the given board layout is used at — the data-driven
-     *  angle range for the variable-angle picker on adjustable boards. */
-    fun getSupportedAnglesForLayout(layoutId: Int): List<Int>
+     *  angle range for the variable-angle picker on adjustable boards.
+     *  Brand-scoped: layout ids collide across brands. */
+    fun getSupportedAnglesForLayout(layoutId: Int, boardBrand: String): List<Int>
     fun countNomatchClimbs(): Long
     fun getClimbsByUuids(uuids: Collection<String>, angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter): List<ClimbWithStats>
     /** Fetch climbs by UUID list at a given angle, no additional filters. */
@@ -342,6 +351,10 @@ interface BoardClimbQueries {
     fun searchClimbUuidsByAllHolds(holdPatterns: List<String>, angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter): Set<String>
     /** Get all frames for heatmap computation within current browse filters (brand-scoped). */
     fun getAllFramesForHeatmap(angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter): List<ClimbFrameRow>
+    /** Angle-agnostic frames for the logbook stats heatmap: one row per climb
+     *  with stats at ANY angle of (layout, brand). Hold usage doesn't depend
+     *  on the angle, so the stats sheet must not pin one. */
+    fun getAllFramesForHeatmapAllAngles(layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter): List<ClimbFrameRow>
 }
 
 /** Board layout, placement, LED, and product-size queries. */

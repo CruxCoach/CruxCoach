@@ -17,7 +17,8 @@ import kotlin.test.assertTrue
 
 /**
  * Brand-scoping regression for the heatmap + hold-search query
- * (getAllFramesForFilter). Aurora-family boards reuse Kilter's low layout-ids —
+ * (getAllFramesForFilter) and the angle picker (getSupportedAnglesForLayout).
+ * Aurora-family boards reuse Kilter's low layout-ids —
  * every board's Original layout is id 1 — so a layout-only query leaked Kilter
  * climbs into an Aurora board's heatmap and hold-search counts. Proves the
  * board_brand predicate isolates each board on the shared layout_id=1.
@@ -53,9 +54,9 @@ class HeatmapBrandScopeTest {
         dbFile.parentFile?.delete()
     }
 
-    /** A listed climb on (brand, layout 1) + an angle-40 stats row (layout_id is
+    /** A listed climb on (brand, layout 1) + a stats row at [angle] (layout_id is
      *  derived from the climb by upsertClimbStat). */
-    private fun climb(uuid: String, brand: String, frames: String) {
+    private fun climb(uuid: String, brand: String, frames: String, angle: Long = 40L) {
         db.boardQueries.insertLocalDraft(
             uuid = uuid, layout_id = 1L, setter_username = "s", name = uuid,
             frames = frames, edge_left = 0L, edge_right = 144L, edge_bottom = 0L, edge_top = 156L,
@@ -63,7 +64,7 @@ class HeatmapBrandScopeTest {
             created_by_pubkey = "pk", frames_hash = "h-$uuid", board_brand = brand,
         )
         db.boardQueries.upsertClimbStat(
-            climb_uuid = uuid, angle = 40L,
+            climb_uuid = uuid, angle = angle,
             display_difficulty = 15.0, difficulty_average = 15.0,
             quality_average = null, ascensionist_count = 50L,
             benchmark_difficulty = null, fa_username = null, fa_at = null,
@@ -101,5 +102,41 @@ class HeatmapBrandScopeTest {
             setOf("k1"),
             repo.searchClimbUuidsByAllHolds(listOf("p100r"), 40, 1, "kilter", 0.0, 100.0, 0, ClimbTypeFilter.ALL),
         )
+    }
+
+    @Test
+    fun allAnglesHeatmapFrames_dedupeAcrossAngles_andScopeToBrand() {
+        // k1 has stats at TWO angles — the any-angle stats-sheet query must
+        // return its frames ONCE (a JOIN would double-weight it) and must not
+        // leak the same-layout Grasshopper climb.
+        climb("k1", "kilter", "p100r12p101r13", angle = 25L)
+        db.boardQueries.upsertClimbStat(
+            climb_uuid = "k1", angle = 45L,
+            display_difficulty = 16.0, difficulty_average = 16.0,
+            quality_average = null, ascensionist_count = 3L,
+            benchmark_difficulty = null, fa_username = null, fa_at = null,
+            official_kilter_difficulty = null,
+        )
+        climb("g1", "grasshopper", "p300r12p301r13", angle = 40L)
+
+        val kil = repo.getAllFramesForHeatmapAllAngles(1, "kilter", 0.0, 100.0, 0, ClimbTypeFilter.ALL)
+        assertEquals(listOf("k1"), kil.map { it.uuid }, "one row per climb, no Grasshopper leak")
+
+        val gh = repo.getAllFramesForHeatmapAllAngles(1, "grasshopper", 0.0, 100.0, 0, ClimbTypeFilter.ALL)
+        assertEquals(listOf("g1"), gh.map { it.uuid })
+    }
+
+    @Test
+    fun supportedAngles_areScopedToBoardBrand_onSharedLayout1() {
+        climb("k1", "kilter", "p100r12p101r13", angle = 25L)
+        climb("k2", "kilter", "p102r12p103r13", angle = 70L)
+        climb("g1", "grasshopper", "p300r12p301r13", angle = 40L)
+
+        assertEquals(
+            listOf(40),
+            repo.getSupportedAnglesForLayout(1, "grasshopper"),
+            "grasshopper angle picker must not union Kilter's angles on shared layout 1",
+        )
+        assertEquals(listOf(25, 70), repo.getSupportedAnglesForLayout(1, "kilter"))
     }
 }

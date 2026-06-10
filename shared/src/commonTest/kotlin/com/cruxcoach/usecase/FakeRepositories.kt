@@ -151,6 +151,7 @@ class FakeBoardRepository : BoardRepository {
     override fun getClimbCount(): Long = storedClimbs.size.toLong()
     override fun getClimbCountsByBrand(): Map<String, Long> = emptyMap()
     override fun hasAnyClimbs(): Boolean = storedClimbs.isNotEmpty()
+    override fun hasClimbsForBrand(boardBrand: String): Boolean = storedClimbs.isNotEmpty()
     override fun getStatCount(): Long = 0L
     override fun countOrphanStats(): Long = 0L
     override fun countListedClimbsWithoutStats(): Long = 0L
@@ -176,7 +177,7 @@ class FakeBoardRepository : BoardRepository {
     override fun statExistsByUuid(uuid: String): Boolean = false
     override fun getClimbCountByAngle(layoutId: Int, climbType: ClimbTypeFilter): List<AngleClimbCount> = emptyList()
     override fun getAnglesForClimb(climbUuid: String): List<AngleOption> = emptyList()
-    override fun getSupportedAnglesForLayout(layoutId: Int): List<Int> = emptyList()
+    override fun getSupportedAnglesForLayout(layoutId: Int, boardBrand: String): List<Int> = emptyList()
     override fun countNomatchClimbs(): Long = 0L
     override fun getClimbsByUuids(uuids: Collection<String>, angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter): List<ClimbWithStats> = emptyList()
     override fun getClimbsByUuids(uuids: Collection<String>, angle: Int): List<ClimbWithStats> = emptyList()
@@ -187,6 +188,7 @@ class FakeBoardRepository : BoardRepository {
     override fun searchClimbUuidsByHold(holdPattern: String, angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter): List<String> = emptyList()
     override fun searchClimbUuidsByAllHolds(holdPatterns: List<String>, angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter): Set<String> = emptySet()
     override fun getAllFramesForHeatmap(angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter): List<ClimbFrameRow> = emptyList()
+    override fun getAllFramesForHeatmapAllAngles(layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter): List<ClimbFrameRow> = emptyList()
 
     // -- BoardLayoutQueries --
 

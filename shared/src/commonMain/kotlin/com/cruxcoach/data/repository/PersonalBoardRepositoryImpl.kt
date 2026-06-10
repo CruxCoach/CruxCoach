@@ -83,6 +83,7 @@ class PersonalBoardRepositoryImpl(
                 difficultyAverage = row.difficulty_average,
                 framesCount = row.frames_count,
                 isSend = true,
+                synced = row.synced != 0L,
                 boardBrand = row.board_brand,
                 layoutId = row.layout_id,
             )

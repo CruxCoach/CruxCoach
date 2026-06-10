@@ -144,8 +144,12 @@ SELECT climb_uuid, COUNT(*) AS repeat_count FROM ascents GROUP BY climb_uuid;
 
 -- ═══ Kilter sync ═══
 
+-- Kilter-only by design: this feeds KilterSyncEngine's /logs/bulk
+-- upload, and MoonBoard/Aurora-family ascents must never reach the
+-- user's Kilter account. Their rows simply stay synced=0 — the flag
+-- has no consumer for non-Kilter brands.
 getUnsyncedAscents:
-SELECT * FROM ascents WHERE synced = 0;
+SELECT * FROM ascents WHERE synced = 0 AND board_brand = 'kilter';
 
 -- Optimistic mark: only stamp synced=1 when the captured row_version still
 -- matches. If the user edited the row during the upload window row_version
