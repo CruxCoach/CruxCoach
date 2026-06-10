@@ -523,6 +523,58 @@ fun BoardBrowserScreen(
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = OrangeAccent)
                 }
+            } else if (state.climbs.isEmpty()) {
+                // Zero-results empty state — this area used to render a
+                // silently blank list. Two causes, two recoveries: the active
+                // board's catalogue was never downloaded (board switch without
+                // WiFi → the auto-load defers), or the filters simply match
+                // nothing.
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 32.dp, vertical = 48.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    if (!state.activeBrandHasCatalogue) {
+                        Text(
+                            text = stringResource(R.string.board_browser_empty_no_catalogue),
+                            style = MaterialTheme.typography.titleMedium,
+                            textAlign = TextAlign.Center,
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Button(
+                            onClick = { viewModel.loadActiveBoardCatalogue() },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = OrangeAccent,
+                                contentColor = DarkBackground,
+                            ),
+                            modifier = Modifier.testTag("board_empty_load_catalogue")
+                        ) {
+                            Text(stringResource(R.string.board_browser_empty_load_catalogue))
+                        }
+                    } else {
+                        Text(
+                            text = stringResource(R.string.board_browser_empty_no_results),
+                            style = MaterialTheme.typography.titleMedium,
+                            textAlign = TextAlign.Center,
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = stringResource(R.string.board_browser_empty_no_results_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        OutlinedButton(
+                            onClick = { viewModel.clearAllBrowseFilters() },
+                            modifier = Modifier.testTag("board_empty_clear_filters")
+                        ) {
+                            Text(stringResource(R.string.board_browser_empty_clear_filters))
+                        }
+                    }
+                }
             } else {
                 val listState = rememberLazyListState()
 

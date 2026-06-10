@@ -187,6 +187,12 @@ data class BoardBrowserState(
     val climbCount: Long = 0,
     val filteredCount: Long = -1,
     val hasBoardData: Boolean = false,
+    /** Whether the ACTIVE board's catalogue has any imported climbs.
+     *  [hasBoardData] is brand-agnostic (any catalogue at all), so after a
+     *  board switch it stays true on the Kilter catalogue while the new
+     *  board has zero rows — this flag drives the "load catalogue" empty
+     *  state for exactly that case. */
+    val activeBrandHasCatalogue: Boolean = true,
     val canLoadMore: Boolean = false,
     val dbOffset: Int = 0,
     val gradeScale: GradeScale = GradeScale.V_SCALE,
@@ -315,10 +321,24 @@ class BoardBrowserViewModel @Inject constructor(
                         userPreferences.boardBrand,
                         userPreferences.boardLayoutId,
                         userPreferences.boardProductSizeId,
-                    ) { brand, layout, size -> Triple(brand, layout, size) }
+                        userPreferences.boardAngle,
+                    ) { brand, layout, size, angle -> Pair(Triple(brand, layout, size), angle) }
                         .drop(1)
                         .distinctUntilChanged()
-                        .collect { refreshBoardData(force = true) }
+                        .collect { (_, prefAngle) ->
+                            // Re-seed the in-memory angle from prefs on an external
+                            // write: setMoonBoardSelection pins 40° and a fixed-angle
+                            // gym pick seeds the wall's angle. Without this the
+                            // browser keeps querying the previous board's angle
+                            // (climb_browse matches angle exactly → empty list) and
+                            // the next persistFilters writes the stale angle back
+                            // over the seed. persistFilters' own write is a no-op
+                            // here (the pref already equals the in-memory angle).
+                            if (_state.value.filter.angle != prefAngle) {
+                                _state.update { it.copy(filter = it.filter.copy(angle = prefAngle)) }
+                            }
+                            refreshBoardData(force = true)
+                        }
                 }
                 // Eagerly load status UUIDs in background (non-blocking)
                 launch(Dispatchers.IO) {
@@ -470,6 +490,17 @@ class BoardBrowserViewModel @Inject constructor(
                 val prefSizeId = userPreferences.boardProductSizeId.first()
                 val prefLayoutId = userPreferences.boardLayoutId.first()
                 val prefBoardBrand = userPreferences.boardBrand.first()
+                val prefAngle = userPreferences.boardAngle.first()
+                // Same O(1) EXISTS probe, scoped to the active board — feeds
+                // the "catalogue not downloaded" empty state after a board
+                // switch (hasData above stays true on any other catalogue).
+                val brandHasCatalogue = !hasData ||
+                    PerfLogger.traceQuery("hasClimbsForBrand") {
+                        boardRepository.hasClimbsForBrand(prefBoardBrand)
+                    }
+                if (brandHasCatalogue != _state.value.activeBrandHasCatalogue) {
+                    _state.update { it.copy(activeBrandHasCatalogue = brandHasCatalogue) }
+                }
                 // FEAT-027: a MoonBoard layout has no Aurora product_size /
                 // board_images rows — the Kilter-only lookups below would just
                 // return empty. Skip them entirely for a MoonBoard board.
@@ -485,7 +516,12 @@ class BoardBrowserViewModel @Inject constructor(
                     ) {
                         val moonBoardAngles = MoonBoardVariant
                             .fromLayoutId(prefLayoutId.toLong())?.angles.orEmpty()
+                        // A board switch must also re-seed the angle from prefs
+                        // (MoonBoard pin to 40°, fixed-angle gym wall) — keeping
+                        // the previous board's in-memory angle would query at an
+                        // angle the new board may not have at all.
                         _state.update { it.copy(filter = it.filter.copy(
+                            angle = prefAngle,
                             layoutId = prefLayoutId,
                             boardBrand = prefBoardBrand,
                             moonBoardAngles = moonBoardAngles,
@@ -597,6 +633,36 @@ class BoardBrowserViewModel @Inject constructor(
         }
         persistFilters()
         searchClimbs()
+    }
+
+    /** Zero-results empty state: reset every result-hiding browse filter to
+     *  its default in one tap, keeping the board identity (brand / layout /
+     *  angle / size — those define WHAT board is browsed, not a filter). The
+     *  hold filter is cleared via [clearHoldSelection], which also re-runs
+     *  the search. */
+    fun clearAllBrowseFilters() {
+        _state.update { s ->
+            s.copy(filter = s.filter.copy(
+                minGradeIndex = 0,
+                maxGradeIndex = 16,
+                minAscensionists = 0,
+                searchQuery = "",
+                statusFilter = emptySet(),
+                climbTypeFilter = ClimbTypeFilter.BOULDER,
+                benchmarkOnly = false,
+                originFilter = OriginFilter.ALL,
+                myClimbsOnly = false,
+            ))
+        }
+        persistFilters()
+        clearHoldSelection()
+    }
+
+    /** Manual catalogue load for the active board from the browser's
+     *  "catalogue missing" empty state. Explicit user intent — the sync
+     *  manager's manual path deliberately bypasses the WiFi auto-load gate. */
+    fun loadActiveBoardCatalogue() {
+        syncManager.loadBoardCatalogue(BoardBrand.fromWire(_state.value.filter.boardBrand))
     }
 
     /** Clear the status filter (the "Alle" chip) — empty set = no constraint. */
@@ -943,10 +1009,19 @@ class BoardBrowserViewModel @Inject constructor(
             if (page.isEmpty()) return Triple(collected, currentOffset, true)
             currentOffset += page.size
             collected.addAll(applyOriginFilter(applyBenchmarkFilter(applyStatusFilter(page, f.statusFilter), f.benchmarkOnly), f.originFilter))
-            if (collected.size >= PAGE_SIZE) return Triple(collected.take(PAGE_SIZE), currentOffset, false)
+            // Return EVERYTHING collected, not collected.take(PAGE_SIZE):
+            // currentOffset has already advanced past the source rows of any
+            // overflow, so truncating here would drop those climbs forever
+            // (loadMore resumes from currentOffset). Callers tolerate
+            // >PAGE_SIZE results (searchClimbs assigns, loadMore appends).
+            if (collected.size >= PAGE_SIZE) return Triple(collected, currentOffset, false)
             if (page.size < PAGE_SIZE) return Triple(collected, currentOffset, true)
         }
-        return Triple(collected, currentOffset, true)
+        // Scan cap hit mid-DB: a continuation, not exhaustion — deeper pages
+        // may still match. dbExhausted=false keeps infinite scroll alive (the
+        // near-bottom trigger re-fires loadMore, which resumes the scan at
+        // currentOffset); the true end is reported by the in-loop checks.
+        return Triple(collected, currentOffset, false)
     }
 
     private fun sortInKotlin(
@@ -988,7 +1063,12 @@ class BoardBrowserViewModel @Inject constructor(
         val minDiff = KilterGradeMapper.indexToFilterMin(f.minGradeIndex, french)
         val maxDiff = KilterGradeMapper.indexToFilterMax(f.maxGradeIndex, french)
         val sel = selSizeId()
-        val key = "${f.angle}|${f.layoutId}|$minDiff|$maxDiff|${f.minAscensionists}|${f.climbTypeFilter}|$sel"
+        // boardBrand must be part of the key: layout ids collide across brands
+        // (every board's Original layout is id 1) and sel can be 0 on both
+        // sides of a board switch (MoonBoard / not-yet-imported catalogue), so
+        // an angle|layout|sel-identical switch would otherwise serve the
+        // previous brand's cached page-1 + shuffle.
+        val key = "${f.boardBrand}|${f.angle}|${f.layoutId}|$minDiff|$maxDiff|${f.minAscensionists}|${f.climbTypeFilter}|$sel"
 
         if (key != randomKey) {
             randomKey = key
@@ -1226,11 +1306,15 @@ class BoardBrowserViewModel @Inject constructor(
     fun playEasterAnimation(type: EasterAnimation) {
         animationJob?.cancel()
         animationJob = viewModelScope.safeLaunch(TAG) {
-            // The LED-grid easter animation is Aurora-protocol only (Kilter +
-            // the Aurora family). A MoonBoard connects at API level 0 with no
-            // Aurora LED grid, so don't run it — this also keeps the trailing
-            // Aurora-encoder clearBoard() from ever reaching a MoonBoard.
-            if (!BoardBrand.fromWire(userPreferences.boardBrand.first()).usesAuroraProtocol) return@safeLaunch
+            // The LED-grid easter animation is Kilter-only: the frames are
+            // built from Kilter's LED grid (getLedGrid defaults to the kilter
+            // partition), and the other Aurora boards reuse Kilter-numbered
+            // product_size ids — the same grid would light wrong/garbled LEDs
+            // on a Tension etc., and a MoonBoard can't parse Aurora packets
+            // at all. Gate on the CONNECTED board's brand (not the pref): a
+            // stale active-board pref must not push Kilter frames — or the
+            // trailing clearBoard() — to a different board still on the link.
+            if (bleConnection.connectedBoardBrand.value != BoardBrand.KILTER) return@safeLaunch
             _isAnimating.value = true
             try {
                 val animSizeId = userPreferences.boardProductSizeId.first()
@@ -1248,11 +1332,11 @@ class BoardBrowserViewModel @Inject constructor(
                 if (frames.isEmpty() || frames.all { it.leds.isEmpty() }) {
                     return@safeLaunch
                 }
-                val encoder = com.cruxcoach.domain.board.BoardPacketEncoder(3)
                 repeat(3) {
                     for (frame in frames) {
-                        val chunks = encoder.encodeClimb(frame.leds)
-                        bleConnection.sendRawChunks(chunks)
+                        // sendRawLeds encodes with the CONNECTED board's
+                        // encoder (correct apiLevel), not a hardcoded @3 one.
+                        bleConnection.sendRawLeds(frame.leds)
                         delay(250)
                     }
                 }

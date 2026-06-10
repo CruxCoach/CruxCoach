@@ -89,7 +89,11 @@ data class BoardSendState(
      *  not raw text — keeps BLE send errors out of hardcoded German and
      *  prevents raw exception messages leaking into the climber-facing send
      *  status. Null = no error. */
-    @androidx.annotation.StringRes val error: Int? = null
+    @androidx.annotation.StringRes val error: Int? = null,
+    /** Non-blocking post-send warning (string-resource id), e.g. holds
+     *  without an LED mapping on the configured board size — the send
+     *  succeeded but the wall shows a partial climb. Null = no warning. */
+    @androidx.annotation.StringRes val warning: Int? = null
 )
 
 /** Climb list / favorites dialog state. */
@@ -606,7 +610,10 @@ class BoardClimbDetailViewModel @Inject constructor(
         val setterAngle = if (climb.origin == "cruxcoach") statted.firstOrNull()?.angle else null
         val supported: Set<Int> = when {
             brand.usesAuroraProtocol ->
-                boardRepository.getSupportedAnglesForLayout(climb.layoutId.toInt()).toSet()
+                // Pass the climb's own brand: layout ids collide across brands
+                // (layout 1 = Kilter Original AND Grasshopper/So iLL/Touchstone),
+                // so an unscoped lookup would union other brands' angle ranges.
+                boardRepository.getSupportedAnglesForLayout(climb.layoutId.toInt(), climb.boardBrand).toSet()
             brand == BoardBrand.MOONBOARD ->
                 MoonBoardVariant.fromLayoutId(climb.layoutId)?.angles?.toSet() ?: emptySet()
             else -> emptySet()

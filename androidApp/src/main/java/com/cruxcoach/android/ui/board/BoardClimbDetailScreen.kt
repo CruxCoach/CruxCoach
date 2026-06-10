@@ -1060,6 +1060,16 @@ private fun ClimbDetailPageContent(
                                 Icon(Icons.Default.BluetoothConnected, contentDescription = null, modifier = Modifier.size(14.dp), tint = SuccessGreen)
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(stringResource(R.string.board_detail_sent), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = SuccessGreen)
+                                // Non-blocking warning: send went through, but some
+                                // holds had no LED on the configured board size.
+                                state.ble.warning?.let { warningRes ->
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        stringResource(warningRes),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = WarningYellow
+                                    )
+                                }
                             }
                             state.ble.error != null -> {
                                 val bleErrorText = stringResource(state.ble.error)

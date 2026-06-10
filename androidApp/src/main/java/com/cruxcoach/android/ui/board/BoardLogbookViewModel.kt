@@ -173,14 +173,50 @@ class BoardLogbookViewModel @Inject constructor(
         loadAscents()
     }
 
+    /**
+     * (brand, layoutId, productSizeId) the stats heatmap renders with.
+     * The user's configured board when the per-board filter is unset or
+     * matches the active board; for a FILTERED other board the brand's
+     * catalogue defaults (most-climbed layout + its default size) — the
+     * active board's layout/canvas would mix grids: layout ids collide
+     * across brands and the placement-id spaces are disjoint. null when
+     * the filtered brand's catalogue isn't imported (no layout/size to
+     * render) — callers blank the heatmap instead of showing a wrong one.
+     */
+    private suspend fun resolveHeatmapBoard(): Triple<String, Int, Int>? {
+        val prefBrand = userPreferences.boardBrand.first()
+        val brand = _state.value.boardFilter ?: prefBrand
+        if (brand == prefBrand) {
+            return Triple(
+                brand,
+                userPreferences.boardLayoutId.first(),
+                userPreferences.boardProductSizeId.first()
+            )
+        }
+        return withContext(Dispatchers.IO) {
+            val layoutId = boardRepository.getDefaultLayoutForBrand(brand)
+                ?: return@withContext null
+            val sizeId = boardRepository.getDefaultProductSizeForBrand(brand)?.first
+                ?: return@withContext null
+            Triple(brand, layoutId, sizeId)
+        }
+    }
+
     private fun loadBoardData() {
         viewModelScope.safeLaunch(TAG) {
             try {
-                val sizeId = userPreferences.boardProductSizeId.first()
-                val layoutId = userPreferences.boardLayoutId.first()
-                // Active brand + layout-scoped placements (FEAT-031) — the
-                // defaults loaded Kilter geometry for every Aurora board.
-                val brand = userPreferences.boardBrand.first()
+                // Brand + layout-scoped placements (FEAT-031), resolved per the
+                // current board filter — the defaults loaded the ACTIVE board's
+                // geometry under every stats chip, so a filtered brand's frames
+                // landed on the wrong canvas (or an empty one).
+                val resolved = resolveHeatmapBoard()
+                if (resolved == null) {
+                    _state.update {
+                        it.copy(placements = emptyMap(), boardSize = null, boardImages = emptyList())
+                    }
+                    return@safeLaunch
+                }
+                val (brand, layoutId, sizeId) = resolved
                 val (placements, boardSize, boardImages) = withContext(Dispatchers.IO) {
                     Triple(
                         boardRepository.getPlacementsForLayout(sizeId, layoutId, brand).associate { it.placementId.toInt() to it },
@@ -349,6 +385,10 @@ class BoardLogbookViewModel @Inject constructor(
     fun setBoardFilter(brand: String?) {
         if (_state.value.boardFilter == brand) return
         _state.update { it.copy(boardFilter = brand) }
+        // The heatmap canvas (placements/size/images) must follow the filter,
+        // not stay on the active board — recomputeStats only refreshes the
+        // heat values.
+        loadBoardData()
         recomputeStats()
     }
 
@@ -397,11 +437,19 @@ class BoardLogbookViewModel @Inject constructor(
                     _state.update { it.copy(heatmapData = emptyMap()) }
                     return@safeLaunch
                 }
-                val layoutId = userPreferences.boardLayoutId.first()
                 // Heatmap is always single-grid: use the selected board filter
                 // when set, else the active board's brand (never "all", which
-                // would re-overlay disjoint grids).
-                val activeBrand = _state.value.boardFilter ?: userPreferences.boardBrand.first()
+                // would re-overlay disjoint grids). Brand AND layout come from
+                // the same resolution as the canvas — pairing the filter brand
+                // with the ACTIVE board's layout queried a (brand, layout)
+                // combination that doesn't exist (silently empty heatmap) or,
+                // with colliding ids, another board's grid.
+                val resolved = resolveHeatmapBoard()
+                if (resolved == null) {
+                    _state.update { it.copy(heatmapData = emptyMap()) }
+                    return@safeLaunch
+                }
+                val (activeBrand, layoutId, _) = resolved
                 val data = withContext(Dispatchers.IO) {
                     val frameRows: List<String> = when (mode) {
                         // allAscents comes from getUserLogbookAllLight() which
@@ -419,8 +467,10 @@ class BoardLogbookViewModel @Inject constructor(
                             .filter { it.brand == BoardBrand.fromWire(activeBrand) }
                             .map { it.climbFrames }
                             .filter { it.isNotBlank() }
-                        else -> boardRepository.getAllFramesForHeatmap(
-                            angle = 40,
+                        // Angle-agnostic: hold usage doesn't depend on the
+                        // angle, and the previous hardcoded 40° rendered an
+                        // empty map for boards/layouts logged at other angles.
+                        else -> boardRepository.getAllFramesForHeatmapAllAngles(
                             layoutId = layoutId,
                             boardBrand = activeBrand,
                             minDifficulty = 0.0,
