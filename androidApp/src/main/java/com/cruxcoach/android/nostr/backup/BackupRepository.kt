@@ -778,9 +778,19 @@ class BackupRepository @Inject constructor(
                     .firstOrNull { it.tagValue("d") == keyDTag }
             }
             SignerMode.AMBER -> {
+                // Same cached-#d narrowing as fetchByQueryAllAmber: the
+                // d-tag cached at publish time pins the query to our key
+                // event instead of every NIP-78 app's 30078 events (one
+                // Amber decrypt prompt per probed candidate otherwise).
+                // Cached only — a fresh derive would prompt AND mismatch
+                // (Amber aux_rand). No cache → legacy query-all probe.
+                val cachedKeyDTag = preferences.getDTag(BackupPreferences.IDENTIFIER_KEY)
                 val filter = buildJsonObject {
                     put("kinds", buildJsonArray { add(JsonPrimitive(KIND_REPLACEABLE_PARAMETERIZED)) })
                     put("authors", buildJsonArray { add(JsonPrimitive(pubkey)) })
+                    if (cachedKeyDTag != null) {
+                        put("#d", buildJsonArray { add(JsonPrimitive(cachedKeyDTag)) })
+                    }
                 }
                 queryAllValid(filter.toString(), timeoutMs).firstOrNull { ev ->
                     val decrypted = runCatching { nip44DecryptToSelf(ev.content) }.getOrNull()
@@ -861,11 +871,51 @@ class BackupRepository @Inject constructor(
         pubkey: String,
         timeoutMs: Long,
     ): Pair<MinimalEvent, MinimalEvent>? {
+        // Targeted #d filter when this install already knows its d-tags
+        // (CACHED only — never dTagDeriver.derive() here: that fires an
+        // Amber approval prompt, and on a fresh install Amber's aux_rand
+        // makes the re-derived tag a different value that matches
+        // nothing). Kind 30078 is the generic NIP-78 app-data kind used
+        // by many Nostr apps; the untargeted query-all sorted newest-
+        // first meant >8 newer 30078 events from OTHER apps pushed our
+        // pointer/key past the decrypt-attempt cap and "Kein Backup
+        // gefunden" fired on a backup that exists. With the #d filter
+        // (NIP-01 standard) the result set is just our two replaceable
+        // events and the decrypt-attempt cap in [probeAmberCandidates]
+        // is a pure flood-guard. Fresh installs (no cache yet) still
+        // fall back to query-all + shape-matching.
+        val cachedBackupDTag = preferences.getDTag(BackupPreferences.IDENTIFIER_BACKUP)
+        val cachedKeyDTag = preferences.getDTag(BackupPreferences.IDENTIFIER_KEY)
+        if (cachedBackupDTag != null && cachedKeyDTag != null) {
+            val targeted = buildJsonObject {
+                put("kinds", buildJsonArray { add(JsonPrimitive(KIND_REPLACEABLE_PARAMETERIZED)) })
+                put("authors", buildJsonArray { add(JsonPrimitive(pubkey)) })
+                put("#d", buildJsonArray {
+                    add(JsonPrimitive(cachedBackupDTag))
+                    add(JsonPrimitive(cachedKeyDTag))
+                })
+            }
+            probeAmberCandidates(queryAllValid(targeted.toString(), timeoutMs), pubkey)
+                ?.let { return it }
+            // No pair under the cached tags — they can be stale w.r.t.
+            // the relays (e.g. the live backup was published by another
+            // install of the same Amber identity, whose aux_rand yielded
+            // different d-tags). Fall through to the untargeted probe so
+            // the targeted path is strictly additive.
+        }
         val filter = buildJsonObject {
             put("kinds", buildJsonArray { add(JsonPrimitive(KIND_REPLACEABLE_PARAMETERIZED)) })
             put("authors", buildJsonArray { add(JsonPrimitive(pubkey)) })
         }
-        val events = queryAllValid(filter.toString(), timeoutMs)
+        return probeAmberCandidates(queryAllValid(filter.toString(), timeoutMs), pubkey)
+    }
+
+    /** Decrypt-probe a candidate set for the (pointer, key) pair — see
+     *  [fetchByQueryAllAmber] for the shape-matching rationale. */
+    private suspend fun probeAmberCandidates(
+        events: List<MinimalEvent>,
+        pubkey: String,
+    ): Pair<MinimalEvent, MinimalEvent>? {
         // The key event's content is valid hex (NIP-44 v2 base64 payload).
         // The pointer's decrypted content is a JSON BackupPointer with a
         // `version` field. Sort by createdAt DESC first so the earliest
