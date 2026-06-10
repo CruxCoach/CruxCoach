@@ -414,6 +414,18 @@ class SessionQueueManager(
                     Log.w(TAG, "Climb not found: ${item.climbUuid}")
                     return@launch
                 }
+                // Board-match guard against the CONNECTED board (when known):
+                // switching the active board in Settings never disconnects, so
+                // the queue could otherwise push wrong-brand frames to the
+                // board still on the link (e.g. a MoonBoard ASCII frame to an
+                // Aurora board). Skip without marking lastSentClimbKey so the
+                // climb is retried once the matching board (re)connects.
+                val connectedBrand = bleConnection.connectedBoardBrand.value
+                if (connectedBrand != null && climb.brand != connectedBrand) {
+                    Log.w(TAG, "sendCurrentClimbToBoard: skipped — climb brand " +
+                        "${climb.brand} != connected board $connectedBrand")
+                    return@launch
+                }
                 // Brand-aware transport: a MoonBoard climb sends an ASCII
                 // frames payload via the Nordic-UART path, not the Kilter
                 // placement→LED map. Resolve the variant from the climb's own

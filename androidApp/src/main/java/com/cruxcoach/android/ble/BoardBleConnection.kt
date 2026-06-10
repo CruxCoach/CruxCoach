@@ -7,6 +7,8 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import com.cruxcoach.android.R
+import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.BoardPacketEncoder
 import com.cruxcoach.domain.board.BoardHold
 import com.cruxcoach.domain.board.HoldRole
@@ -67,6 +69,22 @@ class BoardBleConnection(private val context: Context) {
 
     private val _connectedBoardName = MutableStateFlow<String?>(null)
     val connectedBoardName: StateFlow<String?> = _connectedBoardName.asStateFlow()
+
+    // Brand of the board this GATT actually belongs to (from the
+    // DiscoveredBoard passed to connect()). Send paths must guard against
+    // THIS, not the active-board pref: switching the active board in
+    // Settings never disconnects, so the pref can diverge from the board
+    // that is still on the other end of the link. Null while disconnected.
+    private val _connectedBoardBrand = MutableStateFlow<BoardBrand?>(null)
+    val connectedBoardBrand: StateFlow<BoardBrand?> = _connectedBoardBrand.asStateFlow()
+
+    // Localized reason (string-res id) why the last connect attempt was torn
+    // down at service discovery — currently only the unsupported RedBear-UART
+    // MoonBoard LED-kit generation. Survives the disconnect (so the sheet can
+    // show it on the scan list the user lands back on) and is cleared on the
+    // next connect attempt. Null = no known failure reason.
+    private val _connectFailureReason = MutableStateFlow<Int?>(null)
+    val connectFailureReason: StateFlow<Int?> = _connectFailureReason.asStateFlow()
 
     private var gatt: BluetoothGatt? = null
     private var writeCharacteristic: BluetoothGattCharacteristic? = null
@@ -203,11 +221,30 @@ class BoardBleConnection(private val context: Context) {
                     onRestartScannersAfterConnect?.invoke()
                 } else {
                     Log.w(TAG, "DATA_TRANSFER_CHAR not found in service")
-                    _connectionState.value = ConnectionState.DISCONNECTED
+                    // Pre-2017 MoonBoard LED kits speak the RedBear UART
+                    // service instead of the Nordic UART we implement. Flag
+                    // it so the UI can show an honest "this MoonBoard
+                    // generation is not supported yet" instead of leaving
+                    // the user in a silent connect/disconnect loop.
+                    if (_connectedBoardBrand.value == BoardBrand.MOONBOARD &&
+                        gatt.getService(BoardBleUuids.REDBEAR_UART_SERVICE) != null
+                    ) {
+                        Log.w(TAG, "RedBear UART service present — unsupported MoonBoard LED-kit generation")
+                        _connectFailureReason.value = R.string.board_ble_moonboard_generation_unsupported
+                    }
+                    // Tear the link down properly. Only flipping the state
+                    // would leak a live GATT: the board stops advertising
+                    // while connected, so it vanishes from scans until a
+                    // Bluetooth toggle. disconnect() runs the full teardown
+                    // (gatt.disconnect → close, pendingClose, safety timer).
+                    disconnect()
+                    onRestartScannersAfterConnect?.invoke()
                 }
             } else {
                 Log.w(TAG, "onServicesDiscovered failed: status=$status")
-                _connectionState.value = ConnectionState.DISCONNECTED
+                // Same teardown as the missing-characteristic arm above.
+                disconnect()
+                onRestartScannersAfterConnect?.invoke()
             }
         }
 
@@ -237,6 +274,7 @@ class BoardBleConnection(private val context: Context) {
         Log.d(TAG, "Remote/error disconnect (status=0x${status.toString(16)})")
         _connectionState.value = ConnectionState.DISCONNECTED
         _connectedBoardName.value = null
+        _connectedBoardBrand.value = null
         gatt = null
         writeCharacteristic = null
     }
@@ -292,6 +330,9 @@ class BoardBleConnection(private val context: Context) {
         gattClosed = false
         _connectionState.value = ConnectionState.CONNECTING
         _connectedBoardName.value = board.displayName
+        _connectedBoardBrand.value = board.boardBrand
+        // Fresh attempt — drop any failure reason from the previous one.
+        _connectFailureReason.value = null
         // FEAT-031: ledsPerHold (Kilter = 2, other Aurora boards = 1) feeds the
         // @2 LED power-budget scaling; harmless on @3 (where it is unused).
         encoder = BoardPacketEncoder(board.apiLevel, BoardPacketEncoder.ledsPerHoldFor(board.boardBrand))
@@ -323,6 +364,7 @@ class BoardBleConnection(private val context: Context) {
             // Abort if state changed during the wait
             if (_connectionState.value != ConnectionState.CONNECTING) {
                 _connectedBoardName.value = null
+                _connectedBoardBrand.value = null
                 return@launch
             }
 
@@ -355,6 +397,7 @@ class BoardBleConnection(private val context: Context) {
                 Log.e(TAG, "connectGatt returned null — GATT client slot exhausted?")
                 _connectionState.value = ConnectionState.DISCONNECTED
                 _connectedBoardName.value = null
+                _connectedBoardBrand.value = null
                 onRestartScannersAfterConnect?.invoke()
                 return@launch
             }
@@ -442,6 +485,15 @@ class BoardBleConnection(private val context: Context) {
         // Re-armed from the finally below once we flip back to CONNECTED.
         disconnectJob?.cancel()
         try {
+            // Holds without an LED mapping (outside the configured product
+            // size, e.g. kickboard rows on a no-kickboard board) are skipped
+            // by both encode branches below — the wall then shows a partial
+            // climb. Log it so a "sent ok but holds missing" report is
+            // triageable; the detail-screen send path surfaces a UI warning.
+            val unmapped = holds.count { placementToLed[it.placementId] == null }
+            if (unmapped > 0) {
+                Log.w(TAG, "sendClimb: $unmapped/${holds.size} holds have no LED mapping — board will light a partial climb")
+            }
             val chunks = if (roleColors != null) {
                 // Resolve each hold's colour by canonical role CLASS, not raw
                 // code. A climb authored on an Aurora board carries the editor's
@@ -483,6 +535,15 @@ class BoardBleConnection(private val context: Context) {
     }
 
     /**
+     * Encode [leds] ((position, colourByte) pairs) with the CONNECTED board's
+     * encoder — the apiLevel/ledsPerHold configured in [connect] — and write
+     * them. Used by the easter animation so an @2 legacy board gets v2
+     * packets instead of frames from a hardcoded API-3 encoder.
+     */
+    suspend fun sendRawLeds(leds: List<Pair<Int, Int>>): Boolean =
+        sendRawChunks(encoder.encodeClimb(leds))
+
+    /**
      * Send a MoonBoard climb to the connected board (FEAT-027).
      *
      * MoonBoard speaks the Nordic UART Service — the same GATT service
@@ -503,6 +564,9 @@ class BoardBleConnection(private val context: Context) {
         if (_connectionState.value != ConnectionState.CONNECTED) return false
 
         _connectionState.value = ConnectionState.SENDING
+        // Park any pending idle-disconnect so it can't fire mid-send.
+        // Re-armed from the finally below once we flip back to CONNECTED.
+        disconnectJob?.cancel()
         try {
             val payload = MoonBoardFrameEncoder.encode(frames, variant)
             val chunks = payload.toList()
@@ -569,6 +633,7 @@ class BoardBleConnection(private val context: Context) {
         writeCharacteristic = null
         _connectionState.value = ConnectionState.DISCONNECTED
         _connectedBoardName.value = null
+        _connectedBoardBrand.value = null
 
         if (g != null) {
             userDisconnecting = true

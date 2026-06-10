@@ -16,6 +16,7 @@ import com.cruxcoach.android.data.NearbyPresenceManager
 import com.cruxcoach.android.data.SessionQueueManager
 import com.cruxcoach.android.data.SessionRole
 import com.cruxcoach.android.data.UserPreferences
+import com.cruxcoach.domain.board.BoardBrand
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -49,6 +50,10 @@ data class BleConnectionState(
      * user explicitly opened the sheet to inspect the list (false).
      */
     val isAutoConnectScan: Boolean = false,
+    /** Localized reason (string-res id) why the last connect attempt was torn
+     *  down at service discovery (e.g. unsupported RedBear-UART MoonBoard
+     *  LED-kit generation). Null = none. */
+    @androidx.annotation.StringRes val connectFailureReason: Int? = null,
 )
 
 @HiltViewModel
@@ -120,6 +125,11 @@ class BleConnectionViewModel @Inject constructor(
         viewModelScope.safeLaunch(TAG) {
             bleConnection.connectedBoardName.collect { name ->
                 _state.update { it.copy(connectedBoardName = name) }
+            }
+        }
+        viewModelScope.safeLaunch(TAG) {
+            bleConnection.connectFailureReason.collect { reason ->
+                _state.update { it.copy(connectFailureReason = reason) }
             }
         }
         viewModelScope.safeLaunch(TAG) {
@@ -266,6 +276,19 @@ class BleConnectionViewModel @Inject constructor(
     }
 
     /**
+     * Narrow [boards] to those matching the ACTIVE board's brand, falling back
+     * to the full list when none match. Auto-connect previously took any
+     * discovered board by discovery order — in a gym with e.g. a MoonBoard
+     * next to a Kilter (or a neighbour's Tension in BLE range) it could
+     * silently grab the wrong wall, and every later send then fails with a
+     * brand mismatch that never explains the connection itself is wrong.
+     */
+    private suspend fun preferActiveBrand(boards: List<DiscoveredBoard>): List<DiscoveredBoard> {
+        val activeBrand = BoardBrand.fromWire(userPreferences.boardBrand.first())
+        return boards.filter { it.boardBrand == activeBrand }.ifEmpty { boards }
+    }
+
+    /**
      * Scan with auto-connect on single result. Uses [awaitBoardsForAutoConnect]
      * — fast when one board is present (typically ~discovery + ~600 ms cool-down,
      * was always a blind 2 s). Outcomes:
@@ -287,11 +310,12 @@ class BleConnectionViewModel @Inject constructor(
                 _state.update { it.copy(isAutoConnectScan = false) }
                 return@safeLaunch
             }
-            if (boards.size == 1) {
-                Log.i("BleConnectionVM", "auto-connect: single board, connecting")
-                connectToBoard(boards.first())
+            val candidates = preferActiveBrand(boards)
+            if (candidates.size == 1) {
+                Log.i("BleConnectionVM", "auto-connect: single ${candidates.first().boardBrand} board, connecting")
+                connectToBoard(candidates.first())
             } else {
-                Log.i("BleConnectionVM", "auto-connect: ${boards.size} boards, leaving manual pick")
+                Log.i("BleConnectionVM", "auto-connect: ${candidates.size} candidate boards (${boards.size} discovered), leaving manual pick")
             }
             _state.update { it.copy(isAutoConnectScan = false) }
         }
@@ -348,10 +372,13 @@ class BleConnectionViewModel @Inject constructor(
             nearbyClimbScanner.nearbyClimbs.first { climbs ->
                 climbs.none { !it.isLastClimb } && _state.value.isRequestingDisconnect
             }
-            // Other user disconnected (stopped advertising) — now connect
+            // Other user disconnected (stopped advertising) — now connect.
+            // Prefer the active board's brand over raw discovery order.
             disconnectTimeoutJob?.cancel()
             bleScanner.startScan()
-            val board = bleScanner.discoveredBoards.first { it.isNotEmpty() }.first()
+            val board = preferActiveBrand(
+                bleScanner.discoveredBoards.first { it.isNotEmpty() }
+            ).first()
             bleScanner.stopScan()
             bleConnection.connect(board)
             _state.update { it.copy(
@@ -426,7 +453,12 @@ class BleConnectionViewModel @Inject constructor(
             Log.d(TAG, "startAutoConnectForSession: board vacant, awaiting GATT close then scanning")
             bleConnection.awaitGattClosed()
             bleScanner.startScan()
-            val board = bleScanner.discoveredBoards.first { it.isNotEmpty() }.first()
+            // Prefer the active board's brand over raw discovery order — the
+            // session projects onto the active board, so grabbing whatever
+            // advertised first could light a different wall.
+            val board = preferActiveBrand(
+                bleScanner.discoveredBoards.first { it.isNotEmpty() }
+            ).first()
             bleScanner.stopScan()
             Log.d(TAG, "startAutoConnectForSession: found board '${board.displayName}', connecting")
             bleConnection.connect(board)

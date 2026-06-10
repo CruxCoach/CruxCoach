@@ -617,10 +617,13 @@ class SettingsViewModel @Inject constructor(
         if (!bleConnection.isConnected()) return
         animationJob?.cancel()
         animationJob = viewModelScope.launch {
-            // Aurora-protocol boards only (Kilter + the Aurora family): the
-            // animation builds Aurora LED-grid frames a MoonBoard can't render,
-            // and would otherwise reach a MoonBoard via the trailing clearBoard().
-            if (!BoardBrand.fromWire(userPreferences.boardBrand.first()).usesAuroraProtocol) return@launch
+            // Kilter-only (mirrors BoardBrowserViewModel.playEasterAnimation):
+            // the frames come from Kilter's LED grid, and other Aurora boards
+            // reuse Kilter-numbered size ids — the same grid would light
+            // wrong/garbled LEDs on a Tension etc., and a MoonBoard can't
+            // parse Aurora packets at all. Gate on the CONNECTED board's
+            // brand so a stale active-board pref can't hit another board.
+            if (bleConnection.connectedBoardBrand.value != BoardBrand.KILTER) return@launch
             _state.update { it.copy(isAnimating = true) }
             try {
                 val grid = withContext(Dispatchers.IO) {
@@ -629,11 +632,11 @@ class SettingsViewModel @Inject constructor(
                 if (grid.isEmpty()) return@launch
                 val frames = BoardEasterAnimations.easterEgg(grid)
                 if (frames.isEmpty() || frames.all { it.leds.isEmpty() }) return@launch
-                val encoder = com.cruxcoach.domain.board.BoardPacketEncoder(3)
                 repeat(3) {
                     for (frame in frames) {
-                        val chunks = encoder.encodeClimb(frame.leds)
-                        bleConnection.sendRawChunks(chunks)
+                        // sendRawLeds encodes with the CONNECTED board's
+                        // encoder (correct apiLevel), not a hardcoded @3 one.
+                        bleConnection.sendRawLeds(frame.leds)
                         delay(250)
                     }
                 }

@@ -191,6 +191,28 @@ fun BleConnectionSheet(
                         LegacyBleWarningContent(onAccept = { legacyAccepted = true })
                         return@Column
                     }
+                    // Honest connect-failure reason from the last attempt
+                    // (e.g. a pre-2017 RedBear-UART MoonBoard LED kit we
+                    // can't drive yet) — otherwise the board just "drops"
+                    // back into the scan list with no explanation.
+                    state.connectFailureReason?.let { reasonRes ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Warning,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp),
+                                tint = WarningYellow
+                            )
+                            Text(
+                                stringResource(reasonRes),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = WarningYellow
+                            )
+                        }
+                    }
                     val bleShareState by LocalBleShareManager.current.uiState.collectAsStateWithLifecycle()
                     ScanContent(
                         isScanning = state.isScanning,

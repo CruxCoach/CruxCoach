@@ -107,12 +107,25 @@ internal class BoardSendController(
         Log.i(TAG, "sendToBoard: start frames=${s.holds.size}")
         sendJob = scope.launch {
             try {
-                // Board-match guard: you can only send a climb to a connected
-                // board of the same family. A climb opened from a mixed list
-                // or deep link can differ from the active board; sending it
-                // would light the wrong holds. (This Kilter branch is only
-                // reached for non-MoonBoard climbs, so the check catches the
-                // "active board is a MoonBoard" mismatch.)
+                // Board-match guard, part 1: the CONNECTED board's brand wins.
+                // Switching the active board in Settings never disconnects, so
+                // the pref can diverge from the board still on the link — the
+                // pref-only check below would happily send a Tension climb to
+                // a still-connected Kilter board, lighting the wrong holds.
+                val connectedBrand = bleConnection.connectedBoardBrand.value
+                if (connectedBrand != null && s.climb != null && s.climb.brand != connectedBrand) {
+                    state.update { it.copy(
+                        ble = it.ble.copy(isSending = false, error = R.string.board_send_error_connected_board_mismatch),
+                        nearby = it.nearby.copy(debugInfo = "connected-board brand mismatch")
+                    ) }
+                    return@launch
+                }
+                // Board-match guard, part 2: you can only send a climb to a
+                // board of the same family as the ACTIVE board. A climb opened
+                // from a mixed list or deep link can differ from the active
+                // board; sending it would light the wrong holds. (This Kilter
+                // branch is only reached for non-MoonBoard climbs, so the
+                // check catches the "active board is a MoonBoard" mismatch.)
                 val activeBrand = userPreferences.boardBrand.first()
                 if (s.climb != null && s.climb.brand != BoardBrand.fromWire(activeBrand)) {
                     state.update { it.copy(
@@ -157,11 +170,22 @@ internal class BoardSendController(
                     }
                     fallback.toRoleColorMap()
                 }
+                // Holds outside the configured board size (e.g. the detail
+                // screen's larger "effective board" render, or kickboard rows
+                // on a no-kickboard size) have no LED mapping and are skipped
+                // by the encoder — the wall shows a partial climb. Surface a
+                // non-blocking warning instead of a plain "sent ok".
+                val unmappedHolds = s.holds.count { it.placementId !in placementToLed }
                 val success = bleConnection.sendClimb(s.holds, placementToLed, roleColorMap)
-                Log.i(TAG, "sendToBoard: writes done success=$success")
+                Log.i(TAG, "sendToBoard: writes done success=$success unmapped=$unmappedHolds")
                 state.update { it.copy(
-                    ble = it.ble.copy(isSending = false, success = success, error = if (!success) R.string.board_send_error_send_failed else null),
-                    nearby = it.nearby.copy(debugInfo = "sent ok=$success")
+                    ble = it.ble.copy(
+                        isSending = false,
+                        success = success,
+                        error = if (!success) R.string.board_send_error_send_failed else null,
+                        warning = if (success && unmappedHolds > 0) R.string.board_send_warning_holds_not_lit else null,
+                    ),
+                    nearby = it.nearby.copy(debugInfo = "sent ok=$success unmapped=$unmappedHolds")
                 ) }
                 if (success) recordSentToHistory(s)
                 // Advertise climb to nearby devices if sharing is enabled
@@ -216,7 +240,19 @@ internal class BoardSendController(
         Log.i(TAG, "sendMoonBoardToBoard: start frames=${frames.length}")
         sendJob = scope.launch {
             try {
-                // Board-match guard: a MoonBoard climb can only go to a
+                // Board-match guard, part 1: the CONNECTED board must be a
+                // MoonBoard. Switching the active board in Settings never
+                // disconnects, so the pref check below alone would let a
+                // MoonBoard ASCII frame go to a still-connected Aurora board.
+                val connectedBrand = bleConnection.connectedBoardBrand.value
+                if (connectedBrand != null && connectedBrand != BoardBrand.MOONBOARD) {
+                    state.update { it.copy(
+                        ble = it.ble.copy(isSending = false, error = R.string.board_send_error_connected_board_mismatch),
+                        nearby = it.nearby.copy(debugInfo = "connected board not moonboard")
+                    ) }
+                    return@launch
+                }
+                // Board-match guard, part 2: a MoonBoard climb can only go to a
                 // connected MoonBoard of the same variant. A cross-board list
                 // / deep link can surface a MoonBoard climb while a Kilter (or
                 // a different MoonBoard variant) is configured; sending it
