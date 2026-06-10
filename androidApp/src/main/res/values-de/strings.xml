@@ -640,6 +640,11 @@
     <string name="board_browser_climbs_loaded">%d Climbs (%d geladen)</string>
     <string name="board_browser_preparing_db">Climb-Datenbank wird vorbereitet…</string>
     <string name="board_browser_preparing_db_hint">Der erste Start nach einem Update kann auf langsameren Geräten ein, zwei Minuten dauern. Bitte die App offen lassen — beim Schließen beginnt die Vorbereitung später von vorn.</string>
+    <string name="board_browser_empty_no_results">Keine Climbs passen zu den aktuellen Filtern</string>
+    <string name="board_browser_empty_no_results_hint">Versuch einen größeren Grad-Bereich, einen anderen Winkel oder setz die Filter zurück.</string>
+    <string name="board_browser_empty_clear_filters">Filter zurücksetzen</string>
+    <string name="board_browser_empty_no_catalogue">Der Katalog für dieses Board wurde noch nicht heruntergeladen</string>
+    <string name="board_browser_empty_load_catalogue">Katalog laden</string>
     <string name="board_detail_title">Climb Details</string>
     <string name="board_detail_by_setter">von %s</string>
     <string name="board_detail_error">Fehler</string>
@@ -884,6 +889,7 @@
     <!-- FEAT-027: Board-Marken-Labels in der BLE-Kopplungs-UI -->
     <string name="board_ble_brand_kilter">Kilter Board</string>
     <string name="board_ble_brand_moonboard">MoonBoard</string>
+    <string name="board_ble_moonboard_generation_unsupported">Dieses MoonBoard nutzt ein älteres LED-Kit (vor 2017), das noch nicht unterstützt wird.</string>
     <string name="board_ble_start_scan">Scan starten</string>
     <string name="board_ble_stop_scan">Scan stoppen</string>
     <string name="board_ble_board_occupied">Board ist besetzt</string>
@@ -1496,7 +1502,7 @@
     <string name="feat007_gym_many">Diese Halle hat %1$d Boards — wähle das, vor dem du stehst:</string>
     <string name="feat007_gym_no_walls">Für diese Halle sind keine Board-Daten hinterlegt.</string>
     <string name="feat007_back">Zurück</string>
-    <string name="feat007_gym_loading">Hallendaten werden noch geladen — gleich nochmal versuchen.</string>
+    <string name="feat007_gym_loading">Noch keine Hallendaten auf diesem Gerät — sie kommen mit der Board-Synchronisierung. Du kannst dein Board unten direkt wählen.</string>
     <string name="feat007_gym_recommended">am häufigsten</string>
     <string name="settings_section_data">Datenverwaltung</string>
     <string name="settings_section_dev_contact">Entwickler-Kontakt</string>
@@ -1834,11 +1840,13 @@
     <string name="board_selection_variant_label">Welches Board?</string>
     <string name="board_selection_aurora_size_label">Welche Größe?</string>
     <string name="board_send_error_brand_mismatch">Dieser Climb gehört zu einem anderen Board-Typ als dein aktives Board.</string>
+    <string name="board_send_error_connected_board_mismatch">Dieser Climb gehört zu einem anderen Board-Typ als das verbundene Board. Verbinde dich mit dem passenden Board.</string>
     <string name="board_send_error_no_led_data">Keine LED-Daten. Bitte Board-Daten neu synchronisieren.</string>
     <string name="board_send_error_send_failed">Senden fehlgeschlagen.</string>
     <string name="board_send_error_generic">Fehler beim Senden.</string>
     <string name="board_send_error_active_not_moonboard">Dein aktives Board ist kein MoonBoard — wechsle es in den Einstellungen, um diesen Climb zu senden.</string>
     <string name="board_send_error_moonboard_variant_mismatch">Dieser Climb gehört zu einer anderen MoonBoard-Variante als dein aktives Board.</string>
+    <string name="board_send_warning_holds_not_lit">Einige Griffe liegen außerhalb deiner Board-Größe und wurden nicht beleuchtet.</string>
     <string name="board_sync_error_download">Download fehlgeschlagen. Bitte prüfe deine Internetverbindung und versuche es erneut.</string>
     <string name="board_sync_error_update_offline">Aktualisierung nicht möglich. Bestehende Daten bleiben erhalten.</string>
     <string name="board_sync_error_import">Import fehlgeschlagen. Bitte später erneut versuchen.</string>

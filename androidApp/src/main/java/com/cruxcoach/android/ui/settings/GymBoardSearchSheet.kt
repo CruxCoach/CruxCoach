@@ -43,9 +43,19 @@ internal fun GymBoardSearchSheet(
 ) {
     val s by vm.state.collectAsStateWithLifecycle()
 
+    // The VM is scoped to the HOST destination (Settings / board filter /
+    // onboarding), so a previous visit's gym pick survives sheet close.
+    // Reset on every sheet entry — otherwise the single-option auto-apply
+    // below re-fires on reopen with the stale pick, silently rewriting the
+    // board prefs and self-closing the sheet before the user can search.
+    // Declared BEFORE the auto-apply effect: launch order guarantees the
+    // clear runs first, and the auto-apply reads vm.state.value fresh.
+    LaunchedEffect(Unit) { vm.clearGymSelection() }
+
     // Apply a chosen board option (routes every brand through the shared picker
     // VM) and close the sheet. Hoisted so a tapped card and the single-option
-    // auto-apply below take the exact same path.
+    // auto-apply below take the exact same path. Clears the gym selection
+    // before closing so the consumed pick can never re-apply on reopen.
     val apply: (GymWallOption) -> Unit = { opt ->
         when (opt.boardBrand) {
             BoardBrand.MOONBOARD ->
@@ -63,15 +73,19 @@ internal fun GymBoardSearchSheet(
                     opt.productSizeId.takeIf { it > 0 },
                 )
         }
+        vm.clearGymSelection()
         onClose()
     }
 
     // A gym that resolves to exactly ONE board (97% of Kilter gyms, Touchstone's
     // single size, any cron-resolved MoonBoard/Decoy variant) needs no
-    // confirmation tap — apply it the moment the gym is picked.
+    // confirmation tap — apply it the moment the gym is picked. Reads
+    // vm.state.value (not the composition snapshot `s`) so the entry-reset
+    // above is already visible and a stale pick can't slip through.
     LaunchedEffect(s.selectedGym?.id, s.wallOptions.size) {
-        if (s.selectedGym != null && s.wallOptions.size == 1) {
-            apply(s.wallOptions.first())
+        val cur = vm.state.value
+        if (cur.selectedGym != null && cur.wallOptions.size == 1) {
+            apply(cur.wallOptions.first())
         }
     }
 
@@ -164,11 +178,23 @@ internal fun GymBoardSearchSheet(
                         }
                     }
 
-                    // No gym/wall data synced yet (fresh install before the
+                    // Real results ALWAYS win — even when `enabled` (a snapshot
+                    // taken at VM init, possibly stale until a search self-heals
+                    // it) still says false: a successful search proves the data
+                    // is there, so it must never be masked by the no-data text.
+                    s.results.isNotEmpty() -> {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            s.results.forEach { g ->
+                                GymRow(g.name, gymSubtitle(g)) { vm.selectGym(g) }
+                            }
+                        }
+                    }
+
+                    // No gym/wall data on the device (fresh install before the
                     // location chunk arrives): searching would hit an empty DB,
                     // so say so instead of silently returning "no gym found".
                     // The persistent fallback below still leads to the manual
-                    // picker. Consumes the previously-computed-but-unused flag.
+                    // picker.
                     !s.enabled -> {
                         Text(
                             stringResource(R.string.feat007_gym_loading),
@@ -184,19 +210,11 @@ internal fun GymBoardSearchSheet(
                         )
                     }
 
-                    s.results.isEmpty() -> {
+                    else -> {
                         Text(
                             stringResource(R.string.feat007_gym_search_none),
                             style = MaterialTheme.typography.bodyMedium,
                         )
-                    }
-
-                    else -> {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            s.results.forEach { g ->
-                                GymRow(g.name, gymSubtitle(g)) { vm.selectGym(g) }
-                            }
-                        }
                     }
                 }
 

@@ -54,7 +54,10 @@ private val MOONBOARD_VARIANT_RANK: Map<Long, Int> =
     mapOf(2L to 0, 5L to 1, 4L to 2, 3L to 3, 6L to 4)
 
 data class GymBoardPickerState(
-    /** False when no wall data is synced yet → host hides Path B. */
+    /** False while no location data is on the device — drives the sheet's
+     *  "no gym data yet" empty state. Snapshot at VM init, self-healed on
+     *  every search while false (the VM outlives the sheet, so a chunk that
+     *  lands mid-session must re-enable the picker). */
     val enabled: Boolean = false,
     val query: String = "",
     val results: List<BoardLocation> = emptyList(),
@@ -117,6 +120,20 @@ class GymBoardPickerViewModel @Inject constructor(
             _state.update { it.copy(searching = true) }
             try {
                 val res = withContext(Dispatchers.IO) { repository.searchLocations(trimmed, 60) }
+                // Self-heal the one-shot `enabled` snapshot from init: this VM
+                // outlives the sheet, so a locations chunk that lands mid-session
+                // must re-enable the picker — re-check on every search while
+                // disabled, or real results would stay masked by the "no data
+                // yet" text for the rest of the session. Also (re)load the
+                // size-frequency ordering the init read skipped on an empty DB.
+                if (!_state.value.enabled) {
+                    val hasData = res.isNotEmpty() ||
+                        withContext(Dispatchers.IO) { repository.count() > 0L }
+                    if (hasData) {
+                        frequency = withContext(Dispatchers.IO) { repository.productSizeFrequency() }
+                        _state.update { it.copy(enabled = true) }
+                    }
+                }
                 // Drop the query result if the user kept typing.
                 if (_state.value.query.trim() == trimmed) {
                     // Collapse per-brand rows of the same physical gym into one

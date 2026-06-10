@@ -1,11 +1,15 @@
 package com.cruxcoach.android.ui.settings
 
+import android.content.Context
+import android.util.Log
+import android.widget.Toast
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.cruxcoach.android.R
 import com.cruxcoach.android.data.AuroraBoardSelector
 import com.cruxcoach.android.data.BoardConstants
 import com.cruxcoach.android.data.UserPreferences
@@ -14,6 +18,8 @@ import com.cruxcoach.data.repository.BoardSize
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.MoonBoardVariant
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -23,6 +29,8 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
+
+private const val TAG = "BoardPickerVM"
 
 /**
  * Reactive state shared by every board picker (FEAT-031). Derived straight from
@@ -61,6 +69,7 @@ data class BoardPickerState(
  */
 @HiltViewModel
 class BoardPickerViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val userPreferences: UserPreferences,
     private val boardRepository: BoardRepository,
     private val auroraBoardSelector: AuroraBoardSelector,
@@ -143,6 +152,11 @@ class BoardPickerViewModel @Inject constructor(
     fun selectKilter(sizeId: Int, fixedAngle: Int? = null) {
         viewModelScope.launch {
             val size = productSizes.value.firstOrNull { it.id.toInt() == sizeId }
+            // Never persist an id outside the Kilter size list (e.g. a stale
+            // Aurora id leaking through a caller): a nonexistent product_size
+            // resolves to null everywhere — empty size label, fit filter
+            // silently off, no board image. Fall back to the product default.
+            val validSizeId = if (size != null) sizeId else BoardConstants.KILTER_DEFAULT_SIZE
             val layout = BoardConstants.layoutIdForProduct(
                 size?.productId?.toInt() ?: BoardConstants.KILTER_PRODUCT_ID,
             )
@@ -150,7 +164,7 @@ class BoardPickerViewModel @Inject constructor(
             // separate writes can flash a transient (kilter, stale-layout) tuple
             // through the board-flow collectors. fixedAngle is non-null only for a
             // fixed-angle gym wall, seeding the browse angle to its real value.
-            userPreferences.setBoardSelection(BoardBrand.KILTER.wireValue, layout, sizeId, fixedAngle)
+            userPreferences.setBoardSelection(BoardBrand.KILTER.wireValue, layout, validSizeId, fixedAngle)
         }
     }
 
@@ -159,7 +173,26 @@ class BoardPickerViewModel @Inject constructor(
     }
 
     fun selectAurora(board: BoardBrand, variant: BoardConstants.AuroraVariant?, productSizeId: Int? = null) {
-        viewModelScope.launch { auroraBoardSelector.select(board, variant, productSizeId) }
+        viewModelScope.launch {
+            val status = try {
+                auroraBoardSelector.select(board, variant, productSizeId).status
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "Aurora board selection failed", e)
+                AuroraBoardSelector.Status.FAILED
+            }
+            // Surface a failed catalogue sync. The picker dialog / gym sheet is
+            // already closed when the sync resolves, so a toast is the one
+            // feedback channel that reaches every call site: without it a
+            // single-layout pick (Grasshopper / So iLL / auto-applied
+            // Touchstone) is a completely silent no-op offline — the selector
+            // persists nothing for variant-less boards until the sync succeeds
+            // — and a variant pick lands on an unexplained empty board.
+            if (status == AuroraBoardSelector.Status.FAILED) {
+                Toast.makeText(context, R.string.aurora_sync_failed_generic, Toast.LENGTH_LONG).show()
+            }
+        }
     }
 }
 

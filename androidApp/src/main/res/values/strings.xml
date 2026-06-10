@@ -639,6 +639,11 @@
     <string name="board_browser_climbs_loaded">%d Climbs (%d loaded)</string>
     <string name="board_browser_preparing_db">Preparing the climb database…</string>
     <string name="board_browser_preparing_db_hint">First launch after an update can take a minute or two on slower devices. Please keep the app open — closing it makes the preparation start over next time.</string>
+    <string name="board_browser_empty_no_results">No climbs match the current filters</string>
+    <string name="board_browser_empty_no_results_hint">Try a wider grade range, another angle, or reset the filters.</string>
+    <string name="board_browser_empty_clear_filters">Reset filters</string>
+    <string name="board_browser_empty_no_catalogue">The catalogue for this board hasn\'t been downloaded yet</string>
+    <string name="board_browser_empty_load_catalogue">Load catalogue</string>
     <string name="board_detail_title">Climb details</string>
     <string name="board_detail_by_setter">by %s</string>
     <string name="board_detail_error">Error</string>
@@ -840,6 +845,7 @@
     <!-- FEAT-027: board brand labels in the BLE pairing UI -->
     <string name="board_ble_brand_kilter">Kilter Board</string>
     <string name="board_ble_brand_moonboard">MoonBoard</string>
+    <string name="board_ble_moonboard_generation_unsupported">This MoonBoard uses an older LED kit (pre-2017) that is not supported yet.</string>
     <string name="board_ble_start_scan">Start scan</string>
     <string name="board_ble_stop_scan">Stop scan</string>
     <string name="board_ble_board_occupied">Board is occupied</string>
@@ -1449,7 +1455,7 @@
     <string name="feat007_gym_many">This gym has %1$d boards — pick the one you\'re at:</string>
     <string name="feat007_gym_no_walls">No board data for this gym.</string>
     <string name="feat007_back">Back</string>
-    <string name="feat007_gym_loading">Gym data is still loading — try again in a moment.</string>
+    <string name="feat007_gym_loading">No gym data on this device yet — it arrives with the board sync. You can still pick your board directly below.</string>
     <string name="feat007_gym_recommended">most common</string>
     <string name="settings_section_data">Data Management</string>
     <string name="settings_section_dev_contact">Developer Contact</string>
@@ -1831,11 +1837,13 @@
     <string name="board_selection_variant_label">Which board?</string>
     <string name="board_selection_aurora_size_label">Which size?</string>
     <string name="board_send_error_brand_mismatch">This climb belongs to a different board type than your active board.</string>
+    <string name="board_send_error_connected_board_mismatch">This climb belongs to a different board type than the connected board. Reconnect to the matching board.</string>
     <string name="board_send_error_no_led_data">No LED data. Please re-sync the board data.</string>
     <string name="board_send_error_send_failed">Send failed.</string>
     <string name="board_send_error_generic">Error while sending.</string>
     <string name="board_send_error_active_not_moonboard">Your active board is not a MoonBoard — switch it in Settings to send this climb.</string>
     <string name="board_send_error_moonboard_variant_mismatch">This climb belongs to a different MoonBoard variant than your active board.</string>
+    <string name="board_send_warning_holds_not_lit">Some holds are outside your board size and were not lit.</string>
     <string name="board_sync_error_download">Download failed. Please check your internet connection and try again.</string>
     <string name="board_sync_error_update_offline">Update not possible. Your existing data is preserved.</string>
     <string name="board_sync_error_import">Import failed. Please try again later.</string>

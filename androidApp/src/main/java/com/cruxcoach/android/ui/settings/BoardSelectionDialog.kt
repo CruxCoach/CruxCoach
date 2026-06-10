@@ -96,17 +96,26 @@ internal fun BoardSelectionDialog(
     onFindViaGym: (() -> Unit)? = null,
     onDismiss: () -> Unit,
 ) {
+    val activeBrand = remember(initialBrand) { BoardBrand.fromWire(initialBrand) }
+    // Brand-guard the persisted size/layout seeds: the prefs hold the ACTIVE
+    // board's ids, and the boards share one id space (Kilter size 7/8 vs
+    // Tension TB2 7/8, So iLL 2 vs Decoy 2, Kilter layout 1 vs Decoy Dots
+    // layout 1). Seeding another brand's tier from them would pre-select —
+    // or, worse, CONFIRM — a nonexistent or wrong option, so each tier only
+    // honours the prefs when the active brand owns them, else falls to that
+    // tier's default. 0 = "no selection yet".
+    val seedKilterSizeId = if (activeBrand == BoardBrand.KILTER) selectedKilterSizeId else 0
     val initialCategory = remember(initialBrand, selectedKilterSizeId, productSizes) {
         when {
-            BoardBrand.fromWire(initialBrand) == BoardBrand.MOONBOARD -> BoardCategory.MOONBOARD
-            productSizes.firstOrNull { it.id.toInt() == selectedKilterSizeId }
+            activeBrand == BoardBrand.MOONBOARD -> BoardCategory.MOONBOARD
+            productSizes.firstOrNull { it.id.toInt() == seedKilterSizeId }
                 ?.productId?.toInt() == BoardConstants.KILTER_HOMEWALL_PRODUCT_ID ->
                 BoardCategory.KILTER_HOMEWALL
             else -> BoardCategory.KILTER_ORIGINAL
         }
     }
     var category by remember { mutableStateOf(initialCategory) }
-    var kilterSelection by remember { mutableIntStateOf(selectedKilterSizeId) }
+    var kilterSelection by remember { mutableIntStateOf(seedKilterSizeId) }
     var mbVariant by remember {
         mutableStateOf(selectedMoonBoardVariant ?: MoonBoardVariant.entries.first())
     }
@@ -127,7 +136,12 @@ internal fun BoardSelectionDialog(
     LaunchedEffect(auroraBrand) {
         auroraVariant = auroraBrand?.let { b ->
             val variants = BoardConstants.auroraVariants(b)
-            variants.firstOrNull { it.layoutId == selectedAuroraLayoutId } ?: variants.firstOrNull()
+            // Honour the persisted layout only when THIS brand is the active
+            // one — layout ids collide across brands (Kilter Original layout 1
+            // would otherwise pre-select Decoy Dots).
+            variants.takeIf { b == activeBrand }
+                ?.firstOrNull { it.layoutId == selectedAuroraLayoutId }
+                ?: variants.firstOrNull()
         }
     }
     // FEAT-031: the chosen product size for the active Aurora variant. Seeded to
@@ -145,7 +159,11 @@ internal fun BoardSelectionDialog(
         }
         auroraSizeId = when {
             sizes.isEmpty() -> null
-            sizes.any { it.id.toInt() == selectedAuroraProductSizeId } -> selectedAuroraProductSizeId
+            // Honour the persisted size only when THIS brand is the active one
+            // — size ids collide across brands (So iLL 2 vs Decoy 2), so a
+            // stale foreign id must not mis-seed the tier.
+            brand == activeBrand && sizes.any { it.id.toInt() == selectedAuroraProductSizeId } ->
+                selectedAuroraProductSizeId
             variant != null -> variant.defaultSizeId
             // Single-layout board: default to the largest size, matching the
             // catalogue-derived default (getDefaultProductSizeForBrand).
@@ -167,9 +185,12 @@ internal fun BoardSelectionDialog(
     }
     val kilterEmpty = isKilter && shownSizes.isEmpty()
 
-    // Switching category: if the current size pick doesn't belong to the
-    // new category's product, fall to that category's most common size.
-    LaunchedEffect(category) {
+    // Switching to a Kilter category: if the current size pick doesn't belong
+    // to its product, fall to that category's most common size. Keyed on
+    // auroraBrand too — switching from an Aurora board to Kilter often leaves
+    // [category] unchanged, but kilterSelection (0 or a foreign id) still
+    // needs the same correction or Confirm would persist an invalid size.
+    LaunchedEffect(category, auroraBrand) {
         if (isKilter && shownSizes.none { it.id.toInt() == kilterSelection }) {
             shownSizes.firstOrNull()?.let { kilterSelection = it.id.toInt() }
         }
