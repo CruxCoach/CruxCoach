@@ -257,8 +257,22 @@ class CommunityClimbSubscriber @Inject constructor(
             Log.w(TAG, "no blossom manifest within ${SEED_MANIFEST_TIMEOUT_MS}ms — proceeding without seed (cold-start cost accepted)")
             return
         }
-        Log.i(TAG, "seeding cursor from blossom manifest: $manifestEpoch")
-        userPreferences.setCommunityClimbSince(manifestEpoch)
+        // The manifest epoch is written by the KILTER board sync only —
+        // the MoonBoard/Aurora chunk pipelines fetch their own manifests
+        // (AuroraCatalogueSync / MoonBoardCatalogueSync) and never touch
+        // this pref, and their crons can lag days behind the Kilter one
+        // (or be paused). Seeding the single global cursor at the raw
+        // Kilter epoch made any community event published between a
+        // lagging brand's last chunk build and this seed permanently
+        // invisible: not in that brand's chunk, yet before the REQ
+        // cursor, and no reconciliation pass exists. Subtract a safety
+        // lookback so the first REQ re-covers that window — re-received
+        // events are absorbed idempotently by handleClimbEvent's
+        // stale-event guard, and community-climb volume keeps a week of
+        // re-sync in the tens-of-KB range.
+        val seed = lookbackAdjustedSeed(manifestEpoch)
+        Log.i(TAG, "seeding cursor from blossom manifest: $manifestEpoch (lookback-adjusted to $seed)")
+        userPreferences.setCommunityClimbSince(seed)
     }
 
     fun stop() {
@@ -1164,7 +1178,9 @@ class CommunityClimbSubscriber @Inject constructor(
         }
     }
 
-    private companion object {
+    // `internal` (not private) so the plain-JVM unit test can exercise
+    // [lookbackAdjustedSeed]; everything here is still module-local.
+    internal companion object {
         const val TAG = "CommunityClimbSub"
         // Derived from the canonical publish-side constants (a const val may
         // reference another const val) so subscribe and publish can't drift:
@@ -1232,6 +1248,21 @@ class CommunityClimbSubscriber @Inject constructor(
          *  starve the live-sub forever — past the timeout, accepting
          *  the cold-start relay flood is the lesser evil. */
         const val SEED_MANIFEST_TIMEOUT_MS = 30_000L
+
+        /** Safety window subtracted from the Kilter manifest epoch when
+         *  seeding the first-run cursor — see
+         *  [seedCursorFromManifestIfFirstRun]. The single global cursor
+         *  must not assume every brand's chunk is as fresh as Kilter's:
+         *  the MoonBoard/Aurora crons run independently and can lag.
+         *  7 days absorbs a week-long pipeline outage for any one brand
+         *  at the cost of one slightly wider (still KB-scale) first REQ. */
+        const val SEED_SAFETY_LOOKBACK_SEC = 7L * 24L * 60L * 60L
+
+        /** Pure seed math for [seedCursorFromManifestIfFirstRun] —
+         *  extracted so the plain-JVM test can pin the lookback and the
+         *  zero-clamp without standing up the subscriber's dependencies. */
+        fun lookbackAdjustedSeed(manifestEpoch: Long): Long =
+            (manifestEpoch - SEED_SAFETY_LOOKBACK_SEC).coerceAtLeast(0L)
 
         /** d-tag prefix that the publisher embeds for [pubkey] (FEAT-003 §4.2). */
         fun communityClimbDTagPrefix(pubkey: String): String =

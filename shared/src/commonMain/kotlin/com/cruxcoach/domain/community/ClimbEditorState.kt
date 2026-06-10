@@ -3,6 +3,7 @@ package com.cruxcoach.domain.community
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.BoardClimbParser
 import com.cruxcoach.domain.board.HoldRole
+import com.cruxcoach.domain.board.MoonBoardFrameEncoder
 
 /**
  * Pure-data state for the climb editor. Lives in commonMain so it can be
@@ -64,6 +65,31 @@ data class ClimbEditorState(
  *  `boardBrand` String to the [BoardBrand] capability model (brush palette,
  *  renderer, BLE transport, publish destinations). */
 val ClimbEditorState.brand: BoardBrand get() = BoardBrand.fromWire(boardBrand)
+
+/**
+ * Parse a frames string into the editor's `placementId → roleId` map in the
+ * brand's *editor* palette:
+ * - MoonBoard keeps brand-native route roles (42/43/44) so [encodeFrames]
+ *   round-trips to the `p{holdId}r42…` wire format the MoonBoard renderer +
+ *   BLE encoder read.
+ * - Every other brand folds the parsed role into the Kilter boulder palette
+ *   (12-15) via [HoldRole.roleClass]. Aurora-family catalogue frames carry
+ *   board-local roles 1-4 (mirrored 5-8); without the fold, a remix of a
+ *   Tension/Grasshopper/… climb seeds roles that the brushes, chip counters
+ *   and [ClimbValidation] (all 12-15-based) don't recognise — start/finish
+ *   count as zero and Save/Publish stay blocked. Folding only happens on the
+ *   editor's working copy (a remix/edit is re-encoded as its own row — the
+ *   source catalogue row is never rewritten), and every downstream consumer
+ *   of editor-authored frames (render, BLE, chips) resolves colours through
+ *   [HoldRole.roleClass], which accepts 12-15 on every brand.
+ */
+fun parseHoldsForEditor(frames: String, brand: BoardBrand): Map<Int, Int> =
+    if (brand == BoardBrand.MOONBOARD) {
+        MoonBoardFrameEncoder.parseHolds(frames).associate { it.first to it.second }
+    } else {
+        BoardClimbParser.parseFrames(frames)
+            .associate { it.placementId to HoldRole.roleClass(it.roleId) }
+    }
 
 /**
  * Apply the active brush to a hold:

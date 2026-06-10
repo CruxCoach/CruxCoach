@@ -191,4 +191,32 @@ class CommunityClimbSubscriberTest {
         assertFalse(CommunityClimbValidation.isOwnEvent(authorA, authorB))
         assertFalse(CommunityClimbValidation.isOwnEvent(authorA, null))
     }
+
+    // ----- lookbackAdjustedSeed (first-run cursor seed) -----
+
+    @Test
+    fun lookbackAdjustedSeed_subtracts_safety_window_from_manifest_epoch() {
+        // The manifest epoch is written by the Kilter sync only; non-Kilter
+        // chunk crons can lag behind it. The seed must sit one full safety
+        // window earlier so the first REQ re-covers that gap.
+        val manifestEpoch = 1_750_000_000L
+        assertEquals(
+            manifestEpoch - CommunityClimbSubscriber.SEED_SAFETY_LOOKBACK_SEC,
+            CommunityClimbSubscriber.lookbackAdjustedSeed(manifestEpoch),
+        )
+    }
+
+    @Test
+    fun lookbackAdjustedSeed_clamps_at_zero_for_tiny_epochs() {
+        // A bogus near-epoch-zero manifest timestamp must not produce a
+        // negative `since` (relays treat that as malformed / undefined).
+        assertEquals(0L, CommunityClimbSubscriber.lookbackAdjustedSeed(0L))
+        assertEquals(0L, CommunityClimbSubscriber.lookbackAdjustedSeed(60L))
+        assertEquals(
+            0L,
+            CommunityClimbSubscriber.lookbackAdjustedSeed(
+                CommunityClimbSubscriber.SEED_SAFETY_LOOKBACK_SEC,
+            ),
+        )
+    }
 }

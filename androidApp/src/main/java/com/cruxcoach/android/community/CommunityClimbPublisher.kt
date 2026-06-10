@@ -221,6 +221,20 @@ class CommunityClimbPublisher @Inject constructor(
                 // create, and create-climb/transaction is idempotent on
                 // climb_uuid anyway.
                 val priorKilterStatus = boardRepository.getKilterPublishState(uuid)?.status
+                // 'rejected' (CREATE 4xx) is terminal for the retry queue,
+                // but an edit-republish is the legitimate way back in: the
+                // edit may fix exactly what Kilter's validation refused
+                // (name, content-policy). Downgrade to 'failed' so the
+                // claim inside kilterPublisher can take the slot — and so
+                // the retry worker picks the row up later if this attempt
+                // is skipped (e.g. token expired right now). Without this,
+                // claimKilterPublishSlot (NULL/'failed' only) returned
+                // Skipped("slot-busy") forever and the edited climb could
+                // never be mirrored short of delete + recreate.
+                if (isEdit && priorKilterStatus == "rejected") {
+                    Log.i(TAG, "rejected row edited — re-opening Kilter lane for $uuid")
+                    boardRepository.markKilterPublishFailed(uuid, "re-eligible: user edit after rejection")
+                }
                 val outcome = if (isEdit && priorKilterStatus == "synced") {
                     kilterPublisher.update(
                         uuid = uuid,

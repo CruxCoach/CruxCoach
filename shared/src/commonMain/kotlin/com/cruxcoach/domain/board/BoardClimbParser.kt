@@ -47,11 +47,15 @@ object HoldRole {
      * exact-match callers keep working. Codes 1-8 are exclusive to the Aurora
      * family (Kilter only ever uses 12-15/42-45), so the fold is collision-free.
      *
-     * Comparison / colour-resolution ONLY — never use this to re-encode a climb.
-     * Stored role ids must stay brand-native: the editor + AuroraImporter
-     * round-trip frames verbatim (parse→encode), and the per-board
-     * placement_roles colour map is keyed by the raw 1-4 ids. Mutating the codes
-     * (e.g. via [normalize]) would corrupt Aurora frames and mis-key that map.
+     * Comparison / colour-resolution ONLY — never rewrite a *stored* climb
+     * with this. Catalogue role ids must stay brand-native: AuroraImporter
+     * round-trips frames verbatim (parse→encode), and the per-board
+     * placement_roles colour map is keyed by the raw 1-4 ids. Mutating the
+     * codes in place (e.g. via [normalize]) would corrupt Aurora frames and
+     * mis-key that map. The one sanctioned re-encode is the climb editor's
+     * seeding (`parseHoldsForEditor`), which folds a forked catalogue frame
+     * into the 12-15 palette to author a NEW climb — the source row itself
+     * is never touched.
      */
     fun roleClass(roleId: Int): Int = when (roleId) {
         1, 5 -> START

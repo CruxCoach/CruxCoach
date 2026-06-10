@@ -16,7 +16,6 @@ import com.cruxcoach.data.repository.CommunityClimbRow
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.BoardHold
 import com.cruxcoach.domain.board.HoldRole
-import com.cruxcoach.domain.board.MoonBoardFrameEncoder
 import com.cruxcoach.domain.board.MoonBoardVariant
 import com.cruxcoach.domain.community.ClimbEditorState
 import com.cruxcoach.domain.community.ClimbValidation
@@ -350,21 +349,22 @@ class ClimbEditorViewModel @Inject constructor(
             activeBrush = defaultBrushFor(brand),
             name = source.name + if (!source.name.endsWith("Remix")) " Remix" else "",
             description = source.description,
+            // Carry the angle loadBoardData already seeded from prefs —
+            // building the state from scratch dropped it, so every Remix
+            // opened with an "angle missing" validation error the user
+            // had to re-resolve by hand.
+            angle = _state.value.editor.angle,
         )
         applyEditor(seeded)
     }
 
-    /** Parse frames into the editor's id→role map using brand-native roles:
-     *  MoonBoard keeps route roles (42/43/44) so [encodeFrames] round-trips
-     *  to the `p{id}r42…` wire format the MoonBoard renderer + BLE encoder
-     *  read; Kilter normalizes to boulder roles (12/13/14/15). */
+    /** Parse frames into the editor's id→role map in the brand's editor
+     *  palette — see [com.cruxcoach.domain.community.parseHoldsForEditor].
+     *  MoonBoard keeps route roles (42/43/44); every other brand is folded
+     *  into the Kilter boulder palette (12-15) so Aurora catalogue roles
+     *  (1-4/5-8) from a remix match the brushes, chips and validation. */
     private fun parseHoldsForBrand(frames: String, brand: String): Map<Int, Int> =
-        if (BoardBrand.fromWire(brand) == BoardBrand.MOONBOARD) {
-            MoonBoardFrameEncoder.parseHolds(frames).associate { it.first to it.second }
-        } else {
-            com.cruxcoach.domain.board.BoardClimbParser.parseFrames(frames)
-                .associate { it.placementId to it.roleId }
-        }
+        com.cruxcoach.domain.community.parseHoldsForEditor(frames, BoardBrand.fromWire(brand))
 
     /** Default paint brush per brand: green Start in each board's native
      *  role numbering. */
@@ -432,7 +432,17 @@ class ClimbEditorViewModel @Inject constructor(
             // Kilter board-data load entirely; the editor stores brand-native
             // route roles (42/43/44) so the default brush is the green Start.
             _state.update {
-                val seedAngle = it.editor.angle ?: defaultAngle
+                // Fixed-angle hardware: clamp the seed to the variant's
+                // official configs (2016/Mini/2024 = 40°, Masters = 25°/40°).
+                // The generic boardAngle pref can carry any 5°-step value
+                // from a previous Kilter/Aurora board — seeding e.g. 30°
+                // would publish a climb at an angle no other device's
+                // browse picker offers. Mirrors angleOptionsFor in
+                // ClimbEditorScreen.
+                val allowed = com.cruxcoach.domain.board.MoonBoardVariant
+                    .fromLayoutId(layoutIdLong)?.angles ?: listOf(40)
+                val candidate = it.editor.angle ?: defaultAngle
+                val seedAngle = if (candidate in allowed) candidate else allowed.last()
                 it.copy(
                     isLoading = false,
                     layoutId = layoutIdLong,
@@ -919,12 +929,21 @@ class ClimbEditorViewModel @Inject constructor(
     fun loadDraft(draft: CommunityClimbRow) {
         viewModelScope.launch {
             try {
-                val holds = com.cruxcoach.domain.board.BoardClimbParser.parseFrames(draft.framesText)
-                    .associate { it.placementId to it.roleId }
+                // Brand comes from the live editor (set by loadBoardData,
+                // same rule as seedFromEdit/seedFromFork): the drafts drawer
+                // only lists the active board's drafts. Omitting it here let
+                // the ClimbEditorState defaults reset a MoonBoard/Aurora
+                // draft to boardBrand='kilter' — re-filing the row onto the
+                // Kilter board on the next save and publishing it as a
+                // Kilter climb on the legacy namespace.
+                val brand = _state.value.editor.boardBrand
+                val holds = parseHoldsForBrand(draft.framesText, brand)
                 val stats = withContext(Dispatchers.IO) { boardRepository.getClimbStatsForUuid(draft.uuid) }
                 val currentAngle = _state.value.editor.angle
                 val seeded = ClimbEditorState(
                     selectedHolds = holds,
+                    boardBrand = brand,
+                    activeBrush = defaultBrushFor(brand),
                     name = draft.name,
                     description = draft.description,
                     angle = stats?.first ?: currentAngle,
