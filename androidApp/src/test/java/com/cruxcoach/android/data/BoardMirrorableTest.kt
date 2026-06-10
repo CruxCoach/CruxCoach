@@ -40,11 +40,18 @@ class BoardMirrorableTest {
     @Test
     fun asymmetricAndFixedConfigBoards_areNotMirrorable() {
         assertFalse(BoardConstants.isLayoutMirrorable(BoardBrand.TOUCHSTONE, 1))
-        assertFalse(BoardConstants.isLayoutMirrorable(BoardBrand.KILTER, 1))   // Original
-        assertFalse(BoardConstants.isLayoutMirrorable(BoardBrand.KILTER, 8))   // Homewall
         assertFalse(BoardConstants.isLayoutMirrorable(BoardBrand.MOONBOARD, 4))
         assertFalse(BoardConstants.isLayoutMirrorable(BoardBrand.AURORA, 1))
         assertFalse(BoardConstants.isLayoutMirrorable(BoardBrand.TWELVECLIMB, 1))
+    }
+
+    @Test
+    fun kilter_keepsThe014DisplayOnlyMirrorToggle_onEveryLayout() {
+        // Product decision 2026-06-10: the 0.1.4 display-only mirror toggle
+        // (geometric mirror-map fallback) stays available for Kilter —
+        // removing it was an unintended upgrade regression.
+        assertTrue(BoardConstants.isLayoutMirrorable(BoardBrand.KILTER, 1))   // Original
+        assertTrue(BoardConstants.isLayoutMirrorable(BoardBrand.KILTER, 8))   // Homewall
     }
 
     @Test

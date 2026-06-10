@@ -206,9 +206,13 @@ object BoardConstants {
      *
      *  - Tension: per-variant — TB1 (9) + TB2 Mirror (10) = true, TB2 Spray (11) = false.
      *  - Grasshopper / Decoy / So iLL: their layout(s) are symmetric → true.
+     *  - Kilter: true for every layout — the 0.1.4 display-only mirror toggle,
+     *    restored by product decision (2026-06-10). It predates this gate and
+     *    uses the geometric fallback (computeMirrorMapFromPlacements), which
+     *    simply maps no partner for unpaired holds; removing it in 0.2.0 was an
+     *    unintended upgrade regression.
      *  - Touchstone: its single layout is asymmetric → false.
-     *  - Kilter / MoonBoard: asymmetric / fixed-config boards, no mirror in the
-     *    vendor app → false.
+     *  - MoonBoard: fixed-config board, no mirror concept → false.
      *  - Map-only info-layer brands (Aurora / 12climb): no catalogue → false.
      *
      * Exhaustive over [BoardBrand] on purpose: a newly-added board must make a
@@ -217,8 +221,8 @@ object BoardConstants {
     fun isLayoutMirrorable(brand: BoardBrand, layoutId: Int): Boolean = when (brand) {
         BoardBrand.TENSION -> auroraVariant(brand, layoutId)?.isMirrored ?: false
         BoardBrand.GRASSHOPPER, BoardBrand.DECOY, BoardBrand.SOILL -> true
+        BoardBrand.KILTER -> true
         BoardBrand.TOUCHSTONE,
-        BoardBrand.KILTER,
         BoardBrand.MOONBOARD,
         BoardBrand.AURORA,
         BoardBrand.TWELVECLIMB -> false
