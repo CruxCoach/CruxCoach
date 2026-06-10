@@ -304,12 +304,13 @@ class BoardDatabaseImporter(
      * catalogue — produced one-shot from the spookykat dump by the
      * out-of-repo board-DB build pipeline.
      *
-     * Every row is tagged board_brand='moonboard' on insert. Uses
-     * INSERT OR REPLACE rather than the Kilter two-step
-     * preserve-CruxCoach-columns merge: the snapshot is authoritative
-     * and there are no CruxCoach-authored MoonBoard climbs in v0.2.0 to
-     * protect. If MoonBoard community climbs land later, this needs the
-     * same merge [importClimbs] does.
+     * Every row is tagged board_brand='moonboard' on insert. Climbs go
+     * through [mergeSnapshotClimbs] — the snapshot analogue of the Kilter
+     * chunk path's preserve-CruxCoach-columns merge — because the daily
+     * cron merges community climbs (origin='cruxcoach') into this same
+     * snapshot: a blanket INSERT OR REPLACE would wipe the author's local
+     * publish state (source, sync_status, nostr_*, frames_hash) and
+     * resurrect locally-deleted community climbs on every re-import.
      *
      * MoonBoard uuids (uuidv5 of "moonboard:{apiId}") never collide with
      * Kilter uuids, so this only ever touches MoonBoard rows — the
@@ -353,30 +354,24 @@ class BoardDatabaseImporter(
                     }
                 }
                 val moveCountExpr = if (snapshotHasMoveCount) "COALESCE(move_count, 0)" else "0"
-                val originExpr = if (snapshotHasOrigin) "COALESCE(origin, 'kilter')" else "'kilter'"
+                val baseOriginExpr = if (snapshotHasOrigin) "COALESCE(origin, 'kilter')" else "'kilter'"
                 val pubkeyExpr = if (snapshotHasPubkey) "created_by_pubkey" else "NULL"
+                // A snapshot row carrying a setter pubkey is CruxCoach-authored
+                // even when the blob's own origin column lags behind — the same
+                // authoritative-pubkey rule the Kilter chunk path applies (see
+                // [importClimbs]).
+                val originExpr = if (snapshotHasPubkey)
+                    "CASE WHEN created_by_pubkey IS NOT NULL AND created_by_pubkey != '' " +
+                        "THEN 'cruxcoach' ELSE $baseOriginExpr END"
+                else baseOriginExpr
 
                 val climbTotal = queryLong(
                     targetDb, "SELECT COUNT(*) FROM mb.climbs WHERE is_listed = 1"
                 ).toInt()
                 onProgress?.invoke(ImportStep.ImportClimbs(0, 0, climbTotal))
-                targetDb.execSQL(
-                    """
-                    INSERT OR REPLACE INTO climbs(
-                        uuid, layout_id, setter_username, name, frames,
-                        frames_count, is_listed, edge_left, edge_right,
-                        edge_bottom, edge_top, created_at,
-                        description, is_nomatch, frames_pace, hsm, move_count,
-                        board_brand, origin, created_by_pubkey)
-                    SELECT LOWER(uuid), layout_id, setter_username, name, frames,
-                           frames_count, is_listed, edge_left, edge_right,
-                           edge_bottom, edge_top, created_at,
-                           COALESCE(description, ''), COALESCE(is_nomatch, 0),
-                           COALESCE(frames_pace, 0), COALESCE(hsm, 0), $moveCountExpr,
-                           'moonboard', $originExpr, $pubkeyExpr
-                    FROM mb.climbs
-                    WHERE is_listed = 1
-                    """.trimIndent()
+                mergeSnapshotClimbs(
+                    targetDb, "mb", "moonboard",
+                    moveCountExpr, originExpr, pubkeyExpr
                 )
                 onProgress?.invoke(ImportStep.ImportClimbs(climbTotal, climbTotal, climbTotal))
 
@@ -466,32 +461,25 @@ class BoardDatabaseImporter(
                     }
                 }
                 val moveCountExpr = if (snapshotHasMoveCount) "COALESCE(move_count, 0)" else "0"
-                val originExpr = if (snapshotHasOrigin) "COALESCE(origin, 'kilter')" else "'kilter'"
+                val baseOriginExpr = if (snapshotHasOrigin) "COALESCE(origin, 'kilter')" else "'kilter'"
                 val pubkeyExpr = if (snapshotHasPubkey) "created_by_pubkey" else "NULL"
+                // A snapshot row carrying a setter pubkey is CruxCoach-authored
+                // even when the blob's own origin column lags behind — the same
+                // authoritative-pubkey rule the Kilter chunk path applies (see
+                // [importClimbs]).
+                val originExpr = if (snapshotHasPubkey)
+                    "CASE WHEN created_by_pubkey IS NOT NULL AND created_by_pubkey != '' " +
+                        "THEN 'cruxcoach' ELSE $baseOriginExpr END"
+                else baseOriginExpr
 
                 // ── climbs (board_brand = the board's wire value) ──
                 val climbTotal = queryLong(
                     targetDb, "SELECT COUNT(*) FROM ab.climbs WHERE is_listed = 1"
                 ).toInt()
                 onProgress?.invoke(ImportStep.ImportClimbs(0, 0, climbTotal))
-                targetDb.execSQL(
-                    """
-                    INSERT OR REPLACE INTO climbs(
-                        uuid, layout_id, setter_username, name, frames,
-                        frames_count, is_listed, edge_left, edge_right,
-                        edge_bottom, edge_top, created_at,
-                        description, is_nomatch, frames_pace, hsm, move_count,
-                        board_brand, origin, created_by_pubkey)
-                    SELECT LOWER(uuid), layout_id, setter_username, name, frames,
-                           frames_count, is_listed, edge_left, edge_right,
-                           edge_bottom, edge_top, created_at,
-                           COALESCE(description, ''), COALESCE(is_nomatch, 0),
-                           COALESCE(frames_pace, 0), COALESCE(hsm, 0), $moveCountExpr,
-                           ?, $originExpr, $pubkeyExpr
-                    FROM ab.climbs
-                    WHERE is_listed = 1
-                    """.trimIndent(),
-                    brand
+                mergeSnapshotClimbs(
+                    targetDb, "ab", boardBrand,
+                    moveCountExpr, originExpr, pubkeyExpr
                 )
                 onProgress?.invoke(ImportStep.ImportClimbs(climbTotal, climbTotal, climbTotal))
 
@@ -586,6 +574,144 @@ class BoardDatabaseImporter(
         val statCount = boardRepository.getStatCount()
         Log.i(TAG, "importAuroraSnapshot($boardBrand) done: catalogue totals climbs=$climbCount stats=$statCount")
         onProgress?.invoke(ImportStep.Done(climbCount.toInt(), statCount.toInt(), 0, 0))
+    }
+
+    /**
+     * Merge a snapshot's `climbs` (attached as [alias]) into the target —
+     * the snapshot analogue of the Kilter chunk path's two-step merge in
+     * [importClimbs]. A blanket INSERT OR REPLACE is forbidden here: the
+     * cron merges community climbs (origin='cruxcoach') into the
+     * MoonBoard/Aurora snapshots, and SQLite REPLACE re-inserts the row,
+     * resetting every column missing from the insert list — wiping the
+     * author's publish state (source, sync_status, nostr_event_id,
+     * nostr_d_tag, frames_hash, kilter_*) and resurrecting locally-deleted
+     * community climbs (is_deleted → 0).
+     *
+     * Passes, mirroring [importClimbs]:
+     *  1. INSERT OR IGNORE listed rows — new climbs only; existing rows
+     *     keep all CruxCoach lifecycle columns.
+     *  2. Catalogue content refresh for origin='kilter' rows from listed
+     *     snapshot rows (community rows have Nostr as source of truth).
+     *  3. Delist flip: snapshot is_listed=0 → local is_listed=0
+     *     (column-only, so local name/frames survive for the logbook and
+     *     detail screen).
+     *  4. Origin upgrade, asymmetric kilter→non-kilter: heals rows
+     *     imported before the snapshot carried origin (e.g. the
+     *     BoardSesh-imported MoonBoard climbs stamped 'kilter' by
+     *     pre-fix imports).
+     *  5. created_by_pubkey backfill, NULL-only.
+     *
+     * Unlike the Kilter path there is no setter_username propagation pass:
+     * the MoonBoard/Aurora community merge still writes pubkey-prefix
+     * stubs, which must not overwrite the author's real local name.
+     */
+    private fun mergeSnapshotClimbs(
+        targetDb: SQLiteDatabase,
+        alias: String,
+        boardBrand: String,
+        moveCountExpr: String,
+        originExpr: String,
+        pubkeyExpr: String,
+    ) {
+        // Stage with uuid pre-lowercased + PK-indexed so every pass below
+        // is an O(log n) lookup, same rationale as the Kilter chunk_norm.
+        targetDb.execSQL(
+            """
+            CREATE TEMP TABLE IF NOT EXISTS snapshot_norm (
+                uuid TEXT PRIMARY KEY,
+                layout_id INTEGER, setter_username TEXT, name TEXT, frames TEXT,
+                frames_count INTEGER, is_listed INTEGER,
+                edge_left INTEGER, edge_right INTEGER,
+                edge_bottom INTEGER, edge_top INTEGER,
+                created_at INTEGER, description TEXT,
+                is_nomatch INTEGER, frames_pace INTEGER, hsm INTEGER,
+                move_count INTEGER, origin TEXT, created_by_pubkey TEXT
+            ) WITHOUT ROWID
+            """.trimIndent()
+        )
+        targetDb.beginTransaction()
+        try {
+            targetDb.execSQL("DELETE FROM snapshot_norm")
+            targetDb.execSQL(
+                """
+                INSERT OR IGNORE INTO snapshot_norm
+                SELECT LOWER(uuid), layout_id, setter_username, name, frames,
+                       frames_count, is_listed, edge_left, edge_right,
+                       edge_bottom, edge_top, created_at,
+                       COALESCE(description, ''), COALESCE(is_nomatch, 0),
+                       COALESCE(frames_pace, 0), COALESCE(hsm, 0), $moveCountExpr,
+                       $originExpr, $pubkeyExpr
+                FROM $alias.climbs
+                """.trimIndent()
+            )
+            targetDb.execSQL(
+                """
+                INSERT OR IGNORE INTO climbs(
+                    uuid, layout_id, setter_username, name, frames,
+                    frames_count, is_listed, edge_left, edge_right,
+                    edge_bottom, edge_top, created_at,
+                    description, is_nomatch, frames_pace, hsm, move_count,
+                    board_brand, origin, created_by_pubkey)
+                SELECT uuid, layout_id, setter_username, name, frames,
+                       frames_count, is_listed, edge_left, edge_right,
+                       edge_bottom, edge_top, created_at,
+                       description, is_nomatch, frames_pace, hsm, move_count,
+                       ?, origin, created_by_pubkey
+                FROM snapshot_norm
+                WHERE is_listed = 1
+                """.trimIndent(),
+                arrayOf<Any?>(boardBrand)
+            )
+            targetDb.execSQL(
+                """
+                UPDATE climbs SET
+                    (layout_id, setter_username, name, frames,
+                     frames_count, is_listed, edge_left, edge_right,
+                     edge_bottom, edge_top, created_at, description,
+                     is_nomatch, frames_pace, hsm, move_count)
+                    = (SELECT layout_id, setter_username, name, frames,
+                              frames_count, is_listed, edge_left, edge_right,
+                              edge_bottom, edge_top, created_at, description,
+                              is_nomatch, frames_pace, hsm, move_count
+                       FROM snapshot_norm
+                       WHERE snapshot_norm.uuid = main.climbs.uuid)
+                WHERE origin = 'kilter'
+                  AND uuid IN (SELECT uuid FROM snapshot_norm WHERE is_listed = 1)
+                """.trimIndent()
+            )
+            targetDb.execSQL(
+                """
+                UPDATE climbs SET is_listed = 0
+                WHERE is_listed = 1
+                  AND uuid IN (SELECT uuid FROM snapshot_norm WHERE is_listed = 0)
+                """.trimIndent()
+            )
+            targetDb.execSQL(
+                """
+                UPDATE climbs SET origin = (
+                    SELECT origin FROM snapshot_norm
+                    WHERE snapshot_norm.uuid = main.climbs.uuid
+                )
+                WHERE origin = 'kilter'
+                  AND uuid IN (SELECT uuid FROM snapshot_norm WHERE origin != 'kilter')
+                """.trimIndent()
+            )
+            targetDb.execSQL(
+                """
+                UPDATE climbs SET created_by_pubkey = (
+                    SELECT created_by_pubkey FROM snapshot_norm
+                    WHERE snapshot_norm.uuid = main.climbs.uuid
+                )
+                WHERE created_by_pubkey IS NULL
+                  AND uuid IN (
+                    SELECT uuid FROM snapshot_norm WHERE created_by_pubkey IS NOT NULL
+                  )
+                """.trimIndent()
+            )
+            targetDb.setTransactionSuccessful()
+        } finally {
+            targetDb.endTransaction()
+        }
     }
 
     /**

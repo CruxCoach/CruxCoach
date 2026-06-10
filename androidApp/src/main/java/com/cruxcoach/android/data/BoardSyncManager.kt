@@ -927,6 +927,24 @@ class BoardSyncManager(
         // and a no-op "Sync abgeschlossen" message. Mirror of
         // `handlePostMigrationResync` which already does this.
         blossomSyncManager.clearStoredHashes()
+        // deleteAllBoardData() wipes EVERY brand's catalogue, but the
+        // injected manager above only covers Kilter's "blossom_sync"
+        // prefs. Each other interactive board keeps its chunk hashes in
+        // its own prefs file (MoonBoard + "blossom_sync_<wire>" per
+        // Aurora board — see AuroraCatalogueSync). Left intact, every
+        // later sync for those boards short-circuits to AlreadyCurrent
+        // over an empty DB and the catalogue can never be reloaded
+        // in-app.
+        appContext.getSharedPreferences(
+            BlossomSyncManager.MOONBOARD_PREFS_NAME, Context.MODE_PRIVATE
+        ).edit().clear().apply()
+        BoardBrand.entries
+            .filter { it.usesAuroraProtocol && it != BoardBrand.KILTER }
+            .forEach { board ->
+                appContext.getSharedPreferences(
+                    "blossom_sync_${board.wireValue}", Context.MODE_PRIVATE
+                ).edit().clear().apply()
+            }
         scope.launch { userPreferences.setLastSyncTimestamp(null) }
     }
 
