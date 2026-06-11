@@ -64,12 +64,13 @@ class FakeBoardRepository : BoardRepository {
     override fun searchClimbsByName(
         query: String, angle: Int, layoutId: Int, boardBrand: String, sortField: ClimbSortField,
         sortDirection: SortDirection, limit: Int, offset: Int,
-        climbType: ClimbTypeFilter, selProductSizeId: Int
+        climbType: ClimbTypeFilter, selProductSizeId: Int, hsmExcludedMask: Long
     ): List<ClimbWithStats> {
         val filtered = climbs.filter {
             (it.name.contains(query, ignoreCase = true) ||
                 it.setterUsername?.contains(query, ignoreCase = true) == true) &&
-                it.matchesClimbType(climbType)
+                it.matchesClimbType(climbType) &&
+                (it.hsm and hsmExcludedMask) == 0L
         }
         val sorted = boardBrowserSortInKotlin(filtered, sortField, sortDirection)
         return sorted.drop(offset).take(limit)
@@ -79,13 +80,14 @@ class FakeBoardRepository : BoardRepository {
         angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double,
         minAscensionists: Int, sortField: ClimbSortField,
         sortDirection: SortDirection, limit: Int, offset: Int,
-        climbType: ClimbTypeFilter, selProductSizeId: Int
+        climbType: ClimbTypeFilter, selProductSizeId: Int, hsmExcludedMask: Long
     ): List<ClimbWithStats> {
         val filtered = climbs.filter { climb ->
             val diff = climb.difficultyAverage ?: return@filter false
             diff in minDifficulty..maxDifficulty &&
                 (climb.ascensionistCount ?: 0) >= minAscensionists &&
-                climb.matchesClimbType(climbType)
+                climb.matchesClimbType(climbType) &&
+                (climb.hsm and hsmExcludedMask) == 0L
         }
         // Mirror production SQL `ORDER BY <sortField> <sortDirection>`.
         // The fake previously returned insertion order, which silently
@@ -108,18 +110,19 @@ class FakeBoardRepository : BoardRepository {
 
     override fun countFilteredClimbs(
         angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double,
-        minAscensionists: Int, climbType: ClimbTypeFilter, selProductSizeId: Int
+        minAscensionists: Int, climbType: ClimbTypeFilter, selProductSizeId: Int, hsmExcludedMask: Long
     ): Long {
         return climbs.count { climb ->
             val diff = climb.difficultyAverage ?: return@count false
             diff in minDifficulty..maxDifficulty &&
                 (climb.ascensionistCount ?: 0) >= minAscensionists &&
-                climb.matchesClimbType(climbType)
+                climb.matchesClimbType(climbType) &&
+                (climb.hsm and hsmExcludedMask) == 0L
         }.toLong()
     }
 
     override fun countFilteredClimbsFast(
-        angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, selProductSizeId: Int
+        angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, selProductSizeId: Int, hsmExcludedMask: Long
     ): Long {
         return climbs.count { climb ->
             val diff = climb.difficultyAverage ?: return@count false
@@ -130,31 +133,34 @@ class FakeBoardRepository : BoardRepository {
 
     override fun countBenchmarkFilteredClimbs(
         angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double,
-        minAscensionists: Int, climbType: ClimbTypeFilter, selProductSizeId: Int
+        minAscensionists: Int, climbType: ClimbTypeFilter, selProductSizeId: Int, hsmExcludedMask: Long
     ): Long {
         return climbs.count { climb ->
             val diff = climb.difficultyAverage ?: return@count false
             diff in minDifficulty..maxDifficulty &&
                 (climb.ascensionistCount ?: 0) >= minAscensionists &&
                 climb.benchmarkDifficulty > 0.0 &&
-                climb.matchesClimbType(climbType)
+                climb.matchesClimbType(climbType) &&
+                (climb.hsm and hsmExcludedMask) == 0L
         }.toLong()
     }
 
-    override fun countSearchClimbs(query: String, angle: Int, layoutId: Int, boardBrand: String, climbType: ClimbTypeFilter, selProductSizeId: Int): Long {
+    override fun countSearchClimbs(query: String, angle: Int, layoutId: Int, boardBrand: String, climbType: ClimbTypeFilter, selProductSizeId: Int, hsmExcludedMask: Long): Long {
         return climbs.count {
             (it.name.contains(query, ignoreCase = true) ||
                 it.setterUsername?.contains(query, ignoreCase = true) == true) &&
-                it.matchesClimbType(climbType)
+                it.matchesClimbType(climbType) &&
+                (it.hsm and hsmExcludedMask) == 0L
         }.toLong()
     }
 
-    override fun countBenchmarkSearchClimbs(query: String, angle: Int, layoutId: Int, boardBrand: String, climbType: ClimbTypeFilter, selProductSizeId: Int): Long {
+    override fun countBenchmarkSearchClimbs(query: String, angle: Int, layoutId: Int, boardBrand: String, climbType: ClimbTypeFilter, selProductSizeId: Int, hsmExcludedMask: Long): Long {
         return climbs.count {
             (it.name.contains(query, ignoreCase = true) ||
                 it.setterUsername?.contains(query, ignoreCase = true) == true) &&
                 it.benchmarkDifficulty > 0.0 &&
-                it.matchesClimbType(climbType)
+                it.matchesClimbType(climbType) &&
+                (it.hsm and hsmExcludedMask) == 0L
         }.toLong()
     }
 
@@ -218,13 +224,14 @@ class FakeBoardRepository : BoardRepository {
 
     override fun getAllBrowseMatchingUuids(
         angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double,
-        minAscensionists: Int, climbType: ClimbTypeFilter, selProductSizeId: Int
+        minAscensionists: Int, climbType: ClimbTypeFilter, selProductSizeId: Int, hsmExcludedMask: Long
     ): List<String> {
         return climbs.filter { climb ->
             val diff = climb.difficultyAverage
             (diff == null || diff in minDifficulty..maxDifficulty) &&
                 (climb.ascensionistCount ?: 0) >= minAscensionists &&
-                climb.matchesClimbType(climbType)
+                climb.matchesClimbType(climbType) &&
+                (climb.hsm and hsmExcludedMask) == 0L
         }.map { it.uuid }
     }
 
@@ -301,6 +308,8 @@ class FakeBoardRepository : BoardRepository {
     override fun getAllProductSizes(productId: Long, boardBrand: String): List<BoardSize> = emptyList()
     override fun getSelectableProductSizesForBrand(boardBrand: String): List<BoardSize> = emptyList()
     override fun getBoardImages(productSizeId: Int, layoutId: Int, boardBrand: String): List<BoardImage> = emptyList()
+    override fun getHoldSetIdsForLayout(layoutId: Int, boardBrand: String): List<Long> = emptyList()
+    override fun getHoldSetIdsForLayoutSize(layoutId: Int, productSizeId: Int, boardBrand: String): List<Long> = emptyList()
     override fun getPlacementLedMap(productSizeId: Int, boardBrand: String): Map<Int, Int> = emptyMap()
     override fun getRoleColorMapForBrand(boardBrand: String): Map<Int, Int> = emptyMap()
     override fun getMirrorPlacementMap(productSizeId: Int, boardBrand: String): Map<Int, Int> = emptyMap()
@@ -409,11 +418,11 @@ class FakeBoardRepository : BoardRepository {
     override fun getCruxCoachClimbs(
         layoutId: Int, boardBrand: String, angle: Int, minDifficulty: Double, maxDifficulty: Double,
         minAscensionists: Int, climbType: com.cruxcoach.data.repository.ClimbTypeFilter,
-        selProductSizeId: Int,
+        selProductSizeId: Int, hsmExcludedMask: Long,
     ): List<com.cruxcoach.data.repository.ClimbWithStats> = emptyList()
     override fun getBoardSeshClimbs(
         layoutId: Int, boardBrand: String, angle: Int, minDifficulty: Double, maxDifficulty: Double,
         minAscensionists: Int, climbType: com.cruxcoach.data.repository.ClimbTypeFilter,
-        selProductSizeId: Int,
+        selProductSizeId: Int, hsmExcludedMask: Long,
     ): List<com.cruxcoach.data.repository.ClimbWithStats> = emptyList()
 }

@@ -359,24 +359,44 @@ getSyncState:
 SELECT last_synchronized_at FROM sync_states WHERE table_name = ?;
 
 -- ═══ Browse queries (climb_browse VIEW — JOIN flattened by SQLite) ═══
+--
+-- Always-on "fits my board" filter, two independent predicates per query:
+--
+--  1. Edge containment: `:selProductSizeId <= 0 OR EXISTS (...)` — the
+--     climb's bounding box fits the selected product size. 0 = filter off.
+--
+--  2. Hold-set availability: `(hsm & :hsmExcludedMask) = 0`. climbs.hsm is a
+--     BITMASK of the hold sets a climb uses; the bit index of a set is the
+--     RANK of its set_id within the layout's distinct set ids sorted
+--     ascending (verified against the Tension RE DB 5000/5000 + the Kilter
+--     chunk: TB2 sets {8,9,10,11} → set 8 = bit0 … 11 = bit3; a climb on
+--     sets {8,11} carries hsm 9). :hsmExcludedMask carries the bits of the
+--     layout's sets NOT mounted on the user's selected size (computed in
+--     Kotlin, see HoldSetMask). Mask 0 = filter off. hsm = 0 means UNKNOWN
+--     (~10% of Kilter rows, all MoonBoard rows) and passes for free —
+--     `(0 & mask) = 0` — so the filter stays lenient on unknown data.
+--
+-- The board-scoped list queries (getClimbsByUuidsForBoard etc.) deliberately
+-- do NOT carry the hsm predicate: their Kilter fit-exception spans OTHER
+-- layouts, and the mask's rank mapping is only valid within ONE layout.
 
 browseByQualityDesc:
-SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND difficulty_average >= :minDiff AND difficulty_average <= :maxDiff AND ascensionist_count >= :minAsc AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top)))) ORDER BY quality_average DESC LIMIT :limit OFFSET :offset;
+SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND difficulty_average >= :minDiff AND difficulty_average <= :maxDiff AND ascensionist_count >= :minAsc AND (hsm & :hsmExcludedMask) = 0 AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top)))) ORDER BY quality_average DESC LIMIT :limit OFFSET :offset;
 
 browseByQualityAsc:
-SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND difficulty_average >= :minDiff AND difficulty_average <= :maxDiff AND ascensionist_count >= :minAsc AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top)))) ORDER BY quality_average ASC LIMIT :limit OFFSET :offset;
+SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND difficulty_average >= :minDiff AND difficulty_average <= :maxDiff AND ascensionist_count >= :minAsc AND (hsm & :hsmExcludedMask) = 0 AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top)))) ORDER BY quality_average ASC LIMIT :limit OFFSET :offset;
 
 browseByDifficultyDesc:
-SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND difficulty_average >= :minDiff AND difficulty_average <= :maxDiff AND ascensionist_count >= :minAsc AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top)))) ORDER BY difficulty_average DESC LIMIT :limit OFFSET :offset;
+SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND difficulty_average >= :minDiff AND difficulty_average <= :maxDiff AND ascensionist_count >= :minAsc AND (hsm & :hsmExcludedMask) = 0 AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top)))) ORDER BY difficulty_average DESC LIMIT :limit OFFSET :offset;
 
 browseByDifficultyAsc:
-SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND difficulty_average >= :minDiff AND difficulty_average <= :maxDiff AND ascensionist_count >= :minAsc AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top)))) ORDER BY difficulty_average ASC LIMIT :limit OFFSET :offset;
+SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND difficulty_average >= :minDiff AND difficulty_average <= :maxDiff AND ascensionist_count >= :minAsc AND (hsm & :hsmExcludedMask) = 0 AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top)))) ORDER BY difficulty_average ASC LIMIT :limit OFFSET :offset;
 
 browseByAscensionistsDesc:
-SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND difficulty_average >= :minDiff AND difficulty_average <= :maxDiff AND ascensionist_count >= :minAsc AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top)))) ORDER BY ascensionist_count DESC LIMIT :limit OFFSET :offset;
+SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND difficulty_average >= :minDiff AND difficulty_average <= :maxDiff AND ascensionist_count >= :minAsc AND (hsm & :hsmExcludedMask) = 0 AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top)))) ORDER BY ascensionist_count DESC LIMIT :limit OFFSET :offset;
 
 browseByAscensionistsAsc:
-SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND difficulty_average >= :minDiff AND difficulty_average <= :maxDiff AND ascensionist_count >= :minAsc AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top)))) ORDER BY ascensionist_count ASC LIMIT :limit OFFSET :offset;
+SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND difficulty_average >= :minDiff AND difficulty_average <= :maxDiff AND ascensionist_count >= :minAsc AND (hsm & :hsmExcludedMask) = 0 AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top)))) ORDER BY ascensionist_count ASC LIMIT :limit OFFSET :offset;
 
 -- Browse query restricted to CruxCoach-side climbs (community-published
 -- + user's local drafts). Returns the FULL filtered set in one go —
@@ -404,7 +424,7 @@ WHERE layout_id = :layoutId
   AND difficulty_average >= :minDiff AND difficulty_average <= :maxDiff
   AND ascensionist_count >= :minAsc
   AND (origin = 'cruxcoach' OR source = 'local')
-  AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top))));
+  AND (hsm & :hsmExcludedMask) = 0 AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top))));
 
 -- Browse query restricted to BoardSesh-imported climbs (origin='boardsesh').
 -- Same shape and rationale as [browseCruxCoachOnly]: BoardSesh climbs carry
@@ -429,7 +449,7 @@ WHERE layout_id = :layoutId
   AND difficulty_average >= :minDiff AND difficulty_average <= :maxDiff
   AND ascensionist_count >= :minAsc
   AND origin = 'boardsesh'
-  AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top))));
+  AND (hsm & :hsmExcludedMask) = 0 AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top))));
 
 -- Angle-AGNOSTIC variants of the two community-provenance browses (Req-1): a
 -- created/community climb is authored at ONE setter angle but is climbable at
@@ -447,7 +467,7 @@ WHERE layout_id = :layoutId
   AND difficulty_average >= :minDiff AND difficulty_average <= :maxDiff
   AND ascensionist_count >= :minAsc
   AND (origin = 'cruxcoach' OR source = 'local')
-  AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top))));
+  AND (hsm & :hsmExcludedMask) = 0 AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top))));
 
 browseBoardSeshOnlyAnyAngle:
 SELECT * FROM climb_browse
@@ -457,21 +477,21 @@ WHERE layout_id = :layoutId
   AND difficulty_average >= :minDiff AND difficulty_average <= :maxDiff
   AND ascensionist_count >= :minAsc
   AND origin = 'boardsesh'
-  AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top))));
+  AND (hsm & :hsmExcludedMask) = 0 AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top))));
 
 browseByNameDesc:
-SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND difficulty_average >= :minDiff AND difficulty_average <= :maxDiff AND ascensionist_count >= :minAsc AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top)))) ORDER BY name DESC LIMIT :limit OFFSET :offset;
+SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND difficulty_average >= :minDiff AND difficulty_average <= :maxDiff AND ascensionist_count >= :minAsc AND (hsm & :hsmExcludedMask) = 0 AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top)))) ORDER BY name DESC LIMIT :limit OFFSET :offset;
 
 browseByNameAsc:
-SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND difficulty_average >= :minDiff AND difficulty_average <= :maxDiff AND ascensionist_count >= :minAsc AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top)))) ORDER BY name ASC LIMIT :limit OFFSET :offset;
+SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND difficulty_average >= :minDiff AND difficulty_average <= :maxDiff AND ascensionist_count >= :minAsc AND (hsm & :hsmExcludedMask) = 0 AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top)))) ORDER BY name ASC LIMIT :limit OFFSET :offset;
 
 -- ORDER BY sends × quality (popular AND well-rated). COALESCE so climbs
 -- with NULL quality_average don't fall behind a 0-quality climb.
 browseByQualitySendsDesc:
-SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND difficulty_average >= :minDiff AND difficulty_average <= :maxDiff AND ascensionist_count >= :minAsc AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top)))) ORDER BY (ascensionist_count * COALESCE(quality_average, 0)) DESC LIMIT :limit OFFSET :offset;
+SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND difficulty_average >= :minDiff AND difficulty_average <= :maxDiff AND ascensionist_count >= :minAsc AND (hsm & :hsmExcludedMask) = 0 AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top)))) ORDER BY (ascensionist_count * COALESCE(quality_average, 0)) DESC LIMIT :limit OFFSET :offset;
 
 browseByQualitySendsAsc:
-SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND difficulty_average >= :minDiff AND difficulty_average <= :maxDiff AND ascensionist_count >= :minAsc AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top)))) ORDER BY (ascensionist_count * COALESCE(quality_average, 0)) ASC LIMIT :limit OFFSET :offset;
+SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND difficulty_average >= :minDiff AND difficulty_average <= :maxDiff AND ascensionist_count >= :minAsc AND (hsm & :hsmExcludedMask) = 0 AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top)))) ORDER BY (ascensionist_count * COALESCE(quality_average, 0)) ASC LIMIT :limit OFFSET :offset;
 
 -- Random order over the filtered set. Pagination is independently random
 -- per page (SQLite RANDOM() is non-deterministic across calls); scrolling
@@ -479,7 +499,7 @@ SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardB
 -- mode bypasses this query via the VM's UUID-shuffle cache (see
 -- [browseAllMatchingUuids]); only the search+random combo still hits it.
 browseRandom:
-SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND difficulty_average >= :minDiff AND difficulty_average <= :maxDiff AND ascensionist_count >= :minAsc AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top)))) ORDER BY RANDOM() LIMIT :limit OFFSET :offset;
+SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND difficulty_average >= :minDiff AND difficulty_average <= :maxDiff AND ascensionist_count >= :minAsc AND (hsm & :hsmExcludedMask) = 0 AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top)))) ORDER BY RANDOM() LIMIT :limit OFFSET :offset;
 
 -- UUID-only projection of the entire browse-filter match set, no order
 -- and no limit. Backs the Kotlin-side stable shuffle for RANDOM sort:
@@ -491,42 +511,42 @@ SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardB
 -- 36-byte UUID strings; even an unfiltered Kilter catalog (~190K rows)
 -- is ~7 MB — acceptable on a single load.
 browseAllMatchingUuids:
-SELECT uuid FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND difficulty_average >= :minDiff AND difficulty_average <= :maxDiff AND ascensionist_count >= :minAsc AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top))));
+SELECT uuid FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND difficulty_average >= :minDiff AND difficulty_average <= :maxDiff AND ascensionist_count >= :minAsc AND (hsm & :hsmExcludedMask) = 0 AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top))));
 
 -- ═══ Search queries (climb_browse VIEW — additional JOIN for repeat_count) ═══
 
 searchByQualityDesc:
-SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND (name LIKE '%' || :query || '%' OR setter_username LIKE '%' || :query || '%') AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top)))) ORDER BY quality_average DESC LIMIT :limit OFFSET :offset;
+SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND (name LIKE '%' || :query || '%' OR setter_username LIKE '%' || :query || '%') AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND (hsm & :hsmExcludedMask) = 0 AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top)))) ORDER BY quality_average DESC LIMIT :limit OFFSET :offset;
 
 searchByQualityAsc:
-SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND (name LIKE '%' || :query || '%' OR setter_username LIKE '%' || :query || '%') AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top)))) ORDER BY quality_average ASC LIMIT :limit OFFSET :offset;
+SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND (name LIKE '%' || :query || '%' OR setter_username LIKE '%' || :query || '%') AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND (hsm & :hsmExcludedMask) = 0 AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top)))) ORDER BY quality_average ASC LIMIT :limit OFFSET :offset;
 
 searchByDifficultyDesc:
-SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND (name LIKE '%' || :query || '%' OR setter_username LIKE '%' || :query || '%') AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top)))) ORDER BY difficulty_average DESC LIMIT :limit OFFSET :offset;
+SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND (name LIKE '%' || :query || '%' OR setter_username LIKE '%' || :query || '%') AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND (hsm & :hsmExcludedMask) = 0 AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top)))) ORDER BY difficulty_average DESC LIMIT :limit OFFSET :offset;
 
 searchByDifficultyAsc:
-SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND (name LIKE '%' || :query || '%' OR setter_username LIKE '%' || :query || '%') AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top)))) ORDER BY difficulty_average ASC LIMIT :limit OFFSET :offset;
+SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND (name LIKE '%' || :query || '%' OR setter_username LIKE '%' || :query || '%') AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND (hsm & :hsmExcludedMask) = 0 AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top)))) ORDER BY difficulty_average ASC LIMIT :limit OFFSET :offset;
 
 searchByAscensionistsDesc:
-SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND (name LIKE '%' || :query || '%' OR setter_username LIKE '%' || :query || '%') AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top)))) ORDER BY ascensionist_count DESC LIMIT :limit OFFSET :offset;
+SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND (name LIKE '%' || :query || '%' OR setter_username LIKE '%' || :query || '%') AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND (hsm & :hsmExcludedMask) = 0 AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top)))) ORDER BY ascensionist_count DESC LIMIT :limit OFFSET :offset;
 
 searchByAscensionistsAsc:
-SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND (name LIKE '%' || :query || '%' OR setter_username LIKE '%' || :query || '%') AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top)))) ORDER BY ascensionist_count ASC LIMIT :limit OFFSET :offset;
+SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND (name LIKE '%' || :query || '%' OR setter_username LIKE '%' || :query || '%') AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND (hsm & :hsmExcludedMask) = 0 AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top)))) ORDER BY ascensionist_count ASC LIMIT :limit OFFSET :offset;
 
 searchByNameDesc:
-SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND (name LIKE '%' || :query || '%' OR setter_username LIKE '%' || :query || '%') AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top)))) ORDER BY name DESC LIMIT :limit OFFSET :offset;
+SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND (name LIKE '%' || :query || '%' OR setter_username LIKE '%' || :query || '%') AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND (hsm & :hsmExcludedMask) = 0 AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top)))) ORDER BY name DESC LIMIT :limit OFFSET :offset;
 
 searchByNameAsc:
-SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND (name LIKE '%' || :query || '%' OR setter_username LIKE '%' || :query || '%') AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top)))) ORDER BY name ASC LIMIT :limit OFFSET :offset;
+SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND (name LIKE '%' || :query || '%' OR setter_username LIKE '%' || :query || '%') AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND (hsm & :hsmExcludedMask) = 0 AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top)))) ORDER BY name ASC LIMIT :limit OFFSET :offset;
 
 searchByQualitySendsDesc:
-SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND (name LIKE '%' || :query || '%' OR setter_username LIKE '%' || :query || '%') AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top)))) ORDER BY (ascensionist_count * COALESCE(quality_average, 0)) DESC LIMIT :limit OFFSET :offset;
+SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND (name LIKE '%' || :query || '%' OR setter_username LIKE '%' || :query || '%') AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND (hsm & :hsmExcludedMask) = 0 AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top)))) ORDER BY (ascensionist_count * COALESCE(quality_average, 0)) DESC LIMIT :limit OFFSET :offset;
 
 searchByQualitySendsAsc:
-SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND (name LIKE '%' || :query || '%' OR setter_username LIKE '%' || :query || '%') AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top)))) ORDER BY (ascensionist_count * COALESCE(quality_average, 0)) ASC LIMIT :limit OFFSET :offset;
+SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND (name LIKE '%' || :query || '%' OR setter_username LIKE '%' || :query || '%') AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND (hsm & :hsmExcludedMask) = 0 AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top)))) ORDER BY (ascensionist_count * COALESCE(quality_average, 0)) ASC LIMIT :limit OFFSET :offset;
 
 searchRandom:
-SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND (name LIKE '%' || :query || '%' OR setter_username LIKE '%' || :query || '%') AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top)))) ORDER BY RANDOM() LIMIT :limit OFFSET :offset;
+SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND (name LIKE '%' || :query || '%' OR setter_username LIKE '%' || :query || '%') AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND (hsm & :hsmExcludedMask) = 0 AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top)))) ORDER BY RANDOM() LIMIT :limit OFFSET :offset;
 
 getClimbsByUuids:
 SELECT * FROM climb_browse
@@ -733,7 +753,7 @@ WHERE cs.layout_id = ?
   AND cs.angle = ?
   AND cs.difficulty_average >= ? AND cs.difficulty_average <= ?
   AND cs.ascensionist_count >= ?
-  AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top))));
+  AND (c.hsm & :hsmExcludedMask) = 0 AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top))));
 
 -- Full COUNT queries: bypass the VIEW, JOIN only for is_listed/frames_count check.
 
@@ -748,7 +768,7 @@ WHERE cs.layout_id = ?
   AND c.frames_count >= ? AND c.frames_count <= ?
   AND cs.difficulty_average >= ? AND cs.difficulty_average <= ?
   AND cs.ascensionist_count >= ?
-  AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top))));
+  AND (c.hsm & :hsmExcludedMask) = 0 AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top))));
 
 countBenchmarkFilteredClimbs:
 SELECT COUNT(*)
@@ -762,7 +782,7 @@ WHERE cs.layout_id = ?
   AND cs.difficulty_average >= ? AND cs.difficulty_average <= ?
   AND cs.ascensionist_count >= ?
   AND cs.benchmark_difficulty > 0
-  AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top))));
+  AND (c.hsm & :hsmExcludedMask) = 0 AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top))));
 
 countSearchClimbs:
 SELECT COUNT(*)
@@ -774,7 +794,7 @@ WHERE cs.layout_id = ?
   AND cs.angle = ?
   AND c.is_listed = 1
   AND c.frames_count >= ? AND c.frames_count <= ?
-  AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top))));
+  AND (c.hsm & :hsmExcludedMask) = 0 AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top))));
 
 countBenchmarkSearchClimbs:
 SELECT COUNT(*)
@@ -787,7 +807,7 @@ WHERE cs.layout_id = ?
   AND c.is_listed = 1
   AND c.frames_count >= ? AND c.frames_count <= ?
   AND cs.benchmark_difficulty > 0
-  AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top))));
+  AND (c.hsm & :hsmExcludedMask) = 0 AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left <= c.edge_left AND ps.edge_right >= c.edge_right AND ps.edge_bottom <= c.edge_bottom AND ps.edge_top >= c.edge_top))));
 
 -- ═══ Hold-based search + heatmap queries (query climbs directly) ═══
 
@@ -867,6 +887,25 @@ VALUES (?, ?, ?, ?, ?, ?);
 
 getBoardImages:
 SELECT * FROM board_images WHERE product_size_id = ? AND layout_id = ? AND board_brand = ?;
+
+-- A layout's full hold-set universe, sorted ascending — the rank order that
+-- defines the climbs.hsm bit indices (bit n = n-th distinct set id). Sourced
+-- from board_images (= the chunk's product_sizes_layouts_sets; verified
+-- lossless — the importer's `image_filename IS NOT NULL` predicate drops no
+-- row in the Kilter chunk, 0 NULLs).
+getSetIdsForLayout:
+SELECT DISTINCT set_id FROM board_images
+WHERE board_brand = :brand AND layout_id = :layoutId
+ORDER BY set_id;
+
+-- The hold sets actually mounted on one product size of the layout (e.g.
+-- Kilter Homewall 8x12 Mainline = {26,28,29} of the layout's {26,27,28,29}).
+-- Diffed against [getSetIdsForLayout] by HoldSetMask to build the
+-- :hsmExcludedMask the browse queries filter on.
+getSetIdsForLayoutSize:
+SELECT DISTINCT set_id FROM board_images
+WHERE board_brand = :brand AND layout_id = :layoutId AND product_size_id = :productSizeId
+ORDER BY set_id;
 
 -- Per-climb board rendering (Aurora migration + cross-board community
 -- climbs): the climbs.layout_id may differ from the user's currently-

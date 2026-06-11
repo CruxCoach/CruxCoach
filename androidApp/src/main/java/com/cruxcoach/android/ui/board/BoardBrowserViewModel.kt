@@ -14,6 +14,7 @@ import com.cruxcoach.android.data.BoardSessionManager
 import com.cruxcoach.android.data.BoardSessionState
 import com.cruxcoach.android.data.IntensityZoneManager
 import com.cruxcoach.android.data.RestTimerState
+import com.cruxcoach.android.data.BoardDatabaseImporter.ImportStep
 import com.cruxcoach.android.data.BoardSyncManager
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.data.SessionGattBridge
@@ -34,6 +35,7 @@ import com.cruxcoach.data.repository.SortDirection
 import com.cruxcoach.android.util.GradeDisplayHelper
 import com.cruxcoach.domain.board.BoardClimbParser
 import com.cruxcoach.domain.board.HoldHeatmapComputer
+import com.cruxcoach.domain.board.HoldSetMask
 import com.cruxcoach.domain.board.HoldRole
 import com.cruxcoach.domain.board.KilterGradeMapper
 import com.cruxcoach.android.util.PerfLogger
@@ -193,6 +195,12 @@ data class BoardBrowserState(
      *  board has zero rows — this flag drives the "load catalogue" empty
      *  state for exactly that case. */
     val activeBrandHasCatalogue: Boolean = true,
+    /** True while a board-data sync is running and the ACTIVE brand's
+     *  catalogue import hasn't completed yet. Drives the third empty-state
+     *  case ("catalogue loading") — without it the browser flashes the
+     *  no-catalogue and then the misleading no-results state while the
+     *  brand's climbs are still streaming in. */
+    val activeBrandImporting: Boolean = false,
     val canLoadMore: Boolean = false,
     val dbOffset: Int = 0,
     val gradeScale: GradeScale = GradeScale.V_SCALE,
@@ -202,6 +210,11 @@ data class BoardBrowserState(
     val placements: Map<Int, com.cruxcoach.data.repository.BoardPlacement> = emptyMap(),
     val boardSize: com.cruxcoach.data.repository.BoardSize? = null,
     val boardImages: List<com.cruxcoach.data.repository.BoardImage> = emptyList(),
+    /** Hold-set leg of the always-on "fits my board" filter: bits of the
+     *  active layout's hold sets NOT mounted on [boardSize] (see
+     *  HoldSetMask.excludedMask). 0 = filter off (full board, MoonBoard,
+     *  or no size configured). Recomputed alongside [boardSize]. */
+    val hsmExcludedMask: Long = 0,
     val filter: BrowserFilterState = BrowserFilterState(),
     val ble: BrowserBleState = BrowserBleState(),
     val holdSearch: HoldSearchState = HoldSearchState()
@@ -389,10 +402,41 @@ class BoardBrowserViewModel @Inject constructor(
                 }
             }
         }
-        // Auto-refresh board data when a sync completes
+        // Auto-refresh board data when a sync completes. Also tracks whether
+        // the ACTIVE brand's catalogue is mid-import, so the empty state can
+        // show "catalogue loading" instead of the misleading no-results /
+        // no-catalogue cases while its climbs are still streaming in. Brand
+        // comes from prefs (not filter state) — after a deletion the filter
+        // brand is stale until the first successful refresh.
         viewModelScope.safeLaunch(TAG) {
             var lastGen = syncManager.state.value.syncGeneration
-            syncManager.state.collect { syncState ->
+            var wasImporting = false
+            combine(syncManager.state, userPreferences.boardBrand) { syncState, brandWire ->
+                syncState to BoardBrand.fromWire(brandWire)
+            }.collect { (syncState, brand) ->
+                val step = syncState.boardSteps[brand]
+                // Mid-import: the brand's step is non-terminal, or a FULL
+                // sync is running (Kilter's importStep is non-null for its
+                // whole duration; board-scoped loads clear it) and the
+                // still-catalogue-less brand hasn't reached its lane yet —
+                // the per-board lanes run sequentially. The importStep guard
+                // keeps a board-scoped load of a DIFFERENT board from
+                // masking the real no-catalogue recovery state.
+                val importing = syncState.isSyncing && (
+                    (step != null && step !is ImportStep.Done) ||
+                    (step == null && syncState.importStep != null &&
+                        !_state.value.activeBrandHasCatalogue)
+                )
+                if (importing != _state.value.activeBrandImporting) {
+                    _state.update { it.copy(activeBrandImporting = importing) }
+                }
+                // The active brand finished while the rest of the multi-board
+                // sync continues — refresh now so its climbs show immediately
+                // instead of waiting for the whole sync to end.
+                if (wasImporting && !importing && syncState.isSyncing) {
+                    refreshBoardData(force = true)
+                }
+                wasImporting = importing
                 if (syncState.syncGeneration > lastGen && !syncState.isSyncing) {
                     lastGen = syncState.syncGeneration
                     refreshBoardData(force = true)
@@ -545,11 +589,21 @@ class BoardBrowserViewModel @Inject constructor(
                             boardRepository.getProductSize(prefSizeId, prefBoardBrand)
                         }
                         val boardImages = boardRepository.getBoardImages(prefSizeId, prefLayoutId, prefBoardBrand)
-                        _state.update { it.copy(boardSize = boardSize, boardImages = boardImages) }
+                        // Hold-set leg of the always-on fit filter: which of the
+                        // layout's hold sets the configured size does NOT carry
+                        // (e.g. Homewall Mainline lacks the Auxiliary set).
+                        // Computed once per board-config change; 0 = filter off
+                        // (no size configured / no set data — stay lenient).
+                        val hsmMask = if (boardSize == null) 0L else HoldSetMask.excludedMask(
+                            layoutSetIds = boardRepository.getHoldSetIdsForLayout(prefLayoutId, prefBoardBrand),
+                            sizeSetIds = boardRepository.getHoldSetIdsForLayoutSize(prefLayoutId, prefSizeId, prefBoardBrand),
+                        )
+                        _state.update { it.copy(boardSize = boardSize, boardImages = boardImages, hsmExcludedMask = hsmMask) }
                     } else if (needsBoardReload) {
                         // MoonBoard: clear any stale Kilter board image/size so
                         // the browse list doesn't carry over Kilter geometry.
-                        _state.update { it.copy(boardSize = null, boardImages = emptyList()) }
+                        // (No Aurora set data either → hsm filter off.)
+                        _state.update { it.copy(boardSize = null, boardImages = emptyList(), hsmExcludedMask = 0L) }
                     }
                 }
                 _state.update { it.copy(climbCount = count, hasBoardData = count > 0) }
@@ -927,7 +981,7 @@ class BoardBrowserViewModel @Inject constructor(
             val maxDiff = KilterGradeMapper.indexToFilterMax(f.maxGradeIndex, french)
             val all = boardRepository.getCruxCoachClimbs(
                 f.layoutId, f.boardBrand, f.angle, minDiff, maxDiff, f.minAscensionists, f.climbTypeFilter,
-                selProductSizeId = selSizeId()
+                selProductSizeId = selSizeId(), hsmExcludedMask = hsmMask()
             )
             val nameFiltered = if (f.searchQuery.isBlank()) all
                 else all.filter { it.name.contains(f.searchQuery, ignoreCase = true) }
@@ -949,7 +1003,7 @@ class BoardBrowserViewModel @Inject constructor(
             val maxDiff = KilterGradeMapper.indexToFilterMax(f.maxGradeIndex, french)
             val all = boardRepository.getBoardSeshClimbs(
                 f.layoutId, f.boardBrand, f.angle, minDiff, maxDiff, f.minAscensionists, f.climbTypeFilter,
-                selProductSizeId = selSizeId()
+                selProductSizeId = selSizeId(), hsmExcludedMask = hsmMask()
             )
             val nameFiltered = if (f.searchQuery.isBlank()) all
                 else all.filter { it.name.contains(f.searchQuery, ignoreCase = true) }
@@ -1033,20 +1087,24 @@ class BoardBrowserViewModel @Inject constructor(
     // map / canRenderClimbOnSize use, so browser ⇄ map stay consistent.
     private fun selSizeId(): Int = _state.value.boardSize?.id?.toInt() ?: 0
 
+    // Hold-set leg of the same always-on filter (hsm bitmask, see
+    // HoldSetMask). 0 = inert, exactly like selSizeId()'s 0 sentinel.
+    private fun hsmMask(): Long = _state.value.hsmExcludedMask
+
     private suspend fun fetchPage(f: BrowserFilterState, offset: Int): List<ClimbWithStats> {
         if (f.sortField == ClimbSortField.RANDOM && f.searchQuery.isBlank()) {
             return fetchRandomPage(f, offset)
         }
         return if (f.searchQuery.isNotBlank()) {
             PerfLogger.traceQuery("searchClimbsByName(offset=$offset)") {
-                boardRepository.searchClimbsByName(f.searchQuery, f.angle, f.layoutId, f.boardBrand, f.sortField, f.sortDirection, PAGE_SIZE, offset, f.climbTypeFilter, selProductSizeId = selSizeId())
+                boardRepository.searchClimbsByName(f.searchQuery, f.angle, f.layoutId, f.boardBrand, f.sortField, f.sortDirection, PAGE_SIZE, offset, f.climbTypeFilter, selProductSizeId = selSizeId(), hsmExcludedMask = hsmMask())
             }
         } else {
             val french = _state.value.gradeScale == GradeScale.FRENCH
             val minDiff = KilterGradeMapper.indexToFilterMin(f.minGradeIndex, french)
             val maxDiff = KilterGradeMapper.indexToFilterMax(f.maxGradeIndex, french)
             PerfLogger.traceQuery("searchClimbsSorted(offset=$offset)") {
-                boardRepository.searchClimbsSorted(f.angle, f.layoutId, f.boardBrand, minDiff, maxDiff, f.minAscensionists, f.sortField, f.sortDirection, PAGE_SIZE, offset, f.climbTypeFilter, selProductSizeId = selSizeId())
+                boardRepository.searchClimbsSorted(f.angle, f.layoutId, f.boardBrand, minDiff, maxDiff, f.minAscensionists, f.sortField, f.sortDirection, PAGE_SIZE, offset, f.climbTypeFilter, selProductSizeId = selSizeId(), hsmExcludedMask = hsmMask())
             }
         }
     }
@@ -1063,12 +1121,14 @@ class BoardBrowserViewModel @Inject constructor(
         val minDiff = KilterGradeMapper.indexToFilterMin(f.minGradeIndex, french)
         val maxDiff = KilterGradeMapper.indexToFilterMax(f.maxGradeIndex, french)
         val sel = selSizeId()
+        val hm = hsmMask()
         // boardBrand must be part of the key: layout ids collide across brands
         // (every board's Original layout is id 1) and sel can be 0 on both
         // sides of a board switch (MoonBoard / not-yet-imported catalogue), so
         // an angle|layout|sel-identical switch would otherwise serve the
-        // previous brand's cached page-1 + shuffle.
-        val key = "${f.boardBrand}|${f.angle}|${f.layoutId}|$minDiff|$maxDiff|${f.minAscensionists}|${f.climbTypeFilter}|$sel"
+        // previous brand's cached page-1 + shuffle. hm (hold-set mask) changes
+        // the match set the same way sel does, so it is keyed too.
+        val key = "${f.boardBrand}|${f.angle}|${f.layoutId}|$minDiff|$maxDiff|${f.minAscensionists}|${f.climbTypeFilter}|$sel|$hm"
 
         if (key != randomKey) {
             randomKey = key
@@ -1083,7 +1143,7 @@ class BoardBrowserViewModel @Inject constructor(
                 boardRepository.searchClimbsSorted(
                     f.angle, f.layoutId, f.boardBrand, minDiff, maxDiff, f.minAscensionists,
                     ClimbSortField.RANDOM, SortDirection.DESC, PAGE_SIZE, 0,
-                    f.climbTypeFilter, selProductSizeId = sel
+                    f.climbTypeFilter, selProductSizeId = sel, hsmExcludedMask = hm
                 )
             }
             randomPage1 = page1
@@ -1092,7 +1152,7 @@ class BoardBrowserViewModel @Inject constructor(
                 val all = PerfLogger.traceQuery("randomUuids(bg load)") {
                     boardRepository.getAllBrowseMatchingUuids(
                         f.angle, f.layoutId, f.boardBrand, minDiff, maxDiff, f.minAscensionists,
-                        f.climbTypeFilter, selProductSizeId = sel
+                        f.climbTypeFilter, selProductSizeId = sel, hsmExcludedMask = hm
                     )
                 }
                 val rest = all.filterNot { it in page1Uuids }.shuffled(Random.Default)
@@ -1119,14 +1179,14 @@ class BoardBrowserViewModel @Inject constructor(
     private fun fetchDbCount(f: BrowserFilterState): Long {
         return PerfLogger.traceQuery("fetchDbCount") {
             if (f.searchQuery.isNotBlank()) {
-                if (f.benchmarkOnly) boardRepository.countBenchmarkSearchClimbs(f.searchQuery, f.angle, f.layoutId, f.boardBrand, f.climbTypeFilter, selProductSizeId = selSizeId())
-                else boardRepository.countSearchClimbs(f.searchQuery, f.angle, f.layoutId, f.boardBrand, f.climbTypeFilter, selProductSizeId = selSizeId())
+                if (f.benchmarkOnly) boardRepository.countBenchmarkSearchClimbs(f.searchQuery, f.angle, f.layoutId, f.boardBrand, f.climbTypeFilter, selProductSizeId = selSizeId(), hsmExcludedMask = hsmMask())
+                else boardRepository.countSearchClimbs(f.searchQuery, f.angle, f.layoutId, f.boardBrand, f.climbTypeFilter, selProductSizeId = selSizeId(), hsmExcludedMask = hsmMask())
             } else {
                 val french = _state.value.gradeScale == GradeScale.FRENCH
                 val minDiff = KilterGradeMapper.indexToFilterMin(f.minGradeIndex, french)
                 val maxDiff = KilterGradeMapper.indexToFilterMax(f.maxGradeIndex, french)
-                if (f.benchmarkOnly) boardRepository.countBenchmarkFilteredClimbs(f.angle, f.layoutId, f.boardBrand, minDiff, maxDiff, f.minAscensionists, f.climbTypeFilter, selProductSizeId = selSizeId())
-                else boardRepository.countFilteredClimbs(f.angle, f.layoutId, f.boardBrand, minDiff, maxDiff, f.minAscensionists, f.climbTypeFilter, selProductSizeId = selSizeId())
+                if (f.benchmarkOnly) boardRepository.countBenchmarkFilteredClimbs(f.angle, f.layoutId, f.boardBrand, minDiff, maxDiff, f.minAscensionists, f.climbTypeFilter, selProductSizeId = selSizeId(), hsmExcludedMask = hsmMask())
+                else boardRepository.countFilteredClimbs(f.angle, f.layoutId, f.boardBrand, minDiff, maxDiff, f.minAscensionists, f.climbTypeFilter, selProductSizeId = selSizeId(), hsmExcludedMask = hsmMask())
             }
         }
     }
@@ -1160,7 +1220,7 @@ class BoardBrowserViewModel @Inject constructor(
                     boardRepository.searchClimbsByName(
                         f.searchQuery, f.angle, f.layoutId, f.boardBrand, f.sortField, f.sortDirection,
                         limit = 1, offset = randomOffset, climbType = f.climbTypeFilter,
-                        selProductSizeId = selSizeId()
+                        selProductSizeId = selSizeId(), hsmExcludedMask = hsmMask()
                     )
                 } else {
                     val french = _state.value.gradeScale == GradeScale.FRENCH
@@ -1169,7 +1229,7 @@ class BoardBrowserViewModel @Inject constructor(
                     boardRepository.searchClimbsSorted(
                         f.angle, f.layoutId, f.boardBrand, minDiff, maxDiff, f.minAscensionists,
                         f.sortField, f.sortDirection, limit = 1, offset = randomOffset,
-                        climbType = f.climbTypeFilter, selProductSizeId = selSizeId()
+                        climbType = f.climbTypeFilter, selProductSizeId = selSizeId(), hsmExcludedMask = hsmMask()
                     )
                 }
                 climb.firstOrNull()?.uuid

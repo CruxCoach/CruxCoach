@@ -273,14 +273,18 @@ data class ClimbFrameRow(
 
 /** Climb search, filter, and count queries. All browse/search/count methods require layoutId to scope results to a board type. */
 interface BoardClimbQueries {
-    fun searchClimbsByName(query: String, angle: Int, layoutId: Int, boardBrand: String, sortField: ClimbSortField = ClimbSortField.QUALITY, sortDirection: SortDirection = SortDirection.DESC, limit: Int = 50, offset: Int = 0, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER, selProductSizeId: Int = 0): List<ClimbWithStats>
-    fun searchClimbsSorted(angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, sortField: ClimbSortField, sortDirection: SortDirection, limit: Int = 50, offset: Int = 0, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER, selProductSizeId: Int = 0): List<ClimbWithStats>
+    // `hsmExcludedMask` (browse/search/count below): hold-set leg of the
+    // always-on "fits my board" filter — bits of the layout's hold sets NOT
+    // mounted on the user's selected size (HoldSetMask.excludedMask). A climb
+    // passes iff (hsm & mask) = 0; hsm=0 (unknown) always passes. 0 = off.
+    fun searchClimbsByName(query: String, angle: Int, layoutId: Int, boardBrand: String, sortField: ClimbSortField = ClimbSortField.QUALITY, sortDirection: SortDirection = SortDirection.DESC, limit: Int = 50, offset: Int = 0, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER, selProductSizeId: Int = 0, hsmExcludedMask: Long = 0): List<ClimbWithStats>
+    fun searchClimbsSorted(angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, sortField: ClimbSortField, sortDirection: SortDirection, limit: Int = 50, offset: Int = 0, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER, selProductSizeId: Int = 0, hsmExcludedMask: Long = 0): List<ClimbWithStats>
     fun getClimbByUuid(uuid: String, angle: Int): ClimbWithStats?
-    fun countFilteredClimbsFast(angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, selProductSizeId: Int = 0): Long
-    fun countFilteredClimbs(angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER, selProductSizeId: Int = 0): Long
-    fun countBenchmarkFilteredClimbs(angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER, selProductSizeId: Int = 0): Long
-    fun countSearchClimbs(query: String, angle: Int, layoutId: Int, boardBrand: String, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER, selProductSizeId: Int = 0): Long
-    fun countBenchmarkSearchClimbs(query: String, angle: Int, layoutId: Int, boardBrand: String, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER, selProductSizeId: Int = 0): Long
+    fun countFilteredClimbsFast(angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, selProductSizeId: Int = 0, hsmExcludedMask: Long = 0): Long
+    fun countFilteredClimbs(angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER, selProductSizeId: Int = 0, hsmExcludedMask: Long = 0): Long
+    fun countBenchmarkFilteredClimbs(angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER, selProductSizeId: Int = 0, hsmExcludedMask: Long = 0): Long
+    fun countSearchClimbs(query: String, angle: Int, layoutId: Int, boardBrand: String, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER, selProductSizeId: Int = 0, hsmExcludedMask: Long = 0): Long
+    fun countBenchmarkSearchClimbs(query: String, angle: Int, layoutId: Int, boardBrand: String, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER, selProductSizeId: Int = 0, hsmExcludedMask: Long = 0): Long
     fun getClimbCount(): Long
     /** Per-brand catalogue sizes (FEAT-031), keyed by `board_brand` wire value.
      *  Brands with no imported climbs are absent from the map. */
@@ -343,7 +347,7 @@ interface BoardClimbQueries {
     /** UUID-only projection of the entire browse-filter match set. Backs the
      *  VM's UUID-shuffle cache for RANDOM sort — load once per filter
      *  signature, shuffle in Kotlin, paginate over the cached list. */
-    fun getAllBrowseMatchingUuids(angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter, selProductSizeId: Int = 0): List<String>
+    fun getAllBrowseMatchingUuids(angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter, selProductSizeId: Int = 0, hsmExcludedMask: Long = 0): List<String>
     /** Find climb UUIDs whose frames contain the given placement ID. Brand-scoped
      *  so a board only matches its own climbs (layout_id collides across boards). */
     fun searchClimbUuidsByHold(holdPattern: String, angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter): List<String>
@@ -387,6 +391,15 @@ interface BoardLayoutQueries {
      *  being pinned to the largest size. */
     fun getSelectableProductSizesForBrand(boardBrand: String): List<BoardSize>
     fun getBoardImages(productSizeId: Int, layoutId: Int, boardBrand: String = "kilter"): List<BoardImage>
+    /** A layout's full hold-set universe (ascending set ids — the rank order
+     *  that defines the climbs.hsm bit indices). Empty when the brand ships
+     *  no board_images set data (MoonBoard). */
+    fun getHoldSetIdsForLayout(layoutId: Int, boardBrand: String): List<Long>
+    /** Hold sets actually mounted on one product size of the layout (e.g.
+     *  Kilter Homewall 8x12 Mainline = {26,28,29} of {26,27,28,29}). Diffed
+     *  against [getHoldSetIdsForLayout] via HoldSetMask.excludedMask to get
+     *  the hsm exclusion mask the browse queries filter on. */
+    fun getHoldSetIdsForLayoutSize(layoutId: Int, productSizeId: Int, boardBrand: String): List<Long>
     /** Sizes that have board-image tiles for the given layout. Used by
      *  the climb-detail screen to render an Aurora-imported or cross-
      *  board community climb on the right physical board even when the
@@ -419,6 +432,7 @@ interface BoardLayoutQueries {
     fun getCruxCoachClimbs(
         layoutId: Int, boardBrand: String, angle: Int, minDifficulty: Double, maxDifficulty: Double,
         minAscensionists: Int, climbType: ClimbTypeFilter, selProductSizeId: Int = 0,
+        hsmExcludedMask: Long = 0,
     ): List<ClimbWithStats>
     /** Full set of BoardSesh-imported climbs (origin='boardsesh') that
      *  satisfy the browse filters. Returns the whole matching set in one
@@ -428,6 +442,7 @@ interface BoardLayoutQueries {
     fun getBoardSeshClimbs(
         layoutId: Int, boardBrand: String, angle: Int, minDifficulty: Double, maxDifficulty: Double,
         minAscensionists: Int, climbType: ClimbTypeFilter, selProductSizeId: Int = 0,
+        hsmExcludedMask: Long = 0,
     ): List<ClimbWithStats>
     /** Find the smallest product_size whose four edges *contain* the
      *  climb's bounding box AND has board_images for the climb's
