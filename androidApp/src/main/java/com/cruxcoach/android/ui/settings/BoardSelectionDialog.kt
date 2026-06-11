@@ -15,7 +15,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.R
 import com.cruxcoach.android.data.BoardConstants
-import com.cruxcoach.android.ui.board.BoardPreviewImage
+import com.cruxcoach.android.ui.board.ZoomableBoardPreview
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.data.repository.BoardSize
 import com.cruxcoach.domain.board.BoardBrand
@@ -261,7 +261,7 @@ internal fun BoardSelectionDialog(
                             .padding(8.dp),
                         contentAlignment = Alignment.Center,
                     ) {
-                        BoardPreviewImage(
+                        ZoomableBoardPreview(
                             brand = previewBrand,
                             sizeId = previewSizeId,
                             layoutId = previewLayoutId,

@@ -50,18 +50,16 @@ object BoardConstants {
             AuroraVariant(layoutId = 10, productId = 5, displayName = "Tension Board 2 (Mirror)", defaultSizeId = 6, isMirrored = true),
             AuroraVariant(layoutId = 11, productId = 5, displayName = "Tension Board 2 (Spray)",  defaultSizeId = 6, isMirrored = false),
         ),
-        // Decoy ships two listed layouts under product_id=1 (RE-verified from
-        // the bundled board DB): Dungeon Trainer (layout 2, 7970 climbs) and
-        // Dots (layout 1, 76 climbs, an R&D wall). Both are left-right
-        // symmetric (layouts.is_mirrored=1). Decoy has 3 product_sizes (id1
-        // 12x12, id2 8x12, id3 8x10); defaultSizeId=1 (12x12, the largest) is
-        // the picker default and the size tier offers all three. Dungeon Trainer
-        // is listed first so it stays the picker default (variants.firstOrNull)
-        // — matching the previous most-climbed auto-pick; Dots is the opt-in
-        // second choice (it was unreachable before, as Decoy had no variant entry).
+        // Decoy has ONE real consumer board (the "Dungeon Trainer" layout,
+        // layout 2 — 852 setters / ~7970 climbs). The board DB also carries a
+        // layout 1 "Dots", but RE + decoy-holds.com confirm it is NOT a product:
+        // a PASSWORD-GATED internal/R&D layout (3 internal setters incl. an Aurora
+        // dev, placeholder 2017-01-01 date) absent from Decoy's catalogue. So it
+        // is intentionally NOT offered. A single explicit variant pins layout 2
+        // (not chunk-derive, which could pick the lower-id Dots). Sizes: id1
+        // 12x12 (default, largest), id2 8x12, id3 8x10.
         BoardBrand.DECOY to listOf(
-            AuroraVariant(layoutId = 2, productId = 1, displayName = "Decoy Dungeon Trainer", defaultSizeId = 1, isMirrored = true),
-            AuroraVariant(layoutId = 1, productId = 1, displayName = "Decoy Dots",            defaultSizeId = 1, isMirrored = true),
+            AuroraVariant(layoutId = 2, productId = 1, displayName = "Decoy", defaultSizeId = 1, isMirrored = true),
         ),
     )
 

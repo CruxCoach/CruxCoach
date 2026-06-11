@@ -21,7 +21,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
 import com.cruxcoach.android.data.BoardConstants
-import com.cruxcoach.android.ui.board.BoardPreviewImage
+import com.cruxcoach.android.ui.board.ZoomableBoardPreview
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.data.repository.BoardLocation
 import com.cruxcoach.domain.board.BoardBrand
@@ -153,11 +153,24 @@ internal fun GymBoardSearchSheet(
                                 style = MaterialTheme.typography.bodyMedium,
                             )
                         } else {
+                            // "N boards — pick the one you're at" ONLY when the
+                            // gym genuinely has several board TYPES (>1 brand,
+                            // e.g. Kilter + MoonBoard). A single brand with many
+                            // options is one board of unknown variant (e.g. the 5
+                            // MoonBoard variants) — saying "5 boards" there was
+                            // misleading, so ask which variant instead.
+                            val brandCount = remember(s.wallOptions) {
+                                s.wallOptions.map { it.boardBrand }.distinct().size
+                            }
                             Text(
-                                if (s.wallOptions.size == 1)
-                                    stringResource(R.string.feat007_gym_one)
-                                else
-                                    stringResource(R.string.feat007_gym_many, s.wallOptions.size),
+                                when {
+                                    s.wallOptions.size == 1 ->
+                                        stringResource(R.string.feat007_gym_one)
+                                    brandCount > 1 ->
+                                        stringResource(R.string.feat007_gym_categories)
+                                    else ->
+                                        stringResource(R.string.feat007_gym_variant)
+                                },
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.SemiBold,
                             )
@@ -314,7 +327,7 @@ private fun BoardOptionCard(option: GymWallOption, onClick: () -> Unit) {
                     .clip(RoundedCornerShape(8.dp)),
                 contentAlignment = Alignment.Center,
             ) {
-                BoardPreviewImage(
+                ZoomableBoardPreview(
                     brand = option.boardBrand,
                     sizeId = option.productSizeId.toLong(),
                     layoutId = option.layoutId.toLong(),

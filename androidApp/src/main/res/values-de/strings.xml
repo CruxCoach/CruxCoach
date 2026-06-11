@@ -1506,6 +1506,8 @@
     <string name="feat007_back">Zurück</string>
     <string name="feat007_gym_loading">Noch keine Hallendaten auf diesem Gerät — sie kommen mit der Board-Synchronisierung. Du kannst dein Board unten direkt wählen.</string>
     <string name="feat007_gym_recommended">am häufigsten</string>
+    <string name="feat007_gym_categories">Diese Halle hat mehrere Board-Typen — wähle deinen:</string>
+    <string name="feat007_gym_variant">Welches ist deins? Tippe das passende Board an:</string>
     <string name="settings_section_data">Datenverwaltung</string>
     <string name="settings_section_dev_contact">Entwickler-Kontakt</string>
     <string name="settings_section_display">Anzeige</string>

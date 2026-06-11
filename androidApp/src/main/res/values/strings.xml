@@ -1459,6 +1459,8 @@
     <string name="feat007_back">Back</string>
     <string name="feat007_gym_loading">No gym data on this device yet — it arrives with the board sync. You can still pick your board directly below.</string>
     <string name="feat007_gym_recommended">most common</string>
+    <string name="feat007_gym_categories">This gym has several board types — pick yours:</string>
+    <string name="feat007_gym_variant">Which one is yours? Tap the matching board:</string>
     <string name="settings_section_data">Data Management</string>
     <string name="settings_section_dev_contact">Developer Contact</string>
     <string name="settings_section_display">Display</string>
