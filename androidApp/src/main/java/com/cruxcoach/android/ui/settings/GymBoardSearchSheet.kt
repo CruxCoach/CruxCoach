@@ -13,6 +13,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -20,6 +21,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
 import com.cruxcoach.android.data.BoardConstants
+import com.cruxcoach.android.ui.board.BoardPreviewImage
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.data.repository.BoardLocation
 import com.cruxcoach.domain.board.BoardBrand
@@ -162,7 +164,7 @@ internal fun GymBoardSearchSheet(
                             Spacer(Modifier.height(10.dp))
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 s.wallOptions.forEach { opt ->
-                                    BoardOptionCard(opt.label, opt.isRecommended) { apply(opt) }
+                                    BoardOptionCard(opt) { apply(opt) }
                                 }
                             }
                         }
@@ -291,7 +293,7 @@ private fun GymRow(name: String, sub: String, onClick: () -> Unit) {
  * selects that board immediately.
  */
 @Composable
-private fun BoardOptionCard(label: String, recommended: Boolean = false, onClick: () -> Unit) {
+private fun BoardOptionCard(option: GymWallOption, onClick: () -> Unit) {
     Card(
         onClick = onClick,
         shape = RoundedCornerShape(12.dp),
@@ -301,18 +303,35 @@ private fun BoardOptionCard(label: String, recommended: Boolean = false, onClick
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(Icons.Default.GridView, contentDescription = null, tint = OrangeAccent)
+            // Board-image thumbnail so the user can visually match their board
+            // instead of decoding the size code; grid icon as fallback.
+            Box(
+                modifier = Modifier
+                    .size(46.dp)
+                    .clip(RoundedCornerShape(8.dp)),
+                contentAlignment = Alignment.Center,
+            ) {
+                BoardPreviewImage(
+                    brand = option.boardBrand,
+                    sizeId = option.productSizeId.toLong(),
+                    layoutId = option.layoutId.toLong(),
+                    modifier = Modifier.fillMaxSize(),
+                    fallback = {
+                        Icon(Icons.Default.GridView, contentDescription = null, tint = OrangeAccent)
+                    },
+                )
+            }
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
                 Text(
-                    label,
+                    option.label,
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
                 )
-                if (recommended) {
+                if (option.isRecommended) {
                     Text(
                         stringResource(R.string.feat007_gym_recommended),
                         style = MaterialTheme.typography.labelSmall,

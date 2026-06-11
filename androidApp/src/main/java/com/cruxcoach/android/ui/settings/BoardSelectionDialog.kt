@@ -15,6 +15,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.R
 import com.cruxcoach.android.data.BoardConstants
+import com.cruxcoach.android.ui.board.BoardPreviewImage
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.data.repository.BoardSize
 import com.cruxcoach.domain.board.BoardBrand
@@ -196,6 +197,23 @@ internal fun BoardSelectionDialog(
         }
     }
 
+    // Current selection as (brand, sizeId, layoutId) for the image preview, so
+    // the user can visually match their board instead of decoding a size code.
+    val (previewBrand, previewSizeId, previewLayoutId) = when {
+        isAurora -> Triple(
+            auroraBrand!!,
+            (auroraSizeId ?: auroraVariant?.defaultSizeId ?: 0).toLong(),
+            auroraVariant?.layoutId?.toLong(),
+        )
+        category == BoardCategory.MOONBOARD ->
+            Triple(BoardBrand.MOONBOARD, 0L, mbVariant.layoutId)
+        else -> Triple(
+            BoardBrand.KILTER,
+            kilterSelection.toLong(),
+            if (category == BoardCategory.KILTER_HOMEWALL) 8L else 1L,
+        )
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
@@ -229,6 +247,28 @@ internal fun BoardSelectionDialog(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
+                // Board-image preview of the current selection — a visual match
+                // beats interpreting a cryptic size code (FEAT-007).
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(150.dp)
+                            .padding(8.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        BoardPreviewImage(
+                            brand = previewBrand,
+                            sizeId = previewSizeId,
+                            layoutId = previewLayoutId,
+                            modifier = Modifier.fillMaxHeight(),
+                        )
+                    }
+                }
                 // Tier 0 — board category. A single dropdown: the labels are too
                 // long to share one chip row on a narrow dialog, and the list grows
                 // with each interactive Aurora board (FEAT-031).

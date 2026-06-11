@@ -81,7 +81,7 @@ internal fun parseMoonBoardLayout(jsonText: String): MoonBoardLayoutJson =
 /** Bundled asset base name for a variant. All four v0.2.0 variants
  *  ship a real-board image; see [MoonBoardVariant]'s Mini-2020 caveat
  *  for the deferred procedural-fallback / BLE-encoder bits. */
-private fun MoonBoardVariant.assetBaseName(): String = when (this) {
+internal fun MoonBoardVariant.assetBaseName(): String = when (this) {
     MoonBoardVariant.MOONBOARD_2016 -> "moonboard_2016"
     MoonBoardVariant.MASTERS_2017 -> "moonboard_2017"
     MoonBoardVariant.MASTERS_2019 -> "moonboard_2019"
