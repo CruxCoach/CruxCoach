@@ -392,6 +392,7 @@
     <string name="settings_data_delete_board_desc">Removes all downloaded Kilter Board climbs, stats, and layout data. Can be re-synced anytime.</string>
     <string name="settings_data_delete_board_dialog_title">Delete board data?</string>
     <string name="settings_data_delete_board_dialog_message">All downloaded climbs, stats, and layout data will be deleted. You can re-download them anytime via board sync.</string>
+    <string name="settings_data_delete_board_progress">Deleting board data…</string>
     <string name="settings_data_delete_user">Delete personal logbook data</string>
     <string name="settings_data_delete_user_desc">Permanently removes all ascents, projects, board sessions and lists.</string>
     <string name="settings_data_delete_user_dialog_title">Delete logbook data?</string>
@@ -644,6 +645,7 @@
     <string name="board_browser_empty_clear_filters">Reset filters</string>
     <string name="board_browser_empty_no_catalogue">The catalogue for this board hasn\'t been downloaded yet</string>
     <string name="board_browser_empty_load_catalogue">Load catalogue</string>
+    <string name="board_browser_empty_catalogue_loading">Catalogue is loading…</string>
     <string name="board_detail_title">Climb details</string>
     <string name="board_detail_by_setter">by %s</string>
     <string name="board_detail_error">Error</string>

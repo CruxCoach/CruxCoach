@@ -536,7 +536,19 @@ fun BoardBrowserScreen(
                         .padding(horizontal = 32.dp, vertical = 48.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    if (!state.activeBrandHasCatalogue) {
+                    if (state.activeBrandImporting) {
+                        // Third case: the active board's catalogue is being
+                        // imported right now — neither "no catalogue" nor
+                        // "no results" is true yet, so show real progress
+                        // instead of a misleading recovery prompt.
+                        CircularProgressIndicator(color = OrangeAccent)
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = stringResource(R.string.board_browser_empty_catalogue_loading),
+                            style = MaterialTheme.typography.titleMedium,
+                            textAlign = TextAlign.Center,
+                        )
+                    } else if (!state.activeBrandHasCatalogue) {
                         Text(
                             text = stringResource(R.string.board_browser_empty_no_catalogue),
                             style = MaterialTheme.typography.titleMedium,

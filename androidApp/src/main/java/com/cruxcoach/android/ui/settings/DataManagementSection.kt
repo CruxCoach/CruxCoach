@@ -170,19 +170,35 @@ internal fun DataImportExportSection(
 internal fun DataDeletionSection(
     showDeleteBoardDataDialog: Boolean,
     showDeleteUserDataDialog: Boolean,
+    isDeletingBoardData: Boolean,
     onShowDeleteBoardDataDialog: () -> Unit,
     onShowDeleteUserDataDialog: () -> Unit,
     onDismissDeleteDialog: () -> Unit,
     onDeleteBoardData: () -> Unit,
     onDeleteUserBoardData: () -> Unit,
 ) {
-    // Delete board data
+    // Delete board data. The deletion runs app-scoped for ~20s — while it
+    // is in flight the button becomes a blocking progress row so the user
+    // neither re-triggers it nor assumes the app hung.
     OutlinedButton(
         onClick = onShowDeleteBoardDataDialog,
+        enabled = !isDeletingBoardData,
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
         colors = ButtonDefaults.outlinedButtonColors(contentColor = OrangeAccent)
-    ) { Text(stringResource(R.string.settings_data_delete_board)) }
+    ) {
+        if (isDeletingBoardData) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(16.dp),
+                strokeWidth = 2.dp,
+                color = OrangeAccent
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(stringResource(R.string.settings_data_delete_board_progress))
+        } else {
+            Text(stringResource(R.string.settings_data_delete_board))
+        }
+    }
     Text(
         stringResource(R.string.settings_data_delete_board_desc),
         style = MaterialTheme.typography.bodySmall,

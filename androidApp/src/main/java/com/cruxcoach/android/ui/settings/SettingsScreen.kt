@@ -313,6 +313,7 @@ fun SettingsScreen(
                     DataDeletionSection(
                         showDeleteBoardDataDialog = state.showDeleteBoardDataDialog,
                         showDeleteUserDataDialog = state.showDeleteUserDataDialog,
+                        isDeletingBoardData = state.isDeletingBoardData,
                         onShowDeleteBoardDataDialog = { viewModel.showDeleteBoardDataDialog() },
                         onShowDeleteUserDataDialog = { viewModel.showDeleteUserDataDialog() },
                         onDismissDeleteDialog = { viewModel.dismissDeleteDialog() },

@@ -79,6 +79,12 @@ class BoardSyncManager(
      *  state instead of the misleading "sync the board DB" prompt. */
     val locationsBackfilling: StateFlow<Boolean> = _locationsBackfilling.asStateFlow()
 
+    private val _boardDataDeletion = MutableStateFlow(BoardDataDeletionState())
+    /** Progress of the board-catalogue deletion (Settings → "Delete board
+     *  data"). App-scoped here so the Settings UI can observe a run that
+     *  outlives its own ViewModel — see [deleteAllBoardData]. */
+    val boardDataDeletion: StateFlow<BoardDataDeletionState> = _boardDataDeletion.asStateFlow()
+
     init {
         scope.safeLaunch(TAG) {
             val imported = importer.isImported()
@@ -372,6 +378,10 @@ class BoardSyncManager(
                     syncComplete = false,
                     errorMessage = null,
                     importStep = initialStep,
+                    // Drop the previous run's per-board terminal steps so a
+                    // fresh sync doesn't render stale Done rows (and their
+                    // old counts) for boards whose lane hasn't started yet.
+                    auroraSteps = emptyMap(),
                     syncGeneration = current.syncGeneration + 1
                 )
             }
@@ -522,7 +532,7 @@ class BoardSyncManager(
             // MoonBoard rides on the same board-data sync (FEAT-027) — re-check
             // it even when the Kilter catalogue itself is unchanged.
             syncMoonBoardCatalogue()
-            syncAllLoadedAuroraBoards()
+            syncAllAuroraBoards()
             val timestamp = DateTimeUtil.nowIso()
             userPreferences.setLastSyncTimestamp(timestamp)
             _state.update { it.copy(
@@ -634,7 +644,7 @@ class BoardSyncManager(
                 )
             ) }
             syncMoonBoardCatalogue()
-            syncAllLoadedAuroraBoards()
+            syncAllAuroraBoards()
 
             val timestamp = DateTimeUtil.nowIso()
             userPreferences.setLastSyncTimestamp(timestamp)
@@ -706,19 +716,19 @@ class BoardSyncManager(
     }
 
     /**
-     * Sync every Aurora board the user already has data for, plus the active
-     * one even if still empty (FEAT-031). Drives the bulk re-download button +
-     * the daily/weekly scheduled sync: all loaded boards stay current, not just
-     * Kilter + the active board. Un-loaded boards are left alone — the user
-     * loads those individually from the status list.
+     * Sync EVERY interactive Aurora board's catalogue (FEAT-031). Product
+     * decision 2026-06-11: the full board-data sync — onboarding first sync,
+     * the manual re-download button, and the scheduled background sync —
+     * loads ALL boards, not just already-loaded ones, so a fresh install or
+     * a post-deletion re-download restores the complete multiboard catalogue
+     * without per-board activation. The bins are small (0.3–26 MB gz) and
+     * unchanged boards short-circuit to AlreadyCurrent on every later run,
+     * so repeat syncs stay cheap.
      */
-    private suspend fun syncAllLoadedAuroraBoards() {
-        val counts = withContext(Dispatchers.IO) { boardRepository.getClimbCountsByBrand() }
-        val active = BoardBrand.fromWire(userPreferences.boardBrand.first())
-        BoardBrand.entries.filter {
-            it.usesAuroraProtocol && it != BoardBrand.KILTER &&
-                ((counts[it.wireValue] ?: 0L) > 0L || it == active)
-        }.forEach { syncAuroraBoard(it) }
+    private suspend fun syncAllAuroraBoards() {
+        BoardBrand.entries
+            .filter { it.usesAuroraProtocol && it != BoardBrand.KILTER }
+            .forEach { syncAuroraBoard(it) }
     }
 
     /**
@@ -914,6 +924,45 @@ class BoardSyncManager(
         startBlossomSync()
     }
 
+    /**
+     * Delete the whole board catalogue (every brand) in the application-level
+     * [scope]. SettingsViewModel used to run this in viewModelScope: the
+     * delete takes ~20s on a full multi-board catalogue, so leaving the
+     * Settings screen — or killing the app — cancelled the coroutine and
+     * SQLite silently rolled the transaction back, leaving the user with a
+     * "deleted" confirmation flow but an intact catalogue. Progress is
+     * observable via [boardDataDeletion]; start / end / duration are logged
+     * so a field report can be diagnosed from logcat.
+     */
+    fun deleteAllBoardData() {
+        // Atomic check-and-claim, mirrors claimSyncSlot: only the caller
+        // that flips running from false to true starts the delete.
+        var claimed = false
+        _boardDataDeletion.update { current ->
+            if (current.running) {
+                claimed = false
+                current
+            } else {
+                claimed = true
+                current.copy(running = true)
+            }
+        }
+        if (!claimed) return
+        scope.launch {
+            val startMs = System.currentTimeMillis()
+            Log.i(TAG, "destructive: deleteAllBoardData() started")
+            try {
+                boardRepository.deleteAllBoardData()
+                resetAfterDataDeletion()
+                Log.i(TAG, "destructive: deleteAllBoardData() done in ${System.currentTimeMillis() - startMs}ms")
+                _boardDataDeletion.update { it.copy(running = false, completions = it.completions + 1) }
+            } catch (e: Exception) {
+                Log.e(TAG, "destructive: deleteAllBoardData() failed after ${System.currentTimeMillis() - startMs}ms", e)
+                _boardDataDeletion.update { it.copy(running = false) }
+            }
+        }
+    }
+
     fun resetAfterDataDeletion() {
         _state.update { it.copy(
             alreadyImported = false,
@@ -991,6 +1040,17 @@ class BoardSyncManager(
         }
     }
 }
+
+/**
+ * Observable progress of the board-catalogue deletion. [completions] is a
+ * monotonic success counter so the Settings UI can show the success banner
+ * exactly once per finished run — a plain running-flag transition could not
+ * distinguish success from failure.
+ */
+data class BoardDataDeletionState(
+    val running: Boolean = false,
+    val completions: Int = 0,
+)
 
 data class BoardSyncState(
     val isSyncing: Boolean = false,

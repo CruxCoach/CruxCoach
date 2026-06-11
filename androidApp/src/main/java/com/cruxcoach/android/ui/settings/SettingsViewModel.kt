@@ -119,6 +119,10 @@ data class SettingsState(
     val productSizes: List<com.cruxcoach.data.repository.BoardSize> = emptyList(),
     val showDeleteBoardDataDialog: Boolean = false,
     val showDeleteUserDataDialog: Boolean = false,
+    /** True while the app-scoped board-data deletion runs (~20s on a full
+     *  multi-board catalogue) — disables the delete button and shows a
+     *  blocking progress row instead of a silent wait. */
+    val isDeletingBoardData: Boolean = false,
     val deleteSuccess: String? = null,
     val kilterAccount: KilterAccountState = KilterAccountState()
 )
@@ -151,6 +155,20 @@ class SettingsViewModel @Inject constructor(
             val freq = withContext(Dispatchers.IO) { boardLocationRepository.productSizeFrequency() }
             val enabled = withContext(Dispatchers.IO) { boardLocationRepository.countWalls() > 0L }
             _state.update { it.copy(boardSizeFrequency = freq, boardSearchEnabled = enabled) }
+        }
+        // Board-data deletion runs app-scoped in BoardSyncManager (it takes
+        // ~20s and must survive leaving this screen) — mirror its progress
+        // into the local state and surface the success banner when a run
+        // completes while this screen is alive.
+        viewModelScope.safeLaunch("SettingsViewModel") {
+            var seenCompletions = syncManager.boardDataDeletion.value.completions
+            syncManager.boardDataDeletion.collect { deletion ->
+                _state.update { it.copy(isDeletingBoardData = deletion.running) }
+                if (deletion.completions > seenCompletions) {
+                    seenCompletions = deletion.completions
+                    _state.update { it.copy(deleteSuccess = context.getString(R.string.settings_delete_board_success)) }
+                }
+            }
         }
     }
 
@@ -670,13 +688,12 @@ class SettingsViewModel @Inject constructor(
 
     fun deleteBoardData() {
         _state.update { it.copy(showDeleteBoardDataDialog = false) }
-        viewModelScope.launch {
-            withContext(Dispatchers.IO) {
-                boardRepository.deleteAllBoardData()
-            }
-            syncManager.resetAfterDataDeletion()
-            _state.update { it.copy(deleteSuccess = context.getString(R.string.settings_delete_board_success)) }
-        }
+        // Delegated to the app-scoped BoardSyncManager: the multi-table
+        // delete takes ~20s, and running it in viewModelScope meant leaving
+        // the Settings screen (or killing the app) cancelled the coroutine
+        // and SQLite silently rolled the transaction back. The init
+        // collector mirrors progress + success back into this screen.
+        syncManager.deleteAllBoardData()
     }
 
     fun deleteUserBoardData() {

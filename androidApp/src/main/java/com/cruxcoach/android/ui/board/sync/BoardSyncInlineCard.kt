@@ -59,9 +59,15 @@ fun BoardSyncInlineCard(
     val context = LocalContext.current
 
     LaunchedEffect(Unit) { viewModel.checkNetwork() }
-    // Recompute per-board catalogue sizes on first show and after each sync
-    // completes, so the status list reflects a just-loaded board.
-    LaunchedEffect(state.lastSyncCompletedAtMillis) { viewModel.refreshBoardCounts() }
+    // Recompute per-board catalogue sizes on first show, after each sync
+    // completes, and after a board-data deletion (alreadyImported flips
+    // false), so the status list never shows pre-deletion counts.
+    LaunchedEffect(state.lastSyncCompletedAtMillis, state.alreadyImported) { viewModel.refreshBoardCounts() }
+    // Also recompute whenever any single board's step flips to Done mid-sync:
+    // during the all-boards sync each row must turn green with its count as
+    // soon as ITS import finishes, not only when the whole sync ends.
+    val doneBrands = state.boardSteps.filterValues { it is ImportStep.Done }.keys
+    LaunchedEffect(doneBrands) { viewModel.refreshBoardCounts() }
     if (autoStartIfNeeded) {
         // One-shot on first composition. The VM's startApiSyncIfNeeded
         // guards on alreadyImported + isSyncing so a re-entry to the
@@ -434,7 +440,14 @@ private fun BoardStatusRow(
 ) {
     // This board is mid-sync when it has a non-terminal step in the map.
     val boardSyncing = step != null && step !is ImportStep.Done
-    val loaded = count > 0L
+    // A Done step carries that board's post-import catalogue total — use it
+    // while [count] (refreshed asynchronously) is still stale, so the row
+    // flips to done+count the moment its own import completes. AlreadyCurrent
+    // reports Done(0,0,0); the count-first preference keeps the previously
+    // loaded total for that case.
+    val doneClimbs = (step as? ImportStep.Done)?.climbs?.toLong() ?: 0L
+    val displayCount = if (count > 0L) count else doneClimbs
+    val loaded = displayCount > 0L
 
     // Inline progress label (reuses the step strings) + bar fraction.
     val progressLabel: String? = when (step) {
@@ -504,7 +517,7 @@ private fun BoardStatusRow(
                     color = OrangeAccent,
                 )
                 loaded -> Text(
-                    "%,d".format(count),
+                    "%,d".format(displayCount),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
