@@ -3,6 +3,7 @@ package com.cruxcoach.android.data
 import com.cruxcoach.domain.board.BoardBrand
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -62,20 +63,17 @@ class BoardMirrorableTest {
     }
 
     @Test
-    fun decoy_exposesBothLayoutsAsSelectableVariants() {
-        // Decoy has two listed layouts; both must be pickable so the Dots
-        // layout (previously auto-skipped by the most-climbed default) is
-        // reachable. Dungeon Trainer is listed first to remain the default.
+    fun decoy_exposesOnlyDungeonTrainer() {
+        // "Dots" (layout 1) is a password-gated internal/R&D layout, not a
+        // consumer board — Decoy pins the single real layout 2 so the picker
+        // never offers Dots and chunk-derive can't select it.
         val variants = BoardConstants.auroraVariants(BoardBrand.DECOY)
-        assertEquals(2, variants.size)
-        assertEquals(2, variants[0].layoutId) // Dungeon Trainer first → default
-        assertEquals(1, variants[1].layoutId) // Dots second
-        variants.forEach {
-            assertEquals(1, it.productId)
-            assertEquals(1, it.defaultSizeId)
-            assertTrue("both Decoy layouts are symmetric", it.isMirrored)
-        }
+        assertEquals(1, variants.size)
+        assertEquals(2, variants[0].layoutId) // Dungeon Trainer
+        assertEquals(1, variants[0].productId)
+        assertEquals(1, variants[0].defaultSizeId)
+        assertTrue("Dungeon Trainer is symmetric", variants[0].isMirrored)
         assertEquals(2, BoardConstants.auroraVariant(BoardBrand.DECOY, 2)?.layoutId)
-        assertEquals(1, BoardConstants.auroraVariant(BoardBrand.DECOY, 1)?.layoutId)
+        assertNull("Dots must not resolve", BoardConstants.auroraVariant(BoardBrand.DECOY, 1))
     }
 }

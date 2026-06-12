@@ -657,6 +657,7 @@
     <string name="board_filter_my_climbs">Eigene Climbs</string>
     <string name="climb_card_draft_badge">Entwurf</string>
     <string name="board_filter_grade_range">Grad: %1$s – %2$s</string>
+    <string name="board_filter_ungraded_only">Nur unbewertete (Projekte)</string>
     <string name="board_filter_sort">Sortierung</string>
     <string name="board_filter_sort_asc">Aufsteigend</string>
     <string name="board_filter_sort_desc">Absteigend</string>

@@ -656,6 +656,7 @@
     <string name="board_filter_my_climbs">My climbs</string>
     <string name="climb_card_draft_badge">Draft</string>
     <string name="board_filter_grade_range">Grade: %1$s – %2$s</string>
+    <string name="board_filter_ungraded_only">Ungraded only (projects)</string>
     <string name="board_filter_sort">Sort</string>
     <string name="board_filter_sort_asc">Ascending</string>
     <string name="board_filter_sort_desc">Descending</string>

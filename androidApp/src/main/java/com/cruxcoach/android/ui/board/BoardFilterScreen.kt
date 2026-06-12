@@ -288,11 +288,35 @@ fun BoardFilterScreen(
                     onValueChangeFinished = { viewModel.commitFilterChange() },
                     valueRange = 0f..gradeSliderMax,
                     steps = (gradeStops - 2).coerceAtLeast(0),
+                    // Inert while ungraded-only mode is active — the grade
+                    // range is replaced by the "only NULL grades" predicate.
+                    enabled = !state.filter.ungradedOnly,
                     modifier = Modifier.testTag("board_grade_slider"),
                     colors = SliderDefaults.colors(
                         thumbColor = OrangeAccent,
                         activeTrackColor = OrangeAccent
                     )
+                )
+
+                // Ungraded-only ("Projekte") mode: shows exactly the climbs
+                // without a community grade. Sits in the grade section because
+                // it takes over the grade predicate from the slider above.
+                FilterChip(
+                    selected = state.filter.ungradedOnly,
+                    onClick = { viewModel.updateUngradedOnlyFilter(!state.filter.ungradedOnly) },
+                    label = {
+                        Text(
+                            stringResource(R.string.board_filter_ungraded_only),
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
+                        selectedLabelColor = OrangeAccent
+                    ),
+                    modifier = Modifier
+                        .height(32.dp)
+                        .testTag("board_filter_ungraded_only")
                 )
 
                 Text(

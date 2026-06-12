@@ -80,11 +80,16 @@ class FakeBoardRepository : BoardRepository {
         angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double,
         minAscensionists: Int, sortField: ClimbSortField,
         sortDirection: SortDirection, limit: Int, offset: Int,
-        climbType: ClimbTypeFilter, selProductSizeId: Int, hsmExcludedMask: Long
+        climbType: ClimbTypeFilter, selProductSizeId: Int, hsmExcludedMask: Long, showUngraded: Boolean
     ): List<ClimbWithStats> {
         val filtered = climbs.filter { climb ->
-            val diff = climb.difficultyAverage ?: return@filter false
-            diff in minDifficulty..maxDifficulty &&
+            // Mirror production SQL: NULL difficulty passes only via showUngraded;
+            // a non-null grade must sit inside min..max. The ungraded-only
+            // mode's impossible range (min > max) is an empty Kotlin range, so
+            // it excludes every graded climb — same as the SQL range leg.
+            val diff = climb.difficultyAverage
+            val gradeOk = if (diff == null) showUngraded else diff in minDifficulty..maxDifficulty
+            gradeOk &&
                 (climb.ascensionistCount ?: 0) >= minAscensionists &&
                 climb.matchesClimbType(climbType) &&
                 (climb.hsm and hsmExcludedMask) == 0L
@@ -110,11 +115,13 @@ class FakeBoardRepository : BoardRepository {
 
     override fun countFilteredClimbs(
         angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double,
-        minAscensionists: Int, climbType: ClimbTypeFilter, selProductSizeId: Int, hsmExcludedMask: Long
+        minAscensionists: Int, climbType: ClimbTypeFilter, selProductSizeId: Int, hsmExcludedMask: Long,
+        showUngraded: Boolean
     ): Long {
         return climbs.count { climb ->
-            val diff = climb.difficultyAverage ?: return@count false
-            diff in minDifficulty..maxDifficulty &&
+            val diff = climb.difficultyAverage
+            val gradeOk = if (diff == null) showUngraded else diff in minDifficulty..maxDifficulty
+            gradeOk &&
                 (climb.ascensionistCount ?: 0) >= minAscensionists &&
                 climb.matchesClimbType(climbType) &&
                 (climb.hsm and hsmExcludedMask) == 0L
@@ -122,22 +129,25 @@ class FakeBoardRepository : BoardRepository {
     }
 
     override fun countFilteredClimbsFast(
-        angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, selProductSizeId: Int, hsmExcludedMask: Long
+        angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, selProductSizeId: Int, hsmExcludedMask: Long, showUngraded: Boolean
     ): Long {
         return climbs.count { climb ->
-            val diff = climb.difficultyAverage ?: return@count false
-            diff in minDifficulty..maxDifficulty &&
+            val diff = climb.difficultyAverage
+            val gradeOk = if (diff == null) showUngraded else diff in minDifficulty..maxDifficulty
+            gradeOk &&
                 (climb.ascensionistCount ?: 0) >= minAscensionists
         }.toLong()
     }
 
     override fun countBenchmarkFilteredClimbs(
         angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double,
-        minAscensionists: Int, climbType: ClimbTypeFilter, selProductSizeId: Int, hsmExcludedMask: Long
+        minAscensionists: Int, climbType: ClimbTypeFilter, selProductSizeId: Int, hsmExcludedMask: Long,
+        showUngraded: Boolean
     ): Long {
         return climbs.count { climb ->
-            val diff = climb.difficultyAverage ?: return@count false
-            diff in minDifficulty..maxDifficulty &&
+            val diff = climb.difficultyAverage
+            val gradeOk = if (diff == null) showUngraded else diff in minDifficulty..maxDifficulty
+            gradeOk &&
                 (climb.ascensionistCount ?: 0) >= minAscensionists &&
                 climb.benchmarkDifficulty > 0.0 &&
                 climb.matchesClimbType(climbType) &&
@@ -186,10 +196,15 @@ class FakeBoardRepository : BoardRepository {
         // applies elsewhere. Pre-fix the fake silently returned every
         // climb whose uuid matched, masking out-of-range bugs the
         // SENT/ATTEMPTED browser filters would catch in production.
+        // NOTE: this query variant carries the PLAIN range predicate (no
+        // :showUngraded escape), so a NULL grade never passes — exactly like
+        // `difficulty_average >= :minDiff AND <= :maxDiff` in SQL, which is
+        // never true for NULL. With the ungraded-only mode's impossible
+        // range (min > max) it therefore matches nothing.
         return climbs.filter { climb ->
             if (climb.uuid !in uuids) return@filter false
             val diff = climb.difficultyAverage
-            (diff == null || diff in minDifficulty..maxDifficulty) &&
+            diff != null && diff in minDifficulty..maxDifficulty &&
                 (climb.ascensionistCount ?: 0) >= minAscensionists &&
                 climb.matchesClimbType(climbType)
         }
@@ -224,11 +239,16 @@ class FakeBoardRepository : BoardRepository {
 
     override fun getAllBrowseMatchingUuids(
         angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double,
-        minAscensionists: Int, climbType: ClimbTypeFilter, selProductSizeId: Int, hsmExcludedMask: Long
+        minAscensionists: Int, climbType: ClimbTypeFilter, selProductSizeId: Int, hsmExcludedMask: Long,
+        showUngraded: Boolean
     ): List<String> {
         return climbs.filter { climb ->
+            // Mirror production SQL: NULL difficulty passes only via showUngraded
+            // (pre-fix the fake let NULL pass unconditionally, which production
+            // never did — searchClimbsSorted would then drop those uuids again).
             val diff = climb.difficultyAverage
-            (diff == null || diff in minDifficulty..maxDifficulty) &&
+            val gradeOk = if (diff == null) showUngraded else diff in minDifficulty..maxDifficulty
+            gradeOk &&
                 (climb.ascensionistCount ?: 0) >= minAscensionists &&
                 climb.matchesClimbType(climbType) &&
                 (climb.hsm and hsmExcludedMask) == 0L
@@ -418,11 +438,11 @@ class FakeBoardRepository : BoardRepository {
     override fun getCruxCoachClimbs(
         layoutId: Int, boardBrand: String, angle: Int, minDifficulty: Double, maxDifficulty: Double,
         minAscensionists: Int, climbType: com.cruxcoach.data.repository.ClimbTypeFilter,
-        selProductSizeId: Int, hsmExcludedMask: Long,
+        selProductSizeId: Int, hsmExcludedMask: Long, showUngraded: Boolean,
     ): List<com.cruxcoach.data.repository.ClimbWithStats> = emptyList()
     override fun getBoardSeshClimbs(
         layoutId: Int, boardBrand: String, angle: Int, minDifficulty: Double, maxDifficulty: Double,
         minAscensionists: Int, climbType: com.cruxcoach.data.repository.ClimbTypeFilter,
-        selProductSizeId: Int, hsmExcludedMask: Long,
+        selProductSizeId: Int, hsmExcludedMask: Long, showUngraded: Boolean,
     ): List<com.cruxcoach.data.repository.ClimbWithStats> = emptyList()
 }

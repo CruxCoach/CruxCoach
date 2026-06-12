@@ -284,6 +284,9 @@ object PreferenceKeys {
     val BOARD_BENCHMARK_ONLY = booleanPreferencesKey("board_benchmark_only")
     val BOARD_ORIGIN_FILTER = stringPreferencesKey("board_origin_filter")
     val BOARD_MY_CLIMBS_ONLY = booleanPreferencesKey("board_my_climbs_only")
+    // "Nur unbewertete (Projekte)" browse mode — list shows ONLY ungraded
+    // climbs while set; persisted like every other browse filter.
+    val BOARD_UNGRADED_ONLY = booleanPreferencesKey("board_ungraded_only")
     val ROUTE_FRAME_SPEED = floatPreferencesKey("route_frame_speed_f")
     // Auto-Note: when true, publishing a Kind-30078 climb also sends a
     // public Kind-1 note linking to it. Default false; the editor exposes
@@ -357,6 +360,9 @@ data class BoardFilterSnapshot(
     val benchmarkOnly: Boolean,
     val originFilter: String,
     val myClimbsOnly: Boolean,
+    /** Ungraded-only ("Projekte") browse mode. Defaults to false so fresh
+     *  installs and pre-existing prefs open on the normal catalogue view. */
+    val ungradedOnly: Boolean = false,
     /** Active board brand — "kilter" | "moonboard" (FEAT-027). */
     val boardBrand: String = "kilter",
 )
@@ -384,6 +390,7 @@ class UserPreferences(
             benchmarkOnly = prefs[PreferenceKeys.BOARD_BENCHMARK_ONLY] ?: false,
             originFilter = prefs[PreferenceKeys.BOARD_ORIGIN_FILTER] ?: "ALL",
             myClimbsOnly = prefs[PreferenceKeys.BOARD_MY_CLIMBS_ONLY] ?: false,
+            ungradedOnly = prefs[PreferenceKeys.BOARD_UNGRADED_ONLY] ?: false,
         )
     }
 
@@ -870,6 +877,7 @@ class UserPreferences(
         climbType: String = "BOULDER", benchmarkOnly: Boolean = false,
         originFilter: String = "ALL",
         myClimbsOnly: Boolean = false,
+        ungradedOnly: Boolean = false,
     ) {
         dataStore.edit { prefs ->
             prefs[PreferenceKeys.BOARD_ANGLE] = angle
@@ -883,6 +891,7 @@ class UserPreferences(
             prefs[PreferenceKeys.BOARD_BENCHMARK_ONLY] = benchmarkOnly
             prefs[PreferenceKeys.BOARD_ORIGIN_FILTER] = originFilter
             prefs[PreferenceKeys.BOARD_MY_CLIMBS_ONLY] = myClimbsOnly
+            prefs[PreferenceKeys.BOARD_UNGRADED_ONLY] = ungradedOnly
         }
     }
 

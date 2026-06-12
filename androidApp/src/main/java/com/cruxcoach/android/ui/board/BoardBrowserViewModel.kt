@@ -149,8 +149,8 @@ data class BrowserFilterState(
     /** Discrete angle options for the active MoonBoard variant; empty for
      *  Kilter (which uses the continuous slider). */
     val moonBoardAngles: List<Int> = emptyList(),
-    val minGradeIndex: Int = 0,
-    val maxGradeIndex: Int = 16,
+    val minGradeIndex: Int = DEFAULT_MIN_GRADE_INDEX,
+    val maxGradeIndex: Int = DEFAULT_MAX_GRADE_INDEX,
     val minAscensionists: Int = 0,
     val searchQuery: String = "",
     val sortField: ClimbSortField = ClimbSortField.ASCENSIONISTS,
@@ -164,7 +164,22 @@ data class BrowserFilterState(
      *  user's Nostr pubkey (drafts + published). Bypasses angle/grade/asc
      *  filters at fetch time so drafts saved at any angle remain visible. */
     val myClimbsOnly: Boolean = false,
-)
+    /** "Nur unbewertete (Projekte)" mode (product decision 2026-06-11,
+     *  replacing the old untouched-default-range heuristic): when true the
+     *  browse list shows ONLY ungraded climbs (difficulty_average NULL) and
+     *  the grade slider is inert. When false, ungraded climbs are NEVER part
+     *  of a regular browse result — the BoardSesh provenance pull is the one
+     *  exception (its imports are inherently ungraded; the origin chip is
+     *  the explicit opt-in). */
+    val ungradedOnly: Boolean = false,
+) {
+    companion object {
+        /** Default (untouched) grade-slider range — single source of truth
+         *  for the property defaults and the filter reset. */
+        const val DEFAULT_MIN_GRADE_INDEX = 0
+        const val DEFAULT_MAX_GRADE_INDEX = 16
+    }
+}
 
 data class BrowserBleState(
     val connectionState: ConnectionState = ConnectionState.DISCONNECTED,
@@ -271,15 +286,53 @@ class BoardBrowserViewModel @Inject constructor(
     // page 1's UUIDs from that shuffle keeps the whole scroll duplicate- and
     // gap-free. Key signature excludes status/benchmark/origin filters —
     // those are applied client-side after pagination, so they don't change
-    // the underlying match set and must not force a re-roll.
+    // the underlying match set and must not force a re-roll. The cache
+    // lives only between pages of ONE selection: every explicit sort pick
+    // (updateSortField) discards it, so re-tapping RANDOM re-rolls instead
+    // of serving the same permutation for the ViewModel's lifetime.
     private var randomKey: String? = null
     private var randomPage1: List<ClimbWithStats>? = null
     private var randomCacheJob: Deferred<List<String>>? = null
+
+    private fun invalidateRandomCache() {
+        randomKey = null
+        randomPage1 = null
+        randomCacheJob?.cancel()
+        randomCacheJob = null
+    }
 
     companion object {
         private const val TAG = "BoardBrowserVM"
         private const val PAGE_SIZE = 50
         private const val MAX_STATUS_SCAN_PAGES = 10
+
+        // Ungraded-only mode rides on the existing SQL grade predicate
+        //   ((difficulty_average >= :minDiff AND <= :maxDiff)
+        //    OR (:showUngraded = 1 AND difficulty_average IS NULL))
+        // by passing an IMPOSSIBLE range (min > max) together with
+        // showUngraded=true: the range leg can never match, so only the
+        // IS NULL leg does — every browse / count / uuid-enumeration query
+        // shares that predicate shape, no SQL change needed.
+        private const val UNGRADED_ONLY_MIN_DIFF = 9999.0
+        private const val UNGRADED_ONLY_MAX_DIFF = -9999.0
+    }
+
+    /** Effective SQL grade-bound parameters derived from the filter state. */
+    private data class GradeBounds(val minDiff: Double, val maxDiff: Double, val showUngraded: Boolean)
+
+    /** Normal mode: the slider's real bounds with showUngraded=false —
+     *  ungraded (NULL-difficulty) climbs are never shown in browse, whatever
+     *  the slider position. Ungraded-only mode: the impossible range +
+     *  showUngraded=true, so exactly the NULL-grade rows match (see the
+     *  companion constants). */
+    private fun gradeBounds(f: BrowserFilterState): GradeBounds {
+        if (f.ungradedOnly) return GradeBounds(UNGRADED_ONLY_MIN_DIFF, UNGRADED_ONLY_MAX_DIFF, true)
+        val french = _state.value.gradeScale == GradeScale.FRENCH
+        return GradeBounds(
+            KilterGradeMapper.indexToFilterMin(f.minGradeIndex, french),
+            KilterGradeMapper.indexToFilterMax(f.maxGradeIndex, french),
+            false,
+        )
     }
 
     init {
@@ -320,6 +373,7 @@ class BoardBrowserViewModel @Inject constructor(
                         benchmarkOnly = snap.benchmarkOnly,
                         originFilter = originFilter,
                         myClimbsOnly = snap.myClimbsOnly,
+                        ungradedOnly = snap.ungradedOnly,
                     )
                 ) }
                 filtersLoaded = true
@@ -628,6 +682,7 @@ class BoardBrowserViewModel @Inject constructor(
                 climbType = f.climbTypeFilter.name, benchmarkOnly = f.benchmarkOnly,
                 originFilter = f.originFilter.name,
                 myClimbsOnly = f.myClimbsOnly,
+                ungradedOnly = f.ungradedOnly,
             )
         }
     }
@@ -664,6 +719,9 @@ class BoardBrowserViewModel @Inject constructor(
     }
 
     fun updateSortField(field: ClimbSortField) {
+        // Unconditional: a fresh RANDOM pick must re-roll even when RANDOM
+        // is already selected, and leaving RANDOM frees the dead shuffle.
+        invalidateRandomCache()
         _state.update { it.copy(filter = it.filter.copy(sortField = field)) }
         persistFilters()
         searchClimbs()
@@ -697,8 +755,8 @@ class BoardBrowserViewModel @Inject constructor(
     fun clearAllBrowseFilters() {
         _state.update { s ->
             s.copy(filter = s.filter.copy(
-                minGradeIndex = 0,
-                maxGradeIndex = 16,
+                minGradeIndex = BrowserFilterState.DEFAULT_MIN_GRADE_INDEX,
+                maxGradeIndex = BrowserFilterState.DEFAULT_MAX_GRADE_INDEX,
                 minAscensionists = 0,
                 searchQuery = "",
                 statusFilter = emptySet(),
@@ -706,6 +764,7 @@ class BoardBrowserViewModel @Inject constructor(
                 benchmarkOnly = false,
                 originFilter = OriginFilter.ALL,
                 myClimbsOnly = false,
+                ungradedOnly = false,
             ))
         }
         persistFilters()
@@ -751,6 +810,15 @@ class BoardBrowserViewModel @Inject constructor(
      *  fallback, so a brand-new account never opens to an empty list. */
     fun updateMyClimbsFilter(enabled: Boolean) {
         _state.update { it.copy(filter = it.filter.copy(myClimbsOnly = enabled)) }
+        persistFilters()
+        searchClimbs()
+    }
+
+    /** "Nur unbewertete (Projekte)" toggle — when on, the browse list shows
+     *  ONLY ungraded climbs and the grade slider is inert (see
+     *  [BrowserFilterState.ungradedOnly]). */
+    fun updateUngradedOnlyFilter(enabled: Boolean) {
+        _state.update { it.copy(filter = it.filter.copy(ungradedOnly = enabled)) }
         persistFilters()
         searchClimbs()
     }
@@ -890,8 +958,10 @@ class BoardBrowserViewModel @Inject constructor(
             return directCount.toLong()
         }
 
-        // Build a key from count-affecting fields only (not sort)
-        val countKey = "${filter.angle}|${filter.minGradeIndex}|${filter.maxGradeIndex}|" +
+        // Build a key from count-affecting fields only (not sort).
+        // ungradedOnly swaps the whole grade predicate (impossible range +
+        // IS NULL leg), so it changes the count even at identical indices.
+        val countKey = "${filter.angle}|${filter.minGradeIndex}|${filter.maxGradeIndex}|${filter.ungradedOnly}|" +
             "${filter.minAscensionists}|${filter.searchQuery}|${filter.climbTypeFilter}|${filter.benchmarkOnly}"
 
         // Fetch DB count only if count-affecting filters changed
@@ -976,12 +1046,10 @@ class BoardBrowserViewModel @Inject constructor(
         // client-side just like the my-climbs branch above.
         if (f.originFilter == OriginFilter.CRUXCOACH) {
             if (dbOffset > 0) return Triple(emptyList(), dbOffset, true)
-            val french = _state.value.gradeScale == GradeScale.FRENCH
-            val minDiff = KilterGradeMapper.indexToFilterMin(f.minGradeIndex, french)
-            val maxDiff = KilterGradeMapper.indexToFilterMax(f.maxGradeIndex, french)
+            val gb = gradeBounds(f)
             val all = boardRepository.getCruxCoachClimbs(
-                f.layoutId, f.boardBrand, f.angle, minDiff, maxDiff, f.minAscensionists, f.climbTypeFilter,
-                selProductSizeId = selSizeId(), hsmExcludedMask = hsmMask()
+                f.layoutId, f.boardBrand, f.angle, gb.minDiff, gb.maxDiff, f.minAscensionists, f.climbTypeFilter,
+                selProductSizeId = selSizeId(), hsmExcludedMask = hsmMask(), showUngraded = gb.showUngraded
             )
             val nameFiltered = if (f.searchQuery.isBlank()) all
                 else all.filter { it.name.contains(f.searchQuery, ignoreCase = true) }
@@ -998,12 +1066,15 @@ class BoardBrowserViewModel @Inject constructor(
         // set (a couple hundred rows) in one query and sort client-side.
         if (f.originFilter == OriginFilter.BOARDSESH) {
             if (dbOffset > 0) return Triple(emptyList(), dbOffset, true)
-            val french = _state.value.gradeScale == GradeScale.FRENCH
-            val minDiff = KilterGradeMapper.indexToFilterMin(f.minGradeIndex, french)
-            val maxDiff = KilterGradeMapper.indexToFilterMax(f.maxGradeIndex, french)
+            val gb = gradeBounds(f)
+            // BoardSesh imports are inherently ungraded — selecting the
+            // provenance chip IS the explicit opt-in, so the IS NULL escape
+            // stays on unconditionally here (in normal mode: graded imports
+            // within the slider range + all ungraded ones; in ungraded-only
+            // mode the impossible range leaves exactly the ungraded set).
             val all = boardRepository.getBoardSeshClimbs(
-                f.layoutId, f.boardBrand, f.angle, minDiff, maxDiff, f.minAscensionists, f.climbTypeFilter,
-                selProductSizeId = selSizeId(), hsmExcludedMask = hsmMask()
+                f.layoutId, f.boardBrand, f.angle, gb.minDiff, gb.maxDiff, f.minAscensionists, f.climbTypeFilter,
+                selProductSizeId = selSizeId(), hsmExcludedMask = hsmMask(), showUngraded = true
             )
             val nameFiltered = if (f.searchQuery.isBlank()) all
                 else all.filter { it.name.contains(f.searchQuery, ignoreCase = true) }
@@ -1017,11 +1088,13 @@ class BoardBrowserViewModel @Inject constructor(
         val hs = _state.value.holdSearch
         if (hs.holdFilterActive && hs.holdFilterUuids.isNotEmpty()) {
             if (dbOffset > 0) return Triple(emptyList(), dbOffset, true)
-            val french = _state.value.gradeScale == GradeScale.FRENCH
-            val minDiff = KilterGradeMapper.indexToFilterMin(f.minGradeIndex, french)
-            val maxDiff = KilterGradeMapper.indexToFilterMax(f.maxGradeIndex, french)
+            // getClimbsByUuids carries the plain range predicate (no
+            // :showUngraded escape): in ungraded-only mode the impossible
+            // range yields no rows — logically right, a range-only query
+            // can never represent "unknown grade".
+            val gb = gradeBounds(f)
             val all = boardRepository.getClimbsByUuids(
-                hs.holdFilterUuids, f.angle, f.layoutId, f.boardBrand, minDiff, maxDiff, f.minAscensionists, f.climbTypeFilter
+                hs.holdFilterUuids, f.angle, f.layoutId, f.boardBrand, gb.minDiff, gb.maxDiff, f.minAscensionists, f.climbTypeFilter
             )
             val filtered = applyOriginFilter(applyBenchmarkFilter(applyStatusFilter(all, f.statusFilter), f.benchmarkOnly), f.originFilter)
             val sorted = sortInKotlin(filtered, f.sortField, f.sortDirection)
@@ -1036,11 +1109,9 @@ class BoardBrowserViewModel @Inject constructor(
             val uuids = directStatusUuids(f.statusFilter)
             if (uuids.isEmpty()) return Triple(emptyList(), 0, true)
             if (dbOffset > 0) return Triple(emptyList(), dbOffset, true)
-            val french = _state.value.gradeScale == GradeScale.FRENCH
-            val minDiff = KilterGradeMapper.indexToFilterMin(f.minGradeIndex, french)
-            val maxDiff = KilterGradeMapper.indexToFilterMax(f.maxGradeIndex, french)
+            val gb = gradeBounds(f)
             val all = boardRepository.getClimbsByUuids(
-                uuids, f.angle, f.layoutId, f.boardBrand, minDiff, maxDiff, f.minAscensionists, f.climbTypeFilter
+                uuids, f.angle, f.layoutId, f.boardBrand, gb.minDiff, gb.maxDiff, f.minAscensionists, f.climbTypeFilter
             )
             val filtered = applyOriginFilter(applyBenchmarkFilter(all, f.benchmarkOnly), f.originFilter)
             val sorted = sortInKotlin(filtered, f.sortField, f.sortDirection)
@@ -1100,11 +1171,9 @@ class BoardBrowserViewModel @Inject constructor(
                 boardRepository.searchClimbsByName(f.searchQuery, f.angle, f.layoutId, f.boardBrand, f.sortField, f.sortDirection, PAGE_SIZE, offset, f.climbTypeFilter, selProductSizeId = selSizeId(), hsmExcludedMask = hsmMask())
             }
         } else {
-            val french = _state.value.gradeScale == GradeScale.FRENCH
-            val minDiff = KilterGradeMapper.indexToFilterMin(f.minGradeIndex, french)
-            val maxDiff = KilterGradeMapper.indexToFilterMax(f.maxGradeIndex, french)
+            val gb = gradeBounds(f)
             PerfLogger.traceQuery("searchClimbsSorted(offset=$offset)") {
-                boardRepository.searchClimbsSorted(f.angle, f.layoutId, f.boardBrand, minDiff, maxDiff, f.minAscensionists, f.sortField, f.sortDirection, PAGE_SIZE, offset, f.climbTypeFilter, selProductSizeId = selSizeId(), hsmExcludedMask = hsmMask())
+                boardRepository.searchClimbsSorted(f.angle, f.layoutId, f.boardBrand, gb.minDiff, gb.maxDiff, f.minAscensionists, f.sortField, f.sortDirection, PAGE_SIZE, offset, f.climbTypeFilter, selProductSizeId = selSizeId(), hsmExcludedMask = hsmMask(), showUngraded = gb.showUngraded)
             }
         }
     }
@@ -1117,18 +1186,22 @@ class BoardBrowserViewModel @Inject constructor(
     // shuffle is what makes the combined scroll duplicate- and gap-free.
     // getClimbsByUuids does not preserve input order, so we re-key by uuid.
     private suspend fun fetchRandomPage(f: BrowserFilterState, offset: Int): List<ClimbWithStats> {
-        val french = _state.value.gradeScale == GradeScale.FRENCH
-        val minDiff = KilterGradeMapper.indexToFilterMin(f.minGradeIndex, french)
-        val maxDiff = KilterGradeMapper.indexToFilterMax(f.maxGradeIndex, french)
+        val gb = gradeBounds(f)
+        val minDiff = gb.minDiff
+        val maxDiff = gb.maxDiff
         val sel = selSizeId()
         val hm = hsmMask()
+        val su = gb.showUngraded
         // boardBrand must be part of the key: layout ids collide across brands
         // (every board's Original layout is id 1) and sel can be 0 on both
         // sides of a board switch (MoonBoard / not-yet-imported catalogue), so
         // an angle|layout|sel-identical switch would otherwise serve the
         // previous brand's cached page-1 + shuffle. hm (hold-set mask) changes
-        // the match set the same way sel does, so it is keyed too.
-        val key = "${f.boardBrand}|${f.angle}|${f.layoutId}|$minDiff|$maxDiff|${f.minAscensionists}|${f.climbTypeFilter}|$sel|$hm"
+        // the match set the same way sel does, so it is keyed too; ditto su +
+        // the bounds, which together also encode the ungraded-only mode (it
+        // swaps the result set to exactly the NULL-grade rows, so toggling it
+        // must re-roll the shuffle).
+        val key = "${f.boardBrand}|${f.angle}|${f.layoutId}|$minDiff|$maxDiff|${f.minAscensionists}|${f.climbTypeFilter}|$sel|$hm|$su"
 
         if (key != randomKey) {
             randomKey = key
@@ -1143,7 +1216,7 @@ class BoardBrowserViewModel @Inject constructor(
                 boardRepository.searchClimbsSorted(
                     f.angle, f.layoutId, f.boardBrand, minDiff, maxDiff, f.minAscensionists,
                     ClimbSortField.RANDOM, SortDirection.DESC, PAGE_SIZE, 0,
-                    f.climbTypeFilter, selProductSizeId = sel, hsmExcludedMask = hm
+                    f.climbTypeFilter, selProductSizeId = sel, hsmExcludedMask = hm, showUngraded = su
                 )
             }
             randomPage1 = page1
@@ -1152,7 +1225,7 @@ class BoardBrowserViewModel @Inject constructor(
                 val all = PerfLogger.traceQuery("randomUuids(bg load)") {
                     boardRepository.getAllBrowseMatchingUuids(
                         f.angle, f.layoutId, f.boardBrand, minDiff, maxDiff, f.minAscensionists,
-                        f.climbTypeFilter, selProductSizeId = sel, hsmExcludedMask = hm
+                        f.climbTypeFilter, selProductSizeId = sel, hsmExcludedMask = hm, showUngraded = su
                     )
                 }
                 val rest = all.filterNot { it in page1Uuids }.shuffled(Random.Default)
@@ -1182,11 +1255,9 @@ class BoardBrowserViewModel @Inject constructor(
                 if (f.benchmarkOnly) boardRepository.countBenchmarkSearchClimbs(f.searchQuery, f.angle, f.layoutId, f.boardBrand, f.climbTypeFilter, selProductSizeId = selSizeId(), hsmExcludedMask = hsmMask())
                 else boardRepository.countSearchClimbs(f.searchQuery, f.angle, f.layoutId, f.boardBrand, f.climbTypeFilter, selProductSizeId = selSizeId(), hsmExcludedMask = hsmMask())
             } else {
-                val french = _state.value.gradeScale == GradeScale.FRENCH
-                val minDiff = KilterGradeMapper.indexToFilterMin(f.minGradeIndex, french)
-                val maxDiff = KilterGradeMapper.indexToFilterMax(f.maxGradeIndex, french)
-                if (f.benchmarkOnly) boardRepository.countBenchmarkFilteredClimbs(f.angle, f.layoutId, f.boardBrand, minDiff, maxDiff, f.minAscensionists, f.climbTypeFilter, selProductSizeId = selSizeId(), hsmExcludedMask = hsmMask())
-                else boardRepository.countFilteredClimbs(f.angle, f.layoutId, f.boardBrand, minDiff, maxDiff, f.minAscensionists, f.climbTypeFilter, selProductSizeId = selSizeId(), hsmExcludedMask = hsmMask())
+                val gb = gradeBounds(f)
+                if (f.benchmarkOnly) boardRepository.countBenchmarkFilteredClimbs(f.angle, f.layoutId, f.boardBrand, gb.minDiff, gb.maxDiff, f.minAscensionists, f.climbTypeFilter, selProductSizeId = selSizeId(), hsmExcludedMask = hsmMask(), showUngraded = gb.showUngraded)
+                else boardRepository.countFilteredClimbs(f.angle, f.layoutId, f.boardBrand, gb.minDiff, gb.maxDiff, f.minAscensionists, f.climbTypeFilter, selProductSizeId = selSizeId(), hsmExcludedMask = hsmMask(), showUngraded = gb.showUngraded)
             }
         }
     }
@@ -1223,13 +1294,11 @@ class BoardBrowserViewModel @Inject constructor(
                         selProductSizeId = selSizeId(), hsmExcludedMask = hsmMask()
                     )
                 } else {
-                    val french = _state.value.gradeScale == GradeScale.FRENCH
-                    val minDiff = KilterGradeMapper.indexToFilterMin(f.minGradeIndex, french)
-                    val maxDiff = KilterGradeMapper.indexToFilterMax(f.maxGradeIndex, french)
+                    val gb = gradeBounds(f)
                     boardRepository.searchClimbsSorted(
-                        f.angle, f.layoutId, f.boardBrand, minDiff, maxDiff, f.minAscensionists,
+                        f.angle, f.layoutId, f.boardBrand, gb.minDiff, gb.maxDiff, f.minAscensionists,
                         f.sortField, f.sortDirection, limit = 1, offset = randomOffset,
-                        climbType = f.climbTypeFilter, selProductSizeId = selSizeId(), hsmExcludedMask = hsmMask()
+                        climbType = f.climbTypeFilter, selProductSizeId = selSizeId(), hsmExcludedMask = hsmMask(), showUngraded = gb.showUngraded
                     )
                 }
                 climb.firstOrNull()?.uuid
@@ -1311,13 +1380,14 @@ class BoardBrowserViewModel @Inject constructor(
         if (selectedHolds.isEmpty()) return emptySet()
         val start = System.currentTimeMillis()
         val f = _state.value.filter
-        val french = _state.value.gradeScale == GradeScale.FRENCH
-        val minDiff = KilterGradeMapper.indexToFilterMin(f.minGradeIndex, french)
-        val maxDiff = KilterGradeMapper.indexToFilterMax(f.maxGradeIndex, french)
+        // Range-only predicate (no :showUngraded escape): in ungraded-only
+        // mode the impossible bounds match nothing — consistent with the
+        // browse list, whose ungraded rows a range query can never reach.
+        val gb = gradeBounds(f)
         val patterns = selectedHolds.map { HoldHeatmapComputer.holdLikePattern(it) }
         // Single DB pass: load frames once, check all hold patterns per row
         val result = boardRepository.searchClimbUuidsByAllHolds(
-            patterns, f.angle, f.layoutId, f.boardBrand, minDiff, maxDiff, f.minAscensionists, f.climbTypeFilter
+            patterns, f.angle, f.layoutId, f.boardBrand, gb.minDiff, gb.maxDiff, f.minAscensionists, f.climbTypeFilter
         )
         val elapsed = System.currentTimeMillis() - start
         PerfLogger.log("🔍 holdSearch: ${patterns.size} patterns, ${result.size} matches in ${elapsed}ms")
@@ -1326,9 +1396,12 @@ class BoardBrowserViewModel @Inject constructor(
 
     private fun computeHeatmap(mode: HeatmapMode): Map<Int, Float> {
         val f = _state.value.filter
-        val french = _state.value.gradeScale == GradeScale.FRENCH
-        val minDiff = KilterGradeMapper.indexToFilterMin(f.minGradeIndex, french)
-        val maxDiff = KilterGradeMapper.indexToFilterMax(f.maxGradeIndex, french)
+        // Same range-only situation as the hold search above: ungraded-only
+        // mode yields an empty heatmap rather than one of climbs the list
+        // doesn't show.
+        val gb = gradeBounds(f)
+        val minDiff = gb.minDiff
+        val maxDiff = gb.maxDiff
         val frameRows = when (mode) {
             HeatmapMode.PERSONAL -> {
                 // Scope "my sends" to the active board (brand + layout) like the
