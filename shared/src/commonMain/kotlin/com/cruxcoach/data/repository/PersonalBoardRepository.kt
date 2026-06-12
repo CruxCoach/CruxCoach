@@ -102,6 +102,22 @@ interface PersonalBoardRepository {
     fun getListIdsForClimb(climbUuid: String): Set<Long>
     fun isClimbFavorited(climbUuid: String): Boolean
     fun toggleFavorite(climbUuid: String): Boolean
+
+    // ── Ignored climbs (built-in "Ignored" list) ────────────────
+    // The user marks "Quatsch" climbs (e.g. the Weihnachtsbaum) as ignored
+    // so they never get suggested in browse. Backed by the same climb_lists
+    // machinery as favorites, via a built-in list keyed on a stable
+    // external_id sentinel.
+
+    /** Lazily creates (once) and returns the built-in Ignored list id. */
+    fun ensureIgnoredListExists(): Long
+    fun isClimbIgnored(climbUuid: String): Boolean
+    /** Toggles the climb's ignored membership; returns the NEW state. */
+    fun toggleIgnored(climbUuid: String): Boolean
+    /** All ignored climb UUIDs — loaded once for the browser's client-side
+     *  always-on ignore filter. */
+    fun getIgnoredClimbUuids(): Set<String>
+
     fun getClimbListEntriesRaw(): List<RawClimbListEntry>
 
     // ── Denormalization refresh ─────────────────────────────────

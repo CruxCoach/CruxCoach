@@ -272,6 +272,12 @@ class BoardBrowserViewModel @Inject constructor(
     private var sentUuids: Set<String> = emptySet()
     private var attemptedUuids: Set<String> = emptySet()
     private var statusLoaded = false
+    // Ignored climbs ("Quatsch" the user never wants suggested). Loaded once
+    // like the status sets and applied as an always-on client-side filter to
+    // every fetched page (the ignored UUIDs live in the encrypted SecureDB,
+    // the browse rows in the board DB — no cross-DB JOIN, so we filter here).
+    private var hiddenUuids: Set<String> = emptySet()
+    private var hiddenLoaded = false
     private var filtersLoaded = false
     private var searchJob: Job? = null
 
@@ -305,6 +311,8 @@ class BoardBrowserViewModel @Inject constructor(
         private const val TAG = "BoardBrowserVM"
         private const val PAGE_SIZE = 50
         private const val MAX_STATUS_SCAN_PAGES = 10
+        // Dice re-rolls to skip an ignored climb before giving up (see fetchRandomClimb).
+        private const val RANDOM_PICK_MAX_ROLLS = 8
 
         // Ungraded-only mode rides on the existing SQL grade predicate
         //   ((difficulty_average >= :minDiff AND <= :maxDiff)
@@ -570,8 +578,9 @@ class BoardBrowserViewModel @Inject constructor(
             }
         }
 
-        // Invalidate caches so new ascents/bids are picked up
+        // Invalidate caches so new ascents/bids + ignore-toggles are picked up
         statusLoaded = false
+        hiddenLoaded = false
         cachedCountKey = ""
         viewModelScope.safeLaunch(TAG) {
             val changed = withContext(Dispatchers.IO) {
@@ -836,6 +845,23 @@ class BoardBrowserViewModel @Inject constructor(
         }
     }
 
+    private suspend fun ensureHiddenLoaded() {
+        if (!hiddenLoaded) {
+            hiddenUuids = PerfLogger.traceQuery("getIgnoredClimbUuids") {
+                personalBoardRepo.getIgnoredClimbUuids()
+            }
+            hiddenLoaded = true
+            PerfLogger.milestone("Ignored UUIDs loaded (hidden=${hiddenUuids.size})")
+        }
+    }
+
+    /** Always-on ignore filter — drops climbs the user marked "ignored" so
+     *  they never get suggested. Applied last in every fetchFiltered branch
+     *  and to the random picker. No-op (returns the input) until the ignored
+     *  set has loaded or when nothing is ignored. */
+    private fun applyHiddenFilter(climbs: List<ClimbWithStats>): List<ClimbWithStats> =
+        if (hiddenUuids.isEmpty()) climbs else climbs.filterNot { it.uuid in hiddenUuids }
+
     /** Client-side multi-select status filter (OR-union over the selected
      *  disjoint buckets). Empty selection = no constraint. */
     private fun applyStatusFilter(climbs: List<ClimbWithStats>, statuses: Set<ClimbStatusFilter>): List<ClimbWithStats> {
@@ -891,6 +917,7 @@ class BoardBrowserViewModel @Inject constructor(
                 val filter = _state.value.filter
                 val (results, newDbOffset, dbExhausted) = withContext(Dispatchers.IO) {
                     if (filter.statusFilter.isNotEmpty()) ensureStatusLoaded()
+                    ensureHiddenLoaded()
                     PerfLogger.traceQuery("searchClimbs.fetchFiltered") {
                         fetchFiltered(filter, dbOffset = 0)
                     }
@@ -1031,7 +1058,7 @@ class BoardBrowserViewModel @Inject constructor(
             val statusFiltered = applyStatusFilter(nameFiltered, f.statusFilter)
             val benchFiltered = applyBenchmarkFilter(statusFiltered, f.benchmarkOnly)
             val originFiltered = applyOriginFilter(benchFiltered, f.originFilter)
-            val sorted = sortInKotlin(originFiltered, f.sortField, f.sortDirection)
+            val sorted = sortInKotlin(applyHiddenFilter(originFiltered), f.sortField, f.sortDirection)
             return Triple(sorted.take(PAGE_SIZE), sorted.size, sorted.size <= PAGE_SIZE)
         }
 
@@ -1055,7 +1082,7 @@ class BoardBrowserViewModel @Inject constructor(
                 else all.filter { it.name.contains(f.searchQuery, ignoreCase = true) }
             val statusFiltered = applyStatusFilter(nameFiltered, f.statusFilter)
             val benchFiltered = applyBenchmarkFilter(statusFiltered, f.benchmarkOnly)
-            val sorted = sortInKotlin(benchFiltered, f.sortField, f.sortDirection)
+            val sorted = sortInKotlin(applyHiddenFilter(benchFiltered), f.sortField, f.sortDirection)
             return Triple(sorted.take(PAGE_SIZE), sorted.size, sorted.size <= PAGE_SIZE)
         }
 
@@ -1080,7 +1107,7 @@ class BoardBrowserViewModel @Inject constructor(
                 else all.filter { it.name.contains(f.searchQuery, ignoreCase = true) }
             val statusFiltered = applyStatusFilter(nameFiltered, f.statusFilter)
             val benchFiltered = applyBenchmarkFilter(statusFiltered, f.benchmarkOnly)
-            val sorted = sortInKotlin(benchFiltered, f.sortField, f.sortDirection)
+            val sorted = sortInKotlin(applyHiddenFilter(benchFiltered), f.sortField, f.sortDirection)
             return Triple(sorted.take(PAGE_SIZE), sorted.size, sorted.size <= PAGE_SIZE)
         }
 
@@ -1097,7 +1124,7 @@ class BoardBrowserViewModel @Inject constructor(
                 hs.holdFilterUuids, f.angle, f.layoutId, f.boardBrand, gb.minDiff, gb.maxDiff, f.minAscensionists, f.climbTypeFilter
             )
             val filtered = applyOriginFilter(applyBenchmarkFilter(applyStatusFilter(all, f.statusFilter), f.benchmarkOnly), f.originFilter)
-            val sorted = sortInKotlin(filtered, f.sortField, f.sortDirection)
+            val sorted = sortInKotlin(applyHiddenFilter(filtered), f.sortField, f.sortDirection)
             return Triple(sorted.take(PAGE_SIZE), sorted.size, sorted.size <= PAGE_SIZE)
         }
 
@@ -1114,14 +1141,14 @@ class BoardBrowserViewModel @Inject constructor(
                 uuids, f.angle, f.layoutId, f.boardBrand, gb.minDiff, gb.maxDiff, f.minAscensionists, f.climbTypeFilter
             )
             val filtered = applyOriginFilter(applyBenchmarkFilter(all, f.benchmarkOnly), f.originFilter)
-            val sorted = sortInKotlin(filtered, f.sortField, f.sortDirection)
+            val sorted = sortInKotlin(applyHiddenFilter(filtered), f.sortField, f.sortDirection)
             return Triple(sorted.take(PAGE_SIZE), sorted.size, sorted.size <= PAGE_SIZE)
         }
 
         // ALLE (empty selection): no client-side status filtering (benchmark/origin only)
         if (f.statusFilter.isEmpty()) {
             val rawPage = fetchPage(f, dbOffset)
-            val filtered = applyOriginFilter(applyBenchmarkFilter(rawPage, f.benchmarkOnly), f.originFilter)
+            val filtered = applyHiddenFilter(applyOriginFilter(applyBenchmarkFilter(rawPage, f.benchmarkOnly), f.originFilter))
             return Triple(filtered, dbOffset + rawPage.size, rawPage.size < PAGE_SIZE)
         }
 
@@ -1133,7 +1160,7 @@ class BoardBrowserViewModel @Inject constructor(
             val page = fetchPage(f, currentOffset)
             if (page.isEmpty()) return Triple(collected, currentOffset, true)
             currentOffset += page.size
-            collected.addAll(applyOriginFilter(applyBenchmarkFilter(applyStatusFilter(page, f.statusFilter), f.benchmarkOnly), f.originFilter))
+            collected.addAll(applyHiddenFilter(applyOriginFilter(applyBenchmarkFilter(applyStatusFilter(page, f.statusFilter), f.benchmarkOnly), f.originFilter)))
             // Return EVERYTHING collected, not collected.take(PAGE_SIZE):
             // currentOffset has already advanced past the source rows of any
             // overflow, so truncating here would drop those climbs forever
@@ -1284,29 +1311,51 @@ class BoardBrowserViewModel @Inject constructor(
         val f = _state.value.filter
         val count = _state.value.filteredCount
         if (count <= 0) return
-        val randomOffset = Random.nextInt(count.toInt())
         viewModelScope.safeLaunch(TAG) {
             val uuid = withContext(Dispatchers.IO) {
-                val climb = if (f.searchQuery.isNotBlank()) {
-                    boardRepository.searchClimbsByName(
-                        f.searchQuery, f.angle, f.layoutId, f.boardBrand, f.sortField, f.sortDirection,
-                        limit = 1, offset = randomOffset, climbType = f.climbTypeFilter,
-                        selProductSizeId = selSizeId(), hsmExcludedMask = hsmMask()
-                    )
-                } else {
-                    val gb = gradeBounds(f)
-                    boardRepository.searchClimbsSorted(
-                        f.angle, f.layoutId, f.boardBrand, gb.minDiff, gb.maxDiff, f.minAscensionists,
-                        f.sortField, f.sortDirection, limit = 1, offset = randomOffset,
-                        climbType = f.climbTypeFilter, selProductSizeId = selSizeId(), hsmExcludedMask = hsmMask(), showUngraded = gb.showUngraded
-                    )
+                // filteredCount/list already exclude ignored climbs, but the
+                // random-offset query hits the raw DB match set — so re-roll a
+                // few times to avoid landing the dice on an ignored climb.
+                // Bounded: a filter whose matches are nearly all ignored still
+                // returns promptly via the last non-null candidate.
+                ensureHiddenLoaded()
+                var result: String? = null
+                var fallback: String? = null
+                var rolls = 0
+                while (rolls < RANDOM_PICK_MAX_ROLLS && result == null) {
+                    rolls++
+                    val candidate = pickOneAtOffset(f, Random.nextInt(count.toInt()))
+                    if (candidate != null) {
+                        fallback = candidate
+                        if (candidate !in hiddenUuids) result = candidate
+                    }
                 }
-                climb.firstOrNull()?.uuid
+                result ?: fallback
             }
             if (uuid != null) {
                 onResult(uuid)
             }
         }
+    }
+
+    /** Fetch the single climb at [offset] in the current filter's ordering
+     *  (one row, no client-side filtering). Caller handles ignore re-rolls. */
+    private fun pickOneAtOffset(f: BrowserFilterState, offset: Int): String? {
+        val climb = if (f.searchQuery.isNotBlank()) {
+            boardRepository.searchClimbsByName(
+                f.searchQuery, f.angle, f.layoutId, f.boardBrand, f.sortField, f.sortDirection,
+                limit = 1, offset = offset, climbType = f.climbTypeFilter,
+                selProductSizeId = selSizeId(), hsmExcludedMask = hsmMask()
+            )
+        } else {
+            val gb = gradeBounds(f)
+            boardRepository.searchClimbsSorted(
+                f.angle, f.layoutId, f.boardBrand, gb.minDiff, gb.maxDiff, f.minAscensionists,
+                f.sortField, f.sortDirection, limit = 1, offset = offset,
+                climbType = f.climbTypeFilter, selProductSizeId = selSizeId(), hsmExcludedMask = hsmMask(), showUngraded = gb.showUngraded
+            )
+        }
+        return climb.firstOrNull()?.uuid
     }
 
     // --- Hold search & heatmap ---

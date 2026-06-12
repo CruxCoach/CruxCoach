@@ -13,6 +13,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -256,9 +257,17 @@ private fun ListCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
-                if (list.isBuiltin) Icons.Default.Star else Icons.AutoMirrored.Filled.PlaylistAdd,
+                when {
+                    list.isIgnored -> Icons.Default.VisibilityOff
+                    list.isBuiltin -> Icons.Default.Star
+                    else -> Icons.AutoMirrored.Filled.PlaylistAdd
+                },
                 contentDescription = null,
-                tint = if (list.isBuiltin) WarningYellow else OrangeAccent,
+                tint = when {
+                    list.isIgnored -> MaterialTheme.colorScheme.onSurfaceVariant
+                    list.isBuiltin -> WarningYellow
+                    else -> OrangeAccent
+                },
                 modifier = Modifier.size(28.dp)
             )
             Spacer(modifier = Modifier.width(12.dp))

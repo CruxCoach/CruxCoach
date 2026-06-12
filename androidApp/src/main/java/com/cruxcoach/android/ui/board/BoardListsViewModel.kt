@@ -33,6 +33,10 @@ class BoardListsViewModel @Inject constructor(
         viewModelScope.launch {
             withContext(Dispatchers.IO) {
                 personalBoardRepo.ensureFavoritesListExists()
+                // Seed the built-in "Ignored" list so it's visible here as the
+                // management surface for un-ignoring climbs (tap → list detail
+                // → remove). Created lazily once, then persists.
+                personalBoardRepo.ensureIgnoredListExists()
             }
             refreshLists()
         }

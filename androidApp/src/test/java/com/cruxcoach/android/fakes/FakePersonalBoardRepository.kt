@@ -18,9 +18,11 @@ class FakePersonalBoardRepository : PersonalBoardRepository {
 
     val sentUuids = mutableSetOf<String>()
     val attemptedUuids = mutableSetOf<String>()
+    val ignoredUuids = mutableSetOf<String>()
 
     fun markSent(uuid: String) { sentUuids.add(uuid) }
     fun markAttempted(uuid: String) { attemptedUuids.add(uuid) }
+    fun markIgnored(uuid: String) { ignoredUuids.add(uuid) }
 
     // -- Ascent queries --
 
@@ -91,6 +93,13 @@ class FakePersonalBoardRepository : PersonalBoardRepository {
     override fun getListIdsForClimb(climbUuid: String): Set<Long> = emptySet()
     override fun isClimbFavorited(climbUuid: String): Boolean = false
     override fun toggleFavorite(climbUuid: String): Boolean = false
+    override fun ensureIgnoredListExists(): Long = 2L
+    override fun isClimbIgnored(climbUuid: String): Boolean = climbUuid in ignoredUuids
+    override fun toggleIgnored(climbUuid: String): Boolean {
+        return if (climbUuid in ignoredUuids) { ignoredUuids.remove(climbUuid); false }
+        else { ignoredUuids.add(climbUuid); true }
+    }
+    override fun getIgnoredClimbUuids(): Set<String> = ignoredUuids
     override fun getClimbListEntriesRaw(): List<RawClimbListEntry> = emptyList()
 
     // -- Denormalization --
@@ -110,6 +119,6 @@ class FakePersonalBoardRepository : PersonalBoardRepository {
 
     // -- Bulk operations --
 
-    override fun deleteAllUserBoardData() { sentUuids.clear(); attemptedUuids.clear() }
+    override fun deleteAllUserBoardData() { sentUuids.clear(); attemptedUuids.clear(); ignoredUuids.clear() }
     override fun runInTransaction(block: () -> Unit) { block() }
 }

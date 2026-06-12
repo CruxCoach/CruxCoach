@@ -144,6 +144,9 @@ data class ClimbDetailState(
      *  per climb via [BoardConstants.isLayoutMirrorable]. */
     val isMirrorable: Boolean = false,
     val isFavorited: Boolean = false,
+    /** Whether this climb is on the user's built-in "Ignored" list — drives
+     *  the overflow menu's ignore/un-ignore action. */
+    val isIgnored: Boolean = false,
     val restTimerTotalSeconds: Int = 180,
     val restTimerAutoStart: Boolean = false,
     val zones: IntensityZones? = null,
@@ -681,6 +684,7 @@ class BoardClimbDetailViewModel @Inject constructor(
                             personalBoardRepo.getUserHistoryForClimb(uuid)
                         }
                         val isFavorited = personalBoardRepo.isClimbFavorited(uuid)
+                        val isIgnored = personalBoardRepo.isClimbIgnored(uuid)
                         val angles = buildAngleOptions(climb, boardRepository.getAnglesForClimb(uuid))
                         val isMirrorable = BoardConstants.isLayoutMirrorable(
                             climb.brand, climb.layoutId.toInt()
@@ -716,6 +720,7 @@ class BoardClimbDetailViewModel @Inject constructor(
                                 userAscents = userAscents,
                                 angle = angle,
                                 isFavorited = isFavorited,
+                                isIgnored = isIgnored,
                                 availableAngles = angles,
                                 isMirrorable = isMirrorable,
                                 // Seed setter profile synchronously with the
@@ -843,6 +848,7 @@ class BoardClimbDetailViewModel @Inject constructor(
                     } ?: emptyList()
                     val userAscents = personalBoardRepo.getUserHistoryForClimb(uuid)
                     val isFavorited = personalBoardRepo.isClimbFavorited(uuid)
+                    val isIgnored = personalBoardRepo.isClimbIgnored(uuid)
                     val angles = buildAngleOptions(climb, boardRepository.getAnglesForClimb(uuid))
                     val isMirrorable = BoardConstants.isLayoutMirrorable(
                         climb.brand, climb.layoutId.toInt()
@@ -858,6 +864,7 @@ class BoardClimbDetailViewModel @Inject constructor(
                         userAscents = userAscents,
                         angle = angle,
                         isFavorited = isFavorited,
+                        isIgnored = isIgnored,
                         availableAngles = angles,
                         isMirrored = false,
                         isMirrorable = isMirrorable,
@@ -933,6 +940,26 @@ class BoardClimbDetailViewModel @Inject constructor(
                 // coroutine. Log + leave the previous favorite-state
                 // visible (no UI flip).
                 Log.w(TAG, "toggleFavorite failed", e)
+            }
+        }
+    }
+
+    /** Toggle the climb on/off the built-in "Ignored" list. Ignored climbs
+     *  are excluded from every browse suggestion. Flags the browser dirty
+     *  (creatorDataChanged) so it re-reads its ignore set on return and the
+     *  climb drops out of — or comes back into — the list. */
+    fun toggleIgnored() {
+        viewModelScope.launch {
+            try {
+                val newState = withContext(Dispatchers.IO) {
+                    personalBoardRepo.toggleIgnored(currentClimbUuid)
+                }
+                _state.update { it.copy(isIgnored = newState) }
+                climbNavState.creatorDataChanged = true
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "toggleIgnored failed", e)
             }
         }
     }
@@ -1051,7 +1078,10 @@ class BoardClimbDetailViewModel @Inject constructor(
             try {
                 val lists = withContext(Dispatchers.IO) {
                     personalBoardRepo.ensureFavoritesListExists()
-                    personalBoardRepo.getAllClimbLists()
+                    // Hide the built-in "Ignored" list — ignoring has its own
+                    // dedicated overflow action; it doesn't belong in the
+                    // add-to-list picker.
+                    personalBoardRepo.getAllClimbLists().filterNot { it.isIgnored }
                 }
                 val inListIds = withContext(Dispatchers.IO) {
                     personalBoardRepo.getListIdsForClimb(currentClimbUuid)
@@ -1126,7 +1156,9 @@ class BoardClimbDetailViewModel @Inject constructor(
                     personalBoardRepo.addClimbToList(id, currentClimbUuid)
                     id
                 }
-                val updatedLists = withContext(Dispatchers.IO) { personalBoardRepo.getAllClimbLists() }
+                val updatedLists = withContext(Dispatchers.IO) {
+                    personalBoardRepo.getAllClimbLists().filterNot { it.isIgnored }
+                }
                 _state.update { it.copy(listDialog = it.listDialog.copy(
                     lists = updatedLists,
                     climbInListIds = it.listDialog.climbInListIds + newListId,

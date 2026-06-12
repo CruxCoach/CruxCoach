@@ -1319,6 +1319,8 @@
     <string name="cd_loop_on">Loop an</string>
     <string name="cd_mirror_off">Spiegelung aus</string>
     <string name="cd_mirror_on">Spiegelung an</string>
+    <string name="cd_ignore_climb">Ignorieren (nicht vorschlagen)</string>
+    <string name="cd_unignore_climb">Nicht mehr ignorieren</string>
     <string name="cd_mirrored">Gespiegelt</string>
     <string name="cd_more">Mehr</string>
     <string name="cd_next">Weiter</string>

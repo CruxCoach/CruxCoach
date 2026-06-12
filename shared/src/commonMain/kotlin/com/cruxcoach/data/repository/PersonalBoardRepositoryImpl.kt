@@ -9,12 +9,20 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 
+/** Stable identifier for the built-in "Ignored" list, stored in
+ *  climb_lists.external_id so the list survives renames and never collides
+ *  with the Favorites built-in (which has external_id = NULL). */
+private const val IGNORED_LIST_EXTERNAL_ID = "cruxcoach:builtin:ignored"
+
 class PersonalBoardRepositoryImpl(
     private val database: SecureDatabase
 ) : PersonalBoardRepository {
 
     @Volatile
     private var cachedFavoritesListId: Long? = null
+
+    @Volatile
+    private var cachedIgnoredListId: Long? = null
 
     // ── Ascent ──────────────────────────────────────────────────
 
@@ -437,7 +445,8 @@ class PersonalBoardRepositoryImpl(
                 name = row.name,
                 isBuiltin = row.is_builtin != 0L,
                 createdAt = row.created_at,
-                climbCount = row.climb_count
+                climbCount = row.climb_count,
+                isIgnored = row.external_id == IGNORED_LIST_EXTERNAL_ID,
             )
         }
     }
@@ -449,7 +458,8 @@ class PersonalBoardRepositoryImpl(
                 name = row.name,
                 isBuiltin = row.is_builtin != 0L,
                 createdAt = row.created_at,
-                climbCount = row.climb_count
+                climbCount = row.climb_count,
+                isIgnored = row.external_id == IGNORED_LIST_EXTERNAL_ID,
             )
         }
     }
@@ -520,6 +530,51 @@ class PersonalBoardRepositoryImpl(
         return database.climbListsQueries.getClimbListEntriesRaw().executeAsList().map { row ->
             RawClimbListEntry(listId = row.list_id, climbUuid = row.climb_uuid, addedAt = row.added_at)
         }
+    }
+
+    // ── Ignored climbs ──────────────────────────────────────────
+
+    override fun ensureIgnoredListExists(): Long {
+        cachedIgnoredListId?.let { return it }
+        // Atomic find-or-create keyed on the external_id sentinel — the
+        // unique index on external_id is the backstop against a duplicate
+        // ignored row if two callers race.
+        val id = database.transactionWithResult {
+            database.climbListsQueries
+                .findClimbListByExternalId(IGNORED_LIST_EXTERNAL_ID).executeAsOneOrNull()
+                ?: run {
+                    database.climbListsQueries.insertBuiltinIgnoredList(
+                        "Ignoriert", DateTimeUtil.nowIso(), IGNORED_LIST_EXTERNAL_ID,
+                    )
+                    database.climbListsQueries.getLastInsertedListId().executeAsOne()
+                }
+        }
+        cachedIgnoredListId = id
+        return id
+    }
+
+    override fun isClimbIgnored(climbUuid: String): Boolean {
+        val ignoredId = ensureIgnoredListExists()
+        return database.climbListsQueries.isClimbInList(ignoredId, climbUuid).executeAsOne() > 0
+    }
+
+    override fun toggleIgnored(climbUuid: String): Boolean {
+        val ignoredId = ensureIgnoredListExists()
+        // Atomic read-modify-write — mirrors toggleFavorite.
+        return database.transactionWithResult {
+            val isIgnored = database.climbListsQueries.isClimbInList(ignoredId, climbUuid).executeAsOne() > 0
+            if (isIgnored) {
+                database.climbListsQueries.removeClimbListEntry(ignoredId, climbUuid)
+            } else {
+                database.climbListsQueries.insertClimbListEntry(ignoredId, climbUuid, DateTimeUtil.nowIso())
+            }
+            !isIgnored
+        }
+    }
+
+    override fun getIgnoredClimbUuids(): Set<String> {
+        val ignoredId = ensureIgnoredListExists()
+        return database.climbListsQueries.getAllClimbUuidsInList(ignoredId).executeAsList().toSet()
     }
 
     // ── Denormalization refresh ─────────────────────────────────
@@ -640,6 +695,7 @@ class PersonalBoardRepositoryImpl(
             database.climbListsQueries.deleteAllClimbLists()
         }
         cachedFavoritesListId = null
+        cachedIgnoredListId = null
     }
 
     override fun runInTransaction(block: () -> Unit) {

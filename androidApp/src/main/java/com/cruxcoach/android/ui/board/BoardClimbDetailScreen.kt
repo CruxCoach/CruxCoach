@@ -29,6 +29,8 @@ import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.PanTool
 import androidx.compose.material.icons.filled.Verified
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -511,6 +513,35 @@ fun BoardClimbDetailScreen(
                                         modifier = Modifier.testTag("boarddetail_mirror_toggle"),
                                     )
                                 }
+                                // Ignore / un-ignore: keep "Quatsch" climbs (e.g.
+                                // the Weihnachtsbaum) out of every browse
+                                // suggestion. Applies to any climb, so it sits
+                                // with the mirror toggle above the owner-gated
+                                // Edit/Delete actions.
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            stringResource(
+                                                if (state.isIgnored) R.string.cd_unignore_climb
+                                                else R.string.cd_ignore_climb
+                                            )
+                                        )
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            if (state.isIgnored) Icons.Default.Visibility
+                                            else Icons.Default.VisibilityOff,
+                                            contentDescription = null,
+                                            tint = if (state.isIgnored) OrangeAccent
+                                                   else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    },
+                                    onClick = {
+                                        moreExpanded = false
+                                        viewModel.toggleIgnored()
+                                    },
+                                    modifier = Modifier.testTag("boarddetail_ignore_toggle"),
+                                )
                                 // Share: copy the cruxcoach.org/c/<naddr> App-Link
                                 // (the same link the climb-creator Kind-1 note uses).
                                 // Only published community climbs carry a resolvable

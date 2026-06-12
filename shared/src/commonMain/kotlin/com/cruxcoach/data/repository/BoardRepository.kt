@@ -246,7 +246,10 @@ data class Climb_lists(
     val name: String,
     val isBuiltin: Boolean,
     val createdAt: String,
-    val climbCount: Long
+    val climbCount: Long,
+    /** True only for the built-in "Ignored" list — lets the lists UI pick a
+     *  distinct icon and the add-to-list dialog filter it out. */
+    val isIgnored: Boolean = false,
 )
 
 data class Climb_list_entries(
