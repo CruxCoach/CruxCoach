@@ -34,6 +34,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -590,9 +591,20 @@ fun BoardBrowserScreen(
             } else {
                 val listState = rememberLazyListState()
 
-                // Reset scroll to top when filter results change
+                // Reset scroll to top when the result set actually changes
+                // (filter / sort / board change → different first climb).
+                // LaunchedEffect also runs on every INITIAL composition, so
+                // coming back from a climb detail used to scroll-to-top and
+                // lose the position the restored listState had just brought
+                // back. Track the last seen top uuid in a rememberSaveable
+                // (it survives the back stack alongside listState): on
+                // re-entry with an unchanged list the keys match and we skip
+                // the jump; a real result-set change still resets to top.
+                var lastTopUuid by rememberSaveable { mutableStateOf<String?>(null) }
                 LaunchedEffect(state.climbs.firstOrNull()?.uuid) {
-                    if (state.climbs.isNotEmpty()) listState.scrollToItem(0)
+                    val topUuid = state.climbs.firstOrNull()?.uuid ?: return@LaunchedEffect
+                    if (lastTopUuid != null && lastTopUuid != topUuid) listState.scrollToItem(0)
+                    lastTopUuid = topUuid
                 }
 
                 // Trigger loadMore when near bottom

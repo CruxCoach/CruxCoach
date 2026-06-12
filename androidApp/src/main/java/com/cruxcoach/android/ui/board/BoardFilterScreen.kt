@@ -123,6 +123,15 @@ fun BoardFilterScreen(
                     }
                 },
                 actions = {
+                    // One-tap reset of every browse filter + sort back to
+                    // defaults; keeps the board selection (board / layout /
+                    // size / angle are identity, not filters).
+                    TextButton(
+                        onClick = { viewModel.clearAllBrowseFilters() },
+                        modifier = Modifier.testTag("board_filter_reset")
+                    ) {
+                        Text(stringResource(R.string.action_reset), color = OrangeAccent)
+                    }
                     IconButton(
                         onClick = { showTermInfo = true },
                         modifier = Modifier.testTag("board_filter_info")

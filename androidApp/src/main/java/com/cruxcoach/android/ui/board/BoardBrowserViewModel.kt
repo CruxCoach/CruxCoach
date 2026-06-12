@@ -129,6 +129,35 @@ internal object BrowserOriginFilter {
     }
 }
 
+/** Page-refill loop for the browse list, extracted from
+ *  [BoardBrowserViewModel.searchClimbs] so it is plain-JVM testable.
+ *
+ *  Fetches page 0 and, when [targetSize] asks for more (a same-query refresh
+ *  after returning from the climb detail / editor — the list must be refilled
+ *  to the depth the user had already scrolled to, or the restored scroll
+ *  position gets clamped to page 1), keeps appending pages until the target
+ *  depth is reached or the source is exhausted. [fetchPage] takes the current
+ *  db offset and returns (page, newDbOffset, exhausted) — the same triple
+ *  shape as `fetchFiltered`. targetSize <= PAGE_SIZE degenerates to the
+ *  plain single-page fetch. */
+internal suspend fun refillBrowsePages(
+    targetSize: Int,
+    fetchPage: suspend (dbOffset: Int) -> Triple<List<ClimbWithStats>, Int, Boolean>,
+): Triple<List<ClimbWithStats>, Int, Boolean> {
+    var (results, offset, exhausted) = fetchPage(0)
+    while (results.size < targetSize && !exhausted) {
+        val (more, nextOffset, nextExhausted) = fetchPage(offset)
+        // Safety: a fetcher that neither produces rows nor advances its
+        // offset would loop forever — every real branch does one or the
+        // other (or reports exhaustion), so this is belt-and-braces.
+        if (more.isEmpty() && nextOffset <= offset) break
+        results = results + more
+        offset = nextOffset
+        exhausted = nextExhausted
+    }
+    return Triple(results, offset, exhausted)
+}
+
 @Deprecated("Use EnhancedSessionSummary", replaceWith = ReplaceWith("EnhancedSessionSummary"))
 data class SessionZoneSummary(
     val warmupCount: Int = 0,
@@ -671,7 +700,14 @@ class BoardBrowserViewModel @Inject constructor(
                 }
                 _state.update { it.copy(climbCount = count, hasBoardData = count > 0) }
                 if ((countChanged || force || dataChanged || creatorDirty || setterFilterApplied || needsBoardReload) && count > 0) {
-                    searchClimbs()
+                    // dataChanged / creatorDirty re-run the SAME query the
+                    // user was scrolled into (back from the climb detail /
+                    // editor) — keep the loaded depth so the restored scroll
+                    // position isn't clamped to page 1. Every other trigger
+                    // changes the result set and resets to a single page.
+                    val sameQueryRefresh = (dataChanged || creatorDirty) &&
+                        !setterFilterApplied && !needsBoardReload
+                    searchClimbs(preserveDepth = sameQueryRefresh)
                 } else {
                     _state.update { it.copy(isLoading = false) }
                 }
@@ -756,18 +792,25 @@ class BoardBrowserViewModel @Inject constructor(
         searchClimbs()
     }
 
-    /** Zero-results empty state: reset every result-hiding browse filter to
-     *  its default in one tap, keeping the board identity (brand / layout /
-     *  angle / size — those define WHAT board is browsed, not a filter). The
+    /** Reset every result-hiding browse filter to its default in one tap,
+     *  keeping the board identity (brand / layout / angle / size — those
+     *  define WHAT board is browsed, not a filter). Used by the zero-results
+     *  empty state and the filter screen's "Zurücksetzen" action. Also
+     *  resets the sort back to its default (ascensionists, descending). The
      *  hold filter is cleared via [clearHoldSelection], which also re-runs
      *  the search. */
     fun clearAllBrowseFilters() {
+        // Leaving RANDOM sort must free the dead background shuffle, exactly
+        // like an explicit sort pick (see updateSortField).
+        invalidateRandomCache()
         _state.update { s ->
             s.copy(filter = s.filter.copy(
                 minGradeIndex = BrowserFilterState.DEFAULT_MIN_GRADE_INDEX,
                 maxGradeIndex = BrowserFilterState.DEFAULT_MAX_GRADE_INDEX,
                 minAscensionists = 0,
                 searchQuery = "",
+                sortField = ClimbSortField.ASCENSIONISTS,
+                sortDirection = SortDirection.DESC,
                 statusFilter = emptySet(),
                 climbTypeFilter = ClimbTypeFilter.BOULDER,
                 benchmarkOnly = false,
@@ -902,9 +945,15 @@ class BoardBrowserViewModel @Inject constructor(
 
     private var firstContentReported = false
 
-    fun searchClimbs() {
+    /** Re-runs the browse query from page 0. [preserveDepth] is set by the
+     *  same-query refresh after returning from the climb detail / editor:
+     *  the list is refilled to the depth the user had already scrolled to
+     *  (instead of truncating back to one page), so the restored scroll
+     *  position survives while the status-dependent rows still update. */
+    fun searchClimbs(preserveDepth: Boolean = false) {
         if (!_state.value.hasBoardData) return
 
+        val targetSize = if (preserveDepth) _state.value.climbs.size else 0
         searchJob?.cancel()
         searchJob = viewModelScope.safeLaunch(TAG) {
             val hasExisting = _state.value.climbs.isNotEmpty()
@@ -919,7 +968,7 @@ class BoardBrowserViewModel @Inject constructor(
                     if (filter.statusFilter.isNotEmpty()) ensureStatusLoaded()
                     ensureHiddenLoaded()
                     PerfLogger.traceQuery("searchClimbs.fetchFiltered") {
-                        fetchFiltered(filter, dbOffset = 0)
+                        refillBrowsePages(targetSize) { offset -> fetchFiltered(filter, dbOffset = offset) }
                     }
                 }
                 // Show results IMMEDIATELY — don't block on count query
