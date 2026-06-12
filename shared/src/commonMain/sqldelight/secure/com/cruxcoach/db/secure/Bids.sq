@@ -40,6 +40,13 @@ INSERT OR REPLACE INTO bids(uuid, climb_uuid, angle, is_mirror,
     board_brand, layout_id)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
+-- Edit an existing attempt (bid). Bids carry no quality rating, so only
+-- the try count and the comment are user-editable. Without this the edit
+-- path wrongly ran updateAscent against the ascents table — a no-op for a
+-- bid uuid, silently dropping the edit.
+updateBid:
+UPDATE bids SET bid_count = ?, comment = ? WHERE uuid = ?;
+
 deleteBid:
 DELETE FROM bids WHERE uuid = ?;
 

@@ -39,6 +39,7 @@ class FakePersonalBoardRepository : PersonalBoardRepository {
 
     override fun deleteAscent(uuid: String) {}
     override fun updateAscent(uuid: String, bidCount: Long, quality: Long?, comment: String?) {}
+    override fun updateBid(uuid: String, bidCount: Long, comment: String?) {}
     override fun getUserAscentsAll(): List<AscentWithClimb> = emptyList()
     override fun getUserAscentsBetween(from: String, to: String): List<AscentWithClimb> = emptyList()
     override fun getUserSentClimbUuids(): Set<String> = sentUuids

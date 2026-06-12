@@ -65,12 +65,23 @@ internal class AscentLogger(
         scope.launch {
             withContext(Dispatchers.IO) {
                 if (editUuid != null) {
-                    personalBoardRepo.updateAscent(
-                        uuid = editUuid,
-                        bidCount = form.bidCount.toLong(),
-                        quality = if (form.quality > 0) form.quality.toLong() else null,
-                        comment = form.comment.ifBlank { null }
-                    )
+                    // Route by entry type: a bid lives in the bids table, so
+                    // updateAscent (ascents table) would match zero rows and
+                    // silently drop the edit. Bids carry no quality.
+                    if (form.isSend) {
+                        personalBoardRepo.updateAscent(
+                            uuid = editUuid,
+                            bidCount = form.bidCount.toLong(),
+                            quality = if (form.quality > 0) form.quality.toLong() else null,
+                            comment = form.comment.ifBlank { null }
+                        )
+                    } else {
+                        personalBoardRepo.updateBid(
+                            uuid = editUuid,
+                            bidCount = form.bidCount.toLong(),
+                            comment = form.comment.ifBlank { null }
+                        )
+                    }
                 } else {
                     val uuid = UUID.randomUUID().toString()
                     val now = DateTimeUtil.nowIso()

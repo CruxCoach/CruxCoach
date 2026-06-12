@@ -277,6 +277,14 @@ class PersonalBoardRepositoryImpl(
         )
     }
 
+    override fun updateBid(uuid: String, bidCount: Long, comment: String?) {
+        database.bidsQueries.updateBid(
+            bid_count = bidCount,
+            comment = comment,
+            uuid = uuid,
+        )
+    }
+
     override fun deleteBid(uuid: String) {
         database.bidsQueries.deleteBid(uuid)
     }

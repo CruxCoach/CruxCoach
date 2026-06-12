@@ -27,6 +27,8 @@ interface PersonalBoardRepository {
 
     fun deleteAscent(uuid: String)
     fun updateAscent(uuid: String, bidCount: Long, quality: Long?, comment: String?)
+    /** Edit an attempt (bid). Bids have no quality rating. */
+    fun updateBid(uuid: String, bidCount: Long, comment: String?)
 
     fun getUserAscentsAll(): List<AscentWithClimb>
     fun getUserAscentsBetween(from: String, to: String): List<AscentWithClimb>
