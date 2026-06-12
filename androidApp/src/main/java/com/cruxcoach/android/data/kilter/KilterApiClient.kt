@@ -156,6 +156,71 @@ private data class KilterLogsResponse(
     val logs: List<KilterLog> = emptyList()
 )
 
+/**
+ * One climb row from `GET /api/climbs/logged` — the user's OWN logged
+ * climbs, in the SAME envelope shape as `/climbs/curated`. Crucially this
+ * INCLUDES new-world (PowerSync-only) climbs that never made it into our
+ * curated board-DB mirror, so it's the backfill source for the
+ * "Climb nicht gefunden" gap (a logbook ascent whose uuid the board DB
+ * lacks). `climbConcat` (the `h<holdId>p<role>` form) is directly storable
+ * as the board-DB `frames` value — the app already parses it via
+ * [com.cruxcoach.domain.board.BoardClimbParser.isClimbConcat].
+ *
+ * Only the fields we actually persist (or need to key on) are modeled;
+ * `ignoreUnknownKeys` drops the rest. camelCase mirrors the wire shape.
+ */
+@Serializable
+data class KilterLoggedClimb(
+    val climbUuid: String,
+    val climbConcat: String = "",
+    val name: String = "",
+    val angle: Int = 0,
+    val description: String = "",
+    val edgeLeft: Int? = null,
+    val edgeRight: Int? = null,
+    val edgeBottom: Int? = null,
+    val edgeTop: Int? = null,
+    val frameCount: Int = 1,
+    val framesPace: Int = 0,
+    val productLayoutUuid: String = "",
+    val productName: String = "",
+    val isListed: Boolean = true,
+    val isDraft: Boolean = false,
+    val origin: String = "",
+    val userUuid: String = "",
+    val username: String = "",
+    val createdAt: String = "",
+    val updatedAt: String = "",
+)
+
+/**
+ * One stat row from `GET /api/climbs/logged`. Mirrors the curated
+ * envelope's `climbStats[]` entry. Keyed by (climbUuid, angle) — the same
+ * key the board DB's `climb_stats` table uses.
+ */
+@Serializable
+data class KilterLoggedClimbStat(
+    val climbUuid: String,
+    val angle: Int = 0,
+    val difficultyAverage: Double? = null,
+    val qualityAverage: Double? = null,
+    val ascentCount: Int? = null,
+    val currentDifficultyId: Int? = null,
+    val faUsername: String? = null,
+    val faAt: String? = null,
+)
+
+/**
+ * Wire envelope for `GET /api/climbs/logged` — identical in shape to the
+ * curated-climbs response: a top-level object with `climbs[]` and
+ * `climbStats[]`.
+ */
+@Serializable
+data class KilterLoggedClimbsResponse(
+    val climbs: List<KilterLoggedClimb> = emptyList(),
+    val climbStats: List<KilterLoggedClimbStat> = emptyList(),
+)
+
 sealed class KilterAuthResult {
     data class Success(
         val userUuid: String,
@@ -507,6 +572,47 @@ class KilterApiClient @Inject constructor(
             throw e
         } catch (e: Exception) {
             Log.e(TAG, "fetchLogs failed", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Fetch the authenticated user's OWN logged climbs from
+     * `GET /api/climbs/logged`. The response envelope is identical in shape
+     * to `/climbs/curated` (an object with `climbs[]` + `climbStats[]`), but
+     * it ALSO carries new-world (PowerSync-only) climbs that never landed in
+     * our curated board-DB mirror — exactly the rows a logbook ascent can
+     * reference yet fail to resolve in board-climb-detail.
+     *
+     * Compliance: a SINGLE GET of the user's own logged climbs with their
+     * own Bearer token (mirrors the official app's "logged" screen). No
+     * params, no bulk/all-climbs crawl. Token via the same
+     * [ensureValidToken] refresh path as [fetchLogs].
+     */
+    suspend fun fetchLoggedClimbs(): Result<KilterLoggedClimbsResponse> = withContext(Dispatchers.IO) {
+        val token = ensureValidToken()
+            ?: return@withContext Result.failure(KilterApiException(KilterAuthResult.Error.Reason.NotAuthenticated, "no valid token"))
+
+        try {
+            val request = Request.Builder()
+                .url("$apiBase/climbs/logged")
+                .addHeader("Authorization", "Bearer $token")
+                .build()
+            val response = httpClient.newCall(request).execute()
+
+            if (!response.isSuccessful) {
+                return@withContext Result.failure(
+                    Exception("HTTP ${response.code}: ${response.body?.string()?.take(MAX_ERR_BODY)}")
+                )
+            }
+
+            val body = response.body?.string()
+                ?: return@withContext Result.failure(Exception("empty /climbs/logged response"))
+            Result.success(json.decodeFromString<KilterLoggedClimbsResponse>(body))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e(TAG, "fetchLoggedClimbs failed", e)
             Result.failure(e)
         }
     }

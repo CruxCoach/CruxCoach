@@ -4,6 +4,7 @@ import android.util.Log
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.PersonalBoardRepository
+import com.cruxcoach.domain.board.BoardClimbParser
 import com.cruxcoach.util.DateTimeUtil
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -161,6 +162,9 @@ class KilterSyncEngine @Inject constructor(
                 // Download
                 val logsResult = apiClient.fetchLogs()
                 val logs = logsResult.getOrNull() ?: return@launch
+                // Backfill board-DB rows for PowerSync-only climbs BEFORE
+                // denormalizing names/frames in insertLogs (best-effort).
+                backfillLoggedClimbs()
                 val imported = insertLogs(logs)
 
                 // Upload unsynced local logs (catches offline-logged ascents)
@@ -216,6 +220,9 @@ class KilterSyncEngine @Inject constructor(
 
         val logsResult = apiClient.fetchLogs()
         logsResult.map { logs ->
+            // Backfill PowerSync-only climbs into the board DB before
+            // insertLogs denormalizes names/frames (best-effort, non-fatal).
+            backfillLoggedClimbs()
             val imported = insertLogs(logs)
             val timestamp = DateTimeUtil.nowIso()
             userPreferences.setKilterLastSync(timestamp)
@@ -252,6 +259,9 @@ class KilterSyncEngine @Inject constructor(
             // Download
             val logsResult = apiClient.fetchLogs()
             val logs = logsResult.getOrThrow()
+            // Backfill PowerSync-only climbs into the board DB before
+            // insertLogs denormalizes names/frames (best-effort, non-fatal).
+            backfillLoggedClimbs()
             val downloaded = insertLogs(logs)
 
             // Upload unsynced local data (only if push is enabled)
@@ -273,6 +283,99 @@ class KilterSyncEngine @Inject constructor(
                 _sessionExpired.value = true
             }
             Result.failure(e)
+        }
+    }
+
+    /**
+     * Backfill the board DB with the user's OWN logged climbs that our
+     * curated mirror lacks — the new-world (PowerSync-only) climbs a logbook
+     * ascent can reference yet fail to resolve (the "Climb nicht gefunden"
+     * bug). Runs BEFORE [insertLogs] so the denormalization there picks up
+     * the freshly-upserted name/frames and the detail screen can resolve the
+     * climb.
+     *
+     * Best-effort and NON-fatal: any failure (auth/network/parse) is logged
+     * and swallowed so the normal log sync continues. Only climbs the board
+     * DB does NOT already have are upserted — curated rows are never
+     * clobbered. Compliance: a SINGLE GET of the user's own logged climbs;
+     * no bulk/all-climbs fetch, no loop-crawl, no separate schedule — it
+     * rides the existing logbook-sync trigger.
+     */
+    private suspend fun backfillLoggedClimbs() {
+        val response = apiClient.fetchLoggedClimbs().getOrElse {
+            Log.w(TAG, "Logged-climb backfill skipped (fetch failed): ${it.message}")
+            return
+        }
+        if (response.climbs.isEmpty()) return
+
+        // Only consider climbs the board DB is missing — never overwrite
+        // curated rows. climbExistsByUuid is an indexed point-lookup.
+        val missing = response.climbs.filter { climb ->
+            climb.climbUuid.isNotBlank() && !boardRepository.climbExistsByUuid(climb.climbUuid)
+        }
+        if (missing.isEmpty()) return
+
+        // Stats keyed by (uuid, angle) so each climb-stat row pairs with its
+        // climb. The detail screen resolves a climb via the (uuid, angle)
+        // LEFT JOIN, and insertLogs' denormalization needs the climb_stats
+        // row to exist for the logged angle — so we upsert a stat at each
+        // climb's own angle, falling back to the API stats list.
+        val statsByKey = response.climbStats.associateBy { it.climbUuid to it.angle }
+
+        var upserted = 0
+        try {
+            boardRepository.runInTransaction {
+                for (climb in missing) {
+                    val frames = climb.climbConcat
+                    val moveCount = if (frames.isNotBlank()) {
+                        BoardClimbParser.estimateMoveCount(BoardClimbParser.parseFrames(frames)).toLong()
+                    } else 0L
+                    // productLayoutUuid is a numeric string in Kilter's API
+                    // ("10", "27", …) — the same value the board DB stores as
+                    // layout_id. Unparseable → 0 (still resolvable by uuid).
+                    val layoutId = climb.productLayoutUuid.toLongOrNull() ?: 0L
+                    boardRepository.upsertClimb(
+                        uuid = climb.climbUuid,
+                        layoutId = layoutId,
+                        setter = climb.username.ifBlank { null },
+                        name = climb.name,
+                        frames = frames,
+                        framesCount = climb.frameCount.toLong().coerceAtLeast(1L),
+                        isListed = if (climb.isListed) 1L else 0L,
+                        edgeLeft = climb.edgeLeft?.toLong(),
+                        edgeRight = climb.edgeRight?.toLong(),
+                        edgeBottom = climb.edgeBottom?.toLong(),
+                        edgeTop = climb.edgeTop?.toLong(),
+                        createdAt = climb.createdAt.ifBlank { null },
+                        description = climb.description,
+                        framesPace = climb.framesPace.toLong(),
+                        moveCount = moveCount,
+                    )
+                    // Stat row at the climb's own angle so the (uuid, angle)
+                    // lookup resolves. Use the API stat if present; otherwise
+                    // write a bare row carrying only the angle key.
+                    val stat = statsByKey[climb.climbUuid to climb.angle]
+                    boardRepository.upsertClimbStat(
+                        climbUuid = climb.climbUuid,
+                        angle = climb.angle.toLong(),
+                        displayDifficulty = stat?.difficultyAverage,
+                        difficultyAverage = stat?.difficultyAverage,
+                        qualityAverage = stat?.qualityAverage,
+                        ascensionistCount = stat?.ascentCount?.toLong(),
+                        benchmarkDifficulty = null,
+                        faUsername = stat?.faUsername,
+                        faAt = stat?.faAt,
+                        officialKilterDifficulty = stat?.currentDifficultyId?.toLong(),
+                    )
+                    upserted++
+                }
+            }
+            if (upserted > 0) {
+                Log.i(TAG, "Backfilled $upserted logged climb(s) missing from board DB")
+            }
+        } catch (e: Exception) {
+            // Backfill is an enhancement, never a gate — keep the log sync alive.
+            Log.w(TAG, "Logged-climb backfill failed mid-write — continuing log sync", e)
         }
     }
 
