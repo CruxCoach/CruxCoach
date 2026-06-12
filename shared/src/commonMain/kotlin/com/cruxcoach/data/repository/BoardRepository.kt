@@ -344,6 +344,20 @@ interface BoardClimbQueries {
      *  climbs are preserved. */
     fun deleteKilterCatalogData()
     fun climbExistsByUuid(uuid: String): Boolean
+    /** Format-blind existence/identity resolution: returns the CANONICAL
+     *  stored uuid of the climb matching [uuid] across the DB's mixed uuid
+     *  spellings (legacy nodash-UPPERCASE curated rows vs new-world
+     *  dashed-lowercase API uuids), or null when the climb truly is missing.
+     *  Use instead of [climbExistsByUuid] wherever an exact-match miss would
+     *  insert a logical duplicate of an already-present climb (the Kilter
+     *  own-climb backfills), and use the returned uuid to address the
+     *  existing row (e.g. [setClimbKilterAuthorUuid]).
+     *
+     *  Default returns null (no match); [BoardRepositoryImpl] overrides with
+     *  indexed exact-spelling probes plus a normalized-scan fallback. The
+     *  default keeps in-memory test fakes that only model the exact-uuid
+     *  path compiling unchanged. */
+    fun findClimbCanonicalUuid(uuid: String): String? = null
     fun statExistsByUuid(uuid: String): Boolean
     fun getClimbCountByAngle(layoutId: Int, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER): List<AngleClimbCount>
     fun getAnglesForClimb(climbUuid: String): List<AngleOption>

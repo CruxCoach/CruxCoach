@@ -65,6 +65,15 @@ class KilterSyncEngineBackfillTest {
 
         every { boardRepo.climbExistsByUuid(any()) } answers { firstArg<String>() in knownUuids }
 
+        // Format-blind canonical resolution, mirroring the real impl: an
+        // already-stored row matches whatever the uuid spelling (legacy
+        // nodash-UPPERCASE vs dashed-lowercase), and the CANONICAL stored
+        // spelling is returned.
+        every { boardRepo.findClimbCanonicalUuid(any()) } answers {
+            val normalized = firstArg<String>().replace("-", "").lowercase()
+            knownUuids.firstOrNull { it.replace("-", "").lowercase() == normalized }
+        }
+
         every {
             boardRepo.upsertClimb(
                 uuid = any(), layoutId = any(), setter = any(), name = any(),
@@ -231,6 +240,29 @@ class KilterSyncEngineBackfillTest {
     }
 
     @Test
+    fun logged_climb_present_under_legacy_uuid_spelling_is_not_duplicated() = runTest {
+        // Curated mirror stores the climb under the legacy nodash-UPPERCASE
+        // spelling; the new Kilter API returns it dashed-lowercase. The
+        // exists gate must be format-blind or the climb is re-inserted as a
+        // logical duplicate row.
+        val legacyUuid = newWorldUuid.replace("-", "").uppercase()
+        knownUuids.add(legacyUuid)
+        coEvery { apiClient.fetchLogs() } returns Result.success(listOf(ascentLog(newWorldUuid)))
+        coEvery { apiClient.fetchLoggedClimbs() } returns Result.success(
+            KilterLoggedClimbsResponse(
+                climbs = listOf(loggedClimb(newWorldUuid)),
+                climbStats = listOf(loggedStat(newWorldUuid)),
+            )
+        )
+
+        engine.importLogs(oneTimeOnly = true).getOrThrow()
+
+        assertTrue(upsertedClimbs.isEmpty(),
+            "a climb stored under the legacy uuid spelling must not be re-inserted")
+        assertTrue(upsertedStats.isEmpty())
+    }
+
+    @Test
     fun logged_fetch_failure_does_not_abort_log_import() = runTest {
         coEvery { apiClient.fetchLogs() } returns Result.success(listOf(ascentLog(newWorldUuid)))
         coEvery { apiClient.fetchLoggedClimbs() } returns Result.failure(
@@ -273,7 +305,7 @@ class KilterSyncEngineBackfillTest {
     }
 
     @Test
-    fun authored_climb_already_in_board_db_is_not_clobbered() = runTest {
+    fun authored_climb_already_in_board_db_is_author_marked_but_not_clobbered() = runTest {
         val authoredUuid = "b41e9153-bffb-53df-9126-34a127d98870"
         knownUuids.add(authoredUuid)
         coEvery { apiClient.fetchLogs() } returns Result.success(emptyList())
@@ -286,8 +318,35 @@ class KilterSyncEngineBackfillTest {
         assertTrue(upsertedClimbs.none { it.uuid == authoredUuid },
             "an existing climb must never be re-upserted/clobbered")
         assertTrue(upsertedStats.none { it.first == authoredUuid })
-        assertTrue(authoredUuid !in authorMarks,
-            "the backfill must not touch rows it did not insert")
+        // /climbs/climbdetails/user just attested authorship — the EXISTING
+        // row must get the author identity too, or the publish gate stays
+        // closed for the user's own already-mirrored climbs.
+        assertEquals("my-own-user-uuid", authorMarks[authoredUuid])
+    }
+
+    @Test
+    fun authored_climb_under_legacy_uuid_spelling_marks_canonical_row_not_a_duplicate() = runTest {
+        // The user's own LISTED climbs are exactly the ones the curated
+        // mirror already carries — under the legacy nodash-UPPERCASE
+        // spelling. The backfill must NOT re-insert them and must record the
+        // author identity on the CANONICAL stored row.
+        val apiUuid = "b41e9153-bffb-53df-9126-34a127d98870"
+        val legacyUuid = apiUuid.replace("-", "").uppercase()
+        knownUuids.add(legacyUuid)
+        coEvery { apiClient.fetchLogs() } returns Result.success(emptyList())
+        coEvery { apiClient.fetchOwnAuthoredClimbs() } returns Result.success(
+            listOf(authoredClimb(apiUuid))
+        )
+
+        engine.importLogs(oneTimeOnly = true).getOrThrow()
+
+        assertTrue(upsertedClimbs.isEmpty(),
+            "a climb stored under the legacy uuid spelling must not be re-inserted")
+        assertTrue(upsertedStats.isEmpty())
+        assertEquals("my-own-user-uuid", authorMarks[legacyUuid],
+            "author identity must land on the canonical stored row")
+        assertTrue(apiUuid !in authorMarks,
+            "no author mark may target the non-stored uuid spelling")
     }
 
     @Test

@@ -347,8 +347,11 @@ WHERE uuid = ?;
 -- on a board-DB row. The own-Kilter-climb publish gate compares this
 -- against the connected account's userUuid — a reliable identity check,
 -- never a display-name match. Fill-only: an already-recorded author is
--- never overwritten (the user-scoped backfills only touch rows they just
--- inserted, but a re-run must not clobber a value another path recorded).
+-- never overwritten — the authored backfill marks PRE-EXISTING curated
+-- rows too (resolved to their canonical stored uuid first), so re-runs
+-- must not clobber a value another path recorded. Callers pass the
+-- CANONICAL stored uuid (see findClimbCanonicalUuid) — this is an exact,
+-- indexed match.
 setClimbKilterAuthorUuid:
 UPDATE climbs SET kilter_author_uuid = :authorUuid
 WHERE uuid = :uuid AND kilter_author_uuid IS NULL;
@@ -1115,6 +1118,24 @@ SELECT climb_uuid, angle, ascensionist_count FROM climb_stats;
 -- Diagnostic: check if a specific climb UUID exists
 climbExistsByUuid:
 SELECT COUNT(*) FROM climbs WHERE uuid = ?;
+
+-- Indexed exact-uuid fast path for findClimbCanonicalUuid (PK lookup).
+getClimbUuidExact:
+SELECT uuid FROM climbs WHERE uuid = :uuid LIMIT 1;
+
+-- Format-blind canonical-uuid resolution: the board DB mixes uuid
+-- spellings (legacy curated rows are nodash-UPPERCASE, new-world Kilter
+-- API rows dashed-lowercase), so an exact-match existence check on an
+-- API uuid can miss a row the DB already has under the other spelling
+-- and cause a logical duplicate insert. This normalizes BOTH sides
+-- (strip hyphens + lowercase) and returns the CANONICAL stored uuid so
+-- callers can address the existing row. Full scan — callers must try
+-- the indexed getClimbUuidExact spellings first (see
+-- BoardRepositoryImpl.findClimbCanonicalUuid).
+findClimbCanonicalUuidNormalized:
+SELECT uuid FROM climbs
+WHERE lower(replace(uuid, '-', '')) = lower(replace(:uuid, '-', ''))
+LIMIT 1;
 
 statExistsByUuid:
 SELECT COUNT(*) FROM climb_stats WHERE climb_uuid = ?;

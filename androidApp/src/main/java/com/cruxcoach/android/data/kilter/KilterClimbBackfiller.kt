@@ -16,7 +16,13 @@ import com.cruxcoach.domain.board.BoardClimbParser
  *  - Best-effort and NON-fatal: any fetch/parse/write failure is logged and
  *    swallowed so the surrounding log sync continues.
  *  - Only climbs the board DB does NOT already have are upserted — curated
- *    rows are never clobbered ([BoardRepository.climbExistsByUuid] gate).
+ *    rows are never clobbered. The exists gate is FORMAT-BLIND
+ *    ([BoardRepository.findClimbCanonicalUuid]): the DB mixes uuid
+ *    spellings (legacy nodash-UPPERCASE curated rows vs new-world
+ *    dashed-lowercase API uuids), and an exact-match gate would re-insert
+ *    an already-mirrored climb as a logical duplicate under the other
+ *    spelling, splitting its identity (publish keeps the Kilter uuid, and
+ *    cross-device reconciliation matches by uuid).
  *  - Compliance: each backfill is a SINGLE GET of the user's own data with
  *    their own Bearer token; no bulk/all-climbs fetch, no loop-crawl, no
  *    separate schedule — it rides the existing logbook-sync triggers.
@@ -47,9 +53,11 @@ internal class KilterClimbBackfiller(
         if (response.climbs.isEmpty()) return
 
         // Only consider climbs the board DB is missing — never overwrite
-        // curated rows. climbExistsByUuid is an indexed point-lookup.
+        // curated rows. Format-blind: a climb already mirrored under the
+        // legacy nodash-UPPERCASE spelling counts as present.
         val missing = response.climbs.filter { climb ->
-            climb.climbUuid.isNotBlank() && !boardRepository.climbExistsByUuid(climb.climbUuid)
+            climb.climbUuid.isNotBlank() &&
+                boardRepository.findClimbCanonicalUuid(climb.climbUuid) == null
         }
         if (missing.isEmpty()) return
 
@@ -96,8 +104,11 @@ internal class KilterClimbBackfiller(
     /**
      * Backfill the user's own AUTHORED climbs from
      * `GET /climbs/climbdetails/user`. Same gap-filling as
-     * [backfillLoggedClimbs], plus these rows are the authoritative source
-     * of the author identity the own-climb publish gate needs.
+     * [backfillLoggedClimbs], plus this endpoint is the authoritative source
+     * of the author identity the own-climb publish gate needs — so it
+     * records `kilter_author_uuid` for EVERY fetched climb: on the freshly
+     * inserted row for missing climbs, and on the canonical existing row
+     * (curated mirror, any uuid spelling) for climbs the DB already has.
      *
      * The endpoint has no stats array, so each upserted climb gets a bare
      * climb_stats row at its own setter angle (NULL difficulty/quality) —
@@ -110,36 +121,60 @@ internal class KilterClimbBackfiller(
         }
         if (climbs.isEmpty()) return
 
-        val missing = climbs.filter { climb ->
-            climb.climbUuid.isNotBlank() && !boardRepository.climbExistsByUuid(climb.climbUuid)
-        }
-        if (missing.isEmpty()) return
+        // Resolve every fetched climb to its canonical stored uuid (null =
+        // truly missing). Format-blind: the user's own LISTED climbs are
+        // typically already in the curated mirror under the legacy
+        // nodash-UPPERCASE spelling — those must NOT be re-inserted, but
+        // they MUST still get the author identity recorded (this endpoint
+        // just authoritatively attested the connected account authored
+        // them — otherwise the publish gate stays closed for exactly the
+        // most publish-worthy climbs).
+        val resolved = climbs
+            .filter { it.climbUuid.isNotBlank() }
+            .map { climb -> climb to boardRepository.findClimbCanonicalUuid(climb.climbUuid) }
+        if (resolved.isEmpty()) return
 
         var upserted = 0
+        var marked = 0
         try {
             boardRepository.runInTransaction {
-                for (climb in missing) {
-                    upsertBackfilledClimb(climb)
-                    // No stats on this endpoint — write a bare row at the
-                    // climb's own (setter) angle so it resolves + renders
-                    // there. NULL difficulty/quality = "ungraded".
-                    boardRepository.upsertClimbStat(
-                        climbUuid = climb.climbUuid,
-                        angle = climb.angle.toLong(),
-                        displayDifficulty = null,
-                        difficultyAverage = null,
-                        qualityAverage = null,
-                        ascensionistCount = null,
-                        benchmarkDifficulty = null,
-                        faUsername = null,
-                        faAt = null,
-                        officialKilterDifficulty = null,
-                    )
-                    upserted++
+                for ((climb, canonicalUuid) in resolved) {
+                    if (canonicalUuid == null) {
+                        upsertBackfilledClimb(climb)
+                        // No stats on this endpoint — write a bare row at the
+                        // climb's own (setter) angle so it resolves + renders
+                        // there. NULL difficulty/quality = "ungraded".
+                        boardRepository.upsertClimbStat(
+                            climbUuid = climb.climbUuid,
+                            angle = climb.angle.toLong(),
+                            displayDifficulty = null,
+                            difficultyAverage = null,
+                            qualityAverage = null,
+                            ascensionistCount = null,
+                            benchmarkDifficulty = null,
+                            faUsername = null,
+                            faAt = null,
+                            officialKilterDifficulty = null,
+                        )
+                        upserted++
+                    } else if (climb.userUuid.isNotBlank()) {
+                        // Existing row (curated or earlier backfill): record
+                        // the author identity on the CANONICAL row. Fill-only
+                        // SQL — never clobbers an already-recorded author.
+                        boardRepository.setClimbKilterAuthorUuid(
+                            uuid = canonicalUuid,
+                            authorUuid = climb.userUuid,
+                        )
+                        marked++
+                    }
                 }
             }
-            if (upserted > 0) {
-                Log.i(TAG, "Backfilled $upserted authored climb(s) missing from board DB")
+            if (upserted > 0 || marked > 0) {
+                Log.i(
+                    TAG,
+                    "Authored-climb backfill: $upserted upserted, " +
+                        "$marked existing row(s) author-marked"
+                )
             }
         } catch (e: Exception) {
             // Backfill is an enhancement, never a gate — keep the sync alive.
@@ -149,8 +184,8 @@ internal class KilterClimbBackfiller(
 
     /**
      * Shared climb-row mapping for both backfills. Only ever called for
-     * uuids [BoardRepository.climbExistsByUuid] reported missing, inside the
-     * caller's transaction. Also records the climb author's Kilter userUuid
+     * uuids [BoardRepository.findClimbCanonicalUuid] reported missing under
+     * ANY spelling, inside the caller's transaction. Also records the climb author's Kilter userUuid
      * (`kilter_author_uuid`) when present — `userUuid` is the AUTHOR'S
      * identity on both endpoints (on `/climbs/climbdetails/user` it is by
      * definition the authenticated account).

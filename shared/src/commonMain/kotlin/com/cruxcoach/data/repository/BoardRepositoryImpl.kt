@@ -229,6 +229,20 @@ class BoardRepositoryImpl(
         return q.climbExistsByUuid(uuid).executeAsOne() > 0
     }
 
+    override fun findClimbCanonicalUuid(uuid: String): String? {
+        // Indexed fast paths first: the uuid as given, then the legacy
+        // curated spelling (nodash-UPPERCASE) a dashed-lowercase API uuid
+        // maps to. Both are PK point-lookups.
+        q.getClimbUuidExact(uuid).executeAsOneOrNull()?.let { return it }
+        val legacySpelling = uuid.replace("-", "").uppercase()
+        if (legacySpelling != uuid) {
+            q.getClimbUuidExact(legacySpelling).executeAsOneOrNull()?.let { return it }
+        }
+        // Last resort: format-blind normalized scan (covers any residual
+        // case/hyphenation mix).
+        return q.findClimbCanonicalUuidNormalized(uuid).executeAsOneOrNull()
+    }
+
     override fun statExistsByUuid(uuid: String): Boolean {
         return q.statExistsByUuid(uuid).executeAsOne() > 0
     }

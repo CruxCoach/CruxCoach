@@ -24,6 +24,11 @@ import kotlin.test.assertNull
  * under a differently-formatted uuid. The normalized lookup strips hyphens +
  * lowercases on both sides so it resolves regardless of format.
  *
+ * Also covers findClimbCanonicalUuid — the format-blind exists-gate the
+ * Kilter own-climb backfills use so an already-mirrored climb is never
+ * re-inserted as a duplicate under the other uuid spelling, and the
+ * author-identity mark lands on the canonical stored row.
+ *
  * Real in-memory SQLite (JdbcSqliteDriver), same harness as
  * BoardSizeFitFilterTest.
  */
@@ -109,5 +114,34 @@ class ClimbUuidNormalizedLookupTest {
     fun unknownUuid_returnsNull() {
         insertClimb(dashedLower)
         assertNull(repo.getClimbByUuidNormalized("ffffffff-0000-0000-0000-000000000000", 25))
+    }
+
+    // ── findClimbCanonicalUuid (format-blind backfill exists-gate) ───────
+
+    @Test
+    fun canonicalUuid_exactSpelling_returnsStoredUuid() {
+        insertClimb(dashedLower)
+        assertEquals(dashedLower, repo.findClimbCanonicalUuid(dashedLower))
+    }
+
+    @Test
+    fun canonicalUuid_dashedLowercaseQuery_resolvesNodashUppercaseRow() {
+        insertClimb(nodashUpper)
+        // The indexed legacy-spelling fast path must hit.
+        assertEquals(nodashUpper, repo.findClimbCanonicalUuid(dashedLower))
+    }
+
+    @Test
+    fun canonicalUuid_nodashUppercaseQuery_resolvesDashedLowercaseRow() {
+        insertClimb(dashedLower)
+        // Neither exact nor legacy-spelling fast path matches → normalized
+        // scan fallback.
+        assertEquals(dashedLower, repo.findClimbCanonicalUuid(nodashUpper))
+    }
+
+    @Test
+    fun canonicalUuid_unknownUuid_returnsNull() {
+        insertClimb(dashedLower)
+        assertNull(repo.findClimbCanonicalUuid("ffffffff-0000-0000-0000-000000000000"))
     }
 }
