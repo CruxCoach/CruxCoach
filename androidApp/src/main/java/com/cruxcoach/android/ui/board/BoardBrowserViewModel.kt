@@ -1309,33 +1309,45 @@ class BoardBrowserViewModel @Inject constructor(
 
     private fun fetchRandomClimb(onResult: (String) -> Unit) {
         val f = _state.value.filter
+        val hs = _state.value.holdSearch
+        // "Plain" mode = no client-side narrowing. Only then does filteredCount
+        // (= cachedDbCount) match the offset query's row set exactly, so we can
+        // pick uniformly across the WHOLE catalogue match (not just loaded
+        // pages); ignored climbs are skipped via the bounded re-roll.
+        val plainMode = f.statusFilter.isEmpty() &&
+            f.originFilter == OriginFilter.ALL &&
+            !f.myClimbsOnly &&
+            !(hs.holdFilterActive && hs.holdFilterUuids.isNotEmpty())
         val count = _state.value.filteredCount
-        if (count <= 0) return
-        viewModelScope.safeLaunch(TAG) {
-            val uuid = withContext(Dispatchers.IO) {
-                // filteredCount/list already exclude ignored climbs, but the
-                // random-offset query hits the raw DB match set — so re-roll a
-                // few times to avoid landing the dice on an ignored climb.
-                // Bounded: a filter whose matches are nearly all ignored still
-                // returns promptly via the last non-null candidate.
-                ensureHiddenLoaded()
-                var result: String? = null
-                var fallback: String? = null
-                var rolls = 0
-                while (rolls < RANDOM_PICK_MAX_ROLLS && result == null) {
-                    rolls++
-                    val candidate = pickOneAtOffset(f, Random.nextInt(count.toInt()))
-                    if (candidate != null) {
-                        fallback = candidate
-                        if (candidate !in hiddenUuids) result = candidate
+        if (plainMode && count > 0) {
+            viewModelScope.safeLaunch(TAG) {
+                val uuid = withContext(Dispatchers.IO) {
+                    ensureHiddenLoaded()
+                    var result: String? = null
+                    var fallback: String? = null
+                    var rolls = 0
+                    while (rolls < RANDOM_PICK_MAX_ROLLS && result == null) {
+                        rolls++
+                        val candidate = pickOneAtOffset(f, Random.nextInt(count.toInt()))
+                        if (candidate != null) {
+                            fallback = candidate
+                            if (candidate !in hiddenUuids) result = candidate
+                        }
                     }
+                    result ?: fallback
                 }
-                result ?: fallback
+                if (uuid != null) onResult(uuid)
             }
-            if (uuid != null) {
-                onResult(uuid)
-            }
+            return
         }
+        // Every other mode (Neu/Offen/Gesendet/Versucht/Herkunft/Eigene/Hold):
+        // filteredCount is an estimate (Neu/Offen subtract the GLOBAL logbook
+        // from a filter-scoped count, so it can go <= 0 and silently kill the
+        // dice on a full list) and the offset query ignores the client-side
+        // filter anyway. Pick from the already-loaded list, which is fully
+        // filtered and has ignored climbs removed — no count gate, always
+        // respects the active filters.
+        _state.value.climbs.randomOrNull()?.uuid?.let(onResult)
     }
 
     /** Fetch the single climb at [offset] in the current filter's ordering
