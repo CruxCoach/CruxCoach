@@ -194,6 +194,17 @@ data class KilterLoggedClimb(
 )
 
 /**
+ * One climb row from `GET /api/climbs/climbdetails/user` — the user's OWN
+ * AUTHORED climbs. The wire shape differs from `/climbs/logged` only in the
+ * envelope (a BARE top-level array, no `climbStats[]`); the per-climb fields
+ * are the same camelCase set, so the model is shared with
+ * [KilterLoggedClimb]. `userUuid`/`username` here are by definition the
+ * AUTHOR'S identity (== the authenticated account), which is what the
+ * own-climb publish gate persists as `kilter_author_uuid`.
+ */
+typealias KilterAuthoredClimb = KilterLoggedClimb
+
+/**
  * One stat row from `GET /api/climbs/logged`. Mirrors the curated
  * envelope's `climbStats[]` entry. Keyed by (climbUuid, angle) — the same
  * key the board DB's `climb_stats` table uses.
@@ -613,6 +624,56 @@ class KilterApiClient @Inject constructor(
             throw e
         } catch (e: Exception) {
             Log.e(TAG, "fetchLoggedClimbs failed", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Fetch the authenticated user's OWN AUTHORED climbs from
+     * `GET /api/climbs/climbdetails/user`. Unlike `/climbs/logged` the
+     * response is a BARE JSON array (no `climbs[]`/`climbStats[]` envelope)
+     * and carries no stats; the per-climb fields are the same camelCase set
+     * as [KilterLoggedClimb]. This is the backfill source for climbs the
+     * user authored in the official app that never reached our curated
+     * mirror, and the authoritative source of the author identity
+     * (`userUuid`) the own-climb publish gate persists.
+     *
+     * Compliance: a SINGLE GET of the user's own authored climbs with their
+     * own Bearer token. No params, no bulk/all-climbs crawl. Token via the
+     * same [ensureValidToken] refresh path as [fetchLogs]; the User-Agent is
+     * the client's honest interceptor-set UA.
+     */
+    suspend fun fetchOwnAuthoredClimbs(): Result<List<KilterAuthoredClimb>> = withContext(Dispatchers.IO) {
+        val token = ensureValidToken()
+            ?: return@withContext Result.failure(KilterApiException(KilterAuthResult.Error.Reason.NotAuthenticated, "no valid token"))
+
+        try {
+            val request = Request.Builder()
+                .url("$apiBase/climbs/climbdetails/user")
+                .addHeader("Authorization", "Bearer $token")
+                .build()
+            val response = httpClient.newCall(request).execute()
+
+            if (!response.isSuccessful) {
+                return@withContext Result.failure(
+                    Exception("HTTP ${response.code}: ${response.body?.string()?.take(MAX_ERR_BODY)}")
+                )
+            }
+
+            val body = response.body?.string()
+                ?: return@withContext Result.failure(Exception("empty /climbs/climbdetails/user response"))
+            // Live shape is a bare array; tolerate a future envelope wrap
+            // the same way fetchLogs does for /logs.
+            val climbs = if (body.trimStart().startsWith("[")) {
+                json.decodeFromString<List<KilterAuthoredClimb>>(body)
+            } else {
+                json.decodeFromString<KilterLoggedClimbsResponse>(body).climbs
+            }
+            Result.success(climbs)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e(TAG, "fetchOwnAuthoredClimbs failed", e)
             Result.failure(e)
         }
     }

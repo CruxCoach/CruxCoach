@@ -51,9 +51,16 @@ CREATE TABLE climbs (
     -- belongs to. 'kilter' for the existing catalogue, 'moonboard'
     -- for MoonBoard climbs. Explicit so renderer / BLE / onboarding
     -- branch on a real column, not a layout_id range guess. Added by
-    -- 14.sqm with DEFAULT 'kilter' — must stay the LAST column so the
-    -- migration's ALTER TABLE ADD COLUMN matches this schema.
-    board_brand TEXT NOT NULL DEFAULT 'kilter'
+    -- 14.sqm with DEFAULT 'kilter'.
+    board_brand TEXT NOT NULL DEFAULT 'kilter',
+    -- Kilter author identity: the climb author's Kilter userUuid as
+    -- reported by the user-scoped Kilter endpoints (/climbs/logged,
+    -- /climbs/climbdetails/user). Backs the own-Kilter-climb publish
+    -- gate, which compares this against the CONNECTED account's
+    -- userUuid (never a display-name match). NULL = unknown author →
+    -- not publishable. Added by 22.sqm — must stay the LAST column so
+    -- the migration's ALTER TABLE ADD COLUMN matches this schema.
+    kilter_author_uuid TEXT
 );
 
 CREATE TABLE climb_stats (
@@ -335,6 +342,16 @@ UPDATE climbs SET
     frames = ?,
     move_count = ?
 WHERE uuid = ?;
+
+-- Records the Kilter author identity (the climb author's Kilter userUuid)
+-- on a board-DB row. The own-Kilter-climb publish gate compares this
+-- against the connected account's userUuid — a reliable identity check,
+-- never a display-name match. Fill-only: an already-recorded author is
+-- never overwritten (the user-scoped backfills only touch rows they just
+-- inserted, but a re-run must not clobber a value another path recorded).
+setClimbKilterAuthorUuid:
+UPDATE climbs SET kilter_author_uuid = :authorUuid
+WHERE uuid = :uuid AND kilter_author_uuid IS NULL;
 
 -- layout_id is denormalized from the owning climbs row (single source of
 -- truth) so community-ingested + restored stats rows are visible to the

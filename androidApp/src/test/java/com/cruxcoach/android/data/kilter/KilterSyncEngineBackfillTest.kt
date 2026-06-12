@@ -15,10 +15,12 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
- * Tests the own-logged-climb backfill in [KilterSyncEngine]: a logged climb
- * missing from the board DB gets upserted (so the subsequent ascent row
- * carries a real name/frames and board-climb-detail can resolve it), an
- * already-present climb is not re-upserted, and a `/climbs/logged` failure
+ * Tests the own-climb backfills [KilterSyncEngine] runs via
+ * [KilterClimbBackfiller]: a logged or authored climb missing from the board
+ * DB gets upserted (so the subsequent ascent row carries a real name/frames
+ * and board-climb-detail can resolve it) with the author's Kilter userUuid
+ * recorded for the publish gate, an already-present climb is not
+ * re-upserted, and a `/climbs/logged` or `/climbs/climbdetails/user` failure
  * does not abort the log import.
  *
  * No live HTTP — [KilterApiClient] is mocked. The board + personal repos are
@@ -40,6 +42,8 @@ class KilterSyncEngineBackfillTest {
     private val upsertedClimbs = mutableListOf<UpsertedClimb>()
     /** Recorded upsertClimbStat keys. */
     private val upsertedStats = mutableListOf<Pair<String, Long>>()
+    /** Recorded setClimbKilterAuthorUuid calls (climb uuid → author userUuid). */
+    private val authorMarks = mutableMapOf<String, String>()
     /** Recorded insertAscent calls. */
     private val ascents = mutableListOf<RecordedAscent>()
     /** Board-DB rows resolvable by getClimbsByUuids — seeded + backfilled. */
@@ -98,10 +102,22 @@ class KilterSyncEngineBackfillTest {
             upsertedStats.add(arg<String>(0) to arg<Long>(1))
         }
 
+        every { boardRepo.setClimbKilterAuthorUuid(any(), any()) } answers {
+            authorMarks[arg<String>(0)] = arg<String>(1)
+        }
+
         every { boardRepo.getClimbsByUuids(any(), any()) } answers {
             val uuids = arg<Collection<String>>(0)
             resolvableClimbs.filter { it.uuid in uuids }
         }
+
+        // Default stubs so each test only overrides the endpoint under test
+        // (a relaxed mock would otherwise return a broken Result for the
+        // value-class return type).
+        coEvery { apiClient.fetchLoggedClimbs() } returns
+            Result.success(KilterLoggedClimbsResponse())
+        coEvery { apiClient.fetchOwnAuthoredClimbs() } returns
+            Result.success(emptyList())
 
         every {
             personalRepo.insertAscent(
@@ -130,8 +146,23 @@ class KilterSyncEngineBackfillTest {
         productLayoutUuid = "10",
         frameCount = 1,
         edgeRight = 144,
+        userUuid = "author-uuid-alice",
         username = "alice",
         createdAt = "2024-01-01T00:00:00Z",
+    )
+
+    private fun authoredClimb(uuid: String) = KilterAuthoredClimb(
+        climbUuid = uuid,
+        climbConcat = "h7p12h8p13h9p14",
+        name = "My Own Setter Line",
+        angle = 40,
+        productLayoutUuid = "10",
+        frameCount = 1,
+        edgeLeft = 4,
+        edgeRight = 140,
+        userUuid = "my-own-user-uuid",
+        username = "me",
+        createdAt = "2024-02-02T00:00:00Z",
     )
 
     private fun loggedStat(uuid: String) = KilterLoggedClimbStat(
@@ -162,6 +193,9 @@ class KilterSyncEngineBackfillTest {
         assertEquals("h1p12h2p13h3p14", upserted.frames)
         assertEquals(10L, upserted.layoutId)
         assertTrue(upsertedStats.any { it.first == newWorldUuid && it.second == 25L })
+        // The logged backfill records the climb AUTHOR's Kilter userUuid so
+        // the publish gate can later check authorship by identity.
+        assertEquals("author-uuid-alice", authorMarks[newWorldUuid])
 
         val ascent = ascents.single()
         assertEquals(newWorldUuid, ascent.climbUuid)
@@ -211,6 +245,62 @@ class KilterSyncEngineBackfillTest {
         // No board-DB row → empty name/frames fallback (pre-existing behaviour;
         // backfill is an enhancement, not a gate).
         assertEquals("", ascents.single().climbName)
+    }
+
+    // ── Authored-climb backfill (/climbs/climbdetails/user) ──────────────
+
+    @Test
+    fun backfills_missing_authored_climb_and_records_author_uuid() = runTest {
+        val authoredUuid = "b41e9153-bffb-53df-9126-34a127d98870"
+        coEvery { apiClient.fetchLogs() } returns Result.success(emptyList())
+        coEvery { apiClient.fetchOwnAuthoredClimbs() } returns Result.success(
+            listOf(authoredClimb(authoredUuid))
+        )
+
+        engine.importLogs(oneTimeOnly = true).getOrThrow()
+
+        val upserted = upsertedClimbs.firstOrNull { it.uuid == authoredUuid }
+        assertNotNull(upserted, "expected the missing authored climb to be upserted")
+        assertEquals("My Own Setter Line", upserted.name)
+        assertEquals("h7p12h8p13h9p14", upserted.frames)
+        assertEquals(10L, upserted.layoutId)
+        // No stats on this endpoint → a bare stat row at the setter angle so
+        // the (uuid, angle) detail lookup resolves.
+        assertTrue(upsertedStats.any { it.first == authoredUuid && it.second == 40L })
+        // The author identity the publish gate compares against
+        // tokenStore.getUserUuid() — never a display-name match.
+        assertEquals("my-own-user-uuid", authorMarks[authoredUuid])
+    }
+
+    @Test
+    fun authored_climb_already_in_board_db_is_not_clobbered() = runTest {
+        val authoredUuid = "b41e9153-bffb-53df-9126-34a127d98870"
+        knownUuids.add(authoredUuid)
+        coEvery { apiClient.fetchLogs() } returns Result.success(emptyList())
+        coEvery { apiClient.fetchOwnAuthoredClimbs() } returns Result.success(
+            listOf(authoredClimb(authoredUuid))
+        )
+
+        engine.importLogs(oneTimeOnly = true).getOrThrow()
+
+        assertTrue(upsertedClimbs.none { it.uuid == authoredUuid },
+            "an existing climb must never be re-upserted/clobbered")
+        assertTrue(upsertedStats.none { it.first == authoredUuid })
+        assertTrue(authoredUuid !in authorMarks,
+            "the backfill must not touch rows it did not insert")
+    }
+
+    @Test
+    fun authored_fetch_failure_does_not_abort_log_import() = runTest {
+        coEvery { apiClient.fetchLogs() } returns Result.success(listOf(ascentLog(newWorldUuid)))
+        coEvery { apiClient.fetchOwnAuthoredClimbs() } returns Result.failure(
+            KilterApiException(KilterAuthResult.Error.Reason.NetworkError, "offline")
+        )
+
+        val imported = engine.importLogs(oneTimeOnly = true).getOrThrow()
+
+        assertEquals(1, imported)
+        assertEquals(1, ascents.size)
     }
 }
 

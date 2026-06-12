@@ -505,6 +505,12 @@ interface BoardWriteOperations {
                         ascensionistCount: Long?, benchmarkDifficulty: Double?,
                         faUsername: String? = null, faAt: String? = null,
                         officialKilterDifficulty: Long? = null)
+    /** Record the climb author's Kilter userUuid on an existing row (fill-only:
+     *  a non-NULL value is never overwritten). Backs the own-Kilter-climb
+     *  publish gate, which compares it against the connected account's
+     *  userUuid — never a display-name match. Default no-op so existing test
+     *  fakes that never exercise the Kilter backfill keep compiling. */
+    fun setClimbKilterAuthorUuid(uuid: String, authorUuid: String) {}
     fun upsertHoldPosition(holeId: Long, productSizeId: Long, x: Long, y: Long,
                            ledPosition: Long, placementId: Long, boardBrand: String = "kilter")
     fun upsertLed(holeId: Long, productSizeId: Long, position: Long, boardBrand: String = "kilter")

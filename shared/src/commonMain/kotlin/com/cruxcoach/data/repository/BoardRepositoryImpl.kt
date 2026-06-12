@@ -573,6 +573,10 @@ class BoardRepositoryImpl(
             officialKilterDifficulty)
     }
 
+    override fun setClimbKilterAuthorUuid(uuid: String, authorUuid: String) {
+        q.setClimbKilterAuthorUuid(authorUuid = authorUuid, uuid = uuid)
+    }
+
     override fun upsertHoldPosition(holeId: Long, productSizeId: Long, x: Long, y: Long, ledPosition: Long, placementId: Long, boardBrand: String) {
         q.upsertHoldPosition(boardBrand, holeId, productSizeId, x, y, ledPosition, placementId)
     }
