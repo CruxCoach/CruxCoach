@@ -15,7 +15,7 @@ val AscentWithClimb.brand: BoardBrand get() = BoardBrand.fromWire(boardBrand)
 val RawBid.brand: BoardBrand get() = BoardBrand.fromWire(boardBrand)
 
 enum class ClimbSortField {
-    QUALITY, DIFFICULTY, ASCENSIONISTS, REPEATS, NAME, HOLDS, BENCHMARK_DIFFICULTY,
+    QUALITY, DIFFICULTY, ASCENSIONISTS, NAME, HOLDS, BENCHMARK_DIFFICULTY,
     /** Quality multiplied by sends: surfaces climbs that are both popular AND well-rated. */
     QUALITY_SENDS,
     /** SQLite RANDOM() over the filtered set. Direction is ignored. Pagination

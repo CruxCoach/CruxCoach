@@ -214,6 +214,18 @@ class BoardBrowserStatusFilterTest {
     }
 
     @Test
+    fun `sort by moves uses stored move count`() {
+        val climbs = listOf(
+            climb("a").copy(storedMoveCount = 8),
+            climb("b").copy(storedMoveCount = 14),
+            climb("c").copy(storedMoveCount = 3)
+        )
+        val sorted = sortInKotlin(climbs, ClimbSortField.HOLDS, SortDirection.DESC)
+
+        assertEquals(listOf(14L, 8L, 3L), sorted.map { it.storedMoveCount })
+    }
+
+    @Test
     fun `sort by name case-insensitive ascending`() {
         val climbs = listOf(
             climb("a", name = "Zebra"),

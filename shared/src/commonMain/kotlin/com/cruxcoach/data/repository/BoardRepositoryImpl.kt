@@ -79,6 +79,7 @@ class BoardRepositoryImpl(
             ClimbSortField.DIFFICULTY -> if (desc) q.searchByDifficultyDesc(lay, boardBrand, query, a, mn, mx, hm, sel, l, o) else q.searchByDifficultyAsc(lay, boardBrand, query, a, mn, mx, hm, sel, l, o)
             ClimbSortField.NAME -> if (desc) q.searchByNameDesc(lay, boardBrand, query, a, mn, mx, hm, sel, l, o) else q.searchByNameAsc(lay, boardBrand, query, a, mn, mx, hm, sel, l, o)
             ClimbSortField.QUALITY_SENDS -> if (desc) q.searchByQualitySendsDesc(lay, boardBrand, query, a, mn, mx, hm, sel, l, o) else q.searchByQualitySendsAsc(lay, boardBrand, query, a, mn, mx, hm, sel, l, o)
+            ClimbSortField.HOLDS -> if (desc) q.searchByMovesDesc(lay, boardBrand, query, a, mn, mx, hm, sel, l, o) else q.searchByMovesAsc(lay, boardBrand, query, a, mn, mx, hm, sel, l, o)
             ClimbSortField.RANDOM -> q.searchRandom(lay, boardBrand, query, a, mn, mx, hm, sel, l, o)
             else -> if (desc) q.searchByAscensionistsDesc(lay, boardBrand, query, a, mn, mx, hm, sel, l, o) else q.searchByAscensionistsAsc(lay, boardBrand, query, a, mn, mx, hm, sel, l, o)
         }.executeAsList().map { mapBrowse(it) }
@@ -126,6 +127,7 @@ class BoardRepositoryImpl(
             ClimbSortField.DIFFICULTY -> if (desc) q.browseByDifficultyDesc(lay, boardBrand, a, mn, mx, minDifficulty, maxDifficulty, su, asc, hm, sel, l, o) else q.browseByDifficultyAsc(lay, boardBrand, a, mn, mx, minDifficulty, maxDifficulty, su, asc, hm, sel, l, o)
             ClimbSortField.NAME -> if (desc) q.browseByNameDesc(lay, boardBrand, a, mn, mx, minDifficulty, maxDifficulty, su, asc, hm, sel, l, o) else q.browseByNameAsc(lay, boardBrand, a, mn, mx, minDifficulty, maxDifficulty, su, asc, hm, sel, l, o)
             ClimbSortField.QUALITY_SENDS -> if (desc) q.browseByQualitySendsDesc(lay, boardBrand, a, mn, mx, minDifficulty, maxDifficulty, su, asc, hm, sel, l, o) else q.browseByQualitySendsAsc(lay, boardBrand, a, mn, mx, minDifficulty, maxDifficulty, su, asc, hm, sel, l, o)
+            ClimbSortField.HOLDS -> if (desc) q.browseByMovesDesc(lay, boardBrand, a, mn, mx, minDifficulty, maxDifficulty, su, asc, hm, sel, l, o) else q.browseByMovesAsc(lay, boardBrand, a, mn, mx, minDifficulty, maxDifficulty, su, asc, hm, sel, l, o)
             ClimbSortField.RANDOM -> q.browseRandom(lay, boardBrand, a, mn, mx, minDifficulty, maxDifficulty, su, asc, hm, sel, l, o)
             else -> if (desc) q.browseByAscensionistsDesc(lay, boardBrand, a, mn, mx, minDifficulty, maxDifficulty, su, asc, hm, sel, l, o) else q.browseByAscensionistsAsc(lay, boardBrand, a, mn, mx, minDifficulty, maxDifficulty, su, asc, hm, sel, l, o)
         }.executeAsList().map { mapBrowse(it) }

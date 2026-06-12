@@ -21,6 +21,8 @@ import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Verified
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -33,6 +35,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -69,6 +72,11 @@ fun BoardFilterScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showBoardPicker by remember { mutableStateOf(false) }
     var showGymSearch by remember { mutableStateOf(false) }
+    var showTermInfo by remember { mutableStateOf(false) }
+
+    if (showTermInfo) {
+        FilterTermInfoDialog(onDismiss = { showTermInfo = false })
+    }
 
     if (showBoardPicker) {
         // Unified picker — Kilter Original / Kilter Homewall / MoonBoard.
@@ -111,6 +119,17 @@ fun BoardFilterScreen(
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = stringResource(R.string.action_back)
+                        )
+                    }
+                },
+                actions = {
+                    IconButton(
+                        onClick = { showTermInfo = true },
+                        modifier = Modifier.testTag("board_filter_info")
+                    ) {
+                        Icon(
+                            Icons.Outlined.Info,
+                            contentDescription = stringResource(R.string.board_filter_info_action)
                         )
                     }
                 },
@@ -568,5 +587,55 @@ fun BoardFilterScreen(
                 Spacer(modifier = Modifier.height(8.dp))
             }
         }
+    }
+}
+
+/** Plain-language glossary for the browse filter / sort terms, opened from the
+ *  ℹ action. Adapted to 0.2.0's multi-select status model (Neu / Versucht /
+ *  Gesendet — no "Unsent" chip) and its added modes (ungraded-only, the
+ *  quality×sends and random sorts). */
+@Composable
+private fun FilterTermInfoDialog(onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.board_filter_info_title)) },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                FilterTermEntry(R.string.board_filter_status_new, R.string.board_filter_info_status_new)
+                FilterTermEntry(R.string.board_filter_status_attempted, R.string.board_filter_info_status_attempted)
+                FilterTermEntry(R.string.board_filter_status_sent, R.string.board_filter_info_status_sent)
+                FilterTermEntry(R.string.board_filter_benchmarks_only, R.string.board_filter_info_benchmarks)
+                FilterTermEntry(R.string.board_filter_ungraded_only, R.string.board_filter_info_ungraded)
+                FilterTermEntry(R.string.board_sends, R.string.board_filter_info_sort_sends)
+                FilterTermEntry(R.string.board_quality, R.string.board_filter_info_sort_quality)
+                FilterTermEntry(R.string.board_sort_quality_sends, R.string.board_filter_info_sort_quality_sends)
+                FilterTermEntry(R.string.board_moves, R.string.board_filter_info_sort_moves)
+                FilterTermEntry(R.string.board_sort_random, R.string.board_filter_info_sort_random)
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.action_close))
+            }
+        }
+    )
+}
+
+@Composable
+private fun FilterTermEntry(termRes: Int, descriptionRes: Int) {
+    Column {
+        Text(
+            stringResource(termRes),
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold
+        )
+        Text(
+            stringResource(descriptionRes),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }

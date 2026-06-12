@@ -27,6 +27,7 @@ internal fun boardBrowserSortInKotlin(
         ClimbSortField.NAME -> compareBy(String.CASE_INSENSITIVE_ORDER) { it.name }
         ClimbSortField.BENCHMARK_DIFFICULTY -> compareBy { it.benchmarkDifficulty }
         ClimbSortField.QUALITY_SENDS -> compareBy { (it.ascensionistCount ?: 0L) * (it.qualityAverage ?: 0.0) }
+        ClimbSortField.HOLDS -> compareBy { it.storedMoveCount }
         else -> compareBy { it.ascensionistCount ?: 0L }
     }
     return if (dir == SortDirection.DESC) climbs.sortedWith(comparator.reversed())
