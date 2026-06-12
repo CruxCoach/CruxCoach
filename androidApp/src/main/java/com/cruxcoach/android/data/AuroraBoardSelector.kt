@@ -52,6 +52,36 @@ class AuroraBoardSelector @Inject constructor(
         // (Conservative: never leave a TB2 owner unable to select their board.)
         if (variant != null) {
             userPreferences.setBoardSelection(brand, variant.layoutId, variantSize!!)
+        } else {
+            // Fast path for single-layout boards whose catalogue is already on
+            // the device: derive (layout, size) locally and apply IMMEDIATELY.
+            // Without this the pref write waited on a full sync round-trip
+            // (relay manifest fetch, up to 15s) even though nothing needed
+            // downloading — the picker felt hung. Freshness stays the sync
+            // lanes' job; the download-gated slow path below still covers the
+            // true first-time selection (empty catalogue).
+            val localLayout = withContext(Dispatchers.IO) {
+                boardRepository.getDefaultLayoutForBrand(brand)
+            }
+            if (localLayout != null) {
+                val localSize: Pair<Int, String>? = when {
+                    productSizeId != null -> withContext(Dispatchers.IO) {
+                        boardRepository.getProductSize(productSizeId, brand)
+                    }?.let { productSizeId to it.name }
+                    else -> withContext(Dispatchers.IO) {
+                        boardRepository.getDefaultProductSizeForBrand(brand)
+                    }
+                }
+                if (localSize != null) {
+                    userPreferences.setBoardSelection(brand, localLayout, localSize.first)
+                    return Outcome(
+                        status = Status.ALREADY_CURRENT,
+                        layoutId = localLayout,
+                        productSizeId = localSize.first,
+                        productSizeName = localSize.second,
+                    )
+                }
+            }
         }
         return when (val result = withContext(Dispatchers.IO) { auroraCatalogueSync.sync(board) }) {
             is AuroraCatalogueSync.Result.Failed -> Outcome(

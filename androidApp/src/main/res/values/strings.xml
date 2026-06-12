@@ -1130,8 +1130,8 @@
     <string name="board_climb_sends_count">%d sends</string>
     <string name="board_detail_benchmark">Benchmark</string>
     <string name="board_detail_frames">Frames</string>
-    <string name="board_detail_matching">Matching</string>
-    <string name="board_detail_no_matching">No matching</string>
+    <string name="board_detail_matching">Match allowed</string>
+    <string name="board_detail_no_matching">No match</string>
     <string name="board_heatmap_finish">Top Holds</string>
     <string name="board_heatmap_foot">Foot Holds</string>
     <string name="board_heatmap_global">All Climbs</string>
