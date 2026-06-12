@@ -105,6 +105,26 @@ class BoardRepositoryImpl(
         }
     }
 
+    override fun getClimbByUuidNormalized(uuid: String, angle: Int): ClimbWithStats? {
+        return q.getClimbByUuidNormalized(angle.toLong(), uuid).executeAsOneOrNull()?.let {
+            mapClimb(
+                it.uuid, it.layout_id, it.setter_username, it.name, it.frames, it.frames_count,
+                it.difficulty_average, it.quality_average, it.ascensionist_count, it.description,
+                it.is_nomatch, it.frames_pace, it.hsm,
+                benchmarkDifficulty = it.benchmark_difficulty ?: 0.0,
+                faUsername = it.fa_username, faAt = it.fa_at,
+                moveCount = it.move_count,
+                origin = it.origin,
+                kilterStatus = it.kilter_status,
+                createdByPubkey = it.created_by_pubkey,
+                source = it.source,
+                syncStatus = it.sync_status,
+                nostrEventId = it.nostr_event_id,
+                boardBrand = it.board_brand,
+            )
+        }
+    }
+
     override fun searchClimbsSorted(
         angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int,
         sortField: ClimbSortField, sortDirection: SortDirection, limit: Int, offset: Int,

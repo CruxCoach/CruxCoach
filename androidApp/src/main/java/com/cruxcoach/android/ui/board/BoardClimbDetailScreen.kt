@@ -805,6 +805,13 @@ private fun ClimbDetailPageContent(
                 CircularProgressIndicator(color = OrangeAccent)
             }
         }
+        state.logbookOnly != null -> {
+            LogbookOnlyClimbContent(
+                logbookOnly = state.logbookOnly!!,
+                gradeScale = state.gradeScale,
+                modifier = modifier
+            )
+        }
         state.error != null -> {
             Box(modifier = modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.Center) {
                 com.cruxcoach.android.ui.common.ErrorCard(

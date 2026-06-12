@@ -126,9 +126,27 @@ data class SetterProfile(
     val isCommunity: Boolean,
 )
 
+/**
+ * Minimal "known only from the logbook" fallback. Populated when a climb
+ * the user has a local Kilter ascent for is absent from the curated board
+ * DB (it lives only in Kilter's new PowerSync world — dashed-lowercase
+ * uuid, never mirrored into our board DB nor present in BoardSesh). Rather
+ * than dead-ending on [ClimbDetailState.error], the detail screen renders
+ * what the ascent rows already carry. The diagnostic uuid/angle string is
+ * NOT surfaced here — only in the truly-unknown (no-history) error path.
+ */
+data class LogbookOnlyState(
+    val uuid: String,
+    val ascents: List<AscentWithClimb>,
+)
+
 data class ClimbDetailState(
     val isLoading: Boolean = true,
     val climb: ClimbWithStats? = null,
+    /** Non-null when the climb is absent from the board DB but the user has
+     *  local logbook history for it — drives the friendly logbook-only
+     *  fallback instead of [error]. */
+    val logbookOnly: LogbookOnlyState? = null,
     val holds: List<BoardHold> = emptyList(),
     val placements: Map<Int, BoardPlacement> = emptyMap(),
     val boardSize: BoardSize? = null,
@@ -637,11 +655,17 @@ class BoardClimbDetailViewModel @Inject constructor(
             try {
                 PerfLogger.navMilestone("loadClimb start ($uuid)")
                 withContext(Dispatchers.IO) {
-                    // Try exact match first, then case variants (DB may store upper/lowercase)
+                    // Try exact match first, then case variants (DB may store
+                    // upper/lowercase). Keep the fast primary-key path first;
+                    // only on a miss fall back to the normalized (strip-hyphens
+                    // + lowercase) scan, which resolves uuids whose hyphenation
+                    // differs from the stored row (logbook dashed-lowercase vs
+                    // legacy nodash-UPPERCASE board rows).
                     val climb = PerfLogger.trace("loadClimb.getClimbByUuid") {
                         boardRepository.getClimbByUuid(uuid, angle)
                             ?: boardRepository.getClimbByUuid(uuid.lowercase(), angle)
                             ?: boardRepository.getClimbByUuid(uuid.uppercase(), angle)
+                            ?: boardRepository.getClimbByUuidNormalized(uuid, angle)
                     }
                     if (climb != null) {
                         // FEAT-027: a MoonBoard climb has no Aurora
@@ -712,6 +736,8 @@ class BoardClimbDetailViewModel @Inject constructor(
                         _state.update { s ->
                             s.copy(
                                 isLoading = false,
+                                error = null,
+                                logbookOnly = null,
                                 climb = climb,
                                 holds = holds,
                                 placements = placementMap,
@@ -749,7 +775,36 @@ class BoardClimbDetailViewModel @Inject constructor(
                         // setter_username populated from the API.
                         loadSetterProfileFromNostr(climb)
                     } else {
-                        _state.update { it.copy(isLoading = false, error = context.getString(R.string.error_climb_not_found, uuid, angle)) }
+                        // Climb absent from the board DB even after the
+                        // normalized fallback. Before dead-ending on the raw
+                        // diagnostic error, check whether the user has local
+                        // logbook history for this uuid (e.g. a Kilter ascent
+                        // imported via FEAT-030 for a new-PowerSync-world climb
+                        // we never mirrored). If so, render the friendly
+                        // logbook-only state from what the ascent rows carry,
+                        // and keep the uuid/angle diagnostic out of the UI.
+                        val history = PerfLogger.trace("loadClimb.notFound.userHistory") {
+                            personalBoardRepo.getUserHistoryForClimb(uuid)
+                        }
+                        if (history.isNotEmpty()) {
+                            _state.update {
+                                it.copy(
+                                    isLoading = false,
+                                    error = null,
+                                    climb = null,
+                                    userAscents = history,
+                                    logbookOnly = LogbookOnlyState(uuid = uuid, ascents = history),
+                                )
+                            }
+                        } else {
+                            _state.update {
+                                it.copy(
+                                    isLoading = false,
+                                    logbookOnly = null,
+                                    error = context.getString(R.string.error_climb_not_found, uuid, angle),
+                                )
+                            }
+                        }
                     }
                 }
             } catch (e: CancellationException) {

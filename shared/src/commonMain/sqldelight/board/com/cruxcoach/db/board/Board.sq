@@ -709,6 +709,22 @@ FROM climbs c
 LEFT JOIN climb_stats cs ON c.uuid = cs.climb_uuid AND cs.angle = ?
 WHERE c.uuid = ?;
 
+-- Defensive fallback for getClimbByUuid: the board DB mixes uuid formats
+-- (legacy rows are nodash-UPPERCASE, ~640 new-world rows are dashed-lowercase).
+-- A Kilter logbook-imported uuid may not match any stored row by exact case/
+-- hyphenation, yet the same climb can exist under a differently-formatted uuid.
+-- This normalizes BOTH sides (strip hyphens + lowercase) so the row resolves
+-- regardless of format. NOT a primary-key lookup — it is a full scan, so callers
+-- must try the indexed getClimbByUuid (exact / lower / upper) first and only
+-- fall back here on a miss.
+getClimbByUuidNormalized:
+SELECT c.*, cs.difficulty_average, cs.quality_average, cs.ascensionist_count,
+    cs.benchmark_difficulty, cs.fa_username, cs.fa_at
+FROM climbs c
+LEFT JOIN climb_stats cs ON c.uuid = cs.climb_uuid AND cs.angle = ?
+WHERE lower(replace(c.uuid, '-', '')) = lower(replace(?, '-', ''))
+LIMIT 1;
+
 countLeds:
 SELECT COUNT(*) FROM leds;
 

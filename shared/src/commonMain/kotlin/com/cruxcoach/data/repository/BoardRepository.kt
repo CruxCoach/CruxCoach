@@ -293,6 +293,18 @@ interface BoardClimbQueries {
     fun searchClimbsByName(query: String, angle: Int, layoutId: Int, boardBrand: String, sortField: ClimbSortField = ClimbSortField.QUALITY, sortDirection: SortDirection = SortDirection.DESC, limit: Int = 50, offset: Int = 0, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER, selProductSizeId: Int = 0, hsmExcludedMask: Long = 0): List<ClimbWithStats>
     fun searchClimbsSorted(angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, sortField: ClimbSortField, sortDirection: SortDirection, limit: Int = 50, offset: Int = 0, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER, selProductSizeId: Int = 0, hsmExcludedMask: Long = 0, showUngraded: Boolean = false): List<ClimbWithStats>
     fun getClimbByUuid(uuid: String, angle: Int): ClimbWithStats?
+    /** Defensive fallback for [getClimbByUuid]: resolves a stored row whose
+     *  uuid matches [uuid] only after normalization (strip hyphens +
+     *  lowercase on both sides). The board DB mixes uuid formats (legacy
+     *  nodash-UPPERCASE vs new-world dashed-lowercase), so a logbook-imported
+     *  uuid can fail the exact/case lookups yet still have a stored row under
+     *  a different format. This is a full scan — callers MUST try the indexed
+     *  [getClimbByUuid] first and only fall back here on a miss.
+     *
+     *  Default returns null (no normalized match); [BoardRepositoryImpl]
+     *  overrides with the SQL scan. The default keeps in-memory test fakes
+     *  that only model the exact-uuid path compiling unchanged. */
+    fun getClimbByUuidNormalized(uuid: String, angle: Int): ClimbWithStats? = null
     fun countFilteredClimbsFast(angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, selProductSizeId: Int = 0, hsmExcludedMask: Long = 0, showUngraded: Boolean = false): Long
     fun countFilteredClimbs(angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER, selProductSizeId: Int = 0, hsmExcludedMask: Long = 0, showUngraded: Boolean = false): Long
     fun countBenchmarkFilteredClimbs(angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER, selProductSizeId: Int = 0, hsmExcludedMask: Long = 0, showUngraded: Boolean = false): Long

@@ -1361,6 +1361,13 @@
     <string name="exercises_muscles_label">Muscles: </string>
     <string name="exercises_none_found">No exercises found</string>
     <string name="error_climb_not_found">Climb not found [uuid=%1$s angle=%2$d]</string>
+    <string name="error_climb_not_in_db_title">Not in the CruxCoach database yet</string>
+    <string name="error_climb_not_in_db_body">This Kilter climb isn\'t in the CruxCoach database yet, so the board view isn\'t available. Your logged ascents are shown below.</string>
+    <string name="error_climb_not_in_db_unnamed">Kilter climb</string>
+    <string name="error_climb_not_in_db_your_logs">Your logs</string>
+    <string name="error_climb_not_in_db_log_send">Send</string>
+    <string name="error_climb_not_in_db_log_attempt">Attempt</string>
+    <string name="error_climb_not_in_db_log_attempts">%1$d attempt(s)</string>
     <string name="error_select_category">Select at least one category</string>
     <string name="error_cannot_open_file">Cannot open file</string>
     <string name="error_cannot_read_file">Cannot read file</string>
