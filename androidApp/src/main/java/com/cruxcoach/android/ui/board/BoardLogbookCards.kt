@@ -108,6 +108,19 @@ internal fun AscentCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+                // Optional log comment — shown beneath the meta line so the
+                // note the user wrote when logging is finally visible.
+                // Straight quotes on purpose: this is code, not a localized
+                // resource, so locale-specific quote glyphs don't apply.
+                ascent.comment?.takeIf { it.isNotBlank() }?.let { comment ->
+                    Text(
+                        "\"$comment\"",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
 
             Column(horizontalAlignment = Alignment.End) {

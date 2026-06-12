@@ -22,6 +22,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.data.GradeScale
 import androidx.compose.ui.res.stringResource
@@ -111,6 +112,17 @@ internal fun UserAscentHistory(
                                     )
                                 }
                             }
+                        }
+                        // Optional log comment — rendered beneath the badge line.
+                        // Straight quotes on purpose: code, not a localized resource.
+                        ascent.comment?.takeIf { it.isNotBlank() }?.let { comment ->
+                            Text(
+                                "\"$comment\"",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 3,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
                     }
                     IconButton(onClick = { onEdit(ascent) }, modifier = Modifier.size(32.dp)) {
