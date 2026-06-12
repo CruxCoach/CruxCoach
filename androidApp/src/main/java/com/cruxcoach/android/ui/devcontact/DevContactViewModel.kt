@@ -328,20 +328,37 @@ class DevContactViewModel @Inject constructor(
     }
 
     fun sendReply(rootId: String, message: String) {
-        val rootMsg = _state.value.let { s ->
-            (s.bugReports + s.featureRequests).find { it.id == rootId }
+        viewModelScope.launch {
+            // Resolve through the DB, NOT the UI state lists: rootId may be
+            // a stale foreign (recipient-wrap) id from a notification
+            // deep-link, and the state lists may not be hydrated yet.
+            val ctx = withContext(Dispatchers.IO) {
+                messageRepository.resolveReplyContext(rootId)
+            }
+            val type = ctx.typeLabel?.let { MessageType.fromLabel(it) } ?: run {
+                Log.w(
+                    TAG,
+                    "sendReply: could not resolve thread type for root " +
+                        "${ctx.localRootId.take(8)}… (label=${ctx.typeLabel}) — falling back to chat"
+                )
+                MessageType.CHAT
+            }
+            sendMessage(
+                content = message,
+                type = type,
+                subject = null,
+                replyToId = ctx.localRootId,
+                wireReplyToId = ctx.wireReplyToId
+            )
         }
-        val type = when (rootMsg?.type) {
-            MessageType.BUG.label -> MessageType.BUG
-            MessageType.FEATURE.label -> MessageType.FEATURE
-            else -> MessageType.CHAT
-        }
-        sendMessage(content = message, type = type, subject = null, replyToId = rootId)
     }
 
     fun loadThread(rootId: String) {
         viewModelScope.launch(Dispatchers.IO) {
-            val messages = messageRepository.getThread(rootId).map { it.toUiMessage() }
+            // Stale deep-links (pre-fix notifications) may carry the
+            // recipient-wrap id — normalize to the local root first.
+            val localRootId = messageRepository.resolveLocalRootId(rootId) ?: rootId
+            val messages = messageRepository.getThread(localRootId).map { it.toUiMessage() }
             _threadMessages.value = messages
         }
     }
@@ -357,7 +374,10 @@ class DevContactViewModel @Inject constructor(
 
     fun markThreadRead(rootId: String) {
         viewModelScope.launch {
-            withContext(Dispatchers.IO) { messageRepository.markThreadRead(rootId) }
+            withContext(Dispatchers.IO) {
+                val localRootId = messageRepository.resolveLocalRootId(rootId) ?: rootId
+                messageRepository.markThreadRead(localRootId)
+            }
             loadMessages()
         }
     }
@@ -471,11 +491,20 @@ class DevContactViewModel @Inject constructor(
         }
     }
 
+    /**
+     * @param replyToId LOCAL id of the thread root — stored in the local
+     *  row's reply_to_id so getThread keeps matching.
+     * @param wireReplyToId id for the outgoing ["e", …, "reply"] tag — the
+     *  root's recipient-wrap id (thread_anchor_id) when known, because that
+     *  is the id the dashboard stored the root under. Defaults to
+     *  [replyToId] when the two ids coincide (e.g. root not yet anchored).
+     */
     private fun sendMessage(
         content: String,
         type: MessageType,
         subject: String?,
-        replyToId: String? = null
+        replyToId: String? = null,
+        wireReplyToId: String? = replyToId
     ) {
         _state.update { it.copy(isSending = true, sendSuccess = null) }
         viewModelScope.launch {
@@ -491,7 +520,7 @@ class DevContactViewModel @Inject constructor(
                     content = content,
                     type = type,
                     subject = subject,
-                    replyToId = replyToId
+                    replyToId = wireReplyToId
                 )
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to build ${type.label}", e)

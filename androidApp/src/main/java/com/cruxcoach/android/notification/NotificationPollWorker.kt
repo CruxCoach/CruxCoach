@@ -178,6 +178,13 @@ class NotificationPollWorker @AssistedInject constructor(
 
                 val direction = if (isSelfWrap) "sent" else "received"
 
+                // The raw e-tag may reference our root by its RECIPIENT-wrap
+                // id (the dashboard only knows that one) — normalize to the
+                // local root id so the stored row and the notification route
+                // both point at a real local thread. Falls back to the raw
+                // id when the root isn't ingested yet.
+                val localReplyToId = messageRepository.normalizeReplyToId(msg.replyToId)
+
                 messageRepository.insert(
                     id = msg.id,
                     type = msg.type.label,
@@ -188,7 +195,7 @@ class NotificationPollWorker @AssistedInject constructor(
                     createdAt = msg.timestamp,
                     relayAccepted = true,
                     read = isSelfWrap,
-                    replyToId = msg.replyToId
+                    replyToId = localReplyToId
                 )
 
                 if (!isSelfWrap) {
@@ -196,8 +203,8 @@ class NotificationPollWorker @AssistedInject constructor(
                         eventId = msg.id,
                         senderName = applicationContext.getString(R.string.notification_sender_developer),
                         preview = msg.content.take(100),
-                        threadRoute = if (msg.replyToId != null) {
-                            "message_thread/${msg.replyToId}"
+                        threadRoute = if (localReplyToId != null) {
+                            "message_thread/$localReplyToId"
                         } else {
                             "dev_chat"
                         }

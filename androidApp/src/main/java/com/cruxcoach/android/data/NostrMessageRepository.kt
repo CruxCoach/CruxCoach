@@ -1,5 +1,8 @@
 package com.cruxcoach.android.data
 
+import com.cruxcoach.android.nostr.ReplyContext
+import com.cruxcoach.android.nostr.ThreadIdResolver
+import com.cruxcoach.android.nostr.ThreadMemberRef
 import com.cruxcoach.db.secure.SecureDatabase
 import com.cruxcoach.db.secure.GetQueued
 import com.cruxcoach.db.secure.Nostr_messages
@@ -51,6 +54,46 @@ class NostrMessageRepository @Inject constructor(
 
     fun getThread(rootId: String): List<Nostr_messages> =
         queries.getThread(rootId).executeAsList()
+
+    /**
+     * Resolves an arbitrary event id — local (self-wrap) row id OR the
+     * recipient-wrap id stored as thread_anchor_id — to the LOCAL id of
+     * its thread root. Returns null when nothing matches.
+     */
+    fun resolveLocalRootId(eventId: String): String? =
+        ThreadIdResolver.resolveLocalRootId(eventId, ::threadMemberRef)
+
+    /**
+     * Normalizes an incoming reply reference (raw rumor e-tag, which may
+     * carry the recipient-wrap id of our own root) to the local root id
+     * before insertion. Falls back to the raw id when unresolvable.
+     */
+    fun normalizeReplyToId(rawReplyToId: String?): String? =
+        ThreadIdResolver.normalizeReplyToId(rawReplyToId, ::threadMemberRef)
+
+    /**
+     * Resolves the local root id, the outgoing wire e-tag id and the
+     * thread type for a reply to [rootId] (which may be a stale foreign
+     * id from an old notification deep-link).
+     */
+    fun resolveReplyContext(rootId: String): ReplyContext =
+        ThreadIdResolver.resolveReplyContext(
+            rootId = rootId,
+            lookup = ::threadMemberRef,
+            getById = { getById(it)?.toThreadMemberRef() },
+            latestThreadMember = { getThread(it).lastOrNull()?.toThreadMemberRef() }
+        )
+
+    private fun threadMemberRef(eventId: String): ThreadMemberRef? =
+        queries.resolveThreadMember(eventId).executeAsOneOrNull()
+            ?.let { ThreadMemberRef(id = it.id, replyToId = it.reply_to_id) }
+
+    private fun Nostr_messages.toThreadMemberRef(): ThreadMemberRef = ThreadMemberRef(
+        id = id,
+        replyToId = reply_to_id,
+        threadAnchorId = thread_anchor_id,
+        type = type
+    )
 
     fun getUnreadCountByType(type: String): Long =
         queries.getUnreadCountByType(type).executeAsOne()

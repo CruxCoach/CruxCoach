@@ -31,6 +31,12 @@ data class BuildResult(
 class NostrEventBuilder(
     private val nostrSigner: NostrSigner
 ) {
+    /**
+     * @param replyToId WIRE id for the ["e", …, "reply"] tag. For replies to
+     *  an own root this must be the root's recipient-wrap id
+     *  (thread_anchor_id) — the id the other side stored the root under —
+     *  NOT the local self-wrap row id, which the recipient has never seen.
+     */
     suspend fun buildGiftWraps(
         content: String,
         recipients: NostrRecipient,

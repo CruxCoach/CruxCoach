@@ -154,6 +154,15 @@ class NostrPushCoordinator @Inject constructor(
             messageRepository.getById(msg.id) != null
         }
 
+        // The raw e-tag may reference our root by its RECIPIENT-wrap id
+        // (the dashboard only knows that one) — normalize to the local
+        // root id so the stored row and the notification route both point
+        // at a real local thread. Falls back to the raw id when the root
+        // isn't ingested yet.
+        val localReplyToId = withContext(Dispatchers.IO) {
+            messageRepository.normalizeReplyToId(msg.replyToId)
+        }
+
         withContext(Dispatchers.IO) {
             messageRepository.insert(
                 id = msg.id,
@@ -165,7 +174,7 @@ class NostrPushCoordinator @Inject constructor(
                 createdAt = msg.timestamp,
                 relayAccepted = true,
                 read = isSelfWrap,
-                replyToId = msg.replyToId
+                replyToId = localReplyToId
             )
             // Self-wrap echoes prove the relay has the event. Flip any
             // pre-existing queued row (INSERT OR IGNORE left it untouched)
@@ -176,8 +185,8 @@ class NostrPushCoordinator @Inject constructor(
         }
 
         if (!isSelfWrap && !alreadyExists) {
-            val threadRoute = if (msg.replyToId != null) {
-                "message_thread/${msg.replyToId}"
+            val threadRoute = if (localReplyToId != null) {
+                "message_thread/$localReplyToId"
             } else {
                 "dev_chat"
             }

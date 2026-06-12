@@ -35,6 +35,17 @@ SELECT * FROM nostr_messages WHERE type = ? ORDER BY created_at DESC;
 getRootMessagesByType:
 SELECT * FROM nostr_messages WHERE type = ? AND reply_to_id IS NULL AND direction = 'sent' ORDER BY created_at DESC;
 
+-- Resolve an arbitrary event id to the thread row it identifies. NIP-17
+-- produces TWO gift-wrap ids per message (self-wrap = local row id,
+-- recipient-wrap = thread_anchor_id), so foreign references — dashboard
+-- reply e-tags, stale notification deep-links — may carry an id we only
+-- know via thread_anchor_id. reply_to_id is returned so callers can hop
+-- to the thread root (threads are flat: every reply points at the root).
+resolveThreadMember:
+SELECT id, reply_to_id FROM nostr_messages
+WHERE id = :eventId OR thread_anchor_id = :eventId
+LIMIT 1;
+
 getThread:
 SELECT * FROM nostr_messages
 WHERE id = :rootId
