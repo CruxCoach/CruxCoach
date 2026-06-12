@@ -44,6 +44,25 @@ object NostrConfig {
         "wss://nostr-pub.wellorder.net"
     )
 
+    /**
+     * Rumor tag carrying the LOCAL (self-wrap) id of the thread root on
+     * outgoing replies: `["self_root", <localRootId>]`.
+     *
+     * NIP-17 wraps the same rumor twice with DIFFERENT event ids (self-wrap
+     * = our local row id, recipient-wrap = what the dashboard stores), and a
+     * rumor cannot reference its own wrap ids (they only exist after
+     * wrapping). The outgoing `["e", …, "reply"]` tag must carry the
+     * RECIPIENT-wrap id of the root so the dashboard can thread the reply —
+     * which leaves the local root id unrecoverable when a wipe-and-refetch
+     * re-ingests our own reply echoes. This extra tag preserves it.
+     *
+     * Deliberately NOT a second `e` tag: the dashboard threads on `e` tags
+     * and must never see the self-wrap id (it would recreate the orphan
+     * thread bug this tag exists to prevent). Unknown tags are ignored by
+     * other NIP-17 clients.
+     */
+    const val RUMOR_TAG_SELF_ROOT = "self_root"
+
     const val RELAY_TIMEOUT_MS = 10_000L
     const val RECONNECT_DELAY_MS = 10_000L
     const val RECONNECT_MAX_DELAY_MS = 60_000L

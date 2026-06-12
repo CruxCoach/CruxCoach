@@ -21,5 +21,14 @@ data class DecryptedMessage(
     val timestamp: Long,
     val wrapTimestamp: Long,
     val subject: String? = null,
-    val replyToId: String? = null
+    val replyToId: String? = null,
+    /**
+     * Value of the rumor's self-root hint tag (see
+     * [com.cruxcoach.android.nostr.NostrConfig.RUMOR_TAG_SELF_ROOT]): the
+     * LOCAL (self-wrap) id of the thread root, emitted on own outgoing
+     * replies alongside the foreign wire id in [replyToId]. Lets a
+     * wipe-and-refetch re-thread own replies and re-learn the root's
+     * thread anchor. Null on dev messages and pre-hint app versions.
+     */
+    val selfReplyToId: String? = null
 )

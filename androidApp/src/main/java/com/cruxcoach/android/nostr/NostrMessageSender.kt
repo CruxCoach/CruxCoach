@@ -13,18 +13,15 @@ class NostrMessageSender @Inject constructor(
     private val eventBuilder: NostrEventBuilder,
     private val relayPool: NostrRelayPool,
     private val nostrSigner: NostrSigner
-) {
-    /**
-     * Builds gift wraps locally (fast, no network).
-     * Returns [SendResult.Queued] with the serialized wraps so the caller
-     * can persist them and return to the UI immediately.
-     */
-    suspend fun buildMessage(
+) : NostrMessageSending {
+
+    override suspend fun buildMessage(
         content: String,
         type: MessageType,
-        recipients: NostrRecipient = NostrRecipient.Single(NostrConfig.DEV_PUBKEY),
-        subject: String? = null,
-        replyToId: String? = null
+        recipients: NostrRecipient,
+        subject: String?,
+        replyToId: String?,
+        selfReplyToId: String?
     ): SendResult {
         // Verify signer is available (detects Amber uninstall)
         nostrSigner.verifySignerAvailable()
@@ -35,7 +32,8 @@ class NostrMessageSender @Inject constructor(
                 recipients = recipients,
                 type = type,
                 subject = subject,
-                replyToId = replyToId
+                replyToId = replyToId,
+                selfReplyToId = selfReplyToId
             )
             if (build.wraps.isEmpty()) {
                 Log.w(TAG, "No gift wraps generated")
@@ -49,12 +47,7 @@ class NostrMessageSender @Inject constructor(
         }
     }
 
-    /**
-     * Delivers pre-built wrap JSONs to relays.
-     * Includes a random delay (2-60s) for timing correlation resistance.
-     * Returns true if at least one relay accepted.
-     */
-    suspend fun deliverWraps(eventJsons: String): Boolean {
+    override suspend fun deliverWraps(eventJsons: String): Boolean {
         return try {
             // Random delay to obscure timing correlation
             delay(kotlin.random.Random.nextLong(2_000, 60_000))
@@ -65,10 +58,7 @@ class NostrMessageSender @Inject constructor(
         }
     }
 
-    /**
-     * Retries sending queued events without extra delay.
-     */
-    suspend fun retrySend(eventJsons: String): Boolean {
+    override suspend fun retrySend(eventJsons: String): Boolean {
         return try {
             sendJsonLines(eventJsons)
         } catch (e: Exception) {

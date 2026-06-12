@@ -51,6 +51,10 @@ class NostrEventDecryptor(
         val type = extractMessageType(rumor.tags)
         val subject = extractTagValue(rumor.tags, "subject")
         val replyToId = extractTagValue(rumor.tags, "e")
+        // Self-root hint on own outgoing replies: the LOCAL (self-wrap) id of
+        // the thread root, carried alongside the foreign wire id in the e-tag
+        // so wipe-and-refetch can re-thread echoes. Absent on dev messages.
+        val selfReplyToId = extractTagValue(rumor.tags, NostrConfig.RUMOR_TAG_SELF_ROOT)
 
         val unpadded = rumor.content
 
@@ -65,7 +69,8 @@ class NostrEventDecryptor(
             timestamp = rumor.createdAt * 1000, // convert to millis
             wrapTimestamp = giftWrap.createdAt * 1000,
             subject = subject,
-            replyToId = replyToId
+            replyToId = replyToId,
+            selfReplyToId = selfReplyToId
         )
     }
 

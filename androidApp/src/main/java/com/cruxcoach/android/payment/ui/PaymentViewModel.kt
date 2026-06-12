@@ -7,7 +7,7 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.nostr.NostrConfig
-import com.cruxcoach.android.nostr.NostrMessageSender
+import com.cruxcoach.android.nostr.NostrMessageSending
 import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.android.nostr.model.MessageType
 import com.cruxcoach.android.R
@@ -50,7 +50,7 @@ class PaymentViewModel @Inject constructor(
     private val zapManager: ZapManager,
     private val paymentRepository: PaymentRepository,
     private val nostrSigner: NostrSigner,
-    private val messageSender: NostrMessageSender
+    private val messageSender: NostrMessageSending
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(PaymentState())

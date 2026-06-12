@@ -13,6 +13,8 @@ import com.cruxcoach.android.nostr.NostrEventBuilder
 import com.cruxcoach.android.nostr.NostrPublicEventBuilder
 import com.cruxcoach.android.nostr.NostrEventDecryptor
 import com.cruxcoach.android.nostr.NostrMessageSender
+import com.cruxcoach.android.nostr.NostrMessageSending
+import com.cruxcoach.android.nostr.NostrIdentity
 import com.cruxcoach.android.nostr.NostrRelaySubscription
 import com.cruxcoach.android.nostr.OfflineQueueManager
 import com.cruxcoach.android.nostr.PaymentManager
@@ -495,6 +497,11 @@ object AppModule {
         }
     }
 
+    /** Quartz-free identity facade (JVM testability) — see [NostrIdentity]. */
+    @Provides
+    @Singleton
+    fun provideNostrIdentity(signer: NostrSigner): NostrIdentity = signer
+
     @Provides
     @Singleton
     fun provideNostrRelayPool(@Named("nostr") okHttpClient: OkHttpClient): NostrRelayPool {
@@ -664,6 +671,11 @@ object AppModule {
     ): NostrMessageSender {
         return NostrMessageSender(eventBuilder, relayPool, nostrSigner)
     }
+
+    /** Quartz-free sending facade (JVM testability) — see [NostrMessageSending]. */
+    @Provides
+    @Singleton
+    fun provideNostrMessageSending(sender: NostrMessageSender): NostrMessageSending = sender
 
     @Provides
     @Singleton

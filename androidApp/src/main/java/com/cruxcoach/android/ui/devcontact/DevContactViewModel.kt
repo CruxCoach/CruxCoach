@@ -12,8 +12,8 @@ import com.cruxcoach.android.data.NostrMessageRepository
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.notification.NostrPushCoordinator
 import com.cruxcoach.android.nostr.NostrConfig
-import com.cruxcoach.android.nostr.NostrMessageSender
-import com.cruxcoach.android.nostr.NostrSigner
+import com.cruxcoach.android.nostr.NostrMessageSending
+import com.cruxcoach.android.nostr.NostrIdentity
 import com.cruxcoach.android.nostr.OfflineQueueManager
 import com.cruxcoach.android.nostr.SendResult
 import com.cruxcoach.android.nostr.model.MessageType
@@ -60,10 +60,10 @@ data class DevContactState(
 
 @HiltViewModel
 class DevContactViewModel @Inject constructor(
-    private val messageSender: NostrMessageSender,
+    private val messageSender: NostrMessageSending,
     private val messageRepository: NostrMessageRepository,
     private val pushCoordinator: NostrPushCoordinator,
-    private val nostrSigner: NostrSigner,
+    private val nostrSigner: NostrIdentity,
     private val userPreferences: UserPreferences,
     private val queueManager: OfflineQueueManager,
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context
@@ -520,7 +520,12 @@ class DevContactViewModel @Inject constructor(
                     content = content,
                     type = type,
                     subject = subject,
-                    replyToId = wireReplyToId
+                    // Wire e-tag = the id the dashboard knows the root under;
+                    // self-root hint = the LOCAL root id, so a wipe-and-refetch
+                    // can re-thread this reply's echo and re-learn the root's
+                    // anchor (see NostrConfig.RUMOR_TAG_SELF_ROOT).
+                    replyToId = wireReplyToId,
+                    selfReplyToId = replyToId
                 )
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to build ${type.label}", e)
@@ -549,7 +554,8 @@ class DevContactViewModel @Inject constructor(
                             relayAccepted = false,
                             read = true,
                             replyToId = replyToId,
-                            threadAnchorId = buildResult.recipientWrapId
+                            threadAnchorId = buildResult.recipientWrapId,
+                            replyToWireId = wireReplyToId
                         )
                         messageRepository.markQueued(eventId, now, buildResult.eventJsons)
                     }

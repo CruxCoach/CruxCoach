@@ -38,7 +38,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
-import com.cruxcoach.android.nostr.NostrMessageSender
+import com.cruxcoach.android.nostr.NostrMessageSending
 import com.cruxcoach.android.nostr.SendResult
 import com.cruxcoach.android.nostr.model.MessageType
 import com.cruxcoach.android.crash.CruxCoachCrashHandler
@@ -67,7 +67,7 @@ class MainActivity : AppCompatActivity() {
     private val pendingDeepLink = mutableStateOf<String?>(null)
 
     @Inject
-    lateinit var nostrMessageSender: dagger.Lazy<NostrMessageSender>
+    lateinit var nostrMessageSender: dagger.Lazy<NostrMessageSending>
 
     @Inject
     lateinit var messageRepository: dagger.Lazy<NostrMessageRepository>

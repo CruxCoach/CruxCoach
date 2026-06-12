@@ -106,14 +106,54 @@ class ThreadIdResolverTest {
     fun `normalizeReplyToId maps anchor reference to local root and falls back to raw for unknown ids`() {
         assertEquals(
             rootLocalId,
-            ThreadIdResolver.normalizeReplyToId(rootAnchorId, store::lookup)
+            ThreadIdResolver.normalizeReplyToId(rootAnchorId, lookup = store::lookup)
         )
         // Unknown reference (root not ingested yet) is preserved as-is.
         assertEquals(
             "never-seen",
-            ThreadIdResolver.normalizeReplyToId("never-seen", store::lookup)
+            ThreadIdResolver.normalizeReplyToId("never-seen", lookup = store::lookup)
         )
-        assertNull(ThreadIdResolver.normalizeReplyToId(null, store::lookup))
+        assertNull(ThreadIdResolver.normalizeReplyToId(null, lookup = store::lookup))
+    }
+
+    @Test
+    fun `normalizeReplyToId resolves through the self-root hint when the raw wire id is unknown`() {
+        // Wipe-and-refetch: the re-hydrated root row lost its anchor, so the
+        // raw recipient-wrap reference no longer resolves — but the hint
+        // carries the local root id directly.
+        val wipedStore = FakeMessageStore(
+            listOf(
+                ThreadMemberRef(
+                    id = rootLocalId,
+                    replyToId = null,
+                    threadAnchorId = null, // anchor wiped
+                    type = MessageType.FEATURE.label
+                )
+            )
+        )
+        assertEquals(
+            rootLocalId,
+            ThreadIdResolver.normalizeReplyToId(
+                rawReplyToId = rootAnchorId,
+                selfRootHint = rootLocalId,
+                lookup = wipedStore::lookup
+            )
+        )
+    }
+
+    @Test
+    fun `normalizeReplyToId prefers the unresolved hint over the unresolved raw id`() {
+        // Neither id resolves (root echo not backfilled yet). The hint IS
+        // the local root id, so storing it threads the row correctly as
+        // soon as the root row reappears under that id.
+        assertEquals(
+            "local-root-hint",
+            ThreadIdResolver.normalizeReplyToId(
+                rawReplyToId = "foreign-wire-id",
+                selfRootHint = "local-root-hint",
+                lookup = FakeMessageStore(emptyList())::lookup
+            )
+        )
     }
 
     // ── resolveReplyContext (sendReply, PATH B) ────────────────────
@@ -170,5 +210,28 @@ class ThreadIdResolverTest {
         assertEquals("ghost", ctx.localRootId)
         assertEquals("ghost", ctx.wireReplyToId)
         assertNull(ctx.typeLabel)
+    }
+
+    @Test
+    fun `reply context recovers the wire id from replies when the root anchor was wiped`() {
+        // Wipe-and-refetch: root re-hydrated without an anchor; the raw
+        // e-tags its replies arrived with still know the recipient-wrap id.
+        val wipedRoot = ThreadMemberRef(
+            id = rootLocalId,
+            replyToId = null,
+            threadAnchorId = null,
+            type = MessageType.FEATURE.label
+        )
+        val ctx = ThreadIdResolver.resolveReplyContext(
+            rootId = rootLocalId,
+            lookup = { if (it == rootLocalId) wipedRoot else null },
+            getById = { if (it == rootLocalId) wipedRoot else null },
+            latestThreadMember = { wipedRoot },
+            wireIdFromReplies = { if (it == rootLocalId) rootAnchorId else null }
+        )
+        assertEquals(rootLocalId, ctx.localRootId)
+        // The recovered recipient-wrap id goes on the wire — NOT the local
+        // root id, which would recreate the dashboard orphan thread.
+        assertEquals(rootAnchorId, ctx.wireReplyToId)
     }
 }

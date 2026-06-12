@@ -22,7 +22,7 @@ import javax.inject.Singleton
 class NostrSigner @Inject constructor(
     private val keyStore: NostrKeyStore,
     @param:ApplicationContext private val context: Context
-) {
+) : NostrIdentity {
     val keyPair: KeyPair get() = keyStore.getOrCreateKeyPair()
 
     private val signerLock = Any()
@@ -31,14 +31,14 @@ class NostrSigner @Inject constructor(
     /** Incremented on every key switch. Observers (e.g. relay subscriptions)
      *  can collect this to detect identity changes and restart. */
     private val _keyVersion = MutableStateFlow(0L)
-    val keyVersion: StateFlow<Long> = _keyVersion.asStateFlow()
+    override val keyVersion: StateFlow<Long> = _keyVersion.asStateFlow()
 
     val signer: com.vitorpamplona.quartz.nip01Core.signers.NostrSigner
         get() = synchronized(signerLock) {
             _signer ?: NostrSignerInternal(keyPair).also { _signer = it }
         }
 
-    fun getPublicKeyHex(): String = synchronized(signerLock) {
+    override fun getPublicKeyHex(): String = synchronized(signerLock) {
         val external = _signer
         if (external is NostrSignerExternal) {
             return external.pubKey
