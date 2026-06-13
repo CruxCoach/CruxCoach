@@ -10,6 +10,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -37,6 +38,23 @@ fun BoardLogbookScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val hasSelection = state.selectedUuids.isNotEmpty()
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    // Own-Kilter-climb publish feedback (same outcome mapping as the
+    // climb-detail surface).
+    LaunchedEffect(state.ownPublishFeedback) {
+        val feedback = state.ownPublishFeedback ?: return@LaunchedEffect
+        val msg = when (feedback) {
+            OwnPublishFeedback.Published -> context.getString(R.string.own_climb_publish_done)
+            OwnPublishFeedback.NoNostrIdentity -> context.getString(R.string.own_climb_publish_no_nostr)
+            OwnPublishFeedback.NotAuthor -> context.getString(R.string.own_climb_publish_not_author)
+            OwnPublishFeedback.AlreadyPublished -> context.getString(R.string.own_climb_publish_already)
+            OwnPublishFeedback.Failed -> context.getString(R.string.climb_creator_publish_failed)
+        }
+        snackbarHostState.showSnackbar(msg)
+        viewModel.consumeOwnPublishFeedback()
+    }
 
     // Edit dialog
     if (state.showEditDialog) {
@@ -108,6 +126,7 @@ fun BoardLogbookScreen(
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             Column {
                 TopAppBar(
@@ -235,6 +254,21 @@ fun BoardLogbookScreen(
                                 onToggleSelect = { viewModel.toggleSelection(ascent.uuid) },
                                 onEdit = { viewModel.editAscent(ascent) }
                             )
+                            // Own-Kilter-climb publish action, authorship-gated:
+                            // shown ONLY for entries whose climb the connected
+                            // Kilter account authored (and that isn't community-
+                            // published yet). Logged-but-foreign climbs never
+                            // get this row. Sits under the card so the WIP
+                            // AscentCard composable stays untouched.
+                            val normalizedUuid =
+                                com.cruxcoach.android.community.normalizeClimbUuid(ascent.climbUuid)
+                            if (normalizedUuid in state.ownPublishableClimbUuids) {
+                                OwnClimbPublishRow(
+                                    enabled = state.ownPublishInProgressUuid == null,
+                                    inProgress = state.ownPublishInProgressUuid == ascent.climbUuid,
+                                    onPublish = { viewModel.publishOwnClimb(ascent.climbUuid) },
+                                )
+                            }
                         }
                     }
 
@@ -254,6 +288,51 @@ fun BoardLogbookScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * Publish affordance under a logbook entry whose climb the connected
+ * Kilter account AUTHORED (authorship gate lives in the ViewModel's
+ * [BoardLogbookState.ownPublishableClimbUuids] set — identity match on
+ * kilter_author_uuid, never display name). Kept here (not in the shared
+ * AscentCard) so the card composable stays untouched.
+ */
+@Composable
+private fun OwnClimbPublishRow(
+    enabled: Boolean,
+    inProgress: Boolean,
+    onPublish: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 8.dp, top = 2.dp)
+            .testTag("logbook_publish_own_climb"),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        TextButton(onClick = onPublish, enabled = enabled && !inProgress) {
+            if (inProgress) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(14.dp),
+                    strokeWidth = 2.dp,
+                    color = OrangeAccent,
+                )
+            } else {
+                Icon(
+                    Icons.Default.Groups,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                    tint = OrangeAccent,
+                )
+            }
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                stringResource(R.string.own_climb_publish_action),
+                style = MaterialTheme.typography.labelMedium,
+                color = OrangeAccent,
+            )
         }
     }
 }

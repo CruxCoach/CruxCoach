@@ -198,7 +198,28 @@ data class ClimbDetailState(
     /** One-shot feedback from the most recent delete attempt. UI
      *  consumes via [BoardClimbDetailViewModel.consumeCommunityDeleteFeedback]. */
     val communityDeleteFeedback: CommunityDeleteFeedback? = null,
+    /** Authorship-gated own-Kilter-climb publish: true only when the
+     *  CONNECTED Kilter account authored this climb (kilter_author_uuid
+     *  identity match, never display name) AND it has not been published
+     *  to the CruxCoach community yet. Drives the overflow action. */
+    val canPublishAsMine: Boolean = false,
+    /** In-flight flag for the own-climb publish (disables the action). */
+    val isOwnPublishInProgress: Boolean = false,
+    /** One-shot feedback from the most recent own-climb publish attempt.
+     *  UI consumes via [BoardClimbDetailViewModel.consumeOwnPublishFeedback]. */
+    val ownPublishFeedback: OwnPublishFeedback? = null,
 )
+
+/** Snackbar-mapped outcomes of the own-Kilter-climb community publish. */
+sealed interface OwnPublishFeedback {
+    data object Published : OwnPublishFeedback
+    /** No Nostr identity yet — nudge the user to set up their key. */
+    data object NoNostrIdentity : OwnPublishFeedback
+    /** Authorship gate refused (backstop — the action is hidden then). */
+    data object NotAuthor : OwnPublishFeedback
+    data object AlreadyPublished : OwnPublishFeedback
+    data object Failed : OwnPublishFeedback
+}
 
 data class CommunityDeleteDialogState(
     val uuid: String,
@@ -248,6 +269,7 @@ class BoardClimbDetailViewModel @Inject constructor(
     private val nostrSigner: com.cruxcoach.android.nostr.NostrSigner,
     private val nostrProfileManager: com.cruxcoach.android.payment.NostrProfileManager,
     private val communityClimbDeleter: com.cruxcoach.android.community.CommunityClimbDeleter,
+    private val ownClimbPublisher: com.cruxcoach.android.community.OwnKilterClimbPublisher,
     val climbNavState: com.cruxcoach.android.ui.navigation.ClimbNavigationState,
     @param:ApplicationContext private val context: Context
 ) : ViewModel() {
@@ -562,6 +584,55 @@ class BoardClimbDetailViewModel @Inject constructor(
         _state.update { it.copy(communityDeleteFeedback = null) }
     }
 
+    /**
+     * Publish the currently-displayed OWN Kilter climb to the CruxCoach
+     * community. The UI gates the action on [ClimbDetailState.canPublishAsMine];
+     * [com.cruxcoach.android.community.OwnKilterClimbPublisher] re-checks the
+     * authorship gate (connected-account userUuid identity) so an
+     * out-of-band caller can never publish someone else's work.
+     */
+    fun publishOwnClimb() {
+        val climb = _state.value.climb ?: return
+        if (_state.value.isOwnPublishInProgress) return
+        _state.update { it.copy(isOwnPublishInProgress = true) }
+        viewModelScope.launch {
+            val outcome = withContext(Dispatchers.IO) {
+                runCatching { ownClimbPublisher.publish(climb.uuid) }
+                    .onFailure { Log.w(TAG, "publishOwnClimb threw uuid=${climb.uuid}", it) }
+                    .getOrNull()
+            }
+            val feedback = when (outcome) {
+                is com.cruxcoach.android.community.OwnKilterClimbPublisher.Outcome.Published ->
+                    OwnPublishFeedback.Published
+                com.cruxcoach.android.community.OwnKilterClimbPublisher.Outcome.NotAuthor ->
+                    OwnPublishFeedback.NotAuthor
+                com.cruxcoach.android.community.OwnKilterClimbPublisher.Outcome.NoNostrIdentity ->
+                    OwnPublishFeedback.NoNostrIdentity
+                com.cruxcoach.android.community.OwnKilterClimbPublisher.Outcome.AlreadyPublished ->
+                    OwnPublishFeedback.AlreadyPublished
+                is com.cruxcoach.android.community.OwnKilterClimbPublisher.Outcome.Failed,
+                null -> OwnPublishFeedback.Failed
+            }
+            _state.update {
+                it.copy(isOwnPublishInProgress = false, ownPublishFeedback = feedback)
+            }
+            if (feedback == OwnPublishFeedback.Published) {
+                // Provenance changed in place (origin→cruxcoach, owner set,
+                // published) — reload so the detail header, setter profile
+                // and owner-gated actions reflect the community state, and
+                // drop the stale cached page. The browser cache is stale
+                // too (community badge / origin filters).
+                _pageCache.update { it - climb.uuid }
+                climbNavState.creatorDataChanged = true
+                loadClimb(currentClimbUuid, currentAngle)
+            }
+        }
+    }
+
+    fun consumeOwnPublishFeedback() {
+        _state.update { it.copy(ownPublishFeedback = null) }
+    }
+
     fun switchClimb(uuid: String, angle: Int) {
         if (uuid == currentClimbUuid && angle == currentAngle) return
         Log.d(TAG, "switchClimb: $uuid angle=$angle (was: $currentClimbUuid)")
@@ -713,6 +784,11 @@ class BoardClimbDetailViewModel @Inject constructor(
                         val isMirrorable = BoardConstants.isLayoutMirrorable(
                             climb.brand, climb.layoutId.toInt()
                         )
+                        // Authorship-gated publish action (own Kilter climbs).
+                        // Cheap (two indexed lookups); never throws — a read
+                        // failure just hides the action.
+                        val canPublishAsMine =
+                            ownClimbPublisher.isPublishableAsMine(climb.uuid)
 
                         mirrorPlacementMap = if (effectiveBoard == null) emptyMap() else
                             PerfLogger.trace("loadClimb.mirrorMap") {
@@ -749,6 +825,7 @@ class BoardClimbDetailViewModel @Inject constructor(
                                 isIgnored = isIgnored,
                                 availableAngles = angles,
                                 isMirrorable = isMirrorable,
+                                canPublishAsMine = canPublishAsMine,
                                 // Seed setter profile synchronously with the
                                 // local fallback (`setter_username` from the
                                 // blob, or the npub-short stub). Async Kind 0
@@ -923,6 +1000,7 @@ class BoardClimbDetailViewModel @Inject constructor(
                         availableAngles = angles,
                         isMirrored = false,
                         isMirrorable = isMirrorable,
+                        canPublishAsMine = ownClimbPublisher.isPublishableAsMine(climb.uuid),
                         error = null,
                         ascent = AscentFormState(),
                         listDialog = ListDialogState(),

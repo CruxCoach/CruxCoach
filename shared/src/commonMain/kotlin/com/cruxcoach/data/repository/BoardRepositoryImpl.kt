@@ -591,6 +591,33 @@ class BoardRepositoryImpl(
         q.setClimbKilterAuthorUuid(authorUuid = authorUuid, uuid = uuid)
     }
 
+    override fun getClimbKilterAuthorUuid(uuid: String): String? =
+        q.getClimbKilterAuthorUuid(uuid).executeAsOneOrNull()?.kilter_author_uuid
+
+    override fun getOwnAuthoredKilterClimbs(authorUuid: String): List<CommunityClimbRow> =
+        q.getOwnAuthoredKilterClimbs(authorUuid).executeAsList().map { it.toCommunityRow() }
+
+    override fun getOwnAuthoredClimbRow(uuid: String, authorUuid: String): CommunityClimbRow? =
+        q.getOwnAuthoredClimbRow(uuid = uuid, authorUuid = authorUuid)
+            .executeAsOneOrNull()?.toCommunityRow()
+
+    override fun adoptKilterClimbAsCommunity(
+        uuid: String,
+        kilterAuthorUuid: String,
+        pubkey: String,
+        adoptedAtEpochSeconds: Long,
+    ): Boolean = q.transactionWithResult {
+        q.adoptKilterClimbAsCommunity(
+            pubkey = pubkey,
+            adoptedAtEpochSeconds = adoptedAtEpochSeconds,
+            uuid = uuid,
+            kilterAuthorUuid = kilterAuthorUuid,
+        )
+        // SQL refuses foreign authors / already-owned / already-published
+        // rows (see Board.sq). changes()=0 → conversion did not happen.
+        q.lastClimbsChangeCount().executeAsOne() > 0L
+    }
+
     override fun upsertHoldPosition(holeId: Long, productSizeId: Long, x: Long, y: Long, ledPosition: Long, placementId: Long, boardBrand: String) {
         q.upsertHoldPosition(boardBrand, holeId, productSizeId, x, y, ledPosition, placementId)
     }

@@ -96,6 +96,23 @@
     <string name="climb_creator_kilter_connect_nudge">Climb veröffentlicht (nur CruxCoach) — verbinde Kilter, damit er auch in der Kilter-App erscheint.</string>
     <string name="climb_creator_kilter_connect_action">Verbinden</string>
     <string name="climb_creator_edit_action">Climb bearbeiten</string>
+    <!-- Own-Kilter-climb community publish (authorship-gated) -->
+    <string name="own_climb_publish_action">In CruxCoach-Community veröffentlichen</string>
+    <string name="own_climb_publish_action_short">Veröffentlichen</string>
+    <string name="own_climb_publish_done">Climb in der CruxCoach-Community veröffentlicht.</string>
+    <string name="own_climb_publish_no_nostr">Noch keine CruxCoach-Identität — richte deinen Schlüssel in den Einstellungen ein und veröffentliche dann erneut.</string>
+    <string name="own_climb_publish_not_author">Nur Climbs, die du selbst mit deinem verbundenen Kilter-Konto erstellt hast, können veröffentlicht werden.</string>
+    <string name="own_climb_publish_already">Dieser Climb ist bereits in der Community veröffentlicht.</string>
+    <string name="my_climbs_title">Meine Climbs</string>
+    <string name="my_climbs_banner_title">Meine Climbs</string>
+    <string name="my_climbs_banner_subtitle">Deine eigenen Kilter-Climbs — teile sie mit der CruxCoach-Community</string>
+    <string name="my_climbs_empty_title">Noch keine eigenen Climbs</string>
+    <string name="my_climbs_empty_message">Climbs, die du mit deinem verbundenen Kilter-Konto erstellt hast, erscheinen hier nach dem nächsten Kilter-Sync.</string>
+    <string name="my_climbs_no_kilter_title">Kein Kilter-Konto verbunden</string>
+    <string name="my_climbs_no_kilter_message">Verbinde dein Kilter-Konto, damit CruxCoach deine selbst erstellten Climbs erkennen kann.</string>
+    <string name="my_climbs_published_badge">Veröffentlicht</string>
+    <string name="my_climbs_publish_retrying">Veröffentlichung ausstehend — wird im Hintergrund wiederholt</string>
+    <string name="my_climbs_unnamed">(ohne Namen)</string>
     <string name="community_climb_delete_action">Veröffentlichung löschen</string>
     <string name="community_climb_delete_confirm_title">Diesen Climb löschen?</string>
     <string name="community_climb_delete_confirm_nostr_only">Dein Climb wird aus CruxCoach entfernt und eine Löschung wird an die Nostr-Relays gesendet. Lokal verschwindet er sofort; bei den Relays kann es ein paar Minuten dauern.</string>

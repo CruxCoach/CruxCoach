@@ -923,6 +923,46 @@ interface CommunityClimbQueries {
      */
     fun isLocallyAuthored(uuid: String): Boolean
     /**
+     * The recorded Kilter author identity (`kilter_author_uuid`) for a row.
+     * NULL = no row, or author unknown (curated content) → never
+     * publishable-as-mine. The publish gate compares this against the
+     * CONNECTED Kilter account's userUuid — identity, never a display-name
+     * match. Default null so existing fakes keep compiling.
+     */
+    fun getClimbKilterAuthorUuid(uuid: String): String? = null
+    /**
+     * Every climb authored by [authorUuid] (the connected Kilter account),
+     * tombstones excluded. Backs the "Meine Climbs" list and the logbook
+     * publish gate. Default empty so existing fakes keep compiling.
+     */
+    fun getOwnAuthoredKilterClimbs(authorUuid: String): List<CommunityClimbRow> = emptyList()
+    /**
+     * Single-row authorship-gated lookup for the own-climb publish path:
+     * returns the row only when its `kilter_author_uuid` equals
+     * [authorUuid]. Null = no row, unknown author, or foreign author.
+     */
+    fun getOwnAuthoredClimbRow(uuid: String, authorUuid: String): CommunityClimbRow? = null
+    /**
+     * Convert an own-authored Kilter row IN PLACE into a CruxCoach
+     * community climb — the climb KEEPS its Kilter uuid (identity
+     * decision: no new uuid). Flips origin/source/sync_status/
+     * created_by_pubkey to the same values a fresh editor draft gets, and
+     * stamps kilter_status='synced' so the publisher's best-effort Kilter
+     * leg skips (the climb already lives on Kilter natively).
+     *
+     * SQL-guarded: refuses when the row's `kilter_author_uuid` differs
+     * from [kilterAuthorUuid], when it is already owned by a different
+     * `created_by_pubkey`, or when it already carries a published
+     * `nostr_event_id`. Returns true iff the row was converted (or
+     * re-converted idempotently for a retry).
+     */
+    fun adoptKilterClimbAsCommunity(
+        uuid: String,
+        kilterAuthorUuid: String,
+        pubkey: String,
+        adoptedAtEpochSeconds: Long,
+    ): Boolean = false
+    /**
      * Returns (placement_id → normalized 0..1 frequency) for boulders at the
      * given layout+angle, optionally weighted by climbs that contain ALL
      * `seedHolds`. Used by the editor heatmap overlay.

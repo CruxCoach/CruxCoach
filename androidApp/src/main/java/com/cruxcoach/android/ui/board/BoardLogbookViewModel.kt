@@ -28,6 +28,9 @@ import com.cruxcoach.domain.board.HoldRole
 import com.cruxcoach.data.repository.ClimbTypeFilter
 import java.time.LocalDate
 import javax.inject.Inject
+import com.cruxcoach.android.community.OwnKilterClimbPublisher
+import com.cruxcoach.android.community.isCommunityPublished
+import com.cruxcoach.android.community.normalizeClimbUuid
 import com.cruxcoach.android.util.safeLaunch
 
 enum class StatsTimeInterval(@param:androidx.annotation.StringRes val labelResId: Int, val days: Int?) {
@@ -126,6 +129,16 @@ data class BoardLogbookState(
     // selected interval. Computed across ALL boards (not scoped to boardFilter)
     // so the user can compare them side by side; only surfaced when >1 board.
     val boardComparison: List<BoardComparisonEntry> = emptyList(),
+    // Own-Kilter-climb publish gate for logbook entries: NORMALIZED
+    // (lowercase, no dashes) climb uuids the connected Kilter account
+    // authored that are not yet published to the CruxCoach community.
+    // Normalized because ascents store BLE/API uuid spellings that can
+    // differ from the canonical board-DB row.
+    val ownPublishableClimbUuids: Set<String> = emptySet(),
+    /** Climb uuid of an in-flight own-climb publish (disables its button). */
+    val ownPublishInProgressUuid: String? = null,
+    /** One-shot own-climb publish feedback (snackbar). */
+    val ownPublishFeedback: OwnPublishFeedback? = null,
 )
 
 @HiltViewModel
@@ -142,6 +155,7 @@ class BoardLogbookViewModel @Inject constructor(
      *  fails and the user sees blank climb names with the cards still
      *  navigating to the correct detail screen — confusing UX. */
     private val climbNameResolver: com.cruxcoach.android.data.ClimbNameResolver,
+    private val ownClimbPublisher: com.cruxcoach.android.community.OwnKilterClimbPublisher,
     @param:ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -171,6 +185,54 @@ class BoardLogbookViewModel @Inject constructor(
         }
         loadBoardData()
         loadAscents()
+        refreshOwnPublishable()
+    }
+
+    /**
+     * Recompute the authorship-gated publish set for logbook entries. A
+     * logbook entry gets the publish action ONLY when its climb was
+     * authored by the connected Kilter account (identity match on
+     * kilter_author_uuid) and hasn't been community-published yet —
+     * logged-but-foreign climbs are never publishable.
+     */
+    private fun refreshOwnPublishable() {
+        viewModelScope.safeLaunch(TAG) {
+            val publishable = withContext(Dispatchers.IO) {
+                ownClimbPublisher.getOwnAuthoredClimbs()
+                    .filterNot { it.isCommunityPublished }
+                    .map { normalizeClimbUuid(it.uuid) }
+                    .toSet()
+            }
+            _state.update { it.copy(ownPublishableClimbUuids = publishable) }
+        }
+    }
+
+    /** Publish an own-authored climb straight from its logbook entry. */
+    fun publishOwnClimb(climbUuid: String) {
+        if (_state.value.ownPublishInProgressUuid != null) return
+        _state.update { it.copy(ownPublishInProgressUuid = climbUuid) }
+        viewModelScope.safeLaunch(TAG) {
+            val outcome = withContext(Dispatchers.IO) {
+                runCatching { ownClimbPublisher.publish(climbUuid) }
+                    .onFailure { Log.w(TAG, "logbook own-climb publish threw uuid=$climbUuid", it) }
+                    .getOrNull()
+            }
+            val feedback = when (outcome) {
+                is OwnKilterClimbPublisher.Outcome.Published -> OwnPublishFeedback.Published
+                OwnKilterClimbPublisher.Outcome.NotAuthor -> OwnPublishFeedback.NotAuthor
+                OwnKilterClimbPublisher.Outcome.NoNostrIdentity -> OwnPublishFeedback.NoNostrIdentity
+                OwnKilterClimbPublisher.Outcome.AlreadyPublished -> OwnPublishFeedback.AlreadyPublished
+                is OwnKilterClimbPublisher.Outcome.Failed, null -> OwnPublishFeedback.Failed
+            }
+            _state.update {
+                it.copy(ownPublishInProgressUuid = null, ownPublishFeedback = feedback)
+            }
+            if (feedback == OwnPublishFeedback.Published) refreshOwnPublishable()
+        }
+    }
+
+    fun consumeOwnPublishFeedback() {
+        _state.update { it.copy(ownPublishFeedback = null) }
     }
 
     /**

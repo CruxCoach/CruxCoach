@@ -131,6 +131,7 @@ object Routes {
     const val SETTER_DETAIL = "setter_detail/{setterPubkey}"
     fun setterDetail(pubkey: String) = "setter_detail/$pubkey"
     const val SETTERS_LIST = "setters_list"
+    const val MY_KILTER_CLIMBS = "my_kilter_climbs"
     const val MESSAGE_THREAD = "message_thread/{eventId}"
     fun sessionDetail(sessionId: Long) = "session_detail/$sessionId"
     fun activeWorkout(sessionId: Long) = "active_workout/$sessionId"
@@ -567,6 +568,9 @@ fun CruxCoachNavHost(
                     onNavigateToSetters = {
                         navController.navigate(Routes.SETTERS_LIST)
                     },
+                    onNavigateToMyClimbs = {
+                        navController.navigate(Routes.MY_KILTER_CLIMBS)
+                    },
                     // History stays reachable from "Meine Listen" (the list icon);
                     // only the top-bar Verlauf shortcut was removed.
                     onNavigateToHistory = {
@@ -765,6 +769,20 @@ fun CruxCoachNavHost(
                         onNavigateBack = { navController.popBackStack() },
                         onSetterClick = { pubkey ->
                             navController.navigate(Routes.setterDetail(pubkey))
+                        },
+                    )
+                }
+            }
+
+            composable(Routes.MY_KILTER_CLIMBS) {
+                com.cruxcoach.android.ui.common.ScreenErrorBoundary(
+                    screenName = "MyKilterClimbs",
+                    onNavigateBack = { navController.popBackStack() },
+                ) {
+                    com.cruxcoach.android.ui.community.MyKilterClimbsScreen(
+                        onNavigateBack = { navController.popBackStack() },
+                        onClimbClick = { uuid, angle ->
+                            navController.navigate(Routes.boardClimbDetail(uuid, angle))
                         },
                     )
                 }

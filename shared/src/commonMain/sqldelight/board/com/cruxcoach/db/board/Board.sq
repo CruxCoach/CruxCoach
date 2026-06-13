@@ -356,6 +356,71 @@ setClimbKilterAuthorUuid:
 UPDATE climbs SET kilter_author_uuid = :authorUuid
 WHERE uuid = :uuid AND kilter_author_uuid IS NULL;
 
+-- The recorded Kilter author identity for a row (NULL = author unknown →
+-- never publishable-as-mine). The publish gate compares this against the
+-- CONNECTED account's userUuid — identity, never display name.
+getClimbKilterAuthorUuid:
+SELECT kilter_author_uuid FROM climbs WHERE uuid = :uuid LIMIT 1;
+
+-- All climbs authored by the given Kilter user (the "Meine Climbs" list +
+-- the logbook publish gate). Tombstoned rows are excluded; unlisted rows
+-- are NOT (an own unlisted climb is still the user's work and publishable).
+getOwnAuthoredKilterClimbs:
+SELECT * FROM climbs
+WHERE kilter_author_uuid = :authorUuid
+  AND is_deleted = 0
+ORDER BY created_at DESC;
+
+-- Single-row variant of the above for the publish path: resolves the row
+-- AND enforces the authorship gate in one indexed lookup. Returns nothing
+-- when the row exists but was authored by someone else (or by an unknown
+-- author) — the caller maps that to "not publishable".
+getOwnAuthoredClimbRow:
+SELECT * FROM climbs
+WHERE uuid = :uuid
+  AND kilter_author_uuid = :authorUuid
+  AND is_deleted = 0
+LIMIT 1;
+
+-- Convert an own-authored Kilter row IN PLACE into a CruxCoach community
+-- climb (FEAT: publish own Kilter climbs). IDENTITY DECISION: the climb
+-- KEEPS its Kilter uuid — no new uuid is minted — so a future curated
+-- import of the same climb reconciles onto this row instead of duplicating.
+--
+-- Provenance flips to what insertLocalDraft would have produced
+-- (origin='cruxcoach', source='local', sync_status='draft',
+-- created_by_pubkey=:pubkey), which makes the row eligible for
+-- markClimbPublishInFlight / markClimbPublishedNostr and — on a relay
+-- outage — for the CommunityPublishRetryWorker queue, all unchanged.
+--
+-- kilter_status is stamped 'synced' (+ kilter_synced_at): the climb is
+-- ALREADY on Kilter natively (the user authored it there), so the
+-- publisher's best-effort Kilter leg must see an occupied slot and skip —
+-- re-creating the user's own climb on Kilter would be a duplicate write.
+--
+-- Guards, all at the SQL boundary:
+--  * kilter_author_uuid = :kilterAuthorUuid — the caller passes the
+--    CONNECTED account's userUuid; an unknown-author (curated) or
+--    foreign-authored row never matches.
+--  * created_by_pubkey IS NULL OR = :pubkey — cannot hijack a row already
+--    owned by a different Nostr identity.
+--  * nostr_event_id IS NULL — once published the conversion is moot;
+--    refusing keeps a stray retry from resetting a published row to
+--    'draft'. (A failed publish leaves nostr_event_id NULL, so retries
+--    still pass.)
+adoptKilterClimbAsCommunity:
+UPDATE climbs SET
+    origin = 'cruxcoach',
+    source = 'local',
+    sync_status = 'draft',
+    created_by_pubkey = :pubkey,
+    kilter_status = 'synced',
+    kilter_synced_at = :adoptedAtEpochSeconds
+WHERE uuid = :uuid
+  AND kilter_author_uuid = :kilterAuthorUuid
+  AND nostr_event_id IS NULL
+  AND (created_by_pubkey IS NULL OR created_by_pubkey = :pubkey);
+
 -- layout_id is denormalized from the owning climbs row (single source of
 -- truth) so community-ingested + restored stats rows are visible to the
 -- layout-scoped browse/count queries. Reusing the named :climb_uuid keeps

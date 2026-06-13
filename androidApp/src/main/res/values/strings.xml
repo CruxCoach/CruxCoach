@@ -96,6 +96,23 @@
     <string name="climb_creator_kilter_connect_nudge">Climb published (CruxCoach only) — connect Kilter so it also appears in the Kilter app.</string>
     <string name="climb_creator_kilter_connect_action">Connect</string>
     <string name="climb_creator_edit_action">Edit climb</string>
+    <!-- Own-Kilter-climb community publish (authorship-gated) -->
+    <string name="own_climb_publish_action">Publish to the CruxCoach community</string>
+    <string name="own_climb_publish_action_short">Publish</string>
+    <string name="own_climb_publish_done">Climb published to the CruxCoach community.</string>
+    <string name="own_climb_publish_no_nostr">No CruxCoach identity yet — set up your key in Settings, then publish again.</string>
+    <string name="own_climb_publish_not_author">Only climbs you authored yourself with your connected Kilter account can be published.</string>
+    <string name="own_climb_publish_already">This climb is already published to the community.</string>
+    <string name="my_climbs_title">My climbs</string>
+    <string name="my_climbs_banner_title">My climbs</string>
+    <string name="my_climbs_banner_subtitle">Your own Kilter climbs — share them with the CruxCoach community</string>
+    <string name="my_climbs_empty_title">No own climbs yet</string>
+    <string name="my_climbs_empty_message">Climbs you authored with your connected Kilter account appear here after the next Kilter sync.</string>
+    <string name="my_climbs_no_kilter_title">No Kilter account connected</string>
+    <string name="my_climbs_no_kilter_message">Connect your Kilter account so CruxCoach can recognize the climbs you authored.</string>
+    <string name="my_climbs_published_badge">Published</string>
+    <string name="my_climbs_publish_retrying">Publish pending — retrying in the background</string>
+    <string name="my_climbs_unnamed">(unnamed)</string>
     <string name="community_climb_delete_action">Delete publication</string>
     <string name="community_climb_delete_confirm_title">Delete this climb?</string>
     <string name="community_climb_delete_confirm_nostr_only">Your climb will be removed from CruxCoach and a deletion is sent to the Nostr relays. The local row disappears immediately; relays may take a few minutes to propagate.</string>

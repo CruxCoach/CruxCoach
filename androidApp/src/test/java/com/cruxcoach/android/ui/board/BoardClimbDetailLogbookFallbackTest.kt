@@ -115,6 +115,7 @@ class BoardClimbDetailLogbookFallbackTest {
             nostrSigner = mockk(relaxed = true),
             nostrProfileManager = mockk(relaxed = true),
             communityClimbDeleter = mockk(relaxed = true),
+            ownClimbPublisher = mockk(relaxed = true),
             climbNavState = mockk(relaxed = true),
             context = context,
         )

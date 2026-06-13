@@ -266,6 +266,12 @@ dependencies {
     testImplementation(libs.mockk)
     // JDBC SQLite driver for real-SQL repository races / TOCTOU regression tests
     testImplementation(libs.sqldelight.sqlite.driver)
+    // Android SQLite driver for Robolectric importer tests: creating the real
+    // SQLDelight schema inside the Robolectric sandbox must NOT go through
+    // JDBC — DriverManager initialised from the sandbox classloader makes
+    // the sqlite-JDBC driver invisible to every plain-JVM JDBC test that
+    // runs later in the same Gradle worker.
+    testImplementation(libs.sqldelight.android.driver)
     // MockWebServer for KilterApiClient HTTP-error-mapping tests.
     // Pulls okhttp explicitly on the test classpath so okhttp3.internal.*
     // is resolvable at test runtime (mockwebserver depends on internals

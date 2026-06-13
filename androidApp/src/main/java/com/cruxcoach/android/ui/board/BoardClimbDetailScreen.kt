@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.CellTower
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
@@ -363,6 +364,21 @@ fun BoardClimbDetailScreen(
         viewModel.consumeCommunityDeleteFeedback()
     }
 
+    // Surface own-Kilter-climb publish outcomes (same snackbar pattern as
+    // the editor's publish result handling).
+    LaunchedEffect(state.ownPublishFeedback) {
+        val feedback = state.ownPublishFeedback ?: return@LaunchedEffect
+        val msg = when (feedback) {
+            OwnPublishFeedback.Published -> context.getString(R.string.own_climb_publish_done)
+            OwnPublishFeedback.NoNostrIdentity -> context.getString(R.string.own_climb_publish_no_nostr)
+            OwnPublishFeedback.NotAuthor -> context.getString(R.string.own_climb_publish_not_author)
+            OwnPublishFeedback.AlreadyPublished -> context.getString(R.string.own_climb_publish_already)
+            OwnPublishFeedback.Failed -> context.getString(R.string.climb_creator_publish_failed)
+        }
+        snackbarHostState.showSnackbar(msg)
+        viewModel.consumeOwnPublishFeedback()
+    }
+
     // Single Scaffold — shared across all pager pages
     val bleConnected = state.ble.connectionState.let { it == ConnectionState.CONNECTED || it == ConnectionState.SENDING }
     Scaffold(
@@ -567,6 +583,30 @@ fun BoardClimbDetailScreen(
                                             shareScope.launch { snackbarHostState.showSnackbar(linkCopiedMessage) }
                                         },
                                         modifier = Modifier.testTag("boarddetail_share_link"),
+                                    )
+                                }
+                                // Publish OWN Kilter climb to the CruxCoach
+                                // community. Authorship-gated (canPublishAsMine:
+                                // connected Kilter account == recorded climb
+                                // author, identity match) and hidden once
+                                // published. The publisher re-checks the gate,
+                                // so this visibility flag is UX, not security.
+                                if (state.canPublishAsMine) {
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.own_climb_publish_action)) },
+                                        leadingIcon = {
+                                            Icon(
+                                                Icons.Default.Groups,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        },
+                                        enabled = !state.isOwnPublishInProgress,
+                                        onClick = {
+                                            moreExpanded = false
+                                            viewModel.publishOwnClimb()
+                                        },
+                                        modifier = Modifier.testTag("boarddetail_publish_own_climb"),
                                     )
                                 }
                                 HorizontalDivider()

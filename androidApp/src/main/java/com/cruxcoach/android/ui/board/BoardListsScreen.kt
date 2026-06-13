@@ -43,6 +43,7 @@ fun BoardListsScreen(
     onNavigateBack: () -> Unit,
     onNavigateToListDetail: (Long) -> Unit,
     onNavigateToSetters: () -> Unit = {},
+    onNavigateToMyClimbs: () -> Unit = {},
     onNavigateToHistory: () -> Unit,
     viewModel: BoardListsViewModel = hiltViewModel()
 ) {
@@ -127,6 +128,11 @@ fun BoardListsScreen(
         ) {
             item(key = "community-banner") {
                 CommunitySettersBanner(onClick = onNavigateToSetters)
+                Spacer(modifier = Modifier.height(8.dp))
+                // "Meine Climbs" — the user's own authored Kilter climbs +
+                // their CruxCoach-community publish state. Sits with the
+                // community banner: same "not your lists" family.
+                MyClimbsBanner(onClick = onNavigateToMyClimbs)
                 Spacer(modifier = Modifier.height(8.dp))
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
                 Spacer(modifier = Modifier.height(8.dp))
@@ -231,6 +237,56 @@ private fun CommunitySettersBanner(onClick: () -> Unit) {
                 Icons.AutoMirrored.Filled.ArrowForward,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f),
+            )
+        }
+    }
+}
+
+/**
+ * Entry to the "Meine Climbs" screen (own AUTHORED Kilter climbs + their
+ * CruxCoach-community publish state). Visually a quieter sibling of
+ * [CommunitySettersBanner] — secondaryContainer instead of primary.
+ */
+@Composable
+private fun MyClimbsBanner(onClick: () -> Unit) {
+    Card(
+        onClick = onClick,
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("my_climbs_banner"),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+        ),
+        shape = RoundedCornerShape(12.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                Icons.Default.Star,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                modifier = Modifier.size(32.dp),
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    stringResource(R.string.my_climbs_banner_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                )
+                Text(
+                    stringResource(R.string.my_climbs_banner_subtitle),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.85f),
+                )
+            }
+            Icon(
+                Icons.AutoMirrored.Filled.ArrowForward,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f),
             )
         }
     }
