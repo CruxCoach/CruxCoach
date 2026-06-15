@@ -1,6 +1,7 @@
 package com.cruxcoach.android.ui.board
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
@@ -25,6 +26,7 @@ import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.IntensityZones
 import java.time.LocalDate
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun AscentCard(
     ascent: AscentWithClimb,
@@ -90,14 +92,22 @@ internal fun AscentCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                Row(
+                // FlowRow (not Row): the meta items overflowed the card's
+                // weighted column when a mirror badge was present, squashing the
+                // last child to a sliver. FlowRow wraps to a second line instead.
+                FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                    itemVerticalAlignment = Alignment.CenterVertically
                 ) {
                     // Board badge: tells a multi-board user at a glance which
                     // board this send was on (Kilter / Tension / MoonBoard …).
                     // Unobtrusive — same muted colour as the meta line.
                     BoardBrandBadge(BoardBrand.fromWire(ascent.boardBrand))
+                    // Mirror indicator — placed right after the board badge (not
+                    // last) so it's prioritised and never the clipped child. A
+                    // filled accent pill so it reads as a distinct badge.
+                    if (ascent.isMirror) MirrorBadge()
                     Text(
                         "${ascent.angle}°",
                         style = MaterialTheme.typography.bodySmall,
@@ -108,16 +118,6 @@ internal fun AscentCard(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    // Mirror indicator — tells the user this entry was logged on
-                    // the mirrored variant (matches the climb-detail Verlauf).
-                    if (ascent.isMirror) {
-                        Icon(
-                            Icons.Default.SwapHoriz,
-                            contentDescription = stringResource(R.string.cd_mirrored),
-                            modifier = Modifier.size(14.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
                 }
                 // Optional log comment — shown beneath the meta line so the
                 // note the user wrote when logging is finally visible.
@@ -195,6 +195,26 @@ private fun BoardBrandBadge(brand: BoardBrand) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
             modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
+        )
+    }
+}
+
+/** Filled accent pill marking a logbook entry as logged on the mirrored
+ *  variant. Sits on the meta line next to the board badge; the solid tint
+ *  makes the otherwise-thin SwapHoriz glyph clearly visible. */
+@Composable
+private fun MirrorBadge() {
+    Surface(
+        color = OrangeAccent.copy(alpha = 0.18f),
+        shape = RoundedCornerShape(4.dp)
+    ) {
+        Icon(
+            Icons.Default.SwapHoriz,
+            contentDescription = stringResource(R.string.cd_mirrored),
+            tint = OrangeAccent,
+            modifier = Modifier
+                .padding(horizontal = 4.dp, vertical = 2.dp)
+                .size(18.dp)
         )
     }
 }
