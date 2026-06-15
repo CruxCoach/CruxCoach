@@ -402,7 +402,7 @@ fun ClimbEditorScreen(
             AngleDropdown(
                 angle = state.editor.angle,
                 onChange = { viewModel.setAngle(it) },
-                angles = angleOptionsFor(state.editor.boardBrand, state.layoutId),
+                angles = state.angleOptions,
             )
 
             Spacer(Modifier.height(8.dp))
@@ -708,21 +708,6 @@ private fun GradeSlider(gradeId: Int?, onChange: (Int?) -> Unit) {
         )
     }
 }
-
-/** Selectable publish angles. Brand-agnostic 20–70° in 5° steps for the
- *  adjustable boards — EXCEPT MoonBoard, whose variants are fixed-angle
- *  hardware (2016/Mini/2024 = 40°, Masters 2017/2019 = 25°/40°), exactly
- *  the set the browse picker offers (BoardBrowserViewModel /
- *  [MoonBoardVariant.angles]). Offering the generic list here let a
- *  MoonBoard climb publish at e.g. 30° — an angle no other device's
- *  exact-angle browse filter can ever select, so the climb was invisible
- *  to everyone but its author. */
-private fun angleOptionsFor(boardBrand: String, layoutId: Long): List<Int> =
-    if (BoardBrand.fromWire(boardBrand) == BoardBrand.MOONBOARD) {
-        MoonBoardVariant.fromLayoutId(layoutId)?.angles ?: listOf(40)
-    } else {
-        listOf(20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70)
-    }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

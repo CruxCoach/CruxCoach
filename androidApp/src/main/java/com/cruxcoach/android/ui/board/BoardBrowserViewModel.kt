@@ -171,13 +171,18 @@ data class SessionZoneSummary(
 data class BrowserFilterState(
     val angle: Int = 40,
     val layoutId: Int = com.cruxcoach.android.data.BoardConstants.KILTER_ORIGINAL_LAYOUT,
-    /** Active board brand — "kilter" | "moonboard" (FEAT-027). When
-     *  "moonboard" the angle picker offers the variant's discrete
-     *  [moonBoardAngles] instead of the Kilter 0-70° slider. */
+    /** Active board brand — "kilter" | "moonboard" | the Aurora family
+     *  (FEAT-027/031). Drives the angle picker: a non-empty [angleChips]
+     *  renders discrete chips, an empty list renders the Kilter 0-70° slider. */
     val boardBrand: String = "kilter",
-    /** Discrete angle options for the active MoonBoard variant; empty for
-     *  Kilter (which uses the continuous slider). */
-    val moonBoardAngles: List<Int> = emptyList(),
+    /** Discrete angle options the active board is actually set up at, sourced
+     *  per brand (FEAT-033): MoonBoard → the variant's fixed configs; the
+     *  Aurora-family boards → the board's real angle set (incl. negatives like
+     *  Grasshopper -5°) from BoardRepository.getSupportedAnglesForLayout —
+     *  the same source the detail picker uses, all angles kept (no sparse-
+     *  angle suppression). Empty for Kilter, which is dense 0-70 and keeps the
+     *  continuous slider. */
+    val angleChips: List<Int> = emptyList(),
     val minGradeIndex: Int = DEFAULT_MIN_GRADE_INDEX,
     val maxGradeIndex: Int = DEFAULT_MAX_GRADE_INDEX,
     val minAscensionists: Int = 0,
@@ -208,6 +213,30 @@ data class BrowserFilterState(
         const val DEFAULT_MIN_GRADE_INDEX = 0
         const val DEFAULT_MAX_GRADE_INDEX = 16
     }
+}
+
+/** Pure, testable helpers for the board-specific angle picker (FEAT-033).
+ *  The VM does the IO (the DISTINCT-angles query); these functions decide
+ *  what the picker shows and keep the active angle valid for the board. */
+object BoardAnglePicker {
+    /** The discrete angle chips for a board, or empty → Kilter slider.
+     *  MoonBoard → the variant's fixed configs; Aurora-family (non-Kilter)
+     *  → the supplied board angle set (already from
+     *  getSupportedAnglesForLayout, all angles kept); Kilter → empty. */
+    fun chipsFor(brand: BoardBrand, layoutId: Int, supportedAngles: List<Int>): List<Int> =
+        when {
+            brand == BoardBrand.MOONBOARD ->
+                MoonBoardVariant.fromLayoutId(layoutId.toLong())?.angles.orEmpty()
+            brand.usesAuroraProtocol && brand != BoardBrand.KILTER -> supportedAngles
+            else -> emptyList()
+        }
+
+    /** Snap [angle] to the nearest chip when it isn't one of [chips], so the
+     *  browse query isn't stuck on an angle the board has zero climbs at. No-op
+     *  for the slider boards (empty [chips]) and when [angle] is already valid. */
+    fun clampAngle(angle: Int, chips: List<Int>): Int =
+        if (chips.isEmpty() || angle in chips) angle
+        else chips.minBy { kotlin.math.abs(it - angle) }
 }
 
 data class BrowserBleState(
@@ -393,17 +422,26 @@ class BoardBrowserViewModel @Inject constructor(
                 val originFilter = try { OriginFilter.valueOf(snap.originFilter) } catch (_: Exception) { OriginFilter.ALL }
                 PerfLogger.milestone("BoardBrowserVM prefs loaded (batch)")
 
-                // FEAT-027: when the active board is a MoonBoard, the angle
-                // picker offers the variant's discrete angles instead of the
-                // Kilter slider.
-                val moonBoardAngles = MoonBoardVariant
-                    .fromLayoutId(snap.layoutId.toLong())?.angles.orEmpty()
+                // FEAT-033: board-specific angle chips. MoonBoard → variant
+                // configs; Aurora-family (non-Kilter) → the board's real angle
+                // set (incl. negatives) from the DISTINCT-angles query; Kilter
+                // → empty → the 0-70° slider. Snap a stale persisted angle to
+                // the nearest chip so the browse query isn't stuck on an angle
+                // with zero climbs.
+                val snapBrand = BoardBrand.fromWire(snap.boardBrand)
+                val supported = if (snapBrand.usesAuroraProtocol && snapBrand != BoardBrand.KILTER) {
+                    withContext(Dispatchers.IO) {
+                        boardRepository.getSupportedAnglesForLayout(snap.layoutId, snap.boardBrand)
+                    }
+                } else emptyList()
+                val angleChips = BoardAnglePicker.chipsFor(snapBrand, snap.layoutId, supported)
+                val snappedAngle = BoardAnglePicker.clampAngle(snap.angle, angleChips)
                 _state.update { it.copy(
                     gradeScale = snap.gradeScale,
                     filter = it.filter.copy(
-                        angle = snap.angle, layoutId = snap.layoutId,
+                        angle = snappedAngle, layoutId = snap.layoutId,
                         boardBrand = snap.boardBrand,
-                        moonBoardAngles = moonBoardAngles,
+                        angleChips = angleChips,
                         minGradeIndex = snap.minGrade, maxGradeIndex = snap.maxGrade,
                         minAscensionists = snap.minAscensionists, sortField = sortField, sortDirection = sortDir,
                         statusFilter = statusFilter, climbTypeFilter = climbType,
@@ -626,6 +664,7 @@ class BoardBrowserViewModel @Inject constructor(
                 val prefSizeId = userPreferences.boardProductSizeId.first()
                 val prefLayoutId = userPreferences.boardLayoutId.first()
                 val prefBoardBrand = userPreferences.boardBrand.first()
+                val prefBrand = BoardBrand.fromWire(prefBoardBrand)
                 val prefAngle = userPreferences.boardAngle.first()
                 // Same O(1) EXISTS probe, scoped to the active board — feeds
                 // the "catalogue not downloaded" empty state after a board
@@ -650,17 +689,26 @@ class BoardBrowserViewModel @Inject constructor(
                     if (_state.value.filter.layoutId != prefLayoutId
                         || _state.value.filter.boardBrand != prefBoardBrand
                     ) {
-                        val moonBoardAngles = MoonBoardVariant
-                            .fromLayoutId(prefLayoutId.toLong())?.angles.orEmpty()
+                        // FEAT-033: recompute the board's angle chips on a
+                        // switch (already on Dispatchers.IO here). Aurora-family
+                        // boards read their real angle set; MoonBoard its variant
+                        // configs; Kilter stays empty (slider).
+                        val supported = if (prefBrand.usesAuroraProtocol && prefBrand != BoardBrand.KILTER) {
+                            boardRepository.getSupportedAnglesForLayout(prefLayoutId, prefBoardBrand)
+                        } else emptyList()
+                        val angleChips = BoardAnglePicker.chipsFor(prefBrand, prefLayoutId, supported)
                         // A board switch must also re-seed the angle from prefs
                         // (MoonBoard pin to 40°, fixed-angle gym wall) — keeping
                         // the previous board's in-memory angle would query at an
-                        // angle the new board may not have at all.
+                        // angle the new board may not have at all. Then clamp to
+                        // the nearest valid chip so we don't query an angle the
+                        // board has zero climbs at.
+                        val snappedAngle = BoardAnglePicker.clampAngle(prefAngle, angleChips)
                         _state.update { it.copy(filter = it.filter.copy(
-                            angle = prefAngle,
+                            angle = snappedAngle,
                             layoutId = prefLayoutId,
                             boardBrand = prefBoardBrand,
-                            moonBoardAngles = moonBoardAngles,
+                            angleChips = angleChips,
                         )) }
                     }
                     // FEAT-031: placements are namespaced by board_brand; reload
@@ -737,6 +785,14 @@ class BoardBrowserViewModel @Inject constructor(
     fun setAngle(angle: Int) {
         val rounded = ((angle + 2) / 5) * 5
         _state.update { it.copy(filter = it.filter.copy(angle = rounded)) }
+    }
+
+    /** Set the angle to an exact value (no 5° slider snapping). Used by the
+     *  discrete angle chips, whose values come straight from the board's real
+     *  angle set and may be negative (e.g. Grasshopper -5°) — the slider's
+     *  round-to-nearest-5 truncates toward zero and would mangle those. */
+    fun setAngleExact(angle: Int) {
+        _state.update { it.copy(filter = it.filter.copy(angle = angle)) }
     }
 
     fun setGradeRange(minIndex: Int, maxIndex: Int) {

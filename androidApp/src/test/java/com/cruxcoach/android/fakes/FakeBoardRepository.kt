@@ -183,7 +183,11 @@ class FakeBoardRepository : BoardRepository {
 
     override fun getClimbCountByAngle(layoutId: Int, climbType: ClimbTypeFilter): List<AngleClimbCount> = emptyList()
     override fun getAnglesForClimb(climbUuid: String): List<AngleOption> = emptyList()
-    override fun getSupportedAnglesForLayout(layoutId: Int, boardBrand: String): List<Int> = emptyList()
+    /** Test-controllable angle set keyed by board brand (FEAT-033). Defaults
+     *  to empty (Kilter slider); a test seeds e.g. "touchstone" → [35, 40]. */
+    val supportedAnglesByBrand = mutableMapOf<String, List<Int>>()
+    override fun getSupportedAnglesForLayout(layoutId: Int, boardBrand: String): List<Int> =
+        supportedAnglesByBrand[boardBrand] ?: emptyList()
 
     override fun countNomatchClimbs(): Long = 0L
 

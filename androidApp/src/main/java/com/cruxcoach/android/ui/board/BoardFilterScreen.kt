@@ -4,6 +4,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -63,7 +65,12 @@ import com.cruxcoach.data.repository.SortDirection
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.util.GradeConverter
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** A board's angle set renders as discrete chips up to this many angles
+ *  (MoonBoard variants, near-fixed boards like Touchstone 35/40); above it a
+ *  board-specific slider is used instead (Tension/Grasshopper/… ~14 angles). */
+private const val MAX_ANGLE_CHIPS = 4
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun BoardFilterScreen(
     viewModel: BoardBrowserViewModel,
@@ -237,42 +244,76 @@ fun BoardFilterScreen(
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold
                 )
-                // FEAT-027: a MoonBoard variant is set at a fixed handful of
-                // angles (e.g. 25° / 40°) — offer those as discrete chips
-                // instead of the Kilter 0-70° continuous slider.
-                if (state.filter.moonBoardAngles.isNotEmpty()) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.testTag("board_angle_chips"),
-                    ) {
-                        state.filter.moonBoardAngles.forEach { angle ->
-                            FilterChip(
-                                selected = state.filter.angle == angle,
-                                onClick = {
-                                    viewModel.setAngle(angle)
-                                    viewModel.commitFilterChange()
-                                },
-                                label = { Text("$angle°") },
-                                colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
-                                    selectedLabelColor = OrangeAccent,
-                                ),
-                            )
+                // FEAT-027/033: the angle control is board-specific.
+                //  • A board with FEW discrete angles (a MoonBoard variant's
+                //    fixed configs, or a near-fixed board like Touchstone 35/40)
+                //    → chips.
+                //  • A board with MANY angles spanning a range (Tension,
+                //    Grasshopper, Decoy, So iLL — ~14 each) → a slider bounded by
+                //    that board's real min..max (incl. negatives like Grasshopper
+                //    -5°), so the user doesn't face a dozen chips.
+                //  • Kilter (empty angleChips) → the historical 0-70° slider.
+                val angleChips = state.filter.angleChips
+                when {
+                    angleChips.isNotEmpty() && angleChips.size <= MAX_ANGLE_CHIPS -> {
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.testTag("board_angle_chips"),
+                        ) {
+                            angleChips.forEach { angle ->
+                                FilterChip(
+                                    selected = state.filter.angle == angle,
+                                    onClick = {
+                                        // Exact (no 5° slider snap) — values come
+                                        // straight from the board's angle set and
+                                        // may be negative.
+                                        viewModel.setAngleExact(angle)
+                                        viewModel.commitFilterChange()
+                                    },
+                                    label = { Text("$angle°") },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
+                                        selectedLabelColor = OrangeAccent,
+                                    ),
+                                )
+                            }
                         }
                     }
-                } else {
-                    Slider(
-                        value = state.filter.angle.toFloat(),
-                        onValueChange = { viewModel.setAngle(it.toInt()) },
-                        onValueChangeFinished = { viewModel.commitFilterChange() },
-                        valueRange = 0f..70f,
-                        steps = 13,
-                        modifier = Modifier.testTag("board_angle_slider"),
-                        colors = SliderDefaults.colors(
-                            thumbColor = OrangeAccent,
-                            activeTrackColor = OrangeAccent
+                    angleChips.size > MAX_ANGLE_CHIPS -> {
+                        // Board-specific slider: range = the board's real angle
+                        // extent, stops at each supported angle. Snap to the
+                        // nearest supported angle (handles negatives; the set is
+                        // contiguous 5° steps in practice) and apply exact so the
+                        // toward-zero 5° rounding never mangles a negative value.
+                        Slider(
+                            value = state.filter.angle.toFloat(),
+                            onValueChange = {
+                                viewModel.setAngleExact(angleChips.minBy { c -> kotlin.math.abs(c - it.toInt()) })
+                            },
+                            onValueChangeFinished = { viewModel.commitFilterChange() },
+                            valueRange = angleChips.first().toFloat()..angleChips.last().toFloat(),
+                            steps = (angleChips.size - 2).coerceAtLeast(0),
+                            modifier = Modifier.testTag("board_angle_slider"),
+                            colors = SliderDefaults.colors(
+                                thumbColor = OrangeAccent,
+                                activeTrackColor = OrangeAccent
+                            )
                         )
-                    )
+                    }
+                    else -> {
+                        Slider(
+                            value = state.filter.angle.toFloat(),
+                            onValueChange = { viewModel.setAngle(it.toInt()) },
+                            onValueChangeFinished = { viewModel.commitFilterChange() },
+                            valueRange = 0f..70f,
+                            steps = 13,
+                            modifier = Modifier.testTag("board_angle_slider"),
+                            colors = SliderDefaults.colors(
+                                thumbColor = OrangeAccent,
+                                activeTrackColor = OrangeAccent
+                            )
+                        )
+                    }
                 }
 
                 val frenchMode = state.gradeScale == GradeScale.FRENCH

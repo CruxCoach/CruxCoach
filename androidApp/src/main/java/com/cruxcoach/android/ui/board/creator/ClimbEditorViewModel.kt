@@ -46,6 +46,15 @@ data class ClimbEditorUiState(
      *  the brand split (`editor.boardBrand`) and the MoonBoard renderer's
      *  variant lookup (`rememberMoonBoardAsset(layoutId)`). */
     val layoutId: Long = 1L,
+    /** Selectable publish angles for the active board, resolved data-driven in
+     *  [loadBoardData]: MoonBoard → the variant's fixed configs; every other
+     *  brand → the board's real angle set (DISTINCT climb_stats.angle, incl.
+     *  negatives like Grasshopper -5°) via getSupportedAnglesForLayout, with a
+     *  generic 20–70° fallback only when no climb exists yet. The dropdown
+     *  reads this instead of a hardcoded list so a published setter angle can
+     *  never land outside the board's real set and pollute the shared,
+     *  per-board browse angle chips (which read the same DISTINCT query). */
+    val angleOptions: List<Int> = listOf(20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70),
     val boardSize: BoardSize? = null,
     val placements: Map<Int, BoardPlacement> = emptyMap(),
     val boardImages: List<BoardImage> = emptyList(),
@@ -128,6 +137,36 @@ data class ClimbEditorUiState(
      *  parked as a draft. */
     val isEditingExisting: Boolean = false,
 )
+
+/** Pure, testable resolution of the creator's selectable publish angles
+ *  (FEAT-033). The VM does the IO (the brand-scoped DISTINCT climb_stats.angle
+ *  query); these functions decide what the dropdown offers and keep the seeded
+ *  angle a valid member. Mirrors BoardAnglePicker on the browse side, but the
+ *  creator never falls back to a slider: Kilter also gets its real 0–70° set,
+ *  and an empty query (brand-new board) falls back to a generic 5°-step list
+ *  so the dropdown is never empty. */
+object CreatorAnglePicker {
+    /** Generic fallback for a board that has no published climb yet, so the
+     *  DISTINCT-angles query is empty. */
+    private val GENERIC = listOf(20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70)
+
+    /** The selectable angles for a board. MoonBoard → the variant's fixed
+     *  configs (2016/Mini/2024 = 40°, Masters = 25°/40°); every other brand →
+     *  [supportedAngles] (the board's real set) when non-empty, else [GENERIC].
+     *  Never empty. */
+    fun optionsFor(brand: BoardBrand, layoutId: Long, supportedAngles: List<Int>): List<Int> =
+        when (brand) {
+            BoardBrand.MOONBOARD ->
+                MoonBoardVariant.fromLayoutId(layoutId)?.angles ?: listOf(40)
+            else -> supportedAngles.ifEmpty { GENERIC }
+        }
+
+    /** Snap [angle] to the nearest available option so the editor never opens
+     *  with an angle the dropdown doesn't offer (e.g. a 30° pref carried onto a
+     *  35°/40°-only Touchstone). [options] is always non-empty here. */
+    fun snapAngle(angle: Int, options: List<Int>): Int =
+        if (angle in options) angle else options.minBy { kotlin.math.abs(it - angle) }
+}
 
 @HiltViewModel
 class ClimbEditorViewModel @Inject constructor(
@@ -437,15 +476,18 @@ class ClimbEditorViewModel @Inject constructor(
                 // The generic boardAngle pref can carry any 5°-step value
                 // from a previous Kilter/Aurora board — seeding e.g. 30°
                 // would publish a climb at an angle no other device's
-                // browse picker offers. Mirrors angleOptionsFor in
-                // ClimbEditorScreen.
-                val allowed = com.cruxcoach.domain.board.MoonBoardVariant
-                    .fromLayoutId(layoutIdLong)?.angles ?: listOf(40)
+                // browse picker offers.
+                val allowed = CreatorAnglePicker.optionsFor(
+                    brand = BoardBrand.MOONBOARD,
+                    layoutId = layoutIdLong,
+                    supportedAngles = emptyList(),
+                )
                 val candidate = it.editor.angle ?: defaultAngle
-                val seedAngle = if (candidate in allowed) candidate else allowed.last()
+                val seedAngle = CreatorAnglePicker.snapAngle(candidate, allowed)
                 it.copy(
                     isLoading = false,
                     layoutId = layoutIdLong,
+                    angleOptions = allowed,
                     editor = it.editor.copy(
                         angle = seedAngle,
                         boardBrand = BoardBrand.MOONBOARD.wireValue,
@@ -457,7 +499,7 @@ class ClimbEditorViewModel @Inject constructor(
         }
 
         val brandWire = brand.wireValue
-        val (size, placements, images, ledMap) = withContext(Dispatchers.IO) {
+        val (size, placements, images, ledMap, supportedAngles) = withContext(Dispatchers.IO) {
             val size = boardRepository.getProductSize(sizeId, brandWire)
             // Filter to set_ids actually rendered for this (brand, layout) —
             // see BoardRepository.getPlacementsForLayout for the why. Without
@@ -467,13 +509,19 @@ class ClimbEditorViewModel @Inject constructor(
                 .associateBy { it.placementId.toInt() }
             val images = boardRepository.getBoardImages(sizeId, layoutId, brandWire)
             val led = boardRepository.getPlacementLedMap(sizeId, brandWire)
-            BoardLoad(size, placements, images, led)
+            // The board's REAL angle set (DISTINCT climb_stats.angle, brand-
+            // scoped, incl. negatives) — the same source the browse angle
+            // chips read. Empty only for a brand-new board with no climbs yet.
+            val angles = boardRepository.getSupportedAnglesForLayout(layoutId, brandWire)
+            BoardLoad(size, placements, images, led, angles)
         }
         _state.update {
-            val seedAngle = it.editor.angle ?: defaultAngle
+            val options = CreatorAnglePicker.optionsFor(brand, layoutIdLong, supportedAngles)
+            val seedAngle = CreatorAnglePicker.snapAngle(it.editor.angle ?: defaultAngle, options)
             it.copy(
                 isLoading = false,
                 layoutId = layoutIdLong,
+                angleOptions = options,
                 boardSize = size,
                 placements = placements,
                 boardImages = images,
@@ -488,6 +536,7 @@ class ClimbEditorViewModel @Inject constructor(
         val placements: Map<Int, BoardPlacement>,
         val images: List<BoardImage>,
         val ledMap: Map<Int, Int>,
+        val supportedAngles: List<Int>,
     )
 
     /**
