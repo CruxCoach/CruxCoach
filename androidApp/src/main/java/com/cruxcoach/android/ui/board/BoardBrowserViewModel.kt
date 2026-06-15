@@ -338,6 +338,14 @@ class BoardBrowserViewModel @Inject constructor(
     private var hiddenLoaded = false
     private var filtersLoaded = false
     private var searchJob: Job? = null
+    // Latest-wins guard for refreshBoardData. A board switch fans out from
+    // several pref/sync collectors and the user can switch rapidly; without
+    // this each call launched its own coroutine running the full query set
+    // (searchClimbs + placements + productSize + angles + hasClimbsForBrand),
+    // and they all serialized on the single SQLite connection — a trivial
+    // EXISTS could wait 10s+ behind a cold searchClimbs. Cancelling the prior
+    // refresh means only the newest board's queries run to completion.
+    private var refreshJob: Job? = null
 
     // Cached count: only re-fetch from DB when count-affecting filters change
     private var cachedDbCount: Long = -1
@@ -649,7 +657,10 @@ class BoardBrowserViewModel @Inject constructor(
         statusLoaded = false
         hiddenLoaded = false
         cachedCountKey = ""
-        viewModelScope.safeLaunch(TAG) {
+        // Latest-wins: cancel any in-flight refresh so a rapid board switch
+        // doesn't stack multiple full query sets on the single DB connection.
+        refreshJob?.cancel()
+        refreshJob = viewModelScope.safeLaunch(TAG) {
             val changed = withContext(Dispatchers.IO) {
                 // hasAnyClimbs() = O(1) EXISTS probe; getClimbCount() is a
                 // full table-scan that blocks tens of seconds on the bulk
