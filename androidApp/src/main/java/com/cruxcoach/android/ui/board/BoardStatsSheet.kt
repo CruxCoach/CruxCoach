@@ -199,6 +199,9 @@ internal fun BoardStatsSheet(
     boardFilter: String? = null,
     availableBoardBrands: List<String> = emptyList(),
     boardComparison: List<BoardComparisonEntry> = emptyList(),
+    heatmapBoardOptions: List<com.cruxcoach.android.data.BoardConstants.HeatmapBoardOption> = emptyList(),
+    heatmapBoardSelection: com.cruxcoach.android.data.BoardConstants.HeatmapBoardOption? = null,
+    onHeatmapBoardSelect: (com.cruxcoach.android.data.BoardConstants.HeatmapBoardOption?) -> Unit = {},
     onBoardFilterSelect: (String?) -> Unit = {},
     onIntervalSelect: (StatsTimeInterval) -> Unit,
     onGradeChartViewSelect: (GradeChartView) -> Unit,
@@ -363,63 +366,177 @@ internal fun BoardStatsSheet(
             }
 
             // Heatmap section — full mode picker (Meine Sends / Global /
-            // Start / Hand / Foot / Finish). Sits at the very bottom of
-            // the sheet because the board rendering is the heaviest
-            // visual and pushes the charts above into the initial view.
-            // Explicit capability gate: the placement-id heatmap only applies to
-            // Aurora-protocol boards (Kilter + the Aurora family). MoonBoard has
-            // no Aurora placements (hasHeatmap=false) — previously this was hidden
-            // only incidentally via empty placements; gate on the capability.
-            if (boardSize?.boardBrand?.hasHeatmap == true && placements.isNotEmpty()) {
+            // Start / Hand / Foot / Finish) plus the FEAT-039 board selector.
+            // Sits at the very bottom of the sheet because the board rendering
+            // is the heaviest visual and pushes the charts above into the
+            // initial view. Shown whenever at least one board is renderable
+            // (heatmapBoardOptions); the per-grid canvas itself is hidden under
+            // "Alle" (null selection) because disjoint placement-id spaces can't
+            // be overlaid into one aggregate grid — only a hint is shown there.
+            if (heatmapBoardOptions.isNotEmpty()) {
                 val sectionTitle = stringResource(
                     R.string.board_stats_heatmap_section,
                     heatmapModeLabel(heatmapMode)
                 )
                 ChartSection(sectionTitle) {
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        HeatmapMode.entries
-                            .filter { it != HeatmapMode.OFF }
-                            .forEach { mode ->
-                                FilterChip(
-                                    selected = mode == heatmapMode,
-                                    onClick = { onHeatmapModeSelect(mode) },
-                                    label = {
-                                        Text(
-                                            heatmapModeLabel(mode),
-                                            style = MaterialTheme.typography.labelSmall
-                                        )
-                                    },
-                                    colors = FilterChipDefaults.filterChipColors(
-                                        selectedContainerColor = OrangeAccent,
-                                        selectedLabelColor = DarkBackground
-                                    ),
-                                    shape = RoundedCornerShape(16.dp)
-                                )
-                            }
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    KilterBoardVisualization(
-                        holds = emptyList(),
-                        placements = placements,
-                        boardSize = boardSize,
-                        boardImages = boardImages,
-                        heatmapData = heatmapData.ifEmpty { null },
-                        selectedHolds = emptySet(),
-                        onHoldTapped = null,
-                        modifier = Modifier.fillMaxWidth()
+                    // Board selector: "Alle" + one entry per renderable board
+                    // (brand/layout/size/variant). Picking a board re-renders the
+                    // heatmap on exactly that grid; "Alle" hides it.
+                    HeatmapBoardSelector(
+                        options = heatmapBoardOptions,
+                        selected = heatmapBoardSelection,
+                        onSelect = onHeatmapBoardSelect,
                     )
-                    if (heatmapData.isEmpty()) {
-                        Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    if (heatmapBoardSelection == null) {
+                        // "Alle"/GLOBAL: no specific board — the per-grid heatmap
+                        // cannot represent disjoint grids honestly, so hide it and
+                        // tell the user how to see one. The aggregate stats above
+                        // stay all-boards.
                         Text(
-                            stringResource(R.string.board_stats_heatmap_empty),
+                            stringResource(R.string.board_stats_heatmap_pick_board),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                    } else {
+                        // Per-board heatmap. Label it with the board name so it is
+                        // never mistaken for an aggregate.
+                        Text(
+                            heatmapBoardSelection.displayName,
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = OrangeAccent,
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            HeatmapMode.entries
+                                .filter { it != HeatmapMode.OFF }
+                                .forEach { mode ->
+                                    FilterChip(
+                                        selected = mode == heatmapMode,
+                                        onClick = { onHeatmapModeSelect(mode) },
+                                        label = {
+                                            Text(
+                                                heatmapModeLabel(mode),
+                                                style = MaterialTheme.typography.labelSmall
+                                            )
+                                        },
+                                        colors = FilterChipDefaults.filterChipColors(
+                                            selectedContainerColor = OrangeAccent,
+                                            selectedLabelColor = DarkBackground
+                                        ),
+                                        shape = RoundedCornerShape(16.dp)
+                                    )
+                                }
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        // Capability gate keyed on the SELECTED brand (not the
+                        // not-yet-loaded boardSize): the placement-id heatmap only
+                        // applies to Aurora-protocol boards (Kilter + the Aurora
+                        // family). MoonBoard has no Aurora placements — show the
+                        // not-supported hint rather than an empty canvas. For a
+                        // supported brand we render once placements have loaded;
+                        // the brief pre-load window simply shows nothing (no
+                        // misleading "unsupported" flash).
+                        val brandHasHeatmap =
+                            BoardBrand.fromWire(heatmapBoardSelection.brandWire).hasHeatmap
+                        if (!brandHasHeatmap) {
+                            Text(
+                                stringResource(R.string.board_stats_heatmap_unsupported),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        } else if (placements.isNotEmpty() && boardSize != null) {
+                            KilterBoardVisualization(
+                                holds = emptyList(),
+                                placements = placements,
+                                boardSize = boardSize,
+                                boardImages = boardImages,
+                                heatmapData = heatmapData.ifEmpty { null },
+                                selectedHolds = emptySet(),
+                                onHoldTapped = null,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            if (heatmapData.isEmpty()) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    stringResource(R.string.board_stats_heatmap_empty),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
                     }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * Board selector for the stats hold-heatmap (FEAT-039). An
+ * ExposedDropdownMenuBox (matching the chart-view selectors + the climb
+ * editor's angle picker) listing "Alle" plus one entry per renderable board
+ * (brand / layout / size / MoonBoard variant). "Alle" (null) hides the
+ * per-grid heatmap; a concrete board renders it on that grid.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun HeatmapBoardSelector(
+    options: List<com.cruxcoach.android.data.BoardConstants.HeatmapBoardOption>,
+    selected: com.cruxcoach.android.data.BoardConstants.HeatmapBoardOption?,
+    onSelect: (com.cruxcoach.android.data.BoardConstants.HeatmapBoardOption?) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val allLabel = stringResource(R.string.map_filter_show_all)
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = it }
+    ) {
+        OutlinedTextField(
+            value = selected?.displayName ?: allLabel,
+            onValueChange = {},
+            readOnly = true,
+            label = { Text(stringResource(R.string.board_stats_heatmap_board_label)) },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier = Modifier
+                .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
+                .fillMaxWidth(),
+        )
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            // "Alle" — the aggregate view (no per-grid heatmap).
+            DropdownMenuItem(
+                text = {
+                    Text(
+                        allLabel,
+                        fontWeight = if (selected == null) FontWeight.Bold else FontWeight.Normal
+                    )
+                },
+                onClick = {
+                    onSelect(null)
+                    expanded = false
+                }
+            )
+            options.forEach { option ->
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            option.displayName,
+                            fontWeight = if (option == selected) FontWeight.Bold else FontWeight.Normal
+                        )
+                    },
+                    onClick = {
+                        onSelect(option)
+                        expanded = false
+                    }
+                )
             }
         }
     }

@@ -120,6 +120,16 @@ data class BoardLogbookState(
     val boardImages: List<com.cruxcoach.data.repository.BoardImage> = emptyList(),
     val heatmapMode: HeatmapMode = HeatmapMode.PERSONAL,
     val heatmapData: Map<Int, Float> = emptyMap(),
+    // Heatmap board selector (FEAT-039): the EXPLICIT board the hold-heatmap
+    // renders on. The hold-id spaces are disjoint across brands/layouts, so a
+    // single grid can never aggregate boards — the user picks exactly which
+    // board's grid to overlay their ascents on. [heatmapBoardSelection] = null
+    // means "Alle" (no specific board): the per-grid heatmap is HIDDEN and only
+    // the aggregate stats (counts / pyramid / per-board split) remain. Defaults
+    // to the active board on first load so nothing regresses. [heatmapBoardOptions]
+    // is enumerated from the picker model, gated to imported brands.
+    val heatmapBoardOptions: List<com.cruxcoach.android.data.BoardConstants.HeatmapBoardOption> = emptyList(),
+    val heatmapBoardSelection: com.cruxcoach.android.data.BoardConstants.HeatmapBoardOption? = null,
     // Per-board stats split: which board family the stats + heatmap are
     // scoped to. null = all boards combined. Only meaningful (and the
     // selector only shown) when the user has logged on more than one board.
@@ -183,7 +193,10 @@ class BoardLogbookViewModel @Inject constructor(
                 _state.update { it.copy(zones = zones) }
             }
         }
-        loadBoardData()
+        // FEAT-039: the heatmap canvas now follows the EXPLICIT board selection,
+        // which is seeded in preloadStats (after the logbook loads). loadBoardData
+        // is therefore driven from there once a selection exists — not eagerly in
+        // init, where no selection is set yet.
         loadAscents()
         refreshOwnPublishable()
     }
@@ -236,41 +249,26 @@ class BoardLogbookViewModel @Inject constructor(
     }
 
     /**
-     * (brand, layoutId, productSizeId) the stats heatmap renders with.
-     * The user's configured board when the per-board filter is unset or
-     * matches the active board; for a FILTERED other board the brand's
-     * catalogue defaults (most-climbed layout + its default size) — the
-     * active board's layout/canvas would mix grids: layout ids collide
-     * across brands and the placement-id spaces are disjoint. null when
-     * the filtered brand's catalogue isn't imported (no layout/size to
-     * render) — callers blank the heatmap instead of showing a wrong one.
+     * (brand, layoutId, productSizeId) the stats heatmap renders with —
+     * FEAT-039: driven by the user's EXPLICIT heatmap board selection
+     * ([BoardLogbookState.heatmapBoardSelection]) rather than the active/default
+     * board. Returns null when no specific board is selected ("Alle"): the
+     * heatmap cannot aggregate disjoint grids, so callers blank the canvas (the
+     * sheet shows a "pick a board" hint instead). The selection is seeded to the
+     * active board on first load, so the default behaviour is unchanged.
      */
-    private suspend fun resolveHeatmapBoard(): Triple<String, Int, Int>? {
-        val prefBrand = userPreferences.boardBrand.first()
-        val brand = _state.value.boardFilter ?: prefBrand
-        if (brand == prefBrand) {
-            return Triple(
-                brand,
-                userPreferences.boardLayoutId.first(),
-                userPreferences.boardProductSizeId.first()
-            )
-        }
-        return withContext(Dispatchers.IO) {
-            val layoutId = boardRepository.getDefaultLayoutForBrand(brand)
-                ?: return@withContext null
-            val sizeId = boardRepository.getDefaultProductSizeForBrand(brand)?.first
-                ?: return@withContext null
-            Triple(brand, layoutId, sizeId)
-        }
+    private fun resolveHeatmapBoard(): Triple<String, Int, Int>? {
+        val sel = _state.value.heatmapBoardSelection ?: return null
+        return Triple(sel.brandWire, sel.layoutId, sel.sizeId)
     }
 
     private fun loadBoardData() {
         viewModelScope.safeLaunch(TAG) {
             try {
-                // Brand + layout-scoped placements (FEAT-031), resolved per the
-                // current board filter — the defaults loaded the ACTIVE board's
-                // geometry under every stats chip, so a filtered brand's frames
-                // landed on the wrong canvas (or an empty one).
+                // Brand + layout-scoped placements (FEAT-031/039), resolved from
+                // the EXPLICIT heatmap board selection. Defaults to the active
+                // board; null (= "Alle") blanks the canvas so a single grid never
+                // masquerades as an all-boards aggregate.
                 val resolved = resolveHeatmapBoard()
                 if (resolved == null) {
                     _state.update {
@@ -338,13 +336,70 @@ class BoardLogbookViewModel @Inject constructor(
                 // rest, for a stable chip order.
                 val brands = all.map { it.boardBrand }.distinct()
                     .sortedBy { if (BoardBrand.fromWire(it) == BoardBrand.KILTER) 0 else 1 }
+
+                // FEAT-039 heatmap board selector. The heatmap plots the user's
+                // OWN ascents, so only offer board TYPES they have real logs for
+                // (not every imported catalogue, and not the active board if it
+                // has no logs). Gate is the set of (brandWire, layoutId) the user
+                // has logged on; legacy rows (pre-7.sqm) can carry a null
+                // layout_id — those are Kilter-era (multi-board logging postdates
+                // the denormalization), so default them to Kilter Original.
+                val activeBrand = userPreferences.boardBrand.first()
+                val activeLayoutId = userPreferences.boardLayoutId.first()
+                val activeSizeId = userPreferences.boardProductSizeId.first()
+                val loggedBoards: Set<Pair<String, Int>> = all
+                    .map {
+                        BoardBrand.fromWire(it.boardBrand).wireValue to
+                            (it.layoutId?.toInt()
+                                ?: com.cruxcoach.android.data.BoardConstants.KILTER_ORIGINAL_LAYOUT)
+                    }
+                    .toSet()
+                // The whole gate is pure in-memory now: no catalogue probe
+                // (hasClimbsForBrand) and no layout lookup (getDefaultLayoutForBrand
+                // was a GROUP BY over the unindexed climbs.board_brand — ~6s per
+                // single-layout brand, ~12s total here). Single-layout boards take
+                // their layout straight from the user's logged ascent, so opening
+                // the stats sheet runs ZERO board-DB queries on the gate path.
+                // Render the ACTIVE board on the user's CONFIGURED size, not the
+                // enumerator's representative default: a Kilter 12x16 Super Wide
+                // has different hold columns + image than a 12x12 with kickboard,
+                // so the user's own board should match their settings. Other boards
+                // keep their default size; MoonBoard is size-less (sizeId 0) so it
+                // is never overridden.
+                val activeBrandWire = BoardBrand.fromWire(activeBrand).wireValue
+                val options = com.cruxcoach.android.data.BoardConstants
+                    .heatmapBoardOptions(loggedBoards)
+                    .map { opt ->
+                        if (opt.brandWire == activeBrandWire && opt.layoutId == activeLayoutId &&
+                            opt.brandWire != BoardBrand.MOONBOARD.wireValue && activeSizeId > 0
+                        ) opt.copy(sizeId = activeSizeId) else opt
+                    }
+                val defaultSelection = resolveDefaultHeatmapSelection(
+                    options, activeBrand, activeLayoutId
+                )
+
                 _state.update {
                     // Clamp a stale filter: if the selected board no longer has
                     // any ascents (e.g. all its logs were deleted) drop back to
                     // "all" so stats don't render empty with no way to recover.
                     val clampedFilter = it.boardFilter?.takeIf { bf -> bf in brands }
-                    it.copy(availableBoardBrands = brands, boardFilter = clampedFilter)
+                    // Seed the heatmap selection to the active board only on the
+                    // first load; preserve an existing user pick across reloads,
+                    // dropping it only if its board is no longer offered.
+                    val heatmapSel = it.heatmapBoardSelection
+                        ?.takeIf { sel -> sel in options }
+                        ?: defaultSelection
+                    it.copy(
+                        availableBoardBrands = brands,
+                        boardFilter = clampedFilter,
+                        heatmapBoardOptions = options,
+                        heatmapBoardSelection = heatmapSel,
+                    )
                 }
+                // Load the heatmap canvas for the seeded/selected board (init no
+                // longer does this — the selection didn't exist yet). No-op for
+                // the "Alle" case (null selection blanks the canvas).
+                loadBoardData()
                 recomputeStats()
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
@@ -352,6 +407,27 @@ class BoardLogbookViewModel @Inject constructor(
                 Log.w(TAG, "preloadStats failed; stats sheet may show stale", e)
             }
         }
+    }
+
+    /**
+     * The heatmap option that represents the user's currently-active board, for
+     * the default selection (FEAT-039 — no regression: the active board is
+     * pre-selected). Prefers the enumerated option matching the active
+     * (brand, layout); when the active brand has a different enumerated layout,
+     * its first option; otherwise the first offered board (or null when nothing
+     * is renderable — the sheet then opens on "Alle"). The enumerated options
+     * are the single source of truth, so the default always resolves to a real
+     * menu entry the user can re-select.
+     */
+    private fun resolveDefaultHeatmapSelection(
+        options: List<com.cruxcoach.android.data.BoardConstants.HeatmapBoardOption>,
+        activeBrandWire: String,
+        activeLayoutId: Int,
+    ): com.cruxcoach.android.data.BoardConstants.HeatmapBoardOption? {
+        val brandWire = BoardBrand.fromWire(activeBrandWire).wireValue
+        return options.firstOrNull { it.brandWire == brandWire && it.layoutId == activeLayoutId }
+            ?: options.firstOrNull { it.brandWire == brandWire }
+            ?: options.firstOrNull()
     }
 
     fun loadMore() {
@@ -443,14 +519,15 @@ class BoardLogbookViewModel @Inject constructor(
         if (opening && allAscents.isEmpty()) preloadStats()
     }
 
-    /** Scope the stats + heatmap to one board family, or null for all. */
+    /**
+     * Scope the aggregate stats (counts / pyramid / outcomes) to one board
+     * family, or null for all. FEAT-039: this no longer drives the hold-heatmap
+     * canvas — that is the independent [setHeatmapBoardSelection]. The
+     * comparison row and "Alle" stay all-boards regardless.
+     */
     fun setBoardFilter(brand: String?) {
         if (_state.value.boardFilter == brand) return
         _state.update { it.copy(boardFilter = brand) }
-        // The heatmap canvas (placements/size/images) must follow the filter,
-        // not stay on the active board — recomputeStats only refreshes the
-        // heat values.
-        loadBoardData()
         recomputeStats()
     }
 
@@ -491,6 +568,32 @@ class BoardLogbookViewModel @Inject constructor(
         recomputeHeatmap()
     }
 
+    /**
+     * Pick the board the hold-heatmap renders on (FEAT-039). null = "Alle":
+     * the per-grid heatmap is hidden (disjoint grids can't aggregate) and only
+     * the all-boards stats remain. A concrete option re-renders the canvas
+     * (placements/size/images) and recomputes the heat values for that board.
+     * The stats brand-filter ([setBoardFilter]) is independent and untouched.
+     */
+    fun setHeatmapBoardSelection(
+        option: com.cruxcoach.android.data.BoardConstants.HeatmapBoardOption?
+    ) {
+        if (_state.value.heatmapBoardSelection == option) return
+        _state.update {
+            // Blank the canvas + heat eagerly so the old board never flashes
+            // under the new label while loadBoardData/recomputeHeatmap run.
+            it.copy(
+                heatmapBoardSelection = option,
+                placements = emptyMap(),
+                boardSize = null,
+                boardImages = emptyList(),
+                heatmapData = emptyMap(),
+            )
+        }
+        loadBoardData()
+        recomputeHeatmap()
+    }
+
     private fun recomputeHeatmap() {
         viewModelScope.safeLaunch(TAG) {
             try {
@@ -499,13 +602,11 @@ class BoardLogbookViewModel @Inject constructor(
                     _state.update { it.copy(heatmapData = emptyMap()) }
                     return@safeLaunch
                 }
-                // Heatmap is always single-grid: use the selected board filter
-                // when set, else the active board's brand (never "all", which
-                // would re-overlay disjoint grids). Brand AND layout come from
-                // the same resolution as the canvas — pairing the filter brand
-                // with the ACTIVE board's layout queried a (brand, layout)
-                // combination that doesn't exist (silently empty heatmap) or,
-                // with colliding ids, another board's grid.
+                // Heatmap is always single-grid (FEAT-039): brand AND layout come
+                // from the user's explicit board selection — the SAME resolution
+                // as the canvas, so the heat values always match the rendered
+                // grid. null (= "Alle") blanks the heat: disjoint placement-id
+                // spaces can't be overlaid into one aggregate grid.
                 val resolved = resolveHeatmapBoard()
                 if (resolved == null) {
                     _state.update { it.copy(heatmapData = emptyMap()) }

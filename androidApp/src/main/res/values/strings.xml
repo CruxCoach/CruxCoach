@@ -1234,6 +1234,9 @@
     <string name="board_stats_personal_heatmap">My sends — heatmap</string>
     <string name="board_stats_heatmap_section">Heatmap — %1$s</string>
     <string name="board_stats_heatmap_empty">No data for this heatmap mode yet. Log some sends or try another mode.</string>
+    <string name="board_stats_heatmap_board_label">Board</string>
+    <string name="board_stats_heatmap_pick_board">Pick a board to see the hold heatmap.</string>
+    <string name="board_stats_heatmap_unsupported">This board has no hold heatmap.</string>
     <string name="board_stats_angle_distribution">Angle Distribution</string>
     <string name="board_stats_board_comparison">Board Comparison</string>
     <string name="board_stats_board_comparison_board">Board</string>

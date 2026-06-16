@@ -2,6 +2,7 @@ package com.cruxcoach.android.data
 
 import com.cruxcoach.data.repository.BoardSize
 import com.cruxcoach.domain.board.BoardBrand
+import com.cruxcoach.domain.board.MoonBoardVariant
 
 object BoardConstants {
     const val PAGE_SIZE = 50
@@ -346,4 +347,138 @@ object BoardConstants {
         sizes.firstOrNull { it.id.toInt() == productSizeId }
             ?.let { sizeLabel(it.id, it.name, it.boardBrand) }
             .orEmpty()
+
+    /**
+     * One concrete board the stats hold-heatmap can be rendered on (FEAT-039):
+     * a fully-resolved (brand, layout, size) plus a human label. The hold-id
+     * spaces are disjoint across brands/layouts, so the heatmap is inherently
+     * per-board — the selector lets the user pick exactly which board's grid to
+     * overlay their ascents on. [brandWire] is the [BoardBrand.wireValue] (the
+     * form the repository + ascent filter expect).
+     */
+    data class HeatmapBoardOption(
+        val brandWire: String,
+        val layoutId: Int,
+        val sizeId: Int,
+        val displayName: String,
+    )
+
+    /**
+     * Enumerate the heatmap-renderable board options from the SAME picker model
+     * the board picker uses (single source of truth — a new board needs no
+     * extra wiring here): Kilter Original + Homewall (one representative size
+     * each; hold positions barely shift with Kilter size so a per-size fan-out
+     * isn't worth the menu length), each Aurora variant with its default size,
+     * and each MoonBoard variant.
+     *
+     * Gated by [loggedBoards] — the set of (brandWire, layoutId) the user has
+     * ACTUALLY logged on. The heatmap plots the user's own ascents, so it only
+     * offers board TYPES with real logs: a brand whose catalogue is imported but
+     * which the user has never climbed is NOT offered, and within a brand only
+     * the logged layouts appear (e.g. Kilter Original but not Homewall). Multi-
+     * layout boards (Kilter, Tension/Decoy variants, MoonBoard variants) match
+     * by exact (brand, layout); single-layout boards have exactly one type so a
+     * log on the brand (any layout) surfaces it. Pure (no I/O) → unit-testable;
+     * the ViewModel derives the logged-board set from the logbook.
+     *
+     * Single-layout Aurora boards (Grasshopper / So iLL / Touchstone) have no
+     * [AURORA_VARIANTS] entry to pin a layout — but the user's own logged ascent
+     * already carries the layout id, so it's taken straight from [loggedBoards].
+     * This deliberately avoids a catalogue lookup: resolving the layout via a
+     * `GROUP BY` over the unindexed `climbs.board_brand` cost ~6s PER brand
+     * (measured 12s for Grasshopper + So iLL together on first stats open).
+     */
+    fun heatmapBoardOptions(
+        loggedBoards: Set<Pair<String, Int>>,
+    ): List<HeatmapBoardOption> {
+        val options = mutableListOf<HeatmapBoardOption>()
+        // Brands the user has any log on — for single-layout boards, where
+        // "brand has logs" is equivalent to "this one type has logs".
+        val loggedBrands = loggedBoards.mapTo(mutableSetOf()) { it.first }
+
+        // Kilter: two physically distinct boards (Original / Homewall), each
+        // offered only if the user has a log on that specific layout. One
+        // default size each is enough — placements barely move across Kilter
+        // sizes, and offering all sizes would bloat the menu.
+        if (Pair(BoardBrand.KILTER.wireValue, KILTER_ORIGINAL_LAYOUT) in loggedBoards) {
+            options += HeatmapBoardOption(
+                brandWire = BoardBrand.KILTER.wireValue,
+                layoutId = KILTER_ORIGINAL_LAYOUT,
+                sizeId = KILTER_DEFAULT_SIZE,
+                displayName = "Kilter Original",
+            )
+        }
+        if (Pair(BoardBrand.KILTER.wireValue, KILTER_HOMEWALL_LAYOUT) in loggedBoards) {
+            options += HeatmapBoardOption(
+                brandWire = BoardBrand.KILTER.wireValue,
+                layoutId = KILTER_HOMEWALL_LAYOUT,
+                sizeId = KILTER_HOMEWALL_DEFAULT_SIZE,
+                displayName = "Kilter Homewall",
+            )
+        }
+
+        // Aurora family. Variant boards (Tension / Decoy) expand to one option
+        // per variant with the variant's default size; single-layout boards
+        // (Grasshopper / So iLL / Touchstone) have no AURORA_VARIANTS entry, so
+        // fall back to a single option on their default layout + largest size.
+        for (brand in BoardBrand.entries) {
+            if (!brand.usesAuroraProtocol || brand == BoardBrand.KILTER) continue
+            val variants = auroraVariants(brand)
+            if (variants.isNotEmpty()) {
+                variants.forEach { v ->
+                    // Multi-layout board: offer only the variants the user has
+                    // a log on (TB1 vs TB2 Mirror vs TB2 Spray are distinct).
+                    if (Pair(brand.wireValue, v.layoutId) in loggedBoards) {
+                        options += HeatmapBoardOption(
+                            brandWire = brand.wireValue,
+                            layoutId = v.layoutId,
+                            sizeId = v.defaultSizeId,
+                            displayName = v.displayName,
+                        )
+                    }
+                }
+            } else if (brand.wireValue in loggedBrands) {
+                // Single-layout board (Grasshopper / So iLL / Touchstone): there
+                // is exactly one real layout, and the user's own logged ascent
+                // already carries it — take it straight from loggedBoards (no
+                // catalogue query). Default size = largest bundled size (matches
+                // getDefaultProductSizeForBrand's area ordering). Layout 1 only as
+                // a last-resort fallback (legacy null-layout rows).
+                val loggedLayout = loggedBoards.firstOrNull { it.first == brand.wireValue }?.second
+                val largest = auroraBundledSizes(brand)
+                    .maxByOrNull { (it.edgeRight - it.edgeLeft) * (it.edgeTop - it.edgeBottom) }
+                options += HeatmapBoardOption(
+                    brandWire = brand.wireValue,
+                    layoutId = loggedLayout ?: KILTER_ORIGINAL_LAYOUT,
+                    sizeId = largest?.id?.toInt() ?: 1,
+                    displayName = brand.displayName,
+                )
+            }
+        }
+
+        // MoonBoard variants the user has logged on — only when MoonBoard can
+        // actually render a heatmap. Today it can't (hasHeatmap = false: the
+        // canvas overlays Aurora hole coordinates, which MoonBoard lacks — its
+        // holds live on a fixed 11×N lattice instead), so a MoonBoard entry
+        // would be a dead-end "no hold heatmap" pick. We therefore omit it from
+        // the selector for now; MoonBoard stats still appear in the all-boards
+        // counts/pyramid. FEAT-040 adds a real MoonBoard hold-heatmap (lattice
+        // overlay); flipping hasHeatmap re-includes the variants here. MoonBoard
+        // variants ARE distinct boards (fundamentally different holds, unlike
+        // Kilter sizes) — they are not collapsed, just not yet renderable.
+        if (BoardBrand.MOONBOARD.hasHeatmap) {
+            MoonBoardVariant.entries.forEach { v ->
+                if (Pair(BoardBrand.MOONBOARD.wireValue, v.layoutId.toInt()) in loggedBoards) {
+                    options += HeatmapBoardOption(
+                        brandWire = BoardBrand.MOONBOARD.wireValue,
+                        layoutId = v.layoutId.toInt(),
+                        sizeId = 0, // MoonBoard variants are size-less (fixed config)
+                        displayName = v.displayName,
+                    )
+                }
+            }
+        }
+
+        return options
+    }
 }
