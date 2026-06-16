@@ -1192,18 +1192,16 @@ class BoardClimbDetailViewModel @Inject constructor(
         boardSize: BoardSize?
     ): Map<Int, Int> {
         if (boardSize == null || placements.isEmpty()) return emptyMap()
-        val centerX2 = boardSize.edgeLeft + boardSize.edgeRight
-        val byYAndSet = placements.values.groupBy { it.y to it.setId }
-        val result = mutableMapOf<Int, Int>()
-        for (placement in placements.values) {
-            val mirrorX = centerX2 - placement.x
-            val candidates = byYAndSet[placement.y to placement.setId] ?: continue
-            val mirror = candidates.find { it.x == mirrorX }
-            if (mirror != null && mirror.placementId != placement.placementId) {
-                result[placement.placementId.toInt()] = mirror.placementId.toInt()
-            }
+        val centerX2 = (boardSize.edgeLeft + boardSize.edgeRight).toInt()
+        val holds = placements.values.map {
+            MirrorMapDeriver.Hold(
+                placementId = it.placementId.toInt(),
+                x = it.x.toInt(),
+                y = it.y.toInt(),
+                setId = it.setId.toInt(),
+            )
         }
-        return result
+        return MirrorMapDeriver.derive(holds, centerX2)
     }
 
     fun showAddToListDialog() {
