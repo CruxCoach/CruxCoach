@@ -1363,7 +1363,21 @@ class BoardBrowserViewModel @Inject constructor(
                 )
             }
             randomPage1 = page1
-            val page1Uuids = page1.mapTo(HashSet()) { it.uuid }
+            // The full-shuffle background load (getAllBrowseMatchingUuids — ~20s
+            // over the big Kilter set, the single biggest board-DB hog on cold
+            // start) is NOT started here. It only feeds pages 2+, so it is built
+            // lazily on the first scroll past page 1 (below); most sessions never
+            // scroll that far. Page 1 itself is a fresh SQL ORDER BY RANDOM()
+            // sample of the WHOLE filtered set, so it stays fully random either way.
+            return page1
+        }
+
+        // Pages 2+ index into the background shuffle, which sits "after" page 1.
+        // Build that shuffle lazily on the first page-2 request (deferred from
+        // page 1) and reuse it thereafter; excluding page 1's uuids keeps pages
+        // 2+ duplicate-free. await() blocks only until the bg job finishes.
+        if (randomCacheJob == null) {
+            val page1Uuids = randomPage1?.mapTo(HashSet()) { it.uuid } ?: emptySet()
             randomCacheJob = viewModelScope.async(Dispatchers.IO) {
                 val all = PerfLogger.traceQuery("randomUuids(bg load)") {
                     boardRepository.getAllBrowseMatchingUuids(
@@ -1372,15 +1386,10 @@ class BoardBrowserViewModel @Inject constructor(
                     )
                 }
                 val rest = all.filterNot { it in page1Uuids }.shuffled(Random.Default)
-                Log.i("BoardBrowserVM", "random sort: bg shuffle ready, ${rest.size} climbs after page 1 (key=$key)")
+                Log.i("BoardBrowserVM", "random sort: bg shuffle ready (lazy), ${rest.size} climbs after page 1 (key=$key)")
                 rest
             }
-            return page1
         }
-
-        // Pages 2+ index into the background shuffle, which sits "after"
-        // page 1 — so subtract page 1's size to translate scroll offset to
-        // shuffle index. await() blocks only until the bg job finishes.
         val cache = randomCacheJob?.await() ?: return emptyList()
         val cacheIdx = offset - (randomPage1?.size ?: 0)
         if (cacheIdx < 0 || cacheIdx >= cache.size) return emptyList()
