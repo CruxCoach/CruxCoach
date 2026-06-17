@@ -400,15 +400,8 @@ internal fun BoardStatsSheet(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     } else {
-                        // Per-board heatmap. Label it with the board name so it is
-                        // never mistaken for an aggregate.
-                        Text(
-                            heatmapBoardSelection.displayName,
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = OrangeAccent,
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
+                        // Per-board heatmap. The selected board is already named in
+                        // the dropdown anchor above, so no separate label here.
                         FlowRow(
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                             verticalArrangement = Arrangement.spacedBy(6.dp)
