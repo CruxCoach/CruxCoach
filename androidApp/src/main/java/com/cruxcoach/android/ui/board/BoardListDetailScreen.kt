@@ -28,6 +28,7 @@ import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.*
 import com.cruxcoach.android.util.GradeDisplayHelper
 import com.cruxcoach.data.repository.Climb_list_entries
+import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.IntensityZones
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -208,7 +209,12 @@ private fun ListEntryCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Per-entry board type, analogous to the logbook badge.
+                    BoardBrandBadge(BoardBrand.fromWire(climb.boardBrand))
                     climb.setterUsername?.let {
                         Text(
                             stringResource(R.string.board_climb_by_setter, it),

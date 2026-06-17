@@ -184,7 +184,7 @@ internal fun AscentCard(
  *  promoted board needs no per-board string. Sits on the card's meta line
  *  next to angle/date. */
 @Composable
-private fun BoardBrandBadge(brand: BoardBrand) {
+internal fun BoardBrandBadge(brand: BoardBrand) {
     Surface(
         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.12f),
         shape = RoundedCornerShape(4.dp)
