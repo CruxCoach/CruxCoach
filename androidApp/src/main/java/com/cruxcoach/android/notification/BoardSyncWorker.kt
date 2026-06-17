@@ -23,6 +23,15 @@ class BoardSyncWorker @AssistedInject constructor(
     private val notificationService: AppNotificationService
 ) : CoroutineWorker(appContext, workerParams) {
 
+    // On API < 31 an expedited worker runs as a FOREGROUND SERVICE, and
+    // WorkManager calls getForegroundInfo() up front to start it. Without this
+    // override the CoroutineWorker default throws IllegalStateException("Not
+    // implemented"), so the whole board sync fails before doWork ever runs
+    // (observed on Android 9 / API 28 — board DB never downloads). API 31+ runs
+    // expedited as a real job and doesn't need this, which is why it only bit
+    // older devices.
+    override suspend fun getForegroundInfo(): ForegroundInfo = createForegroundInfo()
+
     override suspend fun doWork(): Result {
         return try {
             setForeground(createForegroundInfo())
