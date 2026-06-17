@@ -163,11 +163,6 @@ fun BleConnectionSheet(
                 state.connectionState == ConnectionState.SENDING -> {
                     ConnectedContent(
                         boardName = state.connectedBoardName ?: "Board",
-                        // FEAT-027: derive the brand from the advertising
-                        // name — MoonBoard advertises a bare "MoonBoard…"
-                        // name, Aurora boards a parsed Kilter-style name.
-                        boardBrand = if (viewModel.isConnectedBoardMoonBoard())
-                            BoardBrand.MOONBOARD else BoardBrand.KILTER,
                         isSending = state.connectionState == ConnectionState.SENDING,
                         onDisconnect = { viewModel.disconnect() }
                     )
@@ -368,7 +363,6 @@ private fun LegacyBleWarningContent(onAccept: () -> Unit) {
 @Composable
 private fun ConnectedContent(
     boardName: String,
-    boardBrand: BoardBrand,
     isSending: Boolean,
     onDisconnect: () -> Unit
 ) {
@@ -389,10 +383,13 @@ private fun ConnectedContent(
                 fontWeight = FontWeight.Bold,
                 color = SuccessGreen
             )
-            // FEAT-027: brand-aware label so the connected device shows
-            // whether it's a Kilter board or a MoonBoard.
+            // The advertised display name already identifies the board for every
+            // brand (Kilter Board / MoonBoard / Tension Board / …), so show it
+            // directly. The old "brand · name" prefix used a binary
+            // MoonBoard-else-Kilter check that mislabeled every Aurora board
+            // (e.g. Tension) as "Kilter Board".
             Text(
-                "${brandLabel(boardBrand)} · $boardName",
+                boardName,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
