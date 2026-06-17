@@ -89,9 +89,13 @@ class BoardBleScanner(private val context: Context) {
         @SuppressLint("MissingPermission")
         override fun onScanResult(callbackType: Int, result: ScanResult) {
             val device = result.device
-            // Try device.name first, fall back to scanRecord.deviceName (more reliable)
-            val name = device.name
-                ?: result.scanRecord?.deviceName
+            // Prefer the freshly-advertised local name from the scan record
+            // over BluetoothDevice.getName(): Android caches getName() per MAC
+            // address, so a board that re-advertises under a different name on
+            // the same adapter (e.g. the BoardSimulator switching board type)
+            // would otherwise keep showing the first name ever seen for that MAC.
+            val name = result.scanRecord?.deviceName
+                ?: device.name
                 ?: return
             Log.d(TAG, "BLE scan result: name=$name addr=${device.address} rssi=${result.rssi}")
 
