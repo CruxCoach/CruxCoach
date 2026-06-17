@@ -387,7 +387,7 @@ class FakeBoardRepository : BoardRepository {
     override fun isLocallyAuthored(uuid: String): Boolean = false
     override fun computeEditorHeatmap(layoutId: Long, angle: Long, seedHolds: Set<Int>, targetRole: Int?): Map<Int, Float> = emptyMap()
     override fun upsertCommunityClimb(uuid: String, layoutId: Long, setterUsername: String?, name: String, framesText: String, description: String, moveCount: Long, nostrEventId: String, nostrDTag: String, createdByPubkey: String, framesHash: String, createdAt: String, angle: Long, difficultyAverage: Double?, qualityAverage: Double?, bounds: com.cruxcoach.domain.community.ClimbBounds?, boardBrand: String) {}
-    override fun markClimbPublishedNostr(uuid: String, nostrEventId: String, nostrDTag: String, pubkey: String) {}
+    override fun markClimbPublishedNostr(uuid: String, nostrEventId: String, nostrDTag: String, pubkey: String, createdAtIso: String) {}
     override fun markClimbPublishFailed(uuid: String) {}
     override fun markClimbPublishInFlight(uuid: String) {}
     override fun markKilterPublishPending(uuid: String) {}

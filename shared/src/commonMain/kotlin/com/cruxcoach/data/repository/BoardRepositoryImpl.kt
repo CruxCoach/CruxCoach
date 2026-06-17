@@ -1097,12 +1097,14 @@ class BoardRepositoryImpl(
         nostrEventId: String,
         nostrDTag: String,
         pubkey: String,
+        createdAtIso: String,
     ) {
         q.transaction {
             q.markClimbPublishedNostr(
                 nostr_event_id = nostrEventId,
                 nostr_d_tag = nostrDTag,
                 pubkey = pubkey,
+                created_at = createdAtIso,
                 uuid = uuid,
             )
             // SQL refuses to overwrite a foreign owner (see Board.sq).

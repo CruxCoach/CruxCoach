@@ -139,7 +139,13 @@ class CommunityClimbDeleter @Inject constructor(
         val dTag = ctx.nostrDTag?.takeIf { it.isNotBlank() }
             ?: communityClimbDTag(signer, uuid)
 
-        val tombstoneEpoch = System.currentTimeMillis() / 1000L
+        // Monotonic (FEAT-039 audit BUG-1): the tombstone must STRICTLY exceed
+        // the climb's last publish/edit created_at so it supersedes them on the
+        // replaceable index even under a same-second delete or a backward clock.
+        val tombstoneEpoch = monotonicCreatedAtSeconds(
+            System.currentTimeMillis() / 1000L,
+            boardRepository.getClimbCreatedAt(uuid),
+        )
         val tombstoneIso = java.time.Instant.ofEpochSecond(tombstoneEpoch).toString()
 
         // Back-compat namespace gate (FEAT-031): the deletion must ride the

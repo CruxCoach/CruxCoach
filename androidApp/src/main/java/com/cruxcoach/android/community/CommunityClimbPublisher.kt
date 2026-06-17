@@ -110,7 +110,15 @@ class CommunityClimbPublisher @Inject constructor(
         autoNote: AutoNoteSpec? = null,
     ): Result {
         val pubkey = nostrSigner.getPublicKeyHex()
-        val createdAt = System.currentTimeMillis() / 1000
+        // Monotonic per d-tag (FEAT-039 audit BUG-1): a same-second re-publish
+        // (fast typo-fix after publish) or a backward clock must still STRICTLY
+        // advance, or "newest wins" diverges between the live-sub (applies on a
+        // tie) and the Blossom chunk (skips on a tie). Clamp against the row's
+        // last emitted created_at; persisted below via markClimbPublishedNostr.
+        val createdAt = monotonicCreatedAtSeconds(
+            System.currentTimeMillis() / 1000,
+            boardRepository.getClimbCreatedAt(uuid),
+        )
 
         // Brand is the climb's REAL board family, threaded in by the caller
         // — NOT re-derived from layoutId, which can't tell the Aurora-family
@@ -167,6 +175,7 @@ class CommunityClimbPublisher @Inject constructor(
             nostrEventId = event.id,
             nostrDTag = payload.dTag,
             pubkey = pubkey,
+            createdAtIso = java.time.Instant.ofEpochSecond(createdAt).toString(),
         )
 
         // Auto-Note: optional public Kind-1 announcement linking to the

@@ -1058,6 +1058,9 @@ interface CommunityClimbQueries {
         nostrEventId: String,
         nostrDTag: String,
         pubkey: String,
+        /** The emitted Nostr event's created_at, ISO-8601. Persisted so the
+         *  next edit/delete clamps monotonically (FEAT-039 audit BUG-1). */
+        createdAtIso: String,
     )
     fun markClimbPublishFailed(uuid: String)
     /**

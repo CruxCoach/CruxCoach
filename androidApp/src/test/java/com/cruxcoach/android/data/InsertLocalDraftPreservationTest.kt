@@ -125,6 +125,7 @@ class InsertLocalDraftPreservationTest {
             nostr_event_id = "ev-abc-123",
             nostr_d_tag = "cruxcoach:climb:pubkey-h:c1",
             pubkey = "pubkey-hex",
+            created_at = "2026-01-01T00:00:00Z",
             uuid = "c1",
         )
 
@@ -144,7 +145,7 @@ class InsertLocalDraftPreservationTest {
         insertEditorDraft("c1")
         db.boardQueries.markClimbPublishedNostr(
             nostr_event_id = "ev-1", nostr_d_tag = "d-1",
-            pubkey = "pk", uuid = "c1",
+            pubkey = "pk", created_at = "2026-01-01T00:00:00Z", uuid = "c1",
         )
         // Kilter side: pending → synced.
         db.boardQueries.markKilterPublishPending(uuid = "c1")
@@ -233,6 +234,7 @@ class InsertLocalDraftPreservationTest {
             nostr_event_id = "ev-1",
             nostr_d_tag = "cruxcoach:climb:pubkey-h:c1",
             pubkey = "pubkey-hex",
+            created_at = "2026-01-01T00:00:00Z",
             uuid = "c1",
         )
 
@@ -288,6 +290,7 @@ class InsertLocalDraftPreservationTest {
             nostr_event_id = "ev-on-relay",
             nostr_d_tag = "cruxcoach:climb:pubkey-h:c1",
             pubkey = "pubkey-hex",
+            created_at = "2026-01-01T00:00:00Z",
             uuid = "c1",
         )
 

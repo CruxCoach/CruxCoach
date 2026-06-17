@@ -119,6 +119,7 @@ class CruxCoachBackupOwnClimbsRoundTripTest {
             nostr_event_id = "e".repeat(64),
             nostr_d_tag = "cruxcoach:climb:${ownPubkey.take(8)}:$uuid",
             pubkey = ownPubkey,
+            created_at = "2026-01-01T00:00:00Z",
             uuid = uuid,
         )
         // Simulate Kilter sync state set by the publisher.

@@ -1512,7 +1512,12 @@ UPDATE climbs SET
     sync_status = 'published_nostr',
     nostr_event_id = :nostr_event_id,
     nostr_d_tag = :nostr_d_tag,
-    created_by_pubkey = :pubkey
+    created_by_pubkey = :pubkey,
+    -- Persist the EMITTED event time so the next edit/delete can clamp its
+    -- created_at monotonically (FEAT-039 audit BUG-1). This also aligns the
+    -- publishing device's row with how the live-sub stores remote rows
+    -- (event time), so the stale-event recency check is symmetric.
+    created_at = :created_at
 WHERE uuid = :uuid
   AND (created_by_pubkey IS NULL OR created_by_pubkey = :pubkey);
 

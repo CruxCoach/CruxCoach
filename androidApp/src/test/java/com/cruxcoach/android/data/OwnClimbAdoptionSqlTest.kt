@@ -173,6 +173,7 @@ class OwnClimbAdoptionSqlTest {
             nostrEventId = "ev1",
             nostrDTag = "cruxcoach:climb:aaaaaaaa:$ownUuid",
             pubkey = myPubkey,
+            createdAtIso = "2026-01-01T00:00:00Z",
         )
         val row = repo.getOwnAuthoredClimbRow(ownUuid, myKilterUuid)
         assertNotNull(row)
