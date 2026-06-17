@@ -1207,6 +1207,7 @@
     <string name="board_heatmap_start">Start-Holds</string>
     <string name="board_holdsearch_filter_summary">%1$d Holds → %2$d Climbs</string>
     <string name="board_list_climb_count">%d Climbs</string>
+    <string name="board_list_on_board_count">%1$d von %2$d auf diesem Board</string>
     <string name="board_list_default_name">Liste</string>
     <string name="board_list_empty_message">Füge Climbs über den Browser hinzu</string>
     <string name="board_list_empty_title">Liste ist leer</string>

@@ -32,6 +32,10 @@ data class BoardListDetailState(
     val listName: String = "",
     val entries: List<Climb_list_entries> = emptyList(),
     val totalCount: Long = 0,
+    /** How many of the list's (board-agnostic) entries resolve on the ACTIVE
+     *  board. <= totalCount; equal when nothing is filtered off-board. Drives
+     *  the "X of Y on this board" header. Computed once on open / board switch. */
+    val onBoardCount: Long = 0,
     val canLoadMore: Boolean = false,
     /** Secure-DB uuid offset reached so far (entry-driven pagination cursor).
      *  Pages advance over the board-agnostic uuid list, not over the
@@ -103,11 +107,16 @@ class BoardListDetailViewModel @Inject constructor(
                 // board-scoping, scoped entries.size can be < this count even
                 // when the page is full, so canLoadMore is entry-driven below.
                 val count = personalBoardRepo.countClimbListEntries(listId)
+                // X = how many of ALL the list's entries resolve on the active
+                // board. Resolved once over every uuid (lists are small), not
+                // per page, so the header stays correct regardless of scroll.
+                val onBoard = countOnBoard(listId, angle, board)
                 _state.update { it.copy(
                     isLoading = false,
                     listName = list?.name ?: "",
                     entries = page.entries,
                     totalCount = count,
+                    onBoardCount = onBoard,
                     uuidOffset = page.lastUuidOffset,
                     // Entry-driven: a full uuid page (PAGE_SIZE uuids consumed)
                     // means more uuid pages may exist. We page over the
@@ -187,6 +196,27 @@ class BoardListDetailViewModel @Inject constructor(
         return EntryPage(entries, offset + uuidPairs.size)
     }
 
+    /** Count how many of the list's entries resolve on the active board.
+     *  Resolves ALL entry uuids in one pass (no pagination) — mirroring
+     *  loadEntries' board-scoping (angle query + angle-agnostic fallback that
+     *  STAYS board-scoped) so off-board climbs don't re-leak into the tally. */
+    private fun countOnBoard(listId: Long, angle: Int, board: BoardSnapshot): Long {
+        val uuids = personalBoardRepo
+            .getClimbListEntryUuids(listId, Int.MAX_VALUE, 0)
+            .map { it.first }
+        if (uuids.isEmpty()) return 0
+        val resolved = boardRepository.getClimbsByUuidsForBoard(
+            uuids, angle, board.brand, board.layoutId, board.productSizeId
+        ).mapTo(mutableSetOf()) { it.uuid }
+        val missing = uuids.filter { it !in resolved }
+        if (missing.isNotEmpty()) {
+            boardRepository.getClimbsByUuidsForBoardAnyAngle(
+                missing, board.brand, board.layoutId, board.productSizeId
+            ).forEach { resolved.add(it.uuid) }
+        }
+        return resolved.size.toLong()
+    }
+
     fun removeFromList(climbUuid: String) {
         viewModelScope.safeLaunch(TAG) {
             withContext(Dispatchers.IO) {
@@ -194,7 +224,13 @@ class BoardListDetailViewModel @Inject constructor(
             }
             _state.update { s ->
                 val updated = s.entries.filterNot { it.climb.uuid == climbUuid }
-                s.copy(entries = updated, totalCount = s.totalCount - 1)
+                // The removed climb was visible, so it counted toward both the
+                // global total (Y) and the on-board count (X) — drop both.
+                s.copy(
+                    entries = updated,
+                    totalCount = s.totalCount - 1,
+                    onBoardCount = (s.onBoardCount - 1).coerceAtLeast(0),
+                )
             }
         }
     }

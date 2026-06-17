@@ -117,6 +117,22 @@ fun BoardListDetailScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
+                    // Only when some entries are off-board: make the filtering
+                    // explicit so the global overview count reconciles with the
+                    // (smaller) board-scoped list shown here.
+                    if (state.onBoardCount < state.totalCount) {
+                        Text(
+                            stringResource(
+                                R.string.board_list_on_board_count,
+                                state.onBoardCount,
+                                state.totalCount
+                            ),
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
                     LazyColumn(
                         state = listState,
                         contentPadding = PaddingValues(16.dp),
