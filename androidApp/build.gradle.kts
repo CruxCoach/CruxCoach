@@ -165,11 +165,23 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // Backport newer java.* APIs to the supported old-API range (minSdk 26).
+        // Immunizes the SequencedCollection/SequencedMap class of bug (old-API
+        // audit C-1: .reversed()/removeFirst()/etc. on java.util receivers binding
+        // to API-35 platform members) on Android < 15.
+        isCoreLibraryDesugaringEnabled = true
     }
 
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+
+    lint {
+        // Fail the build on lint errors (incl. NewApi unguarded-API calls) when
+        // lint runs — neither C-1 nor C-2 was caught at build time before.
+        abortOnError = true
+        checkReleaseBuilds = true
     }
 
 }
@@ -188,6 +200,10 @@ kotlin {
 
 dependencies {
     implementation(project(":shared"))
+
+    // Core library desugaring — backports newer java.* APIs to old Android
+    // (see compileOptions.isCoreLibraryDesugaringEnabled; old-API audit P1).
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 
     // Splash screen
     implementation("androidx.core:core-splashscreen:1.0.1")
