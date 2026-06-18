@@ -35,7 +35,7 @@
     <string name="climb_creator_draft_saved">Entwurf gespeichert.</string>
     <string name="climb_creator_also_post_note">Auch auf Nostr posten</string>
     <string name="climb_creator_also_post_note_hint">Postet eine kurze Nachricht an deine Follower auf Nostr, die zurück auf den Climb verlinkt.</string>
-    <string name="auto_note_default_template">Ich habe einen neuen Boulder auf nostr:{npub_cruxcoach} veröffentlicht:\n\n{cruxcoach_url}\n\n#climbing #bouldering</string>
+    <string name="auto_note_default_template">Ich habe einen neuen {board}-Boulder auf nostr:{npub_cruxcoach} veröffentlicht:\n\n{cruxcoach_url}\n\n#climbing #bouldering</string>
     <string name="auto_note_setting_title">Neue Climbs auf Nostr posten</string>
     <string name="auto_note_setting_body">Wenn aktiv, wird beim Veröffentlichen eines Climbs zusätzlich eine kurze Nachricht an deine Follower auf Nostr gepostet, die zurück auf den Climb verlinkt. Pro Climb im Editor übersteuerbar. Default aus.</string>
     <string name="nostr_profile_subscriber_status_title">Community-Climb-Feed</string>

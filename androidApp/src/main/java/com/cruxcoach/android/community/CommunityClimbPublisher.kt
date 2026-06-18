@@ -376,6 +376,9 @@ class CommunityClimbPublisher @Inject constructor(
             template = spec.template,
             vars = mapOf(
                 "name" to climbName,
+                // {board} = the board's display name (Kilter / Tension / MoonBoard / …)
+                // so the announcement says WHICH board the climb is on.
+                "board" to boardBrand.displayName,
                 "naddr" to naddr,
                 "npub_cruxcoach" to cruxcoachNpub,
                 "cruxcoach_url" to "$APP_LINK_BASE$naddr",
