@@ -196,6 +196,9 @@ class ClimbEditorViewModel @Inject constructor(
 
     /** Debounced autosave job — restarted on every editor mutation. */
     private var autosaveJob: kotlinx.coroutines.Job? = null
+    /** Exact-board key (brand_layout_size) the autosave reads/writes/clears
+     *  under, so each board keeps its own in-flight draft. Set in loadBoardData. */
+    private var autosaveBoardKey: String = ""
     /** Session-scoped counter of consecutive autosave write failures.
      *  Drives a future user-visible "autosave is broken — save manually"
      *  Snackbar; for now it lives in the log line for triage. */
@@ -345,18 +348,24 @@ class ClimbEditorViewModel @Inject constructor(
         // The drafts-drawer load path uses [loadDraft] directly which
         // doesn't go through this method, so it's also unaffected.
         if (editUuid == null && forkUuid == null) {
-            val snapshot = withContext(Dispatchers.IO) { autosave.load() }
-            // Brand-match guard: only restore an autosave that targets the
-            // currently-active board. A stale snapshot from a Kilter session
-            // must not pour Kilter placement-ids into a MoonBoard editor (or
-            // vice-versa) — their hold-id spaces + role codes don't align.
-            // Pre-MoonBoard snapshots deserialize with boardBrand="kilter",
-            // so this is a no-op for existing Kilter users.
-            if (snapshot != null &&
-                _state.value.editor.selectedHolds.isEmpty() &&
-                snapshot.state.brand == _state.value.editor.brand
-            ) {
-                applyEditor(snapshot.state)
+            // The autosave slot is keyed to the EXACT active board
+            // (autosaveBoardKey, set in loadBoardData), so a loaded snapshot
+            // already belongs to this board — no brand guard needed. Merge only
+            // the draft CONTENT into the current editor; never replace it
+            // wholesale, or the brand/topology loadBoardData set would be
+            // clobbered (the snapshot carries no brand → would default to Kilter
+            // and pour the wrong hold-id space into a Tension/MoonBoard editor).
+            val snapshot = withContext(Dispatchers.IO) { autosave.load(autosaveBoardKey) }
+            if (snapshot != null && _state.value.editor.selectedHolds.isEmpty()) {
+                applyEditor(
+                    _state.value.editor.copy(
+                        selectedHolds = snapshot.state.selectedHolds,
+                        name = snapshot.state.name,
+                        description = snapshot.state.description,
+                        setterGradeId = snapshot.state.setterGradeId,
+                        angle = snapshot.state.angle ?: _state.value.editor.angle,
+                    )
+                )
             }
         }
         // Seed validationIssues against whatever final state we landed
@@ -463,6 +472,10 @@ class ClimbEditorViewModel @Inject constructor(
         // etc.), so fromLayoutId mis-resolves every Aurora board to Kilter
         // and the editor would load Kilter geometry for a Tension board.
         val brand = BoardBrand.fromWire(userPreferences.boardBrand.first())
+        // Per-exact-board autosave slot (brand_layout_size). Set here, before
+        // handleNavigationArgs runs the restore (init calls loadBoardData first),
+        // so an in-flight draft only ever restores onto the board it started on.
+        autosaveBoardKey = "${brand.wireValue}_${layoutIdLong}_${sizeId}"
 
         if (brand == BoardBrand.MOONBOARD) {
             // MoonBoard authoring: no Aurora placement/LED/image rows exist
@@ -647,7 +660,7 @@ class ClimbEditorViewModel @Inject constructor(
                 }
                 // Cancel pending debounce before clearing — see [clearEditor].
                 autosaveJob?.cancel()
-                autosave.clear()
+                autosave.clear(autosaveBoardKey)
                 // Refresh the drafts list so the drawer shows the new
                 // entry immediately (was stale if the drawer was already
                 // open, and required close+reopen to repopulate). Plus
@@ -877,7 +890,7 @@ class ClimbEditorViewModel @Inject constructor(
             }
             // Cancel pending debounce before clearing — see [clearEditor].
             autosaveJob?.cancel()
-            autosave.clear()
+            autosave.clear(autosaveBoardKey)
             _state.update {
                 it.copy(
                     isPublishing = false,
@@ -937,7 +950,7 @@ class ClimbEditorViewModel @Inject constructor(
         // doesn't write the still-current state back to DataStore
         // right after we clear it.
         autosaveJob?.cancel()
-        viewModelScope.launch { autosave.clear() }
+        viewModelScope.launch { autosave.clear(autosaveBoardKey) }
         applyEditor(ClimbEditorState())
         _state.update { it.copy(loadedDraftUuid = null) }
     }
@@ -1046,7 +1059,7 @@ class ClimbEditorViewModel @Inject constructor(
                 // re-materialise the row the user just discarded.
                 if (wasLoaded) {
                     autosaveJob?.cancel()
-                    autosave.clear()
+                    autosave.clear(autosaveBoardKey)
                 }
                 // Refresh the drawer's list.
                 val pubkey = runCatching { nostrSigner.getPublicKeyHex() }.getOrNull()
@@ -1187,7 +1200,7 @@ class ClimbEditorViewModel @Inject constructor(
         autosaveJob = viewModelScope.launch {
             kotlinx.coroutines.delay(AUTOSAVE_DEBOUNCE_MS)
             try {
-                withContext(Dispatchers.IO) { autosave.save(next) }
+                withContext(Dispatchers.IO) { autosave.save(autosaveBoardKey, next) }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
