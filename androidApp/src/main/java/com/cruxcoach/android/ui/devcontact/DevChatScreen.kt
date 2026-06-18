@@ -60,9 +60,16 @@ fun DevChatScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var messageText by rememberSaveable { mutableStateOf("") }
+    val listState = rememberLazyListState()
 
     LaunchedEffect(Unit) {
         viewModel.markChatRead()
+    }
+    // Auto-scroll to the newest message on send/receive. chatMessages is DESC
+    // (newest = item[0]) and the list is reverseLayout=true, so item[0] sits at
+    // the bottom — scrolling to index 0 brings the latest into view.
+    LaunchedEffect(state.chatMessages.firstOrNull()?.id) {
+        if (state.chatMessages.isNotEmpty()) listState.animateScrollToItem(0)
     }
 
     Scaffold(
@@ -127,7 +134,7 @@ fun DevChatScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding),
-                state = rememberLazyListState(),
+                state = listState,
                 // reverseLayout = true: items are laid out bottom-to-top
                 // (item[0] ends up at the bottom). chatMessages comes from the
                 // DB sorted DESC by created_at, so item[0] is the newest → it
