@@ -177,6 +177,30 @@ These images are **not** covered by the CruxCoach GPLv3 source license.
 
 ---
 
+## Build-Time Bundled Libraries
+
+### Core-library desugaring (desugar_jdk_libs)
+
+- **Used in:** core-library desugaring for the `androidApp` module
+  ([`androidApp/build.gradle.kts`](androidApp/build.gradle.kts) —
+  `isCoreLibraryDesugaringEnabled` plus the `coreLibraryDesugaring(...)`
+  dependency). Backports modern `java.*` APIs (e.g. `java.time`,
+  `SequencedCollection`) to the `minSdk = 26` device range so the app runs on
+  older Android versions without per-call `SDK_INT` guards.
+- **Upstream:** https://github.com/google/desugar_jdk_libs
+- **License:** GNU General Public License, version 2, with the Classpath
+  Exception (SPDX `GPL-2.0-with-classpath-exception`). The library is derived
+  from OpenJDK; the Classpath Exception explicitly permits linking/bundling it
+  into an independent work, so it imposes no GPL obligations on CruxCoach itself.
+- **License text:** GPLv2 — https://www.gnu.org/licenses/old-licenses/gpl-2.0.html;
+  the combined GPLv2 + Classpath Exception is published with the project at
+  https://github.com/google/desugar_jdk_libs (see its `LICENSE`).
+- **Distribution form:** not vendored into the repository tree; the backported
+  implementations are compiled into the app's DEX by D8/L8 at build time (the
+  `l8DexDesugarLibRelease` task) and therefore ship inside the APK.
+
+---
+
 ## Notes for Maintainers
 
 When vendoring a new third-party source tree:
