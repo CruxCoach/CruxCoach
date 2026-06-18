@@ -57,6 +57,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   pulls a daily delta. Authored climbs stay on their own board — a Tension climb
   never shows up on Kilter, and Kilter keeps receiving Kilter climbs published
   by any version.
+- **Variable climb angle** (FEAT-033) — climbs that exist at more than one
+  angle now expose a board-specific angle control in both the climb browser
+  filter and the Climb Creator, so you pick the angle your board is actually
+  set to. The setter's original angle is shown as info. MoonBoard keeps its
+  fixed per-variant configs.
+- **Logbook "Verlauf" / sent-climbs history** (FEAT-032) — a history of the
+  climbs you've sent, recorded automatically on a board-send (deduplicated,
+  in your configured grade scale). Each entry carries a board badge and a
+  board comparison, you can multi-select entries to delete, and the screen
+  is fully localised.
+- **Per-board stats heatmap selector** (FEAT-039) — the statistics sheet now
+  has a board dropdown, gated to the boards you've actually logged on, so the
+  hold heatmap can be read per board instead of mixing catalogues.
+- **Combinable status filter in the browser** — the single status chip is now
+  a multi-select set: **Neu** / **Versucht** / **Geschafft** combine as an
+  OR-union (empty = Alle), unlocking views like "Versucht only" (open
+  projects) or "touched, not new". Plus an **"ungraded only (projects)"**
+  browse mode (ungraded climbs hidden by default) and an **"ignore unwanted
+  climbs"** action so dismissed climbs stop being suggested.
+- **Mounted-hold-set (hsm) filter** in the browser — narrow the list to
+  climbs that use only the hold sets actually mounted on your configured
+  board.
+- **Browser quality-of-life** — a reset-filters button and scroll-position
+  preservation when returning from a climb detail; a filter-terms info dialog
+  and a **Moves** sort option; and a tap-to-zoom board preview in the board /
+  gym picker.
+- **Climb-list detail board badges** — each climb in a list now shows a
+  board-brand badge, and the list detail reconciles its count as
+  *"X of Y on this board"* against the global list count.
 - **Foreign-brand map layer + egym Wellpass** — Aurora and 12climb
   installations appear as a toggleable "Other boards" info layer on the map
   (locations only — no catalogue or Bluetooth send for these two). A new
@@ -90,6 +119,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `@hangtime/climbing-boards` dataset.
 
 ### Changed
+- **Community-climb authoring extended to every interactive board**
+  (FEAT-031) — the Climb Creator no longer only authors Kilter climbs. The
+  Aurora-family boards (Tension, Grasshopper, Decoy, So iLL, Touchstone) and
+  MoonBoard can now author climbs published to the CruxCoach community,
+  board-scoped so a climb stays on its own board. Kilter additionally gains
+  publishing of your **own authored** Kilter climbs (surfaced in detail, the
+  my-climbs list, and the logbook), and a backfill of your own authored and
+  logged climbs from the Kilter API so PowerSync-only climbs (the ones the
+  REST catalogue doesn't return) still render.
+- **Logbook entries show more provenance** — a mirror-indicator badge on
+  logbook entries (now a visible, non-clipping badge), and the log comment is
+  shown both in logbook entries and in the climb-detail history.
 - **Default LED colours refreshed** — the CruxCoach preset is now
   start = magenta, hand = blue, finish = green, foot = red (previously
   orange / blue / magenta / mint). A one-time migration on first launch
@@ -193,6 +234,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   brand-aware `MapFilters` and gym-picker variant resolution, the
   `board_brand` location schema/repository round-trip, and the
   one-time LED default-colour migration (every branch).
+
+### Internal / Build
+- **Core-library desugaring + lint gate** — the build now enables core
+  library desugaring, backporting newer `java.*` APIs into the APK so they
+  resolve on older Android, with a lint gate to catch old-API regressions.
+- **Old-API crash fixes for Android < 12** — the expedited board-sync /
+  update workers now override `getForegroundInfo`, so they run on Android
+  before 12 instead of crashing; and two `java.util` SequencedCollection
+  call sites (e.g. on the dashboard) that threw `NoSuchMethodError` on
+  Android 26–34 are fixed.
 
 ## [0.1.4] - 2026-05-18
 

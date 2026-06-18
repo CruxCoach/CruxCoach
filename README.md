@@ -51,7 +51,8 @@ Browse climbs, control your Kilter Board or MoonBoard via Bluetooth, log ascents
 
 ## All Features
 
-- **85,000+ climbs** with filters for grade, angle, quality, moves, and setter
+- **85,000+ climbs** with filters for grade, angle, quality, moves, and setter — plus a combinable status filter (*Neu / Versucht / Geschafft*), an *ungraded-only (projects)* mode, *ignore unwanted climbs* so they stop being suggested, and a board-fit filter scoped to your board's mounted hold sets
+- **Variable climb angle** *(0.2.0+)* — pick the angle to browse, send, or log a climb at across every angle the board physically supports, not only the angles that already have community stats; the original setter's angle is shown as info
 - **MoonBoard support** *(0.2.0+)* — browse the MoonBoard problem catalogue (MoonBoard 2016, Masters 2017, Masters 2019, Mini 2020, and MoonBoard 2024) with the same filters as Kilter, and send problems to your board over Bluetooth; pick your MoonBoard in onboarding or Settings alongside the Kilter variants
 - **More boards** *(0.2.0+)* — Tension, Grasshopper, Decoy, So iLL and Touchstone work like Kilter: browse the catalogue, render climbs, read the hold heatmap, send to the board over Bluetooth, and set your own climbs. Pick one in Settings
 - **Board-Locations Map** *(0.2.0+)* — interactive world map of every known Kilter **and MoonBoard** installation, with filters for board brand, layout, country, public-vs-private, adjustability and size; tap a marker for contact details and a direct link into the climbs that fit that exact board
@@ -59,8 +60,9 @@ Browse climbs, control your Kilter Board or MoonBoard via Bluetooth, log ascents
 - **BLE board control** — light up holds on your Kilter Board or MoonBoard
 - **Climb lists** — favorites, projects, custom lists
 - **Log ascents** with grade opinions, attempts, and notes
+- **History (*Verlauf*)** *(0.2.0+)* — the climbs you sent to the board, recorded automatically when you push one over Bluetooth; each entry shows which board it was sent on, mirrored sends are flagged, and you can multi-select and delete entries
 - **Hold Search** — tap holds on the Kilter Board to find climbs that use them
-- **Heatmap** — visualize hold popularity by type, sends, or all climbs
+- **Heatmap** — visualize hold popularity by type, sends, or all climbs, with a per-board selector to read the hold heatmap for each board you have logged on
 - **Kilter logbook import** from your Kilter account
 - **Statistics** — grade progression, difficulty trends, favorite angles
 - **Data export/import** as JSON backup
