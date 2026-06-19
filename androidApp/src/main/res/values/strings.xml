@@ -232,10 +232,10 @@
     <string name="badge_optional">Optional</string>
     <string name="kilter_data_info_action">Kilter data exchange — info</string>
     <string name="kilter_data_info_title">Kilter account: what happens to your data?</string>
-    <string name="kilter_data_info_login">Signing in imports your sends and attempts from Kilter into CruxCoach (read-only). Your login is used only for the import and can be discarded afterwards — CruxCoach stores no Kilter password.</string>
+    <string name="kilter_data_info_login">Sign in to import your sends and projects from Kilter. Choose "Import once" (credentials discarded afterwards, no password stored) or "Sync continuously" — a two-way sync that also uploads your CruxCoach ascents back to your Kilter account.</string>
     <string name="kilter_data_info_offline">No account? Import offline via the Aurora JSON export from the old Kilter app.</string>
-    <string name="kilter_data_info_local">Imported data stays on your device. CruxCoach never syncs anything back to Kilter automatically.</string>
-    <string name="kilter_data_info_publish">Only a climb you publish yourself is deliberately written to your own Kilter account.</string>
+    <string name="kilter_data_info_local">Sending data back is opt-in: "Upload to Kilter" (ascents) and "Publish own climbs to Kilter" are separate toggles in Settings. Import once, or leave them off, and CruxCoach stays local-only.</string>
+    <string name="kilter_data_info_publish">Anything published goes only to YOUR own Kilter account — CruxCoach never touches other people\'s data.</string>
     <string name="action_save">Save</string>
     <string name="action_delete">Delete</string>
     <string name="action_back">Back</string>
