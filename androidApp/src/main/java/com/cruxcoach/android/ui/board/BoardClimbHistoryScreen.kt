@@ -117,6 +117,16 @@ fun BoardClimbHistoryScreen(
                 onSelect = { viewModel.setRetention(it) }
             )
 
+            // The Verlauf table is device-local by design and is NOT part of
+            // the JSON/Nostr backup — surface that so the loss on reinstall
+            // is never silent (backup-compat audit, 0.2.0).
+            Text(
+                stringResource(R.string.history_backup_local_only),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+            )
+
             if (state.entries.isEmpty()) {
                 EmptyHistoryMessage()
             } else {

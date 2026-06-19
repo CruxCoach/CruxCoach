@@ -53,6 +53,17 @@ internal fun BackupSettingsSection(
             style = MaterialTheme.typography.bodySmall,
         )
 
+        Spacer(Modifier.height(4.dp))
+        // Device-local exclusions the backup intentionally does not carry
+        // (backup-compat audit, 0.2.0): board selection + browse/map filters
+        // live in DataStore and are re-set in seconds, so they are not backed
+        // up. Stated here so restore expectations are accurate.
+        Text(
+            stringResource(R.string.settings_backup_device_local_note),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
         Spacer(Modifier.height(12.dp))
 
         // Explicit status line — stays visible regardless of

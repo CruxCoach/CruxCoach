@@ -362,7 +362,7 @@
     <string name="settings_board_data_title">Board data</string>
     <string name="settings_board_type">Board type:</string>
     <string name="settings_board_auto_download">Automatic download (WiFi):</string>
-    <string name="settings_board_auto_download_desc">Downloads the complete board database (~30 MB) in the background over WiFi.</string>
+    <string name="settings_board_auto_download_desc">Downloads the complete board database (~85 MB) in the background over WiFi.</string>
 
     <!-- Settings: BLE -->
     <string name="settings_ble_auto_disconnect_title">BLE Auto-Disconnect</string>
@@ -920,13 +920,13 @@
     <string name="board_sync_no_network_message">An active internet connection is required for syncing.</string>
     <string name="board_sync_open_settings">Open settings</string>
     <string name="board_sync_wifi_required_title">WiFi required</string>
-    <string name="board_sync_wifi_required_message">The board database download is approximately 30 MB and can only be started over WiFi.</string>
+    <string name="board_sync_wifi_required_message">The board database download is approximately 85 MB and can only be started over WiFi.</string>
     <string name="board_sync_wifi_settings">WiFi settings</string>
     <string name="board_sync_no_network_banner">No network available</string>
     <string name="board_sync_no_wifi_banner">No WiFi — Online download only available over WiFi</string>
     <string name="board_sync_to_browser">Done</string>
     <string name="board_sync_db_title">Board databases</string>
-    <string name="board_sync_db_description">Downloads the current Kilter and MoonBoard climb catalogues (~30 MB). WiFi recommended.</string>
+    <string name="board_sync_db_description">Downloads the current climb catalogues for all supported boards (~85 MB). WiFi recommended.</string>
     <string name="board_sync_db_synced">Database synced</string>
     <string name="board_sync_last_sync">Last sync: %s</string>
     <string name="board_sync_redownload">Re-download</string>
@@ -1729,6 +1729,7 @@
     <!-- FEAT-002: Encrypted cloud backup (technically Nostr + Blossom underneath) -->
     <string name="settings_backup_title">Encrypted cloud backup</string>
     <string name="settings_backup_description">Encrypted on your device, then stored across several public servers. Only you can decrypt it.</string>
+    <string name="settings_backup_device_local_note">Board selection and browse/map filters stay on this device and aren\'t restored from a backup.</string>
     <string name="settings_backup_enable">Enable backup</string>
     <string name="settings_backup_needs_key">An account key is needed. It is generated automatically on first backup.</string>
     <string name="settings_backup_interval">Interval</string>
@@ -1996,6 +1997,7 @@
     <string name="history_selected_count">%1$d selected</string>
     <string name="history_empty_title">No history yet</string>
     <string name="history_empty_body">Sent boulders appear here once you climb them.</string>
+    <string name="history_backup_local_only">Saved only on this device — not included in the backup.</string>
     <string name="history_subtitle">Recently sent to the board</string>
     <string name="history_delete_title">Delete entries</string>
     <string name="cd_navigate_back">Back</string>

@@ -363,7 +363,7 @@
     <string name="settings_board_data_title">Board-Daten</string>
     <string name="settings_board_type">Board-Typ:</string>
     <string name="settings_board_auto_download">Automatischer Download (WLAN):</string>
-    <string name="settings_board_auto_download_desc">Lädt die komplette Board-Datenbank (~30 MB) im Hintergrund über WLAN herunter.</string>
+    <string name="settings_board_auto_download_desc">Lädt die komplette Board-Datenbank (~85 MB) im Hintergrund über WLAN herunter.</string>
 
     <!-- Settings: BLE -->
     <string name="settings_ble_auto_disconnect_title">BLE Auto-Disconnect</string>
@@ -964,13 +964,13 @@
     <string name="board_sync_no_network_message">Für die Synchronisierung wird eine aktive Internetverbindung benötigt.</string>
     <string name="board_sync_open_settings">Einstellungen öffnen</string>
     <string name="board_sync_wifi_required_title">WLAN erforderlich</string>
-    <string name="board_sync_wifi_required_message">Der Download der Board-Datenbank ist ca. 30 MB groß und kann nur über WLAN gestartet werden.</string>
+    <string name="board_sync_wifi_required_message">Der Download der Board-Datenbank ist ca. 85 MB groß und kann nur über WLAN gestartet werden.</string>
     <string name="board_sync_wifi_settings">WLAN-Einstellungen</string>
     <string name="board_sync_no_network_banner">Kein Netzwerk verfügbar</string>
     <string name="board_sync_no_wifi_banner">Kein WLAN — Online-Download nur über WLAN möglich</string>
     <string name="board_sync_to_browser">Fertig</string>
     <string name="board_sync_db_title">Board-Datenbanken</string>
-    <string name="board_sync_db_description">Lädt die aktuellen Kilter- und MoonBoard-Kletterkataloge herunter (~30 MB). WLAN empfohlen.</string>
+    <string name="board_sync_db_description">Lädt die aktuellen Kletterkataloge aller unterstützten Boards herunter (~85 MB). WLAN empfohlen.</string>
     <string name="board_sync_db_synced">Datenbank synchronisiert</string>
     <string name="board_sync_last_sync">Letzter Sync: %s</string>
     <string name="board_sync_redownload">Neu herunterladen</string>
@@ -1732,6 +1732,7 @@
     <!-- FEAT-002: Verschlüsseltes Cloud-Backup (Nostr + Blossom unter der Haube) -->
     <string name="settings_backup_title">Verschlüsseltes Cloud-Backup</string>
     <string name="settings_backup_description">Auf deinem Gerät verschlüsselt, danach auf mehreren öffentlichen Servern gespeichert. Nur du kannst es entschlüsseln.</string>
+    <string name="settings_backup_device_local_note">Board-Auswahl und Browse-/Karten-Filter bleiben auf diesem Gerät und werden nicht aus einem Backup wiederhergestellt.</string>
     <string name="settings_backup_enable">Backup aktivieren</string>
     <string name="settings_backup_needs_key">Ein Account-Schlüssel wird benötigt. Er wird beim ersten Backup automatisch erzeugt.</string>
     <string name="settings_backup_interval">Intervall</string>
@@ -1999,6 +2000,7 @@
     <string name="history_selected_count">%1$d ausgewählt</string>
     <string name="history_empty_title">Noch kein Verlauf</string>
     <string name="history_empty_body">Geschickte Boulder erscheinen hier, sobald du sie kletterst.</string>
+    <string name="history_backup_local_only">Nur auf diesem Gerät gespeichert — nicht im Backup enthalten.</string>
     <string name="history_subtitle">Zuletzt ans Board gesendet</string>
     <string name="history_delete_title">Einträge löschen</string>
     <string name="cd_navigate_back">Zurück</string>
