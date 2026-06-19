@@ -37,10 +37,10 @@ data class KilterAccountState(
     val showDisconnectConfirm: Boolean = false,
     val resultMessage: String? = null,
     /** Master toggle: should newly created CruxCoach climbs be pushed to
-     *  the official Kilter DB via the user's own account? Default true.
-     *  Greyed out when the user isn't connected; tapping then nudges
-     *  them through the Kilter login flow. */
-    val climbPublishEnabled: Boolean = true,
+     *  the official Kilter DB via the user's own account? Default false
+     *  (opt-in). Greyed out when the user isn't connected; tapping then
+     *  nudges them through the Kilter login flow. */
+    val climbPublishEnabled: Boolean = false,
     /** Climbs awaiting Kilter sync (`origin='cruxcoach'`,
      *  `sync_status='published_nostr'`, `kilter_status` NULL or 'failed').
      *  Drives the queue-health row in the connected card. */

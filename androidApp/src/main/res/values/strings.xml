@@ -232,10 +232,10 @@
     <string name="badge_optional">Optional</string>
     <string name="kilter_data_info_action">Kilter data exchange — info</string>
     <string name="kilter_data_info_title">Kilter account: what happens to your data?</string>
-    <string name="kilter_data_info_login">Sign in to import your sends and projects from Kilter. Choose "Import once" (credentials discarded afterwards, no password stored) or "Sync continuously" — a two-way sync that also uploads your CruxCoach ascents back to your Kilter account.</string>
+    <string name="kilter_data_info_login">Sign in to import your sends and projects from Kilter. “Import once” imports them and then discards your credentials; “Sync continuously” keeps downloading new Kilter ascents over time.</string>
     <string name="kilter_data_info_offline">No account? Import offline via the Aurora JSON export from the old Kilter app.</string>
-    <string name="kilter_data_info_local">Sending data back is opt-in: "Upload to Kilter" (ascents) and "Publish own climbs to Kilter" are separate toggles in Settings. Import once, or leave them off, and CruxCoach stays local-only.</string>
-    <string name="kilter_data_info_publish">Anything published goes only to YOUR own Kilter account — CruxCoach never touches other people\'s data.</string>
+    <string name="kilter_data_info_local">Anything sent TO Kilter is opt-in (off by default): “Upload to Kilter” pushes your ascents back, and “Publish own climbs to Kilter” shares climbs you create. Leave them off and CruxCoach stays local.</string>
+    <string name="kilter_data_info_publish">Whatever you enable only ever touches YOUR own Kilter account — never other people’s data.</string>
     <string name="action_save">Save</string>
     <string name="action_delete">Delete</string>
     <string name="action_back">Back</string>
@@ -977,7 +977,7 @@
     <string name="kilter_import_one_time">Import once</string>
     <string name="kilter_import_one_time_desc">Import ascents, then discard Kilter credentials</string>
     <string name="kilter_import_persistent">Sync continuously</string>
-    <string name="kilter_import_persistent_desc">Sync ascents bidirectionally with Kilter</string>
+    <string name="kilter_import_persistent_desc">Keep downloading new Kilter ascents over time</string>
     <string name="kilter_import_success">%d ascents imported</string>
     <string name="kilter_import_part_ascents">%d ascents</string>
     <string name="kilter_import_part_projects">%d projects</string>

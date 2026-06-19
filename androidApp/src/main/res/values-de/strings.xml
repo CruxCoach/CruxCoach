@@ -232,10 +232,10 @@
     <string name="badge_optional">Optional</string>
     <string name="kilter_data_info_action">Kilter-Datenaustausch — Info</string>
     <string name="kilter_data_info_title">Kilter-Account: Was passiert mit deinen Daten?</string>
-    <string name="kilter_data_info_login">Melde dich an, um deine Sends und Projekte von Kilter zu importieren. Wähle „Einmalig importieren" (Zugangsdaten werden danach verworfen, kein Passwort gespeichert) oder „Dauerhaft synchronisieren" — ein Zwei-Wege-Sync, der auch deine CruxCoach-Begehungen zurück in deinen Kilter-Account hochlädt.</string>
+    <string name="kilter_data_info_login">Melde dich an, um deine Sends und Projekte von Kilter zu importieren. „Einmalig importieren“ importiert sie und verwirft danach deine Zugangsdaten; „Dauerhaft synchronisieren“ lädt fortlaufend neue Kilter-Begehungen herunter.</string>
     <string name="kilter_data_info_offline">Kein Account? Importiere offline per Aurora-JSON-Export aus der alten Kilter-App.</string>
-    <string name="kilter_data_info_local">Daten zurücksenden ist optional: „Zu Kilter hochladen" (Begehungen) und „Eigene Climbs auf Kilter veröffentlichen" sind getrennte Schalter in den Einstellungen. Importierst du einmalig oder lässt sie aus, bleibt CruxCoach rein lokal.</string>
-    <string name="kilter_data_info_publish">Veröffentlichtes landet nur in DEINEM eigenen Kilter-Account — CruxCoach fasst keine fremden Daten an.</string>
+    <string name="kilter_data_info_local">Alles, was ZU Kilter geht, ist optional (standardmäßig aus): „Zu Kilter hochladen“ spielt deine Begehungen zurück, „Eigene Climbs auf Kilter veröffentlichen“ teilt selbst erstellte Climbs. Lässt du beides aus, bleibt CruxCoach lokal.</string>
+    <string name="kilter_data_info_publish">Was du aktivierst, betrifft nur DEINEN eigenen Kilter-Account — niemals fremde Daten.</string>
     <string name="action_save">Speichern</string>
     <string name="action_delete">Löschen</string>
     <string name="action_back">Zurück</string>
@@ -1021,7 +1021,7 @@
     <string name="kilter_import_one_time">Einmalig importieren</string>
     <string name="kilter_import_one_time_desc">Begehungen importieren, Kilter-Zugangsdaten verwerfen</string>
     <string name="kilter_import_persistent">Dauerhaft synchronisieren</string>
-    <string name="kilter_import_persistent_desc">Begehungen in beide Richtungen synchronisieren</string>
+    <string name="kilter_import_persistent_desc">Neue Kilter-Begehungen fortlaufend herunterladen</string>
     <string name="kilter_import_success">%d Begehungen importiert</string>
     <string name="kilter_import_part_ascents">%d Begehungen</string>
     <string name="kilter_import_part_projects">%d Projekte</string>

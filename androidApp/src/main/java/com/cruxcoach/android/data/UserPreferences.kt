@@ -680,12 +680,12 @@ class UserPreferences(
 
     /**
      * Whether to push newly created CruxCoach climbs into the official
-     * Kilter database. Default `true` — the design goal is that every
-     * CruxCoach-set climb also lives on Kilter (via the user's account
-     * if logged in, or via the bundled fallback if enabled).
+     * Kilter database via the user's own account. Default `false` (opt-in):
+     * climbs you create stay local unless you explicitly turn this on in
+     * Settings, so nothing is written to Kilter without consent.
      */
     val kilterClimbPublishEnabled: Flow<Boolean> = keyScoped.data.map { prefs ->
-        prefs[KeyScopedKeys.KILTER_CLIMB_PUBLISH_ENABLED] ?: true
+        prefs[KeyScopedKeys.KILTER_CLIMB_PUBLISH_ENABLED] ?: false
     }
 
     suspend fun setKilterSyncEnabled(enabled: Boolean) {
