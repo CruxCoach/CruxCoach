@@ -201,11 +201,19 @@ private fun KilterLoginSheet(
                 .padding(bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Text(
-                stringResource(R.string.kilter_login_title),
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    stringResource(R.string.kilter_login_title),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f),
+                )
+                // ⓘ explains the Kilter data exchange (import / local / publish).
+                com.cruxcoach.android.ui.common.KilterDataInfoButton()
+            }
 
             OutlinedTextField(
                 value = email,

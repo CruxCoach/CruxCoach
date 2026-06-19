@@ -711,11 +711,31 @@ private fun KilterStep(state: OnboardingState, viewModel: OnboardingViewModel) {
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Text(
-            stringResource(R.string.onboarding_kilter_step_title),
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold,
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                stringResource(R.string.onboarding_kilter_step_title),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+            )
+            // "Optional" badge in the header itself (not just the fine print
+            // below), so it is obvious this whole step can be skipped.
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(OrangeAccent.copy(alpha = 0.15f))
+                    .padding(horizontal = 8.dp, vertical = 2.dp)
+            ) {
+                Text(
+                    stringResource(R.string.badge_optional),
+                    color = OrangeAccent,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+        }
         Text(
             stringResource(R.string.onboarding_kilter_step_subtitle),
             style = MaterialTheme.typography.bodyMedium,
@@ -742,7 +762,10 @@ private fun KilterStep(state: OnboardingState, viewModel: OnboardingViewModel) {
                         stringResource(R.string.onboarding_kilter_title),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
+                        modifier = Modifier.weight(1f),
                     )
+                    // ⓘ explains the Kilter data exchange (import / local / publish).
+                    com.cruxcoach.android.ui.common.KilterDataInfoButton()
                 }
 
                 Text(

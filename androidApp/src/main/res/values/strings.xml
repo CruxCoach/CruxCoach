@@ -229,6 +229,13 @@
     <!-- Common Actions -->
     <string name="action_cancel">Cancel</string>
     <string name="action_ok">OK</string>
+    <string name="badge_optional">Optional</string>
+    <string name="kilter_data_info_action">Kilter data exchange — info</string>
+    <string name="kilter_data_info_title">Kilter account: what happens to your data?</string>
+    <string name="kilter_data_info_login">Signing in imports your sends and attempts from Kilter into CruxCoach (read-only). Your login is used only for the import and can be discarded afterwards — CruxCoach stores no Kilter password.</string>
+    <string name="kilter_data_info_offline">No account? Import offline via the Aurora JSON export from the old Kilter app.</string>
+    <string name="kilter_data_info_local">Imported data stays on your device. CruxCoach never syncs anything back to Kilter automatically.</string>
+    <string name="kilter_data_info_publish">Only a climb you publish yourself is deliberately written to your own Kilter account.</string>
     <string name="action_save">Save</string>
     <string name="action_delete">Delete</string>
     <string name="action_back">Back</string>
@@ -1933,9 +1940,9 @@
     <string name="whatsnew_aurora_import_action_later">Later</string>
 
     <!-- FEAT-027 MoonBoard support (0.2.0) — headline -->
-    <string name="whatsnew_moonboard_title">New: MoonBoard support</string>
-    <string name="whatsnew_moonboard_body">0.2.0 adds MoonBoard alongside Kilter. Browse the MoonBoard problem catalogue with the same grade, angle and setter filters, open a problem, and light it up on your board over Bluetooth. MoonBoard 2016, Masters 2017, Masters 2019 and Mini 2020 are supported.</string>
-    <string name="whatsnew_moonboard_hint">Pick your MoonBoard in Settings → board type, or during onboarding. The board-fit filter and the locations map work for MoonBoard too.</string>
+    <string name="whatsnew_moonboard_title">New in 0.2.0: MoonBoard + Aurora boards</string>
+    <string name="whatsnew_moonboard_body">Beyond Kilter, 0.2.0 adds full MoonBoard support and the Aurora boards — Tension, Grasshopper, Decoy, So iLL and Touchstone. Browse each catalogue with the same grade, angle and setter filters, and light up boulders on your board over Bluetooth.</string>
+    <string name="whatsnew_moonboard_hint">Also new: a worldwide board-locations map and a find-your-gym board picker — both in Settings.</string>
     <string name="whatsnew_moonboard_action_now">Pick my board</string>
     <string name="whatsnew_moonboard_action_later">Later</string>
     <!-- FEAT-031: Aurora-family boards what's-new -->

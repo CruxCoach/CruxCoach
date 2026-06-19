@@ -229,6 +229,13 @@
     <!-- Common Actions -->
     <string name="action_cancel">Abbrechen</string>
     <string name="action_ok">OK</string>
+    <string name="badge_optional">Optional</string>
+    <string name="kilter_data_info_action">Kilter-Datenaustausch — Info</string>
+    <string name="kilter_data_info_title">Kilter-Account: Was passiert mit deinen Daten?</string>
+    <string name="kilter_data_info_login">Beim Anmelden werden deine Sends und Versuche von Kilter nach CruxCoach importiert (nur Lesezugriff). Deine Zugangsdaten dienen ausschließlich dem Import und können danach verworfen werden — CruxCoach speichert kein Kilter-Passwort.</string>
+    <string name="kilter_data_info_offline">Kein Account? Importiere offline per Aurora-JSON-Export aus der alten Kilter-App.</string>
+    <string name="kilter_data_info_local">Importierte Daten bleiben auf deinem Gerät. CruxCoach synchronisiert nichts automatisch zurück zu Kilter.</string>
+    <string name="kilter_data_info_publish">Nur ein Climb, den du selbst veröffentlichst, wird bewusst in deinen eigenen Kilter-Account geschrieben.</string>
     <string name="action_save">Speichern</string>
     <string name="action_delete">Löschen</string>
     <string name="action_back">Zurück</string>
@@ -1936,9 +1943,9 @@
     <string name="whatsnew_aurora_import_action_later">Später</string>
 
     <!-- FEAT-027 MoonBoard-Support (0.2.0) — Headline -->
-    <string name="whatsnew_moonboard_title">Neu: MoonBoard-Support</string>
-    <string name="whatsnew_moonboard_body">0.2.0 bringt MoonBoard zusätzlich zu Kilter. Durchsuche den MoonBoard-Problemkatalog mit denselben Filtern für Grad, Winkel und Setter, öffne ein Problem und lass es per Bluetooth auf deinem Board aufleuchten. Unterstützt: MoonBoard 2016, Masters 2017, Masters 2019 und Mini 2020.</string>
-    <string name="whatsnew_moonboard_hint">Wähle dein MoonBoard in Einstellungen → Board-Typ oder beim Onboarding. Der Board-Fit-Filter und die Standortkarte funktionieren auch für MoonBoard.</string>
+    <string name="whatsnew_moonboard_title">Neu in 0.2.0: MoonBoard + Aurora-Boards</string>
+    <string name="whatsnew_moonboard_body">0.2.0 bringt zusätzlich zu Kilter den vollen MoonBoard-Support und die Aurora-Boards — Tension, Grasshopper, Decoy, So iLL und Touchstone. Durchsuche jeden Katalog mit denselben Filtern für Grad, Winkel und Setter und lass Boulder per Bluetooth auf deinem Board aufleuchten.</string>
+    <string name="whatsnew_moonboard_hint">Außerdem neu: eine weltweite Board-Standortkarte und ein „Finde deine Halle"-Board-Picker — beides in den Einstellungen.</string>
     <string name="whatsnew_moonboard_action_now">Board wählen</string>
     <string name="whatsnew_moonboard_action_later">Später</string>
     <!-- FEAT-031: Aurora-Boards (What's New) -->
