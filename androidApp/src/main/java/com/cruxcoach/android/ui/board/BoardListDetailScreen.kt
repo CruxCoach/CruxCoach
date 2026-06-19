@@ -40,6 +40,17 @@ fun BoardListDetailScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
+    // Refresh entries on return so an edit/delete/publish done on a climb's
+    // detail reflects instantly (the ViewModel is retained across back-nav).
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) viewModel.refresh()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     Scaffold(
         topBar = {
             Column {

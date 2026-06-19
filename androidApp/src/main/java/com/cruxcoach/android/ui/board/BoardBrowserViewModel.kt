@@ -411,6 +411,16 @@ class BoardBrowserViewModel @Inject constructor(
 
     init {
         PerfLogger.milestone("BoardBrowserVM.init START")
+        // Reactive creator-change trigger. The browser's nav entry stays
+        // RESUMED while the detail/editor sits on top, so the lifecycle
+        // ON_RESUME never re-fired on return and an in-place edit (rename,
+        // re-grade, un-claim) showed stale until a manual re-open. The VM is
+        // retained across that navigation, so collecting the revision counter
+        // re-queries the moment anything creator-side changes — regardless of
+        // lifecycle. drop(1) skips the replayed initial value.
+        viewModelScope.safeLaunch(TAG) {
+            climbNavState.creatorRevision.drop(1).collect { refreshBoardData() }
+        }
         viewModelScope.safeLaunch(TAG) {
             // Without try/catch a DataStore read failure would leave
             // isLoading=true forever (the spinner never resolves and

@@ -57,6 +57,7 @@ class SetterDetailViewModel @Inject constructor(
     private val boardRepository: BoardRepository,
     private val nostrProfileManager: NostrProfileManager,
     private val userPreferences: UserPreferences,
+    private val climbNavState: com.cruxcoach.android.ui.navigation.ClimbNavigationState,
 ) : ViewModel() {
 
     private val pubkey: String = savedStateHandle["setterPubkey"] ?: ""
@@ -88,6 +89,13 @@ class SetterDetailViewModel @Inject constructor(
                     .drop(1) // initial load handled below
                     .distinctUntilChanged()
                     .collect { loadClimbs() }
+            }
+            // Re-query when a climb is edited/published/deleted/un-claimed
+            // elsewhere (e.g. the editor opened from this setter's list). The
+            // nav entry can stay RESUMED behind the editor, so a lifecycle
+            // trigger wouldn't re-fire — collect the reactive revision instead.
+            viewModelScope.launch {
+                climbNavState.creatorRevision.drop(1).collect { loadClimbs() }
             }
             loadClimbs()
             loadProfile()

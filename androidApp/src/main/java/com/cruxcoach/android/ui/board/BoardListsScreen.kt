@@ -383,12 +383,15 @@ private fun HistoryCard(onClick: () -> Unit) {
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    "Verlauf",
+                    stringResource(R.string.history_title),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    "Zuletzt geschaffte Boulder",
+                    // The Verlauf is populated on send-to-board (BoardSendController),
+                    // not only on a logged send — "geschaffte" (accomplished) was
+                    // misleading.
+                    stringResource(R.string.history_subtitle),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

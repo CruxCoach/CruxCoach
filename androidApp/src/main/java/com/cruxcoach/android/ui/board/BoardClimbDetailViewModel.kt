@@ -38,6 +38,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -347,6 +348,16 @@ class BoardClimbDetailViewModel @Inject constructor(
 
     init {
         PerfLogger.navMilestone("BoardClimbDetailVM.init start")
+        // Re-load the displayed climb whenever a creator-side mutation happens
+        // (e.g. an edit/publish from the editor opened on top of this screen).
+        // The nav entry can stay RESUMED behind the editor, so a lifecycle
+        // trigger wouldn't re-fire — collect the reactive revision instead.
+        // drop(1) skips the replayed initial value.
+        viewModelScope.launch {
+            climbNavState.creatorRevision.drop(1).collect {
+                loadClimb(currentClimbUuid, currentAngle)
+            }
+        }
         // Each init-coroutine is wrapped in try/catch so a DataStore
         // read failure or a flow-collection throw on one stream doesn't
         // silently kill the entire VM init and leave subsequent flow

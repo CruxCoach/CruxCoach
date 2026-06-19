@@ -36,6 +36,7 @@ import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -89,7 +90,11 @@ fun BoardClimbDetailScreen(
 ) {
     PerfLogger.navMilestone("BoardClimbDetailScreen composing")
     val context = androidx.compose.ui.platform.LocalContext.current
-    val state by viewModel.state.collectAsStateWithLifecycle()
+    // collectAsState (NOT ...WithLifecycle): the detail's nav entry can stay
+    // in a non-STARTED state behind the editor and not re-deliver on return,
+    // leaving the climb stale after an edit even though the VM reloaded it.
+    // The setter list (which refreshes correctly) uses plain collectAsState too.
+    val state by viewModel.state.collectAsState()
     val isRestTimerRunning by viewModel.isRestTimerRunning.collectAsStateWithLifecycle()
     val isSharingEnabled by viewModel.isSharingEnabled.collectAsStateWithLifecycle()
     val pageCache by viewModel.pageCache.collectAsStateWithLifecycle()

@@ -94,6 +94,10 @@ class BoardListDetailViewModel @Inject constructor(
         loadList()
     }
 
+    /** Re-query from the first page — used on ON_RESUME so an edit/delete done
+     *  on the detail screen reflects instantly on return. */
+    fun refresh() = loadList()
+
     private fun loadList() {
         viewModelScope.safeLaunch(TAG) {
             withContext(Dispatchers.IO) {
