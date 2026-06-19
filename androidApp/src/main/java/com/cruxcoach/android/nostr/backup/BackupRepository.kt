@@ -196,14 +196,14 @@ class BackupRepository @Inject constructor(
 
         // 8b — keep the Kind-30078 key event from aging off the relays.
         // The pointer is republished on every backup (so it stays fresh
-        // by construction) but the key event is only written once on
-        // first-time setup or on local-cache regeneration. Replaceable-
-        // parameterized events can still be evicted by relays over time,
-        // which would make restore unrecoverable even with the nsec if
-        // the local cache is also gone. Republish on a slow cadence so
-        // the cost stays negligible (one extra Amber popup every ~30 d
-        // without always-approve; nothing for local signers).
-        refreshKeyEventIfStale()
+        // by construction); republish the key event on the SAME cadence.
+        // Replaceable-parameterized events can be evicted by relays over
+        // time, so a stale-gated (~30 d) refresh left a window where the
+        // pointer + blob survived but the key event was already evicted —
+        // a reinstalled user with the nsec could then find but not decrypt
+        // the backup. Best-effort + non-fatal (blob + pointer are already
+        // durable); for local signers there is no popup.
+        republishKeyEvent()
 
         // 9 — record success
         val now = System.currentTimeMillis() / 1000
@@ -214,20 +214,26 @@ class BackupRepository @Inject constructor(
         )
     }
 
-    private suspend fun refreshKeyEventIfStale() {
-        val lastPublish = preferences.getLastKeyEventPublish() ?: 0L
+    /**
+     * Republish the Kind-30078 key event on every backup, matching the
+     * pointer cadence. Unconditional (was stale-gated to ~30 d): a relay
+     * could evict the older key event by age while keeping the pointer +
+     * blob, leaving a reinstalled user able to find but not decrypt the
+     * backup. Best-effort + non-fatal — blob + pointer are already durable,
+     * so a publish failure simply retries on the next backup.
+     */
+    private suspend fun republishKeyEvent() {
         val nowEpoch = System.currentTimeMillis() / 1000
-        if (nowEpoch - lastPublish < KEY_EVENT_REFRESH_INTERVAL_SEC) return
         val wrapped = preferences.getWrappedDataKey() ?: return
         runCatching { publishKeyEvent(wrapped) }
             .onSuccess {
                 preferences.setLastKeyEventPublish(nowEpoch)
-                Log.d(TAG, "event=key_event_refreshed")
+                Log.d(TAG, "event=key_event_republished")
             }
             .onFailure { e ->
                 // Not fatal — blob + pointer are already durable; we'll
                 // try again on the next backup.
-                Log.w(TAG, "event=key_event_refresh_failed reason=${e.message}", e)
+                Log.w(TAG, "event=key_event_republish_failed reason=${e.message}", e)
             }
     }
 
@@ -1047,10 +1053,6 @@ class BackupRepository @Inject constructor(
         private const val KIND_REPLACEABLE_PARAMETERIZED = 30078
         private const val KIND_BLOSSOM_SERVER_LIST = 10063
         private const val KIND_DELETION = 5
-        // Refresh the Kind-30078 key event roughly every 30 days so
-        // relays that evict older replaceable-parameterized events don't
-        // leave the only restore anchor stranded.
-        private const val KEY_EVENT_REFRESH_INTERVAL_SEC = 30L * 24L * 60L * 60L
         // Amber prompts once per decrypt call; a hostile relay can fan out
         // a large set of lookalike events and drive the user into a prompt
         // storm. Cap the Amber-path decrypt attempts at a value that
