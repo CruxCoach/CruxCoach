@@ -85,6 +85,11 @@ class CommunityClimbDeleter @Inject constructor(
             val attempted: Int,
             val accepted: Int,
             val kilterWasPublished: Boolean,
+            /** True when this was a CLAIMED Kilter climb and the local row was
+             *  un-claimed back to a re-claimable Kilter import rather than
+             *  tombstoned — the UI can say "removed from community" instead of
+             *  "deleted". */
+            val revertedToKilterImport: Boolean = false,
         ) : Outcome
         /** Relay-side delete events fired but the local SQLite tombstone
          *  write threw, so the user still sees the row locally even
@@ -208,13 +213,27 @@ class CommunityClimbDeleter @Inject constructor(
         //    LocalTombstoneFailed outcome so the UI can warn the user
         //    rather than silently render Done while the row is still
         //    visible locally.
+        // A CLAIMED Kilter climb (kilter_author_uuid present) is the user's own
+        // Kilter climb — deleting its community publication un-claims it back to
+        // a re-claimable "Aus Kilter importiert" row instead of tombstoning it.
+        // The relay Kind-5 / tombstone-replacement above already removed the
+        // community version; only the local end-state differs. Native CruxCoach
+        // climbs (no kilter_author_uuid) take the full tombstone path.
+        val revertToImport = ctx.kilterAuthorUuid != null
         val localResult = runCatching {
-            boardRepository.markCommunityClimbDeleted(
-                uuid = uuid,
-                pubkey = signer,
-                tombstoneIso = tombstoneIso,
-            )
-        }.onFailure { Log.w(TAG, "local tombstone write failed uuid=$uuid", it) }
+            if (revertToImport) {
+                boardRepository.revertClaimedKilterClimb(uuid = uuid, pubkey = signer)
+                boardRepository.clearLocalClimbGrade(uuid)
+            } else {
+                boardRepository.markCommunityClimbDeleted(
+                    uuid = uuid,
+                    pubkey = signer,
+                    tombstoneIso = tombstoneIso,
+                )
+            }
+        }.onFailure {
+            Log.w(TAG, "local ${if (revertToImport) "un-claim" else "tombstone"} write failed uuid=$uuid", it)
+        }
 
         // Aggregate the relay stats from the two events: "attempted"
         // is the relay count we tried; "accepted" is whichever event
@@ -236,6 +255,7 @@ class CommunityClimbDeleter @Inject constructor(
                 attempted = attempted,
                 accepted = accepted,
                 kilterWasPublished = kilterWasPublished,
+                revertedToKilterImport = revertToImport,
             )
         }
     }

@@ -89,7 +89,12 @@ class OwnKilterClimbPublisher @Inject constructor(
     /** Every climb the connected Kilter account authored (newest first).
      *  Empty when no Kilter account is connected. */
     fun getOwnAuthoredClimbs(): List<CommunityClimbRow> {
-        val connected = kilterTokenStore.getUserUuid() ?: return emptyList()
+        // Blank (not just null) closes the gate: a session whose userUuid was
+        // never persisted can surface "" — passing it to the query would
+        // match foreign rows / nothing. KilterTokenStore.getUserUuid()
+        // self-heals from the token's JWT sub before reaching here.
+        val connected = kilterTokenStore.getUserUuid()?.takeIf { it.isNotBlank() }
+            ?: return emptyList()
         return runCatching { boardRepository.getOwnAuthoredKilterClimbs(connected) }
             .getOrElse {
                 Log.w(TAG, "getOwnAuthoredKilterClimbs failed", it)
@@ -97,13 +102,44 @@ class OwnKilterClimbPublisher @Inject constructor(
             }
     }
 
+    /** Every CruxCoach climb authored under the local Nostr identity —
+     *  drafts AND already-published — across ALL boards, newest first.
+     *  Tombstoned (deleted) rows are excluded. Empty when no identity is
+     *  set up yet. This is the CruxCoach-native half of "Meine Climbs";
+     *  [getOwnAuthoredClimbs] supplies the Kilter-imported half. */
+    fun getMyCruxCoachClimbs(): List<CommunityClimbRow> {
+        val pubkey = runCatching { nostrSigner.getPublicKeyHex() }.getOrNull()
+            ?.takeIf { it.isNotBlank() } ?: return emptyList()
+        return runCatching { boardRepository.getMyClimbs(pubkey) }
+            .getOrElse {
+                Log.w(TAG, "getMyClimbs failed", it)
+                emptyList()
+            }
+            .filter { it.syncStatus != "deleted" }
+    }
+
+    /** True when a local Nostr identity exists — without it there are no
+     *  CruxCoach-authored climbs and publishing is impossible. */
+    fun hasNostrIdentity(): Boolean =
+        runCatching { nostrSigner.getPublicKeyHex() }.getOrNull()?.isNotBlank() == true
+
     /**
      * Convert + publish. Mirrors the CommunityPublishRetryWorker's state
      * reconstruction (frames/name/description from the row, angle+grade
      * from climb_stats with the same fallbacks, brand/layout/size from
      * [BoardRepository.getClimbPublishContext]).
+     *
+     * [setterGradeId]: the difficulty to publish with. Pass it to ENFORCE a
+     * real grade — the "Meine Climbs" hub supplies one (a grade picker for
+     * the user's ungraded Kilter climbs) so a community climb is never
+     * emitted with a silent default. Left null (the detail/logbook one-tap
+     * surfaces), it falls back to the climb's stored grade, then the slider
+     * default — preserving their existing behaviour. Whatever grade is
+     * resolved is persisted to climb_stats so the published climb shows it
+     * locally (the event carries it regardless, but the imported row was
+     * ungraded).
      */
-    suspend fun publish(uuid: String): Outcome {
+    suspend fun publish(uuid: String, setterGradeId: Int? = null): Outcome {
         val connected = kilterTokenStore.getUserUuid() ?: return Outcome.NotAuthor
         val canonical = canonicalUuid(uuid) ?: return Outcome.NotAuthor
         // Authorship-gated single-row lookup: null = no row / unknown
@@ -135,12 +171,35 @@ class OwnKilterClimbPublisher @Inject constructor(
         // carry a NULL display_difficulty; the Kind-30078 event requires
         // both fields, so fall back rather than throw.
         val stats = runCatching { boardRepository.getClimbStatsForUuid(canonical) }.getOrNull()
+        val angle = stats?.first ?: 40
+        // Caller-supplied grade enforces a real difficulty; else the stored
+        // grade, else the slider default (only reachable from the non-hub
+        // one-tap surfaces).
+        val grade = setterGradeId ?: stats?.second ?: KilterGradeMapper.DEFAULT_SETTER_GRADE_ID
+        // Persist the resolved grade locally so browse/detail render it — the
+        // imported Kilter row's climb_stats was ungraded (NULL difficulty).
+        // display_difficulty + difficulty_average both carry the setter grade
+        // until community votes accumulate, mirroring an editor-authored draft.
+        runCatching {
+            boardRepository.upsertClimbStat(
+                climbUuid = canonical,
+                angle = angle.toLong(),
+                displayDifficulty = grade.toDouble(),
+                difficultyAverage = grade.toDouble(),
+                qualityAverage = null,
+                ascensionistCount = null,
+                benchmarkDifficulty = null,
+                faUsername = null,
+                faAt = null,
+                officialKilterDifficulty = null,
+            )
+        }.onFailure { Log.w(TAG, "claim grade persist failed uuid=$canonical", it) }
         val state = ClimbEditorState(
             selectedHolds = parseHolds(row.framesText),
             name = row.name,
             description = row.description,
-            setterGradeId = stats?.second ?: KilterGradeMapper.DEFAULT_SETTER_GRADE_ID,
-            angle = stats?.first ?: 40,
+            setterGradeId = grade,
+            angle = angle,
         )
         val ctx = runCatching { boardRepository.getClimbPublishContext(canonical) }.getOrNull()
         val boardBrand = BoardBrand.fromWire(ctx?.boardBrand ?: row.boardBrand)

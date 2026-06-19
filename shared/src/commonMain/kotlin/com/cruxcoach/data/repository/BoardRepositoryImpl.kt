@@ -618,6 +618,18 @@ class BoardRepositoryImpl(
         q.lastClimbsChangeCount().executeAsOne() > 0L
     }
 
+    override fun revertClaimedKilterClimb(uuid: String, pubkey: String): Boolean =
+        q.transactionWithResult {
+            q.revertClaimedKilterClimb(uuid = uuid, pubkey = pubkey)
+            // Owner-locked + kilter_author_uuid-gated in SQL; changes()=0 means
+            // the row wasn't a claimed-Kilter climb owned by this pubkey.
+            q.lastClimbsChangeCount().executeAsOne() > 0L
+        }
+
+    override fun clearLocalClimbGrade(uuid: String) {
+        q.clearLocalClimbGrade(uuid)
+    }
+
     override fun upsertHoldPosition(holeId: Long, productSizeId: Long, x: Long, y: Long, ledPosition: Long, placementId: Long, boardBrand: String) {
         q.upsertHoldPosition(boardBrand, holeId, productSizeId, x, y, ledPosition, placementId)
     }
@@ -718,6 +730,7 @@ class BoardRepositoryImpl(
             kilterStatus = row.kilter_status,
             origin = row.origin,
             boardBrand = row.board_brand,
+            kilterAuthorUuid = row.kilter_author_uuid,
         )
     }
 
@@ -1200,15 +1213,18 @@ class BoardRepositoryImpl(
         }
     }
 
-    override fun getCommunitySetterStats(): List<SetterStat> {
-        return q.getCommunitySetterStats().executeAsList().mapNotNull { row ->
-            val pubkey = row.created_by_pubkey ?: return@mapNotNull null
-            SetterStat(
-                pubkey = pubkey,
-                displayName = row.setter_username,
-                climbCount = row.climb_count,
-            )
-        }
+    override fun getCommunitySetterStats(
+        boardBrand: String, layoutId: Int, selProductSizeId: Int
+    ): List<SetterStat> {
+        return q.getCommunitySetterStats(boardBrand, layoutId.toLong(), selProductSizeId.toLong())
+            .executeAsList().mapNotNull { row ->
+                val pubkey = row.created_by_pubkey ?: return@mapNotNull null
+                SetterStat(
+                    pubkey = pubkey,
+                    displayName = row.setter_username,
+                    climbCount = row.climb_count,
+                )
+            }
     }
 
     override fun markKilterPublishPending(uuid: String) {

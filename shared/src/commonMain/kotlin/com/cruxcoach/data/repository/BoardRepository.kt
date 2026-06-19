@@ -627,6 +627,10 @@ data class CommunityClimbDeleteContext(
      *  new-board deletions while old apps never see them. Defaults to
      *  'kilter' for pre-0.2.0 rows with no brand. */
     val boardBrand: String = "kilter",
+    /** Set when the climb was authored on Kilter (adopted/claimed). Non-null
+     *  means deleting the community publication should UN-CLAIM it back to a
+     *  Kilter import (re-claimable) rather than fully tombstone it. */
+    val kilterAuthorUuid: String? = null,
 )
 
 data class LocalClimbDraft(
@@ -962,6 +966,19 @@ interface CommunityClimbQueries {
         pubkey: String,
         adoptedAtEpochSeconds: Long,
     ): Boolean = false
+
+    /**
+     * INVERSE of [adoptKilterClimbAsCommunity]: un-claim a previously-claimed
+     * Kilter climb back to a plain Kilter import (origin='kilter', cleared
+     * Nostr/adoption fields, is_deleted=0) so it returns to "Aus Kilter
+     * importiert" and is re-claimable. Owner-locked + gated to rows that carry
+     * a kilter_author_uuid. Returns true iff a row was reverted.
+     */
+    fun revertClaimedKilterClimb(uuid: String, pubkey: String): Boolean = false
+
+    /** Clear the local setter grade (display + average) so an un-claimed climb
+     *  is ungraded again — a re-claim then routes through the grade picker. */
+    fun clearLocalClimbGrade(uuid: String) {}
     /**
      * Returns (placement_id → normalized 0..1 frequency) for boulders at the
      * given layout+angle, optionally weighted by climbs that contain ALL
@@ -1100,7 +1117,7 @@ interface CommunityClimbQueries {
      *  is picked at [preferredAngle] when available, else any angle. */
     fun getOwnClimbsForBrowse(pubkey: String, layoutId: Int, preferredAngle: Int, boardBrand: String): List<ClimbWithStats>
     /** Distinct cruxcoach setters with their climb-count, ordered desc. */
-    fun getCommunitySetterStats(): List<SetterStat>
+    fun getCommunitySetterStats(boardBrand: String, layoutId: Int, selProductSizeId: Int): List<SetterStat>
     fun markKilterPublishPending(uuid: String)
     /**
      * Mark a climb as accepted by Kilter. `via` is 'self' (user account) or

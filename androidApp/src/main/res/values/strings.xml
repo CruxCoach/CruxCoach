@@ -105,14 +105,20 @@
     <string name="own_climb_publish_already">This climb is already published to the community.</string>
     <string name="my_climbs_title">My climbs</string>
     <string name="my_climbs_banner_title">My climbs</string>
-    <string name="my_climbs_banner_subtitle">Your own Kilter climbs — share them with the CruxCoach community</string>
+    <string name="my_climbs_banner_subtitle">All your climbs — drafts, published, and Kilter imports</string>
     <string name="my_climbs_empty_title">No own climbs yet</string>
-    <string name="my_climbs_empty_message">Climbs you authored with your connected Kilter account appear here after the next Kilter sync.</string>
-    <string name="my_climbs_no_kilter_title">No Kilter account connected</string>
-    <string name="my_climbs_no_kilter_message">Connect your Kilter account so CruxCoach can recognize the climbs you authored.</string>
+    <string name="my_climbs_empty_message">Climbs you draft or publish on CruxCoach, plus climbs you authored on your connected Kilter account, appear here.</string>
+    <string name="my_climbs_no_kilter_title">Nothing here yet</string>
+    <string name="my_climbs_no_kilter_message">Set up your CruxCoach key to create climbs, or connect your Kilter account so CruxCoach can recognize the climbs you authored.</string>
     <string name="my_climbs_published_badge">Published</string>
     <string name="my_climbs_publish_retrying">Publish pending — retrying in the background</string>
     <string name="my_climbs_unnamed">(unnamed)</string>
+    <string name="my_climbs_draft_badge">Draft</string>
+    <string name="my_climbs_section_drafts">Drafts</string>
+    <string name="my_climbs_section_published">Published</string>
+    <string name="my_climbs_section_kilter_unclaimed">Imported from Kilter — not yet on CruxCoach</string>
+    <string name="my_climbs_grade_dialog_title">Set difficulty</string>
+    <string name="my_climbs_grade_dialog_message">This climb has no difficulty yet. Pick one to publish it to the CruxCoach community.</string>
     <string name="community_climb_delete_action">Delete publication</string>
     <string name="community_climb_delete_confirm_title">Delete this climb?</string>
     <string name="community_climb_delete_confirm_nostr_only">Your climb will be removed from CruxCoach and a deletion is sent to the Nostr relays. The local row disappears immediately; relays may take a few minutes to propagate.</string>
@@ -966,6 +972,11 @@
     <string name="kilter_import_persistent">Sync continuously</string>
     <string name="kilter_import_persistent_desc">Sync ascents bidirectionally with Kilter</string>
     <string name="kilter_import_success">%d ascents imported</string>
+    <string name="kilter_import_part_ascents">%d ascents</string>
+    <string name="kilter_import_part_projects">%d projects</string>
+    <string name="kilter_import_part_own">%d own climbs</string>
+    <string name="kilter_import_part_catalogue">%d climbs backfilled</string>
+    <string name="kilter_import_summary_with_dupes" formatted="false">%1$s (%2$d already present)</string>
     <string name="kilter_sync_success">Sync complete: %1$d downloaded, %2$d uploaded</string>
     <string name="kilter_sync_error">Sync failed: %s</string>
     <string name="kilter_no_new">No new ascents found</string>
@@ -1985,6 +1996,7 @@
     <string name="history_selected_count">%1$d selected</string>
     <string name="history_empty_title">No history yet</string>
     <string name="history_empty_body">Sent boulders appear here once you climb them.</string>
+    <string name="history_subtitle">Recently sent to the board</string>
     <string name="history_delete_title">Delete entries</string>
     <string name="cd_navigate_back">Back</string>
     <string name="cd_clear_selection">Clear selection</string>

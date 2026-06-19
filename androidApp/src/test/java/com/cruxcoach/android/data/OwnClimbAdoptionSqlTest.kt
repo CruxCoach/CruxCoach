@@ -192,4 +192,38 @@ class OwnClimbAdoptionSqlTest {
         assertEquals("synced", repo.getOwnAuthoredClimbRow(ownUuid, myKilterUuid)?.syncStatus,
             "markClimbPublishInFlight must not touch a not-yet-adopted Kilter row")
     }
+
+    // ── Un-claim (revert of adoption) ────────────────────────────────
+
+    @Test
+    fun revert_unclaims_a_published_climb_back_to_a_reclaimable_kilter_import() {
+        assertTrue(repo.adoptKilterClimbAsCommunity(ownUuid, myKilterUuid, myPubkey, 0L))
+        repo.markClimbPublishedNostr(
+            uuid = ownUuid, nostrEventId = "ev1",
+            nostrDTag = "cruxcoach:climb:aaaaaaaa:$ownUuid",
+            pubkey = myPubkey, createdAtIso = "2026-01-01T00:00:00Z",
+        )
+        assertEquals("cruxcoach", repo.getCommunityClimbDeleteContext(ownUuid)?.origin)
+
+        assertTrue(repo.revertClaimedKilterClimb(ownUuid, myPubkey))
+
+        val ctx = repo.getCommunityClimbDeleteContext(ownUuid)
+        assertEquals("kilter", ctx?.origin, "origin reverts to kilter")
+        assertNull(ctx?.createdByPubkey, "owner pubkey cleared")
+        assertNull(ctx?.nostrEventId, "nostr event id cleared")
+        // Still the user's authored climb → back in the own-authored list…
+        assertEquals(myKilterUuid, repo.getClimbKilterAuthorUuid(ownUuid))
+        assertTrue(repo.getOwnAuthoredKilterClimbs(myKilterUuid).any { it.uuid == ownUuid })
+        // …and re-claimable (publish artifacts cleared so adoption is allowed again).
+        assertTrue(repo.adoptKilterClimbAsCommunity(ownUuid, myKilterUuid, myPubkey, 0L),
+            "an un-claimed climb can be claimed again")
+    }
+
+    @Test
+    fun revert_is_owner_locked() {
+        assertTrue(repo.adoptKilterClimbAsCommunity(ownUuid, myKilterUuid, myPubkey, 0L))
+        assertFalse(repo.revertClaimedKilterClimb(ownUuid, otherPubkey),
+            "a foreign caller cannot un-claim someone's climb")
+        assertEquals("cruxcoach", repo.getCommunityClimbDeleteContext(ownUuid)?.origin)
+    }
 }

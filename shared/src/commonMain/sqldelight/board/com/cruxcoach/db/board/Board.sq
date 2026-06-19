@@ -414,12 +414,53 @@ UPDATE climbs SET
     source = 'local',
     sync_status = 'draft',
     created_by_pubkey = :pubkey,
+    -- Publishing to the community lists the climb. Without this an UNLISTED
+    -- Kilter climb (is_listed=0) stays invisible in browse + the setter list
+    -- (getCommunitySetterStats filters is_listed=1) even though it was
+    -- correctly published under the user's npub.
+    is_listed = 1,
+    -- Drop the Kilter setter handle: a community climb is attributed purely
+    -- by its npub (the Kind-30078 author), with the display name resolved
+    -- from the author's Kind-0 profile — never the Kilter username. Clearing
+    -- it lets the standard pubkey→profile resolution (updateSetterUsernameForPubkey)
+    -- fill the correct name, identical to an editor-authored community climb.
+    setter_username = NULL,
     kilter_status = 'synced',
     kilter_synced_at = :adoptedAtEpochSeconds
 WHERE uuid = :uuid
   AND kilter_author_uuid = :kilterAuthorUuid
   AND nostr_event_id IS NULL
   AND (created_by_pubkey IS NULL OR created_by_pubkey = :pubkey);
+
+-- INVERSE of adoptKilterClimbAsCommunity: deleting the community publication
+-- of a CLAIMED Kilter climb un-claims it back to a plain Kilter import instead
+-- of tombstoning it — the underlying climb is still the user's on Kilter, so
+-- it returns to "Aus Kilter importiert" and is re-claimable. Owner-locked
+-- (created_by_pubkey = :pubkey) and gated to climbs that carry a
+-- kilter_author_uuid (i.e. genuinely Kilter-authored, not native CruxCoach
+-- climbs, which take the full tombstone path). Keeps kilter_author_uuid so the
+-- own-climb gate still recognizes it; clears every adoption/publish artifact.
+revertClaimedKilterClimb:
+UPDATE climbs SET
+    origin = 'kilter',
+    source = 'kilter',
+    sync_status = 'synced',
+    created_by_pubkey = NULL,
+    nostr_event_id = NULL,
+    nostr_d_tag = NULL,
+    is_deleted = 0,
+    is_listed = 0,
+    setter_username = NULL,
+    kilter_status = 'synced'
+WHERE uuid = :uuid
+  AND created_by_pubkey = :pubkey
+  AND kilter_author_uuid IS NOT NULL;
+
+-- Drop the setter grade an un-claim restored to its imported (ungraded) state,
+-- so a subsequent re-claim routes back through the grade picker.
+clearLocalClimbGrade:
+UPDATE climb_stats SET display_difficulty = NULL, difficulty_average = NULL
+WHERE climb_uuid = :uuid;
 
 -- layout_id is denormalized from the owning climbs row (single source of
 -- truth) so community-ingested + restored stats rows are visible to the
@@ -1370,7 +1411,7 @@ deleteLocalClimb {
 -- about manual Kilter cleanup when origin='cruxcoach' AND
 -- kilter_status='synced').
 getCommunityClimbDeleteContext:
-SELECT nostr_event_id, nostr_d_tag, created_by_pubkey, kilter_status, origin, board_brand
+SELECT nostr_event_id, nostr_d_tag, created_by_pubkey, kilter_status, origin, board_brand, kilter_author_uuid
 FROM climbs
 WHERE uuid = :uuid
 LIMIT 1;
@@ -1588,14 +1629,32 @@ ORDER BY name ASC;
 -- a real pubkey means the setters list can't be silently emptied by an origin
 -- regression, nor populated by a Kilter row with a coincidentally non-null
 -- pubkey field.
+-- BOARD-SCOPED to match the setter DETAIL list (getClimbsByPubkeyForBoard):
+-- the SettersListScreen count and the SetterDetailScreen list must show the
+-- same number. The detail is filtered to the active board (a setter's Tension
+-- climbs don't appear while you're on Kilter), so the count is too — otherwise
+-- "5 climbs" on the list opens a 1-climb detail (5 = all boards, 1 = this
+-- board). Counts climb_browse rows (the VIEW already enforces is_listed=1 and
+-- INNER-JOINs climb_stats) with the IDENTICAL (brand, layout, Kilter size-fit)
+-- predicate the detail uses, grouped by pubkey. A setter with no climbs on the
+-- active board simply drops out of the list (consistent with the detail).
 getCommunitySetterStats:
 SELECT created_by_pubkey, setter_username, COUNT(*) AS climb_count
-FROM climbs c
+FROM climb_browse
 WHERE origin = 'cruxcoach'
   AND created_by_pubkey IS NOT NULL
   AND created_by_pubkey != ''
-  AND is_listed = 1
-  AND EXISTS (SELECT 1 FROM climb_stats cs WHERE cs.climb_uuid = c.uuid)
+  AND (
+        (board_brand = :brand AND layout_id = :layoutId)
+        OR (
+             :brand = 'kilter' AND board_brand = 'kilter'
+             AND EXISTS (
+                 SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid
+                 WHERE ps.id = :selProductSizeId
+                   AND (c.edge_left IS NULL OR (ps.edge_left < c.edge_left AND ps.edge_right > c.edge_right AND ps.edge_bottom < c.edge_bottom AND ps.edge_top > c.edge_top))
+             )
+           )
+      )
 GROUP BY created_by_pubkey
 ORDER BY climb_count DESC, setter_username ASC;
 

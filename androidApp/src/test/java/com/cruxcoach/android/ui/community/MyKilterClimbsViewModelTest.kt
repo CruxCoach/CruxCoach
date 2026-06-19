@@ -18,6 +18,7 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -91,9 +92,12 @@ class MyKilterClimbsViewModelTest {
 
             assertEquals(2, s.climbs.size)
             val unpublished = s.climbs.first { it.uuid == unpublishedUuid }
-            assertFalse(unpublished.published)
+            assertEquals(MyClimbStatus.KILTER_UNCLAIMED, unpublished.status)
             assertEquals(45, unpublished.angle)
-            assertTrue(s.climbs.first { it.uuid == publishedUuid }.published)
+            assertEquals(
+                MyClimbStatus.PUBLISHED,
+                s.climbs.first { it.uuid == publishedUuid }.status,
+            )
             cancelAndIgnoreRemainingEvents()
         }
     }
@@ -128,28 +132,58 @@ class MyKilterClimbsViewModelTest {
     }
 
     @Test
-    fun publish_routesThroughPublisher_andRefreshesList() = runTest {
-        coEvery { ownClimbPublisher.publish(unpublishedUuid) } returns
+    fun claim_gradedClimb_routesThroughPublisher_withItsGrade_andRefreshes() = runTest {
+        // setUp stubs grade 20 → the climb is graded → one-tap claim.
+        coEvery { ownClimbPublisher.publish(unpublishedUuid, 20) } returns
             OwnKilterClimbPublisher.Outcome.Published("ev2")
 
         val vm = buildViewModel()
         vm.state.test {
             var s = awaitItem()
             while (s.isLoading) s = awaitItem()
+            val item = s.climbs.first { it.uuid == unpublishedUuid }
 
             // After publish the refresh re-reads the list — now published.
             every { ownClimbPublisher.getOwnAuthoredClimbs() } returns listOf(
                 row(unpublishedUuid, published = true),
                 row(publishedUuid, published = true),
             )
-            vm.publish(unpublishedUuid)
+            vm.claim(item)
 
             while (s.feedback == null) s = awaitItem()
             assertEquals(OwnPublishFeedback.Published, s.feedback)
-            while (s.climbs.any { !it.published }) s = awaitItem()
-            assertTrue(s.climbs.all { it.published })
+            while (s.climbs.any { it.status != MyClimbStatus.PUBLISHED }) s = awaitItem()
+            assertTrue(s.climbs.all { it.status == MyClimbStatus.PUBLISHED })
             cancelAndIgnoreRemainingEvents()
         }
-        coVerify(exactly = 1) { ownClimbPublisher.publish(unpublishedUuid) }
+        coVerify(exactly = 1) { ownClimbPublisher.publish(unpublishedUuid, 20) }
+    }
+
+    @Test
+    fun claim_ungradedClimb_opensGradePicker_thenPublishesWithPickedGrade() = runTest {
+        // Ungraded import: stats carry an angle but no setter grade.
+        every { boardRepository.getClimbStatsForUuid(any()) } returns (45 to null)
+        coEvery { ownClimbPublisher.publish(unpublishedUuid, 18) } returns
+            OwnKilterClimbPublisher.Outcome.Published("ev3")
+
+        val vm = buildViewModel()
+        vm.state.test {
+            var s = awaitItem()
+            while (s.isLoading) s = awaitItem()
+            val item = s.climbs.first { it.uuid == unpublishedUuid }
+
+            // Claiming an ungraded climb opens the picker — no publish yet.
+            vm.claim(item)
+            while (s.gradeDialogUuid == null) s = awaitItem()
+            assertEquals(unpublishedUuid, s.gradeDialogUuid)
+
+            // Picking a grade closes the picker and publishes with it.
+            vm.confirmGrade(unpublishedUuid, 18)
+            while (s.feedback == null) s = awaitItem()
+            assertEquals(OwnPublishFeedback.Published, s.feedback)
+            assertNull(s.gradeDialogUuid)
+            cancelAndIgnoreRemainingEvents()
+        }
+        coVerify(exactly = 1) { ownClimbPublisher.publish(unpublishedUuid, 18) }
     }
 }
