@@ -41,10 +41,10 @@ object WhatsNewItems {
      *  export sitting in their Downloads. */
     val AURORA_JSON_IMPORT = WhatsNewItem(id = "aurora-json-import", sinceVersionCode = 5)
 
-    /** FEAT-027 — MoonBoard support (0.2.0). The release headline; the
-     *  first thing an upgrading user should see, so it leads the 0.2.0
-     *  (versionCode 6) batch. 0.1.5 never shipped standalone, so its map +
-     *  picker entries also carry versionCode 6 and follow this one. */
+    /** 0.2.0 release popup (versionCode 6) — the SINGLE consolidated upgrade
+     *  announcement. Headline: the new board support (MoonBoard + the Aurora
+     *  family); the board-locations map + find-your-gym picker are folded in
+     *  as a one-line hint (see the whatsnew_moonboard_* strings). */
     val MOONBOARD_SUPPORT = WhatsNewItem(id = "moonboard-support", sinceVersionCode = 6)
 
     /** FEAT-015 — Board Locations Map (0.2.0). Headline feature; users
@@ -63,13 +63,18 @@ object WhatsNewItems {
      *  board picker. Same 0.2.0 (versionCode 6) batch. */
     val AURORA_BOARDS = WhatsNewItem(id = "aurora-boards", sinceVersionCode = 6)
 
+    // 0.2.0 (versionCode 6) shows a SINGLE popup on upgrade. A 0.1.4 -> 0.2.0
+    // upgrade previously fired all four vc6 dialogs back-to-back (MoonBoard,
+    // Aurora boards, board-locations map, find-your-gym picker) — far too many
+    // popups. MOONBOARD_SUPPORT now renders a CONSOLIDATED board-support dialog
+    // (MoonBoard + Aurora headline, map + picker as a one-line hint), so the
+    // other three vc6 items are intentionally NOT registered here. Their
+    // declarations + dialogs are kept (still referenced by WhatsNewHost) for
+    // reference / future reuse.
     val registry: List<WhatsNewItem> = listOf(
         NOSTR_BACKUP,
         AURORA_JSON_IMPORT,
         MOONBOARD_SUPPORT,
-        BOARD_LOCATIONS_MAP,
-        GYM_BOARD_PICKER,
-        AURORA_BOARDS,
     )
 }
 
