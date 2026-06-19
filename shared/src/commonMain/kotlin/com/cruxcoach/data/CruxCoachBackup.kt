@@ -170,7 +170,11 @@ object CruxCoachBackup {
             requireUuid("ascent.climbUuid", a.climbUuid)
             requireRange("ascent.angle", a.angle, 0L..70L)
             requireRange("ascent.bidCount", a.bidCount, 0L..100_000L)
-            requireRange("ascent.quality", a.quality, 0L..3L)
+            // Quality is the user's 1-5 star rating (null = unrated), NOT the
+            // 0-3 catalogue quality_average. The old 0..3 bound rejected any
+            // 4-5 star ascent on import — breaking both <=0.1.4 restores AND
+            // 0.2.0 round-trips. Accept the full 0..5 star range.
+            requireRange("ascent.quality", a.quality, 0L..5L)
             requireRange("ascent.difficulty", a.difficulty, 0L..40L)
             requireRange("ascent.framesCount", a.framesCount, 0L..1_000L)
             requireFinite("ascent.difficultyAverage", a.difficultyAverage)
