@@ -2,6 +2,7 @@ package com.cruxcoach.android.notification
 
 import com.cruxcoach.android.data.NostrMessageRepository
 import com.cruxcoach.android.nostr.model.DecryptedMessage
+import com.cruxcoach.android.nostr.model.MessageType
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -36,9 +37,10 @@ class NostrMessageIngestor @Inject constructor(
 
     /**
      * Writes [msg] to the secure DB and returns the navigation route a
-     * notification for it should deep-link to: `message_thread/<localRootId>`
-     * for replies (raw-id fallback when the root isn't ingested yet),
-     * `dev_chat` for non-replies.
+     * notification for it should deep-link to: `dev_chat` for non-replies
+     * AND for CHAT replies (the flat chat is itself the chat thread), and
+     * `message_thread/<localRootId>` for replies on the structured,
+     * subject-bearing types (bug report / feature request).
      */
     fun ingest(msg: DecryptedMessage, isSelfWrap: Boolean): String {
         // Re-learn BEFORE normalizing: when this echo carries the id pair,
@@ -85,10 +87,16 @@ class NostrMessageIngestor @Inject constructor(
             }
         }
 
-        return if (localReplyToId != null) {
-            "message_thread/$localReplyToId"
-        } else {
-            "dev_chat"
+        // Routing: the flat dev chat IS the thread for CHAT messages, so a
+        // chat reply deep-links straight there (where the user already reads
+        // and replies) instead of a redundant standalone thread screen.
+        // Structured types (bug report, feature request) are genuinely
+        // separate, subject-bearing threads, so their replies keep the
+        // dedicated thread screen. Non-replies (roots) always land in the chat.
+        return when {
+            localReplyToId == null -> "dev_chat"
+            msg.type == MessageType.CHAT -> "dev_chat"
+            else -> "message_thread/$localReplyToId"
         }
     }
 }

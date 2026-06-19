@@ -110,7 +110,12 @@ class DevContactViewModel @Inject constructor(
         // here eventually — poll worker writes directly, coordinator
         // emits on this flow).
         viewModelScope.launch {
-            pushCoordinator.newMessageEvents.collect { loadMessages() }
+            pushCoordinator.newMessageEvents.collect {
+                loadMessages()
+                // A live dev reply to the thread the user is reading should
+                // appear without a manual back-and-reopen.
+                refreshOpenThread()
+            }
         }
         loadCrashOptIn()
         observeQueueCount()
@@ -353,14 +358,25 @@ class DevContactViewModel @Inject constructor(
         }
     }
 
+    /** Local root id of the thread currently shown in MessageThreadScreen,
+     *  so background events (delivery flips, deletes) can refresh it without
+     *  the screen having to re-request. Null when no thread is open. */
+    private var currentThreadRoot: String? = null
+
     fun loadThread(rootId: String) {
         viewModelScope.launch(Dispatchers.IO) {
             // Stale deep-links (pre-fix notifications) may carry the
             // recipient-wrap id — normalize to the local root first.
             val localRootId = messageRepository.resolveLocalRootId(rootId) ?: rootId
+            currentThreadRoot = localRootId
             val messages = messageRepository.getThread(localRootId).map { it.toUiMessage() }
             _threadMessages.value = messages
         }
+    }
+
+    /** Re-load the open thread, if any. Cheap no-op when no thread is shown. */
+    private fun refreshOpenThread() {
+        currentThreadRoot?.let { loadThread(it) }
     }
 
     fun markChatRead() {
@@ -562,6 +578,13 @@ class DevContactViewModel @Inject constructor(
                     queueManager.refreshCount()
                     _state.update { it.copy(isSending = false, sendSuccess = true) }
                     loadMessages()
+                    // A reply only ever refreshed the flat chat list, never the
+                    // open thread (_threadMessages reads via loadThread). The
+                    // MessageThreadScreen therefore showed nothing after Send —
+                    // the reply WAS persisted/queued/delivered, it just stayed
+                    // invisible there. Re-load the thread so the just-sent reply
+                    // appears immediately. replyToId == the local root id.
+                    if (replyToId != null) loadThread(replyToId)
 
                     // 3. Deliver in background (includes random delay)
                     deliverInBackground(eventId, buildResult.eventJsons)
@@ -593,6 +616,7 @@ class DevContactViewModel @Inject constructor(
                 }
                 queueManager.refreshCount()
                 loadMessages()
+                refreshOpenThread()
                 Log.i(TAG, "Message $eventId delivered to relay")
             }
             // If !success, message stays queued — OfflineQueueManager will retry later
