@@ -595,6 +595,15 @@ class PersonalBoardRepositoryImpl(
         return (ascentKeys + bidKeys).distinct()
     }
 
+    override fun getExistingLogUuids(): Set<String> {
+        // log_uuid is the PK of whichever table the log landed in (ascent if
+        // topped, else bid), so the union is the full set of already-imported
+        // Kilter logs — the dedup key for counting a re-import.
+        val ascentUuids = database.ascentsQueries.getAllAscentUuids().executeAsList()
+        val bidUuids = database.bidsQueries.getAllBidUuids().executeAsList()
+        return (ascentUuids + bidUuids).toHashSet()
+    }
+
     override fun updateAscentDenormalized(
         climbUuid: String, angle: Long,
         climbName: String, difficultyAverage: Double?,

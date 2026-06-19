@@ -26,6 +26,29 @@ data class KilterImportPreview(
     val duplicateCount: Int
 )
 
+/**
+ * Full per-object outcome of a Kilter import, so the UI can report every
+ * object type instead of one opaque total. Logs are deduped against the
+ * already-imported set (re-imports count as [duplicateLogs], not new), and
+ * the otherwise-silent own-climb / catalogue backfills are surfaced.
+ */
+data class KilterImportResult(
+    val newAscents: Int,
+    val newBids: Int,
+    val duplicateLogs: Int,
+    /** Own authored climbs recognized (newly inserted + existing rows stamped). */
+    val ownClimbs: Int,
+    /** Logged-climb rows backfilled into the board catalogue. */
+    val backfilledClimbs: Int,
+) {
+    val totalNew: Int get() = newAscents + newBids
+}
+
+/** Internal (newAscents, newBids, duplicates) tally from [KilterSyncEngine.insertLogs]. */
+private data class LogInsertCounts(val newAscents: Int, val newBids: Int, val duplicates: Int) {
+    val totalNew: Int get() = newAscents + newBids
+}
+
 data class KilterSyncReport(
     val downloaded: Int,
     val uploaded: Int
@@ -169,7 +192,7 @@ class KilterSyncEngine @Inject constructor(
                 // denormalizing names/frames in insertLogs (best-effort).
                 climbBackfiller.backfillLoggedClimbs()
                 climbBackfiller.backfillAuthoredClimbs()
-                val imported = insertLogs(logs)
+                val imported = insertLogs(logs).totalNew
 
                 // Upload unsynced local logs (catches offline-logged ascents)
                 val uploaded = if (userPreferences.kilterPushEnabled.first()) {
@@ -194,12 +217,15 @@ class KilterSyncEngine @Inject constructor(
     suspend fun previewImport(): Result<KilterImportPreview> = withContext(Dispatchers.IO) {
         val logsResult = apiClient.fetchLogs()
         logsResult.map { logs ->
-            val existingUuids = boardRepository.getAllClimbUuids()
+            // Dedup against the already-imported LOG uuids (ascent + bid PKs),
+            // NOT climb uuids — a log_uuid is never a climb uuid, so the old
+            // `getAllClimbUuids()` check matched nothing and reported every log
+            // as new even on a pure re-import.
+            val existingLogUuids = personalBoardRepo.getExistingLogUuids()
             var newAscents = 0
             var newBids = 0
             for (log in logs) {
-                // Use log_uuid as ascent uuid — if it already exists, it's a duplicate
-                if (log.logUuid in existingUuids) continue
+                if (log.logUuid in existingLogUuids) continue
                 if (log.topped) newAscents++ else newBids++
             }
             KilterImportPreview(
@@ -213,10 +239,14 @@ class KilterSyncEngine @Inject constructor(
 
     /**
      * Import Kilter logs into local board database.
-     * If [oneTimeOnly], credentials are cleared after import.
-     * Returns the number of records imported.
+     * If [oneTimeOnly], the session TOKENS are discarded after import but the
+     * account identity (userUuid) is kept so own-authored climbs stay
+     * claimable (see [KilterTokenStore.clearTokensKeepIdentity]).
+     * Returns a per-object [KilterImportResult] (new ascents/bids, duplicates,
+     * own climbs recognized, catalogue backfills) so the UI can report every
+     * object type rather than one opaque total.
      */
-    suspend fun importLogs(oneTimeOnly: Boolean): Result<Int> = withContext(Dispatchers.IO) {
+    suspend fun importLogs(oneTimeOnly: Boolean): Result<KilterImportResult> = withContext(Dispatchers.IO) {
         // Resolve wall context on first import (auto-detect from user's Kilter data)
         if (!oneTimeOnly) {
             resolveAndStoreWallContext()
@@ -226,9 +256,10 @@ class KilterSyncEngine @Inject constructor(
         logsResult.map { logs ->
             // Backfill PowerSync-only climbs into the board DB before
             // insertLogs denormalizes names/frames (best-effort, non-fatal).
-            climbBackfiller.backfillLoggedClimbs()
-            climbBackfiller.backfillAuthoredClimbs()
-            val imported = insertLogs(logs)
+            // Their counts feed the import summary (previously silent).
+            val backfilledClimbs = climbBackfiller.backfillLoggedClimbs()
+            val ownClimbs = climbBackfiller.backfillAuthoredClimbs()
+            val counts = insertLogs(logs)
             val timestamp = DateTimeUtil.nowIso()
             userPreferences.setKilterLastSync(timestamp)
 
@@ -238,14 +269,29 @@ class KilterSyncEngine @Inject constructor(
                 // explicit "import once and disconnect" choice. Best-
                 // effort — failure here must not block the local clear.
                 runCatching { apiClient.revokeRefreshToken() }
-                tokenStore.clear()
+                // Discard the tokens but KEEP the userUuid: the authored-climb
+                // backfill above stamped `kilter_author_uuid` on the user's own
+                // climbs, and the "Meine Climbs" hub + claim flow can only
+                // recognize them by matching that against the stored userUuid.
+                // A full clear() would silently make the just-imported authored
+                // climbs unclaimable forever. The connection still reads as
+                // "not connected" (hasCredentials checks the removed refresh
+                // token) and no tokenless push can fire (syncEnabled=false).
+                tokenStore.clearTokensKeepIdentity()
                 userPreferences.setKilterSyncEnabled(false)
             } else {
                 userPreferences.setKilterSyncEnabled(true)
             }
 
-            Log.i(TAG, "Imported $imported logs from Kilter (oneTime=$oneTimeOnly)")
-            imported
+            val result = KilterImportResult(
+                newAscents = counts.newAscents,
+                newBids = counts.newBids,
+                duplicateLogs = counts.duplicates,
+                ownClimbs = ownClimbs,
+                backfilledClimbs = backfilledClimbs,
+            )
+            Log.i(TAG, "Kilter import (oneTime=$oneTimeOnly): $result")
+            result
         }
     }
 
@@ -268,7 +314,7 @@ class KilterSyncEngine @Inject constructor(
             // insertLogs denormalizes names/frames (best-effort, non-fatal).
             climbBackfiller.backfillLoggedClimbs()
             climbBackfiller.backfillAuthoredClimbs()
-            val downloaded = insertLogs(logs)
+            val downloaded = insertLogs(logs).totalNew
 
             // Upload unsynced local data (only if push is enabled)
             val uploaded = if (pushEnabled) uploadUnsyncedLogs() else 0
@@ -295,10 +341,17 @@ class KilterSyncEngine @Inject constructor(
     /**
      * Insert Kilter logs into local DB. Uses log_uuid as aurora_ascent/bid uuid
      * so INSERT OR REPLACE handles duplicates idempotently.
-     * Returns count of newly inserted records.
+     * Returns how many were genuinely NEW (split ascent/bid) vs already
+     * present — the old "count every row" tally reported a full re-import as
+     * all-new even though the writes were idempotent no-ops.
      */
-    private fun insertLogs(logs: List<KilterLog>): Int {
-        var count = 0
+    private fun insertLogs(logs: List<KilterLog>): LogInsertCounts {
+        // Snapshot the already-imported log uuids BEFORE writing so the
+        // INSERT-OR-REPLACE below doesn't make every row look pre-existing.
+        val existingLogUuids = personalBoardRepo.getExistingLogUuids()
+        var newAscents = 0
+        var newBids = 0
+        var duplicates = 0
 
         // Pre-fetch denormalized climb data from BoardDB
         val climbUuids = logs.map { it.climbUuid }.distinct()
@@ -315,6 +368,7 @@ class KilterSyncEngine @Inject constructor(
 
         personalBoardRepo.runInTransaction {
             for (log in logs) {
+                val isNew = log.logUuid !in existingLogUuids
                 val (climbName, diffAvg) = climbCache[log.climbUuid] ?: ("" to null)
                 if (log.topped) {
                     val (frames, framesCount) = framesCache[log.climbUuid] ?: ("" to 1L)
@@ -356,10 +410,14 @@ class KilterSyncEngine @Inject constructor(
                         difficultyAverage = diffAvg
                     )
                 }
-                count++
+                if (isNew) {
+                    if (log.topped) newAscents++ else newBids++
+                } else {
+                    duplicates++
+                }
             }
         }
-        return count
+        return LogInsertCounts(newAscents, newBids, duplicates)
     }
 
     /**

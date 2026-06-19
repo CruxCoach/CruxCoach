@@ -195,7 +195,7 @@ class KilterSyncEngineBackfillTest {
 
         val imported = engine.importLogs(oneTimeOnly = true).getOrThrow()
 
-        assertEquals(1, imported)
+        assertEquals(1, imported.totalNew)
         val upserted = upsertedClimbs.firstOrNull { it.uuid == newWorldUuid }
         assertNotNull(upserted, "expected the missing climb to be upserted")
         assertEquals("Tallakrennesvingen", upserted.name)
@@ -271,7 +271,7 @@ class KilterSyncEngineBackfillTest {
 
         val imported = engine.importLogs(oneTimeOnly = true).getOrThrow()
 
-        assertEquals(1, imported)
+        assertEquals(1, imported.totalNew)
         assertTrue(upsertedClimbs.isEmpty())
         assertEquals(1, ascents.size)
         // No board-DB row → empty name/frames fallback (pre-existing behaviour;
@@ -358,7 +358,7 @@ class KilterSyncEngineBackfillTest {
 
         val imported = engine.importLogs(oneTimeOnly = true).getOrThrow()
 
-        assertEquals(1, imported)
+        assertEquals(1, imported.totalNew)
         assertEquals(1, ascents.size)
     }
 }

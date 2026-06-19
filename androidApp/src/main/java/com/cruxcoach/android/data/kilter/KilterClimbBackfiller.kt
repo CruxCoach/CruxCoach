@@ -45,12 +45,12 @@ internal class KilterClimbBackfiller(
      * the freshly-upserted name/frames and the detail screen can resolve the
      * climb.
      */
-    suspend fun backfillLoggedClimbs() {
+    suspend fun backfillLoggedClimbs(): Int {
         val response = apiClient.fetchLoggedClimbs().getOrElse {
             Log.w(TAG, "Logged-climb backfill skipped (fetch failed): ${it.message}")
-            return
+            return 0
         }
-        if (response.climbs.isEmpty()) return
+        if (response.climbs.isEmpty()) return 0
 
         // Only consider climbs the board DB is missing — never overwrite
         // curated rows. Format-blind: a climb already mirrored under the
@@ -59,7 +59,7 @@ internal class KilterClimbBackfiller(
             climb.climbUuid.isNotBlank() &&
                 boardRepository.findClimbCanonicalUuid(climb.climbUuid) == null
         }
-        if (missing.isEmpty()) return
+        if (missing.isEmpty()) return 0
 
         // Stats keyed by (uuid, angle) so each climb-stat row pairs with its
         // climb. The detail screen resolves a climb via the (uuid, angle)
@@ -99,6 +99,7 @@ internal class KilterClimbBackfiller(
             // Backfill is an enhancement, never a gate — keep the log sync alive.
             Log.w(TAG, "Logged-climb backfill failed mid-write — continuing log sync", e)
         }
+        return upserted
     }
 
     /**
@@ -114,12 +115,12 @@ internal class KilterClimbBackfiller(
      * climb_stats row at its own setter angle (NULL difficulty/quality) —
      * enough for the (uuid, angle) detail lookup to resolve it there.
      */
-    suspend fun backfillAuthoredClimbs() {
+    suspend fun backfillAuthoredClimbs(): Int {
         val climbs = apiClient.fetchOwnAuthoredClimbs().getOrElse {
             Log.w(TAG, "Authored-climb backfill skipped (fetch failed): ${it.message}")
-            return
+            return 0
         }
-        if (climbs.isEmpty()) return
+        if (climbs.isEmpty()) return 0
 
         // Resolve every fetched climb to its canonical stored uuid (null =
         // truly missing). Format-blind: the user's own LISTED climbs are
@@ -132,7 +133,7 @@ internal class KilterClimbBackfiller(
         val resolved = climbs
             .filter { it.climbUuid.isNotBlank() }
             .map { climb -> climb to boardRepository.findClimbCanonicalUuid(climb.climbUuid) }
-        if (resolved.isEmpty()) return
+        if (resolved.isEmpty()) return 0
 
         var upserted = 0
         var marked = 0
@@ -180,6 +181,10 @@ internal class KilterClimbBackfiller(
             // Backfill is an enhancement, never a gate — keep the sync alive.
             Log.w(TAG, "Authored-climb backfill failed mid-write — continuing sync", e)
         }
+        // upserted + marked = how many of the user's OWN authored climbs the
+        // import recognized (newly inserted plus existing rows author-stamped),
+        // surfaced in the import summary.
+        return upserted + marked
     }
 
     /**

@@ -987,7 +987,7 @@ private fun KilterPreviewContent(state: OnboardingState, viewModel: OnboardingVi
 @Composable
 private fun KilterImportDoneContent(state: OnboardingState) {
     val result = state.kilterImportResult ?: return
-    val isError = result.toIntOrNull() == null
+    val isError = state.kilterImportError
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -1000,8 +1000,10 @@ private fun KilterImportDoneContent(state: OnboardingState) {
             modifier = Modifier.size(20.dp),
         )
         Text(
+            // `result` already carries the full per-object summary (success)
+            // or the error message — render it directly.
             if (isError) stringResource(R.string.onboarding_kilter_import_error, result)
-            else stringResource(R.string.onboarding_kilter_import_success, result.toInt()),
+            else result,
             style = MaterialTheme.typography.bodyMedium,
             color = if (isError) ErrorRed else SuccessGreen,
             fontWeight = FontWeight.SemiBold,

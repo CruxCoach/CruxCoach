@@ -11,6 +11,7 @@ import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.data.kilter.KilterApiClient
 import com.cruxcoach.android.data.kilter.KilterAuthResult
 import com.cruxcoach.android.data.kilter.KilterImportPreview
+import com.cruxcoach.android.data.kilter.formatKilterImportSummary
 import com.cruxcoach.android.data.kilter.KilterSyncEngine
 import com.cruxcoach.android.data.kilter.KilterTokenStore
 import com.cruxcoach.android.data.kilter.localized
@@ -76,7 +77,10 @@ data class OnboardingState(
     val kilterUsername: String = "",
     val kilterImportPreview: KilterImportPreview? = null,
     val isKilterImporting: Boolean = false,
+    /** Formatted per-object import summary (success) or error message. */
     val kilterImportResult: String? = null,
+    /** True when [kilterImportResult] is an error rather than a summary. */
+    val kilterImportError: Boolean = false,
 
     // FEAT-002: encrypted cloud backup onboarding (Nostr + Blossom internally)
     val hasNostrKey: Boolean = false,
@@ -333,9 +337,10 @@ class OnboardingViewModel @Inject constructor(
                     it.copy(
                         isKilterImporting = false,
                         kilterImportResult = result.fold(
-                            onSuccess = { count -> "$count" },
+                            onSuccess = { r -> formatKilterImportSummary(appContext, r) },
                             onFailure = { e -> e.message }
                         ),
+                        kilterImportError = result.isFailure,
                         kilterConnected = false // credentials cleared
                     )
                 }
@@ -347,6 +352,7 @@ class OnboardingViewModel @Inject constructor(
                     it.copy(
                         isKilterImporting = false,
                         kilterImportResult = appContext.getString(R.string.kilter_sync_error, ""),
+                        kilterImportError = true,
                     )
                 }
             }
@@ -362,9 +368,10 @@ class OnboardingViewModel @Inject constructor(
                     it.copy(
                         isKilterImporting = false,
                         kilterImportResult = result.fold(
-                            onSuccess = { count -> "$count" },
+                            onSuccess = { r -> formatKilterImportSummary(appContext, r) },
                             onFailure = { e -> e.message }
-                        )
+                        ),
+                        kilterImportError = result.isFailure
                     )
                 }
             } catch (e: kotlinx.coroutines.CancellationException) {
@@ -375,6 +382,7 @@ class OnboardingViewModel @Inject constructor(
                     it.copy(
                         isKilterImporting = false,
                         kilterImportResult = appContext.getString(R.string.kilter_sync_error, ""),
+                        kilterImportError = true,
                     )
                 }
             }

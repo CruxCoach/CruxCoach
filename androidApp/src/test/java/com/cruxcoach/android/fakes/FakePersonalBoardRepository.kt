@@ -19,6 +19,9 @@ class FakePersonalBoardRepository : PersonalBoardRepository {
     val sentUuids = mutableSetOf<String>()
     val attemptedUuids = mutableSetOf<String>()
     val ignoredUuids = mutableSetOf<String>()
+    /** Log uuids (ascent + bid PKs) recorded by inserts, so dedup-counting in
+     *  the Kilter import can be exercised. */
+    val insertedLogUuids = mutableSetOf<String>()
 
     fun markSent(uuid: String) { sentUuids.add(uuid) }
     fun markAttempted(uuid: String) { attemptedUuids.add(uuid) }
@@ -35,7 +38,7 @@ class FakePersonalBoardRepository : PersonalBoardRepository {
         climbName: String, difficultyAverage: Double?,
         climbFrames: String, framesCount: Long,
         boardBrand: String, layoutId: Long?,
-    ) {}
+    ) { insertedLogUuids.add(uuid) }
 
     override fun deleteAscent(uuid: String) {}
     override fun updateAscent(uuid: String, bidCount: Long, quality: Long?, comment: String?) {}
@@ -62,7 +65,7 @@ class FakePersonalBoardRepository : PersonalBoardRepository {
         gymUuid: String?, wallUuid: String?, productLayoutUuid: String?,
         climbName: String, difficultyAverage: Double?,
         boardBrand: String, layoutId: Long?,
-    ) {}
+    ) { insertedLogUuids.add(uuid) }
 
     override fun deleteBid(uuid: String) {}
     override fun getUserBidDifficulties(since: String): List<Double> = emptyList()
@@ -106,6 +109,7 @@ class FakePersonalBoardRepository : PersonalBoardRepository {
     // -- Denormalization --
 
     override fun getAllClimbKeys(): List<Pair<String, Long>> = emptyList()
+    override fun getExistingLogUuids(): Set<String> = insertedLogUuids.toSet()
     override fun updateAscentDenormalized(climbUuid: String, angle: Long, climbName: String, difficultyAverage: Double?, climbFrames: String, framesCount: Long, boardBrand: String, layoutId: Long?) {}
     override fun updateBidDenormalized(climbUuid: String, angle: Long, climbName: String, difficultyAverage: Double?, boardBrand: String, layoutId: Long?) {}
 

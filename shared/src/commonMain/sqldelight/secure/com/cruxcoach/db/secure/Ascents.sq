@@ -178,6 +178,11 @@ DELETE FROM ascents;
 getAllAscentClimbKeys:
 SELECT DISTINCT climb_uuid, angle FROM ascents;
 
+-- Primary-key (= Kilter log_uuid) set, for dedup-counting a Kilter import:
+-- a fetched log whose log_uuid is already here is a re-import, not new.
+getAllAscentUuids:
+SELECT uuid FROM ascents;
+
 -- ═══ FEAT-005 Aurora-JSON-import — INSERT-or-skip on external_id ═══
 
 -- Idempotent insert: a row with the same external_id is silently

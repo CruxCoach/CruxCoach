@@ -96,6 +96,10 @@ DELETE FROM bids;
 getAllBidClimbKeys:
 SELECT DISTINCT climb_uuid, angle FROM bids;
 
+-- Primary-key (= Kilter log_uuid) set, for dedup-counting a Kilter import.
+getAllBidUuids:
+SELECT uuid FROM bids;
+
 -- ═══ FEAT-005 Aurora-JSON-import ═══
 
 insertAuroraBid:

@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.cruxcoach.android.data.kilter.formatKilterImportSummary
 import com.cruxcoach.android.data.kilter.localized
 import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.ClimbBleAdvertiser
@@ -799,7 +800,7 @@ class SettingsViewModel @Inject constructor(
                     showImportPreview = false,
                     isConnected = false,
                     resultMessage = result.fold(
-                        onSuccess = { context.getString(R.string.kilter_import_success, it) },
+                        onSuccess = { formatKilterImportSummary(context, it) },
                         onFailure = { context.getString(R.string.kilter_sync_error, it.message ?: "") }
                     )
                 )) }
@@ -828,7 +829,7 @@ class SettingsViewModel @Inject constructor(
                     isConnected = true,
                     lastSync = lastSync,
                     resultMessage = result.fold(
-                        onSuccess = { context.getString(R.string.kilter_import_success, it) },
+                        onSuccess = { formatKilterImportSummary(context, it) },
                         onFailure = { context.getString(R.string.kilter_sync_error, it.message ?: "") }
                     )
                 )) }

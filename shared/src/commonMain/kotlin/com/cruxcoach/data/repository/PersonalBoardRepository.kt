@@ -127,6 +127,10 @@ interface PersonalBoardRepository {
     /** Returns all distinct (climbUuid, angle) pairs across ascents and bids. */
     fun getAllClimbKeys(): List<Pair<String, Long>>
 
+    /** Every already-imported Kilter log uuid (ascent + bid PKs). Used to
+     *  count how many fetched logs are genuinely new vs re-imported. */
+    fun getExistingLogUuids(): Set<String>
+
     /** Batch-update denormalized fields after a board sync. Also back-fills
      *  board_brand + layout_id from the matched climb, self-healing legacy /
      *  restored rows that defaulted to kilter/NULL. */
