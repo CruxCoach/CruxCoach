@@ -1723,8 +1723,8 @@
     <string name="key_import_detected">Detected: %1$s</string>
     <string name="key_import_button">Import</string>
     <string name="key_import_success_toast">Key imported</string>
-    <string name="key_import_overwrite_title">Replace account?</string>
-    <string name="key_import_overwrite_text">You already have an account. The import will replace it. Do you have a backup of your current key?</string>
+    <string name="key_import_overwrite_title">Switch account?</string>
+    <string name="key_import_overwrite_text">Importing switches to the imported key. Your current climbs and lists are kept (not deleted), but become reachable only with your current key — they reappear if you re-import it. Make sure you have a backup of your current key.</string>
     <string name="key_import_overwrite_confirm">Import anyway</string>
     <string name="key_import_confirm_title">Is this your key?</string>
     <string name="key_import_confirm_button">Yes, import</string>

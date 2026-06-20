@@ -1727,8 +1727,8 @@
     <string name="key_import_detected">Erkannt: %1$s</string>
     <string name="key_import_button">Importieren</string>
     <string name="key_import_success_toast">Schlüssel importiert</string>
-    <string name="key_import_overwrite_title">Account ersetzen?</string>
-    <string name="key_import_overwrite_text">Du hast bereits einen Account. Der Import ersetzt ihn. Hast du ein Backup des aktuellen Schlüssels?</string>
+    <string name="key_import_overwrite_title">Account wechseln?</string>
+    <string name="key_import_overwrite_text">Der Import wechselt zu dem importierten Schlüssel. Deine aktuellen Climbs und Listen bleiben gespeichert (werden nicht gelöscht), sind aber nur noch mit deinem jetzigen Schlüssel erreichbar — sie erscheinen wieder, wenn du ihn erneut importierst. Sichere deinen jetzigen Schlüssel.</string>
     <string name="key_import_overwrite_confirm">Trotzdem importieren</string>
     <string name="key_import_confirm_title">Ist das dein Schlüssel?</string>
     <string name="key_import_confirm_button">Ja, importieren</string>
