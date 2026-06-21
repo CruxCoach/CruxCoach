@@ -1763,6 +1763,8 @@
     <string name="settings_backup_check_decrypt_failed">Ein Backup wurde gefunden, aber nicht entschlüsselt — der Schlüssel passt anscheinend nicht.</string>
     <string name="settings_backup_check_error">Fehler beim Suchen nach einem Backup: %1$s</string>
     <string name="settings_backup_restore_failed">Backup konnte nicht wiederhergestellt werden.</string>
+    <string name="settings_backup_restored">Wiederhergestellt: %1$d Begehungen, %2$d Listen</string>
+    <string name="settings_backup_restore_wait_import">Boards werden noch geladen — Wiederherstellen ist verfügbar, sobald das fertig ist.</string>
     <string name="settings_backup_succeeded">Backup erstellt.</string>
     <string name="settings_backup_failed">Backup fehlgeschlagen. Prüfe deine Verbindung und versuche es erneut.</string>
     <string name="settings_backup_failed_detail">Backup fehlgeschlagen: %1$s</string>

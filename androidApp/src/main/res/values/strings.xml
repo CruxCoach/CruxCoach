@@ -1760,6 +1760,8 @@
     <string name="settings_backup_check_decrypt_failed">A backup was found, but it could not be decrypted — the key doesn\'t seem to match.</string>
     <string name="settings_backup_check_error">Error while looking for a backup: %1$s</string>
     <string name="settings_backup_restore_failed">Backup could not be restored.</string>
+    <string name="settings_backup_restored">Restored: %1$d ascents, %2$d lists</string>
+    <string name="settings_backup_restore_wait_import">Boards are still loading — restore becomes available once that finishes.</string>
     <string name="settings_backup_succeeded">Backup created.</string>
     <string name="settings_backup_failed">Backup failed. Check your connection and try again.</string>
     <string name="settings_backup_failed_detail">Backup failed: %1$s</string>

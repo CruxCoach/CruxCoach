@@ -421,6 +421,8 @@ fun SettingsScreen(
                 stringResource(R.string.settings_backup_check_error, snackbar.detail)
             BackupSettingsState.Snackbar.RestoreFailed ->
                 stringResource(R.string.settings_backup_restore_failed)
+            is BackupSettingsState.Snackbar.RestoreSucceeded ->
+                stringResource(R.string.settings_backup_restored, snackbar.ascents, snackbar.lists)
             BackupSettingsState.Snackbar.BackupSucceeded ->
                 stringResource(R.string.settings_backup_succeeded)
             is BackupSettingsState.Snackbar.BackupFailed ->
