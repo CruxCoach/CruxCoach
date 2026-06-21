@@ -1845,7 +1845,6 @@
     <string name="onboarding_backup_choice_restore_desc">Ich habe ein Backup von einem anderen Gerät. Importiere den dort verwendeten Nostr-Schlüssel.</string>
     <string name="onboarding_backup_import_key_button">Nostr-Schlüssel importieren →</string>
     <string name="onboarding_backup_restore_checking">Suche nach Backup…</string>
-    <string name="onboarding_backup_restore_success">Backup wiederhergestellt.</string>
     <string name="onboarding_backup_restore_none_for_key">Für diesen Account wurde kein Backup gefunden. Du kannst trotzdem weiter — beim nächsten Sync wird ein neues Backup erstellt.</string>
     <string name="onboarding_backup_restore_waiting_for_key">Importiere deinen Nostr-Schlüssel, um fortzufahren, oder wechsle zurück zu „Neu starten".</string>
     <string name="onboarding_restart_confirm_title">Nostr-Schlüssel importieren</string>

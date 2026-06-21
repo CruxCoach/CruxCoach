@@ -106,6 +106,11 @@ data class OnboardingState(
     val restoreAwaitingBoardSync: Boolean = false,
     val restoreFailed: Boolean = false,
     val restoreSucceeded: Boolean = false,
+    /** Counts from the completed restore — surfaced in the onboarding success
+     *  line so the user can sanity-check the magnitudes, matching the Settings
+     *  restore snackbar. */
+    val restoredAscents: Int = 0,
+    val restoredLists: Int = 0,
     val noBackupFoundForKey: Boolean = false,
     val showRestartConfirm: Boolean = false,
 
@@ -506,7 +511,8 @@ class OnboardingViewModel @Inject constructor(
         viewModelScope.launch {
             val result = runCatching { backupRepository.restore(info) }
             boardSyncWatcher.cancel()
-            if (result.isSuccess) {
+            val imported = result.getOrNull()
+            if (imported != null) {
                 backupPreferences.setBackupEnabled(true)
                 backupPreferences.setBackupRestoreIntent(false)
                 _state.update {
@@ -515,6 +521,8 @@ class OnboardingViewModel @Inject constructor(
                         restoreAwaitingBoardSync = false,
                         pendingRestore = null,
                         restoreSucceeded = true,
+                        restoredAscents = imported.boardAscents,
+                        restoredLists = imported.climbLists,
                         backupOptIn = true,
                         backupChoice = BackupChoice.RESTORE,
                     )

@@ -621,7 +621,13 @@ private fun RestoreSubSection(state: OnboardingState, viewModel: OnboardingViewM
             ) {
                 Icon(Icons.Default.CheckCircle, null, tint = SuccessGreen, modifier = Modifier.size(18.dp))
                 Text(
-                    stringResource(R.string.onboarding_backup_restore_success),
+                    // Same wording as the Settings restore snackbar so the user
+                    // can sanity-check the restored magnitudes here too.
+                    stringResource(
+                        R.string.settings_backup_restored,
+                        state.restoredAscents,
+                        state.restoredLists,
+                    ),
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.SemiBold,
                     color = SuccessGreen,
