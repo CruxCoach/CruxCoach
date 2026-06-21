@@ -299,22 +299,30 @@ private fun BoardLocation.contactScore(): Int =
 
 /** Human label for one board within a venue card. MoonBoard → variant name;
  *  foreign info-layer brands → brand name; Kilter → layout + size. */
-private fun BoardLocation.boardTitle(): String = when {
-    boardBrand == BoardBrand.MOONBOARD ->
+private fun BoardLocation.boardTitle(): String = when (boardBrand) {
+    BoardBrand.MOONBOARD ->
         layoutId?.toLong()?.let { MoonBoardVariant.fromLayoutId(it)?.displayName }
-            ?: layoutName ?: "MoonBoard"
-    // Map-only foreign families (Tension, Aurora, …) — title-cased brand
-    // name, never the Kilter fallback below.
-    !boardBrand.isInteractive -> boardBrand.wireValue.replaceFirstChar { it.uppercase() }
-    else -> {
+            ?: layoutName ?: BoardBrand.MOONBOARD.displayName
+    // Kilter is the only family whose location feed carries layout + size
+    // geometry, so it gets the richer "Kilter — <layout> (<size>)" label.
+    BoardBrand.KILTER -> {
         val name = layoutName
         val size = sizeLabel
         when {
-            name == null -> "Kilter"
-            size.isNullOrBlank() -> "Kilter — $name"
-            else -> "Kilter — $name ($size)"
+            name == null -> BoardBrand.KILTER.displayName
+            size.isNullOrBlank() -> "${BoardBrand.KILTER.displayName} — $name"
+            else -> "${BoardBrand.KILTER.displayName} — $name ($size)"
         }
     }
+    // Every other family — Tension, Grasshopper, Decoy, So iLL, Touchstone
+    // (all Aurora-protocol, so isInteractive=true) plus the map-only Aurora /
+    // 12 Climb — uses its proper brand display name. The previous `else`
+    // branch keyed on `!isInteractive`, which assumed "interactive but not
+    // MoonBoard == Kilter" — only true before FEAT-031 added the other Aurora
+    // boards. That's why a Tension+Grasshopper venue (e.g. E4 Nürnberg)
+    // rendered as two "Kilter" rows. displayName also fixes "So iLL"/"12 Climb"
+    // casing the old wireValue-uppercase hack got wrong.
+    else -> boardBrand.displayName
 }
 
 /**
