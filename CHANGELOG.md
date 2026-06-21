@@ -4,7 +4,7 @@ All notable changes to CruxCoach will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [0.2.0] - Unreleased
+## [0.2.0] - 2026-06-21
 
 > 0.2.0 is the multi-board release. CruxCoach now speaks **MoonBoard** as
 > well as Kilter: browse the MoonBoard problem catalogue with the same

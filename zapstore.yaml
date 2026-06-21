@@ -1,15 +1,17 @@
 repository: https://codeberg.org/CruxCoach/CruxCoach
 name: CruxCoach
 description: |
-    Browse climbs, control your Kilter Board via Bluetooth, log ascents,
-    import your Kilter logbook, and track your progress.
+    Browse climbs, control your board — Kilter, MoonBoard and more — via
+    Bluetooth, log ascents, import your Kilter logbook, and track your progress.
     No third-party cloud services, full control over your data.
-summary: Open-source Kilter Board climbing app
+summary: Open-source climbing-board app for Kilter, MoonBoard and more
 tags:
     - climbing
     - bouldering
     - kilterboard
     - kilter-board
+    - moonboard
+    - climbing-board
     - bluetooth
     - fitness
     - nostr
@@ -23,7 +25,7 @@ images:
     - docs/screenshots/hold-search.png
     - docs/screenshots/heatmap.png
 release_source: ./androidApp/build/outputs/apk/release/androidApp-release.apk
-release_notes: CHANGELOG.md
+release_notes: RELEASE_NOTES.md
 supported_nips:
     - "04"
     - "17"
