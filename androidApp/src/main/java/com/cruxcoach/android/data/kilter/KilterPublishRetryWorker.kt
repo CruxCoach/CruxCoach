@@ -14,6 +14,8 @@ import androidx.work.WorkerParameters
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.data.repository.BoardRepository
+import com.cruxcoach.data.repository.BoardSize
+import com.cruxcoach.data.repository.CommunityClimbRow
 import com.cruxcoach.domain.board.BoardClimbParser
 import dagger.Module
 import dagger.Provides
@@ -143,10 +145,6 @@ class KilterPublishRetryWorker @AssistedInject constructor(
             return androidx.work.ListenableWorker.Result.success()
         }
 
-        val sizeId = userPreferences.boardProductSizeId.first()
-        val boardSize = runCatching { boardRepository.getProductSize(sizeId) }.getOrNull()
-            ?: return androidx.work.ListenableWorker.Result.retry()  // come back when board metadata is loaded
-
         var attempted = 0
         var ok = 0
         var transient = 0
@@ -160,6 +158,25 @@ class KilterPublishRetryWorker @AssistedInject constructor(
             // would otherwise be the soonest any other queued row gets
             // retried.
             try {
+            // Resolve the product size per ROW (see [resolveRowBoardSize]) —
+            // pre-fix this came from the active-board pref once per batch:
+            // with a non-Kilter active board the pref's size id missed (the
+            // whole queue stalled behind Result.retry() until the user
+            // switched back) or resolved a same-id Kilter size at random,
+            // and a Homewall climb retried while Original was active got
+            // Original edges + product_layout_uuid under a Homewall
+            // product_name — a mismatched payload the server rejects.
+            val boardSize = resolveRowBoardSize(row)
+            if (boardSize == null) {
+                // Board metadata for this climb's layout isn't available
+                // (yet). Skip just this row — 'failed' keeps it queued for
+                // the next tick — instead of retrying the whole batch.
+                boardRepository.markKilterPublishFailed(
+                    row.uuid,
+                    "no product size resolvable for layout=${row.layoutId}",
+                )
+                continue
+            }
             // Resolve placementId → holeId so the API receives valid Kilter
             // hole_ids (see encodeClimbConcat docstring). Cached per-batch:
             // 692 rows is cheap and the loop stays tight.
@@ -204,7 +221,7 @@ class KilterPublishRetryWorker @AssistedInject constructor(
                     name = row.name,
                     description = row.description,
                     framesClimbConcat = climbConcat,
-                    productName = productNameForLayout(row.layoutId),
+                    productName = kilterProductName(row.layoutId),
                     productLayoutUuid = productLayoutUuid,
                     angle = angle,
                     edgeLeft = boardSize.edgeLeft.toInt(),
@@ -218,7 +235,7 @@ class KilterPublishRetryWorker @AssistedInject constructor(
                     name = row.name,
                     description = row.description,
                     framesClimbConcat = climbConcat,
-                    productName = productNameForLayout(row.layoutId),
+                    productName = kilterProductName(row.layoutId),
                     productLayoutUuid = productLayoutUuid,
                     angle = angle,
                     edgeLeft = boardSize.edgeLeft.toInt(),
@@ -329,6 +346,29 @@ class KilterPublishRetryWorker @AssistedInject constructor(
         }
     }
 
+    /**
+     * Resolve the climb's OWN Kilter product size — never the active board
+     * pref (the active board can be a different brand or a different Kilter
+     * product than the queued row's). Primary source is the bbox-pinned
+     * source size ([BoardRepository.getProductSizeForClimbRender]); when the
+     * climb has no bounds row yet, fall back to the largest size that has
+     * board images for the climb's layout (a larger board always contains
+     * the climb's holds). Returns null when neither resolves — board
+     * metadata for that layout simply isn't synced yet.
+     */
+    private fun resolveRowBoardSize(row: CommunityClimbRow): BoardSize? {
+        val sourceSizeId = runCatching { boardRepository.getProductSizeForClimbRender(row.uuid) }
+            .getOrNull()
+        if (sourceSizeId != null) {
+            runCatching { boardRepository.getProductSize(sourceSizeId) }.getOrNull()
+                ?.let { return it }
+        }
+        return runCatching { boardRepository.getProductSizesForLayout(row.layoutId.toInt()) }
+            .getOrDefault(emptyList())
+            .mapNotNull { sizeId -> runCatching { boardRepository.getProductSize(sizeId) }.getOrNull() }
+            .maxByOrNull { (it.edgeRight - it.edgeLeft) * (it.edgeTop - it.edgeBottom) }
+    }
+
     private fun recordAttempt(
         uuid: String,
         attemptedAtMs: Long,
@@ -348,15 +388,6 @@ class KilterPublishRetryWorker @AssistedInject constructor(
                 errorExcerpt = errorExcerpt?.take(200),
             )
         }.onFailure { Log.w(TAG, "recordKilterPublishAttempt threw for uuid=$uuid", it) }
-    }
-
-    /** Same mapping as KilterClimbPublisher.productNameFor. Kept duplicated
-     *  rather than extracted because the retry-worker module would
-     *  otherwise need to depend on the publisher class purely for one
-     *  pure-function lookup. */
-    private fun productNameForLayout(layoutId: Long): String = when (layoutId) {
-        com.cruxcoach.android.data.BoardConstants.KILTER_HOMEWALL_LAYOUT.toLong() -> "Kilter Board Homewall"
-        else -> "Kilter Board Original"
     }
 
     companion object {

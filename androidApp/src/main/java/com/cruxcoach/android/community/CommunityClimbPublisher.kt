@@ -9,6 +9,7 @@ import com.cruxcoach.android.nostr.NostrRelayPool
 import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.BoardSize
+import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.BoardClimbParser
 import com.cruxcoach.domain.community.AutoNoteTemplate
 import com.cruxcoach.domain.community.ClimbBounds
@@ -102,17 +103,36 @@ class CommunityClimbPublisher @Inject constructor(
     suspend fun publish(
         uuid: String,
         layoutId: Long,
+        boardBrand: BoardBrand,
         state: ClimbEditorState,
         sizeLabel: String,
         isEdit: Boolean = false,
         autoNote: AutoNoteSpec? = null,
     ): Result {
         val pubkey = nostrSigner.getPublicKeyHex()
-        val createdAt = System.currentTimeMillis() / 1000
+        // Monotonic per d-tag (FEAT-039 audit BUG-1): a same-second re-publish
+        // (fast typo-fix after publish) or a backward clock must still STRICTLY
+        // advance, or "newest wins" diverges between the live-sub (applies on a
+        // tie) and the Blossom chunk (skips on a tie). Clamp against the row's
+        // last emitted created_at; persisted below via markClimbPublishedNostr.
+        val createdAt = monotonicCreatedAtSeconds(
+            System.currentTimeMillis() / 1000,
+            boardRepository.getClimbCreatedAt(uuid),
+        )
+
+        // Brand is the climb's REAL board family, threaded in by the caller
+        // — NOT re-derived from layoutId, which can't tell the Aurora-family
+        // boards apart from Kilter (overlapping layout-ids). Drives both the
+        // bounds skip below and the official-app-push skip in Step 2.
+        val isMoonBoard = boardBrand == BoardBrand.MOONBOARD
 
         // Step 1: Nostr — mandatory. Failure throws; the user can retry
         // from the editor.
-        val bounds = computeBounds(state)
+        // computeBounds resolves Aurora placement coordinates; MoonBoard
+        // hold-ids aren't placement-ids (and could collide with low Kilter
+        // placement-ids), so skip it — a null bounds tag is handled
+        // gracefully by every subscriber.
+        val bounds = if (isMoonBoard) null else computeBounds(state, boardBrand)
         val payload = buildCommunityClimbEvent(
             pubkey = pubkey,
             createdAt = createdAt,
@@ -120,6 +140,7 @@ class CommunityClimbPublisher @Inject constructor(
             layoutId = layoutId,
             sizeLabel = sizeLabel,
             state = state,
+            brand = boardBrand,
             bounds = bounds,
         )
         val tags: Array<Array<String>> = payload.tags.map { it.toTypedArray() }.toTypedArray()
@@ -154,6 +175,7 @@ class CommunityClimbPublisher @Inject constructor(
             nostrEventId = event.id,
             nostrDTag = payload.dTag,
             pubkey = pubkey,
+            createdAtIso = java.time.Instant.ofEpochSecond(createdAt).toString(),
         )
 
         // Auto-Note: optional public Kind-1 announcement linking to the
@@ -164,7 +186,7 @@ class CommunityClimbPublisher @Inject constructor(
         // `autoNotePublished` carries the relay-accepted-at-least-once
         // signal back to the editor; null means the user didn't opt in.
         val autoNotePublished: Boolean? = if (autoNote != null) {
-            runCatching { publishKind1Note(payload.dTag, pubkey, state.name, autoNote) }
+            runCatching { publishKind1Note(payload.dTag, pubkey, state.name, boardBrand, autoNote) }
                 .onFailure { Log.w(TAG, "auto-note publish threw — recoverable", it) }
                 .getOrDefault(false)
         } else null
@@ -174,7 +196,14 @@ class CommunityClimbPublisher @Inject constructor(
         // Nostr" so the UI can show the connect-Kilter hint. If the user
         // has explicitly disabled Kilter publishing in settings, we don't
         // nudge.
-        val publishToKilter = userPreferences.kilterClimbPublishEnabled.first()
+        //
+        // The official-app (Kilter account) leg is Kilter-only. MoonBoard AND
+        // the Aurora family (Tension/Grasshopper/Decoy/So iLL/Touchstone) are
+        // CruxCoach-community-only — there is no CruxCoach→vendor-app publish for
+        // them. Gate on the brand's own capability (KILTER-only) so an authored
+        // Aurora climb is never pushed — mislabeled as Kilter — to the user's
+        // Kilter account. The climb still went out over Nostr above.
+        val publishToKilter = boardBrand.supportsOfficialAppPublish && userPreferences.kilterClimbPublishEnabled.first()
         val hasKilterToken = kilterTokenStore.getAccessToken() != null
         var nudgeToConnect = false
         var kilterOutcome: KilterClimbPublisher.Outcome? = null
@@ -201,6 +230,20 @@ class CommunityClimbPublisher @Inject constructor(
                 // create, and create-climb/transaction is idempotent on
                 // climb_uuid anyway.
                 val priorKilterStatus = boardRepository.getKilterPublishState(uuid)?.status
+                // 'rejected' (CREATE 4xx) is terminal for the retry queue,
+                // but an edit-republish is the legitimate way back in: the
+                // edit may fix exactly what Kilter's validation refused
+                // (name, content-policy). Downgrade to 'failed' so the
+                // claim inside kilterPublisher can take the slot — and so
+                // the retry worker picks the row up later if this attempt
+                // is skipped (e.g. token expired right now). Without this,
+                // claimKilterPublishSlot (NULL/'failed' only) returned
+                // Skipped("slot-busy") forever and the edited climb could
+                // never be mirrored short of delete + recreate.
+                if (isEdit && priorKilterStatus == "rejected") {
+                    Log.i(TAG, "rejected row edited — re-opening Kilter lane for $uuid")
+                    boardRepository.markKilterPublishFailed(uuid, "re-eligible: user edit after rejection")
+                }
                 val outcome = if (isEdit && priorKilterStatus == "synced") {
                     kilterPublisher.update(
                         uuid = uuid,
@@ -255,9 +298,9 @@ class CommunityClimbPublisher @Inject constructor(
      *    CancellationException is re-thrown explicitly so cooperative
      *    cancellation still works.
      */
-    suspend fun publishAllPending(sizeLabel: String, layoutId: Long): Int {
+    suspend fun publishAllPending(sizeLabel: String, layoutId: Long, boardBrand: BoardBrand): Int {
         val pubkey = runCatching { nostrSigner.getPublicKeyHex() }.getOrNull()
-        val drafts = runCatching { boardRepository.getDraftClimbs(pubkey) }
+        val drafts = runCatching { boardRepository.getDraftClimbs(pubkey, boardBrand.wireValue) }
             .onFailure { Log.w(TAG, "publishAllPending: getDraftClimbs failed; batch aborted", it) }
             .getOrElse { return 0 }
         var published = 0
@@ -270,7 +313,7 @@ class CommunityClimbPublisher @Inject constructor(
                 angle = null,
             )
             try {
-                publish(row.uuid, layoutId, state, sizeLabel)
+                publish(row.uuid, layoutId, boardBrand, state, sizeLabel)
                 published++
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
@@ -319,6 +362,7 @@ class CommunityClimbPublisher @Inject constructor(
         dTag: String,
         authorPubkeyHex: String,
         climbName: String,
+        boardBrand: BoardBrand,
         spec: AutoNoteSpec,
     ): Boolean {
         val naddr = NAddress.create(
@@ -332,6 +376,9 @@ class CommunityClimbPublisher @Inject constructor(
             template = spec.template,
             vars = mapOf(
                 "name" to climbName,
+                // {board} = the board's display name (Kilter / Tension / MoonBoard / …)
+                // so the announcement says WHICH board the climb is on.
+                "board" to boardBrand.displayName,
                 "naddr" to naddr,
                 "npub_cruxcoach" to cruxcoachNpub,
                 "cruxcoach_url" to "$APP_LINK_BASE$naddr",
@@ -345,7 +392,7 @@ class CommunityClimbPublisher @Inject constructor(
         // — every fork install would otherwise unconditionally amplify
         // whoever the fork's MAINTAINER_PUBKEY resolves to.
         val tagList = mutableListOf(
-            arrayOf("t", "kilterboard"),
+            arrayOf("t", com.cruxcoach.domain.community.boardHashtag(boardBrand)),
             arrayOf("t", "climbing"),
         )
         if (com.cruxcoach.android.BuildConfig.AUTO_NOTE_PTAG_MAINTAINER) {
@@ -371,10 +418,12 @@ class CommunityClimbPublisher @Inject constructor(
         return accepted > 0
     }
 
-    private fun computeBounds(state: ClimbEditorState): ClimbBounds? {
+    private fun computeBounds(state: ClimbEditorState, boardBrand: BoardBrand): ClimbBounds? {
         val ids = state.selectedHolds.keys
         if (ids.isEmpty()) return null
-        val all = runCatching { boardRepository.getAllPlacements() }.getOrNull().orEmpty()
+        // Brand-scope placements: an Aurora climb's bounds must come from its own
+        // board's placement coords, not Kilter's (the no-arg default).
+        val all = runCatching { boardRepository.getAllPlacements(boardBrand.wireValue) }.getOrNull().orEmpty()
         if (all.isEmpty()) return null
         val coords = all.asSequence()
             .filter { it.placementId.toInt() in ids }

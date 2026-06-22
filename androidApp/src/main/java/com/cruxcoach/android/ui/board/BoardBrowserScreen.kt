@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.CellTower
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.outlined.Map
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Tune
@@ -33,6 +34,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.data.SessionQueueState
+import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.android.ui.common.LocalSessionQueueManager
 import com.cruxcoach.android.ui.common.RestTimerBannerSlot
 import com.cruxcoach.android.ui.common.BleStatusArea
@@ -74,6 +77,7 @@ fun BoardBrowserScreen(
     onNavigateToFilter: () -> Unit = {},
     onNavigateToClimbCreator: () -> Unit = {},
     onNavigateToSetter: (pubkey: String) -> Unit = {},
+    onNavigateToMap: () -> Unit = {},
     viewModel: BoardBrowserViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -475,18 +479,40 @@ fun BoardBrowserScreen(
                         singleLine = true,
                         shape = RoundedCornerShape(10.dp)
                     )
-                    val holdsTint = if (state.holdSearch.holdFilterActive) OrangeAccent
-                        else MaterialTheme.colorScheme.onSurfaceVariant
+                    // Hold-search uses the placement-id heatmap machinery, which
+                    // only Aurora-protocol boards have. Gate explicitly on the
+                    // capability so non-Aurora boards (MoonBoard) don't show an
+                    // affordance that would run a meaningless cross-board search.
+                    if (BoardBrand.fromWire(state.filter.boardBrand).hasHeatmap) {
+                        val holdsTint = if (state.holdSearch.holdFilterActive) OrangeAccent
+                            else MaterialTheme.colorScheme.onSurfaceVariant
+                        IconButton(
+                            onClick = { viewModel.toggleHoldSearchSheet() },
+                            modifier = Modifier
+                                .size(40.dp)
+                                .testTag("board_hold_search")
+                        ) {
+                            Icon(
+                                Icons.Default.GridView,
+                                contentDescription = stringResource(R.string.cd_hold_search),
+                                tint = holdsTint,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    }
+                    // FEAT-006: discover Kilter Boards on a map. Lives next
+                    // to hold-search as a peer "find climbs by another
+                    // dimension" action.
                     IconButton(
-                        onClick = { viewModel.toggleHoldSearchSheet() },
+                        onClick = onNavigateToMap,
                         modifier = Modifier
                             .size(40.dp)
-                            .testTag("board_hold_search")
+                            .testTag("board_map_button")
                     ) {
                         Icon(
-                            Icons.Default.GridView,
-                            contentDescription = stringResource(R.string.cd_hold_search),
-                            tint = holdsTint,
+                            Icons.Outlined.Map,
+                            contentDescription = stringResource(R.string.cd_map),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(22.dp)
                         )
                     }
@@ -498,12 +524,87 @@ fun BoardBrowserScreen(
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = OrangeAccent)
                 }
+            } else if (state.climbs.isEmpty()) {
+                // Zero-results empty state — this area used to render a
+                // silently blank list. Two causes, two recoveries: the active
+                // board's catalogue was never downloaded (board switch without
+                // WiFi → the auto-load defers), or the filters simply match
+                // nothing.
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 32.dp, vertical = 48.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    if (state.activeBrandImporting) {
+                        // Third case: the active board's catalogue is being
+                        // imported right now — neither "no catalogue" nor
+                        // "no results" is true yet, so show real progress
+                        // instead of a misleading recovery prompt.
+                        CircularProgressIndicator(color = OrangeAccent)
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = stringResource(R.string.board_browser_empty_catalogue_loading),
+                            style = MaterialTheme.typography.titleMedium,
+                            textAlign = TextAlign.Center,
+                        )
+                    } else if (!state.activeBrandHasCatalogue) {
+                        Text(
+                            text = stringResource(R.string.board_browser_empty_no_catalogue),
+                            style = MaterialTheme.typography.titleMedium,
+                            textAlign = TextAlign.Center,
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Button(
+                            onClick = { viewModel.loadActiveBoardCatalogue() },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = OrangeAccent,
+                                contentColor = DarkBackground,
+                            ),
+                            modifier = Modifier.testTag("board_empty_load_catalogue")
+                        ) {
+                            Text(stringResource(R.string.board_browser_empty_load_catalogue))
+                        }
+                    } else {
+                        Text(
+                            text = stringResource(R.string.board_browser_empty_no_results),
+                            style = MaterialTheme.typography.titleMedium,
+                            textAlign = TextAlign.Center,
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = stringResource(R.string.board_browser_empty_no_results_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        OutlinedButton(
+                            onClick = { viewModel.clearAllBrowseFilters() },
+                            modifier = Modifier.testTag("board_empty_clear_filters")
+                        ) {
+                            Text(stringResource(R.string.board_browser_empty_clear_filters))
+                        }
+                    }
+                }
             } else {
                 val listState = rememberLazyListState()
 
-                // Reset scroll to top when filter results change
+                // Reset scroll to top when the result set actually changes
+                // (filter / sort / board change → different first climb).
+                // LaunchedEffect also runs on every INITIAL composition, so
+                // coming back from a climb detail used to scroll-to-top and
+                // lose the position the restored listState had just brought
+                // back. Track the last seen top uuid in a rememberSaveable
+                // (it survives the back stack alongside listState): on
+                // re-entry with an unchanged list the keys match and we skip
+                // the jump; a real result-set change still resets to top.
+                var lastTopUuid by rememberSaveable { mutableStateOf<String?>(null) }
                 LaunchedEffect(state.climbs.firstOrNull()?.uuid) {
-                    if (state.climbs.isNotEmpty()) listState.scrollToItem(0)
+                    val topUuid = state.climbs.firstOrNull()?.uuid ?: return@LaunchedEffect
+                    if (lastTopUuid != null && lastTopUuid != topUuid) listState.scrollToItem(0)
+                    lastTopUuid = topUuid
                 }
 
                 // Trigger loadMore when near bottom
@@ -584,6 +685,15 @@ fun BoardBrowserScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 horizontalAlignment = Alignment.End,
             ) {
+                // Climb authoring is supported for every interactive board:
+                // Kilter (also mirrors to the user's own Kilter account),
+                // MoonBoard, and the Aurora family (Tension / Grasshopper /
+                // Decoy / So iLL / Touchstone) — the latter all publish to the
+                // CruxCoach community only. The editor resolves the brand from
+                // the active board and threads it into the draft-insert +
+                // publish paths, so each climb stays on its own board. Only the
+                // info-layer brands (aurora, 12climb, map-only) lack authoring,
+                // and they never reach the browser, so no extra gate is needed.
                 FloatingActionButton(
                     onClick = onNavigateToClimbCreator,
                     containerColor = OrangeAccent,

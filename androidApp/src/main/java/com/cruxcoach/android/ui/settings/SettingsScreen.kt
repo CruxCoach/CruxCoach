@@ -35,6 +35,8 @@ import com.cruxcoach.android.ui.devcontact.DevContactSection
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.OrangeAccent
+import com.cruxcoach.android.data.BoardConstants
+import com.cruxcoach.domain.board.BoardBrand
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -71,6 +73,7 @@ fun SettingsScreen(
     var dataExpanded by rememberSaveable { mutableStateOf(false) }
     var updaterExpanded by rememberSaveable { mutableStateOf(false) }
     var showBoardModelDialog by rememberSaveable { mutableStateOf(false) }
+    var showGymSearch by rememberSaveable { mutableStateOf(false) }
 
     // Notification-tap deep-link auto-expand: opens the updater section so
     // the inline confirmation dialog inside [UpdaterSettingsSection] can
@@ -124,36 +127,27 @@ fun SettingsScreen(
         LaunchedEffect(Unit) { viewModel.loadProductSizes() }
 
         if (showBoardModelDialog) {
-            // Filter the size list to the active layout's product so a
-            // Homewall user doesn't see Original-board sizes (and vice
-            // versa). The active layout itself is picked one section
-            // higher via the KilterLayoutSection.
-            val activeProductId = when (state.boardLayoutId) {
-                com.cruxcoach.android.data.BoardConstants.KILTER_HOMEWALL_LAYOUT ->
-                    com.cruxcoach.android.data.BoardConstants.KILTER_HOMEWALL_PRODUCT_ID
-                else -> com.cruxcoach.android.data.BoardConstants.KILTER_PRODUCT_ID
-            }
-            val dbSizes = state.productSizes.filter { it.productId.toInt() == activeProductId }
-            // Pre-sync: fall back to hardcoded standard sizes so the
-            // user can still pick their physical board model. Board
-            // model is hardware knowledge — it doesn't need a network
-            // round-trip to be answered. Once the DB syncs, dbSizes
-            // becomes non-empty and replaces the fallback.
-            val filteredSizes = if (dbSizes.isNotEmpty()) {
-                dbSizes
-            } else {
-                com.cruxcoach.android.data.BoardConstants.KILTER_KNOWN_SIZES
-                    .filter { it.productId.toInt() == activeProductId }
-            }
-            BoardModelSelectionDialog(
-                productSizes = filteredSizes,
-                selectedId = state.boardProductSizeId,
-                onConfirm = { id ->
-                    val name = filteredSizes.find { it.id.toInt() == id }?.name ?: ""
-                    viewModel.updateBoardProductSize(id, name)
-                    showBoardModelDialog = false
-                },
+            // FEAT-031: the one shared board picker — identical state + options
+            // (Kilter / MoonBoard / Aurora family) across every call site. The
+            // selection persists via the shared VM; this screen's board section
+            // updates reactively from the prefs.
+            BoardPickerDialog(
                 onDismiss = { showBoardModelDialog = false },
+                onSelected = { showBoardModelDialog = false },
+                onFindViaGym = {
+                    showBoardModelDialog = false
+                    showGymSearch = true
+                },
+            )
+        }
+        if (showGymSearch) {
+            GymBoardSearchSheet(
+                onClose = { showGymSearch = false },
+                onFallbackToDirect = {
+                    showGymSearch = false
+                    showBoardModelDialog = true
+                },
+                onDismiss = { showGymSearch = false },
             )
         }
 
@@ -188,21 +182,34 @@ fun SettingsScreen(
             CollapsibleHeader(stringResource(R.string.settings_section_board), boardSettingsExpanded) { boardSettingsExpanded = !boardSettingsExpanded }
             AnimatedVisibility(visible = boardSettingsExpanded) {
                 Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    KilterLayoutSection(
-                        selectedLayoutId = state.boardLayoutId,
-                        onLayoutChange = { viewModel.updateBoardLayout(it) },
-                    )
-                    HorizontalDivider()
+                    // FEAT-027: for a MoonBoard show the variant name; else the
+                    // Kilter board-size label. (0.1.5 dropped the standalone
+                    // Original/Homewall toggle — the picker resolves layout.)
                     BoardModelSection(
-                        boardModelName = state.boardProductSizeName,
-                        onChangeModel = { showBoardModelDialog = true }
+                        // Always show WHICH board it is, not just the size
+                        // (FEAT-031): MoonBoard shows its variant; an Aurora board
+                        // shows its name/variant + size; Kilter shows the size.
+                        boardModelName = run {
+                            val brand = BoardBrand.fromWire(state.boardBrand)
+                            when {
+                                brand == BoardBrand.MOONBOARD ->
+                                    state.moonBoardVariant?.displayName ?: ""
+                                brand.usesAuroraProtocol && brand != BoardBrand.KILTER -> {
+                                    val boardName = BoardConstants
+                                        .auroraVariant(brand, state.boardLayoutId)?.displayName
+                                        ?: brand.displayName
+                                    if (state.boardProductSizeName.isNotBlank())
+                                        "$boardName · ${state.boardProductSizeName}" else boardName
+                                }
+                                else -> state.boardProductSizeName
+                            }
+                        },
+                        onChangeModel = { showBoardModelDialog = true },
                     )
                     HorizontalDivider()
                     BleAutoDisconnectSection(
                         bleAutoDisconnectSeconds = state.bleAutoDisconnectSeconds,
-                        quickBoardSend = state.quickBoardSend,
                         onAutoDisconnectChange = { viewModel.updateBleAutoDisconnect(it) },
-                        onQuickBoardSendChange = { viewModel.updateQuickBoardSend(it) },
                     )
                     HorizontalDivider()
                     ClimbSharingSection(
@@ -306,6 +313,7 @@ fun SettingsScreen(
                     DataDeletionSection(
                         showDeleteBoardDataDialog = state.showDeleteBoardDataDialog,
                         showDeleteUserDataDialog = state.showDeleteUserDataDialog,
+                        isDeletingBoardData = state.isDeletingBoardData,
                         onShowDeleteBoardDataDialog = { viewModel.showDeleteBoardDataDialog() },
                         onShowDeleteUserDataDialog = { viewModel.showDeleteUserDataDialog() },
                         onDismissDeleteDialog = { viewModel.dismissDeleteDialog() },
@@ -413,6 +421,8 @@ fun SettingsScreen(
                 stringResource(R.string.settings_backup_check_error, snackbar.detail)
             BackupSettingsState.Snackbar.RestoreFailed ->
                 stringResource(R.string.settings_backup_restore_failed)
+            is BackupSettingsState.Snackbar.RestoreSucceeded ->
+                stringResource(R.string.settings_backup_restored, snackbar.ascents, snackbar.lists)
             BackupSettingsState.Snackbar.BackupSucceeded ->
                 stringResource(R.string.settings_backup_succeeded)
             is BackupSettingsState.Snackbar.BackupFailed ->
@@ -465,6 +475,20 @@ fun SettingsScreen(
                 }
             },
             text = { Text(message) },
+        )
+    }
+
+    // FEAT-027: MoonBoard catalogue-sync result, surfaced after the user
+    // selects a MoonBoard variant in the board picker.
+    state.moonBoardSyncMessage?.let { syncMessage ->
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissMoonBoardSyncMessage() },
+            confirmButton = {
+                TextButton(onClick = { viewModel.dismissMoonBoardSyncMessage() }) {
+                    Text(stringResource(R.string.action_close))
+                }
+            },
+            text = { Text(syncMessage) },
         )
     }
 }

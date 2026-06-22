@@ -24,6 +24,31 @@ class ClimbValidationTest {
     }
 
     @Test
+    fun moonboard_route_roles_validate_as_start_and_finish() {
+        // MoonBoard stores brand-native route roles (42/43/44); validation
+        // must recognise them as start/hand/finish via HoldRole.normalize,
+        // otherwise a perfectly good MoonBoard climb reports NoStartHold.
+        val holds = mapOf(
+            5 to HoldRole.ROUTE_START,
+            7 to HoldRole.ROUTE_HAND,
+            9 to HoldRole.ROUTE_FINISH,
+        )
+        assertTrue(
+            ClimbValidation.isValid(
+                holds, name = "Mooncrux", description = "", angle = 40,
+                setterGradeId = KilterGradeMapper.DEFAULT_SETTER_GRADE_ID,
+            )
+        )
+    }
+
+    @Test
+    fun moonboard_without_route_start_fails() {
+        val holds = mapOf(7 to HoldRole.ROUTE_HAND, 9 to HoldRole.ROUTE_FINISH)
+        val issues = ClimbValidation.validate(holds, "n", "")
+        assertTrue(ClimbValidation.Issue.NoStartHold in issues)
+    }
+
+    @Test
     fun missing_angle_fails() {
         val issues = ClimbValidation.validate(goodHolds, name = "ok", description = "", angle = null)
         assertTrue(ClimbValidation.Issue.AngleMissing in issues)

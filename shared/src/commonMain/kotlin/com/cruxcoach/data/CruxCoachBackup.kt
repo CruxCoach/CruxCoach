@@ -37,6 +37,7 @@ object CruxCoachBackup {
     private const val MAX_UNIT_LEN = 20
     private const val MAX_EXTERNAL_ID_LEN = 100
     private const val MAX_DATE_LEN = 40
+    private const val MAX_BRAND_LEN = 32
 
     // 8-4-4-4-12 canonical — app-generated IDs (UUID.randomUUID().toString()).
     private val UUID_REGEX =
@@ -169,7 +170,11 @@ object CruxCoachBackup {
             requireUuid("ascent.climbUuid", a.climbUuid)
             requireRange("ascent.angle", a.angle, 0L..70L)
             requireRange("ascent.bidCount", a.bidCount, 0L..100_000L)
-            requireRange("ascent.quality", a.quality, 0L..3L)
+            // Quality is the user's 1-5 star rating (null = unrated), NOT the
+            // 0-3 catalogue quality_average. The old 0..3 bound rejected any
+            // 4-5 star ascent on import — breaking both <=0.1.4 restores AND
+            // 0.2.0 round-trips. Accept the full 0..5 star range.
+            requireRange("ascent.quality", a.quality, 0L..5L)
             requireRange("ascent.difficulty", a.difficulty, 0L..40L)
             requireRange("ascent.framesCount", a.framesCount, 0L..1_000L)
             requireFinite("ascent.difficultyAverage", a.difficultyAverage)
@@ -177,6 +182,13 @@ object CruxCoachBackup {
             requireLen("ascent.climbName", a.climbName, MAX_NAME_LEN)
             requireLen("ascent.climbFrames", a.climbFrames, MAX_CLIMB_FRAMES_LEN)
             requireLen("ascent.climbedAt", a.climbedAt, MAX_DATE_LEN)
+            // Board context (FEAT-027 P2): like ownClimb.layoutId. boardBrand
+            // is length-capped (not whitelisted) so it stays valid across app
+            // versions + future boards; an unknown value is sanitised to Kilter
+            // by BoardBrand.fromWire at read time, the cap just blocks a giant
+            // string from a crafted backup.
+            requireLen("ascent.boardBrand", a.boardBrand, MAX_BRAND_LEN)
+            requireRange("ascent.layoutId", a.layoutId, 0L..1_000L)
         }
 
         for (b in boardBids) {
@@ -188,6 +200,9 @@ object CruxCoachBackup {
             requireLen("bid.comment", b.comment, MAX_COMMENT_LEN)
             requireLen("bid.climbName", b.climbName, MAX_NAME_LEN)
             requireLen("bid.climbedAt", b.climbedAt, MAX_DATE_LEN)
+            // Board context (FEAT-027 P2) — see the ascent loop above.
+            requireLen("bid.boardBrand", b.boardBrand, MAX_BRAND_LEN)
+            requireRange("bid.layoutId", b.layoutId, 0L..1_000L)
         }
 
         for (s in boardSessions) {
@@ -225,6 +240,10 @@ object CruxCoachBackup {
             requireLen("ownClimb.kilterPublishVia", c.kilterPublishVia, MAX_GRADE_LEN)
             requireLen("ownClimb.nostrPublishVia", c.nostrPublishVia, MAX_GRADE_LEN)
             requireLen("ownClimb.kilterError", c.kilterError, MAX_NOTES_LEN)
+            // Cap, don't whitelist (same posture as ascent/bid.boardBrand) —
+            // an unknown future brand sanitizes to Kilter via BoardBrand.fromWire
+            // at read time rather than failing the whole restore.
+            requireLen("ownClimb.boardBrand", c.boardBrand, MAX_BRAND_LEN)
             // source must be one of the values the schema's CHECK-style
             // comments enumerate. 'kilter' is rejected even though it's
             // a valid column value, because origin='cruxcoach' rows are
@@ -342,7 +361,16 @@ object CruxCoachBackup {
         val climbName: String = "",
         val difficultyAverage: Double? = null,
         val climbFrames: String = "",
-        val framesCount: Long = 1
+        val framesCount: Long = 1,
+        // Board family + layout (7.sqm). Defaulted for backups written before
+        // this field existed — those are Kilter by definition.
+        val boardBrand: String = "kilter",
+        val layoutId: Long? = null,
+        // Kilter-sync state, so a restore doesn't re-arm a /logs/bulk
+        // re-upload of the whole logbook. Defaulted false for backups
+        // written before this field existed (their rows re-upload once —
+        // the pre-fix behavior).
+        val synced: Boolean = false
     )
 
     @Serializable
@@ -355,7 +383,11 @@ object CruxCoachBackup {
         val comment: String? = null,
         val climbedAt: String,
         val climbName: String = "",
-        val difficultyAverage: Double? = null
+        val difficultyAverage: Double? = null,
+        val boardBrand: String = "kilter",
+        val layoutId: Long? = null,
+        // See AscentExport.synced.
+        val synced: Boolean = false
     )
 
     @Serializable
@@ -409,6 +441,12 @@ object CruxCoachBackup {
         val kilterSyncedAt: Long? = null,
         val kilterPublishVia: String? = null,
         val kilterError: String? = null,
+        // FEAT-031 multiboard. Defaulted so a pre-FEAT-031 v3 envelope (no
+        // boardBrand key) deserializes to "kilter" — matching the climbs
+        // column DEFAULT and the pre-multiboard reality (all own-climbs were
+        // Kilter). Carried so a MoonBoard/Aurora draft round-trips its brand
+        // instead of silently becoming Kilter on restore.
+        val boardBrand: String = "kilter",
     )
 
     @Serializable
@@ -538,7 +576,9 @@ object CruxCoachBackup {
                     quality = a.quality, difficulty = a.difficulty,
                     comment = a.comment, climbedAt = a.climbedAt, climbName = a.climbName,
                     difficultyAverage = a.difficultyAverage,
-                    climbFrames = a.climbFrames, framesCount = a.framesCount
+                    climbFrames = a.climbFrames, framesCount = a.framesCount,
+                    boardBrand = a.boardBrand, layoutId = a.layoutId,
+                    synced = a.synced
                 )
             }
         } else emptyList()
@@ -548,7 +588,9 @@ object CruxCoachBackup {
                 BidExport(
                     uuid = b.uuid, climbUuid = b.climbUuid, angle = b.angle,
                     isMirror = b.isMirror, bidCount = b.bidCount,
-                    comment = b.comment, climbedAt = b.climbedAt
+                    comment = b.comment, climbedAt = b.climbedAt,
+                    boardBrand = b.boardBrand, layoutId = b.layoutId,
+                    synced = b.synced
                 )
             }
         } else emptyList()
@@ -602,6 +644,7 @@ object CruxCoachBackup {
                     kilterSyncedAt = row.kilterSyncedAt,
                     kilterPublishVia = row.kilterPublishVia,
                     kilterError = row.kilterError,
+                    boardBrand = row.boardBrand,
                 )
             }
         } else emptyList()
@@ -817,11 +860,13 @@ object CruxCoachBackup {
                             bidCount = ascent.bidCount, quality = ascent.quality,
                             difficulty = ascent.difficulty, isBenchmark = false,
                             comment = ascent.comment, climbedAt = ascent.climbedAt,
-                            synced = false,
+                            synced = ascent.synced,
                             climbName = ascent.climbName,
                             difficultyAverage = ascent.difficultyAverage,
                             climbFrames = ascent.climbFrames,
-                            framesCount = ascent.framesCount
+                            framesCount = ascent.framesCount,
+                            boardBrand = ascent.boardBrand,
+                            layoutId = ascent.layoutId
                         )
                         ascentCount++
                     }
@@ -843,9 +888,11 @@ object CruxCoachBackup {
                             climbUuid = bid.climbUuid.lowercase(), angle = bid.angle,
                             isMirror = bid.isMirror, bidCount = bid.bidCount,
                             comment = bid.comment, climbedAt = bid.climbedAt,
-                            synced = false,
+                            synced = bid.synced,
                             climbName = bid.climbName,
-                            difficultyAverage = bid.difficultyAverage
+                            difficultyAverage = bid.difficultyAverage,
+                            boardBrand = bid.boardBrand,
+                            layoutId = bid.layoutId
                         )
                         bidCount++
                     }
@@ -968,6 +1015,7 @@ object CruxCoachBackup {
                     kilterSyncedAt = climb.kilterSyncedAt,
                     kilterPublishVia = climb.kilterPublishVia,
                     kilterError = climb.kilterError,
+                    boardBrand = climb.boardBrand,
                 )
                 if (boardRepository.restoreOwnClimb(row)) ownClimbsImported++ else ownClimbsSkipped++
             }

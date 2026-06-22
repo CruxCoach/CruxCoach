@@ -14,9 +14,7 @@ import java.time.format.DateTimeParseException
  * before hashing, otherwise re-importing a file written by a different
  * Aurora client surfaces phantom duplicates.
  *
- * Mirrors the timestamp-normalisation step in
- * `boardsesh/packages/web/app/lib/data-sync/aurora/json-import.ts:131-141`
- * (Apache 2.0):
+ * Normalisation steps:
  *
  * 1. Trim, replace any internal space with `T`.
  * 2. If no explicit timezone offset (`Z`, `+HH:MM`, `-HH:MM`) is
@@ -50,8 +48,7 @@ object AuroraTimestamp {
         // round-trips exactly the input precision — so two re-imports of
         // the "same" instant (one with millis, one with micros) would
         // canonicalise to *different* strings unless we cap precision
-        // pre-parse. Truncating to millis matches the boardsesh
-        // reference and keeps the dedup hash consistent.
+        // pre-parse. Truncating to millis keeps the dedup hash consistent.
         val canonical = truncateSubSecondToMillis(withTimezone) ?: withTimezone
 
         return try {

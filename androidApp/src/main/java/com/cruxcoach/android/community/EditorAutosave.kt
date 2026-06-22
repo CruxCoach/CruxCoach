@@ -18,8 +18,10 @@ import javax.inject.Singleton
  * to DataStore on every change so a navigation-away or process-kill
  * can recover via `load()` on the next editor open.
  *
- * One slot only: re-opening the editor on a different climb overwrites
- * the previous autosave. Cleared on explicit save / publish / discard.
+ * One slot PER EXACT BOARD (brand + layout + size — the same granularity the
+ * board picker differentiates): keys are namespaced by a `boardKey`, so a draft
+ * in progress on one board is preserved independently and never bleeds into a
+ * different board's editor. Cleared on explicit save / publish / discard.
  *
  * Per-identity scope: writes go to the `keyScoped` DataStore (one file
  * per Nostr-pubkey-prefix — see [AppModule.provideKeyScopedDataStore]),
@@ -35,57 +37,58 @@ import javax.inject.Singleton
 class EditorAutosave @Inject constructor(
     @Named("keyScoped") private val store: DataStore<Preferences>,
 ) {
-    suspend fun save(state: ClimbEditorState) {
+    /** [boardKey] = exact-board identity (e.g. "tension_10_6"). */
+    suspend fun save(boardKey: String, state: ClimbEditorState) {
         if (state.selectedHolds.isEmpty() && state.name.isBlank() && state.description.isBlank()) {
             // Nothing meaningful to restore — skip the write.
             return
         }
         val holds = encodeHolds(state.selectedHolds)
         store.edit { prefs ->
-            prefs[KEY_HOLDS] = holds
-            prefs[KEY_NAME] = state.name
-            prefs[KEY_DESCRIPTION] = state.description
-            state.setterGradeId?.let { prefs[KEY_GRADE] = it } ?: prefs.remove(KEY_GRADE)
-            state.angle?.let { prefs[KEY_ANGLE] = it } ?: prefs.remove(KEY_ANGLE)
-            prefs[KEY_SAVED_AT] = System.currentTimeMillis()
+            prefs[holdsKey(boardKey)] = holds
+            prefs[nameKey(boardKey)] = state.name
+            prefs[descKey(boardKey)] = state.description
+            state.setterGradeId?.let { prefs[gradeKey(boardKey)] = it } ?: prefs.remove(gradeKey(boardKey))
+            state.angle?.let { prefs[angleKey(boardKey)] = it } ?: prefs.remove(angleKey(boardKey))
+            prefs[savedAtKey(boardKey)] = System.currentTimeMillis()
         }
     }
 
-    suspend fun load(): AutosaveSnapshot? {
+    suspend fun load(boardKey: String): AutosaveSnapshot? {
         val prefs = store.data.firstOrNull() ?: return null
-        val holds = prefs[KEY_HOLDS] ?: return null
-        val savedAt = prefs[KEY_SAVED_AT] ?: return null
+        val holds = prefs[holdsKey(boardKey)] ?: return null
+        val savedAt = prefs[savedAtKey(boardKey)] ?: return null
         return AutosaveSnapshot(
             state = ClimbEditorState(
                 selectedHolds = decodeHolds(holds),
-                name = prefs[KEY_NAME].orEmpty(),
-                description = prefs[KEY_DESCRIPTION].orEmpty(),
-                setterGradeId = prefs[KEY_GRADE],
-                angle = prefs[KEY_ANGLE],
+                name = prefs[nameKey(boardKey)].orEmpty(),
+                description = prefs[descKey(boardKey)].orEmpty(),
+                setterGradeId = prefs[gradeKey(boardKey)],
+                angle = prefs[angleKey(boardKey)],
             ),
             savedAtEpochMs = savedAt,
         )
     }
 
-    suspend fun clear() {
+    suspend fun clear(boardKey: String) {
         store.edit { prefs ->
-            prefs.remove(KEY_HOLDS)
-            prefs.remove(KEY_NAME)
-            prefs.remove(KEY_DESCRIPTION)
-            prefs.remove(KEY_GRADE)
-            prefs.remove(KEY_ANGLE)
-            prefs.remove(KEY_SAVED_AT)
+            prefs.remove(holdsKey(boardKey))
+            prefs.remove(nameKey(boardKey))
+            prefs.remove(descKey(boardKey))
+            prefs.remove(gradeKey(boardKey))
+            prefs.remove(angleKey(boardKey))
+            prefs.remove(savedAtKey(boardKey))
         }
     }
 
     /**
-     * Did the last call to [save] persist a non-trivial draft? UI uses
-     * this to decide whether to show the "Restore previous session?"
+     * Did the last call to [save] persist a non-trivial draft for [boardKey]?
+     * UI uses this to decide whether to show the "Restore previous session?"
      * prompt on open.
      */
-    suspend fun hasAutosave(): Boolean {
+    suspend fun hasAutosave(boardKey: String): Boolean {
         val prefs = store.data.first()
-        return prefs[KEY_HOLDS] != null
+        return prefs[holdsKey(boardKey)] != null
     }
 
     data class AutosaveSnapshot(
@@ -95,12 +98,14 @@ class EditorAutosave @Inject constructor(
 
     companion object {
         // Stored in the per-identity (keyScoped) DataStore — see class kdoc.
-        private val KEY_HOLDS = stringPreferencesKey("editor_autosave_holds")
-        private val KEY_NAME = stringPreferencesKey("editor_autosave_name")
-        private val KEY_DESCRIPTION = stringPreferencesKey("editor_autosave_description")
-        private val KEY_GRADE = intPreferencesKey("editor_autosave_grade")
-        private val KEY_ANGLE = intPreferencesKey("editor_autosave_angle")
-        private val KEY_SAVED_AT = longPreferencesKey("editor_autosave_saved_at")
+        // Keys are namespaced per EXACT board ([boardKey] = brand_layout_size)
+        // so every board keeps its own in-flight draft without cross-contamination.
+        private fun holdsKey(b: String) = stringPreferencesKey("editor_autosave_${b}_holds")
+        private fun nameKey(b: String) = stringPreferencesKey("editor_autosave_${b}_name")
+        private fun descKey(b: String) = stringPreferencesKey("editor_autosave_${b}_description")
+        private fun gradeKey(b: String) = intPreferencesKey("editor_autosave_${b}_grade")
+        private fun angleKey(b: String) = intPreferencesKey("editor_autosave_${b}_angle")
+        private fun savedAtKey(b: String) = longPreferencesKey("editor_autosave_${b}_saved_at")
 
         internal fun encodeHolds(holds: Map<Int, Int>): String =
             holds.entries.joinToString(";") { (pid, role) -> "$pid:$role" }

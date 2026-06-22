@@ -9,7 +9,6 @@ import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.OutOfQuotaPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
@@ -81,13 +80,18 @@ class UpdateCheckWorker @AssistedInject constructor(
             )
             Log.d(TAG, "event=periodic_scheduled flex=6h repeat=24h")
 
-            // Expedited jobs only accept network + storage constraints.
+            // NOT expedited: an expedited request runs as a foreground service on
+            // API < 31, where WorkManager calls getForegroundInfo() up front — a
+            // CoroutineWorker without that override crashes with "Not implemented"
+            // (old-API audit C-2; same class as the BoardSyncWorker bug). A
+            // first-run update check isn't latency-critical, so a normal
+            // CONNECTED-constrained one-time job is the right fit and shows no
+            // foreground notification.
             val firstRunConstraints = Constraints.Builder()
                 .setRequiredNetworkType(NetworkType.CONNECTED)
                 .build()
             val firstRun = OneTimeWorkRequestBuilder<UpdateCheckWorker>()
                 .setConstraints(firstRunConstraints)
-                .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
                 .build()
             wm.enqueueUniqueWork(
                 FIRST_RUN_NAME,

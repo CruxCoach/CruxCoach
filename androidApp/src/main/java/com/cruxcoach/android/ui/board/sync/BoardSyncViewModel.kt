@@ -8,12 +8,16 @@ import com.cruxcoach.android.data.BoardSyncState
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.BoardSize
+import com.cruxcoach.domain.board.BoardBrand
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -22,7 +26,11 @@ import javax.inject.Inject
 data class BoardModelSelectionState(
     val showDialog: Boolean = false,
     val productSizes: List<BoardSize> = emptyList(),
-    val selectedId: Int = BoardConstants.KILTER_DEFAULT_SIZE
+    val selectedId: Int = BoardConstants.KILTER_DEFAULT_SIZE,
+    /** Active brand — drives the unified picker's initial category. */
+    val boardBrand: String = BoardBrand.KILTER.wireValue,
+    /** Active MoonBoard variant when [boardBrand] == "moonboard". */
+    val selectedMoonBoardVariant: com.cruxcoach.domain.board.MoonBoardVariant? = null,
 )
 
 /**
@@ -33,14 +41,36 @@ data class BoardModelSelectionState(
 @HiltViewModel
 class BoardSyncViewModel @Inject constructor(
     private val syncManager: BoardSyncManager,
+    private val userPreferences: UserPreferences,
     private val boardRepository: BoardRepository,
-    private val userPreferences: UserPreferences
 ) : ViewModel() {
 
     val state: StateFlow<BoardSyncState> = syncManager.state
 
     private val _modelState = MutableStateFlow(BoardModelSelectionState())
     val modelState: StateFlow<BoardModelSelectionState> = _modelState.asStateFlow()
+
+    /** Per-brand catalogue sizes (FEAT-031), keyed by wire value. Drives the
+     *  idle board-status list. Refreshed on demand + after each sync. */
+    private val _boardCounts = MutableStateFlow<Map<String, Long>>(emptyMap())
+    val boardCounts: StateFlow<Map<String, Long>> = _boardCounts.asStateFlow()
+
+    /** Active board brand — the status list highlights it and flags it as the
+     *  one whose missing catalogue is auto-loaded. */
+    val activeBrand: StateFlow<BoardBrand> = userPreferences.boardBrand
+        .map { BoardBrand.fromWire(it) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), BoardBrand.KILTER)
+
+    /** Recompute per-board catalogue sizes off the main thread. Call on first
+     *  composition and whenever a sync completes. */
+    fun refreshBoardCounts() {
+        viewModelScope.launch {
+            _boardCounts.value = withContext(Dispatchers.IO) { boardRepository.getClimbCountsByBrand() }
+        }
+    }
+
+    /** Load (or retry) a board's catalogue from the status list. */
+    fun loadBoard(brand: BoardBrand) = syncManager.loadBoardCatalogue(brand)
 
     fun checkNetwork() = syncManager.checkNetwork()
     fun dismissWifiDialog() = syncManager.dismissWifiDialog()
@@ -85,36 +115,69 @@ class BoardSyncViewModel @Inject constructor(
     fun checkFirstSyncModelSelection() {
         viewModelScope.launch {
             if (!userPreferences.isOnboardingCompleted()) return@launch
+            // FEAT-027: MoonBoard users have already picked their variant
+            // in onboarding/Settings — don't re-prompt them with this
+            // Kilter-flavoured post-Kilter-sync nudge.
+            val brand = userPreferences.boardBrand.first()
+            if (BoardBrand.fromWire(brand) != BoardBrand.KILTER) return@launch
             val isDefault = userPreferences.isBoardProductSizeDefault.first()
             if (!isDefault) return@launch
 
-            val layoutId = userPreferences.boardLayoutId.first()
-            val productId = layoutToProductId(layoutId)
-            val sizes = withContext(Dispatchers.IO) {
-                boardRepository.getAllProductSizes(productId)
-            }
-            if (sizes.isEmpty()) return@launch
+            // Unified picker shows all 16 hardware-known Kilter sizes
+            // (both products); the picker's category tier filters them
+            // into Original vs Homewall, so we no longer need to pick
+            // one product up-front.
+            val sizes = BoardConstants.KILTER_KNOWN_SIZES
             val currentId = userPreferences.boardProductSizeId.first()
             _modelState.update {
-                it.copy(showDialog = true, productSizes = sizes, selectedId = currentId)
+                it.copy(
+                    showDialog = true,
+                    productSizes = sizes,
+                    selectedId = currentId,
+                    boardBrand = brand,
+                    selectedMoonBoardVariant = null,
+                )
             }
         }
     }
 
-    private fun layoutToProductId(layoutId: Int): Long = when (layoutId) {
-        com.cruxcoach.android.data.BoardConstants.KILTER_HOMEWALL_LAYOUT ->
-            com.cruxcoach.android.data.BoardConstants.KILTER_HOMEWALL_PRODUCT_ID.toLong()
-        else -> com.cruxcoach.android.data.BoardConstants.KILTER_PRODUCT_ID.toLong()
-    }
-
     fun confirmBoardModel(id: Int) {
+        // Derive layout from the picked size's product — a Homewall pick
+        // must flip the layout too, not just the size, so browse + BLE
+        // land on the right Kilter board.
+        val sizes = _modelState.value.productSizes
         _modelState.update { it.copy(showDialog = false) }
         viewModelScope.launch {
+            val ps = sizes.firstOrNull { it.id.toInt() == id }
+            val layout = BoardConstants.layoutIdForProduct(
+                ps?.productId?.toInt() ?: BoardConstants.KILTER_PRODUCT_ID
+            )
+            userPreferences.setBoardLayoutId(layout)
             userPreferences.setBoardProductSizeId(id)
+            userPreferences.setBoardBrand(BoardBrand.KILTER.wireValue)
+        }
+    }
+
+    /** FEAT-027: user picked a MoonBoard variant in the unified post-sync
+     *  picker. Persists brand + layout (+ pins the angle via
+     *  setMoonBoardSelection); the next browse fetch flips brand
+     *  atomically. */
+    fun confirmMoonBoardVariant(variant: com.cruxcoach.domain.board.MoonBoardVariant) {
+        _modelState.update { it.copy(showDialog = false) }
+        viewModelScope.launch {
+            userPreferences.setMoonBoardSelection(variant.layoutId.toInt())
         }
     }
 
     fun dismissModelDialog() {
         _modelState.update { it.copy(showDialog = false) }
+    }
+
+    /** FEAT-031: re-open the post-sync board picker. Used by the inline card's
+     *  gym-search escape hatch to come back to the direct picker on fallback —
+     *  the state set by [checkFirstSyncModelSelection] is still in place, so we
+     *  only need to flip the visibility flag back on. */
+    fun showModelDialog() {
+        _modelState.update { it.copy(showDialog = true) }
     }
 }

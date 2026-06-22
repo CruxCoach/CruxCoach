@@ -7,8 +7,12 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import com.cruxcoach.android.R
+import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.BoardPacketEncoder
 import com.cruxcoach.domain.board.BoardHold
+import com.cruxcoach.domain.board.HoldRole
+import com.cruxcoach.domain.board.MoonBoardFrameEncoder
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -66,6 +70,22 @@ class BoardBleConnection(private val context: Context) {
     private val _connectedBoardName = MutableStateFlow<String?>(null)
     val connectedBoardName: StateFlow<String?> = _connectedBoardName.asStateFlow()
 
+    // Brand of the board this GATT actually belongs to (from the
+    // DiscoveredBoard passed to connect()). Send paths must guard against
+    // THIS, not the active-board pref: switching the active board in
+    // Settings never disconnects, so the pref can diverge from the board
+    // that is still on the other end of the link. Null while disconnected.
+    private val _connectedBoardBrand = MutableStateFlow<BoardBrand?>(null)
+    val connectedBoardBrand: StateFlow<BoardBrand?> = _connectedBoardBrand.asStateFlow()
+
+    // Localized reason (string-res id) why the last connect attempt was torn
+    // down at service discovery — currently only the unsupported RedBear-UART
+    // MoonBoard LED-kit generation. Survives the disconnect (so the sheet can
+    // show it on the scan list the user lands back on) and is cleared on the
+    // next connect attempt. Null = no known failure reason.
+    private val _connectFailureReason = MutableStateFlow<Int?>(null)
+    val connectFailureReason: StateFlow<Int?> = _connectFailureReason.asStateFlow()
+
     private var gatt: BluetoothGatt? = null
     private var writeCharacteristic: BluetoothGattCharacteristic? = null
     private var encoder: BoardPacketEncoder = BoardPacketEncoder(3)
@@ -112,7 +132,13 @@ class BoardBleConnection(private val context: Context) {
         disconnectJob?.cancel()
         if (suppressAutoDisconnect) return
         val seconds = autoDisconnectSeconds
-        if (seconds > 0 && _connectionState.value != ConnectionState.DISCONNECTED) {
+        // Only arm the timer while the connection is truly idle. SENDING
+        // is "writes in flight" — the send path re-arms us from its
+        // finally block once it flips state back to CONNECTED. Without
+        // this guard, a small autoDisconnectSeconds (e.g. 1 s, used as
+        // a replacement for the old Quick-Send macro) could fire mid-
+        // send on long climbs.
+        if (seconds > 0 && _connectionState.value == ConnectionState.CONNECTED) {
             disconnectJob = scope.launch {
                 delay(seconds * 1_000L)
                 disconnect()
@@ -145,6 +171,12 @@ class BoardBleConnection(private val context: Context) {
                     // discovery and fails because writeCharacteristic is still null.
                     // Keep connectionTimeoutJob running to cover service discovery too.
                     Log.d(TAG, "GATT connected, discovering services...")
+                    // Bump BLE connection priority before service discovery
+                    // — drops the connection interval from the default
+                    // ~50 ms down to ~7.5–15 ms, which makes the rest of
+                    // the connect (service discovery + every subsequent
+                    // GATT write of a send-frame) 2-4× faster.
+                    gatt.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH)
                     gatt.discoverServices()
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
@@ -172,6 +204,8 @@ class BoardBleConnection(private val context: Context) {
         }
 
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
+            // Log.i so the R8 Log.d/v stripping rule doesn't erase the diagnostic marker.
+            Log.i(TAG, "onServicesDiscovered status=$status services=${gatt.services.size}")
             connectionTimeoutJob?.cancel()
             connectionTimeoutJob = null
 
@@ -181,16 +215,36 @@ class BoardBleConnection(private val context: Context) {
                 if (writeCharacteristic != null) {
                     // NOW the GATT is fully ready — set CONNECTED so downstream
                     // auto-send and advertising see a usable connection.
+                    Log.i(TAG, "GATT ready, state→CONNECTED (writes can start)")
                     _connectionState.value = ConnectionState.CONNECTED
                     resetIdleTimer()
                     onRestartScannersAfterConnect?.invoke()
                 } else {
                     Log.w(TAG, "DATA_TRANSFER_CHAR not found in service")
-                    _connectionState.value = ConnectionState.DISCONNECTED
+                    // Pre-2017 MoonBoard LED kits speak the RedBear UART
+                    // service instead of the Nordic UART we implement. Flag
+                    // it so the UI can show an honest "this MoonBoard
+                    // generation is not supported yet" instead of leaving
+                    // the user in a silent connect/disconnect loop.
+                    if (_connectedBoardBrand.value == BoardBrand.MOONBOARD &&
+                        gatt.getService(BoardBleUuids.REDBEAR_UART_SERVICE) != null
+                    ) {
+                        Log.w(TAG, "RedBear UART service present — unsupported MoonBoard LED-kit generation")
+                        _connectFailureReason.value = R.string.board_ble_moonboard_generation_unsupported
+                    }
+                    // Tear the link down properly. Only flipping the state
+                    // would leak a live GATT: the board stops advertising
+                    // while connected, so it vanishes from scans until a
+                    // Bluetooth toggle. disconnect() runs the full teardown
+                    // (gatt.disconnect → close, pendingClose, safety timer).
+                    disconnect()
+                    onRestartScannersAfterConnect?.invoke()
                 }
             } else {
                 Log.w(TAG, "onServicesDiscovered failed: status=$status")
-                _connectionState.value = ConnectionState.DISCONNECTED
+                // Same teardown as the missing-characteristic arm above.
+                disconnect()
+                onRestartScannersAfterConnect?.invoke()
             }
         }
 
@@ -204,6 +258,7 @@ class BoardBleConnection(private val context: Context) {
             }
             writeDeferred?.complete(status)
         }
+
     }
 
     /** Finalize state after disconnect callback (or error). */
@@ -219,6 +274,7 @@ class BoardBleConnection(private val context: Context) {
         Log.d(TAG, "Remote/error disconnect (status=0x${status.toString(16)})")
         _connectionState.value = ConnectionState.DISCONNECTED
         _connectedBoardName.value = null
+        _connectedBoardBrand.value = null
         gatt = null
         writeCharacteristic = null
     }
@@ -274,7 +330,12 @@ class BoardBleConnection(private val context: Context) {
         gattClosed = false
         _connectionState.value = ConnectionState.CONNECTING
         _connectedBoardName.value = board.displayName
-        encoder = BoardPacketEncoder(board.apiLevel)
+        _connectedBoardBrand.value = board.boardBrand
+        // Fresh attempt — drop any failure reason from the previous one.
+        _connectFailureReason.value = null
+        // FEAT-031: ledsPerHold (Kilter = 2, other Aurora boards = 1) feeds the
+        // @2 LED power-budget scaling; harmless on @3 (where it is unused).
+        encoder = BoardPacketEncoder(board.apiLevel, BoardPacketEncoder.ledsPerHoldFor(board.boardBrand))
 
         // Stop external scanners before GATT connect (radio contention on Android <12)
         onStopScannersForConnect?.invoke()
@@ -303,6 +364,7 @@ class BoardBleConnection(private val context: Context) {
             // Abort if state changed during the wait
             if (_connectionState.value != ConnectionState.CONNECTING) {
                 _connectedBoardName.value = null
+                _connectedBoardBrand.value = null
                 return@launch
             }
 
@@ -320,7 +382,8 @@ class BoardBleConnection(private val context: Context) {
             // On Android 9, the BT stack dispatches callbacks via the calling thread's Looper.
             // If called from a coroutine dispatcher without a Looper, callbacks are silently dropped.
             // The Handler overload (API 26+) forces callbacks onto the Main Looper.
-            Log.d(TAG, "connectGatt() for ${board.address} (SDK=${Build.VERSION.SDK_INT})")
+            // Log.i so this start-of-connect marker survives R8's Log.d-stripping rule.
+            Log.i(TAG, "connectGatt() for ${board.address} (SDK=${Build.VERSION.SDK_INT})")
             val newGatt = device.connectGatt(
                 context,
                 false,
@@ -334,6 +397,7 @@ class BoardBleConnection(private val context: Context) {
                 Log.e(TAG, "connectGatt returned null — GATT client slot exhausted?")
                 _connectionState.value = ConnectionState.DISCONNECTED
                 _connectedBoardName.value = null
+                _connectedBoardBrand.value = null
                 onRestartScannersAfterConnect?.invoke()
                 return@launch
             }
@@ -417,11 +481,31 @@ class BoardBleConnection(private val context: Context) {
         lastPlacementToLed = placementToLed
 
         _connectionState.value = ConnectionState.SENDING
+        // Park any pending idle-disconnect so it can't fire mid-send.
+        // Re-armed from the finally below once we flip back to CONNECTED.
+        disconnectJob?.cancel()
         try {
+            // Holds without an LED mapping (outside the configured product
+            // size, e.g. kickboard rows on a no-kickboard board) are skipped
+            // by both encode branches below — the wall then shows a partial
+            // climb. Log it so a "sent ok but holds missing" report is
+            // triageable; the detail-screen send path surfaces a UI warning.
+            val unmapped = holds.count { placementToLed[it.placementId] == null }
+            if (unmapped > 0) {
+                Log.w(TAG, "sendClimb: $unmapped/${holds.size} holds have no LED mapping — board will light a partial climb")
+            }
             val chunks = if (roleColors != null) {
+                // Resolve each hold's colour by canonical role CLASS, not raw
+                // code. A climb authored on an Aurora board carries the editor's
+                // Kilter-style codes (12-15) while the board's colour map is
+                // keyed by its native codes (1-4), so a raw-id lookup would miss
+                // and fall back to the wrong palette. roleClass folds 1-4 /
+                // 12-15 / 42-44 onto the same role, so authored and catalogue
+                // climbs light identically in the board's own colours.
+                val byClass = roleColors.entries.associate { HoldRole.roleClass(it.key) to it.value }
                 val holdPairs = holds.mapNotNull { hold ->
                     val led = placementToLed[hold.placementId] ?: return@mapNotNull null
-                    led to (roleColors[hold.roleId] ?: BoardPacketEncoder.roleToColor(hold.roleId))
+                    led to (byClass[HoldRole.roleClass(hold.roleId)] ?: BoardPacketEncoder.roleToColor(hold.roleId))
                 }
                 encoder.encodeClimb(holdPairs)
             } else {
@@ -429,12 +513,13 @@ class BoardBleConnection(private val context: Context) {
             }
 
             val success = writeChunks(chunks)
-            resetIdleTimer()
             return success
         } finally {
             if (_connectionState.value == ConnectionState.SENDING) {
                 _connectionState.value = ConnectionState.CONNECTED
             }
+            // Arm the idle-disconnect timer with the post-send state.
+            resetIdleTimer()
         }
     }
 
@@ -449,19 +534,74 @@ class BoardBleConnection(private val context: Context) {
         return writeChunks(chunks)
     }
 
-    suspend fun clearBoard(): Boolean = writeMutex.withLock {
+    /**
+     * Encode [leds] ((position, colourByte) pairs) with the CONNECTED board's
+     * encoder — the apiLevel/ledsPerHold configured in [connect] — and write
+     * them. Used by the easter animation so an @2 legacy board gets v2
+     * packets instead of frames from a hardcoded API-3 encoder.
+     */
+    suspend fun sendRawLeds(leds: List<Pair<Int, Int>>): Boolean =
+        sendRawChunks(encoder.encodeClimb(leds))
+
+    /**
+     * Send a MoonBoard climb to the connected board (FEAT-027).
+     *
+     * MoonBoard speaks the Nordic UART Service — the same GATT service
+     * Aurora boards use — so [connect] and the [writeChunks] transport
+     * are reused unchanged. Only the payload differs: an ASCII
+     * `l#<token><pos>,…#` frame ([MoonBoardFrameEncoder]) instead of
+     * Aurora's binary packets, split into BLE-MTU-sized writes.
+     *
+     * @param frames the climb's `p{holdId}r{roleCode}` frames string.
+     * @param variant the MoonBoard variant of the active board; drives the
+     *   per-column-height serpentine arithmetic in the encoder (18 for the
+     *   standard 11×18 boards, 12 for Mini 2020).
+     */
+    suspend fun sendMoonBoardClimb(
+        frames: String,
+        variant: com.cruxcoach.domain.board.MoonBoardVariant,
+    ): Boolean = writeMutex.withLock {
         if (_connectionState.value != ConnectionState.CONNECTED) return false
 
         _connectionState.value = ConnectionState.SENDING
+        // Park any pending idle-disconnect so it can't fire mid-send.
+        // Re-armed from the finally below once we flip back to CONNECTED.
+        disconnectJob?.cancel()
         try {
-            val chunks = encoder.encodeClear()
+            val payload = MoonBoardFrameEncoder.encode(frames, variant)
+            val chunks = payload.toList()
+                .chunked(BoardPacketEncoder.BLE_MTU)
+                .map { it.toByteArray() }
             val success = writeChunks(chunks)
-            resetIdleTimer()
             return success
         } finally {
             if (_connectionState.value == ConnectionState.SENDING) {
                 _connectionState.value = ConnectionState.CONNECTED
             }
+            // Arm the idle-disconnect timer with the post-send state —
+            // resetIdleTimer() only arms while CONNECTED, so it must run
+            // AFTER the state flip above (mirrors clearBoard / sendClimb).
+            resetIdleTimer()
+        }
+    }
+
+    suspend fun clearBoard(): Boolean = writeMutex.withLock {
+        if (_connectionState.value != ConnectionState.CONNECTED) return false
+
+        _connectionState.value = ConnectionState.SENDING
+        // Park any pending idle-disconnect so it can't fire mid-send.
+        // Re-armed from the finally below once we flip back to CONNECTED.
+        disconnectJob?.cancel()
+        try {
+            val chunks = encoder.encodeClear()
+            val success = writeChunks(chunks)
+            return success
+        } finally {
+            if (_connectionState.value == ConnectionState.SENDING) {
+                _connectionState.value = ConnectionState.CONNECTED
+            }
+            // Arm the idle-disconnect timer with the post-send state.
+            resetIdleTimer()
         }
     }
 
@@ -493,6 +633,7 @@ class BoardBleConnection(private val context: Context) {
         writeCharacteristic = null
         _connectionState.value = ConnectionState.DISCONNECTED
         _connectedBoardName.value = null
+        _connectedBoardBrand.value = null
 
         if (g != null) {
             userDisconnecting = true

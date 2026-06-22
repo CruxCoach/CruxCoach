@@ -6,9 +6,12 @@ import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.nostr.NostrRelayPool
 import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.data.repository.BoardRepository
+import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.BoardClimbParser
 import com.cruxcoach.domain.community.ClimbBounds
+import com.cruxcoach.domain.community.CommunityClimbTags
 import com.vitorpamplona.quartz.nip01Core.core.Event
+import com.vitorpamplona.quartz.nip01Core.crypto.verifyId
 import com.vitorpamplona.quartz.nip01Core.crypto.verifySignature
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
@@ -56,6 +59,46 @@ import kotlinx.serialization.json.jsonPrimitive
  *    stats" rule, ungraded climbs would land as NULL difficulty rows
  *    and pollute default browse.
  */
+
+/**
+ * Resolve + VALIDATE the board brand of an incoming community climb event (C1).
+ * Extracted as a pure function so the brand-forgery guard is unit-testable.
+ *
+ * [boardBrandTag] is the raw, self-signed `board_brand` tag (null if absent);
+ * [foundV1]/[foundV2] record which namespace label(s) the event carried.
+ *
+ * For a real climb (`deleted == false`): a PRESENT tag must name a known
+ * INTERACTIVE board — unknown / map-only / null-when-required is rejected (so a
+ * forged value can never silently map to KILTER via [BoardBrand.fromWire]) — and
+ * the brand must match the namespace the publisher always pairs it with (Kilter
+ * on the legacy v1 label, every other board on v2). A missing tag is the
+ * pre-FEAT-031 Kilter-only era. Throws [IllegalArgumentException] on any
+ * violation (the caller drops / dead-letters the event).
+ *
+ * Tombstones (`deleted == true`) carry no `board_brand` and key off the uuid, so
+ * they skip the strict checks and resolve leniently — identical to the behaviour
+ * before C1, so legitimate deletions are never rejected.
+ */
+internal fun resolveIngestBoardBrand(
+    boardBrandTag: String?,
+    foundV1: Boolean,
+    foundV2: Boolean,
+    deleted: Boolean,
+): BoardBrand {
+    if (deleted) return BoardBrand.fromWire(boardBrandTag)
+    val brand = if (boardBrandTag == null) {
+        BoardBrand.KILTER
+    } else {
+        BoardBrand.fromWireOrNull(boardBrandTag)
+            ?: throw IllegalArgumentException("unknown board_brand tag: $boardBrandTag")
+    }
+    require(brand.isInteractive) { "non-interactive board_brand: ${brand.wireValue}" }
+    require(if (brand == BoardBrand.KILTER) foundV1 else foundV2) {
+        "board_brand ${brand.wireValue} inconsistent with namespace (v1=$foundV1 v2=$foundV2)"
+    }
+    return brand
+}
+
 @Singleton
 class CommunityClimbSubscriber @Inject constructor(
     private val pool: NostrRelayPool,
@@ -214,8 +257,22 @@ class CommunityClimbSubscriber @Inject constructor(
             Log.w(TAG, "no blossom manifest within ${SEED_MANIFEST_TIMEOUT_MS}ms — proceeding without seed (cold-start cost accepted)")
             return
         }
-        Log.i(TAG, "seeding cursor from blossom manifest: $manifestEpoch")
-        userPreferences.setCommunityClimbSince(manifestEpoch)
+        // The manifest epoch is written by the KILTER board sync only —
+        // the MoonBoard/Aurora chunk pipelines fetch their own manifests
+        // (AuroraCatalogueSync / MoonBoardCatalogueSync) and never touch
+        // this pref, and their crons can lag days behind the Kilter one
+        // (or be paused). Seeding the single global cursor at the raw
+        // Kilter epoch made any community event published between a
+        // lagging brand's last chunk build and this seed permanently
+        // invisible: not in that brand's chunk, yet before the REQ
+        // cursor, and no reconciliation pass exists. Subtract a safety
+        // lookback so the first REQ re-covers that window — re-received
+        // events are absorbed idempotently by handleClimbEvent's
+        // stale-event guard, and community-climb volume keeps a week of
+        // re-sync in the tens-of-KB range.
+        val seed = lookbackAdjustedSeed(manifestEpoch)
+        Log.i(TAG, "seeding cursor from blossom manifest: $manifestEpoch (lookback-adjusted to $seed)")
+        userPreferences.setCommunityClimbSince(seed)
     }
 
     fun stop() {
@@ -260,8 +317,8 @@ class CommunityClimbSubscriber @Inject constructor(
             // anything that doesn't match the original signed bytes.
             try {
                 val event = Event.fromJson(row.rawEventJson)
-                if (!event.verifySignature()) {
-                    Log.w(TAG, "DLQ retry: signature invalid for uuid=${row.uuid} — abandoning")
+                if (!event.verifySignature() || !event.verifyId()) {
+                    Log.w(TAG, "DLQ retry: signature/id invalid for uuid=${row.uuid} — abandoning")
                     runCatching { boardRepository.deleteCommunityClimbDeadLetter(row.uuid) }
                     continue
                 }
@@ -357,12 +414,20 @@ class CommunityClimbSubscriber @Inject constructor(
     private fun buildFilter(sinceEpoch: Long?): String {
         val sinceClause = if (sinceEpoch != null && sinceEpoch > 0) ",\"since\":$sinceEpoch" else ""
         // Subscribe to Kind-30078 (climb events) AND Kind-5 (NIP-09
-        // deletions). The deleter publishes both kinds with an
-        // ["L","com.cruxcoach.climb"] tag, so the same #L filter
-        // catches both — no second REQ subscription needed. Foreign
-        // Kind-5 events without our label tag are filtered server-side
-        // and never reach handleEvent.
-        return """{"kinds":[$KIND_30078,$KIND_DELETION],"#L":["$NAMESPACE_LABEL"]$sinceClause}"""
+        // deletions). The deleter publishes both kinds with a matching
+        // ["L", <ns>] tag, so the same #L filter catches both — no second
+        // REQ subscription needed. Foreign Kind-5 events without our label
+        // tag are filtered server-side and never reach handleEvent.
+        //
+        // Dual-namespace (FEAT-031 back-compat gate): fetch BOTH the legacy
+        // Kilter namespace and the v2 (new-board) namespace in one REQ.
+        // Kilter climbs/deletions stay on NAMESPACE_LABEL; every non-Kilter
+        // board (the five Aurora boards + MoonBoard) is namespaced under
+        // NAMESPACE_LABEL_V2 so pre-0.2.0 apps (which only subscribe on the
+        // legacy label) never see them as broken Kilter climbs. We're a
+        // ≥0.2.0 subscriber, so we ask for both and ingest by the
+        // `board_brand` machine tag, not by layout_id.
+        return """{"kinds":[$KIND_30078,$KIND_DELETION],"#L":["$NAMESPACE_LABEL","$NAMESPACE_LABEL_V2"]$sinceClause}"""
     }
 
     @VisibleForTesting
@@ -407,8 +472,21 @@ class CommunityClimbSubscriber @Inject constructor(
             Log.w(TAG, "failed to parse event JSON")
             return
         }
-        if (!event.verifySignature()) {
-            Log.w(TAG, "skip event with invalid signature id=${event.id}")
+        if (!event.verifySignature() || !event.verifyId()) {
+            // verifyId fails when tags/content were altered after signing: a
+            // relay can serve a validly-signed event whose body it tampered with
+            // unless the id (= hash of the serialized content) is re-checked.
+            Log.w(TAG, "skip event with invalid signature/id id=${event.id}")
+            return
+        }
+        // Clock-skew bound: a far-future event must never be ingested as the
+        // newest climb nor advance the `since` cursor — a forged far-future
+        // timestamp would push the cursor past every real event and silently
+        // disable the live subscription. Applied before kind dispatch so both
+        // the climb and deletion paths (which call advanceCursorIfNewer) are covered.
+        val nowSec = System.currentTimeMillis() / 1000L
+        if (!CommunityClimbValidation.isWithinClockSkew(event.createdAt, nowSec)) {
+            Log.w(TAG, "skip future-dated event createdAt=${event.createdAt} now=$nowSec id=${event.id}")
             return
         }
         when (event.kind) {
@@ -514,6 +592,25 @@ class CommunityClimbSubscriber @Inject constructor(
                 TAG,
                 "skip cross-author event uuid=${parsedClimb.uuid} " +
                     "existing=${existingAuthor!!.take(8)} incoming=${parsedClimb.pubkey.take(8)}",
+            )
+            return
+        }
+
+        // Catalogue guard: a community Kind-30078 must never re-key or overwrite
+        // catalogue content (kilter/boardsesh) or any NULL-author row. The
+        // cross-author guard above treats a NULL existing author as claimable,
+        // and getClimbAuthorPubkey returns NULL for BOTH "no row" and a
+        // catalogue row with no author — so without this an official climb is
+        // hijackable. A genuine community row (origin='cruxcoach' + non-NULL
+        // author) is excluded by isNonCommunityClimb, so legitimate same-author
+        // updates and brand-new community climbs are unaffected.
+        if (runCatching { boardRepository.isNonCommunityClimb(parsedClimb.uuid) }
+                .getOrDefault(false)
+        ) {
+            Log.w(
+                TAG,
+                "skip community event targeting non-community climb " +
+                    "uuid=${parsedClimb.uuid} incoming=${parsedClimb.pubkey.take(8)}",
             )
             return
         }
@@ -651,6 +748,7 @@ class CommunityClimbSubscriber @Inject constructor(
                 difficultyAverage = grade.toDouble(),
                 qualityAverage = null,
                 bounds = parsedClimb.bounds,
+                boardBrand = parsedClimb.boardBrand,
             )
             // Successful upsert wins. Drop a previous DLQ entry (if any
             // — the row may have failed earlier in this session before
@@ -921,6 +1019,11 @@ class CommunityClimbSubscriber @Inject constructor(
         val angle: Int?,
         val bounds: ClimbBounds?,
         val contentPubkeyPrefix: String?,
+        /** Board family from the event's ["board_brand", x] machine tag
+         *  (FEAT-031). Defaults to "kilter" when the tag is absent —
+         *  legacy Kilter events predate the tag. The subscriber ingests
+         *  by this brand, not by the (potentially colliding) layout_id. */
+        val boardBrand: String,
         /** True when the event is a tombstone-replacement carrying
          *  `["deleted","true"]` tag or `{"deleted":true}` in content.
          *  Tombstone-replacement events bypass the strict frames /
@@ -937,14 +1040,29 @@ class CommunityClimbSubscriber @Inject constructor(
                 var setterGradeId: Int? = null
                 var angle: Int? = null
                 var bounds: ClimbBounds? = null
-                var foundLabel = false
+                // Track WHICH namespace matched (v1 legacy-Kilter vs v2
+                // new-board) and the RAW board_brand tag separately, so the
+                // brand can be validated against the namespace below (C1).
+                var foundV1 = false
+                var foundV2 = false
+                var boardBrandTag: String? = null
                 var deletedTag = false
 
                 for (tag in event.tags) {
                     if (tag.size < 2) continue
                     when (tag[0]) {
                         "d" -> dTag = tag[1]
-                        "L" -> if (tag[1] == "com.cruxcoach.climb") foundLabel = true
+                        // Accept BOTH the legacy Kilter namespace and the v2
+                        // (new-board) namespace (FEAT-031 dual-namespace gate).
+                        "L" -> when (tag[1]) {
+                            NAMESPACE_LABEL -> foundV1 = true
+                            NAMESPACE_LABEL_V2 -> foundV2 = true
+                        }
+                        // Explicit brand machine tag — the authoritative
+                        // ingest key (layout_id collides across boards).
+                        // UNTRUSTED (self-signed): validated below, never
+                        // trusted raw.
+                        "board_brand" -> boardBrandTag = tag[1]
                         "frames" -> framesText = tag[1]
                         "frames_hash" -> framesHashRaw = tag[1]
                         "layout_id" -> layoutId = tag[1].toLongOrNull()
@@ -965,7 +1083,7 @@ class CommunityClimbSubscriber @Inject constructor(
                         "deleted" -> if (tag[1].equals("true", ignoreCase = true)) deletedTag = true
                     }
                 }
-                require(foundLabel) { "not a com.cruxcoach.climb event" }
+                require(foundV1 || foundV2) { "not a com.cruxcoach.climb[.v2] event" }
                 require(dTag != null) { "d-tag missing" }
 
                 val contentObj = runCatching {
@@ -987,6 +1105,21 @@ class CommunityClimbSubscriber @Inject constructor(
                     require(layoutId != null) { "layout_id tag missing" }
                 }
 
+                // C1 — VALIDATE the untrusted board_brand before it becomes the
+                // ingest key. board_brand is a self-signed, attacker-controlled
+                // tag; without this a forged value would (a) silently map to
+                // KILTER (fromWire's lenient fallback) and inject a foreign-hold
+                // climb into every Kilter browse, or (b) ride the wrong board.
+                // Rules: a PRESENT tag must name a known INTERACTIVE board
+                // (reject unknown / map-only); a MISSING tag is the pre-FEAT-031
+                // Kilter-only era; and the brand must match the namespace the
+                // publisher pairs it with (Kilter→v1, every other board→v2), so
+                // a mismatched pair is a forged/garbled event. Tombstones carry
+                // no board_brand and key off the uuid, so they skip the strict
+                // check (the deletion still rides the matching namespace).
+                val resolvedBrand: BoardBrand =
+                    resolveIngestBoardBrand(boardBrandTag, foundV1, foundV2, deleted)
+
                 // Canonical lowercase: the board DB's uuid is BINARY-
                 // collated lowercase (see 7.sqm); event content / d-tag
                 // may carry mixed casing (Aurora-derived UUIDs are upper
@@ -995,6 +1128,13 @@ class CommunityClimbSubscriber @Inject constructor(
                 val uuid = (contentObj["uuid"]?.jsonPrimitive?.contentOrNull
                     ?: dTagUuid(dTag!!)
                     ?: error("uuid not derivable from event")).lowercase()
+                // A community event is self-signed by ANY keypair, so this uuid is
+                // attacker-controlled — yet it becomes the climbs PK AND is
+                // interpolated UNENCODED into a Compose nav route (tap-to-open).
+                // Restrict to the route-safe hex/dash charset (canonical UUID
+                // 8-4-4-4-12 or a 32-hex catalogue id) so a crafted uuid can't
+                // break/inject the route; reject (→ drop/DLQ the event) otherwise.
+                require(uuid.matches(UUID_ROUTE_SAFE)) { "uuid has unsafe chars: ${uuid.take(16)}" }
                 val name = contentObj["name"]?.jsonPrimitive?.contentOrNull.orEmpty()
                 val description = contentObj["description"]?.jsonPrimitive?.contentOrNull.orEmpty()
                 val contentPubkeyPrefix = contentObj["pubkey_prefix"]?.jsonPrimitive?.contentOrNull
@@ -1018,6 +1158,7 @@ class CommunityClimbSubscriber @Inject constructor(
                     angle = angle,
                     bounds = bounds,
                     contentPubkeyPrefix = contentPubkeyPrefix,
+                    boardBrand = resolvedBrand.wireValue,
                     deleted = deleted,
                 )
             }
@@ -1028,12 +1169,26 @@ class CommunityClimbSubscriber @Inject constructor(
                 return if (parts.size >= 4 && parts[0] == "cruxcoach" && parts[1] == "climb")
                     parts.last() else null
             }
+
+            /** Route-safe uuid charset: lowercase hex + dashes — covers both a
+             *  canonical UUID (8-4-4-4-12) and a 32-hex catalogue id, and excludes
+             *  '/', '?', '#', whitespace etc. that could break/inject a Compose
+             *  nav route. The length bound is a sanity cap. */
+            private val UUID_ROUTE_SAFE = Regex("^[0-9a-f-]{16,64}$")
         }
     }
 
-    private companion object {
+    // `internal` (not private) so the plain-JVM unit test can exercise
+    // [lookbackAdjustedSeed]; everything here is still module-local.
+    internal companion object {
         const val TAG = "CommunityClimbSub"
-        const val NAMESPACE_LABEL = "com.cruxcoach.climb"
+        // Derived from the canonical publish-side constants (a const val may
+        // reference another const val) so subscribe and publish can't drift:
+        // a rename of CommunityClimbTags.NS_CLIMB* updates both sides at once.
+        // NS_CLIMB = Kilter/legacy; NS_CLIMB_V2 = the non-Kilter back-compat
+        // namespace (FEAT-031) that pre-0.2.0 apps' single-#L filter never matches.
+        const val NAMESPACE_LABEL = CommunityClimbTags.NS_CLIMB
+        const val NAMESPACE_LABEL_V2 = CommunityClimbTags.NS_CLIMB_V2
         const val STARTUP_GRACE_MS = 2_000L
         const val BACKOFF_MS = 5_000L
         // Exponential backoff ladder for the runSubscriptionLoop's
@@ -1094,6 +1249,21 @@ class CommunityClimbSubscriber @Inject constructor(
          *  the cold-start relay flood is the lesser evil. */
         const val SEED_MANIFEST_TIMEOUT_MS = 30_000L
 
+        /** Safety window subtracted from the Kilter manifest epoch when
+         *  seeding the first-run cursor — see
+         *  [seedCursorFromManifestIfFirstRun]. The single global cursor
+         *  must not assume every brand's chunk is as fresh as Kilter's:
+         *  the MoonBoard/Aurora crons run independently and can lag.
+         *  7 days absorbs a week-long pipeline outage for any one brand
+         *  at the cost of one slightly wider (still KB-scale) first REQ. */
+        const val SEED_SAFETY_LOOKBACK_SEC = 7L * 24L * 60L * 60L
+
+        /** Pure seed math for [seedCursorFromManifestIfFirstRun] —
+         *  extracted so the plain-JVM test can pin the lookback and the
+         *  zero-clamp without standing up the subscriber's dependencies. */
+        fun lookbackAdjustedSeed(manifestEpoch: Long): Long =
+            (manifestEpoch - SEED_SAFETY_LOOKBACK_SEC).coerceAtLeast(0L)
+
         /** d-tag prefix that the publisher embeds for [pubkey] (FEAT-003 §4.2). */
         fun communityClimbDTagPrefix(pubkey: String): String =
             CommunityClimbValidation.expectedDTagPrefix(pubkey)
@@ -1137,6 +1307,22 @@ internal object CommunityClimbValidation {
      */
     fun authorOwnershipMatches(existingPubkey: String?, signedPubkey: String): Boolean =
         existingPubkey == null || existingPubkey == signedPubkey
+
+    /** Reject events claiming creation more than this far in the future.
+     *  Events are stamped at publish time, so meaningful positive skew is a
+     *  forged timestamp; 1 h tolerates client clock drift. */
+    const val MAX_FUTURE_SKEW_SECONDS = 60L * 60L
+
+    /** True iff [createdAtSec] is not implausibly far in the future relative to
+     *  [nowSec]. A far-future event must be dropped before it is ingested as the
+     *  newest climb or allowed to advance the `since` cursor — otherwise a forged
+     *  far-future timestamp pushes the cursor past every real event and silently
+     *  disables the live subscription. */
+    fun isWithinClockSkew(
+        createdAtSec: Long,
+        nowSec: Long,
+        maxFutureSkewSec: Long = MAX_FUTURE_SKEW_SECONDS,
+    ): Boolean = createdAtSec <= nowSec + maxFutureSkewSec
 
     // ── Skip-matrix helpers (extracted for unit testability) ─────────
 

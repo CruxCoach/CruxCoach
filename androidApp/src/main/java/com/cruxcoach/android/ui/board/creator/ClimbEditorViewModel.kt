@@ -13,9 +13,14 @@ import com.cruxcoach.data.repository.BoardPlacement
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.BoardSize
 import com.cruxcoach.data.repository.CommunityClimbRow
+import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.BoardHold
+import com.cruxcoach.domain.board.HoldRole
+import com.cruxcoach.domain.board.MoonBoardVariant
 import com.cruxcoach.domain.community.ClimbEditorState
 import com.cruxcoach.domain.community.ClimbValidation
+import com.cruxcoach.domain.community.brand
+import com.cruxcoach.domain.community.encodeFrames
 import com.cruxcoach.domain.community.paintWithBrush
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
@@ -37,6 +42,19 @@ private const val TAG = "ClimbEditor"
  */
 data class ClimbEditorUiState(
     val isLoading: Boolean = true,
+    /** Active board layout the editor targets (from prefs). Drives both
+     *  the brand split (`editor.boardBrand`) and the MoonBoard renderer's
+     *  variant lookup (`rememberMoonBoardAsset(layoutId)`). */
+    val layoutId: Long = 1L,
+    /** Selectable publish angles for the active board, resolved data-driven in
+     *  [loadBoardData]: MoonBoard → the variant's fixed configs; every other
+     *  brand → the board's real angle set (DISTINCT climb_stats.angle, incl.
+     *  negatives like Grasshopper -5°) via getSupportedAnglesForLayout, with a
+     *  generic 20–70° fallback only when no climb exists yet. The dropdown
+     *  reads this instead of a hardcoded list so a published setter angle can
+     *  never land outside the board's real set and pollute the shared,
+     *  per-board browse angle chips (which read the same DISTINCT query). */
+    val angleOptions: List<Int> = listOf(20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70),
     val boardSize: BoardSize? = null,
     val placements: Map<Int, BoardPlacement> = emptyMap(),
     val boardImages: List<BoardImage> = emptyList(),
@@ -120,6 +138,36 @@ data class ClimbEditorUiState(
     val isEditingExisting: Boolean = false,
 )
 
+/** Pure, testable resolution of the creator's selectable publish angles
+ *  (FEAT-033). The VM does the IO (the brand-scoped DISTINCT climb_stats.angle
+ *  query); these functions decide what the dropdown offers and keep the seeded
+ *  angle a valid member. Mirrors BoardAnglePicker on the browse side, but the
+ *  creator never falls back to a slider: Kilter also gets its real 0–70° set,
+ *  and an empty query (brand-new board) falls back to a generic 5°-step list
+ *  so the dropdown is never empty. */
+object CreatorAnglePicker {
+    /** Generic fallback for a board that has no published climb yet, so the
+     *  DISTINCT-angles query is empty. */
+    private val GENERIC = listOf(20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70)
+
+    /** The selectable angles for a board. MoonBoard → the variant's fixed
+     *  configs (2016/Mini/2024 = 40°, Masters = 25°/40°); every other brand →
+     *  [supportedAngles] (the board's real set) when non-empty, else [GENERIC].
+     *  Never empty. */
+    fun optionsFor(brand: BoardBrand, layoutId: Long, supportedAngles: List<Int>): List<Int> =
+        when (brand) {
+            BoardBrand.MOONBOARD ->
+                MoonBoardVariant.fromLayoutId(layoutId)?.angles ?: listOf(40)
+            else -> supportedAngles.ifEmpty { GENERIC }
+        }
+
+    /** Snap [angle] to the nearest available option so the editor never opens
+     *  with an angle the dropdown doesn't offer (e.g. a 30° pref carried onto a
+     *  35°/40°-only Touchstone). [options] is always non-empty here. */
+    fun snapAngle(angle: Int, options: List<Int>): Int =
+        if (angle in options) angle else options.minBy { kotlin.math.abs(it - angle) }
+}
+
 @HiltViewModel
 class ClimbEditorViewModel @Inject constructor(
     @dagger.hilt.android.qualifiers.ApplicationContext private val appContext: android.content.Context,
@@ -148,6 +196,9 @@ class ClimbEditorViewModel @Inject constructor(
 
     /** Debounced autosave job — restarted on every editor mutation. */
     private var autosaveJob: kotlinx.coroutines.Job? = null
+    /** Exact-board key (brand_layout_size) the autosave reads/writes/clears
+     *  under, so each board keeps its own in-flight draft. Set in loadBoardData. */
+    private var autosaveBoardKey: String = ""
     /** Session-scoped counter of consecutive autosave write failures.
      *  Drives a future user-visible "autosave is broken — save manually"
      *  Snackbar; for now it lives in the log line for triage. */
@@ -279,7 +330,7 @@ class ClimbEditorViewModel @Inject constructor(
                             description = c.description, framesText = c.frames, source = "kilter",
                             syncStatus = "synced", createdByPubkey = null, nostrEventId = null,
                             nostrDTag = null, framesHash = null, createdAt = null, moveCount = c.storedMoveCount,
-                            kilterSyncedAt = null, layoutId = c.layoutId,
+                            kilterSyncedAt = null, layoutId = c.layoutId, boardBrand = c.boardBrand,
                         )
                     }
             }
@@ -297,9 +348,24 @@ class ClimbEditorViewModel @Inject constructor(
         // The drafts-drawer load path uses [loadDraft] directly which
         // doesn't go through this method, so it's also unaffected.
         if (editUuid == null && forkUuid == null) {
-            val snapshot = withContext(Dispatchers.IO) { autosave.load() }
+            // The autosave slot is keyed to the EXACT active board
+            // (autosaveBoardKey, set in loadBoardData), so a loaded snapshot
+            // already belongs to this board — no brand guard needed. Merge only
+            // the draft CONTENT into the current editor; never replace it
+            // wholesale, or the brand/topology loadBoardData set would be
+            // clobbered (the snapshot carries no brand → would default to Kilter
+            // and pour the wrong hold-id space into a Tension/MoonBoard editor).
+            val snapshot = withContext(Dispatchers.IO) { autosave.load(autosaveBoardKey) }
             if (snapshot != null && _state.value.editor.selectedHolds.isEmpty()) {
-                applyEditor(snapshot.state)
+                applyEditor(
+                    _state.value.editor.copy(
+                        selectedHolds = snapshot.state.selectedHolds,
+                        name = snapshot.state.name,
+                        description = snapshot.state.description,
+                        setterGradeId = snapshot.state.setterGradeId,
+                        angle = snapshot.state.angle ?: _state.value.editor.angle,
+                    )
+                )
             }
         }
         // Seed validationIssues against whatever final state we landed
@@ -320,15 +386,38 @@ class ClimbEditorViewModel @Inject constructor(
     }
 
     private fun seedFromFork(source: CommunityClimbRow) {
-        val holds = com.cruxcoach.domain.board.BoardClimbParser.parseFrames(source.framesText)
-            .associate { it.placementId to it.roleId }
+        // Brand is fixed by the active board (set in loadBoardData, which
+        // runs before nav-arg handling). Remix/Edit entry points only
+        // surface for the active board's own climbs, so source == active.
+        val brand = _state.value.editor.boardBrand
+        val holds = parseHoldsForBrand(source.framesText, brand)
         val seeded = ClimbEditorState(
             selectedHolds = holds,
+            boardBrand = brand,
+            activeBrush = defaultBrushFor(brand),
             name = source.name + if (!source.name.endsWith("Remix")) " Remix" else "",
             description = source.description,
+            // Carry the angle loadBoardData already seeded from prefs —
+            // building the state from scratch dropped it, so every Remix
+            // opened with an "angle missing" validation error the user
+            // had to re-resolve by hand.
+            angle = _state.value.editor.angle,
         )
         applyEditor(seeded)
     }
+
+    /** Parse frames into the editor's id→role map in the brand's editor
+     *  palette — see [com.cruxcoach.domain.community.parseHoldsForEditor].
+     *  MoonBoard keeps route roles (42/43/44); every other brand is folded
+     *  into the Kilter boulder palette (12-15) so Aurora catalogue roles
+     *  (1-4/5-8) from a remix match the brushes, chips and validation. */
+    private fun parseHoldsForBrand(frames: String, brand: String): Map<Int, Int> =
+        com.cruxcoach.domain.community.parseHoldsForEditor(frames, BoardBrand.fromWire(brand))
+
+    /** Default paint brush per brand: green Start in each board's native
+     *  role numbering. */
+    private fun defaultBrushFor(brand: String): Int =
+        if (BoardBrand.fromWire(brand) == BoardBrand.MOONBOARD) HoldRole.ROUTE_START else HoldRole.START
 
     /**
      * Edit-in-place: same uuid, no "Remix" suffix. Re-publish via
@@ -337,12 +426,14 @@ class ClimbEditorViewModel @Inject constructor(
      * Kind-30078 event instead of duplicating it.
      */
     private suspend fun seedFromEdit(source: CommunityClimbRow) {
-        val holds = com.cruxcoach.domain.board.BoardClimbParser.parseFrames(source.framesText)
-            .associate { it.placementId to it.roleId }
+        val brand = _state.value.editor.boardBrand
+        val holds = parseHoldsForBrand(source.framesText, brand)
         val stats = withContext(Dispatchers.IO) { boardRepository.getClimbStatsForUuid(source.uuid) }
         val currentAngle = _state.value.editor.angle
         val seeded = ClimbEditorState(
             selectedHolds = holds,
+            boardBrand = brand,
+            activeBrush = defaultBrushFor(brand),
             name = source.name,
             description = source.description,
             angle = stats?.first ?: currentAngle,
@@ -374,28 +465,81 @@ class ClimbEditorViewModel @Inject constructor(
     private suspend fun loadBoardData() {
         val sizeId = userPreferences.boardProductSizeId.first()
         val layoutId = userPreferences.boardLayoutId.first()
+        val layoutIdLong = layoutId.toLong()
         val defaultAngle = userPreferences.boardAngle.first()
-        val (size, placements, images, ledMap) = withContext(Dispatchers.IO) {
-            val size = boardRepository.getProductSize(sizeId)
-            // Filter to set_ids actually rendered for this layout — see
-            // BoardRepository.getPlacementsForLayout for the why. Without
+        // Derive the brand from the stored board_brand, NOT fromLayoutId:
+        // Aurora boards share layout ids with Kilter (Tension is layout 9
+        // etc.), so fromLayoutId mis-resolves every Aurora board to Kilter
+        // and the editor would load Kilter geometry for a Tension board.
+        val brand = BoardBrand.fromWire(userPreferences.boardBrand.first())
+        // Per-exact-board autosave slot (brand_layout_size). Set here, before
+        // handleNavigationArgs runs the restore (init calls loadBoardData first),
+        // so an in-flight draft only ever restores onto the board it started on.
+        autosaveBoardKey = "${brand.wireValue}_${layoutIdLong}_${sizeId}"
+
+        if (brand == BoardBrand.MOONBOARD) {
+            // MoonBoard authoring: no Aurora placement/LED/image rows exist
+            // (the board renders from the bundled image + measured holdXy
+            // map, resolved screen-side via rememberMoonBoardAsset). Skip the
+            // Kilter board-data load entirely; the editor stores brand-native
+            // route roles (42/43/44) so the default brush is the green Start.
+            _state.update {
+                // Fixed-angle hardware: clamp the seed to the variant's
+                // official configs (2016/Mini/2024 = 40°, Masters = 25°/40°).
+                // The generic boardAngle pref can carry any 5°-step value
+                // from a previous Kilter/Aurora board — seeding e.g. 30°
+                // would publish a climb at an angle no other device's
+                // browse picker offers.
+                val allowed = CreatorAnglePicker.optionsFor(
+                    brand = BoardBrand.MOONBOARD,
+                    layoutId = layoutIdLong,
+                    supportedAngles = emptyList(),
+                )
+                val candidate = it.editor.angle ?: defaultAngle
+                val seedAngle = CreatorAnglePicker.snapAngle(candidate, allowed)
+                it.copy(
+                    isLoading = false,
+                    layoutId = layoutIdLong,
+                    angleOptions = allowed,
+                    editor = it.editor.copy(
+                        angle = seedAngle,
+                        boardBrand = BoardBrand.MOONBOARD.wireValue,
+                        activeBrush = HoldRole.ROUTE_START,
+                    ),
+                )
+            }
+            return
+        }
+
+        val brandWire = brand.wireValue
+        val (size, placements, images, ledMap, supportedAngles) = withContext(Dispatchers.IO) {
+            val size = boardRepository.getProductSize(sizeId, brandWire)
+            // Filter to set_ids actually rendered for this (brand, layout) —
+            // see BoardRepository.getPlacementsForLayout for the why. Without
             // this the editor's tap-detection snaps to placements that
             // belong to other sets and aren't visible in the photo.
-            val placements = boardRepository.getPlacementsForLayout(sizeId, layoutId)
+            val placements = boardRepository.getPlacementsForLayout(sizeId, layoutId, brandWire)
                 .associateBy { it.placementId.toInt() }
-            val images = boardRepository.getBoardImages(sizeId, layoutId)
-            val led = boardRepository.getPlacementLedMap(sizeId)
-            BoardLoad(size, placements, images, led)
+            val images = boardRepository.getBoardImages(sizeId, layoutId, brandWire)
+            val led = boardRepository.getPlacementLedMap(sizeId, brandWire)
+            // The board's REAL angle set (DISTINCT climb_stats.angle, brand-
+            // scoped, incl. negatives) — the same source the browse angle
+            // chips read. Empty only for a brand-new board with no climbs yet.
+            val angles = boardRepository.getSupportedAnglesForLayout(layoutId, brandWire)
+            BoardLoad(size, placements, images, led, angles)
         }
         _state.update {
-            val seedAngle = it.editor.angle ?: defaultAngle
+            val options = CreatorAnglePicker.optionsFor(brand, layoutIdLong, supportedAngles)
+            val seedAngle = CreatorAnglePicker.snapAngle(it.editor.angle ?: defaultAngle, options)
             it.copy(
                 isLoading = false,
+                layoutId = layoutIdLong,
+                angleOptions = options,
                 boardSize = size,
                 placements = placements,
                 boardImages = images,
                 placementToLed = ledMap,
-                editor = it.editor.copy(angle = seedAngle),
+                editor = it.editor.copy(angle = seedAngle, boardBrand = brand.wireValue),
             )
         }
     }
@@ -405,6 +549,7 @@ class ClimbEditorViewModel @Inject constructor(
         val placements: Map<Int, BoardPlacement>,
         val images: List<BoardImage>,
         val ledMap: Map<Int, Int>,
+        val supportedAngles: List<Int>,
     )
 
     /**
@@ -515,15 +660,16 @@ class ClimbEditorViewModel @Inject constructor(
                 }
                 // Cancel pending debounce before clearing — see [clearEditor].
                 autosaveJob?.cancel()
-                autosave.clear()
+                autosave.clear(autosaveBoardKey)
                 // Refresh the drafts list so the drawer shows the new
                 // entry immediately (was stale if the drawer was already
                 // open, and required close+reopen to repopulate). Plus
                 // pin loadedDraftUuid so a follow-up "Save" updates this
                 // row in place instead of creating a duplicate.
                 val pubkey = runCatching { nostrSigner.getPublicKeyHex() }.getOrNull()
+                val brand = userPreferences.boardBrand.first()
                 val drafts = withContext(Dispatchers.IO) {
-                    boardRepository.getDraftClimbs(pubkey)
+                    boardRepository.getDraftClimbs(pubkey, brand)
                 }
                 _state.update { s ->
                     s.copy(drafts = drafts, loadedDraftUuid = uuid)
@@ -744,7 +890,7 @@ class ClimbEditorViewModel @Inject constructor(
             }
             // Cancel pending debounce before clearing — see [clearEditor].
             autosaveJob?.cancel()
-            autosave.clear()
+            autosave.clear(autosaveBoardKey)
             _state.update {
                 it.copy(
                     isPublishing = false,
@@ -804,7 +950,7 @@ class ClimbEditorViewModel @Inject constructor(
         // doesn't write the still-current state back to DataStore
         // right after we clear it.
         autosaveJob?.cancel()
-        viewModelScope.launch { autosave.clear() }
+        viewModelScope.launch { autosave.clear(autosaveBoardKey) }
         applyEditor(ClimbEditorState())
         _state.update { it.copy(loadedDraftUuid = null) }
     }
@@ -815,7 +961,8 @@ class ClimbEditorViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val pubkey = runCatching { nostrSigner.getPublicKeyHex() }.getOrNull()
-                val drafts = withContext(Dispatchers.IO) { boardRepository.getDraftClimbs(pubkey) }
+                val brand = userPreferences.boardBrand.first()
+                val drafts = withContext(Dispatchers.IO) { boardRepository.getDraftClimbs(pubkey, brand) }
                 _state.update { it.copy(drafts = drafts, draftsSheetOpen = true) }
             } catch (e: Exception) {
                 Log.w(TAG, "openDraftsSheet failed", e)
@@ -844,12 +991,21 @@ class ClimbEditorViewModel @Inject constructor(
     fun loadDraft(draft: CommunityClimbRow) {
         viewModelScope.launch {
             try {
-                val holds = com.cruxcoach.domain.board.BoardClimbParser.parseFrames(draft.framesText)
-                    .associate { it.placementId to it.roleId }
+                // Brand comes from the live editor (set by loadBoardData,
+                // same rule as seedFromEdit/seedFromFork): the drafts drawer
+                // only lists the active board's drafts. Omitting it here let
+                // the ClimbEditorState defaults reset a MoonBoard/Aurora
+                // draft to boardBrand='kilter' — re-filing the row onto the
+                // Kilter board on the next save and publishing it as a
+                // Kilter climb on the legacy namespace.
+                val brand = _state.value.editor.boardBrand
+                val holds = parseHoldsForBrand(draft.framesText, brand)
                 val stats = withContext(Dispatchers.IO) { boardRepository.getClimbStatsForUuid(draft.uuid) }
                 val currentAngle = _state.value.editor.angle
                 val seeded = ClimbEditorState(
                     selectedHolds = holds,
+                    boardBrand = brand,
+                    activeBrush = defaultBrushFor(brand),
                     name = draft.name,
                     description = draft.description,
                     angle = stats?.first ?: currentAngle,
@@ -903,11 +1059,12 @@ class ClimbEditorViewModel @Inject constructor(
                 // re-materialise the row the user just discarded.
                 if (wasLoaded) {
                     autosaveJob?.cancel()
-                    autosave.clear()
+                    autosave.clear(autosaveBoardKey)
                 }
                 // Refresh the drawer's list.
                 val pubkey = runCatching { nostrSigner.getPublicKeyHex() }.getOrNull()
-                val drafts = boardRepository.getDraftClimbs(pubkey)
+                val brand = userPreferences.boardBrand.first()
+                val drafts = boardRepository.getDraftClimbs(pubkey, brand)
                 _state.update { s ->
                     s.copy(drafts = drafts, loadedDraftUuid = if (wasLoaded) null else s.loadedDraftUuid)
                 }
@@ -935,6 +1092,11 @@ class ClimbEditorViewModel @Inject constructor(
 
     private fun recomputeHeatmap() {
         if (!_state.value.heatmapEnabled) return
+        // The co-occurrence heatmap is keyed on Aurora placement ids and is
+        // overlaid by KilterBoardVisualization only — the MoonBoard renderer
+        // has no heatmap layer, and MoonBoard hold-ids aren't placement ids.
+        // Skip the compute entirely for MoonBoard drafts.
+        if (!_state.value.editor.brand.hasHeatmap) return
         heatmapJob?.cancel()
         heatmapJob = viewModelScope.launch {
             kotlinx.coroutines.delay(HEATMAP_DEBOUNCE_MS)
@@ -1038,7 +1200,7 @@ class ClimbEditorViewModel @Inject constructor(
         autosaveJob = viewModelScope.launch {
             kotlinx.coroutines.delay(AUTOSAVE_DEBOUNCE_MS)
             try {
-                withContext(Dispatchers.IO) { autosave.save(next) }
+                withContext(Dispatchers.IO) { autosave.save(autosaveBoardKey, next) }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -1055,9 +1217,9 @@ class ClimbEditorViewModel @Inject constructor(
      * are mirrored automatically by [syncLeds] which fires after every
      * [applyEditor].
      *
-     * Suspending so callers (notably [BleConnectionViewModel.silentQuickSend])
-     * can await the actual BLE write completion before disconnecting —
-     * a fire-and-forget launch would let the macro tear down GATT
+     * Suspending so the LaunchedEffect(bleConnected) in the editor
+     * screen can await the actual BLE write completion — a fire-and-
+     * forget launch would let the idle-disconnect timer tear down GATT
      * before sendClimb even started writing.
      */
     suspend fun pushCurrentHoldsToBoard() {
@@ -1073,6 +1235,21 @@ class ClimbEditorViewModel @Inject constructor(
      */
     private suspend fun syncLeds() {
         val cur = _state.value
+        if (cur.editor.brand == BoardBrand.MOONBOARD) {
+            // MoonBoard preview: the board lights its own LEDs from the
+            // climb frame (no per-hold LED address map like Kilter). Re-use
+            // the same transport BoardSendController uses for sending a
+            // catalogue MoonBoard climb. encodeFrames emits p{id}r42… which
+            // MoonBoardFrameEncoder.encode (inside sendMoonBoardClimb) reads.
+            val variant = MoonBoardVariant.fromLayoutId(cur.layoutId) ?: return
+            val frames = cur.editor.encodeFrames()
+            val result = runCatching { bleConnection.sendMoonBoardClimb(frames, variant) }
+            result.fold(
+                onSuccess = { Log.i(TAG, "syncLeds(moonboard): sendMoonBoardClimb ok=$it holds=${cur.editor.selectedHolds.size}") },
+                onFailure = { Log.w(TAG, "syncLeds(moonboard): sendMoonBoardClimb threw", it) },
+            )
+            return
+        }
         val ledMap = cur.placementToLed
         if (ledMap.isEmpty()) {
             Log.w(TAG, "syncLeds: placementToLed empty — board cannot light up; check loadBoardData ran")

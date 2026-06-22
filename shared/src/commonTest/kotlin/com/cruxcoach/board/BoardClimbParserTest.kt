@@ -79,4 +79,42 @@ class BoardClimbParserTest {
         val holds = BoardClimbParser.parseFrames("p100r12")
         assertEquals(0, BoardClimbParser.estimateMoveCount(holds))
     }
+
+    @Test
+    fun roleClass_foldsAuroraKilterAndRouteCodesToCanonicalClass() {
+        // Aurora-family codes 1-4 (start/middle/finish/foot).
+        assertEquals(HoldRole.START, HoldRole.roleClass(1))
+        assertEquals(HoldRole.HAND, HoldRole.roleClass(2))
+        assertEquals(HoldRole.FINISH, HoldRole.roleClass(3))
+        assertEquals(HoldRole.FOOT, HoldRole.roleClass(4))
+        // Aurora mirrored set 5-8.
+        assertEquals(HoldRole.START, HoldRole.roleClass(5))
+        assertEquals(HoldRole.HAND, HoldRole.roleClass(6))
+        assertEquals(HoldRole.FINISH, HoldRole.roleClass(7))
+        assertEquals(HoldRole.FOOT, HoldRole.roleClass(8))
+        // Kilter boulder codes pass through unchanged.
+        assertEquals(HoldRole.START, HoldRole.roleClass(12))
+        assertEquals(HoldRole.FOOT, HoldRole.roleClass(15))
+        // Kilter route codes 42-45 fold like normalize().
+        assertEquals(HoldRole.START, HoldRole.roleClass(42))
+        assertEquals(HoldRole.FINISH, HoldRole.roleClass(44))
+        // Genuinely unknown codes return themselves (exact-match callers safe).
+        assertEquals(99, HoldRole.roleClass(99))
+    }
+
+    @Test
+    fun parseFrames_auroraCodes_preserveRawRoleIds_andClassifyCorrectly() {
+        // Regression guard: parseFrames must NOT mutate Aurora role codes
+        // (the editor + AuroraImporter round-trip frames verbatim, and the
+        // placement_roles colour map is keyed by the raw 1-4 ids).
+        val aurora = "p123r1p124r2p125r3p126r4"
+        val holds = BoardClimbParser.parseFrames(aurora)
+        assertEquals(listOf(1, 2, 3, 4), holds.map { it.roleId })
+        assertEquals(aurora, BoardClimbParser.encodeFrames(holds))
+        // …but they classify to the canonical roles for comparison/colour.
+        assertEquals(
+            listOf(HoldRole.START, HoldRole.HAND, HoldRole.FINISH, HoldRole.FOOT),
+            holds.map { HoldRole.roleClass(it.roleId) },
+        )
+    }
 }

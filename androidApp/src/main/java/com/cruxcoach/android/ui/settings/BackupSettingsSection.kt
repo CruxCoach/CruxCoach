@@ -53,6 +53,17 @@ internal fun BackupSettingsSection(
             style = MaterialTheme.typography.bodySmall,
         )
 
+        Spacer(Modifier.height(4.dp))
+        // Device-local exclusions the backup intentionally does not carry
+        // (backup-compat audit, 0.2.0): board selection + browse/map filters
+        // live in DataStore and are re-set in seconds, so they are not backed
+        // up. Stated here so restore expectations are accurate.
+        Text(
+            stringResource(R.string.settings_backup_device_local_note),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
         Spacer(Modifier.height(12.dp))
 
         // Explicit status line — stays visible regardless of
@@ -162,7 +173,7 @@ internal fun BackupSettingsSection(
             Spacer(Modifier.height(8.dp))
             OutlinedButton(
                 onClick = onTriggerRestore,
-                enabled = !state.isCheckingForBackup,
+                enabled = !state.isCheckingForBackup && !state.boardImportInProgress,
             ) {
                 if (state.isCheckingForBackup) {
                     CircularProgressIndicator(
@@ -175,6 +186,17 @@ internal fun BackupSettingsSection(
                 } else {
                     Text(stringResource(R.string.settings_backup_restore))
                 }
+            }
+            // Restoring while the board catalogue is still importing raced the
+            // bulk-import for the SQLite writer lock and silently rolled the
+            // restore back. Block it until the import settles, with a reason.
+            if (state.boardImportInProgress) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = stringResource(R.string.settings_backup_restore_wait_import),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
 
             // FEAT-002 §20.2 active opt-out. Shown only when there is

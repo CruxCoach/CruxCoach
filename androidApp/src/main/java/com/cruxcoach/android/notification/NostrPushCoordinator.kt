@@ -9,7 +9,7 @@ import com.cruxcoach.android.R
 import com.cruxcoach.android.data.NostrMessageRepository
 import com.cruxcoach.android.nostr.NostrConfig
 import com.cruxcoach.android.nostr.NostrRelaySubscription
-import com.cruxcoach.android.nostr.NostrSigner
+import com.cruxcoach.android.nostr.NostrIdentity
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -46,7 +46,8 @@ import javax.inject.Singleton
 class NostrPushCoordinator @Inject constructor(
     private val relaySubscription: NostrRelaySubscription,
     private val messageRepository: NostrMessageRepository,
-    private val nostrSigner: NostrSigner,
+    private val messageIngestor: NostrMessageIngestor,
+    private val nostrSigner: NostrIdentity,
     private val notificationHelper: NotificationHelper,
     @param:ApplicationContext private val context: Context
 ) : DefaultLifecycleObserver {
@@ -124,10 +125,12 @@ class NostrPushCoordinator @Inject constructor(
     }
 
     /**
-     * Mirrors the hardened ingest logic from [NotificationPollWorker.pollDmReplies]:
-     * only accept self-wraps (echoes of our own sends) or DMs from the dev
-     * pubkey; everything else is spam / impersonation and gets dropped
-     * before touching the DB or posting a notification.
+     * Mirrors the hardened sender checks from
+     * [NotificationPollWorker.pollDmReplies]: only accept self-wraps (echoes
+     * of our own sends) or DMs from the dev pubkey; everything else is spam /
+     * impersonation and gets dropped before touching the DB or posting a
+     * notification. The DB write itself is delegated to the shared
+     * [NostrMessageIngestor] so both delivery paths stay in lockstep.
      */
     private suspend fun ingest(
         msg: com.cruxcoach.android.nostr.model.DecryptedMessage,
@@ -143,8 +146,6 @@ class NostrPushCoordinator @Inject constructor(
             return
         }
 
-        val direction = if (isSelfWrap) "sent" else "received"
-
         // Check-then-insert for notification suppression only. The INSERT
         // itself is idempotent via INSERT OR IGNORE in the repository, so
         // the race between this check and the insert is benign for
@@ -154,33 +155,14 @@ class NostrPushCoordinator @Inject constructor(
             messageRepository.getById(msg.id) != null
         }
 
-        withContext(Dispatchers.IO) {
-            messageRepository.insert(
-                id = msg.id,
-                type = msg.type.label,
-                direction = direction,
-                content = msg.content,
-                subject = msg.subject,
-                senderPubkey = msg.senderPubkey,
-                createdAt = msg.timestamp,
-                relayAccepted = true,
-                read = isSelfWrap,
-                replyToId = msg.replyToId
-            )
-            // Self-wrap echoes prove the relay has the event. Flip any
-            // pre-existing queued row (INSERT OR IGNORE left it untouched)
-            // to delivered so the UI transitions queued → delivered.
-            if (isSelfWrap) {
-                messageRepository.clearQueued(msg.id)
-            }
+        // Shared ingest (also used by NotificationPollWorker): thread-id
+        // normalization, anchor re-learning, idempotent insert, queued →
+        // delivered bookkeeping. Returns the notification deep-link route.
+        val threadRoute = withContext(Dispatchers.IO) {
+            messageIngestor.ingest(msg, isSelfWrap)
         }
 
         if (!isSelfWrap && !alreadyExists) {
-            val threadRoute = if (msg.replyToId != null) {
-                "message_thread/${msg.replyToId}"
-            } else {
-                "dev_chat"
-            }
             notificationHelper.showMessageNotification(
                 eventId = msg.id,
                 senderName = context.getString(R.string.notification_sender_developer),

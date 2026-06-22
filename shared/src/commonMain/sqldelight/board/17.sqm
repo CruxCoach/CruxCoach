@@ -1,0 +1,15 @@
+-- Migration version 17 → 18: add kilter_board_location.wellpass so the
+-- board-locations map can flag gyms that accept egym Wellpass (FEAT-015
+-- Phase 2), alongside the foreign-brand info layer that rides on the
+-- existing board_brand column.
+--
+-- Nullable on purpose — three states: 1 = accepts Wellpass, 0 = explicitly
+-- does not, NULL = unknown / not curated. The locations cron sets it from a
+-- hand-curated list (tools/wellpass.json); the vast majority stay NULL.
+-- Existing rows back-fill to NULL (unknown), which is correct: we only know
+-- Wellpass status for the curated venues.
+--
+-- No index: the Wellpass filter is a rare, small-result toggle applied
+-- Kotlin-side over the already-loaded location list, not a hot query.
+
+ALTER TABLE kilter_board_location ADD COLUMN wellpass INTEGER;

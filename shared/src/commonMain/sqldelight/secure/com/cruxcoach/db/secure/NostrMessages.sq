@@ -11,7 +11,16 @@ CREATE TABLE IF NOT EXISTS nostr_messages (
     reply_to_id TEXT,
     queued_at INTEGER DEFAULT NULL,
     event_json TEXT DEFAULT NULL,
-    thread_anchor_id TEXT DEFAULT NULL
+    thread_anchor_id TEXT DEFAULT NULL,
+    -- Raw NIP-10 e-tag of a reply exactly as it appeared on the wire, BEFORE
+    -- normalization to the local thread-root id (reply_to_id). For replies in
+    -- a thread rooted at an own message this is the root's RECIPIENT-wrap id,
+    -- i.e. the root's thread_anchor_id. Persisted so wipe-and-refetch flows
+    -- (recovery migrations, reinstall, 365-day backfill) can re-learn wiped
+    -- thread anchors: the recipient wrap of an own root is p-tagged to the
+    -- dev and never reaches us again, so re-ingested replies are the only
+    -- surviving carrier of the (local id, recipient-wrap id) root pair.
+    reply_to_wire_id TEXT DEFAULT NULL
 );
 
 CREATE INDEX idx_nostr_messages_type ON nostr_messages(type);
@@ -20,8 +29,8 @@ CREATE INDEX idx_nostr_messages_reply ON nostr_messages(reply_to_id);
 CREATE INDEX IF NOT EXISTS idx_nostr_messages_type_dir ON nostr_messages(type, direction);
 
 insert:
-INSERT OR IGNORE INTO nostr_messages(id, type, direction, content, subject, sender_pubkey, created_at, relay_accepted, read, reply_to_id, thread_anchor_id)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+INSERT OR IGNORE INTO nostr_messages(id, type, direction, content, subject, sender_pubkey, created_at, relay_accepted, read, reply_to_id, thread_anchor_id, reply_to_wire_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 getAll:
 SELECT * FROM nostr_messages ORDER BY created_at DESC;
@@ -34,6 +43,52 @@ SELECT * FROM nostr_messages WHERE type = ? ORDER BY created_at DESC;
 
 getRootMessagesByType:
 SELECT * FROM nostr_messages WHERE type = ? AND reply_to_id IS NULL AND direction = 'sent' ORDER BY created_at DESC;
+
+-- Resolve an arbitrary event id to the thread row it identifies. NIP-17
+-- produces TWO gift-wrap ids per message (self-wrap = local row id,
+-- recipient-wrap = thread_anchor_id), so foreign references — dashboard
+-- reply e-tags, stale notification deep-links — may carry an id we only
+-- know via thread_anchor_id. reply_to_id is returned so callers can hop
+-- to the thread root (threads are flat: every reply points at the root).
+--
+-- Third clause: after a wipe-and-refetch the root's thread_anchor_id may be
+-- NULL (re-hydrated from its self-wrap echo, which carries no anchor). A
+-- foreign root reference can then still be resolved through any reply row
+-- that recorded the same wire id in reply_to_wire_id — its reply_to_id is
+-- the local root. Degenerate rows whose reply_to_id is itself the searched
+-- (unresolved) wire id are excluded; direct id/anchor matches win the tie.
+resolveThreadMember:
+SELECT id, reply_to_id FROM nostr_messages
+WHERE id = :eventId
+   OR thread_anchor_id = :eventId
+   OR (reply_to_wire_id = :eventId AND reply_to_id IS NOT NULL AND reply_to_id != :eventId)
+ORDER BY CASE
+    WHEN id = :eventId THEN 0
+    WHEN thread_anchor_id = :eventId THEN 1
+    ELSE 2
+END
+LIMIT 1;
+
+-- Re-learn a thread anchor wiped by a recovery migration / reinstall: sets
+-- the root's thread_anchor_id (its RECIPIENT-wrap id, the id the dashboard
+-- stored the root under) when it is unknown. Guarded to own sent roots and
+-- to NULL anchors so a learned or build-time anchor is never overwritten.
+relearnThreadAnchor:
+UPDATE nostr_messages SET thread_anchor_id = :anchorId
+WHERE id = :rootId AND thread_anchor_id IS NULL AND direction = 'sent';
+
+-- Recover the wire (recipient-wrap) id of a root from its replies: any reply
+-- normalized into the thread keeps the raw e-tag it arrived with. Used when
+-- the root row itself was re-hydrated without an anchor AND its replies were
+-- ingested first (out-of-order backfill), and as the send-time fallback for
+-- the outgoing wire e-tag.
+findWireIdForRoot:
+SELECT id, reply_to_wire_id FROM nostr_messages
+WHERE reply_to_id = :rootId
+  AND reply_to_wire_id IS NOT NULL
+  AND reply_to_wire_id != :rootId
+ORDER BY created_at DESC
+LIMIT 1;
 
 getThread:
 SELECT * FROM nostr_messages

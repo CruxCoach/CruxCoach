@@ -4,6 +4,247 @@ All notable changes to CruxCoach will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.2.0] - 2026-06-21
+
+> 0.2.0 is the multi-board release. CruxCoach now speaks **MoonBoard** as
+> well as Kilter: browse the MoonBoard problem catalogue with the same
+> filters you already know, light up problems on your physical board over
+> Bluetooth, and pick your MoonBoard in onboarding or Settings next to the
+> Kilter variants. The board-locations map and the find-your-gym picker
+> that grew on the 0.1.5 line ship here too — now spanning both board
+> families, with the map showing MoonBoard gyms worldwide. The default LED
+> colours also got a refresh, with a one-time migration that leaves your
+> custom colours alone.
+>
+> (0.1.5 was never released on its own — its work is folded into 0.2.0.)
+
+### Added
+- **MoonBoard support** (FEAT-027) — CruxCoach's first non-Aurora board.
+  Browse the MoonBoard problem catalogue with the same browser surface as
+  Kilter (grade / angle / setter / ascensionist filters all apply), open a
+  problem detail screen, and send it to your physical MoonBoard over
+  Bluetooth (Nordic UART). Five variants ship: **MoonBoard 2016 (40°)**,
+  **Masters 2017** and **Masters 2019** (25° + 40°), **Mini 2020**, and
+  **MoonBoard 2024 (40°)**. The 2024 set landed after our problem-catalogue
+  dump, so for now it carries only the BoardSesh-community problems; the
+  other four ship the full MoonBoard catalogue.
+  Pick a MoonBoard in onboarding or Settings; the always-on
+  *"passt auf mein Board"* fit filter is brand-aware.
+- **Real board imagery for MoonBoard** (FEAT-029) — each variant renders
+  on CruxCoach's own measured board photo with a per-hold coordinate map
+  instead of a generic grid; a procedural grid (11 columns × the variant's
+  row count — 18, or 12 for Mini 2020) remains the fallback.
+- **Unified board picker** — every picker site (onboarding + Settings +
+  the map's "browse this board") now offers the same three categories:
+  Kilter Original / Kilter Homewall / MoonBoard.
+- **MoonBoard gyms on the map** — the board-locations map and the
+  find-your-gym picker now span both families. A **brand filter**
+  (Kilter / MoonBoard / all) joins the existing filters, MoonBoard gyms
+  render in a distinct colour, and searching a MoonBoard gym resolves it
+  to the right variant. Offline model unchanged — locations still arrive
+  in the synced data, no live fetch.
+- **Map venue grouping + clustering** — boards at the same place (a gym
+  with both a Kilter and a MoonBoard, or Original + Homewall) collapse to
+  one pin whose detail sheet lists each board; dense regions cluster into
+  count bubbles that expand on tap. Keeps the map legible now that two
+  catalogues' worth of installations are plotted.
+- **Tension, Grasshopper, Decoy, So iLL and Touchstone** (FEAT-031) — five
+  more Aurora-protocol boards join Kilter and MoonBoard as fully interactive:
+  browse each board's catalogue with the same filters, open a problem, render
+  it on the board, read the hold heatmap, light it up over Bluetooth, and set
+  your own climbs (published to the CruxCoach community). Pick one in Settings →
+  board model. Their catalogues sync from Blossom like Kilter's; Tension also
+  pulls a daily delta. Authored climbs stay on their own board — a Tension climb
+  never shows up on Kilter, and Kilter keeps receiving Kilter climbs published
+  by any version.
+- **Variable climb angle** (FEAT-033) — climbs that exist at more than one
+  angle now expose a board-specific angle control in both the climb browser
+  filter and the Climb Creator, so you pick the angle your board is actually
+  set to. The setter's original angle is shown as info. MoonBoard keeps its
+  fixed per-variant configs.
+- **Logbook "Verlauf" / sent-climbs history** (FEAT-032) — a history of the
+  climbs you've sent, recorded automatically on a board-send (deduplicated,
+  in your configured grade scale). Each entry carries a board badge and a
+  board comparison, you can multi-select entries to delete, and the screen
+  is fully localised.
+- **Per-board stats heatmap selector** (FEAT-039) — the statistics sheet now
+  has a board dropdown, gated to the boards you've actually logged on, so the
+  hold heatmap can be read per board instead of mixing catalogues.
+- **Combinable status filter in the browser** — the single status chip is now
+  a multi-select set: **Neu** / **Versucht** / **Geschafft** combine as an
+  OR-union (empty = Alle), unlocking views like "Versucht only" (open
+  projects) or "touched, not new". Plus an **"ungraded only (projects)"**
+  browse mode (ungraded climbs hidden by default) and an **"ignore unwanted
+  climbs"** action so dismissed climbs stop being suggested.
+- **Mounted-hold-set (hsm) filter** in the browser — narrow the list to
+  climbs that use only the hold sets actually mounted on your configured
+  board.
+- **Browser quality-of-life** — a reset-filters button and scroll-position
+  preservation when returning from a climb detail; a filter-terms info dialog
+  and a **Moves** sort option; and a tap-to-zoom board preview in the board /
+  gym picker.
+- **Climb-list detail board badges** — each climb in a list now shows a
+  board-brand badge, and the list detail reconciles its count as
+  *"X of Y on this board"* against the global list count.
+- **Foreign-brand map layer + egym Wellpass** — Aurora and 12climb
+  installations appear as a toggleable "Other boards" info layer on the map
+  (locations only — no catalogue or Bluetooth send for these two). A new
+  **egym Wellpass** filter + venue badge flags gyms that accept it. Curated
+  overrides correct a handful of mis-classified venues.
+- **Board Locations Map** (FEAT-015) — interactive world map of all
+  known Kilter Board installations, rendered locally with MapLibre +
+  OpenFreeMap (no Google Maps, no API key, no proprietary tiles).
+  Filters for layout family (Original / Homewall), Public-only,
+  *Matches my board*, country, access type, adjustability, and size.
+  Tap a marker for a detail sheet with address, phone, email, website,
+  Instagram, and a "Browse climbs for this board" deep-link into the
+  catalog filtered to that exact layout + size. Stats tab aggregates
+  the visible markers by country, access type, adjustability, and
+  size. Public-only by default; Homewall installations off until the
+  user opts in.
+- **Find-your-gym picker** (FEAT-007 Phase 1) — *Settings → Board-Größe
+  → Ändern → Halle suchen* searches the locations dataset by gym name
+  and lists the physical walls at the matching gym, ordered by how
+  common that wall configuration is across all gyms. Picking a wall
+  applies the right layout + product-size in one tap, no hardware
+  knowledge required. The dialog still has a manual size list as the
+  fallback path.
+- **Always-on Board-Fit filter** in the climb browser — climbs that
+  cannot exist on the user's configured board (wrong edge geometry)
+  are filtered out of every list view. The filter is intentionally
+  not user-togglable.
+- **Map data attribution** — `NOTICE`, `THIRD_PARTY_LICENSES.md`, and
+  `LEGAL.md` now cover MapLibre Native, mapbox-android-gestures,
+  OpenFreeMap, OpenMapTiles, OpenStreetMap (ODbL), and the
+  `@hangtime/climbing-boards` dataset.
+
+### Changed
+- **Community-climb authoring extended to every interactive board**
+  (FEAT-031) — the Climb Creator no longer only authors Kilter climbs. The
+  Aurora-family boards (Tension, Grasshopper, Decoy, So iLL, Touchstone) and
+  MoonBoard can now author climbs published to the CruxCoach community,
+  board-scoped so a climb stays on its own board. Kilter additionally gains
+  publishing of your **own authored** Kilter climbs (surfaced in detail, the
+  my-climbs list, and the logbook), and a backfill of your own authored and
+  logged climbs from the Kilter API so PowerSync-only climbs (the ones the
+  REST catalogue doesn't return) still render.
+- **Logbook entries show more provenance** — a mirror-indicator badge on
+  logbook entries (now a visible, non-clipping badge), and the log comment is
+  shown both in logbook entries and in the climb-detail history.
+- **Default LED colours refreshed** — the CruxCoach preset is now
+  start = magenta, hand = blue, finish = green, foot = red (previously
+  orange / blue / magenta / mint). A one-time migration on first launch
+  moves anyone still sitting on a *previous* default preset onto the new
+  one; genuinely custom colours and the official Kilter preset are left
+  untouched.
+- **Board database re-partitioned for two catalogues** — folding in the
+  MoonBoard catalogue roughly doubled the board DB. Browse/count queries
+  are now partitioned by board layout (layout_id denormalised onto
+  `climb_stats` with rebuilt covering indexes), so a query for one board
+  no longer scans past the others and detail/browser load stays fast.
+- **BLE transport rework** + board-browser sort options, plus a slimmer
+  APK (arm64-only native libs).
+- **Connection-sheet permission flow** — opening the BLE connection
+  sheet now re-checks the runtime permissions instead of relying on
+  the cached pre-onboarding answer, so users who revoked permission
+  in OS settings get prompted again at the right moment.
+- **Singleton-init failure logging** — the eleven `runCatching {
+  ... }.onFailure { ... }` sites in `CruxCoachApp.onCreate` now log
+  via `Log.w` with attached stack traces instead of `Log.d` (which
+  R8 strips from release builds). Triaging "X failed silently on
+  startup" reports is no longer a guessing game.
+
+### Fixed
+- **MoonBoard send used the wrong variant** when the climb's board differed
+  from the configured one (e.g. opening a Mini 2020 climb from a list while
+  set to MoonBoard 2016) — the BLE encoder now takes the variant from the
+  climb being sent, not the active-board preference, so the lit holds match.
+- **MoonBoard browser was empty** on first open — the Blossom manifest
+  parser required a `productId` the MoonBoard catalogue chunk doesn't
+  carry; it is now optional, so MoonBoard climbs import and list.
+- **Slow MoonBoard detail / browser open** — a shared per-angle index was
+  scanned across all catalogues; the layout-partitioned indexes (above)
+  bring opening a MoonBoard problem back to near-instant.
+- **BLE menu stayed open after a MoonBoard auto-connect** — the
+  connection sheet now closes on auto-connect for MoonBoard the same way
+  it does for Kilter.
+- **Sync banner briefly read "done" mid-sync** — during the MoonBoard
+  phase the two-catalogue sync banner no longer leaks the Kilter phase's
+  completed state; it shows the active phase through to finalising.
+- **Map screen no longer dead-ends silently.** `MapViewModel.init`
+  now catches DB / flow throws (e.g. the brief schema-migration
+  window on a 0.1.4 → 0.2.0 upgrade), exits the loading state, and
+  surfaces a snackbar instead of staring at an infinite spinner.
+- **Tile-server outage now visible.** A 4 s reachability probe runs
+  once when the map opens; if OpenFreeMap is unreachable the user
+  gets a *"Kartenanbieter nicht erreichbar"* snackbar instead of a
+  grey canvas with markers and no explanation.
+- **Marker actions no longer crash.** Phone / email / web / "open
+  in Maps" intents on `BoardLocationDetailSheet` are wrapped in a
+  safe-launch helper that catches `ActivityNotFoundException` and
+  shows a toast, so devices without a dialer / mail / browser don't
+  bring the app down.
+- **Backfill cannot wipe locations on an empty source chunk.**
+  `BoardDatabaseImporter` now refuses to `DELETE FROM` the local
+  `kilter_board_location` / `kilter_board_wall` tables when the
+  attached source chunk has zero rows; a pipeline glitch can no
+  longer silently empty the map after a sync.
+- **Backfill cache files no longer race the full sync.** The
+  one-time locations backfill writes its chunk cache to
+  `blossom_backfill_…sqlite3` instead of the same path the regular
+  full-sync uses, closing the cross-coroutine cache collision
+  window during the 0.1.4 → 0.2.0 upgrade.
+- **Backfill cannot hang forever.** A 120 s wall-clock cap on
+  `backfillLocationsIfMissing` retires stalled chunk downloads
+  (captive portal, dead TCP socket) that previously pinned the
+  in-app *"Standorte werden geladen"* indicator until the next
+  process restart.
+- **Picker no longer disables silently on transient DB failure.**
+  `GymBoardPickerViewModel` wraps its three coroutine launches in
+  `try/catch`, so a brief read error in `countWalls()` /
+  `productSizeFrequency()` / `searchLocations()` no longer leaves
+  the picker permanently dark with no log trail.
+- **Audit trail for `replace-all` imports.** `importLocations` /
+  `kilter_board_wall` imports now log a release-visible
+  *before → after row count* line, so support requests about
+  "my map is empty / suddenly different" have something to grep.
+
+### Security
+- **Marker-action input sanitisation** (FEAT-015 hardening) — the
+  phone / email / website rows in `BoardLocationDetailSheet` now
+  validate their inputs before launching an intent. Phone strings
+  are stripped to a dialer-safe character class (`[0-9+\-() ]`) and
+  rejected entirely if no digits remain; mailto launches go through
+  `EXTRA_EMAIL` against `ACTION_SENDTO` with a `Patterns.EMAIL_ADDRESS`
+  check, closing the previous header-injection arm (`?subject=…&bcc=…`)
+  where a malicious upstream entry could pre-compose the user's
+  mail client; website launches parse the URI and accept only the
+  http / https schemes (`httpx://`, `javascript:`, `intent://`,
+  `file://` are now rejected, where the previous `startsWith("http")`
+  guard would let `httpx://attacker.example` through).
+
+### Internal
+- **Test coverage backfill** — new unit tests for `MapFilters.apply`,
+  `MapStats.from`, `GymBoardPickerViewModel`; a JDBC-driver
+  integration test suite for `BoardLocationRepositoryImpl`;
+  `MigrationSmokeTest` extended to cover the FEAT-015 tables;
+  `FakeBoardLocationRepository` test fake added.
+- **MoonBoard + multi-brand test coverage** — `BoardBrand` /
+  `MoonBoardVariant` domain tests, the MoonBoard BLE frame encoder,
+  brand-aware `MapFilters` and gym-picker variant resolution, the
+  `board_brand` location schema/repository round-trip, and the
+  one-time LED default-colour migration (every branch).
+
+### Internal / Build
+- **Core-library desugaring + lint gate** — the build now enables core
+  library desugaring, backporting newer `java.*` APIs into the APK so they
+  resolve on older Android, with a lint gate to catch old-API regressions.
+- **Old-API crash fixes for Android < 12** — the expedited board-sync /
+  update workers now override `getForegroundInfo`, so they run on Android
+  before 12 instead of crashing; and two `java.util` SequencedCollection
+  call sites (e.g. on the dashboard) that threw `NoSuchMethodError` on
+  Android 26–34 are fixed.
+
 ## [0.1.4] - 2026-05-18
 
 > 0.1.4 turns CruxCoach from a Kilter-catalog viewer into a small

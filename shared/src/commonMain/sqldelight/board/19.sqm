@@ -1,0 +1,24 @@
+-- Migration version 19 → 20 (FEAT-031): per-board placement_roles, so each
+-- board's LED + screen colours come from its OWN catalogue
+-- (placement_roles.led_color / screen_color) instead of a hardcoded default.
+--
+-- New, initially-EMPTY table. It is populated only when a board's Aurora chunk
+-- carries placement_roles (the cron/Blossom pipeline opts in per board); until
+-- then BoardSendController falls back to the conventional per-brand colours
+-- (LedHoldColors.standardFor) and Kilter keeps its user-configurable colours.
+--
+-- board_brand leads the composite PK so each board's role ids (which repeat
+-- across boards, e.g. role 12 on both Kilter and Tension) stay distinct.
+--
+-- Pre-0.2.0 safety: purely additive (a new empty table). The Kilter chunk does
+-- not carry placement_roles, so the Kilter colour path is byte-unaffected;
+-- older app versions never see this migration (in-app only).
+
+CREATE TABLE placement_roles (
+    board_brand TEXT NOT NULL DEFAULT 'kilter',
+    id INTEGER NOT NULL,
+    name TEXT,
+    led_color TEXT,
+    screen_color TEXT,
+    PRIMARY KEY (board_brand, id)
+);

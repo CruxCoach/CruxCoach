@@ -1,5 +1,6 @@
 package com.cruxcoach.domain.community
 
+import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.HoldRole
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -27,6 +28,7 @@ class NostrCommunityClimbTest {
         val ev = buildCommunityClimbEvent(
             pubkey = pubkey, createdAt = 1714000000L, uuid = uuid,
             layoutId = 1L, sizeLabel = "12x12", state = state,
+            brand = BoardBrand.KILTER,
         )
         // First 8 chars of pubkey + uuid
         assertEquals("cruxcoach:climb:abcd1234:$uuid", ev.dTag)
@@ -37,11 +39,19 @@ class NostrCommunityClimbTest {
         val ev = buildCommunityClimbEvent(
             pubkey = pubkey, createdAt = 1714000000L, uuid = uuid,
             layoutId = 1L, sizeLabel = "12x12", state = state,
+            brand = BoardBrand.KILTER,
         )
         // d-tag
         assertTrue(ev.tags.any { it[0] == "d" && it[1].startsWith("cruxcoach:climb:") })
-        // L-namespace
+        // L-namespace (Kilter stays on the legacy back-compat namespace)
         assertTrue(ev.tags.any { it[0] == "L" && it[1] == CommunityClimbTags.NS_CLIMB })
+        // the `l climb <ns>` label uses the SAME namespace as the L tag
+        assertTrue(ev.tags.any {
+            it[0] == "l" && it[1] == CommunityClimbTags.LABEL_CLIMB &&
+                it[2] == CommunityClimbTags.NS_CLIMB
+        })
+        // explicit machine brand tag is always present (Kilter included)
+        assertTrue(ev.tags.any { it[0] == "board_brand" && it[1] == BoardBrand.KILTER.wireValue })
         // l-labels (climb, kilterboard-og, size)
         assertTrue(ev.tags.any { it[0] == "l" && it[1] == CommunityClimbTags.LABEL_CLIMB })
         assertTrue(ev.tags.any { it[0] == "l" && it[1] == CommunityClimbTags.LABEL_KILTER_BOARD })
@@ -60,10 +70,77 @@ class NostrCommunityClimbTest {
     }
 
     @Test
+    fun moonboard_layout_tags_board_label_and_hashtag_as_moonboard() {
+        // A MoonBoard climb (layout 2 = 2016) must be tagged honestly: the
+        // board label + hashtag reflect MoonBoard, not the hardcoded
+        // "kilterboard" that every event used to carry. Subscribers still
+        // ingest by layout_id; these are human/discovery metadata.
+        val mbState = ClimbEditorState(
+            boardBrand = "moonboard",
+            selectedHolds = mapOf(
+                5 to HoldRole.ROUTE_START,
+                7 to HoldRole.ROUTE_HAND,
+                9 to HoldRole.ROUTE_FINISH,
+            ),
+            name = "Mooncrux",
+            description = "",
+            setterGradeId = 22,
+            angle = 40,
+        )
+        val ev = buildCommunityClimbEvent(
+            pubkey = pubkey, createdAt = 1714000000L, uuid = uuid,
+            layoutId = 2L, sizeLabel = "MoonBoard 2016", state = mbState,
+            brand = BoardBrand.MOONBOARD,
+        )
+        assertTrue(ev.tags.any { it[0] == "l" && it[1] == CommunityClimbTags.LABEL_MOONBOARD })
+        assertTrue(ev.tags.none { it[0] == "l" && it[1] == CommunityClimbTags.LABEL_KILTER_BOARD })
+        assertTrue(ev.tags.any { it[0] == "t" && it[1] == "moonboard" })
+        assertTrue(ev.tags.none { it[0] == "t" && it[1] == "kilterboard" })
+        // MoonBoard is a "new board" -> namespaced out of the legacy filter.
+        assertTrue(ev.tags.any { it[0] == "L" && it[1] == CommunityClimbTags.NS_CLIMB_V2 })
+        assertTrue(ev.tags.none { it[0] == "L" && it[1] == CommunityClimbTags.NS_CLIMB })
+        assertTrue(ev.tags.any { it[0] == "board_brand" && it[1] == BoardBrand.MOONBOARD.wireValue })
+    }
+
+    @Test
+    fun aurora_brand_is_namespaced_out_of_legacy_filter_and_self_labelled() {
+        // A non-Kilter Aurora board (Grasshopper, whose layout_id=1 COLLIDES
+        // with Kilter Original) must NOT land on the legacy `L` namespace —
+        // otherwise old <0.2.0 apps ingest it by layout_id as a broken Kilter
+        // climb. It carries the v2 namespace + an explicit board_brand tag,
+        // and self-labels with its wireValue (no per-board label constant).
+        val ev = buildCommunityClimbEvent(
+            pubkey = pubkey, createdAt = 1714000000L, uuid = uuid,
+            layoutId = 1L, sizeLabel = "12x12", state = state,
+            brand = BoardBrand.GRASSHOPPER,
+        )
+        // L namespace = v2 (NOT the legacy namespace old apps subscribe to)
+        assertTrue(ev.tags.any { it[0] == "L" && it[1] == CommunityClimbTags.NS_CLIMB_V2 })
+        assertTrue(ev.tags.none { it[0] == "L" && it[1] == CommunityClimbTags.NS_CLIMB })
+        // the `l climb <ns>` label tracks the SAME v2 namespace
+        assertTrue(ev.tags.any {
+            it[0] == "l" && it[1] == CommunityClimbTags.LABEL_CLIMB &&
+                it[2] == CommunityClimbTags.NS_CLIMB_V2
+        })
+        // explicit machine brand tag drives brand-aware ingestion
+        assertTrue(ev.tags.any { it[0] == "board_brand" && it[1] == BoardBrand.GRASSHOPPER.wireValue })
+        // honest human label + hashtag = the brand's wireValue
+        assertTrue(ev.tags.any {
+            it[0] == "l" && it[1] == BoardBrand.GRASSHOPPER.wireValue &&
+                it[2] == CommunityClimbTags.NS_BOARD
+        })
+        assertTrue(ev.tags.any { it[0] == "t" && it[1] == BoardBrand.GRASSHOPPER.wireValue })
+        // and never the kilterboard label/hashtag
+        assertTrue(ev.tags.none { it[0] == "l" && it[1] == CommunityClimbTags.LABEL_KILTER_BOARD })
+        assertTrue(ev.tags.none { it[0] == "t" && it[1] == "kilterboard" })
+    }
+
+    @Test
     fun content_contains_uuid_pubkey_prefix_and_escaped_description() {
         val ev = buildCommunityClimbEvent(
             pubkey = pubkey, createdAt = 1714000000L, uuid = uuid,
             layoutId = 1L, sizeLabel = "12x12", state = state,
+            brand = BoardBrand.KILTER,
         )
         // uuid + pubkey prefix
         assertTrue(ev.content.contains("\"uuid\":\"$uuid\""))

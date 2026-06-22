@@ -1,0 +1,25 @@
+-- Migration version 16 → 17: add kilter_board_location.board_brand so the
+-- board-locations map + gym search can span MoonBoard (and future brands),
+-- not just Kilter.
+--
+-- The locations dataset so far is Kilter-only: every kilter_board_location
+-- row is a Kilter installation, and layout_id (1 = Original, 8 = Homewall)
+-- doubles as the only board discriminator. FEAT-027 adds MoonBoard gyms,
+-- whose layout_ids (2/4/5/6 = the variants) overlap with values that mean
+-- something different on the Kilter side — so layout_id alone can no longer
+-- tell the boards apart. board_brand makes the family explicit, mirroring
+-- climbs.board_brand (14.sqm).
+--
+-- Every existing row is a Kilter installation, so DEFAULT 'kilter' back-fills
+-- the whole table correctly on upgrade — no resync, no data loss. The
+-- locations cron writes 'moonboard' explicitly for MoonBoard gyms; the
+-- importer carries the column through (with a hasColumn guard so pre-0.2.0
+-- chunks that lack it still import, defaulting to 'kilter').
+--
+-- Walls (kilter_board_wall) intentionally get no board_brand: that table is
+-- intrinsically Kilter (product sizes, hold-set values, serial numbers).
+-- MoonBoard has no per-wall model, so a brand column there would be dead.
+
+ALTER TABLE kilter_board_location ADD COLUMN board_brand TEXT NOT NULL DEFAULT 'kilter';
+
+CREATE INDEX idx_kbl_brand ON kilter_board_location(board_brand);

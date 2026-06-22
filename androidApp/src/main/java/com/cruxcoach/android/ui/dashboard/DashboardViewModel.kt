@@ -151,7 +151,12 @@ class DashboardViewModel @Inject constructor(
         if (recentLogs.isEmpty()) return 0
 
         val today = DateTimeUtil.todayIso()
-        val logDates = recentLogs.map { it.date }.toSortedSet().reversed()
+        // distinct().sortedDescending() — NOT toSortedSet().reversed(): on a
+        // java.util.TreeSet receiver, .reversed() binds to the platform member
+        // SequencedCollection.reversed() (API 35) and throws NoSuchMethodError on
+        // API 26-34 (old-API audit C-1). distinct() dedups + sortedDescending()
+        // on ISO date strings gives the same newest-first order, via Kotlin stdlib.
+        val logDates = recentLogs.map { it.date }.distinct().sortedDescending()
 
         var streak = 0
         var expectedDate = today

@@ -2,11 +2,14 @@ package com.cruxcoach.android.fakes
 
 import com.cruxcoach.data.repository.AscentWithClimb
 import com.cruxcoach.data.repository.Board_sessions
+import com.cruxcoach.data.repository.ClimbHistoryEntry
 import com.cruxcoach.data.repository.Climb_lists
 import com.cruxcoach.data.repository.PersonalBoardRepository
 import com.cruxcoach.data.repository.RawAscent
 import com.cruxcoach.data.repository.RawBid
 import com.cruxcoach.data.repository.RawClimbListEntry
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 
 /**
  * In-memory fake of [PersonalBoardRepository] for unit tests.
@@ -15,9 +18,14 @@ class FakePersonalBoardRepository : PersonalBoardRepository {
 
     val sentUuids = mutableSetOf<String>()
     val attemptedUuids = mutableSetOf<String>()
+    val ignoredUuids = mutableSetOf<String>()
+    /** Log uuids (ascent + bid PKs) recorded by inserts, so dedup-counting in
+     *  the Kilter import can be exercised. */
+    val insertedLogUuids = mutableSetOf<String>()
 
     fun markSent(uuid: String) { sentUuids.add(uuid) }
     fun markAttempted(uuid: String) { attemptedUuids.add(uuid) }
+    fun markIgnored(uuid: String) { ignoredUuids.add(uuid) }
 
     // -- Ascent queries --
 
@@ -28,11 +36,13 @@ class FakePersonalBoardRepository : PersonalBoardRepository {
         comment: String?, climbedAt: String, synced: Boolean,
         gymUuid: String?, wallUuid: String?, productLayoutUuid: String?,
         climbName: String, difficultyAverage: Double?,
-        climbFrames: String, framesCount: Long
-    ) {}
+        climbFrames: String, framesCount: Long,
+        boardBrand: String, layoutId: Long?,
+    ) { insertedLogUuids.add(uuid) }
 
     override fun deleteAscent(uuid: String) {}
     override fun updateAscent(uuid: String, bidCount: Long, quality: Long?, comment: String?) {}
+    override fun updateBid(uuid: String, bidCount: Long, comment: String?) {}
     override fun getUserAscentsAll(): List<AscentWithClimb> = emptyList()
     override fun getUserAscentsBetween(from: String, to: String): List<AscentWithClimb> = emptyList()
     override fun getUserSentClimbUuids(): Set<String> = sentUuids
@@ -53,8 +63,9 @@ class FakePersonalBoardRepository : PersonalBoardRepository {
         isMirror: Boolean, bidCount: Long, comment: String?,
         climbedAt: String, synced: Boolean,
         gymUuid: String?, wallUuid: String?, productLayoutUuid: String?,
-        climbName: String, difficultyAverage: Double?
-    ) {}
+        climbName: String, difficultyAverage: Double?,
+        boardBrand: String, layoutId: Long?,
+    ) { insertedLogUuids.add(uuid) }
 
     override fun deleteBid(uuid: String) {}
     override fun getUserBidDifficulties(since: String): List<Double> = emptyList()
@@ -86,16 +97,33 @@ class FakePersonalBoardRepository : PersonalBoardRepository {
     override fun getListIdsForClimb(climbUuid: String): Set<Long> = emptySet()
     override fun isClimbFavorited(climbUuid: String): Boolean = false
     override fun toggleFavorite(climbUuid: String): Boolean = false
+    override fun ensureIgnoredListExists(): Long = 2L
+    override fun isClimbIgnored(climbUuid: String): Boolean = climbUuid in ignoredUuids
+    override fun toggleIgnored(climbUuid: String): Boolean {
+        return if (climbUuid in ignoredUuids) { ignoredUuids.remove(climbUuid); false }
+        else { ignoredUuids.add(climbUuid); true }
+    }
+    override fun getIgnoredClimbUuids(): Set<String> = ignoredUuids
     override fun getClimbListEntriesRaw(): List<RawClimbListEntry> = emptyList()
 
     // -- Denormalization --
 
     override fun getAllClimbKeys(): List<Pair<String, Long>> = emptyList()
-    override fun updateAscentDenormalized(climbUuid: String, angle: Long, climbName: String, difficultyAverage: Double?, climbFrames: String, framesCount: Long) {}
-    override fun updateBidDenormalized(climbUuid: String, angle: Long, climbName: String, difficultyAverage: Double?) {}
+    override fun getExistingLogUuids(): Set<String> = insertedLogUuids.toSet()
+    override fun updateAscentDenormalized(climbUuid: String, angle: Long, climbName: String, difficultyAverage: Double?, climbFrames: String, framesCount: Long, boardBrand: String, layoutId: Long?) {}
+    override fun updateBidDenormalized(climbUuid: String, angle: Long, climbName: String, difficultyAverage: Double?, boardBrand: String, layoutId: Long?) {}
+
+    // -- Climb history --
+
+    override suspend fun recordClimbHistory(climbUuid: String, climbName: String, angle: Long, difficultyAverage: Double?, boardBrand: String, layoutId: Long?, climbedAt: String, recordedAt: String) {}
+    override fun observeClimbHistory(): Flow<List<ClimbHistoryEntry>> = flowOf(emptyList())
+    override suspend fun clearClimbHistory() {}
+    override suspend fun deleteClimbHistory(ids: List<Long>) {}
+    override suspend fun pruneClimbHistory(cutoffIso: String) {}
+    override suspend fun climbHistoryCount(): Long = 0L
 
     // -- Bulk operations --
 
-    override fun deleteAllUserBoardData() { sentUuids.clear(); attemptedUuids.clear() }
+    override fun deleteAllUserBoardData() { sentUuids.clear(); attemptedUuids.clear(); ignoredUuids.clear() }
     override fun runInTransaction(block: () -> Unit) { block() }
 }

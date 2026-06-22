@@ -1,0 +1,33 @@
+-- Migration version 8 → 9 (secure/personal DB): add the `climb_history`
+-- table backing the "Verlauf" (history) screen — a local, append-only log
+-- of climbs the user logged as SENT.
+--
+-- WHY a separate table (not a query over `ascents`): history is a distinct
+-- product surface with its own retention (prune by recorded_at) and its own
+-- lifecycle. It is deliberately NEVER synced to Kilter and NEVER included in
+-- any backup/export (see CruxCoachBackup) — keeping it in its own table makes
+-- that boundary explicit and prevents it from ever leaking into the ascents
+-- sync/backup paths. Fields are denormalized at record time (climb_name,
+-- difficulty_average, board_brand, layout_id) so the screen renders without a
+-- cross-DB join, mirroring the ascents/bids denormalization.
+--
+-- New install only — no data back-fill: pre-0.2.0 installs had no history
+-- surface, so the table simply starts empty on upgrade. Schema is identical to
+-- the CREATE TABLE / CREATE INDEX in ClimbHistory.sq.
+
+CREATE TABLE climb_history (
+    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    climb_uuid TEXT NOT NULL,
+    climb_name TEXT NOT NULL,
+    angle INTEGER NOT NULL,
+    difficulty_average REAL,
+    board_brand TEXT NOT NULL DEFAULT 'kilter',
+    layout_id INTEGER,
+    climbed_at TEXT NOT NULL,
+    recorded_at TEXT NOT NULL,
+    -- Deduped most-recent list: re-sending a climb at the same angle replaces
+    -- its row (INSERT OR REPLACE) instead of piling up duplicates.
+    UNIQUE(climb_uuid, angle)
+);
+
+CREATE INDEX climb_history_recorded_at ON climb_history(recorded_at DESC);

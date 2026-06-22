@@ -26,7 +26,8 @@ object KilterGradeMapper {
         22 to "V6", 23 to "V7", 24 to "V8",
         25 to "V8", 26 to "V9", 27 to "V10",
         28 to "V11", 29 to "V12", 30 to "V13",
-        31 to "V14", 32 to "V15", 33 to "V16"
+        31 to "V14", 32 to "V15", 33 to "V16",
+        34 to "V17"
     )
 
     /** Font grade for each integer difficulty (from Kilter DB difficulty_grades.boulder_name). */
@@ -38,7 +39,8 @@ object KilterGradeMapper {
         22 to "7a", 23 to "7a+", 24 to "7b",
         25 to "7b+", 26 to "7c", 27 to "7c+",
         28 to "8a", 29 to "8a+", 30 to "8b",
-        31 to "8b+", 32 to "8c", 33 to "8c+"
+        31 to "8b+", 32 to "8c", 33 to "8c+",
+        34 to "9a"
     )
 
     private val VSCALE_TO_DIFFICULTY = mapOf(
@@ -47,7 +49,7 @@ object KilterGradeMapper {
         "V6" to 22, "V7" to 23, "V8" to 25,
         "V9" to 26, "V10" to 27, "V11" to 28,
         "V12" to 29, "V13" to 30, "V14" to 31,
-        "V15" to 32, "V16" to 33
+        "V15" to 32, "V16" to 33, "V17" to 34
     )
 
     // Display-aligned boundaries: lowest/highest integer difficulty per V-grade
@@ -65,7 +67,7 @@ object KilterGradeMapper {
     fun difficultyToVScale(difficulty: Int): String {
         return DIFFICULTY_TO_VSCALE[difficulty] ?: when {
             difficulty < 10 -> "V0"
-            difficulty > 33 -> "V16"
+            difficulty > 34 -> "V17"
             else -> "V${(difficulty - 10) / 2}"
         }
     }
@@ -80,7 +82,7 @@ object KilterGradeMapper {
         val rounded = roundHalfUp(difficulty)
         return DIFFICULTY_TO_FONT[rounded] ?: when {
             rounded < 10 -> "4a"
-            rounded > 33 -> "8c+"
+            rounded > 34 -> "9a"
             else -> "?"
         }
     }
@@ -98,37 +100,41 @@ object KilterGradeMapper {
     }
 
     /**
-     * Map unified grade index (0..22) to Kilter difficulty value.
+     * Map unified grade index (0..24) to Kilter difficulty value. Contiguous
+     * 10..34, so [GradeConverter.GRADES] and this array stay in lockstep — every
+     * Font grade from 4a up has its own index (no skipped difficulties).
      * Each value is the exact integer difficulty from the Kilter DB difficulty_grades table.
      */
     private val INDEX_TO_DIFFICULTY = doubleArrayOf(
-        11.0,  // 0  = 4b   / V0
-        12.0,  // 1  = 4c
-        14.0,  // 2  = 5b   / V1
-        15.0,  // 3  = 5c   / V2
-        16.0,  // 4  = 6a   / V3
-        17.0,  // 5  = 6a+
-        18.0,  // 6  = 6b   / V4
-        19.0,  // 7  = 6b+
-        20.0,  // 8  = 6c   / V5
-        21.0,  // 9  = 6c+
-        22.0,  // 10 = 7a   / V6
-        23.0,  // 11 = 7a+  / V7
-        24.0,  // 12 = 7b
-        25.0,  // 13 = 7b+  / V8
-        26.0,  // 14 = 7c   / V9
-        27.0,  // 15 = 7c+  / V10
-        28.0,  // 16 = 8a   / V11
-        29.0,  // 17 = 8a+  / V12
-        30.0,  // 18 = 8b   / V13
-        31.0,  // 19 = 8b+  / V14
-        32.0,  // 20 = 8c   / V15
-        33.0,  // 21 = 8c+  / V16
-        34.0   // 22 = 9a   / V17
+        10.0,  // 0  = 4a   / V0  (floor)
+        11.0,  // 1  = 4b   / V0
+        12.0,  // 2  = 4c
+        13.0,  // 3  = 5a   / V1
+        14.0,  // 4  = 5b   / V1
+        15.0,  // 5  = 5c   / V2
+        16.0,  // 6  = 6a   / V3
+        17.0,  // 7  = 6a+
+        18.0,  // 8  = 6b   / V4
+        19.0,  // 9  = 6b+
+        20.0,  // 10 = 6c   / V5
+        21.0,  // 11 = 6c+
+        22.0,  // 12 = 7a   / V6
+        23.0,  // 13 = 7a+  / V7
+        24.0,  // 14 = 7b
+        25.0,  // 15 = 7b+  / V8
+        26.0,  // 16 = 7c   / V9
+        27.0,  // 17 = 7c+  / V10
+        28.0,  // 18 = 8a   / V11
+        29.0,  // 19 = 8a+  / V12
+        30.0,  // 20 = 8b   / V13
+        31.0,  // 21 = 8b+  / V14
+        32.0,  // 22 = 8c   / V15
+        33.0,  // 23 = 8c+  / V16
+        34.0   // 24 = 9a   / V17
     )
 
     fun indexToDifficulty(index: Int): Double {
-        return INDEX_TO_DIFFICULTY[index.coerceIn(0, 22)]
+        return INDEX_TO_DIFFICULTY[index.coerceIn(0, INDEX_TO_DIFFICULTY.lastIndex)]
     }
 
     /**
@@ -155,8 +161,10 @@ object KilterGradeMapper {
      *                   false = V-Scale (ROUND boundaries: lower - 0.5)
      */
     fun indexToFilterMin(index: Int, frenchMode: Boolean = false): Double {
+        // index 0 == 4a == the display floor, so "no lower bound" is correct here:
+        // anything below difficulty 10 is clamped to 4a anyway.
         if (index <= 0) return 0.0
-        val idx = index.coerceIn(0, 22)
+        val idx = index.coerceIn(0, INDEX_TO_DIFFICULTY.lastIndex)
         if (frenchMode) {
             // Midpoint to previous index
             val prevDiff = INDEX_TO_DIFFICULTY[idx - 1]
@@ -174,8 +182,8 @@ object KilterGradeMapper {
      *                   false = V-Scale (ROUND boundaries: upper + 0.49)
      */
     fun indexToFilterMax(index: Int, frenchMode: Boolean = false): Double {
-        if (index >= 22) return 99.0
-        val idx = index.coerceIn(0, 22)
+        if (index >= INDEX_TO_DIFFICULTY.lastIndex) return 99.0
+        val idx = index.coerceIn(0, INDEX_TO_DIFFICULTY.lastIndex)
         if (frenchMode) {
             // Midpoint to next index minus epsilon
             val nextDiff = INDEX_TO_DIFFICULTY[idx + 1]

@@ -6,14 +6,13 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.R
-import com.cruxcoach.android.nostr.NostrKeyStore
+import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.data.CruxCoachBackup
 import com.cruxcoach.data.CruxCoachBackup.Category
 import com.cruxcoach.data.TransactionRunner
 import com.cruxcoach.data.WaistlineExchange
 import com.cruxcoach.data.repository.*
 import com.cruxcoach.util.DateTimeUtil
-import com.vitorpamplona.quartz.nip01Core.core.toHexKey
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -106,7 +105,14 @@ class DataExchangeViewModel @Inject constructor(
      *  cross-DB rationale. */
     private val boardRepository: com.cruxcoach.data.repository.BoardRepository,
     private val transactionRunner: TransactionRunner,
-    private val nostrKeyStore: NostrKeyStore,
+    /** Active-signer abstraction — same source of identity as
+     *  [com.cruxcoach.android.nostr.backup.BackupRepository]. The previous
+     *  direct [com.cruxcoach.android.nostr.NostrKeyStore] use resolved the
+     *  LOCAL keypair, which for an Amber (external signer) user is a
+     *  different identity: exports silently dropped their authored climbs
+     *  and importing their own backup raised a bogus pubkey-mismatch (it
+     *  also side-effect-created a fresh local key). */
+    private val nostrSigner: NostrSigner,
     /** Same gate as in [com.cruxcoach.android.nostr.backup.BackupRepository.restore]:
      *  suspends a manual JSON-import until any in-flight board-sync has
      *  released the SQLite writer-lock on the unencrypted board DB,
@@ -166,7 +172,7 @@ class DataExchangeViewModel @Inject constructor(
                             personalBoardRepo = personalBoardRepo,
                             boardRepository = boardRepository,
                             exportedAt = DateTimeUtil.nowIso(),
-                            nostrPubkey = nostrKeyStore.getOrCreateKeyPair().pubKey.toHexKey()
+                            nostrPubkey = nostrSigner.getPublicKeyHex()
                         )
                         ExportFormat.WAISTLINE_JSON -> WaistlineExchange.exportToJson(bodyStatRepository)
                         ExportFormat.WAISTLINE_CSV -> WaistlineExchange.exportToCsv(bodyStatRepository)
@@ -231,7 +237,7 @@ class DataExchangeViewModel @Inject constructor(
                         // CruxCoach format → show preview
                         val preview = CruxCoachBackup.preview(raw)
                         val detected = preview.detectedCategories().intersect(VISIBLE_CATEGORIES)
-                        val currentPubkey = nostrKeyStore.getOrCreateKeyPair().pubKey.toHexKey()
+                        val currentPubkey = nostrSigner.getPublicKeyHex()
                         val mismatch = preview.nostrPubkey != null &&
                             preview.nostrPubkey != currentPubkey
                         _state.update { it.copy(
@@ -276,7 +282,7 @@ class DataExchangeViewModel @Inject constructor(
         _state.update { it.copy(isImporting = true, error = null) }
         viewModelScope.launch {
             try {
-                val currentPubkey = nostrKeyStore.getOrCreateKeyPair().pubKey.toHexKey()
+                val currentPubkey = nostrSigner.getPublicKeyHex()
                 // Default-path: pass the active pubkey so the codec
                 // hard-refuses any mismatch. Override-path: user has
                 // explicitly accepted the cross-pubkey import via the

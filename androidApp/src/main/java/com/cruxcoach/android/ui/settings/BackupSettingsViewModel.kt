@@ -3,6 +3,7 @@ package com.cruxcoach.android.ui.settings
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.cruxcoach.android.data.BoardSyncManager
 import com.cruxcoach.android.data.SyncInterval
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.nostr.NostrKeyStore
@@ -47,6 +48,12 @@ data class BackupSettingsState(
     val signerMode: SignerMode = SignerMode.LOCAL,
     val isRunningOneShot: Boolean = false,
     val isCheckingForBackup: Boolean = false,
+    /** True while the board catalogue is still importing on a fresh install
+     *  (or during any active board-sync). The restore button is disabled
+     *  meanwhile: restoring against a half-imported board DB raced the
+     *  bulk-import for the SQLite writer lock and silently rolled the whole
+     *  restore back to zero. */
+    val boardImportInProgress: Boolean = false,
     val pendingRestore: BackupInfo? = null,
     val snackbar: Snackbar? = null,
     val showDeleteRemoteConfirm: Boolean = false,
@@ -69,6 +76,9 @@ data class BackupSettingsState(
          */
         data object BlobUnreachable : Snackbar
         data object RestoreFailed : Snackbar
+        /** Restore completed — carries the imported counts so a successful
+         *  restore is never silent (and a 0/0 result is visible too). */
+        data class RestoreSucceeded(val ascents: Int, val lists: Int) : Snackbar
         data object BackupSucceeded : Snackbar
         /**
          * [reason] is the structured BackupException reason — the UI
@@ -110,6 +120,7 @@ class BackupSettingsViewModel @Inject constructor(
     private val keyStore: NostrKeyStore,
     private val userPreferences: UserPreferences,
     private val signer: NostrSigner,
+    private val boardSyncManager: BoardSyncManager,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(BackupSettingsState())
@@ -167,6 +178,18 @@ class BackupSettingsViewModel @Inject constructor(
         viewModelScope.launch {
             userPreferences.keyBackedUp.collect { acked ->
                 _state.update { it.copy(keyBackedUp = acked) }
+            }
+        }
+        // Gate the restore button on board-catalogue readiness. Restoring
+        // while the board DB is still bulk-importing (the default fresh-
+        // install state) raced the importer for the SQLite writer lock and
+        // silently rolled the restore back to zero. `isSyncing` covers an
+        // active sync; `!alreadyImported` covers the pre-first-import window.
+        viewModelScope.launch {
+            boardSyncManager.state.collect { sync ->
+                _state.update {
+                    it.copy(boardImportInProgress = sync.isSyncing || !sync.alreadyImported)
+                }
             }
         }
     }
@@ -271,7 +294,8 @@ class BackupSettingsViewModel @Inject constructor(
         viewModelScope.launch {
             _state.update { it.copy(pendingRestore = null) }
             val outcome = runCatching { backupRepository.restore(info) }
-            if (outcome.isSuccess) {
+            val result = outcome.getOrNull()
+            if (result != null) {
                 preferences.setBackupEnabled(true)
                 BackupSyncWorker.schedule(appContext, enabled = true, interval = _state.value.interval)
                 val lastSyncEpoch = preferences.lastBackupSync.first()
@@ -279,18 +303,15 @@ class BackupSettingsViewModel @Inject constructor(
                     it.copy(
                         backupEnabled = true,
                         lastBackupIso = lastSyncEpoch?.toLocalizedDateTime(),
+                        snackbar = BackupSettingsState.Snackbar.RestoreSucceeded(
+                            ascents = result.boardAscents,
+                            lists = result.climbLists,
+                        ),
                     )
                 }
             } else {
-                val error = outcome.exceptionOrNull()
                 _state.update {
-                    it.copy(
-                        snackbar = if (error is BackupException) {
-                            BackupSettingsState.Snackbar.RestoreFailed
-                        } else {
-                            BackupSettingsState.Snackbar.RestoreFailed
-                        },
-                    )
+                    it.copy(snackbar = BackupSettingsState.Snackbar.RestoreFailed)
                 }
             }
         }

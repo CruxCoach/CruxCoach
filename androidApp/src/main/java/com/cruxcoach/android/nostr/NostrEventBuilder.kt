@@ -31,12 +31,26 @@ data class BuildResult(
 class NostrEventBuilder(
     private val nostrSigner: NostrSigner
 ) {
+    /**
+     * @param replyToId WIRE id for the ["e", …, "reply"] tag. For replies to
+     *  an own root this must be the root's recipient-wrap id
+     *  (thread_anchor_id) — the id the other side stored the root under —
+     *  NOT the local self-wrap row id, which the recipient has never seen.
+     * @param selfReplyToId LOCAL (self-wrap) id of the thread root, emitted
+     *  as a [NostrConfig.RUMOR_TAG_SELF_ROOT] hint tag. Required so that a
+     *  wipe-and-refetch, which re-ingests this reply from its self-wrap
+     *  echo, can map the foreign wire id in the e-tag back to the local
+     *  root row and re-learn the root's wiped thread anchor. NOT a second
+     *  e-tag on purpose — the dashboard threads on e-tags and must never
+     *  see the self-wrap id.
+     */
     suspend fun buildGiftWraps(
         content: String,
         recipients: NostrRecipient,
         type: MessageType,
         subject: String? = null,
-        replyToId: String? = null
+        replyToId: String? = null,
+        selfReplyToId: String? = null
     ): BuildResult {
         val formattedContent = formatContent(content, type)
         val ownPubkey = nostrSigner.getPublicKeyHex()
@@ -55,6 +69,11 @@ class NostrEventBuilder(
                     }
                     if (replyToId != null) {
                         builder.add(arrayOf("e", replyToId, "", "reply"))
+                    }
+                    if (selfReplyToId != null) {
+                        builder.add(
+                            arrayOf(NostrConfig.RUMOR_TAG_SELF_ROOT, selfReplyToId)
+                        )
                     }
                     Unit
                 }

@@ -11,6 +11,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.util.Log
+import com.cruxcoach.domain.board.BoardBrand
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
@@ -25,13 +26,18 @@ data class DiscoveredBoard(
     val serial: String,
     val apiLevel: Int,
     val address: String,
-    val rssi: Int
+    val rssi: Int,
+    /** Board family — drives which BLE send protocol the connection
+     *  speaks (Aurora binary vs MoonBoard ASCII). Defaults to KILTER
+     *  so existing Aurora call sites are unaffected (FEAT-027). */
+    val boardBrand: BoardBrand = BoardBrand.KILTER,
 )
 
 /**
- * Scans for Aurora Climbing boards via BLE.
- * Filters on the Aurora ADVERTISING_SERVICE UUID.
- * Parses board name formats: "BoardName#serial@apiLevel" or "BoardName@apiLevel"
+ * Scans for Aurora Climbing boards + MoonBoard via BLE.
+ * Scans without a UUID filter; identifies boards by advertising name —
+ * Aurora boards as "BoardName#serial@apiLevel" / "BoardName@apiLevel",
+ * MoonBoard as a bare "MoonBoard…" name (FEAT-027).
  */
 class BoardBleScanner(private val context: Context) {
 
@@ -83,20 +89,42 @@ class BoardBleScanner(private val context: Context) {
         @SuppressLint("MissingPermission")
         override fun onScanResult(callbackType: Int, result: ScanResult) {
             val device = result.device
-            // Try device.name first, fall back to scanRecord.deviceName (more reliable)
-            val name = device.name
-                ?: result.scanRecord?.deviceName
+            // Prefer the freshly-advertised local name from the scan record
+            // over BluetoothDevice.getName(): Android caches getName() per MAC
+            // address, so a board that re-advertises under a different name on
+            // the same adapter (e.g. the BoardSimulator switching board type)
+            // would otherwise keep showing the first name ever seen for that MAC.
+            val name = result.scanRecord?.deviceName
+                ?: device.name
                 ?: return
             Log.d(TAG, "BLE scan result: name=$name addr=${device.address} rssi=${result.rssi}")
-            val parsed = parseBoardName(name) ?: return
 
-            val board = DiscoveredBoard(
-                displayName = parsed.first,
-                serial = parsed.second,
-                apiLevel = parsed.third,
-                address = device.address,
-                rssi = result.rssi
-            )
+            val board = if (isMoonBoardName(name)) {
+                // MoonBoard advertises a bare "MoonBoard…" name with no
+                // Aurora #serial@apiLevel suffix. apiLevel is an Aurora
+                // concept and stays 0 for MoonBoard.
+                DiscoveredBoard(
+                    displayName = name,
+                    serial = "",
+                    apiLevel = 0,
+                    address = device.address,
+                    rssi = result.rssi,
+                    boardBrand = BoardBrand.MOONBOARD,
+                )
+            } else {
+                val parsed = parseBoardName(name) ?: return
+                DiscoveredBoard(
+                    displayName = parsed.first,
+                    serial = parsed.second,
+                    apiLevel = parsed.third,
+                    address = device.address,
+                    rssi = result.rssi,
+                    // FEAT-031: infer the Aurora-family brand from the advertised
+                    // name so the correct LED map + colours are selected; KILTER
+                    // for "Kilter Board" and any unrecognised Aurora-named board.
+                    boardBrand = auroraBrandFromName(parsed.first),
+                )
+            }
             boardMap[device.address] = board
             _discoveredBoards.value = boardMap.values.toList()
         }
@@ -170,6 +198,35 @@ class BoardBleScanner(private val context: Context) {
             Log.e(TAG, "Error stopping scan", e)
         }
         _isScanning.value = false
+    }
+
+    /**
+     * True if a BLE advertising name looks like a MoonBoard. MoonBoard
+     * hardware (and the MoonSimulator) advertises a bare "MoonBoard…" /
+     * "Moonboard…" name with no Aurora-style #serial@apiLevel suffix.
+     */
+    fun isMoonBoardName(name: String): Boolean =
+        name.startsWith("MoonBoard") || name.startsWith("Moonboard")
+
+    /**
+     * Infer the Aurora-family brand from an advertised board name (FEAT-031).
+     * Normalises like BoardSesh's parser — lowercase, strip spaces/hyphens —
+     * then matches the family prefix ("Tension Board" → TENSION, "So iLL
+     * Board" / "So-iLL Board" → SOILL). Defaults to [BoardBrand.KILTER] for
+     * "Kilter Board" and any unrecognised Aurora-named board (the historical
+     * default; the Aurora BLE transport is identical across the family, so a
+     * misread only mis-selects the LED map/colour table, never the protocol).
+     */
+    fun auroraBrandFromName(displayName: String): BoardBrand {
+        val n = displayName.lowercase().replace(" ", "").replace("-", "")
+        return when {
+            n.startsWith("tension") -> BoardBrand.TENSION
+            n.startsWith("grasshopper") -> BoardBrand.GRASSHOPPER
+            n.startsWith("decoy") -> BoardBrand.DECOY
+            n.startsWith("soill") -> BoardBrand.SOILL
+            n.startsWith("touchstone") -> BoardBrand.TOUCHSTONE
+            else -> BoardBrand.KILTER
+        }
     }
 
     /**

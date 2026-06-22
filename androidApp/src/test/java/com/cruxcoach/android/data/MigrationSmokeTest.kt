@@ -11,6 +11,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 
 /**
  * Migration-chain smoke test — real-data preservation across the full
@@ -133,5 +134,57 @@ class MigrationSmokeTest {
         assertEquals(0L, stats.pending_count)
         assertEquals(0L, stats.failed_count)
         assertEquals(null, stats.last_attempt_at)
+    }
+
+    // ── FEAT-015 board-locations schema queryability ──────────────────
+    //
+    // `Schema.create()` emits the latest schema directly. We can't
+    // exercise the 12.sqm + 13.sqm + 14.sqm migration *scripts* in
+    // isolation from this harness (would require a checked-in v11 DB
+    // fixture); instead, we cover the resulting shape by asserting
+    // the new tables are queryable through the public query API. A
+    // missing column or typo in any of the three .sqm files would
+    // surface as a SQLDelight code-gen failure long before reaching
+    // this test, but the runtime-shape sanity is still useful.
+
+    @Test
+    fun `kilter_board_location and kilter_board_wall are queryable in current schema`() {
+        BoardDatabase.Schema.create(driver)
+        val db = BoardDatabase(driver, climbsAdapter = Climbs.Adapter(framesAdapter = framesAdapter))
+
+        assertEquals(0L, db.kilterBoardLocationQueries.countLocations().executeAsOne())
+        assertEquals(0L, db.kilterBoardWallQueries.countWalls().executeAsOne())
+        assertTrue(db.kilterBoardLocationQueries.getAllLocations().executeAsList().isEmpty())
+        assertTrue(db.kilterBoardWallQueries.getAllWalls().executeAsList().isEmpty())
+    }
+
+    @Test
+    fun `kilter_board_location upsert + read round-trips all FEAT-015 columns`() {
+        BoardDatabase.Schema.create(driver)
+        val db = BoardDatabase(driver, climbsAdapter = Climbs.Adapter(framesAdapter = framesAdapter))
+
+        db.kilterBoardLocationQueries.upsertLocation(
+            gym_uuid = "g-1", name = "Test Gym",
+            lat = 48.137, lng = 11.575,
+            address = "Foo St", city = "Munich", country_code = "DE",
+            phone = null, email = null, url = null, instagram = null,
+            layout_name = "Original", layout_id = 1L,
+            size_label = "12x12", product_size_id = 10L,
+            access_type = "PUBLIC", adjustability = "ADJUSTABLE",
+            fixed_angle = null, frame_maker = "Kilter",
+            board_brand = "kilter", wellpass = 1L,
+        )
+        val rows = db.kilterBoardLocationQueries.getAllLocations().executeAsList()
+        assertEquals(1, rows.size)
+        val row = rows.first()
+        assertEquals("g-1", row.gym_uuid)
+        assertEquals("Test Gym", row.name)
+        assertEquals("DE", row.country_code)
+        assertEquals(1L, row.layout_id)
+        assertEquals(10L, row.product_size_id)
+        assertEquals("PUBLIC", row.access_type)
+        assertEquals("ADJUSTABLE", row.adjustability)
+        assertEquals("kilter", row.board_brand)
+        assertEquals(1L, row.wellpass)
     }
 }

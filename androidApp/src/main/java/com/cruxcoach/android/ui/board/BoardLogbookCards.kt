@@ -1,10 +1,12 @@
 package com.cruxcoach.android.ui.board
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -20,9 +22,11 @@ import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.ui.theme.*
 import com.cruxcoach.android.util.GradeDisplayHelper
 import com.cruxcoach.data.repository.AscentWithClimb
+import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.IntensityZones
 import java.time.LocalDate
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun AscentCard(
     ascent: AscentWithClimb,
@@ -88,7 +92,22 @@ internal fun AscentCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                // FlowRow (not Row): the meta items overflowed the card's
+                // weighted column when a mirror badge was present, squashing the
+                // last child to a sliver. FlowRow wraps to a second line instead.
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                    itemVerticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Board badge: tells a multi-board user at a glance which
+                    // board this send was on (Kilter / Tension / MoonBoard …).
+                    // Unobtrusive — same muted colour as the meta line.
+                    BoardBrandBadge(BoardBrand.fromWire(ascent.boardBrand))
+                    // Mirror indicator — placed right after the board badge (not
+                    // last) so it's prioritised and never the clipped child. A
+                    // filled accent pill so it reads as a distinct badge.
+                    if (ascent.isMirror) MirrorBadge()
                     Text(
                         "${ascent.angle}°",
                         style = MaterialTheme.typography.bodySmall,
@@ -98,6 +117,19 @@ internal fun AscentCard(
                         formatDate(ascent.climbedAt),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                // Optional log comment — shown beneath the meta line so the
+                // note the user wrote when logging is finally visible.
+                // Straight quotes on purpose: this is code, not a localized
+                // resource, so locale-specific quote glyphs don't apply.
+                ascent.comment?.takeIf { it.isNotBlank() }?.let { comment ->
+                    Text(
+                        "\"$comment\"",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
@@ -113,8 +145,13 @@ internal fun AscentCard(
                         color = attemptsColor
                     )
                 } else {
+                    val attemptsText = if (ascent.bidCount > 1L) {
+                        stringResource(R.string.board_ascent_attempts_count, ascent.bidCount)
+                    } else {
+                        stringResource(R.string.board_ascent_attempt)
+                    }
                     Text(
-                        stringResource(R.string.board_ascent_attempt),
+                        attemptsText,
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
                         color = ErrorRed
@@ -139,6 +176,46 @@ internal fun AscentCard(
                 )
             }
         }
+    }
+}
+
+/** Tiny, muted pill naming the board family a logbook entry was logged on.
+ *  Uses [BoardBrand.displayName] (proper noun, not localized) so a newly
+ *  promoted board needs no per-board string. Sits on the card's meta line
+ *  next to angle/date. */
+@Composable
+internal fun BoardBrandBadge(brand: BoardBrand) {
+    Surface(
+        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.12f),
+        shape = RoundedCornerShape(4.dp)
+    ) {
+        Text(
+            text = brand.displayName,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
+        )
+    }
+}
+
+/** Filled accent pill marking a logbook entry as logged on the mirrored
+ *  variant. Sits on the meta line next to the board badge; the solid tint
+ *  makes the otherwise-thin SwapHoriz glyph clearly visible. */
+@Composable
+private fun MirrorBadge() {
+    Surface(
+        color = OrangeAccent.copy(alpha = 0.18f),
+        shape = RoundedCornerShape(4.dp)
+    ) {
+        Icon(
+            Icons.Default.SwapHoriz,
+            contentDescription = stringResource(R.string.cd_mirrored),
+            tint = OrangeAccent,
+            modifier = Modifier
+                .padding(horizontal = 4.dp, vertical = 2.dp)
+                .size(18.dp)
+        )
     }
 }
 
@@ -312,8 +389,13 @@ internal fun SummaryCard(
 
 internal fun formatDate(isoDate: String): String {
     return try {
-        val parts = isoDate.take(10).split("-")
-        if (parts.size == 3) "${parts[2]}.${parts[1]}.${parts[0]}" else isoDate.take(10)
+        // Locale-aware date instead of a hardcoded German dd.MM.yyyy. java.text.*
+        // works on every API level (no java.time core-library desugaring needed).
+        val parsed = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+            .parse(isoDate.take(10))!!
+        java.text.DateFormat
+            .getDateInstance(java.text.DateFormat.MEDIUM, java.util.Locale.getDefault())
+            .format(parsed)
     } catch (_: Exception) {
         isoDate.take(10)
     }

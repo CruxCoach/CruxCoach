@@ -26,6 +26,24 @@ private fun ClimbWithStats.matchesClimbType(filter: ClimbTypeFilter): Boolean = 
  * In-memory fake of [BoardRepository] for ViewModel unit tests.
  * Focuses on methods used by BoardBrowserViewModel; other methods
  * return sensible defaults (empty lists, 0 counts).
+ *
+ * # Known limitation: `selProductSizeId` is silently ignored
+ *
+ * The real BoardRepository implements the always-on board-fit filter
+ * (FEAT-007 — never user-togglable) via a SQL edge-box predicate that
+ * requires the per-product `boardSizes` geometry (`edgeLeft`/`Right`/
+ * `Bottom`/`Top`). That geometry is not represented on [ClimbWithStats]
+ * here, so this fake treats `selProductSizeId` as a no-op: passing any
+ * value returns the unfiltered set. As a result, any test that depends
+ * on board-fit *filtering* behaviour is **not exercised** by this fake;
+ * such tests need a JDBC-backed integration setup against real
+ * SQLDelight queries.
+ *
+ * Production callers and most VM tests pass `selProductSizeId = 0`
+ * (the documented "no filter" sentinel), so the limitation only
+ * matters for tests intentionally trying to exercise the edge-box
+ * path. Keep `selProductSizeId = 0` in fake-backed tests unless you
+ * are accepting that the value is ignored.
  */
 class FakeBoardRepository : BoardRepository {
 
@@ -44,30 +62,37 @@ class FakeBoardRepository : BoardRepository {
     // -- BoardClimbQueries --
 
     override fun searchClimbsByName(
-        query: String, angle: Int, layoutId: Int, sortField: ClimbSortField,
+        query: String, angle: Int, layoutId: Int, boardBrand: String, sortField: ClimbSortField,
         sortDirection: SortDirection, limit: Int, offset: Int,
-        climbType: ClimbTypeFilter
+        climbType: ClimbTypeFilter, selProductSizeId: Int, hsmExcludedMask: Long
     ): List<ClimbWithStats> {
         val filtered = climbs.filter {
             (it.name.contains(query, ignoreCase = true) ||
                 it.setterUsername?.contains(query, ignoreCase = true) == true) &&
-                it.matchesClimbType(climbType)
+                it.matchesClimbType(climbType) &&
+                (it.hsm and hsmExcludedMask) == 0L
         }
         val sorted = boardBrowserSortInKotlin(filtered, sortField, sortDirection)
         return sorted.drop(offset).take(limit)
     }
 
     override fun searchClimbsSorted(
-        angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double,
+        angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double,
         minAscensionists: Int, sortField: ClimbSortField,
         sortDirection: SortDirection, limit: Int, offset: Int,
-        climbType: ClimbTypeFilter
+        climbType: ClimbTypeFilter, selProductSizeId: Int, hsmExcludedMask: Long, showUngraded: Boolean
     ): List<ClimbWithStats> {
         val filtered = climbs.filter { climb ->
-            val diff = climb.difficultyAverage ?: return@filter false
-            diff in minDifficulty..maxDifficulty &&
+            // Mirror production SQL: NULL difficulty passes only via showUngraded;
+            // a non-null grade must sit inside min..max. The ungraded-only
+            // mode's impossible range (min > max) is an empty Kotlin range, so
+            // it excludes every graded climb — same as the SQL range leg.
+            val diff = climb.difficultyAverage
+            val gradeOk = if (diff == null) showUngraded else diff in minDifficulty..maxDifficulty
+            gradeOk &&
                 (climb.ascensionistCount ?: 0) >= minAscensionists &&
-                climb.matchesClimbType(climbType)
+                climb.matchesClimbType(climbType) &&
+                (climb.hsm and hsmExcludedMask) == 0L
         }
         // Mirror production SQL `ORDER BY <sortField> <sortDirection>`.
         // The fake previously returned insertion order, which silently
@@ -89,69 +114,85 @@ class FakeBoardRepository : BoardRepository {
     }
 
     override fun countFilteredClimbs(
-        angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double,
-        minAscensionists: Int, climbType: ClimbTypeFilter
+        angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double,
+        minAscensionists: Int, climbType: ClimbTypeFilter, selProductSizeId: Int, hsmExcludedMask: Long,
+        showUngraded: Boolean
     ): Long {
         return climbs.count { climb ->
-            val diff = climb.difficultyAverage ?: return@count false
-            diff in minDifficulty..maxDifficulty &&
+            val diff = climb.difficultyAverage
+            val gradeOk = if (diff == null) showUngraded else diff in minDifficulty..maxDifficulty
+            gradeOk &&
                 (climb.ascensionistCount ?: 0) >= minAscensionists &&
-                climb.matchesClimbType(climbType)
+                climb.matchesClimbType(climbType) &&
+                (climb.hsm and hsmExcludedMask) == 0L
         }.toLong()
     }
 
     override fun countFilteredClimbsFast(
-        angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int
+        angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, selProductSizeId: Int, hsmExcludedMask: Long, showUngraded: Boolean
     ): Long {
         return climbs.count { climb ->
-            val diff = climb.difficultyAverage ?: return@count false
-            diff in minDifficulty..maxDifficulty &&
+            val diff = climb.difficultyAverage
+            val gradeOk = if (diff == null) showUngraded else diff in minDifficulty..maxDifficulty
+            gradeOk &&
                 (climb.ascensionistCount ?: 0) >= minAscensionists
         }.toLong()
     }
 
     override fun countBenchmarkFilteredClimbs(
-        angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double,
-        minAscensionists: Int, climbType: ClimbTypeFilter
+        angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double,
+        minAscensionists: Int, climbType: ClimbTypeFilter, selProductSizeId: Int, hsmExcludedMask: Long,
+        showUngraded: Boolean
     ): Long {
         return climbs.count { climb ->
-            val diff = climb.difficultyAverage ?: return@count false
-            diff in minDifficulty..maxDifficulty &&
+            val diff = climb.difficultyAverage
+            val gradeOk = if (diff == null) showUngraded else diff in minDifficulty..maxDifficulty
+            gradeOk &&
                 (climb.ascensionistCount ?: 0) >= minAscensionists &&
                 climb.benchmarkDifficulty > 0.0 &&
-                climb.matchesClimbType(climbType)
+                climb.matchesClimbType(climbType) &&
+                (climb.hsm and hsmExcludedMask) == 0L
         }.toLong()
     }
 
-    override fun countSearchClimbs(query: String, angle: Int, layoutId: Int, climbType: ClimbTypeFilter): Long {
+    override fun countSearchClimbs(query: String, angle: Int, layoutId: Int, boardBrand: String, climbType: ClimbTypeFilter, selProductSizeId: Int, hsmExcludedMask: Long): Long {
         return climbs.count {
             (it.name.contains(query, ignoreCase = true) ||
                 it.setterUsername?.contains(query, ignoreCase = true) == true) &&
-                it.matchesClimbType(climbType)
+                it.matchesClimbType(climbType) &&
+                (it.hsm and hsmExcludedMask) == 0L
         }.toLong()
     }
 
-    override fun countBenchmarkSearchClimbs(query: String, angle: Int, layoutId: Int, climbType: ClimbTypeFilter): Long {
+    override fun countBenchmarkSearchClimbs(query: String, angle: Int, layoutId: Int, boardBrand: String, climbType: ClimbTypeFilter, selProductSizeId: Int, hsmExcludedMask: Long): Long {
         return climbs.count {
             (it.name.contains(query, ignoreCase = true) ||
                 it.setterUsername?.contains(query, ignoreCase = true) == true) &&
                 it.benchmarkDifficulty > 0.0 &&
-                it.matchesClimbType(climbType)
+                it.matchesClimbType(climbType) &&
+                (it.hsm and hsmExcludedMask) == 0L
         }.toLong()
     }
 
     override fun getClimbCount(): Long = climbs.size.toLong()
+    override fun getClimbCountsByBrand(): Map<String, Long> = emptyMap()
     override fun hasAnyClimbs(): Boolean = climbs.isNotEmpty()
+    override fun hasClimbsForBrand(boardBrand: String): Boolean = climbs.isNotEmpty()
     override fun climbExistsByUuid(uuid: String): Boolean = climbs.any { it.uuid == uuid }
     override fun statExistsByUuid(uuid: String): Boolean = false
 
     override fun getClimbCountByAngle(layoutId: Int, climbType: ClimbTypeFilter): List<AngleClimbCount> = emptyList()
     override fun getAnglesForClimb(climbUuid: String): List<AngleOption> = emptyList()
+    /** Test-controllable angle set keyed by board brand (FEAT-033). Defaults
+     *  to empty (Kilter slider); a test seeds e.g. "touchstone" → [35, 40]. */
+    val supportedAnglesByBrand = mutableMapOf<String, List<Int>>()
+    override fun getSupportedAnglesForLayout(layoutId: Int, boardBrand: String): List<Int> =
+        supportedAnglesByBrand[boardBrand] ?: emptyList()
 
     override fun countNomatchClimbs(): Long = 0L
 
     override fun getClimbsByUuids(
-        uuids: Collection<String>, angle: Int, layoutId: Int, minDifficulty: Double,
+        uuids: Collection<String>, angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double,
         maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter
     ): List<ClimbWithStats> {
         // Mirror the production SQL — narrows the uuid set by the same
@@ -159,10 +200,15 @@ class FakeBoardRepository : BoardRepository {
         // applies elsewhere. Pre-fix the fake silently returned every
         // climb whose uuid matched, masking out-of-range bugs the
         // SENT/ATTEMPTED browser filters would catch in production.
+        // NOTE: this query variant carries the PLAIN range predicate (no
+        // :showUngraded escape), so a NULL grade never passes — exactly like
+        // `difficulty_average >= :minDiff AND <= :maxDiff` in SQL, which is
+        // never true for NULL. With the ungraded-only mode's impossible
+        // range (min > max) it therefore matches nothing.
         return climbs.filter { climb ->
             if (climb.uuid !in uuids) return@filter false
             val diff = climb.difficultyAverage
-            (diff == null || diff in minDifficulty..maxDifficulty) &&
+            diff != null && diff in minDifficulty..maxDifficulty &&
                 (climb.ascensionistCount ?: 0) >= minAscensionists &&
                 climb.matchesClimbType(climbType)
         }
@@ -170,6 +216,47 @@ class FakeBoardRepository : BoardRepository {
 
     override fun getClimbsByUuids(uuids: Collection<String>, angle: Int): List<ClimbWithStats> {
         return climbs.filter { it.uuid in uuids }
+    }
+
+    override fun getClimbsByUuidsAnyAngle(uuids: Collection<String>): List<ClimbWithStats> {
+        return climbs.filter { it.uuid in uuids }.distinctBy { it.uuid }
+    }
+
+    /** Mirrors the production board-scope: same-board match by brand + layout,
+     *  plus a Kilter-only cross-layout pass (the fake can't model edge fit, so
+     *  it admits any Kilter climb when on Kilter — adequate for tests). */
+    private fun matchesBoardScope(climb: ClimbWithStats, boardBrand: String, layoutId: Int): Boolean {
+        val sameBoard = climb.boardBrand == boardBrand && climb.layoutId == layoutId.toLong()
+        val kilterFit = boardBrand == "kilter" && climb.boardBrand == "kilter"
+        return sameBoard || kilterFit
+    }
+
+    override fun getClimbsByUuidsForBoard(
+        uuids: Collection<String>, angle: Int, boardBrand: String, layoutId: Int, selProductSizeId: Int
+    ): List<ClimbWithStats> =
+        climbs.filter { it.uuid in uuids && matchesBoardScope(it, boardBrand, layoutId) }
+
+    override fun getClimbsByUuidsForBoardAnyAngle(
+        uuids: Collection<String>, boardBrand: String, layoutId: Int, selProductSizeId: Int
+    ): List<ClimbWithStats> =
+        climbs.filter { it.uuid in uuids && matchesBoardScope(it, boardBrand, layoutId) }.distinctBy { it.uuid }
+
+    override fun getAllBrowseMatchingUuids(
+        angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double,
+        minAscensionists: Int, climbType: ClimbTypeFilter, selProductSizeId: Int, hsmExcludedMask: Long,
+        showUngraded: Boolean
+    ): List<String> {
+        return climbs.filter { climb ->
+            // Mirror production SQL: NULL difficulty passes only via showUngraded
+            // (pre-fix the fake let NULL pass unconditionally, which production
+            // never did — searchClimbsSorted would then drop those uuids again).
+            val diff = climb.difficultyAverage
+            val gradeOk = if (diff == null) showUngraded else diff in minDifficulty..maxDifficulty
+            gradeOk &&
+                (climb.ascensionistCount ?: 0) >= minAscensionists &&
+                climb.matchesClimbType(climbType) &&
+                (climb.hsm and hsmExcludedMask) == 0L
+        }.map { it.uuid }
     }
 
     override fun getStatCount(): Long = 0L
@@ -189,7 +276,7 @@ class FakeBoardRepository : BoardRepository {
     override fun deleteKilterCatalogData() {}
 
     override fun searchClimbUuidsByHold(
-        holdPattern: String, angle: Int, layoutId: Int, minDifficulty: Double,
+        holdPattern: String, angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double,
         maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter
     ): List<String> {
         return climbs.filter { climb ->
@@ -201,7 +288,7 @@ class FakeBoardRepository : BoardRepository {
     }
 
     override fun searchClimbUuidsByAllHolds(
-        holdPatterns: List<String>, angle: Int, layoutId: Int, minDifficulty: Double,
+        holdPatterns: List<String>, angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double,
         maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter
     ): Set<String> {
         if (holdPatterns.isEmpty()) return emptySet()
@@ -214,7 +301,19 @@ class FakeBoardRepository : BoardRepository {
     }
 
     override fun getAllFramesForHeatmap(
-        angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double,
+        angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double,
+        minAscensionists: Int, climbType: ClimbTypeFilter
+    ): List<ClimbFrameRow> {
+        return climbs.filter { climb ->
+            val diff = climb.difficultyAverage ?: return@filter false
+            diff in minDifficulty..maxDifficulty &&
+                (climb.ascensionistCount ?: 0) >= minAscensionists &&
+                climb.frames.isNotEmpty()
+        }.map { ClimbFrameRow(it.uuid, it.frames) }
+    }
+
+    override fun getAllFramesForHeatmapAllAngles(
+        layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double,
         minAscensionists: Int, climbType: ClimbTypeFilter
     ): List<ClimbFrameRow> {
         return climbs.filter { climb ->
@@ -227,15 +326,19 @@ class FakeBoardRepository : BoardRepository {
 
     // -- BoardLayoutQueries --
 
-    override fun getAllPlacements(): List<BoardPlacement> = emptyList()
-    override fun getPlacementsForLayout(productSizeId: Int, layoutId: Int): List<BoardPlacement> = emptyList()
-    override fun getProductSize(id: Int): BoardSize? = null
-    override fun getAllProductSizes(productId: Long): List<BoardSize> = emptyList()
-    override fun getBoardImages(productSizeId: Int, layoutId: Int): List<BoardImage> = emptyList()
-    override fun getPlacementLedMap(productSizeId: Int): Map<Int, Int> = emptyMap()
-    override fun getMirrorPlacementMap(productSizeId: Int): Map<Int, Int> = emptyMap()
+    override fun getAllPlacements(boardBrand: String): List<BoardPlacement> = emptyList()
+    override fun getPlacementsForLayout(productSizeId: Int, layoutId: Int, boardBrand: String): List<BoardPlacement> = emptyList()
+    override fun getProductSize(id: Int, boardBrand: String): BoardSize? = null
+    override fun getAllProductSizes(productId: Long, boardBrand: String): List<BoardSize> = emptyList()
+    override fun getSelectableProductSizesForBrand(boardBrand: String): List<BoardSize> = emptyList()
+    override fun getBoardImages(productSizeId: Int, layoutId: Int, boardBrand: String): List<BoardImage> = emptyList()
+    override fun getHoldSetIdsForLayout(layoutId: Int, boardBrand: String): List<Long> = emptyList()
+    override fun getHoldSetIdsForLayoutSize(layoutId: Int, productSizeId: Int, boardBrand: String): List<Long> = emptyList()
+    override fun getPlacementLedMap(productSizeId: Int, boardBrand: String): Map<Int, Int> = emptyMap()
+    override fun getRoleColorMapForBrand(boardBrand: String): Map<Int, Int> = emptyMap()
+    override fun getMirrorPlacementMap(productSizeId: Int, boardBrand: String): Map<Int, Int> = emptyMap()
     override fun countLeds(): Long = 0L
-    override fun getLedGrid(productSizeId: Int): List<LedGridPoint> = emptyList()
+    override fun getLedGrid(productSizeId: Int, boardBrand: String): List<LedGridPoint> = emptyList()
 
     // -- BoardWriteOperations --
 
@@ -255,12 +358,13 @@ class FakeBoardRepository : BoardRepository {
         officialKilterDifficulty: Long?
     ) {}
 
-    override fun upsertHoldPosition(holeId: Long, productSizeId: Long, x: Long, y: Long, ledPosition: Long, placementId: Long) {}
-    override fun upsertLed(holeId: Long, productSizeId: Long, position: Long) {}
-    override fun upsertHole(id: Long, productSizeId: Long, x: Long, y: Long, mirroredHoleId: Long?) {}
-    override fun upsertPlacement(placementId: Long, holeId: Long, setId: Long, x: Long, y: Long) {}
-    override fun upsertProductSize(id: Long, productId: Long, name: String, edgeLeft: Long, edgeRight: Long, edgeBottom: Long, edgeTop: Long, imageFilename: String?) {}
-    override fun upsertBoardImage(id: Long, productSizeId: Long, layoutId: Long, setId: Long, imageFilename: String) {}
+    override fun upsertHoldPosition(holeId: Long, productSizeId: Long, x: Long, y: Long, ledPosition: Long, placementId: Long, boardBrand: String) {}
+    override fun upsertLed(holeId: Long, productSizeId: Long, position: Long, boardBrand: String) {}
+    override fun upsertHole(id: Long, productSizeId: Long, x: Long, y: Long, mirroredHoleId: Long?, boardBrand: String) {}
+    override fun upsertPlacement(placementId: Long, holeId: Long, setId: Long, x: Long, y: Long, boardBrand: String) {}
+    override fun upsertProductSize(id: Long, productId: Long, name: String, edgeLeft: Long, edgeRight: Long, edgeBottom: Long, edgeTop: Long, imageFilename: String?, boardBrand: String) {}
+    override fun upsertBoardImage(id: Long, productSizeId: Long, layoutId: Long, setId: Long, imageFilename: String, boardBrand: String) {}
+    override fun upsertPlacementRole(boardBrand: String, id: Long, name: String?, ledColor: String?, screenColor: String?) {}
     override fun upsertSyncState(tableName: String, lastSynchronizedAt: String) {}
     override fun getSyncState(tableName: String): String? = null
     override fun getAllClimbUuids(): Set<String> = climbs.map { it.uuid }.toSet()
@@ -268,7 +372,7 @@ class FakeBoardRepository : BoardRepository {
     override fun runInTransaction(block: () -> Unit) { block() }
     override fun deleteAllBoardData() { climbs.clear() }
 
-    override fun insertLocalDraft(draft: com.cruxcoach.data.repository.LocalClimbDraft, layoutId: Long, angle: Long, setterGradeId: Int?, bounds: com.cruxcoach.domain.community.ClimbBounds?) {}
+    override fun insertLocalDraft(draft: com.cruxcoach.data.repository.LocalClimbDraft, layoutId: Long, angle: Long, setterGradeId: Int?, bounds: com.cruxcoach.domain.community.ClimbBounds?, boardBrand: String?) {}
     override fun deleteLocalClimb(uuid: String) {}
     override fun markCommunityClimbDeleted(uuid: String, pubkey: String, tombstoneIso: String) {
         climbs.removeAll { it.uuid == uuid && it.createdByPubkey == pubkey }
@@ -278,10 +382,12 @@ class FakeBoardRepository : BoardRepository {
     override fun getCommunityClimbDeleteContext(uuid: String): com.cruxcoach.data.repository.CommunityClimbDeleteContext? = null
     override fun getClimbCreatedAt(uuid: String): String? = null
     override fun getClimbAuthorPubkey(uuid: String): String? = null
+    override fun isNonCommunityClimb(uuid: String): Boolean =
+        climbs.any { it.uuid == uuid && (it.origin != "cruxcoach" || it.createdByPubkey == null) }
     override fun isLocallyAuthored(uuid: String): Boolean = false
     override fun computeEditorHeatmap(layoutId: Long, angle: Long, seedHolds: Set<Int>, targetRole: Int?): Map<Int, Float> = emptyMap()
-    override fun upsertCommunityClimb(uuid: String, layoutId: Long, setterUsername: String?, name: String, framesText: String, description: String, moveCount: Long, nostrEventId: String, nostrDTag: String, createdByPubkey: String, framesHash: String, createdAt: String, angle: Long, difficultyAverage: Double?, qualityAverage: Double?, bounds: com.cruxcoach.domain.community.ClimbBounds?) {}
-    override fun markClimbPublishedNostr(uuid: String, nostrEventId: String, nostrDTag: String, pubkey: String) {}
+    override fun upsertCommunityClimb(uuid: String, layoutId: Long, setterUsername: String?, name: String, framesText: String, description: String, moveCount: Long, nostrEventId: String, nostrDTag: String, createdByPubkey: String, framesHash: String, createdAt: String, angle: Long, difficultyAverage: Double?, qualityAverage: Double?, bounds: com.cruxcoach.domain.community.ClimbBounds?, boardBrand: String) {}
+    override fun markClimbPublishedNostr(uuid: String, nostrEventId: String, nostrDTag: String, pubkey: String, createdAtIso: String) {}
     override fun markClimbPublishFailed(uuid: String) {}
     override fun markClimbPublishInFlight(uuid: String) {}
     override fun markKilterPublishPending(uuid: String) {}
@@ -307,30 +413,40 @@ class FakeBoardRepository : BoardRepository {
     override fun getKilterPublishState(uuid: String): com.cruxcoach.data.repository.KilterPublishState? = null
     override fun updateSetterUsernameForPubkey(pubkey: String, displayName: String) {}
     override fun getClimbsByPubkey(pubkey: String): List<com.cruxcoach.data.repository.SetterClimbEntry> = emptyList()
-    override fun getOwnClimbsForBrowse(pubkey: String, layoutId: Int, preferredAngle: Int): List<com.cruxcoach.data.repository.ClimbWithStats> = emptyList()
-    override fun getCommunitySetterStats(): List<com.cruxcoach.data.repository.SetterStat> = emptyList()
+    override fun getClimbsByPubkeyForBoard(pubkey: String, angle: Int, boardBrand: String, layoutId: Int, selProductSizeId: Int): List<com.cruxcoach.data.repository.SetterClimbEntry> = emptyList()
+    override fun getOwnClimbsForBrowse(pubkey: String, layoutId: Int, preferredAngle: Int, boardBrand: String): List<com.cruxcoach.data.repository.ClimbWithStats> = emptyList()
+    override fun getCommunitySetterStats(boardBrand: String, layoutId: Int, selProductSizeId: Int): List<com.cruxcoach.data.repository.SetterStat> = emptyList()
     override fun getClimbsAwaitingKilterRetry(pubkey: String): List<com.cruxcoach.data.repository.CommunityClimbRow> = emptyList()
     override fun getClimbsAwaitingNostrRetry(pubkey: String): List<com.cruxcoach.data.repository.CommunityClimbRow> = emptyList()
     override fun recordCommunityClimbDeadLetter(uuid: String, eventId: String, eventCreatedAt: Long, rawEventJson: String, nowMs: Long, errorExcerpt: String?) {}
     override fun getRetriableCommunityClimbDeadLetters(maxRetries: Long, limit: Long): List<com.cruxcoach.data.repository.CommunityClimbDeadLetter> = emptyList()
     override fun deleteCommunityClimbDeadLetter(uuid: String) {}
     override fun getCommunityClimbDeadLetterCounts(maxRetries: Long): com.cruxcoach.data.repository.DeadLetterCounts = com.cruxcoach.data.repository.DeadLetterCounts(0L, 0L)
-    override fun getDraftClimbs(pubkey: String?): List<com.cruxcoach.data.repository.CommunityClimbRow> = emptyList()
+    override fun getDraftClimbs(pubkey: String?, boardBrand: String): List<com.cruxcoach.data.repository.CommunityClimbRow> = emptyList()
     override fun getMyClimbs(pubkey: String): List<com.cruxcoach.data.repository.CommunityClimbRow> = emptyList()
     override fun getCommunityClimbs(): List<com.cruxcoach.data.repository.CommunityClimbRow> = emptyList()
     override fun getClimbStatsForUuid(uuid: String): Pair<Int, Int?>? = null
-    override fun findClimbByFramesHash(framesHash: String, layoutId: Long): com.cruxcoach.data.repository.CommunityClimbRow? = null
+    override fun getClimbPublishContext(uuid: String): com.cruxcoach.data.repository.ClimbPublishContext? = null
+    override fun findClimbByFramesHash(framesHash: String, layoutId: Long, boardBrand: String): com.cruxcoach.data.repository.CommunityClimbRow? = null
     override fun upsertSetterGrade(climbDTag: String, angle: Long, setterGradeId: Int, lastUpdatedEpochMs: Long) {}
     override fun getOwnClimbsForBackup(pubkey: String): List<com.cruxcoach.data.repository.OwnClimbBackupRow> = emptyList()
     override fun getOwnClimbStatsForBackup(pubkey: String): List<com.cruxcoach.data.repository.OwnClimbStatBackupRow> = emptyList()
     override fun getOwnClimbAngle(uuid: String): Long? = null
     override fun restoreOwnClimb(row: com.cruxcoach.data.repository.OwnClimbBackupRow): Boolean = true
     override fun restoreOwnClimbStat(row: com.cruxcoach.data.repository.OwnClimbStatBackupRow) {}
-    override fun getProductSizesForLayout(layoutId: Int): List<Int> = emptyList()
-    override fun canRenderClimbOnSize(uuid: String, productSizeId: Int): Boolean = true
-    override fun getProductSizeForClimbRender(uuid: String): Int? = null
+    override fun getProductSizesForLayout(layoutId: Int, boardBrand: String): List<Int> = emptyList()
+    override fun getDefaultLayoutForBrand(boardBrand: String): Int? = null
+    override fun getDefaultProductSizeForBrand(boardBrand: String): Pair<Int, String>? = null
+    override fun canRenderClimbOnSize(uuid: String, productSizeId: Int, boardBrand: String): Boolean = true
+    override fun getProductSizeForClimbRender(uuid: String, boardBrand: String): Int? = null
     override fun getCruxCoachClimbs(
-        layoutId: Int, angle: Int, minDifficulty: Double, maxDifficulty: Double,
+        layoutId: Int, boardBrand: String, angle: Int, minDifficulty: Double, maxDifficulty: Double,
         minAscensionists: Int, climbType: com.cruxcoach.data.repository.ClimbTypeFilter,
+        selProductSizeId: Int, hsmExcludedMask: Long, showUngraded: Boolean,
+    ): List<com.cruxcoach.data.repository.ClimbWithStats> = emptyList()
+    override fun getBoardSeshClimbs(
+        layoutId: Int, boardBrand: String, angle: Int, minDifficulty: Double, maxDifficulty: Double,
+        minAscensionists: Int, climbType: com.cruxcoach.data.repository.ClimbTypeFilter,
+        selProductSizeId: Int, hsmExcludedMask: Long, showUngraded: Boolean,
     ): List<com.cruxcoach.data.repository.ClimbWithStats> = emptyList()
 }

@@ -78,7 +78,7 @@ fun OnboardingScreen(
             label = "onboarding_step",
         ) { step ->
             when (step) {
-                OnboardingStep.BOARD_SETUP -> BoardSetupStep(state, viewModel)
+                OnboardingStep.BOARD_SETUP -> BoardSetupStep(state)
                 OnboardingStep.PRIVACY -> PrivacyStep(state, viewModel, onNavigateToKeyManagement)
                 OnboardingStep.KILTER -> KilterStep(state, viewModel)
             }
@@ -276,28 +276,30 @@ fun OnboardingScreen(
 @Composable
 private fun BoardSetupStep(
     state: OnboardingState,
-    viewModel: OnboardingViewModel,
 ) {
     var showBoardModelDialog by rememberSaveable { mutableStateOf(false) }
-    val activeProductId = when (state.boardLayoutId) {
-        com.cruxcoach.android.data.BoardConstants.KILTER_HOMEWALL_LAYOUT ->
-            com.cruxcoach.android.data.BoardConstants.KILTER_HOMEWALL_PRODUCT_ID
-        else -> com.cruxcoach.android.data.BoardConstants.KILTER_PRODUCT_ID
-    }
+    var showGymSearch by rememberSaveable { mutableStateOf(false) }
     if (showBoardModelDialog) {
-        // Always-available pre-sync via KILTER_KNOWN_SIZES — board model
-        // is hardware knowledge that doesn't need a sync round-trip.
-        val sizes = com.cruxcoach.android.data.BoardConstants.KILTER_KNOWN_SIZES
-            .filter { it.productId.toInt() == activeProductId }
-        com.cruxcoach.android.ui.settings.BoardModelSelectionDialog(
-            productSizes = sizes,
-            selectedId = state.boardProductSizeId,
-            onConfirm = { id ->
-                val name = sizes.find { it.id.toInt() == id }?.name ?: ""
-                viewModel.updateBoardProductSize(id, name)
-                showBoardModelDialog = false
-            },
+        // FEAT-031: the one shared board picker (same as Settings / Filter /
+        // sync card) — identical state + the full board list incl. the Aurora
+        // family. The selection persists via the shared VM.
+        com.cruxcoach.android.ui.settings.BoardPickerDialog(
             onDismiss = { showBoardModelDialog = false },
+            onSelected = { showBoardModelDialog = false },
+            onFindViaGym = {
+                showBoardModelDialog = false
+                showGymSearch = true
+            },
+        )
+    }
+    if (showGymSearch) {
+        com.cruxcoach.android.ui.settings.GymBoardSearchSheet(
+            onClose = { showGymSearch = false },
+            onFallbackToDirect = {
+                showGymSearch = false
+                showBoardModelDialog = true
+            },
+            onDismiss = { showGymSearch = false },
         )
     }
 
@@ -347,13 +349,8 @@ private fun BoardSetupStep(
             }
         }
 
-        // Board-model picker first — hardware knowledge doesn't need
-        // a sync round-trip. The user picks Original/Homewall + size,
-        // then triggers the sync that downloads the matching catalog.
-        com.cruxcoach.android.ui.settings.KilterLayoutSection(
-            selectedLayoutId = state.boardLayoutId,
-            onLayoutChange = { viewModel.updateBoardLayout(it) },
-        )
+        // Board picker — hardware knowledge, no sync round-trip needed.
+        // Original/Homewall is now an in-dialog segment, not a chip.
         com.cruxcoach.android.ui.settings.BoardModelSection(
             boardModelName = state.boardProductSizeName,
             onChangeModel = { showBoardModelDialog = true },
@@ -624,7 +621,13 @@ private fun RestoreSubSection(state: OnboardingState, viewModel: OnboardingViewM
             ) {
                 Icon(Icons.Default.CheckCircle, null, tint = SuccessGreen, modifier = Modifier.size(18.dp))
                 Text(
-                    stringResource(R.string.onboarding_backup_restore_success),
+                    // Same wording as the Settings restore snackbar so the user
+                    // can sanity-check the restored magnitudes here too.
+                    stringResource(
+                        R.string.settings_backup_restored,
+                        state.restoredAscents,
+                        state.restoredLists,
+                    ),
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.SemiBold,
                     color = SuccessGreen,
@@ -714,11 +717,31 @@ private fun KilterStep(state: OnboardingState, viewModel: OnboardingViewModel) {
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Text(
-            stringResource(R.string.onboarding_kilter_step_title),
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold,
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                stringResource(R.string.onboarding_kilter_step_title),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+            )
+            // "Optional" badge in the header itself (not just the fine print
+            // below), so it is obvious this whole step can be skipped.
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(OrangeAccent.copy(alpha = 0.15f))
+                    .padding(horizontal = 8.dp, vertical = 2.dp)
+            ) {
+                Text(
+                    stringResource(R.string.badge_optional),
+                    color = OrangeAccent,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+        }
         Text(
             stringResource(R.string.onboarding_kilter_step_subtitle),
             style = MaterialTheme.typography.bodyMedium,
@@ -745,7 +768,10 @@ private fun KilterStep(state: OnboardingState, viewModel: OnboardingViewModel) {
                         stringResource(R.string.onboarding_kilter_title),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
+                        modifier = Modifier.weight(1f),
                     )
+                    // ⓘ explains the Kilter data exchange (import / local / publish).
+                    com.cruxcoach.android.ui.common.KilterDataInfoButton()
                 }
 
                 Text(
@@ -990,7 +1016,7 @@ private fun KilterPreviewContent(state: OnboardingState, viewModel: OnboardingVi
 @Composable
 private fun KilterImportDoneContent(state: OnboardingState) {
     val result = state.kilterImportResult ?: return
-    val isError = result.toIntOrNull() == null
+    val isError = state.kilterImportError
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -1003,8 +1029,10 @@ private fun KilterImportDoneContent(state: OnboardingState) {
             modifier = Modifier.size(20.dp),
         )
         Text(
+            // `result` already carries the full per-object summary (success)
+            // or the error message — render it directly.
             if (isError) stringResource(R.string.onboarding_kilter_import_error, result)
-            else stringResource(R.string.onboarding_kilter_import_success, result.toInt()),
+            else result,
             style = MaterialTheme.typography.bodyMedium,
             color = if (isError) ErrorRed else SuccessGreen,
             fontWeight = FontWeight.SemiBold,

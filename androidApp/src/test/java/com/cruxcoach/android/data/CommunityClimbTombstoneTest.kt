@@ -72,6 +72,7 @@ class CommunityClimbTombstoneTest {
             created_by_pubkey = pubkey,
             frames_hash = "hash-$uuid",
             created_at = "2026-05-01T10:00:00Z",
+            board_brand = "kilter",
         )
         db.boardQueries.upsertClimbStat(
             climb_uuid = uuid, angle = 40L, display_difficulty = 14.5,
@@ -105,6 +106,20 @@ class CommunityClimbTombstoneTest {
         // angle=40 just selects a join target for the LEFT JOIN; the
         // climb-side columns are returned regardless of stat existence.
         db.boardQueries.getClimbByUuid(angle = 40L, uuid = uuid).executeAsOneOrNull()
+
+    /** Reads climb_stats.layout_id directly — getClimbByUuid exposes the CLIMB's
+     *  layout_id, not the denormalized stat column the 20.sqm backfill targets. */
+    private fun statLayoutId(uuid: String): Long =
+        driver.executeQuery(
+            null,
+            "SELECT layout_id FROM climb_stats WHERE climb_uuid = '$uuid' LIMIT 1",
+            { cursor ->
+                app.cash.sqldelight.db.QueryResult.Value(
+                    if (cursor.next().value) (cursor.getLong(0) ?: -1L) else -1L,
+                )
+            },
+            0,
+        ).value
 
     private fun isTombstoned(uuid: String) =
         db.boardQueries.isClimbTombstoned(uuid).executeAsOneOrNull() != null
@@ -157,6 +172,91 @@ class CommunityClimbTombstoneTest {
         assertEquals(0L, r.is_deleted, "alien tombstone must NOT flip is_deleted")
         assertEquals(1L, r.is_listed, "row stays listed")
         assertEquals(1, db.boardQueries.countStats().executeAsOne().toInt(), "stats stay attached")
+    }
+
+    // ── Catalogue-hijack guard: isNonCommunityClimb ─────────────────
+    // The live subscriber's cross-author guard treats a NULL existing author as
+    // claimable, and getClimbAuthorPubkey returns NULL for BOTH "no row" and a
+    // catalogue row with no author. isNonCommunityClimb disambiguates so a
+    // community Kind-30078 can never re-key/overwrite official catalogue content.
+
+    @Test
+    fun `isNonCommunityClimb flags a kilter (catalogue, NULL-author) row`() {
+        insertKilterRow("k1")
+        assertNotNull(
+            db.boardQueries.isNonCommunityClimb("k1").executeAsOneOrNull(),
+            "a kilter/NULL-author row must be flagged non-community so the live " +
+                "subscriber refuses to overwrite it via INSERT OR REPLACE on uuid",
+        )
+    }
+
+    @Test
+    fun `isNonCommunityClimb does NOT flag a genuine community row`() {
+        insertCommunityRow("c1", authorA)
+        assertNull(
+            db.boardQueries.isNonCommunityClimb("c1").executeAsOneOrNull(),
+            "origin='cruxcoach' AND non-NULL author → a real community row; " +
+                "legitimate same-author replaceable updates must still pass",
+        )
+    }
+
+    @Test
+    fun `isNonCommunityClimb does NOT flag an unknown uuid`() {
+        assertNull(
+            db.boardQueries.isNonCommunityClimb("missing-uuid").executeAsOneOrNull(),
+            "no row → not flagged → a brand-new community climb is allowed",
+        )
+    }
+
+    // ── Migration 20.sqm / 21.sqm: data transforms on existing rows ──
+    // Run the exact .sqm UPDATE bodies against seeded "broken" rows to prove
+    // they heal the intended rows and leave the catalogue untouched.
+
+    @Test
+    fun `21_sqm reclassifies kilter rows carrying a pubkey to cruxcoach, catalogue untouched`() {
+        insertKilterRow("k-native")  // origin='kilter', pubkey NULL → native catalogue
+        insertKilterRow("k-cc")      // origin='kilter', gets a real pubkey below → heals
+        insertKilterRow("k-empty")   // origin='kilter', empty-string pubkey → must stay
+        driver.execute(null, "UPDATE climbs SET created_by_pubkey='pkCC' WHERE uuid='k-cc'", 0)
+        driver.execute(null, "UPDATE climbs SET created_by_pubkey='' WHERE uuid='k-empty'", 0)
+
+        // exact 21.sqm body
+        driver.execute(
+            null,
+            "UPDATE climbs SET origin = 'cruxcoach' " +
+                "WHERE origin = 'kilter' AND created_by_pubkey IS NOT NULL AND created_by_pubkey != ''",
+            0,
+        )
+
+        assertEquals("cruxcoach", rowFor("k-cc")!!.origin, "kilter row WITH a pubkey heals to cruxcoach")
+        assertEquals("kilter", rowFor("k-native")!!.origin, "native catalogue (no pubkey) untouched")
+        assertEquals("kilter", rowFor("k-empty")!!.origin, "empty-string pubkey is not a real author — untouched")
+    }
+
+    @Test
+    fun `20_sqm backfills a broken climb_stats layout_id from its climb`() {
+        insertKilterRow("k1")
+        driver.execute(null, "UPDATE climbs SET layout_id=7 WHERE uuid='k1'", 0)
+        db.boardQueries.upsertClimbStat(
+            climb_uuid = "k1", angle = 40L, display_difficulty = 14.5,
+            difficulty_average = 14.5, quality_average = 4.0,
+            ascensionist_count = 1L, benchmark_difficulty = null,
+            fa_username = null, fa_at = null, official_kilter_difficulty = null,
+        )
+        // Simulate the pre-15.sqm broken row (community/local INSERT omitted layout_id).
+        driver.execute(null, "UPDATE climb_stats SET layout_id=0 WHERE climb_uuid='k1'", 0)
+        assertEquals(0L, statLayoutId("k1"), "precondition: stat is broken (layout_id=0)")
+
+        // exact 20.sqm body
+        driver.execute(
+            null,
+            "UPDATE climb_stats SET layout_id = COALESCE(" +
+                "(SELECT c.layout_id FROM climbs c WHERE c.uuid = climb_stats.climb_uuid), 0) " +
+                "WHERE layout_id = 0",
+            0,
+        )
+
+        assertEquals(7L, statLayoutId("k1"), "stat layout_id healed from the climb (7)")
     }
 
     // ── Origin-lock: Kilter rows are read-only on our end ───────────

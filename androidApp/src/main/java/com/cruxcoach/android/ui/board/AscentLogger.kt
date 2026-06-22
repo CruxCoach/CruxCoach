@@ -65,12 +65,23 @@ internal class AscentLogger(
         scope.launch {
             withContext(Dispatchers.IO) {
                 if (editUuid != null) {
-                    personalBoardRepo.updateAscent(
-                        uuid = editUuid,
-                        bidCount = form.bidCount.toLong(),
-                        quality = if (form.quality > 0) form.quality.toLong() else null,
-                        comment = form.comment.ifBlank { null }
-                    )
+                    // Route by entry type: a bid lives in the bids table, so
+                    // updateAscent (ascents table) would match zero rows and
+                    // silently drop the edit. Bids carry no quality.
+                    if (form.isSend) {
+                        personalBoardRepo.updateAscent(
+                            uuid = editUuid,
+                            bidCount = form.bidCount.toLong(),
+                            quality = if (form.quality > 0) form.quality.toLong() else null,
+                            comment = form.comment.ifBlank { null }
+                        )
+                    } else {
+                        personalBoardRepo.updateBid(
+                            uuid = editUuid,
+                            bidCount = form.bidCount.toLong(),
+                            comment = form.comment.ifBlank { null }
+                        )
+                    }
                 } else {
                     val uuid = UUID.randomUUID().toString()
                     val now = DateTimeUtil.nowIso()
@@ -91,7 +102,21 @@ internal class AscentLogger(
                             climbName = climb.name,
                             difficultyAverage = climb.difficultyAverage,
                             climbFrames = climb.frames,
-                            framesCount = climb.framesCount
+                            framesCount = climb.framesCount,
+                            boardBrand = climb.boardBrand,
+                            layoutId = climb.layoutId,
+                        )
+                        // Append the SEND to the local "Verlauf" history log.
+                        // Only sends are recorded here — never attempts/bids.
+                        personalBoardRepo.recordClimbHistory(
+                            climbUuid = climb.uuid,
+                            climbName = climb.name,
+                            angle = s.angle.toLong(),
+                            difficultyAverage = climb.difficultyAverage,
+                            boardBrand = climb.boardBrand,
+                            layoutId = climb.layoutId,
+                            climbedAt = now,
+                            recordedAt = now,
                         )
                     } else {
                         personalBoardRepo.insertBid(
@@ -104,7 +129,9 @@ internal class AscentLogger(
                             climbedAt = now,
                             synced = false,
                             climbName = climb.name,
-                            difficultyAverage = climb.difficultyAverage
+                            difficultyAverage = climb.difficultyAverage,
+                            boardBrand = climb.boardBrand,
+                            layoutId = climb.layoutId,
                         )
                     }
                 }

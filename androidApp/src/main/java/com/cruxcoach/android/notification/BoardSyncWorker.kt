@@ -23,6 +23,15 @@ class BoardSyncWorker @AssistedInject constructor(
     private val notificationService: AppNotificationService
 ) : CoroutineWorker(appContext, workerParams) {
 
+    // On API < 31 an expedited worker runs as a FOREGROUND SERVICE, and
+    // WorkManager calls getForegroundInfo() up front to start it. Without this
+    // override the CoroutineWorker default throws IllegalStateException("Not
+    // implemented"), so the whole board sync fails before doWork ever runs
+    // (observed on Android 9 / API 28 — board DB never downloads). API 31+ runs
+    // expedited as a real job and doesn't need this, which is why it only bit
+    // older devices.
+    override suspend fun getForegroundInfo(): ForegroundInfo = createForegroundInfo()
+
     override suspend fun doWork(): Result {
         return try {
             setForeground(createForegroundInfo())
@@ -64,6 +73,28 @@ class BoardSyncWorker @AssistedInject constructor(
     companion object {
         private const val TAG = "BoardSyncWorker"
         const val WORK_NAME = "board_sync_periodic"
+        const val WORK_NAME_ONESHOT = "board_sync_oneshot"
+
+        /**
+         * Run a sync NOW under a foreground service so it survives the
+         * app being backgrounded. Every eager trigger (manual "sync
+         * now", onboarding, app-start stale sync) goes through this
+         * instead of driving BoardSyncManager directly in its process
+         * scope — which the OS freezes/kills once the app leaves the
+         * foreground, aborting the multi-minute download + import.
+         * KEEP so repeated taps / overlapping triggers don't stack a
+         * second import on top of a running one.
+         */
+        fun enqueueExpedited(context: Context) {
+            val request = OneTimeWorkRequestBuilder<BoardSyncWorker>()
+                .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+                .build()
+            WorkManager.getInstance(context).enqueueUniqueWork(
+                WORK_NAME_ONESHOT,
+                ExistingWorkPolicy.KEEP,
+                request,
+            )
+        }
 
         fun schedule(context: Context, interval: SyncInterval) {
             if (interval == SyncInterval.MANUAL) {

@@ -1,0 +1,14 @@
+-- Migration version 22 -> 23: record the Kilter author identity per climb.
+--
+-- The own-Kilter-climb backfills (GET /climbs/logged and the new
+-- GET /climbs/climbdetails/user) carry the climb author's Kilter userUuid.
+-- Persisting it lets the "publish my own Kilter climb to CruxCoach" gate
+-- reliably check authorship by comparing this value against the CONNECTED
+-- account's userUuid (KilterTokenStore.getUserUuid()) — a stable identity
+-- comparison instead of a fuzzy display-name match.
+--
+-- NULL = unknown author → the climb is NOT publishable as one's own work
+-- (compliance: a merely-logged third-party climb must never be published
+-- under the user's name). All pre-existing rows therefore start NULL and
+-- only get an author once a user-scoped Kilter fetch attests it.
+ALTER TABLE climbs ADD COLUMN kilter_author_uuid TEXT;

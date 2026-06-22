@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import com.cruxcoach.android.util.safeLaunch
 import javax.inject.Inject
 
 /**
@@ -40,9 +41,40 @@ object WhatsNewItems {
      *  export sitting in their Downloads. */
     val AURORA_JSON_IMPORT = WhatsNewItem(id = "aurora-json-import", sinceVersionCode = 5)
 
+    /** 0.2.0 release popup (versionCode 6) — the SINGLE consolidated upgrade
+     *  announcement. Headline: the new board support (MoonBoard + the Aurora
+     *  family); the board-locations map + find-your-gym picker are folded in
+     *  as a one-line hint (see the whatsnew_moonboard_* strings). */
+    val MOONBOARD_SUPPORT = WhatsNewItem(id = "moonboard-support", sinceVersionCode = 6)
+
+    /** FEAT-015 — Board Locations Map (0.2.0). Headline feature; users
+     *  upgrading from 0.1.4 have no other entry point to discover the
+     *  new map icon in the BoardBrowser search header. */
+    val BOARD_LOCATIONS_MAP = WhatsNewItem(id = "board-locations-map", sinceVersionCode = 6)
+
+    /** FEAT-007 Phase 1 — Find-your-gym board picker (0.2.0). Lives one
+     *  tap deeper in *Settings → Board-Größe → Ändern* so it needs an
+     *  explicit discovery surface. */
+    val GYM_BOARD_PICKER = WhatsNewItem(id = "gym-board-picker", sinceVersionCode = 6)
+
+    /** FEAT-031 — Aurora-family boards (0.2.0): Tension, Grasshopper, Decoy,
+     *  So iLL and Touchstone become selectable, browsable + LED-send alongside
+     *  Kilter. Discovery surface so upgrading users find them in the Settings
+     *  board picker. Same 0.2.0 (versionCode 6) batch. */
+    val AURORA_BOARDS = WhatsNewItem(id = "aurora-boards", sinceVersionCode = 6)
+
+    // 0.2.0 (versionCode 6) shows a SINGLE popup on upgrade. A 0.1.4 -> 0.2.0
+    // upgrade previously fired all four vc6 dialogs back-to-back (MoonBoard,
+    // Aurora boards, board-locations map, find-your-gym picker) — far too many
+    // popups. MOONBOARD_SUPPORT now renders a CONSOLIDATED board-support dialog
+    // (MoonBoard + Aurora headline, map + picker as a one-line hint), so the
+    // other three vc6 items are intentionally NOT registered here. Their
+    // declarations + dialogs are kept (still referenced by WhatsNewHost) for
+    // reference / future reuse.
     val registry: List<WhatsNewItem> = listOf(
         NOSTR_BACKUP,
         AURORA_JSON_IMPORT,
+        MOONBOARD_SUPPORT,
     )
 }
 
@@ -73,12 +105,12 @@ class WhatsNewViewModel @Inject constructor(
     val pending: StateFlow<List<WhatsNewItem>> = _pending.asStateFlow()
 
     init {
-        viewModelScope.launch {
+        viewModelScope.safeLaunch("WhatsNewViewModel") {
             val current = BuildConfig.VERSION_CODE
             val lastSeen = userPreferences.lastSeenAppVersionCode.first()
             val onboardingDone = userPreferences.isOnboardingCompleted()
 
-            if (lastSeen == null && !onboardingDone) return@launch
+            if (lastSeen == null && !onboardingDone) return@safeLaunch
 
             val effectiveLastSeen = lastSeen ?: 0
             val toShow = WhatsNewItems.registry
@@ -123,12 +155,19 @@ class WhatsNewViewModel @Inject constructor(
 fun WhatsNewHost(
     onNavigateToKeyManagement: () -> Unit = {},
     onNavigateToAuroraMigration: () -> Unit = {},
+    onNavigateToBoardMap: () -> Unit = {},
+    onNavigateToSettings: () -> Unit = {},
     vm: WhatsNewViewModel = hiltViewModel(),
 ) {
     val pending by vm.pending.collectAsState()
     val current = pending.firstOrNull() ?: return
 
     when (current.id) {
+        WhatsNewItems.MOONBOARD_SUPPORT.id ->
+            MoonBoardWhatsNewDialog(
+                onDismiss = { vm.dismissCurrent() },
+                onNavigateToSettings = onNavigateToSettings,
+            )
         WhatsNewItems.NOSTR_BACKUP.id ->
             NostrBackupWhatsNewDialog(
                 onDismiss = { vm.dismissCurrent() },
@@ -138,6 +177,21 @@ fun WhatsNewHost(
             AuroraJsonImportWhatsNewDialog(
                 onDismiss = { vm.dismissCurrent() },
                 onNavigateToAuroraMigration = onNavigateToAuroraMigration,
+            )
+        WhatsNewItems.BOARD_LOCATIONS_MAP.id ->
+            BoardLocationsMapWhatsNewDialog(
+                onDismiss = { vm.dismissCurrent() },
+                onNavigateToBoardMap = onNavigateToBoardMap,
+            )
+        WhatsNewItems.GYM_BOARD_PICKER.id ->
+            GymBoardPickerWhatsNewDialog(
+                onDismiss = { vm.dismissCurrent() },
+                onNavigateToSettings = onNavigateToSettings,
+            )
+        WhatsNewItems.AURORA_BOARDS.id ->
+            AuroraBoardsWhatsNewDialog(
+                onDismiss = { vm.dismissCurrent() },
+                onNavigateToSettings = onNavigateToSettings,
             )
         else -> {
             // Unknown id (shouldn't happen unless registry/dispatch

@@ -12,8 +12,8 @@ import com.cruxcoach.android.data.NostrMessageRepository
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.notification.NostrPushCoordinator
 import com.cruxcoach.android.nostr.NostrConfig
-import com.cruxcoach.android.nostr.NostrMessageSender
-import com.cruxcoach.android.nostr.NostrSigner
+import com.cruxcoach.android.nostr.NostrMessageSending
+import com.cruxcoach.android.nostr.NostrIdentity
 import com.cruxcoach.android.nostr.OfflineQueueManager
 import com.cruxcoach.android.nostr.SendResult
 import com.cruxcoach.android.nostr.model.MessageType
@@ -60,10 +60,10 @@ data class DevContactState(
 
 @HiltViewModel
 class DevContactViewModel @Inject constructor(
-    private val messageSender: NostrMessageSender,
+    private val messageSender: NostrMessageSending,
     private val messageRepository: NostrMessageRepository,
     private val pushCoordinator: NostrPushCoordinator,
-    private val nostrSigner: NostrSigner,
+    private val nostrSigner: NostrIdentity,
     private val userPreferences: UserPreferences,
     private val queueManager: OfflineQueueManager,
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context
@@ -110,7 +110,12 @@ class DevContactViewModel @Inject constructor(
         // here eventually — poll worker writes directly, coordinator
         // emits on this flow).
         viewModelScope.launch {
-            pushCoordinator.newMessageEvents.collect { loadMessages() }
+            pushCoordinator.newMessageEvents.collect {
+                loadMessages()
+                // A live dev reply to the thread the user is reading should
+                // appear without a manual back-and-reopen.
+                refreshOpenThread()
+            }
         }
         loadCrashOptIn()
         observeQueueCount()
@@ -328,22 +333,50 @@ class DevContactViewModel @Inject constructor(
     }
 
     fun sendReply(rootId: String, message: String) {
-        val rootMsg = _state.value.let { s ->
-            (s.bugReports + s.featureRequests).find { it.id == rootId }
+        viewModelScope.launch {
+            // Resolve through the DB, NOT the UI state lists: rootId may be
+            // a stale foreign (recipient-wrap) id from a notification
+            // deep-link, and the state lists may not be hydrated yet.
+            val ctx = withContext(Dispatchers.IO) {
+                messageRepository.resolveReplyContext(rootId)
+            }
+            val type = ctx.typeLabel?.let { MessageType.fromLabel(it) } ?: run {
+                Log.w(
+                    TAG,
+                    "sendReply: could not resolve thread type for root " +
+                        "${ctx.localRootId.take(8)}… (label=${ctx.typeLabel}) — falling back to chat"
+                )
+                MessageType.CHAT
+            }
+            sendMessage(
+                content = message,
+                type = type,
+                subject = null,
+                replyToId = ctx.localRootId,
+                wireReplyToId = ctx.wireReplyToId
+            )
         }
-        val type = when (rootMsg?.type) {
-            MessageType.BUG.label -> MessageType.BUG
-            MessageType.FEATURE.label -> MessageType.FEATURE
-            else -> MessageType.CHAT
-        }
-        sendMessage(content = message, type = type, subject = null, replyToId = rootId)
     }
+
+    /** Local root id of the thread currently shown in MessageThreadScreen,
+     *  so background events (delivery flips, deletes) can refresh it without
+     *  the screen having to re-request. Null when no thread is open. */
+    private var currentThreadRoot: String? = null
 
     fun loadThread(rootId: String) {
         viewModelScope.launch(Dispatchers.IO) {
-            val messages = messageRepository.getThread(rootId).map { it.toUiMessage() }
+            // Stale deep-links (pre-fix notifications) may carry the
+            // recipient-wrap id — normalize to the local root first.
+            val localRootId = messageRepository.resolveLocalRootId(rootId) ?: rootId
+            currentThreadRoot = localRootId
+            val messages = messageRepository.getThread(localRootId).map { it.toUiMessage() }
             _threadMessages.value = messages
         }
+    }
+
+    /** Re-load the open thread, if any. Cheap no-op when no thread is shown. */
+    private fun refreshOpenThread() {
+        currentThreadRoot?.let { loadThread(it) }
     }
 
     fun markChatRead() {
@@ -357,7 +390,10 @@ class DevContactViewModel @Inject constructor(
 
     fun markThreadRead(rootId: String) {
         viewModelScope.launch {
-            withContext(Dispatchers.IO) { messageRepository.markThreadRead(rootId) }
+            withContext(Dispatchers.IO) {
+                val localRootId = messageRepository.resolveLocalRootId(rootId) ?: rootId
+                messageRepository.markThreadRead(localRootId)
+            }
             loadMessages()
         }
     }
@@ -471,11 +507,20 @@ class DevContactViewModel @Inject constructor(
         }
     }
 
+    /**
+     * @param replyToId LOCAL id of the thread root — stored in the local
+     *  row's reply_to_id so getThread keeps matching.
+     * @param wireReplyToId id for the outgoing ["e", …, "reply"] tag — the
+     *  root's recipient-wrap id (thread_anchor_id) when known, because that
+     *  is the id the dashboard stored the root under. Defaults to
+     *  [replyToId] when the two ids coincide (e.g. root not yet anchored).
+     */
     private fun sendMessage(
         content: String,
         type: MessageType,
         subject: String?,
-        replyToId: String? = null
+        replyToId: String? = null,
+        wireReplyToId: String? = replyToId
     ) {
         _state.update { it.copy(isSending = true, sendSuccess = null) }
         viewModelScope.launch {
@@ -491,7 +536,12 @@ class DevContactViewModel @Inject constructor(
                     content = content,
                     type = type,
                     subject = subject,
-                    replyToId = replyToId
+                    // Wire e-tag = the id the dashboard knows the root under;
+                    // self-root hint = the LOCAL root id, so a wipe-and-refetch
+                    // can re-thread this reply's echo and re-learn the root's
+                    // anchor (see NostrConfig.RUMOR_TAG_SELF_ROOT).
+                    replyToId = wireReplyToId,
+                    selfReplyToId = replyToId
                 )
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to build ${type.label}", e)
@@ -520,13 +570,21 @@ class DevContactViewModel @Inject constructor(
                             relayAccepted = false,
                             read = true,
                             replyToId = replyToId,
-                            threadAnchorId = buildResult.recipientWrapId
+                            threadAnchorId = buildResult.recipientWrapId,
+                            replyToWireId = wireReplyToId
                         )
                         messageRepository.markQueued(eventId, now, buildResult.eventJsons)
                     }
                     queueManager.refreshCount()
                     _state.update { it.copy(isSending = false, sendSuccess = true) }
                     loadMessages()
+                    // A reply only ever refreshed the flat chat list, never the
+                    // open thread (_threadMessages reads via loadThread). The
+                    // MessageThreadScreen therefore showed nothing after Send —
+                    // the reply WAS persisted/queued/delivered, it just stayed
+                    // invisible there. Re-load the thread so the just-sent reply
+                    // appears immediately. replyToId == the local root id.
+                    if (replyToId != null) loadThread(replyToId)
 
                     // 3. Deliver in background (includes random delay)
                     deliverInBackground(eventId, buildResult.eventJsons)
@@ -558,6 +616,7 @@ class DevContactViewModel @Inject constructor(
                 }
                 queueManager.refreshCount()
                 loadMessages()
+                refreshOpenThread()
                 Log.i(TAG, "Message $eventId delivered to relay")
             }
             // If !success, message stays queued — OfflineQueueManager will retry later

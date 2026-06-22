@@ -24,13 +24,18 @@ android {
         applicationId = "com.cruxcoach.android"
         minSdk = 26
         targetSdk = 35
-        versionCode = 5
-        versionName = "0.1.4"
+        versionCode = 6
+        versionName = "0.2.0"
 
-        // Only bundle native libs for ARM — removes MIPS/x86 bloat from
-        // quartz-android's transitive JNA + secp256k1 + libsodium.
+        // Only bundle arm64 native libs. armeabi-v7a alone added ~10.7 MB
+        // to the APK (libmaplibre 8 MB + sqlcipher + secp256k1 + sodium +
+        // a few small libs). minSdk=26 (Android 8.0+) already targets the
+        // 64-bit ARM era; 32-bit-only Android 8+ devices are <1% in DE
+        // (mostly Android Go on entry-level SoCs, almost absent here).
+        // Affected devices simply can't install (clean "incompatible"
+        // message), no partial breakage. x86/MIPS were never targeted.
         ndk {
-            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+            abiFilters += listOf("arm64-v8a")
         }
 
         resourceConfigurations += listOf("en", "de")
@@ -160,11 +165,23 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // Backport newer java.* APIs to the supported old-API range (minSdk 26).
+        // Immunizes the SequencedCollection/SequencedMap class of bug (old-API
+        // audit C-1: .reversed()/removeFirst()/etc. on java.util receivers binding
+        // to API-35 platform members) on Android < 15.
+        isCoreLibraryDesugaringEnabled = true
     }
 
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+
+    lint {
+        // Fail the build on lint errors (incl. NewApi unguarded-API calls) when
+        // lint runs — neither C-1 nor C-2 was caught at build time before.
+        abortOnError = true
+        checkReleaseBuilds = true
     }
 
 }
@@ -183,6 +200,10 @@ kotlin {
 
 dependencies {
     implementation(project(":shared"))
+
+    // Core library desugaring — backports newer java.* APIs to old Android
+    // (see compileOptions.isCoreLibraryDesugaringEnabled; old-API audit P1).
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 
     // Splash screen
     implementation("androidx.core:core-splashscreen:1.0.1")
@@ -241,6 +262,12 @@ dependencies {
     implementation(libs.sqlcipher.android)
     implementation(libs.androidx.sqlite)
 
+    // MapLibre Native (FEAT-006 Kilter Board Locations Map). Vector tiles via
+    // OpenFreeMap vector tiles, no API key. Markers/clusters are drawn via
+    // GeoJSON sources + symbol layers on the raw style spec, so the MapLibre
+    // annotation plugin isn't needed (it was declared but never imported).
+    implementation(libs.maplibre.android.sdk)
+
     // Zstd decompression is handled by native C library (see src/main/cpp/)
 
     // FEAT-010 profile editor: image loading + markdown preview
@@ -255,6 +282,12 @@ dependencies {
     testImplementation(libs.mockk)
     // JDBC SQLite driver for real-SQL repository races / TOCTOU regression tests
     testImplementation(libs.sqldelight.sqlite.driver)
+    // Android SQLite driver for Robolectric importer tests: creating the real
+    // SQLDelight schema inside the Robolectric sandbox must NOT go through
+    // JDBC — DriverManager initialised from the sandbox classloader makes
+    // the sqlite-JDBC driver invisible to every plain-JVM JDBC test that
+    // runs later in the same Gradle worker.
+    testImplementation(libs.sqldelight.android.driver)
     // MockWebServer for KilterApiClient HTTP-error-mapping tests.
     // Pulls okhttp explicitly on the test classpath so okhttp3.internal.*
     // is resolvable at test runtime (mockwebserver depends on internals

@@ -16,17 +16,20 @@ import com.cruxcoach.android.data.NearbyPresenceManager
 import com.cruxcoach.android.data.SessionQueueManager
 import com.cruxcoach.android.data.SessionRole
 import com.cruxcoach.android.data.UserPreferences
+import com.cruxcoach.domain.board.BoardBrand
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
+import com.cruxcoach.android.util.safeLaunch
 
 data class BleConnectionState(
     val hasPermissions: Boolean = false,
@@ -41,44 +44,17 @@ data class BleConnectionState(
     val allowRemoteDisconnect: Boolean = false,
     val showDisconnectRequestDialog: Boolean = false,
     /**
-     * Mirror of [UserPreferences.quickBoardSend]. The detail screen reads this
-     * to decide whether the BLE icon opens the connection sheet (off) or
-     * triggers the [BleConnectionViewModel.startQuickSend] macro (on).
-     */
-    val quickBoardSendEnabled: Boolean = false,
-    /**
      * True while a scan started via [BleConnectionViewModel.startScanWithAutoConnect]
      * is still inside its 2 s settling window. The sheet uses this to know whether
      * a 1-board result should auto-resolve into a connect (true) or whether the
      * user explicitly opened the sheet to inspect the list (false).
      */
     val isAutoConnectScan: Boolean = false,
+    /** Localized reason (string-res id) why the last connect attempt was torn
+     *  down at service discovery (e.g. unsupported RedBear-UART MoonBoard
+     *  LED-kit generation). Null = none. */
+    @androidx.annotation.StringRes val connectFailureReason: Int? = null,
 )
-
-/**
- * Status emitted by the Quick-Send macro (Settings → "Schnell-Senden").
- * The screen renders this as a status overlay / snackbar; only one quick-send
- * job runs at a time.
- */
-sealed class QuickSendStatus {
-    data object Idle : QuickSendStatus()
-    data object Scanning : QuickSendStatus()
-    /** 2+ boards found in the settling window — fall back to manual pick UI. */
-    data class NeedsManualPick(val boards: List<DiscoveredBoard>) : QuickSendStatus()
-    data class Connecting(val boardName: String) : QuickSendStatus()
-    data object Sending : QuickSendStatus()
-    data object Disconnecting : QuickSendStatus()
-    data object Done : QuickSendStatus()
-    data class Error(val reason: ErrorReason) : QuickSendStatus()
-
-    enum class ErrorReason {
-        NoBoardsFound,
-        ConnectFailed,
-        SendFailed,
-        BluetoothOff,
-        NoPermissions,
-    }
-}
 
 @HiltViewModel
 class BleConnectionViewModel @Inject constructor(
@@ -94,31 +70,35 @@ class BleConnectionViewModel @Inject constructor(
 
     companion object {
         private const val TAG = "BleConnectionViewModel"
-        /** How long to wait for additional ad packets after the first board is seen. */
+        /** Outer deadline for finding the *first* board after scan starts.
+         *  If nothing's in range within this, auto-connect bails (manual
+         *  pick UI stays). Used as a cap on the event-driven wait, not
+         *  as a blind sleep. */
         private const val SETTLING_WINDOW_MS = 2_000L
-        /** Total scan deadline when no board has been found yet at the settling cutoff. */
-        private const val SCAN_EXTENDED_MS = 6_000L
-        /** Timeout for the GATT connect handshake (CONNECTING → CONNECTED). */
-        private const val CONNECT_TIMEOUT_MS = 15_000L
-        /** How long to wait for the auto-send to flip ConnectionState to SENDING. */
-        private const val SEND_START_TIMEOUT_MS = 3_000L
+        /** Cool-down *after* the first board is seen, to give a possible
+         *  sibling time to advertise. Sized for the worst common BLE
+         *  adv interval (≈1 s on battery-optimised peripherals) so we
+         *  never auto-connect to a single board while a slower sibling
+         *  is still ramping its first packet. Faster than the prior
+         *  blind 2 s sleep, safe against slow sibling adv. */
+        private const val SIBLING_WINDOW_MS = 1_000L
     }
 
     private val _state = MutableStateFlow(BleConnectionState())
     val state: StateFlow<BleConnectionState> = _state.asStateFlow()
 
     init {
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             bleScanner.discoveredBoards.collect { boards ->
                 _state.update { it.copy(discoveredBoards = boards) }
             }
         }
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             bleScanner.isScanning.collect { scanning ->
                 _state.update { it.copy(isScanning = scanning) }
             }
         }
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             bleConnection.connectionState.collect { connState ->
                 _state.update { it.copy(connectionState = connState) }
                 // Auto-advertise "board connected" so nearby users can send disconnect requests
@@ -142,39 +122,39 @@ class BleConnectionViewModel @Inject constructor(
                 }
             }
         }
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             bleConnection.connectedBoardName.collect { name ->
                 _state.update { it.copy(connectedBoardName = name) }
             }
         }
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
+            bleConnection.connectFailureReason.collect { reason ->
+                _state.update { it.copy(connectFailureReason = reason) }
+            }
+        }
+        viewModelScope.safeLaunch(TAG) {
             bleScanner.bluetoothEnabled.collect { enabled ->
                 _state.update { it.copy(isBluetoothEnabled = enabled) }
             }
         }
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             bleConnection.autoDisconnectSeconds = userPreferences.bleAutoDisconnectSeconds.first()
             userPreferences.bleAutoDisconnectSeconds.collect { seconds ->
                 bleConnection.autoDisconnectSeconds = seconds
             }
         }
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             userPreferences.nearbyClimbSharing.collect { enabled ->
                 _state.update { it.copy(climbSharingEnabled = enabled) }
             }
         }
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             userPreferences.allowRemoteDisconnect.collect { allowed ->
                 _state.update { it.copy(allowRemoteDisconnect = allowed) }
             }
         }
-        viewModelScope.launch {
-            userPreferences.quickBoardSend.collect { enabled ->
-                _state.update { it.copy(quickBoardSendEnabled = enabled) }
-            }
-        }
         // Receive disconnect requests from nearby users (works on any screen)
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             nearbyClimbScanner.disconnectRequests.collect {
                 val s = _state.value
                 val now = System.currentTimeMillis()
@@ -197,7 +177,7 @@ class BleConnectionViewModel @Inject constructor(
         // HOST: SessionGattBridge already sent the DisconnectRequest — wait for board to become vacant.
         // PARTICIPANT: GATT connection to host succeeded — connect to board for LED control.
         var previousQueueRole = SessionRole.NONE
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             sessionQueueManager.state.collect { queueState ->
                 val newRole = queueState.role
                 if (newRole != previousQueueRole) {
@@ -243,7 +223,7 @@ class BleConnectionViewModel @Inject constructor(
     }
 
     fun startScan() {
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             // Wait for any pending GATT close to finish before scanning.
             // Android suppresses connectable scan results for a device whose GATT
             // handle is still open — the board won't appear until close() completes.
@@ -261,38 +241,82 @@ class BleConnectionViewModel @Inject constructor(
     }
 
     /**
-     * Scan with auto-connect on single result. Settles for [SETTLING_WINDOW_MS]
-     * after the scan starts, then:
-     *  - exactly 1 board → connect to it (sheet flips through "Connecting…" to
-     *    the connected state without the user tapping a list entry).
-     *  - 2+ boards → leave the list visible for manual pick (existing UX).
+     * Event-driven wait used by auto-connect / quick-send to decide
+     * whether to single-shot connect or fall back to the manual list:
+     *  1) Wait for the first discovered board, capped at
+     *     [SETTLING_WINDOW_MS]. Bail (empty list) if nothing shows up.
+     *  2) Once we have one, wait a short [SIBLING_WINDOW_MS] cool-down
+     *     for a possible sibling adv — short-circuits as soon as a
+     *     second board appears.
+     * Replaces the previous blind [delay] which paid the full 2 s even
+     * when only one board was present from the first packet onward.
+     */
+    private suspend fun awaitBoardsForAutoConnect(): List<DiscoveredBoard> {
+        // Phase 1: wait for the first board *from an active scan*. The
+        // isScanning gate is critical — without it, a stale
+        // discoveredBoards list from a previous scan in this session
+        // would resolve `.first { isNotEmpty }` immediately and trigger
+        // a wrong-board auto-connect (or an empty-bail if the stale
+        // list happens to be empty + we race the new scan start).
+        val gated = withTimeoutOrNull(SETTLING_WINDOW_MS) {
+            combine(bleScanner.isScanning, bleScanner.discoveredBoards) { scanning, boards ->
+                scanning to boards
+            }.first { (scanning, boards) -> scanning && boards.isNotEmpty() }
+        }
+        if (gated == null) {
+            Log.i("BleConnectionVM", "awaitBoardsForAutoConnect: timeout, no board seen during active scan")
+            return emptyList()
+        }
+        // Phase 2: short sibling cool-down (short-circuits on a 2nd board).
+        val finalSet = withTimeoutOrNull(SIBLING_WINDOW_MS) {
+            bleScanner.discoveredBoards.first { it.size >= 2 }
+        } ?: bleScanner.discoveredBoards.value
+        Log.i("BleConnectionVM", "awaitBoardsForAutoConnect: settled with ${finalSet.size} board(s)")
+        return finalSet
+    }
+
+    /**
+     * Narrow [boards] to those matching the ACTIVE board's brand, falling back
+     * to the full list when none match. Auto-connect previously took any
+     * discovered board by discovery order — in a gym with e.g. a MoonBoard
+     * next to a Kilter (or a neighbour's Tension in BLE range) it could
+     * silently grab the wrong wall, and every later send then fails with a
+     * brand mismatch that never explains the connection itself is wrong.
+     */
+    private suspend fun preferActiveBrand(boards: List<DiscoveredBoard>): List<DiscoveredBoard> {
+        val activeBrand = BoardBrand.fromWire(userPreferences.boardBrand.first())
+        return boards.filter { it.boardBrand == activeBrand }.ifEmpty { boards }
+    }
+
+    /**
+     * Scan with auto-connect on single result. Uses [awaitBoardsForAutoConnect]
+     * — fast when one board is present (typically ~discovery + ~600 ms cool-down,
+     * was always a blind 2 s). Outcomes:
+     *  - exactly 1 board → connect to it.
+     *  - 2+ boards → leave the list visible for manual pick.
      *  - 0 boards → keep scanning, fall back to manual pick after the user waits.
-     *
-     * The settling window absorbs BLE adv jitter — boards ad every 100-1000 ms,
-     * so racing on the first packet would auto-connect to a board that "won
-     * the race" while a sibling board's first ad arrives 200 ms later.
      */
     fun startScanWithAutoConnect() {
         autoConnectScanJob?.cancel()
         _state.update { it.copy(isAutoConnectScan = true) }
-        autoConnectScanJob = viewModelScope.launch {
+        autoConnectScanJob = viewModelScope.safeLaunch(TAG) {
             startScan()
-            delay(SETTLING_WINDOW_MS)
+            val boards = awaitBoardsForAutoConnect()
             val s = _state.value
             // Bail out if state changed during the wait: user disconnected the
             // sheet, scan stopped, or a connect already happened in another
             // thread.
             if (s.connectionState != ConnectionState.DISCONNECTED || !s.isScanning) {
                 _state.update { it.copy(isAutoConnectScan = false) }
-                return@launch
+                return@safeLaunch
             }
-            val boards = s.discoveredBoards
-            if (boards.size == 1) {
-                connectToBoard(boards.first())
+            val candidates = preferActiveBrand(boards)
+            if (candidates.size == 1) {
+                Log.i("BleConnectionVM", "auto-connect: single ${candidates.first().boardBrand} board, connecting")
+                connectToBoard(candidates.first())
+            } else {
+                Log.i("BleConnectionVM", "auto-connect: ${candidates.size} candidate boards (${boards.size} discovered), leaving manual pick")
             }
-            // Leave isAutoConnectScan=true for 0/2+: at 0 the user keeps
-            // waiting, at 2+ the list is now visible and they pick — flag
-            // doesn't drive UI past this point but reads useful in logcat.
             _state.update { it.copy(isAutoConnectScan = false) }
         }
     }
@@ -312,6 +336,17 @@ class BleConnectionViewModel @Inject constructor(
         bleConnection.connect(board)
     }
 
+    /**
+     * Whether the currently-connected board is a MoonBoard (FEAT-027).
+     * Derived from the advertising name — MoonBoard advertises a bare
+     * "MoonBoard…" name, Aurora boards a Kilter-style parsed name. Used by
+     * the connection sheet to brand-label the connected device.
+     */
+    fun isConnectedBoardMoonBoard(): Boolean {
+        val name = _state.value.connectedBoardName ?: return false
+        return bleScanner.isMoonBoardName(name)
+    }
+
     fun disconnect() {
         bleConnection.disconnect()
     }
@@ -319,182 +354,9 @@ class BleConnectionViewModel @Inject constructor(
     private var disconnectTimeoutJob: Job? = null
     private var autoConnectJob: Job? = null
     private var autoConnectScanJob: Job? = null
-    private var quickSendJob: Job? = null
     private var disconnectCooldownUntil = 0L
     /** Set after accepting a remote disconnect — suppresses the dialog until next connect. */
     private var suppressDisconnectDialog = false
-
-    private val _quickSend = MutableStateFlow<QuickSendStatus>(QuickSendStatus.Idle)
-    val quickSend: StateFlow<QuickSendStatus> = _quickSend.asStateFlow()
-
-    /**
-     * Quick-Send macro: scan → auto-connect (or fall back to manual pick) →
-     * the existing CONNECTED-collector in BoardClimbDetailViewModel auto-fires
-     * a send → wait for SENDING→CONNECTED transition → disconnect.
-     *
-     * Reuses the existing pipeline: BoardClimbDetailViewModel already auto-
-     * triggers `sendController.sendToBoard()` on the DISCONNECTED→CONNECTED
-     * transition when holds are present, and BoardBleConnection flips its
-     * state to SENDING during the actual write. We just observe those state
-     * machine edges from here — no new send-callback needed.
-     *
-     * For routes ([isRoute] = true) the macro stops after the connect — only
-     * frame 0 gets auto-sent and the user is expected to start route
-     * playback manually + disconnect when they're done. Auto-disconnecting
-     * after the first frame would strand a multi-frame route mid-playback.
-     */
-    fun startQuickSend(isRoute: Boolean = false) {
-        quickSendJob?.cancel()
-        quickSendJob = viewModelScope.launch {
-            try {
-                if (!_state.value.hasPermissions) {
-                    _quickSend.value = QuickSendStatus.Error(QuickSendStatus.ErrorReason.NoPermissions)
-                    return@launch
-                }
-                if (!_state.value.isBluetoothEnabled) {
-                    _quickSend.value = QuickSendStatus.Error(QuickSendStatus.ErrorReason.BluetoothOff)
-                    return@launch
-                }
-
-                // Already connected → skip scan/connect. The screen will
-                // tap into existing send pipeline; we only own the
-                // disconnect-after (boulders only). Routes bail silently —
-                // the user already sees the green BLE icon, and a
-                // "sent + disconnected" snackbar would be a lie since
-                // we kept the connection alive on purpose.
-                if (bleConnection.connectionState.value == ConnectionState.CONNECTED) {
-                    if (isRoute) {
-                        _quickSend.value = QuickSendStatus.Idle
-                    } else {
-                        awaitSendAndDisconnect()
-                    }
-                    return@launch
-                }
-
-                _quickSend.value = QuickSendStatus.Scanning
-                bleConnection.awaitGattClosed()
-                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
-                    nearbyClimbScanner.stopScan(preserveEntries = true)
-                }
-                bleScanner.startScan()
-
-                // Settling window — give the scan time to find sibling boards
-                // before deciding "single → auto-connect".
-                delay(SETTLING_WINDOW_MS)
-                val initial = bleScanner.discoveredBoards.value
-
-                val target: DiscoveredBoard = when {
-                    initial.size == 1 -> initial.first()
-                    initial.size > 1 -> {
-                        bleScanner.stopScan()
-                        _quickSend.value = QuickSendStatus.NeedsManualPick(initial)
-                        return@launch
-                    }
-                    else -> {
-                        // 0 boards yet — keep scanning up to the extended deadline.
-                        val later = withTimeoutOrNull(SCAN_EXTENDED_MS) {
-                            bleScanner.discoveredBoards.first { it.isNotEmpty() }
-                        } ?: emptyList()
-                        when {
-                            later.isEmpty() -> {
-                                bleScanner.stopScan()
-                                _quickSend.value = QuickSendStatus.Error(QuickSendStatus.ErrorReason.NoBoardsFound)
-                                return@launch
-                            }
-                            later.size == 1 -> later.first()
-                            else -> {
-                                bleScanner.stopScan()
-                                _quickSend.value = QuickSendStatus.NeedsManualPick(later)
-                                return@launch
-                            }
-                        }
-                    }
-                }
-
-                _quickSend.value = QuickSendStatus.Connecting(target.displayName)
-                bleScanner.stopScan()
-                bleConnection.connect(target)
-
-                val terminal = withTimeoutOrNull(CONNECT_TIMEOUT_MS) {
-                    bleConnection.connectionState.first {
-                        it == ConnectionState.CONNECTED || it == ConnectionState.DISCONNECTED
-                    }
-                }
-                if (terminal != ConnectionState.CONNECTED) {
-                    _quickSend.value = QuickSendStatus.Error(QuickSendStatus.ErrorReason.ConnectFailed)
-                    return@launch
-                }
-
-                if (isRoute) {
-                    // Route: connect succeeded, frame 0 will auto-send via
-                    // ClimbDetailVM's CONNECTED-collector — but we don't
-                    // chase the SENDING→CONNECTED→disconnect chain because
-                    // the user still needs the connection alive for the
-                    // remaining frames during playback. Reset to Idle so
-                    // no "sent + disconnected" snackbar fires.
-                    _quickSend.value = QuickSendStatus.Idle
-                } else {
-                    awaitSendAndDisconnect()
-                }
-            } catch (e: kotlinx.coroutines.CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Log.w(TAG, "quickSend failed", e)
-                bleScanner.stopScan()
-                _quickSend.value = QuickSendStatus.Error(QuickSendStatus.ErrorReason.SendFailed)
-            }
-        }
-    }
-
-    /**
-     * After the screen-side ClimbDetailVM auto-fires `sendController.sendToBoard()`
-     * on the CONNECTED transition, BoardBleConnection flips state to SENDING
-     * for the duration of the BLE write, then back to CONNECTED. We watch that
-     * transition (with a fallback timeout if no send actually fired — e.g. the
-     * climb's holds list was empty) and then disconnect.
-     */
-    private suspend fun awaitSendAndDisconnect() {
-        _quickSend.value = QuickSendStatus.Sending
-        // Wait for SENDING to start (within a short fallback window — if the
-        // ClimbDetailVM's auto-send-on-connect didn't trigger, e.g. the climb
-        // still had no holds, we don't want to hang forever).
-        val sendStarted = withTimeoutOrNull(SEND_START_TIMEOUT_MS) {
-            bleConnection.connectionState.first { it == ConnectionState.SENDING }
-        } != null
-        if (!sendStarted) {
-            // No SENDING signal — ClimbDetailVM didn't fire a send.
-            // Disconnect anyway so we don't strand the user on a connected
-            // board they didn't expect to use long-term.
-            Log.w(TAG, "quickSend: send did not start within ${SEND_START_TIMEOUT_MS}ms — disconnecting anyway")
-            _quickSend.value = QuickSendStatus.Disconnecting
-            bleConnection.disconnect()
-            _quickSend.value = QuickSendStatus.Error(QuickSendStatus.ErrorReason.SendFailed)
-            return
-        }
-        // Wait for SENDING → CONNECTED (success) or → DISCONNECTED (peer
-        // dropped or write threw).
-        val terminal = bleConnection.connectionState.first {
-            it == ConnectionState.CONNECTED || it == ConnectionState.DISCONNECTED
-        }
-        _quickSend.value = QuickSendStatus.Disconnecting
-        bleConnection.disconnect()
-        _quickSend.value = if (terminal == ConnectionState.CONNECTED) {
-            QuickSendStatus.Done
-        } else {
-            QuickSendStatus.Error(QuickSendStatus.ErrorReason.SendFailed)
-        }
-    }
-
-    fun resetQuickSend() {
-        _quickSend.value = QuickSendStatus.Idle
-    }
-
-
-    fun cancelQuickSend() {
-        quickSendJob?.cancel()
-        bleScanner.stopScan()
-        _quickSend.value = QuickSendStatus.Idle
-    }
 
     fun requestDisconnect() {
         climbAdvertiser.advertiseDisconnectRequest()
@@ -506,14 +368,17 @@ class BleConnectionViewModel @Inject constructor(
         // Watch nearby advertising — wait until there are no active climb connections
         // (LastClimb entries are OK — they just mean LEDs still on from a disconnected device).
         autoConnectJob?.cancel()
-        autoConnectJob = viewModelScope.launch {
+        autoConnectJob = viewModelScope.safeLaunch(TAG) {
             nearbyClimbScanner.nearbyClimbs.first { climbs ->
                 climbs.none { !it.isLastClimb } && _state.value.isRequestingDisconnect
             }
-            // Other user disconnected (stopped advertising) — now connect
+            // Other user disconnected (stopped advertising) — now connect.
+            // Prefer the active board's brand over raw discovery order.
             disconnectTimeoutJob?.cancel()
             bleScanner.startScan()
-            val board = bleScanner.discoveredBoards.first { it.isNotEmpty() }.first()
+            val board = preferActiveBrand(
+                bleScanner.discoveredBoards.first { it.isNotEmpty() }
+            ).first()
             bleScanner.stopScan()
             bleConnection.connect(board)
             _state.update { it.copy(
@@ -524,7 +389,7 @@ class BleConnectionViewModel @Inject constructor(
 
         // Timeout: no response after 20s
         disconnectTimeoutJob?.cancel()
-        disconnectTimeoutJob = viewModelScope.launch {
+        disconnectTimeoutJob = viewModelScope.safeLaunch(TAG) {
             delay(20_000L)
             autoConnectJob?.cancel()
             bleScanner.stopScan()
@@ -568,7 +433,7 @@ class BleConnectionViewModel @Inject constructor(
             return
         }
         autoConnectJob?.cancel()
-        autoConnectJob = viewModelScope.launch {
+        autoConnectJob = viewModelScope.safeLaunch(TAG) {
             Log.d(TAG, "startAutoConnectForSession: waiting for board to become vacant")
             nearbyClimbScanner.nearbyClimbs.first { climbs ->
                 val vacant = climbs.none { !it.isLastClimb }
@@ -579,23 +444,28 @@ class BleConnectionViewModel @Inject constructor(
             val currentRole = sessionQueueManager.state.value.role
             if (currentRole == SessionRole.NONE) {
                 Log.d(TAG, "startAutoConnectForSession: role is NONE, aborting")
-                return@launch
+                return@safeLaunch
             }
             if (_state.value.connectionState != ConnectionState.DISCONNECTED) {
                 Log.d(TAG, "startAutoConnectForSession: connected while waiting, aborting")
-                return@launch
+                return@safeLaunch
             }
             Log.d(TAG, "startAutoConnectForSession: board vacant, awaiting GATT close then scanning")
             bleConnection.awaitGattClosed()
             bleScanner.startScan()
-            val board = bleScanner.discoveredBoards.first { it.isNotEmpty() }.first()
+            // Prefer the active board's brand over raw discovery order — the
+            // session projects onto the active board, so grabbing whatever
+            // advertised first could light a different wall.
+            val board = preferActiveBrand(
+                bleScanner.discoveredBoards.first { it.isNotEmpty() }
+            ).first()
             bleScanner.stopScan()
             Log.d(TAG, "startAutoConnectForSession: found board '${board.displayName}', connecting")
             bleConnection.connect(board)
         }
         // Timeout: stop trying after 30s
         disconnectTimeoutJob?.cancel()
-        disconnectTimeoutJob = viewModelScope.launch {
+        disconnectTimeoutJob = viewModelScope.safeLaunch(TAG) {
             delay(30_000L)
             autoConnectJob?.cancel()
             bleScanner.stopScan()

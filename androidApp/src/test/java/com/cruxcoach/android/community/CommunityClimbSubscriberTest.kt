@@ -115,6 +115,31 @@ class CommunityClimbSubscriberTest {
         assertFalse(CommunityClimbValidation.authorOwnershipMatches(authorA, authorB))
     }
 
+    // ----- isWithinClockSkew (cursor-poisoning guard) -----
+
+    @Test
+    fun isWithinClockSkew_accepts_now_and_past_events() {
+        val now = 1_700_000_000L
+        assertTrue(CommunityClimbValidation.isWithinClockSkew(now, now))
+        assertTrue(CommunityClimbValidation.isWithinClockSkew(now - 86_400L, now))
+    }
+
+    @Test
+    fun isWithinClockSkew_accepts_small_future_drift_within_one_hour() {
+        val now = 1_700_000_000L
+        assertTrue(CommunityClimbValidation.isWithinClockSkew(now + 1800L, now))
+        assertTrue(CommunityClimbValidation.isWithinClockSkew(now + 3600L, now))
+    }
+
+    @Test
+    fun isWithinClockSkew_rejects_far_future_event() {
+        // a forged far-future timestamp must not advance the `since` cursor and
+        // permanently disable the subscription.
+        val now = 1_700_000_000L
+        assertFalse(CommunityClimbValidation.isWithinClockSkew(now + 3601L, now))
+        assertFalse(CommunityClimbValidation.isWithinClockSkew(now + 86_400L * 365L, now))
+    }
+
     // ── Skip-matrix bounds ──────────────────────────────────────────────
 
     @Test
@@ -165,5 +190,33 @@ class CommunityClimbSubscriberTest {
         assertTrue(CommunityClimbValidation.isOwnEvent(authorA, authorA))
         assertFalse(CommunityClimbValidation.isOwnEvent(authorA, authorB))
         assertFalse(CommunityClimbValidation.isOwnEvent(authorA, null))
+    }
+
+    // ----- lookbackAdjustedSeed (first-run cursor seed) -----
+
+    @Test
+    fun lookbackAdjustedSeed_subtracts_safety_window_from_manifest_epoch() {
+        // The manifest epoch is written by the Kilter sync only; non-Kilter
+        // chunk crons can lag behind it. The seed must sit one full safety
+        // window earlier so the first REQ re-covers that gap.
+        val manifestEpoch = 1_750_000_000L
+        assertEquals(
+            manifestEpoch - CommunityClimbSubscriber.SEED_SAFETY_LOOKBACK_SEC,
+            CommunityClimbSubscriber.lookbackAdjustedSeed(manifestEpoch),
+        )
+    }
+
+    @Test
+    fun lookbackAdjustedSeed_clamps_at_zero_for_tiny_epochs() {
+        // A bogus near-epoch-zero manifest timestamp must not produce a
+        // negative `since` (relays treat that as malformed / undefined).
+        assertEquals(0L, CommunityClimbSubscriber.lookbackAdjustedSeed(0L))
+        assertEquals(0L, CommunityClimbSubscriber.lookbackAdjustedSeed(60L))
+        assertEquals(
+            0L,
+            CommunityClimbSubscriber.lookbackAdjustedSeed(
+                CommunityClimbSubscriber.SEED_SAFETY_LOOKBACK_SEC,
+            ),
+        )
     }
 }

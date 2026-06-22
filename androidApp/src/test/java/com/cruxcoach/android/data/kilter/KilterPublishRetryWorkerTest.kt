@@ -28,7 +28,8 @@ import kotlin.test.assertTrue
  * Covers:
  *  - early-return when user opted out (publishEnabled = false)
  *  - early-return when no Kilter access token
- *  - early-return when getProductSize returns null (board metadata missing)
+ *  - per-row size resolution from the ROW's own context (not the active pref)
+ *  - unresolvable row size → that row marked failed, batch continues
  *  - empty queue → success, no API calls
  *  - per-row Success → markKilterPublishSynced
  *  - per-row TransientError → markKilterPublishFailed (transient)
@@ -75,6 +76,7 @@ class KilterPublishRetryWorkerTest {
         moveCount = 3L,
         kilterSyncedAt = kilterSyncedAt,
         layoutId = 1L,
+        boardBrand = "kilter",
     )
 
     private fun worker() = KilterPublishRetryWorker(
@@ -97,8 +99,10 @@ class KilterPublishRetryWorkerTest {
         // Sensible defaults: opted-in, has token, has board metadata.
         every { prefs.kilterClimbPublishEnabled } returns MutableStateFlow(true)
         every { prefs.kilterSyncEnabled } returns MutableStateFlow(true)
-        every { prefs.boardProductSizeId } returns MutableStateFlow(1)
         every { tokenStore.getAccessToken() } returns "valid-token"
+        // Per-row size resolution: every row's bbox-pinned source size
+        // resolves to size 1 unless a test overrides it.
+        every { repo.getProductSizeForClimbRender(any()) } returns 1
         every { repo.getProductSize(1) } returns boardSize
         // Placements seed: minimal mapping that covers the placement IDs
         // referenced by [row]'s framesText so encodeClimbConcat returns
@@ -135,12 +139,61 @@ class KilterPublishRetryWorkerTest {
     }
 
     @Test
-    fun returns_retry_when_board_metadata_unavailable() = runTest {
-        every { repo.getClimbsAwaitingKilterRetry(any()) } returns listOf(row("c1"))
-        every { repo.getProductSize(any()) } returns null
+    fun unresolvable_row_size_marks_that_row_failed_and_batch_continues() = runTest {
+        // c1's size can't be resolved (no bounds row + no sizes synced for
+        // its layout) → c1 alone is marked failed (stays queued for the
+        // next tick); c2 still publishes. Pre-fix an unresolvable size
+        // returned Result.retry() and stalled the WHOLE Kilter queue.
+        every { repo.getClimbsAwaitingKilterRetry(any()) } returns listOf(row("c1"), row("c2"))
+        every { repo.getProductSizeForClimbRender("c1") } returns null
+        every { repo.getProductSizesForLayout(any()) } returns emptyList()
+        coEvery {
+            apiClient.publishClimb(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any())
+        } returns KilterPublishResult.Success("c2")
+
         val result = worker().doWork()
-        assertTrue(result is ListenableWorker.Result.Retry,
-            "expected retry until board metadata loads, got $result")
+
+        assertTrue(result is ListenableWorker.Result.Success,
+            "expected success (per-row skip), got $result")
+        coVerify(exactly = 1) {
+            repo.markKilterPublishFailed("c1", match { it.contains("no product size") })
+        }
+        coVerify(exactly = 0) { apiClient.publishClimb(climbUuid = "c1", any(), any(), any(), any(), any(), any(), any(), any(), any(), any()) }
+        coVerify(exactly = 1) {
+            repo.markKilterPublishSynced(uuid = "c2", via = "self", syncedAtEpochSeconds = any())
+        }
+    }
+
+    @Test
+    fun row_size_is_resolved_from_the_climbs_own_context_not_active_pref() = runTest {
+        // A Homewall climb (layout 8) is queued while the active board is
+        // something else entirely. The payload must carry the ROW's own
+        // product size — uuid + edges of the Homewall size — not whatever
+        // the active-board pref points at.
+        val homewallSize = BoardSize(
+            id = 25L, productId = 2L, name = "Homewall 10x12",
+            edgeLeft = 4, edgeRight = 140, edgeBottom = 4, edgeTop = 152,
+            imageFilename = null,
+        )
+        val homewallRow = row("hw1").copy(layoutId = 8L)
+        every { repo.getClimbsAwaitingKilterRetry(any()) } returns listOf(homewallRow)
+        every { repo.getProductSizeForClimbRender("hw1") } returns 25
+        every { repo.getProductSize(25) } returns homewallSize
+        coEvery {
+            apiClient.publishClimb(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any())
+        } returns KilterPublishResult.Success("hw1")
+
+        val result = worker().doWork()
+
+        assertTrue(result is ListenableWorker.Result.Success, "expected success, got $result")
+        coVerify(exactly = 1) {
+            apiClient.publishClimb(
+                climbUuid = "hw1", name = any(), description = any(),
+                framesClimbConcat = any(), productName = any(),
+                productLayoutUuid = "25", angle = any(),
+                edgeLeft = 4, edgeRight = 140, edgeBottom = 4, edgeTop = 152,
+            )
+        }
     }
 
     @Test

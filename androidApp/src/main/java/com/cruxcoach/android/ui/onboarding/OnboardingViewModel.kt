@@ -11,6 +11,7 @@ import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.data.kilter.KilterApiClient
 import com.cruxcoach.android.data.kilter.KilterAuthResult
 import com.cruxcoach.android.data.kilter.KilterImportPreview
+import com.cruxcoach.android.data.kilter.formatKilterImportSummary
 import com.cruxcoach.android.data.kilter.KilterSyncEngine
 import com.cruxcoach.android.data.kilter.KilterTokenStore
 import com.cruxcoach.android.data.kilter.localized
@@ -19,6 +20,7 @@ import com.cruxcoach.android.nostr.backup.BackupInfo
 import com.cruxcoach.android.nostr.backup.BackupPreferences
 import com.cruxcoach.android.nostr.backup.BackupRepository
 import com.cruxcoach.android.nostr.backup.BackupSyncWorker
+import com.cruxcoach.domain.board.BoardBrand
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -26,7 +28,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
+import com.cruxcoach.android.util.safeLaunch
 import javax.inject.Inject
 
 /**
@@ -72,7 +77,10 @@ data class OnboardingState(
     val kilterUsername: String = "",
     val kilterImportPreview: KilterImportPreview? = null,
     val isKilterImporting: Boolean = false,
+    /** Formatted per-object import summary (success) or error message. */
     val kilterImportResult: String? = null,
+    /** True when [kilterImportResult] is an error rather than a summary. */
+    val kilterImportError: Boolean = false,
 
     // FEAT-002: encrypted cloud backup onboarding (Nostr + Blossom internally)
     val hasNostrKey: Boolean = false,
@@ -98,6 +106,11 @@ data class OnboardingState(
     val restoreAwaitingBoardSync: Boolean = false,
     val restoreFailed: Boolean = false,
     val restoreSucceeded: Boolean = false,
+    /** Counts from the completed restore — surfaced in the onboarding success
+     *  line so the user can sanity-check the magnitudes, matching the Settings
+     *  restore snackbar. */
+    val restoredAscents: Int = 0,
+    val restoredLists: Int = 0,
     val noBackupFoundForKey: Boolean = false,
     val showRestartConfirm: Boolean = false,
 
@@ -118,6 +131,13 @@ data class OnboardingState(
     val boardLayoutId: Int = com.cruxcoach.android.data.BoardConstants.KILTER_ORIGINAL_LAYOUT,
     val boardProductSizeId: Int = com.cruxcoach.android.data.BoardConstants.KILTER_DEFAULT_SIZE,
     val boardProductSizeName: String = "",
+    /** Active board family — "kilter" or "moonboard" (FEAT-027). Decides
+     *  which category the unified board picker lands on. */
+    val boardBrand: String = BoardBrand.KILTER.wireValue,
+    /** Selected MoonBoard variant when [boardBrand] == "moonboard". */
+    val moonBoardVariant: com.cruxcoach.domain.board.MoonBoardVariant? = null,
+    val boardSizeFrequency: Map<Int, Long> = emptyMap(),
+    val boardSearchEnabled: Boolean = false,
 )
 
 @HiltViewModel
@@ -131,6 +151,7 @@ class OnboardingViewModel @Inject constructor(
     private val backupPreferences: BackupPreferences,
     private val backupRepository: BackupRepository,
     private val boardSyncManager: com.cruxcoach.android.data.BoardSyncManager,
+    private val boardLocationRepository: com.cruxcoach.data.repository.BoardLocationRepository,
 ) : ViewModel() {
 
     private companion object {
@@ -144,13 +165,55 @@ class OnboardingViewModel @Inject constructor(
     private val _state = MutableStateFlow(
         OnboardingState(hasNostrKey = keyStore.hasKey()),
     )
+
+    init {
+        viewModelScope.safeLaunch("OnboardingViewModel") {
+            val freq = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                boardLocationRepository.productSizeFrequency()
+            }
+            val enabled = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                boardLocationRepository.countWalls() > 0L
+            }
+            _state.update { it.copy(boardSizeFrequency = freq, boardSearchEnabled = enabled) }
+        }
+        // FEAT-031: the shared board picker persists selections from any screen;
+        // mirror the choice into onboarding's state so its board step reflects it.
+        viewModelScope.launch {
+            combine(
+                userPreferences.boardBrand,
+                userPreferences.boardLayoutId,
+                userPreferences.boardProductSizeId,
+            ) { brand, layoutId, sizeId -> Triple(brand, layoutId, sizeId) }
+                .distinctUntilChanged()
+                .collect { (brand, layoutId, sizeId) ->
+                    val variant = com.cruxcoach.domain.board.MoonBoardVariant.fromLayoutId(layoutId.toLong())
+                    val parsed = BoardBrand.fromWire(brand)
+                    val name = when {
+                        parsed == BoardBrand.MOONBOARD -> variant?.displayName ?: ""
+                        parsed.usesAuroraProtocol && parsed != BoardBrand.KILTER -> parsed.displayName
+                        else -> com.cruxcoach.android.data.BoardConstants.sizeLabel(
+                            com.cruxcoach.android.data.BoardConstants.KILTER_KNOWN_SIZES, sizeId,
+                        )
+                    }
+                    _state.update {
+                        it.copy(
+                            boardBrand = brand,
+                            boardLayoutId = layoutId,
+                            boardProductSizeId = sizeId,
+                            moonBoardVariant = variant,
+                            boardProductSizeName = name,
+                        )
+                    }
+                }
+        }
+    }
     val state: StateFlow<OnboardingState> = _state.asStateFlow()
 
     init {
         // Resume the restore flow if the user came back from KeyImportScreen
         // via app-restart. The marker is only set right before that navigation
         // and is cleared after the restore attempt resolves.
-        viewModelScope.launch {
+        viewModelScope.safeLaunch("OnboardingViewModel") {
             if (backupPreferences.isBackupRestoreIntent()) {
                 _state.update {
                     it.copy(
@@ -166,11 +229,11 @@ class OnboardingViewModel @Inject constructor(
         // Seed the board-model fields from the persisted preferences so
         // the user's prior choice survives onboarding restarts (e.g.
         // backup-restore round trip).
-        viewModelScope.launch {
+        viewModelScope.safeLaunch("OnboardingViewModel") {
             val layoutId = userPreferences.boardLayoutId.first()
             val sizeId = userPreferences.boardProductSizeId.first()
-            val name = com.cruxcoach.android.data.BoardConstants.KILTER_KNOWN_SIZES
-                .firstOrNull { it.id.toInt() == sizeId }?.name.orEmpty()
+            val name = com.cruxcoach.android.data.BoardConstants.sizeLabel(
+                com.cruxcoach.android.data.BoardConstants.KILTER_KNOWN_SIZES, sizeId)
             _state.update {
                 it.copy(
                     boardLayoutId = layoutId,
@@ -178,44 +241,6 @@ class OnboardingViewModel @Inject constructor(
                     boardProductSizeName = name,
                 )
             }
-        }
-    }
-
-    /** See SettingsViewModel.updateBoardLayout for the rationale —
-     *  switching the layout also rolls the product_size to a sensible
-     *  default for the new layout, since Original sizes don't exist on
-     *  Homewall and vice-versa. */
-    fun updateBoardLayout(layoutId: Int) {
-        if (_state.value.boardLayoutId == layoutId) return
-        viewModelScope.launch {
-            userPreferences.setBoardLayoutId(layoutId)
-            val targetProductId = when (layoutId) {
-                com.cruxcoach.android.data.BoardConstants.KILTER_HOMEWALL_LAYOUT ->
-                    com.cruxcoach.android.data.BoardConstants.KILTER_HOMEWALL_PRODUCT_ID
-                else -> com.cruxcoach.android.data.BoardConstants.KILTER_PRODUCT_ID
-            }
-            val newSize = com.cruxcoach.android.data.BoardConstants.KILTER_KNOWN_SIZES
-                .firstOrNull { it.productId.toInt() == targetProductId }
-            val newSizeId = newSize?.id?.toInt() ?: when (layoutId) {
-                com.cruxcoach.android.data.BoardConstants.KILTER_HOMEWALL_LAYOUT ->
-                    com.cruxcoach.android.data.BoardConstants.KILTER_HOMEWALL_DEFAULT_SIZE
-                else -> com.cruxcoach.android.data.BoardConstants.KILTER_DEFAULT_SIZE
-            }
-            userPreferences.setBoardProductSizeId(newSizeId)
-            _state.update {
-                it.copy(
-                    boardLayoutId = layoutId,
-                    boardProductSizeId = newSizeId,
-                    boardProductSizeName = newSize?.name.orEmpty(),
-                )
-            }
-        }
-    }
-
-    fun updateBoardProductSize(id: Int, name: String) {
-        viewModelScope.launch {
-            userPreferences.setBoardProductSizeId(id)
-            _state.update { it.copy(boardProductSizeId = id, boardProductSizeName = name) }
         }
     }
 
@@ -317,9 +342,10 @@ class OnboardingViewModel @Inject constructor(
                     it.copy(
                         isKilterImporting = false,
                         kilterImportResult = result.fold(
-                            onSuccess = { count -> "$count" },
+                            onSuccess = { r -> formatKilterImportSummary(appContext, r) },
                             onFailure = { e -> e.message }
                         ),
+                        kilterImportError = result.isFailure,
                         kilterConnected = false // credentials cleared
                     )
                 }
@@ -331,6 +357,7 @@ class OnboardingViewModel @Inject constructor(
                     it.copy(
                         isKilterImporting = false,
                         kilterImportResult = appContext.getString(R.string.kilter_sync_error, ""),
+                        kilterImportError = true,
                     )
                 }
             }
@@ -346,9 +373,10 @@ class OnboardingViewModel @Inject constructor(
                     it.copy(
                         isKilterImporting = false,
                         kilterImportResult = result.fold(
-                            onSuccess = { count -> "$count" },
+                            onSuccess = { r -> formatKilterImportSummary(appContext, r) },
                             onFailure = { e -> e.message }
-                        )
+                        ),
+                        kilterImportError = result.isFailure
                     )
                 }
             } catch (e: kotlinx.coroutines.CancellationException) {
@@ -359,6 +387,7 @@ class OnboardingViewModel @Inject constructor(
                     it.copy(
                         isKilterImporting = false,
                         kilterImportResult = appContext.getString(R.string.kilter_sync_error, ""),
+                        kilterImportError = true,
                     )
                 }
             }
@@ -482,7 +511,8 @@ class OnboardingViewModel @Inject constructor(
         viewModelScope.launch {
             val result = runCatching { backupRepository.restore(info) }
             boardSyncWatcher.cancel()
-            if (result.isSuccess) {
+            val imported = result.getOrNull()
+            if (imported != null) {
                 backupPreferences.setBackupEnabled(true)
                 backupPreferences.setBackupRestoreIntent(false)
                 _state.update {
@@ -491,6 +521,8 @@ class OnboardingViewModel @Inject constructor(
                         restoreAwaitingBoardSync = false,
                         pendingRestore = null,
                         restoreSucceeded = true,
+                        restoredAscents = imported.boardAscents,
+                        restoredLists = imported.climbLists,
                         backupOptIn = true,
                         backupChoice = BackupChoice.RESTORE,
                     )
@@ -569,8 +601,13 @@ class OnboardingViewModel @Inject constructor(
                 // `isBoardProductSizeDefault`) would re-prompt the model
                 // dialog right after the first board sync — duplicating
                 // the choice the user just made in the BOARD_SETUP step.
-                userPreferences.setBoardLayoutId(s.boardLayoutId)
-                userPreferences.setBoardProductSizeId(s.boardProductSizeId)
+                if (BoardBrand.fromWire(s.boardBrand) == BoardBrand.MOONBOARD) {
+                    userPreferences.setMoonBoardSelection(s.boardLayoutId)
+                } else {
+                    userPreferences.setBoardLayoutId(s.boardLayoutId)
+                    userPreferences.setBoardProductSizeId(s.boardProductSizeId)
+                    userPreferences.setBoardBrand(BoardBrand.KILTER.wireValue)
+                }
                 userPreferences.setOnboardingCompleted(true)
                 // Suppress the "what's new" dialog for features the user
                 // already chose during onboarding — they would otherwise

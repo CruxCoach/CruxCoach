@@ -1,6 +1,7 @@
 package com.cruxcoach.android.data
 
 import android.content.Context
+import androidx.datastore.core.DataMigration
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
@@ -12,13 +13,51 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.cruxcoach.android.notification.AnnouncementTagParser
 import com.cruxcoach.android.nostr.SignerMode
+import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.HoldRole
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
-val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "cruxcoach_prefs")
+val Context.dataStore: DataStore<Preferences> by preferencesDataStore(
+    name = "cruxcoach_prefs",
+    produceMigrations = { listOf(boardGradeScaleMigrationV1) },
+)
+
+/**
+ * One-time remap of the persisted board-filter grade bounds after the unified
+ * grade scale gained its two missing low Font grades — 4a (new index 0) and 5a
+ * (new index 3). Every stored index shifts up: +1 for the 4a insert, and +1
+ * more once at/above the old 5b position for the 5a insert. Gated by
+ * [PreferenceKeys.BOARD_GRADE_SCALE_VERSION] so it runs exactly once.
+ *
+ * Only these two ints need touching — profile grades are persisted as Font
+ * strings and re-derive their index via [com.cruxcoach.util.GradeConverter.gradeToIndex],
+ * which is stable across the reindex.
+ */
+private val boardGradeScaleMigrationV1 = object : DataMigration<Preferences> {
+    override suspend fun shouldMigrate(currentData: Preferences): Boolean =
+        (currentData[PreferenceKeys.BOARD_GRADE_SCALE_VERSION] ?: 0) < 1
+
+    override suspend fun migrate(currentData: Preferences): Preferences {
+        val prefs = currentData.toMutablePreferences()
+        currentData[PreferenceKeys.BOARD_MIN_GRADE]?.let {
+            prefs[PreferenceKeys.BOARD_MIN_GRADE] = remapOldGradeIndexToV1(it)
+        }
+        currentData[PreferenceKeys.BOARD_MAX_GRADE]?.let {
+            prefs[PreferenceKeys.BOARD_MAX_GRADE] = remapOldGradeIndexToV1(it)
+        }
+        prefs[PreferenceKeys.BOARD_GRADE_SCALE_VERSION] = 1
+        return prefs
+    }
+
+    override suspend fun cleanUp() {}
+}
+
+/** Old unified index (0..22, floor 4b) → new unified index (0..24, floor 4a). */
+internal fun remapOldGradeIndexToV1(old: Int): Int =
+    (old + if (old >= 2) 2 else 1).coerceIn(0, 24)
 
 /**
  * Per-key DataStore keys — preferences that belong to a specific Nostr identity.
@@ -81,6 +120,13 @@ enum class SyncInterval(@androidx.annotation.StringRes val labelRes: Int) {
     MANUAL(com.cruxcoach.android.R.string.sync_interval_manual),
 }
 
+enum class HistoryRetention(val days: Int) {
+    OFF(0),
+    DAYS_30(30),
+    DAYS_90(90),
+    DAYS_365(365),
+}
+
 enum class DarkModeSetting(val label: String) {
     SYSTEM("System"),
     LIGHT("Hell"),
@@ -98,13 +144,14 @@ data class LedHoldColors(
     val foot: Int = CRUXCOACH_FOOT
 ) {
     companion object {
-        // CruxCoach "Royal" preset (default). Byte values must exist in
-        // RGB332_PALETTE so the settings row shows a named color instead
-        // of "Benutzerdefiniert" / "Custom".
-        const val CRUXCOACH_START: Int = 0xEC   // CruxCoach Orange (FF6D00)
+        // CruxCoach standard preset (default): start=magenta,
+        // hand=blue, top/finish=green, foot=red. Byte values must
+        // exist in RGB332_PALETTE so the settings row shows a named
+        // color instead of "Benutzerdefiniert" / "Custom".
+        const val CRUXCOACH_START: Int = 0xE3    // Magenta (FF00FF)
         const val CRUXCOACH_HAND: Int = 0x03     // Blue (0000FF)
-        const val CRUXCOACH_FINISH: Int = 0xE3   // Magenta (FF00FF)
-        const val CRUXCOACH_FOOT: Int = 0x1E     // Mint Green (00FFAA)
+        const val CRUXCOACH_FINISH: Int = 0x1C   // Green (00FF00)
+        const val CRUXCOACH_FOOT: Int = 0xE0     // Red (FF0000)
 
         // Official Kilter Board preset (from placement_roles.led_color DB)
         const val KILTER_START: Int = 0x1C   // Green (00FF00)
@@ -118,6 +165,61 @@ data class LedHoldColors(
             finish = KILTER_FINISH,
             foot = KILTER_FOOT
         )
+
+        // Aurora family (Tension/Grasshopper/Decoy/Touchstone): the shared
+        // non-Kilter Aurora scheme — start green, hands blue, finish red, feet
+        // magenta (per the boards' placement_roles.led_color / BoardSesh
+        // hold-state palette). So iLL differs — see SOILL_* below.
+        const val AURORA_START: Int = 0x1C   // Green (00FF00)
+        const val AURORA_HAND: Int = 0x03    // Blue (0000FF)
+        const val AURORA_FINISH: Int = 0xE0  // Red (FF0000)
+        const val AURORA_FOOT: Int = 0xE3    // Magenta (FF00FF)
+
+        // So iLL ships a distinct placement_roles palette (RE-verified): start
+        // green (== AURORA_START), middle magenta, finish WHITE, foot cyan —
+        // three of four differ from the shared Aurora scheme, so it gets its own
+        // fallback used until its synced placement_roles override it.
+        const val SOILL_HAND: Int = 0xE3     // Magenta (FF00FF)
+        const val SOILL_FINISH: Int = 0xFF   // White (FFFFFF)
+        const val SOILL_FOOT: Int = 0x1F     // Cyan (00FFFF)
+
+        /**
+         * The conventional LED colours for a board family (FEAT-031): each
+         * board lights in its own usual scheme rather than Kilter's. Kilter
+         * stays USER-configurable (callers should prefer the user's
+         * [ledHoldColors] for Kilter); the Aurora family + MoonBoard use their
+         * standard palettes. The authoritative per-board source is the
+         * catalogue's placement_roles.led_color — once that is synced per board
+         * it should override these conventional defaults.
+         */
+        fun standardFor(brand: BoardBrand): LedHoldColors = when (brand) {
+            BoardBrand.KILTER -> kilterStandard()
+            BoardBrand.TENSION, BoardBrand.GRASSHOPPER, BoardBrand.DECOY,
+            BoardBrand.TOUCHSTONE ->
+                LedHoldColors(AURORA_START, AURORA_HAND, AURORA_FINISH, AURORA_FOOT)
+            BoardBrand.SOILL ->
+                LedHoldColors(start = AURORA_START, hand = SOILL_HAND, finish = SOILL_FINISH, foot = SOILL_FOOT)
+            // MoonBoard's classic 3-colour scheme (green start, blue hands,
+            // red top); no distinct foot role, so feet reuse the hand colour.
+            BoardBrand.MOONBOARD ->
+                LedHoldColors(start = 0x1C, hand = 0x03, finish = 0xE0, foot = 0x03)
+            else -> LedHoldColors()
+        }
+
+        // Previously-shipped CruxCoach DEFAULT presets, by release:
+        //   v0.1.0–0.1.1: start=Orange, hand=Blue, finish=Magenta, foot=Teal (0x1D)
+        //   v0.1.2–0.1.4: same, but foot=Mint Green (0x1E) — the named-palette fix
+        // The current default (the CRUXCOACH_* constants above) replaced these
+        // in 0.2.0. Used solely by the one-time default-color migration
+        // (UserPreferences.migrateLegacyLedDefaultsIfNeeded) to recognise a
+        // user sitting on an OLD default preset — as opposed to a deliberate
+        // custom choice or the Kilter preset — and move them onto the new
+        // default. All three sets are mutually disjoint, so an exact full-tuple
+        // match can't false-positive on a customiser or a Kilter-preset user.
+        val LEGACY_CRUXCOACH_DEFAULTS: List<LedHoldColors> = listOf(
+            LedHoldColors(start = 0xEC, hand = 0x03, finish = 0xE3, foot = 0x1D),
+            LedHoldColors(start = 0xEC, hand = 0x03, finish = 0xE3, foot = 0x1E),
+        )
     }
     fun toRoleColorMap(): Map<Int, Int> = mapOf(
         HoldRole.START to start,
@@ -127,10 +229,15 @@ data class LedHoldColors(
         HoldRole.ROUTE_START to start,
         HoldRole.ROUTE_HAND to hand,
         HoldRole.ROUTE_FINISH to finish,
-        HoldRole.ROUTE_FOOT to foot
+        HoldRole.ROUTE_FOOT to foot,
+        // Aurora-family role codes (Tension/Grasshopper/Decoy/So iLL/Touchstone:
+        // 1=start, 2=middle/hand, 3=finish, 4=foot). Included so this
+        // placement_roles-absent fallback map colours Aurora holds directly
+        // instead of missing every key and dropping to the Kilter palette.
+        1 to start, 2 to hand, 3 to finish, 4 to foot,
     )
 
-    fun colorForRole(roleId: Int): Int = when (HoldRole.normalize(roleId)) {
+    fun colorForRole(roleId: Int): Int = when (HoldRole.roleClass(roleId)) {
         HoldRole.START -> start
         HoldRole.HAND -> hand
         HoldRole.FINISH -> finish
@@ -143,13 +250,21 @@ data class LedHoldColors(
 object PreferenceKeys {
     val BOARD_PRODUCT_SIZE_ID = intPreferencesKey("board_product_size_id")
     val BOARD_LAYOUT_ID = intPreferencesKey("board_layout_id")
+    /** Active board brand — "kilter" | "moonboard" (FEAT-027). */
+    val BOARD_BRAND = stringPreferencesKey("board_brand")
     val SYNC_INTERVAL = stringPreferencesKey("sync_interval")
+    val CLIMB_HISTORY_RETENTION_DAYS = intPreferencesKey("climb_history_retention_days")
     val LAST_SYNC_TIMESTAMP = stringPreferencesKey("last_sync_timestamp")
     val GRADE_SCALE = stringPreferencesKey("grade_scale")
     val LED_COLOR_START = intPreferencesKey("led_color_start")
     val LED_COLOR_HAND = intPreferencesKey("led_color_hand")
     val LED_COLOR_FINISH = intPreferencesKey("led_color_finish")
     val LED_COLOR_FOOT = intPreferencesKey("led_color_foot")
+    // One-time guard for the 0.2.0 LED default-color migration
+    // (migrateLegacyLedDefaultsIfNeeded). Set once on the first 0.2.0 launch
+    // so a later user who deliberately recreates an old default tuple is not
+    // disturbed. Never read by UI.
+    val LED_DEFAULTS_MIGRATED = booleanPreferencesKey("led_defaults_migrated_v020")
     val BLE_AUTO_DISCONNECT_MINUTES = intPreferencesKey("ble_auto_disconnect_minutes")
     // Seconds-precision successor to BLE_AUTO_DISCONNECT_MINUTES. Read
     // by bleAutoDisconnectSeconds, which transparently migrates the
@@ -158,6 +273,9 @@ object PreferenceKeys {
     val BOARD_ANGLE = intPreferencesKey("board_angle")
     val BOARD_MIN_GRADE = intPreferencesKey("board_min_grade")
     val BOARD_MAX_GRADE = intPreferencesKey("board_max_grade")
+    // Schema version for the board-filter grade indices. Bumped to 1 when the
+    // unified scale gained 4a + 5a (see boardGradeScaleMigrationV1).
+    val BOARD_GRADE_SCALE_VERSION = intPreferencesKey("board_grade_scale_version")
     val BOARD_MIN_ASCENSIONISTS = intPreferencesKey("board_min_ascensionists")
     val BOARD_SORT_FIELD = stringPreferencesKey("board_sort_field")
     val BOARD_SORT_DIRECTION = stringPreferencesKey("board_sort_direction")
@@ -166,6 +284,9 @@ object PreferenceKeys {
     val BOARD_BENCHMARK_ONLY = booleanPreferencesKey("board_benchmark_only")
     val BOARD_ORIGIN_FILTER = stringPreferencesKey("board_origin_filter")
     val BOARD_MY_CLIMBS_ONLY = booleanPreferencesKey("board_my_climbs_only")
+    // "Nur unbewertete (Projekte)" browse mode — list shows ONLY ungraded
+    // climbs while set; persisted like every other browse filter.
+    val BOARD_UNGRADED_ONLY = booleanPreferencesKey("board_ungraded_only")
     val ROUTE_FRAME_SPEED = floatPreferencesKey("route_frame_speed_f")
     // Auto-Note: when true, publishing a Kind-30078 climb also sends a
     // public Kind-1 note linking to it. Default false; the editor exposes
@@ -181,13 +302,6 @@ object PreferenceKeys {
     val ALLOW_REMOTE_DISCONNECT = booleanPreferencesKey("allow_remote_disconnect")
     val EASTER_ANIMATIONS_UNLOCKED = booleanPreferencesKey("easter_animations_unlocked")
     val KEEP_SCREEN_ON = booleanPreferencesKey("keep_screen_on")
-    /**
-     * Quick-Send-Mode: when true, tapping the BLE icon in the climb-detail
-     * screen runs a one-shot macro (scan → auto-connect-if-single → send →
-     * disconnect) instead of opening the connection sheet. Default off so
-     * upgraders see no behavior change until they opt in via Settings.
-     */
-    val QUICK_BOARD_SEND = booleanPreferencesKey("quick_board_send")
     val DARK_MODE = stringPreferencesKey("dark_mode")
     val SESSION_DISPLAY_NAME = stringPreferencesKey("session_display_name")
     val LAST_CLIMB_UUID = stringPreferencesKey("last_climb_uuid")
@@ -205,6 +319,27 @@ object PreferenceKeys {
     // FEAT-001: NIP-65 relay discovery
     val NIP65_DISCOVERY_ENABLED = booleanPreferencesKey("nip65_discovery_enabled")
     val NIP65_RESOLVED_RELAYS = stringPreferencesKey("nip65_resolved_relays")
+
+    // FEAT-006: Map filter chips
+    // Replaces the older PUBLIC_ONLY filter — StoreRocket's "access"
+    // metadata was unreliable (commercial gyms mis-flagged as private).
+    // Layout-based filter is sourced from hangtime/PowerSync and trustworthy.
+    val MAP_FILTER_SHOW_ORIGINAL = booleanPreferencesKey("map_filter_show_original")
+    val MAP_FILTER_SHOW_HOMEWALLS = booleanPreferencesKey("map_filter_show_homewalls")
+    val MAP_FILTER_MATCHES_MY_BOARD = booleanPreferencesKey("map_filter_matches_my_board")
+
+    // Multi-select set filters — empty value (or unset key) means "no
+    // filter on this dimension". Stored as comma-separated strings so
+    // we don't need a Proto DataStore migration. Sets are typically
+    // small (a few countries / size labels) so CSV is fine.
+    val MAP_FILTER_COUNTRIES = stringPreferencesKey("map_filter_countries")
+    val MAP_FILTER_ACCESS_TYPES = stringPreferencesKey("map_filter_access_types")
+    val MAP_FILTER_ADJUSTABILITIES = stringPreferencesKey("map_filter_adjustabilities")
+    val MAP_FILTER_SIZE_IDS = stringPreferencesKey("map_filter_size_ids")
+    // Board family filter (BoardBrand.wireValue CSV). Empty = all brands.
+    val MAP_FILTER_BRANDS = stringPreferencesKey("map_filter_brands")
+    // egym-Wellpass-only filter (FEAT-015 Phase 2). Off = no Wellpass gate.
+    val MAP_FILTER_WELLPASS_ONLY = booleanPreferencesKey("map_filter_wellpass_only")
 }
 
 /**
@@ -225,6 +360,11 @@ data class BoardFilterSnapshot(
     val benchmarkOnly: Boolean,
     val originFilter: String,
     val myClimbsOnly: Boolean,
+    /** Ungraded-only ("Projekte") browse mode. Defaults to false so fresh
+     *  installs and pre-existing prefs open on the normal catalogue view. */
+    val ungradedOnly: Boolean = false,
+    /** Active board brand — "kilter" | "moonboard" (FEAT-027). */
+    val boardBrand: String = "kilter",
 )
 
 class UserPreferences(
@@ -238,8 +378,9 @@ class UserPreferences(
         return BoardFilterSnapshot(
             angle = prefs[PreferenceKeys.BOARD_ANGLE] ?: 40,
             layoutId = prefs[PreferenceKeys.BOARD_LAYOUT_ID] ?: BoardConstants.KILTER_ORIGINAL_LAYOUT,
-            minGrade = prefs[PreferenceKeys.BOARD_MIN_GRADE] ?: 0,
-            maxGrade = prefs[PreferenceKeys.BOARD_MAX_GRADE] ?: 14,
+            boardBrand = prefs[PreferenceKeys.BOARD_BRAND] ?: "kilter",
+            minGrade = prefs[PreferenceKeys.BOARD_MIN_GRADE] ?: 0,   // 0 = 4a (floor)
+            maxGrade = prefs[PreferenceKeys.BOARD_MAX_GRADE] ?: 16,  // 16 = 7c
             minAscensionists = prefs[PreferenceKeys.BOARD_MIN_ASCENSIONISTS] ?: 0,
             gradeScale = try { GradeScale.valueOf(prefs[PreferenceKeys.GRADE_SCALE] ?: GradeScale.FRENCH.name) } catch (_: IllegalArgumentException) { GradeScale.FRENCH },
             sortField = prefs[PreferenceKeys.BOARD_SORT_FIELD] ?: "ASCENSIONISTS",
@@ -249,6 +390,7 @@ class UserPreferences(
             benchmarkOnly = prefs[PreferenceKeys.BOARD_BENCHMARK_ONLY] ?: false,
             originFilter = prefs[PreferenceKeys.BOARD_ORIGIN_FILTER] ?: "ALL",
             myClimbsOnly = prefs[PreferenceKeys.BOARD_MY_CLIMBS_ONLY] ?: false,
+            ungradedOnly = prefs[PreferenceKeys.BOARD_UNGRADED_ONLY] ?: false,
         )
     }
 
@@ -265,9 +407,23 @@ class UserPreferences(
         prefs[PreferenceKeys.BOARD_LAYOUT_ID] ?: BoardConstants.KILTER_ORIGINAL_LAYOUT
     }
 
+    /**
+     * Active board brand — "kilter" | "moonboard" (FEAT-027). Defaults to
+     * "kilter": pre-0.2.0 installs have no MoonBoard concept and must keep
+     * behaving exactly as before.
+     */
+    val boardBrand: Flow<String> = dataStore.data.map { prefs ->
+        prefs[PreferenceKeys.BOARD_BRAND] ?: "kilter"
+    }
+
     val syncInterval: Flow<SyncInterval> = dataStore.data.map { prefs ->
         val value = prefs[PreferenceKeys.SYNC_INTERVAL] ?: SyncInterval.MANUAL.name
         try { SyncInterval.valueOf(value) } catch (_: IllegalArgumentException) { SyncInterval.MANUAL }
+    }
+
+    val historyRetention: Flow<HistoryRetention> = dataStore.data.map { prefs ->
+        val days = prefs[PreferenceKeys.CLIMB_HISTORY_RETENTION_DAYS] ?: HistoryRetention.DAYS_30.days
+        HistoryRetention.entries.firstOrNull { it.days == days } ?: HistoryRetention.DAYS_30
     }
 
     val lastSyncTimestamp: Flow<String?> = dataStore.data.map { prefs ->
@@ -291,9 +447,212 @@ class UserPreferences(
         }
     }
 
+    /** Mark the active board brand. The Kilter branch of the board picker
+     *  uses this directly; the MoonBoard branch uses [setMoonBoardSelection]. */
+    suspend fun setBoardBrand(brand: String) {
+        dataStore.edit { prefs -> prefs[PreferenceKeys.BOARD_BRAND] = brand }
+    }
+
+    /**
+     * Atomically select a MoonBoard variant as the active board: writes the
+     * variant's [layoutId], marks the brand "moonboard", and pins the browse
+     * angle to 40° — valid for every v0.2.0 MoonBoard variant — so the
+     * browser shows climbs immediately.
+     */
+    suspend fun setMoonBoardSelection(layoutId: Int) {
+        dataStore.edit { prefs ->
+            prefs[PreferenceKeys.BOARD_LAYOUT_ID] = layoutId
+            prefs[PreferenceKeys.BOARD_BRAND] = "moonboard"
+            prefs[PreferenceKeys.BOARD_ANGLE] = 40
+        }
+    }
+
+    /**
+     * Atomically set the active board's brand + layout + product size in a
+     * single DataStore edit. The board-flow collectors combine these three
+     * keys with `distinctUntilChanged`, so writing them separately can emit a
+     * transient (new brand, stale layout) tuple that fires a query against a
+     * mismatched (brand, layout) pair before it settles. Used by the Kilter
+     * and Aurora picker paths (FEAT-031) — mirrors [setMoonBoardSelection]'s
+     * one-edit atomicity.
+     */
+    suspend fun setBoardSelection(brand: String, layoutId: Int, productSizeId: Int? = null, angle: Int? = null) {
+        dataStore.edit { prefs ->
+            prefs[PreferenceKeys.BOARD_BRAND] = brand
+            prefs[PreferenceKeys.BOARD_LAYOUT_ID] = layoutId
+            // Null size = "keep the current product size" (the map browse path
+            // has a layout but not always a size); still one atomic edit.
+            if (productSizeId != null) prefs[PreferenceKeys.BOARD_PRODUCT_SIZE_ID] = productSizeId
+            // Non-null angle = a FIXED-angle wall reported by the gym pick → seed
+            // the browse angle to the wall's real angle instead of the generic
+            // 40° default. Adjustable walls pass null (angle stays the user's
+            // per-session choice). Written in the same atomic edit.
+            if (angle != null) prefs[PreferenceKeys.BOARD_ANGLE] = angle
+        }
+    }
+
+    // FEAT-006: Map filter chips. Default shows commercial gyms (Original
+    // layout) only — the "where can I go climb?" use case. Private
+    // homewall installations (~5% of dataset, layout_id=8) are off by
+    // default but can be opted in. Both flags can be toggled
+    // independently — turning both off intentionally yields an empty
+    // map (the user gets a visible "0 of 1080" footer to recover).
+    val mapFilterShowOriginal: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[PreferenceKeys.MAP_FILTER_SHOW_ORIGINAL] ?: true
+    }
+
+    val mapFilterShowHomewalls: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[PreferenceKeys.MAP_FILTER_SHOW_HOMEWALLS] ?: false
+    }
+
+    val mapFilterMatchesMyBoard: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[PreferenceKeys.MAP_FILTER_MATCHES_MY_BOARD] ?: false
+    }
+
+    suspend fun setMapFilterShowOriginal(enabled: Boolean) {
+        dataStore.edit { prefs ->
+            prefs[PreferenceKeys.MAP_FILTER_SHOW_ORIGINAL] = enabled
+        }
+    }
+
+    suspend fun setMapFilterShowHomewalls(enabled: Boolean) {
+        dataStore.edit { prefs ->
+            prefs[PreferenceKeys.MAP_FILTER_SHOW_HOMEWALLS] = enabled
+        }
+    }
+
+    private fun parseCsvSet(value: String?): Set<String> =
+        value?.split(',')?.mapNotNull { it.trim().takeIf(String::isNotEmpty) }?.toSet() ?: emptySet()
+
+    val mapFilterCountries: Flow<Set<String>> = dataStore.data.map { prefs ->
+        parseCsvSet(prefs[PreferenceKeys.MAP_FILTER_COUNTRIES])
+    }
+
+    val mapFilterAccessTypes: Flow<Set<String>> = dataStore.data.map { prefs ->
+        parseCsvSet(prefs[PreferenceKeys.MAP_FILTER_ACCESS_TYPES])
+    }
+
+    val mapFilterAdjustabilities: Flow<Set<String>> = dataStore.data.map { prefs ->
+        parseCsvSet(prefs[PreferenceKeys.MAP_FILTER_ADJUSTABILITIES])
+    }
+
+    /** Stored as CSV of integers; parsed to Set<Int>. */
+    val mapFilterSizeIds: Flow<Set<Int>> = dataStore.data.map { prefs ->
+        parseCsvSet(prefs[PreferenceKeys.MAP_FILTER_SIZE_IDS])
+            .mapNotNull { it.toIntOrNull() }
+            .toSet()
+    }
+
+    /** Board-family filter as BoardBrand wire values (e.g. "kilter",
+     *  "moonboard"). Empty = show all brands. */
+    val mapFilterBrands: Flow<Set<String>> = dataStore.data.map { prefs ->
+        parseCsvSet(prefs[PreferenceKeys.MAP_FILTER_BRANDS])
+    }
+
+    /** egym-Wellpass-only filter. Off (false) = no Wellpass gate. */
+    val mapFilterWellpassOnly: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[PreferenceKeys.MAP_FILTER_WELLPASS_ONLY] ?: false
+    }
+
+    suspend fun setMapFilterCountries(values: Set<String>) {
+        dataStore.edit { it[PreferenceKeys.MAP_FILTER_COUNTRIES] = values.joinToString(",") }
+    }
+
+    suspend fun setMapFilterAccessTypes(values: Set<String>) {
+        dataStore.edit { it[PreferenceKeys.MAP_FILTER_ACCESS_TYPES] = values.joinToString(",") }
+    }
+
+    suspend fun setMapFilterAdjustabilities(values: Set<String>) {
+        dataStore.edit { it[PreferenceKeys.MAP_FILTER_ADJUSTABILITIES] = values.joinToString(",") }
+    }
+
+    suspend fun setMapFilterSizeIds(values: Set<Int>) {
+        dataStore.edit { it[PreferenceKeys.MAP_FILTER_SIZE_IDS] = values.joinToString(",") }
+    }
+
+    suspend fun setMapFilterBrands(values: Set<String>) {
+        dataStore.edit { it[PreferenceKeys.MAP_FILTER_BRANDS] = values.joinToString(",") }
+    }
+
+    suspend fun setMapFilterWellpassOnly(enabled: Boolean) {
+        dataStore.edit { it[PreferenceKeys.MAP_FILTER_WELLPASS_ONLY] = enabled }
+    }
+
+    /**
+     * Atomically toggle [value] in the CSV string-set under [key]: the read,
+     * modify, and write all happen inside one `dataStore.edit {}` transaction.
+     * The previous read-then-set pattern in the ViewModel could lose an
+     * update when two rapid taps both read the same pre-write snapshot and the
+     * second `set` overwrote the first. Mirrors the atomic compare-and-write
+     * precedent in `advanceNostrSyncCursor`.
+     */
+    private suspend fun toggleCsvSetMember(
+        key: androidx.datastore.preferences.core.Preferences.Key<String>,
+        value: String,
+    ) {
+        dataStore.edit { prefs ->
+            val current = parseCsvSet(prefs[key])
+            val next = if (value in current) current - value else current + value
+            prefs[key] = next.joinToString(",")
+        }
+    }
+
+    suspend fun toggleMapFilterCountry(code: String) =
+        toggleCsvSetMember(PreferenceKeys.MAP_FILTER_COUNTRIES, code)
+
+    suspend fun toggleMapFilterAccessType(key: String) =
+        toggleCsvSetMember(PreferenceKeys.MAP_FILTER_ACCESS_TYPES, key)
+
+    suspend fun toggleMapFilterAdjustability(key: String) =
+        toggleCsvSetMember(PreferenceKeys.MAP_FILTER_ADJUSTABILITIES, key)
+
+    suspend fun toggleMapFilterSizeId(sizeId: Int) =
+        toggleCsvSetMember(PreferenceKeys.MAP_FILTER_SIZE_IDS, sizeId.toString())
+
+    suspend fun toggleMapFilterBrand(key: String) =
+        toggleCsvSetMember(PreferenceKeys.MAP_FILTER_BRANDS, key)
+
+    /** Atomically toggle a whole group of members in the brand CSV set in one
+     *  transaction — the "other boards" chip toggles all info-layer brands at
+     *  once. Adds the group when not all present, otherwise removes it. */
+    suspend fun toggleMapFilterBrandGroup(keys: Set<String>) {
+        dataStore.edit { prefs ->
+            val current = parseCsvSet(prefs[PreferenceKeys.MAP_FILTER_BRANDS])
+            val next = if (keys.all { it in current }) current - keys else current + keys
+            prefs[PreferenceKeys.MAP_FILTER_BRANDS] = next.joinToString(",")
+        }
+    }
+
+    /** Reset every map-side filter to its empty/default state in one transaction. */
+    suspend fun resetMapFilters() {
+        dataStore.edit { prefs ->
+            prefs.remove(PreferenceKeys.MAP_FILTER_SHOW_ORIGINAL)
+            prefs.remove(PreferenceKeys.MAP_FILTER_SHOW_HOMEWALLS)
+            prefs.remove(PreferenceKeys.MAP_FILTER_MATCHES_MY_BOARD)
+            prefs.remove(PreferenceKeys.MAP_FILTER_COUNTRIES)
+            prefs.remove(PreferenceKeys.MAP_FILTER_ACCESS_TYPES)
+            prefs.remove(PreferenceKeys.MAP_FILTER_ADJUSTABILITIES)
+            prefs.remove(PreferenceKeys.MAP_FILTER_SIZE_IDS)
+            prefs.remove(PreferenceKeys.MAP_FILTER_BRANDS)
+            prefs.remove(PreferenceKeys.MAP_FILTER_WELLPASS_ONLY)
+        }
+    }
+
+    suspend fun setMapFilterMatchesMyBoard(enabled: Boolean) {
+        dataStore.edit { prefs ->
+            prefs[PreferenceKeys.MAP_FILTER_MATCHES_MY_BOARD] = enabled
+        }
+    }
+
     suspend fun setSyncInterval(interval: SyncInterval) {
         dataStore.edit { prefs ->
             prefs[PreferenceKeys.SYNC_INTERVAL] = interval.name
+        }
+    }
+
+    suspend fun setHistoryRetention(value: HistoryRetention) {
+        dataStore.edit { prefs ->
+            prefs[PreferenceKeys.CLIMB_HISTORY_RETENTION_DAYS] = value.days
         }
     }
 
@@ -321,12 +680,12 @@ class UserPreferences(
 
     /**
      * Whether to push newly created CruxCoach climbs into the official
-     * Kilter database. Default `true` — the design goal is that every
-     * CruxCoach-set climb also lives on Kilter (via the user's account
-     * if logged in, or via the bundled fallback if enabled).
+     * Kilter database via the user's own account. Default `false` (opt-in):
+     * climbs you create stay local unless you explicitly turn this on in
+     * Settings, so nothing is written to Kilter without consent.
      */
     val kilterClimbPublishEnabled: Flow<Boolean> = keyScoped.data.map { prefs ->
-        prefs[KeyScopedKeys.KILTER_CLIMB_PUBLISH_ENABLED] ?: true
+        prefs[KeyScopedKeys.KILTER_CLIMB_PUBLISH_ENABLED] ?: false
     }
 
     suspend fun setKilterSyncEnabled(enabled: Boolean) {
@@ -454,10 +813,51 @@ class UserPreferences(
         }
     }
 
+    /**
+     * One-time 0.2.0 migration: move users sitting on a *previous* CruxCoach
+     * default LED preset onto the current default, without disturbing custom
+     * colors or the Kilter preset.
+     *
+     * The current default is never persisted — a fresh install, a never-
+     * customised user, and anyone who tapped "reset" all have null LED keys
+     * and therefore already render the current [LedHoldColors.CRUXCOACH_*]
+     * colors via the [ledHoldColors] fallback. The only way the four keys can
+     * be *present and equal an old default* is a user who explicitly set them
+     * (e.g. manually dialled the old default back in). For exactly that case
+     * we remove the four keys so the row rejoins the null-fallback on the
+     * current default — matching every other "I'm on the default" user.
+     *
+     * Acts only on an exact full-tuple match against
+     * [LedHoldColors.LEGACY_CRUXCOACH_DEFAULTS]; partial sets, genuine custom
+     * colors, and the Kilter preset are left untouched (all disjoint from the
+     * legacy tuples). Guarded by [PreferenceKeys.LED_DEFAULTS_MIGRATED] so it
+     * runs exactly once — a post-0.2.0 user who deliberately recreates an old
+     * tuple keeps it. Idempotent and safe to call on every cold start.
+     */
+    suspend fun migrateLegacyLedDefaultsIfNeeded() {
+        dataStore.edit { prefs ->
+            if (prefs[PreferenceKeys.LED_DEFAULTS_MIGRATED] == true) return@edit
+            val start = prefs[PreferenceKeys.LED_COLOR_START]
+            val hand = prefs[PreferenceKeys.LED_COLOR_HAND]
+            val finish = prefs[PreferenceKeys.LED_COLOR_FINISH]
+            val foot = prefs[PreferenceKeys.LED_COLOR_FOOT]
+            if (start != null && hand != null && finish != null && foot != null) {
+                val stored = LedHoldColors(start = start, hand = hand, finish = finish, foot = foot)
+                if (stored in LedHoldColors.LEGACY_CRUXCOACH_DEFAULTS) {
+                    prefs.remove(PreferenceKeys.LED_COLOR_START)
+                    prefs.remove(PreferenceKeys.LED_COLOR_HAND)
+                    prefs.remove(PreferenceKeys.LED_COLOR_FINISH)
+                    prefs.remove(PreferenceKeys.LED_COLOR_FOOT)
+                }
+            }
+            prefs[PreferenceKeys.LED_DEFAULTS_MIGRATED] = true
+        }
+    }
+
     // Board browser filter persistence
     val boardAngle: Flow<Int> = dataStore.data.map { it[PreferenceKeys.BOARD_ANGLE] ?: 40 }
     val boardMinGrade: Flow<Int> = dataStore.data.map { it[PreferenceKeys.BOARD_MIN_GRADE] ?: 0 }
-    val boardMaxGrade: Flow<Int> = dataStore.data.map { it[PreferenceKeys.BOARD_MAX_GRADE] ?: 14 }
+    val boardMaxGrade: Flow<Int> = dataStore.data.map { it[PreferenceKeys.BOARD_MAX_GRADE] ?: 16 }
     val boardMinAscensionists: Flow<Int> = dataStore.data.map { it[PreferenceKeys.BOARD_MIN_ASCENSIONISTS] ?: 0 }
     val boardSortField: Flow<String> = dataStore.data.map { it[PreferenceKeys.BOARD_SORT_FIELD] ?: "ASCENSIONISTS" }
     val boardSortDirection: Flow<String> = dataStore.data.map { it[PreferenceKeys.BOARD_SORT_DIRECTION] ?: "DESC" }
@@ -477,6 +877,7 @@ class UserPreferences(
         climbType: String = "BOULDER", benchmarkOnly: Boolean = false,
         originFilter: String = "ALL",
         myClimbsOnly: Boolean = false,
+        ungradedOnly: Boolean = false,
     ) {
         dataStore.edit { prefs ->
             prefs[PreferenceKeys.BOARD_ANGLE] = angle
@@ -490,6 +891,7 @@ class UserPreferences(
             prefs[PreferenceKeys.BOARD_BENCHMARK_ONLY] = benchmarkOnly
             prefs[PreferenceKeys.BOARD_ORIGIN_FILTER] = originFilter
             prefs[PreferenceKeys.BOARD_MY_CLIMBS_ONLY] = myClimbsOnly
+            prefs[PreferenceKeys.BOARD_UNGRADED_ONLY] = ungradedOnly
         }
     }
 
@@ -558,14 +960,6 @@ class UserPreferences(
 
     suspend fun setKeepScreenOn(enabled: Boolean) {
         dataStore.edit { it[PreferenceKeys.KEEP_SCREEN_ON] = enabled }
-    }
-
-    val quickBoardSend: Flow<Boolean> = dataStore.data.map {
-        it[PreferenceKeys.QUICK_BOARD_SEND] ?: false
-    }
-
-    suspend fun setQuickBoardSend(enabled: Boolean) {
-        dataStore.edit { it[PreferenceKeys.QUICK_BOARD_SEND] = enabled }
     }
 
     suspend fun isOnboardingCompleted(): Boolean =

@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -64,6 +65,14 @@ fun MessageThreadScreen(
 
     val threadMessages by viewModel.threadMessages.collectAsState()
     val rootMessage = threadMessages.firstOrNull()
+    val listState = rememberLazyListState()
+
+    // Auto-scroll to the newest reply on send/receive. The thread is ASC (root
+    // first, replies chronological) and the list is NOT reversed, so the newest
+    // is the last item.
+    LaunchedEffect(threadMessages.lastOrNull()?.id) {
+        if (threadMessages.isNotEmpty()) listState.animateScrollToItem(threadMessages.size - 1)
+    }
 
     Scaffold(
         topBar = {
@@ -96,6 +105,7 @@ fun MessageThreadScreen(
         }
     ) { padding ->
         LazyColumn(
+            state = listState,
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding),

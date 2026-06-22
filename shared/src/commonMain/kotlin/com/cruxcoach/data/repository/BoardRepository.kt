@@ -1,8 +1,28 @@
 package com.cruxcoach.data.repository
 
+import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.BoardClimbParser
 
-enum class ClimbSortField { QUALITY, DIFFICULTY, ASCENSIONISTS, REPEATS, NAME, HOLDS, BENCHMARK_DIFFICULTY }
+/**
+ * Typed board family for rows that carry the persisted `board_brand` String.
+ * These extensions are the single bridge from the storage representation
+ * (String, at the SQLite/DTO boundary) to the typed [BoardBrand] capability
+ * model, so call sites use `row.brand.usesAuroraPlacements` etc. instead of
+ * re-deriving board behaviour from raw string comparisons.
+ */
+val ClimbWithStats.brand: BoardBrand get() = BoardBrand.fromWire(boardBrand)
+val AscentWithClimb.brand: BoardBrand get() = BoardBrand.fromWire(boardBrand)
+val RawBid.brand: BoardBrand get() = BoardBrand.fromWire(boardBrand)
+
+enum class ClimbSortField {
+    QUALITY, DIFFICULTY, ASCENSIONISTS, NAME, HOLDS, BENCHMARK_DIFFICULTY,
+    /** Quality multiplied by sends: surfaces climbs that are both popular AND well-rated. */
+    QUALITY_SENDS,
+    /** SQLite RANDOM() over the filtered set. Direction is ignored. Pagination
+     *  is independently random per page — scrolling yields more random results
+     *  rather than a stable shuffled list. Adequate for browsing-for-discovery. */
+    RANDOM,
+}
 enum class SortDirection { ASC, DESC }
 
 enum class ClimbTypeFilter {
@@ -59,6 +79,10 @@ data class ClimbWithStats(
      *  alone can drift ('failed' after a successful prior publish,
      *  etc.). */
     val nostrEventId: String? = null,
+    /** Board brand: 'kilter' | 'moonboard' (FEAT-027). Projected by the
+     *  `climb_browse` VIEW from `climbs.board_brand`; default 'kilter'
+     *  keeps pre-0.2.0 / Kilter-only code paths neutral. */
+    val boardBrand: String = "kilter",
 ) {
     /** True when this climb is a multi-frame route (not a boulder). */
     val isRoute: Boolean get() = framesCount > 1
@@ -86,7 +110,18 @@ data class AscentWithClimb(
     val climbFrames: String,
     val difficultyAverage: Double?,
     val framesCount: Long = 1,
-    val isSend: Boolean = true
+    val isSend: Boolean = true,
+    // Kilter-sync flag, carried for the backup round-trip so a restore
+    // doesn't re-arm /logs/bulk uploads for already-synced rows. Defaults
+    // suit the logbook projection queries that don't select it;
+    // getUserAscentsAll (SELECT *) populates the real value.
+    val synced: Boolean = false,
+    // Board family + layout this ascent was logged on (denormalized onto
+    // ascents/bids in 7.sqm). Defaults suit the light/projection queries that
+    // don't select them; getUserAscentsAll (SELECT *) populates the real
+    // values so the personal heatmap can scope to a single board's grid.
+    val boardBrand: String = "kilter",
+    val layoutId: Long? = null,
 )
 
 data class HoldPosition(
@@ -131,7 +166,12 @@ data class AngleOption(
     val difficultyAverage: Double?,
     val qualityAverage: Double?,
     val ascensionistCount: Long?,
-    val benchmarkDifficulty: Double
+    val benchmarkDifficulty: Double,
+    /** True for the angle the setter created this (community) climb at —
+     *  surfaced as info in the picker while the climb stays climbable at
+     *  every angle the board supports. Always false for angle-agnostic
+     *  imported climbs (no single setter angle). */
+    val isSetterAngle: Boolean = false
 )
 
 data class BoardPlacement(
@@ -150,8 +190,32 @@ data class BoardSize(
     val edgeRight: Long,
     val edgeBottom: Long,
     val edgeTop: Long,
-    val imageFilename: String?
+    val imageFilename: String?,
+    /** Owning board family. Drives the brand-namespaced background asset
+     *  path in the renderer; defaults to [BoardBrand.KILTER] for the
+     *  historical single-board callers (and the pre-0.2.0 data model). */
+    val boardBrand: BoardBrand = BoardBrand.KILTER,
 )
+
+/**
+ * Collapse same-dimension duplicate product sizes to the most-complete one.
+ *
+ * Some boards list the same physical size more than once with different hold-set
+ * builds — e.g. Grasshopper has a 3-set and a 5-set "Master" (8×12), both listed.
+ * For board selection we want ONE entry per physical size, showing the most
+ * complete board image, so we group by (product + edge bbox) and keep the size
+ * with the highest set count. A no-op for boards whose sizes all differ in
+ * dimensions (Tension, Decoy, So iLL). Result is sorted by id for stable order.
+ *
+ * Pure (no DB) so the de-dup rule is unit-tested directly.
+ */
+fun dedupeProductSizesByDimension(sizesWithSetCount: List<Pair<BoardSize, Int>>): List<BoardSize> =
+    sizesWithSetCount
+        .groupBy { (size, _) ->
+            listOf(size.productId, size.edgeLeft, size.edgeRight, size.edgeBottom, size.edgeTop)
+        }
+        .mapNotNull { (_, group) -> group.maxByOrNull { it.second }?.first }
+        .sortedBy { it.id }
 
 data class BoardImage(
     val id: Long,
@@ -182,7 +246,10 @@ data class Climb_lists(
     val name: String,
     val isBuiltin: Boolean,
     val createdAt: String,
-    val climbCount: Long
+    val climbCount: Long,
+    /** True only for the built-in "Ignored" list — lets the lists UI pick a
+     *  distinct icon and the add-to-list dialog filter it out. */
+    val isIgnored: Boolean = false,
 )
 
 data class Climb_list_entries(
@@ -209,21 +276,53 @@ data class ClimbFrameRow(
 
 /** Climb search, filter, and count queries. All browse/search/count methods require layoutId to scope results to a board type. */
 interface BoardClimbQueries {
-    fun searchClimbsByName(query: String, angle: Int, layoutId: Int, sortField: ClimbSortField = ClimbSortField.QUALITY, sortDirection: SortDirection = SortDirection.DESC, limit: Int = 50, offset: Int = 0, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER): List<ClimbWithStats>
-    fun searchClimbsSorted(angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, sortField: ClimbSortField, sortDirection: SortDirection, limit: Int = 50, offset: Int = 0, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER): List<ClimbWithStats>
+    // `hsmExcludedMask` (browse/search/count below): hold-set leg of the
+    // always-on "fits my board" filter — bits of the layout's hold sets NOT
+    // mounted on the user's selected size (HoldSetMask.excludedMask). A climb
+    // passes iff (hsm & mask) = 0; hsm=0 (unknown) always passes. 0 = off.
+    //
+    // `showUngraded` (every method that carries the minDifficulty/maxDifficulty
+    // grade predicate): zero-ascent catalogue stubs ship with
+    // difficulty_average NULL. true = NULL-grade rows pass the grade
+    // predicate; false = they are filtered out. The browse VM passes false in
+    // normal mode (ungraded climbs never show) and true only in the dedicated
+    // "ungraded only" mode — paired there with an impossible range
+    // (minDifficulty > maxDifficulty) so EXACTLY the NULL-grade rows match —
+    // and unconditionally on the BoardSesh provenance pull (inherently
+    // ungraded imports; the origin chip is the opt-in).
+    fun searchClimbsByName(query: String, angle: Int, layoutId: Int, boardBrand: String, sortField: ClimbSortField = ClimbSortField.QUALITY, sortDirection: SortDirection = SortDirection.DESC, limit: Int = 50, offset: Int = 0, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER, selProductSizeId: Int = 0, hsmExcludedMask: Long = 0): List<ClimbWithStats>
+    fun searchClimbsSorted(angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, sortField: ClimbSortField, sortDirection: SortDirection, limit: Int = 50, offset: Int = 0, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER, selProductSizeId: Int = 0, hsmExcludedMask: Long = 0, showUngraded: Boolean = false): List<ClimbWithStats>
     fun getClimbByUuid(uuid: String, angle: Int): ClimbWithStats?
-    fun countFilteredClimbsFast(angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int): Long
-    fun countFilteredClimbs(angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER): Long
-    fun countBenchmarkFilteredClimbs(angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER): Long
-    fun countSearchClimbs(query: String, angle: Int, layoutId: Int, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER): Long
-    fun countBenchmarkSearchClimbs(query: String, angle: Int, layoutId: Int, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER): Long
+    /** Defensive fallback for [getClimbByUuid]: resolves a stored row whose
+     *  uuid matches [uuid] only after normalization (strip hyphens +
+     *  lowercase on both sides). The board DB mixes uuid formats (legacy
+     *  nodash-UPPERCASE vs new-world dashed-lowercase), so a logbook-imported
+     *  uuid can fail the exact/case lookups yet still have a stored row under
+     *  a different format. This is a full scan — callers MUST try the indexed
+     *  [getClimbByUuid] first and only fall back here on a miss.
+     *
+     *  Default returns null (no normalized match); [BoardRepositoryImpl]
+     *  overrides with the SQL scan. The default keeps in-memory test fakes
+     *  that only model the exact-uuid path compiling unchanged. */
+    fun getClimbByUuidNormalized(uuid: String, angle: Int): ClimbWithStats? = null
+    fun countFilteredClimbsFast(angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, selProductSizeId: Int = 0, hsmExcludedMask: Long = 0, showUngraded: Boolean = false): Long
+    fun countFilteredClimbs(angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER, selProductSizeId: Int = 0, hsmExcludedMask: Long = 0, showUngraded: Boolean = false): Long
+    fun countBenchmarkFilteredClimbs(angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER, selProductSizeId: Int = 0, hsmExcludedMask: Long = 0, showUngraded: Boolean = false): Long
+    fun countSearchClimbs(query: String, angle: Int, layoutId: Int, boardBrand: String, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER, selProductSizeId: Int = 0, hsmExcludedMask: Long = 0): Long
+    fun countBenchmarkSearchClimbs(query: String, angle: Int, layoutId: Int, boardBrand: String, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER, selProductSizeId: Int = 0, hsmExcludedMask: Long = 0): Long
     fun getClimbCount(): Long
+    /** Per-brand catalogue sizes (FEAT-031), keyed by `board_brand` wire value.
+     *  Brands with no imported climbs are absent from the map. */
+    fun getClimbCountsByBrand(): Map<String, Long>
     /** O(1) existence check. Far cheaper than [getClimbCount] — that one
      *  full-table-scans on a 190k-row catalog, and worse, blocks on the
      *  bulk importer's writer-lock during sync (~28s on slower-eMMC).
      *  Use this anywhere the caller only needs a boolean (empty-state
      *  decision in BoardBrowser, fresh-install probe). */
     fun hasAnyClimbs(): Boolean
+    /** Brand-scoped [hasAnyClimbs]: whether the given board's catalogue has
+     *  any imported climbs. Same O(1) EXISTS probe, scoped by board_brand. */
+    fun hasClimbsForBrand(boardBrand: String): Boolean
     fun getStatCount(): Long
     /** Stats with no matching climbs row (cron desync indicator). */
     fun countOrphanStats(): Long
@@ -245,24 +344,65 @@ interface BoardClimbQueries {
      *  climbs are preserved. */
     fun deleteKilterCatalogData()
     fun climbExistsByUuid(uuid: String): Boolean
+    /** Format-blind existence/identity resolution: returns the CANONICAL
+     *  stored uuid of the climb matching [uuid] across the DB's mixed uuid
+     *  spellings (legacy nodash-UPPERCASE curated rows vs new-world
+     *  dashed-lowercase API uuids), or null when the climb truly is missing.
+     *  Use instead of [climbExistsByUuid] wherever an exact-match miss would
+     *  insert a logical duplicate of an already-present climb (the Kilter
+     *  own-climb backfills), and use the returned uuid to address the
+     *  existing row (e.g. [setClimbKilterAuthorUuid]).
+     *
+     *  Default returns null (no match); [BoardRepositoryImpl] overrides with
+     *  indexed exact-spelling probes plus a normalized-scan fallback. The
+     *  default keeps in-memory test fakes that only model the exact-uuid
+     *  path compiling unchanged. */
+    fun findClimbCanonicalUuid(uuid: String): String? = null
     fun statExistsByUuid(uuid: String): Boolean
     fun getClimbCountByAngle(layoutId: Int, climbType: ClimbTypeFilter = ClimbTypeFilter.BOULDER): List<AngleClimbCount>
     fun getAnglesForClimb(climbUuid: String): List<AngleOption>
+    /** Distinct angles the given board layout is used at — the data-driven
+     *  angle range for the variable-angle picker on adjustable boards.
+     *  Brand-scoped: layout ids collide across brands. */
+    fun getSupportedAnglesForLayout(layoutId: Int, boardBrand: String): List<Int>
     fun countNomatchClimbs(): Long
-    fun getClimbsByUuids(uuids: Collection<String>, angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter): List<ClimbWithStats>
+    fun getClimbsByUuids(uuids: Collection<String>, angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter): List<ClimbWithStats>
     /** Fetch climbs by UUID list at a given angle, no additional filters. */
     fun getClimbsByUuids(uuids: Collection<String>, angle: Int): List<ClimbWithStats>
-    /** Find climb UUIDs whose frames contain the given placement ID. */
-    fun searchClimbUuidsByHold(holdPattern: String, angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter): List<String>
+    /** Fetch climbs by UUID list regardless of angle — one representative row
+     *  per climb. Fallback for list display so MoonBoard problems set only at
+     *  a non-default angle (e.g. Masters 25°) aren't dropped. */
+    fun getClimbsByUuidsAnyAngle(uuids: Collection<String>): List<ClimbWithStats>
+    /** Active-board-scoped uuid resolution at [angle] (user lists). Returns only
+     *  climbs on the active board ([boardBrand] + [layoutId]); when
+     *  [boardBrand] == "kilter" ALSO includes Kilter climbs from other layouts
+     *  that physically FIT [selProductSizeId] (edge-containment, NULL edges =
+     *  fits all). Non-Kilter boards get no cross-size exception. */
+    fun getClimbsByUuidsForBoard(uuids: Collection<String>, angle: Int, boardBrand: String, layoutId: Int, selProductSizeId: Int): List<ClimbWithStats>
+    /** Angle-agnostic board-scoped fallback (one row per uuid). Same scoping
+     *  rules as [getClimbsByUuidsForBoard] — stays board-scoped so the
+     *  GROUP BY collapse never re-leaks other-board climbs. */
+    fun getClimbsByUuidsForBoardAnyAngle(uuids: Collection<String>, boardBrand: String, layoutId: Int, selProductSizeId: Int): List<ClimbWithStats>
+    /** UUID-only projection of the entire browse-filter match set. Backs the
+     *  VM's UUID-shuffle cache for RANDOM sort — load once per filter
+     *  signature, shuffle in Kotlin, paginate over the cached list. */
+    fun getAllBrowseMatchingUuids(angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter, selProductSizeId: Int = 0, hsmExcludedMask: Long = 0, showUngraded: Boolean = false): List<String>
+    /** Find climb UUIDs whose frames contain the given placement ID. Brand-scoped
+     *  so a board only matches its own climbs (layout_id collides across boards). */
+    fun searchClimbUuidsByHold(holdPattern: String, angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter): List<String>
     /** Find climb UUIDs whose frames contain ALL given hold patterns (single DB pass). */
-    fun searchClimbUuidsByAllHolds(holdPatterns: List<String>, angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter): Set<String>
-    /** Get all frames for heatmap computation within current browse filters. */
-    fun getAllFramesForHeatmap(angle: Int, layoutId: Int, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter): List<ClimbFrameRow>
+    fun searchClimbUuidsByAllHolds(holdPatterns: List<String>, angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter): Set<String>
+    /** Get all frames for heatmap computation within current browse filters (brand-scoped). */
+    fun getAllFramesForHeatmap(angle: Int, layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter): List<ClimbFrameRow>
+    /** Angle-agnostic frames for the logbook stats heatmap: one row per climb
+     *  with stats at ANY angle of (layout, brand). Hold usage doesn't depend
+     *  on the angle, so the stats sheet must not pin one. */
+    fun getAllFramesForHeatmapAllAngles(layoutId: Int, boardBrand: String, minDifficulty: Double, maxDifficulty: Double, minAscensionists: Int, climbType: ClimbTypeFilter): List<ClimbFrameRow>
 }
 
 /** Board layout, placement, LED, and product-size queries. */
 interface BoardLayoutQueries {
-    fun getAllPlacements(): List<BoardPlacement>
+    fun getAllPlacements(boardBrand: String = "kilter"): List<BoardPlacement>
     /** Placements restricted to the set_ids that the active layout actually
      *  paints onto the board photo (one row per layered board_image). The
      *  unfiltered [getAllPlacements] mixes in placements from every set
@@ -273,21 +413,44 @@ interface BoardLayoutQueries {
      *  user like empty board space. Falls back to all placements when no
      *  board_images row exists for the (productSize, layout) combination
      *  yet (very early sync state, mostly tests). */
-    fun getPlacementsForLayout(productSizeId: Int, layoutId: Int): List<BoardPlacement>
-    fun getProductSize(id: Int): BoardSize?
+    fun getPlacementsForLayout(productSizeId: Int, layoutId: Int, boardBrand: String = "kilter"): List<BoardPlacement>
+    fun getProductSize(id: Int, boardBrand: String = "kilter"): BoardSize?
     /** Product-sizes for a single Aurora `product_id`. The post-sync model
      *  picker and the Settings board-size dropdown both filter by the
      *  user's currently-active layout — Original (Kilter id=1) and
      *  Homewall (Kilter id=7) ship with disjoint size sets. Pre-fix this
      *  hardcoded id=1, silently dropping Homewall sizes from every UI
      *  reachable through this method. */
-    fun getAllProductSizes(productId: Long): List<BoardSize>
-    fun getBoardImages(productSizeId: Int, layoutId: Int): List<BoardImage>
+    fun getAllProductSizes(productId: Long, boardBrand: String = "kilter"): List<BoardSize>
+    /** Picker-ready product sizes for a brand: every size the user might own,
+     *  with same-dimension duplicates collapsed to the most-complete one (the
+     *  size whose board image composites the most hold-sets). Sorted by id.
+     *  Drives the size tier for every interactive board (variant or single-
+     *  layout), so e.g. a Grasshopper Ninja owner can pick Ninja instead of
+     *  being pinned to the largest size. */
+    fun getSelectableProductSizesForBrand(boardBrand: String): List<BoardSize>
+    fun getBoardImages(productSizeId: Int, layoutId: Int, boardBrand: String = "kilter"): List<BoardImage>
+    /** A layout's full hold-set universe (ascending set ids — the rank order
+     *  that defines the climbs.hsm bit indices). Empty when the brand ships
+     *  no board_images set data (MoonBoard). */
+    fun getHoldSetIdsForLayout(layoutId: Int, boardBrand: String): List<Long>
+    /** Hold sets actually mounted on one product size of the layout (e.g.
+     *  Kilter Homewall 8x12 Mainline = {26,28,29} of {26,27,28,29}). Diffed
+     *  against [getHoldSetIdsForLayout] via HoldSetMask.excludedMask to get
+     *  the hsm exclusion mask the browse queries filter on. */
+    fun getHoldSetIdsForLayoutSize(layoutId: Int, productSizeId: Int, boardBrand: String): List<Long>
     /** Sizes that have board-image tiles for the given layout. Used by
      *  the climb-detail screen to render an Aurora-imported or cross-
      *  board community climb on the right physical board even when the
      *  user's preferred layout differs from the climb's. */
-    fun getProductSizesForLayout(layoutId: Int): List<Int>
+    fun getProductSizesForLayout(layoutId: Int, boardBrand: String = "kilter"): List<Int>
+    /** FEAT-031: a sensible default active-board config for an Aurora board,
+     *  derived from its just-synced catalogue — the most-climbed layout and
+     *  the largest product_size. Lets the picker configure the active board
+     *  in one step (Aurora sizes are only known post-sync). Null when the
+     *  board has no catalogue rows yet. */
+    fun getDefaultLayoutForBrand(boardBrand: String): Int?
+    fun getDefaultProductSizeForBrand(boardBrand: String): Pair<Int, String>?
     /** True when the user's currently-configured [productSizeId] can
      *  validly host this climb's render — same layout, has images,
      *  big enough to contain the climb's bbox. The detail screen
@@ -296,7 +459,7 @@ interface BoardLayoutQueries {
      *  the climb's source size when that's not possible (Aurora-
      *  imported cross-board climb, smaller user-board than the
      *  climb's bbox, etc.). */
-    fun canRenderClimbOnSize(uuid: String, productSizeId: Int): Boolean
+    fun canRenderClimbOnSize(uuid: String, productSizeId: Int, boardBrand: String = "kilter"): Boolean
     /** Full set of CruxCoach-side climbs (community + local-drafts)
      *  that satisfy the user's browse filters. Returns the entire
      *  matching set in one call — the client-side OriginFilter that
@@ -306,8 +469,19 @@ interface BoardLayoutQueries {
      *  un-paginated SELECT is the right shape. Caller sorts in
      *  Kotlin via the existing sortInKotlin path. */
     fun getCruxCoachClimbs(
-        layoutId: Int, angle: Int, minDifficulty: Double, maxDifficulty: Double,
-        minAscensionists: Int, climbType: ClimbTypeFilter,
+        layoutId: Int, boardBrand: String, angle: Int, minDifficulty: Double, maxDifficulty: Double,
+        minAscensionists: Int, climbType: ClimbTypeFilter, selProductSizeId: Int = 0,
+        hsmExcludedMask: Long = 0, showUngraded: Boolean = false,
+    ): List<ClimbWithStats>
+    /** Full set of BoardSesh-imported climbs (origin='boardsesh') that
+     *  satisfy the browse filters. Returns the whole matching set in one
+     *  call for the same reason as [getCruxCoachClimbs]: BoardSesh climbs
+     *  have no sends/quality and would otherwise be buried at the bottom
+     *  of the paginated catalogue and never shown. Caller sorts in Kotlin. */
+    fun getBoardSeshClimbs(
+        layoutId: Int, boardBrand: String, angle: Int, minDifficulty: Double, maxDifficulty: Double,
+        minAscensionists: Int, climbType: ClimbTypeFilter, selProductSizeId: Int = 0,
+        hsmExcludedMask: Long = 0, showUngraded: Boolean = false,
     ): List<ClimbWithStats>
     /** Find the smallest product_size whose four edges *contain* the
      *  climb's bounding box AND has board_images for the climb's
@@ -321,11 +495,16 @@ interface BoardLayoutQueries {
      *  per-current-pref. Returns null when the climb has no edges
      *  or no containing size exists; caller falls back to layout-
      *  only heuristics. */
-    fun getProductSizeForClimbRender(uuid: String): Int?
-    fun getPlacementLedMap(productSizeId: Int): Map<Int, Int>
-    fun getMirrorPlacementMap(productSizeId: Int): Map<Int, Int>
+    fun getProductSizeForClimbRender(uuid: String, boardBrand: String = "kilter"): Int?
+    fun getPlacementLedMap(productSizeId: Int, boardBrand: String = "kilter"): Map<Int, Int>
+    /** FEAT-031: per-board role-id → board colour byte, derived from the
+     *  synced placement_roles.led_color. Empty when the board's catalogue
+     *  hasn't shipped placement_roles yet — callers then fall back to the
+     *  conventional [LedHoldColors] defaults. */
+    fun getRoleColorMapForBrand(boardBrand: String): Map<Int, Int>
+    fun getMirrorPlacementMap(productSizeId: Int, boardBrand: String = "kilter"): Map<Int, Int>
     fun countLeds(): Long
-    fun getLedGrid(productSizeId: Int): List<LedGridPoint>
+    fun getLedGrid(productSizeId: Int, boardBrand: String = "kilter"): List<LedGridPoint>
 }
 
 /** Write operations: upserts, sync state, transactions (public board data only). */
@@ -340,14 +519,21 @@ interface BoardWriteOperations {
                         ascensionistCount: Long?, benchmarkDifficulty: Double?,
                         faUsername: String? = null, faAt: String? = null,
                         officialKilterDifficulty: Long? = null)
+    /** Record the climb author's Kilter userUuid on an existing row (fill-only:
+     *  a non-NULL value is never overwritten). Backs the own-Kilter-climb
+     *  publish gate, which compares it against the connected account's
+     *  userUuid — never a display-name match. Default no-op so existing test
+     *  fakes that never exercise the Kilter backfill keep compiling. */
+    fun setClimbKilterAuthorUuid(uuid: String, authorUuid: String) {}
     fun upsertHoldPosition(holeId: Long, productSizeId: Long, x: Long, y: Long,
-                           ledPosition: Long, placementId: Long)
-    fun upsertLed(holeId: Long, productSizeId: Long, position: Long)
-    fun upsertHole(id: Long, productSizeId: Long, x: Long, y: Long, mirroredHoleId: Long?)
-    fun upsertPlacement(placementId: Long, holeId: Long, setId: Long, x: Long, y: Long)
+                           ledPosition: Long, placementId: Long, boardBrand: String = "kilter")
+    fun upsertLed(holeId: Long, productSizeId: Long, position: Long, boardBrand: String = "kilter")
+    fun upsertHole(id: Long, productSizeId: Long, x: Long, y: Long, mirroredHoleId: Long?, boardBrand: String = "kilter")
+    fun upsertPlacement(placementId: Long, holeId: Long, setId: Long, x: Long, y: Long, boardBrand: String = "kilter")
     fun upsertProductSize(id: Long, productId: Long, name: String, edgeLeft: Long,
-                          edgeRight: Long, edgeBottom: Long, edgeTop: Long, imageFilename: String?)
-    fun upsertBoardImage(id: Long, productSizeId: Long, layoutId: Long, setId: Long, imageFilename: String)
+                          edgeRight: Long, edgeBottom: Long, edgeTop: Long, imageFilename: String?, boardBrand: String = "kilter")
+    fun upsertBoardImage(id: Long, productSizeId: Long, layoutId: Long, setId: Long, imageFilename: String, boardBrand: String = "kilter")
+    fun upsertPlacementRole(boardBrand: String, id: Long, name: String?, ledColor: String?, screenColor: String?)
     fun upsertSyncState(tableName: String, lastSynchronizedAt: String)
     fun getSyncState(tableName: String): String?
     fun getAllClimbUuids(): Set<String>
@@ -393,13 +579,34 @@ data class RawBid(
     val productLayoutUuid: String? = null,
     /** Optimistic-locking token snapshot at read time. Pass to
      *  [PersonalBoardRepository.markBidSyncedIfUnchanged]. */
-    val rowVersion: Long = 0L
+    val rowVersion: Long = 0L,
+    /** Board family + layout (7.sqm) — carried for backup round-trip. */
+    val boardBrand: String = "kilter",
+    val layoutId: Long? = null,
 )
 
 data class RawClimbListEntry(
     val listId: Long,
     val climbUuid: String,
     val addedAt: String
+)
+
+/**
+ * One row of the local "Verlauf" (history) log — a SENT climb the user
+ * recorded. Denormalized at record time (climb metadata + board family) so
+ * the history screen renders without a cross-DB join. Local-only: never
+ * synced to Kilter, never backed up/exported.
+ */
+data class ClimbHistoryEntry(
+    val id: Long,
+    val climbUuid: String,
+    val climbName: String,
+    val angle: Int,
+    val difficultyAverage: Double?,
+    val boardBrand: String,
+    val layoutId: Long?,
+    val climbedAt: String,
+    val recordedAt: String,
 )
 
 // ── Community-climb support (FEAT-003) ─────────────────────
@@ -413,6 +620,17 @@ data class CommunityClimbDeleteContext(
     val createdByPubkey: String?,
     val kilterStatus: String?,
     val origin: String,
+    /** Board family (`climbs.board_brand`) of the climb being deleted.
+     *  Drives the deletion event's back-compat `L` namespace: 'kilter'
+     *  → NS_CLIMB (legacy), any non-Kilter board → NS_CLIMB_V2, so that
+     *  ≥0.2.0 subscribers (which subscribe on both namespaces) catch
+     *  new-board deletions while old apps never see them. Defaults to
+     *  'kilter' for pre-0.2.0 rows with no brand. */
+    val boardBrand: String = "kilter",
+    /** Set when the climb was authored on Kilter (adopted/claimed). Non-null
+     *  means deleting the community publication should UN-CLAIM it back to a
+     *  Kilter import (re-claimable) rather than fully tombstone it. */
+    val kilterAuthorUuid: String? = null,
 )
 
 data class LocalClimbDraft(
@@ -551,6 +769,11 @@ data class OwnClimbBackupRow(
     val kilterSyncedAt: Long?,
     val kilterPublishVia: String?,
     val kilterError: String?,
+    // FEAT-031: board family the draft was authored on, round-tripped so a
+    // MoonBoard/Aurora own-climb doesn't restore as Kilter. Defaults to
+    // "kilter" for legacy backups that predate the field (set on the export
+    // side from OwnClimbExport.boardBrand).
+    val boardBrand: String = "kilter",
 )
 
 /**
@@ -566,6 +789,22 @@ data class OwnClimbStatBackupRow(
     val qualityAverage: Double?,
     val ascensionistCount: Long,
     val benchmarkDifficulty: Double?,
+)
+
+/**
+ * The CLIMB'S OWN publish coordinates, read per-row by
+ * [CommunityPublishRetryWorker] so a queued draft for a non-active board
+ * is re-published with its own brand + layout instead of the currently-
+ * active board's (FEAT-031). [boardBrand] (from `climbs.board_brand`) and
+ * [layoutId] (from `climb_stats.layout_id`, falling back to
+ * `climbs.layout_id`) are always the climb's. [sizeLabel] is best-effort:
+ * the largest product_size for that brand+layout, or null when none
+ * resolves — the worker then substitutes the active board's size name.
+ */
+data class ClimbPublishContext(
+    val boardBrand: String,
+    val layoutId: Long,
+    val sizeLabel: String?,
 )
 
 data class CommunityClimbRow(
@@ -589,6 +828,10 @@ data class CommunityClimbRow(
      *  whose `product_name` doesn't match the placement IDs' product, so
      *  the retry worker has to derive the product name from this. */
     val layoutId: Long,
+    /** Board family the climb belongs to (`climbs.board_brand` wire value,
+     *  e.g. "kilter" / "tension"). Carried for completeness so callers can
+     *  tell which board a row came from without a second lookup. */
+    val boardBrand: String,
 )
 
 /** Climb-creation + community-climb queries (FEAT-003). */
@@ -605,6 +848,11 @@ interface CommunityClimbQueries {
         angle: Long,
         setterGradeId: Int?,
         bounds: com.cruxcoach.domain.community.ClimbBounds?,
+        /** Active board's wire brand. Aurora-family boards (Tension,
+         *  Grasshopper, Decoy, So iLL, Touchstone) reuse Kilter's low layout-ids,
+         *  so the brand can't be inferred from [layoutId] — pass the editor's
+         *  real brand. Null = derive from layoutId (Kilter / MoonBoard only). */
+        boardBrand: String? = null,
     )
     /** Delete a local draft (drafts user explicitly discards). */
     fun deleteLocalClimb(uuid: String)
@@ -658,6 +906,16 @@ interface CommunityClimbQueries {
      * uuid-only primary key on `climbs` would otherwise allow.
      */
     fun getClimbAuthorPubkey(uuid: String): String?
+
+    /**
+     * True iff a row already exists for this uuid that is NOT a genuine
+     * community climb (catalogue content, or any NULL-author row). A real
+     * community row has both origin='cruxcoach' AND a non-NULL author, so the
+     * NULL returned by [getClimbAuthorPubkey] is ambiguous ("no row" vs
+     * "catalogue row with no author"); the live subscriber uses this to reject
+     * a community Kind-30078 that would re-key/overwrite catalogue content.
+     */
+    fun isNonCommunityClimb(uuid: String): Boolean
     /**
      * True iff a row exists locally with `source='local'` — i.e. authored
      * via the editor's `insertLocalDraft`. Used as a backstop self-filter
@@ -668,6 +926,59 @@ interface CommunityClimbQueries {
      * `nostr_event_id` via upsertCommunityClimb's INSERT OR REPLACE.
      */
     fun isLocallyAuthored(uuid: String): Boolean
+    /**
+     * The recorded Kilter author identity (`kilter_author_uuid`) for a row.
+     * NULL = no row, or author unknown (curated content) → never
+     * publishable-as-mine. The publish gate compares this against the
+     * CONNECTED Kilter account's userUuid — identity, never a display-name
+     * match. Default null so existing fakes keep compiling.
+     */
+    fun getClimbKilterAuthorUuid(uuid: String): String? = null
+    /**
+     * Every climb authored by [authorUuid] (the connected Kilter account),
+     * tombstones excluded. Backs the "Meine Climbs" list and the logbook
+     * publish gate. Default empty so existing fakes keep compiling.
+     */
+    fun getOwnAuthoredKilterClimbs(authorUuid: String): List<CommunityClimbRow> = emptyList()
+    /**
+     * Single-row authorship-gated lookup for the own-climb publish path:
+     * returns the row only when its `kilter_author_uuid` equals
+     * [authorUuid]. Null = no row, unknown author, or foreign author.
+     */
+    fun getOwnAuthoredClimbRow(uuid: String, authorUuid: String): CommunityClimbRow? = null
+    /**
+     * Convert an own-authored Kilter row IN PLACE into a CruxCoach
+     * community climb — the climb KEEPS its Kilter uuid (identity
+     * decision: no new uuid). Flips origin/source/sync_status/
+     * created_by_pubkey to the same values a fresh editor draft gets, and
+     * stamps kilter_status='synced' so the publisher's best-effort Kilter
+     * leg skips (the climb already lives on Kilter natively).
+     *
+     * SQL-guarded: refuses when the row's `kilter_author_uuid` differs
+     * from [kilterAuthorUuid], when it is already owned by a different
+     * `created_by_pubkey`, or when it already carries a published
+     * `nostr_event_id`. Returns true iff the row was converted (or
+     * re-converted idempotently for a retry).
+     */
+    fun adoptKilterClimbAsCommunity(
+        uuid: String,
+        kilterAuthorUuid: String,
+        pubkey: String,
+        adoptedAtEpochSeconds: Long,
+    ): Boolean = false
+
+    /**
+     * INVERSE of [adoptKilterClimbAsCommunity]: un-claim a previously-claimed
+     * Kilter climb back to a plain Kilter import (origin='kilter', cleared
+     * Nostr/adoption fields, is_deleted=0) so it returns to "Aus Kilter
+     * importiert" and is re-claimable. Owner-locked + gated to rows that carry
+     * a kilter_author_uuid. Returns true iff a row was reverted.
+     */
+    fun revertClaimedKilterClimb(uuid: String, pubkey: String): Boolean = false
+
+    /** Clear the local setter grade (display + average) so an un-claimed climb
+     *  is ungraded again — a re-claim then routes through the grade picker. */
+    fun clearLocalClimbGrade(uuid: String) {}
     /**
      * Returns (placement_id → normalized 0..1 frequency) for boulders at the
      * given layout+angle, optionally weighted by climbs that contain ALL
@@ -706,6 +1017,12 @@ interface CommunityClimbQueries {
         difficultyAverage: Double?,
         qualityAverage: Double?,
         bounds: com.cruxcoach.domain.community.ClimbBounds?,
+        /** Real board family from the event's `board_brand` tag (FEAT-031).
+         *  Persisted verbatim to `climbs.board_brand` so ingestion keys the
+         *  climb on its brand, NOT on its layout_id — the new boards reuse
+         *  layout-ids that collide with Kilter's. Defaults to 'kilter' for
+         *  legacy events that carry no `board_brand` tag. */
+        boardBrand: String = "kilter",
     )
 
     // ─── Community-climb dead-letter queue (M16) ──────────────────────
@@ -758,6 +1075,9 @@ interface CommunityClimbQueries {
         nostrEventId: String,
         nostrDTag: String,
         pubkey: String,
+        /** The emitted Nostr event's created_at, ISO-8601. Persisted so the
+         *  next edit/delete clamps monotonically (FEAT-039 audit BUG-1). */
+        createdAtIso: String,
     )
     fun markClimbPublishFailed(uuid: String)
     /**
@@ -785,13 +1105,19 @@ interface CommunityClimbQueries {
      *  entry carries its angle — same climb at multiple angles becomes
      *  multiple entries, matching the climb_stats row layout. */
     fun getClimbsByPubkey(pubkey: String): List<SetterClimbEntry>
+    /** Active-board-scoped variant of [getClimbsByPubkey] (SetterDetailScreen).
+     *  Restricts the setter's climbs to the active board ([boardBrand] +
+     *  [layoutId]); when [boardBrand] == "kilter" ALSO includes the setter's
+     *  Kilter climbs from other layouts that FIT [selProductSizeId]
+     *  (edge-containment, NULL edges = fits all). Non-Kilter: no cross-size. */
+    fun getClimbsByPubkeyForBoard(pubkey: String, angle: Int, boardBrand: String, layoutId: Int, selProductSizeId: Int): List<SetterClimbEntry>
     /** My-climbs filter (board browser). Returns one [ClimbWithStats] per
      *  uuid authored by [pubkey] on [layoutId], ignoring angle/grade/asc
      *  filters so drafts saved at any angle remain discoverable. The row
      *  is picked at [preferredAngle] when available, else any angle. */
-    fun getOwnClimbsForBrowse(pubkey: String, layoutId: Int, preferredAngle: Int): List<ClimbWithStats>
+    fun getOwnClimbsForBrowse(pubkey: String, layoutId: Int, preferredAngle: Int, boardBrand: String): List<ClimbWithStats>
     /** Distinct cruxcoach setters with their climb-count, ordered desc. */
-    fun getCommunitySetterStats(): List<SetterStat>
+    fun getCommunitySetterStats(boardBrand: String, layoutId: Int, selProductSizeId: Int): List<SetterStat>
     fun markKilterPublishPending(uuid: String)
     /**
      * Mark a climb as accepted by Kilter. `via` is 'self' (user account) or
@@ -875,13 +1201,16 @@ interface CommunityClimbQueries {
      */
     fun getClimbsAwaitingNostrRetry(pubkey: String): List<CommunityClimbRow>
     /**
-     * Drafts (`source='local'`, sync_status `draft`/`failed`) authored
+     * Drafts (`source='local'`, sync_status `draft`/`failed`) for the active
+     * board [boardBrand] (wire value, e.g. "kilter"/"tension"), authored
      * by [pubkey] or with a NULL `created_by_pubkey` (legacy / pre-key-init).
-     * Pass null to fetch only legacy NULL-pubkey drafts. Restricts visibility
-     * across identity switches: drafts authored under identity A are
-     * invisible to identity B opened in the editor on the same device.
+     * Pass null for [pubkey] to fetch only legacy NULL-pubkey drafts.
+     * Restricts visibility across identity switches: drafts authored under
+     * identity A are invisible to identity B opened in the editor on the same
+     * device. Scoping to [boardBrand] also stops one board's drafts (e.g.
+     * Tension) from leaking into another board's drawer (e.g. Kilter).
      */
-    fun getDraftClimbs(pubkey: String?): List<CommunityClimbRow>
+    fun getDraftClimbs(pubkey: String?, boardBrand: String): List<CommunityClimbRow>
     fun getMyClimbs(pubkey: String): List<CommunityClimbRow>
     fun getCommunityClimbs(): List<CommunityClimbRow>
     /** Single-row stats lookup used by the editor when restoring a draft.
@@ -890,8 +1219,14 @@ interface CommunityClimbQueries {
      *  upsertLocalClimbStat persisted; both null means the row predates
      *  having stats and the editor falls back to its default angle. */
     fun getClimbStatsForUuid(uuid: String): Pair<Int, Int?>?
-    /** Look up an existing climb by frames_hash for duplicate detection. */
-    fun findClimbByFramesHash(framesHash: String, layoutId: Long): CommunityClimbRow?
+    /** The climb's OWN brand + layout + (best-effort) size label, for the
+     *  Nostr retry worker — see [ClimbPublishContext]. Null when the climb
+     *  isn't in the local DB. */
+    fun getClimbPublishContext(uuid: String): ClimbPublishContext?
+    /** Look up an existing climb by frames_hash for duplicate detection, scoped
+     *  to [boardBrand] (frames_hash folds in layout_id but not the brand, and
+     *  layout_id=1 is shared across boards). */
+    fun findClimbByFramesHash(framesHash: String, layoutId: Long, boardBrand: String): CommunityClimbRow?
     /** Cache the setter-grade entry for a community climb (MVP — no vote aggregation). */
     fun upsertSetterGrade(climbDTag: String, angle: Long, setterGradeId: Int, lastUpdatedEpochMs: Long)
 

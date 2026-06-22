@@ -11,7 +11,9 @@ import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -41,6 +43,8 @@ fun BoardListsScreen(
     onNavigateBack: () -> Unit,
     onNavigateToListDetail: (Long) -> Unit,
     onNavigateToSetters: () -> Unit = {},
+    onNavigateToMyClimbs: () -> Unit = {},
+    onNavigateToHistory: () -> Unit,
     viewModel: BoardListsViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -125,6 +129,11 @@ fun BoardListsScreen(
             item(key = "community-banner") {
                 CommunitySettersBanner(onClick = onNavigateToSetters)
                 Spacer(modifier = Modifier.height(8.dp))
+                // "Meine Climbs" — the user's own authored Kilter climbs +
+                // their CruxCoach-community publish state. Sits with the
+                // community banner: same "not your lists" family.
+                MyClimbsBanner(onClick = onNavigateToMyClimbs)
+                Spacer(modifier = Modifier.height(8.dp))
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
@@ -132,6 +141,10 @@ fun BoardListsScreen(
                     style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            }
+
+            item(key = "history") {
+                HistoryCard(onClick = onNavigateToHistory)
             }
 
             if (state.lists.isEmpty()) {
@@ -229,6 +242,56 @@ private fun CommunitySettersBanner(onClick: () -> Unit) {
     }
 }
 
+/**
+ * Entry to the "Meine Climbs" screen (own AUTHORED Kilter climbs + their
+ * CruxCoach-community publish state). Visually a quieter sibling of
+ * [CommunitySettersBanner] — secondaryContainer instead of primary.
+ */
+@Composable
+private fun MyClimbsBanner(onClick: () -> Unit) {
+    Card(
+        onClick = onClick,
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("my_climbs_banner"),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+        ),
+        shape = RoundedCornerShape(12.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                Icons.Default.Star,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                modifier = Modifier.size(32.dp),
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    stringResource(R.string.my_climbs_banner_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                )
+                Text(
+                    stringResource(R.string.my_climbs_banner_subtitle),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.85f),
+                )
+            }
+            Icon(
+                Icons.AutoMirrored.Filled.ArrowForward,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f),
+            )
+        }
+    }
+}
+
 @Composable
 private fun ListCard(
     list: Climb_lists,
@@ -250,9 +313,17 @@ private fun ListCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
-                if (list.isBuiltin) Icons.Default.Star else Icons.AutoMirrored.Filled.PlaylistAdd,
+                when {
+                    list.isIgnored -> Icons.Default.VisibilityOff
+                    list.isBuiltin -> Icons.Default.Star
+                    else -> Icons.AutoMirrored.Filled.PlaylistAdd
+                },
                 contentDescription = null,
-                tint = if (list.isBuiltin) WarningYellow else OrangeAccent,
+                tint = when {
+                    list.isIgnored -> MaterialTheme.colorScheme.onSurfaceVariant
+                    list.isBuiltin -> WarningYellow
+                    else -> OrangeAccent
+                },
                 modifier = Modifier.size(28.dp)
             )
             Spacer(modifier = Modifier.width(12.dp))
@@ -277,6 +348,53 @@ private fun ListCard(
                         modifier = Modifier.size(20.dp)
                     )
                 }
+            }
+        }
+    }
+}
+
+/**
+ * "Verlauf" (recently-sent climbs) entry at the top of the lists. Same card
+ * style as [ListCard] — surfaceVariant tint, leading icon, title + subtitle —
+ * but with a History icon and no delete action, since it isn't a user list.
+ */
+@Composable
+private fun HistoryCard(onClick: () -> Unit) {
+    Card(
+        onClick = onClick,
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("board_history_card"),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+        ),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Default.History,
+                contentDescription = null,
+                tint = OrangeAccent,
+                modifier = Modifier.size(28.dp)
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    stringResource(R.string.history_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    // The Verlauf is populated on send-to-board (BoardSendController),
+                    // not only on a logged send — "geschaffte" (accomplished) was
+                    // misleading.
+                    stringResource(R.string.history_subtitle),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }

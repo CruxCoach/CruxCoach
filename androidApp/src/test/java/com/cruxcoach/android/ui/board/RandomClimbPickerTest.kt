@@ -62,12 +62,12 @@ class RandomClimbPickerTest {
     ): String? {
         val climb = if (searchQuery.isNotBlank()) {
             repo.searchClimbsByName(
-                searchQuery, angle, layoutId, ClimbSortField.ASCENSIONISTS, SortDirection.DESC,
+                searchQuery, angle, layoutId, "kilter", ClimbSortField.ASCENSIONISTS, SortDirection.DESC,
                 limit = 1, offset = randomOffset, climbType = climbType
             )
         } else {
             repo.searchClimbsSorted(
-                angle, layoutId, minDifficulty, maxDifficulty, minAscensionists,
+                angle, layoutId, "kilter", minDifficulty, maxDifficulty, minAscensionists,
                 ClimbSortField.ASCENSIONISTS, SortDirection.DESC,
                 limit = 1, offset = randomOffset, climbType = climbType
             )
@@ -223,7 +223,7 @@ class RandomClimbPickerTest {
     fun `count matches number of fetchable climbs via offset`() {
         val repo = repoWithClimbs(25)
         val count = repo.countFilteredClimbs(
-            angle = 40, layoutId = 1, minDifficulty = 0.0, maxDifficulty = 100.0,
+            angle = 40, layoutId = 1, boardBrand = "kilter", minDifficulty = 0.0, maxDifficulty = 100.0,
             minAscensionists = 0, climbType = ClimbTypeFilter.BOULDER
         )
 
@@ -241,7 +241,7 @@ class RandomClimbPickerTest {
         repo.addClimb(climb("b", name = "Test Slab"))
         repo.addClimb(climb("c", name = "Other"))
 
-        val count = repo.countSearchClimbs("Test", angle = 40, layoutId = 1, climbType = ClimbTypeFilter.BOULDER)
+        val count = repo.countSearchClimbs("Test", angle = 40, layoutId = 1, boardBrand = "kilter", climbType = ClimbTypeFilter.BOULDER)
         assertEquals(2L, count)
 
         val validPicks = (0 until count.toInt()).count { offset ->

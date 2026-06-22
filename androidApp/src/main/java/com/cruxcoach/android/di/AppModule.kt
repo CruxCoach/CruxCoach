@@ -13,6 +13,8 @@ import com.cruxcoach.android.nostr.NostrEventBuilder
 import com.cruxcoach.android.nostr.NostrPublicEventBuilder
 import com.cruxcoach.android.nostr.NostrEventDecryptor
 import com.cruxcoach.android.nostr.NostrMessageSender
+import com.cruxcoach.android.nostr.NostrMessageSending
+import com.cruxcoach.android.nostr.NostrIdentity
 import com.cruxcoach.android.nostr.NostrRelaySubscription
 import com.cruxcoach.android.nostr.OfflineQueueManager
 import com.cruxcoach.android.nostr.PaymentManager
@@ -38,6 +40,8 @@ import com.cruxcoach.android.data.BoardStateManager
 import com.cruxcoach.android.data.ClimbNameResolver
 import com.cruxcoach.android.data.RestTimerAlarmScheduler
 import com.cruxcoach.android.data.BoardSyncManager
+import com.cruxcoach.android.data.AuroraCatalogueSync
+import com.cruxcoach.android.data.MoonBoardCatalogueSync
 import com.cruxcoach.android.data.blossom.BlossomSyncManager
 import com.cruxcoach.android.data.NearbyPresenceManager
 import com.cruxcoach.android.data.SessionGattBridge
@@ -155,6 +159,12 @@ object AppModule {
 
     @Provides
     @Singleton
+    fun provideBoardLocationRepository(database: BoardDatabase): BoardLocationRepository {
+        return BoardLocationRepositoryImpl(database)
+    }
+
+    @Provides
+    @Singleton
     fun providePersonalBoardRepository(database: SecureDatabase): PersonalBoardRepository {
         return PersonalBoardRepositoryImpl(database)
     }
@@ -243,6 +253,27 @@ object AppModule {
         return BlossomSyncManager(context, okHttpClient)
     }
 
+    /**
+     * MoonBoard-configured [BlossomSyncManager] (FEAT-027). Same fetch
+     * infrastructure as the Kilter instance above, but pinned to the
+     * MoonBoard manifest d-tag + a separate chunk-hash prefs file so the
+     * two boards' sync state never cross-contaminate.
+     */
+    @Provides
+    @Singleton
+    @Named("moonboard")
+    fun provideMoonBoardBlossomSyncManager(
+        @ApplicationContext context: Context,
+        @Named("blossom") okHttpClient: OkHttpClient
+    ): BlossomSyncManager {
+        return BlossomSyncManager(
+            context,
+            okHttpClient,
+            manifestDTag = BlossomSyncManager.MOONBOARD_D_TAG,
+            prefsName = BlossomSyncManager.MOONBOARD_PREFS_NAME,
+        )
+    }
+
     @Provides
     @Singleton
     fun provideBoardSyncManager(
@@ -251,9 +282,12 @@ object AppModule {
         userPreferences: UserPreferences,
         @ApplicationContext context: Context,
         boardRepository: BoardRepository,
-        personalBoardRepo: PersonalBoardRepository
+        personalBoardRepo: PersonalBoardRepository,
+        boardLocationRepository: BoardLocationRepository,
+        moonBoardCatalogueSync: MoonBoardCatalogueSync,
+        auroraCatalogueSync: AuroraCatalogueSync,
     ): BoardSyncManager {
-        return BoardSyncManager(importer, blossomSyncManager, userPreferences, context, boardRepository, personalBoardRepo)
+        return BoardSyncManager(importer, blossomSyncManager, userPreferences, context, boardRepository, personalBoardRepo, boardLocationRepository, moonBoardCatalogueSync, auroraCatalogueSync)
     }
 
     @Provides
@@ -463,6 +497,11 @@ object AppModule {
         }
     }
 
+    /** Quartz-free identity facade (JVM testability) — see [NostrIdentity]. */
+    @Provides
+    @Singleton
+    fun provideNostrIdentity(signer: NostrSigner): NostrIdentity = signer
+
     @Provides
     @Singleton
     fun provideNostrRelayPool(@Named("nostr") okHttpClient: OkHttpClient): NostrRelayPool {
@@ -632,6 +671,11 @@ object AppModule {
     ): NostrMessageSender {
         return NostrMessageSender(eventBuilder, relayPool, nostrSigner)
     }
+
+    /** Quartz-free sending facade (JVM testability) — see [NostrMessageSending]. */
+    @Provides
+    @Singleton
+    fun provideNostrMessageSending(sender: NostrMessageSender): NostrMessageSending = sender
 
     @Provides
     @Singleton

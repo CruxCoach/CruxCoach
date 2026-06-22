@@ -182,7 +182,8 @@ class CruxCoachApp : Application(), Configuration.Provider {
             PerfLogger.trace("BoardImageCache.prewarm") {
                 // Pre-warm with default 12×12 board image; replaced when user's
                 // preferred board type is loaded from preferences
-                com.cruxcoach.android.ui.board.BoardImageCache.getOrDecode(10L, assets)
+                // default Kilter 12×12 (product_size 10); path per boardImageAssetPath(KILTER, 10)
+                com.cruxcoach.android.ui.board.BoardImageCache.getOrDecode(listOf("board_images/board_10.webp"), assets)
             }
         }
 
@@ -196,13 +197,21 @@ class CruxCoachApp : Application(), Configuration.Provider {
             // user with stale schedules until the next app start that
             // happened not to throw on the way through.
             runCatching {
+                // 0.1.x → 0.2.0: the CruxCoach default LED colors changed.
+                // Move users still sitting on a previous default preset onto
+                // the new default; custom colors and the Kilter preset are
+                // left untouched. One-shot + idempotent (self-guards via a
+                // persisted flag). See UserPreferences.
+                userPreferences.migrateLegacyLedDefaultsIfNeeded()
+            }.onFailure { PerfLogger.warn("[appScope] migrateLegacyLedDefaults failed", it) }
+            runCatching {
                 // Recover from a partial-import state left by a previous run
                 // that was killed mid-sync (restartApp during identity-switch,
                 // OOM, force-stop). Must run before syncIfStale because the
                 // partial state still reports isImported=true, so syncIfStale
                 // would not otherwise touch it.
                 syncManager.get().recoverPartialImportIfNeeded()
-            }.onFailure { PerfLogger.logCoroutine("appScope", "recoverPartialImport failed: ${it.message}") }
+            }.onFailure { PerfLogger.warn("[appScope] recoverPartialImport failed", it) }
             runCatching {
                 // One-shot consumer of the 7.sqm post-migration marker:
                 // wipes chunk hashes + lastSyncTimestamp and triggers a
@@ -210,7 +219,16 @@ class CruxCoachApp : Application(), Configuration.Provider {
                 // browser after the Kilter-side wipe. No-op when the
                 // marker is absent (i.e. on every subsequent start).
                 syncManager.get().handlePostMigrationResync()
-            }.onFailure { PerfLogger.logCoroutine("appScope", "handlePostMigrationResync failed: ${it.message}") }
+            }.onFailure { PerfLogger.warn("[appScope] handlePostMigrationResync failed", it) }
+            runCatching {
+                // 0.1.4 → 0.1.5 upgrade: pre-0.1.5 saved the `locations`
+                // chunk hash without importing it, so the normal sync now
+                // treats it as up-to-date and never fills the map. Fetch
+                // just the locations chunk when the board DB exists but the
+                // locations table is empty. No-op on fresh installs (the
+                // full sync handles it) and once locations are present.
+                syncManager.get().backfillLocationsIfMissing()
+            }.onFailure { PerfLogger.warn("[appScope] backfillLocationsIfMissing failed", it) }
             runCatching {
                 // Note: no startup probe of the WiFi-Direct-share endpoint. The
                 // legitimate receive flow is deep-link driven (cruxcoach://import-board-db
@@ -219,11 +237,11 @@ class CruxCoachApp : Application(), Configuration.Provider {
                 // is not a trustworthy import signal — any attacker-controlled AP
                 // can synthesise it.
                 syncManager.get().syncIfStale()
-            }.onFailure { PerfLogger.logCoroutine("appScope", "syncIfStale failed: ${it.message}") }
+            }.onFailure { PerfLogger.warn("[appScope] syncIfStale failed", it) }
             runCatching {
                 // Kilter account: sync (download + upload unsynced) if persistent sync is enabled
                 kilterSyncEngine.get().syncOnAppStartIfEnabled()
-            }.onFailure { PerfLogger.logCoroutine("appScope", "kilterSync failed: ${it.message}") }
+            }.onFailure { PerfLogger.warn("[appScope] kilterSync failed", it) }
 
             // Reading the interval is the only step that can plausibly
             // fail before the schedule calls (DataStore I/O); fall back
@@ -233,7 +251,7 @@ class CruxCoachApp : Application(), Configuration.Provider {
 
             runCatching {
                 BoardSyncWorker.schedule(this@CruxCoachApp, interval)
-            }.onFailure { PerfLogger.logCoroutine("appScope", "BoardSyncWorker.schedule failed: ${it.message}") }
+            }.onFailure { PerfLogger.warn("[appScope] BoardSyncWorker.schedule failed", it) }
 
             // Kilter publish retry — drains rows where the direct push
             // failed (network blip, server hiccup, token expiry). Idempotent;
@@ -241,7 +259,7 @@ class CruxCoachApp : Application(), Configuration.Provider {
             // the user has no Kilter token or disabled climb publishing.
             runCatching {
                 com.cruxcoach.android.data.kilter.KilterPublishRetryWorker.schedule(this@CruxCoachApp)
-            }.onFailure { PerfLogger.logCoroutine("appScope", "KilterPublishRetryWorker.schedule failed: ${it.message}") }
+            }.onFailure { PerfLogger.warn("[appScope] KilterPublishRetryWorker.schedule failed", it) }
 
             // Sibling retry worker for the Nostr-side of community publish.
             // Drains rows the editor sent to relays where zero relays
@@ -249,7 +267,7 @@ class CruxCoachApp : Application(), Configuration.Provider {
             // 6h cadence; idempotent; self-skips when no failed rows.
             runCatching {
                 com.cruxcoach.android.community.CommunityPublishRetryWorker.schedule(this@CruxCoachApp)
-            }.onFailure { PerfLogger.logCoroutine("appScope", "CommunityPublishRetryWorker.schedule failed: ${it.message}") }
+            }.onFailure { PerfLogger.warn("[appScope] CommunityPublishRetryWorker.schedule failed", it) }
 
             // One-shot drain on every cold start: covers the crash window
             // between the publisher's pre-send `markClimbPublishInFlight`
@@ -260,7 +278,7 @@ class CruxCoachApp : Application(), Configuration.Provider {
             // the periodic, so this is safe to call unconditionally.
             runCatching {
                 com.cruxcoach.android.community.CommunityPublishRetryWorker.runOnce(this@CruxCoachApp)
-            }.onFailure { PerfLogger.logCoroutine("appScope", "CommunityPublishRetryWorker.runOnce failed: ${it.message}") }
+            }.onFailure { PerfLogger.warn("[appScope] CommunityPublishRetryWorker.runOnce failed", it) }
 
             // Channel B: live Nostr subscription for community climbs.
             // Closes the latency gap between two daily Blossom snapshots —
@@ -270,7 +288,7 @@ class CruxCoachApp : Application(), Configuration.Provider {
             // and self-restarts on connection drops.
             runCatching {
                 communityClimbSubscriber.get().start(appScope)
-            }.onFailure { PerfLogger.logCoroutine("appScope", "CommunityClimbSubscriber.start failed: ${it.message}") }
+            }.onFailure { PerfLogger.warn("[appScope] CommunityClimbSubscriber.start failed", it) }
 
             runCatching {
                 // FEAT-002: reconcile the backup worker with persisted prefs on
@@ -294,7 +312,7 @@ class CruxCoachApp : Application(), Configuration.Provider {
                     enabled = backupEnabled,
                     interval = backupInterval,
                 )
-            }.onFailure { PerfLogger.logCoroutine("appScope", "BackupSyncWorker.schedule failed: ${it.message}") }
+            }.onFailure { PerfLogger.warn("[appScope] BackupSyncWorker.schedule failed", it) }
             PerfLogger.logCoroutine("appScope", "singleton-init + sync DONE")
         }
 

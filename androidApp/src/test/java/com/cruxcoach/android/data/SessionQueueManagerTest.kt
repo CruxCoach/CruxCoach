@@ -4,6 +4,9 @@ import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.ble.QueueItem
 import com.cruxcoach.data.repository.BoardRepository
+import com.cruxcoach.data.repository.ClimbWithStats
+import com.cruxcoach.domain.board.BoardBrand
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.CoroutineScope
@@ -525,6 +528,61 @@ class SessionQueueManagerTest {
         assertEquals(3, state.queue.size)
         assertEquals(2, state.currentIndex)
         assertEquals("c", state.queue[state.currentIndex].climbUuid)
+    }
+
+    // ===== Connected-board brand guard on sendCurrentClimbToBoard =====
+
+    private fun moonBoardClimb(uuid: String) = ClimbWithStats(
+        uuid = uuid,
+        layoutId = 1L,
+        setterUsername = null,
+        name = "MB climb",
+        frames = "p1r12p2r13",
+        framesCount = 1,
+        difficultyAverage = null,
+        qualityAverage = null,
+        ascensionistCount = null,
+        boardBrand = "moonboard",
+    )
+
+    private fun setupConnectedSendScenario(connectedBrand: BoardBrand?) {
+        every { bleConnection.connectionState } returns MutableStateFlow(ConnectionState.CONNECTED)
+        every { bleConnection.connectedBoardBrand } returns MutableStateFlow(connectedBrand)
+        every { boardRepository.getClimbByUuid(any(), any()) } returns moonBoardClimb("uuid-mb")
+        queueManager.startQueue("Host")
+        queueManager.addClimb("uuid-mb", 40)
+    }
+
+    @Test
+    fun `sendCurrentClimbToBoard skips when climb brand differs from connected board`() {
+        // MoonBoard climb in the queue, but a Kilter board is still on the link
+        // (e.g. the active board was switched in Settings without disconnecting).
+        setupConnectedSendScenario(connectedBrand = BoardBrand.KILTER)
+
+        queueManager.sendCurrentClimbToBoard()
+
+        coVerify(exactly = 0) { bleConnection.sendMoonBoardClimb(any(), any()) }
+        coVerify(exactly = 0) { bleConnection.sendClimb(any(), any(), any()) }
+    }
+
+    @Test
+    fun `sendCurrentClimbToBoard sends when climb brand matches connected board`() {
+        setupConnectedSendScenario(connectedBrand = BoardBrand.MOONBOARD)
+
+        queueManager.sendCurrentClimbToBoard()
+
+        coVerify(exactly = 1) { bleConnection.sendMoonBoardClimb(any(), any()) }
+    }
+
+    @Test
+    fun `sendCurrentClimbToBoard sends when connected board brand is unknown`() {
+        // Legacy behavior preserved: with no connected-brand information the
+        // guard must not block (matches pre-guard semantics).
+        setupConnectedSendScenario(connectedBrand = null)
+
+        queueManager.sendCurrentClimbToBoard()
+
+        coVerify(exactly = 1) { bleConnection.sendMoonBoardClimb(any(), any()) }
     }
 
     @Test

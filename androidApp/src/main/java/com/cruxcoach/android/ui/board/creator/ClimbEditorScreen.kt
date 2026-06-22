@@ -69,11 +69,16 @@ import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.ui.board.BleConnectionSheet
 import com.cruxcoach.android.ui.board.BleConnectionViewModel
 import com.cruxcoach.android.ui.board.KilterBoardVisualization
-import com.cruxcoach.android.ui.board.QuickSendStatus
+import com.cruxcoach.android.ui.board.MoonBoardVisualization
+import com.cruxcoach.android.ui.board.rememberMoonBoardAsset
 import com.cruxcoach.android.ui.theme.SuccessGreen
+import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.BoardHold
 import com.cruxcoach.domain.board.HoldRole
+import com.cruxcoach.domain.board.MoonBoardVariant
 import com.cruxcoach.domain.community.ClimbValidation
+import com.cruxcoach.domain.community.brand
+import com.cruxcoach.domain.community.encodeFrames
 
 /**
  * Climb-creator screen. Composes:
@@ -99,16 +104,16 @@ fun ClimbEditorScreen(
     val snackbarHostState = remember { SnackbarHostState() }
 
     // BLE button + send pipeline mirrors BoardClimbDetailScreen 1:1:
-    //  * tap behaviour branches on userPrefs.quickBoardSend (the "schnell
-    //    senden" setting) into the macro or the manual sheet.
+    //  * tap always opens the sheet (sheet handles permissions/BT-off,
+    //    auto-connects on a single board, lets the user pick otherwise).
     //  * BoardClimbDetailViewModel has BoardSendController that auto-
     //    fires sendClimb on every CONNECTED transition; the editor
     //    achieves the same via LaunchedEffect(bleConnected) below.
-    //  * QuickSendStatus.NeedsManualPick escalates back into the sheet
-    //    so the user can pick when 2+ boards are in range.
     //  * Subsequent hold edits on a still-connected board are live-
     //    mirrored by ClimbEditorViewModel.applyEditor -> syncLeds(),
     //    which is a no-op when disconnected.
+    //  * Auto-disconnect is driven by Settings → BLE idle timer (the
+    //    Quick-Send macro was removed in favour of this).
     val bleConnViewModel: BleConnectionViewModel = hiltViewModel()
     val bleConnState by bleConnViewModel.state.collectAsStateWithLifecycle()
     val bleConnected = bleConnState.connectionState.let {
@@ -129,23 +134,6 @@ fun ClimbEditorScreen(
     // applyEditor — this LaunchedEffect only owns the initial push.
     LaunchedEffect(bleConnected) {
         if (bleConnected) viewModel.pushCurrentHoldsToBoard()
-    }
-    // NeedsManualPick + Done/Error reset — same observer pattern as
-    // BoardClimbDetailScreen.kt:296-308. Multi-board ambiguity escalates
-    // into the sheet; terminal Done/Error states reset the macro flow
-    // so the next icon tap starts fresh. No snackbars here either —
-    // the BLE-icon colour change (grey → green) is signal enough.
-    val quickSendStatus by bleConnViewModel.quickSend.collectAsStateWithLifecycle()
-    LaunchedEffect(quickSendStatus) {
-        if (quickSendStatus is QuickSendStatus.NeedsManualPick) {
-            showBleSheet = true
-            bleConnViewModel.resetQuickSend()
-        }
-    }
-    LaunchedEffect(quickSendStatus) {
-        if (quickSendStatus is QuickSendStatus.Done || quickSendStatus is QuickSendStatus.Error) {
-            bleConnViewModel.resetQuickSend()
-        }
     }
 
     val nudgeMessage = stringResource(R.string.climb_creator_kilter_connect_nudge)
@@ -242,20 +230,13 @@ fun ClimbEditorScreen(
                 actions = {
                     IconButton(
                         onClick = {
-                            // 1:1 with BoardClimbDetailScreen.kt:399-414:
-                            // Settings → "Schnell-Senden" routes the tap
-                            // through the macro (scan → auto-connect-on-
-                            // single → CONNECTED → editor's
-                            // LaunchedEffect(bleConnected) auto-fires send
-                            // → SENDING → CONNECTED → disconnect). When
-                            // off, opens the manual connection sheet.
-                            // isRoute is always false for the editor —
-                            // the climb is a single-frame draft.
-                            if (bleConnState.quickBoardSendEnabled) {
-                                bleConnViewModel.startQuickSend(isRoute = false)
-                            } else {
-                                showBleSheet = true
-                            }
+                            // Always open the sheet (auto-connects on a
+                            // single board, asks otherwise). Editor's
+                            // LaunchedEffect(bleConnected) auto-fires the
+                            // current hold map on CONNECTED. Auto-
+                            // disconnect is driven by Settings → BLE idle
+                            // timer (Quick-Send macro removed).
+                            showBleSheet = true
                         },
                         modifier = Modifier.testTag("climb_creator_ble_connect_button"),
                     ) {
@@ -310,24 +291,30 @@ fun ClimbEditorScreen(
                                     viewModel.openDraftsSheet()
                                 },
                             )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.climb_creator_heatmap_toggle)) },
-                                leadingIcon = {
-                                    Icon(
-                                        if (state.heatmapEnabled) Icons.Filled.Whatshot else Icons.Outlined.Whatshot,
-                                        contentDescription = null,
-                                        tint = if (state.heatmapEnabled) {
-                                            MaterialTheme.colorScheme.primary
-                                        } else {
-                                            MaterialTheme.colorScheme.onSurfaceVariant
-                                        },
-                                    )
-                                },
-                                onClick = {
-                                    overflowExpanded = false
-                                    viewModel.toggleHeatmap()
-                                },
-                            )
+                            // Heatmap is a Kilter-only co-occurrence overlay
+                            // (placement-id keyed). The MoonBoard renderer has
+                            // no heatmap layer, so the toggle only shows for
+                            // boards that actually have one.
+                            if (state.editor.brand.hasHeatmap) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.climb_creator_heatmap_toggle)) },
+                                    leadingIcon = {
+                                        Icon(
+                                            if (state.heatmapEnabled) Icons.Filled.Whatshot else Icons.Outlined.Whatshot,
+                                            contentDescription = null,
+                                            tint = if (state.heatmapEnabled) {
+                                                MaterialTheme.colorScheme.primary
+                                            } else {
+                                                MaterialTheme.colorScheme.onSurfaceVariant
+                                            },
+                                        )
+                                    },
+                                    onClick = {
+                                        overflowExpanded = false
+                                        viewModel.toggleHeatmap()
+                                    },
+                                )
+                            }
                         }
                     }
                 },
@@ -349,27 +336,43 @@ fun ClimbEditorScreen(
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            // Live board visualization
-            val activeHolds = state.editor.selectedHolds.map { (pid, role) -> BoardHold(pid, role) }
-            KilterBoardVisualization(
-                holds = activeHolds,
-                placements = state.placements,
-                boardSize = state.boardSize,
-                boardImages = state.boardImages,
-                heatmapData = if (state.heatmapEnabled) state.heatmap else null,
-                selectedHolds = state.editor.selectedHolds.keys,
-                onHoldTapped = viewModel::toggleHold,
-                onHoldMoved = viewModel::moveHold,
-                ledColors = state.ledColors,
-                solidHoldFill = true,
-                allowZoom = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
+            // Live board visualization — brand-specific renderer. MoonBoard
+            // draws the bundled board photo with tap-to-cycle holds (no LED
+            // address map, no drag-move, no co-occurrence heatmap); Kilter
+            // keeps the full Aurora placement renderer.
+            val isMoonBoard = state.editor.brand == BoardBrand.MOONBOARD
+            if (isMoonBoard) {
+                MoonBoardVisualization(
+                    frames = state.editor.encodeFrames(),
+                    assetState = rememberMoonBoardAsset(state.layoutId),
+                    variant = MoonBoardVariant.fromLayoutId(state.layoutId),
+                    editable = true,
+                    onHoldTapped = viewModel::toggleHold,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            } else {
+                val activeHolds = state.editor.selectedHolds.map { (pid, role) -> BoardHold(pid, role) }
+                KilterBoardVisualization(
+                    holds = activeHolds,
+                    placements = state.placements,
+                    boardSize = state.boardSize,
+                    boardImages = state.boardImages,
+                    heatmapData = if (state.heatmapEnabled) state.heatmap else null,
+                    selectedHolds = state.editor.selectedHolds.keys,
+                    onHoldTapped = viewModel::toggleHold,
+                    onHoldMoved = viewModel::moveHold,
+                    ledColors = state.ledColors,
+                    solidHoldFill = true,
+                    allowZoom = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
 
             HoldCountStatus(
                 holds = state.editor.selectedHolds,
                 activeBrush = state.editor.activeBrush,
                 ledColors = state.ledColors,
+                boardBrand = state.editor.boardBrand,
                 onBrushTap = viewModel::toggleBrush,
             )
 
@@ -399,6 +402,7 @@ fun ClimbEditorScreen(
             AngleDropdown(
                 angle = state.editor.angle,
                 onChange = { viewModel.setAngle(it) },
+                angles = state.angleOptions,
             )
 
             Spacer(Modifier.height(8.dp))
@@ -550,12 +554,9 @@ private fun HoldCountStatus(
     holds: Map<Int, Int>,
     activeBrush: Int?,
     ledColors: com.cruxcoach.android.data.LedHoldColors,
+    boardBrand: String,
     onBrushTap: (role: Int) -> Unit,
 ) {
-    val starts = holds.values.count { it == HoldRole.START }
-    val hands = holds.values.count { it == HoldRole.HAND }
-    val feet = holds.values.count { it == HoldRole.FOOT }
-    val finishes = holds.values.count { it == HoldRole.FINISH }
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         if (activeBrush == null) {
             Text(
@@ -568,29 +569,57 @@ private fun HoldCountStatus(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            if (BoardBrand.fromWire(boardBrand) == BoardBrand.MOONBOARD) {
+                // MoonBoard: fixed three-role palette (start/hand/finish), no
+                // foot holds, route role codes (42/43/44). Chip colours mirror
+                // MoonBoardVisualization's fixed palette so the chips match the
+                // board markers (MoonBoard LEDs aren't user-recolourable).
+                BrushChip(
+                    label = stringResource(R.string.climb_creator_count_start, holds.values.count { it == HoldRole.ROUTE_START }),
+                    role = HoldRole.ROUTE_START,
+                    roleColor = androidx.compose.ui.graphics.Color(0xFF2FB84A),
+                    isActive = activeBrush == HoldRole.ROUTE_START,
+                    onClick = onBrushTap,
+                )
+                BrushChip(
+                    label = stringResource(R.string.climb_creator_count_hand, holds.values.count { it == HoldRole.ROUTE_HAND }),
+                    role = HoldRole.ROUTE_HAND,
+                    roleColor = androidx.compose.ui.graphics.Color(0xFF2F6BE0),
+                    isActive = activeBrush == HoldRole.ROUTE_HAND,
+                    onClick = onBrushTap,
+                )
+                BrushChip(
+                    label = stringResource(R.string.climb_creator_count_finish, holds.values.count { it == HoldRole.ROUTE_FINISH }),
+                    role = HoldRole.ROUTE_FINISH,
+                    roleColor = androidx.compose.ui.graphics.Color(0xFFE23B36),
+                    isActive = activeBrush == HoldRole.ROUTE_FINISH,
+                    onClick = onBrushTap,
+                )
+                return@Row
+            }
             BrushChip(
-                label = stringResource(R.string.climb_creator_count_start, starts),
+                label = stringResource(R.string.climb_creator_count_start, holds.values.count { it == HoldRole.START }),
                 role = HoldRole.START,
                 roleColor = com.cruxcoach.android.ui.theme.rgb332ToComposeColor(ledColors.start),
                 isActive = activeBrush == HoldRole.START,
                 onClick = onBrushTap,
             )
             BrushChip(
-                label = stringResource(R.string.climb_creator_count_hand, hands),
+                label = stringResource(R.string.climb_creator_count_hand, holds.values.count { it == HoldRole.HAND }),
                 role = HoldRole.HAND,
                 roleColor = com.cruxcoach.android.ui.theme.rgb332ToComposeColor(ledColors.hand),
                 isActive = activeBrush == HoldRole.HAND,
                 onClick = onBrushTap,
             )
             BrushChip(
-                label = stringResource(R.string.climb_creator_count_foot, feet),
+                label = stringResource(R.string.climb_creator_count_foot, holds.values.count { it == HoldRole.FOOT }),
                 role = HoldRole.FOOT,
                 roleColor = com.cruxcoach.android.ui.theme.rgb332ToComposeColor(ledColors.foot),
                 isActive = activeBrush == HoldRole.FOOT,
                 onClick = onBrushTap,
             )
             BrushChip(
-                label = stringResource(R.string.climb_creator_count_finish, finishes),
+                label = stringResource(R.string.climb_creator_count_finish, holds.values.count { it == HoldRole.FINISH }),
                 role = HoldRole.FINISH,
                 roleColor = com.cruxcoach.android.ui.theme.rgb332ToComposeColor(ledColors.finish),
                 isActive = activeBrush == HoldRole.FINISH,
@@ -682,8 +711,7 @@ private fun GradeSlider(gradeId: Int?, onChange: (Int?) -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AngleDropdown(angle: Int?, onChange: (Int?) -> Unit) {
-    val angles = listOf(20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70)
+private fun AngleDropdown(angle: Int?, onChange: (Int?) -> Unit, angles: List<Int>) {
     var expanded by remember { mutableStateOf(false) }
     ExposedDropdownMenuBox(
         expanded = expanded,

@@ -196,14 +196,14 @@ class BackupRepository @Inject constructor(
 
         // 8b — keep the Kind-30078 key event from aging off the relays.
         // The pointer is republished on every backup (so it stays fresh
-        // by construction) but the key event is only written once on
-        // first-time setup or on local-cache regeneration. Replaceable-
-        // parameterized events can still be evicted by relays over time,
-        // which would make restore unrecoverable even with the nsec if
-        // the local cache is also gone. Republish on a slow cadence so
-        // the cost stays negligible (one extra Amber popup every ~30 d
-        // without always-approve; nothing for local signers).
-        refreshKeyEventIfStale()
+        // by construction); republish the key event on the SAME cadence.
+        // Replaceable-parameterized events can be evicted by relays over
+        // time, so a stale-gated (~30 d) refresh left a window where the
+        // pointer + blob survived but the key event was already evicted —
+        // a reinstalled user with the nsec could then find but not decrypt
+        // the backup. Best-effort + non-fatal (blob + pointer are already
+        // durable); for local signers there is no popup.
+        republishKeyEvent()
 
         // 9 — record success
         val now = System.currentTimeMillis() / 1000
@@ -214,20 +214,26 @@ class BackupRepository @Inject constructor(
         )
     }
 
-    private suspend fun refreshKeyEventIfStale() {
-        val lastPublish = preferences.getLastKeyEventPublish() ?: 0L
+    /**
+     * Republish the Kind-30078 key event on every backup, matching the
+     * pointer cadence. Unconditional (was stale-gated to ~30 d): a relay
+     * could evict the older key event by age while keeping the pointer +
+     * blob, leaving a reinstalled user able to find but not decrypt the
+     * backup. Best-effort + non-fatal — blob + pointer are already durable,
+     * so a publish failure simply retries on the next backup.
+     */
+    private suspend fun republishKeyEvent() {
         val nowEpoch = System.currentTimeMillis() / 1000
-        if (nowEpoch - lastPublish < KEY_EVENT_REFRESH_INTERVAL_SEC) return
         val wrapped = preferences.getWrappedDataKey() ?: return
         runCatching { publishKeyEvent(wrapped) }
             .onSuccess {
                 preferences.setLastKeyEventPublish(nowEpoch)
-                Log.d(TAG, "event=key_event_refreshed")
+                Log.d(TAG, "event=key_event_republished")
             }
             .onFailure { e ->
                 // Not fatal — blob + pointer are already durable; we'll
                 // try again on the next backup.
-                Log.w(TAG, "event=key_event_refresh_failed reason=${e.message}", e)
+                Log.w(TAG, "event=key_event_republish_failed reason=${e.message}", e)
             }
     }
 
@@ -376,7 +382,7 @@ class BackupRepository @Inject constructor(
      * On success the caller should flip `backupEnabled = true` and schedule
      * the worker.
      */
-    suspend fun restore(info: BackupInfo) = pipelineMutex.withLock {
+    suspend fun restore(info: BackupInfo): CruxCoachBackup.ImportResult = pipelineMutex.withLock {
         // Wait out any in-flight board-sync before we start writing into
         // the (unencrypted) board DB's climbs table — concurrent writers
         // race for the SQLite writer-lock and bulk-import wins on
@@ -437,19 +443,21 @@ class BackupRepository @Inject constructor(
         // pubkey check catches bookkeeping bugs (re-imported own old
         // nsec, mid-flow identity flip before A2 clears ran, etc.)
         // before any row is written.
-        val importResult = CruxCoachBackup.import(
-            jsonString = json,
-            selectedCategories = CruxCoachBackup.Category.entries.toSet(),
-            userRepository = userRepository,
-            bodyStatRepository = bodyStatRepository,
-            workoutRepository = workoutRepository,
-            climbRepository = climbRepository,
-            planRepository = planRepository,
-            personalBoardRepo = personalBoardRepo,
-            boardRepository = boardRepository,
-            transactionRunner = transactionRunner,
-            expectedNostrPubkey = nostrSigner.getPublicKeyHex(),
-        )
+        val importResult = importRetryingOnDbLock {
+            CruxCoachBackup.import(
+                jsonString = json,
+                selectedCategories = CruxCoachBackup.Category.entries.toSet(),
+                userRepository = userRepository,
+                bodyStatRepository = bodyStatRepository,
+                workoutRepository = workoutRepository,
+                climbRepository = climbRepository,
+                planRepository = planRepository,
+                personalBoardRepo = personalBoardRepo,
+                boardRepository = boardRepository,
+                transactionRunner = transactionRunner,
+                expectedNostrPubkey = nostrSigner.getPublicKeyHex(),
+            )
+        }
 
         // 4 — cache dataKey for future backups (self-encrypt via NIP-44)
         val wrappedFresh = nip44EncryptToSelf(dataKeyHex)
@@ -465,6 +473,45 @@ class BackupRepository @Inject constructor(
             TAG,
             "event=restore_done rowsImported=$rowsImported skippedDuplicates=${importResult.skippedDuplicates} durationMs=${System.currentTimeMillis() - started}",
         )
+        importResult
+    }
+
+    /**
+     * Retry the secure-DB import when it fails with a transient SQLite
+     * lock ("database is locked" / "busy"). Root cause: the secure DB
+     * ATTACHes the unencrypted board DB to resolve ascent→climb names,
+     * so the very first ascent step JOINs the board DB — which collides
+     * with an in-progress board-catalogue bulk import (index rebuilds /
+     * checkpoints can hold the board-DB write lock past the connection's
+     * 5 s busy_timeout). A fresh-install "restore while boards are still
+     * downloading" then rolled the whole secure transaction back to zero
+     * and surfaced only as a transient generic snackbar. The import is
+     * idempotent (UUID dedup + name-merged lists), so re-running after a
+     * short backoff — by which point the offending board-DB batch has
+     * committed — completes cleanly. `restore()` already waits for
+     * `isSyncing` to clear up front; this covers the residual windows it
+     * can't (ensureActiveBoardCatalogue runs before that guard; the
+     * detached post-sync ANALYZE runs after it).
+     */
+    private suspend fun <T> importRetryingOnDbLock(block: () -> T): T {
+        val maxAttempts = 4
+        var attempt = 1
+        while (true) {
+            try {
+                return block()
+            } catch (e: Exception) {
+                val msg = e.message ?: ""
+                val isLock = msg.contains("locked", ignoreCase = true) ||
+                    msg.contains("busy", ignoreCase = true)
+                if (!isLock || attempt >= maxAttempts) throw e
+                Log.w(
+                    TAG,
+                    "event=restore_db_lock_retry attempt=$attempt/$maxAttempts msg=${msg.take(80)}",
+                )
+                kotlinx.coroutines.delay(600L * attempt)
+                attempt++
+            }
+        }
     }
 
     /**
@@ -778,9 +825,19 @@ class BackupRepository @Inject constructor(
                     .firstOrNull { it.tagValue("d") == keyDTag }
             }
             SignerMode.AMBER -> {
+                // Same cached-#d narrowing as fetchByQueryAllAmber: the
+                // d-tag cached at publish time pins the query to our key
+                // event instead of every NIP-78 app's 30078 events (one
+                // Amber decrypt prompt per probed candidate otherwise).
+                // Cached only — a fresh derive would prompt AND mismatch
+                // (Amber aux_rand). No cache → legacy query-all probe.
+                val cachedKeyDTag = preferences.getDTag(BackupPreferences.IDENTIFIER_KEY)
                 val filter = buildJsonObject {
                     put("kinds", buildJsonArray { add(JsonPrimitive(KIND_REPLACEABLE_PARAMETERIZED)) })
                     put("authors", buildJsonArray { add(JsonPrimitive(pubkey)) })
+                    if (cachedKeyDTag != null) {
+                        put("#d", buildJsonArray { add(JsonPrimitive(cachedKeyDTag)) })
+                    }
                 }
                 queryAllValid(filter.toString(), timeoutMs).firstOrNull { ev ->
                     val decrypted = runCatching { nip44DecryptToSelf(ev.content) }.getOrNull()
@@ -861,11 +918,51 @@ class BackupRepository @Inject constructor(
         pubkey: String,
         timeoutMs: Long,
     ): Pair<MinimalEvent, MinimalEvent>? {
+        // Targeted #d filter when this install already knows its d-tags
+        // (CACHED only — never dTagDeriver.derive() here: that fires an
+        // Amber approval prompt, and on a fresh install Amber's aux_rand
+        // makes the re-derived tag a different value that matches
+        // nothing). Kind 30078 is the generic NIP-78 app-data kind used
+        // by many Nostr apps; the untargeted query-all sorted newest-
+        // first meant >8 newer 30078 events from OTHER apps pushed our
+        // pointer/key past the decrypt-attempt cap and "Kein Backup
+        // gefunden" fired on a backup that exists. With the #d filter
+        // (NIP-01 standard) the result set is just our two replaceable
+        // events and the decrypt-attempt cap in [probeAmberCandidates]
+        // is a pure flood-guard. Fresh installs (no cache yet) still
+        // fall back to query-all + shape-matching.
+        val cachedBackupDTag = preferences.getDTag(BackupPreferences.IDENTIFIER_BACKUP)
+        val cachedKeyDTag = preferences.getDTag(BackupPreferences.IDENTIFIER_KEY)
+        if (cachedBackupDTag != null && cachedKeyDTag != null) {
+            val targeted = buildJsonObject {
+                put("kinds", buildJsonArray { add(JsonPrimitive(KIND_REPLACEABLE_PARAMETERIZED)) })
+                put("authors", buildJsonArray { add(JsonPrimitive(pubkey)) })
+                put("#d", buildJsonArray {
+                    add(JsonPrimitive(cachedBackupDTag))
+                    add(JsonPrimitive(cachedKeyDTag))
+                })
+            }
+            probeAmberCandidates(queryAllValid(targeted.toString(), timeoutMs), pubkey)
+                ?.let { return it }
+            // No pair under the cached tags — they can be stale w.r.t.
+            // the relays (e.g. the live backup was published by another
+            // install of the same Amber identity, whose aux_rand yielded
+            // different d-tags). Fall through to the untargeted probe so
+            // the targeted path is strictly additive.
+        }
         val filter = buildJsonObject {
             put("kinds", buildJsonArray { add(JsonPrimitive(KIND_REPLACEABLE_PARAMETERIZED)) })
             put("authors", buildJsonArray { add(JsonPrimitive(pubkey)) })
         }
-        val events = queryAllValid(filter.toString(), timeoutMs)
+        return probeAmberCandidates(queryAllValid(filter.toString(), timeoutMs), pubkey)
+    }
+
+    /** Decrypt-probe a candidate set for the (pointer, key) pair — see
+     *  [fetchByQueryAllAmber] for the shape-matching rationale. */
+    private suspend fun probeAmberCandidates(
+        events: List<MinimalEvent>,
+        pubkey: String,
+    ): Pair<MinimalEvent, MinimalEvent>? {
         // The key event's content is valid hex (NIP-44 v2 base64 payload).
         // The pointer's decrypted content is a JSON BackupPointer with a
         // `version` field. Sort by createdAt DESC first so the earliest
@@ -997,10 +1094,6 @@ class BackupRepository @Inject constructor(
         private const val KIND_REPLACEABLE_PARAMETERIZED = 30078
         private const val KIND_BLOSSOM_SERVER_LIST = 10063
         private const val KIND_DELETION = 5
-        // Refresh the Kind-30078 key event roughly every 30 days so
-        // relays that evict older replaceable-parameterized events don't
-        // leave the only restore anchor stranded.
-        private const val KEY_EVENT_REFRESH_INTERVAL_SEC = 30L * 24L * 60L * 60L
         // Amber prompts once per decrypt call; a hostile relay can fan out
         // a large set of lookalike events and drive the user into a prompt
         // storm. Cap the Amber-path decrypt attempts at a value that

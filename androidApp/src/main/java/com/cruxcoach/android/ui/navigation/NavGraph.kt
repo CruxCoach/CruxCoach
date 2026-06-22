@@ -55,9 +55,11 @@ import com.cruxcoach.android.ui.board.BoardBrowserScreen
 import com.cruxcoach.android.ui.board.BoardBrowserViewModel
 import com.cruxcoach.android.ui.board.BoardFilterScreen
 import com.cruxcoach.android.ui.board.BoardClimbDetailScreen
+import com.cruxcoach.android.ui.board.BoardClimbHistoryScreen
 import com.cruxcoach.android.ui.board.BoardListDetailScreen
 import com.cruxcoach.android.ui.board.BoardListsScreen
 import com.cruxcoach.android.ui.board.BoardLogbookScreen
+import com.cruxcoach.android.ui.map.MapScreen
 import com.cruxcoach.android.ui.board.sync.BoardSyncScreen
 import com.cruxcoach.android.ui.common.LocalBleShareManager
 import com.cruxcoach.android.ui.common.LocalBoardSessionManager
@@ -105,7 +107,9 @@ object Routes {
     const val BOARD_LOGBOOK = "board_logbook"
     const val BOARD_SYNC = "board_sync"
     const val BOARD_LISTS = "board_lists"
+    const val BOARD_LOGBOOK_HISTORY = "board_logbook_history"
     const val BOARD_LIST_DETAIL = "board_list_detail/{listId}"
+    const val BOARD_MAP = "board_map"
     const val BODY_STAT = "body_stat"
     const val DATA_IMPORT = "data_import"
     const val DATA_EXPORT = "data_export"
@@ -127,6 +131,7 @@ object Routes {
     const val SETTER_DETAIL = "setter_detail/{setterPubkey}"
     fun setterDetail(pubkey: String) = "setter_detail/$pubkey"
     const val SETTERS_LIST = "setters_list"
+    const val MY_KILTER_CLIMBS = "my_kilter_climbs"
     const val MESSAGE_THREAD = "message_thread/{eventId}"
     fun sessionDetail(sessionId: Long) = "session_detail/$sessionId"
     fun activeWorkout(sessionId: Long) = "active_workout/$sessionId"
@@ -436,7 +441,27 @@ fun CruxCoachNavHost(
                     onNavigateToSetter = { pubkey ->
                         navController.navigate(Routes.setterDetail(pubkey))
                     },
+                    onNavigateToMap = { navController.navigate(Routes.BOARD_MAP) }
                 )
+            }
+
+            composable(Routes.BOARD_MAP) {
+                com.cruxcoach.android.ui.common.ScreenErrorBoundary(
+                    screenName = "BoardMap",
+                    onNavigateBack = { navController.popBackStack() },
+                ) {
+                    MapScreen(
+                        onNavigateBack = { navController.popBackStack() },
+                        onNavigateToBoardBrowser = {
+                            // popBackStack lands the user on the BoardBrowser
+                            // already on the back stack. The browser's
+                            // ViewModel re-reads board prefs that the Map
+                            // screen wrote via applyBoardConfigForBrowse.
+                            navController.popBackStack(Routes.BOARD_BROWSER, false)
+                        },
+                        onNavigateToBoardSync = { navController.navigate(Routes.BOARD_SYNC) },
+                    )
+                }
             }
 
             composable(
@@ -542,6 +567,23 @@ fun CruxCoachNavHost(
                     },
                     onNavigateToSetters = {
                         navController.navigate(Routes.SETTERS_LIST)
+                    },
+                    onNavigateToMyClimbs = {
+                        navController.navigate(Routes.MY_KILTER_CLIMBS)
+                    },
+                    // History stays reachable from "Meine Listen" (the list icon);
+                    // only the top-bar Verlauf shortcut was removed.
+                    onNavigateToHistory = {
+                        navController.navigate(Routes.BOARD_LOGBOOK_HISTORY)
+                    },
+                )
+            }
+
+            composable(Routes.BOARD_LOGBOOK_HISTORY) {
+                BoardClimbHistoryScreen(
+                    onNavigateBack = { navController.popBackStack() },
+                    onNavigateToClimb = { uuid, angle ->
+                        navController.navigate(Routes.boardClimbDetail(uuid, angle))
                     },
                 )
             }
@@ -732,6 +774,20 @@ fun CruxCoachNavHost(
                 }
             }
 
+            composable(Routes.MY_KILTER_CLIMBS) {
+                com.cruxcoach.android.ui.common.ScreenErrorBoundary(
+                    screenName = "MyKilterClimbs",
+                    onNavigateBack = { navController.popBackStack() },
+                ) {
+                    com.cruxcoach.android.ui.community.MyKilterClimbsScreen(
+                        onNavigateBack = { navController.popBackStack() },
+                        onClimbClick = { uuid, angle ->
+                            navController.navigate(Routes.boardClimbDetail(uuid, angle))
+                        },
+                    )
+                }
+            }
+
         }
     }
     // Sibling of the Scaffold so the dialog overlays whatever is on screen.
@@ -740,6 +796,8 @@ fun CruxCoachNavHost(
     WhatsNewHost(
         onNavigateToKeyManagement = { navController.navigate(Routes.KEY_MANAGEMENT) },
         onNavigateToAuroraMigration = { navController.navigate(Routes.AURORA_MIGRATION) },
+        onNavigateToBoardMap = { navController.navigate(Routes.BOARD_MAP) },
+        onNavigateToSettings = { navController.navigate(Routes.SETTINGS) },
     )
     } // CompositionLocalProvider
 }

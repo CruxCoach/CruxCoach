@@ -49,7 +49,7 @@ class BoardBrowserStatusFilterTest {
         repo.addClimbs(c1, c2, c3)
 
         val result = repo.getClimbsByUuids(
-            setOf("uuid-1", "uuid-3"), angle = 40, layoutId = 1,
+            setOf("uuid-1", "uuid-3"), angle = 40, layoutId = 1, boardBrand = "kilter",
             minDifficulty = 0.0, maxDifficulty = 100.0,
             minAscensionists = 0, climbType = ClimbTypeFilter.BOULDER
         )
@@ -64,7 +64,7 @@ class BoardBrowserStatusFilterTest {
         repo.addClimb(climb("uuid-1"))
 
         val result = repo.getClimbsByUuids(
-            emptySet(), angle = 40, layoutId = 1,
+            emptySet(), angle = 40, layoutId = 1, boardBrand = "kilter",
             minDifficulty = 0.0, maxDifficulty = 100.0,
             minAscensionists = 0, climbType = ClimbTypeFilter.BOULDER
         )
@@ -78,7 +78,7 @@ class BoardBrowserStatusFilterTest {
         repo.addClimb(climb("uuid-1"))
 
         val result = repo.getClimbsByUuids(
-            setOf("no-match"), angle = 40, layoutId = 1,
+            setOf("no-match"), angle = 40, layoutId = 1, boardBrand = "kilter",
             minDifficulty = 0.0, maxDifficulty = 100.0,
             minAscensionists = 0, climbType = ClimbTypeFilter.BOULDER
         )
@@ -214,6 +214,18 @@ class BoardBrowserStatusFilterTest {
     }
 
     @Test
+    fun `sort by moves uses stored move count`() {
+        val climbs = listOf(
+            climb("a").copy(storedMoveCount = 8),
+            climb("b").copy(storedMoveCount = 14),
+            climb("c").copy(storedMoveCount = 3)
+        )
+        val sorted = sortInKotlin(climbs, ClimbSortField.HOLDS, SortDirection.DESC)
+
+        assertEquals(listOf(14L, 8L, 3L), sorted.map { it.storedMoveCount })
+    }
+
+    @Test
     fun `sort by name case-insensitive ascending`() {
         val climbs = listOf(
             climb("a", name = "Zebra"),
@@ -272,13 +284,75 @@ class BoardBrowserStatusFilterTest {
 
         val sentUuids = personalRepo.getUserSentClimbUuids()
         val sentClimbs = boardRepo.getClimbsByUuids(
-            sentUuids, angle = 40, layoutId = 1,
+            sentUuids, angle = 40, layoutId = 1, boardBrand = "kilter",
             minDifficulty = 0.0, maxDifficulty = 100.0,
             minAscensionists = 0, climbType = ClimbTypeFilter.BOULDER
         )
 
         assertEquals(15, sentClimbs.size)
         assertEquals(sentUuids.size.toLong(), sentClimbs.size.toLong())
+    }
+
+    // ── Multi-select parse/serialize + legacy migration ─────────
+    //
+    // The status filter is a Set<ClimbStatusFilter> persisted as a string.
+    // Existing installs (builds ≤ 0.2.0) wrote single-select tokens — these
+    // MUST migrate, or a user's saved filter silently breaks on upgrade.
+
+    @Test
+    fun `empty and ALL parse to no constraint`() {
+        assertEquals(emptySet(), parseStatusFilter(""))
+        assertEquals(emptySet(), parseStatusFilter("ALL"))
+        assertEquals(emptySet(), parseStatusFilter("   "))
+    }
+
+    @Test
+    fun `legacy UNSENT migrates to NEW plus ATTEMPTED`() {
+        assertEquals(
+            setOf(ClimbStatusFilter.NEW, ClimbStatusFilter.ATTEMPTED),
+            parseStatusFilter("UNSENT")
+        )
+    }
+
+    @Test
+    fun `legacy single-select tokens parse to their bucket`() {
+        assertEquals(setOf(ClimbStatusFilter.SENT), parseStatusFilter("SENT"))
+        assertEquals(setOf(ClimbStatusFilter.NEW), parseStatusFilter("NEW"))
+        assertEquals(setOf(ClimbStatusFilter.ATTEMPTED), parseStatusFilter("ATTEMPTED"))
+    }
+
+    @Test
+    fun `comma-joined multi-select parses to a union`() {
+        assertEquals(
+            setOf(ClimbStatusFilter.NEW, ClimbStatusFilter.SENT),
+            parseStatusFilter("NEW,SENT")
+        )
+        // tolerate stray whitespace
+        assertEquals(
+            setOf(ClimbStatusFilter.NEW, ClimbStatusFilter.SENT),
+            parseStatusFilter("NEW, SENT")
+        )
+    }
+
+    @Test
+    fun `unknown tokens are ignored, not crashed on`() {
+        assertEquals(setOf(ClimbStatusFilter.NEW), parseStatusFilter("NEW,BOGUS"))
+        assertEquals(emptySet(), parseStatusFilter("BOGUS"))
+    }
+
+    @Test
+    fun `serialize empty set yields empty string`() {
+        assertEquals("", serializeStatusFilter(emptySet()))
+    }
+
+    @Test
+    fun `serialize then parse round-trips every combination`() {
+        val all = ClimbStatusFilter.entries.toSet()
+        // power set
+        for (mask in 0 until (1 shl all.size)) {
+            val subset = all.filterIndexed { i, _ -> (mask shr i) and 1 == 1 }.toSet()
+            assertEquals(subset, parseStatusFilter(serializeStatusFilter(subset)))
+        }
     }
 
     // ── Helper: delegates to the production sort so any drift in the

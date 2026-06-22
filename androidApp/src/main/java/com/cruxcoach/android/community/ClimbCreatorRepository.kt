@@ -92,6 +92,10 @@ class ClimbCreatorRepository @Inject constructor(
             // in one place rather than per-call-site.
             setterGradeId = state.setterGradeId ?: KilterGradeMapper.DEFAULT_SETTER_GRADE_ID,
             bounds = bounds,
+            // Persist the active board's real brand so the draft stays visible
+            // in this board's drafts drawer — layout-id alone can't tell the
+            // Aurora-family boards apart from Kilter.
+            boardBrand = state.boardBrand,
         )
         return uuid
     }
@@ -132,6 +136,7 @@ class ClimbCreatorRepository @Inject constructor(
             // See saveDraft for why the default lives here, not in the UI.
             setterGradeId = state.setterGradeId ?: KilterGradeMapper.DEFAULT_SETTER_GRADE_ID,
             bounds = bounds,
+            boardBrand = state.boardBrand,
         )
     }
 
@@ -176,9 +181,18 @@ class ClimbCreatorRepository @Inject constructor(
     }
 
     private fun computeBounds(state: ClimbEditorState): ClimbBounds? {
+        // MoonBoard hold-ids aren't Aurora placement-ids (and small ids could
+        // collide with low Kilter placement-ids), so resolving coordinates
+        // here would produce a bogus bounds. Skip — null is handled
+        // gracefully everywhere a bounds is consumed.
+        if (state.boardBrand == com.cruxcoach.domain.board.BoardBrand.MOONBOARD.wireValue) return null
         val ids = state.selectedHolds.keys
         if (ids.isEmpty()) return null
-        val all = runCatching { boardRepository.getAllPlacements() }.getOrNull().orEmpty()
+        // Resolve coordinates from THIS board's placement table — placement-ids
+        // overlap across boards (layout_id=1 alone is five brands), so the
+        // default Kilter scope would derive edge_* from Kilter coordinates for
+        // an Aurora-family draft and persist a physically wrong bbox.
+        val all = runCatching { boardRepository.getAllPlacements(state.boardBrand) }.getOrNull().orEmpty()
         if (all.isEmpty()) return null
         val coords = all.asSequence()
             .filter { it.placementId.toInt() in ids }
@@ -196,7 +210,7 @@ class ClimbCreatorRepository @Inject constructor(
         val layoutId = userPreferences.boardLayoutId.first().toLong()
         val frames = state.encodeFrames()
         val hash = FramesHash.of(frames, layoutId)
-        return boardRepository.findClimbByFramesHash(hash, layoutId)
+        return boardRepository.findClimbByFramesHash(hash, layoutId, state.boardBrand)
     }
 
     /**
@@ -223,9 +237,15 @@ class ClimbCreatorRepository @Inject constructor(
             saveDraft(state)
         }
         val layoutId = userPreferences.boardLayoutId.first().toLong()
+        // The editor's active brand — set in ClimbEditorViewModel.loadBoardData
+        // from userPreferences.boardBrand (NOT fromLayoutId, which can't tell
+        // Aurora boards from Kilter). Threaded into publish() so the climb
+        // lands on the right back-compat L-namespace + board_brand tag.
+        val boardBrand = com.cruxcoach.domain.board.BoardBrand.fromWire(state.boardBrand)
         val result = publisher.publish(
             uuid = uuid,
             layoutId = layoutId,
+            boardBrand = boardBrand,
             state = state,
             sizeLabel = sizeLabel,
             isEdit = isEdit,

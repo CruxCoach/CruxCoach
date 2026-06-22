@@ -1,7 +1,18 @@
 package com.cruxcoach.data.repository
 
+import app.cash.sqldelight.coroutines.asFlow
+import app.cash.sqldelight.coroutines.mapToList
 import com.cruxcoach.db.secure.SecureDatabase
 import com.cruxcoach.util.DateTimeUtil
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
+
+/** Stable identifier for the built-in "Ignored" list, stored in
+ *  climb_lists.external_id so the list survives renames and never collides
+ *  with the Favorites built-in (which has external_id = NULL). */
+private const val IGNORED_LIST_EXTERNAL_ID = "cruxcoach:builtin:ignored"
 
 class PersonalBoardRepositoryImpl(
     private val database: SecureDatabase
@@ -9,6 +20,9 @@ class PersonalBoardRepositoryImpl(
 
     @Volatile
     private var cachedFavoritesListId: Long? = null
+
+    @Volatile
+    private var cachedIgnoredListId: Long? = null
 
     // ── Ascent ──────────────────────────────────────────────────
 
@@ -19,7 +33,8 @@ class PersonalBoardRepositoryImpl(
         comment: String?, climbedAt: String, synced: Boolean,
         gymUuid: String?, wallUuid: String?, productLayoutUuid: String?,
         climbName: String, difficultyAverage: Double?,
-        climbFrames: String, framesCount: Long
+        climbFrames: String, framesCount: Long,
+        boardBrand: String, layoutId: Long?,
     ) {
         database.ascentsQueries.insertAscent(
             uuid = uuid,
@@ -40,7 +55,9 @@ class PersonalBoardRepositoryImpl(
             climb_name = climbName,
             difficulty_average = difficultyAverage,
             climb_frames = climbFrames,
-            frames_count = framesCount
+            frames_count = framesCount,
+            board_brand = boardBrand,
+            layout_id = layoutId,
         )
     }
 
@@ -73,7 +90,10 @@ class PersonalBoardRepositoryImpl(
                 climbFrames = row.climb_frames,
                 difficultyAverage = row.difficulty_average,
                 framesCount = row.frames_count,
-                isSend = true
+                isSend = true,
+                synced = row.synced != 0L,
+                boardBrand = row.board_brand,
+                layoutId = row.layout_id,
             )
         }
     }
@@ -94,7 +114,9 @@ class PersonalBoardRepositoryImpl(
                 climbFrames = row.climb_frames,
                 difficultyAverage = row.difficulty_average,
                 framesCount = row.frames_count,
-                isSend = true
+                isSend = true,
+                boardBrand = row.board_brand,
+                layoutId = row.layout_id,
             )
         }
     }
@@ -131,7 +153,9 @@ class PersonalBoardRepositoryImpl(
                 climbFrames = row.climb_frames,
                 difficultyAverage = row.difficulty_average,
                 framesCount = row.frames_count,
-                isSend = row.is_send == 1L
+                isSend = row.is_send == 1L,
+                boardBrand = row.board_brand,
+                layoutId = row.layout_id,
             )
         }
     }
@@ -152,7 +176,9 @@ class PersonalBoardRepositoryImpl(
                 climbFrames = row.climb_frames,
                 difficultyAverage = row.difficulty_average,
                 framesCount = row.frames_count,
-                isSend = row.is_send == 1L
+                isSend = row.is_send == 1L,
+                boardBrand = row.board_brand,
+                layoutId = row.layout_id,
             )
         }
     }
@@ -173,7 +199,9 @@ class PersonalBoardRepositoryImpl(
                 climbFrames = row.climb_frames,
                 difficultyAverage = row.difficulty_average,
                 framesCount = row.frames_count,
-                isSend = row.is_send == 1L
+                isSend = row.is_send == 1L,
+                boardBrand = row.board_brand,
+                layoutId = row.layout_id,
             )
         }
     }
@@ -227,7 +255,8 @@ class PersonalBoardRepositoryImpl(
         isMirror: Boolean, bidCount: Long, comment: String?,
         climbedAt: String, synced: Boolean,
         gymUuid: String?, wallUuid: String?, productLayoutUuid: String?,
-        climbName: String, difficultyAverage: Double?
+        climbName: String, difficultyAverage: Double?,
+        boardBrand: String, layoutId: Long?,
     ) {
         database.bidsQueries.insertBid(
             uuid = uuid,
@@ -242,7 +271,17 @@ class PersonalBoardRepositoryImpl(
             wall_uuid = wallUuid,
             product_layout_uuid = productLayoutUuid,
             climb_name = climbName,
-            difficulty_average = difficultyAverage
+            difficulty_average = difficultyAverage,
+            board_brand = boardBrand,
+            layout_id = layoutId,
+        )
+    }
+
+    override fun updateBid(uuid: String, bidCount: Long, comment: String?) {
+        database.bidsQueries.updateBid(
+            bid_count = bidCount,
+            comment = comment,
+            uuid = uuid,
         )
     }
 
@@ -295,7 +334,9 @@ class PersonalBoardRepositoryImpl(
                 gymUuid = row.gym_uuid,
                 wallUuid = row.wall_uuid,
                 productLayoutUuid = row.product_layout_uuid,
-                rowVersion = row.row_version
+                rowVersion = row.row_version,
+                boardBrand = row.board_brand,
+                layoutId = row.layout_id,
             )
         }
     }
@@ -412,7 +453,8 @@ class PersonalBoardRepositoryImpl(
                 name = row.name,
                 isBuiltin = row.is_builtin != 0L,
                 createdAt = row.created_at,
-                climbCount = row.climb_count
+                climbCount = row.climb_count,
+                isIgnored = row.external_id == IGNORED_LIST_EXTERNAL_ID,
             )
         }
     }
@@ -424,7 +466,8 @@ class PersonalBoardRepositoryImpl(
                 name = row.name,
                 isBuiltin = row.is_builtin != 0L,
                 createdAt = row.created_at,
-                climbCount = row.climb_count
+                climbCount = row.climb_count,
+                isIgnored = row.external_id == IGNORED_LIST_EXTERNAL_ID,
             )
         }
     }
@@ -497,6 +540,51 @@ class PersonalBoardRepositoryImpl(
         }
     }
 
+    // ── Ignored climbs ──────────────────────────────────────────
+
+    override fun ensureIgnoredListExists(): Long {
+        cachedIgnoredListId?.let { return it }
+        // Atomic find-or-create keyed on the external_id sentinel — the
+        // unique index on external_id is the backstop against a duplicate
+        // ignored row if two callers race.
+        val id = database.transactionWithResult {
+            database.climbListsQueries
+                .findClimbListByExternalId(IGNORED_LIST_EXTERNAL_ID).executeAsOneOrNull()
+                ?: run {
+                    database.climbListsQueries.insertBuiltinIgnoredList(
+                        "Ignoriert", DateTimeUtil.nowIso(), IGNORED_LIST_EXTERNAL_ID,
+                    )
+                    database.climbListsQueries.getLastInsertedListId().executeAsOne()
+                }
+        }
+        cachedIgnoredListId = id
+        return id
+    }
+
+    override fun isClimbIgnored(climbUuid: String): Boolean {
+        val ignoredId = ensureIgnoredListExists()
+        return database.climbListsQueries.isClimbInList(ignoredId, climbUuid).executeAsOne() > 0
+    }
+
+    override fun toggleIgnored(climbUuid: String): Boolean {
+        val ignoredId = ensureIgnoredListExists()
+        // Atomic read-modify-write — mirrors toggleFavorite.
+        return database.transactionWithResult {
+            val isIgnored = database.climbListsQueries.isClimbInList(ignoredId, climbUuid).executeAsOne() > 0
+            if (isIgnored) {
+                database.climbListsQueries.removeClimbListEntry(ignoredId, climbUuid)
+            } else {
+                database.climbListsQueries.insertClimbListEntry(ignoredId, climbUuid, DateTimeUtil.nowIso())
+            }
+            !isIgnored
+        }
+    }
+
+    override fun getIgnoredClimbUuids(): Set<String> {
+        val ignoredId = ensureIgnoredListExists()
+        return database.climbListsQueries.getAllClimbUuidsInList(ignoredId).executeAsList().toSet()
+    }
+
     // ── Denormalization refresh ─────────────────────────────────
 
     override fun getAllClimbKeys(): List<Pair<String, Long>> {
@@ -507,16 +595,28 @@ class PersonalBoardRepositoryImpl(
         return (ascentKeys + bidKeys).distinct()
     }
 
+    override fun getExistingLogUuids(): Set<String> {
+        // log_uuid is the PK of whichever table the log landed in (ascent if
+        // topped, else bid), so the union is the full set of already-imported
+        // Kilter logs — the dedup key for counting a re-import.
+        val ascentUuids = database.ascentsQueries.getAllAscentUuids().executeAsList()
+        val bidUuids = database.bidsQueries.getAllBidUuids().executeAsList()
+        return (ascentUuids + bidUuids).toHashSet()
+    }
+
     override fun updateAscentDenormalized(
         climbUuid: String, angle: Long,
         climbName: String, difficultyAverage: Double?,
-        climbFrames: String, framesCount: Long
+        climbFrames: String, framesCount: Long,
+        boardBrand: String, layoutId: Long?
     ) {
         database.ascentsQueries.updateAscentDenormalized(
             climb_name = climbName,
             difficulty_average = difficultyAverage,
             climb_frames = climbFrames,
             frames_count = framesCount,
+            board_brand = boardBrand,
+            layout_id = layoutId,
             climb_uuid = climbUuid,
             angle = angle
         )
@@ -524,14 +624,81 @@ class PersonalBoardRepositoryImpl(
 
     override fun updateBidDenormalized(
         climbUuid: String, angle: Long,
-        climbName: String, difficultyAverage: Double?
+        climbName: String, difficultyAverage: Double?,
+        boardBrand: String, layoutId: Long?
     ) {
         database.bidsQueries.updateBidDenormalized(
             climb_name = climbName,
             difficulty_average = difficultyAverage,
+            board_brand = boardBrand,
+            layout_id = layoutId,
             climb_uuid = climbUuid,
             angle = angle
         )
+    }
+
+    // ── Climb history ("Verlauf") ───────────────────────────────
+
+    override suspend fun recordClimbHistory(
+        climbUuid: String, climbName: String, angle: Long, difficultyAverage: Double?,
+        boardBrand: String, layoutId: Long?, climbedAt: String, recordedAt: String,
+    ) {
+        withContext(Dispatchers.Default) {
+            database.climbHistoryQueries.insert(
+                climbUuid = climbUuid,
+                climbName = climbName,
+                angle = angle,
+                difficultyAverage = difficultyAverage,
+                boardBrand = boardBrand,
+                layoutId = layoutId,
+                climbedAt = climbedAt,
+                recordedAt = recordedAt,
+            )
+        }
+    }
+
+    override fun observeClimbHistory(): Flow<List<ClimbHistoryEntry>> {
+        return database.climbHistoryQueries.selectAllRecent()
+            .asFlow()
+            .mapToList(Dispatchers.Default)
+            .map { rows ->
+                rows.map { row ->
+                    ClimbHistoryEntry(
+                        id = row.id,
+                        climbUuid = row.climb_uuid,
+                        climbName = row.climb_name,
+                        angle = row.angle.toInt(),
+                        difficultyAverage = row.difficulty_average,
+                        boardBrand = row.board_brand,
+                        layoutId = row.layout_id,
+                        climbedAt = row.climbed_at,
+                        recordedAt = row.recorded_at,
+                    )
+                }
+            }
+    }
+
+    override suspend fun clearClimbHistory() {
+        withContext(Dispatchers.Default) {
+            database.climbHistoryQueries.deleteAll()
+        }
+    }
+
+    override suspend fun deleteClimbHistory(ids: List<Long>) {
+        if (ids.isEmpty()) return
+        withContext(Dispatchers.Default) {
+            database.climbHistoryQueries.deleteByIds(ids)
+        }
+    }
+
+    override suspend fun pruneClimbHistory(cutoffIso: String) {
+        withContext(Dispatchers.Default) {
+            database.climbHistoryQueries.deleteOlderThan(cutoffIso)
+        }
+    }
+
+    override suspend fun climbHistoryCount(): Long = withContext(Dispatchers.Default) {
+        database.climbHistoryQueries.countAll().executeAsOne()
     }
 
     // ── Bulk operations ─────────────────────────────────────────
@@ -545,6 +712,7 @@ class PersonalBoardRepositoryImpl(
             database.climbListsQueries.deleteAllClimbLists()
         }
         cachedFavoritesListId = null
+        cachedIgnoredListId = null
     }
 
     override fun runInTransaction(block: () -> Unit) {

@@ -16,7 +16,7 @@ import javax.inject.Singleton
 @Singleton
 class OfflineQueueManager @Inject constructor(
     private val messageRepository: NostrMessageRepository,
-    private val messageSender: NostrMessageSender
+    private val messageSender: NostrMessageSending
 ) {
     private val drainMutex = Mutex()
     private val _queuedCount = MutableStateFlow(0)

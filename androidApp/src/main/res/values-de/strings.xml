@@ -35,7 +35,7 @@
     <string name="climb_creator_draft_saved">Entwurf gespeichert.</string>
     <string name="climb_creator_also_post_note">Auch auf Nostr posten</string>
     <string name="climb_creator_also_post_note_hint">Postet eine kurze Nachricht an deine Follower auf Nostr, die zurück auf den Climb verlinkt.</string>
-    <string name="auto_note_default_template">Ich habe einen neuen Boulder auf nostr:{npub_cruxcoach} veröffentlicht:\n\n{cruxcoach_url}\n\n#climbing #bouldering</string>
+    <string name="auto_note_default_template">Ich habe einen neuen {board}-Boulder auf nostr:{npub_cruxcoach} veröffentlicht:\n\n{cruxcoach_url}\n\n#climbing #bouldering</string>
     <string name="auto_note_setting_title">Neue Climbs auf Nostr posten</string>
     <string name="auto_note_setting_body">Wenn aktiv, wird beim Veröffentlichen eines Climbs zusätzlich eine kurze Nachricht an deine Follower auf Nostr gepostet, die zurück auf den Climb verlinkt. Pro Climb im Editor übersteuerbar. Default aus.</string>
     <string name="nostr_profile_subscriber_status_title">Community-Climb-Feed</string>
@@ -96,6 +96,29 @@
     <string name="climb_creator_kilter_connect_nudge">Climb veröffentlicht (nur CruxCoach) — verbinde Kilter, damit er auch in der Kilter-App erscheint.</string>
     <string name="climb_creator_kilter_connect_action">Verbinden</string>
     <string name="climb_creator_edit_action">Climb bearbeiten</string>
+    <!-- Own-Kilter-climb community publish (authorship-gated) -->
+    <string name="own_climb_publish_action">In CruxCoach-Community veröffentlichen</string>
+    <string name="own_climb_publish_action_short">Veröffentlichen</string>
+    <string name="own_climb_publish_done">Climb in der CruxCoach-Community veröffentlicht.</string>
+    <string name="own_climb_publish_no_nostr">Noch keine CruxCoach-Identität — richte deinen Schlüssel in den Einstellungen ein und veröffentliche dann erneut.</string>
+    <string name="own_climb_publish_not_author">Nur Climbs, die du selbst mit deinem verbundenen Kilter-Konto erstellt hast, können veröffentlicht werden.</string>
+    <string name="own_climb_publish_already">Dieser Climb ist bereits in der Community veröffentlicht.</string>
+    <string name="my_climbs_title">Meine Climbs</string>
+    <string name="my_climbs_banner_title">Meine Climbs</string>
+    <string name="my_climbs_banner_subtitle">Alle deine Climbs — Entwürfe, veröffentlichte und Kilter-Importe</string>
+    <string name="my_climbs_empty_title">Noch keine eigenen Climbs</string>
+    <string name="my_climbs_empty_message">Climbs, die du auf CruxCoach entwirfst oder veröffentlichst, sowie Climbs, die du mit deinem verbundenen Kilter-Konto erstellt hast, erscheinen hier.</string>
+    <string name="my_climbs_no_kilter_title">Hier ist noch nichts</string>
+    <string name="my_climbs_no_kilter_message">Richte deinen CruxCoach-Schlüssel ein, um Climbs zu erstellen, oder verbinde dein Kilter-Konto, damit CruxCoach deine selbst erstellten Climbs erkennen kann.</string>
+    <string name="my_climbs_published_badge">Veröffentlicht</string>
+    <string name="my_climbs_publish_retrying">Veröffentlichung ausstehend — wird im Hintergrund wiederholt</string>
+    <string name="my_climbs_unnamed">(ohne Namen)</string>
+    <string name="my_climbs_draft_badge">Entwurf</string>
+    <string name="my_climbs_section_drafts">Entwürfe</string>
+    <string name="my_climbs_section_published">Veröffentlicht</string>
+    <string name="my_climbs_section_kilter_unclaimed">Aus Kilter importiert — noch nicht auf CruxCoach</string>
+    <string name="my_climbs_grade_dialog_title">Schwierigkeit festlegen</string>
+    <string name="my_climbs_grade_dialog_message">Dieser Climb hat noch keine Schwierigkeit. Wähle eine, um ihn in der CruxCoach-Community zu veröffentlichen.</string>
     <string name="community_climb_delete_action">Veröffentlichung löschen</string>
     <string name="community_climb_delete_confirm_title">Diesen Climb löschen?</string>
     <string name="community_climb_delete_confirm_nostr_only">Dein Climb wird aus CruxCoach entfernt und eine Löschung wird an die Nostr-Relays gesendet. Lokal verschwindet er sofort; bei den Relays kann es ein paar Minuten dauern.</string>
@@ -110,6 +133,7 @@
     <string name="climb_detail_badge_on_kilter">Auf Kilter</string>
     <string name="climb_detail_badge_cruxcoach_only">Nur CruxCoach-Community</string>
     <string name="climb_detail_badge_kilter_diverged">Nur hier bearbeitet, auf Kilter Originalversion</string>
+    <string name="climb_detail_badge_boardsesh">Quelle: BoardSesh</string>
     <string name="climb_detail_edit_locked_kilter">Gesperrt — auf Kilter veröffentlicht (unveränderbar)</string>
     <string name="climb_editor_load_failed_kilter_locked">Dieser Climb ist auf Kilter veröffentlicht und kann nicht bearbeitet werden. Nutze die Remix-Aktion, um einen frischen Climb darauf basierend zu starten.</string>
 
@@ -156,7 +180,7 @@
     <string name="setter_detail_no_climbs">Keine Climbs dieses Setters in deinem lokalen Katalog.</string>
     <string name="setter_detail_load_failed">Climbs konnten nicht geladen werden.</string>
     <string name="setters_list_load_failed">Setter-Liste konnte nicht geladen werden.</string>
-    <string name="setter_detail_climb_meta">%1$d° · %2$.1f · ⭐%3$.1f · %4$d Begehungen</string>
+    <string name="setter_detail_climb_meta">%1$d° · %2$s · ⭐%3$.1f · %4$d Begehungen</string>
     <string name="setters_list_title">CruxCoach-Setter</string>
     <string name="setters_list_empty">Noch keine CruxCoach-Community-Climbs. Schau später wieder rein oder leg selbst los.</string>
     <string name="setters_list_count">%1$d Climbs</string>
@@ -205,6 +229,13 @@
     <!-- Common Actions -->
     <string name="action_cancel">Abbrechen</string>
     <string name="action_ok">OK</string>
+    <string name="badge_optional">Optional</string>
+    <string name="kilter_data_info_action">Kilter-Datenaustausch — Info</string>
+    <string name="kilter_data_info_title">Kilter-Account: Was passiert mit deinen Daten?</string>
+    <string name="kilter_data_info_login">Melde dich an, um deine Sends und Projekte von Kilter zu importieren. „Einmalig importieren“ importiert sie und verwirft danach deine Zugangsdaten; „Dauerhaft synchronisieren“ lädt fortlaufend neue Kilter-Begehungen herunter.</string>
+    <string name="kilter_data_info_offline">Kein Account? Importiere offline per Aurora-JSON-Export aus der alten Kilter-App.</string>
+    <string name="kilter_data_info_local">Alles, was ZU Kilter geht, ist optional (standardmäßig aus): „Zu Kilter hochladen“ spielt deine Begehungen zurück, „Eigene Climbs auf Kilter veröffentlichen“ teilt selbst erstellte Climbs. Lässt du beides aus, bleibt CruxCoach lokal.</string>
+    <string name="kilter_data_info_publish">Was du aktivierst, betrifft nur DEINEN eigenen Kilter-Account — niemals fremde Daten.</string>
     <string name="action_save">Speichern</string>
     <string name="action_delete">Löschen</string>
     <string name="action_back">Zurück</string>
@@ -218,6 +249,71 @@
     <string name="action_disconnect">Trennen</string>
     <string name="action_next">Weiter</string>
     <string name="action_close">Schließen</string>
+
+    <!-- FEAT-006 Map (placeholder; full set added in phase 10) -->
+    <string name="map_screen_title">Karte</string>
+    <string name="cd_map">Kilter Board auf der Karte finden</string>
+    <string name="map_filter_show_all">Alle</string>
+    <string name="map_filter_show_original">Kommerzielle Hallen (Original)</string>
+    <string name="map_filter_show_homewalls">Private Homewalls</string>
+    <string name="map_open_filters">Filter öffnen</string>
+    <string name="map_open_stats">Statistik öffnen</string>
+    <string name="map_filter_sheet_title">Karte filtern</string>
+    <string name="map_filter_section_layout">Layout</string>
+    <string name="map_filter_section_access">Zugang</string>
+    <string name="map_filter_section_adjustability">Verstellbarkeit</string>
+    <string name="map_filter_section_size">Größe</string>
+    <string name="map_filter_section_country">Land</string>
+    <string name="map_filter_count_template">Zeigt %1$d von %2$d</string>
+    <string name="map_filter_reset">Zurücksetzen</string>
+    <string name="map_stats_layout_distribution">Layout-Verteilung</string>
+    <string name="map_stats_access_distribution">Zugangs-Verteilung</string>
+    <string name="map_stats_adjustability_distribution">Verstellbarkeits-Verteilung</string>
+    <string name="map_stats_top_countries">Top-Länder</string>
+    <string name="map_stats_size_distribution">Größen-Verteilung</string>
+    <string name="map_stats_layout_original">Original</string>
+    <string name="map_stats_layout_homewall">Homewall</string>
+    <string name="map_stats_label_countries">Länder</string>
+    <string name="map_stats_label_public">Öffentlich</string>
+    <string name="map_stats_label_adjustable">Verstellbar</string>
+    <string name="map_stats_total_locations">Standorte gesamt</string>
+    <string name="map_stats_empty">Keine Daten</string>
+    <string name="map_filter_matches_my_board">Passt zu meinem Board</string>
+    <string name="map_filter_match_disabled">Konfiguriere zuerst dein Board</string>
+    <string name="map_marker_browse_climbs">Climbs für dieses Board ansehen</string>
+    <string name="map_venue_section_boards">Boards an diesem Standort</string>
+    <string name="map_venue_wellpass_badge">✓ egym Wellpass</string>
+    <string name="map_filter_brand_other">Andere Boards</string>
+    <string name="map_filter_section_membership">Mitgliedschaft</string>
+    <string name="map_filter_wellpass">egym Wellpass</string>
+    <string name="map_marker_open_in_maps">In Karten-App öffnen</string>
+    <string name="map_marker_layout">Layout</string>
+    <string name="map_marker_access">Zugang</string>
+    <string name="map_marker_adjustability">Verstellbarkeit</string>
+    <string name="map_marker_frame">Rahmen</string>
+    <string name="map_marker_field_unknown">—</string>
+    <string name="map_marker_intent_failed">Keine App für diese Aktion verfügbar.</string>
+    <string name="map_offline_dialog_title">Keine Internetverbindung</string>
+    <string name="map_offline_dialog_body">Die Karte benötigt beim ersten Öffnen eine Internetverbindung. Bereits angesehene Bereiche bleiben anschließend offline verfügbar.\n\nVerbinde dich mit WLAN oder mobilen Daten und versuche es erneut.</string>
+    <string name="map_offline_dialog_close">Schließen</string>
+    <string name="map_no_data">Standortdaten noch nicht geladen — werden beim nächsten App-Start automatisch geladen</string>
+    <string name="map_loading_locations">Standortdaten werden geladen…</string>
+    <string name="map_init_error" formatted="false">Karte konnte nicht geladen werden: %1$s</string>
+    <string name="map_init_error_generic">Karte konnte nicht geladen werden. Bitte versuche es erneut.</string>
+    <string name="map_tile_provider_unreachable">Kartenanbieter ist derzeit nicht erreichbar — prüfe deine Verbindung oder versuche es später erneut.</string>
+
+    <!-- Access enum display values -->
+    <string name="map_access_public">Öffentlich</string>
+    <string name="map_access_private">Privat</string>
+    <string name="map_access_members">Mitglieder / Reservierung</string>
+
+    <!-- Adjustability enum display values -->
+    <string name="map_adjustability_fixed">Fest</string>
+    <string name="map_adjustability_fixed_angle">Fest (%1$d°)</string>
+    <string name="map_adjustability_adjustable">Verstellbar</string>
+    <string name="map_adjustability_limited">Eingeschränkt</string>
+    <string name="map_adjustability_full">Voll verstellbar</string>
+
     <string name="action_send">Senden</string>
     <string name="action_retry">Erneut versuchen</string>
     <string name="action_reset">Zurücksetzen</string>
@@ -274,7 +370,7 @@
     <string name="settings_board_data_title">Board-Daten</string>
     <string name="settings_board_type">Board-Typ:</string>
     <string name="settings_board_auto_download">Automatischer Download (WLAN):</string>
-    <string name="settings_board_auto_download_desc">Lädt die komplette Board-Datenbank (~30 MB) im Hintergrund über WLAN herunter.</string>
+    <string name="settings_board_auto_download_desc">Lädt die komplette Board-Datenbank (~85 MB) im Hintergrund über WLAN herunter.</string>
 
     <!-- Settings: BLE -->
     <string name="settings_ble_auto_disconnect_title">BLE Auto-Disconnect</string>
@@ -283,20 +379,6 @@
     <string name="settings_duration_seconds_label">Sekunden</string>
     <string name="settings_ble_keep_screen_on">Bildschirm anlassen</string>
     <string name="settings_ble_keep_screen_on_desc">Bildschirm bleibt auf Board-Screens an, damit du nicht ständig entsperren musst.</string>
-    <string name="settings_ble_quick_send">Schnell-Senden</string>
-    <string name="settings_ble_quick_send_desc">Tippen auf das BLE-Symbol im Climb-Detail verbindet automatisch (bzw. fragt bei mehreren Boards), schickt den Climb und trennt direkt danach.</string>
-
-    <!-- BLE-Schnell-Senden-Status-Meldungen -->
-    <string name="ble_quick_send_scanning">Suche Board…</string>
-    <string name="ble_quick_send_connecting">Verbinde mit %s…</string>
-    <string name="ble_quick_send_sending">Sende Climb…</string>
-    <string name="ble_quick_send_disconnecting">Trenne Verbindung…</string>
-    <string name="ble_quick_send_done">Climb gesendet — Board getrennt.</string>
-    <string name="ble_quick_send_no_boards">Kein Board in der Nähe gefunden. Prüfe, ob das Board eingeschaltet und Bluetooth aktiv ist.</string>
-    <string name="ble_quick_send_connect_failed">Verbindung zum Board fehlgeschlagen. Bitte erneut versuchen.</string>
-    <string name="ble_quick_send_send_failed">Climb konnte nicht gesendet werden — Board getrennt.</string>
-    <string name="ble_quick_send_bluetooth_off">Bluetooth ist aus. Bitte aktivieren und erneut versuchen.</string>
-    <string name="ble_quick_send_no_permissions">Bluetooth-Berechtigungen fehlen. Bitte in den App-Einstellungen erteilen.</string>
 
     <!-- Settings: LED Colors -->
     <string name="settings_led_title">LED-Farben</string>
@@ -341,6 +423,7 @@
     <string name="settings_data_delete_board_desc">Entfernt alle heruntergeladenen Kilter-Board-Climbs, Statistiken und Layout-Daten. Können jederzeit neu synchronisiert werden.</string>
     <string name="settings_data_delete_board_dialog_title">Board-Daten löschen?</string>
     <string name="settings_data_delete_board_dialog_message">Alle heruntergeladenen Climbs, Statistiken und Layout-Daten werden gelöscht. Du kannst sie jederzeit über die Board-Synchronisierung neu herunterladen.</string>
+    <string name="settings_data_delete_board_progress">Board-Daten werden gelöscht…</string>
     <string name="settings_data_delete_user">Eigene Logbuch-Daten löschen</string>
     <string name="settings_data_delete_user_desc">Entfernt alle Begehungen, Projekte, Board-Sessions und Listen unwiderruflich.</string>
     <string name="settings_data_delete_user_dialog_title">Logbuch-Daten löschen?</string>
@@ -351,6 +434,7 @@
     <string name="settings_share_title">App teilen</string>
     <string name="settings_share_desc">CruxCoach APK mit anderen teilen (ohne Nutzerdaten).</string>
     <string name="board_filter_title">Filter</string>
+    <string name="board_filter_selected_board">Gewähltes Board</string>
     <string name="settings_share_via_apps">Über Apps teilen</string>
     <string name="settings_share_online">Online teilen</string>
     <string name="settings_share_online_hide">Online-QR ausblenden</string>
@@ -499,7 +583,7 @@
     <!-- Climb Log -->
     <string name="climb_log_title">Loggen</string>
     <string name="climb_log_grade">Grad</string>
-    <string name="climb_log_sent">Gesendet</string>
+    <string name="climb_log_sent">Geschafft</string>
     <string name="climb_log_flash">Flash</string>
     <string name="climb_log_attempts">Versuche</string>
     <string name="climb_log_style">Stil (optional)</string>
@@ -564,8 +648,9 @@
     <string name="board_search_placeholder">Climb suchen…</string>
     <string name="board_climbs_found">%d Climbs gefunden</string>
     <string name="board_no_data_title">Keine Board-Daten</string>
-    <string name="board_no_data_hint">Synchronisiere die Kilter Board-Datenbank, um Climbs zu suchen.</string>
+    <string name="board_no_data_hint">Synchronisiere die Board-Datenbank, um Climbs zu suchen.</string>
     <string name="board_angle">Winkel</string>
+    <string name="board_angle_setter_tag">Setter</string>
     <string name="board_moves">Züge</string>
     <string name="board_quality">Qualität</string>
     <string name="board_sends">Sends</string>
@@ -586,6 +671,12 @@
     <string name="board_browser_climbs_loaded">%d Climbs (%d geladen)</string>
     <string name="board_browser_preparing_db">Climb-Datenbank wird vorbereitet…</string>
     <string name="board_browser_preparing_db_hint">Der erste Start nach einem Update kann auf langsameren Geräten ein, zwei Minuten dauern. Bitte die App offen lassen — beim Schließen beginnt die Vorbereitung später von vorn.</string>
+    <string name="board_browser_empty_no_results">Keine Climbs passen zu den aktuellen Filtern</string>
+    <string name="board_browser_empty_no_results_hint">Versuch einen größeren Grad-Bereich, einen anderen Winkel oder setz die Filter zurück.</string>
+    <string name="board_browser_empty_clear_filters">Filter zurücksetzen</string>
+    <string name="board_browser_empty_no_catalogue">Der Katalog für dieses Board wurde noch nicht heruntergeladen</string>
+    <string name="board_browser_empty_load_catalogue">Katalog laden</string>
+    <string name="board_browser_empty_catalogue_loading">Katalog wird geladen…</string>
     <string name="board_detail_title">Climb Details</string>
     <string name="board_detail_by_setter">von %s</string>
     <string name="board_detail_error">Fehler</string>
@@ -596,17 +687,31 @@
     <string name="board_filter_my_climbs">Eigene Climbs</string>
     <string name="climb_card_draft_badge">Entwurf</string>
     <string name="board_filter_grade_range">Grad: %1$s – %2$s</string>
+    <string name="board_filter_ungraded_only">Nur unbewertete (Projekte)</string>
+    <string name="board_filter_info_action">Filterbegriffe erklären</string>
+    <string name="board_filter_info_title">Filter- &amp; Sortierbegriffe</string>
+    <string name="board_filter_info_status_new">Climbs, die du noch nie probiert hast — weder Versuch noch Send geloggt.</string>
+    <string name="board_filter_info_status_attempted">Climbs, auf denen du Versuche geloggt hast, aber noch keinen Send.</string>
+    <string name="board_filter_info_status_sent">Climbs mit mindestens einem geloggten Send.</string>
+    <string name="board_filter_info_benchmarks">Nur offizielle Benchmark-Climbs — kuratierte Referenz-Probleme mit festgelegter Bewertung statt Community-Durchschnitt.</string>
+    <string name="board_filter_info_ungraded">Nur unbewertete Climbs (noch keine Community-Bewertung) — dein Projekte-Stapel.</string>
+    <string name="board_filter_info_sort_sends">Gesamtzahl der Kletterer weltweit, die den Climb gesendet haben — Community insgesamt, nicht deine eigenen Sends.</string>
+    <string name="board_filter_info_sort_quality">Durchschnittliche Sterne-Bewertung der Community.</string>
+    <string name="board_filter_info_sort_quality_sends">Bewertung × Sends — zeigt Climbs, die beliebt UND gut bewertet sind.</string>
+    <string name="board_filter_info_sort_moves">Anzahl der Züge des Climbs.</string>
+    <string name="board_filter_info_sort_random">Mischt die passenden Climbs in zufälliger Reihenfolge.</string>
     <string name="board_filter_sort">Sortierung</string>
     <string name="board_filter_sort_asc">Aufsteigend</string>
     <string name="board_filter_sort_desc">Absteigend</string>
     <string name="board_filter_status">Status</string>
     <string name="board_filter_status_new">Neu</string>
     <string name="board_filter_status_attempted">Versucht</string>
-    <string name="board_filter_status_sent">Gesendet</string>
+    <string name="board_filter_status_sent">Geschafft</string>
     <string name="board_filter_status_unsent">Offen</string>
     <string name="board_filter_origin">Quelle</string>
     <string name="board_filter_origin_cruxcoach">CruxCoach-Setter</string>
     <string name="board_filter_origin_kilter">Kilter (offiziell)</string>
+    <string name="board_filter_origin_boardsesh">BoardSesh</string>
     <string name="board_filter_type">Typ</string>
     <string name="board_filter_type_boulder">Boulder</string>
     <string name="board_filter_type_routes">Routen</string>
@@ -826,6 +931,10 @@
     <string name="board_ble_connecting">Verbinde\u2026</string>
     <string name="board_ble_scanning">Suche Boards…</string>
     <string name="board_ble_no_boards">Keine Boards gefunden. Starte einen Scan, um Boards in der Nähe zu finden.</string>
+    <!-- FEAT-027: Board-Marken-Labels in der BLE-Kopplungs-UI -->
+    <string name="board_ble_brand_kilter">Kilter Board</string>
+    <string name="board_ble_brand_moonboard">MoonBoard</string>
+    <string name="board_ble_moonboard_generation_unsupported">Dieses MoonBoard nutzt ein älteres LED-Kit (vor 2017), das noch nicht unterstützt wird.</string>
     <string name="board_ble_start_scan">Scan starten</string>
     <string name="board_ble_stop_scan">Scan stoppen</string>
     <string name="board_ble_board_occupied">Board ist besetzt</string>
@@ -839,12 +948,14 @@
     <string name="board_climb_by_setter">von %s</string>
     <string name="board_climb_moves">%d Züge</string>
     <string name="board_climb_no_data_title">Keine Board-Daten</string>
-    <string name="board_climb_no_data_message">Synchronisiere die Kilter Board-Datenbank, um Climbs zu suchen und auf dem Board anzuzeigen.</string>
+    <string name="board_climb_no_data_message">Synchronisiere die Board-Kataloge, um Climbs zu suchen und auf dem Board anzuzeigen.</string>
     <string name="board_sync_title">Board-Daten synchronisieren</string>
 
     <!-- Board: Detail -->
     <string name="board_detail_sending">Sende an Board\u2026</string>
     <string name="board_detail_sent">An Board gesendet</string>
+    <string name="board_detail_share_link">Link kopieren</string>
+    <string name="board_detail_link_copied">Link in die Zwischenablage kopiert</string>
     <string name="board_detail_climb_shared">Climb wird geteilt</string>
 
     <!-- Board: Stats -->
@@ -860,16 +971,20 @@
     <string name="board_sync_no_network_message">Für die Synchronisierung wird eine aktive Internetverbindung benötigt.</string>
     <string name="board_sync_open_settings">Einstellungen öffnen</string>
     <string name="board_sync_wifi_required_title">WLAN erforderlich</string>
-    <string name="board_sync_wifi_required_message">Der Download der Board-Datenbank ist ca. 30 MB groß und kann nur über WLAN gestartet werden.</string>
+    <string name="board_sync_wifi_required_message">Der Download der Board-Datenbank ist ca. 85 MB groß und kann nur über WLAN gestartet werden.</string>
     <string name="board_sync_wifi_settings">WLAN-Einstellungen</string>
     <string name="board_sync_no_network_banner">Kein Netzwerk verfügbar</string>
     <string name="board_sync_no_wifi_banner">Kein WLAN — Online-Download nur über WLAN möglich</string>
     <string name="board_sync_to_browser">Fertig</string>
-    <string name="board_sync_db_title">Kilter Board-Datenbank</string>
-    <string name="board_sync_db_description">Lädt die aktuelle Kilter Board Climb-Datenbank herunter (~30 MB). WLAN empfohlen.</string>
+    <string name="board_sync_db_title">Board-Datenbanken</string>
+    <string name="board_sync_db_description">Lädt die aktuellen Kletterkataloge aller unterstützten Boards herunter (~85 MB). WLAN empfohlen.</string>
     <string name="board_sync_db_synced">Datenbank synchronisiert</string>
     <string name="board_sync_last_sync">Letzter Sync: %s</string>
     <string name="board_sync_redownload">Neu herunterladen</string>
+    <string name="board_sync_status_not_loaded">nicht geladen</string>
+    <string name="board_sync_status_dash">—</string>
+    <string name="board_sync_load_board">%1$s laden</string>
+    <string name="board_sync_reload_board">%1$s neu laden</string>
     <string name="board_sync_update_online">Online aktualisieren</string>
     <string name="board_sync_local_import_title">Board-Datenbank importieren?</string>
     <string name="board_sync_local_import_message">Von %1$s wird eine Board-Datenbank angeboten. Nur bestätigen, wenn du dich bewusst mit einem CruxCoach-Share-Hotspot einer dir bekannten Person verbunden hast. Der Import ersetzt deine aktuelle Climb-Datenbank.</string>
@@ -906,8 +1021,13 @@
     <string name="kilter_import_one_time">Einmalig importieren</string>
     <string name="kilter_import_one_time_desc">Begehungen importieren, Kilter-Zugangsdaten verwerfen</string>
     <string name="kilter_import_persistent">Dauerhaft synchronisieren</string>
-    <string name="kilter_import_persistent_desc">Begehungen in beide Richtungen synchronisieren</string>
+    <string name="kilter_import_persistent_desc">Neue Kilter-Begehungen fortlaufend herunterladen</string>
     <string name="kilter_import_success">%d Begehungen importiert</string>
+    <string name="kilter_import_part_ascents">%d Begehungen</string>
+    <string name="kilter_import_part_projects">%d Projekte</string>
+    <string name="kilter_import_part_own">%d eigene Climbs</string>
+    <string name="kilter_import_part_catalogue">%d Climbs nachgeladen</string>
+    <string name="kilter_import_summary_with_dupes" formatted="false">%1$s (%2$d bereits vorhanden)</string>
     <string name="kilter_sync_success">Sync abgeschlossen: %1$d heruntergeladen, %2$d hochgeladen</string>
     <string name="kilter_sync_error">Sync fehlgeschlagen: %s</string>
     <string name="kilter_no_new">Keine neuen Begehungen gefunden</string>
@@ -923,6 +1043,9 @@
     <string name="board_sync_step_import_layout">Layout-Daten importieren</string>
     <string name="board_sync_step_finalize">Finalisieren</string>
     <string name="sync_finalizing">Finalisieren…</string>
+    <!-- FEAT-031: per-board sync sections are titled by the board's name; a
+         board's non-fatal sync error uses this. -->
+    <string name="board_sync_section_error">Katalog konnte nicht geladen werden — deine anderen Boards sind nicht betroffen.</string>
 
     <!-- Climb Labels -->
     <string name="climb_label_boulder">Boulder</string>
@@ -1062,7 +1185,8 @@
 
     <!-- Board Ascent Types -->
     <string name="board_ascent_send">Send</string>
-    <string name="board_ascent_attempt">Attempt</string>
+    <string name="board_ascent_attempt">Versuch</string>
+    <string name="board_ascent_attempts_count">%d Versuche</string>
 
     <!-- Dropdown -->
     <string name="dropdown_selection_placeholder">Auswahl…</string>
@@ -1088,8 +1212,8 @@
     <string name="board_climb_sends_count">%d sends</string>
     <string name="board_detail_benchmark">Benchmark</string>
     <string name="board_detail_frames">Frames</string>
-    <string name="board_detail_matching">Matching</string>
-    <string name="board_detail_no_matching">Kein Matching</string>
+    <string name="board_detail_matching">Matchen erlaubt</string>
+    <string name="board_detail_no_matching">Kein Matchen</string>
     <string name="board_heatmap_finish">Top-Holds</string>
     <string name="board_heatmap_foot">Fuß-Holds</string>
     <string name="board_heatmap_global">Alle Climbs</string>
@@ -1101,6 +1225,7 @@
     <string name="board_heatmap_start">Start-Holds</string>
     <string name="board_holdsearch_filter_summary">%1$d Holds → %2$d Climbs</string>
     <string name="board_list_climb_count">%d Climbs</string>
+    <string name="board_list_on_board_count">%1$d von %2$d auf diesem Board</string>
     <string name="board_list_default_name">Liste</string>
     <string name="board_list_empty_message">Füge Climbs über den Browser hinzu</string>
     <string name="board_list_empty_title">Liste ist leer</string>
@@ -1169,12 +1294,18 @@
     <string name="board_rest_timer_rest">Pause</string>
     <string name="board_session_flashes">Flashes</string>
     <string name="board_session_label">Session</string>
-    <string name="board_sort_repeats">Repeats</string>
+    <string name="board_sort_quality_sends">Sends × Qualität</string>
+    <string name="board_sort_random">Zufällig</string>
     <string name="board_stats_activity">Aktivität</string>
     <string name="board_stats_personal_heatmap">Meine Sends — Heatmap</string>
     <string name="board_stats_heatmap_section">Heatmap — %1$s</string>
     <string name="board_stats_heatmap_empty">Noch keine Daten für diesen Heatmap-Modus. Logge ein paar Sends oder probiere einen anderen Modus.</string>
+    <string name="board_stats_heatmap_board_label">Board</string>
+    <string name="board_stats_heatmap_pick_board">Wähle ein Board, um die Hold-Heatmap zu sehen.</string>
+    <string name="board_stats_heatmap_unsupported">Dieses Board hat keine Hold-Heatmap.</string>
     <string name="board_stats_angle_distribution">Winkel-Verteilung</string>
+    <string name="board_stats_board_comparison">Board-Vergleich</string>
+    <string name="board_stats_board_comparison_board">Board</string>
     <string name="board_stats_attempt">Versuch</string>
     <string name="board_stats_current_streak">Aktueller Streak</string>
     <string name="board_stats_date_range">Zeitraum…</string>
@@ -1212,6 +1343,7 @@
     <string name="cd_board_connect">Board verbinden</string>
     <string name="cd_board_connected">Board verbunden</string>
     <string name="cd_board_image">Board</string>
+    <string name="cd_moonboard_image">MoonBoard</string>
     <string name="cd_body_stats">Körperdaten</string>
     <string name="cd_cancel_timer">Timer abbrechen</string>
     <string name="cd_change_angle">Winkel ändern</string>
@@ -1238,6 +1370,8 @@
     <string name="cd_loop_on">Loop an</string>
     <string name="cd_mirror_off">Spiegelung aus</string>
     <string name="cd_mirror_on">Spiegelung an</string>
+    <string name="cd_ignore_climb">Ignorieren (nicht vorschlagen)</string>
+    <string name="cd_unignore_climb">Nicht mehr ignorieren</string>
     <string name="cd_mirrored">Gespiegelt</string>
     <string name="cd_more">Mehr</string>
     <string name="cd_next">Weiter</string>
@@ -1313,6 +1447,13 @@
     <string name="exercises_muscles_label">Muskeln: </string>
     <string name="exercises_none_found">Keine Übungen gefunden</string>
     <string name="error_climb_not_found">Climb nicht gefunden [uuid=%1$s angle=%2$d]</string>
+    <string name="error_climb_not_in_db_title">Noch nicht in der CruxCoach-Datenbank</string>
+    <string name="error_climb_not_in_db_body">Dieser Kilter-Boulder ist noch nicht in der CruxCoach-Datenbank, daher ist die Board-Ansicht nicht verfügbar. Deine protokollierten Begehungen findest du unten.</string>
+    <string name="error_climb_not_in_db_unnamed">Kilter-Boulder</string>
+    <string name="error_climb_not_in_db_your_logs">Deine Einträge</string>
+    <string name="error_climb_not_in_db_log_send">Top</string>
+    <string name="error_climb_not_in_db_log_attempt">Versuch</string>
+    <string name="error_climb_not_in_db_log_attempts">%1$d Versuch(e)</string>
     <string name="error_select_category">Wähle mindestens eine Kategorie</string>
     <string name="error_cannot_open_file">Kann Datei nicht öffnen</string>
     <string name="error_cannot_read_file">Kann Datei nicht lesen</string>
@@ -1402,6 +1543,8 @@
     <string name="post_workout_rpe_display">RPE: %1$s – %2$s</string>
     <string name="rest_timer_done">Pause vorbei!</string>
     <string name="rest_timer_label">Pause</string>
+    <string name="rest_timer_set_title">Pausenlänge</string>
+    <string name="rest_timer_start">Starten</string>
     <string name="settings_app_share_title">App teilen</string>
     <string name="settings_profile_assessment_title">Profil &amp; Assessment</string>
     <string name="settings_section_board">Board-Einstellungen</string>
@@ -1412,6 +1555,20 @@
     <string name="settings_board_model_title">Board-Größe</string>
     <string name="settings_board_model_change">Ändern</string>
     <string name="settings_board_model_not_configured">Nicht konfiguriert</string>
+    <string name="settings_board_find_via_gym">Weiß nicht?</string>
+    <string name="settings_board_find_via_gym_fallback">Board direkt wählen</string>
+    <string name="feat007_gym_search_title">Halle suchen</string>
+    <string name="feat007_gym_search_field">Hallen-Name…</string>
+    <string name="feat007_gym_search_min">Mindestens 2 Buchstaben eingeben</string>
+    <string name="feat007_gym_search_none">Keine Halle gefunden.</string>
+    <string name="feat007_gym_one">Diese Halle nutzt:</string>
+    <string name="feat007_gym_many">Diese Halle hat %1$d Boards — wähle das, vor dem du stehst:</string>
+    <string name="feat007_gym_no_walls">Für diese Halle sind keine Board-Daten hinterlegt.</string>
+    <string name="feat007_back">Zurück</string>
+    <string name="feat007_gym_loading">Noch keine Hallendaten auf diesem Gerät — sie kommen mit der Board-Synchronisierung. Du kannst dein Board unten direkt wählen.</string>
+    <string name="feat007_gym_recommended">am häufigsten</string>
+    <string name="feat007_gym_categories">Diese Halle hat mehrere Board-Typen — wähle deinen:</string>
+    <string name="feat007_gym_variant">Welches ist deins? Tippe das passende Board an:</string>
     <string name="settings_section_data">Datenverwaltung</string>
     <string name="settings_section_dev_contact">Entwickler-Kontakt</string>
     <string name="settings_section_display">Anzeige</string>
@@ -1570,8 +1727,8 @@
     <string name="key_import_detected">Erkannt: %1$s</string>
     <string name="key_import_button">Importieren</string>
     <string name="key_import_success_toast">Schlüssel importiert</string>
-    <string name="key_import_overwrite_title">Account ersetzen?</string>
-    <string name="key_import_overwrite_text">Du hast bereits einen Account. Der Import ersetzt ihn. Hast du ein Backup des aktuellen Schlüssels?</string>
+    <string name="key_import_overwrite_title">Account wechseln?</string>
+    <string name="key_import_overwrite_text">Der Import wechselt zu dem importierten Schlüssel. Deine aktuellen Climbs und Listen bleiben gespeichert (werden nicht gelöscht), sind aber nur noch mit deinem jetzigen Schlüssel erreichbar — sie erscheinen wieder, wenn du ihn erneut importierst. Sichere deinen jetzigen Schlüssel.</string>
     <string name="key_import_overwrite_confirm">Trotzdem importieren</string>
     <string name="key_import_confirm_title">Ist das dein Schlüssel?</string>
     <string name="key_import_confirm_button">Ja, importieren</string>
@@ -1582,6 +1739,7 @@
     <!-- FEAT-002: Verschlüsseltes Cloud-Backup (Nostr + Blossom unter der Haube) -->
     <string name="settings_backup_title">Verschlüsseltes Cloud-Backup</string>
     <string name="settings_backup_description">Auf deinem Gerät verschlüsselt, danach auf mehreren öffentlichen Servern gespeichert. Nur du kannst es entschlüsseln.</string>
+    <string name="settings_backup_device_local_note">Board-Auswahl und Browse-/Karten-Filter bleiben auf diesem Gerät und werden nicht aus einem Backup wiederhergestellt.</string>
     <string name="settings_backup_enable">Backup aktivieren</string>
     <string name="settings_backup_needs_key">Ein Account-Schlüssel wird benötigt. Er wird beim ersten Backup automatisch erzeugt.</string>
     <string name="settings_backup_interval">Intervall</string>
@@ -1605,6 +1763,8 @@
     <string name="settings_backup_check_decrypt_failed">Ein Backup wurde gefunden, aber nicht entschlüsselt — der Schlüssel passt anscheinend nicht.</string>
     <string name="settings_backup_check_error">Fehler beim Suchen nach einem Backup: %1$s</string>
     <string name="settings_backup_restore_failed">Backup konnte nicht wiederhergestellt werden.</string>
+    <string name="settings_backup_restored">Wiederhergestellt: %1$d Begehungen, %2$d Listen</string>
+    <string name="settings_backup_restore_wait_import">Boards werden noch geladen — Wiederherstellen ist verfügbar, sobald das fertig ist.</string>
     <string name="settings_backup_succeeded">Backup erstellt.</string>
     <string name="settings_backup_failed">Backup fehlgeschlagen. Prüfe deine Verbindung und versuche es erneut.</string>
     <string name="settings_backup_failed_detail">Backup fehlgeschlagen: %1$s</string>
@@ -1675,7 +1835,7 @@
     <string name="onboarding_nostr_backup_title">Backup deiner Daten</string>
     <string name="onboarding_nostr_backup_body">Auf deinem Gerät verschlüsselt, danach online auf mehreren öffentlichen Servern gespeichert. Nur du kannst es entschlüsseln. Voreinstellung: aus — jederzeit in den Einstellungen aktivierbar.</string>
     <string name="onboarding_restore_dialog_body">Ein Backup wurde gefunden (%1$s).\n\nWiederherstellen ersetzt deine lokalen Daten durch den Inhalt des Backups.</string>
-    <string name="onboarding_restore_progress_awaiting_board_sync">Warte auf den Download der Board-Datenbank… dauert bei frischer Installation typisch 1–3 Minuten, je nach Verbindung.</string>
+    <string name="onboarding_restore_progress_awaiting_board_sync">Warte auf den Download der Board-Datenbank… das kann bei frischer Installation einige Minuten dauern, bei langsamer Verbindung auch länger.</string>
     <string name="onboarding_restore_progress_active">Backup wird wiederhergestellt…</string>
 
     <!-- FEAT-002: Onboarding Backup-Wahl (3-Step-Onboarding) -->
@@ -1685,7 +1845,6 @@
     <string name="onboarding_backup_choice_restore_desc">Ich habe ein Backup von einem anderen Gerät. Importiere den dort verwendeten Nostr-Schlüssel.</string>
     <string name="onboarding_backup_import_key_button">Nostr-Schlüssel importieren →</string>
     <string name="onboarding_backup_restore_checking">Suche nach Backup…</string>
-    <string name="onboarding_backup_restore_success">Backup wiederhergestellt.</string>
     <string name="onboarding_backup_restore_none_for_key">Für diesen Account wurde kein Backup gefunden. Du kannst trotzdem weiter — beim nächsten Sync wird ein neues Backup erstellt.</string>
     <string name="onboarding_backup_restore_waiting_for_key">Importiere deinen Nostr-Schlüssel, um fortzufahren, oder wechsle zurück zu „Neu starten".</string>
     <string name="onboarding_restart_confirm_title">Nostr-Schlüssel importieren</string>
@@ -1724,6 +1883,42 @@
     <string name="board_model_dialog_confirm">Bestätigen</string>
     <string name="board_model_dialog_cancel">Abbrechen</string>
 
+    <!-- FEAT-027: vereinheitlichte Kilter-/MoonBoard-Board-Auswahl -->
+    <string name="board_selection_dialog_title">Board auswählen</string>
+    <string name="board_selection_brand_label">Board-Typ</string>
+    <string name="board_selection_brand_kilter">Kilter</string>
+    <string name="board_selection_brand_moonboard">MoonBoard</string>
+    <string name="board_selection_moonboard_variant_label">MoonBoard-Variante</string>
+    <!-- Vereinheitlichter Board-Picker — drei Hauptkategorien -->
+    <string name="board_category_label">Board</string>
+    <string name="board_category_kilter_original">Kilter Original</string>
+    <string name="board_category_kilter_homewall">Kilter Homewall</string>
+    <string name="board_category_moonboard">MoonBoard</string>
+    <!-- FEAT-027: Ergebnis des MoonBoard-Katalog-Syncs -->
+    <string name="moonboard_sync_already_current">MoonBoard-Katalog ist bereits aktuell.</string>
+    <string name="moonboard_sync_imported">MoonBoard-Katalog heruntergeladen.</string>
+    <string name="moonboard_sync_failed">MoonBoard-Katalog konnte nicht geladen werden: %1$s</string>
+    <string name="moonboard_sync_failed_generic">MoonBoard-Katalog konnte nicht geladen werden. Bitte später erneut versuchen.</string>
+    <!-- FEAT-031: Aurora-Board-Auswahl + Katalog-Sync -->
+    <string name="aurora_sync_already_current">Board-Katalog ist bereits aktuell.</string>
+    <string name="aurora_sync_imported">Board-Katalog heruntergeladen.</string>
+    <string name="aurora_sync_failed_generic">Board-Katalog konnte nicht geladen werden. Bitte später erneut versuchen.</string>
+    <string name="board_selection_aurora_download_hint">Wir laden den %1$s-Katalog herunter und richten ihn als dein Board ein. Die genaue Größe kannst du später in den Einstellungen anpassen.</string>
+    <string name="board_selection_variant_label">Welches Board?</string>
+    <string name="board_selection_aurora_size_label">Welche Größe?</string>
+    <string name="board_send_error_brand_mismatch">Dieser Climb gehört zu einem anderen Board-Typ als dein aktives Board.</string>
+    <string name="board_send_error_connected_board_mismatch">Dieser Climb gehört zu einem anderen Board-Typ als das verbundene Board. Verbinde dich mit dem passenden Board.</string>
+    <string name="board_send_error_no_led_data">Keine LED-Daten. Bitte Board-Daten neu synchronisieren.</string>
+    <string name="board_send_error_send_failed">Senden fehlgeschlagen.</string>
+    <string name="board_send_error_generic">Fehler beim Senden.</string>
+    <string name="board_send_error_active_not_moonboard">Dein aktives Board ist kein MoonBoard — wechsle es in den Einstellungen, um diesen Climb zu senden.</string>
+    <string name="board_send_error_moonboard_variant_mismatch">Dieser Climb gehört zu einer anderen MoonBoard-Variante als dein aktives Board.</string>
+    <string name="board_send_warning_holds_not_lit">Einige Griffe liegen außerhalb deiner Board-Größe und wurden nicht beleuchtet.</string>
+    <string name="board_sync_error_download">Download fehlgeschlagen. Bitte prüfe deine Internetverbindung und versuche es erneut.</string>
+    <string name="board_sync_error_update_offline">Aktualisierung nicht möglich. Bestehende Daten bleiben erhalten.</string>
+    <string name="board_sync_error_import">Import fehlgeschlagen. Bitte später erneut versuchen.</string>
+    <string name="board_sync_error_update_failed">Aktualisierung fehlgeschlagen. Bestehende Daten bleiben erhalten.</string>
+
     <!-- BoardSyncInlineCard Schritt-Detail-Labels (war gemischt DE/EN) -->
     <string name="board_sync_detail_climbs_count">%,d Climbs…</string>
     <string name="board_sync_detail_progress_with_new">%1$,d / %2$,d  (%3$,d neu)</string>
@@ -1747,6 +1942,32 @@
     <string name="whatsnew_aurora_import_hint">Datei schon zur Hand? Auf „Jetzt importieren" tippen. Sonst bleibt der Importer in Einstellungen → Migration aus Aurora — Export anfragen, später wiederkommen.</string>
     <string name="whatsnew_aurora_import_action_now">Jetzt importieren</string>
     <string name="whatsnew_aurora_import_action_later">Später</string>
+
+    <!-- FEAT-027 MoonBoard-Support (0.2.0) — Headline -->
+    <string name="whatsnew_moonboard_title">Neu in 0.2.0: MoonBoard + Aurora-Boards</string>
+    <string name="whatsnew_moonboard_body">0.2.0 bringt zusätzlich zu Kilter den vollen MoonBoard-Support und die Aurora-Boards — Tension, Grasshopper, Decoy, So iLL und Touchstone. Durchsuche jeden Katalog mit denselben Filtern für Grad, Winkel und Setter und lass Boulder per Bluetooth auf deinem Board aufleuchten.</string>
+    <string name="whatsnew_moonboard_hint">Außerdem neu: eine weltweite Board-Standortkarte und ein „Finde deine Halle"-Board-Picker — beides in den Einstellungen.</string>
+    <string name="whatsnew_moonboard_action_now">Board wählen</string>
+    <string name="whatsnew_moonboard_action_later">Später</string>
+    <!-- FEAT-031: Aurora-Boards (What's New) -->
+    <string name="whatsnew_aurora_title">Neu: Tension, Grasshopper &amp; mehr</string>
+    <string name="whatsnew_aurora_body">0.2.0 bringt zusätzlich die Aurora-Boards — Tension, Grasshopper, Decoy, So iLL und Touchstone — neben Kilter und MoonBoard. Durchsuche den Katalog jedes Boards mit denselben Filtern für Grad, Winkel und Setter, öffne einen Boulder und lass ihn per Bluetooth auf deinem Board aufleuchten.</string>
+    <string name="whatsnew_aurora_hint">Wähle dein Board in Einstellungen → Board-Typ. Der Katalog wird bei der ersten Auswahl heruntergeladen; Board-Fit-Filter und Standortkarte funktionieren auch für diese Boards.</string>
+
+    <!-- FEAT-015 Board-Locations-Map (0.2.0) -->
+    <string name="whatsnew_board_map_title">Neu: Boards auf der Karte</string>
+    <string name="whatsnew_board_map_body">0.2.0 stellt alle bekannten Kilter- und MoonBoard-Installationen weltweit auf eine interaktive Karte. Tippe das Karten-Icon neben der Griffsuche im Board-Browser, navigiere zum Marker, hol dir Adresse, Telefon, E-Mail — und einen Direktlink zu allen Climbs für das exakte Layout und die Größe dieses Boards.</string>
+    <string name="whatsnew_board_map_hint">Filter für Board-Marke, Layout, Land, öffentlich/privat, Verstellbarkeit und Größe sind dabei. „Passt zu meinem Board" reduziert die Marker auf Hallen, deren Hardware zu deinem konfigurierten Board passt.</string>
+    <string name="whatsnew_board_map_action_now">Karte öffnen</string>
+    <string name="whatsnew_board_map_action_later">Später</string>
+
+    <!-- FEAT-007 Phase 1 Gym-Picker (0.2.0) -->
+    <string name="whatsnew_gym_picker_title">Neu: Board über die Halle wählen</string>
+    <string name="whatsnew_gym_picker_body">In Einstellungen → Board-Größe öffnet „Ändern" jetzt einen „Halle suchen"-Pfad. Halle suchen, Wand antippen, fertig — ohne den Product-Size-Code aus der Dropdown raten zu müssen.</string>
+    <string name="whatsnew_gym_picker_hint">Die manuelle Liste bleibt als Fallback für Setter und Homewall-Besitzer, die ihre Hardware ohnehin kennen.</string>
+    <string name="whatsnew_gym_picker_action_now">Einstellungen öffnen</string>
+    <string name="whatsnew_gym_picker_action_later">Später</string>
+
     <string name="settings_aurora_migration_title">Migration aus Aurora / alter Kilter-App</string>
     <string name="settings_aurora_migration_desc">Begehungen, Versuche und Circuits aus dem E-Mail-Export übernehmen, den Aurora auf Anfrage zusendet.</string>
     <string name="aurora_migration_title">Aurora-Migration</string>
@@ -1781,4 +2002,19 @@
     <string name="aurora_migration_unresolved_title" formatted="false">%1$d Climb-Namen konnten lokal nicht zugeordnet werden</string>
     <string name="aurora_migration_import_another">Weitere Datei importieren</string>
     <string name="aurora_migration_file_too_large">Datei zu groß für den direkten Import (%1$d MB). Aurora-Exports sind üblicherweise wenige MB groß — bei deutlich größeren Dateien bitte den Support kontaktieren.</string>
+
+    <!-- Board climb history / Verlauf (FEAT-032) -->
+    <string name="history_title">Verlauf</string>
+    <string name="history_selected_count">%1$d ausgewählt</string>
+    <string name="history_empty_title">Noch kein Verlauf</string>
+    <string name="history_empty_body">Geschickte Boulder erscheinen hier, sobald du sie kletterst.</string>
+    <string name="history_backup_local_only">Nur auf diesem Gerät gespeichert — nicht im Backup enthalten.</string>
+    <string name="history_subtitle">Zuletzt ans Board gesendet</string>
+    <string name="history_delete_title">Einträge löschen</string>
+    <string name="cd_navigate_back">Zurück</string>
+    <string name="cd_clear_selection">Auswahl löschen</string>
+    <plurals name="history_delete_body">
+        <item quantity="one">%1$d Eintrag aus dem Verlauf löschen?</item>
+        <item quantity="other">%1$d Einträge aus dem Verlauf löschen?</item>
+    </plurals>
 </resources>

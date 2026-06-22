@@ -43,6 +43,7 @@ class BoardStatsComputerTest {
         bidCount: Long = 1L,
         difficulty: Double? = 18.5,
         framesCount: Long = 1L,
+        boardBrand: String = "kilter",
     ) = AscentWithClimb(
         uuid = uuid,
         userId = 0L,
@@ -59,6 +60,7 @@ class BoardStatsComputerTest {
         difficultyAverage = difficulty,
         framesCount = framesCount,
         isSend = isSend,
+        boardBrand = boardBrand,
     )
 
     private var idCounter = 0
@@ -384,5 +386,70 @@ class BoardStatsComputerTest {
         val out = BoardStatsComputer.computeSendsOverTime(ascents, StatsTimeInterval.YEAR_1)
         assertEquals(1, out.size)
         assertFalse(out[0].label.isEmpty())
+    }
+
+    // -- Board comparison --
+
+    @Test
+    fun `computeBoardComparison groups per board with sends attempts and top grade`() {
+        val ascents = listOf(
+            ascent(uuid = "k1", boardBrand = "kilter", isSend = true, difficulty = 18.0),
+            ascent(uuid = "k2", boardBrand = "kilter", isSend = true, difficulty = 22.0),
+            ascent(uuid = "kb", boardBrand = "kilter", isSend = false, difficulty = 25.0),
+            ascent(uuid = "t1", boardBrand = "tension", isSend = true, difficulty = 20.0),
+        )
+        val out = BoardStatsComputer.computeBoardComparison(ascents, StatsTimeInterval.ALL, GradeScale.V_SCALE)
+        assertEquals(2, out.size)
+        val kilter = out.first { it.boardBrand == "kilter" }
+        assertEquals(2, kilter.sendCount)
+        assertEquals(1, kilter.attemptCount)
+        // Top grade is from sends only — the bid at 25.0 must not count.
+        assertEquals(22, kilter.hardestDifficultyInt)
+        assertNotNull(kilter.hardestGrade)
+        val tension = out.first { it.boardBrand == "tension" }
+        assertEquals(1, tension.sendCount)
+        assertEquals(20, tension.hardestDifficultyInt)
+    }
+
+    @Test
+    fun `computeBoardComparison is sorted by send count descending`() {
+        val ascents = listOf(
+            ascent(uuid = "t1", boardBrand = "tension", isSend = true),
+            ascent(uuid = "k1", boardBrand = "kilter", isSend = true),
+            ascent(uuid = "k2", boardBrand = "kilter", isSend = true),
+            ascent(uuid = "k3", boardBrand = "kilter", isSend = true),
+        )
+        val out = BoardStatsComputer.computeBoardComparison(ascents, StatsTimeInterval.ALL, GradeScale.V_SCALE)
+        assertEquals("kilter", out[0].boardBrand)
+        assertEquals("tension", out[1].boardBrand)
+    }
+
+    @Test
+    fun `computeBoardComparison hardestGrade is null for a board with only attempts`() {
+        val ascents = listOf(
+            ascent(uuid = "b1", boardBrand = "moonboard", isSend = false, difficulty = 21.0),
+        )
+        val out = BoardStatsComputer.computeBoardComparison(ascents, StatsTimeInterval.ALL, GradeScale.V_SCALE)
+        assertEquals(1, out.size)
+        assertEquals(0, out[0].sendCount)
+        assertEquals(1, out[0].attemptCount)
+        assertNull(out[0].hardestGrade)
+        assertEquals(0, out[0].hardestDifficultyInt)
+    }
+
+    @Test
+    fun `computeBoardComparison respects the time interval`() {
+        val recent = today.toString()
+        val old = today.minusDays(200).toString()
+        val ascents = listOf(
+            ascent(uuid = "new", boardBrand = "kilter", climbedAt = "${recent}T10:00:00", isSend = true),
+            ascent(uuid = "old", boardBrand = "tension", climbedAt = "${old}T10:00:00", isSend = true),
+        )
+        val out = BoardStatsComputer.computeBoardComparison(
+            ascents, StatsTimeInterval.DAYS_30, GradeScale.V_SCALE, clock = fixedClock,
+        )
+        // Only the kilter ascent falls inside the 30-day window.
+        assertEquals(1, out.size)
+        assertEquals("kilter", out[0].boardBrand)
     }
 }

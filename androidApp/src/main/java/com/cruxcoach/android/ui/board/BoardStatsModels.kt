@@ -65,6 +65,17 @@ data class PersonalRecords(
     val longestStreak: Int = 0
 )
 
+/** One board family's headline numbers for the multi-board comparison row
+ *  (shown only when the user has logged on >1 board). [boardBrand] is the
+ *  raw wire value; the UI resolves it to a display name. */
+data class BoardComparisonEntry(
+    val boardBrand: String,
+    val sendCount: Int,
+    val attemptCount: Int,
+    val hardestGrade: String?,
+    val hardestDifficultyInt: Int
+)
+
 /** Chart view selectors for dropdown sections */
 enum class GradeChartView {
     PYRAMID,

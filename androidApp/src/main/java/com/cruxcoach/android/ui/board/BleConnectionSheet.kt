@@ -31,6 +31,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.cruxcoach.android.ble.BlePermissionHelper
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.ble.DiscoveredBoard
+import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.android.ui.common.LocalBleShareManager
 import com.cruxcoach.android.data.SessionRole
 import androidx.compose.ui.res.stringResource
@@ -48,6 +49,30 @@ fun BleConnectionSheet(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
+
+    // BleConnectionViewModel is scoped per nav-backstack entry, so the board
+    // browser and the detail screen hold separate instances — a permission
+    // grant in one leaves the other's cached hasPermissions stale at false.
+    // Android has no permission-change broadcast, so re-check the live OS
+    // permission + Bluetooth state on every sheet open.
+    LaunchedEffect(Unit) {
+        viewModel.checkState()
+    }
+
+    // Auto-close once the connect succeeds — the top-bar BLE icon flips
+    // to green (BluetoothConnected) so the sheet has no further purpose.
+    // Only on the transition into CONNECTED, not when the sheet was
+    // opened while already connected (user then wants the Disconnect UI).
+    // Brief delay so the user catches a glimpse of the "Verbunden" state.
+    val initialConnectionState = remember { state.connectionState }
+    LaunchedEffect(state.connectionState) {
+        if (state.connectionState == ConnectionState.CONNECTED &&
+            initialConnectionState != ConnectionState.CONNECTED
+        ) {
+            kotlinx.coroutines.delay(400L)
+            onDismiss()
+        }
+    }
 
     // Auto-start scan when sheet opens (if permissions granted and BT enabled).
     // Use the auto-connect-on-single variant: after a 2 s settling window, if
@@ -160,6 +185,28 @@ fun BleConnectionSheet(
                     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S && !legacyAccepted) {
                         LegacyBleWarningContent(onAccept = { legacyAccepted = true })
                         return@Column
+                    }
+                    // Honest connect-failure reason from the last attempt
+                    // (e.g. a pre-2017 RedBear-UART MoonBoard LED kit we
+                    // can't drive yet) — otherwise the board just "drops"
+                    // back into the scan list with no explanation.
+                    state.connectFailureReason?.let { reasonRes ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Warning,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp),
+                                tint = WarningYellow
+                            )
+                            Text(
+                                stringResource(reasonRes),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = WarningYellow
+                            )
+                        }
                     }
                     val bleShareState by LocalBleShareManager.current.uiState.collectAsStateWithLifecycle()
                     ScanContent(
@@ -336,6 +383,11 @@ private fun ConnectedContent(
                 fontWeight = FontWeight.Bold,
                 color = SuccessGreen
             )
+            // The advertised display name already identifies the board for every
+            // brand (Kilter Board / MoonBoard / Tension Board / …), so show it
+            // directly. The old "brand · name" prefix used a binary
+            // MoonBoard-else-Kilter check that mislabeled every Aurora board
+            // (e.g. Tension) as "Kilter Board".
             Text(
                 boardName,
                 style = MaterialTheme.typography.bodyMedium,
@@ -627,8 +679,15 @@ private fun BoardItem(board: DiscoveredBoard, onClick: () -> Unit) {
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.Bold
                 )
+                // FEAT-027: brand label so the user can tell a discovered
+                // Kilter board apart from a MoonBoard. For Kilter the serial
+                // stays the secondary line; MoonBoard has no serial.
                 Text(
-                    board.serial,
+                    text = if (board.serial.isNotBlank()) {
+                        "${brandLabel(board.boardBrand)} · ${board.serial}"
+                    } else {
+                        brandLabel(board.boardBrand)
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -657,4 +716,14 @@ private fun rssiColor(rssi: Int) = when {
     rssi >= -60 -> SuccessGreen
     rssi >= -75 -> WarningYellow
     else -> ErrorRed
+}
+
+/** Localized brand label for a discovered / connected board (FEAT-027).
+ *  Only the interactive families (Kilter / MoonBoard) ever reach BLE; the
+ *  map-only info-layer brands fall back to their raw name defensively. */
+@Composable
+private fun brandLabel(brand: BoardBrand): String = when (brand) {
+    BoardBrand.KILTER -> stringResource(R.string.board_ble_brand_kilter)
+    BoardBrand.MOONBOARD -> stringResource(R.string.board_ble_brand_moonboard)
+    else -> brand.wireValue
 }

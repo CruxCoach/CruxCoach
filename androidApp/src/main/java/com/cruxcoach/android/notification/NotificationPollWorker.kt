@@ -37,6 +37,7 @@ class NotificationPollWorker @AssistedInject constructor(
     private val signer: NostrSigner,
     private val announcementRepository: AnnouncementRepository,
     private val messageRepository: NostrMessageRepository,
+    private val messageIngestor: NostrMessageIngestor,
     private val notificationHelper: NotificationHelper,
     private val userPreferences: UserPreferences,
     private val queueManager: OfflineQueueManager
@@ -176,31 +177,18 @@ class NotificationPollWorker @AssistedInject constructor(
                 }
                 if (existingRow != null) continue
 
-                val direction = if (isSelfWrap) "sent" else "received"
-
-                messageRepository.insert(
-                    id = msg.id,
-                    type = msg.type.label,
-                    direction = direction,
-                    content = msg.content,
-                    subject = msg.subject,
-                    senderPubkey = msg.senderPubkey,
-                    createdAt = msg.timestamp,
-                    relayAccepted = true,
-                    read = isSelfWrap,
-                    replyToId = msg.replyToId
-                )
+                // Shared ingest (also used by NostrPushCoordinator): thread-id
+                // normalization, anchor re-learning, idempotent insert,
+                // queued → delivered bookkeeping. Returns the notification
+                // deep-link route.
+                val threadRoute = messageIngestor.ingest(msg, isSelfWrap)
 
                 if (!isSelfWrap) {
                     notificationHelper.showMessageNotification(
                         eventId = msg.id,
                         senderName = applicationContext.getString(R.string.notification_sender_developer),
                         preview = msg.content.take(100),
-                        threadRoute = if (msg.replyToId != null) {
-                            "message_thread/${msg.replyToId}"
-                        } else {
-                            "dev_chat"
-                        }
+                        threadRoute = threadRoute
                     )
                 }
 

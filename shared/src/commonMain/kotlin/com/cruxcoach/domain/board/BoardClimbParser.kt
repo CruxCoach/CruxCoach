@@ -35,6 +35,35 @@ object HoldRole {
         ROUTE_FOOT -> FOOT
         else -> roleId
     }
+
+    /**
+     * Canonical role *class* for a raw frame role code, brand-agnostic.
+     *
+     * Aurora-family boards (Tension/Grasshopper/Decoy/So iLL/Touchstone) number
+     * roles 1-4 (start/middle/finish/foot) plus a mirrored set 5-8; Kilter uses
+     * 12-15 (and the 42-45 route variants); MoonBoard saved climbs use 42-44.
+     * They all collapse to START/HAND/FINISH/FOOT here. Aurora "middle" maps to
+     * HAND — there is no distinct hand id. Unknown codes return themselves so
+     * exact-match callers keep working. Codes 1-8 are exclusive to the Aurora
+     * family (Kilter only ever uses 12-15/42-45), so the fold is collision-free.
+     *
+     * Comparison / colour-resolution ONLY — never rewrite a *stored* climb
+     * with this. Catalogue role ids must stay brand-native: AuroraImporter
+     * round-trips frames verbatim (parse→encode), and the per-board
+     * placement_roles colour map is keyed by the raw 1-4 ids. Mutating the
+     * codes in place (e.g. via [normalize]) would corrupt Aurora frames and
+     * mis-key that map. The one sanctioned re-encode is the climb editor's
+     * seeding (`parseHoldsForEditor`), which folds a forked catalogue frame
+     * into the 12-15 palette to author a NEW climb — the source row itself
+     * is never touched.
+     */
+    fun roleClass(roleId: Int): Int = when (roleId) {
+        1, 5 -> START
+        2, 6 -> HAND
+        3, 7 -> FINISH
+        4, 8 -> FOOT
+        else -> normalize(roleId)
+    }
 }
 
 object BoardClimbParser {

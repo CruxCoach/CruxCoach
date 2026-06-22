@@ -1,0 +1,122 @@
+-- Migration version 18 → 19 (FEAT-031): namespace the board-geometry tables
+-- by board_brand so the Aurora-family boards (Tension, Grasshopper, Decoy,
+-- So iLL, Touchstone) can ship full geometry alongside Kilter.
+--
+-- WHY a rebuild: every geometry table is keyed on a bare Aurora integer id
+-- (placement_id, product_size_id, hole id, …). Those ids are per-board on the
+-- shared Aurora backend — each board numbers its placements/sizes/holes/leds
+-- from 1 — so a second board's catalogue would collide head-on with Kilter's
+-- on INSERT OR REPLACE. We add a board_brand discriminator and fold it into
+-- each table's PRIMARY KEY (and the two hot indexes). climbs/climb_stats are
+-- NOT touched: climbs already carries board_brand (14.sqm) and Aurora uuids
+-- are per-board-unique, so only the integer-keyed geometry tables need this.
+--
+-- SQLite can't ALTER a PRIMARY KEY, so each table is rebuilt (rename → create
+-- with the composite PK → copy → drop). Every existing row is Kilter, so the
+-- copy back-fills board_brand = 'kilter' and the data stays correctly keyed —
+-- NO catalogue resync is required on upgrade (existing Kilter geometry is
+-- already complete and correctly tagged; we only widen the key space).
+--
+-- board_brand leads each composite PK (and each rebuilt index) so a per-board
+-- geometry lookup never scans another board's rows. It is declared first with
+-- DEFAULT 'kilter' so any not-yet-brand-aware INSERT keeps writing into the
+-- Kilter partition until the importer/repository start passing the brand.
+--
+-- Pre-0.2.0 safety: this is an additive, in-app schema migration only. It does
+-- not change the Blossom chunk format or the Kilter/MoonBoard manifests, so
+-- users on older app versions are unaffected; the Aurora catalogues arrive via
+-- their own new manifest d-tags that older apps never subscribe to.
+
+-- ── placements ──────────────────────────────────────────────────────────
+ALTER TABLE placements RENAME TO placements_old;
+CREATE TABLE placements (
+    board_brand TEXT NOT NULL DEFAULT 'kilter',
+    placement_id INTEGER NOT NULL,
+    hole_id INTEGER NOT NULL,
+    set_id INTEGER NOT NULL,
+    x INTEGER NOT NULL,
+    y INTEGER NOT NULL,
+    PRIMARY KEY (board_brand, placement_id)
+);
+INSERT INTO placements (board_brand, placement_id, hole_id, set_id, x, y)
+    SELECT 'kilter', placement_id, hole_id, set_id, x, y FROM placements_old;
+DROP TABLE placements_old;
+CREATE INDEX idx_placements_set ON placements(board_brand, set_id);
+
+-- ── product_sizes ───────────────────────────────────────────────────────
+ALTER TABLE product_sizes RENAME TO product_sizes_old;
+CREATE TABLE product_sizes (
+    board_brand TEXT NOT NULL DEFAULT 'kilter',
+    id INTEGER NOT NULL,
+    product_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    edge_left INTEGER NOT NULL,
+    edge_right INTEGER NOT NULL,
+    edge_bottom INTEGER NOT NULL,
+    edge_top INTEGER NOT NULL,
+    image_filename TEXT,
+    PRIMARY KEY (board_brand, id)
+);
+INSERT INTO product_sizes (board_brand, id, product_id, name, edge_left, edge_right, edge_bottom, edge_top, image_filename)
+    SELECT 'kilter', id, product_id, name, edge_left, edge_right, edge_bottom, edge_top, image_filename FROM product_sizes_old;
+DROP TABLE product_sizes_old;
+
+-- ── board_images ────────────────────────────────────────────────────────
+ALTER TABLE board_images RENAME TO board_images_old;
+CREATE TABLE board_images (
+    board_brand TEXT NOT NULL DEFAULT 'kilter',
+    id INTEGER NOT NULL,
+    product_size_id INTEGER NOT NULL,
+    layout_id INTEGER NOT NULL,
+    set_id INTEGER NOT NULL,
+    image_filename TEXT NOT NULL,
+    PRIMARY KEY (board_brand, id)
+);
+INSERT INTO board_images (board_brand, id, product_size_id, layout_id, set_id, image_filename)
+    SELECT 'kilter', id, product_size_id, layout_id, set_id, image_filename FROM board_images_old;
+DROP TABLE board_images_old;
+CREATE INDEX idx_board_images_size ON board_images(board_brand, product_size_id);
+
+-- ── leds ────────────────────────────────────────────────────────────────
+ALTER TABLE leds RENAME TO leds_old;
+CREATE TABLE leds (
+    board_brand TEXT NOT NULL DEFAULT 'kilter',
+    hole_id INTEGER NOT NULL,
+    product_size_id INTEGER NOT NULL,
+    position INTEGER NOT NULL,
+    PRIMARY KEY (board_brand, hole_id, product_size_id)
+);
+INSERT INTO leds (board_brand, hole_id, product_size_id, position)
+    SELECT 'kilter', hole_id, product_size_id, position FROM leds_old;
+DROP TABLE leds_old;
+
+-- ── holes ───────────────────────────────────────────────────────────────
+ALTER TABLE holes RENAME TO holes_old;
+CREATE TABLE holes (
+    board_brand TEXT NOT NULL DEFAULT 'kilter',
+    id INTEGER NOT NULL,
+    product_size_id INTEGER NOT NULL,
+    x INTEGER NOT NULL,
+    y INTEGER NOT NULL,
+    mirrored_hole_id INTEGER,
+    PRIMARY KEY (board_brand, id)
+);
+INSERT INTO holes (board_brand, id, product_size_id, x, y, mirrored_hole_id)
+    SELECT 'kilter', id, product_size_id, x, y, mirrored_hole_id FROM holes_old;
+DROP TABLE holes_old;
+
+-- ── board_hold_positions ────────────────────────────────────────────────
+ALTER TABLE board_hold_positions RENAME TO board_hold_positions_old;
+CREATE TABLE board_hold_positions (
+    board_brand TEXT NOT NULL DEFAULT 'kilter',
+    hole_id INTEGER NOT NULL,
+    product_size_id INTEGER NOT NULL,
+    x INTEGER NOT NULL,
+    y INTEGER NOT NULL,
+    led_position INTEGER NOT NULL,
+    placement_id INTEGER NOT NULL,
+    PRIMARY KEY (board_brand, hole_id, product_size_id)
+);
+INSERT INTO board_hold_positions (board_brand, hole_id, product_size_id, x, y, led_position, placement_id)
+    SELECT 'kilter', hole_id, product_size_id, x, y, led_position, placement_id FROM board_hold_positions_old;
+DROP TABLE board_hold_positions_old;

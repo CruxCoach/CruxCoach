@@ -2,7 +2,9 @@
 
 ## What This Project Is
 
-CruxCoach is a free, open-source climbing app for use with the Kilter Board climbing training system. It provides climb browsing, BLE board control, session tracking, logbook management, progress analytics, and Kilter account sync. It is non-commercial and maintained by volunteers.
+CruxCoach is a free, open-source climbing app for use with the Kilter Board and MoonBoard climbing training systems. It provides climb browsing, BLE board control, session tracking, logbook management, progress analytics, Kilter account sync, and CruxCoach-community climb authoring. It is non-commercial and maintained by volunteers.
+
+The legal reasoning below is written primarily around the Kilter Board (the project's original target). The same principles — factual/functional climb data, community-created content, referential trademark use, and interoperability via BLE — apply equally to the MoonBoard; MoonBoard-specific provenance details are still being documented.
 
 ---
 
@@ -47,13 +49,14 @@ CruxCoach distributes board reference data and community-created climb data via 
 | Board layouts, hold positions, mounting holes, LED mappings | Hardware reference data | Derived from product specifications | Functional facts about physical hardware |
 | Climbs (hold sequences + grades) | Community-created factual data | User-generated content | Factual data, created by climbers |
 | Climb statistics (difficulty averages, ascent counts) | Aggregated community data | Community activity metrics | Statistical facts |
+| Gym & wall locations (FEAT-015) | Public-business directory data | [`@hangtime/climbing-boards`](https://www.npmjs.com/package/@hangtime/climbing-boards) (Kilter PowerSync `global_gyms` mirror + StoreRocket contact records) | Factual / functional information about commercial gym entities, used to render the in-app board-locations map. No user personal data. |
 
 ### What we do NOT distribute
 
-- Kilter's proprietary software, source code, or firmware
-- Kilter's wordmark, logo, or marketing/branding artwork
+- Kilter's or Moon Climbing's proprietary software, source code, or firmware
+- Kilter's or MoonBoard's wordmark, logo, or marketing/branding artwork
 - User personal data (email, profile photos, account details)
-- Kilter's app binary or any portion thereof
+- Kilter's or the MoonBoard app's binary or any portion thereof
 
 ### Bundled Kilter layout images
 
@@ -70,6 +73,65 @@ endorsement. See the in-directory
 scope, and removal-request contacts, and
 [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md) for the maintained
 attribution inventory.
+
+### Bundled Aurora-family layout images
+
+CruxCoach renders five further Aurora-protocol boards — **Tension**,
+**Grasshopper**, **Decoy**, **So iLL**, and **Touchstone** (FEAT-031). A small
+per-board set of their layout images is bundled under
+[`androidApp/src/main/assets/board_images/`](androidApp/src/main/assets/board_images/)
+(in `tension/`, `grasshopper/`, `decoy/`, `soill/`, and `touchstone/`
+subfolders) for the same offline referential visualization as the Kilter
+images above. Each was extracted from the corresponding board's official
+Aurora Climbing app and remains the property of its respective maker; the
+board apps are published on the **Aurora Climbing** platform. Inclusion is
+strictly for interoperability and referential purposes — permitted under
+**§ 23(1) No. 3 MarkenG** in Germany and analogous referential/nominative
+fair-use doctrines elsewhere. CruxCoach claims no ownership, affiliation, or
+endorsement. See the in-directory
+[`README.md`](androidApp/src/main/assets/board_images/README.md) for origin,
+per-board rights holders, and removal-request contacts.
+
+### Map rendering & tile data
+
+The FEAT-015 board-locations map is rendered by **MapLibre Native (Android)**
+(BSD-2-Clause), using vector tiles served by **OpenFreeMap**
+(https://openfreemap.org/), whose style and schema derive from
+**OpenMapTiles** (BSD-3-Clause). The underlying geographic data is
+**© OpenStreetMap contributors**, licensed under the
+[Open Database License (ODbL) v1.0](https://opendatacommons.org/licenses/odbl/1-0/).
+
+ODbL §4.3 ("Notice for using or Redistributing the Database") requires a
+visible attribution. CruxCoach satisfies this requirement in two places:
+
+1. **In-app:** MapLibre's default attribution control is enabled
+   (`androidApp/src/main/java/com/cruxcoach/android/ui/map/MapView.kt`
+   defensively sets `uiSettings.isAttributionEnabled = true` and
+   `uiSettings.isLogoEnabled = true`).
+2. **In distribution:** the project root [`NOTICE`](NOTICE) and
+   [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md) carry the
+   attribution for OpenStreetMap, OpenFreeMap, OpenMapTiles, MapLibre,
+   and the Apache 2.0 NOTICE for the transitive
+   `mapbox-android-gestures` dependency.
+
+CruxCoach does not vendor MapLibre, mapbox-android-gestures, OpenFreeMap
+style files, or OpenStreetMap data into the repository tree; these are
+pulled at build time (Maven) or fetched at runtime (tile HTTP requests).
+
+### Gym & wall locations dataset
+
+The board-locations map (FEAT-015) sources gym entities — names,
+coordinates, addresses, contact details (phone / email / website /
+Instagram), accessibility classification, board-hardware metadata — from
+the [`@hangtime/climbing-boards`](https://www.npmjs.com/package/@hangtime/climbing-boards)
+npm package. That dataset is itself a daily mirror of the Kilter
+PowerSync `global_gyms` bucket, augmented with StoreRocket contact
+records. The data covers commercial gym entities only; no end-user
+personal data is included. CruxCoach distributes this data via the
+daily Blossom locations chunk; the upstream maintainers handle update
+correctness and removal at the dataset level. Gym operators or rights
+holders may request removal at any time via the contacts in `SECURITY.md`,
+which are forwarded upstream where applicable.
 
 ### Integrity & verifiability
 
@@ -102,9 +164,11 @@ EU and German law independently establish the right to analyse and interoperate 
 
 ### Trademark
 
-"Kilter Board" and "Kilter" are trademarks of Kilter Grips, LLC. CruxCoach uses these marks solely to indicate compatibility with the Kilter Board hardware, as permitted under **§ 23(1) No. 3 MarkenG** (referential use to indicate intended purpose) and **Art. 14(1)(c) EUTMR (2017/1001)**.
+"Kilter Board" and "Kilter" are trademarks of Kilter Grips, LLC. "MoonBoard" and "Moon" are trademarks of Moon Climbing Ltd. CruxCoach uses these marks solely to indicate compatibility with the respective board hardware, as permitted under **§ 23(1) No. 3 MarkenG** (referential use to indicate intended purpose) and **Art. 14(1)(c) EUTMR (2017/1001)**.
 
-CruxCoach is an independent, community-developed open-source project. It is not affiliated with, endorsed by, sponsored by, or in any way officially connected with Kilter Grips, LLC, Aurora Climbing, or any board manufacturer. All product and company names are trademarks of their respective holders.
+The board-locations map (FEAT-015) additionally displays the names of other board brands (e.g. Tension, Grasshopper, Decoy, So iLL, Touchstone, Aurora, 12climb) and the **egym Wellpass** membership brand, purely to label third-party gym/board locations. These names are trademarks of their respective owners and are used referentially under the same provisions; CruxCoach claims no affiliation with, endorsement by, or sponsorship from any of them.
+
+CruxCoach is an independent, community-developed open-source project. It is not affiliated with, endorsed by, sponsored by, or in any way officially connected with Kilter Grips, LLC, Aurora Climbing, Moon Climbing Ltd, egym, or any board manufacturer. All product and company names are trademarks of their respective holders.
 
 ---
 

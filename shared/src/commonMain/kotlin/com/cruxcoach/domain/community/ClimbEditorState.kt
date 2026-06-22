@@ -1,7 +1,9 @@
 package com.cruxcoach.domain.community
 
+import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.BoardClimbParser
 import com.cruxcoach.domain.board.HoldRole
+import com.cruxcoach.domain.board.MoonBoardFrameEncoder
 
 /**
  * Pure-data state for the climb editor. Lives in commonMain so it can be
@@ -11,7 +13,23 @@ import com.cruxcoach.domain.board.HoldRole
  * FEAT-003 Non-Goals); route-specific roles 42-45 are not produced.
  */
 data class ClimbEditorState(
-    val selectedHolds: Map<Int, Int> = emptyMap(),  // placementId → roleId (12/13/14/15)
+    /**
+     * Hold map: id → brand-native roleId. Kilter boulder roles are 12/13/14/15
+     * (start/hand/finish/foot); MoonBoard uses route roles 42/43/44
+     * (start/hand/finish, no foot). [encodeFrames] emits these verbatim, so
+     * what is stored is exactly what goes on the wire — Kilter `p{id}r12…`,
+     * MoonBoard `p{holdId}r42…`. Validation normalizes when counting so both
+     * palettes share one set of rules.
+     */
+    val selectedHolds: Map<Int, Int> = emptyMap(),
+    /**
+     * Board the draft targets: `"kilter"` (default — every pre-MoonBoard
+     * caller stays unchanged) or `"moonboard"`. Drives the brush palette,
+     * board renderer, BLE-preview transport, and publish destinations
+     * (MoonBoard publishes to the CruxCoach Nostr community only — no push
+     * to the official MoonBoard app, unlike Kilter).
+     */
+    val boardBrand: String = "kilter",
     val name: String = "",
     val description: String = "",
     /**
@@ -42,6 +60,36 @@ data class ClimbEditorState(
      */
     val activeBrush: Int? = HoldRole.START,
 )
+
+/** Typed board family this draft targets — the bridge from the persisted
+ *  `boardBrand` String to the [BoardBrand] capability model (brush palette,
+ *  renderer, BLE transport, publish destinations). */
+val ClimbEditorState.brand: BoardBrand get() = BoardBrand.fromWire(boardBrand)
+
+/**
+ * Parse a frames string into the editor's `placementId → roleId` map in the
+ * brand's *editor* palette:
+ * - MoonBoard keeps brand-native route roles (42/43/44) so [encodeFrames]
+ *   round-trips to the `p{holdId}r42…` wire format the MoonBoard renderer +
+ *   BLE encoder read.
+ * - Every other brand folds the parsed role into the Kilter boulder palette
+ *   (12-15) via [HoldRole.roleClass]. Aurora-family catalogue frames carry
+ *   board-local roles 1-4 (mirrored 5-8); without the fold, a remix of a
+ *   Tension/Grasshopper/… climb seeds roles that the brushes, chip counters
+ *   and [ClimbValidation] (all 12-15-based) don't recognise — start/finish
+ *   count as zero and Save/Publish stay blocked. Folding only happens on the
+ *   editor's working copy (a remix/edit is re-encoded as its own row — the
+ *   source catalogue row is never rewritten), and every downstream consumer
+ *   of editor-authored frames (render, BLE, chips) resolves colours through
+ *   [HoldRole.roleClass], which accepts 12-15 on every brand.
+ */
+fun parseHoldsForEditor(frames: String, brand: BoardBrand): Map<Int, Int> =
+    if (brand == BoardBrand.MOONBOARD) {
+        MoonBoardFrameEncoder.parseHolds(frames).associate { it.first to it.second }
+    } else {
+        BoardClimbParser.parseFrames(frames)
+            .associate { it.placementId to HoldRole.roleClass(it.roleId) }
+    }
 
 /**
  * Apply the active brush to a hold:

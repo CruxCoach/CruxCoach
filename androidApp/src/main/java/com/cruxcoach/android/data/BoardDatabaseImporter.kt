@@ -35,9 +35,9 @@ class BoardDatabaseImporter(
         // HotPathIndexDriftTest asserts both sets agree.
         internal val CLIMB_INDEXES = arrayOf(
             "idx_climbs_listed" to
-                    "CREATE INDEX idx_climbs_listed ON climbs(is_listed)",
+                    "CREATE INDEX IF NOT EXISTS idx_climbs_listed ON climbs(is_listed)",
             "idx_climbs_frames_count" to
-                    "CREATE INDEX idx_climbs_frames_count ON climbs(is_listed, frames_count, uuid)",
+                    "CREATE INDEX IF NOT EXISTS idx_climbs_frames_count ON climbs(is_listed, frames_count, uuid)",
             // FEAT-003 + 0.1.4 community-climb indexes. Added to the
             // bulk-import drop/rebuild dance so each INSERT during a fresh
             // 270k-row import doesn't pay 6 extra index-maintenance writes
@@ -46,28 +46,28 @@ class BoardDatabaseImporter(
             // were live throughout. Keep this list byte-equivalent (modulo
             // `IF NOT EXISTS`) to DatabaseFactory.HOT_PATH_INDEX_DDL.
             "idx_climbs_source" to
-                    "CREATE INDEX idx_climbs_source ON climbs(source)",
+                    "CREATE INDEX IF NOT EXISTS idx_climbs_source ON climbs(source)",
             "idx_climbs_frames_hash" to
-                    "CREATE INDEX idx_climbs_frames_hash ON climbs(frames_hash)",
+                    "CREATE INDEX IF NOT EXISTS idx_climbs_frames_hash ON climbs(frames_hash)",
             "idx_climbs_pubkey" to
-                    "CREATE INDEX idx_climbs_pubkey ON climbs(created_by_pubkey)",
+                    "CREATE INDEX IF NOT EXISTS idx_climbs_pubkey ON climbs(created_by_pubkey)",
             "idx_climbs_origin" to
-                    "CREATE INDEX idx_climbs_origin ON climbs(origin)",
+                    "CREATE INDEX IF NOT EXISTS idx_climbs_origin ON climbs(origin)",
             "idx_climbs_kilter_status" to
-                    "CREATE INDEX idx_climbs_kilter_status ON climbs(kilter_status)",
+                    "CREATE INDEX IF NOT EXISTS idx_climbs_kilter_status ON climbs(kilter_status)",
             "idx_climbs_nostr_via" to
-                    "CREATE INDEX idx_climbs_nostr_via ON climbs(nostr_publish_via)",
+                    "CREATE INDEX IF NOT EXISTS idx_climbs_nostr_via ON climbs(nostr_publish_via)",
         )
 
         internal val STAT_INDEXES = arrayOf(
             "idx_climb_stats_angle" to
-                    "CREATE INDEX idx_climb_stats_angle ON climb_stats(angle)",
+                    "CREATE INDEX IF NOT EXISTS idx_climb_stats_angle ON climb_stats(angle)",
             "idx_climb_stats_browse" to
-                    "CREATE INDEX idx_climb_stats_browse ON climb_stats(angle, difficulty_average, quality_average, ascensionist_count, benchmark_difficulty, climb_uuid)",
+                    "CREATE INDEX IF NOT EXISTS idx_climb_stats_browse ON climb_stats(layout_id, angle, difficulty_average, quality_average, ascensionist_count, benchmark_difficulty, climb_uuid)",
             "idx_climb_stats_by_popularity" to
-                    "CREATE INDEX idx_climb_stats_by_popularity ON climb_stats(angle, ascensionist_count, difficulty_average, climb_uuid)",
+                    "CREATE INDEX IF NOT EXISTS idx_climb_stats_by_popularity ON climb_stats(layout_id, angle, ascensionist_count, difficulty_average, climb_uuid)",
             "idx_climb_stats_count_cover" to
-                    "CREATE INDEX idx_climb_stats_count_cover ON climb_stats(angle, ascensionist_count, difficulty_average, benchmark_difficulty, climb_uuid)"
+                    "CREATE INDEX IF NOT EXISTS idx_climb_stats_count_cover ON climb_stats(layout_id, angle, ascensionist_count, difficulty_average, benchmark_difficulty, climb_uuid)"
         )
     }
 
@@ -105,10 +105,16 @@ class BoardDatabaseImporter(
      *
      * Import order: climbs first, then stats, then meta (layout data).
      */
+    // @Synchronized: all five board-DB writers serialise on this @Singleton
+    // importer's monitor (reentrant — the imports call backfillMoveCounts
+    // internally). Single writer at a time → no concurrent ATTACH/index-DDL,
+    // no SQLITE_BUSY from a backfill racing a sync (#3 concurrency cluster).
+    @Synchronized
     fun importFromChunks(
         metaDbFiles: List<File>,
         climbsDbFiles: List<File>,
         statsDbFiles: List<File>,
+        locationsDbFiles: List<File> = emptyList(),
         onProgress: ((step: ImportStep) -> Unit)? = null
     ) {
         val snapshot = loadExistingSnapshot()
@@ -252,6 +258,18 @@ class BoardDatabaseImporter(
             boardRepository.upsertSyncState("metadata_v7", "done")
         }
 
+        // Import location chunks (FEAT-006). Disjoint from climb/stat/layout
+        // tables; safe to run after the deferred-index block has finished.
+        // Older clients ignore this chunk type; newer clients with no
+        // locations chunk in the manifest get an empty list and skip.
+        // Non-essential source: a single corrupt/unreadable locations chunk must
+        // NOT sink the whole sync (climbs/stats/layout are already imported).
+        // Mirrors the error isolation in BoardSyncManager.backfillLocationsIfMissing.
+        for (file in locationsDbFiles) {
+            runCatching { openReadOnly(file) { rawDb -> importLocations(rawDb) } }
+                .onFailure { Log.w(TAG, "locations chunk import failed (non-essential) — skipping ${file.name}", it) }
+        }
+
         val climbCount = boardRepository.getClimbCount()
         val statCount = boardRepository.getStatCount()
         val placementCount = boardRepository.getAllPlacements().size
@@ -280,9 +298,427 @@ class BoardDatabaseImporter(
     }
 
     /**
+     * Import the MoonBoard catalogue snapshot (FEAT-027). Unlike the
+     * Kilter chunked sync, the MoonBoard snapshot is a single SQLite
+     * file carrying both `climbs` and `climb_stats` for the whole
+     * catalogue — produced one-shot from the spookykat dump by the
+     * out-of-repo board-DB build pipeline.
+     *
+     * Every row is tagged board_brand='moonboard' on insert. Climbs go
+     * through [mergeSnapshotClimbs] — the snapshot analogue of the Kilter
+     * chunk path's preserve-CruxCoach-columns merge — because the daily
+     * cron merges community climbs (origin='cruxcoach') into this same
+     * snapshot: a blanket INSERT OR REPLACE would wipe the author's local
+     * publish state (source, sync_status, nostr_*, frames_hash) and
+     * resurrect locally-deleted community climbs on every re-import.
+     *
+     * MoonBoard uuids (uuidv5 of "moonboard:{apiId}") never collide with
+     * Kilter uuids, so this only ever touches MoonBoard rows — the
+     * Kilter catalogue is untouched. No placements/holes/leds: MoonBoard
+     * board geometry is hard-coded ([com.cruxcoach.domain.board.MoonBoardVariant]),
+     * not carried in the snapshot.
+     */
+    @Synchronized
+    fun importMoonBoardSnapshot(
+        snapshotFile: File,
+        onProgress: ((step: ImportStep) -> Unit)? = null
+    ) {
+        // Snapshots built 2026-05+ carry a precomputed move_count column.
+        // When present it is copied straight through and the post-import
+        // backfill is skipped — the Kilter chunk path ([importClimbs]) does
+        // the same via its own `hasMoveCount` check.
+        var snapshotHasMoveCount = false
+        withDeferredIndexes(
+            onRebuild = { onProgress?.invoke(ImportStep.Finalizing) }
+        ) {
+            val targetDb = openTargetDb()
+            try {
+                targetDb.execSQL("ATTACH DATABASE ? AS mb", arrayOf(snapshotFile.absolutePath))
+
+                // One scan for the optional columns: move_count (precomputed),
+                // and — crucially for the community/origin browse filters —
+                // origin + created_by_pubkey. The MoonBoard snapshot now carries
+                // BoardSesh-imported climbs (origin='boardsesh'); without copying
+                // origin they defaulted to the catalogue value, so the BoardSesh
+                // filter (origin='boardsesh') found nothing even though the
+                // climbs were present in the ALL list.
+                var snapshotHasOrigin = false
+                var snapshotHasPubkey = false
+                targetDb.rawQuery("PRAGMA mb.table_info(climbs)", null).use { c ->
+                    while (c.moveToNext()) {
+                        when (c.getString(1)) {
+                            "move_count" -> snapshotHasMoveCount = true
+                            "origin" -> snapshotHasOrigin = true
+                            "created_by_pubkey" -> snapshotHasPubkey = true
+                        }
+                    }
+                }
+                val moveCountExpr = if (snapshotHasMoveCount) "COALESCE(move_count, 0)" else "0"
+                val baseOriginExpr = if (snapshotHasOrigin) "COALESCE(origin, 'kilter')" else "'kilter'"
+                val pubkeyExpr = if (snapshotHasPubkey) "created_by_pubkey" else "NULL"
+                // A snapshot row carrying a setter pubkey is CruxCoach-authored
+                // even when the blob's own origin column lags behind — the same
+                // authoritative-pubkey rule the Kilter chunk path applies (see
+                // [importClimbs]).
+                val originExpr = if (snapshotHasPubkey)
+                    "CASE WHEN created_by_pubkey IS NOT NULL AND created_by_pubkey != '' " +
+                        "THEN 'cruxcoach' ELSE $baseOriginExpr END"
+                else baseOriginExpr
+
+                val climbTotal = queryLong(
+                    targetDb, "SELECT COUNT(*) FROM mb.climbs WHERE is_listed = 1"
+                ).toInt()
+                onProgress?.invoke(ImportStep.ImportClimbs(0, 0, climbTotal))
+                mergeSnapshotClimbs(
+                    targetDb, "mb", "moonboard",
+                    moveCountExpr, originExpr, pubkeyExpr
+                )
+                onProgress?.invoke(ImportStep.ImportClimbs(climbTotal, climbTotal, climbTotal))
+
+                val statTotal = queryLong(
+                    targetDb, "SELECT COUNT(*) FROM mb.climb_stats"
+                ).toInt()
+                onProgress?.invoke(ImportStep.ImportStats(0, 0, statTotal))
+                targetDb.execSQL(
+                    """
+                    INSERT OR REPLACE INTO climb_stats(
+                        climb_uuid, angle, display_difficulty, difficulty_average,
+                        quality_average, ascensionist_count, benchmark_difficulty,
+                        fa_username, fa_at, official_kilter_difficulty, layout_id)
+                    SELECT LOWER(climb_uuid), angle, display_difficulty, difficulty_average,
+                           quality_average, ascensionist_count, benchmark_difficulty,
+                           fa_username, fa_at, NULL,
+                           COALESCE((SELECT c.layout_id FROM climbs c WHERE c.uuid = LOWER(climb_uuid)), 0)
+                    FROM mb.climb_stats
+                    """.trimIndent()
+                )
+                onProgress?.invoke(ImportStep.ImportStats(statTotal, statTotal, statTotal))
+            } finally {
+                runCatching { targetDb.execSQL("DETACH DATABASE mb") }
+                targetDb.close()
+            }
+        }
+        // Older snapshots ship no move_count column — compute it from
+        // `frames` post-import (same as pre-2026-04 Kilter chunks). Newer
+        // snapshots carry it precomputed, so the backfill is skipped.
+        if (!snapshotHasMoveCount) backfillMoveCounts()
+        val climbCount = boardRepository.getClimbCount()
+        val statCount = boardRepository.getStatCount()
+        Log.i(TAG, "importMoonBoardSnapshot done: catalogue totals climbs=$climbCount stats=$statCount")
+        onProgress?.invoke(ImportStep.Done(climbCount.toInt(), statCount.toInt(), 0, 0))
+    }
+
+    /**
+     * Import a full Aurora-family board snapshot (FEAT-031): Tension,
+     * Grasshopper, Decoy, So iLL, Touchstone. Unlike [importMoonBoardSnapshot]
+     * these boards carry full Aurora geometry (product_sizes, board_images,
+     * placements, leds), so the renderer + LED send work data-driven exactly
+     * like Kilter. Every row — climbs and geometry alike — is stamped with
+     * [boardBrand] (the wire value, e.g. "tension") so the namespaced
+     * (board_brand, id) geometry tables and climbs.board_brand resolve per
+     * board and never collide with Kilter's same-numbered Aurora ids (18.sqm).
+     *
+     * The snapshot is the raw Aurora shape produced by the cron's
+     * build_board_db.py: climbs, climb_stats, placements[id,hole_id,set_id],
+     * holes[id,x,y], product_sizes, product_sizes_layouts_sets, leds. Brand
+     * identity comes from the per-board manifest d-tag (cruxcoach/<board>-db),
+     * NOT inferred from layout_id (Aurora layout_ids overlap Kilter's, so
+     * [com.cruxcoach.domain.board.BoardBrand.fromLayoutId] cannot tell them
+     * apart — see its doc).
+     */
+    @Synchronized
+    fun importAuroraSnapshot(
+        snapshotFile: File,
+        boardBrand: String,
+        onProgress: ((step: ImportStep) -> Unit)? = null
+    ) {
+        // Snapshots built by build_board_db.py carry is_nomatch; move_count is
+        // computed post-import (the bundle has no move_count column).
+        var snapshotHasMoveCount = false
+        val brand = arrayOf<Any?>(boardBrand)
+        withDeferredIndexes(
+            onRebuild = { onProgress?.invoke(ImportStep.Finalizing) }
+        ) {
+            val targetDb = openTargetDb()
+            try {
+                targetDb.execSQL("ATTACH DATABASE ? AS ab", arrayOf(snapshotFile.absolutePath))
+
+                // Optional columns in one scan — move_count plus origin +
+                // created_by_pubkey, so Aurora community climbs (origin='cruxcoach'
+                // / 'boardsesh', once the cron merges them into Aurora chunks)
+                // keep their provenance for the origin browse filters instead of
+                // defaulting to the catalogue value. No-op for today's
+                // catalogue-only Aurora chunks, which carry no origin column.
+                var snapshotHasOrigin = false
+                var snapshotHasPubkey = false
+                targetDb.rawQuery("PRAGMA ab.table_info(climbs)", null).use { c ->
+                    while (c.moveToNext()) {
+                        when (c.getString(1)) {
+                            "move_count" -> snapshotHasMoveCount = true
+                            "origin" -> snapshotHasOrigin = true
+                            "created_by_pubkey" -> snapshotHasPubkey = true
+                        }
+                    }
+                }
+                val moveCountExpr = if (snapshotHasMoveCount) "COALESCE(move_count, 0)" else "0"
+                val baseOriginExpr = if (snapshotHasOrigin) "COALESCE(origin, 'kilter')" else "'kilter'"
+                val pubkeyExpr = if (snapshotHasPubkey) "created_by_pubkey" else "NULL"
+                // A snapshot row carrying a setter pubkey is CruxCoach-authored
+                // even when the blob's own origin column lags behind — the same
+                // authoritative-pubkey rule the Kilter chunk path applies (see
+                // [importClimbs]).
+                val originExpr = if (snapshotHasPubkey)
+                    "CASE WHEN created_by_pubkey IS NOT NULL AND created_by_pubkey != '' " +
+                        "THEN 'cruxcoach' ELSE $baseOriginExpr END"
+                else baseOriginExpr
+
+                // ── climbs (board_brand = the board's wire value) ──
+                val climbTotal = queryLong(
+                    targetDb, "SELECT COUNT(*) FROM ab.climbs WHERE is_listed = 1"
+                ).toInt()
+                onProgress?.invoke(ImportStep.ImportClimbs(0, 0, climbTotal))
+                mergeSnapshotClimbs(
+                    targetDb, "ab", boardBrand,
+                    moveCountExpr, originExpr, pubkeyExpr
+                )
+                onProgress?.invoke(ImportStep.ImportClimbs(climbTotal, climbTotal, climbTotal))
+
+                // ── climb_stats (layout_id denormalized from the climb) ──
+                val statTotal = queryLong(targetDb, "SELECT COUNT(*) FROM ab.climb_stats").toInt()
+                onProgress?.invoke(ImportStep.ImportStats(0, 0, statTotal))
+                targetDb.execSQL(
+                    """
+                    INSERT OR REPLACE INTO climb_stats(
+                        climb_uuid, angle, display_difficulty, difficulty_average,
+                        quality_average, ascensionist_count, benchmark_difficulty,
+                        fa_username, fa_at, official_kilter_difficulty, layout_id)
+                    SELECT LOWER(climb_uuid), angle, display_difficulty, difficulty_average,
+                           quality_average, ascensionist_count, benchmark_difficulty,
+                           fa_username, fa_at, NULL,
+                           COALESCE((SELECT c.layout_id FROM climbs c WHERE c.uuid = LOWER(climb_uuid)), 0)
+                    FROM ab.climb_stats
+                    """.trimIndent()
+                )
+                onProgress?.invoke(ImportStep.ImportStats(statTotal, statTotal, statTotal))
+
+                // ── geometry, all brand-namespaced (board_brand leads each PK) ──
+                targetDb.execSQL(
+                    """
+                    INSERT OR REPLACE INTO product_sizes(
+                        board_brand, id, product_id, name,
+                        edge_left, edge_right, edge_bottom, edge_top, image_filename)
+                    SELECT ?, id, product_id, name,
+                           edge_left, edge_right, edge_bottom, edge_top, image_filename
+                    FROM ab.product_sizes
+                    """.trimIndent(),
+                    brand
+                )
+                targetDb.execSQL(
+                    """
+                    INSERT OR REPLACE INTO board_images(
+                        board_brand, id, product_size_id, layout_id, set_id, image_filename)
+                    SELECT ?, id, product_size_id, layout_id, set_id, image_filename
+                    FROM ab.product_sizes_layouts_sets
+                    WHERE image_filename IS NOT NULL
+                    """.trimIndent(),
+                    brand
+                )
+                // CruxCoach placements carry x/y pre-joined from holes (the raw
+                // Aurora placements table has only hole_id), mirroring the
+                // Kilter chunk path.
+                targetDb.execSQL(
+                    """
+                    INSERT OR REPLACE INTO placements(
+                        board_brand, placement_id, hole_id, set_id, x, y)
+                    SELECT ?, p.id, p.hole_id, p.set_id, h.x, h.y
+                    FROM ab.placements p
+                    JOIN ab.holes h ON p.hole_id = h.id
+                    """.trimIndent(),
+                    brand
+                )
+                targetDb.execSQL(
+                    """
+                    INSERT OR REPLACE INTO leds(board_brand, hole_id, product_size_id, position)
+                    SELECT ?, hole_id, product_size_id, position
+                    FROM ab.leds
+                    """.trimIndent(),
+                    brand
+                )
+                // placement_roles (FEAT-031) — present only when the board's
+                // chunk opts in. Drives per-board LED + render colours
+                // (placement_roles.led_color). Guarded: current chunks may not
+                // carry it yet, in which case colours fall back to the
+                // conventional per-brand defaults.
+                val hasPlacementRoles = queryLong(
+                    targetDb,
+                    "SELECT COUNT(*) FROM ab.sqlite_master WHERE type='table' AND name='placement_roles'"
+                ) > 0
+                if (hasPlacementRoles) {
+                    targetDb.execSQL(
+                        """
+                        INSERT OR REPLACE INTO placement_roles(
+                            board_brand, id, name, led_color, screen_color)
+                        SELECT ?, id, name, led_color, screen_color
+                        FROM ab.placement_roles
+                        """.trimIndent(),
+                        brand
+                    )
+                }
+            } finally {
+                runCatching { targetDb.execSQL("DETACH DATABASE ab") }
+                targetDb.close()
+            }
+        }
+        if (!snapshotHasMoveCount) backfillMoveCounts()
+        val climbCount = boardRepository.getClimbCount()
+        val statCount = boardRepository.getStatCount()
+        Log.i(TAG, "importAuroraSnapshot($boardBrand) done: catalogue totals climbs=$climbCount stats=$statCount")
+        onProgress?.invoke(ImportStep.Done(climbCount.toInt(), statCount.toInt(), 0, 0))
+    }
+
+    /**
+     * Merge a snapshot's `climbs` (attached as [alias]) into the target —
+     * the snapshot analogue of the Kilter chunk path's two-step merge in
+     * [importClimbs]. A blanket INSERT OR REPLACE is forbidden here: the
+     * cron merges community climbs (origin='cruxcoach') into the
+     * MoonBoard/Aurora snapshots, and SQLite REPLACE re-inserts the row,
+     * resetting every column missing from the insert list — wiping the
+     * author's publish state (source, sync_status, nostr_event_id,
+     * nostr_d_tag, frames_hash, kilter_*) and resurrecting locally-deleted
+     * community climbs (is_deleted → 0).
+     *
+     * Passes, mirroring [importClimbs]:
+     *  1. INSERT OR IGNORE listed rows — new climbs only; existing rows
+     *     keep all CruxCoach lifecycle columns.
+     *  2. Catalogue content refresh for origin='kilter' rows from listed
+     *     snapshot rows (community rows have Nostr as source of truth).
+     *  3. Delist flip: snapshot is_listed=0 → local is_listed=0
+     *     (column-only, so local name/frames survive for the logbook and
+     *     detail screen).
+     *  4. Origin upgrade, asymmetric kilter→non-kilter: heals rows
+     *     imported before the snapshot carried origin (e.g. the
+     *     BoardSesh-imported MoonBoard climbs stamped 'kilter' by
+     *     pre-fix imports).
+     *  5. created_by_pubkey backfill, NULL-only.
+     *
+     * Unlike the Kilter path there is no setter_username propagation pass:
+     * the MoonBoard/Aurora community merge still writes pubkey-prefix
+     * stubs, which must not overwrite the author's real local name.
+     */
+    private fun mergeSnapshotClimbs(
+        targetDb: SQLiteDatabase,
+        alias: String,
+        boardBrand: String,
+        moveCountExpr: String,
+        originExpr: String,
+        pubkeyExpr: String,
+    ) {
+        // Stage with uuid pre-lowercased + PK-indexed so every pass below
+        // is an O(log n) lookup, same rationale as the Kilter chunk_norm.
+        targetDb.execSQL(
+            """
+            CREATE TEMP TABLE IF NOT EXISTS snapshot_norm (
+                uuid TEXT PRIMARY KEY,
+                layout_id INTEGER, setter_username TEXT, name TEXT, frames TEXT,
+                frames_count INTEGER, is_listed INTEGER,
+                edge_left INTEGER, edge_right INTEGER,
+                edge_bottom INTEGER, edge_top INTEGER,
+                created_at INTEGER, description TEXT,
+                is_nomatch INTEGER, frames_pace INTEGER, hsm INTEGER,
+                move_count INTEGER, origin TEXT, created_by_pubkey TEXT
+            ) WITHOUT ROWID
+            """.trimIndent()
+        )
+        targetDb.beginTransaction()
+        try {
+            targetDb.execSQL("DELETE FROM snapshot_norm")
+            targetDb.execSQL(
+                """
+                INSERT OR IGNORE INTO snapshot_norm
+                SELECT LOWER(uuid), layout_id, setter_username, name, frames,
+                       frames_count, is_listed, edge_left, edge_right,
+                       edge_bottom, edge_top, created_at,
+                       COALESCE(description, ''), COALESCE(is_nomatch, 0),
+                       COALESCE(frames_pace, 0), COALESCE(hsm, 0), $moveCountExpr,
+                       $originExpr, $pubkeyExpr
+                FROM $alias.climbs
+                """.trimIndent()
+            )
+            targetDb.execSQL(
+                """
+                INSERT OR IGNORE INTO climbs(
+                    uuid, layout_id, setter_username, name, frames,
+                    frames_count, is_listed, edge_left, edge_right,
+                    edge_bottom, edge_top, created_at,
+                    description, is_nomatch, frames_pace, hsm, move_count,
+                    board_brand, origin, created_by_pubkey)
+                SELECT uuid, layout_id, setter_username, name, frames,
+                       frames_count, is_listed, edge_left, edge_right,
+                       edge_bottom, edge_top, created_at,
+                       description, is_nomatch, frames_pace, hsm, move_count,
+                       ?, origin, created_by_pubkey
+                FROM snapshot_norm
+                WHERE is_listed = 1
+                """.trimIndent(),
+                arrayOf<Any?>(boardBrand)
+            )
+            targetDb.execSQL(
+                """
+                UPDATE climbs SET
+                    (layout_id, setter_username, name, frames,
+                     frames_count, is_listed, edge_left, edge_right,
+                     edge_bottom, edge_top, created_at, description,
+                     is_nomatch, frames_pace, hsm, move_count)
+                    = (SELECT layout_id, setter_username, name, frames,
+                              frames_count, is_listed, edge_left, edge_right,
+                              edge_bottom, edge_top, created_at, description,
+                              is_nomatch, frames_pace, hsm, move_count
+                       FROM snapshot_norm
+                       WHERE snapshot_norm.uuid = main.climbs.uuid)
+                WHERE origin = 'kilter'
+                  AND uuid IN (SELECT uuid FROM snapshot_norm WHERE is_listed = 1)
+                """.trimIndent()
+            )
+            targetDb.execSQL(
+                """
+                UPDATE climbs SET is_listed = 0
+                WHERE is_listed = 1
+                  AND uuid IN (SELECT uuid FROM snapshot_norm WHERE is_listed = 0)
+                """.trimIndent()
+            )
+            targetDb.execSQL(
+                """
+                UPDATE climbs SET origin = (
+                    SELECT origin FROM snapshot_norm
+                    WHERE snapshot_norm.uuid = main.climbs.uuid
+                )
+                WHERE origin = 'kilter'
+                  AND uuid IN (SELECT uuid FROM snapshot_norm WHERE origin != 'kilter')
+                """.trimIndent()
+            )
+            targetDb.execSQL(
+                """
+                UPDATE climbs SET created_by_pubkey = (
+                    SELECT created_by_pubkey FROM snapshot_norm
+                    WHERE snapshot_norm.uuid = main.climbs.uuid
+                )
+                WHERE created_by_pubkey IS NULL
+                  AND uuid IN (
+                    SELECT uuid FROM snapshot_norm WHERE created_by_pubkey IS NOT NULL
+                  )
+                """.trimIndent()
+            )
+            targetDb.setTransactionSuccessful()
+        } finally {
+            targetDb.endTransaction()
+        }
+    }
+
+    /**
      * Import from a full uncompressed board DB (e.g. received via local WiFi share).
      * This is the same as the legacy online import path.
      */
+    @Synchronized
     fun importFromLocalDb(
         dbFile: File,
         onProgress: ((step: ImportStep) -> Unit)? = null
@@ -464,20 +900,68 @@ class BoardDatabaseImporter(
     private fun resolveStatsTable(db: SQLiteDatabase): String =
         if (hasTable(db, "climb_stats")) "climb_stats" else "aurora_climb_stat"
 
-    /** Compute move count for a single-frame boulder from its frames string. */
+    /** Compute move count for a single-frame boulder from its frames string,
+     *  using Kilter's fixed role IDs (12/13/14/15). Fallback for brands whose
+     *  chunk ships no placement_roles table. */
     private fun computeMoveCount(frames: String): Long {
         if (frames.isEmpty() || frames.contains(",")) return 0
         return BoardClimbParser.estimateMoveCount(BoardClimbParser.parseFrames(frames)).toLong()
     }
 
     /**
+     * A board's foot/start role IDs, derived from placement_roles.name.
+     * Aurora boards number their roles board-locally (Tension: 1=start,
+     * 2=middle, 3=finish, 4=foot — plus a mirrored set 5-8) instead of
+     * Kilter's fixed 12/13/14/15, so move_count has to be counted against
+     * each board's own role table rather than the hard-coded HoldRole ids.
+     */
+    private class RoleSemantics(val footIds: Set<Int>, val startIds: Set<Int>)
+
+    /** Build a per-brand role map from the (already-imported) placement_roles
+     *  table. Brands with no rows (e.g. Kilter) are simply absent — callers
+     *  fall back to [computeMoveCount]'s fixed-id path for those. */
+    private fun loadRoleSemantics(db: SQLiteDatabase): Map<String, RoleSemantics> {
+        val foot = mutableMapOf<String, MutableSet<Int>>()
+        val start = mutableMapOf<String, MutableSet<Int>>()
+        db.rawQuery("SELECT board_brand, id, name FROM placement_roles", null).use { c ->
+            while (c.moveToNext()) {
+                val brand = c.getString(0) ?: continue
+                val id = c.getInt(1)
+                when (c.getString(2)?.lowercase()) {
+                    "foot" -> foot.getOrPut(brand) { mutableSetOf() }.add(id)
+                    "start" -> start.getOrPut(brand) { mutableSetOf() }.add(id)
+                }
+            }
+        }
+        return (foot.keys + start.keys).associateWith {
+            RoleSemantics(foot[it].orEmpty(), start[it].orEmpty())
+        }
+    }
+
+    /** Move count for an Aurora climb via its board's role table:
+     *  total holds − foot − start (= hand + finish), mirroring the
+     *  Kilter [BoardClimbParser.estimateMoveCount] semantics. */
+    private fun computeMoveCount(frames: String, sem: RoleSemantics): Long {
+        if (frames.isEmpty() || frames.contains(",")) return 0
+        val holds = BoardClimbParser.parseFrames(frames)
+        val moves = holds.size -
+            holds.count { it.roleId in sem.footIds } -
+            holds.count { it.roleId in sem.startIds }
+        return moves.coerceAtLeast(0).toLong()
+    }
+
+    /**
      * Batch-update move_count for all boulders (single-frame climbs) where
      * move_count is still 0. Called after bulk ATTACH imports where frames
-     * were inserted via SQL without Kotlin-side parsing.
+     * were inserted via SQL without Kotlin-side parsing. Counts moves with
+     * each climb's own board role IDs (placement_roles), so Aurora boards —
+     * whose role IDs differ from Kilter's — get correct counts instead of 0.
      */
+    @Synchronized
     internal fun backfillMoveCounts() {
         val db = openTargetDb()
         try {
+            val roleSem = loadRoleSemantics(db)
             val stmt = db.compileStatement(
                 "UPDATE climbs SET move_count = ? WHERE uuid = ?"
             )
@@ -485,7 +969,7 @@ class BoardDatabaseImporter(
             var lastUuid = ""
             while (true) {
                 val cursor = db.rawQuery(
-                    """SELECT uuid, frames FROM climbs
+                    """SELECT uuid, frames, board_brand FROM climbs
                        WHERE move_count = 0 AND frames_count = 1 AND uuid > ?
                        ORDER BY uuid LIMIT $BULK_BATCH_SIZE""",
                     arrayOf(lastUuid)
@@ -497,7 +981,9 @@ class BoardDatabaseImporter(
                         while (it.moveToNext()) {
                             lastUuid = it.getString(0)
                             val frames = it.getString(1) ?: ""
-                            val moves = computeMoveCount(frames)
+                            val sem = roleSem[it.getString(2)]
+                            val moves = if (sem != null) computeMoveCount(frames, sem)
+                                        else computeMoveCount(frames)
                             if (moves > 0) {
                                 stmt.bindLong(1, moves)
                                 stmt.bindString(2, lastUuid)
@@ -580,13 +1066,35 @@ class BoardDatabaseImporter(
             // 'cruxcoach' (e.g. via CommunityClimbSubscriber on a row the
             // cron later refreshes) must survive a Blossom blob refresh.
             val hasOrigin = "origin" in srcCols
-            val originExpr = if (hasOrigin) "COALESCE(origin, 'kilter')" else "'kilter'"
+            // baseOriginExpr preserves whatever origin the blob carries
+            // ('kilter' | 'cruxcoach' | 'boardsesh'), defaulting legacy
+            // chunks to 'kilter'. NOTE: BoardSesh-imported rows must be
+            // written by the cron with created_by_pubkey=NULL — the
+            // originExpr below reclassifies ANY row with a non-empty pubkey
+            // to 'cruxcoach', which would otherwise silently fold BoardSesh
+            // climbs into the CruxCoach-community provenance on every fresh
+            // install. With a NULL pubkey the blob's 'boardsesh' survives.
+            val baseOriginExpr = if (hasOrigin) "COALESCE(origin, 'kilter')" else "'kilter'"
             // Plan C: cron writes created_by_pubkey for cruxcoach-origin
             // climbs so the SettersListScreen + profile-resolution chain
             // works for fresh installs. Defensive — pre-Plan-C blobs
             // don't have it.
             val hasCreatedByPubkey = "created_by_pubkey" in srcCols
             val pubkeyExpr = if (hasCreatedByPubkey) "created_by_pubkey" else "NULL"
+            // A climb that carries a setter pubkey is CruxCoach-authored — a
+            // native Kilter climb never has one — so recognise it as
+            // origin='cruxcoach' even when the blob's own origin column says
+            // 'kilter'. The published blob's origin can lag the cruxcoach
+            // classification (it's COALESCE(origin,'kilter') over the cron's
+            // work DB), but created_by_pubkey is authoritative. Without this a
+            // fresh install (whose only source is the blob) imports community
+            // climbs as 'kilter' and stops recognising them as CruxCoach
+            // climbs — no edit/publish actions, missing from the cruxcoach
+            // filter. 21.sqm heals rows imported before this landed.
+            val originExpr = if (hasCreatedByPubkey)
+                "CASE WHEN created_by_pubkey IS NOT NULL AND created_by_pubkey != '' " +
+                    "THEN 'cruxcoach' ELSE $baseOriginExpr END"
+            else baseOriginExpr
 
             // Two-step bulk merge per batch:
             //
@@ -928,10 +1436,11 @@ class BoardDatabaseImporter(
                         INSERT OR REPLACE INTO climb_stats(
                             climb_uuid, angle, display_difficulty, difficulty_average,
                             quality_average, ascensionist_count, benchmark_difficulty,
-                            fa_username, fa_at)
+                            fa_username, fa_at, layout_id)
                         SELECT LOWER(climb_uuid), angle, display_difficulty, difficulty_average,
                                quality_average, ascensionist_count, benchmark_difficulty,
-                               fa_username, fa_at
+                               fa_username, fa_at,
+                               COALESCE((SELECT c.layout_id FROM climbs c WHERE c.uuid = LOWER(climb_uuid)), 0)
                         FROM src.$srcTable
                         WHERE rowid BETWEEN $batchStart AND $batchEnd
                     """)
@@ -1103,6 +1612,29 @@ class BoardDatabaseImporter(
         }
     }
 
+    /**
+     * Refresh SQLite query-planner statistics (`sqlite_stat1`).
+     *
+     * Both import paths ([importFromChunks] for Kilter, [importMoonBoardSnapshot]
+     * for MoonBoard) go through [withDeferredIndexes], which deliberately skips
+     * `ANALYZE` inline — a full pass adds 10-30s to the visible "finalizing"
+     * phase. Per the note there, it must instead run once, detached, after a
+     * sync completes: without fresh stats the planner mis-plans multi-table
+     * filtered counts once the catalogue is large. The MoonBoard catalogue
+     * alone adds ~245k climbs, which turned `countFilteredClimbs` into a ~3s
+     * query and janked the UI. Safe to call on a background dispatcher.
+     */
+    fun analyzeDatabase() {
+        val db = openTargetDb()
+        try {
+            val t0 = System.currentTimeMillis()
+            db.execSQL("ANALYZE")
+            Log.i(TAG, "ANALYZE done in ${System.currentTimeMillis() - t0}ms")
+        } finally {
+            db.close()
+        }
+    }
+
     private fun importPlacements(rawDb: SQLiteDatabase): Int {
         val isCruxCoachSchema = hasTable(rawDb, "aurora_placement")
         val query = if (isCruxCoachSchema) {
@@ -1247,6 +1779,129 @@ class BoardDatabaseImporter(
             while (it.moveToNext()) {
                 boardRepository.upsertSyncState(it.getString(0), it.getString(1))
             }
+        }
+    }
+
+    /**
+     * Import the kilter_board_location table from a chunk SQLite file via
+     * ATTACH DATABASE. The chunk's table name is the same as ours, so a
+     * single SELECT replaces the entire row dataset (cron always publishes
+     * a complete snapshot, never deltas — the dataset is small).
+     *
+     * If the chunk is structurally invalid (table missing, etc.) we log
+     * and bail without throwing — locations are non-essential and must
+     * not break the rest of the sync.
+     */
+    private fun importLocations(rawDb: SQLiteDatabase) {
+        if (!hasTable(rawDb, "kilter_board_location")) {
+            Log.w("BoardDatabaseImporter", "locations chunk missing kilter_board_location table — skipping")
+            return
+        }
+        val chunkPath = rawDb.path ?: run {
+            Log.w("BoardDatabaseImporter", "locations chunk has no path (in-memory) — skipping")
+            return
+        }
+        val targetDb = openTargetDb()
+        try {
+            targetDb.execSQL("ATTACH DATABASE ? AS loc_src", arrayOf(chunkPath))
+
+            // Source-side row count first. A zero-row chunk (pipeline bug,
+            // truncated upload) would otherwise wipe the populated local
+            // table and leave the user with an empty map.
+            val srcLocCount = queryLong(targetDb, "SELECT COUNT(*) FROM loc_src.kilter_board_location")
+            if (srcLocCount == 0L) {
+                Log.w("BoardDatabaseImporter", "locations chunk has 0 source rows — refusing to wipe local table")
+            } else {
+                val beforeCount = queryLong(targetDb, "SELECT COUNT(*) FROM kilter_board_location")
+                // board_brand landed in the locations chunk alongside
+                // MoonBoard gyms (0.2.0 cron). Pre-0.2.0 chunks lack the
+                // column → fall back to the schema default 'kilter', which
+                // is correct since every such row is a Kilter installation.
+                val srcLocCols = rawDb.rawQuery(
+                    "PRAGMA table_info(kilter_board_location)", null
+                ).use { c -> buildSet { while (c.moveToNext()) add(c.getString(1)) } }
+                val brandExpr = if ("board_brand" in srcLocCols)
+                    "COALESCE(board_brand, 'kilter')" else "'kilter'"
+                // wellpass landed in the 0.2.0 Phase-2 chunk; pre-Phase-2
+                // chunks lack it → NULL (unknown), matching the schema default.
+                val wellpassExpr = if ("wellpass" in srcLocCols) "wellpass" else "NULL"
+                targetDb.beginTransaction()
+                try {
+                    // Replace-all semantics: cron snapshot is authoritative,
+                    // so old rows that fell out of the dataset (delisted gym,
+                    // closed location) get removed automatically.
+                    targetDb.execSQL("DELETE FROM kilter_board_location")
+                    targetDb.execSQL("""
+                        INSERT INTO kilter_board_location(
+                            gym_uuid, name, lat, lng, address, city, country_code,
+                            phone, email, url, instagram,
+                            layout_name, layout_id, size_label, product_size_id,
+                            access_type, adjustability, fixed_angle, frame_maker,
+                            board_brand, wellpass
+                        )
+                        SELECT gym_uuid, name, lat, lng, address, city, country_code,
+                               phone, email, url, instagram,
+                               layout_name, layout_id, size_label, product_size_id,
+                               COALESCE(access_type, 'UNKNOWN'),
+                               COALESCE(adjustability, 'UNKNOWN'),
+                               fixed_angle, frame_maker,
+                               $brandExpr, $wellpassExpr
+                        FROM loc_src.kilter_board_location
+                    """)
+                    targetDb.setTransactionSuccessful()
+                } finally {
+                    targetDb.endTransaction()
+                }
+                val afterCount = queryLong(targetDb, "SELECT COUNT(*) FROM kilter_board_location")
+                Log.i("BoardDatabaseImporter", "kilter_board_location: $beforeCount → $afterCount (source=$srcLocCount)")
+            }
+
+            // Per-wall detail (FEAT-007). Additive + guarded: pre-0.1.6
+            // chunks have no kilter_board_wall, so skip silently rather
+            // than fail the (critical) location import. Own transaction
+            // so a wall-side error never rolls back locations.
+            if (hasTable(rawDb, "kilter_board_wall")) {
+                try {
+                    val srcWallCount = queryLong(targetDb, "SELECT COUNT(*) FROM loc_src.kilter_board_wall")
+                    if (srcWallCount == 0L) {
+                        Log.w("BoardDatabaseImporter", "kilter_board_wall chunk has 0 source rows — refusing to wipe local table")
+                    } else {
+                        val beforeWalls = queryLong(targetDb, "SELECT COUNT(*) FROM kilter_board_wall")
+                        targetDb.beginTransaction()
+                        try {
+                            targetDb.execSQL("DELETE FROM kilter_board_wall")
+                            targetDb.execSQL("""
+                                INSERT INTO kilter_board_wall(
+                                    wall_uuid, gym_uuid, name, product_name, layout_id,
+                                    product_layout_uuid, product_size_id, size_label, is_adjustable,
+                                    min_angle, max_angle, angle_increments, fixed_angle,
+                                    accumulated_hold_set_value, serial_number, is_listed
+                                )
+                                SELECT wall_uuid, gym_uuid, name, product_name, layout_id,
+                                       product_layout_uuid, product_size_id, size_label, is_adjustable,
+                                       min_angle, max_angle, angle_increments, fixed_angle,
+                                       accumulated_hold_set_value, serial_number, is_listed
+                                FROM loc_src.kilter_board_wall
+                            """)
+                            targetDb.setTransactionSuccessful()
+                        } finally {
+                            targetDb.endTransaction()
+                        }
+                        val afterWalls = queryLong(targetDb, "SELECT COUNT(*) FROM kilter_board_wall")
+                        Log.i("BoardDatabaseImporter", "kilter_board_wall: $beforeWalls → $afterWalls (source=$srcWallCount)")
+                    }
+                } catch (e: Exception) {
+                    Log.w("BoardDatabaseImporter", "kilter_board_wall import failed (non-fatal)", e)
+                }
+            } else {
+                Log.d("BoardDatabaseImporter", "locations chunk has no kilter_board_wall (pre-0.1.6 chunk) — skipping walls")
+            }
+            targetDb.execSQL("DETACH DATABASE loc_src")
+        } catch (e: Exception) {
+            try { targetDb.execSQL("DETACH DATABASE loc_src") } catch (_: Exception) {}
+            Log.w("BoardDatabaseImporter", "locations chunk import failed", e)
+        } finally {
+            targetDb.close()
         }
     }
 

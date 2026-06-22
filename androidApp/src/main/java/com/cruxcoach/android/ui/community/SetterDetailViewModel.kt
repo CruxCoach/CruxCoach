@@ -4,6 +4,8 @@ import android.util.Log
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.cruxcoach.android.data.GradeScale
+import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.payment.NostrProfileManager
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.SetterClimbEntry
@@ -13,6 +15,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -39,6 +45,10 @@ data class SetterDetailState(
     /** Non-null after the climbs DB read fails — distinguishes "this
      *  setter has no climbs yet" from "the read threw". */
     val errorMessage: String? = null,
+    /** Mirrors [UserPreferences.gradeScale] so the per-climb row can
+     *  resolve `difficulty_average` (e.g. 24.0) to "V8"/"7b" instead of
+     *  rendering the raw internal float. */
+    val gradeScale: GradeScale = GradeScale.V_SCALE,
 )
 
 @HiltViewModel
@@ -46,6 +56,8 @@ class SetterDetailViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val boardRepository: BoardRepository,
     private val nostrProfileManager: NostrProfileManager,
+    private val userPreferences: UserPreferences,
+    private val climbNavState: com.cruxcoach.android.ui.navigation.ClimbNavigationState,
 ) : ViewModel() {
 
     private val pubkey: String = savedStateHandle["setterPubkey"] ?: ""
@@ -60,7 +72,31 @@ class SetterDetailViewModel @Inject constructor(
     val state: StateFlow<SetterDetailState> = _state.asStateFlow()
 
     init {
+        viewModelScope.launch {
+            userPreferences.gradeScale.collect { v ->
+                _state.update { it.copy(gradeScale = v) }
+            }
+        }
         if (pubkey.isNotBlank()) {
+            // Re-query when the active board changes while this screen is open —
+            // the setter list is now board-scoped (mirrors BoardBrowserViewModel).
+            viewModelScope.launch {
+                combine(
+                    userPreferences.boardBrand,
+                    userPreferences.boardLayoutId,
+                    userPreferences.boardProductSizeId,
+                ) { brand, layout, size -> Triple(brand, layout, size) }
+                    .drop(1) // initial load handled below
+                    .distinctUntilChanged()
+                    .collect { loadClimbs() }
+            }
+            // Re-query when a climb is edited/published/deleted/un-claimed
+            // elsewhere (e.g. the editor opened from this setter's list). The
+            // nav entry can stay RESUMED behind the editor, so a lifecycle
+            // trigger wouldn't re-fire — collect the reactive revision instead.
+            viewModelScope.launch {
+                climbNavState.creatorRevision.drop(1).collect { loadClimbs() }
+            }
             loadClimbs()
             loadProfile()
         } else {
@@ -80,7 +116,17 @@ class SetterDetailViewModel @Inject constructor(
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true, errorMessage = null) }
             val result = withContext(Dispatchers.IO) {
-                runCatching { boardRepository.getClimbsByPubkey(pubkey) }
+                // Snapshot the active board (brand + layout + size) and scope the
+                // setter's climbs to it. Kilter-only fit exception is applied in
+                // the query: while on Kilter, the setter's climbs from other
+                // Kilter layouts that fit the active size are still shown.
+                val brand = userPreferences.boardBrand.first()
+                val layoutId = userPreferences.boardLayoutId.first()
+                val sizeId = userPreferences.boardProductSizeId.first()
+                val angle = userPreferences.boardAngle.first()
+                runCatching {
+                    boardRepository.getClimbsByPubkeyForBoard(pubkey, angle, brand, layoutId, sizeId)
+                }
             }
             result.fold(
                 onSuccess = { rows ->

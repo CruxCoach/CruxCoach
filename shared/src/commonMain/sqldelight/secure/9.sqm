@@ -1,0 +1,20 @@
+-- Migration version 9 → 10 (secure/personal DB): add `reply_to_wire_id` to
+-- `nostr_messages` — the raw NIP-10 e-tag of a reply exactly as it appeared
+-- on the wire, BEFORE ingest normalized it to the local thread-root id
+-- stored in `reply_to_id`.
+--
+-- WHY: NIP-17 produces two gift-wrap ids per message (self-wrap = local row
+-- id, recipient-wrap = thread_anchor_id). The recipient wrap of an own root
+-- is p-tagged to the dev, so after any wipe-and-refetch (Nostr recovery
+-- migrations v1-v4, reinstall, 365-day backfill) the re-hydrated root row
+-- has thread_anchor_id NULL and the anchor can never be re-learned from the
+-- root itself. Replies, however, reference the root by its recipient-wrap
+-- id on the wire — persisting that raw id makes replies the surviving
+-- carrier of the (local root id, recipient-wrap id) pair, allowing both
+-- foreign-id resolution (resolveThreadMember) and anchor re-learning
+-- (relearnThreadAnchor / findWireIdForRoot) after a wipe.
+--
+-- Existing rows: NULL is correct — pre-migration rows never recorded the
+-- wire id, and every resolution path treats NULL as "no extra evidence".
+
+ALTER TABLE nostr_messages ADD COLUMN reply_to_wire_id TEXT DEFAULT NULL;

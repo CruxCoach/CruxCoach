@@ -96,7 +96,44 @@ class KilterTokenStore(
 
     fun getAccessToken(): String? = prefs.getString(keyAccessToken, null)
     fun getRefreshToken(): String? = prefs.getString(keyRefreshToken, null)
-    fun getUserUuid(): String? = prefs.getString(keyUserUuid, null)
+    fun getUserUuid(): String? {
+        prefs.getString(keyUserUuid, null)?.takeIf { it.isNotBlank() }?.let { return it }
+        // Self-heal: a session connected on an older build — or kept alive
+        // purely by refresh-token renewal (updateAccessToken never writes the
+        // uuid) — has valid tokens but no stored userUuid. That permanently
+        // breaks the own-climb authorship gate (Meine Climbs + publish/claim)
+        // with no user-facing recovery. Derive the uuid from the Keycloak
+        // JWT `sub` of the access token, falling back to the refresh token
+        // (guaranteed present whenever hasCredentials() is true), and persist
+        // it so subsequent reads are cheap.
+        val sub = (getAccessToken()?.let { extractJwtSub(it) }
+            ?: getRefreshToken()?.let { extractJwtSub(it) })
+            ?.takeIf { it.isNotBlank() } ?: return null
+        runCatching { prefs.edit().putString(keyUserUuid, sub).apply() }
+        Log.i(TAG, "userUuid self-healed from JWT sub")
+        return sub
+    }
+
+    /** Best-effort JWT `sub` extraction (base64url payload → JSON). No
+     *  signature check — we only read an immutable identity claim from our
+     *  OWN token to recover a value the login path failed to persist. */
+    private fun extractJwtSub(jwt: String): String? = try {
+        val parts = jwt.split(".")
+        if (parts.size < 2) {
+            null
+        } else {
+            val payload = android.util.Base64.decode(
+                parts[1],
+                android.util.Base64.URL_SAFE or android.util.Base64.NO_PADDING or android.util.Base64.NO_WRAP,
+            )
+            org.json.JSONObject(String(payload, Charsets.UTF_8))
+                .optString("sub")
+                .takeIf { it.isNotBlank() }
+        }
+    } catch (e: Exception) {
+        Log.w(TAG, "JWT sub extraction failed", e)
+        null
+    }
     fun getUsername(): String? = prefs.getString(keyUsername, null)
 
     fun isAccessTokenExpired(): Boolean {
@@ -128,6 +165,32 @@ class KilterTokenStore(
             .remove(keyAccessTokenExpiry)
             .remove(keyUserUuid)
             .remove(keyUsername)
+            .remove(keyGymUuid)
+            .remove(keyWallUuid)
+            .remove(keyProductLayoutUuid)
+            .apply()
+    }
+
+    /**
+     * Discard the Kilter SESSION (access + refresh tokens, expiry, wall
+     * context) after a one-time import, but KEEP the account identity
+     * (userUuid + username). The userUuid is NOT a credential — it is the
+     * only value the own-climb authorship gate (Meine Climbs + publish/claim)
+     * can match the backfilled `kilter_author_uuid` against. [clear] wipes it
+     * too, which makes the authored-climb import pointless: the climbs are
+     * imported but can never be recognized as the user's own, and there is no
+     * token left for the [getUserUuid] self-heal to recover from. Claiming
+     * republishes via Nostr and never needs a Kilter token (the Kilter mirror
+     * leg is gated on `kilterSyncEnabled` + a live access token, both absent
+     * here), so keeping just the identity is sufficient AND minimal — the
+     * connection still reads as "not connected" since [hasCredentials] checks
+     * the (now-removed) refresh token.
+     */
+    fun clearTokensKeepIdentity() {
+        prefs.edit()
+            .remove(keyAccessToken)
+            .remove(keyRefreshToken)
+            .remove(keyAccessTokenExpiry)
             .remove(keyGymUuid)
             .remove(keyWallUuid)
             .remove(keyProductLayoutUuid)

@@ -18,7 +18,11 @@ CREATE TABLE bids (
     -- Optimistic-locking token — see ascents for the full rationale.
     row_version INTEGER NOT NULL DEFAULT 0,
     -- FEAT-005 idempotency marker — see ascents.external_id.
-    external_id TEXT
+    external_id TEXT,
+    -- Board family + layout, denormalized — see ascents (7.sqm). DEFAULT
+    -- 'kilter' back-fills pre-0.2.0 rows; layout_id NULL = unknown (legacy).
+    board_brand TEXT NOT NULL DEFAULT 'kilter',
+    layout_id INTEGER
 );
 
 CREATE INDEX idx_bids_climb ON bids(climb_uuid);
@@ -32,8 +36,16 @@ insertBid:
 INSERT OR REPLACE INTO bids(uuid, climb_uuid, angle, is_mirror,
     bid_count, comment, climbed_at, synced,
     gym_uuid, wall_uuid, product_layout_uuid,
-    climb_name, difficulty_average)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+    climb_name, difficulty_average,
+    board_brand, layout_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+-- Edit an existing attempt (bid). Bids carry no quality rating, so only
+-- the try count and the comment are user-editable. Without this the edit
+-- path wrongly ran updateAscent against the ascents table — a no-op for a
+-- bid uuid, silently dropping the edit.
+updateBid:
+UPDATE bids SET bid_count = ?, comment = ? WHERE uuid = ?;
 
 deleteBid:
 DELETE FROM bids WHERE uuid = ?;
@@ -52,8 +64,9 @@ SELECT difficulty_average FROM bids WHERE climbed_at >= ?;
 
 -- ═══ Kilter sync ═══
 
+-- Kilter-only by design — see ascents.getUnsyncedAscents.
 getUnsyncedBids:
-SELECT * FROM bids WHERE synced = 0;
+SELECT * FROM bids WHERE synced = 0 AND board_brand = 'kilter';
 
 -- Optimistic mark — see ascents.markAscentSyncedIfUnchanged.
 markBidSyncedIfUnchanged:
@@ -71,7 +84,8 @@ SELECT * FROM bids ORDER BY climbed_at DESC;
 -- ═══ Denormalization refresh ═══
 
 updateBidDenormalized:
-UPDATE bids SET climb_name = ?, difficulty_average = ?
+UPDATE bids SET climb_name = ?, difficulty_average = ?,
+    board_brand = ?, layout_id = ?
 WHERE climb_uuid = ? AND angle = ?;
 
 -- ═══ Bulk operations ═══
@@ -81,6 +95,10 @@ DELETE FROM bids;
 
 getAllBidClimbKeys:
 SELECT DISTINCT climb_uuid, angle FROM bids;
+
+-- Primary-key (= Kilter log_uuid) set, for dedup-counting a Kilter import.
+getAllBidUuids:
+SELECT uuid FROM bids;
 
 -- ═══ FEAT-005 Aurora-JSON-import ═══
 

@@ -22,35 +22,44 @@ import androidx.compose.material.icons.filled.CellTower
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.PanTool
 import androidx.compose.material.icons.filled.Verified
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.data.GradeScale
+import com.cruxcoach.android.data.LedHoldColors
 import com.cruxcoach.android.ui.common.BleStatusArea
 import com.cruxcoach.android.ui.common.LocalSessionQueueManager
 import com.cruxcoach.android.ui.common.RestTimerBannerSlot
@@ -58,10 +67,15 @@ import com.cruxcoach.android.ui.common.SyncStatusBannerSlot
 import com.cruxcoach.android.ui.theme.*
 import com.cruxcoach.android.util.GradeDisplayHelper
 import com.cruxcoach.data.repository.AngleOption
+import com.cruxcoach.data.repository.brand
+import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.IntensityZones
+import com.cruxcoach.domain.board.MoonBoardVariant
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
+import com.cruxcoach.android.util.ClimbShareLink
 import com.cruxcoach.android.util.PerfLogger
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -76,11 +90,16 @@ fun BoardClimbDetailScreen(
 ) {
     PerfLogger.navMilestone("BoardClimbDetailScreen composing")
     val context = androidx.compose.ui.platform.LocalContext.current
-    val state by viewModel.state.collectAsStateWithLifecycle()
+    // collectAsState (NOT ...WithLifecycle): the detail's nav entry can stay
+    // in a non-STARTED state behind the editor and not re-deliver on return,
+    // leaving the climb stale after an edit even though the VM reloaded it.
+    // The setter list (which refreshes correctly) uses plain collectAsState too.
+    val state by viewModel.state.collectAsState()
     val isRestTimerRunning by viewModel.isRestTimerRunning.collectAsStateWithLifecycle()
     val isSharingEnabled by viewModel.isSharingEnabled.collectAsStateWithLifecycle()
     val pageCache by viewModel.pageCache.collectAsStateWithLifecycle()
     var showBleSheet by remember { mutableStateOf(false) }
+    var showRestTimerDialog by remember { mutableStateOf(false) }
 
     // BLE sheet lives here (once), not inside per-page content
     val detailQueueManager = com.cruxcoach.android.ui.common.LocalSessionQueueManager.current
@@ -276,6 +295,19 @@ fun BoardClimbDetailScreen(
         )
     }
 
+    // Per-use custom rest-timer duration (settings value stays the
+    // default + the post-logging auto-start).
+    if (showRestTimerDialog) {
+        RestTimerStartDialog(
+            initialSeconds = state.restTimerTotalSeconds,
+            onStart = {
+                viewModel.startRestTimer(it)
+                showRestTimerDialog = false
+            },
+            onDismiss = { showRestTimerDialog = false },
+        )
+    }
+
     // Remote disconnect request dialog (single instance)
     val bleConnViewModel: BleConnectionViewModel = hiltViewModel()
     val bleConnState by bleConnViewModel.state.collectAsStateWithLifecycle()
@@ -299,20 +331,12 @@ fun BoardClimbDetailScreen(
         )
     }
 
-    // Quick-Send macro: silent — no snackbar progress/outcome chatter
-    // (per user feedback: the BLE-icon colour change is signal enough,
-    // and "Sending… / Done" snackbars become noise on every tap).
-    // We still observe quickSendStatus to escalate the multi-board
-    // case into the manual-pick sheet (one-shot, no snackbar) and to
-    // reset Done/Error back to Idle so the next tap starts fresh.
-    val quickSendStatus by bleConnViewModel.quickSend.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
-    LaunchedEffect(quickSendStatus) {
-        if (quickSendStatus is QuickSendStatus.NeedsManualPick) {
-            showBleSheet = true
-            bleConnViewModel.resetQuickSend()
-        }
-    }
+    // Share-link: clipboard + a coroutine scope to surface the "copied"
+    // snackbar from the (non-composable) menu onClick.
+    val clipboardManager = LocalClipboardManager.current
+    val shareScope = rememberCoroutineScope()
+    val linkCopiedMessage = stringResource(R.string.board_detail_link_copied)
 
     // Surface community-delete outcomes — the deleter returns success
     // even when no relay accepted (local-row tombstoned regardless),
@@ -345,13 +369,19 @@ fun BoardClimbDetailScreen(
         viewModel.consumeCommunityDeleteFeedback()
     }
 
-    LaunchedEffect(quickSendStatus) {
-        // Reset Done/Error to Idle after the snackbar fires so the next tap
-        // starts fresh; transient states (Scanning/Sending/Disconnecting/
-        // Connecting) reset themselves when the macro advances.
-        if (quickSendStatus is QuickSendStatus.Done || quickSendStatus is QuickSendStatus.Error) {
-            bleConnViewModel.resetQuickSend()
+    // Surface own-Kilter-climb publish outcomes (same snackbar pattern as
+    // the editor's publish result handling).
+    LaunchedEffect(state.ownPublishFeedback) {
+        val feedback = state.ownPublishFeedback ?: return@LaunchedEffect
+        val msg = when (feedback) {
+            OwnPublishFeedback.Published -> context.getString(R.string.own_climb_publish_done)
+            OwnPublishFeedback.NoNostrIdentity -> context.getString(R.string.own_climb_publish_no_nostr)
+            OwnPublishFeedback.NotAuthor -> context.getString(R.string.own_climb_publish_not_author)
+            OwnPublishFeedback.AlreadyPublished -> context.getString(R.string.own_climb_publish_already)
+            OwnPublishFeedback.Failed -> context.getString(R.string.climb_creator_publish_failed)
         }
+        snackbarHostState.showSnackbar(msg)
+        viewModel.consumeOwnPublishFeedback()
     }
 
     // Single Scaffold — shared across all pager pages
@@ -398,7 +428,7 @@ fun BoardClimbDetailScreen(
                             )
                         }
                         IconButton(
-                            onClick = { viewModel.startRestTimer() },
+                            onClick = { showRestTimerDialog = true },
                             modifier = Modifier.testTag("boarddetail_rest_timer_button")
                         ) {
                             Icon(
@@ -410,20 +440,13 @@ fun BoardClimbDetailScreen(
                         }
                         IconButton(
                             onClick = {
-                                // Quick-Send-Mode setting (Settings → BLE) routes the
-                                // tap through the macro: scan → auto-connect-on-single
-                                // → existing CONNECTED-collector auto-fires send →
-                                // disconnect (boulders only — routes need the
-                                // connection alive for the remaining frames during
-                                // playback, so the macro stops after connect for
-                                // those). Multi-board case escalates back into the
-                                // manual sheet via NeedsManualPick (handled in the
-                                // LaunchedEffect below).
-                                if (bleConnState.quickBoardSendEnabled) {
-                                    bleConnViewModel.startQuickSend(isRoute = state.playback.isRoute)
-                                } else {
-                                    showBleSheet = true
-                                }
+                                // Always open the sheet — it handles permission +
+                                // BT-disabled flows and auto-connects to a single
+                                // board (the existing CONNECTED-collector auto-
+                                // fires the send). The idle-disconnect timer
+                                // (Settings → BLE) tears the connection down
+                                // afterwards, replacing the old Quick-Send macro.
+                                showBleSheet = true
                             },
                             modifier = Modifier.testTag("boarddetail_ble_connect_button")
                         ) {
@@ -477,37 +500,128 @@ fun BoardClimbDetailScreen(
                                 expanded = moreExpanded,
                                 onDismissRequest = { moreExpanded = false },
                             ) {
-                                // Mirror toggle — moved out of the detail body
-                                // (it was a full-width centered IconButton row
-                                // that cost a whole vertical band between the
-                                // stat header and the board). It's a display-
-                                // only toggle that applies to any climb, so it
-                                // sits at the top of the overflow, above the
-                                // owner-gated Edit/Delete actions.
+                                // Mirror toggle — a display-only left/right flip
+                                // of the climb. Only shown for layouts that are
+                                // actually mirrorable (Aurora `is_mirrored`):
+                                // Tension TB1 / TB2 Mirror, Grasshopper, Decoy,
+                                // So iLL. Hidden for non-mirrorable layouts
+                                // (Tension TB2 Spray, Touchstone, Kilter,
+                                // MoonBoard) where a flip is meaningless or would
+                                // light unpaired holds. Sits at the top of the
+                                // overflow, above the owner-gated Edit/Delete.
+                                if (state.isMirrorable) {
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                stringResource(
+                                                    if (state.isMirrored) R.string.cd_mirror_off
+                                                    else R.string.cd_mirror_on
+                                                )
+                                            )
+                                        },
+                                        leadingIcon = {
+                                            Icon(
+                                                Icons.Default.SwapHoriz,
+                                                contentDescription = null,
+                                                tint = if (state.isMirrored) OrangeAccent
+                                                       else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        },
+                                        onClick = {
+                                            moreExpanded = false
+                                            viewModel.toggleMirror()
+                                        },
+                                        modifier = Modifier.testTag("boarddetail_mirror_toggle"),
+                                    )
+                                }
+                                // Ignore / un-ignore: keep "Quatsch" climbs (e.g.
+                                // the Weihnachtsbaum) out of every browse
+                                // suggestion. Applies to any climb, so it sits
+                                // with the mirror toggle above the owner-gated
+                                // Edit/Delete actions.
                                 DropdownMenuItem(
                                     text = {
                                         Text(
                                             stringResource(
-                                                if (state.isMirrored) R.string.cd_mirror_off
-                                                else R.string.cd_mirror_on
+                                                if (state.isIgnored) R.string.cd_unignore_climb
+                                                else R.string.cd_ignore_climb
                                             )
                                         )
                                     },
                                     leadingIcon = {
                                         Icon(
-                                            Icons.Default.SwapHoriz,
+                                            if (state.isIgnored) Icons.Default.Visibility
+                                            else Icons.Default.VisibilityOff,
                                             contentDescription = null,
-                                            tint = if (state.isMirrored) OrangeAccent
+                                            tint = if (state.isIgnored) OrangeAccent
                                                    else MaterialTheme.colorScheme.onSurfaceVariant,
                                         )
                                     },
                                     onClick = {
                                         moreExpanded = false
-                                        viewModel.toggleMirror()
+                                        viewModel.toggleIgnored()
                                     },
-                                    modifier = Modifier.testTag("boarddetail_mirror_toggle"),
+                                    modifier = Modifier.testTag("boarddetail_ignore_toggle"),
                                 )
+                                // Share: copy the cruxcoach.org/c/<naddr> App-Link
+                                // (the same link the climb-creator Kind-1 note uses).
+                                // Only published community climbs carry a resolvable
+                                // Nostr event behind the naddr — native Kilter
+                                // catalogue climbs have no shareable link.
+                                val shareClimb = state.climb
+                                val sharePubkey = shareClimb?.createdByPubkey
+                                val shareUuid = shareClimb?.uuid
+                                if (sharePubkey != null && shareUuid != null && shareClimb?.nostrEventId != null) {
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.board_detail_share_link)) },
+                                        leadingIcon = {
+                                            Icon(
+                                                Icons.Default.Share,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        },
+                                        onClick = {
+                                            moreExpanded = false
+                                            val link = ClimbShareLink.build(sharePubkey, shareUuid)
+                                            clipboardManager.setText(AnnotatedString(link))
+                                            shareScope.launch { snackbarHostState.showSnackbar(linkCopiedMessage) }
+                                        },
+                                        modifier = Modifier.testTag("boarddetail_share_link"),
+                                    )
+                                }
+                                // Publish OWN Kilter climb to the CruxCoach
+                                // community. Authorship-gated (canPublishAsMine:
+                                // connected Kilter account == recorded climb
+                                // author, identity match) and hidden once
+                                // published. The publisher re-checks the gate,
+                                // so this visibility flag is UX, not security.
+                                if (state.canPublishAsMine) {
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.own_climb_publish_action)) },
+                                        leadingIcon = {
+                                            Icon(
+                                                Icons.Default.Groups,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        },
+                                        enabled = !state.isOwnPublishInProgress,
+                                        onClick = {
+                                            moreExpanded = false
+                                            viewModel.publishOwnClimb()
+                                        },
+                                        modifier = Modifier.testTag("boarddetail_publish_own_climb"),
+                                    )
+                                }
                                 HorizontalDivider()
+                                // Remix forks into the climb editor, which is
+                                // now brand-aware (Kilter + MoonBoard). The
+                                // editor opens in the active board's mode; the
+                                // always-on board-fit filter means the climb on
+                                // screen always matches the active board, so a
+                                // MoonBoard climb is only ever remixed on a
+                                // MoonBoard board.
                                 DropdownMenuItem(
                                     text = { Text(stringResource(R.string.climb_creator_remix_action)) },
                                     leadingIcon = {
@@ -572,22 +686,36 @@ fun BoardClimbDetailScreen(
                                         )
                                     }
                                     HorizontalDivider()
-                                    // Branch on whether this row was ever
-                                    // actually published. Climbs with no
-                                    // `nostr_event_id` have never reached a
-                                    // relay — calling requestCommunityDelete
-                                    // on those surfaces as "Löschen
-                                    // fehlgeschlagen" since there's no
-                                    // Kind-30078 to tombstone. Route them to
-                                    // the local-only delete path with a
-                                    // matching label so the user sees the
-                                    // right confirm copy too.
-                                    // sync_status alone wasn't reliable — a
-                                    // successful prior publish can drift to
-                                    // 'failed' on a later attempt and still
-                                    // have a live event on relays.
+                                    // Discriminate "own published" from "own
+                                    // never-published draft" by `source`, NOT
+                                    // by `nostr_event_id`.
+                                    //
+                                    // An own published climb is ADDRESSABLE: its
+                                    // Kind-30078 d-tag is deterministically
+                                    // `communityClimbDTag(ourPubkey, uuid)`, so
+                                    // the deleter can NIP-09 tombstone it by
+                                    // address ("a"-tag) even when this device
+                                    // never stored a `nostr_event_id`. On a
+                                    // FRESH INSTALL the community-synced chunk
+                                    // for the user's own climb carries no
+                                    // nostr_event_id, so the old
+                                    // `nostrEventId.isNullOrBlank()` test
+                                    // mis-classified it as a draft and routed it
+                                    // to the local-only delete — which leaves
+                                    // the event live on relays forever. Such a
+                                    // synced row has `source='nostr'`, so it is
+                                    // correctly treated as published here.
+                                    //
+                                    // The local-only draft path is reserved for
+                                    // climbs the user never published — a local
+                                    // creation that never reached a relay:
+                                    // `source='local'` AND no event id. This
+                                    // mirrors the deleteLocalClimb SQL gate
+                                    // (`source='local' AND nostr_event_id IS
+                                    // NULL`) exactly, so the UI label and the
+                                    // server-side guard never disagree.
                                     val isUnpublishedDraft = state.climb?.let {
-                                        it.nostrEventId.isNullOrBlank()
+                                        it.source == "local" && it.nostrEventId.isNullOrBlank()
                                     } ?: false
                                     if (isUnpublishedDraft) {
                                         DropdownMenuItem(
@@ -722,6 +850,13 @@ private fun ClimbDetailPageContent(
                 CircularProgressIndicator(color = OrangeAccent)
             }
         }
+        state.logbookOnly != null -> {
+            LogbookOnlyClimbContent(
+                logbookOnly = state.logbookOnly!!,
+                gradeScale = state.gradeScale,
+                modifier = modifier
+            )
+        }
         state.error != null -> {
             Box(modifier = modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.Center) {
                 com.cruxcoach.android.ui.common.ErrorCard(
@@ -835,6 +970,24 @@ private fun ClimbDetailPageContent(
                                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
                                         )
                                     }
+                                } else if (climb.origin == "boardsesh") {
+                                    // BoardSesh-imported climb: attribute the
+                                    // source. No Kilter/Nostr state applies
+                                    // (it was never published to either), so a
+                                    // single static provenance badge.
+                                    Spacer(Modifier.size(4.dp))
+                                    val badgeColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = badgeColor.copy(alpha = 0.15f),
+                                    ) {
+                                        Text(
+                                            stringResource(R.string.climb_detail_badge_boardsesh),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = badgeColor,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                        )
+                                    }
                                 }
                             }
                             Column(
@@ -913,22 +1066,40 @@ private fun ClimbDetailPageContent(
                     }
                 }
 
-                // Board visualization (Climbdex-style) with countdown overlay
+                // Board visualization (Climbdex-style) with countdown overlay.
+                // FEAT-027: MoonBoard climbs render the climb's `frames` over
+                // the real board image when one is bundled for the variant,
+                // falling back to a procedural 11x18 grid otherwise; Kilter
+                // climbs keep the photo-backed Aurora renderer.
                 Box(modifier = Modifier.fillMaxWidth()) {
-                    KilterBoardVisualization(
-                        holds = state.holds,
-                        placements = state.placements,
-                        boardSize = state.boardSize,
-                        boardImages = state.boardImages,
-                        ledColors = state.ledColors,
-                        previewMode = state.playback.showPreview,
-                        currentFrameHolds = if (state.playback.showPreview && state.playback.isRoute) {
-                            state.playback.allFrames.getOrElse(state.playback.currentFrameIndex) { emptyList() }
-                        } else null,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("boarddetail_visualization")
-                    )
+                    if (climb.brand == BoardBrand.MOONBOARD) {
+                        MoonBoardVisualization(
+                            frames = climb.frames,
+                            assetState = rememberMoonBoardAsset(climb.layoutId),
+                            variant = MoonBoardVariant.fromLayoutId(climb.layoutId),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("boarddetail_visualization")
+                        )
+                    } else {
+                        KilterBoardVisualization(
+                            holds = state.holds,
+                            placements = state.placements,
+                            boardSize = state.boardSize,
+                            boardImages = state.boardImages,
+                            // FEAT-031: Aurora boards draw their own per-board
+                            // colours; Kilter keeps the user's configured palette.
+                            ledColors = if (climb.brand == BoardBrand.KILTER) state.ledColors
+                                        else LedHoldColors.standardFor(climb.brand),
+                            previewMode = state.playback.showPreview,
+                            currentFrameHolds = if (state.playback.showPreview && state.playback.isRoute) {
+                                state.playback.allFrames.getOrElse(state.playback.currentFrameIndex) { emptyList() }
+                            } else null,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("boarddetail_visualization")
+                        )
+                    }
                     // Countdown overlay
                     if (state.playback.countdownSeconds > 0) {
                         Box(
@@ -972,16 +1143,27 @@ private fun ClimbDetailPageContent(
                                 Icon(Icons.Default.BluetoothConnected, contentDescription = null, modifier = Modifier.size(14.dp), tint = SuccessGreen)
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(stringResource(R.string.board_detail_sent), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = SuccessGreen)
+                                // Non-blocking warning: send went through, but some
+                                // holds had no LED on the configured board size.
+                                state.ble.warning?.let { warningRes ->
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        stringResource(warningRes),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = WarningYellow
+                                    )
+                                }
                             }
                             state.ble.error != null -> {
+                                val bleErrorText = stringResource(state.ble.error)
                                 Text(
-                                    state.ble.error ?: "",
+                                    bleErrorText,
                                     style = MaterialTheme.typography.bodySmall,
                                     color = ErrorRed,
                                     modifier = Modifier.clickable {
                                         onNavigateToBugReport(
                                             context.getString(R.string.error_bug_report_ble_title),
-                                            state.ble.error ?: ""
+                                            bleErrorText
                                         )
                                     }
                                 )
@@ -1129,6 +1311,17 @@ private fun AngleDropdownStatItem(
                                 fontWeight = if (isSelected) FontWeight.Bold
                                     else FontWeight.Normal
                             )
+                            // The angle the setter created the climb at, kept
+                            // visible as info while every board angle stays
+                            // pickable.
+                            if (option.isSetterAngle) {
+                                Text(
+                                    text = stringResource(R.string.board_angle_setter_tag),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
                             Text(
                                 text = "${option.ascensionistCount ?: 0}",
                                 style = MaterialTheme.typography.bodySmall,

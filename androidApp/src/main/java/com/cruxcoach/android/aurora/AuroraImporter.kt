@@ -22,8 +22,7 @@ import javax.inject.Singleton
 /**
  * Main entry point for FEAT-005 Aurora-JSON-import.
  *
- * Pipeline (mirrors `boardsesh/packages/web/app/lib/data-sync/aurora/json-import.ts`,
- * Apache 2.0):
+ * Pipeline:
  *
  *   1. Parse JSON → [AuroraExportData] via [AuroraExportParser].
  *   2. Resolve names from ascents/attempts/circuits → board-DB UUIDs:
@@ -135,10 +134,18 @@ class AuroraImporter @Inject constructor(
 
         val picks = HashMap<String, ResolverPick>(names.size)
 
-        // Pass 1: case-sensitive (uses idx_climbs_name).
+        // Pass 1: case-sensitive (uses idx_climbs_name). Brand-scoped to
+        // Kilter: the FEAT-005 export comes from the Kilter app, and the
+        // shared climbs table also carries the MoonBoard/Aurora catalogues
+        // (all source='kilter') — without the brand gate a same-named
+        // foreign-board climb could win the popularity tiebreaker.
         names.chunked(NAME_BATCH_SIZE).forEach { batch ->
             val rows = boardDb.boardQueries
-                .lookupClimbsByNamesForAuroraImport(batch, ownPubkey)
+                .lookupClimbsByNamesForAuroraImport(
+                    names = batch,
+                    boardBrand = EXPORT_BOARD_BRAND,
+                    ownPubkey = ownPubkey,
+                )
                 .executeAsList()
             for (row in rows) {
                 applyPick(picks, row.name, row.uuid, row.source, row.total_ascensionist_count)
@@ -152,7 +159,11 @@ class AuroraImporter @Inject constructor(
             stillUnresolved.forEach { lowerToOriginal[it.lowercase()] = it }
             lowerToOriginal.keys.toList().chunked(NAME_BATCH_SIZE).forEach { batch ->
                 val rows = boardDb.boardQueries
-                    .lookupClimbsByLowerNamesForAuroraImport(batch, ownPubkey)
+                    .lookupClimbsByLowerNamesForAuroraImport(
+                        lowerNames = batch,
+                        boardBrand = EXPORT_BOARD_BRAND,
+                        ownPubkey = ownPubkey,
+                    )
                     .executeAsList()
                 for (row in rows) {
                     val original = lowerToOriginal[row.name.lowercase()] ?: continue
@@ -482,8 +493,8 @@ class AuroraImporter @Inject constructor(
                 val resolvedClimbs = circuit.climbs.mapNotNull { resolution.byName[it] }
 
                 // Skip writing the circuit if every climb resolves to nothing —
-                // boardsesh handles this by leaving an existing entry alone
-                // rather than wiping a previously-resolved import.
+                // leave an existing entry alone rather than wiping a
+                // previously-resolved import.
                 if (resolvedClimbs.isEmpty() && circuit.climbs.isNotEmpty()) {
                     failed++
                     return@forEachIndexed
@@ -546,6 +557,11 @@ class AuroraImporter @Inject constructor(
     companion object {
         private const val TAG = "AuroraImporter"
         private const val NAME_BATCH_SIZE = 500
+        /** The board whose official app produced the export. FEAT-005
+         *  imports are Kilter-app JSON exports only; name resolution is
+         *  scoped to this brand so ascents never attach to a same-named
+         *  climb from another board's catalogue. */
+        private const val EXPORT_BOARD_BRAND = "kilter"
         /** Default angle for an imported draft. The Aurora export
          *  format doesn't carry per-climb authoring angle (it's a
          *  property of the ascent / circuit, not the climb), so we

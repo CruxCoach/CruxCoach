@@ -37,7 +37,12 @@ class BrowserOriginFilterTest {
         origin = "cruxcoach", source = "local",
         createdByPubkey = "abc", syncStatus = "draft",
     )
-    private val all = listOf(nativeKilter, cruxcoachPublished, legacyDraft, freshDraft)
+    private val boardSesh = TestClimb.stats(
+        // BoardSesh-imported climb: origin='boardsesh', no pubkey, no local
+        // source. Distinct provenance from both kilter and cruxcoach.
+        uuid = "uuid-boardsesh", origin = "boardsesh", source = "boardsesh",
+    )
+    private val all = listOf(nativeKilter, cruxcoachPublished, legacyDraft, freshDraft, boardSesh)
 
     @Test
     fun `ALL passes everything through`() {
@@ -85,5 +90,29 @@ class BrowserOriginFilterTest {
             !out.contains(legacyDraft),
             "legacy draft must not leak into KILTER bucket via origin=kilter"
         )
+    }
+
+    @Test
+    fun `BOARDSESH bucket includes only boardsesh climbs`() {
+        val out = BrowserOriginFilter.apply(all, OriginFilter.BOARDSESH)
+        assertEquals(listOf(boardSesh), out)
+    }
+
+    @Test
+    fun `BOARDSESH climbs are excluded from CRUXCOACH and KILTER buckets`() {
+        assertTrue(
+            !BrowserOriginFilter.apply(all, OriginFilter.CRUXCOACH).contains(boardSesh),
+            "boardsesh must not leak into the CRUXCOACH bucket"
+        )
+        assertTrue(
+            !BrowserOriginFilter.apply(all, OriginFilter.KILTER).contains(boardSesh),
+            "boardsesh must not leak into the KILTER bucket"
+        )
+    }
+
+    @Test
+    fun `ALL bucket includes boardsesh climbs`() {
+        val out = BrowserOriginFilter.apply(all, OriginFilter.ALL)
+        assertTrue(out.contains(boardSesh))
     }
 }

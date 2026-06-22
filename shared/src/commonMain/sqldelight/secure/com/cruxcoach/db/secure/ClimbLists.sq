@@ -31,6 +31,14 @@ CREATE INDEX idx_climb_list_entries_climb ON climb_list_entries(climb_uuid);
 insertClimbList:
 INSERT INTO climb_lists(name, is_builtin, created_at) VALUES (?, ?, ?);
 
+-- The built-in "Ignored" list (climbs the user never wants suggested).
+-- Identified by a stable external_id sentinel rather than is_builtin alone
+-- so it never collides with the Favorites built-in (see
+-- getBuiltinFavoritesList, which now excludes external_id rows). is_builtin=1
+-- gives it the same delete/rename protection Favorites has.
+insertBuiltinIgnoredList:
+INSERT INTO climb_lists(name, is_builtin, created_at, external_id) VALUES (?, 1, ?, ?);
+
 getLastInsertedListId:
 SELECT last_insert_rowid();
 
@@ -48,11 +56,15 @@ LEFT JOIN climb_list_entries cle ON cl.id = cle.list_id
 GROUP BY cl.id
 ORDER BY cl.is_builtin DESC, cl.name ASC;
 
+-- Favorites is the is_builtin=1 list WITHOUT an external_id. The
+-- external_id IS NULL guard disambiguates it from the built-in "Ignored"
+-- list (also is_builtin=1, but carries the ignored sentinel external_id);
+-- without it this LIMIT 1 could return the wrong built-in.
 getBuiltinFavoritesList:
 SELECT cl.*, COUNT(cle.climb_uuid) AS climb_count
 FROM climb_lists cl
 LEFT JOIN climb_list_entries cle ON cl.id = cle.list_id
-WHERE cl.is_builtin = 1
+WHERE cl.is_builtin = 1 AND cl.external_id IS NULL
 GROUP BY cl.id
 LIMIT 1;
 
@@ -82,6 +94,13 @@ LIMIT :limit OFFSET :offset;
 
 countClimbListEntries:
 SELECT COUNT(*) FROM climb_list_entries WHERE list_id = ?;
+
+-- Every climb_uuid in a list, unpaginated. Backs the browser's always-on
+-- "ignore" filter: the (small) ignored set is loaded once and applied
+-- client-side to each fetched page (cross-DB — the ignored UUIDs live in
+-- the encrypted SecureDB, the browse rows in the board DB, so no JOIN).
+getAllClimbUuidsInList:
+SELECT climb_uuid FROM climb_list_entries WHERE list_id = ?;
 
 getListIdsForClimb:
 SELECT list_id FROM climb_list_entries WHERE climb_uuid = ?;

@@ -6,6 +6,7 @@ import android.util.Log
 import com.cruxcoach.android.nostr.NostrConfig
 import com.cruxcoach.android.util.ZstdNative
 import com.vitorpamplona.quartz.nip01Core.core.Event
+import com.vitorpamplona.quartz.nip01Core.crypto.verifyId
 import com.vitorpamplona.quartz.nip01Core.crypto.verifySignature
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -42,10 +43,25 @@ import kotlin.random.Random
  */
 class BlossomSyncManager(
     private val context: Context,
-    private val okHttpClient: OkHttpClient
+    private val okHttpClient: OkHttpClient,
+    /**
+     * Kind-30078 d-tag this instance fetches. Defaults to the Kilter
+     * board-DB manifest; FEAT-027 constructs a second instance with
+     * [MOONBOARD_D_TAG] for the MoonBoard catalogue. The fetch /
+     * download / verify / decompress logic is otherwise board-agnostic.
+     */
+    private val manifestDTag: String = MANIFEST_D_TAG,
+    /**
+     * SharedPreferences file backing this instance's chunk-hash state.
+     * Per-board so a MoonBoard sync / [clearStoredHashes] can never wipe
+     * the Kilter chunk hashes. Kilter keeps the original file name
+     * ([DEFAULT_PREFS_NAME]) so existing installs retain their
+     * incremental-sync state across the upgrade.
+     */
+    prefsName: String = DEFAULT_PREFS_NAME,
 ) {
     private val prefs: SharedPreferences =
-        context.getSharedPreferences("blossom_sync", Context.MODE_PRIVATE)
+        context.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
 
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -86,7 +102,7 @@ class BlossomSyncManager(
     private suspend fun fetchManifestFromRelay(relayUrl: String): BlossomManifest? {
         return withTimeout(RELAY_TIMEOUT_MS) {
             suspendCancellableCoroutine { cont ->
-                val filter = """{"kinds":[30078],"authors":["$MANIFEST_PUBKEY"],"#d":["$MANIFEST_D_TAG"],"limit":1}"""
+                val filter = """{"kinds":[30078],"authors":["$MANIFEST_PUBKEY"],"#d":["$manifestDTag"],"limit":1}"""
                 val reqMsg = """["REQ","blossom-manifest",$filter]"""
 
                 val request = Request.Builder().url(relayUrl).build()
@@ -103,8 +119,8 @@ class BlossomSyncManager(
                             when (arr[0].jsonPrimitive.content) {
                                 "EVENT" -> {
                                     // Do not trust the relay's filter: re-verify
-                                    // pubkey and Schnorr signature on the event
-                                    // before parsing its content as a manifest.
+                                    // pubkey, Schnorr signature, and d-tag on the
+                                    // event before parsing its content as a manifest.
                                     val event = Event.fromJson(arr[2].toString())
                                     if (event.pubKey != MANIFEST_PUBKEY) {
                                         Log.w(TAG, "Manifest pubkey mismatch from $relayUrl: ${event.pubKey}")
@@ -112,6 +128,28 @@ class BlossomSyncManager(
                                     }
                                     if (!event.verifySignature()) {
                                         Log.w(TAG, "Manifest signature invalid from $relayUrl")
+                                        return
+                                    }
+                                    // Bind the signature to the body: verifyId
+                                    // recomputes the event id from its serialized
+                                    // content, so a relay cannot substitute the
+                                    // manifest body under a validly-signed id.
+                                    if (!event.verifyId()) {
+                                        Log.w(TAG, "Manifest id/content mismatch from $relayUrl")
+                                        return
+                                    }
+                                    // A non-compliant relay could return any
+                                    // Kind-30078 from MANIFEST_PUBKEY — e.g. the
+                                    // sibling manifest of the other board
+                                    // (Kilter <-> MoonBoard share the signing
+                                    // key, only the d-tag differs). Reject any
+                                    // event whose d-tag is not the one this
+                                    // instance asked for, rather than relying on
+                                    // the incidental shape of BlossomManifest to
+                                    // fail the parse.
+                                    val dTag = Companion.extractDTag(event.tags)
+                                    if (dTag != manifestDTag) {
+                                        Log.w(TAG, "Manifest d-tag mismatch from $relayUrl: $dTag")
                                         return
                                     }
                                     val parsed = json.decodeFromString<BlossomManifest>(event.content)
@@ -370,6 +408,12 @@ class BlossomSyncManager(
         const val MANIFEST_PUBKEY =
             "70b2740bff77cf65743a7d6ffa5465b3a27105ae26123458cf5450eafb1bd68d"
         const val MANIFEST_D_TAG = "cruxcoach/board-db"
+        const val MOONBOARD_D_TAG = "cruxcoach/moonboard-db"
+        // Per-board SharedPreferences files for chunk-hash state. Kilter
+        // keeps the historical "blossom_sync" name so existing installs
+        // do not lose their incremental-sync state on upgrade.
+        const val DEFAULT_PREFS_NAME = "blossom_sync"
+        const val MOONBOARD_PREFS_NAME = "blossom_sync_moonboard"
 
         /**
          * Validates chunk names and URL schemes after the manifest is parsed.
@@ -387,6 +431,15 @@ class BlossomSyncManager(
             }
             return manifest
         }
+
+        /**
+         * Extracts the `d` tag value from a Nostr event's tag array, or
+         * null if absent / malformed. Used to re-verify the manifest
+         * event's d-tag client-side rather than trusting the relay
+         * honoured the REQ `#d` filter. `internal` for direct unit testing.
+         */
+        internal fun extractDTag(tags: Array<Array<String>>): String? =
+            tags.firstOrNull { it.size >= 2 && it[0] == "d" }?.get(1)
     }
 }
 
