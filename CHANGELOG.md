@@ -35,6 +35,11 @@ announcement fixes plus two quiet improvements to the climb browser.
   a single Aurora/MoonBoard board's catalogue on its own, CruxCoach refreshes
   the SQLite query-planner statistics for it (the full board sync already did
   this), so the first browse of that board no longer runs slow.
+- **Saved lists show all your climbs, across every board** (FEAT-023) — a list
+  (Favoriten + custom lists) is your own selection, so it's no longer filtered
+  down to your currently-configured board. Every entry appears with its board
+  badge; sending from the detail screen already refuses / warns on a
+  wrong-board send, so nothing lights up incorrectly.
 
 ## [0.2.0] - 2026-06-21
 
