@@ -19,6 +19,12 @@ announcement fixes plus two quiet improvements to the climb browser.
 - **Announcements stayed collapsed once read.** Tapping an announcement
   marked it read but also truncated it with no way to expand again; read
   announcements now stay fully readable.
+- **Deleted community climbs stay deleted on catalogue-only devices**
+  (FEAT-041) — a device that only syncs the daily catalogue (never the live
+  delete event) now also tombstones a delisted community climb, so it can't
+  reappear via a stray relay rebroadcast. Devices on the live feed were
+  already covered; the climb was already hidden either way — this hardens
+  against re-listing.
 
 ### Changed
 - **Consistent "draft" badge** (FEAT-024) — the browser's *Entwurf* badge and

@@ -686,6 +686,19 @@ class BoardDatabaseImporter(
                   AND uuid IN (SELECT uuid FROM snapshot_norm WHERE is_listed = 0)
                 """.trimIndent()
             )
+            // FEAT-041 item 1: same delete-convergence as the Kilter chunk
+            // path — a delisted community (origin='cruxcoach') row from the
+            // snapshot is a deletion, so arm is_deleted=1 (and thus the L3
+            // resurrection guard) on chunk-only devices. Kilter-origin delist
+            // is not a deletion, so it is left untouched.
+            targetDb.execSQL(
+                """
+                UPDATE climbs SET is_deleted = 1
+                WHERE origin = 'cruxcoach'
+                  AND is_deleted = 0
+                  AND uuid IN (SELECT uuid FROM snapshot_norm WHERE is_listed = 0)
+                """.trimIndent()
+            )
             targetDb.execSQL(
                 """
                 UPDATE climbs SET origin = (
@@ -1246,6 +1259,26 @@ class BoardDatabaseImporter(
                         targetDb.execSQL("""
                             UPDATE climbs SET is_listed = 0
                             WHERE is_listed = 1
+                              AND uuid IN (SELECT uuid FROM chunk_norm WHERE is_listed = 0)
+                        """)
+                    }
+                    // FEAT-041 item 1: converge the chunk-only delete path with
+                    // the live tombstone. The delist flip above hides the climb
+                    // (is_listed=0), but a device that only ever sees the chunk
+                    // (never the live Kind-5 tombstone) keeps is_deleted=0 — so
+                    // the L3 stale-resurrection guard (keys on is_deleted=1)
+                    // stays disarmed and a later stray Original-Event rebroadcast
+                    // could re-list it. For origin='cruxcoach' a chunk is_listed=0
+                    // IS a deletion (community rows are only delisted upstream
+                    // when the author deletes), so flip is_deleted=1 too — the
+                    // same on-disk state markCommunityClimbDeleted produces on
+                    // live-sub devices. Kilter-origin is_listed=0 is a catalogue
+                    // delist, NOT a deletion, so it is left untouched.
+                    if (!skipUpdatePasses) {
+                        targetDb.execSQL("""
+                            UPDATE climbs SET is_deleted = 1
+                            WHERE origin = 'cruxcoach'
+                              AND is_deleted = 0
                               AND uuid IN (SELECT uuid FROM chunk_norm WHERE is_listed = 0)
                         """)
                     }
