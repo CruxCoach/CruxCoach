@@ -672,8 +672,8 @@ class BoardSyncManager(
      * logged + surfaced via [BoardSyncState.moonBoardError] — a MoonBoard
      * hiccup must never fail the Kilter board sync.
      */
-    private suspend fun syncMoonBoardCatalogue() {
-        try {
+    private suspend fun syncMoonBoardCatalogue(): Boolean {
+        return try {
             when (val result = moonBoardCatalogueSync.sync(
                 onProgress = { step -> _state.update { it.copy(moonBoardStep = step) } }
             )) {
@@ -682,12 +682,16 @@ class BoardSyncManager(
                     // No import ran — mark the section complete anyway so
                     // the user sees the MoonBoard catalogue is accounted for.
                     _state.update { it.copy(moonBoardStep = ImportStep.Done(0, 0, 0)) }
+                    false
                 }
-                is MoonBoardCatalogueSync.Result.Imported ->
+                is MoonBoardCatalogueSync.Result.Imported -> {
                     Log.i(TAG, "MoonBoard catalogue imported (total catalogue climbs=${result.climbCount})")
+                    true
+                }
                 is MoonBoardCatalogueSync.Result.Failed -> {
                     Log.w(TAG, "MoonBoard catalogue sync failed: ${result.message}")
                     _state.update { it.copy(moonBoardStep = null, moonBoardError = result.message) }
+                    false
                 }
             }
         } catch (e: Exception) {
@@ -696,6 +700,7 @@ class BoardSyncManager(
                 moonBoardStep = null,
                 moonBoardError = e.message ?: e.javaClass.simpleName,
             ) }
+            false
         }
     }
 
@@ -737,23 +742,29 @@ class BoardSyncManager(
      * demand. Reports into the per-board progress/error map; isolated — never
      * throws into the caller, a failure never fails the Kilter sync.
      */
-    private suspend fun syncAuroraBoard(brand: BoardBrand) {
-        try {
+    private suspend fun syncAuroraBoard(brand: BoardBrand): Boolean {
+        return try {
             when (val result = auroraCatalogueSync.sync(brand) { step -> reportBoardStep(brand, step) }) {
-                is AuroraCatalogueSync.Result.AlreadyCurrent ->
+                is AuroraCatalogueSync.Result.AlreadyCurrent -> {
                     reportBoardStep(brand, ImportStep.Done(0, 0, 0))
-                is AuroraCatalogueSync.Result.Imported ->
+                    false
+                }
+                is AuroraCatalogueSync.Result.Imported -> {
                     Log.i(TAG, "${brand.wireValue} catalogue imported (total catalogue climbs=${result.climbCount})")
+                    true
+                }
                 is AuroraCatalogueSync.Result.Failed -> {
                     Log.w(TAG, "${brand.wireValue} catalogue sync failed: ${result.message}")
                     reportBoardStep(brand, null)
                     reportBoardError(brand, result.message)
+                    false
                 }
             }
         } catch (e: Exception) {
             Log.w(TAG, "Aurora catalogue sync threw — Kilter board sync unaffected", e)
             reportBoardStep(brand, null)
             reportBoardError(brand, e.message ?: e.javaClass.simpleName)
+            false
         }
     }
 
@@ -783,11 +794,16 @@ class BoardSyncManager(
         // Board-specific load: clear the Kilter importStep the slot-claim set so
         // only this board's row shows progress (not a phantom Kilter row).
         _state.update { it.copy(importStep = null) }
+        var imported = false
         try {
-            if (brand == BoardBrand.MOONBOARD) syncMoonBoardCatalogue() else syncAuroraBoard(brand)
+            imported = if (brand == BoardBrand.MOONBOARD) syncMoonBoardCatalogue() else syncAuroraBoard(brand)
         } finally {
             finishSyncSlot()
         }
+        // FEAT-037B: refresh planner stats for the freshly-imported single
+        // board. The full Blossom sync analyzes via startBlossomSync; this
+        // on-demand path otherwise left stale stats → slow first browse.
+        analyzeAfterSingleBoardImport(imported)
     }
 
     /**
@@ -803,11 +819,14 @@ class BoardSyncManager(
         // only this board's row shows progress (not a phantom Kilter row).
         _state.update { it.copy(importStep = null) }
         scope.launch {
+            var imported = false
             try {
-                if (brand == BoardBrand.MOONBOARD) syncMoonBoardCatalogue() else syncAuroraBoard(brand)
+                imported = if (brand == BoardBrand.MOONBOARD) syncMoonBoardCatalogue() else syncAuroraBoard(brand)
             } finally {
                 finishSyncSlot()
             }
+            // FEAT-037B: refresh planner stats for the freshly-imported board.
+            analyzeAfterSingleBoardImport(imported)
         }
     }
 
@@ -820,6 +839,24 @@ class BoardSyncManager(
             importStep = null,
             lastSyncCompletedAtMillis = System.currentTimeMillis(),
         ) }
+    }
+
+    /**
+     * FEAT-037B: refresh SQLite query-planner stats after a single-board
+     * on-demand catalogue import ([ensureActiveBoardCatalogue] / [loadBoardCatalogue]).
+     * The full Blossom sync already runs [BoardDatabaseImporter.analyzeDatabase]
+     * once after [performBlossomSync]; the single-board picker paths previously
+     * skipped it, leaving stale stats so the first browse of a freshly-imported
+     * Aurora/MoonBoard board mis-planned and ran slow. Detached on [scope] so it
+     * never extends the visible sync, and import-gated because ANALYZE is a full
+     * pass (10-30s) — pointless when the board was already current.
+     */
+    private fun analyzeAfterSingleBoardImport(imported: Boolean) {
+        if (!imported) return
+        scope.launch {
+            runCatching { importer.analyzeDatabase() }
+                .onFailure { Log.w(TAG, "Post single-board import ANALYZE failed", it) }
+        }
     }
 
     /** Infer chunk type from name for v1 manifests without type field. */
