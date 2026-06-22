@@ -282,7 +282,7 @@ class FakeBoardRepository : BoardRepository {
     override fun getClimbsByPubkey(pubkey: String): List<com.cruxcoach.data.repository.SetterClimbEntry> = emptyList()
     override fun getClimbsByPubkeyForBoard(pubkey: String, angle: Int, boardBrand: String, layoutId: Int, selProductSizeId: Int): List<com.cruxcoach.data.repository.SetterClimbEntry> = emptyList()
     override fun getOwnClimbsForBrowse(pubkey: String, layoutId: Int, preferredAngle: Int, boardBrand: String): List<com.cruxcoach.data.repository.ClimbWithStats> = emptyList()
-    override fun getCommunitySetterStats(): List<com.cruxcoach.data.repository.SetterStat> = emptyList()
+    override fun getCommunitySetterStats(boardBrand: String, layoutId: Int, selProductSizeId: Int): List<com.cruxcoach.data.repository.SetterStat> = emptyList()
     override fun getClimbsAwaitingKilterRetry(pubkey: String): List<CommunityClimbRow> = emptyList()
     override fun getClimbsAwaitingNostrRetry(pubkey: String): List<CommunityClimbRow> = emptyList()
     override fun recordCommunityClimbDeadLetter(uuid: String, eventId: String, eventCreatedAt: Long, rawEventJson: String, nowMs: Long, errorExcerpt: String?) {}
