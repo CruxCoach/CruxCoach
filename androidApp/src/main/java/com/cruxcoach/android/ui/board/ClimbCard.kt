@@ -88,21 +88,16 @@ internal fun ClimbCard(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false)
                     )
-                    // "Entwurf" badge: source='local' is a NECESSARY condition
-                    // (the row was authored here) but not SUFFICIENT — once
-                    // the climb has been Nostr-published, sync_status flips
-                    // to 'published_nostr' (or 'published_kilter'/'..._both')
-                    // and the badge becomes misleading. Pre-fix the badge
-                    // also showed for already-published own climbs because
-                    // markClimbPublishedNostr only updates sync_status, not
-                    // source. Treat 'draft' / 'failed' / NULL as still-a-draft.
+                    // "Entwurf" (draft) badge: a community/own climb is a
+                    // draft until it has a live Nostr publication. FEAT-024:
+                    // nostr_event_id is the SINGLE canonical publish signal —
+                    // the climb detail screen keys off the same column, so the
+                    // browser and detail can never disagree. source=='local'
+                    // scopes the badge to climbs authored on this device;
+                    // sync_status is intentionally NOT consulted (it can drift
+                    // from the real publish state).
                     val showDraftBadge = climb.source == "local" &&
-                        (climb.syncStatus == null ||
-                         climb.syncStatus == "draft" ||
-                         climb.syncStatus == "failed")
-                    if (climb.name.startsWith("TEST-")) {
-                        android.util.Log.d("ClimbCard", "badge-eval name=${climb.name} source=${climb.source} sync_status=${climb.syncStatus} kilter_status=${climb.kilterStatus} → showDraft=$showDraftBadge")
-                    }
+                        climb.nostrEventId.isNullOrBlank()
                     if (showDraftBadge) {
                         Surface(
                             color = OrangeAccent.copy(alpha = 0.18f),

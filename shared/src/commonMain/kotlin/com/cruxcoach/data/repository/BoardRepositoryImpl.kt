@@ -60,6 +60,7 @@ class BoardRepositoryImpl(
         createdByPubkey = it.created_by_pubkey,
         source = it.source,
         syncStatus = it.sync_status,
+        nostrEventId = it.nostr_event_id,
         boardBrand = it.board_brand,
     )
 

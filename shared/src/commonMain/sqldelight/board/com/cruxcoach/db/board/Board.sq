@@ -256,6 +256,7 @@ SELECT
     COALESCE(c.description, '') AS description,
     c.is_nomatch, c.frames_pace, c.hsm, c.move_count,
     c.source, c.created_by_pubkey, c.sync_status, c.origin, c.kilter_status,
+    c.nostr_event_id,
     cs.angle, cs.difficulty_average, cs.quality_average,
     cs.ascensionist_count, cs.benchmark_difficulty
 FROM climbs c
