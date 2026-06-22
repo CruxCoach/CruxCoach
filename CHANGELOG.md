@@ -4,6 +4,32 @@ All notable changes to CruxCoach will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.2.1] - Unreleased
+
+A small follow-up to the 0.2.0 multi-board release: a couple of upgrade /
+announcement fixes plus two quiet improvements to the climb browser.
+
+### Fixed
+- **What's-new popup could be dismissed by accident.** On the first launch
+  after an update, the highlights dialog could be closed by tapping outside
+  it or pressing Back, which silently marked it as seen — so some users
+  never actually read it. It now closes only via its buttons. Because of
+  this, the 0.2.0 highlights are shown once more on 0.2.1 for anyone who
+  missed them.
+- **Announcements stayed collapsed once read.** Tapping an announcement
+  marked it read but also truncated it with no way to expand again; read
+  announcements now stay fully readable.
+
+### Changed
+- **Consistent "draft" badge** (FEAT-024) — the browser's *Entwurf* badge and
+  the climb detail screen now derive a climb's published/draft state from the
+  same single signal (whether it has a live Nostr publication), so the two
+  screens can never disagree.
+- **Faster first browse of a newly-added board** (FEAT-037) — after importing
+  a single Aurora/MoonBoard board's catalogue on its own, CruxCoach refreshes
+  the SQLite query-planner statistics for it (the full board sync already did
+  this), so the first browse of that board no longer runs slow.
+
 ## [0.2.0] - 2026-06-21
 
 > 0.2.0 is the multi-board release. CruxCoach now speaks **MoonBoard** as

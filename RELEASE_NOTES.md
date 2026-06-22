@@ -1,3 +1,14 @@
+# CruxCoach 0.2.1
+
+A small follow-up to 0.2.0 with a few fixes and two browser improvements.
+
+- **You won't miss the "what's new" screen anymore** — after an update it can no longer be closed by an accidental tap-outside or Back press, only by its buttons. And if you missed the 0.2.0 highlights, they show once more on 0.2.1.
+- **Announcements stay readable** — tapping one to mark it read no longer collapses it.
+- **Consistent draft badge** — a climb's published/draft state now looks the same in the browser and on the detail screen.
+- **Faster first look at a newly-added board** — browsing a board right after adding it on its own is quicker.
+
+---
+
 # CruxCoach 0.2.0 — the multi-board release
 
 CruxCoach now speaks **MoonBoard** alongside Kilter, adds five more Aurora boards, puts board gyms on a world map, and refreshes the default LED colours.
