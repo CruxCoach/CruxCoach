@@ -31,6 +31,13 @@ internal fun AuroraJsonImportWhatsNewDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
+        // Explicit-button dismissal only — see MoonBoardWhatsNewDialog: an
+        // accidental scrim/back dismiss advances the lastSeen watermark and
+        // silently marks the announcement read before the user sees it.
+        properties = androidx.compose.ui.window.DialogProperties(
+            dismissOnClickOutside = false,
+            dismissOnBackPress = false,
+        ),
         title = {
             Text(stringResource(R.string.whatsnew_aurora_import_title))
         },
