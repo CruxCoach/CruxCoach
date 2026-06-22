@@ -35,7 +35,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -157,12 +156,14 @@ private fun AnnouncementCard(
                 )
             }
 
+            // Always show the FULL announcement. Tapping the card marks it read
+            // (the unread dot, surface tint and bold weight all flip), but it must
+            // never collapse/truncate the text — there is no expand affordance, so
+            // a truncated "read" announcement could never be read in full again.
             Text(
                 text = announcement.content,
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = if (announcement.isRead) FontWeight.Normal else FontWeight.Medium,
-                maxLines = if (announcement.isRead) 3 else 6,
-                overflow = TextOverflow.Ellipsis
             )
         }
     }
