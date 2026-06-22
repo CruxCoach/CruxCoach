@@ -128,21 +128,10 @@ fun BoardListDetailScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
-                    // Only when some entries are off-board: make the filtering
-                    // explicit so the global overview count reconciles with the
-                    // (smaller) board-scoped list shown here.
-                    if (state.onBoardCount < state.totalCount) {
-                        Text(
-                            stringResource(
-                                R.string.board_list_on_board_count,
-                                state.onBoardCount,
-                                state.totalCount
-                            ),
-                            modifier = Modifier.padding(horizontal = 16.dp),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                    // FEAT-023: lists show ALL entries across boards (no
+                    // board-scoping), so there's no "X of Y on this board"
+                    // reconciliation any more — each card's BoardBrandBadge
+                    // labels its own board.
 
                     LazyColumn(
                         state = listState,
