@@ -38,8 +38,12 @@ announcement fixes plus two quiet improvements to the climb browser.
 - **Saved lists show all your climbs, across every board** (FEAT-023) — a list
   (Favoriten + custom lists) is your own selection, so it's no longer filtered
   down to your currently-configured board. Every entry appears with its board
-  badge; sending from the detail screen already refuses / warns on a
-  wrong-board send, so nothing lights up incorrectly.
+  badge (Kilter Original vs Homewall now distinguished). Sending a climb that
+  doesn't fit your active board is refused with a clear message — including the
+  case where none of its holds map to your board — so nothing lights up
+  incorrectly. When a list spans several boards, a filter row lets you narrow
+  it to one — down to a specific MoonBoard variant (e.g. Masters 2019) or
+  Kilter Original vs Homewall.
 
 ## [0.2.0] - 2026-06-21
 

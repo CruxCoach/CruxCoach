@@ -184,13 +184,24 @@ internal fun AscentCard(
  *  promoted board needs no per-board string. Sits on the card's meta line
  *  next to angle/date. */
 @Composable
-internal fun BoardBrandBadge(brand: BoardBrand) {
+internal fun BoardBrandBadge(brand: BoardBrand, layoutId: Long? = null) {
+    // FEAT-023: Kilter Original and Homewall share the 'kilter' brand, so a
+    // plain brand label can't tell them apart in a cross-board list. When the
+    // caller supplies the climb's layout, split Homewall out explicitly.
+    val label = if (
+        brand == BoardBrand.KILTER &&
+        layoutId == com.cruxcoach.android.data.BoardConstants.KILTER_HOMEWALL_LAYOUT.toLong()
+    ) {
+        stringResource(R.string.board_category_kilter_homewall)
+    } else {
+        brand.displayName
+    }
     Surface(
         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.12f),
         shape = RoundedCornerShape(4.dp)
     ) {
         Text(
-            text = brand.displayName,
+            text = label,
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,

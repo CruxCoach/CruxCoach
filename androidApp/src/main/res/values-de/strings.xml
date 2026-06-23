@@ -1225,6 +1225,7 @@
     <string name="board_heatmap_start">Start-Holds</string>
     <string name="board_holdsearch_filter_summary">%1$d Holds → %2$d Climbs</string>
     <string name="board_list_climb_count">%d Climbs</string>
+    <string name="board_list_filter_all">Alle</string>
     <string name="board_list_on_board_count">%1$d von %2$d auf diesem Board</string>
     <string name="board_list_default_name">Liste</string>
     <string name="board_list_empty_message">Füge Climbs über den Browser hinzu</string>
@@ -1914,6 +1915,7 @@
     <string name="board_send_error_active_not_moonboard">Dein aktives Board ist kein MoonBoard — wechsle es in den Einstellungen, um diesen Climb zu senden.</string>
     <string name="board_send_error_moonboard_variant_mismatch">Dieser Climb gehört zu einer anderen MoonBoard-Variante als dein aktives Board.</string>
     <string name="board_send_warning_holds_not_lit">Einige Griffe liegen außerhalb deiner Board-Größe und wurden nicht beleuchtet.</string>
+    <string name="board_send_error_climb_off_board">Die Griffe dieses Climbs passen nicht auf dein aktives Board — wechsle Board oder Größe in den Einstellungen, um ihn zu senden.</string>
     <string name="board_sync_error_download">Download fehlgeschlagen. Bitte prüfe deine Internetverbindung und versuche es erneut.</string>
     <string name="board_sync_error_update_offline">Aktualisierung nicht möglich. Bestehende Daten bleiben erhalten.</string>
     <string name="board_sync_error_import">Import fehlgeschlagen. Bitte später erneut versuchen.</string>

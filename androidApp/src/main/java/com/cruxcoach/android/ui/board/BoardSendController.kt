@@ -176,6 +176,19 @@ internal class BoardSendController(
                 // by the encoder — the wall shows a partial climb. Surface a
                 // non-blocking warning instead of a plain "sent ok".
                 val unmappedHolds = s.holds.count { it.placementId !in placementToLed }
+                // FEAT-023: if NONE of the climb's holds map to the active
+                // board's LED grid it's a wrong-board climb the brand guard
+                // can't catch (e.g. a Kilter Homewall climb opened from a list
+                // while an Original size is configured — both are 'kilter').
+                // Refuse with a clear message instead of firing an empty frame
+                // + a vague "some holds not lit" warning.
+                if (unmappedHolds == s.holds.size) {
+                    state.update { it.copy(
+                        ble = it.ble.copy(isSending = false, error = R.string.board_send_error_climb_off_board),
+                        nearby = it.nearby.copy(debugInfo = "all holds unmapped — wrong board/size")
+                    ) }
+                    return@launch
+                }
                 val success = bleConnection.sendClimb(s.holds, placementToLed, roleColorMap)
                 Log.i(TAG, "sendToBoard: writes done success=$success unmapped=$unmappedHolds")
                 state.update { it.copy(

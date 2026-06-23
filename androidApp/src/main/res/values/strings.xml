@@ -1178,6 +1178,7 @@
     <string name="board_heatmap_start">Start Holds</string>
     <string name="board_holdsearch_filter_summary">%1$d Holds → %2$d Climbs</string>
     <string name="board_list_climb_count">%d Climbs</string>
+    <string name="board_list_filter_all">All</string>
     <string name="board_list_on_board_count">%1$d of %2$d on this board</string>
     <string name="board_list_default_name">List</string>
     <string name="board_list_empty_message">Add climbs from the browser</string>
@@ -1911,6 +1912,7 @@
     <string name="board_send_error_active_not_moonboard">Your active board is not a MoonBoard — switch it in Settings to send this climb.</string>
     <string name="board_send_error_moonboard_variant_mismatch">This climb belongs to a different MoonBoard variant than your active board.</string>
     <string name="board_send_warning_holds_not_lit">Some holds are outside your board size and were not lit.</string>
+    <string name="board_send_error_climb_off_board">This climb\'s holds don\'t fit your active board — switch your board or size in Settings to send it.</string>
     <string name="board_sync_error_download">Download failed. Please check your internet connection and try again.</string>
     <string name="board_sync_error_update_offline">Update not possible. Your existing data is preserved.</string>
     <string name="board_sync_error_import">Import failed. Please try again later.</string>
