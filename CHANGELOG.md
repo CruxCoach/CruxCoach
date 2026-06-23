@@ -41,9 +41,11 @@ announcement fixes plus two quiet improvements to the climb browser.
   badge (Kilter Original vs Homewall now distinguished). Sending a climb that
   doesn't fit your active board is refused with a clear message — including the
   case where none of its holds map to your board — so nothing lights up
-  incorrectly. When a list spans several boards, a filter row lets you narrow
-  it to one — down to a specific MoonBoard variant (e.g. Masters 2019) or
-  Kilter Original vs Homewall.
+  incorrectly. When a list spans several boards, a **multi-select** filter row
+  lets you narrow it — pick one or several boards at once, a whole brand
+  ("alle MoonBoard"), or a specific variant (MoonBoard Masters 2019, Kilter
+  Homewall). Entries whose board catalogue isn't downloaded are flagged
+  ("N not shown"), not silently hidden.
 
 ## [0.2.0] - 2026-06-21
 

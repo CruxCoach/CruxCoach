@@ -119,16 +119,29 @@ fun BoardListDetailScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
+                    // FEAT-023: entries whose board catalogue isn't downloaded
+                    // can't be resolved — surface the gap instead of silently
+                    // dropping them.
+                    if (state.unavailableCount > 0) {
+                        Text(
+                            stringResource(R.string.board_list_unavailable_count, state.unavailableCount),
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
                     // FEAT-023: a list is the user's selection, shown in FULL
                     // (every board) — each card's BoardBrandBadge labels its own
-                    // board. When the list spans more than one board, offer an
-                    // explicit per-board filter (down to MoonBoard variant /
-                    // Kilter Original vs Homewall).
+                    // board. When the list spans >1 board, offer a MULTI-SELECT
+                    // per-board filter: a brand roll-up ("MoonBoard") + each
+                    // MoonBoard variant / Kilter Original vs Homewall.
                     if (state.boardFilters.isNotEmpty()) {
                         BoardFilterRow(
                             options = state.boardFilters,
-                            selected = state.selectedFilter,
-                            onSelect = { viewModel.setBoardFilter(it) }
+                            selected = state.selectedFilters,
+                            onToggle = { viewModel.toggleBoardFilter(it) },
+                            onClear = { viewModel.clearBoardFilters() }
                         )
                     }
 
@@ -160,14 +173,16 @@ fun BoardListDetailScreen(
     }
 }
 
-/** FEAT-023: per-list board filter. One chip per distinct board present in the
- *  list (variant-granular — MoonBoard 2019, Kilter Homewall, …) plus an "Alle"
- *  chip. Tapping the active chip again clears back to "Alle". */
+/** FEAT-023: per-list board filter (MULTI-SELECT, union). "Alle" + one chip per
+ *  distinct board present — variant-granular (MoonBoard 2019, Kilter Homewall,
+ *  …) plus a brand roll-up chip ("MoonBoard") when a brand has >1 variant.
+ *  Tapping toggles a chip; "Alle" clears the selection. */
 @Composable
 private fun BoardFilterRow(
     options: List<BoardFilterOption>,
-    selected: BoardFilterOption?,
-    onSelect: (BoardFilterOption?) -> Unit,
+    selected: Set<BoardFilterOption>,
+    onToggle: (BoardFilterOption) -> Unit,
+    onClear: () -> Unit,
 ) {
     LazyRow(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
@@ -175,35 +190,37 @@ private fun BoardFilterRow(
     ) {
         item {
             FilterChip(
-                selected = selected == null,
-                onClick = { onSelect(null) },
+                selected = selected.isEmpty(),
+                onClick = onClear,
                 label = { Text(stringResource(R.string.board_list_filter_all)) }
             )
         }
-        items(options, key = { "${it.brandWire}:${it.layoutId}" }) { opt ->
-            val isActive = selected?.brandWire == opt.brandWire && selected?.layoutId == opt.layoutId
+        items(options, key = { "${it.brandWire}:${it.layoutKey}" }) { opt ->
+            val isActive = selected.any { it.brandWire == opt.brandWire && it.layoutKey == opt.layoutKey }
             FilterChip(
                 selected = isActive,
-                onClick = { onSelect(if (isActive) null else opt) },
-                label = { Text("${boardFilterLabel(opt.brandWire, opt.layoutId)} · ${opt.count}") }
+                onClick = { onToggle(opt) },
+                label = { Text("${boardFilterLabel(opt.brandWire, opt.layoutKey)} · ${opt.count}") }
             )
         }
     }
 }
 
-/** Human label for a (brand, layout) filter key: Kilter Original / Homewall,
- *  the MoonBoard variant name, or the Aurora brand display name. */
+/** Human label for a board-filter chip: a brand roll-up / Aurora brand
+ *  (layoutKey < 0) → brand name; Kilter Original / Homewall; the MoonBoard
+ *  variant name; else the Aurora brand display name. */
 @Composable
-private fun boardFilterLabel(brandWire: String, layoutId: Long): String {
+private fun boardFilterLabel(brandWire: String, layoutKey: Long): String {
     val brand = BoardBrand.fromWire(brandWire)
     return when {
+        layoutKey < 0L -> brand.displayName
         brand == BoardBrand.KILTER &&
-            layoutId == com.cruxcoach.android.data.BoardConstants.KILTER_HOMEWALL_LAYOUT.toLong() ->
+            layoutKey == com.cruxcoach.android.data.BoardConstants.KILTER_HOMEWALL_LAYOUT.toLong() ->
             stringResource(R.string.board_category_kilter_homewall)
         brand == BoardBrand.KILTER ->
             stringResource(R.string.board_category_kilter_original)
         brand == BoardBrand.MOONBOARD ->
-            com.cruxcoach.domain.board.MoonBoardVariant.fromLayoutId(layoutId)?.displayName
+            com.cruxcoach.domain.board.MoonBoardVariant.fromLayoutId(layoutKey)?.displayName
                 ?: brand.displayName
         else -> brand.displayName
     }

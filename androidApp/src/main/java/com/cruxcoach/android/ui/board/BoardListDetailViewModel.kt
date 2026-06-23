@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.data.IntensityZoneManager
 import com.cruxcoach.android.data.UserPreferences
+import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.IntensityZones
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.ClimbWithStats
@@ -21,25 +22,36 @@ import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import com.cruxcoach.android.util.safeLaunch
 
-/** One board-filter option for a list (FEAT-023): a distinct (brand, layout)
- *  present among the list's entries, with how many entries it covers. The
- *  human label is resolved in the UI layer (needs string resources +
- *  MoonBoardVariant), so only the raw identity travels in state. */
-data class BoardFilterOption(val brandWire: String, val layoutId: Long, val count: Int)
+/** One board-filter chip for a list (FEAT-023).
+ *  [layoutKey] pins a specific sub-board — Kilter Original (1) / Homewall (8),
+ *  or a MoonBoard variant layout — OR is [BoardListDetailViewModel.ANY_LAYOUT]
+ *  for a whole-brand roll-up ("all MoonBoard") and for Aurora brands (not split
+ *  by layout). [count] = entries it covers. The human label is resolved in the
+ *  UI layer (needs string resources + MoonBoardVariant). */
+data class BoardFilterOption(val brandWire: String, val layoutKey: Long, val count: Int) {
+    /** Identity match (ignores [count], which changes as the list edits). */
+    fun matchesKey(other: BoardFilterOption) =
+        brandWire == other.brandWire && layoutKey == other.layoutKey
+}
 
 data class BoardListDetailState(
     val isLoading: Boolean = true,
     val listId: Long = 0,
     val listName: String = "",
-    /** Entries currently shown — the full set narrowed by [selectedFilter]. */
+    /** Entries currently shown — the full set narrowed by [selectedFilters]. */
     val entries: List<Climb_list_entries> = emptyList(),
-    /** Total entries in the list (board-agnostic; unaffected by the filter). */
+    /** Total entries the user SAVED (board-agnostic; unaffected by the filter).
+     *  May exceed the shown set — see [unavailableCount]. */
     val totalCount: Long = 0,
-    /** Distinct boards present in the list. Empty when the list spans a single
-     *  board (no point offering a filter). FEAT-023. */
+    /** Saved entries that couldn't be resolved to a local climb (their board
+     *  catalogue isn't downloaded). Surfaced as a hint so they're never
+     *  silently hidden. */
+    val unavailableCount: Int = 0,
+    /** Distinct boards present, as filter chips (incl. brand roll-ups). Empty
+     *  when the list spans a single board (no point offering a filter). */
     val boardFilters: List<BoardFilterOption> = emptyList(),
-    /** Active board filter; null = "Alle" (every board). */
-    val selectedFilter: BoardFilterOption? = null,
+    /** Active board filters — MULTI-SELECT, union semantics. Empty = "Alle". */
+    val selectedFilters: Set<BoardFilterOption> = emptySet(),
     val angle: Int = 40,
     val gradeScale: GradeScale = GradeScale.V_SCALE,
     val zones: IntensityZones? = null
@@ -61,8 +73,8 @@ class BoardListDetailViewModel @Inject constructor(
     val state: StateFlow<BoardListDetailState> = _state.asStateFlow()
 
     /** All resolved entries, board-agnostic and unfiltered. The displayed
-     *  [BoardListDetailState.entries] is this narrowed by the active filter;
-     *  kept here so toggling the filter never re-queries the DB. */
+     *  [BoardListDetailState.entries] is this narrowed by the active filters;
+     *  kept here so toggling a filter never re-queries the DB. */
     private var allEntries: List<Climb_list_entries> = emptyList()
 
     init {
@@ -95,18 +107,24 @@ class BoardListDetailViewModel @Inject constructor(
                 val angle = _state.value.angle
                 val resolved = resolveAllEntries(angle)
                 allEntries = resolved
+                val savedCount = personalBoardRepo.countClimbListEntries(listId)
                 val filters = buildBoardFilters(resolved)
                 _state.update { s ->
-                    // Keep the active filter only if its board still exists.
-                    val sel = s.selectedFilter?.let { prev ->
-                        filters.firstOrNull { it.brandWire == prev.brandWire && it.layoutId == prev.layoutId }
-                    }
+                    // Re-map active filters onto the refreshed options (updates
+                    // counts; drops ones whose board no longer exists).
+                    val sel = s.selectedFilters
+                        .mapNotNull { prev -> filters.firstOrNull { it.matchesKey(prev) } }
+                        .toSet()
                     s.copy(
                         isLoading = false,
                         listName = list?.name ?: "",
-                        totalCount = resolved.size.toLong(),
+                        // True saved count; resolved may be smaller when an
+                        // entry's board catalogue isn't downloaded — that gap is
+                        // surfaced via unavailableCount, never silently dropped.
+                        totalCount = savedCount,
+                        unavailableCount = (savedCount - resolved.size).coerceAtLeast(0).toInt(),
                         boardFilters = filters,
-                        selectedFilter = sel,
+                        selectedFilters = sel,
                         entries = applyFilter(resolved, sel),
                     )
                 }
@@ -118,8 +136,8 @@ class BoardListDetailViewModel @Inject constructor(
      *  (board-agnostic) — never scoped to the active board. Resolves EVERY entry
      *  the device has board data for, at the active angle where available else a
      *  representative angle. Chunked to stay under SQLite's bound-parameter
-     *  limit; lists are small, so this is a one-shot load (no lazy paging — the
-     *  full set is needed for the board-filter options anyway). */
+     *  limit; lists are small, so this is a one-shot load (the full set is
+     *  needed for the filter options anyway). */
     private fun resolveAllEntries(angle: Int): List<Climb_list_entries> {
         val uuidPairs = personalBoardRepo.getClimbListEntryUuids(listId, Int.MAX_VALUE, 0)
         if (uuidPairs.isEmpty()) return emptyList()
@@ -136,29 +154,71 @@ class BoardListDetailViewModel @Inject constructor(
         }
     }
 
-    /** Distinct (brand, layout) present in the list, each with its entry count,
-     *  in first-seen order. Empty when the list spans a single board — the UI
-     *  then shows no filter row. */
+    /** Build the filter chips for the boards present. For each brand: one chip
+     *  per distinct sub-board (Kilter Original/Homewall; each MoonBoard variant;
+     *  Aurora collapses to a single per-brand chip), PLUS a brand roll-up chip
+     *  ("all MoonBoard") when that brand has more than one sub-board present.
+     *  Returns empty when the whole list is a single board (no filter needed). */
     private fun buildBoardFilters(entries: List<Climb_list_entries>): List<BoardFilterOption> {
-        val counts = LinkedHashMap<Pair<String, Long>, Int>()
+        val leafCounts = LinkedHashMap<Pair<String, Long>, Int>()
+        val brandCounts = LinkedHashMap<String, Int>()
+        val brandSubs = LinkedHashMap<String, LinkedHashSet<Long>>()
         entries.forEach { e ->
-            val key = e.climb.boardBrand to e.climb.layoutId
-            counts[key] = (counts[key] ?: 0) + 1
+            val brandWire = e.climb.boardBrand
+            val sub = filterLayoutKey(BoardBrand.fromWire(brandWire), e.climb.layoutId)
+            leafCounts[brandWire to sub] = (leafCounts[brandWire to sub] ?: 0) + 1
+            brandCounts[brandWire] = (brandCounts[brandWire] ?: 0) + 1
+            brandSubs.getOrPut(brandWire) { LinkedHashSet() }.add(sub)
         }
-        if (counts.size <= 1) return emptyList()
-        return counts.map { (k, c) -> BoardFilterOption(k.first, k.second, c) }
+        if (leafCounts.size <= 1) return emptyList()
+        val out = ArrayList<BoardFilterOption>()
+        brandSubs.forEach { (brandWire, subs) ->
+            if (subs.size > 1) {
+                out.add(BoardFilterOption(brandWire, ANY_LAYOUT, brandCounts[brandWire] ?: 0))
+            }
+            subs.forEach { sub ->
+                out.add(BoardFilterOption(brandWire, sub, leafCounts[brandWire to sub] ?: 0))
+            }
+        }
+        return out
     }
 
+    /** Union semantics: an entry shows if it matches ANY selected chip. A chip
+     *  matches when its brand matches and either it's a brand roll-up
+     *  ([ANY_LAYOUT]) or its layout key equals the entry's sub-board. */
     private fun applyFilter(
-        entries: List<Climb_list_entries>, sel: BoardFilterOption?
+        entries: List<Climb_list_entries>, sel: Set<BoardFilterOption>
     ): List<Climb_list_entries> =
-        if (sel == null) entries
-        else entries.filter { it.climb.boardBrand == sel.brandWire && it.climb.layoutId == sel.layoutId }
+        if (sel.isEmpty()) entries
+        else entries.filter { e ->
+            val sub = filterLayoutKey(BoardBrand.fromWire(e.climb.boardBrand), e.climb.layoutId)
+            sel.any { opt ->
+                opt.brandWire == e.climb.boardBrand &&
+                    (opt.layoutKey == ANY_LAYOUT || opt.layoutKey == sub)
+            }
+        }
 
-    /** Set the active board filter (null = "Alle"). Re-filters the already-loaded
-     *  entries in place — no DB round-trip. */
-    fun setBoardFilter(sel: BoardFilterOption?) {
-        _state.update { it.copy(selectedFilter = sel, entries = applyFilter(allEntries, sel)) }
+    /** Filter granularity: layout matters only where it names a distinct,
+     *  user-recognisable board — Kilter Original (1) vs Homewall (8), and each
+     *  MoonBoard variant. Aurora brands (Tension TB1/TB2 etc.) have no simple
+     *  per-layout name, so they collapse to one chip per brand. */
+    private fun filterLayoutKey(brand: BoardBrand, layoutId: Long): Long = when (brand) {
+        BoardBrand.KILTER, BoardBrand.MOONBOARD -> layoutId
+        else -> ANY_LAYOUT
+    }
+
+    /** Toggle a board filter chip (multi-select union). */
+    fun toggleBoardFilter(opt: BoardFilterOption) {
+        _state.update { s ->
+            val existing = s.selectedFilters.firstOrNull { it.matchesKey(opt) }
+            val newSel = if (existing != null) s.selectedFilters - existing else s.selectedFilters + opt
+            s.copy(selectedFilters = newSel, entries = applyFilter(allEntries, newSel))
+        }
+    }
+
+    /** Clear all board filters ("Alle"). */
+    fun clearBoardFilters() {
+        _state.update { it.copy(selectedFilters = emptySet(), entries = applyFilter(allEntries, emptySet())) }
     }
 
     fun removeFromList(climbUuid: String) {
@@ -169,15 +229,16 @@ class BoardListDetailViewModel @Inject constructor(
             allEntries = allEntries.filterNot { it.climb.uuid == climbUuid }
             val filters = buildBoardFilters(allEntries)
             _state.update { s ->
-                // Drop the active filter if its board no longer has entries.
-                val sel = s.selectedFilter?.let { prev ->
-                    filters.firstOrNull { it.brandWire == prev.brandWire && it.layoutId == prev.layoutId }
-                }
+                val sel = s.selectedFilters
+                    .mapNotNull { prev -> filters.firstOrNull { it.matchesKey(prev) } }
+                    .toSet()
+                val newTotal = (s.totalCount - 1).coerceAtLeast(0)
                 s.copy(
                     entries = applyFilter(allEntries, sel),
-                    totalCount = allEntries.size.toLong(),
+                    totalCount = newTotal,
+                    unavailableCount = (newTotal - allEntries.size).coerceAtLeast(0).toInt(),
                     boardFilters = filters,
-                    selectedFilter = sel,
+                    selectedFilters = sel,
                 )
             }
         }
@@ -188,5 +249,8 @@ class BoardListDetailViewModel @Inject constructor(
         // SQLite's bound-parameter cap is 999 on older Android SQLite; chunk the
         // uuid IN-resolution well under it.
         private const val IN_CHUNK = 500
+        // Sentinel layout key for brand roll-up chips + Aurora brands; never a
+        // real layout_id. Negative so the UI can detect "whole brand".
+        const val ANY_LAYOUT = -1L
     }
 }

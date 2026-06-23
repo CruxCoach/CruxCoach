@@ -1179,6 +1179,7 @@
     <string name="board_holdsearch_filter_summary">%1$d Holds → %2$d Climbs</string>
     <string name="board_list_climb_count">%d Climbs</string>
     <string name="board_list_filter_all">All</string>
+    <string name="board_list_unavailable_count">%d not shown — board not downloaded</string>
     <string name="board_list_on_board_count">%1$d of %2$d on this board</string>
     <string name="board_list_default_name">List</string>
     <string name="board_list_empty_message">Add climbs from the browser</string>

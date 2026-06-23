@@ -7,7 +7,7 @@ A small follow-up to 0.2.0 with a few fixes and improvements.
 - **Consistent draft badge** — a climb's published/draft state now looks the same in the browser and on the detail screen.
 - **Faster first look at a newly-added board** — browsing a board right after adding it on its own is quicker.
 - **Deleted community climbs stay deleted** — even on devices that only sync via the catalogue.
-- **Lists show all your climbs** — saved lists now show every climb you added, across all boards (each with its board badge), instead of hiding the ones that aren't on your currently-selected board. If a list mixes boards, you can filter it to just one — e.g. only MoonBoard, or only a specific MoonBoard variant.
+- **Lists show all your climbs** — saved lists now show every climb you added, across all boards (each with its board badge), instead of hiding the ones that aren't on your currently-selected board. If a list mixes boards, you can filter it (multi-select) — to one or several boards at once, a whole brand (all MoonBoard), or a specific variant. Entries from a board you haven't downloaded are flagged, not hidden.
 
 ---
 
