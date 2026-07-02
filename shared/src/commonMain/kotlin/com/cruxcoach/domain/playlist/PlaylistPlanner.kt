@@ -200,7 +200,10 @@ object PlaylistPlanner {
             )
         }
         val descent = if (withDescent) {
-            ascent.dropLast(1).reversed().map { it.copy(section = PlanSection.DESCENT) }
+            // asReversed(), not reversed(): under a JDK-21 toolchain the
+            // latter can resolve to java.util.List's SequencedCollection
+            // member — NoSuchMethodError on Android API 26-34.
+            ascent.dropLast(1).asReversed().map { it.copy(section = PlanSection.DESCENT) }
         } else emptyList()
 
         val slots = mutableListOf<PlanSlot>()
