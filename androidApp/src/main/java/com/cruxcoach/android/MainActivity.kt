@@ -382,7 +382,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Extract a climb deep-link from `https://<APP_LINK_HOST>/c/<naddr>`.
+     * Extract a climb deep-link from `https://<APP_LINK_HOST>/c/<ref>`,
+     * where `<ref>` is either an naddr (community climbs) or a raw climb
+     * uuid (catalogue climbs, which have no Nostr event to reference).
      * The naddr is NIP-19 bech32 carrying (kind, pubkey, dTag);
      * CruxCoach climb d-tags follow the shape
      * `cruxcoach:climb:<pubkey-prefix>:<uuid>`. We pull the uuid out and
@@ -405,7 +407,18 @@ class MainActivity : AppCompatActivity() {
         if (data.scheme != "https" || data.host != BuildConfig.APP_LINK_HOST) return null
         val segments = data.pathSegments
         if (segments.size < 2 || segments[0] != "c") return null
-        val naddr = segments[1].takeIf { it.startsWith("naddr1") } ?: return null
+        val ref = segments[1]
+
+        // Raw-uuid form (catalogue climbs): hex-with-dashes, covers both
+        // legacy 32-hex Kilter uuids and dashed new-world uuids. Anything
+        // that isn't an naddr and doesn't look like a uuid falls through
+        // to the normal launcher path.
+        if (!ref.startsWith("naddr1")) {
+            return if (ref.matches(Regex("[0-9a-fA-F-]{8,64}"))) {
+                "board_climb_detail/$ref/40"
+            } else null
+        }
+        val naddr = ref
 
         val nAddress = runCatching {
             com.vitorpamplona.quartz.nip19Bech32.Nip19Parser.parseAll(naddr)
