@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Reorder
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -67,6 +68,7 @@ import com.cruxcoach.android.ui.theme.ErrorRed
 import com.cruxcoach.android.ui.theme.InfoBlue
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.util.GradeDisplayHelper
+import kotlinx.coroutines.launch
 
 /**
  * Ordered playlist: climb rows + rest rows, edit mode with up/down reorder,
@@ -85,6 +87,10 @@ fun PlaylistDetailScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     var menuExpanded by remember { mutableStateOf(false) }
     var showAddRestDialog by rememberSaveable { mutableStateOf(false) }
+    val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+    val snackbarHostState = remember { androidx.compose.material3.SnackbarHostState() }
+    val shareScope = androidx.compose.runtime.rememberCoroutineScope()
+    val linkCopiedMessage = stringResource(R.string.board_detail_link_copied)
 
     // Session + rest-timer notifications (Android 13+) — same fire-and-
     // forget pattern as the browser's session start.
@@ -133,6 +139,7 @@ fun PlaylistDetailScreen(
     }
 
     Scaffold(
+        snackbarHost = { androidx.compose.material3.SnackbarHost(snackbarHostState) },
         topBar = {
             Column {
                 TopAppBar(
@@ -177,6 +184,37 @@ fun PlaylistDetailScreen(
                                     showAddRestDialog = true
                                 },
                                 modifier = Modifier.testTag("playlist_add_rest"),
+                            )
+                            // Share: /l/<payload> link with the climbs +
+                            // pinned angles (rests stay local — personal
+                            // pacing). Same copy-to-clipboard UX as the
+                            // climb share.
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.board_detail_share_link)) },
+                                leadingIcon = {
+                                    Icon(Icons.Default.Share, contentDescription = null)
+                                },
+                                onClick = {
+                                    menuExpanded = false
+                                    val link = com.cruxcoach.android.util.PlaylistShareLink.build(
+                                        name = state.name,
+                                        climbs = state.entries.mapNotNull { e ->
+                                            val uuid = e.climbUuid ?: return@mapNotNull null
+                                            com.cruxcoach.android.util.PlaylistShareLink.SharedClimb(
+                                                uuid, e.angle?.toInt() ?: 40,
+                                            )
+                                        },
+                                    )
+                                    if (link != null) {
+                                        clipboardManager.setText(
+                                            androidx.compose.ui.text.AnnotatedString(link)
+                                        )
+                                        shareScope.launch {
+                                            snackbarHostState.showSnackbar(linkCopiedMessage)
+                                        }
+                                    }
+                                },
+                                modifier = Modifier.testTag("playlist_share_link"),
                             )
                         }
                     },

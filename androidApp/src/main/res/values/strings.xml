@@ -2075,4 +2075,5 @@
     <string name="playlist_default_name_limit">Max session</string>
     <string name="playlist_default_name_projecting">Project session</string>
     <string name="ble_queue_resend">Re-send queue climb to the board</string>
+    <string name="playlist_import_error">This playlist link is invalid or damaged.</string>
 </resources>

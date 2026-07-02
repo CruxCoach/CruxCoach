@@ -223,6 +223,24 @@ object CruxCoachBackup {
             for (entry in list.entries) {
                 requireUuid("climbList.entry", entry)
             }
+            require(list.kind in setOf("list", "playlist")) {
+                "invalid backup: climbList.kind=${list.kind}"
+            }
+            requireLen("climbList.generatorParams", list.generatorParams, MAX_NOTES_LEN)
+            require(list.playlistEntries.size <= MAX_COLLECTION_SIZE) {
+                "invalid backup: climbList.playlistEntries too large"
+            }
+            for (pe in list.playlistEntries) {
+                require(pe.entryType in setOf("climb", "rest")) {
+                    "invalid backup: playlistEntry.entryType=${pe.entryType}"
+                }
+                if (pe.entryType == "climb") {
+                    requireUuid("playlistEntry.climbUuid", pe.climbUuid ?: "")
+                } else {
+                    requireRange("playlistEntry.restSeconds", pe.restSeconds ?: 0L, 0L..3_600L)
+                }
+                pe.angle?.let { requireRange("playlistEntry.angle", it, 0L..90L) }
+            }
         }
 
         // v3 own-climb payload — same defence-in-depth posture as the
@@ -405,7 +423,28 @@ object CruxCoachBackup {
         val name: String,
         val isBuiltin: Boolean,
         val createdAt: String,
-        val entries: List<String> // climb UUIDs
+        // Climb UUIDs. For playlists this stays populated (climbs only, in
+        // order) so a pre-playlist app importing a newer backup still
+        // restores the membership as a plain list — graceful degradation.
+        val entries: List<String>,
+        // ── Playlist additions (0.2.1) — defaults keep old backups valid ──
+        /** 'list' | 'playlist' (climb_lists.kind). */
+        val kind: String = "list",
+        /** Generator parameter JSON snapshot (playlists only). */
+        val generatorParams: String? = null,
+        /** Full ordered entry rows incl. rests — playlists only; plain
+         *  lists keep using [entries]. */
+        val playlistEntries: List<PlaylistEntryExport> = emptyList(),
+    )
+
+    @Serializable
+    data class PlaylistEntryExport(
+        /** NULL for rest rows. */
+        val climbUuid: String? = null,
+        /** 'climb' | 'rest'. */
+        val entryType: String = "climb",
+        val restSeconds: Long? = null,
+        val angle: Long? = null,
     )
 
     /**
@@ -610,10 +649,25 @@ object CruxCoachBackup {
             val rawEntries = personalBoardRepo.getClimbListEntriesRaw()
             val entriesByList = rawEntries.groupBy { it.listId }
             personalBoardRepo.getAllClimbLists().map { list ->
+                val raw = entriesByList[list.id].orEmpty()
                 ClimbListExport(
                     name = list.name, isBuiltin = list.isBuiltin,
                     createdAt = list.createdAt,
-                    entries = entriesByList[list.id]?.mapNotNull { it.climbUuid } ?: emptyList()
+                    // Climb membership for every kind — a pre-playlist app
+                    // importing this backup restores playlists as plain lists.
+                    entries = raw.filter { it.entryType == "climb" }.mapNotNull { it.climbUuid },
+                    kind = list.kind,
+                    generatorParams = list.generatorParams,
+                    playlistEntries = if (list.kind == "playlist") {
+                        raw.sortedBy { it.position }.map { e ->
+                            PlaylistEntryExport(
+                                climbUuid = e.climbUuid,
+                                entryType = e.entryType,
+                                restSeconds = e.restSeconds,
+                                angle = e.angle,
+                            )
+                        }
+                    } else emptyList(),
                 )
             }
         } else emptyList()
@@ -940,9 +994,35 @@ object CruxCoachBackup {
             // — name-collision is rare in practice and the alternative
             // (always-additive) was already breaking idempotent re-imports.
             if (Category.CLIMB_LISTS in selectedCategories) {
-                val existingByName = personalBoardRepo.getAllClimbLists()
-                    .associate { it.name to it.id }
+                val existingLists = personalBoardRepo.getAllClimbLists()
+                val existingByName = existingLists.associate { it.name to it.id }
                 for (list in backup.climbLists) {
+                    // Playlists: name-merged like plain lists, but entries
+                    // are REPLACED (position-ordered incl. rest rows) — the
+                    // additive plain-list path can't express ordering or
+                    // duplicates, and replace keeps re-imports idempotent.
+                    if (list.kind == "playlist") {
+                        // Merge only into a same-name PLAYLIST — a plain list
+                        // sharing the name must not get its entries replaced.
+                        val existingPlaylistId = existingLists
+                            .firstOrNull { it.name == list.name && it.kind == "playlist" }?.id
+                        val playlistId = existingPlaylistId
+                            ?: personalBoardRepo.createPlaylist(list.name, list.generatorParams)
+                        if (existingPlaylistId != null) {
+                            personalBoardRepo.updateGeneratorParams(playlistId, list.generatorParams)
+                        }
+                        personalBoardRepo.replacePlaylistEntries(
+                            playlistId,
+                            list.playlistEntries.map { pe ->
+                                com.cruxcoach.data.repository.NewPlaylistEntry(
+                                    climbUuid = pe.climbUuid?.lowercase(),
+                                    angle = pe.angle,
+                                    restSeconds = pe.restSeconds,
+                                )
+                            },
+                        )
+                        continue
+                    }
                     val listId = if (list.isBuiltin) {
                         personalBoardRepo.ensureFavoritesListExists()
                     } else {

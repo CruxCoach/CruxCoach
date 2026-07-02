@@ -119,6 +119,11 @@
                 <data android:scheme="https"
                       android:host="${appLinkHost}"
                       android:pathPrefix="/c/" />
+                <!-- /l/<payload>: shared playlist import (base64url-packed
+                     name + (angle, climb-uuid) sequence). -->
+                <data android:scheme="https"
+                      android:host="${appLinkHost}"
+                      android:pathPrefix="/l/" />
             </intent-filter>
         </activity>
 

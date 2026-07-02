@@ -112,6 +112,7 @@ object Routes {
     const val PLAYLISTS = "playlists"
     const val PLAYLIST_DETAIL = "playlist_detail/{listId}"
     const val PLAYLIST_GENERATOR = "playlist_generator"
+    const val PLAYLIST_IMPORT = "playlist_import/{payload}"
     const val BOARD_MAP = "board_map"
     const val BODY_STAT = "body_stat"
     const val DATA_IMPORT = "data_import"
@@ -638,6 +639,24 @@ fun CruxCoachNavHost(
                                 launchSingleTop = true
                             }
                         },
+                    )
+                }
+            }
+
+            composable(Routes.PLAYLIST_IMPORT) {
+                com.cruxcoach.android.ui.common.ScreenErrorBoundary(
+                    screenName = "PlaylistImport",
+                    onNavigateBack = { navController.popBackStack() },
+                ) {
+                    com.cruxcoach.android.ui.playlist.PlaylistImportScreen(
+                        onImported = { listId ->
+                            navController.navigate(Routes.playlistDetail(listId)) {
+                                // Import is one-shot: back from the detail must
+                                // not re-import.
+                                popUpTo(Routes.PLAYLIST_IMPORT) { inclusive = true }
+                            }
+                        },
+                        onNavigateBack = { navController.popBackStack() },
                     )
                 }
             }

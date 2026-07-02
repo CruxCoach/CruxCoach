@@ -144,6 +144,7 @@ class MainActivity : AppCompatActivity() {
             pendingDeepLink.value = safeNavigateToRoute(intent)
                 ?: extractBoardDbDeepLink(intent)
                 ?: extractClimbAppLink(intent)
+                ?: extractPlaylistAppLink(intent)
             handleUpdaterExtras(intent)
         }
         // userPreferences injected via Hilt
@@ -315,6 +316,7 @@ class MainActivity : AppCompatActivity() {
         pendingDeepLink.value = safeNavigateToRoute(intent)
             ?: extractBoardDbDeepLink(intent)
             ?: extractClimbAppLink(intent)
+            ?: extractPlaylistAppLink(intent)
         handleUpdaterExtras(intent)
     }
 
@@ -442,6 +444,23 @@ class MainActivity : AppCompatActivity() {
         // selector if the user wants a different angle.
         val angle = 40
         return "board_climb_detail/$uuid/$angle"
+    }
+
+    /**
+     * Extract a playlist share-link from `https://<APP_LINK_HOST>/l/<payload>`.
+     * The payload is validated by [com.cruxcoach.android.util.PlaylistShareLink.parse]
+     * on the import screen; here we only shape-check (base64url charset) and
+     * route — malformed links fall through to the normal launcher path.
+     */
+    private fun extractPlaylistAppLink(intent: Intent?): String? {
+        val data = intent?.data ?: return null
+        if (data.scheme != "https" || data.host != BuildConfig.APP_LINK_HOST) return null
+        val segments = data.pathSegments
+        if (segments.size < 2 || segments[0] != "l") return null
+        val payload = segments[1]
+        if (payload.isBlank() || payload.length > 4096) return null
+        if (!payload.all { it.isLetterOrDigit() || it == '-' || it == '_' }) return null
+        return "playlist_import/${android.net.Uri.encode(payload)}"
     }
 
     private fun isAllowedLocalImportUrl(rawUrl: String): Boolean {
