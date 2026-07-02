@@ -148,7 +148,10 @@ fun SessionQueueSheet(
                         .heightIn(max = 300.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    itemsIndexed(state.queue, key = { _, item -> item.climbUuid }) { index, item ->
+                    // Composite key: playlists may hold the SAME climb several
+                    // times (limit-attempt structure) — a bare uuid key crashes
+                    // LazyColumn with "Key was already used".
+                    itemsIndexed(state.queue, key = { i, item -> "$i:${item.climbUuid}" }) { index, item ->
                         val isCurrent = index == state.currentIndex
                         val name = climbNames[item.climbUuid] ?: item.climbUuid.take(8)
 
@@ -229,8 +232,11 @@ fun SessionQueueSheet(
                                     modifier = Modifier
                                         .weight(1f)
                                         .clickable {
-                                            // Set all queue UUIDs for swipe navigation in detail screen
-                                            viewModel.climbNavState.climbUuids = state.queue.map { it.climbUuid }
+                                            // Set all queue UUIDs for swipe navigation in detail
+                                            // screen — distinct: the pager keys by uuid and a
+                                            // playlist may repeat climbs (attempt structure).
+                                            viewModel.climbNavState.climbUuids =
+                                                state.queue.map { it.climbUuid }.distinct()
                                             viewModel.climbNavState.angle = item.angle
                                             viewModel.climbNavState.source = com.cruxcoach.android.ui.navigation.ClimbNavigationSource.QUEUE
                                             onNavigateToClimb(item.climbUuid, item.angle)

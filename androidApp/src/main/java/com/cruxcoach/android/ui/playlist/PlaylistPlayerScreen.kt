@@ -256,7 +256,8 @@ fun PlaylistPlayerScreen(
                     state = state,
                     playback = playback,
                     onClimbTapped = { uuid, angle ->
-                        viewModel.climbNavState.climbUuids = playback.queue.map { it.climbUuid }
+                        viewModel.climbNavState.climbUuids =
+                            playback.queue.map { it.climbUuid }.distinct()
                         viewModel.climbNavState.angle = angle
                         viewModel.climbNavState.source = ClimbNavigationSource.QUEUE
                         onNavigateToClimb(uuid, angle)

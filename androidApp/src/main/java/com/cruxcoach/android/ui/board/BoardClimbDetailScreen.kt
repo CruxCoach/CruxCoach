@@ -127,7 +127,11 @@ fun BoardClimbDetailScreen(
     // user loses left/right swipe-paging for this screen instance,
     // but at least sees the climb they actually tapped.
     val navUuids = remember(rawNavUuids, viewModel.initialClimbUuid) {
-        if (viewModel.initialClimbUuid in rawNavUuids) rawNavUuids
+        // distinct(): the pager keys pages by uuid, and queue-sourced lists
+        // may repeat climbs (playlist attempt structure) — a duplicate key
+        // crashes the pager. Writers dedup too; this is the backstop.
+        val unique = rawNavUuids.distinct()
+        if (viewModel.initialClimbUuid in unique) unique
         else listOf(viewModel.initialClimbUuid)
     }
     val navAngle = if (navigatedFromQueue && detailQueueState.isActive && detailQueueState.queue.isNotEmpty()) {
