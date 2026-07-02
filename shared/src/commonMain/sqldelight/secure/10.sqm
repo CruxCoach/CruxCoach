@@ -1,0 +1,45 @@
+-- Migration version 10 → 11 (secure/personal DB): playlists.
+--
+-- climb_lists learns `kind` ('list' | 'playlist') and `generator_params`
+-- (JSON snapshot of the parameters a generated playlist was built from, so
+-- it can be re-generated later; NULL for manual lists/playlists).
+--
+-- climb_list_entries is rebuilt: the old (list_id, climb_uuid) PK forbids
+-- both duplicate climbs (a 4x4 power-endurance set repeats one problem 4x)
+-- and non-climb rows (rest-timer entries), so entries get a surrogate id
+-- plus `position` (explicit ordering — plain lists keep sorting by
+-- added_at, playlists order by position), `entry_type` ('climb' | 'rest'),
+-- `rest_seconds` (rest rows only) and a pinned `angle` (playlists are
+-- angle-specific; NULL for plain-list rows = "user's browse angle").
+--
+-- Existing rows: position is backfilled in added_at order (tie-broken by
+-- climb_uuid for determinism); everything is entry_type 'climb'.
+
+ALTER TABLE climb_lists ADD COLUMN kind TEXT NOT NULL DEFAULT 'list';
+ALTER TABLE climb_lists ADD COLUMN generator_params TEXT;
+
+CREATE TABLE climb_list_entries_new (
+    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    list_id INTEGER NOT NULL,
+    climb_uuid TEXT,
+    added_at TEXT NOT NULL,
+    position INTEGER NOT NULL DEFAULT 0,
+    entry_type TEXT NOT NULL DEFAULT 'climb',
+    rest_seconds INTEGER,
+    angle INTEGER
+);
+
+INSERT INTO climb_list_entries_new(list_id, climb_uuid, added_at, position, entry_type)
+SELECT e.list_id, e.climb_uuid, e.added_at,
+       (SELECT COUNT(*) FROM climb_list_entries e2
+        WHERE e2.list_id = e.list_id
+          AND (e2.added_at < e.added_at
+               OR (e2.added_at = e.added_at AND e2.climb_uuid < e.climb_uuid))),
+       'climb'
+FROM climb_list_entries e;
+
+DROP TABLE climb_list_entries;
+ALTER TABLE climb_list_entries_new RENAME TO climb_list_entries;
+
+CREATE INDEX idx_climb_list_entries_list ON climb_list_entries(list_id);
+CREATE INDEX idx_climb_list_entries_climb ON climb_list_entries(climb_uuid);

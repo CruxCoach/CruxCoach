@@ -250,11 +250,41 @@ data class Climb_lists(
     /** True only for the built-in "Ignored" list — lets the lists UI pick a
      *  distinct icon and the add-to-list dialog filter it out. */
     val isIgnored: Boolean = false,
+    /** 'list' (plain Merkliste) | 'playlist' (ordered, playable, may carry
+     *  rest entries). */
+    val kind: String = "list",
+    /** JSON snapshot of the generator parameters a generated playlist was
+     *  built from; NULL for manual lists/playlists. */
+    val generatorParams: String? = null,
 )
 
 data class Climb_list_entries(
     val addedAt: String,
     val climb: ClimbWithStats
+)
+
+/** One ordered playlist entry — either a climb (climbUuid + pinned angle)
+ *  or a rest block (restSeconds). Two-phase like plain lists: this row
+ *  carries only the uuid; climb details resolve against the BoardDB. */
+data class PlaylistEntryRow(
+    val id: Long,
+    val listId: Long,
+    val position: Long,
+    /** 'climb' | 'rest' (schema climb_list_entries.entry_type). */
+    val entryType: String,
+    val climbUuid: String?,
+    val restSeconds: Long?,
+    val angle: Long?,
+) {
+    val isRest: Boolean get() = entryType == "rest"
+}
+
+/** Insert payload for [PersonalBoardRepository.replacePlaylistEntries] /
+ *  append helpers. climbUuid == null ⇒ rest entry. */
+data class NewPlaylistEntry(
+    val climbUuid: String?,
+    val angle: Long? = null,
+    val restSeconds: Long? = null,
 )
 
 data class Board_sessions(
@@ -587,8 +617,13 @@ data class RawBid(
 
 data class RawClimbListEntry(
     val listId: Long,
-    val climbUuid: String,
-    val addedAt: String
+    /** NULL for rest entries (entry_type='rest'). */
+    val climbUuid: String?,
+    val addedAt: String,
+    val position: Long = 0,
+    val entryType: String = "climb",
+    val restSeconds: Long? = null,
+    val angle: Long? = null,
 )
 
 /**

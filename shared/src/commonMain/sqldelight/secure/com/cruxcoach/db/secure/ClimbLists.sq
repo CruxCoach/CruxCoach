@@ -10,17 +10,38 @@ CREATE TABLE climb_lists (
     -- preserve all three so a re-imported circuit keeps its identity.
     description TEXT,
     color TEXT,
-    external_id TEXT
+    external_id TEXT,
+    -- 'list' (plain Merkliste) | 'playlist' (ordered, playable, may carry
+    -- rest entries). Plain lists keep their added_at ordering; playlists
+    -- order by climb_list_entries.position.
+    kind TEXT NOT NULL DEFAULT 'list',
+    -- JSON snapshot of the generator parameters a generated playlist was
+    -- built from ("re-generate" re-runs them). NULL for manual lists.
+    generator_params TEXT
 );
 
 CREATE UNIQUE INDEX idx_climb_lists_external_id ON climb_lists(external_id)
     WHERE external_id IS NOT NULL;
 
+-- Entries carry a surrogate id (NOT a (list_id, climb_uuid) PK): playlists
+-- may repeat one climb (4x4 sets) and may hold non-climb rest rows.
+-- Plain-list dedup ("is this climb already in the list?") is enforced in
+-- the repository via isClimbInList, not by the schema.
 CREATE TABLE climb_list_entries (
+    id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
     list_id INTEGER NOT NULL,
-    climb_uuid TEXT NOT NULL,
+    -- NULL for entry_type='rest'.
+    climb_uuid TEXT,
     added_at TEXT NOT NULL,
-    PRIMARY KEY (list_id, climb_uuid)
+    -- Explicit ordering for playlists (0-based, dense after every reorder).
+    position INTEGER NOT NULL DEFAULT 0,
+    -- 'climb' | 'rest'.
+    entry_type TEXT NOT NULL DEFAULT 'climb',
+    -- Rest duration; only meaningful for entry_type='rest'.
+    rest_seconds INTEGER,
+    -- Pinned angle for playlist rows (playlists are angle-specific);
+    -- NULL for plain-list rows = "user's current browse angle".
+    angle INTEGER
 );
 
 CREATE INDEX idx_climb_list_entries_list ON climb_list_entries(list_id);
@@ -88,7 +109,7 @@ DELETE FROM climb_list_entries WHERE list_id = ?;
 -- Get UUIDs for a list page (two-phase: UUIDs from SecureDB, climb details from BoardDB)
 getClimbListEntryUuids:
 SELECT climb_uuid, added_at FROM climb_list_entries
-WHERE list_id = :list_id
+WHERE list_id = :list_id AND entry_type = 'climb' AND climb_uuid IS NOT NULL
 ORDER BY added_at DESC
 LIMIT :limit OFFSET :offset;
 
@@ -100,7 +121,8 @@ SELECT COUNT(*) FROM climb_list_entries WHERE list_id = ?;
 -- client-side to each fetched page (cross-DB — the ignored UUIDs live in
 -- the encrypted SecureDB, the browse rows in the board DB, so no JOIN).
 getAllClimbUuidsInList:
-SELECT climb_uuid FROM climb_list_entries WHERE list_id = ?;
+SELECT climb_uuid FROM climb_list_entries
+WHERE list_id = ? AND climb_uuid IS NOT NULL;
 
 getListIdsForClimb:
 SELECT list_id FROM climb_list_entries WHERE climb_uuid = ?;
@@ -111,7 +133,8 @@ SELECT COUNT(*) FROM climb_list_entries WHERE list_id = ? AND climb_uuid = ?;
 -- ═══ Export ═══
 
 getClimbListEntriesRaw:
-SELECT list_id, climb_uuid, added_at FROM climb_list_entries ORDER BY list_id, added_at;
+SELECT list_id, climb_uuid, added_at, position, entry_type, rest_seconds, angle
+FROM climb_list_entries ORDER BY list_id, position, added_at;
 
 -- ═══ Bulk operations ═══
 
@@ -120,6 +143,44 @@ DELETE FROM climb_list_entries;
 
 deleteAllClimbLists:
 DELETE FROM climb_lists;
+
+-- ═══ Playlists ═══
+-- kind='playlist' lists: explicitly ordered (position), may repeat climbs
+-- (4x4 sets) and interleave rest rows. Two-phase like plain lists: entry
+-- rows here, climb details from the BoardDB.
+
+insertPlaylist:
+INSERT INTO climb_lists(name, is_builtin, created_at, kind, generator_params)
+VALUES (?, 0, ?, 'playlist', ?);
+
+updateGeneratorParams:
+UPDATE climb_lists SET generator_params = ? WHERE id = ?;
+
+insertPlaylistClimbEntry:
+INSERT INTO climb_list_entries(list_id, climb_uuid, added_at, position, entry_type, angle)
+VALUES (?, ?, ?, ?, 'climb', ?);
+
+insertPlaylistRestEntry:
+INSERT INTO climb_list_entries(list_id, added_at, position, entry_type, rest_seconds)
+VALUES (?, ?, ?, 'rest', ?);
+
+getLastInsertedEntryId:
+SELECT last_insert_rowid();
+
+getPlaylistEntries:
+SELECT id, climb_uuid, added_at, position, entry_type, rest_seconds, angle
+FROM climb_list_entries
+WHERE list_id = ?
+ORDER BY position ASC, id ASC;
+
+deleteClimbListEntryById:
+DELETE FROM climb_list_entries WHERE id = ?;
+
+updateEntryPosition:
+UPDATE climb_list_entries SET position = ? WHERE id = ?;
+
+updateEntryRestSeconds:
+UPDATE climb_list_entries SET rest_seconds = ? WHERE id = ?;
 
 -- ═══ FEAT-005 Aurora-JSON-import — circuit upsert by external_id ═══
 

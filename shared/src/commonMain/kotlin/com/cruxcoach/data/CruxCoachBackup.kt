@@ -613,7 +613,7 @@ object CruxCoachBackup {
                 ClimbListExport(
                     name = list.name, isBuiltin = list.isBuiltin,
                     createdAt = list.createdAt,
-                    entries = entriesByList[list.id]?.map { it.climbUuid } ?: emptyList()
+                    entries = entriesByList[list.id]?.mapNotNull { it.climbUuid } ?: emptyList()
                 )
             }
         } else emptyList()

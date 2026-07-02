@@ -122,6 +122,30 @@ interface PersonalBoardRepository {
 
     fun getClimbListEntriesRaw(): List<RawClimbListEntry>
 
+    // ── Playlists (kind='playlist' climb_lists) ─────────────────
+    // Ordered, playable lists: explicit position, duplicate climbs allowed
+    // (4x4 sets), rest rows interleaved. Plain-list methods above stay
+    // added_at-ordered and untouched.
+
+    /** Creates an empty playlist; [generatorParams] is the JSON parameter
+     *  snapshot for generated playlists (null for manual ones). */
+    fun createPlaylist(name: String, generatorParams: String? = null): Long
+    fun updateGeneratorParams(listId: Long, generatorParams: String?)
+    /** Appends a climb at the end; returns the new entry id. */
+    fun addPlaylistClimb(listId: Long, climbUuid: String, angle: Long?): Long
+    /** Appends a rest block at the end; returns the new entry id. */
+    fun addPlaylistRest(listId: Long, restSeconds: Long): Long
+    /** All entries ordered by position (climbs + rests). */
+    fun getPlaylistEntries(listId: Long): List<PlaylistEntryRow>
+    fun removePlaylistEntry(entryId: Long)
+    fun updatePlaylistRestSeconds(entryId: Long, restSeconds: Long)
+    /** Moves the entry at [fromIndex] to [toIndex] (indices into the
+     *  position-ordered entry list) and re-writes dense positions. */
+    fun movePlaylistEntry(listId: Long, fromIndex: Int, toIndex: Int)
+    /** Replaces ALL entries of the playlist with [entries] in order —
+     *  the generator's snapshot write. */
+    fun replacePlaylistEntries(listId: Long, entries: List<NewPlaylistEntry>)
+
     // ── Denormalization refresh ─────────────────────────────────
 
     /** Returns all distinct (climbUuid, angle) pairs across ascents and bids. */

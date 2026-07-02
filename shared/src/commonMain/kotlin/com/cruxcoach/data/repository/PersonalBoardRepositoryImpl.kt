@@ -455,6 +455,8 @@ class PersonalBoardRepositoryImpl(
                 createdAt = row.created_at,
                 climbCount = row.climb_count,
                 isIgnored = row.external_id == IGNORED_LIST_EXTERNAL_ID,
+                kind = row.kind,
+                generatorParams = row.generator_params,
             )
         }
     }
@@ -468,6 +470,8 @@ class PersonalBoardRepositoryImpl(
                 createdAt = row.created_at,
                 climbCount = row.climb_count,
                 isIgnored = row.external_id == IGNORED_LIST_EXTERNAL_ID,
+                kind = row.kind,
+                generatorParams = row.generator_params,
             )
         }
     }
@@ -491,7 +495,15 @@ class PersonalBoardRepositoryImpl(
 
     override fun addClimbToList(listId: Long, climbUuid: String) {
         val now = DateTimeUtil.nowIso()
-        database.climbListsQueries.insertClimbListEntry(listId, climbUuid, now)
+        // Plain-list dedup moved here from the schema: entries lost their
+        // (list_id, climb_uuid) PK so playlists can repeat a climb, so the
+        // "already in list?" check must be atomic with the insert.
+        database.transaction {
+            val exists = database.climbListsQueries.isClimbInList(listId, climbUuid).executeAsOne() > 0
+            if (!exists) {
+                database.climbListsQueries.insertClimbListEntry(listId, climbUuid, now)
+            }
+        }
     }
 
     override fun removeClimbFromList(listId: Long, climbUuid: String) {
@@ -503,7 +515,7 @@ class PersonalBoardRepositoryImpl(
             list_id = listId,
             limit = limit.toLong(),
             offset = offset.toLong()
-        ).executeAsList().map { it.climb_uuid to it.added_at }
+        ).executeAsList().mapNotNull { row -> row.climb_uuid?.let { it to row.added_at } }
     }
 
     override fun countClimbListEntries(listId: Long): Long {
@@ -536,8 +548,111 @@ class PersonalBoardRepositoryImpl(
 
     override fun getClimbListEntriesRaw(): List<RawClimbListEntry> {
         return database.climbListsQueries.getClimbListEntriesRaw().executeAsList().map { row ->
-            RawClimbListEntry(listId = row.list_id, climbUuid = row.climb_uuid, addedAt = row.added_at)
+            RawClimbListEntry(
+                listId = row.list_id,
+                climbUuid = row.climb_uuid,
+                addedAt = row.added_at,
+                position = row.position,
+                entryType = row.entry_type,
+                restSeconds = row.rest_seconds,
+                angle = row.angle,
+            )
         }
+    }
+
+    // ── Playlists ───────────────────────────────────────────────
+
+    override fun createPlaylist(name: String, generatorParams: String?): Long {
+        val now = DateTimeUtil.nowIso()
+        return database.transactionWithResult {
+            database.climbListsQueries.insertPlaylist(name, now, generatorParams)
+            database.climbListsQueries.getLastInsertedListId().executeAsOne()
+        }
+    }
+
+    override fun updateGeneratorParams(listId: Long, generatorParams: String?) {
+        database.climbListsQueries.updateGeneratorParams(generatorParams, listId)
+    }
+
+    override fun addPlaylistClimb(listId: Long, climbUuid: String, angle: Long?): Long {
+        val now = DateTimeUtil.nowIso()
+        return database.transactionWithResult {
+            val next = nextPlaylistPosition(listId)
+            database.climbListsQueries.insertPlaylistClimbEntry(listId, climbUuid, now, next, angle)
+            database.climbListsQueries.getLastInsertedEntryId().executeAsOne()
+        }
+    }
+
+    override fun addPlaylistRest(listId: Long, restSeconds: Long): Long {
+        val now = DateTimeUtil.nowIso()
+        return database.transactionWithResult {
+            val next = nextPlaylistPosition(listId)
+            database.climbListsQueries.insertPlaylistRestEntry(listId, now, next, restSeconds)
+            database.climbListsQueries.getLastInsertedEntryId().executeAsOne()
+        }
+    }
+
+    override fun getPlaylistEntries(listId: Long): List<PlaylistEntryRow> {
+        return database.climbListsQueries.getPlaylistEntries(listId).executeAsList().map { row ->
+            PlaylistEntryRow(
+                id = row.id,
+                listId = listId,
+                position = row.position,
+                entryType = row.entry_type,
+                climbUuid = row.climb_uuid,
+                restSeconds = row.rest_seconds,
+                angle = row.angle,
+            )
+        }
+    }
+
+    override fun removePlaylistEntry(entryId: Long) {
+        database.climbListsQueries.deleteClimbListEntryById(entryId)
+    }
+
+    override fun updatePlaylistRestSeconds(entryId: Long, restSeconds: Long) {
+        database.climbListsQueries.updateEntryRestSeconds(restSeconds, entryId)
+    }
+
+    override fun movePlaylistEntry(listId: Long, fromIndex: Int, toIndex: Int) {
+        database.transaction {
+            val ids = database.climbListsQueries.getPlaylistEntries(listId)
+                .executeAsList().map { it.id }.toMutableList()
+            if (fromIndex !in ids.indices || toIndex !in ids.indices || fromIndex == toIndex) {
+                return@transaction
+            }
+            val moved = ids.removeAt(fromIndex)
+            ids.add(toIndex, moved)
+            // Dense re-write keeps positions gap-free so index-based moves
+            // stay trivially correct.
+            ids.forEachIndexed { index, id ->
+                database.climbListsQueries.updateEntryPosition(index.toLong(), id)
+            }
+        }
+    }
+
+    override fun replacePlaylistEntries(listId: Long, entries: List<NewPlaylistEntry>) {
+        val now = DateTimeUtil.nowIso()
+        database.transaction {
+            database.climbListsQueries.deleteClimbListEntries(listId)
+            entries.forEachIndexed { index, entry ->
+                val climbUuid = entry.climbUuid
+                if (climbUuid != null) {
+                    database.climbListsQueries.insertPlaylistClimbEntry(
+                        listId, climbUuid, now, index.toLong(), entry.angle,
+                    )
+                } else {
+                    database.climbListsQueries.insertPlaylistRestEntry(
+                        listId, now, index.toLong(), entry.restSeconds ?: 0L,
+                    )
+                }
+            }
+        }
+    }
+
+    private fun nextPlaylistPosition(listId: Long): Long {
+        val entries = database.climbListsQueries.getPlaylistEntries(listId).executeAsList()
+        return (entries.maxOfOrNull { it.position } ?: -1L) + 1L
     }
 
     // ── Ignored climbs ──────────────────────────────────────────
@@ -582,7 +697,8 @@ class PersonalBoardRepositoryImpl(
 
     override fun getIgnoredClimbUuids(): Set<String> {
         val ignoredId = ensureIgnoredListExists()
-        return database.climbListsQueries.getAllClimbUuidsInList(ignoredId).executeAsList().toSet()
+        return database.climbListsQueries.getAllClimbUuidsInList(ignoredId)
+            .executeAsList().filterNotNull().toSet()
     }
 
     // ── Denormalization refresh ─────────────────────────────────
