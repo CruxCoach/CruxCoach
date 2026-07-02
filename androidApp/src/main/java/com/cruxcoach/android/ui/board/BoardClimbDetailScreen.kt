@@ -563,15 +563,15 @@ fun BoardClimbDetailScreen(
                                     },
                                     modifier = Modifier.testTag("boarddetail_ignore_toggle"),
                                 )
-                                // Share: copy the cruxcoach.org/c/<naddr> App-Link
-                                // (the same link the climb-creator Kind-1 note uses).
-                                // Only published community climbs carry a resolvable
-                                // Nostr event behind the naddr — native Kilter
-                                // catalogue climbs have no shareable link.
+                                // Share: copy the cruxcoach.org/c/… App-Link.
+                                // Community climbs get the naddr form (the same
+                                // link the climb-creator Kind-1 note uses),
+                                // catalogue climbs the raw-uuid form — both are
+                                // parsed by MainActivity's App-Link handler.
                                 val shareClimb = state.climb
                                 val sharePubkey = shareClimb?.createdByPubkey
                                 val shareUuid = shareClimb?.uuid
-                                if (sharePubkey != null && shareUuid != null && shareClimb?.nostrEventId != null) {
+                                if (shareUuid != null) {
                                     DropdownMenuItem(
                                         text = { Text(stringResource(R.string.board_detail_share_link)) },
                                         leadingIcon = {
