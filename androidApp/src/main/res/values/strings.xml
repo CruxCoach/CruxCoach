@@ -714,8 +714,8 @@
     <string name="board_filter_type">Type</string>
     <string name="board_filter_type_boulder">Boulder</string>
     <string name="board_filter_type_routes">Routes</string>
-    <string name="board_session_connecting">Connecting to session…</string>
-    <string name="board_session_end_title">End session?</string>
+    <string name="board_session_connecting">Connecting to playlist…</string>
+    <string name="board_session_end_title">End playlist?</string>
     <string name="board_session_end_confirm">End</string>
     <string name="board_session_end_summary">Total time: %1$s\nActive: %2$s\nBreaks: %3$s\nSends: %4$d / Attempts: %5$d</string>
     <string name="board_ble_disconnect_request_title">Connection request</string>
@@ -723,7 +723,7 @@
     <string name="board_ble_disconnect_request_confirm">Release</string>
     <string name="board_ble_disconnect_request_deny">Deny</string>
     <string name="board_bt_off_title">Bluetooth disabled</string>
-    <string name="board_bt_off_message">Bluetooth is required for the active session and board connection. Please re-enable.</string>
+    <string name="board_bt_off_message">Bluetooth is required for the active playlist and board connection. Please re-enable.</string>
     <string name="board_bt_off_enable">Enable Bluetooth</string>
     <string name="board_bt_off_ignore">Ignore</string>
 
@@ -851,7 +851,7 @@
     <string name="board_ascent_comment">Comment (optional)</string>
 
     <!-- Board: Session Summary -->
-    <string name="board_session_summary_title">Session finished</string>
+    <string name="board_session_summary_title">Playlist finished</string>
     <string name="board_session_summary_attempts">Attempts</string>
     <string name="board_session_summary_hardest_send">Hardest send</string>
     <string name="board_session_summary_total_time">Total time</string>
@@ -859,7 +859,7 @@
     <string name="board_session_summary_pause_time">Rest time</string>
     <string name="board_session_summary_grade_distribution">Grade distribution</string>
     <string name="board_session_summary_intensity_zones">Intensity zones</string>
-    <string name="board_session_summary_session_type">Session type</string>
+    <string name="board_session_summary_session_type">Training type</string>
     <string name="board_session_type_warmup">Warm-Up</string>
     <string name="board_session_type_volume">Volume</string>
     <string name="board_session_type_limit">Limit</string>
@@ -875,8 +875,8 @@
     <string name="board_ble_bt_enable_button">Turn Bluetooth on</string>
     <string name="board_ble_location_disabled_title">Location services disabled</string>
     <string name="board_ble_location_disabled_message">Location services (GPS) must be enabled on this device to find Bluetooth devices.</string>
-    <string name="board_ble_session_active_title">Session active</string>
-    <string name="board_ble_session_active_message">The board is controlled by the session host. Your climbs are sent to the board via the queue.</string>
+    <string name="board_ble_session_active_title">Playlist active</string>
+    <string name="board_ble_session_active_message">The board is controlled by the playlist host. Your climbs are sent to the board via the playlist.</string>
     <string name="board_ble_legacy_warning_title">Experimental board connection</string>
     <string name="board_ble_legacy_warning_message">On Android versions before 12, the BLE connection is unstable. Connection drops may occur.</string>
     <string name="board_ble_connect_anyway">Connect anyway</string>
@@ -1148,13 +1148,13 @@
     <string name="ble_board_occupied">Board occupied</string>
     <string name="ble_board_occupied_detail">%1$d users on board</string>
     <string name="ble_climbing_now">Climbing now</string>
-    <string name="ble_end_session">End Session</string>
-    <string name="ble_leave_session">Leave Session</string>
+    <string name="ble_end_session">End playlist</string>
+    <string name="ble_leave_session">Leave playlist</string>
     <string name="ble_on_board">On Board</string>
     <string name="ble_participants">%1$d participants</string>
-    <string name="ble_queue_empty">Queue is empty</string>
-    <string name="ble_session_climb">Session climb</string>
-    <string name="ble_session_label">SESSION</string>
+    <string name="ble_queue_empty">Playlist is empty</string>
+    <string name="ble_session_climb">Playlist climb</string>
+    <string name="ble_session_label">PLAYLIST</string>
     <string name="ble_sharing_title">BLE Sharing</string>
     <string name="ble_still_visible">Still visible</string>
     <string name="ble_unknown">Unknown</string>
@@ -1238,17 +1238,17 @@
     <string name="board_playback_frame">%1$d / %2$d</string>
     <string name="board_queue_empty">Queue is empty</string>
     <string name="board_queue_empty_editor">Add climbs from the browser</string>
-    <string name="board_queue_end_session">End Session</string>
-    <string name="board_queue_leave_session">Leave Session</string>
+    <string name="board_queue_end_session">End playlist</string>
+    <string name="board_queue_leave_session">Leave playlist</string>
     <string name="board_queue_participants">Participants (%d)</string>
-    <string name="board_queue_title">Queue</string>
+    <string name="board_queue_title">Playlist</string>
     <string name="board_queue_you_host">You (Host)</string>
     <string name="board_random_climb">Random</string>
     <string name="board_rest_timer_finished">Rest finished!</string>
     <string name="board_rest_timer_ready">Ready for the next attempt!</string>
     <string name="board_rest_timer_rest">Rest</string>
     <string name="board_session_flashes">Flashes</string>
-    <string name="board_session_label">Session</string>
+    <string name="board_session_label">Playlist</string>
     <string name="board_sort_quality_sends">Sends × Quality</string>
     <string name="board_sort_random">Random</string>
     <string name="board_stats_activity">Activity</string>
@@ -2023,7 +2023,7 @@
     <string name="playlists_empty_title">No playlists yet</string>
     <string name="playlists_empty_message">Generate a training session or build a playlist by hand — the + button gets you started.</string>
     <string name="playlist_create">Create playlist</string>
-    <string name="playlist_create_generated">Generate training session</string>
+    <string name="playlist_create_generated">Generate training playlist</string>
     <string name="playlist_create_manual">Create manually</string>
     <string name="playlist_new_manual">New playlist</string>
     <string name="playlist_name_hint">Playlist name</string>
@@ -2042,18 +2042,18 @@
     <string name="playlist_rest_entry">Rest · %1$s</string>
     <string name="playlist_rest_duration">Rest duration</string>
     <string name="playlist_rest_seconds_label">Seconds</string>
-    <string name="playlist_generator_title">Session generator</string>
-    <string name="playlist_generator_type">Session type</string>
+    <string name="playlist_generator_title">Playlist generator</string>
+    <string name="playlist_generator_type">Training type</string>
     <string name="playlist_generator_duration">Duration: %1$d min</string>
-    <string name="playlist_generator_position">Where are you in your session?</string>
+    <string name="playlist_generator_position">Where are you in your training?</string>
     <string name="playlist_generator_angle">Angle: %1$d°</string>
     <string name="playlist_generator_preview">Preview</string>
     <string name="playlist_generator_generate">Generate</string>
-    <string name="playlist_generator_name_title">Name your session</string>
+    <string name="playlist_generator_name_title">Name your playlist</string>
     <string name="playlist_generator_summary">%1$d climbs · %2$d rests · ~%3$d min · %4$s–%5$s</string>
     <string name="playlist_generator_profile">Your logbook: max %1$s · flash %2$s</string>
     <string name="playlist_generator_profile_empty">No logbook data yet — grades are based on a ~V5 default. Log some climbs for personal recommendations.</string>
-    <string name="playlist_generator_downgraded">End of session: max-effort climbing is downgraded to volume — fatigued limit attempts risk injury.</string>
+    <string name="playlist_generator_downgraded">End of training: max-effort climbing is downgraded to volume — fatigued limit attempts risk injury.</string>
     <string name="playlist_generator_default_profile">Recommendations use default grades until your logbook has a few sends.</string>
     <string name="playlist_generator_error">Not enough matching climbs on this board — try a different type, angle or duration.</string>
     <string name="playlist_type_pyramid">Pyramid</string>
@@ -2068,12 +2068,12 @@
     <string name="playlist_type_projecting_desc">Work your open projects — climbs you have tried but not yet sent.</string>
     <string name="playlist_position_cold">Not warmed up</string>
     <string name="playlist_position_warm">Warmed up</string>
-    <string name="playlist_position_end">End of session</string>
-    <string name="playlist_default_name_pyramid">Pyramid session</string>
-    <string name="playlist_default_name_power_endurance">Power endurance session</string>
-    <string name="playlist_default_name_volume">Volume session</string>
-    <string name="playlist_default_name_limit">Max session</string>
-    <string name="playlist_default_name_projecting">Project session</string>
+    <string name="playlist_position_end">End of training</string>
+    <string name="playlist_default_name_pyramid">Pyramid playlist</string>
+    <string name="playlist_default_name_power_endurance">Power endurance playlist</string>
+    <string name="playlist_default_name_volume">Volume playlist</string>
+    <string name="playlist_default_name_limit">Max playlist</string>
+    <string name="playlist_default_name_projecting">Project playlist</string>
     <string name="ble_queue_resend">Re-send queue climb to the board</string>
     <string name="playlist_import_error">This playlist link is invalid or damaged.</string>
     <string name="playlist_player_title">Playlist</string>
@@ -2083,4 +2083,5 @@
     <string name="playlist_player_skip_rest">Skip rest</string>
     <string name="playlist_player_up_next">Up next</string>
     <string name="playlist_player_up_next_position">Climb %1$d of %2$d</string>
+    <string name="playlist_attempts_badge">%1$d attempts</string>
 </resources>

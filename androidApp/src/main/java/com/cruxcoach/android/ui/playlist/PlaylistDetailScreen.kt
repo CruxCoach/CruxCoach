@@ -286,45 +286,80 @@ fun PlaylistDetailScreen(
                         }
                     }
                 }
-                itemsIndexed(state.entries, key = { _, e -> e.entryId }) { index, entry ->
-                    if (entry.isRest) {
-                        RestRow(
-                            seconds = entry.restSeconds ?: 0L,
-                            editMode = state.editMode,
-                            onClick = { viewModel.showEditRest(entry.entryId) },
-                            onRemove = { viewModel.removeEntry(entry.entryId) },
-                            onMoveUp = if (index > 0) {
-                                { viewModel.moveEntry(index, index - 1) }
-                            } else null,
-                            onMoveDown = if (index < state.entries.lastIndex) {
-                                { viewModel.moveEntry(index, index + 1) }
-                            } else null,
-                            testTag = "playlist_rest_${entry.entryId}",
-                        )
-                    } else {
-                        ClimbRow(
-                            entry = entry,
-                            gradeScale = state.gradeScale,
-                            editMode = state.editMode,
-                            onClick = {
-                                val uuid = entry.climbUuid ?: return@ClimbRow
-                                if (entry.climb == null) return@ClimbRow
-                                val angle = entry.angle?.toInt() ?: 40
-                                // Pager over the playlist's resolvable climbs.
-                                viewModel.climbNavState.climbUuids =
-                                    viewModel.playableEntries().map { it.first }.distinct()
-                                viewModel.climbNavState.angle = angle
-                                viewModel.climbNavState.source = ClimbNavigationSource.LIST
-                                onNavigateToClimb(uuid, angle)
-                            },
-                            onRemove = { viewModel.removeEntry(entry.entryId) },
-                            onMoveUp = if (index > 0) {
-                                { viewModel.moveEntry(index, index - 1) }
-                            } else null,
-                            onMoveDown = if (index < state.entries.lastIndex) {
-                                { viewModel.moveEntry(index, index + 1) }
-                            } else null,
-                        )
+                if (state.editMode) {
+                    // Edit mode: every row individually (precise reorder/remove).
+                    itemsIndexed(state.entries, key = { _, e -> e.entryId }) { index, entry ->
+                        if (entry.isRest) {
+                            RestRow(
+                                seconds = entry.restSeconds ?: 0L,
+                                editMode = true,
+                                onClick = { viewModel.showEditRest(entry.entryId) },
+                                onRemove = { viewModel.removeEntry(entry.entryId) },
+                                onMoveUp = if (index > 0) {
+                                    { viewModel.moveEntry(index, index - 1) }
+                                } else null,
+                                onMoveDown = if (index < state.entries.lastIndex) {
+                                    { viewModel.moveEntry(index, index + 1) }
+                                } else null,
+                                testTag = "playlist_rest_${entry.entryId}",
+                            )
+                        } else {
+                            ClimbRow(
+                                entry = entry,
+                                gradeScale = state.gradeScale,
+                                editMode = true,
+                                attemptCount = 1,
+                                attemptRestSeconds = null,
+                                onClick = {},
+                                onRemove = { viewModel.removeEntry(entry.entryId) },
+                                onMoveUp = if (index > 0) {
+                                    { viewModel.moveEntry(index, index - 1) }
+                                } else null,
+                                onMoveDown = if (index < state.entries.lastIndex) {
+                                    { viewModel.moveEntry(index, index + 1) }
+                                } else null,
+                            )
+                        }
+                    }
+                } else {
+                    // View mode: consecutive attempts on the same climb
+                    // (limit/projecting structure) collapse into one card
+                    // with an attempt badge — 5 identical rows read as
+                    // noise, "5 Versuche · Pause 3 min" reads as a plan.
+                    val rows = groupAttempts(state.entries)
+                    itemsIndexed(rows, key = { _, r -> r.key }) { _, row ->
+                        when (row) {
+                            is PlaylistRow.Rest -> RestRow(
+                                seconds = row.entry.restSeconds ?: 0L,
+                                editMode = false,
+                                onClick = { viewModel.showEditRest(row.entry.entryId) },
+                                onRemove = {},
+                                onMoveUp = null,
+                                onMoveDown = null,
+                                testTag = "playlist_rest_${row.entry.entryId}",
+                            )
+                            is PlaylistRow.Climb -> ClimbRow(
+                                entry = row.entry,
+                                gradeScale = state.gradeScale,
+                                editMode = false,
+                                attemptCount = row.attemptCount,
+                                attemptRestSeconds = row.attemptRestSeconds,
+                                onClick = {
+                                    val uuid = row.entry.climbUuid ?: return@ClimbRow
+                                    if (row.entry.climb == null) return@ClimbRow
+                                    val angle = row.entry.angle?.toInt() ?: 40
+                                    // Pager over the playlist's resolvable climbs.
+                                    viewModel.climbNavState.climbUuids =
+                                        viewModel.playableEntries().map { it.first }.distinct()
+                                    viewModel.climbNavState.angle = angle
+                                    viewModel.climbNavState.source = ClimbNavigationSource.LIST
+                                    onNavigateToClimb(uuid, angle)
+                                },
+                                onRemove = {},
+                                onMoveUp = null,
+                                onMoveDown = null,
+                            )
+                        }
                     }
                 }
             }
@@ -332,11 +367,71 @@ fun PlaylistDetailScreen(
     }
 }
 
+/** View-mode row model: attempts on the same climb collapsed. */
+internal sealed interface PlaylistRow {
+    val key: String
+
+    data class Climb(
+        val entry: PlaylistUiEntry,
+        val attemptCount: Int,
+        /** Rest between the collapsed attempts (null when single). */
+        val attemptRestSeconds: Long?,
+    ) : PlaylistRow {
+        override val key get() = "c${entry.entryId}"
+    }
+
+    data class Rest(val entry: PlaylistUiEntry) : PlaylistRow {
+        override val key get() = "r${entry.entryId}"
+    }
+}
+
+/**
+ * Collapse runs of [climb X, rest, climb X, rest, climb X] (same uuid)
+ * into one Climb row with attemptCount=3 — the limit/projecting attempt
+ * structure. Rests BETWEEN different climbs stay as rows.
+ */
+internal fun groupAttempts(entries: List<PlaylistUiEntry>): List<PlaylistRow> {
+    val rows = mutableListOf<PlaylistRow>()
+    var i = 0
+    while (i < entries.size) {
+        val e = entries[i]
+        if (e.isRest) {
+            rows.add(PlaylistRow.Rest(e))
+            i++
+            continue
+        }
+        // Extend the run: (rest? climb-with-same-uuid)* — attempts.
+        var count = 1
+        var attemptRest: Long? = null
+        var j = i + 1
+        while (j < entries.size) {
+            val next = entries[j]
+            val afterRest = entries.getOrNull(j + 1)
+            when {
+                !next.isRest && next.climbUuid == e.climbUuid -> {
+                    count++; j++
+                }
+                next.isRest && afterRest != null && !afterRest.isRest &&
+                    afterRest.climbUuid == e.climbUuid -> {
+                    attemptRest = next.restSeconds
+                    count++; j += 2
+                }
+                else -> break
+            }
+        }
+        rows.add(PlaylistRow.Climb(e, count, if (count > 1) attemptRest else null))
+        i = j
+    }
+    return rows
+}
+
 @Composable
 private fun ClimbRow(
     entry: PlaylistUiEntry,
     gradeScale: com.cruxcoach.android.data.GradeScale,
     editMode: Boolean,
+    attemptCount: Int,
+    attemptRestSeconds: Long?,
     onClick: () -> Unit,
     onRemove: () -> Unit,
     onMoveUp: (() -> Unit)?,
@@ -382,6 +477,15 @@ private fun ClimbRow(
                     entry.angle?.let {
                         if (isNotEmpty()) append(" · ")
                         append(stringResource(R.string.playlist_angle_label, it))
+                    }
+                    if (attemptCount > 1) {
+                        if (isNotEmpty()) append(" · ")
+                        append(stringResource(R.string.playlist_attempts_badge, attemptCount))
+                        attemptRestSeconds?.let { rest ->
+                            append(" (")
+                            append(stringResource(R.string.playlist_rest_entry, formatRest(rest)))
+                            append(")")
+                        }
                     }
                 }
                 if (subtitle.isNotEmpty()) {
