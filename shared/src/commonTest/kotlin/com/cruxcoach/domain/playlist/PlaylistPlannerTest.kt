@@ -157,12 +157,17 @@ class PlaylistPlannerTest {
         // Ladder starts 5 V below max (22 − 10 = 12) and stays below max.
         assertTrue(warmUps.all { it.maxDifficulty < 22.0 })
         assertEquals(12.0, (warmUps.first().minDifficulty + warmUps.first().maxDifficulty) / 2)
-        // Transition rest after the ladder.
-        val firstRest = plan.slots.indexOfFirst { it is PlanSlot.RestSlot }
-        assertTrue(firstRest > 0)
+        // Short rests between ladder problems + the long transition rest.
+        val warmUpRests = plan.rests().filter { it.section == PlanSection.WARM_UP }
         assertEquals(
-            TrainingRanges.REST_AFTER_WARMUP,
-            (plan.slots[firstRest] as PlanSlot.RestSlot).seconds,
+            warmUps.size - 1,
+            warmUpRests.count { it.seconds == TrainingRanges.REST_WARMUP_BETWEEN_PROBLEMS },
+            "a rest between every pair of warm-up problems",
+        )
+        assertEquals(
+            1,
+            warmUpRests.count { it.seconds == TrainingRanges.REST_AFTER_WARMUP },
+            "one transition rest before the working set",
         )
         // Warm-up minutes shrink the main set: 60 → ~42 main minutes = 2 problems.
         assertEquals(

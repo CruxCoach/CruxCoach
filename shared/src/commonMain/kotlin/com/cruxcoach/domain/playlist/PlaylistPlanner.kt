@@ -99,25 +99,34 @@ object PlaylistPlanner {
     // ── Sections ────────────────────────────────────────────────
 
     /** Ladder from max − 5 V up to just below the first working grade,
-     *  1-V steps, 2 problems per tier, capped at 6 problems, then a
-     *  3–5 min transition rest. */
+     *  1-V steps, 2 problems per tier, capped at 6 problems — short rests
+     *  between the ladder problems, then a 3–5 min transition rest. */
     private fun buildWarmUpLadder(maxDiff: Double, firstWorkDiff: Double): List<PlanSlot> {
-        val slots = mutableListOf<PlanSlot>()
+        val climbs = mutableListOf<PlanSlot.ClimbSlot>()
         var tier = clampLow(maxDiff - TrainingRanges.WARMUP_START_BELOW_MAX)
         val ceiling = firstWorkDiff - TrainingRanges.DIFF_PER_V_GRADE
-        while (tier <= ceiling && slots.size < TrainingRanges.WARMUP_MAX_PROBLEMS) {
+        while (tier <= ceiling && climbs.size < TrainingRanges.WARMUP_MAX_PROBLEMS) {
             repeat(TrainingRanges.WARMUP_PROBLEMS_PER_TIER) {
-                if (slots.size < TrainingRanges.WARMUP_MAX_PROBLEMS) {
-                    slots.add(climbSlot(tier, PlanSection.WARM_UP))
+                if (climbs.size < TrainingRanges.WARMUP_MAX_PROBLEMS) {
+                    climbs.add(climbSlot(tier, PlanSection.WARM_UP))
                 }
             }
             tier += TrainingRanges.DIFF_PER_V_GRADE
         }
-        if (slots.isEmpty()) {
+        if (climbs.isEmpty()) {
             // Even a V0 climber warms up on something: one tier at the floor.
             repeat(TrainingRanges.WARMUP_PROBLEMS_PER_TIER) {
-                slots.add(climbSlot(TrainingRanges.MIN_DIFFICULTY, PlanSection.WARM_UP))
+                climbs.add(climbSlot(TrainingRanges.MIN_DIFFICULTY, PlanSection.WARM_UP))
             }
+        }
+        val slots = mutableListOf<PlanSlot>()
+        climbs.forEachIndexed { i, climb ->
+            if (i > 0) {
+                slots.add(
+                    PlanSlot.RestSlot(TrainingRanges.REST_WARMUP_BETWEEN_PROBLEMS, PlanSection.WARM_UP)
+                )
+            }
+            slots.add(climb)
         }
         slots.add(PlanSlot.RestSlot(TrainingRanges.REST_AFTER_WARMUP, PlanSection.WARM_UP))
         return slots
@@ -307,7 +316,7 @@ object PlaylistPlanner {
 fun PlaylistPlan.estimatedMinutes(): Int {
     val restSeconds = slots.filterIsInstance<PlanSlot.RestSlot>().sumOf { it.seconds }
     val climbMinutes = slots.filterIsInstance<PlanSlot.ClimbSlot>().sumOf { slot ->
-        if (slot.section == PlanSection.WARM_UP) 2.0
+        if (slot.section == PlanSection.WARM_UP) 1.5
         else when (effectiveType) {
             GeneratorType.VOLUME -> 2.5
             GeneratorType.POWER_ENDURANCE -> 1.5

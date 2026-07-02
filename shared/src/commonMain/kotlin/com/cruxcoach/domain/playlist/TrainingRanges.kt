@@ -56,6 +56,8 @@ object TrainingRanges {
 
     // ── Rests (seconds) — explicit playlist entries ─────────────
 
+    /** Between warm-up ladder problems (research: 30–90 s). */
+    const val REST_WARMUP_BETWEEN_PROBLEMS = 60
     const val REST_AFTER_WARMUP = 240
     const val REST_LIMIT_BETWEEN_ATTEMPTS = 180
     const val REST_LIMIT_BETWEEN_PROBLEMS = 300
