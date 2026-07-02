@@ -392,15 +392,17 @@ fun BoardBrowserScreen(
                 BoardSyncInlineCard(modifier = Modifier.fillMaxWidth())
             }
         } else {
-            // 2-button action bar (Session + Zufall) — only visible when no session is active
+            // 2-button action bar (Playlist + Zufall) — only visible when no playlist is running
             if (!isSessionActive && !queueState.isActive && !queueState.isConnecting) {
                 val queueLabel = stringResource(R.string.board_queue_title)
+                val playbackCoordinator = com.cruxcoach.android.ui.common.LocalPlaylistPlayback.current
                 SessionTimerBar(
                     onStart = {
                         requestNotificationPermissionIfNeeded()
-                        viewModel.startSession()
-                        queueManager.startQueue(queueLabel)
-                        viewModel.startQueueSharing()
+                        // Ad-hoc playlist: start empty as host. Stay on the
+                        // browser — that's where climbs get added; the
+                        // mini-player links to the player once it fills.
+                        playbackCoordinator.startEmpty(queueLabel)
                     },
                     onRandomClimb = { viewModel.pickRandomClimb() }
                 )

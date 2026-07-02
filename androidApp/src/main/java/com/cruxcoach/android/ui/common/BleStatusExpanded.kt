@@ -7,11 +7,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.CellTower
 import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.People
-import androidx.compose.material.icons.filled.SkipNext
-import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -21,15 +18,12 @@ import com.cruxcoach.android.R
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.data.BleShareUiState
 import com.cruxcoach.android.data.NearbySessionEntry
 import com.cruxcoach.android.data.OnBoardClimbEntry
 import com.cruxcoach.android.data.OnBoardSource
 import com.cruxcoach.android.data.OwnSessionState
-import com.cruxcoach.android.data.SessionRole
 import com.cruxcoach.android.ui.theme.OrangeAccent
-import com.cruxcoach.android.ui.theme.SuccessGreen
 
 @Composable
 internal fun BleStatusExpanded(
@@ -115,165 +109,53 @@ internal fun BleStatusExpanded(
     }
 }
 
-/** Session queue controls in the expanded view. Stop is internalized via CompositionLocals. */
+/**
+ * Running-playlist row in the expanded view — controls moved to the
+ * player screen; this is just the pointer there. Reachable only in the
+ * edge case where the sheet was already expanded when playback started
+ * (e.g. it stays open across a join).
+ */
 @Composable
 private fun SessionQueueSection(
     session: OwnSessionState,
     onAddToQueue: (() -> Unit)?,
     onOpenQueueSheet: (() -> Unit)? = null
 ) {
-    val queueManager = LocalSessionQueueManager.current
-    val gattBridge = LocalSessionGattBridge.current
-    val queueState by queueManager.state.collectAsStateWithLifecycle()
-    val isParticipant = queueState.role == SessionRole.PARTICIPANT
-
-    val boardSessionManager = LocalBoardSessionManager.current
-    val bleShareManager = LocalBleShareManager.current
-
-    // Bug 6: Internalized stop via CompositionLocals — works on every screen
-    val handleStop: () -> Unit = {
-        // Capture last queue climb BEFORE endQueue() clears it — needed for
-        // "last on board" display after session ends.
-        val lastClimb = queueManager.state.value.currentClimb
-        if (queueState.role == SessionRole.HOST) {
-            gattBridge.stopSharing()
-            queueManager.endQueue()
-        } else {
-            gattBridge.leaveSession()
-        }
-        boardSessionManager.endSession()
-        // Immediately set last climb so the chip shows what was on the board.
-        // stopSharing() also does this but with a 500ms delay (GATT sentinel).
-        if (lastClimb != null) {
-            bleShareManager.setLastClimbAfterSession(lastClimb.climbUuid, lastClimb.angle)
-        }
-    }
-
-    Column {
-        // Session header with participant count
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.AutoMirrored.Filled.QueueMusic, null, tint = OrangeAccent, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(6.dp))
+    val openPlayer = LocalOpenPlaylistPlayer.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { openPlayer() }
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(Icons.AutoMirrored.Filled.QueueMusic, null, tint = OrangeAccent, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(8.dp))
+        Column(modifier = Modifier.weight(1f)) {
             Text(
                 stringResource(R.string.ble_session_label),
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.Bold,
                 color = OrangeAccent
             )
-            if (session.participantCount > 0) {
-                Spacer(Modifier.width(8.dp))
-                Icon(Icons.Default.People, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(14.dp))
-                Spacer(Modifier.width(2.dp))
-                Text(
-                    stringResource(R.string.ble_participants, session.participantCount),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-
-        Spacer(Modifier.height(8.dp))
-
-        // Prev / Current climb + Add / Next navigation — < climb + >
-        if (session.queue.isNotEmpty()) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(
-                    onClick = { if (isParticipant) gattBridge.sendPrev() else queueManager.previousClimb() },
-                    enabled = session.currentIndex > 0,
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Icon(Icons.Default.SkipPrevious, stringResource(R.string.cd_previous), modifier = Modifier.size(22.dp))
-                }
-
-                // Climb info — tap to open queue sheet
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .then(
-                            if (onOpenQueueSheet != null) Modifier.clickable { onOpenQueueSheet() }
-                            else Modifier
-                        ),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        session.currentClimbName ?: stringResource(R.string.ble_unknown),
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    val currentClimb = session.queue.getOrNull(session.currentIndex)
-                    if (currentClimb != null) {
-                        Text(
-                            buildString {
-                                if (session.currentClimbGrade != null) append("${session.currentClimbGrade} · ")
-                                append("${currentClimb.angle}° · ${session.currentIndex + 1}/${session.queue.size}")
-                                if (onOpenQueueSheet != null) append(" ▸")
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-
-                // Add button inline (compact +)
-                if (onAddToQueue != null) {
-                    IconButton(
-                        onClick = onAddToQueue,
-                        modifier = Modifier.size(36.dp)
-                    ) {
-                        Icon(Icons.Default.Add, stringResource(R.string.cd_add), modifier = Modifier.size(22.dp), tint = OrangeAccent)
-                    }
-                }
-
-                IconButton(
-                    onClick = { if (isParticipant) gattBridge.sendNext() else queueManager.nextClimb() },
-                    enabled = session.currentIndex < session.queue.size - 1,
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Icon(Icons.Default.SkipNext, stringResource(R.string.cd_next), modifier = Modifier.size(22.dp))
-                }
-            }
-        } else {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    stringResource(R.string.ble_queue_empty),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.weight(1f)
-                )
-                if (onAddToQueue != null) {
-                    IconButton(
-                        onClick = onAddToQueue,
-                        modifier = Modifier.size(36.dp)
-                    ) {
-                        Icon(Icons.Default.Add, stringResource(R.string.cd_add), modifier = Modifier.size(22.dp), tint = OrangeAccent)
-                    }
-                }
-            }
-        }
-
-        Spacer(Modifier.height(8.dp))
-
-        // Stop/Leave button (full width, no "Boulder hinzufügen" button anymore)
-        OutlinedButton(
-            onClick = handleStop,
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp),
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
-            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
-        ) {
             Text(
-                if (session.isHost) stringResource(R.string.ble_end_session) else stringResource(R.string.ble_leave_session),
-                style = MaterialTheme.typography.labelSmall
+                buildString {
+                    append(session.currentClimbName ?: stringResource(R.string.ble_unknown))
+                    if (session.queue.isNotEmpty()) {
+                        append(" · ${session.currentIndex + 1}/${session.queue.size}")
+                    }
+                    if (session.participantCount > 1) {
+                        append(" · ")
+                        append(stringResource(R.string.ble_participants, session.participantCount))
+                    }
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
         }
+        Icon(Icons.Default.ChevronRight, stringResource(R.string.cd_open), modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

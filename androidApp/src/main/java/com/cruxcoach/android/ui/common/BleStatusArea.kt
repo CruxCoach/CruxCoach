@@ -6,6 +6,7 @@ import android.util.Log
 import com.cruxcoach.android.data.BleShareManager
 import com.cruxcoach.android.data.NearbySessionEntry
 import com.cruxcoach.android.data.OnBoardSource
+import com.cruxcoach.android.data.PlaylistPlaybackCoordinator
 import com.cruxcoach.android.data.SessionGattBridge
 import com.cruxcoach.android.data.SessionQueueManager
 import com.cruxcoach.android.data.SessionRole
@@ -28,6 +29,10 @@ val LocalSessionGattBridge = staticCompositionLocalOf<SessionGattBridge> {
 /** Opens the playlist player from anywhere (mini-player tap, join flow).
  *  Provided at NavGraph level; default no-op keeps previews harmless. */
 val LocalOpenPlaylistPlayer = staticCompositionLocalOf<() -> Unit> { {} }
+
+val LocalPlaylistPlayback = staticCompositionLocalOf<PlaylistPlaybackCoordinator> {
+    error("PlaylistPlaybackCoordinator not provided")
+}
 
 /**
  * Universal BLE status area — unified composable for BLE sharing status,
@@ -58,17 +63,13 @@ fun BleStatusArea(
     val sessionGattBridge = LocalSessionGattBridge.current
     val queueState by sessionQueueManager.state.collectAsStateWithLifecycle()
 
-    val boardSessionManager = LocalBoardSessionManager.current
+    val playback = LocalPlaylistPlayback.current
+    val openPlayer = LocalOpenPlaylistPlayer.current
     val handleJoinSession: (NearbySessionEntry) -> Unit = { sessionEntry ->
-        val device = sessionEntry.rawSession.device
-        if (device != null) {
-            boardSessionManager.startSession()
-            // Don't call startQueue() here — that sets role=HOST and causes a
-            // HOST→PARTICIPANT flicker during the 2-3s GATT connection.
-            // joinSession() will call setConnecting() immediately and
-            // setParticipantRole() once GATT connects successfully.
-            sessionGattBridge.joinSession(device)
-        }
+        // Joining lands directly in the player — it shows the connecting
+        // state and becomes the participant's home for the playlist.
+        playback.join(sessionEntry)
+        openPlayer()
     }
 
     // Suppress on-board climb on detail screen:

@@ -13,6 +13,7 @@ import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Casino
 import androidx.compose.material.icons.filled.CellTower
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Pause
@@ -128,7 +129,12 @@ internal fun BleStatusChip(
     }
 }
 
-/** Session chip with inline controls — Add/Prev/Next/Pause/Stop + session info. */
+/**
+ * Mini-player: the compact "playlist is running" line. One glance
+ * (timer, position, climb, participants), one shortcut (Next) — every
+ * other control lives in the player screen, which a tap opens. Replaces
+ * the old inline Prev/Pause/Stop strip that crowded the chip.
+ */
 @Composable
 internal fun SessionChipContent(
     session: OwnSessionState,
@@ -144,26 +150,7 @@ internal fun SessionChipContent(
 
     val sessionManager = LocalBoardSessionManager.current
     val sessionState by sessionManager.state.collectAsStateWithLifecycle()
-
-    // Bug 6: Internalized pause/stop via CompositionLocals — works on every screen
-    val handleTogglePause: () -> Unit = {
-        if (sessionState.isPaused) sessionManager.resumeSession()
-        else sessionManager.pauseSession()
-    }
-    val bleShareManager = LocalBleShareManager.current
-    val handleStop: () -> Unit = {
-        val lastClimb = queueManager.state.value.currentClimb
-        if (queueState.role == SessionRole.HOST) {
-            gattBridge.stopSharing()
-            queueManager.endQueue()
-        } else {
-            gattBridge.leaveSession()
-        }
-        sessionManager.endSession()
-        if (lastClimb != null) {
-            bleShareManager.setLastClimbAfterSession(lastClimb.climbUuid, lastClimb.angle)
-        }
-    }
+    val openPlayer = LocalOpenPlaylistPlayer.current
 
     val timerColor = when {
         !sessionState.isActive -> OrangeAccent
@@ -175,19 +162,17 @@ internal fun SessionChipContent(
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { onExpand() },
+                .clickable { openPlayer() }
+                .testTag("ble_mini_player"),
             colors = CardDefaults.cardColors(containerColor = timerColor.copy(alpha = 0.12f)),
             shape = RoundedCornerShape(0.dp)
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 4.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
+                    .padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Expand chevron — left side, away from Stop to prevent accidental taps
-                Icon(Icons.Default.ExpandMore, stringResource(R.string.cd_expand), modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(Modifier.width(4.dp))
 
                 // Timer
                 if (sessionState.isActive) {
@@ -274,14 +259,8 @@ internal fun SessionChipContent(
                     }
                 }
 
-                // Inline controls: Prev/Next/Pause/Stop
-                IconButton(
-                    onClick = { if (isParticipant) gattBridge.sendPrev() else queueManager.previousClimb() },
-                    enabled = session.currentIndex > 0,
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Icon(Icons.Default.SkipPrevious, stringResource(R.string.cd_previous), modifier = Modifier.size(22.dp))
-                }
+                // Single shortcut: Next — the one control you want at the
+                // wall without opening the player.
                 IconButton(
                     onClick = { if (isParticipant) gattBridge.sendNext() else queueManager.nextClimb() },
                     enabled = session.currentIndex < session.queue.size - 1,
@@ -289,17 +268,14 @@ internal fun SessionChipContent(
                 ) {
                     Icon(Icons.Default.SkipNext, stringResource(R.string.cd_next), modifier = Modifier.size(22.dp))
                 }
-                IconButton(onClick = handleTogglePause, modifier = Modifier.size(36.dp)) {
-                    Icon(
-                        if (sessionState.isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
-                        if (sessionState.isPaused) stringResource(R.string.cd_resume) else stringResource(R.string.cd_pause),
-                        tint = timerColor,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-                IconButton(onClick = handleStop, modifier = Modifier.size(36.dp)) {
-                    Icon(Icons.Default.Stop, stringResource(R.string.cd_stop), tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
-                }
+                // Open-player affordance.
+                Icon(
+                    Icons.Default.ChevronRight,
+                    contentDescription = stringResource(R.string.cd_open),
+                    modifier = Modifier.size(20.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.width(4.dp))
             }
         }
 

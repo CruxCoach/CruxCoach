@@ -95,9 +95,10 @@ fun PlaylistPlayerScreen(
     var showQueueSheet by remember { mutableStateOf(false) }
 
     // Playlist ended elsewhere (host stopped, migration failed) and no
-    // summary pending → leave the player.
-    LaunchedEffect(playback.isActive, state.finishedSession) {
-        if (!playback.isActive && state.finishedSession == null) {
+    // summary pending → leave the player. isConnecting covers the join
+    // flow: the player opens while GATT is still connecting.
+    LaunchedEffect(playback.isActive, playback.isConnecting, state.finishedSession) {
+        if (!playback.isActive && !playback.isConnecting && state.finishedSession == null) {
             onNavigateBack()
         }
     }
@@ -221,6 +222,23 @@ fun PlaylistPlayerScreen(
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState()),
         ) {
+            if (playback.isConnecting && !playback.isActive) {
+                // Join in progress: GATT is connecting to the host.
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 96.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    CircularProgressIndicator(color = OrangeAccent)
+                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        stringResource(R.string.board_session_connecting),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                return@Column
+            }
             when (val phase = playback.phase) {
                 is PlaybackPhase.Resting -> RestingContent(
                     phase = phase,
@@ -319,8 +337,11 @@ private fun ClimbingContent(
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    stringResource(R.string.playlist_climb_unavailable),
+                    if (playback.queue.isEmpty()) stringResource(R.string.playlist_empty_message)
+                    else stringResource(R.string.playlist_climb_unavailable),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = 32.dp),
                 )
             }
         }
