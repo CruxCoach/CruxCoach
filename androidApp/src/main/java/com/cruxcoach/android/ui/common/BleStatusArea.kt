@@ -25,6 +25,10 @@ val LocalSessionGattBridge = staticCompositionLocalOf<SessionGattBridge> {
     error("SessionGattBridge not provided")
 }
 
+/** Opens the playlist player from anywhere (mini-player tap, join flow).
+ *  Provided at NavGraph level; default no-op keeps previews harmless. */
+val LocalOpenPlaylistPlayer = staticCompositionLocalOf<() -> Unit> { {} }
+
 /**
  * Universal BLE status area — unified composable for BLE sharing status,
  * session controls, and nearby climb information.

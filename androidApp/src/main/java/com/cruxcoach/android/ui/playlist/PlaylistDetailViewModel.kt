@@ -51,10 +51,7 @@ class PlaylistDetailViewModel @Inject constructor(
     private val boardRepository: BoardRepository,
     private val userPreferences: UserPreferences,
     val climbNavState: com.cruxcoach.android.ui.navigation.ClimbNavigationState,
-    private val queueManager: com.cruxcoach.android.data.SessionQueueManager,
-    private val boardSessionManager: com.cruxcoach.android.data.BoardSessionManager,
-    private val gattBridge: com.cruxcoach.android.data.SessionGattBridge,
-    private val bleShareManager: com.cruxcoach.android.data.BleShareManager,
+    private val playback: com.cruxcoach.android.data.PlaylistPlaybackCoordinator,
 ) : ViewModel() {
 
     private val listId: Long = savedStateHandle.get<String>("listId")?.toLongOrNull() ?: 0L
@@ -201,17 +198,7 @@ class PlaylistDetailViewModel @Inject constructor(
             }
         }
         if (items.isEmpty()) return
-
-        boardSessionManager.startSession()
-        queueManager.onRestRequested = { seconds ->
-            boardSessionManager.startRestTimer(seconds)
-        }
-        queueManager.loadPlaylist(hostName, items)
-        // Advertise the session for nearby participants — same privacy gate
-        // as the browser's session start.
-        if (bleShareManager.uiState.value.sharingEnabled) {
-            gattBridge.startSharing()
-        }
+        playback.play(hostName, items)
     }
 
     private companion object {

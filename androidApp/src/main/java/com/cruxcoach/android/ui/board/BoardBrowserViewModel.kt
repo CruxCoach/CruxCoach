@@ -1733,42 +1733,7 @@ class BoardBrowserViewModel @Inject constructor(
                     val ascents = personalBoardRepo.getUserAscentsBetween(
                         session.startedAt, session.endedAt ?: session.startedAt
                     )
-                    val sends = ascents.filter { it.isSend }
-                    val diffs = sends.mapNotNull { it.difficultyAverage }
-                    val zones = zoneManager.zones.value
-                    val counts = diffs.groupBy { zones.classify(it) }
-
-                    val hardestSend = sends.maxByOrNull { it.difficultyAverage ?: 0.0 }
-                    val flashCount = sends.count { it.bidCount <= 1L }
-                    val uniqueClimbs = ascents.map { it.climbUuid }.distinct().size
-
-                    val gradePyramid = sends
-                        .filter { it.difficultyAverage != null }
-                        .groupBy { KilterGradeMapper.difficultyToVScale(it.difficultyAverage!!) }
-                        .map { (vGrade, list) ->
-                            BoardGradePyramidEntry(
-                                grade = GradeDisplayHelper.formatGrade(vGrade, gradeScale),
-                                count = list.size,
-                                difficultyInt = list.first().difficultyAverage!!.toInt()
-                            )
-                        }
-                        .sortedBy { it.difficultyInt }
-
-                    EnhancedSessionSummary(
-                        warmupCount = counts[IntensityZone.WARMUP]?.size ?: 0,
-                        optimalCount = counts[IntensityZone.OPTIMAL]?.size ?: 0,
-                        limitCount = counts[IntensityZone.LIMIT]?.size ?: 0,
-                        sessionType = IntensityZoneEngine.classifySession(diffs, zones),
-                        hardestSendGrade = hardestSend?.difficultyAverage?.let {
-                            GradeDisplayHelper.formatDifficulty(it, gradeScale)
-                        },
-                        hardestSendName = hardestSend?.climbName,
-                        flashCount = flashCount,
-                        totalSends = sends.size,
-                        totalAttempts = ascents.count { !it.isSend },
-                        uniqueClimbs = uniqueClimbs,
-                        gradeDistribution = gradePyramid
-                    )
+                    SessionSummaryBuilder.build(ascents, zoneManager.zones.value, gradeScale)
                 }
                 _lastSessionSummary.value = summary
             }

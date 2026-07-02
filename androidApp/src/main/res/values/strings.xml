@@ -2076,4 +2076,11 @@
     <string name="playlist_default_name_projecting">Project session</string>
     <string name="ble_queue_resend">Re-send queue climb to the board</string>
     <string name="playlist_import_error">This playlist link is invalid or damaged.</string>
+    <string name="playlist_player_title">Playlist</string>
+    <string name="playlist_player_hosted_by">Playlist by %1$s</string>
+    <string name="playlist_player_progress">%1$d of %2$d · %3$s</string>
+    <string name="playlist_player_rest_title">Rest</string>
+    <string name="playlist_player_skip_rest">Skip rest</string>
+    <string name="playlist_player_up_next">Up next</string>
+    <string name="playlist_player_up_next_position">Climb %1$d of %2$d</string>
 </resources>

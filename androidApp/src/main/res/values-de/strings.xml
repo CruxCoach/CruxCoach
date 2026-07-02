@@ -2079,4 +2079,11 @@
     <string name="playlist_default_name_projecting">Projekt-Session</string>
     <string name="ble_queue_resend">Queue-Climb erneut ans Board senden</string>
     <string name="playlist_import_error">Dieser Playlist-Link ist ungültig oder beschädigt.</string>
+    <string name="playlist_player_title">Playlist</string>
+    <string name="playlist_player_hosted_by">Playlist von %1$s</string>
+    <string name="playlist_player_progress">%1$d von %2$d · %3$s</string>
+    <string name="playlist_player_rest_title">Pause</string>
+    <string name="playlist_player_skip_rest">Pause überspringen</string>
+    <string name="playlist_player_up_next">Als Nächstes</string>
+    <string name="playlist_player_up_next_position">Climb %1$d von %2$d</string>
 </resources>

@@ -44,6 +44,7 @@ import com.cruxcoach.android.data.AuroraCatalogueSync
 import com.cruxcoach.android.data.MoonBoardCatalogueSync
 import com.cruxcoach.android.data.blossom.BlossomSyncManager
 import com.cruxcoach.android.data.NearbyPresenceManager
+import com.cruxcoach.android.data.PlaylistPlaybackCoordinator
 import com.cruxcoach.android.data.SessionGattBridge
 import com.cruxcoach.android.data.SessionQueueManager
 import com.cruxcoach.android.data.SharingConfig
@@ -389,6 +390,19 @@ object AppModule {
                 userPreferences
             )
         }
+    }
+
+    @Provides
+    @Singleton
+    fun providePlaylistPlaybackCoordinator(
+        sessionQueueManager: SessionQueueManager,
+        boardSessionManager: BoardSessionManager,
+        sessionGattBridge: SessionGattBridge,
+        bleShareManager: BleShareManager,
+    ): PlaylistPlaybackCoordinator {
+        return PlaylistPlaybackCoordinator(
+            sessionQueueManager, boardSessionManager, sessionGattBridge, bleShareManager,
+        )
     }
 
     @Provides

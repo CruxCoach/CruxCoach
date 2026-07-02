@@ -65,6 +65,7 @@ import com.cruxcoach.android.ui.common.LocalBleShareManager
 import com.cruxcoach.android.ui.common.LocalBoardSessionManager
 import com.cruxcoach.android.ui.common.LocalBoardSyncManager
 import com.cruxcoach.android.ui.common.LocalNavigateToSync
+import com.cruxcoach.android.ui.common.LocalOpenPlaylistPlayer
 import com.cruxcoach.android.ui.common.LocalSessionGattBridge
 import com.cruxcoach.android.ui.common.LocalSessionQueueManager
 import com.cruxcoach.android.ui.workout.ActiveWorkoutScreen
@@ -113,6 +114,7 @@ object Routes {
     const val PLAYLIST_DETAIL = "playlist_detail/{listId}"
     const val PLAYLIST_GENERATOR = "playlist_generator"
     const val PLAYLIST_IMPORT = "playlist_import/{payload}"
+    const val PLAYLIST_PLAYER = "playlist_player"
     const val BOARD_MAP = "board_map"
     const val BODY_STAT = "body_stat"
     const val DATA_IMPORT = "data_import"
@@ -174,7 +176,7 @@ private val bottomBarRoutes = emptySet<String>()
 private val wakeLockRoutes = setOf(
     Routes.BOARD_BROWSER, Routes.BOARD_CLIMB_DETAIL, Routes.BOARD_LOGBOOK,
     Routes.BOARD_LISTS, Routes.BOARD_LIST_DETAIL, Routes.BOARD_SYNC,
-    Routes.PLAYLISTS, Routes.PLAYLIST_DETAIL,
+    Routes.PLAYLISTS, Routes.PLAYLIST_DETAIL, Routes.PLAYLIST_PLAYER,
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -257,7 +259,10 @@ fun CruxCoachNavHost(
         LocalBoardSyncManager provides startViewModel.syncManager,
         LocalSessionQueueManager provides startViewModel.queueManager,
         LocalSessionGattBridge provides startViewModel.gattBridge,
-        LocalNavigateToSync provides { navController.navigate(Routes.BOARD_SYNC) }
+        LocalNavigateToSync provides { navController.navigate(Routes.BOARD_SYNC) },
+        LocalOpenPlaylistPlayer provides {
+            navController.navigate(Routes.PLAYLIST_PLAYER) { launchSingleTop = true }
+        },
     ) {
     Scaffold(
         bottomBar = { CruxCoachBottomBar(navController) }
@@ -631,13 +636,25 @@ fun CruxCoachNavHost(
                         onNavigateToClimb = { climbUuid, angle ->
                             navController.navigate(Routes.boardClimbDetail(climbUuid, angle))
                         },
-                        // The queue UI (BleStatusArea chip, queue sheet,
-                        // session controls) lives on the browser — land there.
+                        // Play opens the dedicated player — the playlist's home.
                         onPlayed = {
-                            navController.navigate(Routes.BOARD_BROWSER) {
-                                popUpTo(Routes.BOARD_BROWSER) { inclusive = false }
+                            navController.navigate(Routes.PLAYLIST_PLAYER) {
                                 launchSingleTop = true
                             }
+                        },
+                    )
+                }
+            }
+
+            composable(Routes.PLAYLIST_PLAYER) {
+                com.cruxcoach.android.ui.common.ScreenErrorBoundary(
+                    screenName = "PlaylistPlayer",
+                    onNavigateBack = { navController.popBackStack() },
+                ) {
+                    com.cruxcoach.android.ui.playlist.PlaylistPlayerScreen(
+                        onNavigateBack = { navController.popBackStack() },
+                        onNavigateToClimb = { climbUuid, angle ->
+                            navController.navigate(Routes.boardClimbDetail(climbUuid, angle))
                         },
                     )
                 }
