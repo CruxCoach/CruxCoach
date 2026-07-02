@@ -51,6 +51,10 @@ class PlaylistDetailViewModel @Inject constructor(
     private val boardRepository: BoardRepository,
     private val userPreferences: UserPreferences,
     val climbNavState: com.cruxcoach.android.ui.navigation.ClimbNavigationState,
+    private val queueManager: com.cruxcoach.android.data.SessionQueueManager,
+    private val boardSessionManager: com.cruxcoach.android.data.BoardSessionManager,
+    private val gattBridge: com.cruxcoach.android.data.SessionGattBridge,
+    private val bleShareManager: com.cruxcoach.android.data.BleShareManager,
 ) : ViewModel() {
 
     private val listId: Long = savedStateHandle.get<String>("listId")?.toLongOrNull() ?: 0L
@@ -157,6 +161,58 @@ class PlaylistDetailViewModel @Inject constructor(
             if (e.climb == null) return@mapNotNull null
             uuid to (e.angle?.toInt() ?: 40)
         }
+
+    /**
+     * Play: playlist → session queue → board.
+     *
+     * Mirrors the browser's session-start path (BoardSessionManager timer +
+     * queue as HOST + GATT sharing when the privacy toggle allows), but
+     * bulk-loads the playlist instead of starting empty. Rest rows collapse
+     * onto their preceding climb as [QueueItem.restAfterSeconds] (summing
+     * consecutive rests) — they never enter the shared BLE queue; advancing
+     * past such a climb arms the local rest timer via [onRestRequested].
+     *
+     * Unresolvable climbs (catalogue not downloaded) are skipped — the
+     * screen already surfaces the count.
+     */
+    fun play(hostName: String) {
+        val items = buildList<com.cruxcoach.android.ble.QueueItem> {
+            var pendingRest = 0L
+            _state.value.entries.forEach { e ->
+                if (e.isRest) {
+                    pendingRest += e.restSeconds ?: 0L
+                    return@forEach
+                }
+                val uuid = e.climbUuid ?: return@forEach
+                if (e.climb == null) return@forEach
+                // A rest BEFORE a climb paces the gap after the previous
+                // climb — attach accumulated rest to the last added item.
+                if (pendingRest > 0 && isNotEmpty()) {
+                    val last = removeAt(size - 1)
+                    add(last.copy(restAfterSeconds = last.restAfterSeconds + pendingRest.toInt()))
+                }
+                pendingRest = 0L
+                add(
+                    com.cruxcoach.android.ble.QueueItem(
+                        climbUuid = uuid,
+                        angle = e.angle?.toInt() ?: 40,
+                    )
+                )
+            }
+        }
+        if (items.isEmpty()) return
+
+        boardSessionManager.startSession()
+        queueManager.onRestRequested = { seconds ->
+            boardSessionManager.startRestTimer(seconds)
+        }
+        queueManager.loadPlaylist(hostName, items)
+        // Advertise the session for nearby participants — same privacy gate
+        // as the browser's session start.
+        if (bleShareManager.uiState.value.sharingEnabled) {
+            gattBridge.startSharing()
+        }
+    }
 
     private companion object {
         const val TAG = "PlaylistDetailVM"

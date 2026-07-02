@@ -14,6 +14,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Casino
 import androidx.compose.material.icons.filled.CellTower
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.PlayArrow
@@ -28,6 +29,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import androidx.compose.ui.draw.alpha
@@ -321,8 +323,27 @@ internal fun SessionChipContent(
                         style = MaterialTheme.typography.bodySmall,
                         color = OrangeAccent,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
                     )
+                    // Someone else lit the wall — force re-send of OUR queue
+                    // climb (the dedup key would otherwise skip the resend).
+                    // Host-only: participants don't own the board link.
+                    if (!isParticipant) {
+                        IconButton(
+                            onClick = { queueManager.resendCurrentClimb() },
+                            modifier = Modifier
+                                .size(28.dp)
+                                .testTag("ble_queue_resend")
+                        ) {
+                            Icon(
+                                Icons.Default.Lightbulb,
+                                stringResource(R.string.ble_queue_resend),
+                                tint = OrangeAccent,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
                 }
             }
         }

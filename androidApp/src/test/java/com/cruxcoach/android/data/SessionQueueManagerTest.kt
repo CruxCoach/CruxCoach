@@ -602,4 +602,119 @@ class SessionQueueManagerTest {
         queueManager.applyRemoteCurrentIndex(-1) // invalid
         assertEquals(1, queueManager.state.value.currentIndex)
     }
+
+    // ===== Playlist playback (loadPlaylist + rest arming) =====
+
+    @Test
+    fun `loadPlaylist starts a host queue and marks it as playlist`() {
+        queueManager.loadPlaylist(
+            "Host",
+            listOf(QueueItem("a", 40), QueueItem("b", 40)),
+        )
+
+        val s = queueManager.state.value
+        assertEquals(SessionRole.HOST, s.role)
+        assertEquals(2, s.queue.size)
+        assertEquals(0, s.currentIndex)
+        assertTrue("playlist flag must be set", queueManager.isPlaylistQueue)
+    }
+
+    @Test
+    fun `loadPlaylist replaces an existing ad-hoc queue`() {
+        queueManager.startQueue("Host")
+        queueManager.addClimb("old", 40)
+
+        queueManager.loadPlaylist("Host", listOf(QueueItem("new", 45)))
+
+        val s = queueManager.state.value
+        assertEquals(listOf("new"), s.queue.map { it.climbUuid })
+        assertEquals(0, s.currentIndex)
+    }
+
+    @Test
+    fun `loadPlaylist with empty items is a no-op`() {
+        queueManager.loadPlaylist("Host", emptyList())
+        assertFalse(queueManager.state.value.isActive)
+        assertFalse(queueManager.isPlaylistQueue)
+    }
+
+    @Test
+    fun `nextClimb arms the rest timer for the climb it leaves`() {
+        val rests = mutableListOf<Int>()
+        queueManager.onRestRequested = { rests.add(it) }
+        queueManager.loadPlaylist(
+            "Host",
+            listOf(
+                QueueItem("a", 40, restAfterSeconds = 270),
+                QueueItem("b", 40),
+                QueueItem("c", 40, restAfterSeconds = 60),
+            ),
+        )
+        // Hook is set AFTER loadPlaylist in production (play() sets it before);
+        // re-set here because loadPlaylist doesn't clear it.
+        queueManager.onRestRequested = { rests.add(it) }
+
+        queueManager.nextClimb() // leave a (rest 270)
+        queueManager.nextClimb() // leave b (no rest)
+        queueManager.nextClimb() // at end — no-op
+
+        assertEquals(listOf(270), rests)
+        assertEquals(2, queueManager.state.value.currentIndex)
+    }
+
+    @Test
+    fun `setCurrentClimb jump does not arm the rest timer`() {
+        val rests = mutableListOf<Int>()
+        queueManager.loadPlaylist(
+            "Host",
+            listOf(
+                QueueItem("a", 40, restAfterSeconds = 300),
+                QueueItem("b", 40),
+                QueueItem("c", 40),
+            ),
+        )
+        queueManager.onRestRequested = { rests.add(it) }
+
+        queueManager.setCurrentClimb(2) // manual jump skips pacing
+
+        assertTrue("jumping must not start a rest", rests.isEmpty())
+    }
+
+    @Test
+    fun `rest metadata follows the item through reorder`() {
+        queueManager.loadPlaylist(
+            "Host",
+            listOf(
+                QueueItem("a", 40, restAfterSeconds = 100),
+                QueueItem("b", 40),
+            ),
+        )
+
+        queueManager.moveClimb(0, 1)
+
+        val s = queueManager.state.value
+        assertEquals(listOf("b", "a"), s.queue.map { it.climbUuid })
+        assertEquals(100, s.queue[1].restAfterSeconds)
+    }
+
+    @Test
+    fun `endQueue clears playlist flag and rest hook`() {
+        queueManager.loadPlaylist("Host", listOf(QueueItem("a", 40)))
+        queueManager.onRestRequested = { }
+
+        queueManager.endQueue()
+
+        assertFalse(queueManager.isPlaylistQueue)
+        assertNull(queueManager.onRestRequested)
+    }
+
+    @Test
+    fun `addClimb during playlist keeps playlist flag`() {
+        // Participants/host may append extra climbs mid-session; the queue
+        // stays a "playlist queue" (nearby auto-import remains suppressed).
+        queueManager.loadPlaylist("Host", listOf(QueueItem("a", 40)))
+        queueManager.addClimb("extra", 40)
+        assertTrue(queueManager.isPlaylistQueue)
+        assertEquals(2, queueManager.state.value.queue.size)
+    }
 }

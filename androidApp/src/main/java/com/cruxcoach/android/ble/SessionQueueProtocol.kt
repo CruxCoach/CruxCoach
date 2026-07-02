@@ -308,5 +308,16 @@ sealed class SessionEvent {
     data class ParticipantLeft(val name: String) : SessionEvent()
 }
 
-data class QueueItem(val climbUuid: String, val angle: Int)
+/**
+ * One queue entry. [restAfterSeconds] is HOST-LOCAL playlist metadata
+ * ("rest this long after completing the climb") — it is deliberately NOT
+ * wire-encoded: the GATT frame stays 17 bytes (angle + uuid), old clients
+ * remain compatible, and rest timers are personal pacing, not shared board
+ * state. Participants (and a migrated host) therefore see 0 here.
+ */
+data class QueueItem(
+    val climbUuid: String,
+    val angle: Int,
+    val restAfterSeconds: Int = 0,
+)
 data class SessionInfo(val hostName: String, val participantCount: Int)

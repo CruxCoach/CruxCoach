@@ -179,17 +179,22 @@ class SessionGattBridge(
         // Auto-import the active/last climb from nearby devices into the queue.
         // Lets the session start with the boulder already on the board, so the other
         // user joins and immediately sees their climb as the first queue item.
-        val existingUuids = queueManager.state.value.queue.map { it.climbUuid }.toSet()
-        val nearbyToImport = nearbyScanner.nearbyClimbs.value
-            .filter { climb ->
-                !climb.connectedOnly && climb.climbUuid.isNotEmpty() && climb.climbUuid !in existingUuids
-            }
-            .sortedByDescending { it.rssi }
-        if (nearbyToImport.isNotEmpty()) {
-            Log.d(TAG, "Auto-importing ${nearbyToImport.size} nearby climb(s) into queue")
-            nearbyToImport.forEach { climb ->
-                queueManager.addClimb(climb.climbUuid, climb.angle)
-                Log.d(TAG, "Auto-added: ${climb.climbUuid.take(8)} angle=${climb.angle} isLastClimb=${climb.isLastClimb}")
+        // SKIPPED for playlist-driven queues: a generated training session is a
+        // plan — nearby strangers' climbs must not be injected into it (they
+        // stay visible in the nearby section and can be added by hand).
+        if (!queueManager.isPlaylistQueue) {
+            val existingUuids = queueManager.state.value.queue.map { it.climbUuid }.toSet()
+            val nearbyToImport = nearbyScanner.nearbyClimbs.value
+                .filter { climb ->
+                    !climb.connectedOnly && climb.climbUuid.isNotEmpty() && climb.climbUuid !in existingUuids
+                }
+                .sortedByDescending { it.rssi }
+            if (nearbyToImport.isNotEmpty()) {
+                Log.d(TAG, "Auto-importing ${nearbyToImport.size} nearby climb(s) into queue")
+                nearbyToImport.forEach { climb ->
+                    queueManager.addClimb(climb.climbUuid, climb.angle)
+                    Log.d(TAG, "Auto-added: ${climb.climbUuid.take(8)} angle=${climb.angle} isLastClimb=${climb.isLastClimb}")
+                }
             }
         }
 

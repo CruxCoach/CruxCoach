@@ -77,12 +77,31 @@ import com.cruxcoach.android.util.GradeDisplayHelper
 fun PlaylistDetailScreen(
     onNavigateBack: () -> Unit,
     onNavigateToClimb: (String, Int) -> Unit,
-    onPlay: (List<Pair<String, Int>>, String) -> Unit,
+    /** Called AFTER the playlist was loaded into the session queue — the
+     *  NavGraph navigates to the browser, where the queue UI lives. */
+    onPlayed: () -> Unit,
     viewModel: PlaylistDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var menuExpanded by remember { mutableStateOf(false) }
     var showAddRestDialog by rememberSaveable { mutableStateOf(false) }
+
+    // Session + rest-timer notifications (Android 13+) — same fire-and-
+    // forget pattern as the browser's session start.
+    val notificationPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { _ -> }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    fun requestNotificationPermissionIfNeeded() {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            val granted = androidx.core.content.ContextCompat.checkSelfPermission(
+                context, android.Manifest.permission.POST_NOTIFICATIONS
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            if (!granted) {
+                notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+    }
 
     if (state.showRenameDialog) {
         RenameDialog(
@@ -169,9 +188,14 @@ fun PlaylistDetailScreen(
         },
         floatingActionButton = {
             val playable = state.entries.any { !it.isRest && it.climb != null }
+            val hostName = stringResource(R.string.board_queue_title)
             if (playable) {
                 ExtendedFloatingActionButton(
-                    onClick = { onPlay(viewModel.playableEntries(), state.name) },
+                    onClick = {
+                        requestNotificationPermissionIfNeeded()
+                        viewModel.play(hostName)
+                        onPlayed()
+                    },
                     containerColor = OrangeAccent,
                     icon = {
                         Icon(Icons.Default.PlayArrow, contentDescription = null, tint = DarkBackground)

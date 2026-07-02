@@ -630,9 +630,14 @@ fun CruxCoachNavHost(
                         onNavigateToClimb = { climbUuid, angle ->
                             navController.navigate(Routes.boardClimbDetail(climbUuid, angle))
                         },
-                        // Play wiring lands with the session-queue integration:
-                        // playlist → queue → board send (Phase 4 of FEAT).
-                        onPlay = { _, _ -> },
+                        // The queue UI (BleStatusArea chip, queue sheet,
+                        // session controls) lives on the browser — land there.
+                        onPlayed = {
+                            navController.navigate(Routes.BOARD_BROWSER) {
+                                popUpTo(Routes.BOARD_BROWSER) { inclusive = false }
+                                launchSingleTop = true
+                            }
+                        },
                     )
                 }
             }

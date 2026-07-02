@@ -2077,4 +2077,5 @@
     <string name="playlist_default_name_volume">Volume-Session</string>
     <string name="playlist_default_name_limit">Max-Session</string>
     <string name="playlist_default_name_projecting">Projekt-Session</string>
+    <string name="ble_queue_resend">Queue-Climb erneut ans Board senden</string>
 </resources>

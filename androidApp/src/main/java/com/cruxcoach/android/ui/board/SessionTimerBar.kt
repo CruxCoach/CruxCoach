@@ -3,6 +3,7 @@ package com.cruxcoach.android.ui.board
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Shuffle
+import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -29,32 +30,33 @@ internal fun SessionTimerBar(
             .padding(horizontal = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        // TODO: re-enable Session button in a future release (multi-user BLE session feature)
-        // Surface(
-        //     onClick = onStart,
-        //     color = OrangeAccent.copy(alpha = 0.06f),
-        //     modifier = Modifier.weight(1f).testTag("board_start_session")
-        // ) {
-        //     Row(
-        //         modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-        //         horizontalArrangement = Arrangement.Center,
-        //         verticalAlignment = Alignment.CenterVertically
-        //     ) {
-        //         Icon(
-        //             Icons.Default.Timer,
-        //             contentDescription = null,
-        //             modifier = Modifier.size(20.dp),
-        //             tint = OrangeAccent
-        //         )
-        //         Spacer(modifier = Modifier.width(6.dp))
-        //         Text(
-        //             stringResource(R.string.board_session_label),
-        //             color = OrangeAccent,
-        //             style = MaterialTheme.typography.titleSmall,
-        //             fontWeight = FontWeight.Bold
-        //         )
-        //     }
-        // }
+        // Re-enabled with the playlist feature: playlists share the session
+        // queue, so the multi-user BLE session surface is live again.
+        Surface(
+            onClick = onStart,
+            color = OrangeAccent.copy(alpha = 0.06f),
+            modifier = Modifier.weight(1f).testTag("board_start_session")
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Default.Timer,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
+                    tint = OrangeAccent
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    stringResource(R.string.board_session_label),
+                    color = OrangeAccent,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
         Surface(
             onClick = onRandomClimb,
             color = OrangeAccent.copy(alpha = 0.06f),

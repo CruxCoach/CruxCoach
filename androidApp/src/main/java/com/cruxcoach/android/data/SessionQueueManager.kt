@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 enum class SessionRole { NONE, HOST, PARTICIPANT }
@@ -154,8 +155,32 @@ class SessionQueueManager(
         onParticipantsChanged = null
         onFirstQueueClimbSent = null
         remoteAddClimb = null
+        onRestRequested = null
+        isPlaylistQueue = false
         bleConnection.suppressAutoDisconnect = false
         Log.d(TAG, "endQueue(): complete, state reset to NONE")
+    }
+
+    /**
+     * Bulk-loads a playlist into the queue (replacing any existing items)
+     * and sends the first climb. Starts the queue as HOST if none is
+     * active. Rest blocks ride along as [QueueItem.restAfterSeconds] so
+     * they survive reorder/remove, and [isPlaylistQueue] suppresses the
+     * session-start nearby-climb auto-import — foreign climbs must not be
+     * injected into a planned training session.
+     */
+    fun loadPlaylist(hostName: String, items: List<QueueItem>) {
+        if (items.isEmpty()) return
+        if (!_state.value.isActive) {
+            startQueue(hostName)
+        }
+        isPlaylistQueue = true
+        lastSentClimbKey = null
+        _state.update { it.copy(queue = items, currentIndex = 0) }
+        onQueueChanged?.invoke()
+        onCurrentClimbChanged?.invoke()
+        sendCurrentClimbToBoard()
+        Log.d(TAG, "loadPlaylist: ${items.size} items, host=$hostName")
     }
 
     fun addClimb(climbUuid: String, angle: Int) {
@@ -225,7 +250,14 @@ class SessionQueueManager(
     fun nextClimb() {
         val s = _state.value
         if (s.currentIndex < s.queue.size - 1) {
+            // Playlist pacing: the climb we're leaving may carry a planned
+            // rest block — arm the rest timer on sequential advance only
+            // (jumping around via setCurrentClimb is a user override).
+            val restSeconds = s.currentClimb?.restAfterSeconds ?: 0
             setCurrentClimb(s.currentIndex + 1)
+            if (restSeconds > 0) {
+                onRestRequested?.invoke(restSeconds)
+            }
         }
     }
 
@@ -393,19 +425,47 @@ class SessionQueueManager(
      *  banner and any stale climb advertising state. Set by SessionGattBridge. */
     @Volatile var onFirstQueueClimbSent: (() -> Unit)? = null
 
+    /** Playlist rest hook: invoked with the planned rest seconds when the
+     *  queue advances past a climb carrying [QueueItem.restAfterSeconds].
+     *  Wired to BoardSessionManager.startRestTimer by the play glue. */
+    @Volatile var onRestRequested: ((Int) -> Unit)? = null
+
+    /** True while the queue content came from a playlist — suppresses the
+     *  session-start nearby-climb auto-import (SessionGattBridge). */
+    @Volatile var isPlaylistQueue: Boolean = false
+        private set
+
     /** Tracks last sent climb to prevent duplicate sends from multiple callers. */
     private var lastSentClimbKey: String? = null
 
+    /** Serializes BLE sends: rapid next/next/next queues callers up, but
+     *  each one reads the LATEST current climb when it runs and the dedup
+     *  key skips the stale ones — effectively latest-wins without ever
+     *  cancelling an in-flight GATT write. */
+    private val sendMutex = kotlinx.coroutines.sync.Mutex()
+
+    /** Force re-send of the current climb — the "board shows something
+     *  else" escape hatch (someone re-lit the wall from another device;
+     *  our dedup would otherwise skip the identical key). */
+    fun resendCurrentClimb() {
+        lastSentClimbKey = null
+        sendCurrentClimbToBoard()
+    }
+
     fun sendCurrentClimbToBoard() {
         scope.launch {
-            val item = _state.value.currentClimb ?: return@launch
-            if (bleConnection.connectionState.value != ConnectionState.CONNECTED) return@launch
+            sendMutex.withLock {
+            // Read the current climb INSIDE the lock: queued-up callers from
+            // rapid next/next taps all resolve to the newest selection and
+            // the dedup key collapses them to a single BLE write.
+            val item = _state.value.currentClimb ?: return@withLock
+            if (bleConnection.connectionState.value != ConnectionState.CONNECTED) return@withLock
 
             // Dedup: don't re-send the same climb (multiple callers can trigger this)
             val key = "${item.climbUuid}:${item.angle}"
             if (key == lastSentClimbKey) {
                 Log.d(TAG, "sendCurrentClimbToBoard: skipped dedup ${item.climbUuid.take(8)}")
-                return@launch
+                return@withLock
             }
 
             try {
@@ -462,6 +522,7 @@ class SessionQueueManager(
                 onFirstQueueClimbSent = null // fire once
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to send climb to board", e)
+            }
             }
         }
     }
