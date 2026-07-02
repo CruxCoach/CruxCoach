@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
+import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.AlertDialog
@@ -61,9 +62,17 @@ internal fun AddToListDialog(
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Icon(
-                            if (list.isBuiltin) Icons.Default.Star else Icons.AutoMirrored.Filled.PlaylistAdd,
+                            when {
+                                list.isBuiltin -> Icons.Default.Star
+                                list.kind == "playlist" -> Icons.AutoMirrored.Filled.PlaylistPlay
+                                else -> Icons.AutoMirrored.Filled.PlaylistAdd
+                            },
                             contentDescription = null,
-                            tint = if (list.isBuiltin) WarningYellow else MaterialTheme.colorScheme.onSurfaceVariant,
+                            tint = when {
+                                list.isBuiltin -> WarningYellow
+                                list.kind == "playlist" -> OrangeAccent
+                                else -> MaterialTheme.colorScheme.onSurfaceVariant
+                            },
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))

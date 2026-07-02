@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Create
 import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
+import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Bluetooth
@@ -73,6 +74,7 @@ fun BoardBrowserScreen(
     onNavigateToSync: () -> Unit = {},
     onNavigateToLogbook: () -> Unit = {},
     onNavigateToLists: () -> Unit = {},
+    onNavigateToPlaylists: () -> Unit = {},
     onNavigateToSettings: () -> Unit = {},
     onNavigateToFilter: () -> Unit = {},
     onNavigateToClimbCreator: () -> Unit = {},
@@ -325,6 +327,12 @@ fun BoardBrowserScreen(
                     modifier = Modifier.testTag("board_lists_button")
                 ) {
                     Icon(Icons.AutoMirrored.Filled.FormatListBulleted, contentDescription = stringResource(R.string.board_lists_title))
+                }
+                IconButton(
+                    onClick = onNavigateToPlaylists,
+                    modifier = Modifier.testTag("board_playlists_button")
+                ) {
+                    Icon(Icons.AutoMirrored.Filled.PlaylistPlay, contentDescription = stringResource(R.string.playlists_title))
                 }
                 IconButton(
                     onClick = onNavigateToSettings,

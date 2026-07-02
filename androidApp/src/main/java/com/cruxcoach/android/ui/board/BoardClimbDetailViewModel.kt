@@ -1257,9 +1257,20 @@ class BoardClimbDetailViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val currentlyIn = _state.value.listDialog.climbInListIds.contains(listId)
+                val isPlaylist = _state.value.listDialog.lists
+                    .firstOrNull { it.id == listId }?.kind == "playlist"
                 withContext(Dispatchers.IO) {
                     if (currentlyIn) {
+                        // For playlists this removes EVERY occurrence of the
+                        // climb (a 4x4 may hold it several times) — matching
+                        // the unchecked-checkbox expectation.
                         personalBoardRepo.removeClimbFromList(listId, currentClimbUuid)
+                    } else if (isPlaylist) {
+                        // Playlists are ordered + angle-pinned: append at the
+                        // end with the angle currently shown in the detail.
+                        personalBoardRepo.addPlaylistClimb(
+                            listId, currentClimbUuid, currentAngle.toLong(),
+                        )
                     } else {
                         personalBoardRepo.addClimbToList(listId, currentClimbUuid)
                     }

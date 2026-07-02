@@ -109,6 +109,9 @@ object Routes {
     const val BOARD_LISTS = "board_lists"
     const val BOARD_LOGBOOK_HISTORY = "board_logbook_history"
     const val BOARD_LIST_DETAIL = "board_list_detail/{listId}"
+    const val PLAYLISTS = "playlists"
+    const val PLAYLIST_DETAIL = "playlist_detail/{listId}"
+    const val PLAYLIST_GENERATOR = "playlist_generator"
     const val BOARD_MAP = "board_map"
     const val BODY_STAT = "body_stat"
     const val DATA_IMPORT = "data_import"
@@ -139,6 +142,7 @@ object Routes {
         "post_workout/$sessionId/$durationMin/$completedCount"
     fun boardClimbDetail(climbUuid: String, angle: Int) = "board_climb_detail/$climbUuid/$angle"
     fun boardListDetail(listId: Long) = "board_list_detail/$listId"
+    fun playlistDetail(listId: Long) = "playlist_detail/$listId"
     fun messageThread(eventId: String) = "message_thread/$eventId"
     fun bugReport(title: String = "", description: String = ""): String {
         val t = android.net.Uri.encode(title)
@@ -168,7 +172,8 @@ private val bottomBarRoutes = emptySet<String>()
 // Routes where screen should stay on (board tab)
 private val wakeLockRoutes = setOf(
     Routes.BOARD_BROWSER, Routes.BOARD_CLIMB_DETAIL, Routes.BOARD_LOGBOOK,
-    Routes.BOARD_LISTS, Routes.BOARD_LIST_DETAIL, Routes.BOARD_SYNC
+    Routes.BOARD_LISTS, Routes.BOARD_LIST_DETAIL, Routes.BOARD_SYNC,
+    Routes.PLAYLISTS, Routes.PLAYLIST_DETAIL,
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -435,6 +440,7 @@ fun CruxCoachNavHost(
                     onNavigateToSync = { navController.navigate(Routes.BOARD_SYNC) },
                     onNavigateToLogbook = { navController.navigate(Routes.BOARD_LOGBOOK) },
                     onNavigateToLists = { navController.navigate(Routes.BOARD_LISTS) },
+                    onNavigateToPlaylists = { navController.navigate(Routes.PLAYLISTS) },
                     onNavigateToSettings = { navController.navigate(Routes.SETTINGS) },
                     onNavigateToFilter = { navController.navigate(Routes.BOARD_FILTER) },
                     onNavigateToClimbCreator = { navController.navigate(Routes.climbCreator()) },
@@ -595,6 +601,58 @@ fun CruxCoachNavHost(
                         navController.navigate(Routes.boardClimbDetail(climbUuid, angle))
                     }
                 )
+            }
+
+            composable(Routes.PLAYLISTS) {
+                com.cruxcoach.android.ui.common.ScreenErrorBoundary(
+                    screenName = "Playlists",
+                    onNavigateBack = { navController.popBackStack() },
+                ) {
+                    com.cruxcoach.android.ui.playlist.PlaylistsScreen(
+                        onNavigateBack = { navController.popBackStack() },
+                        onNavigateToPlaylist = { listId ->
+                            navController.navigate(Routes.playlistDetail(listId))
+                        },
+                        onNavigateToGenerator = {
+                            navController.navigate(Routes.PLAYLIST_GENERATOR)
+                        },
+                    )
+                }
+            }
+
+            composable(Routes.PLAYLIST_DETAIL) {
+                com.cruxcoach.android.ui.common.ScreenErrorBoundary(
+                    screenName = "PlaylistDetail",
+                    onNavigateBack = { navController.popBackStack() },
+                ) {
+                    com.cruxcoach.android.ui.playlist.PlaylistDetailScreen(
+                        onNavigateBack = { navController.popBackStack() },
+                        onNavigateToClimb = { climbUuid, angle ->
+                            navController.navigate(Routes.boardClimbDetail(climbUuid, angle))
+                        },
+                        // Play wiring lands with the session-queue integration:
+                        // playlist → queue → board send (Phase 4 of FEAT).
+                        onPlay = { _, _ -> },
+                    )
+                }
+            }
+
+            composable(Routes.PLAYLIST_GENERATOR) {
+                com.cruxcoach.android.ui.common.ScreenErrorBoundary(
+                    screenName = "PlaylistGenerator",
+                    onNavigateBack = { navController.popBackStack() },
+                ) {
+                    com.cruxcoach.android.ui.playlist.PlaylistGeneratorScreen(
+                        onNavigateBack = { navController.popBackStack() },
+                        onNavigateToPlaylist = { listId ->
+                            navController.navigate(Routes.playlistDetail(listId)) {
+                                // Generator is a one-shot wizard: leaving it on the
+                                // back stack would re-generate on back-press.
+                                popUpTo(Routes.PLAYLISTS)
+                            }
+                        },
+                    )
+                }
             }
 
             composable(Routes.SETTINGS) {

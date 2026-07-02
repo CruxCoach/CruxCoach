@@ -48,7 +48,9 @@ class BoardListsViewModel @Inject constructor(
 
     private suspend fun refreshLists() {
         val lists = withContext(Dispatchers.IO) {
-            personalBoardRepo.getAllClimbLists()
+            // Playlists have their own screen (PlaylistsScreen); "Meine
+            // Listen" keeps showing only the plain Merklisten.
+            personalBoardRepo.getAllClimbLists().filter { it.kind == "list" }
         }
         _state.update { it.copy(lists = lists) }
     }
