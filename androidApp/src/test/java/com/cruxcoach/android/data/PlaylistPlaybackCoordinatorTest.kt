@@ -19,6 +19,7 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -63,9 +64,31 @@ class PlaylistPlaybackCoordinatorTest {
         )
     }
 
+    /** combine() funnels through internal coroutines whose resumption
+     *  isn't strictly synchronous even on the unconfined dispatcher —
+     *  poll briefly instead of racing it. */
+    private fun awaitState(
+        predicate: (PlaylistPlaybackState) -> Boolean,
+    ): PlaylistPlaybackState {
+        repeat(100) {
+            testDispatcher.scheduler.advanceUntilIdle()
+            val s = coordinator.state.value
+            if (predicate(s)) return s
+            Thread.sleep(5)
+        }
+        return coordinator.state.value
+    }
+
     @After
     fun tearDown() {
         scope.cancel()
+        // The queue manager's name-resolve collector hops through
+        // Dispatchers.IO; give that continuation a beat to observe the
+        // cancellation BEFORE resetMain(), otherwise it resumes onto a
+        // torn-down Main and leaks UncaughtExceptionsBeforeTest into
+        // whichever test runs next in this JVM (same race the
+        // SessionQueueManagerTest tearDown comment describes).
+        Thread.sleep(50)
         Dispatchers.resetMain()
     }
 
@@ -74,7 +97,7 @@ class PlaylistPlaybackCoordinatorTest {
         queueManager.loadPlaylist("Playlist", listOf(QueueItem("a", 40), QueueItem("b", 40)))
         sessionState.value = BoardSessionState(isActive = true, elapsedSeconds = 90)
 
-        val s = coordinator.state.value
+        val s = awaitState { it.isActive && it.queue.size == 2 }
         assertTrue(s.isActive)
         assertTrue(s.isHost)
         assertEquals(2, s.queue.size)
@@ -84,7 +107,7 @@ class PlaylistPlaybackCoordinatorTest {
         assertTrue(s.phase is PlaybackPhase.Climbing)
 
         restState.value = RestTimerState(isRunning = true, secondsRemaining = 120, totalSeconds = 180)
-        val resting = coordinator.state.value.phase
+        val resting = awaitState { it.isResting }.phase
         assertTrue(resting is PlaybackPhase.Resting)
         assertEquals(120, (resting as PlaybackPhase.Resting).secondsRemaining)
     }
@@ -153,5 +176,72 @@ class PlaylistPlaybackCoordinatorTest {
         coordinator.skipRest()
         verify(exactly = 1) { boardSessionManager.cancelRestTimer() }
         verify(exactly = 1) { boardSessionManager.resumeSession() }
+    }
+
+    // ── Phase-aware transport (the "next during rest" bug) ──────
+
+    @Test
+    fun `next during a rest skips the pause instead of advancing`() {
+        queueManager.loadPlaylist(
+            "Playlist",
+            listOf(QueueItem("a", 40, restAfterSeconds = 180), QueueItem("a", 40), QueueItem("b", 40)),
+        )
+        queueManager.nextClimb() // leave attempt 1 → index 1, rest armed
+        restState.value = RestTimerState(isRunning = true, secondsRemaining = 170, totalSeconds = 180)
+        awaitState { it.isResting }
+
+        coordinator.next()
+
+        // Queue must NOT move — the pause was skipped, the climb stays.
+        assertEquals(1, queueManager.state.value.currentIndex)
+        verify(exactly = 1) { boardSessionManager.cancelRestTimer() }
+    }
+
+    @Test
+    fun `previous during a rest undoes the advance`() {
+        queueManager.loadPlaylist(
+            "Playlist",
+            listOf(QueueItem("a", 40, restAfterSeconds = 180), QueueItem("b", 40)),
+        )
+        queueManager.nextClimb() // → index 1, rest armed
+        restState.value = RestTimerState(isRunning = true, secondsRemaining = 170, totalSeconds = 180)
+        awaitState { it.isResting }
+
+        coordinator.previous()
+
+        assertEquals(0, queueManager.state.value.currentIndex)
+        verify(exactly = 1) { boardSessionManager.cancelRestTimer() }
+    }
+
+    @Test
+    fun `hasNext stays true during a rest even on the last climb`() {
+        queueManager.loadPlaylist(
+            "Playlist",
+            listOf(QueueItem("a", 40, restAfterSeconds = 60), QueueItem("b", 40)),
+        )
+        queueManager.nextClimb() // → last index, rest armed
+        restState.value = RestTimerState(isRunning = true, secondsRemaining = 55, totalSeconds = 60)
+
+        assertTrue(awaitState { it.isResting }.hasNext)
+    }
+
+    // ── Attempt indicator ───────────────────────────────────────
+
+    @Test
+    fun `attemptInfo reflects position within a same-climb run`() {
+        queueManager.loadPlaylist(
+            "Playlist",
+            listOf(
+                QueueItem("a", 40), QueueItem("a", 40), QueueItem("a", 40),
+                QueueItem("b", 40),
+            ),
+        )
+        assertEquals(1 to 3, awaitState { it.currentIndex == 0 }.attemptInfo)
+        queueManager.nextClimb()
+        assertEquals(2 to 3, awaitState { it.currentIndex == 1 }.attemptInfo)
+        queueManager.nextClimb()
+        assertEquals(3 to 3, awaitState { it.currentIndex == 2 }.attemptInfo)
+        queueManager.nextClimb()
+        assertNull("single climb has no attempt chip", awaitState { it.currentIndex == 3 }.attemptInfo)
     }
 }

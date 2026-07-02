@@ -2085,6 +2085,6 @@
     <string name="playlist_player_rest_title">Pause</string>
     <string name="playlist_player_skip_rest">Pause überspringen</string>
     <string name="playlist_player_up_next">Als Nächstes</string>
-    <string name="playlist_player_up_next_position">Climb %1$d von %2$d</string>
+    <string name="playlist_player_attempt">Versuch %1$d von %2$d</string>
     <string name="playlist_attempts_badge">%1$d Versuche</string>
 </resources>

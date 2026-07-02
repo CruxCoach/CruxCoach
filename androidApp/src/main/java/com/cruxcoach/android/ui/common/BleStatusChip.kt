@@ -16,15 +16,11 @@ import androidx.compose.material.icons.filled.CellTower
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Lightbulb
-import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.People
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SignalCellular4Bar
 import androidx.compose.material.icons.filled.SignalCellularAlt
 import androidx.compose.material.icons.filled.SignalCellularAlt1Bar
 import androidx.compose.material.icons.filled.SkipNext
-import androidx.compose.material.icons.filled.SkipPrevious
-import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -42,7 +38,6 @@ import com.cruxcoach.android.data.BleShareUiState
 import com.cruxcoach.android.data.OnBoardClimbEntry
 import com.cruxcoach.android.data.OnBoardSource
 import com.cruxcoach.android.data.OwnSessionState
-import com.cruxcoach.android.data.SessionRole
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.theme.SuccessGreen
 import com.cruxcoach.android.ui.theme.WarningYellow
@@ -143,10 +138,8 @@ internal fun SessionChipContent(
     onAddToQueue: (() -> Unit)?,
     onRandomToQueue: (() -> Unit)? = null
 ) {
-    val queueManager = LocalSessionQueueManager.current
-    val gattBridge = LocalSessionGattBridge.current
-    val queueState by queueManager.state.collectAsStateWithLifecycle()
-    val isParticipant = queueState.role == SessionRole.PARTICIPANT
+    val playback = LocalPlaylistPlayback.current
+    val playbackState by playback.state.collectAsStateWithLifecycle()
 
     val sessionManager = LocalBoardSessionManager.current
     val sessionState by sessionManager.state.collectAsStateWithLifecycle()
@@ -260,10 +253,12 @@ internal fun SessionChipContent(
                 }
 
                 // Single shortcut: Next — the one control you want at the
-                // wall without opening the player.
+                // wall without opening the player. Routed through the
+                // coordinator so it stays phase-aware (skips a running
+                // rest instead of jumping past the upcoming climb).
                 IconButton(
-                    onClick = { if (isParticipant) gattBridge.sendNext() else queueManager.nextClimb() },
-                    enabled = session.currentIndex < session.queue.size - 1,
+                    onClick = { playback.next() },
+                    enabled = playbackState.hasNext,
                     modifier = Modifier.size(36.dp)
                 ) {
                     Icon(Icons.Default.SkipNext, stringResource(R.string.cd_next), modifier = Modifier.size(22.dp))
@@ -305,9 +300,9 @@ internal fun SessionChipContent(
                     // Someone else lit the wall — force re-send of OUR queue
                     // climb (the dedup key would otherwise skip the resend).
                     // Host-only: participants don't own the board link.
-                    if (!isParticipant) {
+                    if (playbackState.isHost) {
                         IconButton(
-                            onClick = { queueManager.resendCurrentClimb() },
+                            onClick = { playback.resendCurrentClimb() },
                             modifier = Modifier
                                 .size(28.dp)
                                 .testTag("ble_queue_resend")

@@ -1,6 +1,15 @@
 package com.cruxcoach.android.ui.playlist
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,7 +28,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.HourglassBottom
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
@@ -41,16 +49,20 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -61,6 +73,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
 import com.cruxcoach.android.data.LedHoldColors
 import com.cruxcoach.android.data.PlaybackPhase
+import com.cruxcoach.android.data.PlaylistPlaybackState
 import com.cruxcoach.android.ui.board.KilterBoardVisualization
 import com.cruxcoach.android.ui.board.MoonBoardVisualization
 import com.cruxcoach.android.ui.board.SessionQueueSheet
@@ -76,11 +89,13 @@ import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.MoonBoardVariant
 
 /**
- * The playlist player — the one place a running playlist lives. Shows the
- * current climb on the board, big transport controls, the rest phase as a
- * full countdown with up-next preview, participants, and the end-of-
- * playlist summary. Works identically for hosts and participants (the
- * coordinator routes controls role-aware).
+ * The playlist player — the one place a running playlist lives. Board
+ * render of the current climb, big transport controls, the rest block as
+ * a full countdown ring with up-next preview, swipe navigation, attempt
+ * indicator, participants and the summary sheet on stop. Hosts and
+ * participants get the same surface (the coordinator routes role-aware);
+ * next/prev are phase-aware: during a rest they skip/undo the pause
+ * instead of jumping past the upcoming climb.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -101,6 +116,12 @@ fun PlaylistPlayerScreen(
         if (!playback.isActive && !playback.isConnecting && state.finishedSession == null) {
             onNavigateBack()
         }
+    }
+
+    // Returning from a rest (skipped or ran out) → clear the lingering
+    // "rest finished" banner state app-wide.
+    LaunchedEffect(playback.isResting) {
+        if (!playback.isResting) viewModel.playback.acknowledgeRestFinished()
     }
 
     if (showQueueSheet && playback.isActive) {
@@ -125,86 +146,105 @@ fun PlaylistPlayerScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text(
-                            if (playback.isParticipant && playback.hostName.isNotBlank()) {
-                                stringResource(R.string.playlist_player_hosted_by, playback.hostName)
-                            } else {
-                                stringResource(R.string.playlist_player_title)
-                            },
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                        )
-                        if (playback.queue.isNotEmpty()) {
+            Column {
+                TopAppBar(
+                    title = {
+                        Column {
                             Text(
-                                stringResource(
-                                    R.string.playlist_player_progress,
-                                    playback.currentIndex + 1,
-                                    playback.queue.size,
-                                    formatElapsed(playback.elapsedSeconds),
-                                ),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                },
-                navigationIcon = {
-                    // Down-chevron semantics: the playlist keeps running.
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.Close, contentDescription = stringResource(R.string.action_close))
-                    }
-                },
-                actions = {
-                    if (playback.participantCount > 1) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                Icons.Default.People, contentDescription = null,
-                                tint = OrangeAccent, modifier = Modifier.size(18.dp),
-                            )
-                            Spacer(Modifier.width(3.dp))
-                            Text(
-                                "${playback.participantCount}",
-                                color = OrangeAccent,
+                                if (playback.isParticipant && playback.hostName.isNotBlank()) {
+                                    stringResource(R.string.playlist_player_hosted_by, playback.hostName)
+                                } else {
+                                    stringResource(R.string.playlist_player_title)
+                                },
+                                style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                             )
-                            Spacer(Modifier.width(6.dp))
+                            if (playback.queue.isNotEmpty()) {
+                                Text(
+                                    stringResource(
+                                        R.string.playlist_player_progress,
+                                        playback.currentIndex + 1,
+                                        playback.queue.size,
+                                        formatElapsed(playback.elapsedSeconds),
+                                    ),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
                         }
-                    }
-                    IconButton(onClick = { menuExpanded = true }, modifier = Modifier.testTag("player_menu")) {
-                        Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.action_more_options))
-                    }
-                    DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
-                        if (playback.isHost) {
+                    },
+                    navigationIcon = {
+                        // Close = leave the SCREEN; the playlist keeps running
+                        // (mini-player stays visible everywhere).
+                        IconButton(onClick = onNavigateBack) {
+                            Icon(Icons.Default.Close, contentDescription = stringResource(R.string.action_close))
+                        }
+                    },
+                    actions = {
+                        if (playback.participantCount > 1) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    Icons.Default.People, contentDescription = null,
+                                    tint = OrangeAccent, modifier = Modifier.size(18.dp),
+                                )
+                                Spacer(Modifier.width(3.dp))
+                                Text(
+                                    "${playback.participantCount}",
+                                    color = OrangeAccent,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                                Spacer(Modifier.width(6.dp))
+                            }
+                        }
+                        IconButton(onClick = { menuExpanded = true }, modifier = Modifier.testTag("player_menu")) {
+                            Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.action_more_options))
+                        }
+                        DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                            if (playback.isHost) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.ble_queue_resend)) },
+                                    leadingIcon = { Icon(Icons.Default.Lightbulb, contentDescription = null) },
+                                    onClick = {
+                                        menuExpanded = false
+                                        viewModel.playback.resendCurrentClimb()
+                                    },
+                                    modifier = Modifier.testTag("player_resend"),
+                                )
+                            }
                             DropdownMenuItem(
-                                text = { Text(stringResource(R.string.ble_queue_resend)) },
-                                leadingIcon = { Icon(Icons.Default.Lightbulb, contentDescription = null) },
+                                text = {
+                                    Text(
+                                        if (playback.isHost) stringResource(R.string.ble_end_session)
+                                        else stringResource(R.string.ble_leave_session),
+                                        color = MaterialTheme.colorScheme.error,
+                                    )
+                                },
                                 onClick = {
                                     menuExpanded = false
-                                    viewModel.playback.resendCurrentClimb()
+                                    viewModel.stop()
                                 },
-                                modifier = Modifier.testTag("player_resend"),
+                                modifier = Modifier.testTag("player_stop"),
                             )
                         }
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    if (playback.isHost) stringResource(R.string.ble_end_session)
-                                    else stringResource(R.string.ble_leave_session),
-                                    color = MaterialTheme.colorScheme.error,
-                                )
-                            },
-                            onClick = {
-                                menuExpanded = false
-                                viewModel.stop()
-                            },
-                            modifier = Modifier.testTag("player_stop"),
-                        )
-                    }
-                },
-            )
+                    },
+                )
+                // Spotify-style position track: how far through the playlist.
+                if (playback.queue.isNotEmpty()) {
+                    val progress by animateFloatAsState(
+                        targetValue = (playback.currentIndex + 1f) / playback.queue.size,
+                        animationSpec = tween(300),
+                        label = "playlist_progress",
+                    )
+                    LinearProgressIndicator(
+                        progress = { progress },
+                        color = OrangeAccent,
+                        trackColor = OrangeAccent.copy(alpha = 0.15f),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(3.dp),
+                    )
+                }
+            }
         },
         bottomBar = {
             PlayerControls(
@@ -239,67 +279,134 @@ fun PlaylistPlayerScreen(
                 }
                 return@Column
             }
-            when (val phase = playback.phase) {
-                is PlaybackPhase.Resting -> RestingContent(
-                    phase = phase,
-                    upNextName = playback.upNext?.let { next ->
-                        // The queue only knows the uuid; the sheet resolves
-                        // names lazily — show the plain position fallback.
-                        stringResource(
-                            R.string.playlist_player_up_next_position,
-                            playback.currentIndex + 2, playback.queue.size,
-                        )
-                    },
-                    onSkip = { viewModel.playback.skipRest() },
-                )
-                is PlaybackPhase.Climbing -> ClimbingContent(
-                    state = state,
-                    playback = playback,
-                    onClimbTapped = { uuid, angle ->
-                        viewModel.climbNavState.climbUuids =
-                            playback.queue.map { it.climbUuid }.distinct()
-                        viewModel.climbNavState.angle = angle
-                        viewModel.climbNavState.source = ClimbNavigationSource.QUEUE
-                        onNavigateToClimb(uuid, angle)
-                    },
-                )
+
+            // Animated phase/climb transitions: advancing slides left,
+            // going back slides right, entering/leaving a rest crossfades.
+            AnimatedContent(
+                targetState = PlayerContentKey(playback.currentIndex, playback.isResting),
+                transitionSpec = {
+                    when {
+                        initialState.resting != targetState.resting ->
+                            fadeIn(tween(250)) togetherWith fadeOut(tween(200))
+                        targetState.index > initialState.index ->
+                            (slideInHorizontally(tween(250)) { it / 3 } + fadeIn(tween(250))) togetherWith
+                                (slideOutHorizontally(tween(200)) { -it / 3 } + fadeOut(tween(200)))
+                        else ->
+                            (slideInHorizontally(tween(250)) { -it / 3 } + fadeIn(tween(250))) togetherWith
+                                (slideOutHorizontally(tween(200)) { it / 3 } + fadeOut(tween(200)))
+                    }
+                },
+                label = "player_content",
+            ) { key ->
+                if (key.resting) {
+                    RestingContent(
+                        playback = playback,
+                        gradeScale = state.gradeScale,
+                        onSkip = { viewModel.playback.next() },
+                    )
+                } else {
+                    ClimbingContent(
+                        state = state,
+                        playback = playback,
+                        onSwipeNext = { viewModel.playback.next() },
+                        onSwipePrevious = { viewModel.playback.previous() },
+                        onClimbTapped = { uuid, angle ->
+                            viewModel.climbNavState.climbUuids =
+                                playback.queue.map { it.climbUuid }.distinct()
+                            viewModel.climbNavState.angle = angle
+                            viewModel.climbNavState.source = ClimbNavigationSource.QUEUE
+                            onNavigateToClimb(uuid, angle)
+                        },
+                    )
+                }
             }
         }
     }
 }
 
+/** AnimatedContent key: which climb + which phase is on screen. */
+private data class PlayerContentKey(val index: Int, val resting: Boolean)
+
 @Composable
 private fun ClimbingContent(
     state: PlaylistPlayerState,
-    playback: com.cruxcoach.android.data.PlaylistPlaybackState,
+    playback: PlaylistPlaybackState,
+    onSwipeNext: () -> Unit,
+    onSwipePrevious: () -> Unit,
     onClimbTapped: (String, Int) -> Unit,
 ) {
     val render = state.render
-    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+    val density = LocalDensity.current
+    var dragTotal by remember { mutableFloatStateOf(0f) }
+    val swipeThresholdPx = with(density) { 96.dp.toPx() }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+            // Spotify-style horizontal swipe anywhere on the content.
+            .pointerInput(playback.currentIndex) {
+                detectHorizontalDragGestures(
+                    onDragStart = { dragTotal = 0f },
+                    onHorizontalDrag = { change, amount ->
+                        change.consume()
+                        dragTotal += amount
+                    },
+                    onDragEnd = {
+                        when {
+                            dragTotal <= -swipeThresholdPx && playback.hasNext -> onSwipeNext()
+                            dragTotal >= swipeThresholdPx && playback.hasPrevious -> onSwipePrevious()
+                        }
+                        dragTotal = 0f
+                    },
+                    onDragCancel = { dragTotal = 0f },
+                )
+            },
+    ) {
         Spacer(Modifier.height(8.dp))
-        // Climb header
-        Text(
-            playback.currentClimbName ?: state.render?.climb?.name
-                ?: stringResource(R.string.ble_unknown_climb),
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.testTag("player_climb_name"),
-        )
-        val subtitle = buildString {
-            (playback.currentClimbDifficulty ?: render?.climb?.difficultyAverage)?.let {
-                append(GradeDisplayHelper.formatDifficulty(it, state.gradeScale))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    playback.currentClimbName ?: render?.climb?.name
+                        ?: stringResource(R.string.ble_unknown_climb),
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.testTag("player_climb_name"),
+                )
+                val subtitle = buildString {
+                    (playback.currentClimbDifficulty ?: render?.climb?.difficultyAverage)?.let {
+                        append(GradeDisplayHelper.formatDifficulty(it, state.gradeScale))
+                    }
+                    playback.currentClimb?.let {
+                        if (isNotEmpty()) append(" · ")
+                        append("${it.angle}°")
+                    }
+                }
+                if (subtitle.isNotEmpty()) {
+                    Text(
+                        subtitle,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
-            playback.currentClimb?.let {
-                if (isNotEmpty()) append(" · ")
-                append("${it.angle}°")
+            // Attempt chip for limit/projecting runs ("Versuch 2 von 5").
+            playback.attemptInfo?.let { (attempt, total) ->
+                Surface(
+                    color = OrangeAccent.copy(alpha = 0.15f),
+                    shape = RoundedCornerShape(10.dp),
+                ) {
+                    Text(
+                        stringResource(R.string.playlist_player_attempt, attempt, total),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = OrangeAccent,
+                        modifier = Modifier
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                            .testTag("player_attempt_chip"),
+                    )
+                }
             }
-        }
-        if (subtitle.isNotEmpty()) {
-            Text(
-                subtitle,
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
         Spacer(Modifier.height(12.dp))
 
@@ -350,54 +457,67 @@ private fun ClimbingContent(
     }
 }
 
-/** Rest phase: the countdown IS the screen — big timer, progress, up-next. */
+/**
+ * Rest phase: countdown ring front and center; the up-next card shows the
+ * climb the queue is ALREADY parked on (it advanced when the rest was
+ * armed) so the climber knows what's lit on the board.
+ */
 @Composable
 private fun RestingContent(
-    phase: PlaybackPhase.Resting,
-    upNextName: String?,
+    playback: PlaylistPlaybackState,
+    gradeScale: com.cruxcoach.android.data.GradeScale,
     onSkip: () -> Unit,
 ) {
+    val phase = playback.phase as? PlaybackPhase.Resting ?: return
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 24.dp, vertical = 48.dp),
+            .padding(horizontal = 24.dp, vertical = 32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Icon(
-            Icons.Default.HourglassBottom,
-            contentDescription = null,
-            tint = InfoBlue,
-            modifier = Modifier.size(48.dp),
-        )
-        Spacer(Modifier.height(12.dp))
         Text(
             stringResource(R.string.playlist_player_rest_title),
             style = MaterialTheme.typography.titleMedium,
             color = InfoBlue,
         )
-        Spacer(Modifier.height(8.dp))
-        Text(
-            formatCountdown(phase.secondsRemaining),
-            style = MaterialTheme.typography.displayLarge,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.testTag("player_rest_countdown"),
+        Spacer(Modifier.height(20.dp))
+        // Countdown ring — animated smoothly toward the next tick.
+        val progress by animateFloatAsState(
+            targetValue = if (phase.totalSeconds <= 0) 0f
+                          else phase.secondsRemaining.toFloat() / phase.totalSeconds,
+            animationSpec = tween(500),
+            label = "rest_ring",
         )
-        Spacer(Modifier.height(16.dp))
-        LinearProgressIndicator(
-            progress = {
-                if (phase.totalSeconds <= 0) 0f
-                else 1f - phase.secondsRemaining.toFloat() / phase.totalSeconds
-            },
-            color = InfoBlue,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Spacer(Modifier.height(24.dp))
+        Box(contentAlignment = Alignment.Center) {
+            CircularProgressIndicator(
+                progress = { 1f },
+                color = InfoBlue.copy(alpha = 0.12f),
+                strokeWidth = 10.dp,
+                modifier = Modifier.size(220.dp),
+            )
+            CircularProgressIndicator(
+                progress = { progress },
+                color = InfoBlue,
+                strokeWidth = 10.dp,
+                modifier = Modifier.size(220.dp),
+            )
+            Text(
+                formatCountdown(phase.secondsRemaining),
+                style = MaterialTheme.typography.displayLarge,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.testTag("player_rest_countdown"),
+            )
+        }
+        Spacer(Modifier.height(28.dp))
+        // Up next = the CURRENT queue item (already lit on the board).
+        val upNextName = playback.currentClimbName
         if (upNextName != null) {
             Card(
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
                 ),
                 shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth(),
             ) {
                 Column(
                     modifier = Modifier.padding(16.dp).fillMaxWidth(),
@@ -408,12 +528,28 @@ private fun RestingContent(
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    Spacer(Modifier.height(2.dp))
                     Text(
-                        upNextName,
+                        buildString {
+                            append(upNextName)
+                            playback.currentClimbDifficulty?.let {
+                                append("  ")
+                                append(GradeDisplayHelper.formatDifficulty(it, gradeScale))
+                            }
+                        },
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         textAlign = TextAlign.Center,
+                        modifier = Modifier.testTag("player_up_next"),
                     )
+                    playback.attemptInfo?.let { (attempt, total) ->
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            stringResource(R.string.playlist_player_attempt, attempt, total),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = OrangeAccent,
+                        )
+                    }
                 }
             }
             Spacer(Modifier.height(24.dp))
@@ -430,12 +566,19 @@ private fun RestingContent(
 
 @Composable
 private fun PlayerControls(
-    playback: com.cruxcoach.android.data.PlaylistPlaybackState,
+    playback: PlaylistPlaybackState,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
     onTogglePause: () -> Unit,
     onOpenQueue: () -> Unit,
 ) {
+    // Tactile confirmation on transport actions — at the wall you tap
+    // with chalked fingers and don't stare at the screen.
+    val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
+    fun withHaptic(action: () -> Unit): () -> Unit = {
+        haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+        action()
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -454,7 +597,7 @@ private fun PlayerControls(
             )
         }
         IconButton(
-            onClick = onPrevious,
+            onClick = withHaptic(onPrevious),
             enabled = playback.hasPrevious,
             modifier = Modifier.size(56.dp).testTag("player_prev"),
         ) {
@@ -465,7 +608,7 @@ private fun PlayerControls(
             )
         }
         FilledIconButton(
-            onClick = onTogglePause,
+            onClick = withHaptic(onTogglePause),
             shape = CircleShape,
             colors = IconButtonDefaults.filledIconButtonColors(containerColor = OrangeAccent),
             modifier = Modifier.size(64.dp).testTag("player_pause"),
@@ -479,7 +622,7 @@ private fun PlayerControls(
             )
         }
         IconButton(
-            onClick = onNext,
+            onClick = withHaptic(onNext),
             enabled = playback.hasNext,
             modifier = Modifier.size(56.dp).testTag("player_next"),
         ) {

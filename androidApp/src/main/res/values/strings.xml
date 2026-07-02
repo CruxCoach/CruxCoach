@@ -2082,6 +2082,6 @@
     <string name="playlist_player_rest_title">Rest</string>
     <string name="playlist_player_skip_rest">Skip rest</string>
     <string name="playlist_player_up_next">Up next</string>
-    <string name="playlist_player_up_next_position">Climb %1$d of %2$d</string>
+    <string name="playlist_player_attempt">Attempt %1$d of %2$d</string>
     <string name="playlist_attempts_badge">%1$d attempts</string>
 </resources>

@@ -43,9 +43,29 @@ data class PlaylistPlaybackState(
 ) {
     val isHost: Boolean get() = role == SessionRole.HOST
     val isParticipant: Boolean get() = role == SessionRole.PARTICIPANT
-    val hasNext: Boolean get() = currentIndex in 0 until queue.size - 1
-    val hasPrevious: Boolean get() = currentIndex > 0
+    val isResting: Boolean get() = phase is PlaybackPhase.Resting
+
+    /** During a rest, "next" skips the pause — always available then. */
+    val hasNext: Boolean get() = isResting || currentIndex in 0 until queue.size - 1
+    val hasPrevious: Boolean get() = currentIndex > 0 || isResting
     val upNext: QueueItem? get() = queue.getOrNull(currentIndex + 1)
+
+    /**
+     * (attempt, totalAttempts) when the current climb is part of a run of
+     * consecutive identical climbs — the limit/projecting attempt
+     * structure. Null for single occurrences.
+     */
+    val attemptInfo: Pair<Int, Int>?
+        get() {
+            val current = currentClimb ?: return null
+            if (currentIndex !in queue.indices) return null
+            var start = currentIndex
+            while (start > 0 && queue[start - 1].climbUuid == current.climbUuid) start--
+            var end = currentIndex
+            while (end < queue.size - 1 && queue[end + 1].climbUuid == current.climbUuid) end++
+            val total = end - start + 1
+            return if (total > 1) (currentIndex - start + 1) to total else null
+        }
 }
 
 /**
@@ -100,13 +120,32 @@ class PlaylistPlaybackCoordinator(
 
     // ── Playback control (role-aware — the ONLY place that logic lives) ──
 
+    /**
+     * Next is PHASE-aware: while a rest counts down the queue already sits
+     * on the upcoming climb (the pause was armed while advancing), so
+     * "next" means "skip the pause, climb now" — NOT "advance past a climb
+     * you haven't tried yet and arm the following pause".
+     */
     fun next() {
+        if (state.value.phase is PlaybackPhase.Resting) {
+            skipRest()
+            return
+        }
         if (state.value.isParticipant) gattBridge.sendNext() else queueManager.nextClimb()
     }
 
+    /** Previous during a rest = undo the advance: cancel the pause and
+     *  step back to the climb you just left. */
     fun previous() {
+        if (state.value.phase is PlaybackPhase.Resting) {
+            boardSessionManager.cancelRestTimer()
+        }
         if (state.value.isParticipant) gattBridge.sendPrev() else queueManager.previousClimb()
     }
+
+    /** Clears the lingering "rest finished" banner state once the player
+     *  has visibly returned to climbing. */
+    fun acknowledgeRestFinished() = boardSessionManager.dismissRestTimerFinished()
 
     fun setCurrent(index: Int) {
         if (state.value.isParticipant) gattBridge.sendSetCurrent(index) else queueManager.setCurrentClimb(index)
