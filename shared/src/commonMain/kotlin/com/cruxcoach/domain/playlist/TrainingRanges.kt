@@ -57,7 +57,9 @@ object TrainingRanges {
     // ── Rests (seconds) — explicit playlist entries ─────────────
 
     const val REST_AFTER_WARMUP = 240
+    const val REST_LIMIT_BETWEEN_ATTEMPTS = 180
     const val REST_LIMIT_BETWEEN_PROBLEMS = 300
+    const val REST_PROJECT_BETWEEN_BURNS = 240
     const val REST_PROJECT_BETWEEN_PROJECTS = 300
     const val REST_PE_BETWEEN_LAPS = 45
     const val REST_PE_BETWEEN_SETS = 270
@@ -86,6 +88,14 @@ object TrainingRanges {
     val PROJECT_COUNT = 1..3
     val PE_SETS = 1..4
     const val PE_PROBLEMS_PER_SET = 4
+
+    /** Limit bouldering: attempts per problem, as EXPLICIT playlist
+     *  entries (same climb repeated) with between-attempt rests — the
+     *  rests are the training structure, so they belong in the list. */
+    const val ATTEMPTS_PER_LIMIT_PROBLEM = 5
+
+    /** Projecting: burns per project, explicit like limit attempts. */
+    const val BURNS_PER_PROJECT = 4
 
     /** Warm-up ladder: 2 problems per tier, at most this many total. */
     const val WARMUP_PROBLEMS_PER_TIER = 2

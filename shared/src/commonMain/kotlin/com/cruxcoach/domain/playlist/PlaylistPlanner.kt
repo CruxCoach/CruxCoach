@@ -139,26 +139,56 @@ object PlaylistPlanner {
         return slots
     }
 
+    /** Limit bouldering with EXPLICIT attempt structure: each problem
+     *  appears [TrainingRanges.ATTEMPTS_PER_LIMIT_PROBLEM] times (same
+     *  climb via repeatKey) with between-attempt rests, long rests between
+     *  problems — the rests ARE the training, so they live in the list. */
     private fun planLimit(minutes: Int, maxDiff: Double): List<PlanSlot> {
         val count = (minutes / TrainingRanges.LIMIT_SLOT_MINUTES)
             .coerceIn(TrainingRanges.LIMIT_COUNT)
         val low = maxDiff
         val high = clamp(maxDiff + TrainingRanges.LIMIT_BAND_ABOVE_MAX, maxDiff)
-        return interleaveRests(
-            List(count) { PlanSlot.ClimbSlot(low, high, PlanSection.PEAK) },
-            TrainingRanges.REST_LIMIT_BETWEEN_PROBLEMS,
+        return workBlocks(
+            problems = count,
+            attemptsPerProblem = TrainingRanges.ATTEMPTS_PER_LIMIT_PROBLEM,
+            attemptRest = TrainingRanges.REST_LIMIT_BETWEEN_ATTEMPTS,
+            problemRest = TrainingRanges.REST_LIMIT_BETWEEN_PROBLEMS,
+            low = low, high = high,
         )
     }
 
+    /** Projecting: burns on each project, explicit like limit attempts. */
     private fun planProjecting(minutes: Int, maxDiff: Double): List<PlanSlot> {
         val count = (minutes / TrainingRanges.PROJECT_SLOT_MINUTES)
             .coerceIn(TrainingRanges.PROJECT_COUNT)
         val low = maxDiff
         val high = clamp(maxDiff + TrainingRanges.LIMIT_BAND_ABOVE_MAX, maxDiff)
-        return interleaveRests(
-            List(count) { PlanSlot.ClimbSlot(low, high, PlanSection.PEAK) },
-            TrainingRanges.REST_PROJECT_BETWEEN_PROJECTS,
+        return workBlocks(
+            problems = count,
+            attemptsPerProblem = TrainingRanges.BURNS_PER_PROJECT,
+            attemptRest = TrainingRanges.REST_PROJECT_BETWEEN_BURNS,
+            problemRest = TrainingRanges.REST_PROJECT_BETWEEN_PROJECTS,
+            low = low, high = high,
         )
+    }
+
+    private fun workBlocks(
+        problems: Int,
+        attemptsPerProblem: Int,
+        attemptRest: Int,
+        problemRest: Int,
+        low: Double,
+        high: Double,
+    ): List<PlanSlot> {
+        val slots = mutableListOf<PlanSlot>()
+        for (p in 0 until problems) {
+            if (p > 0) slots.add(PlanSlot.RestSlot(problemRest, PlanSection.PEAK))
+            for (attempt in 0 until attemptsPerProblem) {
+                if (attempt > 0) slots.add(PlanSlot.RestSlot(attemptRest, PlanSection.PEAK))
+                slots.add(PlanSlot.ClimbSlot(low, high, PlanSection.PEAK, repeatKey = p))
+            }
+        }
+        return slots
     }
 
     /** Sets of 4 problems (same problems every set, via repeatKey), short
@@ -240,15 +270,6 @@ object PlaylistPlanner {
             repeatKey = repeatKey,
         )
 
-    private fun interleaveRests(climbs: List<PlanSlot.ClimbSlot>, restSeconds: Int): List<PlanSlot> {
-        val slots = mutableListOf<PlanSlot>()
-        climbs.forEachIndexed { i, climb ->
-            if (i > 0) slots.add(PlanSlot.RestSlot(restSeconds, climb.section))
-            slots.add(climb)
-        }
-        return slots
-    }
-
     private fun clampLow(diff: Double): Double = max(diff, TrainingRanges.MIN_DIFFICULTY)
 
     /** Clamp into [V0, min(scale max, user max + 1 V)] — the hard safety
@@ -276,10 +297,23 @@ object PlaylistPlanner {
     }
 }
 
-/** Rough wall-clock estimate for a plan (UI preview): climbing + rests. */
+/**
+ * Wall-clock estimate for a plan (UI preview): explicit rests + type-aware
+ * per-climb minutes. The per-climb figures mirror what the explicit rest
+ * structure does NOT already carry — volume includes its implicit walk-up
+ * rest, PE laps are short burns, limit/projecting attempts and pyramid
+ * tries have their rests as entries.
+ */
 fun PlaylistPlan.estimatedMinutes(): Int {
     val restSeconds = slots.filterIsInstance<PlanSlot.RestSlot>().sumOf { it.seconds }
-    val climbCount = slots.count { it is PlanSlot.ClimbSlot }
-    // ~2.5 min per problem slot (attempts + short implicit rests).
-    return ceil(climbCount * 2.5 + restSeconds / 60.0).toInt()
+    val climbMinutes = slots.filterIsInstance<PlanSlot.ClimbSlot>().sumOf { slot ->
+        if (slot.section == PlanSection.WARM_UP) 2.0
+        else when (effectiveType) {
+            GeneratorType.VOLUME -> 2.5
+            GeneratorType.POWER_ENDURANCE -> 1.5
+            GeneratorType.LIMIT, GeneratorType.PROJECTING -> 2.0
+            GeneratorType.PYRAMID -> 3.0
+        }
+    }
+    return ceil(climbMinutes + restSeconds / 60.0).toInt()
 }

@@ -54,14 +54,36 @@ class PlaylistPlannerTest {
     // ── Limit / Projecting ──────────────────────────────────────
 
     @Test
-    fun `limit plans few problems at and above max with long rests`() {
+    fun `limit plans explicit attempts per problem with long rests`() {
         val plan = PlaylistPlanner.plan(params(GeneratorType.LIMIT, duration = 60), profile)
         val climbs = plan.climbs()
-        assertEquals(3, climbs.size, "60 min / 20 min per limit problem")
+        // 60 min / 20 min per problem = 3 problems × 5 explicit attempts.
+        assertEquals(3, climbs.mapNotNull { it.repeatKey }.distinct().size, "3 distinct problems")
+        assertEquals(15, climbs.size, "each problem carries its attempts as entries")
         assertTrue(climbs.all { it.minDifficulty == 22.0 && it.maxDifficulty == 24.0 },
             "limit band must be max … max+1V")
-        assertEquals(2, plan.rests().size)
-        assertTrue(plan.rests().all { it.seconds == TrainingRanges.REST_LIMIT_BETWEEN_PROBLEMS })
+        // 4 attempt rests per problem + 2 between-problem rests.
+        assertEquals(12, plan.rests().count { it.seconds == TrainingRanges.REST_LIMIT_BETWEEN_ATTEMPTS })
+        assertEquals(2, plan.rests().count { it.seconds == TrainingRanges.REST_LIMIT_BETWEEN_PROBLEMS })
+    }
+
+    @Test
+    fun `estimated minutes track the requested duration`() {
+        // The 75-min limit session must not preview as ~29 min (the bug
+        // that hid attempt time inside an invisible per-problem block).
+        listOf(
+            GeneratorType.LIMIT to 75,
+            GeneratorType.VOLUME to 60,
+            GeneratorType.POWER_ENDURANCE to 48,
+            GeneratorType.PYRAMID to 60,
+        ).forEach { (type, duration) ->
+            val plan = PlaylistPlanner.plan(params(type, duration = duration), profile)
+            val estimate = plan.estimatedMinutes()
+            assertTrue(
+                estimate >= duration * 0.6 && estimate <= duration * 1.35,
+                "$type/$duration min: estimate $estimate strays too far",
+            )
+        }
     }
 
     @Test
@@ -71,11 +93,13 @@ class PlaylistPlannerTest {
     }
 
     @Test
-    fun `projecting plans 1-3 projects`() {
+    fun `projecting plans 1-3 projects with explicit burns`() {
         val short = PlaylistPlanner.plan(params(GeneratorType.PROJECTING, duration = 25), profile)
-        assertEquals(1, short.climbs().size)
+        assertEquals(1, short.climbs().mapNotNull { it.repeatKey }.distinct().size)
+        assertEquals(TrainingRanges.BURNS_PER_PROJECT, short.climbs().size)
         val long = PlaylistPlanner.plan(params(GeneratorType.PROJECTING, duration = 150), profile)
-        assertEquals(3, long.climbs().size)
+        assertEquals(3, long.climbs().mapNotNull { it.repeatKey }.distinct().size)
+        assertEquals(3 * TrainingRanges.BURNS_PER_PROJECT, long.climbs().size)
     }
 
     // ── Power endurance ─────────────────────────────────────────
@@ -141,7 +165,11 @@ class PlaylistPlannerTest {
             (plan.slots[firstRest] as PlanSlot.RestSlot).seconds,
         )
         // Warm-up minutes shrink the main set: 60 → ~42 main minutes = 2 problems.
-        assertEquals(2, plan.climbs().count { it.section == PlanSection.PEAK })
+        assertEquals(
+            2,
+            plan.climbs().filter { it.section == PlanSection.PEAK }
+                .mapNotNull { it.repeatKey }.distinct().size,
+        )
     }
 
     @Test
