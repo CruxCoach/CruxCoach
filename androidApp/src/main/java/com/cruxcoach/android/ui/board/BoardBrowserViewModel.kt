@@ -1630,10 +1630,17 @@ class BoardBrowserViewModel @Inject constructor(
         return findUuidsMatchingHoldFilter(hs.selectedHolds, hs.zone).size
     }
 
+    /** Full-catalogue frames scans are expensive — reuse the match set the
+     *  count pass just computed when "apply" runs on unchanged inputs. */
+    private var holdMatchCacheKey: Triple<Set<Int>, BoardZone?, BrowserFilterState>? = null
+    private var holdMatchCache: Set<String> = emptySet()
+
     private fun findUuidsMatchingHoldFilter(selectedHolds: Set<Int>, zone: BoardZone?): Set<String> {
         if (selectedHolds.isEmpty() && zone == null) return emptySet()
         val start = System.currentTimeMillis()
         val f = _state.value.filter
+        val cacheKey = Triple(selectedHolds, zone, f)
+        if (cacheKey == holdMatchCacheKey) return holdMatchCache
         // Range-only predicate (no :showUngraded escape): in ungraded-only
         // mode the impossible bounds match nothing — consistent with the
         // browse list, whose ungraded rows a range query can never reach.
@@ -1652,6 +1659,8 @@ class BoardBrowserViewModel @Inject constructor(
             .filter { row -> zone == null || BoardZoneFilter.climbInZone(row.frames, xyByPlacement, zone) }
             .map { it.uuid }
             .toSet()
+        holdMatchCacheKey = cacheKey
+        holdMatchCache = result
         val elapsed = System.currentTimeMillis() - start
         PerfLogger.log("🔍 holdSearch: ${patterns.size} patterns, zone=${zone != null}, ${result.size} matches in ${elapsed}ms")
         return result
