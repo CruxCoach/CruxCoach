@@ -325,11 +325,12 @@ fun PlaylistPlayerScreen(
             )
         },
     ) { padding ->
+        // No scrolling: header, log buttons and transport are always on
+        // screen; the board render shrinks into the remaining space.
         Column(
             modifier = Modifier
                 .padding(padding)
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState()),
+                .fillMaxSize(),
         ) {
             if (state.finishedSession != null) {
                 // Summary sheet is up — the queue is already cleared, so the
@@ -358,6 +359,7 @@ fun PlaylistPlayerScreen(
             // Animated phase/climb transitions: advancing slides left,
             // going back slides right, entering/leaving a rest crossfades.
             AnimatedContent(
+                modifier = Modifier.weight(1f),
                 targetState = PlayerContentKey(playback.currentIndex, playback.isResting),
                 transitionSpec = {
                     when {
@@ -419,7 +421,7 @@ private fun ClimbingContent(
 
     Column(
         modifier = Modifier
-            .fillMaxWidth()
+            .fillMaxSize()
             .padding(horizontal = 16.dp)
             // Spotify-style horizontal swipe anywhere on the content.
             .pointerInput(playback.currentIndex) {
@@ -493,41 +495,56 @@ private fun ClimbingContent(
         }
         Spacer(Modifier.height(12.dp))
 
-        when {
-            render != null -> Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onClimbTapped(render.climb.uuid, playback.currentClimb?.angle ?: 40) }
-                    .testTag("player_board"),
-            ) {
-                if (render.isMoonBoard) {
-                    MoonBoardVisualization(
-                        frames = render.climb.frames,
-                        assetState = rememberMoonBoardAsset(render.climb.layoutId),
-                        variant = MoonBoardVariant.fromLayoutId(render.climb.layoutId),
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                } else {
-                    KilterBoardVisualization(
-                        holds = render.holds,
-                        placements = render.placements,
-                        boardSize = render.boardSize,
-                        boardImages = render.boardImages,
-                        ledColors = if (render.climb.brand == BoardBrand.KILTER) render.ledColors
-                                    else LedHoldColors.standardFor(render.climb.brand),
-                        modifier = Modifier.fillMaxWidth(),
-                    )
+        // Board area flexes into whatever height remains — header, log
+        // buttons and transport NEVER require scrolling. The viz sizes by
+        // width + aspectRatio internally, so the width gets capped to
+        // maxHeight * aspect when vertical space is the limiting factor.
+        androidx.compose.foundation.layout.BoxWithConstraints(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+            contentAlignment = Alignment.Center,
+        ) {
+            when {
+                render != null -> {
+                    val aspect = if (render.isMoonBoard) {
+                        MOONBOARD_FALLBACK_ASPECT
+                    } else {
+                        render.boardSize?.let { s ->
+                            val w = (s.edgeRight - s.edgeLeft).toFloat()
+                            val h = (s.edgeTop - s.edgeBottom).toFloat()
+                            if (w > 0f && h > 0f) w / h else 1f
+                        } ?: 1f
+                    }
+                    val cappedWidth = minOf(maxWidth, maxHeight * aspect)
+                    Box(
+                        modifier = Modifier
+                            .width(cappedWidth)
+                            .clickable { onClimbTapped(render.climb.uuid, playback.currentClimb?.angle ?: 40) }
+                            .testTag("player_board"),
+                    ) {
+                        if (render.isMoonBoard) {
+                            MoonBoardVisualization(
+                                frames = render.climb.frames,
+                                assetState = rememberMoonBoardAsset(render.climb.layoutId),
+                                variant = MoonBoardVariant.fromLayoutId(render.climb.layoutId),
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        } else {
+                            KilterBoardVisualization(
+                                holds = render.holds,
+                                placements = render.placements,
+                                boardSize = render.boardSize,
+                                boardImages = render.boardImages,
+                                ledColors = if (render.climb.brand == BoardBrand.KILTER) render.ledColors
+                                            else LedHoldColors.standardFor(render.climb.brand),
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                    }
                 }
-            }
-            state.renderLoading -> Box(
-                modifier = Modifier.fillMaxWidth().height(320.dp),
-                contentAlignment = Alignment.Center,
-            ) { CircularProgressIndicator(color = OrangeAccent) }
-            else -> Box(
-                modifier = Modifier.fillMaxWidth().height(320.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
+                state.renderLoading -> CircularProgressIndicator(color = OrangeAccent)
+                else -> Text(
                     if (playback.queue.isEmpty()) stringResource(R.string.playlist_empty_message)
                     else stringResource(R.string.playlist_climb_unavailable),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -591,8 +608,10 @@ private fun RestingContent(
     val phase = playback.phase as? PlaybackPhase.Resting ?: return
     Column(
         modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 24.dp, vertical = 32.dp),
+            .fillMaxSize()
+            // Safety valve for very small screens — normally everything fits.
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 24.dp, vertical = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
@@ -767,6 +786,9 @@ private fun PlayerControls(
         }
     }
 }
+
+/** MoonBoard viz fallback aspect (see MoonBoardVisualization). */
+private const val MOONBOARD_FALLBACK_ASPECT = 0.65f
 
 private fun formatCountdown(seconds: Int): String =
     "%d:%02d".format(seconds / 60, seconds % 60)
