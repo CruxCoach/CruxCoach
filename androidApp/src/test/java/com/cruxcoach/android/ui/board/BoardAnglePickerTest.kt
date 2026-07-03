@@ -32,6 +32,32 @@ class BoardAnglePickerTest {
     }
 
     @Test
+    fun `MoonBoard 2016 and 2024 are adjustable so chips offer 25 and 40`() {
+        // Both are adjustable boards — the official catalogue sets problems at
+        // 25° and 40°, so the picker offers both (widened from 40°-only).
+        for (variant in listOf(MoonBoardVariant.MOONBOARD_2016, MoonBoardVariant.MOONBOARD_2024)) {
+            val chips = BoardAnglePicker.chipsFor(
+                brand = BoardBrand.MOONBOARD,
+                layoutId = variant.layoutId.toInt(),
+                supportedAngles = emptyList(),
+            )
+            assertEquals(listOf(25, 40), chips, "expected 25/40 chips for $variant")
+        }
+    }
+
+    @Test
+    fun `Mini MoonBoard 2020 stays fixed at 40`() {
+        // Guard: Mini 2020 is a genuine fixed-40° board; the 2016/2024
+        // reclassification must not accidentally widen it.
+        val chips = BoardAnglePicker.chipsFor(
+            brand = BoardBrand.MOONBOARD,
+            layoutId = MoonBoardVariant.MINI_2020.layoutId.toInt(),
+            supportedAngles = emptyList(),
+        )
+        assertEquals(listOf(40), chips)
+    }
+
+    @Test
     fun `Aurora board chips come from the supported-angle set including sparse`() {
         // Touchstone-like board: getSupportedAnglesForLayout returns [35, 40];
         // all angles are kept (no low-count suppression).
