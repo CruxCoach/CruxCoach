@@ -8,7 +8,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
+import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.History
@@ -19,6 +21,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -45,9 +48,14 @@ fun BoardListsScreen(
     onNavigateToSetters: () -> Unit = {},
     onNavigateToMyClimbs: () -> Unit = {},
     onNavigateToHistory: () -> Unit,
+    onNavigateToPlaylistDetail: (Long) -> Unit = {},
+    onNavigateToGenerator: () -> Unit = {},
     viewModel: BoardListsViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    var fabMenuExpanded by androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf(false)
+    }
 
     // Refresh list counts when returning from detail screen
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -64,8 +72,9 @@ fun BoardListsScreen(
     if (state.showCreateDialog) {
         CreateListDialog(
             name = state.newListName,
+            isPlaylist = state.createAsPlaylist,
             onNameChanged = { viewModel.updateNewListName(it) },
-            onCreate = { viewModel.createList() },
+            onCreate = { viewModel.createList(onPlaylistCreated = onNavigateToPlaylistDetail) },
             onDismiss = { viewModel.dismissCreateDialog() }
         )
     }
@@ -107,12 +116,52 @@ fun BoardListsScreen(
             }
         },
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = { viewModel.showCreateDialog() },
-                containerColor = OrangeAccent,
-                modifier = Modifier.testTag("board_lists_fab")
-            ) {
-                Icon(Icons.Default.Add, contentDescription = stringResource(R.string.cd_create_list), tint = DarkBackground)
+            Column(horizontalAlignment = Alignment.End) {
+                DropdownMenu(
+                    expanded = fabMenuExpanded,
+                    onDismissRequest = { fabMenuExpanded = false },
+                ) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.playlist_create_generated)) },
+                        leadingIcon = {
+                            Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = OrangeAccent)
+                        },
+                        onClick = {
+                            fabMenuExpanded = false
+                            onNavigateToGenerator()
+                        },
+                        modifier = Modifier.testTag("lists_fab_generator"),
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.playlist_create_manual)) },
+                        leadingIcon = {
+                            Icon(Icons.AutoMirrored.Filled.PlaylistPlay, contentDescription = null, tint = OrangeAccent)
+                        },
+                        onClick = {
+                            fabMenuExpanded = false
+                            viewModel.showCreateDialog(asPlaylist = true)
+                        },
+                        modifier = Modifier.testTag("lists_fab_playlist"),
+                    )
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.board_lists_new_list)) },
+                        leadingIcon = {
+                            Icon(Icons.AutoMirrored.Filled.PlaylistAdd, contentDescription = null)
+                        },
+                        onClick = {
+                            fabMenuExpanded = false
+                            viewModel.showCreateDialog(asPlaylist = false)
+                        },
+                        modifier = Modifier.testTag("lists_fab_list"),
+                    )
+                }
+                FloatingActionButton(
+                    onClick = { fabMenuExpanded = true },
+                    containerColor = OrangeAccent,
+                    modifier = Modifier.testTag("board_lists_fab")
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = stringResource(R.string.cd_create_list), tint = DarkBackground)
+                }
             }
         }
     ) { padding ->
@@ -145,6 +194,33 @@ fun BoardListsScreen(
 
             item(key = "history") {
                 HistoryCard(onClick = onNavigateToHistory)
+            }
+
+            // ── Playlists (ordered, playable) ───────────────────
+            if (state.playlists.isNotEmpty()) {
+                item(key = "playlists-header") {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        stringResource(R.string.playlists_title),
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                items(state.playlists, key = { "p${it.id}" }) { playlist ->
+                    PlaylistCard(
+                        playlist = playlist,
+                        onClick = { onNavigateToPlaylistDetail(playlist.id) },
+                        onDelete = { viewModel.requestDeleteList(playlist.id) },
+                    )
+                }
+                item(key = "lists-header") {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        stringResource(R.string.board_lists_section_title),
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
 
             if (state.lists.isEmpty()) {
@@ -400,16 +476,77 @@ private fun HistoryCard(onClick: () -> Unit) {
     }
 }
 
+/** Card for a kind='playlist' row — generated ones get the sparkle icon. */
+@Composable
+private fun PlaylistCard(
+    playlist: Climb_lists,
+    onClick: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    Card(
+        onClick = onClick,
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("playlist_card_${playlist.id}"),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+        ),
+        shape = RoundedCornerShape(12.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                if (playlist.generatorParams != null) Icons.Default.AutoAwesome
+                else Icons.AutoMirrored.Filled.PlaylistPlay,
+                contentDescription = null,
+                tint = OrangeAccent,
+                modifier = Modifier.size(28.dp),
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    playlist.name,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    stringResource(R.string.board_list_climb_count, playlist.climbCount),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
+                Icon(
+                    Icons.Default.Delete,
+                    contentDescription = stringResource(R.string.action_delete),
+                    tint = ErrorRed,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun CreateListDialog(
     name: String,
+    isPlaylist: Boolean,
     onNameChanged: (String) -> Unit,
     onCreate: () -> Unit,
     onDismiss: () -> Unit
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.board_lists_new_list), fontWeight = FontWeight.Bold) },
+        title = {
+            Text(
+                stringResource(
+                    if (isPlaylist) R.string.playlist_new_manual else R.string.board_lists_new_list
+                ),
+                fontWeight = FontWeight.Bold,
+            )
+        },
         text = {
             OutlinedTextField(
                 value = name,

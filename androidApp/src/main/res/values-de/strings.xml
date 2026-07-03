@@ -867,7 +867,7 @@
     <string name="board_logbook_ascent_count">%d Begehungen</string>
 
     <!-- Board: Lists -->
-    <string name="board_lists_title">Meine Listen</string>
+    <string name="board_lists_title">Listen &amp; Playlists</string>
     <string name="board_lists_delete_title">Liste löschen?</string>
     <string name="board_lists_delete_message">Die Liste und alle Einträge werden gelöscht.</string>
     <string name="board_lists_empty_title">Noch keine Listen</string>
@@ -2038,7 +2038,7 @@
     <string name="playlist_play">Abspielen</string>
     <string name="playlist_move_up">Nach oben</string>
     <string name="playlist_move_down">Nach unten</string>
-    <string name="playlist_empty_message">Diese Playlist ist leer. Füge Climbs über den Detail-Screen eines Climbs hinzu.</string>
+    <string name="playlist_empty_message">Diese Playlist ist leer. Halte einen Climb im Browser gedrückt, um ihn hinzuzufügen.</string>
     <string name="playlist_unavailable_climbs">%1$d Climbs sind nicht in deinem heruntergeladenen Katalog und werden übersprungen.</string>
     <string name="playlist_climb_unavailable">Climb nicht verfügbar</string>
     <string name="playlist_angle_label">%1$d°</string>
@@ -2087,4 +2087,6 @@
     <string name="playlist_player_up_next">Als Nächstes</string>
     <string name="playlist_player_attempt">Versuch %1$d von %2$d</string>
     <string name="playlist_attempts_badge">%1$d Versuche</string>
+    <string name="playlist_add_to_running">Zur laufenden Playlist hinzufügen</string>
+    <string name="playlist_added_to_running">Zur Playlist hinzugefügt</string>
 </resources>

@@ -111,7 +111,6 @@ object Routes {
     const val BOARD_LISTS = "board_lists"
     const val BOARD_LOGBOOK_HISTORY = "board_logbook_history"
     const val BOARD_LIST_DETAIL = "board_list_detail/{listId}"
-    const val PLAYLISTS = "playlists"
     const val PLAYLIST_DETAIL = "playlist_detail/{listId}"
     const val PLAYLIST_GENERATOR = "playlist_generator"
     const val PLAYLIST_IMPORT = "playlist_import/{payload}"
@@ -177,7 +176,7 @@ private val bottomBarRoutes = emptySet<String>()
 private val wakeLockRoutes = setOf(
     Routes.BOARD_BROWSER, Routes.BOARD_CLIMB_DETAIL, Routes.BOARD_LOGBOOK,
     Routes.BOARD_LISTS, Routes.BOARD_LIST_DETAIL, Routes.BOARD_SYNC,
-    Routes.PLAYLISTS, Routes.PLAYLIST_DETAIL, Routes.PLAYLIST_PLAYER,
+    Routes.PLAYLIST_DETAIL, Routes.PLAYLIST_PLAYER,
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -448,7 +447,6 @@ fun CruxCoachNavHost(
                     onNavigateToSync = { navController.navigate(Routes.BOARD_SYNC) },
                     onNavigateToLogbook = { navController.navigate(Routes.BOARD_LOGBOOK) },
                     onNavigateToLists = { navController.navigate(Routes.BOARD_LISTS) },
-                    onNavigateToPlaylists = { navController.navigate(Routes.PLAYLISTS) },
                     onNavigateToSettings = { navController.navigate(Routes.SETTINGS) },
                     onNavigateToFilter = { navController.navigate(Routes.BOARD_FILTER) },
                     onNavigateToClimbCreator = { navController.navigate(Routes.climbCreator()) },
@@ -590,6 +588,13 @@ fun CruxCoachNavHost(
                     onNavigateToHistory = {
                         navController.navigate(Routes.BOARD_LOGBOOK_HISTORY)
                     },
+                    // Playlists live in the same hub since the UI consolidation.
+                    onNavigateToPlaylistDetail = { listId ->
+                        navController.navigate(Routes.playlistDetail(listId))
+                    },
+                    onNavigateToGenerator = {
+                        navController.navigate(Routes.PLAYLIST_GENERATOR)
+                    },
                 )
             }
 
@@ -609,23 +614,6 @@ fun CruxCoachNavHost(
                         navController.navigate(Routes.boardClimbDetail(climbUuid, angle))
                     }
                 )
-            }
-
-            composable(Routes.PLAYLISTS) {
-                com.cruxcoach.android.ui.common.ScreenErrorBoundary(
-                    screenName = "Playlists",
-                    onNavigateBack = { navController.popBackStack() },
-                ) {
-                    com.cruxcoach.android.ui.playlist.PlaylistsScreen(
-                        onNavigateBack = { navController.popBackStack() },
-                        onNavigateToPlaylist = { listId ->
-                            navController.navigate(Routes.playlistDetail(listId))
-                        },
-                        onNavigateToGenerator = {
-                            navController.navigate(Routes.PLAYLIST_GENERATOR)
-                        },
-                    )
-                }
             }
 
             composable(Routes.PLAYLIST_DETAIL) {
@@ -691,7 +679,7 @@ fun CruxCoachNavHost(
                             navController.navigate(Routes.playlistDetail(listId)) {
                                 // Generator is a one-shot wizard: leaving it on the
                                 // back stack would re-generate on back-press.
-                                popUpTo(Routes.PLAYLISTS)
+                                popUpTo(Routes.BOARD_LISTS)
                             }
                         },
                     )

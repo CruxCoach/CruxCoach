@@ -1,7 +1,9 @@
 package com.cruxcoach.android.ui.board
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -26,13 +28,16 @@ import com.cruxcoach.android.util.GradeDisplayHelper
 import com.cruxcoach.data.repository.ClimbWithStats
 import com.cruxcoach.domain.board.IntensityZones
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun ClimbCard(
     climb: ClimbWithStats,
     gradeScale: GradeScale = GradeScale.V_SCALE,
     zones: IntensityZones? = null,
     onNavigateToSetter: ((pubkey: String) -> Unit)? = null,
-    onClimbClick: (String) -> Unit
+    onClimbClick: (String) -> Unit,
+    /** Long-press: add-to-list/playlist shortcut (browser context). */
+    onClimbLongClick: ((String) -> Unit)? = null,
 ) {
     // Cache computed values — estimateMoveCount() parses the frames string (expensive),
     // and formatDifficulty() does a lookup + String.format. Both are stable across
@@ -46,8 +51,15 @@ internal fun ClimbCard(
     }
 
     Card(
-        onClick = { onClimbClick(climb.uuid) },
-        modifier = Modifier.fillMaxWidth().testTag("board_climb_card"),
+        modifier = Modifier
+            .fillMaxWidth()
+            // combinedClickable instead of Card(onClick): long-press opens
+            // the add-to-list dialog straight from the browse list.
+            .combinedClickable(
+                onClick = { onClimbClick(climb.uuid) },
+                onLongClick = onClimbLongClick?.let { cb -> { cb(climb.uuid) } },
+            )
+            .testTag("board_climb_card"),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
         ),

@@ -823,7 +823,7 @@
     <string name="board_logbook_ascent_count">%d ascents</string>
 
     <!-- Board: Lists -->
-    <string name="board_lists_title">My lists</string>
+    <string name="board_lists_title">Lists &amp; playlists</string>
     <string name="board_lists_delete_title">Delete list?</string>
     <string name="board_lists_delete_message">The list and all entries will be deleted.</string>
     <string name="board_lists_empty_title">No lists yet</string>
@@ -2035,7 +2035,7 @@
     <string name="playlist_play">Play</string>
     <string name="playlist_move_up">Move up</string>
     <string name="playlist_move_down">Move down</string>
-    <string name="playlist_empty_message">This playlist is empty. Add climbs from a climb\'s detail screen.</string>
+    <string name="playlist_empty_message">This playlist is empty. Long-press a climb in the browser to add it.</string>
     <string name="playlist_unavailable_climbs">%1$d climbs are not in your downloaded catalogue and will be skipped.</string>
     <string name="playlist_climb_unavailable">Climb not available</string>
     <string name="playlist_angle_label">%1$d°</string>
@@ -2084,4 +2084,6 @@
     <string name="playlist_player_up_next">Up next</string>
     <string name="playlist_player_attempt">Attempt %1$d of %2$d</string>
     <string name="playlist_attempts_badge">%1$d attempts</string>
+    <string name="playlist_add_to_running">Add to running playlist</string>
+    <string name="playlist_added_to_running">Added to playlist</string>
 </resources>
