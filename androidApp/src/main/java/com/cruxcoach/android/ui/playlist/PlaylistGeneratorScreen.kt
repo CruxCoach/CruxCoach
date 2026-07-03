@@ -163,12 +163,17 @@ fun PlaylistGeneratorScreen(
 
             // ── Session position ────────────────────────────────
             SectionTitle(stringResource(R.string.playlist_generator_position))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            // Scrollable single-line row — a fixed Row wraps the longest
+            // chip ("Trainingsende") onto two lines on narrow screens.
+            Row(
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 SessionPosition.entries.forEach { pos ->
                     FilterChip(
                         selected = state.position == pos,
                         onClick = { viewModel.setPosition(pos) },
-                        label = { Text(positionLabel(pos)) },
+                        label = { Text(positionLabel(pos), maxLines = 1) },
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = OrangeAccent.copy(alpha = 0.25f),
                         ),

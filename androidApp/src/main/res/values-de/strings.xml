@@ -2067,7 +2067,7 @@
     <string name="playlist_type_volume_desc">Viele Probleme um deinen Flash-Grad — Mileage und Bewegungsqualität.</string>
     <string name="playlist_type_limit">Maximalkraft</string>
     <string name="playlist_type_limit_desc">Wenige Probleme an oder über deinem Max mit langen Pausen — Limit-Bouldern.</string>
-    <string name="playlist_type_projecting">Projecting</string>
+    <string name="playlist_type_projecting">Projekte</string>
     <string name="playlist_type_projecting_desc">Arbeite an deinen offenen Projekten — Climbs, die du versucht, aber noch nicht geschafft hast.</string>
     <string name="playlist_position_cold">Nicht aufgewärmt</string>
     <string name="playlist_position_warm">Aufgewärmt</string>
