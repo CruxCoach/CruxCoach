@@ -184,22 +184,11 @@ fun BoardListsScreen(
                 MyClimbsBanner(onClick = onNavigateToMyClimbs)
                 Spacer(modifier = Modifier.height(8.dp))
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    stringResource(R.string.board_lists_section_title),
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-
-            item(key = "history") {
-                HistoryCard(onClick = onNavigateToHistory)
             }
 
             // ── Playlists (ordered, playable) ───────────────────
             if (state.playlists.isNotEmpty()) {
                 item(key = "playlists-header") {
-                    Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         stringResource(R.string.playlists_title),
                         style = MaterialTheme.typography.titleSmall,
@@ -213,14 +202,20 @@ fun BoardListsScreen(
                         onDelete = { viewModel.requestDeleteList(playlist.id) },
                     )
                 }
-                item(key = "lists-header") {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        stringResource(R.string.board_lists_section_title),
-                        style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+            }
+
+            // ── Plain lists (Merklisten) + Verlauf ──────────────
+            item(key = "lists-header") {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    stringResource(R.string.board_lists_section_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            item(key = "history") {
+                HistoryCard(onClick = onNavigateToHistory)
             }
 
             if (state.lists.isEmpty()) {
