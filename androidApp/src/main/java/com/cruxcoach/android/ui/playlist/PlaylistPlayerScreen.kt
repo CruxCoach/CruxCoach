@@ -444,8 +444,14 @@ private fun ClimbingContent(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    playback.currentClimbName ?: render?.climb?.name
-                        ?: stringResource(R.string.ble_unknown_climb),
+                    // Empty queue: no title — the empty-state message below
+                    // explains the situation; "Unbekannter Climb" would
+                    // contradict the banner the user just tapped.
+                    when {
+                        playback.currentClimb == null -> ""
+                        else -> playback.currentClimbName ?: render?.climb?.name
+                            ?: stringResource(R.string.ble_unknown_climb)
+                    },
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.testTag("player_climb_name"),

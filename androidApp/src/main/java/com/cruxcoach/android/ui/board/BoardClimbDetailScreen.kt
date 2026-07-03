@@ -288,15 +288,15 @@ fun BoardClimbDetailScreen(
     }
 
     if (state.listDialog.show) {
-        AddToListDialog(
-            lists = state.listDialog.lists,
-            climbInListIds = state.listDialog.climbInListIds,
-            newListName = state.listDialog.newListName,
-            onToggleList = { viewModel.toggleClimbInList(it) },
-            onNewListNameChanged = { viewModel.updateNewListName(it) },
-            onCreateAndAdd = { viewModel.createNewListAndAdd() },
-            onDismiss = { viewModel.dismissAddToListDialog() }
-        )
+        // Self-contained host (same as the browser long-press): includes
+        // the "add to running playlist" shortcut and playlist-aware adds.
+        state.climb?.let { climb ->
+            AddToListDialogHost(
+                climbUuid = climb.uuid,
+                angle = state.angle,
+                onDismiss = { viewModel.dismissAddToListDialog() },
+            )
+        }
     }
 
     // Per-use custom rest-timer duration (settings value stays the

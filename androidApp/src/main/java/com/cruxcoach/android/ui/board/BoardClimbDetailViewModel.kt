@@ -1216,27 +1216,9 @@ class BoardClimbDetailViewModel @Inject constructor(
     }
 
     fun showAddToListDialog() {
-        viewModelScope.launch {
-            try {
-                val lists = withContext(Dispatchers.IO) {
-                    personalBoardRepo.ensureFavoritesListExists()
-                    // Hide the built-in "Ignored" list — ignoring has its own
-                    // dedicated overflow action; it doesn't belong in the
-                    // add-to-list picker.
-                    personalBoardRepo.getAllClimbLists().filterNot { it.isIgnored }
-                }
-                val inListIds = withContext(Dispatchers.IO) {
-                    personalBoardRepo.getListIdsForClimb(currentClimbUuid)
-                }
-                _state.update { it.copy(listDialog = ListDialogState(
-                    show = true, lists = lists, climbInListIds = inListIds
-                )) }
-            } catch (e: kotlinx.coroutines.CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Log.w(TAG, "showAddToListDialog failed", e)
-            }
-        }
+        // Content is loaded by AddToListDialogHost's own ViewModel — the
+        // detail VM only tracks visibility.
+        _state.update { it.copy(listDialog = ListDialogState(show = true)) }
     }
 
     fun dismissAddToListDialog() {
@@ -1249,78 +1231,6 @@ class BoardClimbDetailViewModel @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 Log.w(TAG, "dismissAddToListDialog favorite-refresh failed", e)
-            }
-        }
-    }
-
-    fun toggleClimbInList(listId: Long) {
-        viewModelScope.launch {
-            try {
-                val currentlyIn = _state.value.listDialog.climbInListIds.contains(listId)
-                val isPlaylist = _state.value.listDialog.lists
-                    .firstOrNull { it.id == listId }?.kind == "playlist"
-                withContext(Dispatchers.IO) {
-                    if (currentlyIn) {
-                        // For playlists this removes EVERY occurrence of the
-                        // climb (a 4x4 may hold it several times) — matching
-                        // the unchecked-checkbox expectation.
-                        personalBoardRepo.removeClimbFromList(listId, currentClimbUuid)
-                    } else if (isPlaylist) {
-                        // Playlists are ordered + angle-pinned: append at the
-                        // end with the angle currently shown in the detail.
-                        personalBoardRepo.addPlaylistClimb(
-                            listId, currentClimbUuid, currentAngle.toLong(),
-                        )
-                    } else {
-                        personalBoardRepo.addClimbToList(listId, currentClimbUuid)
-                    }
-                }
-                val newIds = if (currentlyIn) {
-                    _state.value.listDialog.climbInListIds - listId
-                } else {
-                    _state.value.listDialog.climbInListIds + listId
-                }
-                _state.update { it.copy(listDialog = it.listDialog.copy(climbInListIds = newIds)) }
-            } catch (e: kotlinx.coroutines.CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Log.w(TAG, "toggleClimbInList listId=$listId failed", e)
-            }
-        }
-    }
-
-    fun updateNewListName(name: String) {
-        _state.update { it.copy(listDialog = it.listDialog.copy(newListName = name)) }
-    }
-
-    fun createNewListAndAdd() {
-        val name = _state.value.listDialog.newListName.trim()
-        if (name.isBlank()) return
-        val existing = _state.value.listDialog.lists.firstOrNull { it.name.equals(name, ignoreCase = true) }
-        if (existing != null) {
-            toggleClimbInList(existing.id)
-            _state.update { it.copy(listDialog = it.listDialog.copy(newListName = "")) }
-            return
-        }
-        viewModelScope.launch {
-            try {
-                val newListId = withContext(Dispatchers.IO) {
-                    val id = personalBoardRepo.createClimbList(name)
-                    personalBoardRepo.addClimbToList(id, currentClimbUuid)
-                    id
-                }
-                val updatedLists = withContext(Dispatchers.IO) {
-                    personalBoardRepo.getAllClimbLists().filterNot { it.isIgnored }
-                }
-                _state.update { it.copy(listDialog = it.listDialog.copy(
-                    lists = updatedLists,
-                    climbInListIds = it.listDialog.climbInListIds + newListId,
-                    newListName = ""
-                )) }
-            } catch (e: kotlinx.coroutines.CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Log.w(TAG, "createNewListAndAdd failed name=$name", e)
             }
         }
     }

@@ -201,10 +201,23 @@ class PlaylistPlaybackCoordinator(
         }
     }
 
-    /** Start an empty ad-hoc playlist as HOST (browser "Playlist" button). */
+    /**
+     * Start an ad-hoc playlist as HOST (browser "Playlist" button). Seeds
+     * the queue with the climb currently ON the board (the mini-player
+     * banner shows it, so an empty player with "unknown climb" right after
+     * would contradict what the user just saw lit on the wall).
+     */
     fun startEmpty(hostName: String) {
         boardSessionManager.startSession()
         queueManager.startQueue(hostName)
+        queueManager.onRestRequested = { seconds ->
+            boardSessionManager.startRestTimer(seconds)
+        }
+        bleShareManager.uiState.value.onBoardClimb?.let { onBoard ->
+            if (onBoard.climbUuid.isNotBlank()) {
+                queueManager.addClimb(onBoard.climbUuid, onBoard.angle)
+            }
+        }
         if (bleShareManager.uiState.value.sharingEnabled) {
             gattBridge.startSharing()
         }
