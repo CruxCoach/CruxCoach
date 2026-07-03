@@ -45,6 +45,11 @@ internal fun HoldSearchSheet(
     placements: Map<Int, com.cruxcoach.data.repository.BoardPlacement>,
     boardSize: com.cruxcoach.data.repository.BoardSize?,
     boardImages: List<com.cruxcoach.data.repository.BoardImage> = emptyList(),
+    zoneSelectMode: Boolean = false,
+    zoneCornerA: Int? = null,
+    zone: com.cruxcoach.domain.board.BoardZone? = null,
+    onToggleZoneMode: () -> Unit = {},
+    onClearZone: () -> Unit = {},
     onHoldTapped: (Int) -> Unit,
     onClearSelection: () -> Unit,
     onSearchByHolds: () -> Unit,
@@ -81,19 +86,51 @@ internal fun HoldSearchSheet(
                 fontWeight = FontWeight.Bold
             )
             Text(
-                stringResource(R.string.board_holdsearch_hint),
+                stringResource(
+                    when {
+                        zoneSelectMode && zoneCornerA != null -> R.string.board_holdsearch_zone_corner_hint
+                        zoneSelectMode -> R.string.board_holdsearch_zone_hint
+                        else -> R.string.board_holdsearch_hint
+                    }
+                ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
-            if (selectedHolds.isNotEmpty()) {
+            // Zone-box controls: corner-tap mode toggle + active-zone chip
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                FilterChip(
+                    selected = zoneSelectMode,
+                    onClick = onToggleZoneMode,
+                    label = { Text(stringResource(R.string.board_holdsearch_zone_mode)) },
+                    leadingIcon = {
+                        Icon(Icons.Default.GridView, contentDescription = null, modifier = Modifier.size(16.dp))
+                    }
+                )
+                if (zone != null) {
+                    FilterChip(
+                        selected = true,
+                        onClick = onClearZone,
+                        label = { Text(stringResource(R.string.board_holdsearch_zone_active)) },
+                        trailingIcon = {
+                            Icon(Icons.Default.Clear, contentDescription = stringResource(R.string.board_holdsearch_zone_clear), modifier = Modifier.size(16.dp))
+                        }
+                    )
+                }
+            }
+
+            if (selectedHolds.isNotEmpty() || zone != null) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
-                        stringResource(R.string.board_holdsearch_holds_selected, selectedHolds.size),
+                        if (selectedHolds.isEmpty()) stringResource(R.string.board_holdsearch_zone_only)
+                        else stringResource(R.string.board_holdsearch_holds_selected, selectedHolds.size),
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold
                     )
@@ -152,6 +189,8 @@ internal fun HoldSearchSheet(
                     heatmapData = null,
                     selectedHolds = selectedHolds,
                     onHoldTapped = onHoldTapped,
+                    zone = zone,
+                    zoneCornerPlacementId = zoneCornerA,
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -168,6 +207,7 @@ internal fun HoldSearchActionBar(
     holdFilterActive: Boolean,
     heatmapActive: Boolean,
     selectedCount: Int,
+    zoneActive: Boolean = false,
     matchCount: Int,
     onOpenSheet: () -> Unit,
     onClearFilter: () -> Unit
@@ -193,7 +233,11 @@ internal fun HoldSearchActionBar(
             ) {
                 Icon(Icons.Default.GridView, contentDescription = null, modifier = Modifier.size(16.dp), tint = OrangeAccent)
                 Text(
-                    stringResource(R.string.board_holdsearch_filter_summary, selectedCount, matchCount),
+                    if (selectedCount == 0 && zoneActive) {
+                        stringResource(R.string.board_holdsearch_zone_filter_summary, matchCount)
+                    } else {
+                        stringResource(R.string.board_holdsearch_filter_summary, selectedCount, matchCount)
+                    },
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold
                 )

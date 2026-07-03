@@ -34,6 +34,8 @@ import com.cruxcoach.data.repository.ClimbTypeFilter
 import com.cruxcoach.data.repository.SortDirection
 import com.cruxcoach.android.util.GradeDisplayHelper
 import com.cruxcoach.domain.board.BoardClimbParser
+import com.cruxcoach.domain.board.BoardZone
+import com.cruxcoach.domain.board.BoardZoneFilter
 import com.cruxcoach.domain.board.HoldHeatmapComputer
 import com.cruxcoach.domain.board.HoldSetMask
 import com.cruxcoach.domain.board.HoldRole
@@ -252,7 +254,13 @@ data class HoldSearchState(
     val isSearching: Boolean = false,
     val holdFilterActive: Boolean = false,
     val holdFilterUuids: Set<String> = emptySet(),
-    val showSheet: Boolean = false
+    val showSheet: Boolean = false,
+    /** Corner-tap mode: the next board taps define the zone rectangle. */
+    val zoneSelectMode: Boolean = false,
+    /** First zone corner (placement id) while waiting for the second tap. */
+    val zoneCornerA: Int? = null,
+    /** Active zone box — climbs must lie fully inside to match. */
+    val zone: BoardZone? = null
 )
 
 data class BoardBrowserState(
@@ -1515,11 +1523,53 @@ class BoardBrowserViewModel @Inject constructor(
     }
 
     fun toggleHoldSelection(placementId: Int) {
+        if (_state.value.holdSearch.zoneSelectMode) {
+            onZoneCornerTapped(placementId)
+            return
+        }
         _state.update { s ->
             val current = s.holdSearch.selectedHolds
             val next = if (placementId in current) current - placementId else current + placementId
             s.copy(holdSearch = s.holdSearch.copy(selectedHolds = next))
         }
+        recountHoldMatches()
+    }
+
+    fun toggleZoneSelectMode() {
+        _state.update { s ->
+            s.copy(holdSearch = s.holdSearch.copy(
+                zoneSelectMode = !s.holdSearch.zoneSelectMode, zoneCornerA = null
+            ))
+        }
+    }
+
+    /** Two corner taps span the zone box; the second tap leaves corner mode. */
+    private fun onZoneCornerTapped(placementId: Int) {
+        val s = _state.value.holdSearch
+        val cornerA = s.zoneCornerA
+        if (cornerA == null) {
+            _state.update { it.copy(holdSearch = it.holdSearch.copy(zoneCornerA = placementId)) }
+            return
+        }
+        val pa = _state.value.placements[cornerA] ?: return
+        val pb = _state.value.placements[placementId] ?: return
+        val zone = BoardZoneFilter.zoneFromCorners(pa.x, pa.y, pb.x, pb.y)
+        _state.update { it.copy(holdSearch = it.holdSearch.copy(
+            zone = zone, zoneCornerA = null, zoneSelectMode = false
+        )) }
+        recountHoldMatches()
+    }
+
+    fun clearZone() {
+        _state.update { s ->
+            s.copy(holdSearch = s.holdSearch.copy(
+                zone = null, zoneCornerA = null, zoneSelectMode = false
+            ))
+        }
+        if (_state.value.holdSearch.holdFilterActive) applyHoldFilter() else recountHoldMatches()
+    }
+
+    private fun recountHoldMatches() {
         holdSearchJob?.cancel()
         holdSearchJob = viewModelScope.safeLaunch(TAG) {
             _state.update { it.copy(holdSearch = it.holdSearch.copy(isSearching = true)) }
@@ -1532,18 +1582,26 @@ class BoardBrowserViewModel @Inject constructor(
         _state.update { s ->
             s.copy(holdSearch = s.holdSearch.copy(
                 selectedHolds = emptySet(), matchCount = 0,
-                holdFilterActive = false, holdFilterUuids = emptySet()
+                holdFilterActive = false, holdFilterUuids = emptySet(),
+                zone = null, zoneCornerA = null, zoneSelectMode = false
             ))
         }
         searchClimbs()
     }
 
     fun applyHoldFilter() {
-        val selected = _state.value.holdSearch.selectedHolds
-        if (selected.isEmpty()) return
+        val hs0 = _state.value.holdSearch
+        val selected = hs0.selectedHolds
+        val zone = hs0.zone
+        if (selected.isEmpty() && zone == null) {
+            // Nothing left to filter by (e.g. zone cleared after a zone-only
+            // filter) — drop back to the unfiltered list.
+            clearHoldSelection()
+            return
+        }
         viewModelScope.safeLaunch(TAG) {
             _state.update { it.copy(holdSearch = it.holdSearch.copy(isSearching = true)) }
-            val uuids = withContext(Dispatchers.IO) { findUuidsMatchingAllHolds(selected) }
+            val uuids = withContext(Dispatchers.IO) { findUuidsMatchingHoldFilter(selected, zone) }
             _state.update { it.copy(holdSearch = it.holdSearch.copy(
                 holdFilterActive = true,
                 holdFilterUuids = uuids,
@@ -1567,13 +1625,13 @@ class BoardBrowserViewModel @Inject constructor(
     }
 
     private fun countHoldMatches(): Int {
-        val selected = _state.value.holdSearch.selectedHolds
-        if (selected.isEmpty()) return 0
-        return findUuidsMatchingAllHolds(selected).size
+        val hs = _state.value.holdSearch
+        if (hs.selectedHolds.isEmpty() && hs.zone == null) return 0
+        return findUuidsMatchingHoldFilter(hs.selectedHolds, hs.zone).size
     }
 
-    private fun findUuidsMatchingAllHolds(selectedHolds: Set<Int>): Set<String> {
-        if (selectedHolds.isEmpty()) return emptySet()
+    private fun findUuidsMatchingHoldFilter(selectedHolds: Set<Int>, zone: BoardZone?): Set<String> {
+        if (selectedHolds.isEmpty() && zone == null) return emptySet()
         val start = System.currentTimeMillis()
         val f = _state.value.filter
         // Range-only predicate (no :showUngraded escape): in ungraded-only
@@ -1581,12 +1639,21 @@ class BoardBrowserViewModel @Inject constructor(
         // browse list, whose ungraded rows a range query can never reach.
         val gb = gradeBounds(f)
         val patterns = selectedHolds.map { HoldHeatmapComputer.holdLikePattern(it) }
-        // Single DB pass: load frames once, check all hold patterns per row
-        val result = boardRepository.searchClimbUuidsByAllHolds(
-            patterns, f.angle, f.layoutId, f.boardBrand, gb.minDiff, gb.maxDiff, f.minAscensionists, f.climbTypeFilter
-        )
+        // Single DB pass: load frames once, check hold patterns + zone per
+        // row. An empty pattern list (zone-only search) passes the holds leg
+        // and lets the zone predicate do the narrowing.
+        val xyByPlacement = if (zone != null) {
+            _state.value.placements.mapValues { it.value.x to it.value.y }
+        } else emptyMap()
+        val result = boardRepository.getAllFramesForHeatmap(
+            f.angle, f.layoutId, f.boardBrand, gb.minDiff, gb.maxDiff, f.minAscensionists, f.climbTypeFilter
+        ).asSequence()
+            .filter { row -> patterns.all { pattern -> row.frames.contains(pattern) } }
+            .filter { row -> zone == null || BoardZoneFilter.climbInZone(row.frames, xyByPlacement, zone) }
+            .map { it.uuid }
+            .toSet()
         val elapsed = System.currentTimeMillis() - start
-        PerfLogger.log("🔍 holdSearch: ${patterns.size} patterns, ${result.size} matches in ${elapsed}ms")
+        PerfLogger.log("🔍 holdSearch: ${patterns.size} patterns, zone=${zone != null}, ${result.size} matches in ${elapsed}ms")
         return result
     }
 
