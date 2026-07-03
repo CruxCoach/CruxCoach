@@ -2089,4 +2089,9 @@
     <string name="playlist_attempts_badge">%1$d Versuche</string>
     <string name="playlist_add_to_running">Zur laufenden Playlist hinzufügen</string>
     <string name="playlist_added_to_running">Zur Playlist hinzugefügt</string>
+    <string name="playlist_log_send">Geschafft</string>
+    <string name="playlist_log_attempt">Versuch</string>
+    <string name="playlist_logged_send">Send geloggt</string>
+    <string name="playlist_logged_attempt">Versuch geloggt</string>
+    <string name="playlist_player_add_climbs">Climbs hinzufügen</string>
 </resources>

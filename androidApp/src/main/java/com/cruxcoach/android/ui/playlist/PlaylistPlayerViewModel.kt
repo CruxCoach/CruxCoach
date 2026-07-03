@@ -34,6 +34,10 @@ data class PlaylistPlayerState(
     val finishedSession: Board_sessions? = null,
     val summary: EnhancedSessionSummary? = null,
     val zones: IntensityZones? = null,
+    /** One-shot quick-log feedback: true=send, false=attempt, null=idle. */
+    val lastLogged: Boolean? = null,
+    /** Confirm dialog for the central stop button. */
+    val showStopConfirm: Boolean = false,
 )
 
 /**
@@ -48,6 +52,7 @@ class PlaylistPlayerViewModel @Inject constructor(
     private val userPreferences: UserPreferences,
     private val personalBoardRepo: PersonalBoardRepository,
     private val zoneManager: IntensityZoneManager,
+    private val boardSessionManager: com.cruxcoach.android.data.BoardSessionManager,
     val climbNavState: ClimbNavigationState,
 ) : ViewModel() {
 
@@ -84,8 +89,83 @@ class PlaylistPlayerViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Quick-log for the current climb: send (isSend) or attempt. Same
+     * write path as the detail screen's AscentLogger — ascent/bid row,
+     * Verlauf entry for sends, session counters, zone recompute — but
+     * one tap instead of dialog + form. Defaults: 1 attempt, no comment.
+     */
+    fun quickLog(isSend: Boolean) {
+        val climb = _state.value.render?.climb ?: return
+        val angle = playback.state.value.currentClimb?.angle ?: return
+        viewModelScope.safeLaunch(TAG) {
+            withContext(Dispatchers.IO) {
+                val uuid = java.util.UUID.randomUUID().toString()
+                val now = com.cruxcoach.util.DateTimeUtil.nowIso()
+                if (isSend) {
+                    personalBoardRepo.insertAscent(
+                        uuid = uuid,
+                        climbUuid = climb.uuid,
+                        angle = angle.toLong(),
+                        isMirror = false,
+                        attemptId = 0,
+                        bidCount = 1,
+                        quality = null,
+                        difficulty = climb.difficultyAverage?.toLong(),
+                        isBenchmark = false,
+                        comment = null,
+                        climbedAt = now,
+                        synced = false,
+                        climbName = climb.name,
+                        difficultyAverage = climb.difficultyAverage,
+                        climbFrames = climb.frames,
+                        framesCount = climb.framesCount,
+                        boardBrand = climb.boardBrand,
+                        layoutId = climb.layoutId,
+                    )
+                    personalBoardRepo.recordClimbHistory(
+                        climbUuid = climb.uuid,
+                        climbName = climb.name,
+                        angle = angle.toLong(),
+                        difficultyAverage = climb.difficultyAverage,
+                        boardBrand = climb.boardBrand,
+                        layoutId = climb.layoutId,
+                        climbedAt = now,
+                        recordedAt = now,
+                    )
+                } else {
+                    personalBoardRepo.insertBid(
+                        uuid = uuid,
+                        climbUuid = climb.uuid,
+                        angle = angle.toLong(),
+                        isMirror = false,
+                        bidCount = 1,
+                        comment = null,
+                        climbedAt = now,
+                        synced = false,
+                        climbName = climb.name,
+                        difficultyAverage = climb.difficultyAverage,
+                        boardBrand = climb.boardBrand,
+                        layoutId = climb.layoutId,
+                    )
+                }
+            }
+            climbNavState.statusDataChanged = true
+            climbNavState.changedClimbUuids.add(climb.uuid)
+            if (isSend) boardSessionManager.recordAscent() else boardSessionManager.recordBid()
+            zoneManager.recompute()
+            _state.update { it.copy(lastLogged = isSend) }
+        }
+    }
+
+    fun consumeLogFeedback() = _state.update { it.copy(lastLogged = null) }
+
+    fun requestStop() = _state.update { it.copy(showStopConfirm = true) }
+    fun dismissStopConfirm() = _state.update { it.copy(showStopConfirm = false) }
+
     /** Stop playback and stage the summary sheet. */
     fun stop() {
+        _state.update { it.copy(showStopConfirm = false) }
         val finished = playback.stop() ?: return
         _state.update { it.copy(finishedSession = finished) }
         viewModelScope.safeLaunch(TAG) {

@@ -646,6 +646,12 @@ fun CruxCoachNavHost(
                         onNavigateToClimb = { climbUuid, angle ->
                             navController.navigate(Routes.boardClimbDetail(climbUuid, angle))
                         },
+                        onNavigateToBrowser = {
+                            navController.navigate(Routes.BOARD_BROWSER) {
+                                popUpTo(Routes.BOARD_BROWSER) { inclusive = false }
+                                launchSingleTop = true
+                            }
+                        },
                     )
                 }
             }

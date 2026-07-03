@@ -27,8 +27,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
-import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Lightbulb
+import androidx.compose.material.icons.filled.Replay
+import androidx.compose.material.icons.filled.StopCircle
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.People
@@ -102,12 +106,25 @@ import com.cruxcoach.domain.board.MoonBoardVariant
 fun PlaylistPlayerScreen(
     onNavigateBack: () -> Unit,
     onNavigateToClimb: (String, Int) -> Unit,
+    /** "+"-Button: zum Browser, wo Long-Press Climbs hinzufügt. */
+    onNavigateToBrowser: () -> Unit = {},
     viewModel: PlaylistPlayerViewModel = hiltViewModel(),
 ) {
     val playback by viewModel.playbackState.collectAsStateWithLifecycle()
     val state by viewModel.state.collectAsStateWithLifecycle()
     var menuExpanded by remember { mutableStateOf(false) }
     var showQueueSheet by remember { mutableStateOf(false) }
+    val snackbarHostState = remember { androidx.compose.material3.SnackbarHostState() }
+    val loggedSendMsg = stringResource(R.string.playlist_logged_send)
+    val loggedAttemptMsg = stringResource(R.string.playlist_logged_attempt)
+
+    // Quick-log feedback: snackbar + reset the one-shot flag.
+    LaunchedEffect(state.lastLogged) {
+        state.lastLogged?.let { isSend ->
+            snackbarHostState.showSnackbar(if (isSend) loggedSendMsg else loggedAttemptMsg)
+            viewModel.consumeLogFeedback()
+        }
+    }
 
     // Playlist ended elsewhere (host stopped, migration failed) and no
     // summary pending → leave the player. Two subtleties: isConnecting
@@ -146,6 +163,37 @@ fun PlaylistPlayerScreen(
         )
     }
 
+    if (state.showStopConfirm) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { viewModel.dismissStopConfirm() },
+            title = {
+                Text(
+                    stringResource(R.string.board_session_end_title),
+                    fontWeight = FontWeight.Bold,
+                )
+            },
+            confirmButton = {
+                androidx.compose.material3.Button(
+                    onClick = { viewModel.stop() },
+                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                    ),
+                    modifier = Modifier.testTag("player_stop_confirm"),
+                ) {
+                    Text(
+                        if (playback.isHost) stringResource(R.string.ble_end_session)
+                        else stringResource(R.string.ble_leave_session),
+                    )
+                }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { viewModel.dismissStopConfirm() }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            },
+        )
+    }
+
     state.finishedSession?.let { finished ->
         SessionSummarySheet(
             session = finished,
@@ -159,6 +207,7 @@ fun PlaylistPlayerScreen(
     }
 
     Scaffold(
+        snackbarHost = { androidx.compose.material3.SnackbarHost(snackbarHostState) },
         topBar = {
             Column {
                 TopAppBar(
@@ -188,10 +237,13 @@ fun PlaylistPlayerScreen(
                         }
                     },
                     navigationIcon = {
-                        // Close = leave the SCREEN; the playlist keeps running
+                        // Back = leave the SCREEN; the playlist keeps running
                         // (mini-player stays visible everywhere).
                         IconButton(onClick = onNavigateBack) {
-                            Icon(Icons.Default.Close, contentDescription = stringResource(R.string.action_close))
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = stringResource(R.string.action_back),
+                            )
                         }
                     },
                     actions = {
@@ -210,11 +262,27 @@ fun PlaylistPlayerScreen(
                                 Spacer(Modifier.width(6.dp))
                             }
                         }
-                        IconButton(onClick = { menuExpanded = true }, modifier = Modifier.testTag("player_menu")) {
-                            Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.action_more_options))
+                        // Central, always-visible stop — no more overflow hunt.
+                        IconButton(
+                            onClick = { viewModel.requestStop() },
+                            modifier = Modifier.testTag("player_stop"),
+                        ) {
+                            Icon(
+                                Icons.Default.StopCircle,
+                                contentDescription = if (playback.isHost) {
+                                    stringResource(R.string.ble_end_session)
+                                } else {
+                                    stringResource(R.string.ble_leave_session)
+                                },
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(26.dp),
+                            )
                         }
-                        DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
-                            if (playback.isHost) {
+                        if (playback.isHost) {
+                            IconButton(onClick = { menuExpanded = true }, modifier = Modifier.testTag("player_menu")) {
+                                Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.action_more_options))
+                            }
+                            DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
                                 DropdownMenuItem(
                                     text = { Text(stringResource(R.string.ble_queue_resend)) },
                                     leadingIcon = { Icon(Icons.Default.Lightbulb, contentDescription = null) },
@@ -225,20 +293,6 @@ fun PlaylistPlayerScreen(
                                     modifier = Modifier.testTag("player_resend"),
                                 )
                             }
-                            DropdownMenuItem(
-                                text = {
-                                    Text(
-                                        if (playback.isHost) stringResource(R.string.ble_end_session)
-                                        else stringResource(R.string.ble_leave_session),
-                                        color = MaterialTheme.colorScheme.error,
-                                    )
-                                },
-                                onClick = {
-                                    menuExpanded = false
-                                    viewModel.stop()
-                                },
-                                modifier = Modifier.testTag("player_stop"),
-                            )
                         }
                     },
                 )
@@ -267,6 +321,7 @@ fun PlaylistPlayerScreen(
                 onNext = { viewModel.playback.next() },
                 onTogglePause = { viewModel.playback.togglePause() },
                 onOpenQueue = { showQueueSheet = true },
+                onAddClimbs = onNavigateToBrowser,
             )
         },
     ) { padding ->
@@ -337,6 +392,7 @@ fun PlaylistPlayerScreen(
                             viewModel.climbNavState.source = ClimbNavigationSource.QUEUE
                             onNavigateToClimb(uuid, angle)
                         },
+                        onQuickLog = { viewModel.quickLog(it) },
                     )
                 }
             }
@@ -354,6 +410,7 @@ private fun ClimbingContent(
     onSwipeNext: () -> Unit,
     onSwipePrevious: () -> Unit,
     onClimbTapped: (String, Int) -> Unit,
+    onQuickLog: (Boolean) -> Unit,
 ) {
     val render = state.render
     val density = LocalDensity.current
@@ -471,6 +528,43 @@ private fun ClimbingContent(
                     textAlign = TextAlign.Center,
                     modifier = Modifier.padding(horizontal = 32.dp),
                 )
+            }
+        }
+        // Quick-log: the training loop is climb → log → next. One tap
+        // per outcome, right under the board.
+        if (render != null) {
+            Spacer(Modifier.height(10.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                OutlinedButton(
+                    onClick = { onQuickLog(false) },
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.weight(1f).testTag("player_log_attempt"),
+                ) {
+                    Icon(
+                        Icons.Default.Replay, contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(stringResource(R.string.playlist_log_attempt))
+                }
+                androidx.compose.material3.Button(
+                    onClick = { onQuickLog(true) },
+                    shape = RoundedCornerShape(12.dp),
+                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                        containerColor = com.cruxcoach.android.ui.theme.SuccessGreen,
+                    ),
+                    modifier = Modifier.weight(1f).testTag("player_log_send"),
+                ) {
+                    Icon(
+                        Icons.Default.Check, contentDescription = null,
+                        tint = DarkBackground, modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(stringResource(R.string.playlist_log_send), color = DarkBackground)
+                }
             }
         }
         Spacer(Modifier.height(12.dp))
@@ -591,6 +685,7 @@ private fun PlayerControls(
     onNext: () -> Unit,
     onTogglePause: () -> Unit,
     onOpenQueue: () -> Unit,
+    onAddClimbs: () -> Unit,
 ) {
     // Tactile confirmation on transport actions — at the wall you tap
     // with chalked fingers and don't stare at the screen.
@@ -652,8 +747,18 @@ private fun PlayerControls(
                 modifier = Modifier.size(36.dp),
             )
         }
-        // Symmetry spacer opposite the queue button.
-        Spacer(Modifier.size(48.dp))
+        // Add climbs: to the browser, where long-press adds to the
+        // running playlist — same flow for host and participants.
+        IconButton(
+            onClick = onAddClimbs,
+            modifier = Modifier.size(48.dp).testTag("player_add"),
+        ) {
+            Icon(
+                Icons.Default.Add,
+                contentDescription = stringResource(R.string.playlist_player_add_climbs),
+                modifier = Modifier.size(28.dp),
+            )
+        }
     }
 }
 

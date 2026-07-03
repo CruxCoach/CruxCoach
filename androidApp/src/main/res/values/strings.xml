@@ -2086,4 +2086,9 @@
     <string name="playlist_attempts_badge">%1$d attempts</string>
     <string name="playlist_add_to_running">Add to running playlist</string>
     <string name="playlist_added_to_running">Added to playlist</string>
+    <string name="playlist_log_send">Sent it</string>
+    <string name="playlist_log_attempt">Attempt</string>
+    <string name="playlist_logged_send">Send logged</string>
+    <string name="playlist_logged_attempt">Attempt logged</string>
+    <string name="playlist_player_add_climbs">Add climbs</string>
 </resources>
