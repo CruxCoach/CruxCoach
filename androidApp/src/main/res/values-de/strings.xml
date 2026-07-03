@@ -853,8 +853,7 @@
     <string name="board_holdsearch_hold_search">Hold-Suche</string>
     <string name="board_holdsearch_hint">Tippe Holds auf dem Board an, um Climbs zu finden die diese Holds verwenden.</string>
     <string name="board_holdsearch_zone_mode">Bereich wählen</string>
-    <string name="board_holdsearch_zone_hint">Tippe zwei Eck-Holds, um einen Bereich aufzuspannen. Es passen nur Climbs, die komplett im Bereich liegen.</string>
-    <string name="board_holdsearch_zone_corner_hint">Tippe jetzt die gegenüberliegende Ecke des Bereichs.</string>
+    <string name="board_holdsearch_zone_hint">Ziehe mit einem Finger einen Rahmen um den Bereich. Es passen nur Climbs, die komplett im Bereich liegen.</string>
     <string name="board_holdsearch_zone_active">Bereich aktiv</string>
     <string name="board_holdsearch_zone_clear">Bereich entfernen</string>
     <string name="board_holdsearch_zone_only">Bereichsfilter</string>
