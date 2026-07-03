@@ -255,10 +255,8 @@ data class HoldSearchState(
     val holdFilterActive: Boolean = false,
     val holdFilterUuids: Set<String> = emptySet(),
     val showSheet: Boolean = false,
-    /** Corner-tap mode: the next board taps define the zone rectangle. */
+    /** Drag mode: a one-finger drag on the board frames the zone rectangle. */
     val zoneSelectMode: Boolean = false,
-    /** First zone corner (placement id) while waiting for the second tap. */
-    val zoneCornerA: Int? = null,
     /** Active zone box — climbs must lie fully inside to match. */
     val zone: BoardZone? = null
 )
@@ -1523,10 +1521,6 @@ class BoardBrowserViewModel @Inject constructor(
     }
 
     fun toggleHoldSelection(placementId: Int) {
-        if (_state.value.holdSearch.zoneSelectMode) {
-            onZoneCornerTapped(placementId)
-            return
-        }
         _state.update { s ->
             val current = s.holdSearch.selectedHolds
             val next = if (placementId in current) current - placementId else current + placementId
@@ -1537,34 +1531,19 @@ class BoardBrowserViewModel @Inject constructor(
 
     fun toggleZoneSelectMode() {
         _state.update { s ->
-            s.copy(holdSearch = s.holdSearch.copy(
-                zoneSelectMode = !s.holdSearch.zoneSelectMode, zoneCornerA = null
-            ))
+            s.copy(holdSearch = s.holdSearch.copy(zoneSelectMode = !s.holdSearch.zoneSelectMode))
         }
     }
 
-    /** Two corner taps span the zone box; the second tap leaves corner mode. */
-    private fun onZoneCornerTapped(placementId: Int) {
-        val s = _state.value.holdSearch
-        val cornerA = s.zoneCornerA
-        if (cornerA == null) {
-            _state.update { it.copy(holdSearch = it.holdSearch.copy(zoneCornerA = placementId)) }
-            return
-        }
-        val pa = _state.value.placements[cornerA] ?: return
-        val pb = _state.value.placements[placementId] ?: return
-        val zone = BoardZoneFilter.zoneFromCorners(pa.x, pa.y, pb.x, pb.y)
-        _state.update { it.copy(holdSearch = it.holdSearch.copy(
-            zone = zone, zoneCornerA = null, zoneSelectMode = false
-        )) }
+    /** Commit a zone framed by drag on the board and leave drag mode. */
+    fun setZone(zone: BoardZone) {
+        _state.update { it.copy(holdSearch = it.holdSearch.copy(zone = zone, zoneSelectMode = false)) }
         recountHoldMatches()
     }
 
     fun clearZone() {
         _state.update { s ->
-            s.copy(holdSearch = s.holdSearch.copy(
-                zone = null, zoneCornerA = null, zoneSelectMode = false
-            ))
+            s.copy(holdSearch = s.holdSearch.copy(zone = null, zoneSelectMode = false))
         }
         if (_state.value.holdSearch.holdFilterActive) applyHoldFilter() else recountHoldMatches()
     }
@@ -1583,7 +1562,7 @@ class BoardBrowserViewModel @Inject constructor(
             s.copy(holdSearch = s.holdSearch.copy(
                 selectedHolds = emptySet(), matchCount = 0,
                 holdFilterActive = false, holdFilterUuids = emptySet(),
-                zone = null, zoneCornerA = null, zoneSelectMode = false
+                zone = null, zoneSelectMode = false
             ))
         }
         searchClimbs()

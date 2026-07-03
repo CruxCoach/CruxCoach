@@ -49,6 +49,7 @@ import com.cruxcoach.data.repository.BoardSize
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.BoardHold
 import com.cruxcoach.domain.board.BoardZone
+import com.cruxcoach.domain.board.BoardZoneFilter
 import kotlinx.coroutines.withTimeoutOrNull
 
 /** Bundled board-size IDs that have a WebP asset in board_images/.
@@ -169,9 +170,15 @@ internal fun KilterBoardVisualization(
      */
     allowZoom: Boolean = false,
     /** Zone-box overlay (hold search): translucent rectangle in placement
-     *  coordinate space, plus the pending first-corner marker. */
+     *  coordinate space. */
     zone: BoardZone? = null,
-    zoneCornerPlacementId: Int? = null,
+    /**
+     * Zone selection: while true, a one-finger drag frames a rectangle with
+     * live preview and [onZoneSelected] fires on release. Replaces hold
+     * tapping for the duration of the mode.
+     */
+    zoneSelectMode: Boolean = false,
+    onZoneSelected: ((BoardZone) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -294,8 +301,57 @@ internal fun KilterBoardVisualization(
             // Keep fresh reference to selectedHolds for gesture coroutine
             val currentSelectedHolds by rememberUpdatedState(selectedHolds)
 
+            // Live zone-drag preview (board coordinate space)
+            var dragZone by remember { mutableStateOf<BoardZone?>(null) }
+
             // Touch handler (only when interactive)
-            val touchModifier = if (onHoldTapped != null) {
+            val touchModifier = if (zoneSelectMode && onZoneSelected != null) {
+                Modifier.pointerInput(zoneSelectMode, boardSize) {
+                    val toCanvasSpace: (Offset) -> Offset = { screen ->
+                        val (s, off) = zoomState
+                        if (!allowZoom || s == 1f) {
+                            screen
+                        } else {
+                            val pivotX = size.width / 2f
+                            val pivotY = size.height / 2f
+                            Offset(
+                                x = (screen.x - pivotX - off.x) / s + pivotX,
+                                y = (screen.y - pivotY - off.y) / s + pivotY,
+                            )
+                        }
+                    }
+                    // Canvas position → board placement coordinates
+                    val toZone: (Offset, Offset) -> BoardZone = { a, b ->
+                        val xS = size.width.toFloat() / boardWidth
+                        val yS = size.height.toFloat() / boardHeight
+                        val ax = (a.x / xS + edgeLeft).toLong()
+                        val ay = ((size.height - a.y) / yS + edgeBottom).toLong()
+                        val bx = (b.x / xS + edgeLeft).toLong()
+                        val by = ((size.height - b.y) / yS + edgeBottom).toLong()
+                        BoardZoneFilter.zoneFromCorners(ax, ay, bx, by)
+                    }
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        val start = toCanvasSpace(down.position)
+                        var current = start
+                        do {
+                            val event = awaitPointerEvent()
+                            // Hand off to zoom/pan on a second finger.
+                            if (event.changes.count { it.pressed } >= 2) {
+                                dragZone = null
+                                return@awaitEachGesture
+                            }
+                            event.changes.forEach { it.consume() }
+                            event.changes.firstOrNull()?.let { current = toCanvasSpace(it.position) }
+                            dragZone = toZone(start, current)
+                        } while (event.changes.any { it.pressed })
+                        val moved = (current - start).getDistance() > viewConfiguration.touchSlop * 2
+                        val result = toZone(start, current)
+                        dragZone = null
+                        if (moved) onZoneSelected(result)
+                    }
+                }
+            } else if (onHoldTapped != null) {
                 Modifier.pointerInput(placements, boardSize) {
                     // Inverse the screen-space tap by the active zoom/pan
                     // transform so findNearest works in canvas-space (which
@@ -399,14 +455,16 @@ internal fun KilterBoardVisualization(
                 val yScale = size.height / boardHeight
 
                 // Zone-box overlay: below the hold circles so selections stay
-                // readable on top. Padded by one hold radius so the corner
-                // holds sit visually inside the rectangle.
-                if (zone != null) {
+                // readable on top. Live drag preview wins over the committed
+                // zone. Padded by one hold radius so the boundary holds sit
+                // visually inside the rectangle.
+                val zoneToDraw = dragZone ?: zone
+                if (zoneToDraw != null) {
                     val pad = xScale * 5f
-                    val left = ((zone.minX.toFloat() - edgeLeft) * xScale - pad).coerceAtLeast(0f)
-                    val right = ((zone.maxX.toFloat() - edgeLeft) * xScale + pad).coerceAtMost(size.width)
-                    val top = (size.height - (zone.maxY.toFloat() - edgeBottom) * yScale - pad).coerceAtLeast(0f)
-                    val bottom = (size.height - (zone.minY.toFloat() - edgeBottom) * yScale + pad).coerceAtMost(size.height)
+                    val left = ((zoneToDraw.minX.toFloat() - edgeLeft) * xScale - pad).coerceAtLeast(0f)
+                    val right = ((zoneToDraw.maxX.toFloat() - edgeLeft) * xScale + pad).coerceAtMost(size.width)
+                    val top = (size.height - (zoneToDraw.maxY.toFloat() - edgeBottom) * yScale - pad).coerceAtLeast(0f)
+                    val bottom = (size.height - (zoneToDraw.minY.toFloat() - edgeBottom) * yScale + pad).coerceAtMost(size.height)
                     drawRect(
                         color = OrangeAccent.copy(alpha = 0.15f),
                         topLeft = Offset(left, top),
@@ -419,19 +477,6 @@ internal fun KilterBoardVisualization(
                         style = Stroke(width = 2.dp.toPx())
                     )
                 }
-                zoneCornerPlacementId?.let { cornerId ->
-                    placements[cornerId]?.let { p ->
-                        val cx = (p.x.toFloat() - edgeLeft) * xScale
-                        val cy = size.height - (p.y.toFloat() - edgeBottom) * yScale
-                        drawCircle(
-                            color = OrangeAccent,
-                            radius = xScale * 5f,
-                            center = Offset(cx, cy),
-                            style = Stroke(width = 3.dp.toPx())
-                        )
-                    }
-                }
-
                 placements.values.forEach { placement ->
                     val px = (placement.x.toFloat() - edgeLeft) * xScale
                     val py = size.height - (placement.y.toFloat() - edgeBottom) * yScale

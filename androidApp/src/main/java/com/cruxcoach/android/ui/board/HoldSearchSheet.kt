@@ -46,9 +46,9 @@ internal fun HoldSearchSheet(
     boardSize: com.cruxcoach.data.repository.BoardSize?,
     boardImages: List<com.cruxcoach.data.repository.BoardImage> = emptyList(),
     zoneSelectMode: Boolean = false,
-    zoneCornerA: Int? = null,
     zone: com.cruxcoach.domain.board.BoardZone? = null,
     onToggleZoneMode: () -> Unit = {},
+    onZoneSelected: (com.cruxcoach.domain.board.BoardZone) -> Unit = {},
     onClearZone: () -> Unit = {},
     onHoldTapped: (Int) -> Unit,
     onClearSelection: () -> Unit,
@@ -87,11 +87,8 @@ internal fun HoldSearchSheet(
             )
             Text(
                 stringResource(
-                    when {
-                        zoneSelectMode && zoneCornerA != null -> R.string.board_holdsearch_zone_corner_hint
-                        zoneSelectMode -> R.string.board_holdsearch_zone_hint
-                        else -> R.string.board_holdsearch_hint
-                    }
+                    if (zoneSelectMode) R.string.board_holdsearch_zone_hint
+                    else R.string.board_holdsearch_hint
                 ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -190,7 +187,8 @@ internal fun HoldSearchSheet(
                     selectedHolds = selectedHolds,
                     onHoldTapped = onHoldTapped,
                     zone = zone,
-                    zoneCornerPlacementId = zoneCornerA,
+                    zoneSelectMode = zoneSelectMode,
+                    onZoneSelected = onZoneSelected,
                     modifier = Modifier.fillMaxWidth()
                 )
             }
