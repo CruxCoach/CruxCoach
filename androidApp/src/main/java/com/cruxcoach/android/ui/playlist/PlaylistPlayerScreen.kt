@@ -276,6 +276,12 @@ fun PlaylistPlayerScreen(
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState()),
         ) {
+            if (state.finishedSession != null) {
+                // Summary sheet is up — the queue is already cleared, so the
+                // content behind it would flash "empty playlist / unknown
+                // climb". Keep the backdrop neutral instead.
+                return@Column
+            }
             if (playback.isConnecting && !playback.isActive) {
                 // Join in progress: GATT is connecting to the host.
                 Column(
