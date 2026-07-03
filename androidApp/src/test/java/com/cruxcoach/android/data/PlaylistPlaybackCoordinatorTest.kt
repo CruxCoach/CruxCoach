@@ -178,6 +178,18 @@ class PlaylistPlaybackCoordinatorTest {
         verify(exactly = 1) { boardSessionManager.resumeSession() }
     }
 
+    @Test
+    fun `initial state reflects an already-running playlist`() {
+        // The player reads state.value on its first frame — a blank seed
+        // (isActive=false) bounced it straight back out after Play.
+        queueManager.loadPlaylist("Playlist", listOf(QueueItem("a", 40)))
+        val fresh = PlaylistPlaybackCoordinator(
+            queueManager, boardSessionManager, gattBridge, bleShareManager, scope,
+        )
+        assertTrue(fresh.state.value.isActive)
+        assertEquals(1, fresh.state.value.queue.size)
+    }
+
     // ── Phase-aware transport (the "next during rest" bug) ──────
 
     @Test

@@ -110,11 +110,22 @@ fun PlaylistPlayerScreen(
     var showQueueSheet by remember { mutableStateOf(false) }
 
     // Playlist ended elsewhere (host stopped, migration failed) and no
-    // summary pending → leave the player. isConnecting covers the join
-    // flow: the player opens while GATT is still connecting.
-    LaunchedEffect(playback.isActive, playback.isConnecting, state.finishedSession) {
-        if (!playback.isActive && !playback.isConnecting && state.finishedSession == null) {
-            onNavigateBack()
+    // summary pending → leave the player. Two subtleties: isConnecting
+    // covers the join flow (player opens while GATT connects), and the
+    // close only arms AFTER activity was observed once — the coordinator's
+    // combined state can still be a pre-play snapshot on the first frame,
+    // which used to bounce the player right back out of a freshly started
+    // playlist.
+    LaunchedEffect(Unit) {
+        var sawActivity = false
+        androidx.compose.runtime.snapshotFlow {
+            Triple(playback.isActive, playback.isConnecting, state.finishedSession != null)
+        }.collect { (active, connecting, summaryPending) ->
+            if (active || connecting) {
+                sawActivity = true
+            } else if (sawActivity && !summaryPending) {
+                onNavigateBack()
+            }
         }
     }
 
@@ -129,6 +140,9 @@ fun PlaylistPlayerScreen(
             onDismiss = { showQueueSheet = false },
             onNavigateToClimb = { uuid, angle -> onNavigateToClimb(uuid, angle) },
             canEdit = true,
+            // End from the sheet goes through the player's stop() so the
+            // summary appears instead of a silent pop-out.
+            onEndPlaylist = { viewModel.stop() },
         )
     }
 

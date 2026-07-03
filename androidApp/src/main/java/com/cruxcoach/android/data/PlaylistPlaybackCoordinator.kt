@@ -94,29 +94,49 @@ class PlaylistPlaybackCoordinator(
         boardSessionManager.state,
         boardSessionManager.restTimer,
     ) { queue, climbInfo, session, rest ->
-        PlaylistPlaybackState(
-            isActive = queue.isActive,
-            isConnecting = queue.isConnecting,
-            role = queue.role,
-            hostName = queue.hostName,
-            participantCount = queue.participantCount,
-            participants = queue.participants,
-            queue = queue.queue,
-            currentIndex = queue.currentIndex,
-            currentClimb = queue.currentClimb,
-            currentClimbName = climbInfo?.name,
-            currentClimbDifficulty = climbInfo?.difficultyAverage,
-            phase = if (rest.isRunning) {
-                PlaybackPhase.Resting(rest.secondsRemaining, rest.totalSeconds)
-            } else {
-                PlaybackPhase.Climbing
-            },
-            isPaused = session.isPaused,
-            elapsedSeconds = session.elapsedSeconds,
-            ascentCount = session.ascentCount,
-            bidCount = session.bidCount,
-        )
-    }.stateIn(scope, SharingStarted.Eagerly, PlaylistPlaybackState())
+        buildState(queue, climbInfo, session, rest)
+    }.stateIn(
+        scope,
+        SharingStarted.Eagerly,
+        // Seed with the REAL current values, not a blank default: the
+        // player's ended-elsewhere auto-close reads isActive on first
+        // frame — a false-y placeholder made it pop right back out of a
+        // freshly started playlist before combine's first emission.
+        buildState(
+            queueManager.state.value,
+            queueManager.currentClimbInfo.value,
+            boardSessionManager.state.value,
+            boardSessionManager.restTimer.value,
+        ),
+    )
+
+    private fun buildState(
+        queue: SessionQueueState,
+        climbInfo: ClimbDisplayInfo?,
+        session: BoardSessionState,
+        rest: RestTimerState,
+    ): PlaylistPlaybackState = PlaylistPlaybackState(
+        isActive = queue.isActive,
+        isConnecting = queue.isConnecting,
+        role = queue.role,
+        hostName = queue.hostName,
+        participantCount = queue.participantCount,
+        participants = queue.participants,
+        queue = queue.queue,
+        currentIndex = queue.currentIndex,
+        currentClimb = queue.currentClimb,
+        currentClimbName = climbInfo?.name,
+        currentClimbDifficulty = climbInfo?.difficultyAverage,
+        phase = if (rest.isRunning) {
+            PlaybackPhase.Resting(rest.secondsRemaining, rest.totalSeconds)
+        } else {
+            PlaybackPhase.Climbing
+        },
+        isPaused = session.isPaused,
+        elapsedSeconds = session.elapsedSeconds,
+        ascentCount = session.ascentCount,
+        bidCount = session.bidCount,
+    )
 
     // ── Playback control (role-aware — the ONLY place that logic lives) ──
 

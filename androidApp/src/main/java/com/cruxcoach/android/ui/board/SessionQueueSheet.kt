@@ -36,10 +36,13 @@ fun SessionQueueSheet(
     onDismiss: () -> Unit,
     onNavigateToClimb: (climbUuid: String, angle: Int) -> Unit,
     canEdit: Boolean,
+    /** When set (player context), the end/leave button delegates here so
+     *  the caller can stage the summary instead of a silent teardown. */
+    onEndPlaylist: (() -> Unit)? = null,
     viewModel: SessionQueueViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val climbNames by viewModel.climbNames.collectAsStateWithLifecycle()
+    val climbInfos by viewModel.climbInfos.collectAsStateWithLifecycle()
 
     // Drag-reorder state (only used when canEdit)
     var draggedFrom by remember { mutableIntStateOf(-1) }
@@ -153,7 +156,8 @@ fun SessionQueueSheet(
                     // LazyColumn with "Key was already used".
                     itemsIndexed(state.queue, key = { i, item -> "$i:${item.climbUuid}" }) { index, item ->
                         val isCurrent = index == state.currentIndex
-                        val name = climbNames[item.climbUuid] ?: item.climbUuid.take(8)
+                        val info = climbInfos[item.climbUuid]
+                        val name = info?.name ?: item.climbUuid.take(8)
 
                         Card(
                             modifier = Modifier
@@ -252,7 +256,10 @@ fun SessionQueueSheet(
                                         overflow = TextOverflow.Ellipsis
                                     )
                                     Text(
-                                        "${item.angle}°",
+                                        buildString {
+                                            info?.gradeLabel?.let { append("$it · ") }
+                                            append("${item.angle}°")
+                                        },
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -324,7 +331,10 @@ fun SessionQueueSheet(
             }
             OutlinedButton(
                 onClick = {
-                    viewModel.endOrLeave()
+                    // The player routes this through its own stop() so the
+                    // summary sheet appears; standalone contexts keep the
+                    // direct end/leave.
+                    if (onEndPlaylist != null) onEndPlaylist() else viewModel.endOrLeave()
                     onDismiss()
                 },
                 modifier = Modifier.fillMaxWidth(),
