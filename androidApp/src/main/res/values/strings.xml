@@ -808,6 +808,13 @@
     <string name="board_holdsearch_heatmap">Heatmap</string>
     <string name="board_holdsearch_hold_search">Hold Search</string>
     <string name="board_holdsearch_hint">Tap holds on the board to find climbs that use these holds.</string>
+    <string name="board_holdsearch_zone_mode">Select area</string>
+    <string name="board_holdsearch_zone_hint">Tap two corner holds to frame an area. Only climbs fully inside the area will match.</string>
+    <string name="board_holdsearch_zone_corner_hint">Now tap the opposite corner of the area.</string>
+    <string name="board_holdsearch_zone_active">Area active</string>
+    <string name="board_holdsearch_zone_clear">Remove area</string>
+    <string name="board_holdsearch_zone_only">Area filter</string>
+    <string name="board_holdsearch_zone_filter_summary">Area → %d Climbs</string>
     <string name="board_holdsearch_holds_selected">%d holds selected</string>
     <string name="board_holdsearch_reset">Reset</string>
     <string name="board_holdsearch_searching">Searching…</string>

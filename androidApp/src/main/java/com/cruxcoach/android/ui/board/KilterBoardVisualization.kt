@@ -48,6 +48,7 @@ import com.cruxcoach.data.repository.BoardImage
 import com.cruxcoach.data.repository.BoardSize
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.BoardHold
+import com.cruxcoach.domain.board.BoardZone
 import kotlinx.coroutines.withTimeoutOrNull
 
 /** Bundled board-size IDs that have a WebP asset in board_images/.
@@ -167,6 +168,10 @@ internal fun KilterBoardVisualization(
      * editor can hit the visually-tapped hold even when zoomed in.
      */
     allowZoom: Boolean = false,
+    /** Zone-box overlay (hold search): translucent rectangle in placement
+     *  coordinate space, plus the pending first-corner marker. */
+    zone: BoardZone? = null,
+    zoneCornerPlacementId: Int? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -392,6 +397,40 @@ internal fun KilterBoardVisualization(
 
                 val xScale = size.width / boardWidth
                 val yScale = size.height / boardHeight
+
+                // Zone-box overlay: below the hold circles so selections stay
+                // readable on top. Padded by one hold radius so the corner
+                // holds sit visually inside the rectangle.
+                if (zone != null) {
+                    val pad = xScale * 5f
+                    val left = ((zone.minX.toFloat() - edgeLeft) * xScale - pad).coerceAtLeast(0f)
+                    val right = ((zone.maxX.toFloat() - edgeLeft) * xScale + pad).coerceAtMost(size.width)
+                    val top = (size.height - (zone.maxY.toFloat() - edgeBottom) * yScale - pad).coerceAtLeast(0f)
+                    val bottom = (size.height - (zone.minY.toFloat() - edgeBottom) * yScale + pad).coerceAtMost(size.height)
+                    drawRect(
+                        color = OrangeAccent.copy(alpha = 0.15f),
+                        topLeft = Offset(left, top),
+                        size = androidx.compose.ui.geometry.Size(right - left, bottom - top)
+                    )
+                    drawRect(
+                        color = OrangeAccent,
+                        topLeft = Offset(left, top),
+                        size = androidx.compose.ui.geometry.Size(right - left, bottom - top),
+                        style = Stroke(width = 2.dp.toPx())
+                    )
+                }
+                zoneCornerPlacementId?.let { cornerId ->
+                    placements[cornerId]?.let { p ->
+                        val cx = (p.x.toFloat() - edgeLeft) * xScale
+                        val cy = size.height - (p.y.toFloat() - edgeBottom) * yScale
+                        drawCircle(
+                            color = OrangeAccent,
+                            radius = xScale * 5f,
+                            center = Offset(cx, cy),
+                            style = Stroke(width = 3.dp.toPx())
+                        )
+                    }
+                }
 
                 placements.values.forEach { placement ->
                     val px = (placement.x.toFloat() - edgeLeft) * xScale
