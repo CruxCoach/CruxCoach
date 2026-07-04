@@ -5,6 +5,7 @@ import android.util.Log
 import com.cruxcoach.android.R
 import com.cruxcoach.android.data.BoardDatabaseImporter.ImportStep
 import com.cruxcoach.domain.board.BoardBrand
+import com.cruxcoach.android.data.blossom.BlossomSyncException
 import com.cruxcoach.android.data.blossom.BlossomSyncManager
 import com.cruxcoach.android.notification.BoardSyncWorker
 import com.cruxcoach.android.util.isNetworkAvailable
@@ -551,6 +552,11 @@ class BoardSyncManager(
         //    download; a semaphore keeps PARALLEL_DOWNLOADS workers busy with
         //    whichever chunk is next in line.
         val chunkFiles = mutableMapOf<String, File>()
+        // Chunks whose every mirror failed this pass. Recorded (not thrown) so a
+        // single unreachable chunk can no longer sink the entire Kilter sync — we
+        // import the chunks that DID arrive, save only their hashes, and let the
+        // next sync re-fetch just the missing ones via getChangedChunks.
+        val failedChunks = mutableListOf<String>()
         try {
             val totalAllBytes = chunksToDownload.sumOf { it.size }
             val completedBytes = AtomicLong(0)
@@ -561,32 +567,58 @@ class BoardSyncManager(
                     async {
                         permits.withPermit {
                             val outputFile = File(appContext.cacheDir, "blossom_${chunk.name}.sqlite3")
-                            blossomSyncManager.downloadAndDecompressChunk(
-                                chunk = chunk,
-                                outputFile = outputFile,
-                                onProgress = { bytesRead, totalBytes ->
-                                    val cumulative = completedBytes.get() + bytesRead
-                                    _state.update { it.copy(
-                                        importStep = ImportStep.DownloadChunk(
-                                            chunkName = chunk.name,
-                                            chunkIndex = idx,
-                                            totalChunks = chunksToDownload.size,
-                                            bytesRead = bytesRead,
-                                            totalBytes = totalBytes,
-                                            cumulativeBytesRead = cumulative,
-                                            cumulativeTotalBytes = totalAllBytes
-                                        )
-                                    ) }
+                            try {
+                                blossomSyncManager.downloadAndDecompressChunk(
+                                    chunk = chunk,
+                                    outputFile = outputFile,
+                                    onProgress = { bytesRead, totalBytes ->
+                                        val cumulative = completedBytes.get() + bytesRead
+                                        _state.update { it.copy(
+                                            importStep = ImportStep.DownloadChunk(
+                                                chunkName = chunk.name,
+                                                chunkIndex = idx,
+                                                totalChunks = chunksToDownload.size,
+                                                bytesRead = bytesRead,
+                                                totalBytes = totalBytes,
+                                                cumulativeBytesRead = cumulative,
+                                                cumulativeTotalBytes = totalAllBytes
+                                            )
+                                        ) }
+                                    }
+                                )
+                                synchronized(chunkFiles) {
+                                    chunkFiles[chunk.name] = outputFile
                                 }
-                            )
-                            completedBytes.addAndGet(chunk.size)
-                            synchronized(chunkFiles) {
-                                chunkFiles[chunk.name] = outputFile
+                                Log.d(TAG, "Chunk ${chunk.name} downloaded+decompressed: ${outputFile.length()} bytes")
+                            } catch (e: Exception) {
+                                // Every mirror for this chunk failed (downloadAndVerifyChunk
+                                // already retried all mirrors twice). Drop the partial temp
+                                // file and record the miss instead of propagating — one bad
+                                // chunk must not abort the whole sync and throw away the
+                                // ~200-chunk download. Its hash stays unsaved so the next
+                                // sync re-fetches only this chunk.
+                                outputFile.delete()
+                                synchronized(failedChunks) { failedChunks.add(chunk.name) }
+                                Log.w(TAG, "Chunk ${chunk.name} failed all mirrors — skipping this pass", e)
+                            } finally {
+                                // Advance the cumulative counter regardless so the progress
+                                // bar still reaches 100% when some chunks were skipped.
+                                completedBytes.addAndGet(chunk.size)
                             }
-                            Log.d(TAG, "Chunk ${chunk.name} downloaded+decompressed: ${outputFile.length()} bytes")
                         }
                     }
                 }.awaitAll()
+            }
+
+            if (chunkFiles.isEmpty()) {
+                // Every chunk failed every mirror — a real failure, not partial
+                // progress. Throw so the run is marked failed and BoardSyncWorker
+                // retries, instead of importing nothing and marking the sync
+                // complete (which on a fresh install would leave an empty catalogue
+                // flagged as "already imported").
+                throw BlossomSyncException(
+                    "Kilter sync failed: all ${chunksToDownload.size} chunk(s) failed every mirror"
+                )
             }
 
             // 4. Group chunks by type and import
@@ -628,9 +660,27 @@ class BoardSyncManager(
             ) }
             refreshDenormalizedData()
 
-            // 6. Save chunk hashes for incremental updates
+            // 6. Save chunk hashes for incremental updates — ONLY for chunks that
+            // actually downloaded + imported this pass. A skipped (failed) chunk
+            // keeps its old/absent hash so the next sync's getChangedChunks still
+            // reports it as changed and re-fetches just that chunk.
             chunksToDownload.forEach { chunk ->
-                blossomSyncManager.saveChunkHash(chunk.name, chunk.sha256)
+                if (chunkFiles.containsKey(chunk.name)) {
+                    blossomSyncManager.saveChunkHash(chunk.name, chunk.sha256)
+                }
+            }
+            if (failedChunks.isNotEmpty()) {
+                // Partial success: the imported chunks + their saved hashes are
+                // durable, so the sync still reports complete (the user sees the
+                // data that arrived). getChangedChunks will re-report the skipped
+                // chunks on the next sync and the catalogue converges — no full
+                // re-download, no hard failure.
+                Log.w(
+                    TAG,
+                    "Kilter sync imported ${chunkFiles.size}/${chunksToDownload.size} chunks; " +
+                        "${failedChunks.size} failed all mirrors, will retry next sync: " +
+                        failedChunks.take(8).joinToString()
+                )
             }
 
             // 7. MoonBoard catalogue — synced as part of the board-data sync.
