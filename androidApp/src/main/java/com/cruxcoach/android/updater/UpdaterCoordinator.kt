@@ -59,6 +59,9 @@ class UpdaterCoordinator @Inject constructor(
         ProcessLifecycleOwner.get().lifecycle.addObserver(this)
         registerConnectivityCallback()
         UpdateCheckWorker.enqueue(context)
+        // Re-attach to a download the OS may have killed us mid-way through, so
+        // the pipeline can't strand in DOWNLOADING forever on killer-OEM devices.
+        repository.resumePendingDownloadIfAny()
     }
 
     override fun onStart(owner: LifecycleOwner) {
