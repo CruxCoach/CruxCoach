@@ -1192,7 +1192,7 @@
     <!-- Board Ascent Types -->
     <string name="board_ascent_send">Send</string>
     <string name="board_ascent_attempt">Versuch</string>
-    <string name="board_ascent_attempts_count">%d Versuche</string>
+    <string name="board_ascent_attempts_count">Offen · %d Versuche</string>
 
     <!-- Dropdown -->
     <string name="dropdown_selection_placeholder">Auswahl…</string>
@@ -1213,7 +1213,7 @@
     <string name="ble_unknown">Unbekannt</string>
     <string name="ble_unknown_climb">Unbekannter Climb</string>
     <string name="ble_your_climb">Dein Climb</string>
-    <string name="board_ascent_tries">%d Tries</string>
+    <string name="board_ascent_tries">Top · %d Versuche</string>
     <string name="board_climb_frames">%d Frames</string>
     <string name="board_climb_sends_count">%d sends</string>
     <string name="board_detail_benchmark">Benchmark</string>
@@ -2100,5 +2100,6 @@
     <string name="playlist_logged_send">Send geloggt</string>
     <string name="playlist_logged_attempt">Versuch geloggt</string>
     <string name="playlist_player_add_climbs">Climbs hinzufügen</string>
-    <string name="board_ascent_first_try">1. Versuch</string>
+    <string name="board_ascent_first_try">Top · 1. Versuch</string>
+    <string name="board_ascent_open_one">Offen · 1 Versuch</string>
 </resources>

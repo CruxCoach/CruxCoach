@@ -156,7 +156,7 @@ internal fun AscentCard(
                     val attemptsText = if (ascent.bidCount > 1L) {
                         stringResource(R.string.board_ascent_attempts_count, ascent.bidCount)
                     } else {
-                        stringResource(R.string.board_ascent_attempt)
+                        stringResource(R.string.board_ascent_open_one)
                     }
                     Text(
                         attemptsText,
