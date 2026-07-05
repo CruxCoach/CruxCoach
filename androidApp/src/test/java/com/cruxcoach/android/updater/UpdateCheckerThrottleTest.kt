@@ -153,4 +153,29 @@ class UpdateCheckerThrottleTest {
 
         assertTrue(outcome is UpdateChecker.CheckOutcome.NotModified)
     }
+
+    @Test
+    fun `reboot resets throttle — negative sinceBoot must not block the check`() = runTest {
+        stubGateAllowed()
+        // The last check ran 1h into a previous long-uptime session (stored
+        // boot-realtime is large), then the device rebooted so the current
+        // uptime is tiny. Old behaviour: sinceBoot = 5_000 - 3_600_000 < 0, and
+        // `negative < interval` throttled every non-manual check for hours until
+        // uptime climbed past the stale value. The reboot guard must allow it.
+        simulatedRealtimeMs = 5_000L
+        stubPrefsSnapshot(
+            UpdaterState(
+                autoCheckEnabled = true,
+                lastCheckBootRealtime = 3_600_000L,
+            ),
+        )
+        coEvery { client.fetchReleases(any(), any()) } returns CodebergReleaseClient.Result.NotModified
+
+        val outcome = checker().maybeCheck(UpdateChecker.Trigger.PERIODIC)
+
+        assertTrue(
+            "a post-reboot check must not be throttled, was $outcome",
+            outcome is UpdateChecker.CheckOutcome.NotModified,
+        )
+    }
 }

@@ -37,8 +37,22 @@ class UpdateChecker(
             return CheckOutcome.Skipped(reason = "auto_check_disabled")
         }
         if (trigger != Trigger.MANUAL) {
-            val sinceBoot = elapsedRealtimeProvider() - snapshot.lastCheckBootRealtime
-            if (snapshot.lastCheckBootRealtime > 0 && sinceBoot < MIN_CHECK_INTERVAL_MS) {
+            val now = elapsedRealtimeProvider()
+            val sinceBoot = now - snapshot.lastCheckBootRealtime
+            // Reboot guard: elapsedRealtime() resets to 0 on every boot, but
+            // lastCheckBootRealtime is persisted in DataStore and never reset (no
+            // BOOT_COMPLETED, by design). So after a reboot the stored value is
+            // LARGER than the current uptime → sinceBoot goes negative and the
+            // old `negative < interval` test throttled every non-manual check for
+            // hours/days (until uptime climbed past the stale value). A now <
+            // lastCheckBootRealtime means we rebooted since the last check → the
+            // throttle window is meaningless, so allow the check. Only throttle
+            // within the SAME boot session.
+            val rebootedSinceLastCheck = now < snapshot.lastCheckBootRealtime
+            if (!rebootedSinceLastCheck &&
+                snapshot.lastCheckBootRealtime > 0 &&
+                sinceBoot < MIN_CHECK_INTERVAL_MS
+            ) {
                 val remaining = MIN_CHECK_INTERVAL_MS - sinceBoot
                 Log.d(TAG, "event=check_throttled trigger=$trigger remainingMs=$remaining")
                 return CheckOutcome.Throttled(remainingMs = remaining)
