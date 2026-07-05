@@ -133,17 +133,26 @@ object PlaylistPlanner {
     }
 
     private fun planVolume(minutes: Int, flashDiff: Double, maxDiff: Double): List<PlanSlot> {
-        val count = (minutes / TrainingRanges.VOLUME_SLOT_MINUTES)
+        val count = (minutes * 60 / TrainingRanges.VOLUME_CYCLE_SECONDS)
             .coerceIn(TrainingRanges.VOLUME_COUNT)
         val high = clamp(flashDiff, maxDiff)
         val low = clampLow(high - TrainingRanges.VOLUME_BAND_BELOW_FLASH)
         val slots = mutableListOf<PlanSlot>()
         for (i in 0 until count) {
-            slots.add(PlanSlot.ClimbSlot(low, high, PlanSection.MAIN))
-            // Lattice: a long mid-block break keeps the second half honest.
-            if (minutes >= 60 && i == count / 2 - 1) {
-                slots.add(PlanSlot.RestSlot(TrainingRanges.REST_VOLUME_MID_BREAK, PlanSection.MAIN))
+            if (i > 0) {
+                // Quality rest between every problem — volume without rests
+                // degrades into accidental power-endurance and sloppy movement.
+                // The mid-block break replaces (not stacks on) the short rest.
+                val midBreak = minutes >= 60 && i == count / 2
+                slots.add(
+                    PlanSlot.RestSlot(
+                        if (midBreak) TrainingRanges.REST_VOLUME_MID_BREAK
+                        else TrainingRanges.REST_VOLUME_BETWEEN_PROBLEMS,
+                        PlanSection.MAIN,
+                    )
+                )
             }
+            slots.add(PlanSlot.ClimbSlot(low, high, PlanSection.MAIN))
         }
         return slots
     }
@@ -247,11 +256,13 @@ object PlaylistPlanner {
 
         val slots = mutableListOf<PlanSlot>()
         (ascent + descent).forEach { tier ->
-            // Upper-half tiers earn the long rests; the base flows.
-            val rest = if (apex - tier.diff <= TrainingRanges.DIFF_PER_V_GRADE) {
-                TrainingRanges.REST_PYRAMID_HIGH_TIER
-            } else {
-                TrainingRanges.REST_PYRAMID_LOW_TIER
+            // Rests scale with proximity to the apex: the base flows, the
+            // mid tier breathes, apex ± 1 V gets near-full recovery.
+            val gradesBelowApex = (apex - tier.diff) / TrainingRanges.DIFF_PER_V_GRADE
+            val rest = when {
+                gradesBelowApex <= 1.0 -> TrainingRanges.REST_PYRAMID_HIGH_TIER
+                gradesBelowApex <= 2.0 -> TrainingRanges.REST_PYRAMID_MID_TIER
+                else -> TrainingRanges.REST_PYRAMID_LOW_TIER
             }
             repeat(tier.count) {
                 if (slots.isNotEmpty()) slots.add(PlanSlot.RestSlot(rest, tier.section))
@@ -308,20 +319,21 @@ object PlaylistPlanner {
 
 /**
  * Wall-clock estimate for a plan (UI preview): explicit rests + type-aware
- * per-climb minutes. The per-climb figures mirror what the explicit rest
- * structure does NOT already carry — volume includes its implicit walk-up
- * rest, PE laps are short burns, limit/projecting attempts and pyramid
- * tries have their rests as entries.
+ * time-on-the-wall per climb. Every mode now carries its rests as explicit
+ * entries, so the per-climb figures are pure climb + reset time: volume/PE
+ * problems are short flowing climbs, limit attempts and pyramid tries add
+ * brushing/reading, project burns are the longest time-on-wall.
  */
 fun PlaylistPlan.estimatedMinutes(): Int {
     val restSeconds = slots.filterIsInstance<PlanSlot.RestSlot>().sumOf { it.seconds }
     val climbMinutes = slots.filterIsInstance<PlanSlot.ClimbSlot>().sumOf { slot ->
         if (slot.section == PlanSection.WARM_UP) 1.5
         else when (effectiveType) {
-            GeneratorType.VOLUME -> 2.5
-            GeneratorType.POWER_ENDURANCE -> 1.5
-            GeneratorType.LIMIT, GeneratorType.PROJECTING -> 2.0
-            GeneratorType.PYRAMID -> 3.0
+            GeneratorType.VOLUME -> 1.0
+            GeneratorType.POWER_ENDURANCE -> 1.0
+            GeneratorType.LIMIT -> 1.0
+            GeneratorType.PROJECTING -> 1.5
+            GeneratorType.PYRAMID -> 1.5
         }
     }
     return ceil(climbMinutes + restSeconds / 60.0).toInt()

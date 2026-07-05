@@ -6,12 +6,29 @@ package com.cruxcoach.domain.playlist
  * V-grade). Offsets are relative to the user's logbook-derived max
  * redpoint (`max`) and reliable flash grade (`flash ≈ max − 4` fallback).
  *
- * Sources (condensed): Lattice "perfect 1-hour session" (20 boulders at
- * flash / 3×20-min max projects / 3×2 limit format), Hörst limit-bouldering
- * & power-endurance protocols (limit ≤ max+1 grade, PE 2-3 grades below
- * max, work:rest 1:1 laps / 4-5 min sets), classic 4-3-2-1 grade pyramids,
- * competition time-motion studies (~30 s climbing / ~115 s rest per
- * attempt). See docs/specs entry for the full citation list.
+ * Rest physiology anchor: maximal-effort attempts drain the ATP-CP
+ * (phosphagen) system, which resynthesizes to ~90 % in ≈3 min and fully
+ * in ≈5 min — so anything labelled "max effort" rests 4–5 min, anything
+ * sub-maximal rests less, and power-endurance deliberately rests LESS
+ * than full recovery (incomplete recovery is the stimulus).
+ *
+ * Per-protocol sources (condensed):
+ *  - Volume/movement: Lattice "perfect 1-hour session" — ~20 problems in
+ *    the flash band with ~1.5 min quality rests, one long mid-block break.
+ *  - Limit bouldering: Hörst limit protocol — problems at/above max,
+ *    3–5 attempts each, FULL rest (here 4 min) between attempts, 5 min
+ *    between problems; quality over pump, session ends when power drops.
+ *  - Projecting: redpoint-burn practice — full ATP-CP recovery plus
+ *    mental reset per burn (5 min), longer when switching projects
+ *    (read + ticks, 6 min).
+ *  - Power endurance: classic 4x4 (Moffatt et al.) — 4 problems climbed
+ *    back-to-back (only the walk/queue-next between laps), then one
+ *    work-matched 4-min set rest; grade 2–3 V below max so every lap
+ *    tops out despite the pump.
+ *  - Pyramid: 4-3-2-1 grade ladder; rests scale with proximity to the
+ *    apex (base flows, apex gets near-full recovery).
+ *  - Warm-up: progressive ladder, short flowing rests, one longer
+ *    transition rest before the work sets (injury prevention).
  */
 object TrainingRanges {
 
@@ -56,28 +73,60 @@ object TrainingRanges {
 
     // ── Rests (seconds) — explicit playlist entries ─────────────
 
-    /** Between warm-up ladder problems (research: 30–90 s). */
+    /** Warm-up ladder: short, flowing (research: 30–90 s). */
     const val REST_WARMUP_BETWEEN_PROBLEMS = 60
+
+    /** Transition from warm-up into the first work set. */
     const val REST_AFTER_WARMUP = 240
-    const val REST_LIMIT_BETWEEN_ATTEMPTS = 180
-    const val REST_LIMIT_BETWEEN_PROBLEMS = 300
-    const val REST_PROJECT_BETWEEN_BURNS = 240
-    const val REST_PROJECT_BETWEEN_PROJECTS = 300
-    const val REST_PE_BETWEEN_LAPS = 45
-    const val REST_PE_BETWEEN_SETS = 270
-    const val REST_PYRAMID_LOW_TIER = 90
-    const val REST_PYRAMID_HIGH_TIER = 240
-    /** Volume mid-session break (Lattice: 10 min after ~10 problems). */
+
+    /** Volume: quality rest between problems — enough to keep movement
+     *  crisp (~2:1 rest:work at ~45 s climbing), short enough for
+     *  ~20 problems/hour (Lattice pacing). */
+    const val REST_VOLUME_BETWEEN_PROBLEMS = 90
+
+    /** Volume mid-session break (Lattice: ~10 min after half the block). */
     const val REST_VOLUME_MID_BREAK = 600
 
-    // ── Duration → count scaling (minutes per slot incl. its rests) ──
+    /** Limit: max attempts need near-FULL ATP-CP recovery — 4 min between
+     *  attempts (3 min is the floor, 5 the ceiling), 5 min when moving to
+     *  the next problem. */
+    const val REST_LIMIT_BETWEEN_ATTEMPTS = 240
+    const val REST_LIMIT_BETWEEN_PROBLEMS = 300
+
+    /** Projecting: a redpoint burn costs more than a limit attempt
+     *  (longer time-on-wall + mental reset) — 5 min between burns,
+     *  6 min when switching projects (includes reading the next one). */
+    const val REST_PROJECT_BETWEEN_BURNS = 300
+    const val REST_PROJECT_BETWEEN_PROJECTS = 360
+
+    /** 4x4: laps run back-to-back — the 30 s is queue-next + walk, NOT
+     *  recovery (incomplete recovery is the stimulus); sets get one
+     *  work-matched 4-min rest. */
+    const val REST_PE_BETWEEN_LAPS = 30
+    const val REST_PE_BETWEEN_SETS = 240
+
+    /** Pyramid rests scale with intensity: base flows (90 s), the
+     *  mid tier breathes (2.5 min), apex ± 1 V nearly fully recovers. */
+    const val REST_PYRAMID_LOW_TIER = 90
+    const val REST_PYRAMID_MID_TIER = 150
+    const val REST_PYRAMID_HIGH_TIER = 240
+
+    // ── Duration → count scaling ─────────────────────────────────
 
     const val WARMUP_MINUTES = 18
-    const val VOLUME_SLOT_MINUTES = 3
-    const val LIMIT_SLOT_MINUTES = 20
-    const val PROJECT_SLOT_MINUTES = 22
-    const val PE_SET_MINUTES = 12
-    const val PYRAMID_SLOT_MINUTES = 4
+
+    /** Volume cycle: ~1 min on the wall + 90 s rest = 2.5 min/problem
+     *  → ≈20 problems/hour of block time (Lattice pacing). */
+    const val VOLUME_CYCLE_SECONDS = 150
+
+    /** Limit block per problem: 5 attempts ≈ 1 min each + 4×4 min rests. */
+    const val LIMIT_SLOT_MINUTES = 21
+
+    /** Project block: 4 burns + 3×5 min rests + 6 min switch-over. */
+    const val PROJECT_SLOT_MINUTES = 25
+
+    /** 4x4 set: ~5 min of laps + 4 min set rest. */
+    const val PE_SET_MINUTES = 10
 
     /** Session duration bounds (minutes). */
     const val MIN_DURATION_MINUTES = 20

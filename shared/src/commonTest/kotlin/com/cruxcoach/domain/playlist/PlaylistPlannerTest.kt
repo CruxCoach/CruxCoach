@@ -36,7 +36,16 @@ class PlaylistPlannerTest {
     fun `volume plans flash-band problems scaled by duration`() {
         val plan = PlaylistPlanner.plan(params(GeneratorType.VOLUME, duration = 60), profile)
         val climbs = plan.climbs()
-        assertEquals(20, climbs.size, "60 min / 3 min per problem")
+        assertEquals(24, climbs.size, "60 min / 150 s cycle per problem")
+        // Every problem is separated by an explicit quality rest.
+        assertEquals(
+            climbs.size - 1,
+            plan.rests().count { r ->
+                r.seconds == TrainingRanges.REST_VOLUME_BETWEEN_PROBLEMS ||
+                    r.seconds == TrainingRanges.REST_VOLUME_MID_BREAK
+            },
+            "a rest between every pair of volume problems",
+        )
         // Band: flash − 2V … flash → [14, 18].
         assertTrue(climbs.all { it.minDifficulty >= 14.0 - 0.001 && it.maxDifficulty <= 18.0 + 0.001 })
         // Long session gets the mid-block break.
@@ -55,9 +64,9 @@ class PlaylistPlannerTest {
 
     @Test
     fun `limit plans explicit attempts per problem with long rests`() {
-        val plan = PlaylistPlanner.plan(params(GeneratorType.LIMIT, duration = 60), profile)
+        val plan = PlaylistPlanner.plan(params(GeneratorType.LIMIT, duration = 63), profile)
         val climbs = plan.climbs()
-        // 60 min / 20 min per problem = 3 problems × 5 explicit attempts.
+        // 63 min / 21 min per problem = 3 problems × 5 explicit attempts.
         assertEquals(3, climbs.mapNotNull { it.repeatKey }.distinct().size, "3 distinct problems")
         assertEquals(15, climbs.size, "each problem carries its attempts as entries")
         assertTrue(climbs.all { it.minDifficulty == 22.0 && it.maxDifficulty == 24.0 },
