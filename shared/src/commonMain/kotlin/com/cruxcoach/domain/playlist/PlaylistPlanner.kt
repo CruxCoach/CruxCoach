@@ -76,7 +76,9 @@ object PlaylistPlanner {
         // that CONSOLIDATES the 7b, not one that assumes 7b+ is in reach.
         val peak = profile.effectiveMax - shift
         val anchor = min(profile.effectiveRepeatableMax, profile.effectiveMax) - shift
-        val flashDiff = min(profile.effectiveFlash, peak) - shift
+        // Volume anchor: outlier-robust flash, never above the work anchor
+        // (a flash "above" what you can repeatedly send is itself a fluke).
+        val flashDiff = min(profile.effectiveRepeatableFlash - shift, anchor)
 
         // Warm-up ladder only when starting cold; its ACTUAL minutes come
         // off the main-set budget (a 2-problem easy-session warm-up must

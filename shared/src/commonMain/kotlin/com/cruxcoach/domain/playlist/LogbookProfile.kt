@@ -25,6 +25,10 @@ data class LogbookProfile(
      *  a grade past reality; the second-best send is the classic robust
      *  estimator of what the climber can actually reproduce. */
     val secondMaxDifficulty: Double? = null,
+    /** Second-hardest TRUE flash — outlier guard for the volume anchor,
+     *  bounded to at most one Font step below the top flash (flashes are
+     *  sparse; a hard demotion would crater the volume band). */
+    val secondFlashDifficulty: Double? = null,
 ) {
     /** Effective max for planning: logbook max or the ~V5 default. The
      *  PEAK — used as the hard ceiling, not as the work anchor. */
@@ -40,6 +44,18 @@ data class LogbookProfile(
     /** Effective flash: logbook flash, else max − 2 V-grades. */
     val effectiveFlash: Double
         get() = flashDifficulty ?: (effectiveMax - TrainingRanges.FLASH_FALLBACK_OFFSET)
+
+    /** Volume anchor: the outlier-robust flash. A single lucky flash may
+     *  pull the band up at most one Font step past the second-best flash;
+     *  with no flash data it derives from the REPEATABLE max (not the
+     *  peak — an outlier peak must not inflate the volume band either). */
+    val effectiveRepeatableFlash: Double
+        get() {
+            val top = flashDifficulty
+                ?: return effectiveRepeatableMax - TrainingRanges.FLASH_FALLBACK_OFFSET
+            val floor = top - TrainingRanges.DIFF_PER_FONT_STEP
+            return maxOf(secondFlashDifficulty ?: floor, floor)
+        }
 
     /** True when the profile rests on real logbook data. */
     val isPersonalized: Boolean
@@ -65,6 +81,7 @@ data class LogbookProfile(
             sampleSize = sendDifficulties.size,
             openProjectUuids = openProjectUuids,
             secondMaxDifficulty = sendDifficulties.sortedDescending().getOrNull(1),
+            secondFlashDifficulty = flashDifficulties.sortedDescending().getOrNull(1),
         )
     }
 }

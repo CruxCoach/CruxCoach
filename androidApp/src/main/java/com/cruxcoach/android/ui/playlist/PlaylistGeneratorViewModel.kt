@@ -99,18 +99,36 @@ class PlaylistGeneratorViewModel @Inject constructor(
     }
 
     /**
-     * Logbook → profile. Prefers ascents at the target [angle] when there
-     * are enough of them (angle-specific strength differs a lot); falls
-     * back to the whole logbook otherwise. Within the pool, RECENT sends
-     * (last ~6 months) anchor max/flash when there are enough — training
-     * plans must track CURRENT ability, not a stale all-time best from
-     * years back. Open projects = attempted but never sent, most recent
-     * bid first.
+     * Logbook → profile. Three-stage pool selection so the anchors are
+     * maximally representative of what the session will actually feel like:
+     *
+     *  1. ANGLE: exact target angle when it has enough sends, else nearby
+     *     angles (± [NEARBY_ANGLE_TOLERANCE]° — steepness-adjacent strength
+     *     transfers well), else the whole logbook.
+     *  2. RECENCY: within that pool, the last ~6 months when they hold
+     *     enough sends — plans must track CURRENT ability, not a stale
+     *     all-time best.
+     *  3. FLASH TRUTH: the flash anchor only counts TRUE flashes (first
+     *     logbook contact per climb+angle, [BoardStatsComputer.trueFlashUuids])
+     *     — a repeat send logged first-try must not inflate the volume band.
+     *
+     * Open projects = attempted but never sent, ranked by target-angle
+     * match, then accumulated attempts (the project you keep returning to
+     * beats a one-off try), then recency.
      */
     private fun loadProfile(angle: Int): LogbookProfile {
-        val ascents = personalBoardRepo.getUserAscentsAll().filter { it.isSend }
-        val atAngle = ascents.filter { it.angle.toInt() == angle }
-        val anglePool = if (atAngle.size >= LogbookProfile.MIN_SAMPLE) atAngle else ascents
+        val all = personalBoardRepo.getUserAscentsAll()
+        val allSends = all.filter { it.isSend }
+
+        val exact = allSends.filter { it.angle.toInt() == angle }
+        val near = allSends.filter {
+            kotlin.math.abs(it.angle.toInt() - angle) <= NEARBY_ANGLE_TOLERANCE
+        }
+        val anglePool = when {
+            exact.size >= LogbookProfile.MIN_SAMPLE -> exact
+            near.size >= LogbookProfile.MIN_SAMPLE -> near
+            else -> allSends
+        }
 
         val recencyCutoff = java.time.LocalDate.now()
             .minusWeeks(PROFILE_RECENCY_WEEKS)
@@ -118,15 +136,29 @@ class PlaylistGeneratorViewModel @Inject constructor(
         val recent = anglePool.filter { it.climbedAt.take(10) >= recencyCutoff }
         val pool = if (recent.size >= LogbookProfile.MIN_SAMPLE) recent else anglePool
 
+        // First-contact check runs on the FULL history (a prior attempt
+        // outside the pool still disqualifies a flash inside it).
+        val flashUuids = com.cruxcoach.android.ui.board.BoardStatsComputer.trueFlashUuids(all)
         val sends = pool.mapNotNull { it.difficultyAverage }
-        val flashes = pool.filter { it.bidCount <= 1L }.mapNotNull { it.difficultyAverage }
+        val flashes = pool.filter { it.uuid in flashUuids }.mapNotNull { it.difficultyAverage }
 
         val sentUuids = personalBoardRepo.getUserSentClimbUuids()
         val openProjects = personalBoardRepo.getRawBidsForUser()
-            .sortedByDescending { it.climbedAt }
-            .map { it.climbUuid }
-            .filter { it !in sentUuids }
-            .distinct()
+            .filter { it.climbUuid !in sentUuids }
+            .groupBy { it.climbUuid }
+            .map { (uuid, tries) ->
+                Triple(
+                    uuid,
+                    tries.any { it.angle.toInt() == angle },
+                    tries.sumOf { it.bidCount } to tries.maxOf { it.climbedAt },
+                )
+            }
+            .sortedWith(
+                compareByDescending<Triple<String, Boolean, Pair<Long, String>>> { it.second }
+                    .thenByDescending { it.third.first }
+                    .thenByDescending { it.third.second }
+            )
+            .map { it.first }
 
         return LogbookProfile.fromLogbook(sends, flashes, openProjects)
     }
@@ -267,6 +299,11 @@ class PlaylistGeneratorViewModel @Inject constructor(
          *  all-time best — falls back to the full logbook below
          *  [LogbookProfile.MIN_SAMPLE] recent sends. */
         private const val PROFILE_RECENCY_WEEKS = 26L
+
+        /** Middle angle tier: ±10° of the target — strength transfers
+         *  well between adjacent steepness before falling back to the
+         *  whole logbook. */
+        private const val NEARBY_ANGLE_TOLERANCE = 10
 
         /** Candidate quality gate: at least a handful of community ascents
          *  so junk climbs don't land in a training plan. Community-sparse

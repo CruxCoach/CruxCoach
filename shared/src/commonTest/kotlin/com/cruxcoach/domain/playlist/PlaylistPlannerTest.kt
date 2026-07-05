@@ -172,6 +172,32 @@ class PlaylistPlannerTest {
     }
 
     @Test
+    fun `volume anchors on the repeatable flash with bounded demotion`() {
+        // Top flash 18, second flash 14: the single 18 may pull the band
+        // up at most one Font step past the second-best → anchor 17.
+        val sparseFlash = profile.copy(flashDifficulty = 18.0, secondFlashDifficulty = 14.0)
+        val plan = PlaylistPlanner.plan(params(GeneratorType.VOLUME), sparseFlash)
+        assertTrue(plan.climbs().all { it.maxDifficulty <= 17.0 + 0.001 })
+        // Confirmed double flash keeps the full anchor.
+        val solidFlash = profile.copy(flashDifficulty = 18.0, secondFlashDifficulty = 18.0)
+        val plan2 = PlaylistPlanner.plan(params(GeneratorType.VOLUME), solidFlash)
+        assertTrue(plan2.climbs().any { it.maxDifficulty >= 18.0 - 0.001 })
+    }
+
+    @Test
+    fun `flash above the repeatable max cannot inflate the volume band`() {
+        // Fluke flash at 24 over a repeatable max of 20: volume caps at 20.
+        val fluke = profile.copy(
+            maxDifficulty = 24.0,
+            secondMaxDifficulty = 20.0,
+            flashDifficulty = 24.0,
+            secondFlashDifficulty = 24.0,
+        )
+        val plan = PlaylistPlanner.plan(params(GeneratorType.VOLUME), fluke)
+        assertTrue(plan.climbs().all { it.maxDifficulty <= 20.0 + 0.001 })
+    }
+
+    @Test
     fun `projecting band sits above the limit band`() {
         val limit = PlaylistPlanner.plan(params(GeneratorType.LIMIT), profile).climbs()
         val proj = PlaylistPlanner.plan(params(GeneratorType.PROJECTING), profile).climbs()
