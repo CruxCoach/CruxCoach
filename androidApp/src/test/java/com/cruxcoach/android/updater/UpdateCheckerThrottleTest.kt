@@ -154,6 +154,72 @@ class UpdateCheckerThrottleTest {
         assertTrue(outcome is UpdateChecker.CheckOutcome.NotModified)
     }
 
+    private fun releaseWithApk(tag: String): CodebergRelease = CodebergRelease(
+        id = 1,
+        tagName = tag,
+        htmlUrl = "https://codeberg.org/CruxCoach/CruxCoach/releases/tag/$tag",
+        assets = listOf(
+            CodebergAsset(name = "CruxCoach-$tag.apk", browserDownloadUrl = "https://x/$tag.apk", size = 1000),
+            CodebergAsset(name = "CruxCoach-$tag.apk.sha256", browserDownloadUrl = "https://x/$tag.apk.sha256", size = 64),
+        ),
+    )
+
+    @Test
+    fun `a newer pending version clears the prior version's dismiss and re-arm state`() = runTest {
+        stubGateAllowed()
+        simulatedRealtimeMs = 10_000L
+        // Installed = BuildConfig.VERSION_NAME (0.2.1 in the test build). The user
+        // was already notified about an older pending 0.2.5 and swiped it away;
+        // now a newer 9.9.9 is available. The dismiss/re-arm state must NOT carry
+        // over, else 9.9.9 could never be re-surfaced.
+        val seed = UpdaterState(
+            autoCheckEnabled = true,
+            lastCheckBootRealtime = 0L,
+            pendingVersionName = "0.2.5",
+            notifDismissedAtEpochMs = 123L,
+            notifReArmCount = 3,
+        )
+        coEvery { preferences.snapshot() } returns seed
+        val captured = mutableListOf<(UpdaterState) -> UpdaterState>()
+        coEvery { preferences.update(capture(captured)) } just Runs
+        coEvery { client.fetchReleases(any(), any()) } returns
+            CodebergReleaseClient.Result.Success(listOf(releaseWithApk("v9.9.9")), "etag-b")
+        coEvery { client.fetchSha256(any()) } returns "a".repeat(64)
+
+        val outcome = checker().maybeCheck(UpdateChecker.Trigger.PERIODIC)
+
+        assertTrue("expected Update, was $outcome", outcome is UpdateChecker.CheckOutcome.Update)
+        val finalState = captured.fold(seed) { s, f -> f(s) }
+        assertEquals(null, finalState.notifDismissedAtEpochMs)
+        assertEquals(0, finalState.notifReArmCount)
+        assertEquals("9.9.9", finalState.pendingVersionName)
+    }
+
+    @Test
+    fun `re-detecting the same pending version keeps its dismiss state`() = runTest {
+        stubGateAllowed()
+        simulatedRealtimeMs = 10_000L
+        val seed = UpdaterState(
+            autoCheckEnabled = true,
+            lastCheckBootRealtime = 0L,
+            pendingVersionName = "9.9.9",
+            notifDismissedAtEpochMs = 123L,
+            notifReArmCount = 3,
+        )
+        coEvery { preferences.snapshot() } returns seed
+        val captured = mutableListOf<(UpdaterState) -> UpdaterState>()
+        coEvery { preferences.update(capture(captured)) } just Runs
+        coEvery { client.fetchReleases(any(), any()) } returns
+            CodebergReleaseClient.Result.Success(listOf(releaseWithApk("v9.9.9")), "etag-b")
+        coEvery { client.fetchSha256(any()) } returns "a".repeat(64)
+
+        checker().maybeCheck(UpdateChecker.Trigger.PERIODIC)
+
+        val finalState = captured.fold(seed) { s, f -> f(s) }
+        assertEquals(123L, finalState.notifDismissedAtEpochMs)
+        assertEquals(3, finalState.notifReArmCount)
+    }
+
     @Test
     fun `reboot resets throttle — negative sinceBoot must not block the check`() = runTest {
         stubGateAllowed()

@@ -135,6 +135,17 @@ class UpdateChecker(
                 }
                 val infoWithSha = info.copy(apkSha256 = resolvedSha)
 
+                // A newer version than the one currently pending is a FRESH
+                // surface: clear the dismiss / re-arm state carried over from the
+                // prior pending version. Otherwise a user who swiped away (say)
+                // the 0.1.4 notification keeps notifDismissedAtEpochMs set, and if
+                // this 0.2.0 notification is ever missed at post time (notifications
+                // briefly off / process death), reNotifyPendingUpdateIfAny would
+                // bail on the stale flag and the ETag-304 short-circuit would stop
+                // re-detection — so 0.2.0 would never resurface. Dismiss is
+                // per-version, not sticky forever.
+                val isNewerThanPending = infoWithSha.versionName != snapshot.pendingVersionName
+
                 preferences.update {
                     it.copy(
                         lastCheckAtEpochMs = nowMs(),
@@ -150,6 +161,8 @@ class UpdateChecker(
                         pendingReleasePageUrl = infoWithSha.releasePageUrl,
                         pendingReleaseNotesMarkdown = infoWithSha.releaseNotesMarkdown,
                         pipelineStage = PipelineStage.PENDING_DOWNLOAD,
+                        notifDismissedAtEpochMs = if (isNewerThanPending) null else it.notifDismissedAtEpochMs,
+                        notifReArmCount = if (isNewerThanPending) 0 else it.notifReArmCount,
                     )
                 }
                 Log.i(TAG, "event=update_available trigger=$trigger tag=${infoWithSha.tagName} apkSize=${infoWithSha.apkSizeBytes}")
