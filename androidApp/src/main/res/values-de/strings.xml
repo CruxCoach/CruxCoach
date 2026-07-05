@@ -2100,4 +2100,5 @@
     <string name="playlist_logged_send">Send geloggt</string>
     <string name="playlist_logged_attempt">Versuch geloggt</string>
     <string name="playlist_player_add_climbs">Climbs hinzufügen</string>
+    <string name="board_ascent_first_try">1. Versuch</string>
 </resources>

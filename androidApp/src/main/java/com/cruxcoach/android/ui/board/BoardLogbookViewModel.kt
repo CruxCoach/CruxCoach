@@ -84,6 +84,8 @@ data class BoardLogbookState(
     val isLoading: Boolean = true,
     val isLoadingMore: Boolean = false,
     val ascents: List<AscentWithClimb> = emptyList(),
+    /** True-flash send uuids over the FULL history (see BoardStatsComputer.trueFlashUuids). */
+    val flashUuids: Set<String> = emptySet(),
     val totalCount: Long = 0,
     val canLoadMore: Boolean = false,
     val gradeScale: GradeScale = GradeScale.V_SCALE,
@@ -331,6 +333,9 @@ class BoardLogbookViewModel @Inject constructor(
                     personalBoardRepo.getUserLogbookAllLight()
                 }
                 allAscents = all
+                // True-flash set needs the FULL history (prior-session
+                // attempts disqualify), so it is derived here, not per page.
+                _state.update { it.copy(flashUuids = BoardStatsComputer.trueFlashUuids(all)) }
                 // Boards the user has actually logged on — drives whether the
                 // per-board stats selector is shown. Kilter first, then the
                 // rest, for a stable chip order.

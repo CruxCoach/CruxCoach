@@ -2097,4 +2097,5 @@
     <string name="playlist_logged_send">Send logged</string>
     <string name="playlist_logged_attempt">Attempt logged</string>
     <string name="playlist_player_add_climbs">Add climbs</string>
+    <string name="board_ascent_first_try">1st try</string>
 </resources>
