@@ -146,6 +146,32 @@ class PlaylistPlannerTest {
     }
 
     @Test
+    fun `outlier peak anchors limit at the repeatable max`() {
+        // One lucky 7b (24) against a 7a+ (23) background: a limit session
+        // must CONSOLIDATE the 7b (band 7a+…7b), not assume 7b+ is in
+        // session reach.
+        val outlier = profile.copy(maxDifficulty = 24.0, secondMaxDifficulty = 23.0)
+        val limit = PlaylistPlanner.plan(params(GeneratorType.LIMIT), outlier).climbs()
+        assertEquals(23.0, limit.first().minDifficulty)
+        assertEquals(24.0, limit.first().maxDifficulty)
+        // Projecting targets the step above: 7b…7b+ IS the project here.
+        val proj = PlaylistPlanner.plan(params(GeneratorType.PROJECTING), outlier).climbs()
+        assertEquals(24.0, proj.first().minDifficulty)
+        assertEquals(25.0, proj.first().maxDifficulty)
+    }
+
+    @Test
+    fun `extreme outlier peak cannot drag the band past the background level`() {
+        // A single soft-graded 7b (24) over a 6c+ (19) background: the
+        // whole session anchors at the background, the fluke send only
+        // caps the ceiling.
+        val fluke = profile.copy(maxDifficulty = 24.0, secondMaxDifficulty = 19.0)
+        val limit = PlaylistPlanner.plan(params(GeneratorType.LIMIT), fluke).climbs()
+        assertEquals(19.0, limit.first().minDifficulty)
+        assertEquals(20.0, limit.first().maxDifficulty)
+    }
+
+    @Test
     fun `projecting band sits above the limit band`() {
         val limit = PlaylistPlanner.plan(params(GeneratorType.LIMIT), profile).climbs()
         val proj = PlaylistPlanner.plan(params(GeneratorType.PROJECTING), profile).climbs()

@@ -70,23 +70,28 @@ object PlaylistPlanner {
         val effectiveType = if (downgraded) GeneratorType.VOLUME else params.type
         val shift = if (fatigued) TrainingRanges.END_OF_SESSION_SHIFT else 0.0
 
-        val maxDiff = profile.effectiveMax - shift
-        val flashDiff = min(profile.effectiveFlash, maxDiff) - shift
+        // Two anchors: the PEAK (hardest-ever send — hard ceiling only)
+        // and the outlier-robust work ANCHOR (repeatable/second-best max).
+        // One lucky 7b against a 7a/7a+ background must plan a session
+        // that CONSOLIDATES the 7b, not one that assumes 7b+ is in reach.
+        val peak = profile.effectiveMax - shift
+        val anchor = min(profile.effectiveRepeatableMax, profile.effectiveMax) - shift
+        val flashDiff = min(profile.effectiveFlash, peak) - shift
 
         // Warm-up ladder only when starting cold; its ACTUAL minutes come
         // off the main-set budget (a 2-problem easy-session warm-up must
         // not eat a flat 18-minute block).
         val warmUp = if (params.position == SessionPosition.START_COLD) {
-            buildWarmUpLadder(maxDiff, firstWorkGrade(effectiveType, maxDiff, flashDiff))
+            buildWarmUpLadder(anchor, firstWorkGrade(effectiveType, anchor, flashDiff))
         } else emptyList()
         val mainMinutes = max(duration - warmUpMinutes(warmUp), 10)
 
         val main = when (effectiveType) {
-            GeneratorType.VOLUME -> planVolume(mainMinutes, flashDiff, maxDiff)
-            GeneratorType.LIMIT -> planLimit(mainMinutes, maxDiff)
-            GeneratorType.PROJECTING -> planProjecting(mainMinutes, maxDiff)
-            GeneratorType.POWER_ENDURANCE -> planPowerEndurance(mainMinutes, maxDiff)
-            GeneratorType.PYRAMID -> planPyramid(mainMinutes, maxDiff)
+            GeneratorType.VOLUME -> planVolume(mainMinutes, flashDiff, peak)
+            GeneratorType.LIMIT -> planLimit(mainMinutes, anchor, peak)
+            GeneratorType.PROJECTING -> planProjecting(mainMinutes, anchor, peak)
+            GeneratorType.POWER_ENDURANCE -> planPowerEndurance(mainMinutes, anchor)
+            GeneratorType.PYRAMID -> planPyramid(mainMinutes, anchor)
         }
 
         return PlaylistPlan(
@@ -185,11 +190,18 @@ object PlaylistPlanner {
      *  appears [TrainingRanges.ATTEMPTS_PER_LIMIT_PROBLEM] times (same
      *  climb via repeatKey) with between-attempt rests, long rests between
      *  problems — the rests ARE the training, so they live in the list. */
-    private fun planLimit(minutes: Int, maxDiff: Double): List<PlanSlot> {
+    private fun planLimit(minutes: Int, anchor: Double, peak: Double): List<PlanSlot> {
         val count = (minutes / TrainingRanges.LIMIT_SLOT_MINUTES)
             .coerceIn(TrainingRanges.LIMIT_COUNT)
-        val low = maxDiff
-        val high = clamp(maxDiff + TrainingRanges.LIMIT_BAND_ABOVE_MAX, maxDiff)
+        // anchor…anchor+1, additionally capped one step past the PEAK:
+        // a consolidated climber (anchor == peak) trains max…max+1; an
+        // outlier peak keeps the band at the repeatable level so the
+        // session consolidates the peak instead of assuming it's the norm.
+        val low = anchor
+        val high = clamp(
+            min(anchor + TrainingRanges.LIMIT_BAND_ABOVE_MAX, peak + TrainingRanges.LIMIT_BAND_ABOVE_MAX),
+            peak,
+        )
         return workBlocks(
             problems = count,
             attemptsPerProblem = TrainingRanges.ATTEMPTS_PER_LIMIT_PROBLEM,
@@ -202,11 +214,14 @@ object PlaylistPlanner {
     /** Projecting: burns on each project, explicit like limit attempts.
      *  Band sits ABOVE the limit band (max+1…max+2 Font steps) — projects
      *  are multi-session difficulty, limit problems are session-sendable. */
-    private fun planProjecting(minutes: Int, maxDiff: Double): List<PlanSlot> {
+    private fun planProjecting(minutes: Int, anchor: Double, peak: Double): List<PlanSlot> {
         val count = (minutes / TrainingRanges.PROJECT_SLOT_MINUTES)
             .coerceIn(TrainingRanges.PROJECT_COUNT)
-        val low = clamp(maxDiff + TrainingRanges.PROJECT_BAND_LOW_ABOVE_MAX, maxDiff)
-        val high = clamp(maxDiff + TrainingRanges.PROJECT_BAND_TOP_ABOVE_MAX, maxDiff)
+        // One step above the limit band, off the same robust anchor — for
+        // the outlier climber (one 7b, background 7a+) the project IS the
+        // 7b…7b+ range, not 7c. The peak-based clamp() ceiling still holds.
+        val low = clamp(anchor + TrainingRanges.PROJECT_BAND_LOW_ABOVE_MAX, peak)
+        val high = clamp(anchor + TrainingRanges.PROJECT_BAND_TOP_ABOVE_MAX, peak)
         return workBlocks(
             problems = count,
             attemptsPerProblem = TrainingRanges.BURNS_PER_PROJECT,
@@ -237,10 +252,10 @@ object PlaylistPlanner {
 
     /** Sets of 4 problems (same problems every set, via repeatKey), short
      *  lap rests inside a set, long rests between sets. */
-    private fun planPowerEndurance(minutes: Int, maxDiff: Double): List<PlanSlot> {
+    private fun planPowerEndurance(minutes: Int, anchor: Double): List<PlanSlot> {
         val sets = (minutes / TrainingRanges.PE_SET_MINUTES).coerceIn(TrainingRanges.PE_SETS)
-        val low = clampLow(maxDiff - TrainingRanges.PE_BAND_LOW_BELOW_MAX)
-        val high = clampLow(maxDiff - TrainingRanges.PE_BAND_HIGH_BELOW_MAX)
+        val low = clampLow(anchor - TrainingRanges.PE_BAND_LOW_BELOW_MAX)
+        val high = clampLow(anchor - TrainingRanges.PE_BAND_HIGH_BELOW_MAX)
         val slots = mutableListOf<PlanSlot>()
         for (set in 0 until sets) {
             for (problem in 0 until TrainingRanges.PE_PROBLEMS_PER_SET) {
@@ -258,9 +273,9 @@ object PlaylistPlanner {
 
     /** Classic ascending pyramid (…4×, 3×, 2×, 1× apex), 1-V steps; long
      *  sessions add the mirrored descent. */
-    private fun planPyramid(minutes: Int, maxDiff: Double): List<PlanSlot> {
-        // Apex 1 V below max: every tier of a session pyramid should top.
-        val apex = clampLow(maxDiff - TrainingRanges.PYRAMID_APEX_BELOW_MAX)
+    private fun planPyramid(minutes: Int, anchor: Double): List<PlanSlot> {
+        // Apex 1 V below the REPEATABLE max: every tier should top.
+        val apex = clampLow(anchor - TrainingRanges.PYRAMID_APEX_BELOW_MAX)
         val tiers = if (minutes < 45) 3 else 4
         val base = clampLow(apex - (tiers - 1) * TrainingRanges.PYRAMID_STEP)
         val withDescent = minutes >= 90
@@ -301,14 +316,14 @@ object PlaylistPlanner {
 
     // ── Helpers ─────────────────────────────────────────────────
 
-    private fun firstWorkGrade(type: GeneratorType, maxDiff: Double, flashDiff: Double): Double =
+    private fun firstWorkGrade(type: GeneratorType, anchor: Double, flashDiff: Double): Double =
         when (type) {
             GeneratorType.VOLUME -> clampLow(flashDiff - TrainingRanges.VOLUME_BAND_BELOW_FLASH)
-            GeneratorType.POWER_ENDURANCE -> clampLow(maxDiff - TrainingRanges.PE_BAND_LOW_BELOW_MAX)
+            GeneratorType.POWER_ENDURANCE -> clampLow(anchor - TrainingRanges.PE_BAND_LOW_BELOW_MAX)
             GeneratorType.PYRAMID -> clampLow(
-                maxDiff - TrainingRanges.PYRAMID_APEX_BELOW_MAX - TrainingRanges.PYRAMID_BASE_BELOW_APEX
+                anchor - TrainingRanges.PYRAMID_APEX_BELOW_MAX - TrainingRanges.PYRAMID_BASE_BELOW_APEX
             )
-            GeneratorType.LIMIT, GeneratorType.PROJECTING -> maxDiff
+            GeneratorType.LIMIT, GeneratorType.PROJECTING -> anchor
         }
 
     private fun climbSlot(center: Double, section: PlanSection, repeatKey: Int? = null) =

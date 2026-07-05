@@ -20,10 +20,22 @@ data class LogbookProfile(
     /** Open projects: attempted-but-unsent climb uuids, most recent first.
      *  PROJECTING slots prefer these over fresh candidates. */
     val openProjectUuids: List<String> = emptyList(),
+    /** SECOND-hardest send — the outlier-robust "repeatable max". One
+     *  lucky 7b against a 7a/7a+ background must not anchor the session
+     *  a grade past reality; the second-best send is the classic robust
+     *  estimator of what the climber can actually reproduce. */
+    val secondMaxDifficulty: Double? = null,
 ) {
-    /** Effective max for planning: logbook max or the ~V5 default. */
+    /** Effective max for planning: logbook max or the ~V5 default. The
+     *  PEAK — used as the hard ceiling, not as the work anchor. */
     val effectiveMax: Double
         get() = maxDifficulty ?: TrainingRanges.DEFAULT_MAX_DIFFICULTY
+
+    /** The work anchor: repeatable (second-best) max, falling back to the
+     *  peak when the logbook carries fewer than two sends. All working
+     *  bands derive from THIS; the peak only caps them. */
+    val effectiveRepeatableMax: Double
+        get() = secondMaxDifficulty ?: effectiveMax
 
     /** Effective flash: logbook flash, else max − 2 V-grades. */
     val effectiveFlash: Double
@@ -52,6 +64,7 @@ data class LogbookProfile(
             flashDifficulty = flashDifficulties.maxOrNull(),
             sampleSize = sendDifficulties.size,
             openProjectUuids = openProjectUuids,
+            secondMaxDifficulty = sendDifficulties.sortedDescending().getOrNull(1),
         )
     }
 }
