@@ -35,6 +35,12 @@ object TrainingRanges {
     /** One V-grade in difficulty points. */
     const val DIFF_PER_V_GRADE = 2.0
 
+    /** One Font half-step (7a→7a+) in difficulty points — the finest
+     *  granularity the Aurora scale carries. Work bands are tuned on
+     *  THIS unit: V-grade offsets are too coarse (V8 spans 7b AND 7b+),
+     *  Font steps let each session type hit its exact intensity. */
+    const val DIFF_PER_FONT_STEP = 1.0
+
     /** Absolute scale bounds (V0 … V17). */
     const val MIN_DIFFICULTY = 10.0
     const val MAX_DIFFICULTY = 34.0
@@ -46,25 +52,38 @@ object TrainingRanges {
     /** Hard safety ceiling: never plan above max + 1 V-grade, any mode. */
     const val CEILING_ABOVE_MAX = 1 * DIFF_PER_V_GRADE
 
-    // ── Per-type grade bands (offsets in difficulty points) ─────
+    // ── Per-type grade bands (Font-step granular offsets) ───────
 
-    /** Volume: flash − 2 V … flash. */
-    const val VOLUME_BAND_BELOW_FLASH = 2 * DIFF_PER_V_GRADE
+    /** Volume: flash − 3 Font steps … flash ("at or just below flash",
+     *  Lattice) — the old 2-V band reached needlessly easy terrain. */
+    const val VOLUME_BAND_BELOW_FLASH = 3 * DIFF_PER_FONT_STEP
 
-    /** Limit / projecting: max … max + 1 V. */
-    const val LIMIT_BAND_ABOVE_MAX = 1 * DIFF_PER_V_GRADE
+    /** Limit: max … max + 1 Font step — hard enough to need 3-5 tries,
+     *  close enough to send within the session (Hörst). A full V above
+     *  max is project territory, not limit bouldering. */
+    const val LIMIT_BAND_ABOVE_MAX = 1 * DIFF_PER_FONT_STEP
 
-    /** Power endurance: max − 3 V … max − 2 V. */
+    /** Projecting: max + 1 … max + 2 Font steps — deliberately ABOVE the
+     *  limit band; a project is multi-session difficulty. (Open projects
+     *  from the logbook still take precedence over fresh candidates.) */
+    const val PROJECT_BAND_LOW_ABOVE_MAX = 1 * DIFF_PER_FONT_STEP
+    const val PROJECT_BAND_TOP_ABOVE_MAX = 2 * DIFF_PER_FONT_STEP
+
+    /** Power endurance: max − 3 V … max − 2 V (fresh: 1-2 tries; lap 4:
+     *  barely topping — the classic 4x4 window). */
     const val PE_BAND_LOW_BELOW_MAX = 3 * DIFF_PER_V_GRADE
     const val PE_BAND_HIGH_BELOW_MAX = 2 * DIFF_PER_V_GRADE
 
-    /** Pyramid: base 3 V-grades below the apex, 1-V steps. */
-    const val PYRAMID_BASE_BELOW_APEX = 3 * DIFF_PER_V_GRADE
+    /** Pyramid: Font-step tiers (6c → 6c+ → 7a → 7a+), base 3 steps below
+     *  the apex — the classic Font pyramid; V-grade tiers jump twice as
+     *  far and skip the half grades boards actually carry. */
+    const val PYRAMID_STEP = 1 * DIFF_PER_FONT_STEP
+    const val PYRAMID_BASE_BELOW_APEX = 3 * DIFF_PER_FONT_STEP
 
-    /** Pyramid apex sits 1 V below max: a session pyramid only works when
-     *  every tier actually gets TOPPED — an apex at the all-time max is a
-     *  limit session in disguise and usually ends in a failed apex. */
-    const val PYRAMID_APEX_BELOW_MAX = 1 * DIFF_PER_V_GRADE
+    /** Pyramid apex sits 2 Font steps (1 V) below max: a session pyramid
+     *  only works when every tier actually gets TOPPED — an apex at the
+     *  all-time max is a limit session in disguise. */
+    const val PYRAMID_APEX_BELOW_MAX = 2 * DIFF_PER_FONT_STEP
 
     /** Warm-up ladder: start 5 V below max — but never closer than 3 V to
      *  the first working grade (easy sessions warm up on easier terrain),

@@ -199,12 +199,14 @@ object PlaylistPlanner {
         )
     }
 
-    /** Projecting: burns on each project, explicit like limit attempts. */
+    /** Projecting: burns on each project, explicit like limit attempts.
+     *  Band sits ABOVE the limit band (max+1…max+2 Font steps) — projects
+     *  are multi-session difficulty, limit problems are session-sendable. */
     private fun planProjecting(minutes: Int, maxDiff: Double): List<PlanSlot> {
         val count = (minutes / TrainingRanges.PROJECT_SLOT_MINUTES)
             .coerceIn(TrainingRanges.PROJECT_COUNT)
-        val low = maxDiff
-        val high = clamp(maxDiff + TrainingRanges.LIMIT_BAND_ABOVE_MAX, maxDiff)
+        val low = clamp(maxDiff + TrainingRanges.PROJECT_BAND_LOW_ABOVE_MAX, maxDiff)
+        val high = clamp(maxDiff + TrainingRanges.PROJECT_BAND_TOP_ABOVE_MAX, maxDiff)
         return workBlocks(
             problems = count,
             attemptsPerProblem = TrainingRanges.BURNS_PER_PROJECT,
@@ -260,14 +262,14 @@ object PlaylistPlanner {
         // Apex 1 V below max: every tier of a session pyramid should top.
         val apex = clampLow(maxDiff - TrainingRanges.PYRAMID_APEX_BELOW_MAX)
         val tiers = if (minutes < 45) 3 else 4
-        val base = clampLow(apex - (tiers - 1) * TrainingRanges.DIFF_PER_V_GRADE)
+        val base = clampLow(apex - (tiers - 1) * TrainingRanges.PYRAMID_STEP)
         val withDescent = minutes >= 90
 
         data class Tier(val diff: Double, val count: Int, val section: PlanSection)
 
         val ascent = (0 until tiers).map { i ->
             Tier(
-                diff = min(base + i * TrainingRanges.DIFF_PER_V_GRADE, apex),
+                diff = min(base + i * TrainingRanges.PYRAMID_STEP, apex),
                 count = tiers - i,
                 section = if (i == tiers - 1) PlanSection.PEAK else PlanSection.MAIN,
             )
@@ -282,11 +284,11 @@ object PlaylistPlanner {
         val slots = mutableListOf<PlanSlot>()
         (ascent + descent).forEach { tier ->
             // Rests scale with proximity to the apex: the base flows, the
-            // mid tier breathes, apex ± 1 V gets near-full recovery.
-            val gradesBelowApex = (apex - tier.diff) / TrainingRanges.DIFF_PER_V_GRADE
+            // mid tier breathes, the top Font step gets near-full recovery.
+            val stepsBelowApex = (apex - tier.diff) / TrainingRanges.PYRAMID_STEP
             val rest = when {
-                gradesBelowApex <= 1.0 -> TrainingRanges.REST_PYRAMID_HIGH_TIER
-                gradesBelowApex <= 2.0 -> TrainingRanges.REST_PYRAMID_MID_TIER
+                stepsBelowApex <= 1.0 -> TrainingRanges.REST_PYRAMID_HIGH_TIER
+                stepsBelowApex <= 2.0 -> TrainingRanges.REST_PYRAMID_MID_TIER
                 else -> TrainingRanges.REST_PYRAMID_LOW_TIER
             }
             repeat(tier.count) {

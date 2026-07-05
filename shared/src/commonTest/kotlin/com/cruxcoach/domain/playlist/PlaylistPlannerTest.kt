@@ -69,8 +69,8 @@ class PlaylistPlannerTest {
         // 63 min / 21 min per problem = 3 problems × 5 explicit attempts.
         assertEquals(3, climbs.mapNotNull { it.repeatKey }.distinct().size, "3 distinct problems")
         assertEquals(15, climbs.size, "each problem carries its attempts as entries")
-        assertTrue(climbs.all { it.minDifficulty == 22.0 && it.maxDifficulty == 24.0 },
-            "limit band must be max … max+1V")
+        assertTrue(climbs.all { it.minDifficulty == 22.0 && it.maxDifficulty == 23.0 },
+            "limit band must be max … max + 1 Font step")
         // 4 attempt rests per problem + 2 between-problem rests.
         assertEquals(12, plan.rests().count { it.seconds == TrainingRanges.REST_LIMIT_BETWEEN_ATTEMPTS })
         assertEquals(2, plan.rests().count { it.seconds == TrainingRanges.REST_LIMIT_BETWEEN_PROBLEMS })
@@ -132,16 +132,27 @@ class PlaylistPlannerTest {
     // ── Pyramid ─────────────────────────────────────────────────
 
     @Test
-    fun `pyramid builds 4-3-2-1 up to one V below max`() {
+    fun `pyramid climbs Font steps up to one V below max`() {
         val plan = PlaylistPlanner.plan(params(GeneratorType.PYRAMID, duration = 60), profile)
         val climbs = plan.climbs()
         assertEquals(10, climbs.size, "4+3+2+1")
-        // Tier centers: 14, 16, 18, 20 — apex = max − 1 V, because every
-        // tier of a session pyramid should actually get TOPPED.
+        // Font-step tiers 17, 18, 19, 20 — apex = max − 2 points (1 V),
+        // because every tier of a session pyramid should actually get
+        // TOPPED, and half-grade steps match what boards actually carry.
         val centers = climbs.map { (it.minDifficulty + it.maxDifficulty) / 2 }
-        assertEquals(listOf(14.0, 14.0, 14.0, 14.0, 16.0, 16.0, 16.0, 18.0, 18.0, 20.0), centers)
+        assertEquals(listOf(17.0, 17.0, 17.0, 17.0, 18.0, 18.0, 18.0, 19.0, 19.0, 20.0), centers)
         // Apex slot is PEAK.
         assertEquals(PlanSection.PEAK, climbs.last().section)
+    }
+
+    @Test
+    fun `projecting band sits above the limit band`() {
+        val limit = PlaylistPlanner.plan(params(GeneratorType.LIMIT), profile).climbs()
+        val proj = PlaylistPlanner.plan(params(GeneratorType.PROJECTING), profile).climbs()
+        // Limit: session-sendable (22…23); projecting: multi-session (23…24).
+        assertEquals(23.0, proj.first().minDifficulty)
+        assertEquals(24.0, proj.first().maxDifficulty)
+        assertTrue(proj.first().minDifficulty > limit.first().minDifficulty)
     }
 
     @Test
