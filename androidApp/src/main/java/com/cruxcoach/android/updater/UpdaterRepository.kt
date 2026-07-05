@@ -121,6 +121,45 @@ class UpdaterRepository @Inject constructor(
         }
     }
 
+    /**
+     * Re-attaches to an in-flight APK download after process death. The
+     * `DownloadManager` runs in its own system process, so a download enqueued
+     * before the OS killed us keeps going (or already finished) — but the
+     * [monitorDownload] coroutine died with our process, leaving the pipeline
+     * stuck in `DOWNLOADING` with no verify/install and a frozen progress bar.
+     * Called from [UpdaterCoordinator.start] on every launch: if a pending
+     * download id survives in prefs, re-query and resume monitoring so the flow
+     * finishes (or fails cleanly). If `DownloadManager` no longer knows the id
+     * (cleared / expired), reset to `PENDING_DOWNLOAD` and re-notify so the user
+     * can restart instead of waiting forever.
+     */
+    fun resumePendingDownloadIfAny() {
+        scope.launch {
+            val prefs = preferences.snapshot()
+            if (prefs.pipelineStage != PipelineStage.DOWNLOADING) return@launch
+            val info = prefs.pendingUpdate()
+            val id = prefs.pendingDownloadId
+            if (id == null || info == null) {
+                // Inconsistent state (DOWNLOADING but nothing to resume) — reset
+                // so the user can re-trigger from a clean surface.
+                preferences.update {
+                    it.copy(pendingDownloadId = null, pipelineStage = PipelineStage.PENDING_DOWNLOAD)
+                }
+                return@launch
+            }
+            if (downloader.query(id) == null) {
+                Log.i(TAG, "event=resume_download_gone id=$id — resetting to pending")
+                preferences.update {
+                    it.copy(pendingDownloadId = null, pipelineStage = PipelineStage.PENDING_DOWNLOAD)
+                }
+                notifier.showPendingDownload(info)
+                return@launch
+            }
+            Log.i(TAG, "event=resume_download id=$id version=${info.versionName}")
+            monitorDownload(info, id)
+        }
+    }
+
     /** Starts (or resumes) the download and watches it to completion. */
     fun startDownload(info: UpdateInfo, allowMobile: Boolean) {
         scope.launch {
