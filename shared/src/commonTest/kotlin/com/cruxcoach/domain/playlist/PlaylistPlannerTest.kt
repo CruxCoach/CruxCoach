@@ -132,13 +132,14 @@ class PlaylistPlannerTest {
     // ── Pyramid ─────────────────────────────────────────────────
 
     @Test
-    fun `pyramid builds 4-3-2-1 up to max`() {
+    fun `pyramid builds 4-3-2-1 up to one V below max`() {
         val plan = PlaylistPlanner.plan(params(GeneratorType.PYRAMID, duration = 60), profile)
         val climbs = plan.climbs()
         assertEquals(10, climbs.size, "4+3+2+1")
-        // Tier centers: 16, 18, 20, 22 (apex = max).
+        // Tier centers: 14, 16, 18, 20 — apex = max − 1 V, because every
+        // tier of a session pyramid should actually get TOPPED.
         val centers = climbs.map { (it.minDifficulty + it.maxDifficulty) / 2 }
-        assertEquals(listOf(16.0, 16.0, 16.0, 16.0, 18.0, 18.0, 18.0, 20.0, 20.0, 22.0), centers)
+        assertEquals(listOf(14.0, 14.0, 14.0, 14.0, 16.0, 16.0, 16.0, 18.0, 18.0, 20.0), centers)
         // Apex slot is PEAK.
         assertEquals(PlanSection.PEAK, climbs.last().section)
     }
@@ -150,6 +151,34 @@ class PlaylistPlannerTest {
         assertTrue(PlanSection.DESCENT in sections, "≥90 min pyramid descends again")
         // Descent mirrors the ascent minus apex: 2+3+4 = 9 extra climbs.
         assertEquals(19, plan.climbs().size)
+    }
+
+    @Test
+    fun `warm-up ladder reaches one V below the limit working grade`() {
+        val plan = PlaylistPlanner.plan(
+            params(GeneratorType.LIMIT, duration = 90, position = SessionPosition.START_COLD),
+            profile,
+        )
+        val warmUp = plan.climbs().filter { it.section == PlanSection.WARM_UP }
+        assertTrue(warmUp.isNotEmpty())
+        // First work grade = max (22); ladder must climb to 20 (max − 1 V),
+        // not stall 3 V short of the working intensity.
+        val topCenter = warmUp.maxOf { (it.minDifficulty + it.maxDifficulty) / 2 }
+        assertEquals(20.0, topCenter)
+    }
+
+    @Test
+    fun `easy-session warm-up starts below the working grade not below max`() {
+        val plan = PlaylistPlanner.plan(
+            params(GeneratorType.VOLUME, duration = 60, position = SessionPosition.START_COLD),
+            profile,
+        )
+        val warmUp = plan.climbs().filter { it.section == PlanSection.WARM_UP }
+        assertTrue(warmUp.isNotEmpty())
+        // Volume works at flash−2V…flash (14…18) → warm-up must sit BELOW
+        // the working band's floor, not at it.
+        val topCenter = warmUp.maxOf { (it.minDifficulty + it.maxDifficulty) / 2 }
+        assertTrue(topCenter <= 13.0, "warm-up top was $topCenter")
     }
 
     // ── Warm-up / session position ──────────────────────────────

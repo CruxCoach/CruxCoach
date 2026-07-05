@@ -101,13 +101,22 @@ class PlaylistGeneratorViewModel @Inject constructor(
     /**
      * Logbook → profile. Prefers ascents at the target [angle] when there
      * are enough of them (angle-specific strength differs a lot); falls
-     * back to the whole logbook otherwise. Open projects = attempted but
-     * never sent, most recent bid first.
+     * back to the whole logbook otherwise. Within the pool, RECENT sends
+     * (last ~6 months) anchor max/flash when there are enough — training
+     * plans must track CURRENT ability, not a stale all-time best from
+     * years back. Open projects = attempted but never sent, most recent
+     * bid first.
      */
     private fun loadProfile(angle: Int): LogbookProfile {
         val ascents = personalBoardRepo.getUserAscentsAll().filter { it.isSend }
         val atAngle = ascents.filter { it.angle.toInt() == angle }
-        val pool = if (atAngle.size >= LogbookProfile.MIN_SAMPLE) atAngle else ascents
+        val anglePool = if (atAngle.size >= LogbookProfile.MIN_SAMPLE) atAngle else ascents
+
+        val recencyCutoff = java.time.LocalDate.now()
+            .minusWeeks(PROFILE_RECENCY_WEEKS)
+            .toString()
+        val recent = anglePool.filter { it.climbedAt.take(10) >= recencyCutoff }
+        val pool = if (recent.size >= LogbookProfile.MIN_SAMPLE) recent else anglePool
 
         val sends = pool.mapNotNull { it.difficultyAverage }
         val flashes = pool.filter { it.bidCount <= 1L }.mapNotNull { it.difficultyAverage }
@@ -253,6 +262,11 @@ class PlaylistGeneratorViewModel @Inject constructor(
 
     companion object {
         private const val TAG = "PlaylistGeneratorVM"
+
+        /** Max/flash anchor window (~6 months): current ability, not the
+         *  all-time best — falls back to the full logbook below
+         *  [LogbookProfile.MIN_SAMPLE] recent sends. */
+        private const val PROFILE_RECENCY_WEEKS = 26L
 
         /** Candidate quality gate: at least a handful of community ascents
          *  so junk climbs don't land in a training plan. Community-sparse

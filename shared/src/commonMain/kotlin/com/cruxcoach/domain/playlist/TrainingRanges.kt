@@ -61,8 +61,19 @@ object TrainingRanges {
     /** Pyramid: base 3 V-grades below the apex, 1-V steps. */
     const val PYRAMID_BASE_BELOW_APEX = 3 * DIFF_PER_V_GRADE
 
-    /** Warm-up ladder: start 5 V below max, 1-V steps. */
+    /** Pyramid apex sits 1 V below max: a session pyramid only works when
+     *  every tier actually gets TOPPED — an apex at the all-time max is a
+     *  limit session in disguise and usually ends in a failed apex. */
+    const val PYRAMID_APEX_BELOW_MAX = 1 * DIFF_PER_V_GRADE
+
+    /** Warm-up ladder: start 5 V below max — but never closer than 3 V to
+     *  the first working grade (easy sessions warm up on easier terrain),
+     *  and climb up to 1 V below the working grade (no intensity jump
+     *  into the first work set). Tiers within taper distance of the work
+     *  grade get one problem instead of two (progressive activation). */
     const val WARMUP_START_BELOW_MAX = 5 * DIFF_PER_V_GRADE
+    const val WARMUP_START_BELOW_FIRST_WORK = 3 * DIFF_PER_V_GRADE
+    const val WARMUP_TAPER_DISTANCE = 3 * DIFF_PER_V_GRADE
 
     /** Per-tier tolerance when matching climbs to a planned grade (± half
      *  a V-grade keeps "a V5 slot" honest while accepting 6b vs 6b+). */
@@ -113,7 +124,6 @@ object TrainingRanges {
 
     // ── Duration → count scaling ─────────────────────────────────
 
-    const val WARMUP_MINUTES = 18
 
     /** Volume cycle: ~1 min on the wall + 90 s rest = 2.5 min/problem
      *  → ≈20 problems/hour of block time (Lattice pacing). */
@@ -148,9 +158,10 @@ object TrainingRanges {
     /** Projecting: burns per project, explicit like limit attempts. */
     const val BURNS_PER_PROJECT = 4
 
-    /** Warm-up ladder: 2 problems per tier, at most this many total. */
+    /** Warm-up ladder: 2 problems per easy tier (1 within taper
+     *  distance), at most this many total. */
     const val WARMUP_PROBLEMS_PER_TIER = 2
-    const val WARMUP_MAX_PROBLEMS = 6
+    const val WARMUP_MAX_PROBLEMS = 8
 
     /** Default profile when the logbook is empty (≈ V5, mirrors
      *  IntensityZoneEngine's fallback) — the UI must flag this. */

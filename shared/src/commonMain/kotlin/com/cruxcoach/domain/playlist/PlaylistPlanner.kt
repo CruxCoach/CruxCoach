@@ -73,12 +73,13 @@ object PlaylistPlanner {
         val maxDiff = profile.effectiveMax - shift
         val flashDiff = min(profile.effectiveFlash, maxDiff) - shift
 
-        // Warm-up ladder only when starting cold; its minutes come off the
-        // main-set budget.
+        // Warm-up ladder only when starting cold; its ACTUAL minutes come
+        // off the main-set budget (a 2-problem easy-session warm-up must
+        // not eat a flat 18-minute block).
         val warmUp = if (params.position == SessionPosition.START_COLD) {
             buildWarmUpLadder(maxDiff, firstWorkGrade(effectiveType, maxDiff, flashDiff))
         } else emptyList()
-        val mainMinutes = if (warmUp.isEmpty()) duration else max(duration - TrainingRanges.WARMUP_MINUTES, 10)
+        val mainMinutes = max(duration - warmUpMinutes(warmUp), 10)
 
         val main = when (effectiveType) {
             GeneratorType.VOLUME -> planVolume(mainMinutes, flashDiff, maxDiff)
@@ -98,15 +99,29 @@ object PlaylistPlanner {
 
     // ── Sections ────────────────────────────────────────────────
 
-    /** Ladder from max − 5 V up to just below the first working grade,
-     *  1-V steps, 2 problems per tier, capped at 6 problems — short rests
-     *  between the ladder problems, then a 3–5 min transition rest. */
+    /**
+     * Progressive ladder up to ONE V-grade below the first working grade
+     * (Hörst: "boulder up" to near working intensity — the old ladder
+     * stopped 3 V short of a limit set, an intensity jump). Start is
+     * 5 V below max, pulled DOWN to firstWork − 3 V for easy sessions
+     * (a volume block should not warm up at volume grade). Easy tiers
+     * carry 2 problems; tiers within taper distance of the working grade
+     * carry 1 (activation, not fatigue). Short rests between problems,
+     * then the long transition rest.
+     */
     private fun buildWarmUpLadder(maxDiff: Double, firstWorkDiff: Double): List<PlanSlot> {
         val climbs = mutableListOf<PlanSlot.ClimbSlot>()
-        var tier = clampLow(maxDiff - TrainingRanges.WARMUP_START_BELOW_MAX)
+        var tier = clampLow(
+            min(
+                maxDiff - TrainingRanges.WARMUP_START_BELOW_MAX,
+                firstWorkDiff - TrainingRanges.WARMUP_START_BELOW_FIRST_WORK,
+            )
+        )
         val ceiling = firstWorkDiff - TrainingRanges.DIFF_PER_V_GRADE
         while (tier <= ceiling && climbs.size < TrainingRanges.WARMUP_MAX_PROBLEMS) {
-            repeat(TrainingRanges.WARMUP_PROBLEMS_PER_TIER) {
+            val nearWork = firstWorkDiff - tier < TrainingRanges.WARMUP_TAPER_DISTANCE
+            val perTier = if (nearWork) 1 else TrainingRanges.WARMUP_PROBLEMS_PER_TIER
+            repeat(perTier) {
                 if (climbs.size < TrainingRanges.WARMUP_MAX_PROBLEMS) {
                     climbs.add(climbSlot(tier, PlanSection.WARM_UP))
                 }
@@ -130,6 +145,15 @@ object PlaylistPlanner {
         }
         slots.add(PlanSlot.RestSlot(TrainingRanges.REST_AFTER_WARMUP, PlanSection.WARM_UP))
         return slots
+    }
+
+    /** Actual wall-clock cost of the warm-up (1.5 min per problem, the
+     *  same figure estimatedMinutes uses, plus its explicit rests). */
+    private fun warmUpMinutes(warmUp: List<PlanSlot>): Int {
+        if (warmUp.isEmpty()) return 0
+        val restSeconds = warmUp.filterIsInstance<PlanSlot.RestSlot>().sumOf { it.seconds }
+        val climbCount = warmUp.count { it is PlanSlot.ClimbSlot }
+        return ceil(climbCount * 1.5 + restSeconds / 60.0).toInt()
     }
 
     private fun planVolume(minutes: Int, flashDiff: Double, maxDiff: Double): List<PlanSlot> {
@@ -233,7 +257,8 @@ object PlaylistPlanner {
     /** Classic ascending pyramid (…4×, 3×, 2×, 1× apex), 1-V steps; long
      *  sessions add the mirrored descent. */
     private fun planPyramid(minutes: Int, maxDiff: Double): List<PlanSlot> {
-        val apex = maxDiff
+        // Apex 1 V below max: every tier of a session pyramid should top.
+        val apex = clampLow(maxDiff - TrainingRanges.PYRAMID_APEX_BELOW_MAX)
         val tiers = if (minutes < 45) 3 else 4
         val base = clampLow(apex - (tiers - 1) * TrainingRanges.DIFF_PER_V_GRADE)
         val withDescent = minutes >= 90
@@ -278,7 +303,9 @@ object PlaylistPlanner {
         when (type) {
             GeneratorType.VOLUME -> clampLow(flashDiff - TrainingRanges.VOLUME_BAND_BELOW_FLASH)
             GeneratorType.POWER_ENDURANCE -> clampLow(maxDiff - TrainingRanges.PE_BAND_LOW_BELOW_MAX)
-            GeneratorType.PYRAMID -> clampLow(maxDiff - TrainingRanges.PYRAMID_BASE_BELOW_APEX)
+            GeneratorType.PYRAMID -> clampLow(
+                maxDiff - TrainingRanges.PYRAMID_APEX_BELOW_MAX - TrainingRanges.PYRAMID_BASE_BELOW_APEX
+            )
             GeneratorType.LIMIT, GeneratorType.PROJECTING -> maxDiff
         }
 
