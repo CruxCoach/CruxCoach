@@ -23,6 +23,15 @@ enum class BoardBrand(val wireValue: String) {
     SOILL("soill"),
     TOUCHSTONE("touchstone"),
 
+    // The CruxCoach Board (this project): an open, self-built LED wall driven
+    // by CruxCoach's own native L1 WebSocket protocol (see
+    // [CruxBoardFrameEncoder]), NOT the Aurora BLE stack. It is fully
+    // interactive — authoring, per-hold LED preview and the co-occurrence
+    // heatmap — but has no Aurora placement rows, so [usesAuroraProtocol] and
+    // [usesAuroraPlacements] stay false while its interactive capabilities are
+    // declared directly rather than delegated to the Aurora predicate.
+    CRUXCOACH("cruxcoach"),
+
     // Map-only "info layer" families (FEAT-015 Phase 2). CruxCoach ships no
     // climb catalogue or BLE send for these, so they appear on the
     // board-locations map only — never in the browser, picker, or active-
@@ -33,10 +42,12 @@ enum class BoardBrand(val wireValue: String) {
     AURORA("aurora"),
     TWELVECLIMB("12climb");
 
-    /** True for families CruxCoach actually drives (catalogue + BLE): Kilter,
-     *  MoonBoard, and the five Aurora-family boards (FEAT-031). AURORA and
-     *  12climb remain map-only info-layer brands. */
-    val isInteractive: Boolean get() = usesAuroraProtocol || this == MOONBOARD
+    /** True for families CruxCoach actually drives (catalogue + live board
+     *  send): Kilter, MoonBoard, the five Aurora-family boards (FEAT-031) and
+     *  the native CruxCoach Board. AURORA and 12climb remain map-only
+     *  info-layer brands. */
+    val isInteractive: Boolean
+        get() = usesAuroraProtocol || this == MOONBOARD || this == CRUXCOACH
 
     /** Kilter + the Aurora-family boards (Tension, Grasshopper, Decoy, So iLL,
      *  Touchstone): climbs are Aurora placement-id frames, holes are lit from
@@ -73,13 +84,18 @@ enum class BoardBrand(val wireValue: String) {
      *  address map (Kilter + the Aurora-family boards, which share the Aurora
      *  BLE protocol). MoonBoard derives its own LEDs from the climb frame, so
      *  the editor/send path uses a different transport and never builds an LED
-     *  map. */
-    val usesLedPreview: Boolean get() = usesAuroraProtocol
+     *  map. The CruxCoach Board also drives per-hold LEDs — via its native L1
+     *  SET_ROUTE frames ([CruxBoardFrameEncoder]) rather than an Aurora LED
+     *  map — so this capability is decoupled from [usesAuroraProtocol]. */
+    val usesLedPreview: Boolean get() = usesAuroraProtocol || this == CRUXCOACH
 
-    /** Supports the popular-co-occurring-holds heatmap, which is keyed on
-     *  Aurora placement-ids (Kilter + the Aurora-family boards). MoonBoard
-     *  hold-ids aren't placement-ids, so it has no heatmap layer. */
-    val hasHeatmap: Boolean get() = usesAuroraProtocol
+    /** Supports the popular-co-occurring-holds heatmap. On the Aurora-family
+     *  boards (Kilter + the five) it is keyed on Aurora placement-ids; MoonBoard
+     *  hold-ids aren't placement-ids, so it has no heatmap layer. The CruxCoach
+     *  Board declares the heatmap capability directly (its own hold model feeds
+     *  the co-occurrence layer), so this is decoupled from [usesAuroraProtocol]
+     *  even though CruxCoach carries no Aurora placements. */
+    val hasHeatmap: Boolean get() = usesAuroraProtocol || this == CRUXCOACH
 
     /** Climbs can be authored in the in-app editor — every interactive board.
      *  Kilter additionally pushes to the user's own Kilter account (see
@@ -110,6 +126,7 @@ enum class BoardBrand(val wireValue: String) {
             DECOY -> "Decoy"
             SOILL -> "So iLL"
             TOUCHSTONE -> "Touchstone"
+            CRUXCOACH -> "CruxCoach Board"
             AURORA -> "Aurora"
             TWELVECLIMB -> "12 Climb"
         }

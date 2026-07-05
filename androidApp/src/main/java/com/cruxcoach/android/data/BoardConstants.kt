@@ -212,6 +212,8 @@ object BoardConstants {
      *    unintended upgrade regression.
      *  - Touchstone: its single layout is asymmetric → false.
      *  - MoonBoard: fixed-config board, no mirror concept → false.
+     *  - CruxCoach Board: hold layout is user-built (per-wall hold map on the
+     *    board, no canonical symmetric layout), so no mirror concept → false.
      *  - Map-only info-layer brands (Aurora / 12climb): no catalogue → false.
      *
      * Exhaustive over [BoardBrand] on purpose: a newly-added board must make a
@@ -223,6 +225,7 @@ object BoardConstants {
         BoardBrand.KILTER -> true
         BoardBrand.TOUCHSTONE,
         BoardBrand.MOONBOARD,
+        BoardBrand.CRUXCOACH,
         BoardBrand.AURORA,
         BoardBrand.TWELVECLIMB -> false
     }

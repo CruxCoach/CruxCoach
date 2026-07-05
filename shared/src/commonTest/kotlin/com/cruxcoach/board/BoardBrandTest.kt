@@ -21,6 +21,9 @@ class BoardBrandTest {
         // Aurora-family + info-layer families round-trip too.
         assertEquals(BoardBrand.TENSION, BoardBrand.fromWire("tension"))
         assertEquals(BoardBrand.TWELVECLIMB, BoardBrand.fromWire("12climb"))
+        // The native CruxCoach Board round-trips too.
+        assertEquals(BoardBrand.CRUXCOACH, BoardBrand.fromWire("cruxcoach"))
+        assertEquals("cruxcoach", BoardBrand.CRUXCOACH.wireValue)
     }
 
     @Test
@@ -43,7 +46,7 @@ class BoardBrandTest {
         for (b in listOf(
             BoardBrand.KILTER, BoardBrand.MOONBOARD, BoardBrand.TENSION,
             BoardBrand.GRASSHOPPER, BoardBrand.DECOY, BoardBrand.SOILL,
-            BoardBrand.TOUCHSTONE,
+            BoardBrand.TOUCHSTONE, BoardBrand.CRUXCOACH,
         )) {
             assertEquals(true, b.isInteractive, "$b should be interactive")
             assertEquals(false, b in BoardBrand.INFO_LAYER, "$b not info-layer")
@@ -71,6 +74,9 @@ class BoardBrandTest {
         assertEquals(false, BoardBrand.MOONBOARD.usesAuroraProtocol)
         assertEquals(false, BoardBrand.MOONBOARD.usesAuroraPlacements)
         assertEquals(false, BoardBrand.AURORA.usesAuroraProtocol)
+        // The CruxCoach Board is native (L1 protocol), NOT Aurora.
+        assertEquals(false, BoardBrand.CRUXCOACH.usesAuroraProtocol)
+        assertEquals(false, BoardBrand.CRUXCOACH.usesAuroraPlacements)
 
         // Authoring is enabled for every INTERACTIVE board (Kilter, MoonBoard +
         // the Aurora family); the info-layer brands (aurora, 12climb) can't
@@ -92,6 +98,25 @@ class BoardBrandTest {
         assertEquals(true, BoardBrand.KILTER.supportsOfficialAppPublish)
         assertEquals(false, BoardBrand.TENSION.supportsOfficialAppPublish)
         assertEquals(false, BoardBrand.MOONBOARD.supportsOfficialAppPublish)
+    }
+
+    @Test
+    fun cruxCoachBoardDecouplesInteractiveCapsFromAuroraProtocol() {
+        // The native CruxCoach Board (own L1 WebSocket protocol) is fully
+        // interactive — LED preview, heatmap and authoring — WITHOUT claiming
+        // the Aurora protocol / placements. The interactive capabilities are
+        // therefore decoupled from usesAuroraProtocol here.
+        val crux = BoardBrand.CRUXCOACH
+        assertEquals(true, crux.isInteractive)
+        assertEquals(false, crux.usesAuroraProtocol)
+        assertEquals(false, crux.usesAuroraPlacements)
+        assertEquals(true, crux.usesLedPreview)
+        assertEquals(true, crux.hasHeatmap)
+        assertEquals(true, crux.supportsAuthoring)
+        // CruxCoach-community only: no push to a board vendor's own app.
+        assertEquals(false, crux.supportsOfficialAppPublish)
+        assertEquals("CruxCoach Board", crux.displayName)
+        assertEquals("cruxcoach", crux.wireValue)
     }
 
     @Test

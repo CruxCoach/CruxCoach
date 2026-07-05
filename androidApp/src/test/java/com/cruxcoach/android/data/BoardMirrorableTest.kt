@@ -42,6 +42,8 @@ class BoardMirrorableTest {
     fun asymmetricAndFixedConfigBoards_areNotMirrorable() {
         assertFalse(BoardConstants.isLayoutMirrorable(BoardBrand.TOUCHSTONE, 1))
         assertFalse(BoardConstants.isLayoutMirrorable(BoardBrand.MOONBOARD, 4))
+        // CruxCoach Board: user-built hold layout, no mirror concept.
+        assertFalse(BoardConstants.isLayoutMirrorable(BoardBrand.CRUXCOACH, 1))
         assertFalse(BoardConstants.isLayoutMirrorable(BoardBrand.AURORA, 1))
         assertFalse(BoardConstants.isLayoutMirrorable(BoardBrand.TWELVECLIMB, 1))
     }
