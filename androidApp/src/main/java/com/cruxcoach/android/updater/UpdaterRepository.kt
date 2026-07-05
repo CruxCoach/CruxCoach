@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Named
 import javax.inject.Singleton
@@ -91,6 +92,11 @@ class UpdaterRepository @Inject constructor(
         if (outcome is UpdateChecker.CheckOutcome.Update) {
             onNewerUpdateDetected(outcome.info)
         }
+        // Re-surface a dismissed-but-pending update on its backoff, INDEPENDENT of
+        // the network outcome. maybeCheck returns NotModified on an ETag 304, which
+        // otherwise short-circuits before any notification work — so without this a
+        // once-dismissed update could never be re-shown by any later check.
+        maybeReArmPendingNotification()
         return outcome
     }
 
@@ -346,7 +352,11 @@ class UpdaterRepository @Inject constructor(
         }
     }
 
-    /** §6.10 re-arm. Simple stage machine: +24h, then 72h × 10, then 30d forever. */
+    /**
+     * User swiped the pending-update notification away. Stamp the dismissal time
+     * and bump the dismissal count — [maybeReArmPendingNotification] uses both to
+     * re-surface the update later on an escalating backoff (§6.10).
+     */
     suspend fun onNotificationDismissed() {
         preferences.update {
             it.copy(
@@ -354,6 +364,36 @@ class UpdaterRepository @Inject constructor(
                 notifReArmCount = it.notifReArmCount + 1,
             )
         }
+    }
+
+    /**
+     * §6.10 re-arm: re-post a pending update the user swiped away, on an
+     * escalating backoff keyed to how many times they've dismissed it — ~24h
+     * after the first dismissal, ~72h for the next ten, then ~30d forever. Called
+     * from [checkNow] on every trigger (foreground / network / 24h periodic), so
+     * even a run that returns NotModified (ETag 304) gets a chance to re-surface
+     * the update. No-op unless there is a dismissed, still-pending download whose
+     * backoff has elapsed.
+     */
+    suspend fun maybeReArmPendingNotification() {
+        val prefs = preferences.snapshot()
+        if (prefs.pipelineStage != PipelineStage.PENDING_DOWNLOAD) return
+        val dismissedAt = prefs.notifDismissedAtEpochMs ?: return // showing / never dismissed
+        val info = prefs.pendingUpdate() ?: return
+        if (System.currentTimeMillis() - dismissedAt < reArmDelayMs(prefs.notifReArmCount)) return
+        notifier.showPendingDownload(info)
+        // It's on screen again → clear the dismissed marker. The dismissal COUNT
+        // is kept (it drives the escalating backoff); a fresh swipe bumps it via
+        // onNotificationDismissed and lengthens the next interval.
+        preferences.update { it.copy(notifDismissedAtEpochMs = null) }
+        Log.i(TAG, "event=notif_rearmed version=${info.versionName} dismissCount=${prefs.notifReArmCount}")
+    }
+
+    /** Backoff before re-showing a dismissed update, by dismissal count (§6.10). */
+    private fun reArmDelayMs(dismissCount: Int): Long = when {
+        dismissCount <= 1 -> TimeUnit.HOURS.toMillis(24)
+        dismissCount <= 11 -> TimeUnit.HOURS.toMillis(72) // dismissals 2..11 — the "×10" window
+        else -> TimeUnit.DAYS.toMillis(30)
     }
 
     suspend fun setAutoCheck(enabled: Boolean) =
