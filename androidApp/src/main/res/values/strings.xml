@@ -854,6 +854,7 @@
     <string name="board_ascent_benchmark_label">Benchmark:</string>
     <string name="board_ascent_benchmark_attempt">Benchmark attempt</string>
     <string name="board_ascent_attempts">Attempts: %d</string>
+    <string name="board_ascent_first_try">1st try</string>
     <string name="board_ascent_quality">Quality:</string>
     <string name="board_ascent_comment">Comment (optional)</string>
 

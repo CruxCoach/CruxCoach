@@ -328,8 +328,8 @@ class BoardStatsComputerTest {
     @Test
     fun `personalRecords hardestFlash ignores non-flash sends`() {
         val ascents = listOf(
-            ascent(uuid = "rp", isSend = true, bidCount = 10L, difficulty = 30.0),
-            ascent(uuid = "fl", isSend = true, bidCount = 1L, difficulty = 22.0),
+            ascent(uuid = "rp", climbUuid = "c-rp", isSend = true, bidCount = 10L, difficulty = 30.0),
+            ascent(uuid = "fl", climbUuid = "c-fl", isSend = true, bidCount = 1L, difficulty = 22.0),
         )
         val stats = BoardStatsComputer.computeStats(ascents, StatsTimeInterval.ALL, GradeScale.V_SCALE)
         assertEquals(22, stats.personalRecords.hardestFlashDifficulty)
@@ -422,14 +422,60 @@ class BoardStatsComputerTest {
     @Test
     fun `outcomeDistribution counts flash vs redpoint`() {
         val ascents = listOf(
-            ascent(uuid = "f1", isSend = true, bidCount = 1L),
-            ascent(uuid = "f2", isSend = true, bidCount = 1L),
-            ascent(uuid = "r1", isSend = true, bidCount = 4L),
-            ascent(uuid = "bid", isSend = false, bidCount = 3L),
+            ascent(uuid = "f1", climbUuid = "c-1", isSend = true, bidCount = 1L),
+            ascent(uuid = "f2", climbUuid = "c-2", isSend = true, bidCount = 1L),
+            ascent(uuid = "r1", climbUuid = "c-3", isSend = true, bidCount = 4L),
+            ascent(uuid = "bid", climbUuid = "c-4", isSend = false, bidCount = 3L),
         )
         val stats = BoardStatsComputer.computeStats(ascents, StatsTimeInterval.ALL, GradeScale.V_SCALE)
         assertEquals(2, stats.outcomeDistribution.flashes)
         assertEquals(1, stats.outcomeDistribution.redpoints)
+    }
+
+    @Test
+    fun `first-try send after an earlier-session attempt is NOT a flash`() {
+        val ascents = listOf(
+            // Session 1: two failed burns on the climb
+            ascent(uuid = "bid", climbUuid = "c-proj", isSend = false, bidCount = 2L,
+                climbedAt = "2026-03-01T18:00:00"),
+            // Session 2: goes first try — a repeat/redpoint, not a flash
+            ascent(uuid = "send", climbUuid = "c-proj", isSend = true, bidCount = 1L,
+                climbedAt = "2026-03-10T18:00:00"),
+        )
+        val stats = BoardStatsComputer.computeStats(ascents, StatsTimeInterval.ALL, GradeScale.V_SCALE)
+        assertEquals(0, stats.outcomeDistribution.flashes)
+        assertEquals(1, stats.outcomeDistribution.redpoints)
+        assertEquals(0f, stats.flashRate)
+        assertNull(stats.personalRecords.hardestFlashGrade)
+    }
+
+    @Test
+    fun `earlier attempt at a DIFFERENT angle does not kill the flash`() {
+        val ascents = listOf(
+            ascent(uuid = "bid30", climbUuid = "c-x", angle = 30L, isSend = false,
+                climbedAt = "2026-03-01T18:00:00"),
+            ascent(uuid = "send40", climbUuid = "c-x", angle = 40L, isSend = true, bidCount = 1L,
+                climbedAt = "2026-03-10T18:00:00"),
+        )
+        val stats = BoardStatsComputer.computeStats(ascents, StatsTimeInterval.ALL, GradeScale.V_SCALE)
+        assertEquals(1, stats.outcomeDistribution.flashes)
+    }
+
+    // -- Grade pyramid label fidelity --
+
+    @Test
+    fun `gradePyramid keeps Font grades that share a V bucket apart`() {
+        // Kilter difficulty 24 = 7b, 25 = 7b+ — BOTH are V8. The old
+        // difficulty→V→Font detour collapsed them into a single "7b+" row,
+        // showing a 7b top send as 7b+.
+        val ascents = listOf(
+            ascent(uuid = "s1", climbUuid = "c-7b", difficulty = 24.0),
+            ascent(uuid = "s2", climbUuid = "c-7bp", difficulty = 25.0),
+        )
+        val stats = BoardStatsComputer.computeStats(ascents, StatsTimeInterval.ALL, GradeScale.FRENCH)
+        val labels = stats.gradePyramid.map { it.grade }
+        assertEquals(listOf("7b", "7b+"), labels)
+        assertTrue(stats.gradePyramid.all { it.count == 1 })
     }
 
     // -- Sends-over-time buckets --

@@ -32,6 +32,10 @@ internal fun AscentCard(
     ascent: AscentWithClimb,
     gradeScale: GradeScale,
     zones: IntensityZones? = null,
+    /** True flash = first-ever contact with this climb+angle went first
+     *  try (full-history check by the VM) — a first-try send AFTER
+     *  earlier-session attempts shows "1st try", not "Flash". */
+    isTrueFlash: Boolean = false,
     isSelected: Boolean,
     onClick: () -> Unit,
     onToggleSelect: () -> Unit,
@@ -136,8 +140,12 @@ internal fun AscentCard(
 
             Column(horizontalAlignment = Alignment.End) {
                 if (ascent.isSend) {
-                    val attemptsLabel = if (ascent.bidCount <= 1L) "Flash" else stringResource(R.string.board_ascent_tries, ascent.bidCount)
-                    val attemptsColor = if (ascent.bidCount <= 1L) SuccessGreen else OrangeAccent
+                    val attemptsLabel = when {
+                        isTrueFlash -> "Flash"
+                        ascent.bidCount <= 1L -> stringResource(R.string.board_ascent_first_try)
+                        else -> stringResource(R.string.board_ascent_tries, ascent.bidCount)
+                    }
+                    val attemptsColor = if (isTrueFlash) SuccessGreen else OrangeAccent
                     Text(
                         attemptsLabel,
                         style = MaterialTheme.typography.labelMedium,
