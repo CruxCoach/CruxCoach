@@ -7,9 +7,11 @@ import com.cruxcoach.android.util.GradeDisplayHelper
 import com.cruxcoach.data.repository.AscentWithClimb
 import com.cruxcoach.domain.board.KilterGradeMapper
 import java.time.Clock
+import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
+import java.time.temporal.TemporalAdjusters
 import java.time.temporal.WeekFields
 import java.util.Locale
 
@@ -41,6 +43,8 @@ object BoardStatsComputer {
     private const val MEDIUM_THRESHOLD = 16.0
     private const val HARD_THRESHOLD = 21.0
     private const val ELITE_THRESHOLD = 27.0
+    private const val AVG_WINDOW_WEEKS = 8
+    private const val DAYS_PER_WEEK = 7L
 
     fun computeStats(
         ascents: List<AscentWithClimb>,
@@ -391,8 +395,22 @@ object BoardStatsComputer {
         gradeScale: GradeScale,
         clock: Clock = Clock.systemDefaultZone(),
     ): PersonalRecords {
+        // Session metrics count attempts too — a projecting-only day at
+        // the board is a session even without a send.
+        val sessionDates = allAscents
+            .mapNotNull { parseDate(it.climbedAt) }
+            .distinct()
+            .sorted()
+        val avgSessionsPerWeek = computeAvgSessionsPerWeek(sessionDates, clock)
+        val weekStreak = computeWeekStreak(sessionDates, clock)
+
         val sends = allAscents.filter { it.isSend }
-        if (sends.isEmpty()) return PersonalRecords()
+        if (sends.isEmpty()) {
+            return PersonalRecords(
+                avgSessionsPerWeek = avgSessionsPerWeek,
+                weekStreak = weekStreak,
+            )
+        }
 
         // Hardest flash
         val flashSends = sends.filter { it.bidCount <= 1L && it.difficultyAverage != null }
@@ -407,45 +425,61 @@ object BoardStatsComputer {
         val mostSendsInDay = bestDay?.value?.size ?: 0
         val mostSendsDate = bestDay?.key
 
-        // Streaks (consecutive days with at least one send)
-        val sendDates = sendsByDay.keys.mapNotNull { parseDate(it) }.sorted()
-        val (currentStreak, longestStreak) = computeStreaks(sendDates, clock)
-
         return PersonalRecords(
             hardestFlashGrade = hardestFlashGrade,
             hardestFlashDifficulty = hardestFlashDiff?.difficultyAverage?.toInt() ?: 0,
             mostSendsInDay = mostSendsInDay,
             mostSendsDate = mostSendsDate,
-            currentStreak = currentStreak,
-            longestStreak = longestStreak
+            avgSessionsPerWeek = avgSessionsPerWeek,
+            weekStreak = weekStreak,
         )
     }
 
-    private fun computeStreaks(
-        sortedDates: List<LocalDate>,
-        clock: Clock = Clock.systemDefaultZone(),
-    ): Pair<Int, Int> {
-        if (sortedDates.isEmpty()) return 0 to 0
-
-        var longest = 1
-        var current = 1
+    /**
+     * Sessions per week averaged over the last [AVG_WINDOW_WEEKS] weeks.
+     * If the logbook is younger than the window, the average spans only
+     * the time since the first session (min. one week) so beginners
+     * aren't diluted toward zero.
+     */
+    private fun computeAvgSessionsPerWeek(
+        sessionDates: List<LocalDate>,
+        clock: Clock,
+    ): Double {
+        if (sessionDates.isEmpty()) return 0.0
         val today = LocalDate.now(clock)
+        val windowStart = today.minusDays(AVG_WINDOW_WEEKS * 7L - 1)
+        val first = sessionDates.first()
+        val effectiveStart = if (first.isAfter(windowStart)) first else windowStart
+        val recent = sessionDates.count { !it.isBefore(effectiveStart) }
+        if (recent == 0) return 0.0
+        val daysSpanned = ChronoUnit.DAYS.between(effectiveStart, today) + 1
+        val weeks = (daysSpanned.toDouble() / DAYS_PER_WEEK).coerceAtLeast(1.0)
+        return recent / weeks
+    }
 
-        for (i in 1 until sortedDates.size) {
-            if (ChronoUnit.DAYS.between(sortedDates[i - 1], sortedDates[i]) == 1L) {
-                current++
-                if (current > longest) longest = current
+    /**
+     * Consecutive ISO calendar weeks (Mon–Sun) with at least one session.
+     * Active only while the run reaches into this or the previous week —
+     * rest DAYS never break it, a full week off does.
+     */
+    private fun computeWeekStreak(
+        sessionDates: List<LocalDate>,
+        clock: Clock,
+    ): Int {
+        if (sessionDates.isEmpty()) return 0
+        val toMonday = TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)
+        val weekStarts = sessionDates.map { it.with(toMonday) }.distinct().sorted()
+        val thisWeek = LocalDate.now(clock).with(toMonday)
+        if (ChronoUnit.DAYS.between(weekStarts.last(), thisWeek) > DAYS_PER_WEEK) return 0
+        var streak = 1
+        for (i in weekStarts.size - 1 downTo 1) {
+            if (ChronoUnit.DAYS.between(weekStarts[i - 1], weekStarts[i]) == DAYS_PER_WEEK) {
+                streak++
             } else {
-                current = 1
+                break
             }
         }
-
-        // Current streak only counts if it includes today or yesterday
-        val lastDate = sortedDates.last()
-        val daysSinceLast = ChronoUnit.DAYS.between(lastDate, today)
-        val activeStreak = if (daysSinceLast <= 1) current else 0
-
-        return activeStreak to longest
+        return streak
     }
 
     private fun parseDate(dateStr: String): LocalDate? {

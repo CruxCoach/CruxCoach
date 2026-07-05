@@ -1315,7 +1315,7 @@
     <string name="board_stats_board_comparison">Board-Vergleich</string>
     <string name="board_stats_board_comparison_board">Board</string>
     <string name="board_stats_attempt">Versuch</string>
-    <string name="board_stats_current_streak">Aktueller Streak</string>
+    <string name="board_stats_avg_sessions_week">Sessions/Woche (8 W.)</string>
     <string name="board_stats_date_range">Zeitraum…</string>
     <string name="board_stats_flash_rate">Flash-Rate</string>
     <string name="board_stats_flash_send_attempt">Flash / Send / Versuch</string>
@@ -1331,7 +1331,7 @@
     <string name="board_stats_interval_30d">30 Tage</string>
     <string name="board_stats_interval_90d">90 Tage</string>
     <string name="board_stats_interval_all">Gesamt</string>
-    <string name="board_stats_longest_streak">Längster Streak</string>
+    <string name="board_stats_week_streak">Wochen-Serie</string>
     <string name="board_stats_most_sends_day">Meiste Sends/Tag</string>
     <string name="board_stats_outcome_distribution">Ergebnis-Verteilung</string>
     <string name="board_stats_period_comparison">Perioden-Vergleich</string>

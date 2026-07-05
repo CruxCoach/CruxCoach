@@ -61,8 +61,14 @@ data class PersonalRecords(
     val hardestFlashDifficulty: Int = 0,
     val mostSendsInDay: Int = 0,
     val mostSendsDate: String? = null,
-    val currentStreak: Int = 0,
-    val longestStreak: Int = 0
+    /** Average training sessions (distinct active days, sends OR attempts)
+     *  per week over the last 8 weeks — day-streaks are meaningless for
+     *  climbing (rest days are part of training); consistency per week is
+     *  the honest signal. */
+    val avgSessionsPerWeek: Double = 0.0,
+    /** Consecutive calendar weeks (ISO, Mon–Sun) with ≥1 session, counting
+     *  only if the run reaches into this or the previous week. */
+    val weekStreak: Int = 0
 )
 
 /** One board family's headline numbers for the multi-board comparison row

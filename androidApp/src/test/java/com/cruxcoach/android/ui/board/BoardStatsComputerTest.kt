@@ -348,6 +348,75 @@ class BoardStatsComputerTest {
         assertEquals("2026-03-05", stats.personalRecords.mostSendsDate)
     }
 
+    // -- Session consistency (avg sessions/week + week streak) --
+    // fixedClock "today" 2026-03-15 is a SUNDAY; its ISO week starts Mon 2026-03-09.
+
+    @Test
+    fun `avgSessionsPerWeek averages distinct active days over the 8-week window`() {
+        // Logbook older than the window (fixes the divisor at 8 weeks),
+        // 4 distinct session days inside the window → 0.5/week.
+        val ascents = listOf(
+            ascent(climbedAt = "${today.minusDays(100)}T10:00:00"),
+            ascent(climbedAt = "${today.minusDays(3)}T10:00:00"),
+            ascent(climbedAt = "${today.minusDays(3)}T11:00:00"), // same day, still 1 session
+            ascent(climbedAt = "${today.minusDays(10)}T10:00:00"),
+            ascent(climbedAt = "${today.minusDays(20)}T10:00:00"),
+            ascent(climbedAt = "${today.minusDays(40)}T10:00:00"),
+        )
+        val stats = BoardStatsComputer.computeStats(
+            ascents, StatsTimeInterval.ALL, GradeScale.V_SCALE, clock = fixedClock,
+        )
+        assertEquals(0.5, stats.personalRecords.avgSessionsPerWeek, 0.001)
+    }
+
+    @Test
+    fun `avgSessionsPerWeek counts attempt-only days as sessions`() {
+        val ascents = listOf(
+            ascent(isSend = false, climbedAt = "${today.minusDays(2)}T10:00:00"),
+        )
+        val stats = BoardStatsComputer.computeStats(
+            ascents, StatsTimeInterval.ALL, GradeScale.V_SCALE, clock = fixedClock,
+        )
+        assertTrue(stats.personalRecords.avgSessionsPerWeek > 0.0)
+    }
+
+    @Test
+    fun `weekStreak counts consecutive ISO weeks and survives rest days`() {
+        val ascents = listOf(
+            ascent(climbedAt = "2026-03-10T10:00:00"), // this week (Mon 03-09)
+            ascent(climbedAt = "2026-03-04T10:00:00"), // last week
+            ascent(climbedAt = "2026-02-25T10:00:00"), // week before
+            ascent(climbedAt = "2026-01-05T10:00:00"), // long ago — gap, not part of streak
+        )
+        val stats = BoardStatsComputer.computeStats(
+            ascents, StatsTimeInterval.ALL, GradeScale.V_SCALE, clock = fixedClock,
+        )
+        assertEquals(3, stats.personalRecords.weekStreak)
+    }
+
+    @Test
+    fun `weekStreak is zero when the last session is more than a week back`() {
+        val ascents = listOf(
+            ascent(climbedAt = "2026-02-10T10:00:00"),
+            ascent(climbedAt = "2026-02-17T10:00:00"),
+        )
+        val stats = BoardStatsComputer.computeStats(
+            ascents, StatsTimeInterval.ALL, GradeScale.V_SCALE, clock = fixedClock,
+        )
+        assertEquals(0, stats.personalRecords.weekStreak)
+    }
+
+    @Test
+    fun `weekStreak still active when only last week has a session`() {
+        val ascents = listOf(
+            ascent(climbedAt = "2026-03-06T10:00:00"), // last week (Mon 03-02)
+        )
+        val stats = BoardStatsComputer.computeStats(
+            ascents, StatsTimeInterval.ALL, GradeScale.V_SCALE, clock = fixedClock,
+        )
+        assertEquals(1, stats.personalRecords.weekStreak)
+    }
+
     // -- Outcome distribution --
 
     @Test

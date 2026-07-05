@@ -174,8 +174,8 @@ private fun DeltaChip(label: String, delta: Int, isPercentage: Boolean) {
 internal fun BoardPersonalRecordsRow(records: PersonalRecords) {
     val hardestFlashLabel = stringResource(R.string.board_stats_hardest_flash)
     val mostSendsLabel = stringResource(R.string.board_stats_most_sends_day)
-    val longestStreakLabel = stringResource(R.string.board_stats_longest_streak)
-    val currentStreakLabel = stringResource(R.string.board_stats_current_streak)
+    val avgSessionsLabel = stringResource(R.string.board_stats_avg_sessions_week)
+    val weekStreakLabel = stringResource(R.string.board_stats_week_streak)
     val items = buildList {
         records.hardestFlashGrade?.let {
             add(hardestFlashLabel to it)
@@ -183,11 +183,11 @@ internal fun BoardPersonalRecordsRow(records: PersonalRecords) {
         if (records.mostSendsInDay > 0) {
             add(mostSendsLabel to "${records.mostSendsInDay}")
         }
-        if (records.longestStreak > 0) {
-            add(longestStreakLabel to "${records.longestStreak}d")
+        if (records.avgSessionsPerWeek > 0.0) {
+            add(avgSessionsLabel to String.format("%.1f", records.avgSessionsPerWeek))
         }
-        if (records.currentStreak > 0) {
-            add(currentStreakLabel to "${records.currentStreak}d")
+        if (records.weekStreak > 0) {
+            add(weekStreakLabel to "${records.weekStreak}")
         }
     }
     if (items.isEmpty()) return
