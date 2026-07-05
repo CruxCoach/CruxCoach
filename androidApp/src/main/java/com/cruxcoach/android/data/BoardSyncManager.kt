@@ -432,8 +432,8 @@ class BoardSyncManager(
         _state.update { it.copy(pendingLocalImportUrl = null) }
     }
 
-    fun startApiSync() {
-        Log.d(TAG, "startApiSync() called, isSyncing=${_state.value.isSyncing}")
+    fun startApiSync(bypassWifi: Boolean = false) {
+        Log.d(TAG, "startApiSync() called, isSyncing=${_state.value.isSyncing}, bypassWifi=$bypassWifi")
         if (_state.value.isSyncing) return
 
         checkNetwork()
@@ -442,7 +442,13 @@ class BoardSyncManager(
             _state.update { it.copy(showNetworkDialog = true) }
             return
         }
-        if (!_state.value.wifiConnected) {
+        // The WiFi gate guards the large full-catalogue download on the main /
+        // auto entry points (the "Redownload" button + fresh-install CTA). An
+        // explicit per-board Kilter reload from the sync-status list passes
+        // bypassWifi=true so it honours the user's deliberate choice on cellular
+        // — matching every other board's loadBoardCatalogue path, which never
+        // hit this gate at all. Network (not just WiFi) is still required.
+        if (!bypassWifi && !_state.value.wifiConnected) {
             _state.update { it.copy(showWifiDialog = true) }
             return
         }
@@ -863,7 +869,7 @@ class BoardSyncManager(
      * Reports into the per-board map so the row shows the same step checklist.
      */
     fun loadBoardCatalogue(brand: BoardBrand) {
-        if (brand == BoardBrand.KILTER) { startApiSync(); return }
+        if (brand == BoardBrand.KILTER) { startApiSync(bypassWifi = true); return }
         if (!claimSyncSlot(ImportStep.FetchingManifest)) return
         // Board-specific load: clear the Kilter importStep the slot-claim set so
         // only this board's row shows progress (not a phantom Kilter row).
