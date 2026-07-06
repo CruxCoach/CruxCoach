@@ -12,6 +12,7 @@ import com.cruxcoach.data.repository.ClimbTypeFilter
 import com.cruxcoach.data.repository.NewPlaylistEntry
 import com.cruxcoach.data.repository.PersonalBoardRepository
 import com.cruxcoach.data.repository.SortDirection
+import com.cruxcoach.domain.playlist.CandidateSelection
 import com.cruxcoach.domain.playlist.CandidateSource
 import com.cruxcoach.domain.playlist.GeneratedEntry
 import com.cruxcoach.domain.playlist.GeneratorType
@@ -37,6 +38,7 @@ import kotlinx.coroutines.withContext
 data class PlaylistGeneratorState(
     val type: GeneratorType = GeneratorType.PYRAMID,
     val durationMinutes: Int = 60,
+    val selection: CandidateSelection = CandidateSelection.NEW,
     val position: SessionPosition = SessionPosition.START_COLD,
     val angle: Int = 40,
     /** MoonBoard walls are fixed-angle — hide the angle stepper. */
@@ -180,6 +182,10 @@ class PlaylistGeneratorViewModel @Inject constructor(
         refreshPlan()
     }
 
+    fun setSelection(selection: CandidateSelection) {
+        _state.update { it.copy(selection = selection) }
+    }
+
     fun setPosition(position: SessionPosition) {
         _state.update { it.copy(position = position) }
         refreshPlan()
@@ -201,6 +207,7 @@ class PlaylistGeneratorViewModel @Inject constructor(
             type = s.type,
             durationMinutes = s.durationMinutes,
             position = s.position,
+            selection = s.selection,
             angle = s.angle,
             boardBrand = s.boardBrand,
             layoutId = s.layoutId,
@@ -224,6 +231,16 @@ class PlaylistGeneratorViewModel @Inject constructor(
                 val ignored = personalBoardRepo.getIgnoredClimbUuids()
                 val sent = personalBoardRepo.getUserSentClimbUuids()
                 val attempted = personalBoardRepo.getUserAttemptedClimbUuids()
+                // Fresh-stimulus bias: anything logged in the last ~2 weeks
+                // ranks behind untouched material of equal quality.
+                val recentCutoff = java.time.LocalDate.now()
+                    .minusDays(RECENT_REPEAT_DAYS)
+                    .toString()
+                val recentUuids = personalBoardRepo.getUserAscentsAll()
+                    .asSequence()
+                    .filter { it.climbedAt.take(10) >= recentCutoff }
+                    .map { it.climbUuid }
+                    .toSet()
 
                 val source = CandidateSource { minDiff, maxDiff ->
                     boardRepository.searchClimbsSorted(
@@ -247,6 +264,7 @@ class PlaylistGeneratorViewModel @Inject constructor(
                                 ascensionistCount = climb.ascensionistCount,
                                 sent = climb.uuid in sent,
                                 attempted = climb.uuid in attempted,
+                                recentlyTried = climb.uuid in recentUuids,
                             )
                         }
                     }
@@ -256,6 +274,7 @@ class PlaylistGeneratorViewModel @Inject constructor(
                     plan = plan,
                     source = source,
                     openProjects = profile.openProjectUuids,
+                    selection = params.selection,
                     random = Random(System.currentTimeMillis()),
                 )
                 if (filled.entries.none { it is GeneratedEntry.Climb }) return@withContext null
@@ -299,6 +318,10 @@ class PlaylistGeneratorViewModel @Inject constructor(
          *  all-time best — falls back to the full logbook below
          *  [LogbookProfile.MIN_SAMPLE] recent sends. */
         private const val PROFILE_RECENCY_WEEKS = 26L
+
+        /** Climbs logged within this window rank behind untouched
+         *  material — variety is the stronger training stimulus. */
+        private const val RECENT_REPEAT_DAYS = 14L
 
         /** Middle angle tier: ±10° of the target — strength transfers
          *  well between adjacent steepness before falling back to the

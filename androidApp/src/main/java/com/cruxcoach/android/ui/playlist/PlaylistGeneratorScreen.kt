@@ -58,6 +58,7 @@ import com.cruxcoach.android.ui.theme.WarningYellow
 import com.cruxcoach.android.util.GradeDisplayHelper
 import com.cruxcoach.domain.playlist.GeneratorType
 import com.cruxcoach.domain.playlist.PlanSlot
+import com.cruxcoach.domain.playlist.CandidateSelection
 import com.cruxcoach.domain.playlist.SessionPosition
 import com.cruxcoach.domain.playlist.TrainingRanges
 
@@ -178,6 +179,25 @@ fun PlaylistGeneratorScreen(
                             selectedContainerColor = OrangeAccent.copy(alpha = 0.25f),
                         ),
                         modifier = Modifier.testTag("playlist_gen_pos_${pos.name.lowercase()}"),
+                    )
+                }
+            }
+
+            // ── Candidate selection (soft preference) ───────────
+            SectionTitle(stringResource(R.string.playlist_generator_selection))
+            Row(
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                CandidateSelection.entries.forEach { sel ->
+                    FilterChip(
+                        selected = state.selection == sel,
+                        onClick = { viewModel.setSelection(sel) },
+                        label = { Text(selectionLabel(sel), maxLines = 1) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = OrangeAccent.copy(alpha = 0.25f),
+                        ),
+                        modifier = Modifier.testTag("playlist_gen_sel_${sel.name.lowercase()}"),
                     )
                 }
             }
@@ -427,6 +447,15 @@ private fun typeDescription(type: GeneratorType): String = stringResource(
         GeneratorType.VOLUME -> R.string.playlist_type_volume_desc
         GeneratorType.LIMIT -> R.string.playlist_type_limit_desc
         GeneratorType.PROJECTING -> R.string.playlist_type_projecting_desc
+    }
+)
+
+@Composable
+private fun selectionLabel(selection: CandidateSelection): String = stringResource(
+    when (selection) {
+        CandidateSelection.NEW -> R.string.playlist_selection_new
+        CandidateSelection.PROJECTS -> R.string.playlist_selection_projects
+        CandidateSelection.ALL -> R.string.playlist_selection_all
     }
 )
 

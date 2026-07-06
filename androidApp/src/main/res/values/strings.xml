@@ -2099,4 +2099,8 @@
     <string name="playlist_player_add_climbs">Add climbs</string>
     <string name="board_ascent_first_try">Sent · 1st try</string>
     <string name="board_ascent_open_one">Open · 1 attempt</string>
+    <string name="playlist_generator_selection">Climb selection</string>
+    <string name="playlist_selection_new">New climbs</string>
+    <string name="playlist_selection_projects">Open projects</string>
+    <string name="playlist_selection_all">All</string>
 </resources>

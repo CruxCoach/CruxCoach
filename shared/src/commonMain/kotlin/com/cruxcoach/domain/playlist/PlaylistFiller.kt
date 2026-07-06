@@ -13,6 +13,9 @@ data class PlaylistCandidate(
     val sent: Boolean = false,
     /** User has attempted (bid) but not sent — an open project. */
     val attempted: Boolean = false,
+    /** Any logbook contact within the last ~2 weeks — variety first:
+     *  yesterday's problems are a weaker stimulus than fresh ones. */
+    val recentlyTried: Boolean = false,
 )
 
 /** Supplies candidates inside a difficulty band. Implemented Android-side
@@ -67,6 +70,7 @@ object PlaylistFiller {
         plan: PlaylistPlan,
         source: CandidateSource,
         openProjects: List<String> = emptyList(),
+        selection: CandidateSelection = CandidateSelection.NEW,
         random: Random = Random.Default,
     ): GenerationResult {
         val used = mutableSetOf<String>()
@@ -88,7 +92,8 @@ object PlaylistFiller {
 
                     val preferProjects = slot.section == PlanSection.PEAK &&
                         plan.effectiveType == GeneratorType.PROJECTING
-                    val (pick, didWiden) = pickClimb(slot, source, used, preferProjects, openProjects, random)
+                    val (pick, didWiden) =
+                        pickClimb(slot, source, used, preferProjects, openProjects, selection, random)
                     if (didWiden) widened++
                     if (pick == null) {
                         dropped++
@@ -119,6 +124,7 @@ object PlaylistFiller {
         used: Set<String>,
         preferProjects: Boolean,
         openProjects: List<String>,
+        selection: CandidateSelection,
         random: Random,
     ): Pair<PlaylistCandidate?, Boolean> {
         var widening = 0.0
@@ -127,7 +133,7 @@ object PlaylistFiller {
                 .candidates(slot.minDifficulty - widening, slot.maxDifficulty + widening)
                 .filter { it.climbUuid !in used }
             if (pool.isNotEmpty()) {
-                return rank(pool, preferProjects, openProjects, random) to (widening > 0.0)
+                return rank(pool, preferProjects, openProjects, selection, random) to (widening > 0.0)
             }
             widening += WIDEN_STEP
         }
@@ -138,10 +144,11 @@ object PlaylistFiller {
         pool: List<PlaylistCandidate>,
         preferProjects: Boolean,
         openProjects: List<String>,
+        selection: CandidateSelection,
         random: Random,
     ): PlaylistCandidate {
         if (preferProjects) {
-            // Open projects first, in the caller's (recency) order.
+            // Open projects first, in the caller's (engagement) order.
             val projectSet = openProjects.toSet()
             val projects = pool.filter { it.climbUuid in projectSet || (it.attempted && !it.sent) }
             if (projects.isNotEmpty()) {
@@ -149,16 +156,31 @@ object PlaylistFiller {
                 return ordered.first()
             }
         }
-        // Freshness before repetition, then community quality; pick randomly
-        // among the top few so regeneration varies.
-        val ranked = pool.sortedWith(
+        // User selection = primary tier; graceful fallback keeps slots
+        // filled when the primary group runs dry.
+        val primary = when (selection) {
+            CandidateSelection.NEW -> pool.filter { !it.sent && !it.attempted }
+            CandidateSelection.PROJECTS -> pool.filter { it.attempted && !it.sent }
+            CandidateSelection.ALL -> pool
+        }
+        val effective = primary.ifEmpty { pool }
+        // Fresh stimulus first (nothing from the last two weeks), then
+        // unclimbed, then community quality; pick randomly among the top
+        // few so regeneration varies.
+        val ranked = effective.sortedWith(
             compareBy(
+                { it.recentlyTried },           // variety: skip last-2-weeks repeats
                 { it.sent },                    // unclimbed first
                 { -(it.quality ?: 0.0) },       // then best quality
                 { -(it.ascensionistCount ?: 0L) },
             )
         )
-        val top = ranked.take(PICK_POOL)
+        // Random variety only WITHIN the best tier — the shuffle must not
+        // leak a recently-tried or already-sent climb past a fresh one.
+        val best = ranked.first()
+        val top = ranked
+            .takeWhile { it.recentlyTried == best.recentlyTried && it.sent == best.sent }
+            .take(PICK_POOL)
         return top[random.nextInt(top.size)]
     }
 

@@ -13,7 +13,8 @@ class PlaylistFillerTest {
         quality: Double = 3.0,
         sent: Boolean = false,
         attempted: Boolean = false,
-    ) = PlaylistCandidate(uuid, diff, quality, 100L, sent, attempted)
+        recentlyTried: Boolean = false,
+    ) = PlaylistCandidate(uuid, diff, quality, 100L, sent, attempted, recentlyTried)
 
     private fun poolSource(pool: List<PlaylistCandidate>) = CandidateSource { min, max ->
         pool.filter { it.difficulty in min..max }
@@ -174,4 +175,75 @@ class PlaylistFillerTest {
         assertEquals(null, PlaylistGeneratorParams.fromJson("{broken"))
         assertEquals(null, PlaylistGeneratorParams.fromJson("""{"type":"FUTURE_TYPE"}"""))
     }
+
+    // ── Candidate selection + freshness ─────────────────────────
+
+    @Test
+    fun `NEW selection prefers never-tried climbs`() {
+        val pool = listOf(
+            candidate("sent", 15.0, quality = 5.0, sent = true),
+            candidate("proj", 15.0, quality = 5.0, attempted = true),
+            candidate("fresh", 15.0, quality = 1.0),
+        )
+        val result = PlaylistFiller.fill(
+            plan(climbSlot(14.0, 16.0)),
+            poolSource(pool),
+            selection = CandidateSelection.NEW,
+            random = Random(1),
+        )
+        val pick = result.entries.filterIsInstance<GeneratedEntry.Climb>().single()
+        assertEquals("fresh", pick.climbUuid, "lower quality but untouched wins the NEW tier")
+    }
+
+    @Test
+    fun `PROJECTS selection prefers attempted-unsent climbs`() {
+        val pool = listOf(
+            candidate("fresh", 15.0, quality = 5.0),
+            candidate("proj", 15.0, quality = 1.0, attempted = true),
+        )
+        val result = PlaylistFiller.fill(
+            plan(climbSlot(14.0, 16.0)),
+            poolSource(pool),
+            selection = CandidateSelection.PROJECTS,
+            random = Random(1),
+        )
+        val pick = result.entries.filterIsInstance<GeneratedEntry.Climb>().single()
+        assertEquals("proj", pick.climbUuid)
+    }
+
+    @Test
+    fun `selection falls back instead of dropping the slot`() {
+        // PROJECTS requested but no attempted climb in band → fresh fills in.
+        val pool = listOf(candidate("fresh", 15.0))
+        val result = PlaylistFiller.fill(
+            plan(climbSlot(14.0, 16.0)),
+            poolSource(pool),
+            selection = CandidateSelection.PROJECTS,
+            random = Random(1),
+        )
+        assertEquals(0, result.droppedClimbs)
+        assertEquals(
+            "fresh",
+            result.entries.filterIsInstance<GeneratedEntry.Climb>().single().climbUuid,
+        )
+    }
+
+    @Test
+    fun `recently tried climbs rank behind untouched material`() {
+        val pool = listOf(
+            candidate("lastweek", 15.0, quality = 5.0, recentlyTried = true),
+            candidate("fresh", 15.0, quality = 1.0),
+        )
+        repeat(5) { seed ->
+            val result = PlaylistFiller.fill(
+                plan(climbSlot(14.0, 16.0)),
+                poolSource(pool),
+                selection = CandidateSelection.ALL,
+                random = Random(seed),
+            )
+            val pick = result.entries.filterIsInstance<GeneratedEntry.Climb>().single()
+            assertEquals("fresh", pick.climbUuid, "seed $seed")
+        }
+    }
+
 }

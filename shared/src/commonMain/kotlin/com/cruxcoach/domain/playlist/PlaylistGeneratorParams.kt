@@ -38,6 +38,21 @@ enum class SessionPosition {
     END_OF_SESSION,
 }
 
+/** Which climbs the filler should PREFER when several fit a slot.
+ *  A soft preference, not a hard filter — when the primary group has no
+ *  candidate for a slot, the others fill in so the session never
+ *  silently shrinks. */
+enum class CandidateSelection {
+    /** Never-tried climbs first (fresh stimulus — the default). */
+    NEW,
+
+    /** Attempted-but-unsent climbs first (work the open projects). */
+    PROJECTS,
+
+    /** No preference — quality decides. */
+    ALL,
+}
+
 /**
  * The full parameter snapshot a playlist was generated from. Persisted as
  * JSON in `climb_lists.generator_params` so "Neu generieren" can re-run
@@ -53,6 +68,8 @@ data class PlaylistGeneratorParams(
     val layoutId: Int,
     /** Board size for the fit filter; 0 = no size filter. */
     val productSizeId: Int = 0,
+    /** Candidate preference (soft) — see [CandidateSelection]. */
+    val selection: CandidateSelection = CandidateSelection.NEW,
 ) {
     fun toJson(): String = json.encodeToString(serializer(), this)
 

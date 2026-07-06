@@ -168,6 +168,7 @@ object PlaylistPlanner {
             .coerceIn(TrainingRanges.VOLUME_COUNT)
         val high = clamp(flashDiff, maxDiff)
         val low = clampLow(high - TrainingRanges.VOLUME_BAND_BELOW_FLASH)
+        val mid = (low + high) / 2
         val slots = mutableListOf<PlanSlot>()
         for (i in 0 until count) {
             if (i > 0) {
@@ -183,7 +184,15 @@ object PlaylistPlanner {
                     )
                 )
             }
-            slots.add(PlanSlot.ClimbSlot(low, high, PlanSection.MAIN))
+            // Progressive loading: the session ramps through the band —
+            // first third eases in (lower half), last third finishes at
+            // flash level (upper half), middle roams the full band.
+            val (slotLow, slotHigh) = when {
+                i < count / 3 -> low to mid
+                i >= count - count / 3 -> mid to high
+                else -> low to high
+            }
+            slots.add(PlanSlot.ClimbSlot(slotLow, slotHigh, PlanSection.MAIN))
         }
         return slots
     }
