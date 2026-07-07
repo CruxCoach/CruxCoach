@@ -1,0 +1,19 @@
+-- Expose climbs.created_at through the browse VIEW so the browser's
+-- "Newest" sort can ORDER BY it directly (VIEW recreation only — no
+-- table or data change). created_at is a TEXT passthrough in two
+-- shapes (catalogue 'YYYY-MM-DD HH:MM:SS(.f)', community/local
+-- ISO-8601); lexicographic order is date-correct across both.
+DROP VIEW IF EXISTS climb_browse;
+CREATE VIEW climb_browse AS
+SELECT
+    c.uuid, c.name, c.setter_username, c.frames_count, cs.layout_id,
+    c.board_brand,
+    COALESCE(c.description, '') AS description,
+    c.is_nomatch, c.frames_pace, c.hsm, c.move_count,
+    c.source, c.created_by_pubkey, c.sync_status, c.origin, c.kilter_status,
+    c.created_at,
+    cs.angle, cs.difficulty_average, cs.quality_average,
+    cs.ascensionist_count, cs.benchmark_difficulty
+FROM climbs c
+INNER JOIN climb_stats cs ON c.uuid = cs.climb_uuid
+WHERE c.is_listed = 1;

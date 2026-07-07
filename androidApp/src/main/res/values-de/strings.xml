@@ -700,6 +700,7 @@
     <string name="board_filter_info_sort_quality_sends">Bewertung × Sends — zeigt Climbs, die beliebt UND gut bewertet sind.</string>
     <string name="board_filter_info_sort_moves">Anzahl der Züge des Climbs.</string>
     <string name="board_filter_info_sort_random">Mischt die passenden Climbs in zufälliger Reihenfolge.</string>
+    <string name="board_filter_info_sort_newest">Das Erstelldatum des Climbs — absteigend zeigt die neuesten zuerst.</string>
     <string name="board_filter_sort">Sortierung</string>
     <string name="board_filter_sort_asc">Aufsteigend</string>
     <string name="board_filter_sort_desc">Absteigend</string>
@@ -1296,6 +1297,7 @@
     <string name="board_session_label">Session</string>
     <string name="board_sort_quality_sends">Sends × Qualität</string>
     <string name="board_sort_random">Zufällig</string>
+    <string name="board_sort_newest">Neueste</string>
     <string name="board_stats_activity">Aktivität</string>
     <string name="board_stats_personal_heatmap">Meine Sends — Heatmap</string>
     <string name="board_stats_heatmap_section">Heatmap — %1$s</string>

@@ -618,6 +618,7 @@ fun BoardFilterScreen(
                         ClimbSortField.QUALITY to stringResource(R.string.board_quality),
                         ClimbSortField.QUALITY_SENDS to stringResource(R.string.board_sort_quality_sends),
                         ClimbSortField.HOLDS to stringResource(R.string.board_moves),
+                        ClimbSortField.NEWEST to stringResource(R.string.board_sort_newest),
                         ClimbSortField.RANDOM to stringResource(R.string.board_sort_random),
                     )
                     sortOptions.forEach { (field, label) ->
@@ -663,6 +664,7 @@ private fun FilterTermInfoDialog(onDismiss: () -> Unit) {
                 FilterTermEntry(R.string.board_quality, R.string.board_filter_info_sort_quality)
                 FilterTermEntry(R.string.board_sort_quality_sends, R.string.board_filter_info_sort_quality_sends)
                 FilterTermEntry(R.string.board_moves, R.string.board_filter_info_sort_moves)
+                FilterTermEntry(R.string.board_sort_newest, R.string.board_filter_info_sort_newest)
                 FilterTermEntry(R.string.board_sort_random, R.string.board_filter_info_sort_random)
             }
         },
