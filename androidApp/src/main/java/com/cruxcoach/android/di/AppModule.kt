@@ -37,6 +37,7 @@ import com.cruxcoach.android.data.BoardDatabaseImporter
 import com.cruxcoach.android.data.BleShareManager
 import com.cruxcoach.android.data.BoardSessionManager
 import com.cruxcoach.android.data.BoardStateManager
+import com.cruxcoach.android.data.CruxRelayManager
 import com.cruxcoach.android.data.ClimbNameResolver
 import com.cruxcoach.android.data.RestTimerAlarmScheduler
 import com.cruxcoach.android.data.BoardSyncManager
@@ -54,6 +55,7 @@ import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.BoardBleScanner
 import com.cruxcoach.android.ble.ClimbBleAdvertiser
 import com.cruxcoach.android.ble.NearbyClimbScanner
+import com.cruxcoach.android.ble.RelayGattServer
 import com.cruxcoach.android.ble.SessionGattClient
 import com.cruxcoach.android.ble.SessionGattServer
 import com.cruxcoach.android.util.PerfLogger
@@ -430,6 +432,24 @@ object AppModule {
     @Singleton
     fun provideSessionGattClient(@ApplicationContext context: Context): SessionGattClient {
         return SessionGattClient(context)
+    }
+
+    @Provides
+    @Singleton
+    fun provideRelayGattServer(@ApplicationContext context: Context): RelayGattServer {
+        return RelayGattServer(context)
+    }
+
+    @Provides
+    @Singleton
+    fun provideCruxRelayManager(
+        @ApplicationContext context: Context,
+        relayServer: RelayGattServer,
+        advertiser: ClimbBleAdvertiser,
+        bleConnection: BoardBleConnection,
+        userPreferences: UserPreferences
+    ): CruxRelayManager {
+        return CruxRelayManager(context, relayServer, advertiser, bleConnection, userPreferences)
     }
 
     @Provides
