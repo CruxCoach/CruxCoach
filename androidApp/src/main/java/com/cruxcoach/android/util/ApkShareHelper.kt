@@ -49,7 +49,8 @@ object ApkShareHelper {
             SHARE_APK_NAME,
             "aurora_apk_download.zip",
             "aurora_apk_db.sqlite3",
-            "kilter_board_import.sqlite3"
+            "kilter_board_import.sqlite3",
+            LocalApkServer.SNAPSHOT_NAME
         )
         for (name in staleFiles) {
             val file = File(context.cacheDir, name)
@@ -112,12 +113,17 @@ object ApkShareHelper {
  */
 class LocalApkServer(
     private val apkFile: File,
-    private val boardDbFile: File? = null
+    private val boardDbFile: File? = null,
+    /** Where the checkpointed board-DB snapshot is written (the app's
+     *  cacheDir). null → the live file is served as-is. */
+    private val snapshotDir: File? = null
 ) {
 
     private var serverSocket: ServerSocket? = null
     private var running = false
     private var shutdownTimer: java.util.Timer? = null
+    private val snapshotLock = Any()
+    private var snapshotFile: File? = null
     var onAutoShutdown: (() -> Unit)? = null
     /** Set after start() — used to build deep link URLs in the landing page. */
     var baseUrl: String? = null
@@ -169,6 +175,10 @@ class LocalApkServer(
         shutdownTimer?.cancel()
         shutdownTimer = null
         try { serverSocket?.close() } catch (_: Exception) { }
+        synchronized(snapshotLock) {
+            snapshotFile?.delete()
+            snapshotFile = null
+        }
     }
 
     private fun scheduleAutoShutdown() {
@@ -251,11 +261,12 @@ class LocalApkServer(
      * This file contains NO user data — only public Kilter climb/stats/placement data.
      */
     private fun serveBoardDb(out: java.io.OutputStream) {
-        val db = boardDbFile
-        if (db == null || !db.exists()) {
+        val live = boardDbFile
+        if (live == null || !live.exists()) {
             serve404(out)
             return
         }
+        val db = if (snapshotDir != null) boardDbSnapshot(live) else live
         val headers = "HTTP/1.1 200 OK\r\n" +
             "Content-Type: application/x-sqlite3\r\n" +
             "Content-Length: ${db.length()}\r\n" +
@@ -263,6 +274,56 @@ class LocalApkServer(
             "Connection: close\r\n\r\n"
         out.write(headers.toByteArray())
         db.inputStream().use { it.copyTo(out, bufferSize = 65536) }
+    }
+
+    /**
+     * Snapshot the board DB before serving it. cruxcoach.db runs in WAL
+     * mode: streaming the live file raw (a) silently drops whatever still
+     * sits in the -wal file — the receiver misses the newest climbs — and
+     * (b) races concurrent checkpoints: a page rewritten mid-transfer hands
+     * the receiver a torn file that fails import with "database disk image
+     * is malformed".
+     *
+     * wal_checkpoint(TRUNCATE) first folds the WAL into the main file;
+     * BEGIN IMMEDIATE then holds the writer lock for the copy duration.
+     * In WAL mode writers only append to the -wal and only checkpoints
+     * touch the main file — with the writer lock held no transaction can
+     * commit, so no checkpoint can start and the copied bytes are
+     * guaranteed consistent.
+     *
+     * Best-effort: if the DB stays write-locked past the busy window
+     * (e.g. a board sync is importing right now) we fall back to serving
+     * the live file — the pre-0.2.1 behaviour, where a rare torn transfer
+     * surfaces as a clear import error on the receiver and a retry fixes it.
+     */
+    private fun boardDbSnapshot(live: File): File = synchronized(snapshotLock) {
+        snapshotFile?.takeIf { it.exists() }?.let { return it }
+        val snap = File(snapshotDir, SNAPSHOT_NAME)
+        try {
+            val db = android.database.sqlite.SQLiteDatabase.openDatabase(
+                live.absolutePath, null,
+                android.database.sqlite.SQLiteDatabase.OPEN_READWRITE
+            )
+            try {
+                // PRAGMAs return a result row on Android — rawQuery, not execSQL.
+                db.rawQuery("PRAGMA busy_timeout = 5000", null).use { it.moveToFirst() }
+                db.rawQuery("PRAGMA wal_checkpoint(TRUNCATE)", null).use { it.moveToFirst() }
+                db.execSQL("BEGIN IMMEDIATE")
+                try {
+                    live.copyTo(snap, overwrite = true)
+                } finally {
+                    db.execSQL("ROLLBACK")
+                }
+            } finally {
+                db.close()
+            }
+            snapshotFile = snap
+            snap
+        } catch (e: Exception) {
+            Log.w("LocalApkServer", "board-DB snapshot failed — serving live file", e)
+            snap.delete()
+            live
+        }
     }
 
     private fun serve404(out: java.io.OutputStream) {
@@ -278,6 +339,8 @@ class LocalApkServer(
         /** Fixed port for auto-discovery by receivers (WiFi Direct group owner = 192.168.49.1). */
         const val LOCAL_SHARE_PORT = 4949
         private const val AUTO_SHUTDOWN_MS = 5 * 60 * 1000L  // 5 min
+        /** Checkpointed board-DB copy in cacheDir; see [boardDbSnapshot]. */
+        const val SNAPSHOT_NAME = "board_share_snapshot.db"
 
         private val LANDING_HTML = """
 <!DOCTYPE html>
