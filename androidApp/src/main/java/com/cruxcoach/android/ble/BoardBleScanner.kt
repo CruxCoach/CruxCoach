@@ -12,6 +12,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.util.Log
 import com.cruxcoach.domain.board.BoardBrand
+import com.cruxcoach.domain.relay.RelayBoardName
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
@@ -31,6 +32,10 @@ data class DiscoveredBoard(
      *  speaks (Aurora binary vs MoonBoard ASCII). Defaults to KILTER
      *  so existing Aurora call sites are unaffected (FEAT-027). */
     val boardBrand: BoardBrand = BoardBrand.KILTER,
+    /** True if this "board" is actually another CruxCoach user's CruxRelay
+     *  (FEAT-044). Such an entry must NOT be offered as a connectable board —
+     *  the picker renders it as a "join session/playlist" entry instead. */
+    val isCruxRelay: Boolean = false,
 )
 
 /**
@@ -99,6 +104,10 @@ class BoardBleScanner(private val context: Context) {
                 ?: return
             Log.d(TAG, "BLE scan result: name=$name addr=${device.address} rssi=${result.rssi}")
 
+            // Another CruxCoach user's CruxRelay (FEAT-044): tag it so the
+            // picker renders a "join session/playlist" entry instead of
+            // offering it as a connectable board.
+            val isRelay = RelayBoardName.isRelayName(name)
             val board = if (isMoonBoardName(name)) {
                 // MoonBoard advertises a bare "MoonBoard…" name with no
                 // Aurora #serial@apiLevel suffix. apiLevel is an Aurora
@@ -110,6 +119,7 @@ class BoardBleScanner(private val context: Context) {
                     address = device.address,
                     rssi = result.rssi,
                     boardBrand = BoardBrand.MOONBOARD,
+                    isCruxRelay = isRelay,
                 )
             } else {
                 val parsed = parseBoardName(name) ?: return
@@ -123,6 +133,7 @@ class BoardBleScanner(private val context: Context) {
                     // name so the correct LED map + colours are selected; KILTER
                     // for "Kilter Board" and any unrecognised Aurora-named board.
                     boardBrand = auroraBrandFromName(parsed.first),
+                    isCruxRelay = isRelay,
                 )
             }
             boardMap[device.address] = board

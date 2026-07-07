@@ -113,8 +113,27 @@ class BoardBleConnection(private val context: Context) {
     private var connectAttempt = 0
 
     var autoDisconnectSeconds: Int = 0
-    /** When true, the idle timer is suppressed (e.g. during an active shared session). */
-    var suppressAutoDisconnect: Boolean = false
+    // FEAT-044 coexistence: several features (a shared session, the CruxRelay)
+    // can independently keep the board link parked. The idle timer is suppressed
+    // while ANY owner holds it; auto-disconnect fires only once ALL have
+    // released. Set semantics = idempotent per owner, so a feature may acquire
+    // more than once (e.g. startQueue + promoteToHost) and release once.
+    private val keepAliveOwners = mutableSetOf<String>()
+    private val keepAliveLock = Any()
+
+    fun acquireKeepAlive(owner: String) {
+        synchronized(keepAliveLock) { keepAliveOwners.add(owner) }
+    }
+
+    fun releaseKeepAlive(owner: String) {
+        val nowIdle = synchronized(keepAliveLock) {
+            keepAliveOwners.remove(owner); keepAliveOwners.isEmpty()
+        }
+        if (nowIdle) resetIdleTimer() // last owner let go → allow idle-disconnect again
+    }
+
+    private fun isKeepAliveHeld(): Boolean =
+        synchronized(keepAliveLock) { keepAliveOwners.isNotEmpty() }
 
     // Write flow control: signaled by onCharacteristicWrite callback.
     // @Volatile: callback may arrive on a GATT-stack Binder thread on some
@@ -147,7 +166,7 @@ class BoardBleConnection(private val context: Context) {
 
     private fun resetIdleTimer() {
         disconnectJob?.cancel()
-        if (suppressAutoDisconnect) return
+        if (isKeepAliveHeld()) return
         val seconds = autoDisconnectSeconds
         // Only arm the timer while the connection is truly idle. SENDING
         // is "writes in flight" — the send path re-arms us from its

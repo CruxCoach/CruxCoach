@@ -139,7 +139,7 @@ class SessionQueueManager(
             hostName = hostName,
             participantCount = 1  // host counts as 1
         ) }
-        bleConnection.suppressAutoDisconnect = true
+        bleConnection.acquireKeepAlive("session")
         Log.d(TAG, "Queue started (sessionId=$sessionId, hostName=$hostName)")
     }
 
@@ -157,7 +157,7 @@ class SessionQueueManager(
         remoteAddClimb = null
         onRestRequested = null
         isPlaylistQueue = false
-        bleConnection.suppressAutoDisconnect = false
+        bleConnection.releaseKeepAlive("session")
         Log.d(TAG, "endQueue(): complete, state reset to NONE")
     }
 
@@ -372,7 +372,7 @@ class SessionQueueManager(
             isConnecting = false,
             error = null
         ) }
-        bleConnection.suppressAutoDisconnect = true
+        bleConnection.acquireKeepAlive("session")
         Log.d(TAG, "Promoted to host (sessionId=$newSessionId, queue=${_state.value.queue.size} items)")
     }
 
