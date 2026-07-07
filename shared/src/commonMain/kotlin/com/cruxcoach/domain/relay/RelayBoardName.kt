@@ -48,6 +48,13 @@ object RelayBoardName {
         else trimToBytes(product, maxBytes - byteLen("#CR$apiSuffix")) + "#CR" + apiSuffix
     }
 
+    /**
+     * True if [name] is one of OUR relays, so CruxCoach shows it as a
+     * session/playlist JOIN entry rather than a connectable board (FEAT-044 §11).
+     * Matches the transparent primary form's "CruxRelay" prefix.
+     */
+    fun isRelayName(name: String): Boolean = name.trimStart().startsWith("CruxRelay")
+
     /** Product token: everything before the first '#' or '@'. */
     internal fun productOf(name: String): String {
         val cut = name.indexOfFirst { it == '#' || it == '@' }

@@ -70,6 +70,7 @@ class CruxRelayManager(
 ) {
     companion object {
         private const val TAG = "CruxRelay/Manager"
+        private const val KEEP_ALIVE_OWNER = "relay"
         private const val PREFS = "cruxrelay"
         private const val KEY_NAME_DIRTY = "adapter_name_dirty"
         private const val KEY_ORIGINAL_NAME = "adapter_name_original"
@@ -143,7 +144,7 @@ class CruxRelayManager(
         snapshotAndSetAdapterName(desired)
 
         // 2) Keep the real board link parked, start server + advertising.
-        bleConnection.suppressAutoDisconnect = true
+        bleConnection.acquireKeepAlive(KEEP_ALIVE_OWNER)
         if (!relayServer.start()) {
             Log.e(TAG, "relay server failed to start"); stopRelay(releaseBoard = false); return
         }
@@ -206,7 +207,7 @@ class CruxRelayManager(
                 bleConnection.connectionState.first { it == ConnectionState.DISCONNECTED }
             }
         }
-        bleConnection.suppressAutoDisconnect = false
+        bleConnection.releaseKeepAlive(KEEP_ALIVE_OWNER)
 
         advertiser.stopRelayAdvertising()
         relayServer.stop()

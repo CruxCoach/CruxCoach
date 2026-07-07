@@ -31,6 +31,14 @@ class RelayBoardNameTest {
     }
 
     @Test
+    fun isRelayName_recognisesOurRelays_notRealBoards() {
+        assertTrue(RelayBoardName.isRelayName("CruxRelay·Kilter Board@3"))
+        assertTrue(RelayBoardName.isRelayName(RelayBoardName.transparent("Kilter Board@3")))
+        assertTrue(!RelayBoardName.isRelayName("Kilter Board@3"))
+        assertTrue(!RelayBoardName.isRelayName("MoonBoard"))
+    }
+
+    @Test
     fun serialMarked_fallback_keepsProductAndApiPristine() {
         val name = RelayBoardName.serialMarked("Kilter Board@3")
         assertEquals("Kilter Board#CR@3", name)
