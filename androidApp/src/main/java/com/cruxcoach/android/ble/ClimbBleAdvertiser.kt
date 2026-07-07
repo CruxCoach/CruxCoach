@@ -7,6 +7,7 @@ import android.bluetooth.le.AdvertisingSet
 import android.bluetooth.le.AdvertisingSetCallback
 import android.bluetooth.le.AdvertisingSetParameters
 import android.content.Context
+import android.os.ParcelUuid
 import android.util.Log
 import androidx.annotation.VisibleForTesting
 import kotlinx.coroutines.CoroutineScope
@@ -438,6 +439,71 @@ class ClimbBleAdvertiser(
             }
         }
         sessionSet = null
+    }
+
+    // --- CruxRelay board-emulation advertising (FEAT-044) ---
+    private var relaySet: AdvertisingSet? = null
+    private val relaySetCallback = object : AdvertisingSetCallback() {
+        override fun onAdvertisingSetStarted(advertisingSet: AdvertisingSet?, txPower: Int, status: Int) {
+            if (status == ADVERTISE_SUCCESS) {
+                relaySet = advertisingSet
+                Log.d(TAG, "Relay advertising started (txPower=$txPower)")
+            } else {
+                Log.e(TAG, "Relay advertising failed: status=$status")
+                relaySet = null
+            }
+        }
+        override fun onAdvertisingSetStopped(advertisingSet: AdvertisingSet?) { relaySet = null }
+    }
+
+    /**
+     * Advertise as a board so the OFFICIAL Kilter app lists CruxRelay. The
+     * listing gate is the board ADVERTISING service UUID (4488B571), placed in
+     * the connectable ADV_IND; the transparent name (set on the adapter by
+     * [com.cruxcoach.android.data.CruxRelayManager]) rides the SCAN_RESPONSE —
+     * the 128-bit UUID already fills the 31-byte ADV_IND. Connectable so the app
+     * opens a GATT link to [RelayGattServer].
+     */
+    @SuppressLint("MissingPermission")
+    fun startRelayAdvertising(): String {
+        if (!BlePermissionHelper.hasAdvertisingPermission(context)) return "no permission"
+        val adv = advertiser ?: return "no advertiser (BT off?)"
+        stopRelayAdvertisingInternal()
+        val params = AdvertisingSetParameters.Builder()
+            .setLegacyMode(true)
+            .setConnectable(true)
+            .setScannable(true)
+            .setInterval(AdvertisingSetParameters.INTERVAL_LOW)
+            .setTxPowerLevel(AdvertisingSetParameters.TX_POWER_MEDIUM)
+            .build()
+        val advData = AdvertiseData.Builder()
+            .setIncludeDeviceName(false)
+            .addServiceUuid(ParcelUuid(BoardBleUuids.ADVERTISING_SERVICE))
+            .build()
+        val scanResponse = AdvertiseData.Builder()
+            .setIncludeDeviceName(true) // the adapter's (transparent) name
+            .build()
+        return try {
+            adv.startAdvertisingSet(params, advData, scanResponse, null, null, relaySetCallback)
+            "started"
+        } catch (e: Exception) {
+            Log.e(TAG, "startRelayAdvertising failed", e)
+            "failed: ${e.message}"
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    fun stopRelayAdvertising() = stopRelayAdvertisingInternal()
+
+    @SuppressLint("MissingPermission")
+    private fun stopRelayAdvertisingInternal() {
+        val adv = advertiser ?: return
+        if (relaySet != null) {
+            try { adv.stopAdvertisingSet(relaySetCallback) } catch (e: Exception) {
+                Log.e(TAG, "Error stopping relay advertising", e)
+            }
+            relaySet = null
+        }
     }
 
     /** Broadcasts a disconnect response (accepted/rejected), then stops after 200ms. */

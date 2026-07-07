@@ -75,6 +75,10 @@ object KeyScopedKeys {
     // Climb-publishing flags (separate from ascent push so users can opt
     // in/out independently — and so non-Kilter-users don't get pinged).
     val KILTER_CLIMB_PUBLISH_ENABLED = booleanPreferencesKey("kilter_climb_publish_enabled")
+
+    // FEAT-044 CruxRelay: front the board for official-app users.
+    val RELAY_ENABLED = booleanPreferencesKey("relay_enabled")
+    val RELAY_CAPTURE_TO_PLAYLIST = booleanPreferencesKey("relay_capture_to_playlist")
     // Cursor for the live community-climb Nostr subscription. Holds the
     // largest event.created_at we've persisted; subsequent subscribes use
     // it as the `since` filter so we don't re-process the historical tail.
@@ -1172,6 +1176,23 @@ class UserPreferences(
 
     suspend fun setAutoPublishAscents(enabled: Boolean) {
         keyScoped.edit { it[KeyScopedKeys.AUTO_PUBLISH_ASCENTS] = enabled }
+    }
+
+    // FEAT-044 CruxRelay toggles.
+    val relayEnabled: Flow<Boolean> = keyScoped.data.map {
+        it[KeyScopedKeys.RELAY_ENABLED] ?: false
+    }
+
+    suspend fun setRelayEnabled(enabled: Boolean) {
+        keyScoped.edit { it[KeyScopedKeys.RELAY_ENABLED] = enabled }
+    }
+
+    val relayCaptureToPlaylist: Flow<Boolean> = keyScoped.data.map {
+        it[KeyScopedKeys.RELAY_CAPTURE_TO_PLAYLIST] ?: false
+    }
+
+    suspend fun setRelayCaptureToPlaylist(enabled: Boolean) {
+        keyScoped.edit { it[KeyScopedKeys.RELAY_CAPTURE_TO_PLAYLIST] = enabled }
     }
 
     val leaderboardDisplayName: Flow<String> = keyScoped.data.map {
