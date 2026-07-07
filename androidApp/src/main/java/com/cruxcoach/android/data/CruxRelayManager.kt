@@ -169,6 +169,11 @@ class CruxRelayManager(
         val advResult = advertiser.startRelayAdvertising()
         _state.update { it.copy(advertising = true, advertisedName = desired, error = advResult.takeIf { r -> r != "started" && r != "updated" }) }
 
+        // FGS keeps advertising alive (Android 12+ throttles background
+        // advertising) + shows the mandatory persistent sharing notification.
+        runCatching { CruxRelayService.start(context) }
+            .onFailure { Log.e(TAG, "failed to start relay foreground service", it) }
+
         // 3) Forward completed climbs to the real board; capture if enabled.
         forwardJob = scope.launch {
             relayServer.climbs.collect { inbound ->

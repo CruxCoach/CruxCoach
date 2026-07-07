@@ -909,6 +909,13 @@
     <string name="board_ble_request_sent">Request sent\u2026</string>
     <string name="board_ble_request_disconnect">Request disconnect</string>
 
+    <!-- FEAT-044 CruxRelay board sharing -->
+    <string name="relay_notification_channel">Board sharing</string>
+    <string name="relay_notification_channel_desc">Shown while your board is being shared with users of the official board app.</string>
+    <string name="relay_notification_title">Sharing board</string>
+    <string name="relay_notification_text">%d connected</string>
+    <string name="relay_notification_stop">Stop sharing</string>
+
     <!-- Board: Climb Card -->
     <string name="board_climb_by_setter">by %s</string>
     <string name="board_climb_moves">%d moves</string>
