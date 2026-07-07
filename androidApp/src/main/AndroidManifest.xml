@@ -153,6 +153,13 @@
             android:foregroundServiceType="dataSync"
             tools:node="merge" />
 
+        <!-- FEAT-044 CruxRelay: keeps BLE advertising alive while sharing the
+             board + hosts the persistent sharing notification. -->
+        <service
+            android:name=".data.CruxRelayService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
         <!-- Rest timer alarm receiver (fires in Doze mode) -->
         <receiver
             android:name=".notification.RestTimerAlarmReceiver"
