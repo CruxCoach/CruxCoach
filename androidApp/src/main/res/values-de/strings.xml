@@ -922,9 +922,8 @@
     <string name="board_ble_location_disabled_message">Auf diesem Gerät müssen die Standortdienste (GPS) eingeschaltet sein, damit Bluetooth-Geräte gefunden werden können.</string>
     <string name="board_ble_session_active_title">Session aktiv</string>
     <string name="board_ble_session_active_message">Das Board wird vom Session-Host gesteuert. Deine Climbs werden über die Warteschlange an das Board gesendet.</string>
-    <string name="board_ble_legacy_warning_title">Experimentelle Board-Verbindung</string>
-    <string name="board_ble_legacy_warning_message">Auf Android-Versionen vor 12 ist die BLE-Verbindung instabil. Es kann zu Verbindungsabbrüchen kommen.</string>
-    <string name="board_ble_connect_anyway">Trotzdem verbinden</string>
+    <string name="board_ble_connect_failed_hint">Verbindung fehlgeschlagen. Stelle sicher, dass das Board eingeschaltet und in der Nähe ist, und tippe es erneut an.</string>
+    <string name="board_ble_open_location_settings">Standort-Einstellungen öffnen</string>
     <string name="board_ble_connected">Verbunden</string>
     <string name="board_ble_sending">Sende an Board…</string>
     <string name="board_ble_disconnect">Trennen</string>
@@ -971,11 +970,11 @@
     <string name="board_sync_no_network_title">Keine Netzwerkverbindung</string>
     <string name="board_sync_no_network_message">Für die Synchronisierung wird eine aktive Internetverbindung benötigt.</string>
     <string name="board_sync_open_settings">Einstellungen öffnen</string>
-    <string name="board_sync_wifi_required_title">WLAN erforderlich</string>
-    <string name="board_sync_wifi_required_message">Der Download der Board-Datenbank ist ca. 85 MB groß und kann nur über WLAN gestartet werden.</string>
-    <string name="board_sync_wifi_settings">WLAN-Einstellungen</string>
+    <string name="board_sync_metered_confirm_title">Über mobile Daten laden?</string>
+    <string name="board_sync_metered_confirm_message">Der Download der Board-Datenbank ist ca. 85 MB groß. Du bist nicht im WLAN — der Download nutzt mobile Daten, wofür Kosten anfallen können.</string>
+    <string name="board_sync_metered_confirm_action">Mobile Daten nutzen</string>
     <string name="board_sync_no_network_banner">Kein Netzwerk verfügbar</string>
-    <string name="board_sync_no_wifi_banner">Kein WLAN — Online-Download nur über WLAN möglich</string>
+    <string name="board_sync_no_wifi_banner">Kein WLAN — der Download nutzt mobile Daten</string>
     <string name="board_sync_to_browser">Fertig</string>
     <string name="board_sync_db_title">Board-Datenbanken</string>
     <string name="board_sync_db_description">Lädt die aktuellen Kletterkataloge aller unterstützten Boards herunter (~85 MB). WLAN empfohlen.</string>
@@ -1031,6 +1030,8 @@
     <string name="kilter_import_summary_with_dupes" formatted="false">%1$s (%2$d bereits vorhanden)</string>
     <string name="kilter_sync_success">Sync abgeschlossen: %1$d heruntergeladen, %2$d hochgeladen</string>
     <string name="kilter_sync_error">Sync fehlgeschlagen: %s</string>
+    <string name="kilter_preview_failed">Anmeldung erfolgreich, aber dein Kilter-Logbuch konnte nicht geladen werden: %1$s</string>
+    <string name="kilter_sync_upload_failed">Sync abgeschlossen — %1$d Einträge importiert, aber der Upload deiner lokalen Sends ist fehlgeschlagen. Wird beim nächsten Sync erneut versucht.</string>
     <string name="kilter_no_new">Keine neuen Begehungen gefunden</string>
 
     <string name="board_sync_step_prepare_db">Datenbank vorbereiten</string>
