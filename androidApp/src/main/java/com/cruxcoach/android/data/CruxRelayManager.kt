@@ -40,6 +40,8 @@ data class CruxRelayState(
     val advertising: Boolean = false,
     val clientCount: Int = 0,
     val advertisedName: String? = null,
+    /** Capture relayed climbs into the playlist (runtime flag, off by default). */
+    val captureToPlaylist: Boolean = false,
     val error: String? = null,
 )
 
@@ -66,7 +68,6 @@ class CruxRelayManager(
     private val relayServer: RelayGattServer,
     private val advertiser: ClimbBleAdvertiser,
     private val bleConnection: BoardBleConnection,
-    private val userPreferences: UserPreferences,
 ) {
     companion object {
         private const val TAG = "CruxRelay/Manager"
@@ -90,6 +91,12 @@ class CruxRelayManager(
     private val _captured = MutableStateFlow<List<CapturedRelayClimb>>(emptyList())
     val captured: StateFlow<List<CapturedRelayClimb>> = _captured.asStateFlow()
 
+    // Sharing is deliberately NOT persisted (FEAT-044 §12): it is a momentary,
+    // safety-relevant action. Default OFF every process; only setEnabled(true)
+    // — a fresh user tap — turns it on, and a lost board turns it back off so
+    // a later reconnect never silently re-fronts the board.
+    private val enabledFlow = MutableStateFlow(false)
+
     private val captureDedup = RelayCaptureDedup()
     private var running = false
     private var forwardJob: Job? = null
@@ -101,34 +108,45 @@ class CruxRelayManager(
         // Crash-safe: a previous run may have died with the adapter name still
         // changed. Restore it before anything else.
         restoreAdapterNameIfDirty()
-        // React to BOTH the toggle AND the board connection: the relay runs only
-        // while enabled AND the real board link is up (WAIT_BEFORE_ADVERTISE).
-        // Observing the board state here — not only inside a running relay — is
-        // what makes it start when the board connects AFTER the toggle is on,
-        // and tear down the moment the board link falls.
+        // React to BOTH the runtime toggle AND the board connection: the relay
+        // runs only while enabled AND the real board link is up
+        // (WAIT_BEFORE_ADVERTISE). A falling board link disables sharing
+        // entirely — it never re-arms on a later board connection.
         scope.launch {
-            combine(userPreferences.relayEnabled, bleConnection.connectionState) { enabled, st ->
+            combine(enabledFlow, bleConnection.connectionState) { enabled, st ->
                 enabled to st
             }.collect { (enabled, st) -> reconcile(enabled, st) }
         }
     }
 
-    /** UI entry point — persist the toggle; [init]'s collector does the rest. */
+    /** UI entry point — a deliberate user action; [init]'s collector does the rest. */
     fun setEnabled(enabled: Boolean) {
-        scope.launch { userPreferences.setRelayEnabled(enabled) }
+        enabledFlow.value = enabled
+        if (enabled) _state.update { it.copy(error = null) }
     }
 
-    private suspend fun reconcile(enabledPref: Boolean, boardState: ConnectionState) {
-        _state.update { it.copy(enabled = enabledPref) }
+    /** Runtime capture flag (FEAT-044 §5) — never persisted, off each launch. */
+    fun setCaptureToPlaylist(enabled: Boolean) {
+        _state.update { it.copy(captureToPlaylist = enabled) }
+    }
+
+    private suspend fun reconcile(enabled: Boolean, boardState: ConnectionState) {
+        _state.update { it.copy(enabled = enabled) }
         // Only front the board while actually CONNECTED to it. (SENDING is a
         // transient connected sub-state during a write — neither starts nor
         // stops the relay, so a relayed send never tears itself down.)
-        if (enabledPref && boardState == ConnectionState.CONNECTED && !running) {
+        if (enabled && boardState == ConnectionState.CONNECTED && !running) {
             startRelay()
-        } else if (running && (!enabledPref || boardState == ConnectionState.DISCONNECTED)) {
+        } else if (running && (!enabled || boardState == ConnectionState.DISCONNECTED)) {
             // Release the real board only if it's still up (user turned the relay
             // off = host leaving, §7 ordering); a dropped board is already gone.
             stopRelay(releaseBoard = boardState != ConnectionState.DISCONNECTED)
+            if (boardState == ConnectionState.DISCONNECTED && enabled) {
+                // Board loss while sharing: hard-disable so a later reconnect
+                // never re-activates sharing without a fresh user action.
+                enabledFlow.value = false
+                _state.update { it.copy(enabled = false) }
+            }
         }
     }
 
@@ -157,7 +175,7 @@ class CruxRelayManager(
                 lastActivityMs = System.currentTimeMillis()
                 val ok = bleConnection.sendRawChunks(inbound.climb.chunks)
                 if (!ok) Log.w(TAG, "sendRawChunks failed for a relayed climb")
-                if (userPreferences.relayCaptureToPlaylist.first()) captureIfNew(inbound.deviceAddress, inbound.climb.framesHash, inbound.climb.holdCount, inbound.climb.rawBytes)
+                if (_state.value.captureToPlaylist) captureIfNew(inbound.deviceAddress, inbound.climb.framesHash, inbound.climb.holdCount, inbound.climb.rawBytes)
             }
         }
         eventJob = scope.launch {
@@ -178,7 +196,7 @@ class CruxRelayManager(
                 val idle = System.currentTimeMillis() - lastActivityMs
                 if (relayServer.getConnectedCount() == 0 && idle >= WATCHDOG_IDLE_MS) {
                     Log.d(TAG, "watchdog: idle ${idle}ms, no clients — auto-disabling relay")
-                    userPreferences.setRelayEnabled(false)
+                    setEnabled(false)
                     break
                 }
             }

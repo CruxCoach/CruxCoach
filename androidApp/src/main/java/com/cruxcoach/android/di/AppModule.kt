@@ -432,10 +432,9 @@ object AppModule {
         @ApplicationContext context: Context,
         relayServer: RelayGattServer,
         advertiser: ClimbBleAdvertiser,
-        bleConnection: BoardBleConnection,
-        userPreferences: UserPreferences
+        bleConnection: BoardBleConnection
     ): CruxRelayManager {
-        return CruxRelayManager(context, relayServer, advertiser, bleConnection, userPreferences)
+        return CruxRelayManager(context, relayServer, advertiser, bleConnection)
     }
 
     @Provides
