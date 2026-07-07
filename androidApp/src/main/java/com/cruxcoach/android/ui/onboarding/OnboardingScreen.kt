@@ -10,6 +10,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -911,6 +912,13 @@ private fun KilterLoginContent(state: OnboardingState, viewModel: OnboardingView
             keyboardType = KeyboardType.Password,
             imeAction = ImeAction.Done,
         ),
+        // IME "Done" submits — without this the key only closed the keyboard,
+        // which read as a login attempt that silently did nothing.
+        keyboardActions = KeyboardActions(onDone = {
+            if (state.kilterEmail.isNotBlank() && state.kilterPassword.isNotBlank() && !state.isKilterLoggingIn) {
+                viewModel.kilterLogin()
+            }
+        }),
         enabled = !state.isKilterLoggingIn,
     )
 

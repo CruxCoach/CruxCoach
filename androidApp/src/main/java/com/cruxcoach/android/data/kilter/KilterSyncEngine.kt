@@ -51,7 +51,11 @@ private data class LogInsertCounts(val newAscents: Int, val newBids: Int, val du
 
 data class KilterSyncReport(
     val downloaded: Int,
-    val uploaded: Int
+    val uploaded: Int,
+    /** True when the download half succeeded but the Kilter upload call
+     *  failed — the unsynced logs stay queued for the next sync. Surfaced
+     *  so a half-failed sync doesn't render as a clean success. */
+    val uploadFailed: Boolean = false,
 )
 
 @Singleton
@@ -142,7 +146,7 @@ class KilterSyncEngine @Inject constructor(
             if (!userPreferences.kilterPushEnabled.first()) return@launch
             if (!tokenStore.hasCredentials()) return@launch
             try {
-                val uploaded = uploadUnsyncedLogs()
+                val uploaded = uploadUnsyncedLogs() ?: 0
                 if (uploaded > 0) {
                     Log.d(TAG, "Auto-uploaded $uploaded ascents to Kilter")
                 }
@@ -196,7 +200,7 @@ class KilterSyncEngine @Inject constructor(
 
                 // Upload unsynced local logs (catches offline-logged ascents)
                 val uploaded = if (userPreferences.kilterPushEnabled.first()) {
-                    uploadUnsyncedLogs()
+                    uploadUnsyncedLogs() ?: 0
                 } else 0
 
                 if (imported > 0 || uploaded > 0) {
@@ -316,14 +320,16 @@ class KilterSyncEngine @Inject constructor(
             climbBackfiller.backfillAuthoredClimbs()
             val downloaded = insertLogs(logs).totalNew
 
-            // Upload unsynced local data (only if push is enabled)
+            // Upload unsynced local data (only if push is enabled). null =
+            // the upload call itself failed → report it in the result so a
+            // half-failed sync doesn't render as a clean success.
             val uploaded = if (pushEnabled) uploadUnsyncedLogs() else 0
 
             val timestamp = DateTimeUtil.nowIso()
             userPreferences.setKilterLastSync(timestamp)
 
             Log.i(TAG, "Sync: downloaded=$downloaded, uploaded=$uploaded (push=$pushEnabled)")
-            Result.success(KilterSyncReport(downloaded, uploaded))
+            Result.success(KilterSyncReport(downloaded, uploaded ?: 0, uploadFailed = uploaded == null))
         } catch (e: Exception) {
             Log.e(TAG, "Sync failed", e)
             // Pre-fix this pattern-matched on `e.message?.contains("Nicht
@@ -422,9 +428,11 @@ class KilterSyncEngine @Inject constructor(
 
     /**
      * Upload local ascents/bids that haven't been synced to Kilter yet.
-     * Returns total count of uploaded records.
+     * Returns the total count of uploaded records; 0 when there is nothing
+     * to upload (or no wall context); null when the Kilter upload call
+     * itself failed — those records stay unsynced and retry next sync.
      */
-    private suspend fun uploadUnsyncedLogs(): Int {
+    private suspend fun uploadUnsyncedLogs(): Int? {
         val userUuid = tokenStore.getUserUuid() ?: return 0
 
         // Wall context is required for Kilter API — try to resolve if missing
@@ -510,7 +518,7 @@ class KilterSyncEngine @Inject constructor(
             return kilterLogs.size
         } else {
             Log.w(TAG, "Upload failed: ${result.exceptionOrNull()?.message}")
-            return 0
+            return null
         }
     }
 }

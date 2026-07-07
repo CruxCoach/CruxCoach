@@ -302,14 +302,25 @@ class OnboardingViewModel @Inject constructor(
                             userUuid = result.userUuid,
                             username = result.username
                         )
-                        // Fetch import preview
+                        // Fetch import preview. A preview failure after a
+                        // successful login used to fall back to the empty
+                        // login form with no message (connected=true +
+                        // preview=null renders the form branch) — surface it
+                        // in the login error slot instead.
                         val preview = kilterSyncEngine.previewImport()
+                        val previewError = preview.exceptionOrNull()
                         _state.update {
                             it.copy(
                                 isKilterLoggingIn = false,
-                                kilterConnected = true,
+                                kilterConnected = previewError == null,
                                 kilterUsername = result.username,
-                                kilterImportPreview = preview.getOrNull()
+                                kilterImportPreview = preview.getOrNull(),
+                                kilterLoginError = previewError?.let { e ->
+                                    appContext.getString(
+                                        R.string.kilter_preview_failed,
+                                        e.message ?: e.javaClass.simpleName,
+                                    )
+                                },
                             )
                         }
                     }
@@ -326,7 +337,7 @@ class OnboardingViewModel @Inject constructor(
                 _state.update {
                     it.copy(
                         isKilterLoggingIn = false,
-                        kilterLoginError = appContext.getString(R.string.kilter_sync_error, ""),
+                        kilterLoginError = appContext.getString(R.string.kilter_sync_error, e.message ?: e.javaClass.simpleName),
                     )
                 }
             }
@@ -343,7 +354,9 @@ class OnboardingViewModel @Inject constructor(
                         isKilterImporting = false,
                         kilterImportResult = result.fold(
                             onSuccess = { r -> formatKilterImportSummary(appContext, r) },
-                            onFailure = { e -> e.message }
+                            // Never null: a message-less exception used to
+                            // render NOTHING despite kilterImportError=true.
+                            onFailure = { e -> appContext.getString(R.string.kilter_sync_error, e.message ?: e.javaClass.simpleName) }
                         ),
                         kilterImportError = result.isFailure,
                         kilterConnected = false // credentials cleared
@@ -356,7 +369,7 @@ class OnboardingViewModel @Inject constructor(
                 _state.update {
                     it.copy(
                         isKilterImporting = false,
-                        kilterImportResult = appContext.getString(R.string.kilter_sync_error, ""),
+                        kilterImportResult = appContext.getString(R.string.kilter_sync_error, e.message ?: e.javaClass.simpleName),
                         kilterImportError = true,
                     )
                 }
@@ -374,7 +387,7 @@ class OnboardingViewModel @Inject constructor(
                         isKilterImporting = false,
                         kilterImportResult = result.fold(
                             onSuccess = { r -> formatKilterImportSummary(appContext, r) },
-                            onFailure = { e -> e.message }
+                            onFailure = { e -> appContext.getString(R.string.kilter_sync_error, e.message ?: e.javaClass.simpleName) }
                         ),
                         kilterImportError = result.isFailure
                     )
@@ -386,7 +399,7 @@ class OnboardingViewModel @Inject constructor(
                 _state.update {
                     it.copy(
                         isKilterImporting = false,
-                        kilterImportResult = appContext.getString(R.string.kilter_sync_error, ""),
+                        kilterImportResult = appContext.getString(R.string.kilter_sync_error, e.message ?: e.javaClass.simpleName),
                         kilterImportError = true,
                     )
                 }
