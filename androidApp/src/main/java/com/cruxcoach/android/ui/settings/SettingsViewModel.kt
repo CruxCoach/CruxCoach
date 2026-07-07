@@ -760,14 +760,26 @@ class SettingsViewModel @Inject constructor(
                             result.expiresIn, result.userUuid, result.username
                         )
                         kilterSyncEngine.clearSessionExpired()
-                        // Fetch preview
+                        // Fetch preview. Auth and logbook live on DIFFERENT
+                        // hosts — a preview failure after a successful login
+                        // must not be silent (the sheet used to just close
+                        // with nothing rendered): surface it on the
+                        // persistent result card instead.
                         val preview = kilterSyncEngine.previewImport()
+                        val previewError = preview.exceptionOrNull()
                         _state.update { it.copy(kilterAccount = it.kilterAccount.copy(
                             isLoggingIn = false,
                             showLoginSheet = false,
                             loginEmail = "", loginPassword = "",
-                            showImportPreview = true,
+                            showImportPreview = previewError == null,
                             importPreview = preview.getOrNull(),
+                            resultMessage = previewError?.let { e ->
+                                context.getString(
+                                    R.string.kilter_preview_failed,
+                                    e.message ?: e.javaClass.simpleName,
+                                )
+                            },
+                            resultIsError = previewError != null,
                             username = result.username
                         )) }
                     }
@@ -784,7 +796,7 @@ class SettingsViewModel @Inject constructor(
                 Log.w(TAG, "kilterLogin threw", e)
                 _state.update { it.copy(kilterAccount = it.kilterAccount.copy(
                     isLoggingIn = false,
-                    loginError = context.getString(R.string.kilter_sync_error, ""),
+                    loginError = context.getString(R.string.kilter_sync_error, e.message ?: e.javaClass.simpleName),
                 )) }
             }
         }
@@ -801,8 +813,9 @@ class SettingsViewModel @Inject constructor(
                     isConnected = false,
                     resultMessage = result.fold(
                         onSuccess = { formatKilterImportSummary(context, it) },
-                        onFailure = { context.getString(R.string.kilter_sync_error, it.message ?: "") }
-                    )
+                        onFailure = { context.getString(R.string.kilter_sync_error, it.message ?: it.javaClass.simpleName) }
+                    ),
+                    resultIsError = result.isFailure,
                 )) }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
@@ -811,7 +824,8 @@ class SettingsViewModel @Inject constructor(
                 _state.update { it.copy(kilterAccount = it.kilterAccount.copy(
                     isImporting = false,
                     showImportPreview = false,
-                    resultMessage = context.getString(R.string.kilter_sync_error, ""),
+                    resultMessage = context.getString(R.string.kilter_sync_error, e.message ?: e.javaClass.simpleName),
+                    resultIsError = true,
                 )) }
             }
         }
@@ -830,8 +844,9 @@ class SettingsViewModel @Inject constructor(
                     lastSync = lastSync,
                     resultMessage = result.fold(
                         onSuccess = { formatKilterImportSummary(context, it) },
-                        onFailure = { context.getString(R.string.kilter_sync_error, it.message ?: "") }
-                    )
+                        onFailure = { context.getString(R.string.kilter_sync_error, it.message ?: it.javaClass.simpleName) }
+                    ),
+                    resultIsError = result.isFailure,
                 )) }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
@@ -840,7 +855,8 @@ class SettingsViewModel @Inject constructor(
                 _state.update { it.copy(kilterAccount = it.kilterAccount.copy(
                     isImporting = false,
                     showImportPreview = false,
-                    resultMessage = context.getString(R.string.kilter_sync_error, ""),
+                    resultMessage = context.getString(R.string.kilter_sync_error, e.message ?: e.javaClass.simpleName),
+                    resultIsError = true,
                 )) }
             }
         }
@@ -858,16 +874,34 @@ class SettingsViewModel @Inject constructor(
         if (_state.value.kilterAccount.isSyncing) return
         _state.update { it.copy(kilterAccount = it.kilterAccount.copy(isSyncing = true)) }
         viewModelScope.launch {
-            val result = kilterSyncEngine.syncBidirectional()
-            val lastSync = userPreferences.kilterLastSync.first()
-            _state.update { it.copy(kilterAccount = it.kilterAccount.copy(
-                isSyncing = false,
-                lastSync = lastSync,
-                resultMessage = result.fold(
-                    onSuccess = { context.getString(R.string.kilter_sync_success, it.downloaded, it.uploaded) },
-                    onFailure = { context.getString(R.string.kilter_sync_error, it.message ?: "") }
-                )
-            )) }
+            // Same defensive wrap as kilterLogin/kilterImport*: an unexpected
+            // throw (e.g. from the DataStore read) must not strand the
+            // spinner with isSyncing = true forever.
+            try {
+                val result = kilterSyncEngine.syncBidirectional()
+                val lastSync = userPreferences.kilterLastSync.first()
+                _state.update { it.copy(kilterAccount = it.kilterAccount.copy(
+                    isSyncing = false,
+                    lastSync = lastSync,
+                    resultMessage = result.fold(
+                        onSuccess = { r ->
+                            if (r.uploadFailed) context.getString(R.string.kilter_sync_upload_failed, r.downloaded)
+                            else context.getString(R.string.kilter_sync_success, r.downloaded, r.uploaded)
+                        },
+                        onFailure = { context.getString(R.string.kilter_sync_error, it.message ?: it.javaClass.simpleName) }
+                    ),
+                    resultIsError = result.isFailure || result.getOrNull()?.uploadFailed == true,
+                )) }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "kilterSyncNow threw", e)
+                _state.update { it.copy(kilterAccount = it.kilterAccount.copy(
+                    isSyncing = false,
+                    resultMessage = context.getString(R.string.kilter_sync_error, e.message ?: e.javaClass.simpleName),
+                    resultIsError = true,
+                )) }
+            }
         }
     }
 

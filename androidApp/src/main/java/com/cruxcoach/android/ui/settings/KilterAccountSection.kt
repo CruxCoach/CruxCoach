@@ -3,7 +3,9 @@ package com.cruxcoach.android.ui.settings
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -36,6 +38,9 @@ data class KilterAccountState(
     val isSyncing: Boolean = false,
     val showDisconnectConfirm: Boolean = false,
     val resultMessage: String? = null,
+    /** Whether [resultMessage] reports a failure — drives the card's error
+     *  styling (replaces the old "contains 'failed'" string heuristic). */
+    val resultIsError: Boolean = false,
     /** Master toggle: should newly created CruxCoach climbs be pushed to
      *  the official Kilter DB via the user's own account? Default false
      *  (opt-in). Greyed out when the user isn't connected; tapping then
@@ -122,13 +127,16 @@ internal fun KilterAccountSection(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(12.dp),
             colors = CardDefaults.cardColors(
-                containerColor = if (msg.contains("fehlgeschlagen") || msg.contains("failed"))
+                containerColor = if (state.resultIsError)
                     MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f)
                 else SuccessGreen.copy(alpha = 0.1f)
             )
         ) {
             Column(modifier = Modifier.padding(12.dp)) {
-                Text(msg, style = MaterialTheme.typography.bodyMedium)
+                // Selectable so error details can be copied into a bug report.
+                SelectionContainer {
+                    Text(msg, style = MaterialTheme.typography.bodyMedium)
+                }
                 TextButton(onClick = onDismissResult) {
                     Text(stringResource(R.string.action_ok))
                 }
@@ -194,7 +202,9 @@ private fun KilterLoginSheet(
     onLogin: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    // A stray scrim tap / back press must not dismiss the sheet while the
+    // login runs — a late error would land in state nothing renders.
+    ModalBottomSheet(onDismissRequest = { if (!isLoading) onDismiss() }) {
         Column(
             modifier = Modifier
                 .padding(horizontal = 24.dp)
@@ -239,6 +249,11 @@ private fun KilterLoginSheet(
                     keyboardType = KeyboardType.Password,
                     imeAction = ImeAction.Done
                 ),
+                // IME "Done" submits — without this the key only closed the
+                // keyboard, which read as a silently failed login attempt.
+                keyboardActions = KeyboardActions(onDone = {
+                    if (!isLoading && email.isNotBlank() && password.isNotBlank()) onLogin()
+                }),
                 enabled = !isLoading
             )
 

@@ -791,6 +791,12 @@ class BoardDatabaseImporter(
             dbFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY
         )
         try {
+            // The in-app offline share serves the sender's own cruxcoach.db —
+            // OUR schema (marker: `sync_states`), not the Kilter-APK schema
+            // this method historically imported. Climb/stat copying is
+            // column-probed and works for both; the geometry + sync-state
+            // finalization below must branch. See [LocalShareSchema].
+            val isModernSource = hasTable(rawDb, LocalShareSchema.MODERN_MARKER_TABLE)
             val (climbCount, statCount) = withDeferredIndexes {
                 onProgress?.invoke(ImportStep.ImportClimbs(0, 0, 0))
                 val climbs = importClimbs(rawDb, freshInstall = freshInstallClimbs) { inserted, scanned, total ->
@@ -810,18 +816,37 @@ class BoardDatabaseImporter(
             }
 
             onProgress?.invoke(ImportStep.ImportLayout(0))
-            val hasLayout = snapshot != null && snapshot.placementCount > 0
-            val layoutCount = if (hasLayout) {
-                snapshot!!.placementCount
+            val layoutCount = if (isModernSource) {
+                // The legacy branches below assume the Kilter-APK schema
+                // ("SELECT p.id … JOIN holes", product_sizes.is_listed) or
+                // the pre-rename aurora_* tables; a modern source has
+                // neither and the import deterministically died right here
+                // ("no such column: p.id") — at the very end, after minutes
+                // of climb copying. Modern geometry matches our own schema
+                // 1:1 with board_brand in every PK, so one bulk upsert both
+                // bootstraps a fresh install and merges brands an existing
+                // install doesn't have yet — deliberately NOT gated on
+                // hasLayout like the Kilter path.
+                val copied = importModernGeometry(dbFile)
+                // The sender's DB also carries gym locations + walls.
+                // Guarded + non-fatal by design (skips when absent/empty).
+                importLocations(rawDb)
+                copied
             } else {
-                importPlacements(rawDb)
-            }
-            if (!hasLayout) {
-                importProductSizes(rawDb)
-                importBoardImages(rawDb)
-            }
-            if (snapshot == null || snapshot.ledCount == 0) {
-                importLeds(rawDb)
+                val hasLayout = snapshot != null && snapshot.placementCount > 0
+                val count = if (hasLayout) {
+                    snapshot!!.placementCount
+                } else {
+                    importPlacements(rawDb)
+                }
+                if (!hasLayout) {
+                    importProductSizes(rawDb)
+                    importBoardImages(rawDb)
+                }
+                if (snapshot == null || snapshot.ledCount == 0) {
+                    importLeds(rawDb)
+                }
+                count
             }
             importSyncState(rawDb)
             onProgress?.invoke(ImportStep.ImportLayout(layoutCount))
@@ -1036,34 +1061,9 @@ class BoardDatabaseImporter(
         val ownsTargetDb = sharedTargetDb == null
         try {
             targetDb.execSQL("ATTACH DATABASE ? AS src", arrayOf(chunkPath))
-            val total = queryLong(targetDb, "SELECT COUNT(*) FROM src.$srcTable WHERE is_listed = 1").toInt()
-            // Fresh-install fast path: when the *original* import started
-            // with an empty `climbs` table, every UPDATE pass below would
-            // target only rows we just INSERT-ed in the same batch — i.e.
-            // self-no-ops semantically (refresh a row with values we'd
-            // just pulled from the same source row). Skipping them saves
-            // the per-batch full-range correlated-subquery scan that's
-            // the single largest CPU cost in the bulk-import on first
-            // launch.
+            // Source-column probe + derived expressions come before the
+            // total-count query because $draftFilter feeds it.
             //
-            // The flag is plumbed in by [importFromChunks] from a single
-            // `COUNT(*)` snapshot at the start of the run. We can't infer
-            // it locally because chunk #2 onwards observes a non-empty
-            // target (chunk #1 just populated it) and would otherwise
-            // wrongly re-enable the slow UPDATE path.
-            //
-            // For incremental syncs (`freshInstall=false`), the UPDATE
-            // passes remain mandatory for content / tombstone / pubkey
-            // refresh.
-            val skipUpdatePasses = freshInstall
-            // countBefore is now only used for the inserted-count math
-            // on the incremental path; on the fresh-install path we skip
-            // it entirely (saves an O(N) PK-index scan on a 174k+ row
-            // target before each chunk's batches).
-            val countBefore = if (skipUpdatePasses) 0L
-            else queryLong(targetDb, "SELECT COUNT(*) FROM climbs")
-            onProgress?.invoke(0, 0, total)
-
             // Copy move_count when the source has it (CruxCoach backups always,
             // Blossom chunks from 2026-04-21+). Old chunks without the column
             // fall back to 0 and backfillMoveCounts() computes it post-import.
@@ -1108,6 +1108,50 @@ class BoardDatabaseImporter(
                 "CASE WHEN created_by_pubkey IS NOT NULL AND created_by_pubkey != '' " +
                     "THEN 'cruxcoach' ELSE $baseOriginExpr END"
             else baseOriginExpr
+            // board_brand exists on modern CruxCoach sources (the in-app
+            // offline share serves the sender's own cruxcoach.db, which
+            // carries EVERY brand's climbs); Kilter cron chunks are
+            // Aurora-schema without the column → schema default 'kilter'.
+            // Without this, a multi-brand offline import silently collapsed
+            // all MoonBoard/Aurora climbs onto board_brand='kilter'.
+            val brandExpr = if ("board_brand" in srcCols) "COALESCE(board_brand, 'kilter')" else "'kilter'"
+            // A modern source also carries the sender's own unpublished
+            // drafts (source='local'). Those are private working copies —
+            // exclude them; published/community/catalogue rows all pass.
+            val draftFilter = if ("source" in srcCols) "AND COALESCE(source, 'kilter') != 'local'" else ""
+
+            // Drafts are excluded from `total` too, so the progress bar's
+            // denominator matches what the staging INSERT actually scans.
+            val total = queryLong(
+                targetDb,
+                "SELECT COUNT(*) FROM src.$srcTable WHERE is_listed = 1 $draftFilter"
+            ).toInt()
+            // Fresh-install fast path: when the *original* import started
+            // with an empty `climbs` table, every UPDATE pass below would
+            // target only rows we just INSERT-ed in the same batch — i.e.
+            // self-no-ops semantically (refresh a row with values we'd
+            // just pulled from the same source row). Skipping them saves
+            // the per-batch full-range correlated-subquery scan that's
+            // the single largest CPU cost in the bulk-import on first
+            // launch.
+            //
+            // The flag is plumbed in by [importFromChunks] from a single
+            // `COUNT(*)` snapshot at the start of the run. We can't infer
+            // it locally because chunk #2 onwards observes a non-empty
+            // target (chunk #1 just populated it) and would otherwise
+            // wrongly re-enable the slow UPDATE path.
+            //
+            // For incremental syncs (`freshInstall=false`), the UPDATE
+            // passes remain mandatory for content / tombstone / pubkey
+            // refresh.
+            val skipUpdatePasses = freshInstall
+            // countBefore is now only used for the inserted-count math
+            // on the incremental path; on the fresh-install path we skip
+            // it entirely (saves an O(N) PK-index scan on a 174k+ row
+            // target before each chunk's batches).
+            val countBefore = if (skipUpdatePasses) 0L
+            else queryLong(targetDb, "SELECT COUNT(*) FROM climbs")
+            onProgress?.invoke(0, 0, total)
 
             // Two-step bulk merge per batch:
             //
@@ -1154,7 +1198,8 @@ class BoardDatabaseImporter(
                     edge_bottom INTEGER, edge_top INTEGER,
                     created_at INTEGER, description TEXT,
                     is_nomatch INTEGER, frames_pace INTEGER, hsm INTEGER,
-                    move_count INTEGER, origin TEXT, created_by_pubkey TEXT
+                    move_count INTEGER, origin TEXT, created_by_pubkey TEXT,
+                    board_brand TEXT
                 ) WITHOUT ROWID
             """)
             val minRowid = queryLong(targetDb, "SELECT MIN(rowid) FROM src.$srcTable")
@@ -1184,9 +1229,11 @@ class BoardDatabaseImporter(
                                COALESCE(frames_pace, 0), COALESCE(hsm, 0),
                                $moveCountExpr,
                                $originExpr,
-                               $pubkeyExpr
+                               $pubkeyExpr,
+                               $brandExpr
                         FROM src.$srcTable
                         WHERE rowid BETWEEN $batchStart AND $batchEnd
+                          $draftFilter
                     """)
                     // Insert listed rows from chunk_norm. Tombstones
                     // (is_listed=0) are intentionally not inserted — no
@@ -1197,12 +1244,12 @@ class BoardDatabaseImporter(
                             frames_count, is_listed, edge_left, edge_right,
                             edge_bottom, edge_top, created_at,
                             description, is_nomatch, frames_pace, hsm, move_count,
-                            origin, created_by_pubkey)
+                            origin, created_by_pubkey, board_brand)
                         SELECT uuid, layout_id, setter_username, name, frames,
                                frames_count, is_listed, edge_left, edge_right,
                                edge_bottom, edge_top, created_at,
                                description, is_nomatch, frames_pace, hsm, move_count,
-                               origin, created_by_pubkey
+                               origin, created_by_pubkey, board_brand
                         FROM chunk_norm
                         WHERE is_listed = 1
                     """)
@@ -1803,7 +1850,20 @@ class BoardDatabaseImporter(
     }
 
     private fun importSyncState(rawDb: SQLiteDatabase) {
-        val table = if (hasTable(rawDb, "shared_syncs")) "shared_syncs" else "aurora_sync_state"
+        // Three source flavours with disjoint marker tables: Kilter-APK DBs
+        // carry `shared_syncs`, modern CruxCoach DBs (in-app offline share =
+        // the sender's own cruxcoach.db) carry `sync_states`, pre-rename
+        // CruxCoach bundles `aurora_sync_state` — kept as the final fallback
+        // so legacy sources keep their historical behaviour. All three share
+        // the same two columns, so only the table name varies. Pre-fix a
+        // modern source fell through to aurora_sync_state and the whole
+        // offline-share import died here ("no such table") — at the very
+        // end, after minutes of climb copying.
+        val table = when {
+            hasTable(rawDb, "shared_syncs") -> "shared_syncs"
+            hasTable(rawDb, LocalShareSchema.MODERN_MARKER_TABLE) -> LocalShareSchema.MODERN_MARKER_TABLE
+            else -> "aurora_sync_state"
+        }
         val cursor = rawDb.rawQuery(
             "SELECT table_name, last_synchronized_at FROM $table",
             null
@@ -1812,6 +1872,42 @@ class BoardDatabaseImporter(
             while (it.moveToNext()) {
                 boardRepository.upsertSyncState(it.getString(0), it.getString(1))
             }
+        }
+    }
+
+    /**
+     * Bulk-copy the geometry/metadata tables from a MODERN CruxCoach source
+     * (in-app offline share) via ATTACH. The statements live in
+     * [LocalShareSchema] so LocalShareModernSchemaTest can execute every one
+     * of them against the real SQLDelight-generated schema — column drift on
+     * either side fails the build instead of the next offline share.
+     *
+     * INSERT OR REPLACE against brand-composite PKs: idempotent, merges
+     * brands this device doesn't have yet, never deletes local rows.
+     *
+     * @return number of placement rows the source carried (progress display,
+     *   mirroring what [importPlacements] reports on the legacy path).
+     */
+    private fun importModernGeometry(srcFile: File): Int {
+        val targetDb = openTargetDb()
+        try {
+            targetDb.execSQL("ATTACH DATABASE ? AS src", arrayOf(srcFile.absolutePath))
+            try {
+                targetDb.beginTransaction()
+                try {
+                    for (statement in LocalShareSchema.MODERN_GEOMETRY_COPY) {
+                        targetDb.execSQL(statement)
+                    }
+                    targetDb.setTransactionSuccessful()
+                } finally {
+                    targetDb.endTransaction()
+                }
+                return queryLong(targetDb, "SELECT COUNT(*) FROM src.placements").toInt()
+            } finally {
+                targetDb.execSQL("DETACH DATABASE src")
+            }
+        } finally {
+            targetDb.close()
         }
     }
 

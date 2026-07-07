@@ -6,19 +6,75 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [0.2.1] - Unreleased
 
-A small follow-up to the 0.2.0 multi-board release: a couple of upgrade /
-announcement fixes plus two quiet improvements to the climb browser.
+A follow-up to the 0.2.0 multi-board release: the offline share now
+actually delivers the board database, connecting and updating got more
+reliable, and the browser, lists, logbook and stats each pick up a
+practical improvement.
+
+### Added
+- **"Newest" sort** in the climb browser — order the catalogue by when a
+  climb was created, newest first.
+- **Zone search** — in the hold search, drag a frame on the board photo
+  and only climbs that live entirely inside that area match; combines
+  with the hold filter.
+- **Share any climb** — community climbs keep their existing link form;
+  catalogue climbs (and community climbs that arrived via the daily
+  catalogue) are now shareable too. Every link opens directly in
+  CruxCoach.
+- **MoonBoard 2016 and 2024 are adjustable** — both variants now offer
+  25° and 40° in browse, detail and the creator, matching the official
+  catalogue. (Their 25° problems appear once the published board
+  snapshot next refreshes.)
+- **Weekly consistency instead of day-streaks** — rest days are part of
+  training, so day-streaks read 1–3 forever. The records row now shows
+  average sessions per week (last 8 weeks) and a week streak —
+  consecutive calendar weeks with at least one session; a rest day never
+  breaks it, a full week off does.
+- **Board download over mobile data (opt-in)** — the initial board
+  database download can run over mobile data after an explicit
+  confirmation with a data-size warning; an explicit per-board reload no
+  longer waits for WiFi either.
 
 ### Fixed
-- **What's-new popup could be dismissed by accident.** On the first launch
-  after an update, the highlights dialog could be closed by tapping outside
-  it or pressing Back, which silently marked it as seen — so some users
-  never actually read it. It now closes only via its buttons. Because of
-  this, the 0.2.0 highlights are shown once more on 0.2.1 for anyone who
-  missed them.
+- **Offline share: the board-database import works now.** Receiving the
+  board database from a friend's phone aborted with an error right at
+  the end of the import. The receiver now understands the shared
+  database format: every board's climbs stay on their board, the
+  sender's private drafts stay private, and gym locations come along.
+  The sender also serves a consistent snapshot of its database, so a
+  sync running in parallel can no longer corrupt the transfer.
+- **Kilter login errors are visible now** — a wrong password or a failed
+  logbook import used to fail silently; every login and import failure
+  now surfaces in onboarding and in Settings.
+- **Calmer, more reliable board connect** — connection retries happen
+  quietly in the background (noticeable especially on Android 10) and
+  the legacy "experimental" connect toggle is gone.
+- **In-app updater reliability** — an update notification you swiped
+  away comes back; dismissing a version stops muting newer ones; a
+  download interrupted by a process kill resumes instead of stranding;
+  and update checks are no longer throttled for hours right after a
+  reboot.
+- **Board sync survives a failed chunk** — a single failed chunk
+  download no longer aborts the whole board-database refresh.
+- **What's-new popup could be dismissed by accident.** On the first
+  launch after an update, the highlights dialog could be closed by
+  tapping outside it or pressing Back, which silently marked it as seen
+  — so some users never actually read it. It now closes only via its
+  buttons. Because of this, the 0.2.0 highlights are shown once more on
+  0.2.1 for anyone who missed them.
 - **Announcements stayed collapsed once read.** Tapping an announcement
   marked it read but also truncated it with no way to expand again; read
   announcements now stay fully readable.
+- **Logbook labels lead with the outcome** — sends now read "Sent · 3
+  tries" ("Top · 3 Versuche"), open projects "Open · 3 attempts"
+  ("Offen · 3 Versuche"), so the two can't be confused; true flashes
+  stay "Flash".
+- **Grade-true stats, honest flashes** — the grade pyramid (and related
+  charts) grouped Font grades through the V-scale, so a 7b top could
+  display as 7b+; buckets now follow the displayed grade directly. And a
+  first-try send only counts as a flash if it was the first logbook
+  contact with that climb at that angle — attempts in earlier sessions
+  disqualify it.
 - **Deleted community climbs stay deleted on catalogue-only devices**
   (FEAT-041) — a device that only syncs the daily catalogue (never the live
   delete event) now also tombstones a delisted community climb, so it can't
@@ -46,6 +102,7 @@ announcement fixes plus two quiet improvements to the climb browser.
   ("alle MoonBoard"), or a specific variant (MoonBoard Masters 2019, Kilter
   Homewall). Entries whose board catalogue isn't downloaded are flagged
   ("N not shown"), not silently hidden.
+- **Portrait only** — the app is locked to portrait orientation.
 
 ## [0.2.0] - 2026-06-21
 

@@ -699,6 +699,7 @@
     <string name="board_filter_info_sort_quality_sends">Rating × sends — surfaces climbs that are both popular and well-rated.</string>
     <string name="board_filter_info_sort_moves">Number of moves in the climb.</string>
     <string name="board_filter_info_sort_random">Shuffles the matching climbs into a random order.</string>
+    <string name="board_filter_info_sort_newest">The date the climb was created — descending shows the newest first.</string>
     <string name="board_filter_sort">Sort</string>
     <string name="board_filter_sort_asc">Ascending</string>
     <string name="board_filter_sort_desc">Descending</string>
@@ -853,6 +854,8 @@
     <string name="board_ascent_benchmark_label">Benchmark:</string>
     <string name="board_ascent_benchmark_attempt">Benchmark attempt</string>
     <string name="board_ascent_attempts">Attempts: %d</string>
+    <string name="board_ascent_first_try">Sent · 1st try</string>
+    <string name="board_ascent_open_one">Open · 1 attempt</string>
     <string name="board_ascent_quality">Quality:</string>
     <string name="board_ascent_comment">Comment (optional)</string>
 
@@ -883,9 +886,8 @@
     <string name="board_ble_location_disabled_message">Location services (GPS) must be enabled on this device to find Bluetooth devices.</string>
     <string name="board_ble_session_active_title">Playlist active</string>
     <string name="board_ble_session_active_message">The board is controlled by the playlist host. Your climbs are sent to the board via the playlist.</string>
-    <string name="board_ble_legacy_warning_title">Experimental board connection</string>
-    <string name="board_ble_legacy_warning_message">On Android versions before 12, the BLE connection is unstable. Connection drops may occur.</string>
-    <string name="board_ble_connect_anyway">Connect anyway</string>
+    <string name="board_ble_connect_failed_hint">Connection failed. Make sure the board is powered and nearby, then tap it again to retry.</string>
+    <string name="board_ble_open_location_settings">Open location settings</string>
     <string name="board_ble_connected">Connected</string>
     <string name="board_ble_sending">Sending to board…</string>
     <string name="board_ble_disconnect">Disconnect</string>
@@ -932,11 +934,11 @@
     <string name="board_sync_no_network_title">No network connection</string>
     <string name="board_sync_no_network_message">An active internet connection is required for syncing.</string>
     <string name="board_sync_open_settings">Open settings</string>
-    <string name="board_sync_wifi_required_title">WiFi required</string>
-    <string name="board_sync_wifi_required_message">The board database download is approximately 85 MB and can only be started over WiFi.</string>
-    <string name="board_sync_wifi_settings">WiFi settings</string>
+    <string name="board_sync_metered_confirm_title">Download over mobile data?</string>
+    <string name="board_sync_metered_confirm_message">The board database download is approximately 85 MB. You are not on WiFi — downloading now will use mobile data, which may incur charges.</string>
+    <string name="board_sync_metered_confirm_action">Use mobile data</string>
     <string name="board_sync_no_network_banner">No network available</string>
-    <string name="board_sync_no_wifi_banner">No WiFi — Online download only available over WiFi</string>
+    <string name="board_sync_no_wifi_banner">No WiFi — downloading now will use mobile data</string>
     <string name="board_sync_to_browser">Done</string>
     <string name="board_sync_db_title">Board databases</string>
     <string name="board_sync_db_description">Downloads the current climb catalogues for all supported boards (~85 MB). WiFi recommended.</string>
@@ -992,6 +994,8 @@
     <string name="kilter_import_summary_with_dupes" formatted="false">%1$s (%2$d already present)</string>
     <string name="kilter_sync_success">Sync complete: %1$d downloaded, %2$d uploaded</string>
     <string name="kilter_sync_error">Sync failed: %s</string>
+    <string name="kilter_preview_failed">Signed in, but loading your Kilter logbook failed: %1$s</string>
+    <string name="kilter_sync_upload_failed">Sync finished — %1$d entries imported, but uploading your local sends failed. They will be retried on the next sync.</string>
     <string name="kilter_no_new">No new ascents found</string>
 
     <string name="board_sync_step_prepare_db">Prepare database</string>
@@ -1257,6 +1261,7 @@
     <string name="board_session_label">Playlist</string>
     <string name="board_sort_quality_sends">Sends × Quality</string>
     <string name="board_sort_random">Random</string>
+    <string name="board_sort_newest">Newest</string>
     <string name="board_stats_activity">Activity</string>
     <string name="board_stats_personal_heatmap">My sends — heatmap</string>
     <string name="board_stats_heatmap_section">Heatmap — %1$s</string>
@@ -2097,8 +2102,6 @@
     <string name="playlist_logged_send">Send logged</string>
     <string name="playlist_logged_attempt">Attempt logged</string>
     <string name="playlist_player_add_climbs">Add climbs</string>
-    <string name="board_ascent_first_try">Sent · 1st try</string>
-    <string name="board_ascent_open_one">Open · 1 attempt</string>
     <string name="playlist_generator_selection">Climb selection</string>
     <string name="playlist_selection_new">New climbs</string>
     <string name="playlist_selection_projects">Open projects</string>

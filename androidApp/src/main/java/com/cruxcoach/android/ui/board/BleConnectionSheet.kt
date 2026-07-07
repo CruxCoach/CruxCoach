@@ -2,7 +2,6 @@ package com.cruxcoach.android.ui.board
 
 import android.bluetooth.BluetoothAdapter
 import android.content.Intent
-import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -180,12 +179,6 @@ fun BleConnectionSheet(
 
                 // State 6: Scanning / Board list
                 else -> {
-                    // On Android < 12: show warning gate, require explicit opt-in per session
-                    var legacyAccepted by remember { mutableStateOf(false) }
-                    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S && !legacyAccepted) {
-                        LegacyBleWarningContent(onAccept = { legacyAccepted = true })
-                        return@Column
-                    }
                     // Honest connect-failure reason from the last attempt
                     // (e.g. a pre-2017 RedBear-UART MoonBoard LED kit we
                     // can't drive yet) — otherwise the board just "drops"
@@ -292,6 +285,7 @@ private fun BluetoothDisabledContent(onRequestEnable: () -> Unit) {
 
 @Composable
 private fun LocationDisabledContent() {
+    val context = LocalContext.current
     Icon(
         Icons.Default.SignalCellularAlt,
         contentDescription = null,
@@ -308,6 +302,18 @@ private fun LocationDisabledContent() {
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
+    // Dead-end fixed: jump straight to the system toggle instead of making
+    // the user find it themselves.
+    OutlinedButton(
+        onClick = {
+            context.startActivity(Intent(android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS))
+        },
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = WarningYellow)
+    ) {
+        Text(stringResource(R.string.board_ble_open_location_settings), fontWeight = FontWeight.Bold)
+    }
 }
 
 @Composable
@@ -328,36 +334,6 @@ private fun SessionParticipantContent() {
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
-}
-
-@Composable
-private fun LegacyBleWarningContent(onAccept: () -> Unit) {
-    Icon(
-        Icons.Default.Warning,
-        contentDescription = null,
-        modifier = Modifier.size(48.dp),
-        tint = WarningYellow
-    )
-    Text(
-        stringResource(R.string.board_ble_legacy_warning_title),
-        style = MaterialTheme.typography.bodyLarge,
-        fontWeight = FontWeight.Bold
-    )
-    Text(
-        stringResource(R.string.board_ble_legacy_warning_message),
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
-    )
-    OutlinedButton(
-        onClick = onAccept,
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        colors = ButtonDefaults.outlinedButtonColors(contentColor = WarningYellow)
-    ) {
-        Icon(Icons.Default.Warning, contentDescription = null, modifier = Modifier.size(16.dp))
-        Spacer(modifier = Modifier.width(8.dp))
-        Text(stringResource(R.string.board_ble_connect_anyway), fontWeight = FontWeight.Bold)
-    }
 }
 
 @Composable

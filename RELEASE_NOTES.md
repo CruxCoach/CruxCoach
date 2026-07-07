@@ -1,13 +1,23 @@
 # CruxCoach 0.2.1
 
-A small follow-up to 0.2.0 with a few fixes and improvements.
+Offline sharing that actually delivers, a more reliable connect & updater, and a batch of browser, lists and logbook improvements.
 
-- **You won't miss the "what's new" screen anymore** — after an update it can no longer be closed by an accidental tap-outside or Back press, only by its buttons. And if you missed the 0.2.0 highlights, they show once more on 0.2.1.
-- **Announcements stay readable** — tapping one to mark it read no longer collapses it.
+- **Offline share works end-to-end now** — receiving the board database from a friend's phone no longer fails at the end of the import; every board's climbs arrive intact.
+- **Kilter login errors show up** — a wrong password or a failed logbook import no longer fails silently.
+- **Calmer board connect** — retries happen quietly in the background (especially noticeable on Android 10); the "experimental" toggle is gone.
+- **Updater fixes** — swiped-away update notifications come back, interrupted downloads resume, and checks aren't muted for hours after a reboot.
+- **Board download over mobile data** — now possible as an explicit opt-in with a data-size warning.
+- **"Newest" sort** — browse the catalogue by climb creation date.
+- **Zone search** — drag a frame on the board photo to find climbs that live entirely inside it.
+- **Share any climb** — catalogue climbs get share links too, opening straight in CruxCoach.
+- **MoonBoard 2016 + 2024 adjustable** — both variants now offer 25° and 40°.
+- **Lists show all your climbs** — saved lists show every climb you added, across all boards (each with its board badge), with a multi-select board filter for mixed lists. Off-board sends are refused with a clear message instead of lighting up wrong holds.
+- **Honest logbook & stats** — "Sent · 3 tries" vs "Open · 3 attempts", grade-true pyramid buckets, a flash only counts if your first-ever go was the send, and day-streaks give way to weekly consistency.
 - **Consistent draft badge** — a climb's published/draft state now looks the same in the browser and on the detail screen.
 - **Faster first look at a newly-added board** — browsing a board right after adding it on its own is quicker.
 - **Deleted community climbs stay deleted** — even on devices that only sync via the catalogue.
-- **Lists show all your climbs** — saved lists now show every climb you added, across all boards (each with its board badge), instead of hiding the ones that aren't on your currently-selected board. If a list mixes boards, you can filter it (multi-select) — to one or several boards at once, a whole brand (all MoonBoard), or a specific variant. Entries from a board you haven't downloaded are flagged, not hidden.
+- **Portrait only** — landscape layouts are gone.
+- **What's-new + announcements** — the update popup can't be dismissed by accident anymore; read announcements stay fully readable.
 
 ---
 

@@ -18,6 +18,12 @@ enum class ClimbSortField {
     QUALITY, DIFFICULTY, ASCENSIONISTS, NAME, HOLDS, BENCHMARK_DIFFICULTY,
     /** Quality multiplied by sends: surfaces climbs that are both popular AND well-rated. */
     QUALITY_SENDS,
+    /** Newest-first by `climbs.created_at` (the climb's creation date, not the
+     *  local import time). TEXT timestamps come in two shapes — catalogue rows
+     *  'YYYY-MM-DD HH:MM:SS(.f)', community/local rows ISO-8601 — lexicographic
+     *  order is date-correct across both; NULL (unknown date) sorts last in
+     *  both directions. */
+    NEWEST,
     /** SQLite RANDOM() over the filtered set. Direction is ignored. Pagination
      *  is independently random per page — scrolling yields more random results
      *  rather than a stable shuffled list. Adequate for browsing-for-discovery. */
@@ -83,6 +89,11 @@ data class ClimbWithStats(
      *  `climb_browse` VIEW from `climbs.board_brand`; default 'kilter'
      *  keeps pre-0.2.0 / Kilter-only code paths neutral. */
     val boardBrand: String = "kilter",
+    /** Climb creation timestamp (`climbs.created_at`), raw TEXT passthrough in
+     *  two shapes: catalogue rows 'YYYY-MM-DD HH:MM:SS(.f)', community/local
+     *  rows ISO-8601. Lexicographic comparison is date-correct across both —
+     *  backs the NEWEST sort. NULL = unknown (sorts last). */
+    val createdAt: String? = null,
 ) {
     /** True when this climb is a multi-frame route (not a boulder). */
     val isRoute: Boolean get() = framesCount > 1

@@ -279,8 +279,16 @@ class BoardSyncManager(
         }
     }
 
-    fun dismissWifiDialog() {
-        _state.update { it.copy(showWifiDialog = false) }
+    fun dismissMeteredConfirm() {
+        _state.update { it.copy(showMeteredConfirmDialog = false) }
+    }
+
+    /** Consent action of the metered-download dialog: the user explicitly
+     *  chose to pull the full catalogue over mobile data (one-time consent;
+     *  the background auto-sync paths stay WiFi-only). */
+    fun confirmMeteredSync() {
+        _state.update { it.copy(showMeteredConfirmDialog = false) }
+        startApiSync(bypassWifi = true)
     }
 
     fun dismissNetworkDialog() {
@@ -442,14 +450,14 @@ class BoardSyncManager(
             _state.update { it.copy(showNetworkDialog = true) }
             return
         }
-        // The WiFi gate guards the large full-catalogue download on the main /
-        // auto entry points (the "Redownload" button + fresh-install CTA). An
-        // explicit per-board Kilter reload from the sync-status list passes
-        // bypassWifi=true so it honours the user's deliberate choice on cellular
-        // — matching every other board's loadBoardCatalogue path, which never
-        // hit this gate at all. Network (not just WiFi) is still required.
+        // Not on WiFi: no hard block anymore — ask instead. The consent dialog
+        // warns about the ~85 MB mobile-data download; its confirm re-enters
+        // via confirmMeteredSync() with bypassWifi=true (the same path the
+        // explicit per-board Kilter reload from the sync-status list already
+        // uses). Background auto-sync (syncIfStale / periodic worker /
+        // missing-catalogue autoload) never reaches this prompt — WiFi-only.
         if (!bypassWifi && !_state.value.wifiConnected) {
-            _state.update { it.copy(showWifiDialog = true) }
+            _state.update { it.copy(showMeteredConfirmDialog = true) }
             return
         }
 
@@ -1152,7 +1160,9 @@ data class BoardSyncState(
     val networkAvailable: Boolean = true,
     val wifiConnected: Boolean = false,
     val showNetworkDialog: Boolean = false,
-    val showWifiDialog: Boolean = false,
+    /** Metered-download consent: set when a user-triggered full sync starts
+     *  without WiFi; confirm proceeds over mobile data, dismiss cancels. */
+    val showMeteredConfirmDialog: Boolean = false,
     val importStep: ImportStep? = null,
     /**
      * Progress of the MoonBoard catalogue sync (FEAT-027), tracked
