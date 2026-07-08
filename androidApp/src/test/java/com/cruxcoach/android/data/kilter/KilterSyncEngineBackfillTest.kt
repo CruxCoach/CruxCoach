@@ -4,6 +4,7 @@ import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.ClimbWithStats
 import com.cruxcoach.data.repository.PersonalBoardRepository
+import com.cruxcoach.db.secure.SecureDatabase
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
@@ -34,6 +35,7 @@ class KilterSyncEngineBackfillTest {
     private lateinit var prefs: UserPreferences
     private lateinit var boardRepo: BoardRepository
     private lateinit var personalRepo: PersonalBoardRepository
+    private lateinit var secureDb: SecureDatabase
     private lateinit var engine: KilterSyncEngine
 
     private val newWorldUuid = "a30d8042-aeea-42ce-8015-239016c87769"
@@ -58,6 +60,7 @@ class KilterSyncEngineBackfillTest {
         prefs = mockk(relaxed = true)
         boardRepo = mockk(relaxed = true)
         personalRepo = mockk(relaxed = true)
+        secureDb = mockk(relaxed = true)
 
         // Transactions just run the block inline.
         every { boardRepo.runInTransaction(any()) } answers { firstArg<() -> Unit>().invoke() }
@@ -127,6 +130,10 @@ class KilterSyncEngineBackfillTest {
             Result.success(KilterLoggedClimbsResponse())
         coEvery { apiClient.fetchOwnAuthoredClimbs() } returns
             Result.success(emptyList())
+        // Circuit import rides the same sync triggers; default to none so
+        // the backfill assertions here stay focused on climbs.
+        coEvery { apiClient.fetchCircuits() } returns
+            Result.success(emptyList())
 
         every {
             personalRepo.insertAscent(
@@ -144,7 +151,7 @@ class KilterSyncEngineBackfillTest {
             ascents.add(RecordedAscent(arg<String>(1), arg<String>(15), arg<String>(17)))
         }
 
-        engine = KilterSyncEngine(apiClient, tokenStore, boardRepo, personalRepo, prefs)
+        engine = KilterSyncEngine(apiClient, tokenStore, boardRepo, personalRepo, secureDb, prefs)
     }
 
     private fun loggedClimb(uuid: String) = KilterLoggedClimb(

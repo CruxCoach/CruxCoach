@@ -645,9 +645,10 @@ object AppModule {
         tokenStore: KilterTokenStore,
         boardRepository: BoardRepository,
         personalBoardRepo: PersonalBoardRepository,
+        secureDatabase: SecureDatabase,
         userPreferences: UserPreferences
     ): KilterSyncEngine {
-        return KilterSyncEngine(apiClient, tokenStore, boardRepository, personalBoardRepo, userPreferences)
+        return KilterSyncEngine(apiClient, tokenStore, boardRepository, personalBoardRepo, secureDatabase, userPreferences)
     }
 
     @Provides

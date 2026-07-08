@@ -1035,6 +1035,7 @@
     <string name="kilter_import_part_projects">%d Projekte</string>
     <string name="kilter_import_part_own">%d eigene Climbs</string>
     <string name="kilter_import_part_catalogue">%d Climbs nachgeladen</string>
+    <string name="kilter_import_part_circuits">%d Listen</string>
     <string name="kilter_import_summary_with_dupes" formatted="false">%1$s (%2$d bereits vorhanden)</string>
     <string name="kilter_sync_success">Sync abgeschlossen: %1$d heruntergeladen, %2$d hochgeladen</string>
     <string name="kilter_sync_error">Sync fehlgeschlagen: %s</string>

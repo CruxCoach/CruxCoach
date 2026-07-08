@@ -991,6 +991,7 @@
     <string name="kilter_import_part_projects">%d projects</string>
     <string name="kilter_import_part_own">%d own climbs</string>
     <string name="kilter_import_part_catalogue">%d climbs backfilled</string>
+    <string name="kilter_import_part_circuits">%d lists</string>
     <string name="kilter_import_summary_with_dupes" formatted="false">%1$s (%2$d already present)</string>
     <string name="kilter_sync_success">Sync complete: %1$d downloaded, %2$d uploaded</string>
     <string name="kilter_sync_error">Sync failed: %s</string>

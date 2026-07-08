@@ -23,6 +23,9 @@ fun formatKilterImportSummary(context: Context, r: KilterImportResult): String {
     if (r.backfilledClimbs > 0) {
         parts += context.getString(R.string.kilter_import_part_catalogue, r.backfilledClimbs)
     }
+    if (r.circuits > 0) {
+        parts += context.getString(R.string.kilter_import_part_circuits, r.circuits)
+    }
     val head = parts.joinToString(" · ")
     return if (r.duplicateLogs > 0) {
         context.getString(R.string.kilter_import_summary_with_dupes, head, r.duplicateLogs)

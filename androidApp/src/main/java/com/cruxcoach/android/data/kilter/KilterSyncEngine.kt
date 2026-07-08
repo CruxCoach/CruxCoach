@@ -4,6 +4,7 @@ import android.util.Log
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.PersonalBoardRepository
+import com.cruxcoach.db.secure.SecureDatabase
 import com.cruxcoach.util.DateTimeUtil
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -40,6 +41,8 @@ data class KilterImportResult(
     val ownClimbs: Int,
     /** Logged-climb rows backfilled into the board catalogue. */
     val backfilledClimbs: Int,
+    /** Own Kilter circuits imported as local lists (inserted or refreshed). */
+    val circuits: Int,
 ) {
     val totalNew: Int get() = newAscents + newBids
 }
@@ -64,6 +67,7 @@ class KilterSyncEngine @Inject constructor(
     private val tokenStore: KilterTokenStore,
     private val boardRepository: BoardRepository,
     private val personalBoardRepo: PersonalBoardRepository,
+    private val secureDb: SecureDatabase,
     private val userPreferences: UserPreferences
 ) {
     private companion object {
@@ -91,6 +95,10 @@ class KilterSyncEngine @Inject constructor(
     /** Backfills the user's own logged + authored Kilter climbs into the
      *  board DB (see [KilterClimbBackfiller] for the full contract). */
     private val climbBackfiller = KilterClimbBackfiller(apiClient, boardRepository)
+
+    /** Imports the user's own Kilter circuits into local `climb_lists`
+     *  (see [KilterCircuitImporter]). */
+    private val circuitImporter = KilterCircuitImporter(apiClient, secureDb)
 
     private val _sessionExpired = MutableStateFlow(false)
 
@@ -196,6 +204,7 @@ class KilterSyncEngine @Inject constructor(
                 // denormalizing names/frames in insertLogs (best-effort).
                 climbBackfiller.backfillLoggedClimbs()
                 climbBackfiller.backfillAuthoredClimbs()
+                circuitImporter.importCircuits()
                 val imported = insertLogs(logs).totalNew
 
                 // Upload unsynced local logs (catches offline-logged ascents)
@@ -263,6 +272,7 @@ class KilterSyncEngine @Inject constructor(
             // Their counts feed the import summary (previously silent).
             val backfilledClimbs = climbBackfiller.backfillLoggedClimbs()
             val ownClimbs = climbBackfiller.backfillAuthoredClimbs()
+            val circuits = circuitImporter.importCircuits()
             val counts = insertLogs(logs)
             val timestamp = DateTimeUtil.nowIso()
             userPreferences.setKilterLastSync(timestamp)
@@ -293,6 +303,7 @@ class KilterSyncEngine @Inject constructor(
                 duplicateLogs = counts.duplicates,
                 ownClimbs = ownClimbs,
                 backfilledClimbs = backfilledClimbs,
+                circuits = circuits,
             )
             Log.i(TAG, "Kilter import (oneTime=$oneTimeOnly): $result")
             result
@@ -318,6 +329,7 @@ class KilterSyncEngine @Inject constructor(
             // insertLogs denormalizes names/frames (best-effort, non-fatal).
             climbBackfiller.backfillLoggedClimbs()
             climbBackfiller.backfillAuthoredClimbs()
+            circuitImporter.importCircuits()
             val downloaded = insertLogs(logs).totalNew
 
             // Upload unsynced local data (only if push is enabled). null =

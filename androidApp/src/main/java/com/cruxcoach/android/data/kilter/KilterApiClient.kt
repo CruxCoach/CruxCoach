@@ -157,6 +157,20 @@ private data class KilterLogsResponse(
 )
 
 /**
+ * Tolerated envelope wrappers for `GET /circuits/{userUuid}` in case the
+ * server ever wraps the (currently bare-array) response — either the
+ * paginated `{items:[...],total}` shape the `/circuits` collection endpoint
+ * uses, or a `{circuits:[...]}` object. [circuitsOrItems] merges both.
+ */
+@Serializable
+private data class KilterCircuitsResponse(
+    val circuits: List<KilterCircuit> = emptyList(),
+    val items: List<KilterCircuit> = emptyList(),
+) {
+    fun circuitsOrItems(): List<KilterCircuit> = if (circuits.isNotEmpty()) circuits else items
+}
+
+/**
  * One climb row from `GET /api/climbs/logged` — the user's OWN logged
  * climbs, in the SAME envelope shape as `/climbs/curated`. Crucially this
  * INCLUDES new-world (PowerSync-only) climbs that never made it into our
@@ -231,6 +245,68 @@ data class KilterLoggedClimbsResponse(
     val climbs: List<KilterLoggedClimb> = emptyList(),
     val climbStats: List<KilterLoggedClimbStat> = emptyList(),
 )
+
+/**
+ * One member row inside a circuit. The official app's `circuit_climbs`
+ * table is `(circuit_uuid, climb_uuid, sort_order)`; the wire form uses the
+ * same camelCase keys its Dart models serialize with. Only `climbUuid` is
+ * load-bearing for us; `sortOrder` (when present) preserves the user's
+ * intended ordering.
+ */
+@Serializable
+data class KilterCircuitClimb(
+    val climbUuid: String = "",
+    val sortOrder: Int? = null,
+)
+
+/**
+ * One circuit ("list") from `GET /api/circuits/{userUuid}` — the
+ * authenticated user's own circuits, returned as a bare JSON array.
+ *
+ * ⚠ The wire shape of a NON-EMPTY circuit is inferred, not yet observed
+ * live: the probe account carries zero circuits, so the exact membership
+ * embedding could not be captured. The official app has no
+ * `/circuits/{uuid}/climbs` sub-route (confirmed 404), so members are
+ * assumed embedded in the circuit object. We tolerate every plausible
+ * embedding — [circuitClimbs] (objects), [climbUuids] (bare uuids), and
+ * [climbs] (bare uuids) — and merge whichever the server actually sends via
+ * [memberClimbUuids]. Field names mirror the app binary's Dart model
+ * (circuitUuid/isPublic/creatorName/…); `ignoreUnknownKeys` drops the rest.
+ *
+ * Compliance: a SINGLE GET of the user's own circuits with their own Bearer
+ * token; no bulk crawl, no other users' data.
+ */
+@Serializable
+data class KilterCircuit(
+    val circuitUuid: String = "",
+    val name: String = "",
+    val description: String? = null,
+    /** Hex color without leading `#` (e.g. `"FF0000"`); stored verbatim. */
+    val color: String? = null,
+    val isPublic: Boolean = false,
+    val userUuid: String = "",
+    val createdAt: String = "",
+    val updatedAt: String = "",
+    val circuitClimbs: List<KilterCircuitClimb> = emptyList(),
+    val climbUuids: List<String> = emptyList(),
+    val climbs: List<String> = emptyList(),
+) {
+    /**
+     * Member climb uuids in intended order, merged across every tolerated
+     * embedding and de-duplicated. Objects with a [KilterCircuitClimb.sortOrder]
+     * are ordered by it (stable for ties / nulls-last); bare-uuid arrays keep
+     * their given order.
+     */
+    fun memberClimbUuids(): List<String> {
+        val fromObjects = circuitClimbs
+            .filter { it.climbUuid.isNotBlank() }
+            .sortedBy { it.sortOrder ?: Int.MAX_VALUE }
+            .map { it.climbUuid }
+        return (fromObjects + climbUuids + climbs)
+            .filter { it.isNotBlank() }
+            .distinct()
+    }
+}
 
 sealed class KilterAuthResult {
     data class Success(
@@ -674,6 +750,53 @@ class KilterApiClient @Inject constructor(
             throw e
         } catch (e: Exception) {
             Log.e(TAG, "fetchOwnAuthoredClimbs failed", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Fetch the authenticated user's OWN circuits ("lists") from
+     * `GET /api/circuits/{userUuid}`. Live shape is a bare JSON array; we
+     * tolerate a `{items:[...]}`/`{circuits:[...]}` envelope the same way
+     * [fetchLogs] tolerates the `/logs` variants, so a future server wrap
+     * doesn't silently drop every circuit.
+     *
+     * Compliance: a SINGLE GET of the user's own circuits with their own
+     * Bearer token. No params, no bulk/all crawl — mirrors the official
+     * app's "circuits" screen. Token via the same [ensureValidToken]
+     * refresh path as [fetchLogs].
+     */
+    suspend fun fetchCircuits(): Result<List<KilterCircuit>> = withContext(Dispatchers.IO) {
+        val token = ensureValidToken()
+            ?: return@withContext Result.failure(KilterApiException(KilterAuthResult.Error.Reason.NotAuthenticated, "no valid token"))
+        val userUuid = tokenStore.getUserUuid()
+            ?: return@withContext Result.failure(KilterApiException(KilterAuthResult.Error.Reason.NotAuthenticated, "no user uuid"))
+
+        try {
+            val request = Request.Builder()
+                .url("$apiBase/circuits/$userUuid")
+                .addHeader("Authorization", "Bearer $token")
+                .build()
+            val response = httpClient.newCall(request).execute()
+
+            if (!response.isSuccessful) {
+                return@withContext Result.failure(
+                    Exception("HTTP ${response.code}: ${response.body?.string()?.take(MAX_ERR_BODY)}")
+                )
+            }
+
+            val body = response.body?.string()
+                ?: return@withContext Result.failure(Exception("empty /circuits response"))
+            val circuits = if (body.trimStart().startsWith("[")) {
+                json.decodeFromString<List<KilterCircuit>>(body)
+            } else {
+                json.decodeFromString<KilterCircuitsResponse>(body).circuitsOrItems()
+            }
+            Result.success(circuits)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e(TAG, "fetchCircuits failed", e)
             Result.failure(e)
         }
     }
