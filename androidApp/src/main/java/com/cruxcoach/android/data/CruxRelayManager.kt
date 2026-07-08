@@ -79,6 +79,8 @@ class CruxRelayManager(
     private val relayServer: RelayGattServer,
     private val advertiser: ClimbBleAdvertiser,
     private val bleConnection: BoardBleConnection,
+    private val sessionQueueManager: SessionQueueManager,
+    private val sessionGattBridge: SessionGattBridge,
 ) {
     companion object {
         private const val TAG = "CruxRelay/Manager"
@@ -114,6 +116,9 @@ class CruxRelayManager(
     private var eventJob: Job? = null
     private var watchdogJob: Job? = null
     private var lastActivityMs: Long = 0L
+    // True when the relay auto-started a session for coexistence (§11), so
+    // teardown stops only OUR session — never a user-started one.
+    private var relayStartedSession = false
 
     init {
         // Crash-safe: a previous run may have died with the adapter name still
@@ -235,6 +240,15 @@ class CruxRelayManager(
                 }
             }
         }
+        // FEAT-044 §11 coexistence: the host monopolises the single board, so
+        // nearby CruxCoach users can only get in by JOINING. If no session is
+        // active, expose one so the picker's join entry never dead-ends.
+        // (Leave a user-started session alone — we don't take ownership of it.)
+        if (!sessionQueueManager.state.value.isActive) {
+            sessionQueueManager.startQueue()
+            sessionGattBridge.startSharing()
+            relayStartedSession = true
+        }
         Log.i(TAG, "CruxRelay started as \"$desired\"")
     }
 
@@ -260,6 +274,14 @@ class CruxRelayManager(
         eventJob?.cancel(); eventJob = null
         watchdogJob?.cancel(); watchdogJob = null
         captureDedup.reset()
+        // Stop only the session WE auto-started for coexistence (never a
+        // user-started one). Safe re: the board — whenever this runs with a
+        // still-connected board (host leaving), releasing the board is exactly
+        // what we want next anyway.
+        if (relayStartedSession) {
+            sessionGattBridge.stopSharing()
+            relayStartedSession = false
+        }
 
         if (releaseBoard && bleConnection.connectionState.value != ConnectionState.DISCONNECTED) {
             bleConnection.disconnect()

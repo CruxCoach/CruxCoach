@@ -214,7 +214,7 @@ fun BleConnectionSheet(
                         onStartScan = { viewModel.startScan() },
                         onStopScan = { viewModel.stopScan() },
                         onConnectBoard = { viewModel.connectToBoard(it) },
-                        onRelayHostTapped = onDismiss,
+                        onRelayHostTapped = { viewModel.joinNearbyRelaySession(); onDismiss() },
                         onRequestDisconnect = { viewModel.requestDisconnect() },
                         onClimbTapped = if (onNavigateToClimb != null) {
                             { uuid, angle -> onDismiss(); onNavigateToClimb(uuid, angle) }

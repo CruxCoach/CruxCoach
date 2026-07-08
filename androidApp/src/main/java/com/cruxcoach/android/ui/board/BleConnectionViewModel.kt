@@ -13,6 +13,7 @@ import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.ble.DiscoveredBoard
 import com.cruxcoach.android.ble.NearbyClimbScanner
 import com.cruxcoach.android.data.NearbyPresenceManager
+import com.cruxcoach.android.data.SessionGattBridge
 import com.cruxcoach.android.data.SessionQueueManager
 import com.cruxcoach.android.data.SessionRole
 import com.cruxcoach.android.data.UserPreferences
@@ -65,7 +66,8 @@ class BleConnectionViewModel @Inject constructor(
     private val nearbyClimbScanner: NearbyClimbScanner,
     private val climbAdvertiser: ClimbBleAdvertiser,
     private val sessionQueueManager: SessionQueueManager,
-    private val nearbyPresenceManager: NearbyPresenceManager
+    private val nearbyPresenceManager: NearbyPresenceManager,
+    private val sessionGattBridge: SessionGattBridge
 ) : ViewModel() {
 
     companion object {
@@ -328,6 +330,21 @@ class BleConnectionViewModel @Inject constructor(
         // Restart nearby scanner if it was stopped for the board scan
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
             nearbyClimbScanner.startScan(clearExisting = false)
+        }
+    }
+
+    /**
+     * Join a nearby CruxCoach host that is fronting the board (FEAT-044 §5/§11).
+     * A CruxRelay board-ad can't be reliably correlated to its host's session
+     * advertisement (different randomised BLE addresses), so join the strongest
+     * nearby session — unambiguous in the common single-host case.
+     */
+    fun joinNearbyRelaySession() {
+        val device = nearbyClimbScanner.nearbySessions.value.maxByOrNull { it.rssi }?.device
+        if (device != null) {
+            sessionGattBridge.joinSession(device)
+        } else {
+            Log.w("BleConnectionVM", "joinNearbyRelaySession: no joinable nearby session found")
         }
     }
 
