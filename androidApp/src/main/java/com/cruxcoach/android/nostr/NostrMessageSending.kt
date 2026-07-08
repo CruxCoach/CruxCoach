@@ -36,8 +36,10 @@ interface NostrMessageSending {
     ): SendResult
 
     /**
-     * Delivers pre-built wrap JSONs to relays (includes a random 2-60s
+     * Delivers pre-built wrap JSONs to relays (includes a random 2-10s
      * timing-correlation delay). Returns true if at least one relay accepted.
+     * Call from an app-scoped context (see [MessageDeliveryCoordinator]) so a
+     * screen exit cannot cancel the delay mid-flight.
      */
     suspend fun deliverWraps(eventJsons: String): Boolean
 

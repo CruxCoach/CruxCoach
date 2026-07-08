@@ -76,6 +76,9 @@ class MainActivity : AppCompatActivity() {
     lateinit var queueManager: dagger.Lazy<OfflineQueueManager>
 
     @Inject
+    lateinit var deliveryCoordinator: dagger.Lazy<com.cruxcoach.android.nostr.MessageDeliveryCoordinator>
+
+    @Inject
     lateinit var nostrKeyStore: dagger.Lazy<NostrKeyStore>
 
     @Inject
@@ -496,21 +499,9 @@ class MainActivity : AppCompatActivity() {
                 queueManager.get().refreshCount()
                 CruxCoachCrashHandler.deleteCrashReport(this@MainActivity)
 
-                lifecycleScope.launch {
-                    val success = try {
-                        sender.deliverWraps(buildResult.eventJsons)
-                    } catch (e: Exception) {
-                        android.util.Log.e("MainActivity", "Background crash report delivery failed", e)
-                        false
-                    }
-                    if (success) {
-                        withContext(Dispatchers.IO) {
-                            messageRepository.get().updateRelayAccepted(eventId)
-                            messageRepository.get().clearQueued(eventId)
-                        }
-                        queueManager.get().refreshCount()
-                    }
-                }
+                // App-scoped delivery: a quick app exit inside the random
+                // send delay must not strand the report until next launch.
+                deliveryCoordinator.get().deliver(eventId, buildResult.eventJsons)
             }
             is SendResult.Failed -> {
                 android.util.Log.w("MainActivity", "Crash report build failed, keeping file for retry: ${buildResult.error}")
