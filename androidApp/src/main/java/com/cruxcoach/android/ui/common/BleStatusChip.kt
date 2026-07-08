@@ -381,3 +381,56 @@ internal fun formatSessionTime(totalSeconds: Int): String {
     return if (hours > 0) "%d:%02d:%02d".format(hours, minutes, seconds)
     else "%d:%02d".format(minutes, seconds)
 }
+
+/**
+ * FEAT-044 §12: persistent "board is shared" status with a one-tap stop.
+ * Rendered by [BleStatusArea] on every screen while CruxRelay is active;
+ * stopping runs the §7 host-leave ordering in CruxRelayManager.
+ */
+@Composable
+internal fun RelayStatusChip(
+    clientCount: Int,
+    onStop: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .testTag("relay_status_chip"),
+        colors = CardDefaults.cardColors(
+            containerColor = SuccessGreen.copy(alpha = 0.10f)
+        ),
+        shape = RoundedCornerShape(14.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 12.dp, end = 4.dp, top = 2.dp, bottom = 2.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Default.CellTower,
+                contentDescription = null,
+                tint = SuccessGreen,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                stringResource(R.string.relay_chip_text, clientCount),
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            TextButton(onClick = onStop, modifier = Modifier.testTag("relay_chip_stop")) {
+                Text(
+                    stringResource(R.string.relay_chip_stop),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+    }
+}

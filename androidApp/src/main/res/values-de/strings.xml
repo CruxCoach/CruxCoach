@@ -2063,4 +2063,18 @@
         <item quantity="one">%1$d Eintrag aus dem Verlauf löschen?</item>
         <item quantity="other">%1$d Einträge aus dem Verlauf löschen?</item>
     </plurals>
+    <!-- FEAT-044 CruxRelay: Host-„Board teilen"-Fläche -->
+    <string name="relay_share_button">Board teilen</string>
+    <string name="relay_chip_text">Board wird geteilt · %1$d verbunden</string>
+    <string name="relay_advertised_as">Für andere sichtbar als \"%1$s\"</string>
+    <string name="relay_capture_checkbox">Climbs anderer in Playlist sammeln</string>
+    <string name="relay_disclosure_title">Board teilen</string>
+    <string name="relay_disclosure_text">Während du teilst, sehen andere Bluetooth-Geräte dein Handy als \"CruxRelay…\" (beim Beenden zurückgesetzt). Nutzer der offiziellen App können dann über dich Climbs an dieses Board senden.</string>
+    <string name="relay_disclosure_disclaimer">CruxCoach ist nicht mit Kilter oder Aurora Climbing verbunden; Board-Namen dienen nur der Kompatibilität.</string>
+    <string name="relay_disclosure_confirm">Teilen starten</string>
+    <string name="relay_error_server">Teilen konnte nicht starten. Bitte erneut versuchen.</string>
+    <string name="relay_error_advertise">Board konnte nicht sichtbar gemacht werden.</string>
+    <string name="relay_error_name">Freigabe-Name konnte nicht gesetzt werden.</string>
+    <string name="relay_error_board_lost">Board-Verbindung verloren — Teilen beendet.</string>
+    <string name="relay_chip_stop">Beenden</string>
 </resources>

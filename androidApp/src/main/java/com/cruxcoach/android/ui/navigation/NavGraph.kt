@@ -65,6 +65,7 @@ import com.cruxcoach.android.ui.common.LocalBleShareManager
 import com.cruxcoach.android.ui.common.LocalBoardSessionManager
 import com.cruxcoach.android.ui.common.LocalBoardSyncManager
 import com.cruxcoach.android.ui.common.LocalNavigateToSync
+import com.cruxcoach.android.ui.common.LocalCruxRelayManager
 import com.cruxcoach.android.ui.common.LocalSessionGattBridge
 import com.cruxcoach.android.ui.common.LocalSessionQueueManager
 import com.cruxcoach.android.ui.workout.ActiveWorkoutScreen
@@ -261,7 +262,8 @@ fun CruxCoachNavHost(
         LocalBoardSyncManager provides startViewModel.syncManager,
         LocalSessionQueueManager provides startViewModel.queueManager,
         LocalSessionGattBridge provides startViewModel.gattBridge,
-        LocalNavigateToSync provides { navController.navigate(Routes.BOARD_SYNC) }
+        LocalCruxRelayManager provides startViewModel.cruxRelayManager,
+        LocalNavigateToSync provides { navController.navigate(Routes.BOARD_SYNC) },
     ) {
     Scaffold(
         bottomBar = { CruxCoachBottomBar(navController) }
@@ -878,4 +880,3 @@ private fun CruxCoachBottomBar(navController: NavHostController) {
     }
     } // AnimatedVisibility
 }
-

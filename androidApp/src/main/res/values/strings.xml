@@ -2060,4 +2060,18 @@
         <item quantity="one">Delete %1$d entry from history?</item>
         <item quantity="other">Delete %1$d entries from history?</item>
     </plurals>
+    <!-- FEAT-044 CruxRelay: host "share board" surface -->
+    <string name="relay_share_button">Share this board</string>
+    <string name="relay_chip_text">Sharing board · %1$d connected</string>
+    <string name="relay_advertised_as">Visible to others as \"%1$s\"</string>
+    <string name="relay_capture_checkbox">Collect others\' climbs into a playlist</string>
+    <string name="relay_disclosure_title">Share this board</string>
+    <string name="relay_disclosure_text">While sharing, other Bluetooth devices see your phone as \"CruxRelay…\" (restored when you stop). People using the official app can then send climbs to this board through you.</string>
+    <string name="relay_disclosure_disclaimer">CruxCoach is not affiliated with Kilter or Aurora Climbing; board names are used only for compatibility.</string>
+    <string name="relay_disclosure_confirm">Start sharing</string>
+    <string name="relay_error_server">Couldn\'t start sharing. Please try again.</string>
+    <string name="relay_error_advertise">Couldn\'t make this board discoverable.</string>
+    <string name="relay_error_name">Couldn\'t set the sharing name.</string>
+    <string name="relay_error_board_lost">Board connection lost — sharing stopped.</string>
+    <string name="relay_chip_stop">Stop</string>
 </resources>
