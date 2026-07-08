@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import com.cruxcoach.android.data.BleShareManager
 import com.cruxcoach.android.data.BoardSessionManager
 import com.cruxcoach.android.data.BoardSyncManager
+import com.cruxcoach.android.data.CruxRelayManager
 import com.cruxcoach.android.data.PlaylistPlaybackCoordinator
 import com.cruxcoach.android.data.SessionGattBridge
 import com.cruxcoach.android.data.SessionQueueManager
@@ -29,6 +30,7 @@ class StartViewModel @Inject constructor(
     private val _gattBridge: dagger.Lazy<SessionGattBridge>,
     private val _bleShareManager: dagger.Lazy<BleShareManager>,
     private val _playbackCoordinator: dagger.Lazy<PlaylistPlaybackCoordinator>,
+    private val _cruxRelayManager: dagger.Lazy<CruxRelayManager>,
     private val userPreferences: UserPreferences
 ) : ViewModel() {
 
@@ -39,6 +41,7 @@ class StartViewModel @Inject constructor(
     val gattBridge: SessionGattBridge get() = _gattBridge.get()
     val bleShareManager: BleShareManager get() = _bleShareManager.get()
     val playbackCoordinator: PlaylistPlaybackCoordinator get() = _playbackCoordinator.get()
+    val cruxRelayManager: CruxRelayManager get() = _cruxRelayManager.get()
 
     init {
         PerfLogger.milestone("StartViewModel created (all deps LAZY — no DI cascade)")

@@ -67,6 +67,7 @@ import com.cruxcoach.android.ui.common.LocalBoardSyncManager
 import com.cruxcoach.android.ui.common.LocalNavigateToSync
 import com.cruxcoach.android.ui.common.LocalOpenPlaylistPlayer
 import com.cruxcoach.android.ui.common.LocalPlaylistPlayback
+import com.cruxcoach.android.ui.common.LocalCruxRelayManager
 import com.cruxcoach.android.ui.common.LocalSessionGattBridge
 import com.cruxcoach.android.ui.common.LocalSessionQueueManager
 import com.cruxcoach.android.ui.workout.ActiveWorkoutScreen
@@ -260,6 +261,7 @@ fun CruxCoachNavHost(
         LocalSessionQueueManager provides startViewModel.queueManager,
         LocalSessionGattBridge provides startViewModel.gattBridge,
         LocalPlaylistPlayback provides startViewModel.playbackCoordinator,
+        LocalCruxRelayManager provides startViewModel.cruxRelayManager,
         LocalNavigateToSync provides { navController.navigate(Routes.BOARD_SYNC) },
         LocalOpenPlaylistPlayer provides {
             navController.navigate(Routes.PLAYLIST_PLAYER) { launchSingleTop = true }

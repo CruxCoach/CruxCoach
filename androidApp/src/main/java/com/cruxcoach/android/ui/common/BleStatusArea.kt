@@ -4,6 +4,7 @@ import androidx.compose.runtime.*
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import android.util.Log
 import com.cruxcoach.android.data.BleShareManager
+import com.cruxcoach.android.data.CruxRelayManager
 import com.cruxcoach.android.data.NearbySessionEntry
 import com.cruxcoach.android.data.OnBoardSource
 import com.cruxcoach.android.data.PlaylistPlaybackCoordinator
@@ -24,6 +25,10 @@ val LocalSessionQueueManager = staticCompositionLocalOf<SessionQueueManager> {
 
 val LocalSessionGattBridge = staticCompositionLocalOf<SessionGattBridge> {
     error("SessionGattBridge not provided")
+}
+
+val LocalCruxRelayManager = staticCompositionLocalOf<CruxRelayManager> {
+    error("CruxRelayManager not provided")
 }
 
 /** Opens the playlist player from anywhere (mini-player tap, join flow).
@@ -83,6 +88,18 @@ fun BleStatusArea(
     }
     val hasContent = effectiveOnBoard != null || state.boardOccupiedCount > 0 ||
         state.nearbySessions.isNotEmpty() || state.ownSession != null
+
+    // FEAT-044 §12: persistent in-app sharing status with one-tap stop —
+    // visible on every screen while the board is shared, independent of the
+    // regular BLE chip content.
+    val relayManager = LocalCruxRelayManager.current
+    val relayState by relayManager.state.collectAsStateWithLifecycle()
+    if (relayState.enabled) {
+        RelayStatusChip(
+            clientCount = relayState.clientCount,
+            onStop = { relayManager.setEnabled(false) }
+        )
+    }
 
     if (!hasContent) return
 

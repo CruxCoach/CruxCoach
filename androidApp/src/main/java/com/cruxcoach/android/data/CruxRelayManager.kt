@@ -35,6 +35,15 @@ data class CapturedRelayClimb(
     val capturedAtMs: Long,
 )
 
+/** Why the relay failed or stopped — mapped to localized strings in the UI
+ *  (FEAT-044 §12: never fail silently). */
+enum class RelayError {
+    SERVER_START_FAILED,
+    ADVERTISE_FAILED,
+    NAME_SET_FAILED,
+    BOARD_LOST,
+}
+
 data class CruxRelayState(
     val enabled: Boolean = false,
     val advertising: Boolean = false,
@@ -42,7 +51,9 @@ data class CruxRelayState(
     val advertisedName: String? = null,
     /** Capture relayed climbs into the playlist (runtime flag, off by default). */
     val captureToPlaylist: Boolean = false,
-    val error: String? = null,
+    val error: RelayError? = null,
+    /** Raw technical detail for [error] (log-grade, appended to the message). */
+    val errorDetail: String? = null,
 )
 
 /**
@@ -122,7 +133,11 @@ class CruxRelayManager(
     /** UI entry point — a deliberate user action; [init]'s collector does the rest. */
     fun setEnabled(enabled: Boolean) {
         enabledFlow.value = enabled
-        if (enabled) _state.update { it.copy(error = null) }
+        if (enabled) _state.update { it.copy(error = null, errorDetail = null) }
+    }
+
+    fun clearError() {
+        _state.update { it.copy(error = null, errorDetail = null) }
     }
 
     /** Runtime capture flag (FEAT-044 §5) — never persisted, off each launch. */
@@ -143,9 +158,10 @@ class CruxRelayManager(
             stopRelay(releaseBoard = boardState != ConnectionState.DISCONNECTED)
             if (boardState == ConnectionState.DISCONNECTED && enabled) {
                 // Board loss while sharing: hard-disable so a later reconnect
-                // never re-activates sharing without a fresh user action.
+                // never re-activates sharing without a fresh user action, and
+                // surface the loss (never silent — §12).
                 enabledFlow.value = false
-                _state.update { it.copy(enabled = false) }
+                _state.update { it.copy(enabled = false, error = RelayError.BOARD_LOST) }
             }
         }
     }
@@ -157,17 +173,30 @@ class CruxRelayManager(
         running = true
         lastActivityMs = System.currentTimeMillis()
 
-        // 1) Snapshot + set the transparent adapter name (crash-safe).
+        // 1) Snapshot + set the transparent adapter name (crash-safe). An
+        // unset name would advertise the relay under the phone's own name —
+        // abort instead of impersonating nothing recognizable.
         val desired = RelayBoardName.transparent(boardName)
-        snapshotAndSetAdapterName(desired)
+        if (!snapshotAndSetAdapterName(desired)) {
+            Log.e(TAG, "adapter name change did not propagate")
+            abortStart(RelayError.NAME_SET_FAILED, null)
+            return
+        }
 
         // 2) Keep the real board link parked, start server + advertising.
         bleConnection.acquireKeepAlive(KEEP_ALIVE_OWNER)
         if (!relayServer.start()) {
-            Log.e(TAG, "relay server failed to start"); stopRelay(releaseBoard = false); return
+            Log.e(TAG, "relay server failed to start")
+            abortStart(RelayError.SERVER_START_FAILED, null)
+            return
         }
         val advResult = advertiser.startRelayAdvertising()
-        _state.update { it.copy(advertising = true, advertisedName = desired, error = advResult.takeIf { r -> r != "started" && r != "updated" }) }
+        if (advResult != "started" && advResult != "updated") {
+            Log.e(TAG, "relay advertising failed: $advResult")
+            abortStart(RelayError.ADVERTISE_FAILED, advResult)
+            return
+        }
+        _state.update { it.copy(advertising = true, advertisedName = desired) }
 
         // FGS keeps advertising alive (Android 12+ throttles background
         // advertising) + shows the mandatory persistent sharing notification.
@@ -207,6 +236,14 @@ class CruxRelayManager(
             }
         }
         Log.i(TAG, "CruxRelay started as \"$desired\"")
+    }
+
+    /** Failed mid-start: unwind what was set up (board stays connected — the
+     *  user is still using it), disable the toggle, surface the error. */
+    private suspend fun abortStart(error: RelayError, detail: String?) {
+        stopRelay(releaseBoard = false)
+        enabledFlow.value = false
+        _state.update { it.copy(enabled = false, error = error, errorDetail = detail) }
     }
 
     /**
@@ -250,20 +287,23 @@ class CruxRelayManager(
 
     // --- Adapter name snapshot / restore (crash-safe) ---
 
+    /** @return true once [desired] is live on the adapter — false on Bluetooth
+     *  off or a setName that never propagated (surfaced as NAME_SET_FAILED). */
     @SuppressLint("MissingPermission")
-    private suspend fun snapshotAndSetAdapterName(desired: String) {
-        val a = adapter ?: return
+    private suspend fun snapshotAndSetAdapterName(desired: String): Boolean {
+        val a = adapter ?: return false
         val original = a.name
         if (!prefs.getBoolean(KEY_NAME_DIRTY, false)) {
             prefs.edit().putString(KEY_ORIGINAL_NAME, original).putBoolean(KEY_NAME_DIRTY, true).apply()
         }
-        if (a.name == desired) return
+        if (a.name == desired) return true
         a.name = desired
         // setName is async — wait (bounded) for it to propagate before advertising,
         // since the scan-response name is read from the adapter.
         withTimeoutOrNull(NAME_PROPAGATE_TIMEOUT_MS) {
             while (adapter?.name != desired) delay(100)
         }
+        return adapter?.name == desired
     }
 
     @SuppressLint("MissingPermission")

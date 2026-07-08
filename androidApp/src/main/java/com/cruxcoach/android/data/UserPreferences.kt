@@ -249,6 +249,10 @@ data class LedHoldColors(
 
 /** Shared preference keys — device-level settings, same across all Nostr identities. */
 object PreferenceKeys {
+    // FEAT-044 CruxRelay: one-time board-sharing disclosure (global Bluetooth
+    // name change + non-affiliation). App-scoped ON PURPOSE — the disclosure
+    // is about the device, not the Nostr identity.
+    val RELAY_DISCLOSURE_SEEN = booleanPreferencesKey("relay_disclosure_seen")
     val BOARD_PRODUCT_SIZE_ID = intPreferencesKey("board_product_size_id")
     val BOARD_LAYOUT_ID = intPreferencesKey("board_layout_id")
     /** Active board brand — "kilter" | "moonboard" (FEAT-027). */
@@ -1121,6 +1125,15 @@ class UserPreferences(
 
     suspend fun setAutoPublishAscents(enabled: Boolean) {
         keyScoped.edit { it[KeyScopedKeys.AUTO_PUBLISH_ASCENTS] = enabled }
+    }
+
+    // FEAT-044 CruxRelay: one-time sharing disclosure, app-scoped (§12).
+    val relayDisclosureSeen: Flow<Boolean> = dataStore.data.map {
+        it[PreferenceKeys.RELAY_DISCLOSURE_SEEN] ?: false
+    }
+
+    suspend fun setRelayDisclosureSeen() {
+        dataStore.edit { it[PreferenceKeys.RELAY_DISCLOSURE_SEEN] = true }
     }
 
     val leaderboardDisplayName: Flow<String> = keyScoped.data.map {

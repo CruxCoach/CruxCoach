@@ -165,6 +165,9 @@ fun BleConnectionSheet(
                         isSending = state.connectionState == ConnectionState.SENDING,
                         onDisconnect = { viewModel.disconnect() }
                     )
+                    // FEAT-044 §12: "share this board" (party mode) — only
+                    // offered while actually holding a real board.
+                    RelaySharingSection()
                 }
 
                 // State 4: Connecting
