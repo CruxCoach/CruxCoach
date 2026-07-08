@@ -210,6 +210,9 @@ class Nip65RelayListFetcher @Inject constructor(
         val DEFAULT_BOOTSTRAP: List<String> = listOf(
             "wss://purplepag.es",
             "wss://relay.nostr.band",
+            // Third indexer so NIP-65 discovery survives an outage of
+            // either of the two above (verified to serve Kind 10002).
+            "wss://indexer.coracle.social",
         )
         private const val TAG = "Nip65Discovery"
         private const val SUB_ID_PREFIX = "nip65-"

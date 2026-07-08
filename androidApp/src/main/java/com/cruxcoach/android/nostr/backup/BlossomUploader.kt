@@ -526,6 +526,12 @@ class BlossomUploader @Inject constructor(
          *   now send (X-SHA-256, X-Content-Length, X-Content-Type)
          *   — answered 400 "Missing X-SHA-256" before the headers
          *   patch, now answers 201.
+         * - **cdn.hzrd149.com**: free, accepts both
+         *   `application/octet-stream` and the CruxCoach-alt MIME
+         *   type (201 → GET-verify → DELETE 204 in the same E2E
+         *   probe, 2026-07); added as third default so backup
+         *   uploads survive a simultaneous outage of one of the
+         *   other two.
          *
          * Removed (deterministic 415 "File type not allowed" — these
          * servers are media CDNs that whitelist image/video/audio
@@ -539,6 +545,7 @@ class BlossomUploader @Inject constructor(
         val DEFAULT_SERVERS: List<String> = listOf(
             "https://blossom.primal.net",
             "https://nostr.download",
+            "https://cdn.hzrd149.com",
         )
 
         private val JSON = Json { encodeDefaults = true; prettyPrint = false }
