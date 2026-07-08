@@ -2130,4 +2130,5 @@
     <string name="relay_error_name">Freigabe-Name konnte nicht gesetzt werden.</string>
     <string name="relay_error_board_lost">Board-Verbindung verloren — Teilen beendet.</string>
     <string name="relay_chip_stop">Beenden</string>
+    <string name="relay_host_join_subtitle">CruxCoach-Host — antippen, um der Session beizutreten</string>
 </resources>

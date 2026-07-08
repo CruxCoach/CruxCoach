@@ -214,6 +214,7 @@ fun BleConnectionSheet(
                         onStartScan = { viewModel.startScan() },
                         onStopScan = { viewModel.stopScan() },
                         onConnectBoard = { viewModel.connectToBoard(it) },
+                        onRelayHostTapped = onDismiss,
                         onRequestDisconnect = { viewModel.requestDisconnect() },
                         onClimbTapped = if (onNavigateToClimb != null) {
                             { uuid, angle -> onDismiss(); onNavigateToClimb(uuid, angle) }
@@ -433,6 +434,7 @@ private fun ScanContent(
     onStartScan: () -> Unit,
     onStopScan: () -> Unit,
     onConnectBoard: (DiscoveredBoard) -> Unit,
+    onRelayHostTapped: () -> Unit,
     onRequestDisconnect: () -> Unit,
     onClimbTapped: ((uuid: String, angle: Int) -> Unit)? = null
 ) {
@@ -477,12 +479,20 @@ private fun ScanContent(
     }
 
     if (boards.isNotEmpty()) {
+        val realBoards = boards.filter { !it.isCruxRelay }
+        val relayHosts = boards.filter { it.isCruxRelay }
         LazyColumn(
             verticalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.heightIn(max = 300.dp)
         ) {
-            items(boards, key = { it.address }) { board ->
+            items(realBoards, key = { it.address }) { board ->
                 BoardItem(board = board, onClick = { onConnectBoard(board) })
+            }
+            // FEAT-044 §11: a CruxRelay is another CruxCoach user fronting the
+            // board — never a connectable board; tapping routes to joining
+            // their session (via the existing nearby-session surface).
+            items(relayHosts, key = { it.address }) { host ->
+                RelayHostItem(host = host, onClick = onRelayHostTapped)
             }
         }
     } else if (!isScanning) {
@@ -625,6 +635,51 @@ private fun NearbyActiveClimbCard(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun RelayHostItem(host: DiscoveredBoard, onClick: () -> Unit) {
+    Card(
+        onClick = onClick,
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("ble_relay_host_item"),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
+        ),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Default.CellTower,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(24.dp)
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    host.displayName,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    stringResource(R.string.relay_host_join_subtitle),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+            Icon(
+                Icons.Default.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(20.dp)
+            )
         }
     }
 }
