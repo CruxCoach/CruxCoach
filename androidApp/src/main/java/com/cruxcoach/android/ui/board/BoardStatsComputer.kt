@@ -466,10 +466,15 @@ object BoardStatsComputer {
     }
 
     /**
-     * Sessions per week averaged over the last [AVG_WINDOW_WEEKS] weeks.
-     * If the logbook is younger than the window, the average spans only
-     * the time since the first session (min. one week) so beginners
-     * aren't diluted toward zero.
+     * Sessions per week over the last [AVG_WINDOW_WEEKS] weeks — a true
+     * window average, matching the "(8 W.)" tile label: distinct session
+     * days inside the window divided by the number of weeks the window
+     * spans. The divisor is the elapsed window (the full 8 weeks once the
+     * account is that old), NOT the span since the first session — dividing
+     * by the active span inflated the figure for young logbooks (2 sessions
+     * over 3 weeks read as 0.6/wk instead of the 8-week 0.25/wk the label
+     * promises). A brand-new logbook divides by at least one week so a
+     * single early session isn't rounded to zero.
      */
     private fun computeAvgSessionsPerWeek(
         sessionDates: List<LocalDate>,
@@ -477,12 +482,10 @@ object BoardStatsComputer {
     ): Double {
         if (sessionDates.isEmpty()) return 0.0
         val today = LocalDate.now(clock)
-        val windowStart = today.minusDays(AVG_WINDOW_WEEKS * 7L - 1)
-        val first = sessionDates.first()
-        val effectiveStart = if (first.isAfter(windowStart)) first else windowStart
-        val recent = sessionDates.count { !it.isBefore(effectiveStart) }
+        val windowStart = today.minusDays(AVG_WINDOW_WEEKS * DAYS_PER_WEEK - 1)
+        val recent = sessionDates.count { !it.isBefore(windowStart) }
         if (recent == 0) return 0.0
-        val daysSpanned = ChronoUnit.DAYS.between(effectiveStart, today) + 1
+        val daysSpanned = ChronoUnit.DAYS.between(windowStart, today) + 1
         val weeks = (daysSpanned.toDouble() / DAYS_PER_WEEK).coerceAtLeast(1.0)
         return recent / weeks
     }
