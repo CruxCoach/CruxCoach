@@ -995,6 +995,12 @@
     <string name="kilter_import_summary_with_dupes" formatted="false">%1$s (%2$d already present)</string>
     <string name="kilter_sync_success">Sync complete: %1$d downloaded, %2$d uploaded</string>
     <string name="kilter_sync_error">Sync failed: %s</string>
+    <string name="kilter_import_error_network">Import failed — please check your internet connection and try again.</string>
+    <string name="kilter_import_error_auth">Your Kilter session has expired. Please sign in again.</string>
+    <string name="kilter_import_error_generic">Import failed. Please try again.</string>
+    <string name="kilter_import_empty">No ascents found in your Kilter logbook yet.</string>
+    <string name="kilter_import_retry">Try again</string>
+    <string name="kilter_import_board_sync_pending">The board catalogue is still loading. You can import now — climb names and grades will fill in automatically once it finishes.</string>
     <string name="kilter_preview_failed">Signed in, but loading your Kilter logbook failed: %1$s</string>
     <string name="kilter_sync_upload_failed">Sync finished — %1$d entries imported, but uploading your local sends failed. They will be retried on the next sync.</string>
     <string name="kilter_no_new">No new ascents found</string>

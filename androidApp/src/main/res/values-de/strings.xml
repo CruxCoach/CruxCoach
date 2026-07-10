@@ -1039,6 +1039,12 @@
     <string name="kilter_import_summary_with_dupes" formatted="false">%1$s (%2$d bereits vorhanden)</string>
     <string name="kilter_sync_success">Sync abgeschlossen: %1$d heruntergeladen, %2$d hochgeladen</string>
     <string name="kilter_sync_error">Sync fehlgeschlagen: %s</string>
+    <string name="kilter_import_error_network">Import fehlgeschlagen — bitte prüfe deine Internetverbindung und versuche es erneut.</string>
+    <string name="kilter_import_error_auth">Deine Kilter-Sitzung ist abgelaufen. Bitte melde dich erneut an.</string>
+    <string name="kilter_import_error_generic">Import fehlgeschlagen. Bitte versuche es erneut.</string>
+    <string name="kilter_import_empty">Noch keine Begehungen in deinem Kilter-Logbuch gefunden.</string>
+    <string name="kilter_import_retry">Erneut versuchen</string>
+    <string name="kilter_import_board_sync_pending">Der Board-Katalog wird noch geladen. Du kannst jetzt importieren — Namen und Schwierigkeiten erscheinen automatisch, sobald er fertig ist.</string>
     <string name="kilter_preview_failed">Anmeldung erfolgreich, aber dein Kilter-Logbuch konnte nicht geladen werden: %1$s</string>
     <string name="kilter_sync_upload_failed">Sync abgeschlossen — %1$d Einträge importiert, aber der Upload deiner lokalen Sends ist fehlgeschlagen. Wird beim nächsten Sync erneut versucht.</string>
     <string name="kilter_no_new">Keine neuen Begehungen gefunden</string>

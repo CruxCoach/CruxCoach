@@ -4,6 +4,7 @@ import android.util.Log
 import com.cruxcoach.android.BuildConfig
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -376,6 +377,12 @@ class KilterApiClient @Inject constructor(
         // be 50–500 KB; truncating at the network boundary keeps every
         // downstream consumer bounded without scattered take(200)s.
         const val MAX_ERR_BODY = 200
+
+        /** Extra attempts (beyond the first) for a transient download failure. */
+        const val DOWNLOAD_MAX_RETRIES = 2
+
+        /** Base backoff between download retries; doubles per attempt. */
+        const val DOWNLOAD_BACKOFF_MS = 1000L
     }
 
     // URL endpoints — `var` so unit tests can swap them for a
@@ -632,35 +639,59 @@ class KilterApiClient @Inject constructor(
     suspend fun fetchLogs(): Result<List<KilterLog>> = withContext(Dispatchers.IO) {
         val token = ensureValidToken()
             ?: return@withContext Result.failure(KilterApiException(KilterAuthResult.Error.Reason.NotAuthenticated, "no valid token"))
+        val request = Request.Builder()
+            .url("$apiBase/logs")
+            .addHeader("Authorization", "Bearer $token")
+            .build()
 
-        try {
-            val request = Request.Builder()
-                .url("$apiBase/logs")
-                .addHeader("Authorization", "Bearer $token")
-                .build()
-            val response = httpClient.newCall(request).execute()
-
-            if (!response.isSuccessful) {
-                return@withContext Result.failure(
-                    Exception("HTTP ${response.code}: ${response.body?.string()}")
-                )
+        // A single failed download used to abort the whole import. Retry
+        // transient failures (network IO, HTTP 5xx) with exponential backoff;
+        // 4xx and auth stay permanent and return immediately.
+        var lastError: Exception = Exception("fetchLogs: no attempt made")
+        repeat(DOWNLOAD_MAX_RETRIES + 1) { attempt ->
+            try {
+                val response = httpClient.newCall(request).execute()
+                if (response.isSuccessful) {
+                    val body = response.body?.string()
+                        ?: return@withContext Result.failure(Exception("Leere Antwort"))
+                    // API may return {"logs": [...]} or raw [...] — handle both
+                    val logs = if (body.trimStart().startsWith("[")) {
+                        json.decodeFromString<List<KilterLog>>(body)
+                    } else {
+                        json.decodeFromString<KilterLogsResponse>(body).logs
+                    }
+                    // /logs returns the whole logbook as a single JSON array
+                    // and ignores pagination params — limit/offset/page/cursor
+                    // were all verified no-ops against the live API, so one
+                    // fetch is complete. This count log is a tripwire: if a
+                    // server-side cap ever truncates a very large logbook, the
+                    // number surfaces here.
+                    Log.i(TAG, "fetchLogs: ${logs.size} logs")
+                    return@withContext Result.success(logs)
+                }
+                val bodyText = response.body?.string().orEmpty().take(MAX_ERR_BODY)
+                response.close()
+                if (response.code !in 500..599) {
+                    return@withContext Result.failure(Exception("HTTP ${response.code}: $bodyText"))
+                }
+                lastError = Exception("HTTP ${response.code}: $bodyText")
+                Log.w(TAG, "fetchLogs HTTP ${response.code} (attempt ${attempt + 1})")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: java.io.IOException) {
+                lastError = e
+                Log.w(TAG, "fetchLogs IO error (attempt ${attempt + 1}): ${e.message}")
+            } catch (e: Exception) {
+                // Parse errors and the like are not worth retrying.
+                Log.e(TAG, "fetchLogs failed", e)
+                return@withContext Result.failure(e)
             }
-
-            val body = response.body?.string()
-                ?: return@withContext Result.failure(Exception("Leere Antwort"))
-            // API may return {"logs": [...]} or raw [...] — handle both
-            val logs = if (body.trimStart().startsWith("[")) {
-                json.decodeFromString<List<KilterLog>>(body)
-            } else {
-                json.decodeFromString<KilterLogsResponse>(body).logs
+            if (attempt < DOWNLOAD_MAX_RETRIES) {
+                delay(DOWNLOAD_BACKOFF_MS shl attempt)
             }
-            Result.success(logs)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Log.e(TAG, "fetchLogs failed", e)
-            Result.failure(e)
         }
+        Log.e(TAG, "fetchLogs failed after ${DOWNLOAD_MAX_RETRIES + 1} attempts", lastError)
+        return@withContext Result.failure(lastError)
     }
 
     /**
@@ -823,7 +854,7 @@ class KilterApiClient @Inject constructor(
 
             if (!response.isSuccessful) {
                 return@withContext Result.failure(
-                    Exception("HTTP ${response.code}: ${response.body?.string()}")
+                    Exception("HTTP ${response.code}: ${response.body?.string().orEmpty().take(MAX_ERR_BODY)}")
                 )
             }
             Result.success(Unit)
@@ -852,14 +883,23 @@ class KilterApiClient @Inject constructor(
      * Strategy: extract from the user's existing Kilter logs.
      */
     suspend fun resolveWallContext(): ResolveResult = withContext(Dispatchers.IO) {
-        val result = fetchLogs()
-        val logs = result.getOrElse {
+        val logs = fetchLogs().getOrElse {
             return@withContext ResolveResult.Error(it.message ?: "fetch failed")
         }
+        resolveWallContextFromLogs(logs)
+    }
+
+    /**
+     * Wall-context resolution from an ALREADY-fetched log list — the pure
+     * core of [resolveWallContext] without the network call. Lets a caller
+     * that has just fetched the logs (e.g. the import path) reuse them
+     * instead of downloading the whole logbook a second time.
+     */
+    fun resolveWallContextFromLogs(logs: List<KilterLog>): ResolveResult {
         val log = logs.firstOrNull {
             it.gymUuid.isNotEmpty() && it.wallUuid.isNotEmpty() && it.productLayoutUuid.isNotEmpty()
-        } ?: return@withContext ResolveResult.NoLogsYet
-        ResolveResult.Found(WallContext(log.gymUuid, log.wallUuid, log.productLayoutUuid))
+        } ?: return ResolveResult.NoLogsYet
+        return ResolveResult.Found(WallContext(log.gymUuid, log.wallUuid, log.productLayoutUuid))
     }
 
     /**
