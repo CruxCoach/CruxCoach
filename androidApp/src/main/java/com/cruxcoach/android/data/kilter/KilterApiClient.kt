@@ -158,10 +158,10 @@ private data class KilterLogsResponse(
 )
 
 /**
- * Tolerated envelope wrappers for `GET /circuits/{userUuid}` in case the
- * server ever wraps the (currently bare-array) response — either the
- * paginated `{items:[...],total}` shape the `/circuits` collection endpoint
- * uses, or a `{circuits:[...]}` object. [circuitsOrItems] merges both.
+ * Envelope for `GET /api/circuits`. The live response is the paginated
+ * `{items:[...],total}` shape; we also accept a `{circuits:[...]}` object so
+ * a server shape change doesn't silently drop every circuit. [circuitsOrItems]
+ * merges both.
  */
 @Serializable
 private data class KilterCircuitsResponse(
@@ -261,12 +261,13 @@ data class KilterCircuitClimb(
 )
 
 /**
- * One circuit ("list") from `GET /api/circuits/{userUuid}` — the
- * authenticated user's own circuits, returned as a bare JSON array.
+ * One circuit ("list") from `GET /api/circuits` — the authenticated user's
+ * own circuits, returned inside the `{items:[...],total}` envelope.
  *
  * ⚠ The wire shape of a NON-EMPTY circuit is inferred, not yet observed
- * live: the probe account carries zero circuits, so the exact membership
- * embedding could not be captured. The official app has no
+ * live: every test account reachable so far carries zero circuits over the
+ * REST path, so the exact membership embedding could not be captured. The
+ * official app has no
  * `/circuits/{uuid}/climbs` sub-route (confirmed 404), so members are
  * assumed embedded in the circuit object. We tolerate every plausible
  * embedding — [circuitClimbs] (objects), [climbUuids] (bare uuids), and
@@ -787,25 +788,27 @@ class KilterApiClient @Inject constructor(
 
     /**
      * Fetch the authenticated user's OWN circuits ("lists") from
-     * `GET /api/circuits/{userUuid}`. Live shape is a bare JSON array; we
-     * tolerate a `{items:[...]}`/`{circuits:[...]}` envelope the same way
-     * [fetchLogs] tolerates the `/logs` variants, so a future server wrap
-     * doesn't silently drop every circuit.
+     * `GET /api/circuits`. The Bearer token identifies the account, so the
+     * route takes no path/query params — mirroring the official app's
+     * "circuits" screen. Live shape is the paginated `{items:[...],total}`
+     * envelope; we also tolerate a bare array or a `{circuits:[...]}` wrap so
+     * a server shape change doesn't silently drop every circuit.
+     *
+     * (The earlier `/circuits/{userUuid}` route returned an empty array for
+     * every account — it is a per-user *collection under* /circuits that the
+     * server doesn't populate; the list lives at the collection root.)
      *
      * Compliance: a SINGLE GET of the user's own circuits with their own
-     * Bearer token. No params, no bulk/all crawl — mirrors the official
-     * app's "circuits" screen. Token via the same [ensureValidToken]
+     * Bearer token. No bulk/all crawl. Token via the same [ensureValidToken]
      * refresh path as [fetchLogs].
      */
     suspend fun fetchCircuits(): Result<List<KilterCircuit>> = withContext(Dispatchers.IO) {
         val token = ensureValidToken()
             ?: return@withContext Result.failure(KilterApiException(KilterAuthResult.Error.Reason.NotAuthenticated, "no valid token"))
-        val userUuid = tokenStore.getUserUuid()
-            ?: return@withContext Result.failure(KilterApiException(KilterAuthResult.Error.Reason.NotAuthenticated, "no user uuid"))
 
         try {
             val request = Request.Builder()
-                .url("$apiBase/circuits/$userUuid")
+                .url("$apiBase/circuits")
                 .addHeader("Authorization", "Bearer $token")
                 .build()
             val response = httpClient.newCall(request).execute()
