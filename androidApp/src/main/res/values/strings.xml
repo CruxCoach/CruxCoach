@@ -1967,6 +1967,12 @@
     <string name="whatsnew_moonboard_hint">Also new: a worldwide board-locations map and a find-your-gym board picker — both in Settings.</string>
     <string name="whatsnew_moonboard_action_now">Pick my board</string>
     <string name="whatsnew_moonboard_action_later">Later</string>
+    <!-- 0.2.1 highlights (consolidated; carries the 0.2.0 board recap as hint) -->
+    <string name="whatsnew_021_title">New in 0.2.1</string>
+    <string name="whatsnew_021_body">• Zone search — in the hold search, drag a frame on the board photo and find every climb that lives entirely inside it.\n\n• Kilter circuits arrive as lists — logging in with your Kilter account now also imports your circuits.\n\n• Share any climb — every climb gets a link that opens straight in CruxCoach.\n\n• Lists across boards — saved lists now show all your climbs, each with its board badge and a board filter.</string>
+    <string name="whatsnew_021_hint">Easy to miss in 0.2.0: MoonBoard and the Aurora boards (Tension, Grasshopper and more), a worldwide board map and a find-your-gym picker — all in Settings.</string>
+    <string name="whatsnew_021_action_go">Got it</string>
+    <string name="whatsnew_021_action_boards">See boards</string>
     <!-- FEAT-031: Aurora-family boards what's-new -->
     <string name="whatsnew_aurora_title">New: Tension, Grasshopper &amp; more</string>
     <string name="whatsnew_aurora_body">0.2.0 also adds the Aurora-family boards — Tension, Grasshopper, Decoy, So iLL and Touchstone — alongside Kilter and MoonBoard. Browse each board\'s catalogue with the same grade, angle and setter filters, open a climb, and light it up on your board over Bluetooth.</string>

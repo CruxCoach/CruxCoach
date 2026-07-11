@@ -45,15 +45,24 @@ object WhatsNewItems {
      *  the board-locations map + find-your-gym picker folded in as a one-line
      *  hint — see the whatsnew_moonboard_* strings).
      *
-     *  sinceVersionCode is **7 (0.2.1), not 6**, on purpose. A 0.2.0 bug made
-     *  this popup dismissible by a stray scrim tap / back press, which marked it
-     *  seen (fixed in 0.2.1), so an unknown share of 0.1.4→0.2.0 upgraders never
-     *  actually read it. Bumping to 7 re-surfaces it exactly ONCE for everyone
-     *  arriving on 0.2.1 with lastSeen ≤ 6 — whether they came from 0.2.0
-     *  (lastSeen=6) or skipped straight from 0.1.4 (lastSeen=5). Keeping a single
-     *  entry (rather than adding a separate vc7 recap item) avoids a double-fire
-     *  for the 0.1.4→0.2.1 direct cohort. */
+     *  Superseded by [RELEASE_021]: the 0.2.0 recap now rides along as that
+     *  dialog's hint line instead of being a popup of its own. Declaration +
+     *  dialog kept for reference, no longer registered. */
     val MOONBOARD_SUPPORT = WhatsNewItem(id = "moonboard-support", sinceVersionCode = 7)
+
+    /** 0.2.1 highlights (zone search, Kilter circuits import, share links,
+     *  cross-board lists), with the 0.2.0 board-support recap folded in as a
+     *  hint line.
+     *
+     *  This single vc7 entry serves double duty on purpose. A 0.2.0 bug made
+     *  the upgrade popup dismissible by a stray scrim tap / back press, which
+     *  marked it seen (fixed in 0.2.1), so an unknown share of 0.1.4→0.2.0
+     *  upgraders never actually read the board-support announcement. Everyone
+     *  arriving on 0.2.1 with lastSeen ≤ 6 gets exactly ONE popup — 0.2.1
+     *  headlines up front, the missed 0.2.0 boards as the hint — whether they
+     *  came from 0.2.0 (lastSeen=6) or straight from 0.1.4 (lastSeen=5). A
+     *  separate recap item would double-fire for the direct-upgrade cohort. */
+    val RELEASE_021 = WhatsNewItem(id = "release-0.2.1", sinceVersionCode = 7)
 
     /** FEAT-015 — Board Locations Map (0.2.0). Headline feature; users
      *  upgrading from 0.1.4 have no other entry point to discover the
@@ -74,17 +83,17 @@ object WhatsNewItems {
     // The 0.2.0 board batch shows a SINGLE popup on upgrade. A 0.1.4 -> 0.2.0
     // upgrade previously fired all four vc6 dialogs back-to-back (MoonBoard,
     // Aurora boards, board-locations map, find-your-gym picker) — far too many
-    // popups. MOONBOARD_SUPPORT now renders a CONSOLIDATED board-support dialog
-    // (MoonBoard + Aurora headline, map + picker as a one-line hint), so the
-    // other three vc6 items are intentionally NOT registered here. Their
-    // declarations + dialogs are kept (still referenced by WhatsNewHost) for
-    // reference / future reuse. (MOONBOARD_SUPPORT itself sits at vc7, not vc6 —
-    // see its KDoc: a deliberate re-surface for users who missed the 0.2.0 popup
-    // because of the dismiss bug fixed in 0.2.1.)
+    // popups. RELEASE_021 renders a single CONSOLIDATED dialog (0.2.1
+    // headlines up front, the 0.2.0 board recap as a one-line hint), so the
+    // vc6 items and MOONBOARD_SUPPORT are intentionally NOT registered here.
+    // Their declarations + dialogs are kept (still referenced by WhatsNewHost)
+    // for reference / future reuse. (RELEASE_021 sits at vc7 and deliberately
+    // re-surfaces the 0.2.0 boards for users who missed that popup because of
+    // the dismiss bug fixed in 0.2.1 — see its KDoc.)
     val registry: List<WhatsNewItem> = listOf(
         NOSTR_BACKUP,
         AURORA_JSON_IMPORT,
-        MOONBOARD_SUPPORT,
+        RELEASE_021,
     )
 }
 
@@ -173,6 +182,11 @@ fun WhatsNewHost(
     val current = pending.firstOrNull() ?: return
 
     when (current.id) {
+        WhatsNewItems.RELEASE_021.id ->
+            Release021WhatsNewDialog(
+                onDismiss = { vm.dismissCurrent() },
+                onNavigateToSettings = onNavigateToSettings,
+            )
         WhatsNewItems.MOONBOARD_SUPPORT.id ->
             MoonBoardWhatsNewDialog(
                 onDismiss = { vm.dismissCurrent() },
