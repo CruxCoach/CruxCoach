@@ -7,6 +7,7 @@ import android.net.Uri
 import android.util.Log
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -43,7 +44,14 @@ class UpdaterRepository @Inject constructor(
     @param:Named("io") private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
 
-    private val scope = CoroutineScope(SupervisorJob() + ioDispatcher)
+    private val exceptionHandler = CoroutineExceptionHandler { _, e ->
+        // Fire-and-forget updater coroutines have no caller to observe a throw.
+        // SupervisorJob isolates siblings but does NOT swallow exceptions, so
+        // without this a transient DownloadManager/DataStore/notifier failure
+        // would surface as a whole-app crash. Log and drop instead.
+        Log.e(TAG, "Uncaught exception in updater coroutine", e)
+    }
+    private val scope = CoroutineScope(SupervisorJob() + ioDispatcher + exceptionHandler)
     private var downloadMonitorJob: Job? = null
 
     val state: Flow<UpdaterState> = preferences.state
@@ -205,7 +213,17 @@ class UpdaterRepository @Inject constructor(
         downloadMonitorJob = scope.launch {
             var lastNotifyPct = -1
             while (true) {
-                val status = downloader.query(id) ?: break
+                // Guard the poll query: DownloadManager.query can throw
+                // (SQLiteException / IllegalStateException on some OEMs). A
+                // transient throw ends the monitor cleanly — the pipeline stays
+                // DOWNLOADING and resumePendingDownloadIfAny re-attaches on the
+                // next launch — instead of crashing out of the loop.
+                val status = try {
+                    downloader.query(id)
+                } catch (e: Exception) {
+                    Log.w(TAG, "event=download_query_threw ending monitor", e)
+                    null
+                } ?: break
                 when (status.state) {
                     ApkDownloader.State.SUCCESSFUL -> {
                         _downloadProgress.value = 100
@@ -260,6 +278,22 @@ class UpdaterRepository @Inject constructor(
                 }
                 notifier.showCertMismatch(info)
             }
+            is IntegrityVerifier.Result.SignerUnavailable -> {
+                // The signer cert couldn't be extracted (ROM quirk + no usable
+                // v1 signature). Re-downloading can't fix this, so hand off to
+                // the release page like a cert mismatch instead of looping on
+                // CORRUPT forever — a retry there could never install.
+                Log.w(TAG, "Signer unavailable ($result) — handoff to browser")
+                downloader.clearCacheFor(info.versionName)
+                preferences.update {
+                    it.copy(
+                        pendingDownloadId = null,
+                        pipelineStage = PipelineStage.BLOCKED_CERT_MISMATCH,
+                        lastCheckResult = CheckResult.BLOCKED_CERT_MISMATCH,
+                    )
+                }
+                notifier.showCertMismatch(info)
+            }
             IntegrityVerifier.Result.PayloadMismatch,
             IntegrityVerifier.Result.PayloadMissing,
             is IntegrityVerifier.Result.PayloadError,
@@ -295,9 +329,16 @@ class UpdaterRepository @Inject constructor(
         }
     }
 
-    /** Called by [ApkInstallStatusReceiver]. */
-    fun onInstallOutcome(outcome: InstallOutcome) {
+    /**
+     * Called by [ApkInstallStatusReceiver]. [onDone] fires when the async
+     * terminal-status work finishes so the receiver's `goAsync()` PendingResult
+     * can be finished — otherwise the STATUS_SUCCESS cleanup (state reset, APK
+     * delete, notification cancel) can be dropped when the OS reaps the
+     * freshly-replaced idle process before this coroutine runs.
+     */
+    fun onInstallOutcome(outcome: InstallOutcome, onDone: () -> Unit = {}) {
         scope.launch {
+            try {
             val prefs = preferences.snapshot()
             val info = prefs.pendingUpdate()
             when (outcome) {
@@ -336,6 +377,34 @@ class UpdaterRepository @Inject constructor(
                         }
                     }
                 }
+            }
+            } finally {
+                onDone()
+            }
+        }
+    }
+
+    /**
+     * Called by [ApkInstallStatusReceiver] on STATUS_PENDING_USER_ACTION.
+     * Surfaces the system install-consent dialog reliably: a manifest
+     * BroadcastReceiver's direct startActivity can be silently dropped by
+     * background-activity-start limits (API 29+, stricter on 34/35) with no
+     * exception thrown, stranding the pipeline at READY_TO_INSTALL. We attempt
+     * the direct launch (smooth for the foreground "Installieren" tap) AND
+     * always post a tappable notification whose contentIntent is the consent
+     * IntentSender, so the user's tap provides a fresh background-activity-start
+     * grant either way. [onDone] finishes the receiver's goAsync() PendingResult.
+     */
+    fun onConsentRequired(consentIntent: Intent, onDone: () -> Unit = {}) {
+        scope.launch {
+            try {
+                consentIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                runCatching { context.startActivity(consentIntent) }
+                    .onFailure { Log.w(TAG, "Direct consent launch failed", it) }
+                val info = preferences.snapshot().pendingUpdate()
+                if (info != null) notifier.showConsentRequired(info, consentIntent)
+            } finally {
+                onDone()
             }
         }
     }
