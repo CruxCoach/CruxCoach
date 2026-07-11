@@ -3,7 +3,9 @@
 build/
 
 # Claude Code
-.claude/
+# No trailing slash: in some worktrees .claude is a symlink, which the
+# directory-only pattern ".claude/" does not match.
+.claude
 CLAUDE.md
 REFERENCE.md
 
