@@ -521,7 +521,6 @@ class BlossomUploader @Inject constructor(
          * (fresh test identity, BUD-01 + BUD-06 conformant upload of
          * an `application/octet-stream` blob, GET-verify, DELETE-cleanup):
          *
-         * - **blossom.primal.net**: free, accepts arbitrary blobs, fast.
          * - **nostr.download**: free, requires the BUD-06 headers we
          *   now send (X-SHA-256, X-Content-Length, X-Content-Type)
          *   — answered 400 "Missing X-SHA-256" before the headers
@@ -541,9 +540,17 @@ class BlossomUploader @Inject constructor(
          *
          * - blossom.nostr.build
          * - blossom.band (same infrastructure)
+         *
+         * Removed 2026-07-11 — **blossom.primal.net**: now returns 415
+         * "unsupported media type application/octet-stream" for app
+         * clients (it previously accepted arbitrary blobs). Same reason
+         * the Kilter board-db manifest dropped it 2026-07-04 (Cloudflare
+         * / media-type gate for client IPs). Verified failing end-to-end
+         * against a fresh backup; nostr.download + cdn.hzrd149.com are
+         * confirmed 200 for clients and remain the durable pair. A third
+         * client-verified mirror can be re-added once vetted.
          */
         val DEFAULT_SERVERS: List<String> = listOf(
-            "https://blossom.primal.net",
             "https://nostr.download",
             "https://cdn.hzrd149.com",
         )
