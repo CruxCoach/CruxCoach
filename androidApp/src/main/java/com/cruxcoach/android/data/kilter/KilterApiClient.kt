@@ -158,20 +158,6 @@ private data class KilterLogsResponse(
 )
 
 /**
- * Envelope for `GET /api/circuits`. The live response is the paginated
- * `{items:[...],total}` shape; we also accept a `{circuits:[...]}` object so
- * a server shape change doesn't silently drop every circuit. [circuitsOrItems]
- * merges both.
- */
-@Serializable
-private data class KilterCircuitsResponse(
-    val circuits: List<KilterCircuit> = emptyList(),
-    val items: List<KilterCircuit> = emptyList(),
-) {
-    fun circuitsOrItems(): List<KilterCircuit> = if (circuits.isNotEmpty()) circuits else items
-}
-
-/**
  * One climb row from `GET /api/climbs/logged` — the user's OWN logged
  * climbs, in the SAME envelope shape as `/climbs/curated`. Crucially this
  * INCLUDES new-world (PowerSync-only) climbs that never made it into our
@@ -261,22 +247,22 @@ data class KilterCircuitClimb(
 )
 
 /**
- * One circuit ("list") from `GET /api/circuits` — the authenticated user's
- * own circuits, returned inside the `{items:[...],total}` envelope.
+ * One circuit ("list") — the authenticated user's own circuit, folded out of
+ * Kilter's PowerSync `circuit_buckets[...]` by [KilterCircuitSyncParser].
  *
- * ⚠ The wire shape of a NON-EMPTY circuit is inferred, not yet observed
- * live: every test account reachable so far carries zero circuits over the
- * REST path, so the exact membership embedding could not be captured. The
- * official app has no
- * `/circuits/{uuid}/climbs` sub-route (confirmed 404), so members are
- * assumed embedded in the circuit object. We tolerate every plausible
- * embedding — [circuitClimbs] (objects), [climbUuids] (bare uuids), and
- * [climbs] (bare uuids) — and merge whichever the server actually sends via
- * [memberClimbUuids]. Field names mirror the app binary's Dart model
- * (circuitUuid/isPublic/creatorName/…); `ignoreUnknownKeys` drops the rest.
+ * The wire shape was captured live 2026-07-11 (circuits `test` + `Liked
+ * Climbs`): a `circuits` row (circuit_uuid/name/description/color/user_uuid/
+ * is_public/created_at) plus one `circuit_climbs` join row per member
+ * (circuit_uuid/climb_uuid/sort_order). The parser maps those members into
+ * [circuitClimbs]; [climbUuids]/[climbs] stay as tolerant fallbacks for any
+ * future embedding but are empty on the PowerSync path. [memberClimbUuids]
+ * merges + orders whichever is populated.
  *
- * Compliance: a SINGLE GET of the user's own circuits with their own Bearer
- * token; no bulk crawl, no other users' data.
+ * (This is no longer sourced from REST `GET /api/circuits` — that route
+ * returns curated circuits only and never a user's own; verified live.)
+ *
+ * Compliance: a single first-sync of the user's own buckets with their own
+ * Bearer token; no bulk crawl, no other users' data.
  */
 @Serializable
 data class KilterCircuit(
@@ -371,6 +357,9 @@ class KilterApiClient @Inject constructor(
         const val PROD_TOKEN_URL = "https://idp.kiltergrips.com/realms/kilter/protocol/openid-connect/token"
         const val PROD_LOGOUT_URL = "https://idp.kiltergrips.com/realms/kilter/protocol/openid-connect/logout"
         const val PROD_API_BASE = "https://portal.kiltergrips.com/api"
+        // Kilter's PowerSync endpoint. User circuits live ONLY here (REST
+        // /api/circuits is curated-only); [fetchCircuits] reads its stream.
+        const val PROD_SYNC_URL = "https://sync1.kiltergrips.com/sync/stream"
         const val CLIENT_ID = "kilter"
         // Cap on Kilter error-response bodies before they enter the
         // KilterPublishResult envelope (and from there logcat / DB
@@ -384,6 +373,14 @@ class KilterApiClient @Inject constructor(
 
         /** Base backoff between download retries; doubles per attempt. */
         const val DOWNLOAD_BACKOFF_MS = 1000L
+
+        // Backstops for the circuit sync stream. We normally disconnect the
+        // instant the (tiny) circuit buckets drain; these only bound a
+        // pathological bucket order so we never accidentally pull the giant
+        // global_climbs bucket. Circuit buckets empirically drain in <100
+        // lines / a few seconds.
+        const val SYNC_MAX_LINES = 4000
+        const val SYNC_MAX_MILLIS = 12_000L
     }
 
     // URL endpoints — `var` so unit tests can swap them for a
@@ -393,12 +390,14 @@ class KilterApiClient @Inject constructor(
     private var tokenUrl: String = PROD_TOKEN_URL
     private var logoutUrl: String = PROD_LOGOUT_URL
     private var apiBase: String = PROD_API_BASE
+    private var syncUrl: String = PROD_SYNC_URL
 
     @androidx.annotation.VisibleForTesting
     internal fun setEndpointsForTesting(base: String) {
         tokenUrl = "$base/realms/kilter/protocol/openid-connect/token"
         logoutUrl = "$base/realms/kilter/protocol/openid-connect/logout"
         apiBase = "$base/api"
+        syncUrl = "$base/sync/stream"
     }
 
     // encodeDefaults = true: the Kilter create-climb payload has many
@@ -787,45 +786,76 @@ class KilterApiClient @Inject constructor(
     }
 
     /**
-     * Fetch the authenticated user's OWN circuits ("lists") from
-     * `GET /api/circuits`. The Bearer token identifies the account, so the
-     * route takes no path/query params — mirroring the official app's
-     * "circuits" screen. Live shape is the paginated `{items:[...],total}`
-     * envelope; we also tolerate a bare array or a `{circuits:[...]}` wrap so
-     * a server shape change doesn't silently drop every circuit.
+     * Fetch the authenticated user's OWN circuits ("lists") from Kilter's
+     * PowerSync sync stream (`POST sync1.kiltergrips.com/sync/stream`).
      *
-     * (The earlier `/circuits/{userUuid}` route returned an empty array for
-     * every account — it is a per-user *collection under* /circuits that the
-     * server doesn't populate; the list lives at the collection root.)
+     * WHY NOT REST: the REST `GET /api/circuits` route returns only *curated*
+     * circuits — a user's own circuits never appear there (every variant
+     * probed 2026-07-11 returned total=0). User circuits live exclusively in
+     * PowerSync `circuit_buckets[...]`, so the "circuits → local list" import
+     * has to read the sync stream. The account's Keycloak token (the same one
+     * used for the REST log import) authorizes it.
      *
-     * Compliance: a SINGLE GET of the user's own circuits with their own
-     * Bearer token. No bulk/all crawl. Token via the same [ensureValidToken]
-     * refresh path as [fetchLogs].
+     * BOUNDED: we read the ndjson checkpoint and drain ONLY the small
+     * `circuit_buckets[...]`, disconnecting the instant they are complete —
+     * before the account's giant `global_climbs` bucket streams.
+     * [SYNC_MAX_LINES]/[SYNC_MAX_MILLIS] backstop a pathological bucket order.
+     *
+     * Compliance: a single first-sync of the user's own buckets with their own
+     * Bearer token; no bulk crawl of other users, no `global_climbs` pull.
+     * Token via the same [ensureValidToken] refresh path as [fetchLogs].
      */
     suspend fun fetchCircuits(): Result<List<KilterCircuit>> = withContext(Dispatchers.IO) {
         val token = ensureValidToken()
             ?: return@withContext Result.failure(KilterApiException(KilterAuthResult.Error.Reason.NotAuthenticated, "no valid token"))
 
+        val clientId = java.util.UUID.randomUUID().toString()
+        val payload =
+            """{"buckets":[],"include_checksum":true,"raw_data":true,"binary_data":false,"client_id":"$clientId","parameters":{}}"""
+        val request = Request.Builder()
+            .url(syncUrl)
+            .addHeader("Authorization", "Bearer $token")
+            .addHeader("Accept", "application/x-ndjson")
+            .post(payload.toRequestBody("application/json".toMediaType()))
+            .build()
+        val call = httpClient.newCall(request)
+
         try {
-            val request = Request.Builder()
-                .url("$apiBase/circuits")
-                .addHeader("Authorization", "Bearer $token")
-                .build()
-            val response = httpClient.newCall(request).execute()
-
+            val response = call.execute()
             if (!response.isSuccessful) {
-                return@withContext Result.failure(
-                    Exception("HTTP ${response.code}: ${response.body?.string()?.take(MAX_ERR_BODY)}")
-                )
+                val err = response.body?.string().orEmpty().take(MAX_ERR_BODY)
+                response.close()
+                return@withContext Result.failure(Exception("HTTP ${response.code}: $err"))
+            }
+            val source = response.body?.source()
+                ?: return@withContext Result.failure(Exception("empty sync stream"))
+
+            val parser = KilterCircuitSyncParser()
+            var lines = 0
+            val startMs = System.currentTimeMillis()
+            try {
+                while (true) {
+                    val line = source.readUtf8Line() ?: break
+                    if (line.isEmpty()) continue
+                    lines++
+                    if (parser.accept(line)) break
+                    if (lines >= SYNC_MAX_LINES) {
+                        Log.w(TAG, "fetchCircuits: line cap hit before circuit buckets drained")
+                        break
+                    }
+                    if (System.currentTimeMillis() - startMs > SYNC_MAX_MILLIS) {
+                        Log.w(TAG, "fetchCircuits: time cap hit before circuit buckets drained")
+                        break
+                    }
+                }
+            } finally {
+                // Stop the download so we never pull the giant global_climbs bucket.
+                call.cancel()
+                response.close()
             }
 
-            val body = response.body?.string()
-                ?: return@withContext Result.failure(Exception("empty /circuits response"))
-            val circuits = if (body.trimStart().startsWith("[")) {
-                json.decodeFromString<List<KilterCircuit>>(body)
-            } else {
-                json.decodeFromString<KilterCircuitsResponse>(body).circuitsOrItems()
-            }
+            val circuits = parser.circuits()
+            Log.i(TAG, "fetchCircuits (PowerSync): ${circuits.size} circuit(s) from $lines line(s)")
             Result.success(circuits)
         } catch (e: CancellationException) {
             throw e

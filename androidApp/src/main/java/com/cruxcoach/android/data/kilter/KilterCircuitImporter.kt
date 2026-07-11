@@ -6,10 +6,10 @@ import com.cruxcoach.util.DateTimeUtil
 
 /**
  * Imports the connected Kilter account's own circuits (the official app's
- * "lists") into the local `climb_lists` tables via the live API, mirroring
- * what the FEAT-005 Aurora-JSON path does — but from the credential-login
- * sync instead of an emailed export, and resolving members by climb uuid
- * rather than by name.
+ * "lists") into the local `climb_lists` tables, mirroring what the FEAT-005
+ * Aurora-JSON path does — but sourced from Kilter's PowerSync sync stream
+ * (via [KilterApiClient.fetchCircuits]) instead of an emailed export, and
+ * resolving members by climb uuid rather than by name.
  *
  * Shape of both writes matches the Aurora circuit importer so a circuit
  * imported by either path is a first-class list:
@@ -27,10 +27,6 @@ import com.cruxcoach.util.DateTimeUtil
  * regardless of whether the board DB currently mirrors that climb — an
  * unresolved uuid simply won't render until the catalogue catches up, the
  * same tolerance the Aurora path applies to unresolved names.
- *
- * ⚠ The circuit wire shape is inferred (the probe account has zero
- * circuits); see [KilterCircuit]. Live verification against a real circuit
- * is owed before relying on membership counts.
  */
 internal class KilterCircuitImporter(
     private val apiClient: KilterApiClient,

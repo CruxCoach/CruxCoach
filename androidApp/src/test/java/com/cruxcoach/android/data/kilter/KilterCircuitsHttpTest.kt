@@ -14,16 +14,14 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * HTTP-level tests for [KilterApiClient.fetchCircuits] — the
- * `GET /api/circuits` parser backing the circuit → local-list import. The
- * route takes no path/query params (the Bearer token identifies the account)
- * and the live shape is the `{items:[...],total}` envelope.
+ * HTTP-level tests for [KilterApiClient.fetchCircuits] — the PowerSync
+ * `POST /sync/stream` read backing the circuit → local-list import.
  *
- * ⚠ The NON-EMPTY circuit body here is inferred (see [KilterCircuit]) — every
- * reachable test account has zero circuits over REST, so these assertions pin
- * the tolerant parser (multiple membership embeddings, envelope + bare-array),
- * not a captured live payload. Live verification against a real circuit that
- * surfaces via REST is still owed.
+ * User circuits live ONLY in PowerSync `circuit_buckets[...]` (REST
+ * `/api/circuits` is curated-only, verified live 2026-07-11), so the fetch
+ * streams the sync checkpoint, drains just the circuit buckets and disconnects
+ * before `global_climbs`. These tests pin the request plumbing + a basic fold;
+ * [KilterCircuitSyncParserTest] exercises the ndjson fold in depth.
  */
 class KilterCircuitsHttpTest {
 
@@ -54,82 +52,52 @@ class KilterCircuitsHttpTest {
     }
 
     @Test
-    fun fetchCircuits_parses_items_envelope_and_hits_collection_root() = runTest {
-        val body = """
-            {
-              "items": [
-                {
-                  "circuitUuid": "c-1",
-                  "name": "Warmups",
-                  "description": "easy stuff",
-                  "color": "FF0000",
-                  "isPublic": false,
-                  "userUuid": "user-123",
-                  "createdAt": "2024-03-03T00:00:00Z",
-                  "updatedAt": "2024-03-04T00:00:00Z",
-                  "circuitClimbs": [
-                    {"climbUuid": "b", "sortOrder": 2},
-                    {"climbUuid": "a", "sortOrder": 1}
-                  ],
-                  "somethingUnknown": 42
-                }
-              ],
-              "total": 1
-            }
-        """.trimIndent()
-        server.enqueue(MockResponse().setResponseCode(200).setBody(body))
+    fun fetchCircuits_streams_powersync_and_posts_to_sync_stream() = runTest {
+        // checkpoint announces one 2-op circuit bucket; the data line delivers
+        // exactly those 2 ops so the fetch drains + disconnects before the
+        // (never-sent) checkpoint_complete.
+        val ndjson = listOf(
+            """{"checkpoint":{"buckets":[{"bucket":"circuit_buckets_c1","count":2}]}}""",
+            """{"data":{"bucket":"circuit_buckets_c1","data":[""" +
+                """{"op":"PUT","object_type":"circuits","object_id":"c-1","data":{"circuit_uuid":"c-1","name":"test","color":"FF0000","user_uuid":"user-123"}},""" +
+                """{"op":"PUT","object_type":"circuit_climbs","object_id":"c-1.climb-a","data":{"circuit_uuid":"c-1","climb_uuid":"climb-a","sort_order":1}}""" +
+                """]}}""",
+            """{"checkpoint_complete":{"last_op_id":"2"}}""",
+        ).joinToString("\n")
+        server.enqueue(MockResponse().setResponseCode(200).setBody(ndjson))
 
         val circuits = client.fetchCircuits().getOrThrow()
 
         assertEquals(1, circuits.size)
-        val c = circuits.first()
+        val c = circuits.single()
         assertEquals("c-1", c.circuitUuid)
-        assertEquals("Warmups", c.name)
+        assertEquals("test", c.name)
         assertEquals("FF0000", c.color)
-        // sortOrder drives ordering: climb "a" (1) before "b" (2).
-        assertEquals(listOf("a", "b"), c.memberClimbUuids())
+        assertEquals(listOf("climb-a"), c.memberClimbUuids())
 
         val request = server.takeRequest()
-        // Collection root, no per-user path segment and no query params.
-        assertEquals("/api/circuits", request.path)
+        assertEquals("POST", request.method)
+        assertEquals("/sync/stream", request.path)
         assertEquals("Bearer test-token", request.getHeader("Authorization"))
+        assertEquals("application/x-ndjson", request.getHeader("Accept"))
+        // A first-sync request: no local bucket state.
+        assertTrue(request.body.readUtf8().contains("\"buckets\":[]"))
     }
 
     @Test
-    fun fetchCircuits_merges_alternate_membership_embeddings_deduped() = runTest {
-        // A circuit that carries bare-uuid arrays instead of objects, with a
-        // duplicate across the two — memberClimbUuids must merge + dedup.
-        val body = """
-            [
-              {
-                "circuitUuid": "c-2",
-                "name": "Projects",
-                "climbUuids": ["x", "y"],
-                "climbs": ["y", "z"]
-              }
-            ]
-        """.trimIndent()
-        server.enqueue(MockResponse().setResponseCode(200).setBody(body))
+    fun fetchCircuits_empty_when_no_circuit_buckets() = runTest {
+        // Only global buckets in the checkpoint → nothing to import, and we
+        // stop immediately without reading any bucket data.
+        val ndjson =
+            """{"checkpoint":{"buckets":[{"bucket":"global_climbs[]","count":31000},{"bucket":"global_gyms[]","count":900}]}}"""
+        server.enqueue(MockResponse().setResponseCode(200).setBody(ndjson))
 
-        val c = client.fetchCircuits().getOrThrow().single()
-        assertEquals(listOf("x", "y", "z"), c.memberClimbUuids())
-    }
-
-    @Test
-    fun fetchCircuits_tolerates_items_envelope_and_empty() = runTest {
-        // A wrapped {items:[...]} envelope, then an empty array.
-        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"items":[{"circuitUuid":"c-3","name":"L"}],"total":1}"""))
-        assertEquals("c-3", client.fetchCircuits().getOrThrow().single().circuitUuid)
-
-        server.enqueue(MockResponse().setResponseCode(200).setBody("[]"))
         assertTrue(client.fetchCircuits().getOrThrow().isEmpty())
+        assertEquals("/sync/stream", server.takeRequest().path)
     }
 
     @Test
     fun fetchCircuits_no_token_returns_failure_without_http_call() = runTest {
-        // The collection route needs only the Bearer token; with no valid
-        // token we must fail before any network call (never a userUuid guard,
-        // which the route no longer uses).
         every { tokenStore.getAccessToken() } returns null
         every { tokenStore.isAccessTokenExpired() } returns true
 
