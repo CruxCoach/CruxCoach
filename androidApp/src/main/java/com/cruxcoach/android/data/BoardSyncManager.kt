@@ -67,6 +67,16 @@ class BoardSyncManager(
          *  (captive portal, dead TCP socket) would otherwise pin the
          *  in-app "Standorte werden geladen" snackbar indefinitely. */
         const val BACKFILL_TIMEOUT_MS = 120_000L
+        /** How long the local-share receiver keeps polling a 503-answering
+         *  sender for its board-DB snapshot. Generous on purpose — the
+         *  sender's copy + scrub + VACUUM may run minutes on a slow phone,
+         *  and every 503 poll proves the sender is alive (a dead one fails
+         *  the connect within [CONNECT_MAX_RETRIES] instead). */
+        const val SNAPSHOT_WAIT_MAX_MS = 15 * 60_000L
+        /** Consecutive connect failures before the local import gives up —
+         *  distinguishes "sender gone" (fail fast) from "sender busy
+         *  preparing" (503, keep polling). */
+        const val CONNECT_MAX_RETRIES = 3
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -928,10 +938,46 @@ class BoardSyncManager(
         scope.launch {
             val tempFile = File(appContext.cacheDir, "local_board.sqlite3")
             try {
-                // Download from local HTTP server
-                val connection = java.net.URL(url).openConnection() as java.net.HttpURLConnection
-                connection.connectTimeout = 5000
-                connection.readTimeout = 30000
+                // Poll the sender until its scrubbed board-DB snapshot is
+                // ready. The sender answers every request instantly: 200 +
+                // stream once the snapshot exists, 503 + Retry-After while it
+                // is still building (copy + scrub + VACUUM can take a while
+                // on a slow phone). Polling instead of one long silent wait
+                // means no read-timeout can ever race the snapshot build —
+                // the failure mode that surfaced as "timeout". Each poll also
+                // re-arms the sender's idle auto-shutdown and (on failure)
+                // re-triggers the build, so transient causes heal themselves.
+                val deadlineMs = System.currentTimeMillis() + SNAPSHOT_WAIT_MAX_MS
+                var connectFailures = 0
+                var connection: java.net.HttpURLConnection
+                while (true) {
+                    connection = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+                    connection.connectTimeout = 10_000
+                    connection.readTimeout = 60_000
+                    val code = try {
+                        connection.responseCode
+                    } catch (e: java.io.IOException) {
+                        // Connect-level hiccup (WiFi-Direct renegotiation,
+                        // sender busy). A dead sender fails all retries fast.
+                        connection.disconnect()
+                        if (++connectFailures > CONNECT_MAX_RETRIES) throw e
+                        Log.w(TAG, "Local import: connect failed (${e.message}), retry $connectFailures/$CONNECT_MAX_RETRIES")
+                        kotlinx.coroutines.delay(3_000)
+                        continue
+                    }
+                    connectFailures = 0
+                    if (code == java.net.HttpURLConnection.HTTP_OK) break
+                    val retryAfterSec = parseRetryAfterSeconds(connection.getHeaderField("Retry-After"))
+                    connection.errorStream?.close()
+                    connection.disconnect()
+                    if (code != java.net.HttpURLConnection.HTTP_UNAVAILABLE ||
+                        System.currentTimeMillis() >= deadlineMs
+                    ) {
+                        throw java.io.IOException("HTTP $code")
+                    }
+                    Log.i(TAG, "Local import: sender still preparing snapshot — retrying in ${retryAfterSec}s")
+                    kotlinx.coroutines.delay(retryAfterSec * 1000)
+                }
                 val totalBytes = connection.contentLengthLong
                 var bytesRead = 0L
                 connection.inputStream.use { input ->
@@ -1104,6 +1150,15 @@ class BoardSyncManager(
         }
     }
 }
+
+/**
+ * Parses a `Retry-After` header (seconds form) for the local-share snapshot
+ * poll, clamped to a sane [2s, 15s] window: never hammer the sender faster
+ * than every 2s, never let a bogus header stall a poll for minutes. The
+ * HTTP-date form and garbage both fall back to 5s.
+ */
+internal fun parseRetryAfterSeconds(header: String?): Long =
+    (header?.trim()?.toLongOrNull() ?: 5L).coerceIn(2L, 15L)
 
 /**
  * Observable progress of the board-catalogue deletion. [completions] is a

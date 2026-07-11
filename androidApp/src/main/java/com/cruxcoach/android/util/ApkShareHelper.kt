@@ -126,6 +126,11 @@ internal fun scrubAndCompactBoardDbSnapshot(snapshot: File) {
         android.database.sqlite.SQLiteDatabase.OPEN_READWRITE
     )
     try {
+        // This file is a throwaway private copy, rebuilt from scratch for
+        // every share session — durability against a crash is worthless, so
+        // skip the fsync storm. This is what turns the VACUUM of an ~85 MB
+        // multi-catalogue DB from minutes into seconds on phone flash.
+        db.rawQuery("PRAGMA synchronous=OFF", null).use { it.moveToFirst() }
         db.rawQuery("PRAGMA journal_mode=DELETE", null).use { it.moveToFirst() }
         for (statement in com.cruxcoach.android.data.LocalShareSchema.SNAPSHOT_SCRUB) {
             db.execSQL(statement)
@@ -159,8 +164,21 @@ class LocalApkServer(
     private var serverSocket: ServerSocket? = null
     private var running = false
     private var shutdownTimer: java.util.Timer? = null
+
+    /** Snapshot lifecycle. The build (copy + scrub + VACUUM of an ~85 MB DB)
+     *  can take minutes on a phone, so /board.db must NEVER block on it —
+     *  while BUILDING the request is answered 503 + Retry-After and the
+     *  receiver polls. FAILED re-arms on the next request, so transient
+     *  causes (a background sync holding the DB lock) heal themselves. */
+    private enum class SnapState { IDLE, BUILDING, READY, FAILED }
     private val snapshotLock = Any()
+    private var snapState = SnapState.IDLE
     private var snapshotFile: File? = null
+
+    /** Wall-clock of the last handled HTTP request — the auto-shutdown
+     *  timer re-arms while a receiver is actively talking to us (it polls
+     *  every few seconds while the snapshot builds, then streams). */
+    @Volatile private var lastActivityMs = System.currentTimeMillis()
     var onAutoShutdown: (() -> Unit)? = null
     /** Set after start() — used to build deep link URLs in the landing page. */
     var baseUrl: String? = null
@@ -204,6 +222,13 @@ class LocalApkServer(
             }
         }
         scheduleAutoShutdown()
+
+        // Kick the scrubbed-snapshot build the moment the server starts, so
+        // its (potentially minutes-long) VACUUM overlaps with the receiver
+        // installing the APK / connecting instead of blocking the /board.db
+        // request. If the receiver still arrives first, it gets 503 +
+        // Retry-After and polls — see serveBoardDb().
+        ensureSnapshotBuilding()
         return ss.localPort
     }
 
@@ -219,24 +244,41 @@ class LocalApkServer(
                 File(snap.path + "-shm").delete()
             }
             snapshotFile = null
+            snapState = SnapState.IDLE
         }
     }
 
-    private fun scheduleAutoShutdown() {
+    /**
+     * Idle-based auto-shutdown: fires only after [AUTO_SHUTDOWN_MS] with NO
+     * incoming request. A receiver polling for the snapshot (503 loop) or
+     * streaming the DB keeps [lastActivityMs] fresh, so an active transfer
+     * can never be cut mid-flight — the fixed 5-minute fuse could previously
+     * kill the server while the receiver was still waiting on the snapshot.
+     */
+    @Synchronized
+    private fun scheduleAutoShutdown(delayMs: Long = AUTO_SHUTDOWN_MS) {
+        shutdownTimer?.cancel()
         shutdownTimer = java.util.Timer("apk-server-timeout", true).apply {
             schedule(object : java.util.TimerTask() {
                 override fun run() {
-                    if (running) {
-                        Log.d("LocalApkServer", "Auto-shutdown after ${AUTO_SHUTDOWN_MS / 1000}s")
+                    if (!running) return
+                    val idleMs = System.currentTimeMillis() - lastActivityMs
+                    if (idleMs < AUTO_SHUTDOWN_MS) {
+                        // Someone talked to us since the fuse was lit — re-arm
+                        // for the remaining idle window.
+                        scheduleAutoShutdown(AUTO_SHUTDOWN_MS - idleMs)
+                    } else {
+                        Log.d("LocalApkServer", "Auto-shutdown after ${idleMs / 1000}s idle")
                         stop()
                         onAutoShutdown?.invoke()
                     }
                 }
-            }, AUTO_SHUTDOWN_MS)
+            }, delayMs)
         }
     }
 
     private fun handleClient(socket: Socket) {
+        lastActivityMs = System.currentTimeMillis()
         thread(isDaemon = true, name = "apk-client") {
             try {
                 val reader = socket.getInputStream().bufferedReader()
@@ -315,8 +357,19 @@ class LocalApkServer(
             serve404(out)
             return
         }
-        val db = if (snapshotDir != null) boardDbSnapshot(live) else null
+        if (snapshotDir == null) {
+            serve503(out)
+            return
+        }
+        // NEVER block this request thread on the snapshot build (it can take
+        // minutes) — that silent wait is exactly what ran the receiver into
+        // its socket read-timeout. Answer immediately: 200 + stream when
+        // READY, else (re)arm the build and tell the receiver to poll.
+        val db = synchronized(snapshotLock) {
+            if (snapState == SnapState.READY) snapshotFile?.takeIf { it.exists() } else null
+        }
         if (db == null) {
+            ensureSnapshotBuilding()
             serve503(out)
             return
         }
@@ -326,7 +379,55 @@ class LocalApkServer(
             "Content-Disposition: attachment; filename=\"cruxcoach-board.db\"\r\n" +
             "Connection: close\r\n\r\n"
         out.write(headers.toByteArray())
-        db.inputStream().use { it.copyTo(out, bufferSize = 65536) }
+        db.inputStream().use { input ->
+            val buffer = ByteArray(65536)
+            var read: Int
+            while (input.read(buffer).also { read = it } != -1) {
+                out.write(buffer, 0, read)
+                // Keep the idle fuse fresh for the whole (multi-minute over
+                // WiFi-Direct) transfer, not just its first byte.
+                lastActivityMs = System.currentTimeMillis()
+            }
+        }
+    }
+
+    /**
+     * Arms a background snapshot build unless one is already running or done.
+     * FAILED re-arms (each receiver poll retries), so transient causes — a
+     * catalogue sync briefly holding the board-DB write lock — heal without
+     * user interaction.
+     */
+    private fun ensureSnapshotBuilding() {
+        val live = boardDbFile ?: return
+        if (snapshotDir == null || !live.exists()) return
+        synchronized(snapshotLock) {
+            if (snapState == SnapState.BUILDING || snapState == SnapState.READY) return
+            snapState = SnapState.BUILDING
+        }
+        thread(isDaemon = true, name = "apk-snapshot-build") {
+            val startMs = System.currentTimeMillis()
+            val snap = buildBoardDbSnapshot(live)
+            synchronized(snapshotLock) {
+                // stop() may have raced us back to IDLE and cleaned up — don't
+                // resurrect state (or leave a stray file) for a dead server.
+                if (snapState != SnapState.BUILDING) {
+                    snap?.delete()
+                    return@thread
+                }
+                if (snap != null) {
+                    snapshotFile = snap
+                    snapState = SnapState.READY
+                } else {
+                    snapState = SnapState.FAILED
+                }
+            }
+            val secs = (System.currentTimeMillis() - startMs) / 1000
+            if (snap != null) {
+                Log.i("LocalApkServer", "board-DB snapshot ready in ${secs}s (${snap.length() / 1024 / 1024} MB)")
+            } else {
+                Log.w("LocalApkServer", "board-DB snapshot build failed after ${secs}s — will retry on next request")
+            }
+        }
     }
 
     /**
@@ -350,20 +451,26 @@ class LocalApkServer(
      *
      * @return the snapshot, or null when it could not be produced —
      *   the caller must fail the request rather than serve the live file.
+     *
+     * Runs on the [ensureSnapshotBuilding] worker thread — NOT under
+     * [snapshotLock] (the build takes minutes; holding the lock would make
+     * /board.db block instead of answering 503).
      */
-    private fun boardDbSnapshot(live: File): File? = synchronized(snapshotLock) {
-        snapshotFile?.takeIf { it.exists() }?.let { return it }
+    private fun buildBoardDbSnapshot(live: File): File? {
         val snap = File(snapshotDir, SNAPSHOT_NAME)
         val snapWal = File(snap.path + "-wal")
         val snapShm = File(snap.path + "-shm")
-        try {
+        return try {
             val db = android.database.sqlite.SQLiteDatabase.openDatabase(
                 live.absolutePath, null,
                 android.database.sqlite.SQLiteDatabase.OPEN_READWRITE
             )
             try {
                 // PRAGMAs return a result row on Android — rawQuery, not execSQL.
-                db.rawQuery("PRAGMA busy_timeout = 5000", null).use { it.moveToFirst() }
+                // 30s busy timeout: a catalogue sync's write bursts can hold the
+                // lock well past the previous 5s, failing the whole build for a
+                // transient reason.
+                db.rawQuery("PRAGMA busy_timeout = 30000", null).use { it.moveToFirst() }
                 // Best-effort pre-fold to keep the copied -wal small; the
                 // pair-copy below is correct even when this stays partial.
                 db.rawQuery("PRAGMA wal_checkpoint(TRUNCATE)", null).use { it.moveToFirst() }
@@ -383,7 +490,6 @@ class LocalApkServer(
                 db.close()
             }
             scrubAndCompactBoardDbSnapshot(snap)
-            snapshotFile = snap
             snap
         } catch (e: Exception) {
             Log.w("LocalApkServer", "board-DB snapshot failed — refusing to serve the live file", e)
