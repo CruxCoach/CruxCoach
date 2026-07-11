@@ -700,6 +700,7 @@
     <string name="board_filter_info_sort_quality_sends">Bewertung × Sends — zeigt Climbs, die beliebt UND gut bewertet sind.</string>
     <string name="board_filter_info_sort_moves">Anzahl der Züge des Climbs.</string>
     <string name="board_filter_info_sort_random">Mischt die passenden Climbs in zufälliger Reihenfolge.</string>
+    <string name="board_filter_info_sort_newest">Das Erstelldatum des Climbs — absteigend zeigt die neuesten zuerst.</string>
     <string name="board_filter_sort">Sortierung</string>
     <string name="board_filter_sort_asc">Aufsteigend</string>
     <string name="board_filter_sort_desc">Absteigend</string>
@@ -851,6 +852,12 @@
     <string name="board_holdsearch_heatmap">Heatmap</string>
     <string name="board_holdsearch_hold_search">Hold-Suche</string>
     <string name="board_holdsearch_hint">Tippe Holds auf dem Board an, um Climbs zu finden die diese Holds verwenden.</string>
+    <string name="board_holdsearch_zone_mode">Bereich wählen</string>
+    <string name="board_holdsearch_zone_hint">Ziehe mit einem Finger einen Rahmen um den Bereich. Es passen nur Climbs, die komplett im Bereich liegen.</string>
+    <string name="board_holdsearch_zone_active">Bereich aktiv</string>
+    <string name="board_holdsearch_zone_clear">Bereich entfernen</string>
+    <string name="board_holdsearch_zone_only">Bereichsfilter</string>
+    <string name="board_holdsearch_zone_filter_summary">Bereich → %d Climbs</string>
     <string name="board_holdsearch_holds_selected">%d Holds ausgewählt</string>
     <string name="board_holdsearch_reset">Zurücksetzen</string>
     <string name="board_holdsearch_searching">Suche…</string>
@@ -891,6 +898,8 @@
     <string name="board_ascent_benchmark_label">Benchmark:</string>
     <string name="board_ascent_benchmark_attempt">Benchmark-Versuch</string>
     <string name="board_ascent_attempts">Versuche: %d</string>
+    <string name="board_ascent_first_try">Top · 1. Versuch</string>
+    <string name="board_ascent_open_one">Offen · 1 Versuch</string>
     <string name="board_ascent_quality">Qualität:</string>
     <string name="board_ascent_comment">Kommentar (optional)</string>
 
@@ -921,9 +930,8 @@
     <string name="board_ble_location_disabled_message">Auf diesem Gerät müssen die Standortdienste (GPS) eingeschaltet sein, damit Bluetooth-Geräte gefunden werden können.</string>
     <string name="board_ble_session_active_title">Session aktiv</string>
     <string name="board_ble_session_active_message">Das Board wird vom Session-Host gesteuert. Deine Climbs werden über die Warteschlange an das Board gesendet.</string>
-    <string name="board_ble_legacy_warning_title">Experimentelle Board-Verbindung</string>
-    <string name="board_ble_legacy_warning_message">Auf Android-Versionen vor 12 ist die BLE-Verbindung instabil. Es kann zu Verbindungsabbrüchen kommen.</string>
-    <string name="board_ble_connect_anyway">Trotzdem verbinden</string>
+    <string name="board_ble_connect_failed_hint">Verbindung fehlgeschlagen. Stelle sicher, dass das Board eingeschaltet und in der Nähe ist, und tippe es erneut an.</string>
+    <string name="board_ble_open_location_settings">Standort-Einstellungen öffnen</string>
     <string name="board_ble_connected">Verbunden</string>
     <string name="board_ble_sending">Sende an Board…</string>
     <string name="board_ble_disconnect">Trennen</string>
@@ -970,11 +978,11 @@
     <string name="board_sync_no_network_title">Keine Netzwerkverbindung</string>
     <string name="board_sync_no_network_message">Für die Synchronisierung wird eine aktive Internetverbindung benötigt.</string>
     <string name="board_sync_open_settings">Einstellungen öffnen</string>
-    <string name="board_sync_wifi_required_title">WLAN erforderlich</string>
-    <string name="board_sync_wifi_required_message">Der Download der Board-Datenbank ist ca. 85 MB groß und kann nur über WLAN gestartet werden.</string>
-    <string name="board_sync_wifi_settings">WLAN-Einstellungen</string>
+    <string name="board_sync_metered_confirm_title">Über mobile Daten laden?</string>
+    <string name="board_sync_metered_confirm_message">Der Download der Board-Datenbank ist ca. 85 MB groß. Du bist nicht im WLAN — der Download nutzt mobile Daten, wofür Kosten anfallen können.</string>
+    <string name="board_sync_metered_confirm_action">Mobile Daten nutzen</string>
     <string name="board_sync_no_network_banner">Kein Netzwerk verfügbar</string>
-    <string name="board_sync_no_wifi_banner">Kein WLAN — Online-Download nur über WLAN möglich</string>
+    <string name="board_sync_no_wifi_banner">Kein WLAN — der Download nutzt mobile Daten</string>
     <string name="board_sync_to_browser">Fertig</string>
     <string name="board_sync_db_title">Board-Datenbanken</string>
     <string name="board_sync_db_description">Lädt die aktuellen Kletterkataloge aller unterstützten Boards herunter (~85 MB). WLAN empfohlen.</string>
@@ -1027,9 +1035,18 @@
     <string name="kilter_import_part_projects">%d Projekte</string>
     <string name="kilter_import_part_own">%d eigene Climbs</string>
     <string name="kilter_import_part_catalogue">%d Climbs nachgeladen</string>
+    <string name="kilter_import_part_circuits">%d Listen</string>
     <string name="kilter_import_summary_with_dupes" formatted="false">%1$s (%2$d bereits vorhanden)</string>
     <string name="kilter_sync_success">Sync abgeschlossen: %1$d heruntergeladen, %2$d hochgeladen</string>
     <string name="kilter_sync_error">Sync fehlgeschlagen: %s</string>
+    <string name="kilter_import_error_network">Import fehlgeschlagen — bitte prüfe deine Internetverbindung und versuche es erneut.</string>
+    <string name="kilter_import_error_auth">Deine Kilter-Sitzung ist abgelaufen. Bitte melde dich erneut an.</string>
+    <string name="kilter_import_error_generic">Import fehlgeschlagen. Bitte versuche es erneut.</string>
+    <string name="kilter_import_empty">Noch keine Begehungen in deinem Kilter-Logbuch gefunden.</string>
+    <string name="kilter_import_retry">Erneut versuchen</string>
+    <string name="kilter_import_board_sync_pending">Der Board-Katalog wird noch geladen. Du kannst jetzt importieren — Namen und Schwierigkeiten erscheinen automatisch, sobald er fertig ist.</string>
+    <string name="kilter_preview_failed">Anmeldung erfolgreich, aber dein Kilter-Logbuch konnte nicht geladen werden: %1$s</string>
+    <string name="kilter_sync_upload_failed">Sync abgeschlossen — %1$d Einträge importiert, aber der Upload deiner lokalen Sends ist fehlgeschlagen. Wird beim nächsten Sync erneut versucht.</string>
     <string name="kilter_no_new">Keine neuen Begehungen gefunden</string>
 
     <string name="board_sync_step_prepare_db">Datenbank vorbereiten</string>
@@ -1186,7 +1203,7 @@
     <!-- Board Ascent Types -->
     <string name="board_ascent_send">Send</string>
     <string name="board_ascent_attempt">Versuch</string>
-    <string name="board_ascent_attempts_count">%d Versuche</string>
+    <string name="board_ascent_attempts_count">Offen · %d Versuche</string>
 
     <!-- Dropdown -->
     <string name="dropdown_selection_placeholder">Auswahl…</string>
@@ -1207,7 +1224,7 @@
     <string name="ble_unknown">Unbekannt</string>
     <string name="ble_unknown_climb">Unbekannter Climb</string>
     <string name="ble_your_climb">Dein Climb</string>
-    <string name="board_ascent_tries">%d Tries</string>
+    <string name="board_ascent_tries">Top · %d Versuche</string>
     <string name="board_climb_frames">%d Frames</string>
     <string name="board_climb_sends_count">%d sends</string>
     <string name="board_detail_benchmark">Benchmark</string>
@@ -1225,6 +1242,8 @@
     <string name="board_heatmap_start">Start-Holds</string>
     <string name="board_holdsearch_filter_summary">%1$d Holds → %2$d Climbs</string>
     <string name="board_list_climb_count">%d Climbs</string>
+    <string name="board_list_filter_all">Alle</string>
+    <string name="board_list_unavailable_count">%d nicht angezeigt — Board nicht geladen</string>
     <string name="board_list_on_board_count">%1$d von %2$d auf diesem Board</string>
     <string name="board_list_default_name">Liste</string>
     <string name="board_list_empty_message">Füge Climbs über den Browser hinzu</string>
@@ -1296,6 +1315,7 @@
     <string name="board_session_label">Session</string>
     <string name="board_sort_quality_sends">Sends × Qualität</string>
     <string name="board_sort_random">Zufällig</string>
+    <string name="board_sort_newest">Neueste</string>
     <string name="board_stats_activity">Aktivität</string>
     <string name="board_stats_personal_heatmap">Meine Sends — Heatmap</string>
     <string name="board_stats_heatmap_section">Heatmap — %1$s</string>
@@ -1307,7 +1327,7 @@
     <string name="board_stats_board_comparison">Board-Vergleich</string>
     <string name="board_stats_board_comparison_board">Board</string>
     <string name="board_stats_attempt">Versuch</string>
-    <string name="board_stats_current_streak">Aktueller Streak</string>
+    <string name="board_stats_avg_sessions_week">Sessions/Woche (8 W.)</string>
     <string name="board_stats_date_range">Zeitraum…</string>
     <string name="board_stats_flash_rate">Flash-Rate</string>
     <string name="board_stats_flash_send_attempt">Flash / Send / Versuch</string>
@@ -1323,7 +1343,7 @@
     <string name="board_stats_interval_30d">30 Tage</string>
     <string name="board_stats_interval_90d">90 Tage</string>
     <string name="board_stats_interval_all">Gesamt</string>
-    <string name="board_stats_longest_streak">Längster Streak</string>
+    <string name="board_stats_week_streak">Wochen-Serie</string>
     <string name="board_stats_most_sends_day">Meiste Sends/Tag</string>
     <string name="board_stats_outcome_distribution">Ergebnis-Verteilung</string>
     <string name="board_stats_period_comparison">Perioden-Vergleich</string>
@@ -1914,6 +1934,7 @@
     <string name="board_send_error_active_not_moonboard">Dein aktives Board ist kein MoonBoard — wechsle es in den Einstellungen, um diesen Climb zu senden.</string>
     <string name="board_send_error_moonboard_variant_mismatch">Dieser Climb gehört zu einer anderen MoonBoard-Variante als dein aktives Board.</string>
     <string name="board_send_warning_holds_not_lit">Einige Griffe liegen außerhalb deiner Board-Größe und wurden nicht beleuchtet.</string>
+    <string name="board_send_error_climb_off_board">Die Griffe dieses Climbs passen nicht auf dein aktives Board — wechsle Board oder Größe in den Einstellungen, um ihn zu senden.</string>
     <string name="board_sync_error_download">Download fehlgeschlagen. Bitte prüfe deine Internetverbindung und versuche es erneut.</string>
     <string name="board_sync_error_update_offline">Aktualisierung nicht möglich. Bestehende Daten bleiben erhalten.</string>
     <string name="board_sync_error_import">Import fehlgeschlagen. Bitte später erneut versuchen.</string>
@@ -1949,6 +1970,12 @@
     <string name="whatsnew_moonboard_hint">Außerdem neu: eine weltweite Board-Standortkarte und ein „Finde deine Halle"-Board-Picker — beides in den Einstellungen.</string>
     <string name="whatsnew_moonboard_action_now">Board wählen</string>
     <string name="whatsnew_moonboard_action_later">Später</string>
+    <!-- 0.2.1-Highlights (konsolidiert; 0.2.0-Board-Recap als Hint) -->
+    <string name="whatsnew_021_title">Neu in 0.2.1</string>
+    <string name="whatsnew_021_body">• Bereichssuche — zieh in der Hold-Suche einen Rahmen aufs Board-Foto und finde alle Climbs, die komplett darin liegen.\n\n• Kilter-Circuits werden Listen — der Login mit deinem Kilter-Account importiert jetzt auch deine Circuits.\n\n• Jeden Climb teilen — jeder Climb bekommt einen Link, der direkt in CruxCoach öffnet.\n\n• Listen über alle Boards — gespeicherte Listen zeigen jetzt alle deine Climbs, mit Board-Badge und Board-Filter.</string>
+    <string name="whatsnew_021_hint">In 0.2.0 leicht zu übersehen: MoonBoard und die Aurora-Boards (Tension, Grasshopper u.&#160;a.), eine weltweite Board-Karte und ein „Finde deine Halle"-Picker — alles in den Einstellungen.</string>
+    <string name="whatsnew_021_action_go">Alles klar</string>
+    <string name="whatsnew_021_action_boards">Boards ansehen</string>
     <!-- FEAT-031: Aurora-Boards (What's New) -->
     <string name="whatsnew_aurora_title">Neu: Tension, Grasshopper &amp; mehr</string>
     <string name="whatsnew_aurora_body">0.2.0 bringt zusätzlich die Aurora-Boards — Tension, Grasshopper, Decoy, So iLL und Touchstone — neben Kilter und MoonBoard. Durchsuche den Katalog jedes Boards mit denselben Filtern für Grad, Winkel und Setter, öffne einen Boulder und lass ihn per Bluetooth auf deinem Board aufleuchten.</string>

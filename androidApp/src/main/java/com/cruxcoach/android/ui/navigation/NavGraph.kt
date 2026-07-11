@@ -219,11 +219,21 @@ fun CruxCoachNavHost(
     LaunchedEffect(deepLinkRoute) {
         val route = deepLinkRoute ?: return@LaunchedEffect
         when {
+            route.startsWith("board_climb_detail/") ->
+                // Replace an already-open climb detail. The detail VM reads its
+                // climbUuid once at init from SavedStateHandle, so reusing the
+                // existing entry via launchSingleTop would keep the old climb
+                // when a link is tapped while viewing another one. popUpTo the
+                // detail pattern (a no-op when none is open) forces a fresh
+                // entry with a VM that reads the new uuid.
+                navController.navigate(route) {
+                    launchSingleTop = true
+                    popUpTo(Routes.BOARD_CLIMB_DETAIL) { inclusive = true }
+                }
             route == Routes.ANNOUNCEMENTS ||
             route == Routes.DEV_CHAT ||
             route == Routes.SETTINGS ||
-            route.startsWith("message_thread/") ||
-            route.startsWith("board_climb_detail/") ->
+            route.startsWith("message_thread/") ->
                 navController.navigate(route) { launchSingleTop = true }
             route.startsWith("board_sync") -> {
                 // Deep link: board_sync?localDbUrl=http://...

@@ -181,23 +181,45 @@ jobs:
               "$NAME" "$NAME" "$PRERELEASE")")
           [ "$PATCH_CODE" = "200" ] || { echo "PATCH failed: $PATCH_CODE"; exit 1; }
 
-          # Upload APK
-          APK_CODE=$(curl -sS -o /tmp/apk_upload.json -w '%{http_code}' -X POST \
-            -H "Authorization: token ${CODEBERG_TOKEN}" \
-            -F "attachment=@${APK};filename=CruxCoach-${TAG}.apk" \
-            "${API}/releases/${RELEASE_ID}/assets")
-          [ "$APK_CODE" = "201" ] || { echo "APK upload failed: $APK_CODE"; cat /tmp/apk_upload.json; exit 1; }
-
           # Generate SHA-256 sidecar in coreutils `sha256sum` format.
           # Required by in-app UpdateChecker (rejects releases without .apk.sha256).
           SHA_FILE="${APK}.sha256"
           (cd "$(dirname "$APK")" && sha256sum "$(basename "$APK")" > "$(basename "$APK").sha256")
 
-          # Upload SHA-256 sidecar
-          SHA_CODE=$(curl -sS -o /tmp/sha_upload.json -w '%{http_code}' -X POST \
-            -H "Authorization: token ${CODEBERG_TOKEN}" \
-            -F "attachment=@${SHA_FILE};filename=CruxCoach-${TAG}.apk.sha256" \
-            "${API}/releases/${RELEASE_ID}/assets")
-          [ "$SHA_CODE" = "201" ] || { echo "SHA-256 upload failed: $SHA_CODE"; cat /tmp/sha_upload.json; exit 1; }
+          # Upload SHA-256 sidecar FIRST, then the APK. The updater ignores a
+          # release unless BOTH assets exist, so a job that dies between the
+          # two uploads must not leave the deceptive state "APK present,
+          # sidecar missing" — that looks complete to a human but is invisible
+          # to every in-app updater, and the existing tag stops CI from
+          # rebuilding it. With the tiny sidecar first, the long risky APK
+          # upload is the last step: if it fails, the run is red and the
+          # release is obviously incomplete. Both uploads retry transient
+          # failures like the release POST above.
+          upload_asset() {
+            local FILE="$1" FILENAME="$2" CODE
+            for ATTEMPT in 1 2 3; do
+              CODE=$(curl -sS -o /tmp/asset_upload.json -w '%{http_code}' -X POST \
+                -H "Authorization: token ${CODEBERG_TOKEN}" \
+                -F "attachment=@${FILE};filename=${FILENAME}" \
+                "${API}/releases/${RELEASE_ID}/assets")
+              [ "$CODE" = "201" ] && return 0
+              echo "Upload of ${FILENAME} failed (attempt ${ATTEMPT}): ${CODE}"
+              cat /tmp/asset_upload.json
+              sleep 3
+            done
+            return 1
+          }
+          upload_asset "$SHA_FILE" "CruxCoach-${TAG}.apk.sha256" || exit 1
+          upload_asset "$APK" "CruxCoach-${TAG}.apk" || exit 1
 
-          echo "Release $NAME published with APK + SHA-256 sidecar"
+          # Post-verify: read the release back and require BOTH asset names.
+          # Catches every remaining partial-upload path loudly instead of
+          # shipping a release the updater silently rejects.
+          ASSETS=$(curl -sS -H "Authorization: token ${CODEBERG_TOKEN}" \
+            "${API}/releases/${RELEASE_ID}" | grep -o '"name":"[^"]*"')
+          echo "$ASSETS" | grep -q "CruxCoach-${TAG}.apk\"" \
+            || { echo "Post-verify: APK asset missing"; exit 1; }
+          echo "$ASSETS" | grep -q "CruxCoach-${TAG}.apk.sha256" \
+            || { echo "Post-verify: sha256 sidecar missing"; exit 1; }
+
+          echo "Release $NAME published with APK + SHA-256 sidecar (verified)"

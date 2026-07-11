@@ -53,8 +53,8 @@ class IntegrityVerifier(
             sha256OfApkSigner(apkFile)
         } catch (e: Exception) {
             Log.w(TAG, "Extracting APK signer failed", e)
-            return Result.PayloadError(e.message ?: e.javaClass.simpleName)
-        } ?: return Result.PayloadError("No signing certificate in APK")
+            return Result.SignerUnavailable(e.message ?: e.javaClass.simpleName)
+        } ?: return Result.SignerUnavailable("No signing certificate in APK")
 
         val pin = pinStore.getOrTofu()
         if (!hexEqualsConstantTime(signerHash, pin.certSha256Hex)) {
@@ -196,6 +196,17 @@ class IntegrityVerifier(
                 "CertMismatch(expected=${expected.redactHash()}, actual=${actual.redactHash()})"
         }
         data class PayloadError(val message: String) : Result
+
+        /**
+         * The signing certificate could not be extracted from the APK at all
+         * (every PackageManager path returned null AND the ZIP v1-signature
+         * fallback found no cert). Unlike [PayloadMismatch]/[PayloadError]
+         * this is NOT fixable by re-downloading — it's a ROM/signing-scheme
+         * edge (e.g. a v2/v3-only APK on a ROM where getPackageArchiveInfo
+         * returns null) — so the caller hands off to the release page instead
+         * of looping on a corrupt-retry that can never succeed.
+         */
+        data class SignerUnavailable(val message: String) : Result
     }
 
     companion object {

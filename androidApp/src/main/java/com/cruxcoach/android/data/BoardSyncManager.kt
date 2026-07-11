@@ -5,6 +5,7 @@ import android.util.Log
 import com.cruxcoach.android.R
 import com.cruxcoach.android.data.BoardDatabaseImporter.ImportStep
 import com.cruxcoach.domain.board.BoardBrand
+import com.cruxcoach.android.data.blossom.BlossomSyncException
 import com.cruxcoach.android.data.blossom.BlossomSyncManager
 import com.cruxcoach.android.notification.BoardSyncWorker
 import com.cruxcoach.android.util.isNetworkAvailable
@@ -66,6 +67,16 @@ class BoardSyncManager(
          *  (captive portal, dead TCP socket) would otherwise pin the
          *  in-app "Standorte werden geladen" snackbar indefinitely. */
         const val BACKFILL_TIMEOUT_MS = 120_000L
+        /** How long the local-share receiver keeps polling a 503-answering
+         *  sender for its board-DB snapshot. Generous on purpose — the
+         *  sender's copy + scrub + VACUUM may run minutes on a slow phone,
+         *  and every 503 poll proves the sender is alive (a dead one fails
+         *  the connect within [CONNECT_MAX_RETRIES] instead). */
+        const val SNAPSHOT_WAIT_MAX_MS = 15 * 60_000L
+        /** Consecutive connect failures before the local import gives up —
+         *  distinguishes "sender gone" (fail fast) from "sender busy
+         *  preparing" (503, keep polling). */
+        const val CONNECT_MAX_RETRIES = 3
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -278,8 +289,16 @@ class BoardSyncManager(
         }
     }
 
-    fun dismissWifiDialog() {
-        _state.update { it.copy(showWifiDialog = false) }
+    fun dismissMeteredConfirm() {
+        _state.update { it.copy(showMeteredConfirmDialog = false) }
+    }
+
+    /** Consent action of the metered-download dialog: the user explicitly
+     *  chose to pull the full catalogue over mobile data (one-time consent;
+     *  the background auto-sync paths stay WiFi-only). */
+    fun confirmMeteredSync() {
+        _state.update { it.copy(showMeteredConfirmDialog = false) }
+        startApiSync(bypassWifi = true)
     }
 
     fun dismissNetworkDialog() {
@@ -431,8 +450,8 @@ class BoardSyncManager(
         _state.update { it.copy(pendingLocalImportUrl = null) }
     }
 
-    fun startApiSync() {
-        Log.d(TAG, "startApiSync() called, isSyncing=${_state.value.isSyncing}")
+    fun startApiSync(bypassWifi: Boolean = false) {
+        Log.d(TAG, "startApiSync() called, isSyncing=${_state.value.isSyncing}, bypassWifi=$bypassWifi")
         if (_state.value.isSyncing) return
 
         checkNetwork()
@@ -441,8 +460,14 @@ class BoardSyncManager(
             _state.update { it.copy(showNetworkDialog = true) }
             return
         }
-        if (!_state.value.wifiConnected) {
-            _state.update { it.copy(showWifiDialog = true) }
+        // Not on WiFi: no hard block anymore — ask instead. The consent dialog
+        // warns about the ~85 MB mobile-data download; its confirm re-enters
+        // via confirmMeteredSync() with bypassWifi=true (the same path the
+        // explicit per-board Kilter reload from the sync-status list already
+        // uses). Background auto-sync (syncIfStale / periodic worker /
+        // missing-catalogue autoload) never reaches this prompt — WiFi-only.
+        if (!bypassWifi && !_state.value.wifiConnected) {
+            _state.update { it.copy(showMeteredConfirmDialog = true) }
             return
         }
 
@@ -551,6 +576,11 @@ class BoardSyncManager(
         //    download; a semaphore keeps PARALLEL_DOWNLOADS workers busy with
         //    whichever chunk is next in line.
         val chunkFiles = mutableMapOf<String, File>()
+        // Chunks whose every mirror failed this pass. Recorded (not thrown) so a
+        // single unreachable chunk can no longer sink the entire Kilter sync — we
+        // import the chunks that DID arrive, save only their hashes, and let the
+        // next sync re-fetch just the missing ones via getChangedChunks.
+        val failedChunks = mutableListOf<String>()
         try {
             val totalAllBytes = chunksToDownload.sumOf { it.size }
             val completedBytes = AtomicLong(0)
@@ -561,32 +591,58 @@ class BoardSyncManager(
                     async {
                         permits.withPermit {
                             val outputFile = File(appContext.cacheDir, "blossom_${chunk.name}.sqlite3")
-                            blossomSyncManager.downloadAndDecompressChunk(
-                                chunk = chunk,
-                                outputFile = outputFile,
-                                onProgress = { bytesRead, totalBytes ->
-                                    val cumulative = completedBytes.get() + bytesRead
-                                    _state.update { it.copy(
-                                        importStep = ImportStep.DownloadChunk(
-                                            chunkName = chunk.name,
-                                            chunkIndex = idx,
-                                            totalChunks = chunksToDownload.size,
-                                            bytesRead = bytesRead,
-                                            totalBytes = totalBytes,
-                                            cumulativeBytesRead = cumulative,
-                                            cumulativeTotalBytes = totalAllBytes
-                                        )
-                                    ) }
+                            try {
+                                blossomSyncManager.downloadAndDecompressChunk(
+                                    chunk = chunk,
+                                    outputFile = outputFile,
+                                    onProgress = { bytesRead, totalBytes ->
+                                        val cumulative = completedBytes.get() + bytesRead
+                                        _state.update { it.copy(
+                                            importStep = ImportStep.DownloadChunk(
+                                                chunkName = chunk.name,
+                                                chunkIndex = idx,
+                                                totalChunks = chunksToDownload.size,
+                                                bytesRead = bytesRead,
+                                                totalBytes = totalBytes,
+                                                cumulativeBytesRead = cumulative,
+                                                cumulativeTotalBytes = totalAllBytes
+                                            )
+                                        ) }
+                                    }
+                                )
+                                synchronized(chunkFiles) {
+                                    chunkFiles[chunk.name] = outputFile
                                 }
-                            )
-                            completedBytes.addAndGet(chunk.size)
-                            synchronized(chunkFiles) {
-                                chunkFiles[chunk.name] = outputFile
+                                Log.d(TAG, "Chunk ${chunk.name} downloaded+decompressed: ${outputFile.length()} bytes")
+                            } catch (e: Exception) {
+                                // Every mirror for this chunk failed (downloadAndVerifyChunk
+                                // already retried all mirrors twice). Drop the partial temp
+                                // file and record the miss instead of propagating — one bad
+                                // chunk must not abort the whole sync and throw away the
+                                // ~200-chunk download. Its hash stays unsaved so the next
+                                // sync re-fetches only this chunk.
+                                outputFile.delete()
+                                synchronized(failedChunks) { failedChunks.add(chunk.name) }
+                                Log.w(TAG, "Chunk ${chunk.name} failed all mirrors — skipping this pass", e)
+                            } finally {
+                                // Advance the cumulative counter regardless so the progress
+                                // bar still reaches 100% when some chunks were skipped.
+                                completedBytes.addAndGet(chunk.size)
                             }
-                            Log.d(TAG, "Chunk ${chunk.name} downloaded+decompressed: ${outputFile.length()} bytes")
                         }
                     }
                 }.awaitAll()
+            }
+
+            if (chunkFiles.isEmpty()) {
+                // Every chunk failed every mirror — a real failure, not partial
+                // progress. Throw so the run is marked failed and BoardSyncWorker
+                // retries, instead of importing nothing and marking the sync
+                // complete (which on a fresh install would leave an empty catalogue
+                // flagged as "already imported").
+                throw BlossomSyncException(
+                    "Kilter sync failed: all ${chunksToDownload.size} chunk(s) failed every mirror"
+                )
             }
 
             // 4. Group chunks by type and import
@@ -628,9 +684,27 @@ class BoardSyncManager(
             ) }
             refreshDenormalizedData()
 
-            // 6. Save chunk hashes for incremental updates
+            // 6. Save chunk hashes for incremental updates — ONLY for chunks that
+            // actually downloaded + imported this pass. A skipped (failed) chunk
+            // keeps its old/absent hash so the next sync's getChangedChunks still
+            // reports it as changed and re-fetches just that chunk.
             chunksToDownload.forEach { chunk ->
-                blossomSyncManager.saveChunkHash(chunk.name, chunk.sha256)
+                if (chunkFiles.containsKey(chunk.name)) {
+                    blossomSyncManager.saveChunkHash(chunk.name, chunk.sha256)
+                }
+            }
+            if (failedChunks.isNotEmpty()) {
+                // Partial success: the imported chunks + their saved hashes are
+                // durable, so the sync still reports complete (the user sees the
+                // data that arrived). getChangedChunks will re-report the skipped
+                // chunks on the next sync and the catalogue converges — no full
+                // re-download, no hard failure.
+                Log.w(
+                    TAG,
+                    "Kilter sync imported ${chunkFiles.size}/${chunksToDownload.size} chunks; " +
+                        "${failedChunks.size} failed all mirrors, will retry next sync: " +
+                        failedChunks.take(8).joinToString()
+                )
             }
 
             // 7. MoonBoard catalogue — synced as part of the board-data sync.
@@ -797,7 +871,7 @@ class BoardSyncManager(
      * Reports into the per-board map so the row shows the same step checklist.
      */
     fun loadBoardCatalogue(brand: BoardBrand) {
-        if (brand == BoardBrand.KILTER) { startApiSync(); return }
+        if (brand == BoardBrand.KILTER) { startApiSync(bypassWifi = true); return }
         if (!claimSyncSlot(ImportStep.FetchingManifest)) return
         // Board-specific load: clear the Kilter importStep the slot-claim set so
         // only this board's row shows progress (not a phantom Kilter row).
@@ -864,10 +938,46 @@ class BoardSyncManager(
         scope.launch {
             val tempFile = File(appContext.cacheDir, "local_board.sqlite3")
             try {
-                // Download from local HTTP server
-                val connection = java.net.URL(url).openConnection() as java.net.HttpURLConnection
-                connection.connectTimeout = 5000
-                connection.readTimeout = 30000
+                // Poll the sender until its scrubbed board-DB snapshot is
+                // ready. The sender answers every request instantly: 200 +
+                // stream once the snapshot exists, 503 + Retry-After while it
+                // is still building (copy + scrub + VACUUM can take a while
+                // on a slow phone). Polling instead of one long silent wait
+                // means no read-timeout can ever race the snapshot build —
+                // the failure mode that surfaced as "timeout". Each poll also
+                // re-arms the sender's idle auto-shutdown and (on failure)
+                // re-triggers the build, so transient causes heal themselves.
+                val deadlineMs = System.currentTimeMillis() + SNAPSHOT_WAIT_MAX_MS
+                var connectFailures = 0
+                var connection: java.net.HttpURLConnection
+                while (true) {
+                    connection = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+                    connection.connectTimeout = 10_000
+                    connection.readTimeout = 60_000
+                    val code = try {
+                        connection.responseCode
+                    } catch (e: java.io.IOException) {
+                        // Connect-level hiccup (WiFi-Direct renegotiation,
+                        // sender busy). A dead sender fails all retries fast.
+                        connection.disconnect()
+                        if (++connectFailures > CONNECT_MAX_RETRIES) throw e
+                        Log.w(TAG, "Local import: connect failed (${e.message}), retry $connectFailures/$CONNECT_MAX_RETRIES")
+                        kotlinx.coroutines.delay(3_000)
+                        continue
+                    }
+                    connectFailures = 0
+                    if (code == java.net.HttpURLConnection.HTTP_OK) break
+                    val retryAfterSec = parseRetryAfterSeconds(connection.getHeaderField("Retry-After"))
+                    connection.errorStream?.close()
+                    connection.disconnect()
+                    if (code != java.net.HttpURLConnection.HTTP_UNAVAILABLE ||
+                        System.currentTimeMillis() >= deadlineMs
+                    ) {
+                        throw java.io.IOException("HTTP $code")
+                    }
+                    Log.i(TAG, "Local import: sender still preparing snapshot — retrying in ${retryAfterSec}s")
+                    kotlinx.coroutines.delay(retryAfterSec * 1000)
+                }
                 val totalBytes = connection.contentLengthLong
                 var bytesRead = 0L
                 connection.inputStream.use { input ->
@@ -1042,6 +1152,15 @@ class BoardSyncManager(
 }
 
 /**
+ * Parses a `Retry-After` header (seconds form) for the local-share snapshot
+ * poll, clamped to a sane [2s, 15s] window: never hammer the sender faster
+ * than every 2s, never let a bogus header stall a poll for minutes. The
+ * HTTP-date form and garbage both fall back to 5s.
+ */
+internal fun parseRetryAfterSeconds(header: String?): Long =
+    (header?.trim()?.toLongOrNull() ?: 5L).coerceIn(2L, 15L)
+
+/**
  * Observable progress of the board-catalogue deletion. [completions] is a
  * monotonic success counter so the Settings UI can show the success banner
  * exactly once per finished run — a plain running-flag transition could not
@@ -1059,7 +1178,9 @@ data class BoardSyncState(
     val networkAvailable: Boolean = true,
     val wifiConnected: Boolean = false,
     val showNetworkDialog: Boolean = false,
-    val showWifiDialog: Boolean = false,
+    /** Metered-download consent: set when a user-triggered full sync starts
+     *  without WiFi; confirm proceeds over mobile data, dismiss cancels. */
+    val showMeteredConfirmDialog: Boolean = false,
     val importStep: ImportStep? = null,
     /**
      * Progress of the MoonBoard catalogue sync (FEAT-027), tracked

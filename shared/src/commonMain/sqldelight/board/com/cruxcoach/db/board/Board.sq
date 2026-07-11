@@ -256,6 +256,7 @@ SELECT
     COALESCE(c.description, '') AS description,
     c.is_nomatch, c.frames_pace, c.hsm, c.move_count,
     c.source, c.created_by_pubkey, c.sync_status, c.origin, c.kilter_status,
+    c.created_at,
     cs.angle, cs.difficulty_average, cs.quality_average,
     cs.ascensionist_count, cs.benchmark_difficulty
 FROM climbs c
@@ -550,6 +551,17 @@ SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardB
 browseByAscensionistsAsc:
 SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND ((difficulty_average >= :minDiff AND difficulty_average <= :maxDiff) OR (:showUngraded = 1 AND difficulty_average IS NULL)) AND COALESCE(ascensionist_count, 0) >= :minAsc AND (hsm & :hsmExcludedMask) = 0 AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left < c.edge_left AND ps.edge_right > c.edge_right AND ps.edge_bottom < c.edge_bottom AND ps.edge_top > c.edge_top)))) ORDER BY ascensionist_count ASC LIMIT :limit OFFSET :offset;
 
+-- Newest-first: ORDER BY climbs.created_at (exposed by climb_browse since
+-- 23.sqm). created_at is TEXT in two shapes — catalogue rows
+-- 'YYYY-MM-DD HH:MM:SS(.f)', community/local rows ISO-8601 — lexicographic
+-- order is date-correct across both. NULL (unknown date) sorts as smallest,
+-- so DESC natively trails those rows; ASC carries the usual IS NULL tiebreak.
+browseByNewestDesc:
+SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND ((difficulty_average >= :minDiff AND difficulty_average <= :maxDiff) OR (:showUngraded = 1 AND difficulty_average IS NULL)) AND COALESCE(ascensionist_count, 0) >= :minAsc AND (hsm & :hsmExcludedMask) = 0 AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left < c.edge_left AND ps.edge_right > c.edge_right AND ps.edge_bottom < c.edge_bottom AND ps.edge_top > c.edge_top)))) ORDER BY created_at DESC LIMIT :limit OFFSET :offset;
+
+browseByNewestAsc:
+SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND ((difficulty_average >= :minDiff AND difficulty_average <= :maxDiff) OR (:showUngraded = 1 AND difficulty_average IS NULL)) AND COALESCE(ascensionist_count, 0) >= :minAsc AND (hsm & :hsmExcludedMask) = 0 AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left < c.edge_left AND ps.edge_right > c.edge_right AND ps.edge_bottom < c.edge_bottom AND ps.edge_top > c.edge_top)))) ORDER BY created_at IS NULL, created_at ASC LIMIT :limit OFFSET :offset;
+
 -- Browse query restricted to CruxCoach-side climbs (community-published
 -- + user's local drafts). Returns the FULL filtered set in one go —
 -- no pagination — because the cruxcoach-side row count is tiny next
@@ -700,6 +712,13 @@ SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardB
 
 searchByAscensionistsAsc:
 SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND (name LIKE '%' || :query || '%' OR setter_username LIKE '%' || :query || '%') AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND (hsm & :hsmExcludedMask) = 0 AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left < c.edge_left AND ps.edge_right > c.edge_right AND ps.edge_bottom < c.edge_bottom AND ps.edge_top > c.edge_top)))) ORDER BY ascensionist_count ASC LIMIT :limit OFFSET :offset;
+
+-- Newest-first search twins (see browseByNewestDesc for the timestamp notes).
+searchByNewestDesc:
+SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND (name LIKE '%' || :query || '%' OR setter_username LIKE '%' || :query || '%') AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND (hsm & :hsmExcludedMask) = 0 AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left < c.edge_left AND ps.edge_right > c.edge_right AND ps.edge_bottom < c.edge_bottom AND ps.edge_top > c.edge_top)))) ORDER BY created_at DESC LIMIT :limit OFFSET :offset;
+
+searchByNewestAsc:
+SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND (name LIKE '%' || :query || '%' OR setter_username LIKE '%' || :query || '%') AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND (hsm & :hsmExcludedMask) = 0 AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left < c.edge_left AND ps.edge_right > c.edge_right AND ps.edge_bottom < c.edge_bottom AND ps.edge_top > c.edge_top)))) ORDER BY created_at IS NULL, created_at ASC LIMIT :limit OFFSET :offset;
 
 searchByNameDesc:
 SELECT * FROM climb_browse WHERE layout_id = :layoutId AND board_brand = :boardBrand AND (name LIKE '%' || :query || '%' OR setter_username LIKE '%' || :query || '%') AND angle = :angle AND frames_count >= :minFrames AND frames_count <= :maxFrames AND (hsm & :hsmExcludedMask) = 0 AND (:selProductSizeId <= 0 OR EXISTS (SELECT 1 FROM product_sizes ps JOIN climbs c ON c.uuid = climb_browse.uuid WHERE ps.id = :selProductSizeId AND ps.board_brand = :boardBrand AND (c.edge_left IS NULL OR (ps.edge_left < c.edge_left AND ps.edge_right > c.edge_right AND ps.edge_bottom < c.edge_bottom AND ps.edge_top > c.edge_top)))) ORDER BY name DESC LIMIT :limit OFFSET :offset;
@@ -1990,7 +2009,11 @@ SELECT uuid, layout_id, setter_username, name, frames,
        -- (its layout_id stays MoonBoard's) → a brand/layout mismatch that
        -- misroutes render/BLE/editor caps. Round-tripped so the restored
        -- draft keeps its brand.
-       board_brand
+       board_brand,
+       -- Kilter publish authorship. NULL means "unknown author → not
+       -- publishable", so dropping it on restore silently bricked
+       -- re-publish/update of an own Kilter-published climb.
+       kilter_author_uuid
 FROM climbs
 WHERE origin = 'cruxcoach'
   AND is_deleted = 0
@@ -2065,7 +2088,7 @@ INSERT OR IGNORE INTO climbs(
     created_by_pubkey, frames_hash,
     nostr_event_id, nostr_d_tag, nostr_publish_via,
     kilter_status, kilter_synced_at, kilter_publish_via, kilter_error,
-    board_brand)
+    board_brand, kilter_author_uuid)
 VALUES (
     :uuid, :layout_id, :setter_username, :name, :frames,
     1, 1, :edge_left, :edge_right, :edge_bottom, :edge_top, :created_at,
@@ -2077,7 +2100,7 @@ VALUES (
     -- Restored verbatim from the backup; an old (pre-FEAT-031) envelope
     -- with no board_brand maps to 'kilter' on the Kotlin side, matching
     -- the column DEFAULT — so legacy backups are unaffected.
-    :board_brand
+    :board_brand, :kilter_author_uuid
 );
 
 -- Fill in the previously-NULL Nostr/Kilter publish metadata that the v3
@@ -2095,7 +2118,8 @@ UPDATE climbs SET
     kilter_status       = COALESCE(kilter_status,       :kilter_status),
     kilter_synced_at    = COALESCE(kilter_synced_at,    :kilter_synced_at),
     kilter_publish_via  = COALESCE(kilter_publish_via,  :kilter_publish_via),
-    kilter_error        = COALESCE(kilter_error,        :kilter_error)
+    kilter_error        = COALESCE(kilter_error,        :kilter_error),
+    kilter_author_uuid  = COALESCE(kilter_author_uuid,  :kilter_author_uuid)
 WHERE uuid = :uuid AND origin = 'cruxcoach';
 
 -- Insert/refresh climb_stats for a local climb at a given angle (setter

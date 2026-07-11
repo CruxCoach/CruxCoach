@@ -28,6 +28,7 @@ class BoardRepositoryImpl(
         syncStatus: String? = null,
         nostrEventId: String? = null,
         boardBrand: String = "kilter",
+        createdAt: String? = null,
     ) = ClimbWithStats(
         uuid = uuid, layoutId = layoutId, setterUsername = setterUsername,
         name = name, frames = frames, framesCount = framesCount,
@@ -44,6 +45,7 @@ class BoardRepositoryImpl(
         syncStatus = syncStatus,
         nostrEventId = nostrEventId,
         boardBrand = boardBrand,
+        createdAt = createdAt,
     )
 
     // ── Climb Queries ──────────────────────────────────────────
@@ -61,6 +63,7 @@ class BoardRepositoryImpl(
         source = it.source,
         syncStatus = it.sync_status,
         boardBrand = it.board_brand,
+        createdAt = it.created_at,
     )
 
     override fun searchClimbsByName(query: String, angle: Int, layoutId: Int, boardBrand: String, sortField: ClimbSortField, sortDirection: SortDirection, limit: Int, offset: Int, climbType: ClimbTypeFilter, selProductSizeId: Int, hsmExcludedMask: Long): List<ClimbWithStats> {
@@ -80,6 +83,7 @@ class BoardRepositoryImpl(
             ClimbSortField.NAME -> if (desc) q.searchByNameDesc(lay, boardBrand, query, a, mn, mx, hm, sel, l, o) else q.searchByNameAsc(lay, boardBrand, query, a, mn, mx, hm, sel, l, o)
             ClimbSortField.QUALITY_SENDS -> if (desc) q.searchByQualitySendsDesc(lay, boardBrand, query, a, mn, mx, hm, sel, l, o) else q.searchByQualitySendsAsc(lay, boardBrand, query, a, mn, mx, hm, sel, l, o)
             ClimbSortField.HOLDS -> if (desc) q.searchByMovesDesc(lay, boardBrand, query, a, mn, mx, hm, sel, l, o) else q.searchByMovesAsc(lay, boardBrand, query, a, mn, mx, hm, sel, l, o)
+            ClimbSortField.NEWEST -> if (desc) q.searchByNewestDesc(lay, boardBrand, query, a, mn, mx, hm, sel, l, o) else q.searchByNewestAsc(lay, boardBrand, query, a, mn, mx, hm, sel, l, o)
             ClimbSortField.RANDOM -> q.searchRandom(lay, boardBrand, query, a, mn, mx, hm, sel, l, o)
             else -> if (desc) q.searchByAscensionistsDesc(lay, boardBrand, query, a, mn, mx, hm, sel, l, o) else q.searchByAscensionistsAsc(lay, boardBrand, query, a, mn, mx, hm, sel, l, o)
         }.executeAsList().map { mapBrowse(it) }
@@ -148,6 +152,7 @@ class BoardRepositoryImpl(
             ClimbSortField.NAME -> if (desc) q.browseByNameDesc(lay, boardBrand, a, mn, mx, minDifficulty, maxDifficulty, su, asc, hm, sel, l, o) else q.browseByNameAsc(lay, boardBrand, a, mn, mx, minDifficulty, maxDifficulty, su, asc, hm, sel, l, o)
             ClimbSortField.QUALITY_SENDS -> if (desc) q.browseByQualitySendsDesc(lay, boardBrand, a, mn, mx, minDifficulty, maxDifficulty, su, asc, hm, sel, l, o) else q.browseByQualitySendsAsc(lay, boardBrand, a, mn, mx, minDifficulty, maxDifficulty, su, asc, hm, sel, l, o)
             ClimbSortField.HOLDS -> if (desc) q.browseByMovesDesc(lay, boardBrand, a, mn, mx, minDifficulty, maxDifficulty, su, asc, hm, sel, l, o) else q.browseByMovesAsc(lay, boardBrand, a, mn, mx, minDifficulty, maxDifficulty, su, asc, hm, sel, l, o)
+            ClimbSortField.NEWEST -> if (desc) q.browseByNewestDesc(lay, boardBrand, a, mn, mx, minDifficulty, maxDifficulty, su, asc, hm, sel, l, o) else q.browseByNewestAsc(lay, boardBrand, a, mn, mx, minDifficulty, maxDifficulty, su, asc, hm, sel, l, o)
             ClimbSortField.RANDOM -> q.browseRandom(lay, boardBrand, a, mn, mx, minDifficulty, maxDifficulty, su, asc, hm, sel, l, o)
             else -> if (desc) q.browseByAscensionistsDesc(lay, boardBrand, a, mn, mx, minDifficulty, maxDifficulty, su, asc, hm, sel, l, o) else q.browseByAscensionistsAsc(lay, boardBrand, a, mn, mx, minDifficulty, maxDifficulty, su, asc, hm, sel, l, o)
         }.executeAsList().map { mapBrowse(it) }
@@ -1417,6 +1422,7 @@ class BoardRepositoryImpl(
                 kilterPublishVia = row.kilter_publish_via,
                 kilterError = row.kilter_error,
                 boardBrand = row.board_brand,
+                kilterAuthorUuid = row.kilter_author_uuid,
             )
         }
 
@@ -1463,6 +1469,7 @@ class BoardRepositoryImpl(
                 kilter_publish_via = row.kilterPublishVia,
                 kilter_error = row.kilterError,
                 board_brand = row.boardBrand,
+                kilter_author_uuid = row.kilterAuthorUuid,
             )
             // Capture changes() BEFORE the COALESCE-fill UPDATE — that
             // UPDATE always reports 1 affected row for an existing
@@ -1483,6 +1490,7 @@ class BoardRepositoryImpl(
                 kilter_synced_at = row.kilterSyncedAt,
                 kilter_publish_via = row.kilterPublishVia,
                 kilter_error = row.kilterError,
+                kilter_author_uuid = row.kilterAuthorUuid,
             )
             freshlyInserted
         }

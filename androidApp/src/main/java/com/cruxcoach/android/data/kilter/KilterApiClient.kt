@@ -4,6 +4,7 @@ import android.util.Log
 import com.cruxcoach.android.BuildConfig
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -232,6 +233,69 @@ data class KilterLoggedClimbsResponse(
     val climbStats: List<KilterLoggedClimbStat> = emptyList(),
 )
 
+/**
+ * One member row inside a circuit. The official app's `circuit_climbs`
+ * table is `(circuit_uuid, climb_uuid, sort_order)`; the wire form uses the
+ * same camelCase keys its Dart models serialize with. Only `climbUuid` is
+ * load-bearing for us; `sortOrder` (when present) preserves the user's
+ * intended ordering.
+ */
+@Serializable
+data class KilterCircuitClimb(
+    val climbUuid: String = "",
+    val sortOrder: Int? = null,
+)
+
+/**
+ * One circuit ("list") — the authenticated user's own circuit, folded out of
+ * Kilter's PowerSync `circuit_buckets[...]` by [KilterCircuitSyncParser].
+ *
+ * The wire shape was captured live 2026-07-11 (circuits `test` + `Liked
+ * Climbs`): a `circuits` row (circuit_uuid/name/description/color/user_uuid/
+ * is_public/created_at) plus one `circuit_climbs` join row per member
+ * (circuit_uuid/climb_uuid/sort_order). The parser maps those members into
+ * [circuitClimbs]; [climbUuids]/[climbs] stay as tolerant fallbacks for any
+ * future embedding but are empty on the PowerSync path. [memberClimbUuids]
+ * merges + orders whichever is populated.
+ *
+ * (This is no longer sourced from REST `GET /api/circuits` — that route
+ * returns curated circuits only and never a user's own; verified live.)
+ *
+ * Compliance: a single first-sync of the user's own buckets with their own
+ * Bearer token; no bulk crawl, no other users' data.
+ */
+@Serializable
+data class KilterCircuit(
+    val circuitUuid: String = "",
+    val name: String = "",
+    val description: String? = null,
+    /** Hex color without leading `#` (e.g. `"FF0000"`); stored verbatim. */
+    val color: String? = null,
+    val isPublic: Boolean = false,
+    val userUuid: String = "",
+    val createdAt: String = "",
+    val updatedAt: String = "",
+    val circuitClimbs: List<KilterCircuitClimb> = emptyList(),
+    val climbUuids: List<String> = emptyList(),
+    val climbs: List<String> = emptyList(),
+) {
+    /**
+     * Member climb uuids in intended order, merged across every tolerated
+     * embedding and de-duplicated. Objects with a [KilterCircuitClimb.sortOrder]
+     * are ordered by it (stable for ties / nulls-last); bare-uuid arrays keep
+     * their given order.
+     */
+    fun memberClimbUuids(): List<String> {
+        val fromObjects = circuitClimbs
+            .filter { it.climbUuid.isNotBlank() }
+            .sortedBy { it.sortOrder ?: Int.MAX_VALUE }
+            .map { it.climbUuid }
+        return (fromObjects + climbUuids + climbs)
+            .filter { it.isNotBlank() }
+            .distinct()
+    }
+}
+
 sealed class KilterAuthResult {
     data class Success(
         val userUuid: String,
@@ -293,6 +357,9 @@ class KilterApiClient @Inject constructor(
         const val PROD_TOKEN_URL = "https://idp.kiltergrips.com/realms/kilter/protocol/openid-connect/token"
         const val PROD_LOGOUT_URL = "https://idp.kiltergrips.com/realms/kilter/protocol/openid-connect/logout"
         const val PROD_API_BASE = "https://portal.kiltergrips.com/api"
+        // Kilter's PowerSync endpoint. User circuits live ONLY here (REST
+        // /api/circuits is curated-only); [fetchCircuits] reads its stream.
+        const val PROD_SYNC_URL = "https://sync1.kiltergrips.com/sync/stream"
         const val CLIENT_ID = "kilter"
         // Cap on Kilter error-response bodies before they enter the
         // KilterPublishResult envelope (and from there logcat / DB
@@ -300,6 +367,20 @@ class KilterApiClient @Inject constructor(
         // be 50–500 KB; truncating at the network boundary keeps every
         // downstream consumer bounded without scattered take(200)s.
         const val MAX_ERR_BODY = 200
+
+        /** Extra attempts (beyond the first) for a transient download failure. */
+        const val DOWNLOAD_MAX_RETRIES = 2
+
+        /** Base backoff between download retries; doubles per attempt. */
+        const val DOWNLOAD_BACKOFF_MS = 1000L
+
+        // Backstops for the circuit sync stream. We normally disconnect the
+        // instant the (tiny) circuit buckets drain; these only bound a
+        // pathological bucket order so we never accidentally pull the giant
+        // global_climbs bucket. Circuit buckets empirically drain in <100
+        // lines / a few seconds.
+        const val SYNC_MAX_LINES = 4000
+        const val SYNC_MAX_MILLIS = 12_000L
     }
 
     // URL endpoints — `var` so unit tests can swap them for a
@@ -309,12 +390,14 @@ class KilterApiClient @Inject constructor(
     private var tokenUrl: String = PROD_TOKEN_URL
     private var logoutUrl: String = PROD_LOGOUT_URL
     private var apiBase: String = PROD_API_BASE
+    private var syncUrl: String = PROD_SYNC_URL
 
     @androidx.annotation.VisibleForTesting
     internal fun setEndpointsForTesting(base: String) {
         tokenUrl = "$base/realms/kilter/protocol/openid-connect/token"
         logoutUrl = "$base/realms/kilter/protocol/openid-connect/logout"
         apiBase = "$base/api"
+        syncUrl = "$base/sync/stream"
     }
 
     // encodeDefaults = true: the Kilter create-climb payload has many
@@ -556,35 +639,59 @@ class KilterApiClient @Inject constructor(
     suspend fun fetchLogs(): Result<List<KilterLog>> = withContext(Dispatchers.IO) {
         val token = ensureValidToken()
             ?: return@withContext Result.failure(KilterApiException(KilterAuthResult.Error.Reason.NotAuthenticated, "no valid token"))
+        val request = Request.Builder()
+            .url("$apiBase/logs")
+            .addHeader("Authorization", "Bearer $token")
+            .build()
 
-        try {
-            val request = Request.Builder()
-                .url("$apiBase/logs")
-                .addHeader("Authorization", "Bearer $token")
-                .build()
-            val response = httpClient.newCall(request).execute()
-
-            if (!response.isSuccessful) {
-                return@withContext Result.failure(
-                    Exception("HTTP ${response.code}: ${response.body?.string()}")
-                )
+        // A single failed download used to abort the whole import. Retry
+        // transient failures (network IO, HTTP 5xx) with exponential backoff;
+        // 4xx and auth stay permanent and return immediately.
+        var lastError: Exception = Exception("fetchLogs: no attempt made")
+        repeat(DOWNLOAD_MAX_RETRIES + 1) { attempt ->
+            try {
+                val response = httpClient.newCall(request).execute()
+                if (response.isSuccessful) {
+                    val body = response.body?.string()
+                        ?: return@withContext Result.failure(Exception("Leere Antwort"))
+                    // API may return {"logs": [...]} or raw [...] — handle both
+                    val logs = if (body.trimStart().startsWith("[")) {
+                        json.decodeFromString<List<KilterLog>>(body)
+                    } else {
+                        json.decodeFromString<KilterLogsResponse>(body).logs
+                    }
+                    // /logs returns the whole logbook as a single JSON array
+                    // and ignores pagination params — limit/offset/page/cursor
+                    // were all verified no-ops against the live API, so one
+                    // fetch is complete. This count log is a tripwire: if a
+                    // server-side cap ever truncates a very large logbook, the
+                    // number surfaces here.
+                    Log.i(TAG, "fetchLogs: ${logs.size} logs")
+                    return@withContext Result.success(logs)
+                }
+                val bodyText = response.body?.string().orEmpty().take(MAX_ERR_BODY)
+                response.close()
+                if (response.code !in 500..599) {
+                    return@withContext Result.failure(Exception("HTTP ${response.code}: $bodyText"))
+                }
+                lastError = Exception("HTTP ${response.code}: $bodyText")
+                Log.w(TAG, "fetchLogs HTTP ${response.code} (attempt ${attempt + 1})")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: java.io.IOException) {
+                lastError = e
+                Log.w(TAG, "fetchLogs IO error (attempt ${attempt + 1}): ${e.message}")
+            } catch (e: Exception) {
+                // Parse errors and the like are not worth retrying.
+                Log.e(TAG, "fetchLogs failed", e)
+                return@withContext Result.failure(e)
             }
-
-            val body = response.body?.string()
-                ?: return@withContext Result.failure(Exception("Leere Antwort"))
-            // API may return {"logs": [...]} or raw [...] — handle both
-            val logs = if (body.trimStart().startsWith("[")) {
-                json.decodeFromString<List<KilterLog>>(body)
-            } else {
-                json.decodeFromString<KilterLogsResponse>(body).logs
+            if (attempt < DOWNLOAD_MAX_RETRIES) {
+                delay(DOWNLOAD_BACKOFF_MS shl attempt)
             }
-            Result.success(logs)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Log.e(TAG, "fetchLogs failed", e)
-            Result.failure(e)
         }
+        Log.e(TAG, "fetchLogs failed after ${DOWNLOAD_MAX_RETRIES + 1} attempts", lastError)
+        return@withContext Result.failure(lastError)
     }
 
     /**
@@ -679,6 +786,86 @@ class KilterApiClient @Inject constructor(
     }
 
     /**
+     * Fetch the authenticated user's OWN circuits ("lists") from Kilter's
+     * PowerSync sync stream (`POST sync1.kiltergrips.com/sync/stream`).
+     *
+     * WHY NOT REST: the REST `GET /api/circuits` route returns only *curated*
+     * circuits — a user's own circuits never appear there (every variant
+     * probed 2026-07-11 returned total=0). User circuits live exclusively in
+     * PowerSync `circuit_buckets[...]`, so the "circuits → local list" import
+     * has to read the sync stream. The account's Keycloak token (the same one
+     * used for the REST log import) authorizes it.
+     *
+     * BOUNDED: we read the ndjson checkpoint and drain ONLY the small
+     * `circuit_buckets[...]`, disconnecting the instant they are complete —
+     * before the account's giant `global_climbs` bucket streams.
+     * [SYNC_MAX_LINES]/[SYNC_MAX_MILLIS] backstop a pathological bucket order.
+     *
+     * Compliance: a single first-sync of the user's own buckets with their own
+     * Bearer token; no bulk crawl of other users, no `global_climbs` pull.
+     * Token via the same [ensureValidToken] refresh path as [fetchLogs].
+     */
+    suspend fun fetchCircuits(): Result<List<KilterCircuit>> = withContext(Dispatchers.IO) {
+        val token = ensureValidToken()
+            ?: return@withContext Result.failure(KilterApiException(KilterAuthResult.Error.Reason.NotAuthenticated, "no valid token"))
+
+        val clientId = java.util.UUID.randomUUID().toString()
+        val payload =
+            """{"buckets":[],"include_checksum":true,"raw_data":true,"binary_data":false,"client_id":"$clientId","parameters":{}}"""
+        val request = Request.Builder()
+            .url(syncUrl)
+            .addHeader("Authorization", "Bearer $token")
+            .addHeader("Accept", "application/x-ndjson")
+            .post(payload.toRequestBody("application/json".toMediaType()))
+            .build()
+        val call = httpClient.newCall(request)
+
+        try {
+            val response = call.execute()
+            if (!response.isSuccessful) {
+                val err = response.body?.string().orEmpty().take(MAX_ERR_BODY)
+                response.close()
+                return@withContext Result.failure(Exception("HTTP ${response.code}: $err"))
+            }
+            val source = response.body?.source()
+                ?: return@withContext Result.failure(Exception("empty sync stream"))
+
+            val parser = KilterCircuitSyncParser()
+            var lines = 0
+            val startMs = System.currentTimeMillis()
+            try {
+                while (true) {
+                    val line = source.readUtf8Line() ?: break
+                    if (line.isEmpty()) continue
+                    lines++
+                    if (parser.accept(line)) break
+                    if (lines >= SYNC_MAX_LINES) {
+                        Log.w(TAG, "fetchCircuits: line cap hit before circuit buckets drained")
+                        break
+                    }
+                    if (System.currentTimeMillis() - startMs > SYNC_MAX_MILLIS) {
+                        Log.w(TAG, "fetchCircuits: time cap hit before circuit buckets drained")
+                        break
+                    }
+                }
+            } finally {
+                // Stop the download so we never pull the giant global_climbs bucket.
+                call.cancel()
+                response.close()
+            }
+
+            val circuits = parser.circuits()
+            Log.i(TAG, "fetchCircuits (PowerSync): ${circuits.size} circuit(s) from $lines line(s)")
+            Result.success(circuits)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e(TAG, "fetchCircuits failed", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
      * Upload local ascents to Kilter in bulk.
      */
     suspend fun uploadLogs(logs: List<KilterLog>): Result<Unit> = withContext(Dispatchers.IO) {
@@ -700,7 +887,7 @@ class KilterApiClient @Inject constructor(
 
             if (!response.isSuccessful) {
                 return@withContext Result.failure(
-                    Exception("HTTP ${response.code}: ${response.body?.string()}")
+                    Exception("HTTP ${response.code}: ${response.body?.string().orEmpty().take(MAX_ERR_BODY)}")
                 )
             }
             Result.success(Unit)
@@ -729,14 +916,23 @@ class KilterApiClient @Inject constructor(
      * Strategy: extract from the user's existing Kilter logs.
      */
     suspend fun resolveWallContext(): ResolveResult = withContext(Dispatchers.IO) {
-        val result = fetchLogs()
-        val logs = result.getOrElse {
+        val logs = fetchLogs().getOrElse {
             return@withContext ResolveResult.Error(it.message ?: "fetch failed")
         }
+        resolveWallContextFromLogs(logs)
+    }
+
+    /**
+     * Wall-context resolution from an ALREADY-fetched log list — the pure
+     * core of [resolveWallContext] without the network call. Lets a caller
+     * that has just fetched the logs (e.g. the import path) reuse them
+     * instead of downloading the whole logbook a second time.
+     */
+    fun resolveWallContextFromLogs(logs: List<KilterLog>): ResolveResult {
         val log = logs.firstOrNull {
             it.gymUuid.isNotEmpty() && it.wallUuid.isNotEmpty() && it.productLayoutUuid.isNotEmpty()
-        } ?: return@withContext ResolveResult.NoLogsYet
-        ResolveResult.Found(WallContext(log.gymUuid, log.wallUuid, log.productLayoutUuid))
+        } ?: return ResolveResult.NoLogsYet
+        return ResolveResult.Found(WallContext(log.gymUuid, log.wallUuid, log.productLayoutUuid))
     }
 
     /**

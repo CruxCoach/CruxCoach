@@ -189,6 +189,12 @@ object CruxCoachBackup {
             // string from a crafted backup.
             requireLen("ascent.boardBrand", a.boardBrand, MAX_BRAND_LEN)
             requireRange("ascent.layoutId", a.layoutId, 0L..1_000L)
+            // Full-fidelity additions — cap, don't whitelist (same posture
+            // as boardBrand): odd legacy values must not brick a restore.
+            requireLen("ascent.gymUuid", a.gymUuid, MAX_EXTERNAL_ID_LEN)
+            requireLen("ascent.wallUuid", a.wallUuid, MAX_EXTERNAL_ID_LEN)
+            requireLen("ascent.productLayoutUuid", a.productLayoutUuid, MAX_EXTERNAL_ID_LEN)
+            requireLen("ascent.externalId", a.externalId, MAX_EXTERNAL_ID_LEN)
         }
 
         for (b in boardBids) {
@@ -203,6 +209,10 @@ object CruxCoachBackup {
             // Board context (FEAT-027 P2) — see the ascent loop above.
             requireLen("bid.boardBrand", b.boardBrand, MAX_BRAND_LEN)
             requireRange("bid.layoutId", b.layoutId, 0L..1_000L)
+            requireLen("bid.gymUuid", b.gymUuid, MAX_EXTERNAL_ID_LEN)
+            requireLen("bid.wallUuid", b.wallUuid, MAX_EXTERNAL_ID_LEN)
+            requireLen("bid.productLayoutUuid", b.productLayoutUuid, MAX_EXTERNAL_ID_LEN)
+            requireLen("bid.externalId", b.externalId, MAX_EXTERNAL_ID_LEN)
         }
 
         for (s in boardSessions) {
@@ -217,6 +227,9 @@ object CruxCoachBackup {
         for (list in climbLists) {
             requireLen("climbList.name", list.name, MAX_NAME_LEN)
             requireLen("climbList.createdAt", list.createdAt, MAX_DATE_LEN)
+            requireLen("climbList.externalId", list.externalId, MAX_EXTERNAL_ID_LEN)
+            requireLen("climbList.description", list.description, MAX_NOTES_LEN)
+            requireLen("climbList.color", list.color, MAX_BRAND_LEN)
             require(list.entries.size <= MAX_COLLECTION_SIZE) {
                 "invalid backup: climbList.entries too large"
             }
@@ -266,6 +279,9 @@ object CruxCoachBackup {
                 require(HEX64_REGEX.matches(it)) { "invalid backup: ownClimb.nostrEventId" }
             }
             requireLen("ownClimb.nostrDTag", c.nostrDTag, MAX_NAME_LEN)
+            // Cap, don't whitelist (see boardBrand) — a Keycloak uuid today,
+            // but an odd legacy value must not brick the whole restore.
+            requireLen("ownClimb.kilterAuthorUuid", c.kilterAuthorUuid, MAX_EXTERNAL_ID_LEN)
             requireRange("ownClimb.layoutId", c.layoutId, 0L..1_000L)
             requireRange("ownClimb.moveCount", c.moveCount, 0L..1_000L)
             requireRange("ownClimb.kilterSyncedAt", c.kilterSyncedAt, 0L..Long.MAX_VALUE)
@@ -370,7 +386,19 @@ object CruxCoachBackup {
         // re-upload of the whole logbook. Defaulted false for backups
         // written before this field existed (their rows re-upload once —
         // the pre-fix behavior).
-        val synced: Boolean = false
+        val synced: Boolean = false,
+        // ── Full-fidelity additions (all defaulted → older backups
+        // deserialize unchanged, older apps ignore the extra keys) ──
+        // Benchmark flag. Pre-fix imports hardcoded false; re-derivable
+        // from the catalogue but wrong until the next denorm refresh.
+        val isBenchmark: Boolean = false,
+        // Kilter board context (usually NULL; carried for completeness).
+        val gymUuid: String? = null,
+        val wallUuid: String? = null,
+        val productLayoutUuid: String? = null,
+        // FEAT-005 Aurora idempotency marker — without it a post-restore
+        // Aurora re-import duplicated every circuit-imported log.
+        val externalId: String? = null,
     )
 
     @Serializable
@@ -387,7 +415,13 @@ object CruxCoachBackup {
         val boardBrand: String = "kilter",
         val layoutId: Long? = null,
         // See AscentExport.synced.
-        val synced: Boolean = false
+        val synced: Boolean = false,
+        // Full-fidelity additions — see AscentExport (bids carry no
+        // benchmark flag).
+        val gymUuid: String? = null,
+        val wallUuid: String? = null,
+        val productLayoutUuid: String? = null,
+        val externalId: String? = null,
     )
 
     @Serializable
@@ -405,7 +439,16 @@ object CruxCoachBackup {
         val name: String,
         val isBuiltin: Boolean,
         val createdAt: String,
-        val entries: List<String> // climb UUIDs
+        val entries: List<String>, // climb UUIDs
+        // ── Identity metadata (all defaulted; absent in pre-fix backups).
+        // externalId disambiguates the two is_builtin=1 lists (Favorites has
+        // none, the Ignored list carries the sentinel — pre-fix restores
+        // folded Ignored into Favorites) and keys FEAT-005 circuits so a
+        // post-restore Aurora re-import stays idempotent. description/color
+        // are the circuit's Aurora metadata.
+        val externalId: String? = null,
+        val description: String? = null,
+        val color: String? = null,
     )
 
     /**
@@ -447,6 +490,11 @@ object CruxCoachBackup {
         // Kilter). Carried so a MoonBoard/Aurora draft round-trips its brand
         // instead of silently becoming Kilter on restore.
         val boardBrand: String = "kilter",
+        // Kilter account uuid that authored the publish. NULL = "unknown
+        // author → not publishable", so dropping it silently bricked
+        // re-publish/update of an own Kilter climb after a restore.
+        // Defaulted for backups that predate the field.
+        val kilterAuthorUuid: String? = null,
     )
 
     @Serializable
@@ -569,7 +617,7 @@ object CruxCoachBackup {
         } else emptyList()
 
         val ascents = if (Category.BOARD_LOGBOOK in categories) {
-            personalBoardRepo.getUserAscentsAll().map { a ->
+            personalBoardRepo.getAscentsForBackup().map { a ->
                 AscentExport(
                     uuid = a.uuid, climbUuid = a.climbUuid, angle = a.angle,
                     isMirror = a.isMirror, bidCount = a.bidCount,
@@ -578,19 +626,31 @@ object CruxCoachBackup {
                     difficultyAverage = a.difficultyAverage,
                     climbFrames = a.climbFrames, framesCount = a.framesCount,
                     boardBrand = a.boardBrand, layoutId = a.layoutId,
-                    synced = a.synced
+                    synced = a.synced,
+                    isBenchmark = a.isBenchmark,
+                    gymUuid = a.gymUuid, wallUuid = a.wallUuid,
+                    productLayoutUuid = a.productLayoutUuid,
+                    externalId = a.externalId,
                 )
             }
         } else emptyList()
 
         val bids = if (Category.BOARD_LOGBOOK in categories) {
-            personalBoardRepo.getRawBidsForUser().map { b ->
+            personalBoardRepo.getBidsForBackup().map { b ->
                 BidExport(
                     uuid = b.uuid, climbUuid = b.climbUuid, angle = b.angle,
                     isMirror = b.isMirror, bidCount = b.bidCount,
                     comment = b.comment, climbedAt = b.climbedAt,
+                    // climbName/difficultyAverage are denormalized-refreshable,
+                    // but exporting them keeps the restored logbook readable
+                    // before the first board sync (the ascent path always did).
+                    climbName = b.climbName,
+                    difficultyAverage = b.difficultyAverage,
                     boardBrand = b.boardBrand, layoutId = b.layoutId,
-                    synced = b.synced
+                    synced = b.synced,
+                    gymUuid = b.gymUuid, wallUuid = b.wallUuid,
+                    productLayoutUuid = b.productLayoutUuid,
+                    externalId = b.externalId,
                 )
             }
         } else emptyList()
@@ -609,11 +669,14 @@ object CruxCoachBackup {
         val climbLists = if (Category.CLIMB_LISTS in categories) {
             val rawEntries = personalBoardRepo.getClimbListEntriesRaw()
             val entriesByList = rawEntries.groupBy { it.listId }
-            personalBoardRepo.getAllClimbLists().map { list ->
+            personalBoardRepo.getClimbListsForBackup().map { list ->
                 ClimbListExport(
                     name = list.name, isBuiltin = list.isBuiltin,
                     createdAt = list.createdAt,
-                    entries = entriesByList[list.id]?.map { it.climbUuid } ?: emptyList()
+                    entries = entriesByList[list.id]?.map { it.climbUuid } ?: emptyList(),
+                    externalId = list.externalId,
+                    description = list.description,
+                    color = list.color,
                 )
             }
         } else emptyList()
@@ -645,6 +708,7 @@ object CruxCoachBackup {
                     kilterPublishVia = row.kilterPublishVia,
                     kilterError = row.kilterError,
                     boardBrand = row.boardBrand,
+                    kilterAuthorUuid = row.kilterAuthorUuid,
                 )
             }
         } else emptyList()
@@ -777,36 +841,66 @@ object CruxCoachBackup {
                 result = result.copy(bodyStats = backup.bodyStats.size)
             }
 
-            // 4. Workout logs (dedup by date + RPE + duration)
+            // 4. Workout logs — content-exact dedup + id remap.
+            //
+            // Dedup key = the full user-entered content. The old partial key
+            // (date|rpe|duration) silently swallowed legitimately-distinct
+            // same-day workouts that happened to share those three values.
+            // Content-exact keys keep re-imports idempotent while never
+            // dropping distinct data.
+            //
+            // Remap: the backup carries each workout's ORIGINAL id and each
+            // climb log's workoutLogId reference. Ids regenerate on insert,
+            // so we record old→new (and old→existing for deduped rows) and
+            // re-link the climb logs in step 5 — pre-fix the linkage was
+            // hard-nulled and climbs logged inside a workout came back as
+            // orphaned standalone entries. session_id genuinely cannot
+            // survive (training_sessions are not part of the backup).
+            val workoutIdRemap = mutableMapOf<Long, Long>()
             if (Category.WORKOUT_LOGS in selectedCategories) {
-                val existingKeys = workoutRepository.getAll().map { log ->
-                    "${log.date}|${log.perceivedRpe}|${log.actualDurationMin}"
-                }.toSet()
+                fun contentKey(log: WorkoutLog) = listOf(
+                    log.date, log.actualDurationMin, log.perceivedRpe,
+                    log.energyLevel, log.moodPre, log.moodPost,
+                    log.fingerSkinStatus, log.painAreas,
+                    log.sleepHoursPrevNight, log.completedExercises, log.freeNotes,
+                ).joinToString("|")
+
+                val existingByKey = workoutRepository.getAll().associate { contentKey(it) to it.id }
                 var imported = 0
                 for (log in backup.workoutLogs) {
-                    val key = "${log.date}|${log.perceivedRpe}|${log.actualDurationMin}"
-                    if (key in existingKeys) {
+                    val existingId = existingByKey[contentKey(log)]
+                    val newId = if (existingId != null) {
                         skipped++
+                        existingId
                     } else {
-                        workoutRepository.insertWorkout(log.copy(id = 0, sessionId = null))
                         imported++
+                        workoutRepository.insertWorkout(log.copy(id = 0, sessionId = null))
                     }
+                    if (log.id != 0L) workoutIdRemap[log.id] = newId
                 }
                 result = result.copy(workoutLogs = imported)
             }
 
-            // 5. Climb logs (dedup by date + grade + boardClimbExternalId + attempts)
+            // 5. Climb logs — content-exact dedup (see step 4) + workout
+            // re-link through the remap built above. A reference to a
+            // workout that wasn't part of this import degrades to null
+            // (standalone entry) instead of a dangling id.
             if (Category.CLIMB_LOGS in selectedCategories) {
-                val existingKeys = climbRepository.getAll().map { log ->
-                    "${log.date}|${log.grade}|${log.boardClimbExternalId}|${log.attempts}"
-                }.toSet()
+                fun contentKey(log: ClimbLog) = listOf(
+                    log.date, log.grade, log.style, log.holdTypes,
+                    log.attempts, log.sent, log.flash,
+                    log.boardType, log.boardAngle,
+                    log.boardClimbExternalId, log.notes,
+                ).joinToString("|")
+
+                val existingKeys = climbRepository.getAll().map { contentKey(it) }.toSet()
                 var imported = 0
                 for (log in backup.climbLogs) {
-                    val key = "${log.date}|${log.grade}|${log.boardClimbExternalId}|${log.attempts}"
-                    if (key in existingKeys) {
+                    if (contentKey(log) in existingKeys) {
                         skipped++
                     } else {
-                        climbRepository.insertClimb(log.copy(id = 0, workoutLogId = null))
+                        val remappedWorkoutId = log.workoutLogId?.let { workoutIdRemap[it] }
+                        climbRepository.insertClimb(log.copy(id = 0, workoutLogId = remappedWorkoutId))
                         imported++
                     }
                 }
@@ -853,20 +947,28 @@ object CruxCoachBackup {
                         // 0.1.3→0.1.4 cross-version restore: list count
                         // reads "1 climb" but the detail screen shows
                         // empty.
+                        // attemptId stays 0 — vestigial column, never
+                        // populated by any write path, deliberately not
+                        // part of the wire format.
                         personalBoardRepo.insertAscent(
                             uuid = ascent.uuid,
                             climbUuid = ascent.climbUuid.lowercase(), angle = ascent.angle,
                             isMirror = ascent.isMirror, attemptId = 0,
                             bidCount = ascent.bidCount, quality = ascent.quality,
-                            difficulty = ascent.difficulty, isBenchmark = false,
+                            difficulty = ascent.difficulty,
+                            isBenchmark = ascent.isBenchmark,
                             comment = ascent.comment, climbedAt = ascent.climbedAt,
                             synced = ascent.synced,
+                            gymUuid = ascent.gymUuid,
+                            wallUuid = ascent.wallUuid,
+                            productLayoutUuid = ascent.productLayoutUuid,
                             climbName = ascent.climbName,
                             difficultyAverage = ascent.difficultyAverage,
                             climbFrames = ascent.climbFrames,
                             framesCount = ascent.framesCount,
                             boardBrand = ascent.boardBrand,
-                            layoutId = ascent.layoutId
+                            layoutId = ascent.layoutId,
+                            externalId = ascent.externalId,
                         )
                         ascentCount++
                     }
@@ -889,10 +991,14 @@ object CruxCoachBackup {
                             isMirror = bid.isMirror, bidCount = bid.bidCount,
                             comment = bid.comment, climbedAt = bid.climbedAt,
                             synced = bid.synced,
+                            gymUuid = bid.gymUuid,
+                            wallUuid = bid.wallUuid,
+                            productLayoutUuid = bid.productLayoutUuid,
                             climbName = bid.climbName,
                             difficultyAverage = bid.difficultyAverage,
                             boardBrand = bid.boardBrand,
-                            layoutId = bid.layoutId
+                            layoutId = bid.layoutId,
+                            externalId = bid.externalId,
                         )
                         bidCount++
                     }
@@ -921,16 +1027,26 @@ object CruxCoachBackup {
                 result = result.copy(boardSessions = imported)
             }
 
-            // 10. Climb lists
+            // 10. Climb lists — routed by identity, not just is_builtin.
             //
-            // Match-by-name on custom lists: pre-fix every import created
-            // a fresh row, so re-importing the same backup twice produced
-            // duplicates ("Test-Liste" + "Test-Liste"). Now we look up
-            // existing lists by name and merge entries into the existing
-            // list when one matches; only genuinely-new names create a
-            // row. Builtin Favoriten still goes through
-            // [ensureFavoritesListExists] which is its own merge path
-            // (matched on is_builtin=1, name-independent).
+            // BOTH built-ins carry is_builtin=1; they are told apart by
+            // external_id (Favorites: none; Ignored: the sentinel). Pre-fix
+            // every builtin list's entries were folded into Favorites, so a
+            // restore corrupted two live features at once: the ignored set
+            // resurfaced in browse AND was suddenly favorited. Legacy
+            // backups without the externalId field can't be disambiguated —
+            // their builtin entries keep routing to Favorites, the
+            // pre-existing (not regressed) behavior.
+            //
+            // Lists with an external_id (FEAT-005 Aurora circuits) restore
+            // through find-or-create on that id — preserving description /
+            // color / created_at and the idempotency key a later Aurora
+            // re-import needs to dedup against.
+            //
+            // Match-by-name applies only to plain custom lists (non-builtin,
+            // no external_id) so re-importing the same backup stays
+            // idempotent without a circuit ever folding into a same-named
+            // custom list (or vice versa).
             //
             // Cross-identity caveat: a backup from another account whose
             // custom-list name happens to collide with one of yours will
@@ -940,14 +1056,26 @@ object CruxCoachBackup {
             // — name-collision is rare in practice and the alternative
             // (always-additive) was already breaking idempotent re-imports.
             if (Category.CLIMB_LISTS in selectedCategories) {
-                val existingByName = personalBoardRepo.getAllClimbLists()
+                val existingByName = personalBoardRepo.getClimbListsForBackup()
+                    .filter { !it.isBuiltin && it.externalId == null }
                     .associate { it.name to it.id }
                 for (list in backup.climbLists) {
-                    val listId = if (list.isBuiltin) {
-                        personalBoardRepo.ensureFavoritesListExists()
-                    } else {
-                        existingByName[list.name]
-                            ?: personalBoardRepo.createClimbList(list.name)
+                    val listId = when {
+                        list.isBuiltin &&
+                            list.externalId == PersonalBoardRepository.IGNORED_LIST_EXTERNAL_ID ->
+                            personalBoardRepo.ensureIgnoredListExists()
+                        list.isBuiltin -> personalBoardRepo.ensureFavoritesListExists()
+                        list.externalId != null || list.description != null || list.color != null ->
+                            personalBoardRepo.restoreClimbList(
+                                name = list.name, createdAt = list.createdAt,
+                                description = list.description, color = list.color,
+                                externalId = list.externalId,
+                            )
+                        else -> existingByName[list.name]
+                            ?: personalBoardRepo.restoreClimbList(
+                                name = list.name, createdAt = list.createdAt,
+                                description = null, color = null, externalId = null,
+                            )
                     }
                     for (climbUuid in list.entries) {
                         try {
@@ -1016,6 +1144,7 @@ object CruxCoachBackup {
                     kilterPublishVia = climb.kilterPublishVia,
                     kilterError = climb.kilterError,
                     boardBrand = climb.boardBrand,
+                    kilterAuthorUuid = climb.kilterAuthorUuid,
                 )
                 if (boardRepository.restoreOwnClimb(row)) ownClimbsImported++ else ownClimbsSkipped++
             }

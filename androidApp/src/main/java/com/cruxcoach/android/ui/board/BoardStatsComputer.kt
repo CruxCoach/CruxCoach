@@ -5,11 +5,12 @@ import com.cruxcoach.android.R
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.util.GradeDisplayHelper
 import com.cruxcoach.data.repository.AscentWithClimb
-import com.cruxcoach.domain.board.KilterGradeMapper
 import java.time.Clock
+import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
+import java.time.temporal.TemporalAdjusters
 import java.time.temporal.WeekFields
 import java.util.Locale
 
@@ -41,6 +42,8 @@ object BoardStatsComputer {
     private const val MEDIUM_THRESHOLD = 16.0
     private const val HARD_THRESHOLD = 21.0
     private const val ELITE_THRESHOLD = 27.0
+    private const val AVG_WINDOW_WEEKS = 8
+    private const val DAYS_PER_WEEK = 7L
 
     fun computeStats(
         ascents: List<AscentWithClimb>,
@@ -59,7 +62,10 @@ object BoardStatsComputer {
         val totalSends = sends.size
         val boulderSends = sends.count { it.framesCount <= 1L }
         val routeSends = sends.count { it.framesCount > 1L }
-        val flashCount = sends.count { it.bidCount <= 1L }
+        // True flashes need the FULL history — a first-try send today after
+        // attempts in an earlier session is a redpoint, not a flash.
+        val flashUuids = trueFlashUuids(ascents)
+        val flashCount = sends.count { it.uuid in flashUuids }
         val flashRate = if (totalSends > 0) flashCount.toFloat() / totalSends * 100f else 0f
         val uniqueClimbs = filtered.map { it.climbUuid }.distinct().size
         val sessionCount = filtered.map { it.climbedAt.take(10) }.distinct().size
@@ -74,13 +80,14 @@ object BoardStatsComputer {
         val activityMap = computeActivityMap(filtered)
 
         // New extended stats
-        val gradeOutcomes = computeGradeOutcomes(sends, bids, gradeScale)
-        val outcomeDistribution = computeOutcomeDistribution(sends)
+        val gradeOutcomes = computeGradeOutcomes(sends, bids, gradeScale, flashUuids)
+        val outcomeDistribution = computeOutcomeDistribution(sends, flashUuids)
         val weeklyVolume = computeWeeklyVolume(filtered)
         val gradeProgression = computeGradeProgression(sends, interval, context)
         val uniqueClimbsByGrade = computeUniqueClimbsByGrade(sends, gradeScale)
-        val periodComparison = computePeriodComparison(ascents, interval, gradeScale, context, clock)
-        val personalRecords = computePersonalRecords(ascents, gradeScale, clock)
+        val periodComparison =
+            computePeriodComparison(ascents, interval, gradeScale, context, clock, flashUuids)
+        val personalRecords = computePersonalRecords(ascents, gradeScale, clock, flashUuids)
 
         return BoardLogbookStats(
             hardestGrade = hardestGrade,
@@ -163,14 +170,19 @@ object BoardStatsComputer {
         sends: List<AscentWithClimb>,
         gradeScale: GradeScale
     ): List<BoardGradePyramidEntry> {
+        // Group by the DISPLAYED grade label (difficulty → scale directly).
+        // The old detour difficulty → V-scale → Font merged Font grades that
+        // share a V bucket (7b and 7b+ are both V8) and re-labelled them with
+        // the wrong half — a 7b top send showed as "7b+" in the pyramid while
+        // the climb detail said 7b.
         return sends
             .filter { it.difficultyAverage != null }
-            .groupBy { KilterGradeMapper.difficultyToVScale(it.difficultyAverage!!) }
-            .map { (vGrade, list) ->
+            .groupBy { GradeDisplayHelper.formatDifficulty(it.difficultyAverage!!, gradeScale) }
+            .map { (grade, list) ->
                 BoardGradePyramidEntry(
-                    grade = GradeDisplayHelper.formatGrade(vGrade, gradeScale),
+                    grade = grade,
                     count = list.size,
-                    difficultyInt = list.first().difficultyAverage!!.toInt()
+                    difficultyInt = list.minOf { Math.round(it.difficultyAverage!!).toInt() }
                 )
             }
             .sortedBy { it.difficultyInt }
@@ -232,21 +244,22 @@ object BoardStatsComputer {
     private fun computeGradeOutcomes(
         sends: List<AscentWithClimb>,
         bids: List<AscentWithClimb>,
-        gradeScale: GradeScale
+        gradeScale: GradeScale,
+        flashUuids: Set<String>,
     ): List<GradeOutcomeEntry> {
-        // Group all entries by V-Scale grade
+        // Group by displayed grade label (see computeGradePyramid).
         val allWithDiff = (sends + bids).filter { it.difficultyAverage != null }
         val grouped = allWithDiff.groupBy {
-            KilterGradeMapper.difficultyToVScale(it.difficultyAverage!!)
+            GradeDisplayHelper.formatDifficulty(it.difficultyAverage!!, gradeScale)
         }
 
-        return grouped.map { (vGrade, entries) ->
-            val diffInt = entries.first().difficultyAverage!!.toInt()
-            val flashes = entries.count { it.isSend && it.bidCount <= 1L }
-            val redpoints = entries.count { it.isSend && it.bidCount > 1L }
+        return grouped.map { (grade, entries) ->
+            val diffInt = entries.minOf { Math.round(it.difficultyAverage!!).toInt() }
+            val flashes = entries.count { it.isSend && it.uuid in flashUuids }
+            val redpoints = entries.count { it.isSend && it.uuid !in flashUuids }
             val attempts = entries.count { !it.isSend }
             GradeOutcomeEntry(
-                grade = GradeDisplayHelper.formatGrade(vGrade, gradeScale),
+                grade = grade,
                 difficultyInt = diffInt,
                 flashCount = flashes,
                 redpointCount = redpoints,
@@ -256,10 +269,11 @@ object BoardStatsComputer {
     }
 
     private fun computeOutcomeDistribution(
-        sends: List<AscentWithClimb>
+        sends: List<AscentWithClimb>,
+        flashUuids: Set<String>,
     ): OutcomeDistribution {
-        val flashes = sends.count { it.bidCount <= 1L }
-        val redpoints = sends.count { it.bidCount > 1L }
+        val flashes = sends.count { it.uuid in flashUuids }
+        val redpoints = sends.count { it.uuid !in flashUuids }
         // Note: attempts (bids) are tracked via totalAttempts in the main stats
         return OutcomeDistribution(flashes = flashes, redpoints = redpoints, attempts = 0)
     }
@@ -326,13 +340,14 @@ object BoardStatsComputer {
         sends: List<AscentWithClimb>,
         gradeScale: GradeScale
     ): List<UniqueClimbEntry> {
+        // Group by displayed grade label (see computeGradePyramid).
         return sends
             .filter { it.difficultyAverage != null }
-            .groupBy { KilterGradeMapper.difficultyToVScale(it.difficultyAverage!!) }
-            .map { (vGrade, entries) ->
-                val diffInt = entries.first().difficultyAverage!!.toInt()
+            .groupBy { GradeDisplayHelper.formatDifficulty(it.difficultyAverage!!, gradeScale) }
+            .map { (grade, entries) ->
+                val diffInt = entries.minOf { Math.round(it.difficultyAverage!!).toInt() }
                 UniqueClimbEntry(
-                    grade = GradeDisplayHelper.formatGrade(vGrade, gradeScale),
+                    grade = grade,
                     difficultyInt = diffInt,
                     uniqueCount = entries.map { it.climbUuid }.distinct().size,
                     totalSends = entries.size
@@ -347,6 +362,7 @@ object BoardStatsComputer {
         gradeScale: GradeScale,
         context: Context? = null,
         clock: Clock = Clock.systemDefaultZone(),
+        flashUuids: Set<String> = emptySet(),
     ): PeriodComparison? {
         val days = interval.days ?: return null // No comparison for "ALL"
         val now = LocalDate.now(clock)
@@ -364,8 +380,8 @@ object BoardStatsComputer {
 
         val curSends = current.count { it.isSend }
         val prevSends = previous.count { it.isSend }
-        val curFlashes = current.count { it.isSend && it.bidCount <= 1L }
-        val prevFlashes = previous.count { it.isSend && it.bidCount <= 1L }
+        val curFlashes = current.count { it.isSend && it.uuid in flashUuids }
+        val prevFlashes = previous.count { it.isSend && it.uuid in flashUuids }
         val curFlashRate = if (curSends > 0) curFlashes.toFloat() / curSends * 100f else 0f
         val prevFlashRate = if (prevSends > 0) prevFlashes.toFloat() / prevSends * 100f else 0f
         val curHardest = current.filter { it.isSend }.mapNotNull { it.difficultyAverage?.toInt() }.maxOrNull() ?: 0
@@ -390,12 +406,27 @@ object BoardStatsComputer {
         allAscents: List<AscentWithClimb>,
         gradeScale: GradeScale,
         clock: Clock = Clock.systemDefaultZone(),
+        flashUuids: Set<String> = emptySet(),
     ): PersonalRecords {
+        // Session metrics count attempts too — a projecting-only day at
+        // the board is a session even without a send.
+        val sessionDates = allAscents
+            .mapNotNull { parseDate(it.climbedAt) }
+            .distinct()
+            .sorted()
+        val avgSessionsPerWeek = computeAvgSessionsPerWeek(sessionDates, clock)
+        val weekStreak = computeWeekStreak(sessionDates, clock)
+
         val sends = allAscents.filter { it.isSend }
-        if (sends.isEmpty()) return PersonalRecords()
+        if (sends.isEmpty()) {
+            return PersonalRecords(
+                avgSessionsPerWeek = avgSessionsPerWeek,
+                weekStreak = weekStreak,
+            )
+        }
 
         // Hardest flash
-        val flashSends = sends.filter { it.bidCount <= 1L && it.difficultyAverage != null }
+        val flashSends = sends.filter { it.uuid in flashUuids && it.difficultyAverage != null }
         val hardestFlashDiff = flashSends.maxByOrNull { it.difficultyAverage!! }
         val hardestFlashGrade = hardestFlashDiff?.difficultyAverage?.let {
             GradeDisplayHelper.formatDifficulty(it, gradeScale)
@@ -407,45 +438,81 @@ object BoardStatsComputer {
         val mostSendsInDay = bestDay?.value?.size ?: 0
         val mostSendsDate = bestDay?.key
 
-        // Streaks (consecutive days with at least one send)
-        val sendDates = sendsByDay.keys.mapNotNull { parseDate(it) }.sorted()
-        val (currentStreak, longestStreak) = computeStreaks(sendDates, clock)
-
         return PersonalRecords(
             hardestFlashGrade = hardestFlashGrade,
             hardestFlashDifficulty = hardestFlashDiff?.difficultyAverage?.toInt() ?: 0,
             mostSendsInDay = mostSendsInDay,
             mostSendsDate = mostSendsDate,
-            currentStreak = currentStreak,
-            longestStreak = longestStreak
+            avgSessionsPerWeek = avgSessionsPerWeek,
+            weekStreak = weekStreak,
         )
     }
 
-    private fun computeStreaks(
-        sortedDates: List<LocalDate>,
-        clock: Clock = Clock.systemDefaultZone(),
-    ): Pair<Int, Int> {
-        if (sortedDates.isEmpty()) return 0 to 0
+    /**
+     * Uuids of sends that are TRUE flashes: the very first logbook contact
+     * with that (climb, angle) — over the FULL history, not the filtered
+     * interval — is a send with at most one attempt. A first-try send in
+     * today's session after attempts in an earlier session is a repeat/
+     * redpoint, not a flash.
+     */
+    fun trueFlashUuids(allAscents: List<AscentWithClimb>): Set<String> {
+        return allAscents
+            .groupBy { it.climbUuid to it.angle }
+            .mapNotNull { (_, entries) ->
+                val first = entries.minByOrNull { it.climbedAt } ?: return@mapNotNull null
+                first.uuid.takeIf { first.isSend && first.bidCount <= 1L }
+            }
+            .toSet()
+    }
 
-        var longest = 1
-        var current = 1
+    /**
+     * Sessions per week over the last [AVG_WINDOW_WEEKS] weeks — a true
+     * window average, matching the "(8 W.)" tile label: distinct session
+     * days inside the window divided by the number of weeks the window
+     * spans. The divisor is the elapsed window (the full 8 weeks once the
+     * account is that old), NOT the span since the first session — dividing
+     * by the active span inflated the figure for young logbooks (2 sessions
+     * over 3 weeks read as 0.6/wk instead of the 8-week 0.25/wk the label
+     * promises). A brand-new logbook divides by at least one week so a
+     * single early session isn't rounded to zero.
+     */
+    private fun computeAvgSessionsPerWeek(
+        sessionDates: List<LocalDate>,
+        clock: Clock,
+    ): Double {
+        if (sessionDates.isEmpty()) return 0.0
         val today = LocalDate.now(clock)
+        val windowStart = today.minusDays(AVG_WINDOW_WEEKS * DAYS_PER_WEEK - 1)
+        val recent = sessionDates.count { !it.isBefore(windowStart) }
+        if (recent == 0) return 0.0
+        val daysSpanned = ChronoUnit.DAYS.between(windowStart, today) + 1
+        val weeks = (daysSpanned.toDouble() / DAYS_PER_WEEK).coerceAtLeast(1.0)
+        return recent / weeks
+    }
 
-        for (i in 1 until sortedDates.size) {
-            if (ChronoUnit.DAYS.between(sortedDates[i - 1], sortedDates[i]) == 1L) {
-                current++
-                if (current > longest) longest = current
+    /**
+     * Consecutive ISO calendar weeks (Mon–Sun) with at least one session.
+     * Active only while the run reaches into this or the previous week —
+     * rest DAYS never break it, a full week off does.
+     */
+    private fun computeWeekStreak(
+        sessionDates: List<LocalDate>,
+        clock: Clock,
+    ): Int {
+        if (sessionDates.isEmpty()) return 0
+        val toMonday = TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)
+        val weekStarts = sessionDates.map { it.with(toMonday) }.distinct().sorted()
+        val thisWeek = LocalDate.now(clock).with(toMonday)
+        if (ChronoUnit.DAYS.between(weekStarts.last(), thisWeek) > DAYS_PER_WEEK) return 0
+        var streak = 1
+        for (i in weekStarts.size - 1 downTo 1) {
+            if (ChronoUnit.DAYS.between(weekStarts[i - 1], weekStarts[i]) == DAYS_PER_WEEK) {
+                streak++
             } else {
-                current = 1
+                break
             }
         }
-
-        // Current streak only counts if it includes today or yesterday
-        val lastDate = sortedDates.last()
-        val daysSinceLast = ChronoUnit.DAYS.between(lastDate, today)
-        val activeStreak = if (daysSinceLast <= 1) current else 0
-
-        return activeStreak to longest
+        return streak
     }
 
     private fun parseDate(dateStr: String): LocalDate? {

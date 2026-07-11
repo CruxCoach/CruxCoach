@@ -49,7 +49,12 @@ object ApkShareHelper {
             SHARE_APK_NAME,
             "aurora_apk_download.zip",
             "aurora_apk_db.sqlite3",
-            "kilter_board_import.sqlite3"
+            "kilter_board_import.sqlite3",
+            LocalApkServer.SNAPSHOT_NAME,
+            // Pair-copy leftovers from an interrupted snapshot (see
+            // LocalApkServer.boardDbSnapshot).
+            "${LocalApkServer.SNAPSHOT_NAME}-wal",
+            "${LocalApkServer.SNAPSHOT_NAME}-shm",
         )
         for (name in staleFiles) {
             val file = File(context.cacheDir, name)
@@ -103,21 +108,77 @@ object ApkShareHelper {
 }
 
 /**
+ * Folds and scrubs a PRIVATE board-DB snapshot copy in place. Ours is the
+ * only connection to [snapshot], so:
+ *  1. `journal_mode=DELETE` forces a COMPLETE checkpoint of the copied
+ *     -wal pair into the main file (cannot stay partial, unlike on the
+ *     live DB) and drops the snapshot back to a single file;
+ *  2. [LocalShareSchema.SNAPSHOT_SCRUB] removes the sender's private rows;
+ *  3. VACUUM rewrites the file so the scrubbed rows are not recoverable
+ *     from free pages.
+ *
+ * File-level + internal so the Robolectric share test can exercise it
+ * directly against a seeded DB file.
+ */
+internal fun scrubAndCompactBoardDbSnapshot(snapshot: File) {
+    val db = android.database.sqlite.SQLiteDatabase.openDatabase(
+        snapshot.absolutePath, null,
+        android.database.sqlite.SQLiteDatabase.OPEN_READWRITE
+    )
+    try {
+        // This file is a throwaway private copy, rebuilt from scratch for
+        // every share session — durability against a crash is worthless, so
+        // skip the fsync storm. This is what turns the VACUUM of an ~85 MB
+        // multi-catalogue DB from minutes into seconds on phone flash.
+        db.rawQuery("PRAGMA synchronous=OFF", null).use { it.moveToFirst() }
+        db.rawQuery("PRAGMA journal_mode=DELETE", null).use { it.moveToFirst() }
+        for (statement in com.cruxcoach.android.data.LocalShareSchema.SNAPSHOT_SCRUB) {
+            db.execSQL(statement)
+        }
+        db.execSQL("VACUUM")
+    } finally {
+        db.close()
+    }
+    File(snapshot.path + "-wal").delete()
+    File(snapshot.path + "-shm").delete()
+}
+
+/**
  * HTTP server that serves an HTML landing page, the APK, and optionally the
  * public board database (for offline sharing via WiFi Direct).
  *
- * **Security**: Only the public board DB (cruxcoach.db) is served — NEVER
- * the encrypted user DB (cruxcoach_secure.db) or any other user data.
- * The board DB contains only community climb data from Blossom/Kilter.
+ * **Security**: Only the board DB (cruxcoach.db) is ever touched — NEVER
+ * the encrypted user DB (cruxcoach_secure.db). What actually goes on the
+ * wire is a checkpointed snapshot with the sender's private rows scrubbed
+ * out ([scrubAndCompactBoardDbSnapshot]); if that snapshot cannot be
+ * produced the request fails 503 rather than exposing the live file.
  */
 class LocalApkServer(
     private val apkFile: File,
-    private val boardDbFile: File? = null
+    private val boardDbFile: File? = null,
+    /** Where the checkpointed board-DB snapshot is written (the app's
+     *  cacheDir). null → the live file is served as-is. */
+    private val snapshotDir: File? = null
 ) {
 
     private var serverSocket: ServerSocket? = null
     private var running = false
     private var shutdownTimer: java.util.Timer? = null
+
+    /** Snapshot lifecycle. The build (copy + scrub + VACUUM of an ~85 MB DB)
+     *  can take minutes on a phone, so /board.db must NEVER block on it —
+     *  while BUILDING the request is answered 503 + Retry-After and the
+     *  receiver polls. FAILED re-arms on the next request, so transient
+     *  causes (a background sync holding the DB lock) heal themselves. */
+    private enum class SnapState { IDLE, BUILDING, READY, FAILED }
+    private val snapshotLock = Any()
+    private var snapState = SnapState.IDLE
+    private var snapshotFile: File? = null
+
+    /** Wall-clock of the last handled HTTP request — the auto-shutdown
+     *  timer re-arms while a receiver is actively talking to us (it polls
+     *  every few seconds while the snapshot builds, then streams). */
+    @Volatile private var lastActivityMs = System.currentTimeMillis()
     var onAutoShutdown: (() -> Unit)? = null
     /** Set after start() — used to build deep link URLs in the landing page. */
     var baseUrl: String? = null
@@ -161,6 +222,13 @@ class LocalApkServer(
             }
         }
         scheduleAutoShutdown()
+
+        // Kick the scrubbed-snapshot build the moment the server starts, so
+        // its (potentially minutes-long) VACUUM overlaps with the receiver
+        // installing the APK / connecting instead of blocking the /board.db
+        // request. If the receiver still arrives first, it gets 503 +
+        // Retry-After and polls — see serveBoardDb().
+        ensureSnapshotBuilding()
         return ss.localPort
     }
 
@@ -169,23 +237,48 @@ class LocalApkServer(
         shutdownTimer?.cancel()
         shutdownTimer = null
         try { serverSocket?.close() } catch (_: Exception) { }
+        synchronized(snapshotLock) {
+            snapshotFile?.let { snap ->
+                snap.delete()
+                File(snap.path + "-wal").delete()
+                File(snap.path + "-shm").delete()
+            }
+            snapshotFile = null
+            snapState = SnapState.IDLE
+        }
     }
 
-    private fun scheduleAutoShutdown() {
+    /**
+     * Idle-based auto-shutdown: fires only after [AUTO_SHUTDOWN_MS] with NO
+     * incoming request. A receiver polling for the snapshot (503 loop) or
+     * streaming the DB keeps [lastActivityMs] fresh, so an active transfer
+     * can never be cut mid-flight — the fixed 5-minute fuse could previously
+     * kill the server while the receiver was still waiting on the snapshot.
+     */
+    @Synchronized
+    private fun scheduleAutoShutdown(delayMs: Long = AUTO_SHUTDOWN_MS) {
+        shutdownTimer?.cancel()
         shutdownTimer = java.util.Timer("apk-server-timeout", true).apply {
             schedule(object : java.util.TimerTask() {
                 override fun run() {
-                    if (running) {
-                        Log.d("LocalApkServer", "Auto-shutdown after ${AUTO_SHUTDOWN_MS / 1000}s")
+                    if (!running) return
+                    val idleMs = System.currentTimeMillis() - lastActivityMs
+                    if (idleMs < AUTO_SHUTDOWN_MS) {
+                        // Someone talked to us since the fuse was lit — re-arm
+                        // for the remaining idle window.
+                        scheduleAutoShutdown(AUTO_SHUTDOWN_MS - idleMs)
+                    } else {
+                        Log.d("LocalApkServer", "Auto-shutdown after ${idleMs / 1000}s idle")
                         stop()
                         onAutoShutdown?.invoke()
                     }
                 }
-            }, AUTO_SHUTDOWN_MS)
+            }, delayMs)
         }
     }
 
     private fun handleClient(socket: Socket) {
+        lastActivityMs = System.currentTimeMillis()
         thread(isDaemon = true, name = "apk-client") {
             try {
                 val reader = socket.getInputStream().bufferedReader()
@@ -247,13 +340,37 @@ class LocalApkServer(
     }
 
     /**
-     * Serves the public board database (community climb data only).
-     * This file contains NO user data — only public Kilter climb/stats/placement data.
+     * Serves the shareable board-database snapshot: catalogue + community
+     * climbs, stats, geometry and gym locations. The sender's PRIVATE rows
+     * — unpublished drafts (`source='local'`) and the Kilter publish-attempt
+     * log — are scrubbed from the snapshot before a single byte leaves the
+     * device (see [LocalShareSchema.SNAPSHOT_SCRUB]); the receiver's import
+     * filters drafts again as defence in depth.
+     *
+     * Privacy over availability: if the snapshot (copy + scrub) cannot be
+     * produced, we answer 503 instead of falling back to the raw live file
+     * — the live file still contains the drafts.
      */
     private fun serveBoardDb(out: java.io.OutputStream) {
-        val db = boardDbFile
-        if (db == null || !db.exists()) {
+        val live = boardDbFile
+        if (live == null || !live.exists()) {
             serve404(out)
+            return
+        }
+        if (snapshotDir == null) {
+            serve503(out)
+            return
+        }
+        // NEVER block this request thread on the snapshot build (it can take
+        // minutes) — that silent wait is exactly what ran the receiver into
+        // its socket read-timeout. Answer immediately: 200 + stream when
+        // READY, else (re)arm the build and tell the receiver to poll.
+        val db = synchronized(snapshotLock) {
+            if (snapState == SnapState.READY) snapshotFile?.takeIf { it.exists() } else null
+        }
+        if (db == null) {
+            ensureSnapshotBuilding()
+            serve503(out)
             return
         }
         val headers = "HTTP/1.1 200 OK\r\n" +
@@ -262,7 +379,125 @@ class LocalApkServer(
             "Content-Disposition: attachment; filename=\"cruxcoach-board.db\"\r\n" +
             "Connection: close\r\n\r\n"
         out.write(headers.toByteArray())
-        db.inputStream().use { it.copyTo(out, bufferSize = 65536) }
+        db.inputStream().use { input ->
+            val buffer = ByteArray(65536)
+            var read: Int
+            while (input.read(buffer).also { read = it } != -1) {
+                out.write(buffer, 0, read)
+                // Keep the idle fuse fresh for the whole (multi-minute over
+                // WiFi-Direct) transfer, not just its first byte.
+                lastActivityMs = System.currentTimeMillis()
+            }
+        }
+    }
+
+    /**
+     * Arms a background snapshot build unless one is already running or done.
+     * FAILED re-arms (each receiver poll retries), so transient causes — a
+     * catalogue sync briefly holding the board-DB write lock — heal without
+     * user interaction.
+     */
+    private fun ensureSnapshotBuilding() {
+        val live = boardDbFile ?: return
+        if (snapshotDir == null || !live.exists()) return
+        synchronized(snapshotLock) {
+            if (snapState == SnapState.BUILDING || snapState == SnapState.READY) return
+            snapState = SnapState.BUILDING
+        }
+        thread(isDaemon = true, name = "apk-snapshot-build") {
+            val startMs = System.currentTimeMillis()
+            val snap = buildBoardDbSnapshot(live)
+            synchronized(snapshotLock) {
+                // stop() may have raced us back to IDLE and cleaned up — don't
+                // resurrect state (or leave a stray file) for a dead server.
+                if (snapState != SnapState.BUILDING) {
+                    snap?.delete()
+                    return@thread
+                }
+                if (snap != null) {
+                    snapshotFile = snap
+                    snapState = SnapState.READY
+                } else {
+                    snapState = SnapState.FAILED
+                }
+            }
+            val secs = (System.currentTimeMillis() - startMs) / 1000
+            if (snap != null) {
+                Log.i("LocalApkServer", "board-DB snapshot ready in ${secs}s (${snap.length() / 1024 / 1024} MB)")
+            } else {
+                Log.w("LocalApkServer", "board-DB snapshot build failed after ${secs}s — will retry on next request")
+            }
+        }
+    }
+
+    /**
+     * Snapshot the board DB before serving it. cruxcoach.db runs in WAL
+     * mode: streaming the live file raw (a) silently drops whatever still
+     * sits in the -wal file — the receiver misses the newest climbs — and
+     * (b) races concurrent checkpoints: a page rewritten mid-transfer hands
+     * the receiver a torn file that fails import with "database disk image
+     * is malformed".
+     *
+     * Consistency does NOT rely on the live checkpoint succeeding (the
+     * app's own connections can keep `wal_checkpoint(TRUNCATE)` partial —
+     * its result is best-effort): under BEGIN IMMEDIATE (no writer can
+     * commit, no checkpoint can move pages) we copy the main file AND the
+     * -wal as a pair, then fold the pair on the PRIVATE copy — where ours
+     * is the only connection, so that checkpoint provably completes.
+     *
+     * The same private pass runs [LocalShareSchema.SNAPSHOT_SCRUB] and
+     * VACUUMs, so the served file is a single, complete, draft-free
+     * SQLite database.
+     *
+     * @return the snapshot, or null when it could not be produced —
+     *   the caller must fail the request rather than serve the live file.
+     *
+     * Runs on the [ensureSnapshotBuilding] worker thread — NOT under
+     * [snapshotLock] (the build takes minutes; holding the lock would make
+     * /board.db block instead of answering 503).
+     */
+    private fun buildBoardDbSnapshot(live: File): File? {
+        val snap = File(snapshotDir, SNAPSHOT_NAME)
+        val snapWal = File(snap.path + "-wal")
+        val snapShm = File(snap.path + "-shm")
+        return try {
+            val db = android.database.sqlite.SQLiteDatabase.openDatabase(
+                live.absolutePath, null,
+                android.database.sqlite.SQLiteDatabase.OPEN_READWRITE
+            )
+            try {
+                // PRAGMAs return a result row on Android — rawQuery, not execSQL.
+                // 30s busy timeout: a catalogue sync's write bursts can hold the
+                // lock well past the previous 5s, failing the whole build for a
+                // transient reason.
+                db.rawQuery("PRAGMA busy_timeout = 30000", null).use { it.moveToFirst() }
+                // Best-effort pre-fold to keep the copied -wal small; the
+                // pair-copy below is correct even when this stays partial.
+                db.rawQuery("PRAGMA wal_checkpoint(TRUNCATE)", null).use { it.moveToFirst() }
+                db.execSQL("BEGIN IMMEDIATE")
+                try {
+                    live.copyTo(snap, overwrite = true)
+                    val liveWal = File(live.path + "-wal")
+                    if (liveWal.exists()) liveWal.copyTo(snapWal, overwrite = true)
+                    else snapWal.delete()
+                    // Never copy the -shm: it's a volatile index for the
+                    // LIVE wal; SQLite rebuilds it for the copied pair.
+                    snapShm.delete()
+                } finally {
+                    db.execSQL("ROLLBACK")
+                }
+            } finally {
+                db.close()
+            }
+            scrubAndCompactBoardDbSnapshot(snap)
+            snap
+        } catch (e: Exception) {
+            Log.w("LocalApkServer", "board-DB snapshot failed — refusing to serve the live file", e)
+            snap.delete()
+            snapWal.delete()
+            snapShm.delete()
+            null
+        }
     }
 
     private fun serve404(out: java.io.OutputStream) {
@@ -274,10 +509,22 @@ class LocalApkServer(
         out.write(body.toByteArray())
     }
 
+    private fun serve503(out: java.io.OutputStream) {
+        val body = "503 Snapshot unavailable — retry in a moment"
+        val headers = "HTTP/1.1 503 Service Unavailable\r\n" +
+            "Content-Length: ${body.length}\r\n" +
+            "Retry-After: 5\r\n" +
+            "Connection: close\r\n\r\n"
+        out.write(headers.toByteArray())
+        out.write(body.toByteArray())
+    }
+
     companion object {
         /** Fixed port for auto-discovery by receivers (WiFi Direct group owner = 192.168.49.1). */
         const val LOCAL_SHARE_PORT = 4949
         private const val AUTO_SHUTDOWN_MS = 5 * 60 * 1000L  // 5 min
+        /** Checkpointed board-DB copy in cacheDir; see [boardDbSnapshot]. */
+        const val SNAPSHOT_NAME = "board_share_snapshot.db"
 
         private val LANDING_HTML = """
 <!DOCTYPE html>

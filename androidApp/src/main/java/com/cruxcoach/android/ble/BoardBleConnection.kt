@@ -53,13 +53,23 @@ class BoardBleConnection(private val context: Context) {
         const val TAG = "BoardBleConnection"
         const val WRITE_TIMEOUT_MS = 5000L
         const val CLOSE_SAFETY_TIMEOUT_MS = 5000L
-        const val CONNECTION_TIMEOUT_MS = 30_000L
+
+        // Per-attempt connect budget × silent retries. Legacy stacks (9-11)
+        // routinely fail a first direct connect with a transient status 133;
+        // retrying quietly beats surfacing every radio hiccup as a silent
+        // drop the user must re-tap through. Worst case ≈ 3 × (10 s + 0.6 s),
+        // close to the old single 30 s window — but a transient failure now
+        // recovers unattended in seconds.
+        const val CONNECT_ATTEMPT_TIMEOUT_MS = 10_000L
+        const val MAX_CONNECT_ATTEMPTS = 3
+        const val CONNECT_RETRY_DELAY_MS = 600L
 
         // Timing delays for Android <12 BLE stack quirks
         const val DELAY_CLOSE_AFTER_DISCONNECT_MS = 300L
         const val DELAY_RECONNECT_LEGACY_MS = 1000L
         const val DELAY_RECONNECT_MODERN_MS = 200L
         const val DELAY_SCAN_SETTLE_MS = 500L
+        const val DELAY_PRE_DISCOVERY_LEGACY_MS = 300L
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -95,6 +105,13 @@ class BoardBleConnection(private val context: Context) {
     private var connectionTimeoutJob: Job? = null
     private var closeSafetyJob: Job? = null
     private var connectJob: Job? = null
+
+    // Silent-retry bookkeeping for the in-flight connect: the board being
+    // connected and which attempt (1-based) is currently running. State stays
+    // CONNECTING across quiet retries so the UI shows one continuous attempt.
+    private var currentBoard: DiscoveredBoard? = null
+    private var connectAttempt = 0
+
     var autoDisconnectSeconds: Int = 0
     /** When true, the idle timer is suppressed (e.g. during an active shared session). */
     var suppressAutoDisconnect: Boolean = false
@@ -159,7 +176,7 @@ class BoardBleConnection(private val context: Context) {
                         connectionTimeoutJob?.cancel()
                         connectionTimeoutJob = null
                         closeGatt(gatt)
-                        finalizeDisconnect(status)
+                        retryOrFinalize(status)
                         return
                     }
                     if (userDisconnecting) {
@@ -177,7 +194,19 @@ class BoardBleConnection(private val context: Context) {
                     // the connect (service discovery + every subsequent
                     // GATT write of a send-frame) 2-4× faster.
                     gatt.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH)
-                    gatt.discoverServices()
+                    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+                        // Legacy stacks can stall discovery (or fail it with
+                        // 129/133) when it races the connection-parameter
+                        // update above — give the update a beat first. The
+                        // attempt timeout keeps covering this window.
+                        mainHandler.postDelayed({
+                            if (_connectionState.value == ConnectionState.CONNECTING && !gattClosed) {
+                                gatt.discoverServices()
+                            }
+                        }, DELAY_PRE_DISCOVERY_LEGACY_MS)
+                    } else {
+                        gatt.discoverServices()
+                    }
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
                     connectionTimeoutJob?.cancel()
@@ -190,14 +219,17 @@ class BoardBleConnection(private val context: Context) {
 
                     // On Android <12, delay before close() — the BLE stack needs time
                     // after STATE_DISCONNECTED to fully release internal resources.
+                    // retryOrFinalize: a failure while still CONNECTING (the classic
+                    // transient status-133 on legacy stacks) retries quietly;
+                    // established-link drops and user disconnects finalize as before.
                     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
                         mainHandler.postDelayed({
                             closeGatt(gatt)
-                            finalizeDisconnect(status)
+                            retryOrFinalize(status)
                         }, DELAY_CLOSE_AFTER_DISCONNECT_MS)
                     } else {
                         closeGatt(gatt)
-                        finalizeDisconnect(status)
+                        retryOrFinalize(status)
                     }
                 }
             }
@@ -231,6 +263,10 @@ class BoardBleConnection(private val context: Context) {
                     ) {
                         Log.w(TAG, "RedBear UART service present — unsupported MoonBoard LED-kit generation")
                         _connectFailureReason.value = R.string.board_ble_moonboard_generation_unsupported
+                    } else if (_connectFailureReason.value == null) {
+                        // Unknown service layout — retrying won't change it,
+                        // but the user must not get a silent drop-back either.
+                        _connectFailureReason.value = R.string.board_ble_connect_failed_hint
                     }
                     // Tear the link down properly. Only flipping the state
                     // would leak a live GATT: the board stops advertising
@@ -242,9 +278,18 @@ class BoardBleConnection(private val context: Context) {
                 }
             } else {
                 Log.w(TAG, "onServicesDiscovered failed: status=$status")
-                // Same teardown as the missing-characteristic arm above.
-                disconnect()
-                onRestartScannersAfterConnect?.invoke()
+                if (canRetryConnect()) {
+                    // Transient discovery failure (129/133 on legacy stacks):
+                    // quiet teardown + retry instead of a silent full drop.
+                    scheduleRetry("discovery status=$status")
+                } else {
+                    if (_connectFailureReason.value == null) {
+                        _connectFailureReason.value = R.string.board_ble_connect_failed_hint
+                    }
+                    // Same teardown as the missing-characteristic arm above.
+                    disconnect()
+                    onRestartScannersAfterConnect?.invoke()
+                }
             }
         }
 
@@ -333,6 +378,8 @@ class BoardBleConnection(private val context: Context) {
         _connectedBoardBrand.value = board.boardBrand
         // Fresh attempt — drop any failure reason from the previous one.
         _connectFailureReason.value = null
+        currentBoard = board
+        connectAttempt = 1
         // FEAT-031: ledsPerHold (Kilter = 2, other Aurora boards = 1) feeds the
         // @2 LED power-budget scaling; harmless on @3 (where it is unused).
         encoder = BoardPacketEncoder(board.apiLevel, BoardPacketEncoder.ledsPerHoldFor(board.boardBrand))
@@ -361,54 +408,126 @@ class BoardBleConnection(private val context: Context) {
                 delay(DELAY_RECONNECT_MODERN_MS)
             }
 
-            // Abort if state changed during the wait
-            if (_connectionState.value != ConnectionState.CONNECTING) {
-                _connectedBoardName.value = null
-                _connectedBoardBrand.value = null
-                return@launch
+            startGattAttempt(board)
+        }
+    }
+
+    /** True while the in-flight connect may quietly retry: still CONNECTING,
+     *  not user-cancelled, attempts left. */
+    private fun canRetryConnect(): Boolean =
+        _connectionState.value == ConnectionState.CONNECTING &&
+            !userDisconnecting &&
+            connectAttempt < MAX_CONNECT_ATTEMPTS &&
+            currentBoard != null
+
+    /** Route a failed radio-level attempt: quiet retry while attempts remain,
+     *  else surface the generic failure hint and finalize the disconnect. */
+    private fun retryOrFinalize(status: Int) {
+        if (canRetryConnect()) {
+            scheduleRetry("status=0x${status.toString(16)}")
+        } else {
+            if (_connectionState.value == ConnectionState.CONNECTING &&
+                !userDisconnecting && _connectFailureReason.value == null
+            ) {
+                _connectFailureReason.value = R.string.board_ble_connect_failed_hint
             }
+            finalizeDisconnect(status)
+        }
+    }
 
-            // Safety: close stale GATT if still open (Nordic MCP pattern)
-            gatt?.let { oldGatt ->
-                Log.w(TAG, "Closing stale GATT before reconnect")
-                try { oldGatt.close() } catch (e: Exception) { Log.w(TAG, "Failed to close old GATT", e) }
-                gatt = null
-            }
+    /** Tear the current attempt's GATT down WITHOUT leaving CONNECTING and
+     *  schedule the next attempt after a short backoff. Safe against a
+     *  callback-side closeGatt that already ran (double-close guarded). */
+    @SuppressLint("MissingPermission")
+    private fun scheduleRetry(trigger: String) {
+        connectAttempt += 1
+        Log.i(TAG, "Connect attempt failed ($trigger) — retrying quietly (attempt $connectAttempt/$MAX_CONNECT_ATTEMPTS)")
+        connectionTimeoutJob?.cancel()
+        connectionTimeoutJob = null
+        gatt?.let { g ->
+            runCatching { g.disconnect() }
+            closeGatt(g)
+        }
+        gatt = null
+        writeCharacteristic = null
+        val board = currentBoard ?: run { finalizeDisconnect(BluetoothGatt.GATT_FAILURE); return }
+        connectJob = scope.launch {
+            delay(CONNECT_RETRY_DELAY_MS)
+            if (_connectionState.value != ConnectionState.CONNECTING) return@launch
+            startGattAttempt(board)
+        }
+    }
 
-            val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-            val device = bluetoothManager.adapter.getRemoteDevice(board.address)
+    /** One radio-level connect attempt: fresh connectGatt + per-attempt
+     *  timeout. Called from connect()'s prelude and again by scheduleRetry(). */
+    @SuppressLint("MissingPermission")
+    private fun startGattAttempt(board: DiscoveredBoard) {
+        gattClosed = false
 
-            // CRITICAL: connectGatt() on Main-Thread with explicit callback Handler.
-            // On Android 9, the BT stack dispatches callbacks via the calling thread's Looper.
-            // If called from a coroutine dispatcher without a Looper, callbacks are silently dropped.
-            // The Handler overload (API 26+) forces callbacks onto the Main Looper.
-            // Log.i so this start-of-connect marker survives R8's Log.d-stripping rule.
-            Log.i(TAG, "connectGatt() for ${board.address} (SDK=${Build.VERSION.SDK_INT})")
-            val newGatt = device.connectGatt(
-                context,
-                false,
-                gattCallback,
-                BluetoothDevice.TRANSPORT_LE,
-                BluetoothDevice.PHY_LE_1M_MASK,
-                mainHandler
-            )
+        // Abort if state changed during the wait
+        if (_connectionState.value != ConnectionState.CONNECTING) {
+            _connectedBoardName.value = null
+            _connectedBoardBrand.value = null
+            return
+        }
 
-            if (newGatt == null) {
-                Log.e(TAG, "connectGatt returned null — GATT client slot exhausted?")
+        // Safety: close stale GATT if still open (Nordic MCP pattern)
+        gatt?.let { oldGatt ->
+            Log.w(TAG, "Closing stale GATT before reconnect")
+            try { oldGatt.close() } catch (e: Exception) { Log.w(TAG, "Failed to close old GATT", e) }
+            gatt = null
+        }
+
+        val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+        val device = bluetoothManager.adapter.getRemoteDevice(board.address)
+
+        // CRITICAL: connectGatt() on Main-Thread with explicit callback Handler.
+        // On Android 9, the BT stack dispatches callbacks via the calling thread's Looper.
+        // If called from a coroutine dispatcher without a Looper, callbacks are silently dropped.
+        // The Handler overload (API 26+) forces callbacks onto the Main Looper.
+        // Log.i so this start-of-connect marker survives R8's Log.d-stripping rule.
+        Log.i(TAG, "connectGatt() for ${board.address} (SDK=${Build.VERSION.SDK_INT}, attempt=$connectAttempt/$MAX_CONNECT_ATTEMPTS)")
+        val newGatt = device.connectGatt(
+            context,
+            false,
+            gattCallback,
+            BluetoothDevice.TRANSPORT_LE,
+            BluetoothDevice.PHY_LE_1M_MASK,
+            mainHandler
+        )
+
+        if (newGatt == null) {
+            Log.e(TAG, "connectGatt returned null — GATT client slot exhausted?")
+            if (canRetryConnect()) {
+                // Slot exhaustion is usually transient while a previous close
+                // settles — exactly what the backoff retry is for.
+                scheduleRetry("connectGatt=null")
+            } else {
+                if (_connectFailureReason.value == null) {
+                    _connectFailureReason.value = R.string.board_ble_connect_failed_hint
+                }
                 _connectionState.value = ConnectionState.DISCONNECTED
                 _connectedBoardName.value = null
                 _connectedBoardBrand.value = null
                 onRestartScannersAfterConnect?.invoke()
-                return@launch
             }
+            return
+        }
 
-            gatt = newGatt
+        gatt = newGatt
 
-            // Connection timeout
-            connectionTimeoutJob = scope.launch {
-                delay(CONNECTION_TIMEOUT_MS)
-                if (_connectionState.value == ConnectionState.CONNECTING) {
-                    Log.w(TAG, "Connection timeout after ${CONNECTION_TIMEOUT_MS}ms")
+        // Per-attempt timeout: a hung CONNECTING is torn down and retried
+        // quietly; only the final attempt surfaces the failure.
+        connectionTimeoutJob = scope.launch {
+            delay(CONNECT_ATTEMPT_TIMEOUT_MS)
+            if (_connectionState.value == ConnectionState.CONNECTING) {
+                Log.w(TAG, "Connect attempt timed out after ${CONNECT_ATTEMPT_TIMEOUT_MS}ms")
+                if (canRetryConnect()) {
+                    scheduleRetry("timeout")
+                } else {
+                    if (_connectFailureReason.value == null) {
+                        _connectFailureReason.value = R.string.board_ble_connect_failed_hint
+                    }
                     disconnect()
                 }
             }
@@ -631,6 +750,7 @@ class BoardBleConnection(private val context: Context) {
         val g = gatt
         gatt = null
         writeCharacteristic = null
+        currentBoard = null
         _connectionState.value = ConnectionState.DISCONNECTED
         _connectedBoardName.value = null
         _connectedBoardBrand.value = null

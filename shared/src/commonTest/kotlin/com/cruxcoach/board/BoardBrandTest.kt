@@ -128,9 +128,13 @@ class BoardBrandTest {
     }
 
     @Test
-    fun moonBoardVariantAnglesMatchDumpCoverage() {
-        // Angles match the spookykat dump's per-variant files.
-        assertEquals(listOf(40), MoonBoardVariant.MOONBOARD_2016.angles)
+    fun moonBoardVariantAnglesMatchBoardAdjustability() {
+        // Adjustable boards (25° + 40°): 2016, 2024, and both Masters — the
+        // official catalogue sets their problems at both angles. Genuine
+        // fixed-40° boards: Mini 2020. (2016 + 2024 were widened from 40°-only
+        // once the full official catalogue's 25° content became available.)
+        assertEquals(listOf(25, 40), MoonBoardVariant.MOONBOARD_2016.angles)
+        assertEquals(listOf(25, 40), MoonBoardVariant.MOONBOARD_2024.angles)
         assertEquals(listOf(25, 40), MoonBoardVariant.MASTERS_2017.angles)
         assertEquals(listOf(25, 40), MoonBoardVariant.MASTERS_2019.angles)
         assertEquals(listOf(40), MoonBoardVariant.MINI_2020.angles)

@@ -7,6 +7,7 @@ import android.net.Uri
 import android.util.Log
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -17,6 +18,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Named
 import javax.inject.Singleton
@@ -42,7 +44,14 @@ class UpdaterRepository @Inject constructor(
     @param:Named("io") private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
 
-    private val scope = CoroutineScope(SupervisorJob() + ioDispatcher)
+    private val exceptionHandler = CoroutineExceptionHandler { _, e ->
+        // Fire-and-forget updater coroutines have no caller to observe a throw.
+        // SupervisorJob isolates siblings but does NOT swallow exceptions, so
+        // without this a transient DownloadManager/DataStore/notifier failure
+        // would surface as a whole-app crash. Log and drop instead.
+        Log.e(TAG, "Uncaught exception in updater coroutine", e)
+    }
+    private val scope = CoroutineScope(SupervisorJob() + ioDispatcher + exceptionHandler)
     private var downloadMonitorJob: Job? = null
 
     val state: Flow<UpdaterState> = preferences.state
@@ -91,6 +100,11 @@ class UpdaterRepository @Inject constructor(
         if (outcome is UpdateChecker.CheckOutcome.Update) {
             onNewerUpdateDetected(outcome.info)
         }
+        // Re-surface a dismissed-but-pending update on its backoff, INDEPENDENT of
+        // the network outcome. maybeCheck returns NotModified on an ETag 304, which
+        // otherwise short-circuits before any notification work — so without this a
+        // once-dismissed update could never be re-shown by any later check.
+        maybeReArmPendingNotification()
         return outcome
     }
 
@@ -118,6 +132,45 @@ class UpdaterRepository @Inject constructor(
             if (prefs.notifDismissedAtEpochMs != null) return@launch
             val info = prefs.pendingUpdate() ?: return@launch
             notifier.showPendingDownload(info)
+        }
+    }
+
+    /**
+     * Re-attaches to an in-flight APK download after process death. The
+     * `DownloadManager` runs in its own system process, so a download enqueued
+     * before the OS killed us keeps going (or already finished) — but the
+     * [monitorDownload] coroutine died with our process, leaving the pipeline
+     * stuck in `DOWNLOADING` with no verify/install and a frozen progress bar.
+     * Called from [UpdaterCoordinator.start] on every launch: if a pending
+     * download id survives in prefs, re-query and resume monitoring so the flow
+     * finishes (or fails cleanly). If `DownloadManager` no longer knows the id
+     * (cleared / expired), reset to `PENDING_DOWNLOAD` and re-notify so the user
+     * can restart instead of waiting forever.
+     */
+    fun resumePendingDownloadIfAny() {
+        scope.launch {
+            val prefs = preferences.snapshot()
+            if (prefs.pipelineStage != PipelineStage.DOWNLOADING) return@launch
+            val info = prefs.pendingUpdate()
+            val id = prefs.pendingDownloadId
+            if (id == null || info == null) {
+                // Inconsistent state (DOWNLOADING but nothing to resume) — reset
+                // so the user can re-trigger from a clean surface.
+                preferences.update {
+                    it.copy(pendingDownloadId = null, pipelineStage = PipelineStage.PENDING_DOWNLOAD)
+                }
+                return@launch
+            }
+            if (downloader.query(id) == null) {
+                Log.i(TAG, "event=resume_download_gone id=$id — resetting to pending")
+                preferences.update {
+                    it.copy(pendingDownloadId = null, pipelineStage = PipelineStage.PENDING_DOWNLOAD)
+                }
+                notifier.showPendingDownload(info)
+                return@launch
+            }
+            Log.i(TAG, "event=resume_download id=$id version=${info.versionName}")
+            monitorDownload(info, id)
         }
     }
 
@@ -160,7 +213,17 @@ class UpdaterRepository @Inject constructor(
         downloadMonitorJob = scope.launch {
             var lastNotifyPct = -1
             while (true) {
-                val status = downloader.query(id) ?: break
+                // Guard the poll query: DownloadManager.query can throw
+                // (SQLiteException / IllegalStateException on some OEMs). A
+                // transient throw ends the monitor cleanly — the pipeline stays
+                // DOWNLOADING and resumePendingDownloadIfAny re-attaches on the
+                // next launch — instead of crashing out of the loop.
+                val status = try {
+                    downloader.query(id)
+                } catch (e: Exception) {
+                    Log.w(TAG, "event=download_query_threw ending monitor", e)
+                    null
+                } ?: break
                 when (status.state) {
                     ApkDownloader.State.SUCCESSFUL -> {
                         _downloadProgress.value = 100
@@ -215,6 +278,22 @@ class UpdaterRepository @Inject constructor(
                 }
                 notifier.showCertMismatch(info)
             }
+            is IntegrityVerifier.Result.SignerUnavailable -> {
+                // The signer cert couldn't be extracted (ROM quirk + no usable
+                // v1 signature). Re-downloading can't fix this, so hand off to
+                // the release page like a cert mismatch instead of looping on
+                // CORRUPT forever — a retry there could never install.
+                Log.w(TAG, "Signer unavailable ($result) — handoff to browser")
+                downloader.clearCacheFor(info.versionName)
+                preferences.update {
+                    it.copy(
+                        pendingDownloadId = null,
+                        pipelineStage = PipelineStage.BLOCKED_CERT_MISMATCH,
+                        lastCheckResult = CheckResult.BLOCKED_CERT_MISMATCH,
+                    )
+                }
+                notifier.showCertMismatch(info)
+            }
             IntegrityVerifier.Result.PayloadMismatch,
             IntegrityVerifier.Result.PayloadMissing,
             is IntegrityVerifier.Result.PayloadError,
@@ -250,9 +329,16 @@ class UpdaterRepository @Inject constructor(
         }
     }
 
-    /** Called by [ApkInstallStatusReceiver]. */
-    fun onInstallOutcome(outcome: InstallOutcome) {
+    /**
+     * Called by [ApkInstallStatusReceiver]. [onDone] fires when the async
+     * terminal-status work finishes so the receiver's `goAsync()` PendingResult
+     * can be finished — otherwise the STATUS_SUCCESS cleanup (state reset, APK
+     * delete, notification cancel) can be dropped when the OS reaps the
+     * freshly-replaced idle process before this coroutine runs.
+     */
+    fun onInstallOutcome(outcome: InstallOutcome, onDone: () -> Unit = {}) {
         scope.launch {
+            try {
             val prefs = preferences.snapshot()
             val info = prefs.pendingUpdate()
             when (outcome) {
@@ -292,6 +378,34 @@ class UpdaterRepository @Inject constructor(
                     }
                 }
             }
+            } finally {
+                onDone()
+            }
+        }
+    }
+
+    /**
+     * Called by [ApkInstallStatusReceiver] on STATUS_PENDING_USER_ACTION.
+     * Surfaces the system install-consent dialog reliably: a manifest
+     * BroadcastReceiver's direct startActivity can be silently dropped by
+     * background-activity-start limits (API 29+, stricter on 34/35) with no
+     * exception thrown, stranding the pipeline at READY_TO_INSTALL. We attempt
+     * the direct launch (smooth for the foreground "Installieren" tap) AND
+     * always post a tappable notification whose contentIntent is the consent
+     * IntentSender, so the user's tap provides a fresh background-activity-start
+     * grant either way. [onDone] finishes the receiver's goAsync() PendingResult.
+     */
+    fun onConsentRequired(consentIntent: Intent, onDone: () -> Unit = {}) {
+        scope.launch {
+            try {
+                consentIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                runCatching { context.startActivity(consentIntent) }
+                    .onFailure { Log.w(TAG, "Direct consent launch failed", it) }
+                val info = preferences.snapshot().pendingUpdate()
+                if (info != null) notifier.showConsentRequired(info, consentIntent)
+            } finally {
+                onDone()
+            }
         }
     }
 
@@ -307,7 +421,11 @@ class UpdaterRepository @Inject constructor(
         }
     }
 
-    /** §6.10 re-arm. Simple stage machine: +24h, then 72h × 10, then 30d forever. */
+    /**
+     * User swiped the pending-update notification away. Stamp the dismissal time
+     * and bump the dismissal count — [maybeReArmPendingNotification] uses both to
+     * re-surface the update later on an escalating backoff (§6.10).
+     */
     suspend fun onNotificationDismissed() {
         preferences.update {
             it.copy(
@@ -315,6 +433,36 @@ class UpdaterRepository @Inject constructor(
                 notifReArmCount = it.notifReArmCount + 1,
             )
         }
+    }
+
+    /**
+     * §6.10 re-arm: re-post a pending update the user swiped away, on an
+     * escalating backoff keyed to how many times they've dismissed it — ~24h
+     * after the first dismissal, ~72h for the next ten, then ~30d forever. Called
+     * from [checkNow] on every trigger (foreground / network / 24h periodic), so
+     * even a run that returns NotModified (ETag 304) gets a chance to re-surface
+     * the update. No-op unless there is a dismissed, still-pending download whose
+     * backoff has elapsed.
+     */
+    suspend fun maybeReArmPendingNotification() {
+        val prefs = preferences.snapshot()
+        if (prefs.pipelineStage != PipelineStage.PENDING_DOWNLOAD) return
+        val dismissedAt = prefs.notifDismissedAtEpochMs ?: return // showing / never dismissed
+        val info = prefs.pendingUpdate() ?: return
+        if (System.currentTimeMillis() - dismissedAt < reArmDelayMs(prefs.notifReArmCount)) return
+        notifier.showPendingDownload(info)
+        // It's on screen again → clear the dismissed marker. The dismissal COUNT
+        // is kept (it drives the escalating backoff); a fresh swipe bumps it via
+        // onNotificationDismissed and lengthens the next interval.
+        preferences.update { it.copy(notifDismissedAtEpochMs = null) }
+        Log.i(TAG, "event=notif_rearmed version=${info.versionName} dismissCount=${prefs.notifReArmCount}")
+    }
+
+    /** Backoff before re-showing a dismissed update, by dismissal count (§6.10). */
+    private fun reArmDelayMs(dismissCount: Int): Long = when {
+        dismissCount <= 1 -> TimeUnit.HOURS.toMillis(24)
+        dismissCount <= 11 -> TimeUnit.HOURS.toMillis(72) // dismissals 2..11 — the "×10" window
+        else -> TimeUnit.DAYS.toMillis(30)
     }
 
     suspend fun setAutoCheck(enabled: Boolean) =

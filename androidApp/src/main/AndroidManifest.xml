@@ -92,6 +92,7 @@
             android:exported="true"
             android:launchMode="singleTop"
             android:windowSoftInputMode="adjustResize"
+            android:screenOrientation="portrait"
             android:theme="@style/Theme.CruxCoach.Splash">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

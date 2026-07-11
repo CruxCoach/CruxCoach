@@ -28,6 +28,15 @@ internal fun MoonBoardWhatsNewDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
+        // Dismiss only via an explicit button ("Später"/"Board wählen"), never a
+        // stray scrim tap or back press. onDismiss -> dismissCurrent() advances the
+        // lastSeen watermark, so an accidental dismissal — easy during the busy
+        // first-0.2.0-launch board re-sync — would permanently mark this upgrade
+        // announcement read without the user ever seeing it (the reported bug).
+        properties = androidx.compose.ui.window.DialogProperties(
+            dismissOnClickOutside = false,
+            dismissOnBackPress = false,
+        ),
         title = {
             Text(stringResource(R.string.whatsnew_moonboard_title))
         },

@@ -166,7 +166,10 @@ internal fun AppShareSection(
                         val boardDb = context.getDatabasePath("cruxcoach.db")
                         val apkServer = LocalApkServer(
                             apkFile = apk,
-                            boardDbFile = if (boardDb.exists()) boardDb else null
+                            boardDbFile = if (boardDb.exists()) boardDb else null,
+                            // Serve a checkpointed snapshot, not the live WAL
+                            // file — see LocalApkServer.boardDbSnapshot.
+                            snapshotDir = context.cacheDir
                         )
                         apkServer.onAutoShutdown = {
                             android.os.Handler(android.os.Looper.getMainLooper()).post {

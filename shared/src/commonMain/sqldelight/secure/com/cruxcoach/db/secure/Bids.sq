@@ -37,8 +37,8 @@ INSERT OR REPLACE INTO bids(uuid, climb_uuid, angle, is_mirror,
     bid_count, comment, climbed_at, synced,
     gym_uuid, wall_uuid, product_layout_uuid,
     climb_name, difficulty_average,
-    board_brand, layout_id)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+    board_brand, layout_id, external_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 -- Edit an existing attempt (bid). Bids carry no quality rating, so only
 -- the try count and the comment are user-editable. Without this the edit

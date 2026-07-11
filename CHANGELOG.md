@@ -4,6 +4,144 @@ All notable changes to CruxCoach will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.2.1] - Unreleased
+
+Zone search on the board photo, Kilter circuits arriving as lists,
+share links for every climb and lists that span all your boards — plus
+an offline share that now actually delivers the board database and a
+more reliable connect, import and updater underneath.
+
+### Added
+- **Zone search** — in the hold search, drag a frame on the board photo
+  and only climbs that live entirely inside that area match; combines
+  with the hold filter.
+- **Kilter circuits import as lists** — logging in with your Kilter
+  account now also pulls your circuits and turns each one into a local
+  list, alongside ascents and bids. Runs with every logbook sync and
+  shows up in the import summary as a list count.
+- **Share any climb** — community climbs keep their existing link form;
+  catalogue climbs (and community climbs that arrived via the daily
+  catalogue) are now shareable too. Every link opens directly in
+  CruxCoach.
+- **MoonBoard 2016 and 2024 are adjustable** — both variants now offer
+  25° and 40° in browse, detail and the creator, matching the official
+  catalogue. (Their 25° problems appear once the published board
+  snapshot next refreshes.)
+- **Weekly consistency instead of day-streaks** — rest days are part of
+  training, so day-streaks read 1–3 forever. The records row now shows
+  average sessions per week (last 8 weeks) and a week streak —
+  consecutive calendar weeks with at least one session; a rest day never
+  breaks it, a full week off does.
+- **Board download over mobile data (opt-in)** — the initial board
+  database download can run over mobile data after an explicit
+  confirmation with a data-size warning; an explicit per-board reload no
+  longer waits for WiFi either.
+- **"Newest" sort** in the climb browser — order the catalogue by when a
+  climb was created; combined with the ascending/descending toggle this
+  covers both newest-first and oldest-first.
+
+### Fixed
+- **Offline share: the board-database import works now.** Receiving the
+  board database from a friend's phone aborted with an error right at
+  the end of the import. The receiver now understands the shared
+  database format: every board's climbs stay on their board, the
+  sender's private drafts stay private, and gym locations come along.
+  The sender also serves a consistent snapshot of its database, so a
+  sync running in parallel can no longer corrupt the transfer. And the
+  transfer no longer times out while the sender is still preparing that
+  snapshot: preparation is much faster now, and the receiver politely
+  waits for it instead of giving up after 30 seconds.
+- **Kilter login errors are visible now** — a wrong password or a failed
+  logbook import used to fail silently; every login and import failure
+  now surfaces in onboarding and in Settings.
+- **Kilter logbook import hardened** — re-syncs no longer overwrite the
+  quality rating or comment you edited locally, a very large logbook no
+  longer crashes the import, transient network errors are retried
+  automatically, big uploads keep partial progress on a mid-way failure,
+  and error messages are localized and readable. A failed onboarding
+  import is no longer a dead end: your credentials are kept and a retry
+  returns to the preview.
+- **Sessions-per-week counted right** — the "Sessions/Woche (8 W.)" tile
+  divided by the time since your first session instead of the full
+  8-week window, inflating the figure for young logbooks.
+- **Climb links open while a climb is already on screen** — tapping a
+  shared climb link was silently ignored when the app was already
+  showing another climb's detail; it now opens the linked climb, and
+  Back returns to the browser.
+- **More resilient backup and message delivery** — encrypted cloud
+  backups now target only servers verified to accept them (a provider
+  that rejects backup uploads was dropped from the defaults; it made
+  every backup report a partial failure), and relay discovery gets a
+  third bootstrap relay. Sending a message to the developer (feedback,
+  crash report, donation note) now completes in the background even if
+  you leave the screen right away.
+- **Calmer, more reliable board connect** — connection retries happen
+  quietly in the background (noticeable especially on Android 10) and
+  the legacy "experimental" connect toggle is gone.
+- **In-app updater reliability** — an update notification you swiped
+  away comes back; dismissing a version stops muting newer ones; a
+  download interrupted by a process kill resumes instead of stranding;
+  and update checks are no longer throttled for hours right after a
+  reboot. The whole pipeline is also hardened: a transient system error
+  during a download can no longer crash the app, the post-install
+  cleanup can't be lost anymore (no more stale "install" notification
+  after a successful update), the install-consent dialog is delivered
+  reliably on newer Android versions via a tappable notification, and
+  release APKs carry the signature scheme some ROMs need to verify the
+  update (with a graceful hand-off to the release page where
+  verification still isn't possible).
+- **Board sync survives a failed chunk** — a single failed chunk
+  download no longer aborts the whole board-database refresh.
+- **What's-new popup could be dismissed by accident.** On the first
+  launch after an update, the highlights dialog could be closed by
+  tapping outside it or pressing Back, which silently marked it as seen
+  — so some users never actually read it. It now closes only via its
+  buttons. Because of this, the 0.2.1 highlights dialog carries a short
+  recap of the 0.2.0 board additions for anyone who missed them.
+- **Announcements stayed collapsed once read.** Tapping an announcement
+  marked it read but also truncated it with no way to expand again; read
+  announcements now stay fully readable.
+- **Logbook labels lead with the outcome** — sends now read "Sent · 3
+  tries" ("Top · 3 Versuche"), open projects "Open · 3 attempts"
+  ("Offen · 3 Versuche"), so the two can't be confused; true flashes
+  stay "Flash".
+- **Grade-true stats, honest flashes** — the grade pyramid (and related
+  charts) grouped Font grades through the V-scale, so a 7b top could
+  display as 7b+; buckets now follow the displayed grade directly. And a
+  first-try send only counts as a flash if it was the first logbook
+  contact with that climb at that angle — attempts in earlier sessions
+  disqualify it.
+- **Backup restore is now lossless.** Restoring a backup (file import or
+  Nostr cloud backup — same format) used to fold the built-in "Ignored"
+  list into Favorites (hidden climbs resurfaced in browse — and came back
+  favorited), strip Aurora circuits of their color/description and their
+  re-import idempotency key, drop the Kilter authorship that keeps an own
+  published climb re-publishable, reset benchmark markers, detach
+  boulders from the workout they were logged in, and silently skip
+  legitimately-distinct same-day log entries as "duplicates". All of
+  these now round-trip exactly.
+- **Offline share: private drafts never leave the device.** The served
+  board database is a checkpointed snapshot with the sender's unpublished
+  drafts (and the Kilter publish log) removed *before* transfer —
+  previously they travelled along and were only filtered out during the
+  receiver's import. The snapshot is also WAL-safe now (no more missing
+  newest climbs in rare timing windows), and sharing between different
+  app versions aborts cleanly up front instead of half-importing.
+
+### Changed
+- **Saved lists show all your climbs, across every board** (FEAT-023) — a list
+  (Favoriten + custom lists) is your own selection, so it's no longer filtered
+  down to your currently-configured board. Every entry appears with its board
+  badge (Kilter Original vs Homewall now distinguished). Sending a climb that
+  doesn't fit your active board is refused with a clear message — including the
+  case where none of its holds map to your board — so nothing lights up
+  incorrectly. When a list spans several boards, a **multi-select** filter row
+  lets you narrow it — pick one or several boards at once, a whole brand
+  ("alle MoonBoard"), or a specific variant (MoonBoard Masters 2019, Kilter
+  Homewall). Entries whose board catalogue isn't downloaded are flagged
+  ("N not shown"), not silently hidden.
+- **Portrait only** — the app is locked to portrait orientation.
+
 ## [0.2.0] - 2026-06-21
 
 > 0.2.0 is the multi-board release. CruxCoach now speaks **MoonBoard** as

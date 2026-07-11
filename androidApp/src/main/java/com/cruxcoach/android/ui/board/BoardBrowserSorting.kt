@@ -28,6 +28,9 @@ internal fun boardBrowserSortInKotlin(
         ClimbSortField.BENCHMARK_DIFFICULTY -> compareBy { it.benchmarkDifficulty }
         ClimbSortField.QUALITY_SENDS -> compareBy { (it.ascensionistCount ?: 0L) * (it.qualityAverage ?: 0.0) }
         ClimbSortField.HOLDS -> compareBy { it.storedMoveCount }
+        // Lexicographic on the raw TEXT timestamp — date-correct across the two
+        // stored shapes (see ClimbSortField.NEWEST); null → "" sorts oldest.
+        ClimbSortField.NEWEST -> compareBy { it.createdAt ?: "" }
         else -> compareBy { it.ascensionistCount ?: 0L }
     }
     return if (dir == SortDirection.DESC) climbs.sortedWith(comparator.reversed())

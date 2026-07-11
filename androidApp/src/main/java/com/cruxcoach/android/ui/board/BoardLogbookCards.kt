@@ -32,6 +32,10 @@ internal fun AscentCard(
     ascent: AscentWithClimb,
     gradeScale: GradeScale,
     zones: IntensityZones? = null,
+    /** True flash = first-ever contact with this climb+angle went first
+     *  try (full-history check by the VM) — a first-try send AFTER
+     *  earlier-session attempts shows "1st try", not "Flash". */
+    isTrueFlash: Boolean = false,
     isSelected: Boolean,
     onClick: () -> Unit,
     onToggleSelect: () -> Unit,
@@ -136,8 +140,12 @@ internal fun AscentCard(
 
             Column(horizontalAlignment = Alignment.End) {
                 if (ascent.isSend) {
-                    val attemptsLabel = if (ascent.bidCount <= 1L) "Flash" else stringResource(R.string.board_ascent_tries, ascent.bidCount)
-                    val attemptsColor = if (ascent.bidCount <= 1L) SuccessGreen else OrangeAccent
+                    val attemptsLabel = when {
+                        isTrueFlash -> "Flash"
+                        ascent.bidCount <= 1L -> stringResource(R.string.board_ascent_first_try)
+                        else -> stringResource(R.string.board_ascent_tries, ascent.bidCount)
+                    }
+                    val attemptsColor = if (isTrueFlash) SuccessGreen else OrangeAccent
                     Text(
                         attemptsLabel,
                         style = MaterialTheme.typography.labelMedium,
@@ -148,7 +156,7 @@ internal fun AscentCard(
                     val attemptsText = if (ascent.bidCount > 1L) {
                         stringResource(R.string.board_ascent_attempts_count, ascent.bidCount)
                     } else {
-                        stringResource(R.string.board_ascent_attempt)
+                        stringResource(R.string.board_ascent_open_one)
                     }
                     Text(
                         attemptsText,
@@ -184,13 +192,24 @@ internal fun AscentCard(
  *  promoted board needs no per-board string. Sits on the card's meta line
  *  next to angle/date. */
 @Composable
-internal fun BoardBrandBadge(brand: BoardBrand) {
+internal fun BoardBrandBadge(brand: BoardBrand, layoutId: Long? = null) {
+    // FEAT-023: Kilter Original and Homewall share the 'kilter' brand, so a
+    // plain brand label can't tell them apart in a cross-board list. When the
+    // caller supplies the climb's layout, split Homewall out explicitly.
+    val label = if (
+        brand == BoardBrand.KILTER &&
+        layoutId == com.cruxcoach.android.data.BoardConstants.KILTER_HOMEWALL_LAYOUT.toLong()
+    ) {
+        stringResource(R.string.board_category_kilter_homewall)
+    } else {
+        brand.displayName
+    }
     Surface(
         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.12f),
         shape = RoundedCornerShape(4.dp)
     ) {
         Text(
-            text = brand.displayName,
+            text = label,
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,

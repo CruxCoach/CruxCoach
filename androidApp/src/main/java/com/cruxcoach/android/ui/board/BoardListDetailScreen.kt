@@ -2,6 +2,7 @@ package com.cruxcoach.android.ui.board
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -110,16 +111,6 @@ fun BoardListDetailScreen(
             else -> {
                 val listState = rememberLazyListState()
 
-                val shouldLoadMore by remember {
-                    derivedStateOf {
-                        val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-                        lastVisible >= state.entries.size - 10 && state.canLoadMore && !state.isLoadingMore
-                    }
-                }
-                LaunchedEffect(shouldLoadMore) {
-                    if (shouldLoadMore) viewModel.loadMore()
-                }
-
                 Column(modifier = Modifier.padding(padding)) {
                     Text(
                         stringResource(R.string.board_list_climb_count, state.totalCount),
@@ -128,19 +119,29 @@ fun BoardListDetailScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
-                    // Only when some entries are off-board: make the filtering
-                    // explicit so the global overview count reconciles with the
-                    // (smaller) board-scoped list shown here.
-                    if (state.onBoardCount < state.totalCount) {
+                    // FEAT-023: entries whose board catalogue isn't downloaded
+                    // can't be resolved — surface the gap instead of silently
+                    // dropping them.
+                    if (state.unavailableCount > 0) {
                         Text(
-                            stringResource(
-                                R.string.board_list_on_board_count,
-                                state.onBoardCount,
-                                state.totalCount
-                            ),
+                            stringResource(R.string.board_list_unavailable_count, state.unavailableCount),
                             modifier = Modifier.padding(horizontal = 16.dp),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    // FEAT-023: a list is the user's selection, shown in FULL
+                    // (every board) — each card's BoardBrandBadge labels its own
+                    // board. When the list spans >1 board, offer a MULTI-SELECT
+                    // per-board filter: a brand roll-up ("MoonBoard") + each
+                    // MoonBoard variant / Kilter Original vs Homewall.
+                    if (state.boardFilters.isNotEmpty()) {
+                        BoardFilterRow(
+                            options = state.boardFilters,
+                            selected = state.selectedFilters,
+                            onToggle = { viewModel.toggleBoardFilter(it) },
+                            onClear = { viewModel.clearBoardFilters() }
                         )
                     }
 
@@ -155,6 +156,8 @@ fun BoardListDetailScreen(
                                 gradeScale = state.gradeScale,
                                 zones = state.zones,
                                 onClick = {
+                                    // Pager follows the currently-FILTERED set so
+                                    // swiping in detail matches what's on screen.
                                     viewModel.climbNavState.climbUuids = state.entries.map { it.climb.uuid }
                                     viewModel.climbNavState.angle = state.angle
                                     viewModel.climbNavState.source = com.cruxcoach.android.ui.navigation.ClimbNavigationSource.LIST
@@ -163,25 +166,63 @@ fun BoardListDetailScreen(
                                 onRemove = { viewModel.removeFromList(entry.climb.uuid) }
                             )
                         }
-
-                        if (state.isLoadingMore) {
-                            item {
-                                Box(
-                                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    CircularProgressIndicator(
-                                        color = OrangeAccent,
-                                        modifier = Modifier.size(24.dp),
-                                        strokeWidth = 2.dp
-                                    )
-                                }
-                            }
-                        }
                     }
                 }
             }
         }
+    }
+}
+
+/** FEAT-023: per-list board filter (MULTI-SELECT, union). "Alle" + one chip per
+ *  distinct board present — variant-granular (MoonBoard 2019, Kilter Homewall,
+ *  …) plus a brand roll-up chip ("MoonBoard") when a brand has >1 variant.
+ *  Tapping toggles a chip; "Alle" clears the selection. */
+@Composable
+private fun BoardFilterRow(
+    options: List<BoardFilterOption>,
+    selected: Set<BoardFilterOption>,
+    onToggle: (BoardFilterOption) -> Unit,
+    onClear: () -> Unit,
+) {
+    LazyRow(
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        item {
+            FilterChip(
+                selected = selected.isEmpty(),
+                onClick = onClear,
+                label = { Text(stringResource(R.string.board_list_filter_all)) }
+            )
+        }
+        items(options, key = { "${it.brandWire}:${it.layoutKey}" }) { opt ->
+            val isActive = selected.any { it.brandWire == opt.brandWire && it.layoutKey == opt.layoutKey }
+            FilterChip(
+                selected = isActive,
+                onClick = { onToggle(opt) },
+                label = { Text("${boardFilterLabel(opt.brandWire, opt.layoutKey)} · ${opt.count}") }
+            )
+        }
+    }
+}
+
+/** Human label for a board-filter chip: a brand roll-up / Aurora brand
+ *  (layoutKey < 0) → brand name; Kilter Original / Homewall; the MoonBoard
+ *  variant name; else the Aurora brand display name. */
+@Composable
+private fun boardFilterLabel(brandWire: String, layoutKey: Long): String {
+    val brand = BoardBrand.fromWire(brandWire)
+    return when {
+        layoutKey < 0L -> brand.displayName
+        brand == BoardBrand.KILTER &&
+            layoutKey == com.cruxcoach.android.data.BoardConstants.KILTER_HOMEWALL_LAYOUT.toLong() ->
+            stringResource(R.string.board_category_kilter_homewall)
+        brand == BoardBrand.KILTER ->
+            stringResource(R.string.board_category_kilter_original)
+        brand == BoardBrand.MOONBOARD ->
+            com.cruxcoach.domain.board.MoonBoardVariant.fromLayoutId(layoutKey)?.displayName
+                ?: brand.displayName
+        else -> brand.displayName
     }
 }
 
@@ -241,7 +282,7 @@ private fun ListEntryCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     // Per-entry board type, analogous to the logbook badge.
-                    BoardBrandBadge(BoardBrand.fromWire(climb.boardBrand))
+                    BoardBrandBadge(BoardBrand.fromWire(climb.boardBrand), climb.layoutId)
                     climb.setterUsername?.let {
                         Text(
                             stringResource(R.string.board_climb_by_setter, it),

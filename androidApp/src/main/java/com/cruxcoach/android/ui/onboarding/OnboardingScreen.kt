@@ -10,11 +10,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.automirrored.filled.Login
@@ -780,8 +783,21 @@ private fun KilterStep(state: OnboardingState, viewModel: OnboardingViewModel) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
 
+                // While the board catalogue is still importing, a Kilter
+                // import works but its ascents show up nameless/gradeless
+                // until the catalogue lands — tell the user rather than let
+                // them hit that state unwarned. Hidden once a result is shown.
+                val boardSyncing by viewModel.boardCatalogueSyncing.collectAsStateWithLifecycle()
+                if (boardSyncing && state.kilterImportResult == null) {
+                    Text(
+                        stringResource(R.string.kilter_import_board_sync_pending),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = OrangeAccent,
+                    )
+                }
+
                 if (state.kilterImportResult != null) {
-                    KilterImportDoneContent(state)
+                    KilterImportDoneContent(state, viewModel)
                 } else if (state.kilterConnected && state.kilterImportPreview != null) {
                     KilterPreviewContent(state, viewModel)
                 } else {
@@ -911,6 +927,13 @@ private fun KilterLoginContent(state: OnboardingState, viewModel: OnboardingView
             keyboardType = KeyboardType.Password,
             imeAction = ImeAction.Done,
         ),
+        // IME "Done" submits — without this the key only closed the keyboard,
+        // which read as a login attempt that silently did nothing.
+        keyboardActions = KeyboardActions(onDone = {
+            if (state.kilterEmail.isNotBlank() && state.kilterPassword.isNotBlank() && !state.isKilterLoggingIn) {
+                viewModel.kilterLogin()
+            }
+        }),
         enabled = !state.isKilterLoggingIn,
     )
 
@@ -985,10 +1008,18 @@ private fun KilterPreviewContent(state: OnboardingState, viewModel: OnboardingVi
             modifier = Modifier.weight(1f),
             shape = RoundedCornerShape(12.dp),
         ) {
-            Text(
-                stringResource(R.string.onboarding_kilter_import_once),
-                style = MaterialTheme.typography.labelMedium,
-            )
+            if (state.isKilterImporting) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(16.dp),
+                    color = OrangeAccent,
+                    strokeWidth = 2.dp,
+                )
+            } else {
+                Text(
+                    stringResource(R.string.onboarding_kilter_import_once),
+                    style = MaterialTheme.typography.labelMedium,
+                )
+            }
         }
         Button(
             onClick = { viewModel.kilterImportPersistent() },
@@ -1014,28 +1045,45 @@ private fun KilterPreviewContent(state: OnboardingState, viewModel: OnboardingVi
 }
 
 @Composable
-private fun KilterImportDoneContent(state: OnboardingState) {
+private fun KilterImportDoneContent(state: OnboardingState, viewModel: OnboardingViewModel) {
     val result = state.kilterImportResult ?: return
     val isError = state.kilterImportError
 
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Icon(
-            Icons.Default.CheckCircle,
-            null,
-            tint = if (isError) ErrorRed else SuccessGreen,
-            modifier = Modifier.size(20.dp),
-        )
-        Text(
-            // `result` already carries the full per-object summary (success)
-            // or the error message — render it directly.
-            if (isError) stringResource(R.string.onboarding_kilter_import_error, result)
-            else result,
-            style = MaterialTheme.typography.bodyMedium,
-            color = if (isError) ErrorRed else SuccessGreen,
-            fontWeight = FontWeight.SemiBold,
-        )
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Icon(
+                // A check-in-a-circle for an error is misleading (esp. for
+                // color-blind users who only read the shape) — use an error
+                // glyph when it failed.
+                if (isError) Icons.Default.ErrorOutline else Icons.Default.CheckCircle,
+                null,
+                tint = if (isError) ErrorRed else SuccessGreen,
+                modifier = Modifier.size(20.dp),
+            )
+            // `result` already carries the full localized message (summary or
+            // error) — render it directly, no second "Import failed:" wrap.
+            // Selectable so an error can be copied into a bug report.
+            SelectionContainer(modifier = Modifier.weight(1f)) {
+                Text(
+                    result,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (isError) ErrorRed else SuccessGreen,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+        }
+        // A failed import used to dead-end here (no way back, tokens kept).
+        // Offer an explicit retry that returns to the preview/login.
+        if (isError) {
+            TextButton(
+                onClick = { viewModel.clearKilterImportResult() },
+                modifier = Modifier.align(Alignment.End),
+            ) {
+                Text(stringResource(R.string.kilter_import_retry))
+            }
+        }
     }
 }

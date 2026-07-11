@@ -327,6 +327,34 @@ class CruxCoachBackupOwnClimbsRoundTripTest {
         assertEquals(1, result.ownClimbStats)
     }
 
+    // ── Kilter authorship survives the round-trip ──
+    // kilter_author_uuid is the publish gate: NULL = "unknown author →
+    // not publishable". Pre-fix it was absent from the export query, the
+    // wire model AND the restore INSERT, so an own Kilter-published climb
+    // came back un-republishable after every restore.
+
+    @Test
+    fun `kilter_author_uuid round-trips for a published own climb`() {
+        val uuid = "11111111-2222-3333-4444-555555555551"
+        val authorUuid = "3fc3c2bc-0000-1111-2222-333333333333"
+        seedPublishedOwnClimb(uuid)
+        db.boardQueries.setClimbKilterAuthorUuid(authorUuid = authorUuid, uuid = uuid)
+        assertEquals(authorUuid, rowFor(uuid).kilter_author_uuid, "seed sanity")
+
+        val json = mockedExport(boardRepo)
+
+        driver.execute(null, "DELETE FROM climbs WHERE uuid = '$uuid'", 0)
+        driver.execute(null, "DELETE FROM climb_stats WHERE climb_uuid = '$uuid'", 0)
+
+        mockedImport(boardRepo, json)
+
+        assertEquals(
+            authorUuid,
+            rowFor(uuid).kilter_author_uuid,
+            "kilter_author_uuid restored — climb stays republishable",
+        )
+    }
+
     // ── Backward compat: v2 envelope (no boardClimbs field) imports cleanly ──
 
     @Test

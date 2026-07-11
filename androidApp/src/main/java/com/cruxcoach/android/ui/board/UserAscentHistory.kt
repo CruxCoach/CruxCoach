@@ -40,6 +40,10 @@ internal fun UserAscentHistory(
     onEdit: (AscentWithClimb) -> Unit,
     onDelete: (AscentWithClimb) -> Unit
 ) {
+    // Full history for THIS climb is right here — true-flash check local.
+    val flashUuids = androidx.compose.runtime.remember(ascents) {
+        BoardStatsComputer.trueFlashUuids(ascents)
+    }
     Text(stringResource(R.string.board_ascenthistory_title), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -94,8 +98,12 @@ internal fun UserAscentHistory(
                                 )
                             }
                             if (ascent.isSend) {
-                                val attemptsLabel = if (ascent.bidCount <= 1L) "Flash" else stringResource(R.string.board_ascent_tries, ascent.bidCount)
-                                val attemptsColor = if (ascent.bidCount <= 1L) SuccessGreen else OrangeAccent
+                                val attemptsLabel = when {
+                                    ascent.uuid in flashUuids -> "Flash"
+                                    ascent.bidCount <= 1L -> stringResource(R.string.board_ascent_first_try)
+                                    else -> stringResource(R.string.board_ascent_tries, ascent.bidCount)
+                                }
+                                val attemptsColor = if (ascent.uuid in flashUuids) SuccessGreen else OrangeAccent
                                 Text(
                                     attemptsLabel,
                                     style = MaterialTheme.typography.labelMedium,

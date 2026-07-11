@@ -24,8 +24,8 @@ android {
         applicationId = "com.cruxcoach.android"
         minSdk = 26
         targetSdk = 35
-        versionCode = 6
-        versionName = "0.2.0"
+        versionCode = 7
+        versionName = "0.2.1"
 
         // Only bundle arm64 native libs. armeabi-v7a alone added ~10.7 MB
         // to the APK (libmaplibre 8 MB + sqlcipher + secp256k1 + sodium +
@@ -123,6 +123,14 @@ android {
                 storePassword = localProps.getProperty("RELEASE_STORE_PASSWORD", "")
                 keyAlias = localProps.getProperty("RELEASE_KEY_ALIAS", "")
                 keyPassword = localProps.getProperty("RELEASE_KEY_PASSWORD", "")
+                // v1 (JAR) signing MUST stay on. The in-app updater's ROM
+                // fallback signer check (IntegrityVerifier.extractSignerFromZip)
+                // reads the META-INF/*.RSA v1 signature when
+                // getPackageArchiveInfo() returns null — observed on HTC
+                // Android 9 / API 28. Without a v1 signature that fallback is
+                // dead and self-update is unrecoverable on those ROMs.
+                enableV1Signing = true
+                enableV2Signing = true
             }
         }
     }

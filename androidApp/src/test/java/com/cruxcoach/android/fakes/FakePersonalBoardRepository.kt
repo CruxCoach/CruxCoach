@@ -38,6 +38,7 @@ class FakePersonalBoardRepository : PersonalBoardRepository {
         climbName: String, difficultyAverage: Double?,
         climbFrames: String, framesCount: Long,
         boardBrand: String, layoutId: Long?,
+        externalId: String?,
     ) { insertedLogUuids.add(uuid) }
 
     override fun deleteAscent(uuid: String) {}
@@ -54,6 +55,8 @@ class FakePersonalBoardRepository : PersonalBoardRepository {
     override fun countUserLogbook(): Long = 0L
     override fun getRepeatCounts(): Map<String, Long> = emptyMap()
     override fun getUnsyncedAscents(): List<RawAscent> = emptyList()
+    override fun getAscentsForBackup(): List<com.cruxcoach.data.repository.AscentBackupRow> = emptyList()
+    override fun getBidsForBackup(): List<com.cruxcoach.data.repository.BidBackupRow> = emptyList()
     override fun markAscentSyncedIfUnchanged(uuid: String, expectedRowVersion: Long): Boolean = true
 
     // -- Bid queries --
@@ -65,6 +68,7 @@ class FakePersonalBoardRepository : PersonalBoardRepository {
         gymUuid: String?, wallUuid: String?, productLayoutUuid: String?,
         climbName: String, difficultyAverage: Double?,
         boardBrand: String, layoutId: Long?,
+        externalId: String?,
     ) { insertedLogUuids.add(uuid) }
 
     override fun deleteBid(uuid: String) {}
@@ -105,6 +109,11 @@ class FakePersonalBoardRepository : PersonalBoardRepository {
     }
     override fun getIgnoredClimbUuids(): Set<String> = ignoredUuids
     override fun getClimbListEntriesRaw(): List<RawClimbListEntry> = emptyList()
+    override fun getClimbListsForBackup(): List<com.cruxcoach.data.repository.ClimbListBackupRow> = emptyList()
+    override fun restoreClimbList(
+        name: String, createdAt: String,
+        description: String?, color: String?, externalId: String?,
+    ): Long = 1L
 
     // -- Denormalization --
 

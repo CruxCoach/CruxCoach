@@ -247,6 +247,7 @@ fun BoardLogbookScreen(
                                 ascent = ascent,
                                 gradeScale = state.gradeScale,
                                 zones = state.zones,
+                                isTrueFlash = ascent.uuid in state.flashUuids,
                                 isSelected = isSelected,
                                 onClick = {
                                     viewModel.climbNavState.climbUuids = state.ascents.map { it.climbUuid }.distinct()

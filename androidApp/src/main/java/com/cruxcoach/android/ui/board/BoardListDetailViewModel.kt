@@ -6,8 +6,10 @@ import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.data.IntensityZoneManager
 import com.cruxcoach.android.data.UserPreferences
+import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.IntensityZones
 import com.cruxcoach.data.repository.BoardRepository
+import com.cruxcoach.data.repository.ClimbWithStats
 import com.cruxcoach.data.repository.Climb_list_entries
 import com.cruxcoach.data.repository.PersonalBoardRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -15,33 +17,41 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.drop
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import com.cruxcoach.android.util.safeLaunch
 
+/** One board-filter chip for a list (FEAT-023).
+ *  [layoutKey] pins a specific sub-board — Kilter Original (1) / Homewall (8),
+ *  or a MoonBoard variant layout — OR is [BoardListDetailViewModel.ANY_LAYOUT]
+ *  for a whole-brand roll-up ("all MoonBoard") and for Aurora brands (not split
+ *  by layout). [count] = entries it covers. The human label is resolved in the
+ *  UI layer (needs string resources + MoonBoardVariant). */
+data class BoardFilterOption(val brandWire: String, val layoutKey: Long, val count: Int) {
+    /** Identity match (ignores [count], which changes as the list edits). */
+    fun matchesKey(other: BoardFilterOption) =
+        brandWire == other.brandWire && layoutKey == other.layoutKey
+}
+
 data class BoardListDetailState(
     val isLoading: Boolean = true,
-    val isLoadingMore: Boolean = false,
     val listId: Long = 0,
     val listName: String = "",
+    /** Entries currently shown — the full set narrowed by [selectedFilters]. */
     val entries: List<Climb_list_entries> = emptyList(),
+    /** Total entries the user SAVED (board-agnostic; unaffected by the filter).
+     *  May exceed the shown set — see [unavailableCount]. */
     val totalCount: Long = 0,
-    /** How many of the list's (board-agnostic) entries resolve on the ACTIVE
-     *  board. <= totalCount; equal when nothing is filtered off-board. Drives
-     *  the "X of Y on this board" header. Computed once on open / board switch. */
-    val onBoardCount: Long = 0,
-    val canLoadMore: Boolean = false,
-    /** Secure-DB uuid offset reached so far (entry-driven pagination cursor).
-     *  Pages advance over the board-agnostic uuid list, not over the
-     *  board-scoped visible-entry count, so off-board entries that resolve to
-     *  nothing don't desync the cursor. */
-    val uuidOffset: Int = 0,
+    /** Saved entries that couldn't be resolved to a local climb (their board
+     *  catalogue isn't downloaded). Surfaced as a hint so they're never
+     *  silently hidden. */
+    val unavailableCount: Int = 0,
+    /** Distinct boards present, as filter chips (incl. brand roll-ups). Empty
+     *  when the list spans a single board (no point offering a filter). */
+    val boardFilters: List<BoardFilterOption> = emptyList(),
+    /** Active board filters — MULTI-SELECT, union semantics. Empty = "Alle". */
+    val selectedFilters: Set<BoardFilterOption> = emptySet(),
     val angle: Int = 40,
     val gradeScale: GradeScale = GradeScale.V_SCALE,
     val zones: IntensityZones? = null
@@ -62,6 +72,11 @@ class BoardListDetailViewModel @Inject constructor(
     private val _state = MutableStateFlow(BoardListDetailState(listId = listId))
     val state: StateFlow<BoardListDetailState> = _state.asStateFlow()
 
+    /** All resolved entries, board-agnostic and unfiltered. The displayed
+     *  [BoardListDetailState.entries] is this narrowed by the active filters;
+     *  kept here so toggling a filter never re-queries the DB. */
+    private var allEntries: List<Climb_list_entries> = emptyList()
+
     init {
         viewModelScope.safeLaunch(TAG) {
             userPreferences.boardAngle.collect { angle ->
@@ -78,24 +93,11 @@ class BoardListDetailViewModel @Inject constructor(
                 _state.update { it.copy(zones = zones) }
             }
         }
-        // Re-query when the active board changes while this screen is open —
-        // the list is now board-scoped, so a board switch must re-resolve the
-        // visible entries (mirrors BoardBrowserViewModel's board-flow collect).
-        viewModelScope.safeLaunch(TAG) {
-            combine(
-                userPreferences.boardBrand,
-                userPreferences.boardLayoutId,
-                userPreferences.boardProductSizeId,
-            ) { brand, layout, size -> Triple(brand, layout, size) }
-                .drop(1) // initial load is handled by loadList()
-                .distinctUntilChanged()
-                .collect { loadList() }
-        }
         loadList()
     }
 
-    /** Re-query from the first page — used on ON_RESUME so an edit/delete done
-     *  on the detail screen reflects instantly on return. */
+    /** Re-query — used on ON_RESUME so an edit/delete done on the detail screen
+     *  reflects on return. */
     fun refresh() = loadList()
 
     private fun loadList() {
@@ -103,122 +105,120 @@ class BoardListDetailViewModel @Inject constructor(
             withContext(Dispatchers.IO) {
                 val list = personalBoardRepo.getClimbListById(listId)
                 val angle = _state.value.angle
-                val board = boardSnapshot()
-                val page = loadEntries(listId, angle, board, PAGE_SIZE, 0)
-                // totalCount is the board-AGNOSTIC secure-DB entry count — it
-                // counts entries on every board, so it's only a coarse header
-                // hint, NOT the pagination boundary (see loadMore). After
-                // board-scoping, scoped entries.size can be < this count even
-                // when the page is full, so canLoadMore is entry-driven below.
-                val count = personalBoardRepo.countClimbListEntries(listId)
-                // X = how many of ALL the list's entries resolve on the active
-                // board. Resolved once over every uuid (lists are small), not
-                // per page, so the header stays correct regardless of scroll.
-                val onBoard = countOnBoard(listId, angle, board)
-                _state.update { it.copy(
-                    isLoading = false,
-                    listName = list?.name ?: "",
-                    entries = page.entries,
-                    totalCount = count,
-                    onBoardCount = onBoard,
-                    uuidOffset = page.lastUuidOffset,
-                    // Entry-driven: a full uuid page (PAGE_SIZE uuids consumed)
-                    // means more uuid pages may exist. We page over the
-                    // secure-DB uuid offset, not over the scoped result size.
-                    canLoadMore = page.lastUuidOffset >= PAGE_SIZE,
-                ) }
+                val resolved = resolveAllEntries(angle)
+                allEntries = resolved
+                val savedCount = personalBoardRepo.countClimbListEntries(listId)
+                val filters = buildBoardFilters(resolved)
+                _state.update { s ->
+                    // Re-map active filters onto the refreshed options (updates
+                    // counts; drops ones whose board no longer exists).
+                    val sel = s.selectedFilters
+                        .mapNotNull { prev -> filters.firstOrNull { it.matchesKey(prev) } }
+                        .toSet()
+                    s.copy(
+                        isLoading = false,
+                        listName = list?.name ?: "",
+                        // True saved count; resolved may be smaller when an
+                        // entry's board catalogue isn't downloaded — that gap is
+                        // surfaced via unavailableCount, never silently dropped.
+                        totalCount = savedCount,
+                        unavailableCount = (savedCount - resolved.size).coerceAtLeast(0).toInt(),
+                        boardFilters = filters,
+                        selectedFilters = sel,
+                        entries = applyFilter(resolved, sel),
+                    )
+                }
             }
         }
     }
 
-    fun loadMore() {
-        val s = _state.value
-        if (s.isLoadingMore || !s.canLoadMore) return
-        _state.update { it.copy(isLoadingMore = true) }
-        viewModelScope.safeLaunch(TAG) {
-            withContext(Dispatchers.IO) {
-                val board = boardSnapshot()
-                // Page over the secure-DB uuid OFFSET, not over the (possibly
-                // smaller, board-scoped) visible entry count — otherwise scoped
-                // entries that filtered out a board's uuids would desync the
-                // offset and re-fetch / skip uuid pages.
-                val page = loadEntries(listId, s.angle, board, PAGE_SIZE, s.uuidOffset)
-                val consumed = page.lastUuidOffset - s.uuidOffset
-                val combined = s.entries + page.entries
-                _state.update { it.copy(
-                    isLoadingMore = false,
-                    entries = combined,
-                    uuidOffset = page.lastUuidOffset,
-                    // Keep loading while the last uuid page came back full;
-                    // stop when a short/empty uuid page signals the list end.
-                    canLoadMore = consumed >= PAGE_SIZE,
-                ) }
+    /** FEAT-023: a list is the user's explicit selection, so it's shown in FULL
+     *  (board-agnostic) — never scoped to the active board. Resolves EVERY entry
+     *  the device has board data for, at the active angle where available else a
+     *  representative angle. Chunked to stay under SQLite's bound-parameter
+     *  limit; lists are small, so this is a one-shot load (the full set is
+     *  needed for the filter options anyway). */
+    private fun resolveAllEntries(angle: Int): List<Climb_list_entries> {
+        val uuidPairs = personalBoardRepo.getClimbListEntryUuids(listId, Int.MAX_VALUE, 0)
+        if (uuidPairs.isEmpty()) return emptyList()
+        val byUuid = HashMap<String, ClimbWithStats>()
+        uuidPairs.map { it.first }.chunked(IN_CHUNK).forEach { chunk ->
+            boardRepository.getClimbsByUuids(chunk, angle).forEach { byUuid[it.uuid] = it }
+            val missing = chunk.filter { it !in byUuid }
+            if (missing.isNotEmpty()) {
+                boardRepository.getClimbsByUuidsAnyAngle(missing).forEach { byUuid[it.uuid] = it }
             }
         }
+        return uuidPairs.mapNotNull { (uuid, addedAt) ->
+            byUuid[uuid]?.let { climb -> Climb_list_entries(addedAt = addedAt, climb = climb) }
+        }
     }
 
-    /** Active board snapshot (brand + layout + product size) for scoping the
-     *  list resolution. Snapshot via .first() so the page query is consistent. */
-    private suspend fun boardSnapshot(): BoardSnapshot = BoardSnapshot(
-        brand = userPreferences.boardBrand.first(),
-        layoutId = userPreferences.boardLayoutId.first(),
-        productSizeId = userPreferences.boardProductSizeId.first(),
-    )
-
-    private data class BoardSnapshot(val brand: String, val layoutId: Int, val productSizeId: Int)
-
-    /** Result of resolving one uuid page: the scoped visible entries plus the
-     *  secure-DB uuid offset reached (used as the next page's offset). */
-    private data class EntryPage(val entries: List<Climb_list_entries>, val lastUuidOffset: Int)
-
-    /** Two-phase: get UUIDs from SecureDB, then BOARD-SCOPED climb details
-     *  from BoardDB. Off-board entries resolve to nothing and are dropped,
-     *  so the page is entry-driven over the uuid offset. */
-    private fun loadEntries(
-        listId: Long, angle: Int, board: BoardSnapshot, limit: Int, offset: Int
-    ): EntryPage {
-        val uuidPairs = personalBoardRepo.getClimbListEntryUuids(listId, limit, offset)
-        if (uuidPairs.isEmpty()) return EntryPage(emptyList(), offset)
-        val uuids = uuidPairs.map { it.first }
-        // Board-scoped resolution: only entries on the active board (or, for
-        // Kilter, other Kilter layouts that fit the active size) surface.
-        val climbs = boardRepository.getClimbsByUuidsForBoard(
-            uuids, angle, board.brand, board.layoutId, board.productSizeId
-        )
-        // Recover entries with no row at the requested angle — notably
-        // MoonBoard Masters problems set only at 25° — via an angle-agnostic
-        // fallback that STAYS board-scoped so other-board climbs don't re-leak.
-        val resolved = climbs.associateBy { it.uuid }
-        val missing = uuids.filter { it !in resolved }
-        val climbMap = if (missing.isEmpty()) resolved
-            else resolved + boardRepository.getClimbsByUuidsForBoardAnyAngle(
-                missing, board.brand, board.layoutId, board.productSizeId
-            ).associateBy { it.uuid }
-        val entries = uuidPairs.mapNotNull { (uuid, addedAt) ->
-            climbMap[uuid]?.let { climb -> Climb_list_entries(addedAt = addedAt, climb = climb) }
+    /** Build the filter chips for the boards present. For each brand: one chip
+     *  per distinct sub-board (Kilter Original/Homewall; each MoonBoard variant;
+     *  Aurora collapses to a single per-brand chip), PLUS a brand roll-up chip
+     *  ("all MoonBoard") when that brand has more than one sub-board present.
+     *  Returns empty when the whole list is a single board (no filter needed). */
+    private fun buildBoardFilters(entries: List<Climb_list_entries>): List<BoardFilterOption> {
+        val leafCounts = LinkedHashMap<Pair<String, Long>, Int>()
+        val brandCounts = LinkedHashMap<String, Int>()
+        val brandSubs = LinkedHashMap<String, LinkedHashSet<Long>>()
+        entries.forEach { e ->
+            val brandWire = e.climb.boardBrand
+            val sub = filterLayoutKey(BoardBrand.fromWire(brandWire), e.climb.layoutId)
+            leafCounts[brandWire to sub] = (leafCounts[brandWire to sub] ?: 0) + 1
+            brandCounts[brandWire] = (brandCounts[brandWire] ?: 0) + 1
+            brandSubs.getOrPut(brandWire) { LinkedHashSet() }.add(sub)
         }
-        return EntryPage(entries, offset + uuidPairs.size)
+        if (leafCounts.size <= 1) return emptyList()
+        val out = ArrayList<BoardFilterOption>()
+        brandSubs.forEach { (brandWire, subs) ->
+            if (subs.size > 1) {
+                out.add(BoardFilterOption(brandWire, ANY_LAYOUT, brandCounts[brandWire] ?: 0))
+            }
+            subs.forEach { sub ->
+                out.add(BoardFilterOption(brandWire, sub, leafCounts[brandWire to sub] ?: 0))
+            }
+        }
+        return out
     }
 
-    /** Count how many of the list's entries resolve on the active board.
-     *  Resolves ALL entry uuids in one pass (no pagination) — mirroring
-     *  loadEntries' board-scoping (angle query + angle-agnostic fallback that
-     *  STAYS board-scoped) so off-board climbs don't re-leak into the tally. */
-    private fun countOnBoard(listId: Long, angle: Int, board: BoardSnapshot): Long {
-        val uuids = personalBoardRepo
-            .getClimbListEntryUuids(listId, Int.MAX_VALUE, 0)
-            .map { it.first }
-        if (uuids.isEmpty()) return 0
-        val resolved = boardRepository.getClimbsByUuidsForBoard(
-            uuids, angle, board.brand, board.layoutId, board.productSizeId
-        ).mapTo(mutableSetOf()) { it.uuid }
-        val missing = uuids.filter { it !in resolved }
-        if (missing.isNotEmpty()) {
-            boardRepository.getClimbsByUuidsForBoardAnyAngle(
-                missing, board.brand, board.layoutId, board.productSizeId
-            ).forEach { resolved.add(it.uuid) }
+    /** Union semantics: an entry shows if it matches ANY selected chip. A chip
+     *  matches when its brand matches and either it's a brand roll-up
+     *  ([ANY_LAYOUT]) or its layout key equals the entry's sub-board. */
+    private fun applyFilter(
+        entries: List<Climb_list_entries>, sel: Set<BoardFilterOption>
+    ): List<Climb_list_entries> =
+        if (sel.isEmpty()) entries
+        else entries.filter { e ->
+            val sub = filterLayoutKey(BoardBrand.fromWire(e.climb.boardBrand), e.climb.layoutId)
+            sel.any { opt ->
+                opt.brandWire == e.climb.boardBrand &&
+                    (opt.layoutKey == ANY_LAYOUT || opt.layoutKey == sub)
+            }
         }
-        return resolved.size.toLong()
+
+    /** Filter granularity: layout matters only where it names a distinct,
+     *  user-recognisable board — Kilter Original (1) vs Homewall (8), and each
+     *  MoonBoard variant. Aurora brands (Tension TB1/TB2 etc.) have no simple
+     *  per-layout name, so they collapse to one chip per brand. */
+    private fun filterLayoutKey(brand: BoardBrand, layoutId: Long): Long = when (brand) {
+        BoardBrand.KILTER, BoardBrand.MOONBOARD -> layoutId
+        else -> ANY_LAYOUT
+    }
+
+    /** Toggle a board filter chip (multi-select union). */
+    fun toggleBoardFilter(opt: BoardFilterOption) {
+        _state.update { s ->
+            val existing = s.selectedFilters.firstOrNull { it.matchesKey(opt) }
+            val newSel = if (existing != null) s.selectedFilters - existing else s.selectedFilters + opt
+            s.copy(selectedFilters = newSel, entries = applyFilter(allEntries, newSel))
+        }
+    }
+
+    /** Clear all board filters ("Alle"). */
+    fun clearBoardFilters() {
+        _state.update { it.copy(selectedFilters = emptySet(), entries = applyFilter(allEntries, emptySet())) }
     }
 
     fun removeFromList(climbUuid: String) {
@@ -226,14 +226,19 @@ class BoardListDetailViewModel @Inject constructor(
             withContext(Dispatchers.IO) {
                 personalBoardRepo.removeClimbFromList(listId, climbUuid)
             }
+            allEntries = allEntries.filterNot { it.climb.uuid == climbUuid }
+            val filters = buildBoardFilters(allEntries)
             _state.update { s ->
-                val updated = s.entries.filterNot { it.climb.uuid == climbUuid }
-                // The removed climb was visible, so it counted toward both the
-                // global total (Y) and the on-board count (X) — drop both.
+                val sel = s.selectedFilters
+                    .mapNotNull { prev -> filters.firstOrNull { it.matchesKey(prev) } }
+                    .toSet()
+                val newTotal = (s.totalCount - 1).coerceAtLeast(0)
                 s.copy(
-                    entries = updated,
-                    totalCount = s.totalCount - 1,
-                    onBoardCount = (s.onBoardCount - 1).coerceAtLeast(0),
+                    entries = applyFilter(allEntries, sel),
+                    totalCount = newTotal,
+                    unavailableCount = (newTotal - allEntries.size).coerceAtLeast(0).toInt(),
+                    boardFilters = filters,
+                    selectedFilters = sel,
                 )
             }
         }
@@ -241,6 +246,11 @@ class BoardListDetailViewModel @Inject constructor(
 
     companion object {
         private const val TAG = "BoardListDetailVM"
-        private const val PAGE_SIZE = 50
+        // SQLite's bound-parameter cap is 999 on older Android SQLite; chunk the
+        // uuid IN-resolution well under it.
+        private const val IN_CHUNK = 500
+        // Sentinel layout key for brand roll-up chips + Aurora brands; never a
+        // real layout_id. Negative so the UI can detect "whole brand".
+        const val ANY_LAYOUT = -1L
     }
 }

@@ -73,7 +73,8 @@ class BoardSyncViewModel @Inject constructor(
     fun loadBoard(brand: BoardBrand) = syncManager.loadBoardCatalogue(brand)
 
     fun checkNetwork() = syncManager.checkNetwork()
-    fun dismissWifiDialog() = syncManager.dismissWifiDialog()
+    fun dismissMeteredConfirm() = syncManager.dismissMeteredConfirm()
+    fun confirmMeteredSync() = syncManager.confirmMeteredSync()
     fun dismissNetworkDialog() = syncManager.dismissNetworkDialog()
     fun startApiSync() = syncManager.startApiSync()
 

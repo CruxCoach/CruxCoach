@@ -49,8 +49,11 @@ class NostrMessageSender @Inject constructor(
 
     override suspend fun deliverWraps(eventJsons: String): Boolean {
         return try {
-            // Random delay to obscure timing correlation
-            delay(kotlin.random.Random.nextLong(2_000, 60_000))
+            // Random delay to decouple relay arrival from the send tap.
+            // Kept short: the heavy timing protection is NIP-59's ±2-day
+            // created_at randomization; a long sleep here only widened the
+            // window in which delivery could be interrupted.
+            delay(kotlin.random.Random.nextLong(2_000, 10_000))
             sendJsonLines(eventJsons)
         } catch (e: Exception) {
             Log.e(TAG, "Deliver wraps failed", e)

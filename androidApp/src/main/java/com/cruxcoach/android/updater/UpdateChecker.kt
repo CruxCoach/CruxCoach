@@ -37,8 +37,22 @@ class UpdateChecker(
             return CheckOutcome.Skipped(reason = "auto_check_disabled")
         }
         if (trigger != Trigger.MANUAL) {
-            val sinceBoot = elapsedRealtimeProvider() - snapshot.lastCheckBootRealtime
-            if (snapshot.lastCheckBootRealtime > 0 && sinceBoot < MIN_CHECK_INTERVAL_MS) {
+            val now = elapsedRealtimeProvider()
+            val sinceBoot = now - snapshot.lastCheckBootRealtime
+            // Reboot guard: elapsedRealtime() resets to 0 on every boot, but
+            // lastCheckBootRealtime is persisted in DataStore and never reset (no
+            // BOOT_COMPLETED, by design). So after a reboot the stored value is
+            // LARGER than the current uptime → sinceBoot goes negative and the
+            // old `negative < interval` test throttled every non-manual check for
+            // hours/days (until uptime climbed past the stale value). A now <
+            // lastCheckBootRealtime means we rebooted since the last check → the
+            // throttle window is meaningless, so allow the check. Only throttle
+            // within the SAME boot session.
+            val rebootedSinceLastCheck = now < snapshot.lastCheckBootRealtime
+            if (!rebootedSinceLastCheck &&
+                snapshot.lastCheckBootRealtime > 0 &&
+                sinceBoot < MIN_CHECK_INTERVAL_MS
+            ) {
                 val remaining = MIN_CHECK_INTERVAL_MS - sinceBoot
                 Log.d(TAG, "event=check_throttled trigger=$trigger remainingMs=$remaining")
                 return CheckOutcome.Throttled(remainingMs = remaining)
@@ -121,6 +135,17 @@ class UpdateChecker(
                 }
                 val infoWithSha = info.copy(apkSha256 = resolvedSha)
 
+                // A newer version than the one currently pending is a FRESH
+                // surface: clear the dismiss / re-arm state carried over from the
+                // prior pending version. Otherwise a user who swiped away (say)
+                // the 0.1.4 notification keeps notifDismissedAtEpochMs set, and if
+                // this 0.2.0 notification is ever missed at post time (notifications
+                // briefly off / process death), reNotifyPendingUpdateIfAny would
+                // bail on the stale flag and the ETag-304 short-circuit would stop
+                // re-detection — so 0.2.0 would never resurface. Dismiss is
+                // per-version, not sticky forever.
+                val isNewerThanPending = infoWithSha.versionName != snapshot.pendingVersionName
+
                 preferences.update {
                     it.copy(
                         lastCheckAtEpochMs = nowMs(),
@@ -136,6 +161,8 @@ class UpdateChecker(
                         pendingReleasePageUrl = infoWithSha.releasePageUrl,
                         pendingReleaseNotesMarkdown = infoWithSha.releaseNotesMarkdown,
                         pipelineStage = PipelineStage.PENDING_DOWNLOAD,
+                        notifDismissedAtEpochMs = if (isNewerThanPending) null else it.notifDismissedAtEpochMs,
+                        notifReArmCount = if (isNewerThanPending) 0 else it.notifReArmCount,
                     )
                 }
                 Log.i(TAG, "event=update_available trigger=$trigger tag=${infoWithSha.tagName} apkSize=${infoWithSha.apkSizeBytes}")

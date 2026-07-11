@@ -145,34 +145,32 @@ fun BoardSyncInlineCard(
         )
     }
 
-    if (state.showWifiDialog) {
+    // Metered-download consent: not on WiFi is no longer a hard block — the
+    // user can explicitly opt in to pulling the full catalogue over mobile
+    // data after seeing the size warning (user-triggered downloads only;
+    // background auto-sync stays WiFi-gated).
+    if (state.showMeteredConfirmDialog) {
         AlertDialog(
-            onDismissRequest = { viewModel.dismissWifiDialog() },
+            onDismissRequest = { viewModel.dismissMeteredConfirm() },
             icon = {
                 Icon(
-                    Icons.Default.NetworkWifi,
+                    Icons.Default.Warning,
                     contentDescription = null,
                     tint = OrangeAccent,
                     modifier = Modifier.size(40.dp),
                 )
             },
-            title = { Text(stringResource(R.string.board_sync_wifi_required_title)) },
-            text = { Text(stringResource(R.string.board_sync_wifi_required_message)) },
+            title = { Text(stringResource(R.string.board_sync_metered_confirm_title)) },
+            text = { Text(stringResource(R.string.board_sync_metered_confirm_message)) },
             confirmButton = {
                 Button(
-                    onClick = {
-                        viewModel.dismissWifiDialog()
-                        context.startActivity(
-                            Intent(Settings.ACTION_WIFI_SETTINGS).apply {
-                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            },
-                        )
-                    },
+                    onClick = { viewModel.confirmMeteredSync() },
                     colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
-                ) { Text(stringResource(R.string.board_sync_wifi_settings)) }
+                    modifier = Modifier.testTag("board_sync_metered_confirm"),
+                ) { Text(stringResource(R.string.board_sync_metered_confirm_action)) }
             },
             dismissButton = {
-                TextButton(onClick = { viewModel.dismissWifiDialog() }) {
+                TextButton(onClick = { viewModel.dismissMeteredConfirm() }) {
                     Text(stringResource(R.string.action_cancel))
                 }
             },

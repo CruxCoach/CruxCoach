@@ -12,6 +12,7 @@ import com.cruxcoach.android.data.kilter.KilterApiClient
 import com.cruxcoach.android.data.kilter.KilterAuthResult
 import com.cruxcoach.android.data.kilter.KilterImportPreview
 import com.cruxcoach.android.data.kilter.formatKilterImportSummary
+import com.cruxcoach.android.data.kilter.localizeKilterImportError
 import com.cruxcoach.android.data.kilter.KilterSyncEngine
 import com.cruxcoach.android.data.kilter.KilterTokenStore
 import com.cruxcoach.android.data.kilter.localized
@@ -30,6 +31,9 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import com.cruxcoach.android.util.safeLaunch
 import javax.inject.Inject
@@ -209,6 +213,18 @@ class OnboardingViewModel @Inject constructor(
     }
     val state: StateFlow<OnboardingState> = _state.asStateFlow()
 
+    /**
+     * Whether the board catalogue is still importing. A Kilter import can run
+     * before this finishes, in which case the imported ascents show up with
+     * no name/grade until the catalogue lands (they self-heal on display) —
+     * the kilter step surfaces this as a hint rather than letting the user
+     * hit the nameless state unwarned.
+     */
+    val boardCatalogueSyncing: StateFlow<Boolean> =
+        boardSyncManager.state
+            .map { it.isSyncing }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, boardSyncManager.state.value.isSyncing)
+
     init {
         // Resume the restore flow if the user came back from KeyImportScreen
         // via app-restart. The marker is only set right before that navigation
@@ -302,14 +318,25 @@ class OnboardingViewModel @Inject constructor(
                             userUuid = result.userUuid,
                             username = result.username
                         )
-                        // Fetch import preview
+                        // Fetch import preview. A preview failure after a
+                        // successful login used to fall back to the empty
+                        // login form with no message (connected=true +
+                        // preview=null renders the form branch) — surface it
+                        // in the login error slot instead.
                         val preview = kilterSyncEngine.previewImport()
+                        val previewError = preview.exceptionOrNull()
                         _state.update {
                             it.copy(
                                 isKilterLoggingIn = false,
-                                kilterConnected = true,
+                                kilterConnected = previewError == null,
                                 kilterUsername = result.username,
-                                kilterImportPreview = preview.getOrNull()
+                                kilterImportPreview = preview.getOrNull(),
+                                kilterLoginError = previewError?.let { e ->
+                                    appContext.getString(
+                                        R.string.kilter_preview_failed,
+                                        e.message ?: e.javaClass.simpleName,
+                                    )
+                                },
                             )
                         }
                     }
@@ -326,7 +353,7 @@ class OnboardingViewModel @Inject constructor(
                 _state.update {
                     it.copy(
                         isKilterLoggingIn = false,
-                        kilterLoginError = appContext.getString(R.string.kilter_sync_error, ""),
+                        kilterLoginError = appContext.getString(R.string.kilter_sync_error, e.message ?: e.javaClass.simpleName),
                     )
                 }
             }
@@ -343,10 +370,20 @@ class OnboardingViewModel @Inject constructor(
                         isKilterImporting = false,
                         kilterImportResult = result.fold(
                             onSuccess = { r -> formatKilterImportSummary(appContext, r) },
-                            onFailure = { e -> e.message }
+                            // Localized, never raw exception text; also never
+                            // null (a message-less failure used to render
+                            // nothing despite kilterImportError=true).
+                            onFailure = { e ->
+                                Log.w(TAG, "kilterImportOneTime failed", e)
+                                localizeKilterImportError(appContext, e)
+                            }
                         ),
                         kilterImportError = result.isFailure,
-                        kilterConnected = false // credentials cleared
+                        // Only a SUCCESSFUL one-time import clears credentials
+                        // (the engine revokes + clears tokens on success). On
+                        // failure the tokens are untouched, so stay connected
+                        // and let the user retry instead of dead-ending.
+                        kilterConnected = if (result.isSuccess) false else it.kilterConnected
                     )
                 }
             } catch (e: kotlinx.coroutines.CancellationException) {
@@ -356,7 +393,7 @@ class OnboardingViewModel @Inject constructor(
                 _state.update {
                     it.copy(
                         isKilterImporting = false,
-                        kilterImportResult = appContext.getString(R.string.kilter_sync_error, ""),
+                        kilterImportResult = localizeKilterImportError(appContext, e),
                         kilterImportError = true,
                     )
                 }
@@ -374,7 +411,10 @@ class OnboardingViewModel @Inject constructor(
                         isKilterImporting = false,
                         kilterImportResult = result.fold(
                             onSuccess = { r -> formatKilterImportSummary(appContext, r) },
-                            onFailure = { e -> e.message }
+                            onFailure = { e ->
+                                Log.w(TAG, "kilterImportPersistent failed", e)
+                                localizeKilterImportError(appContext, e)
+                            }
                         ),
                         kilterImportError = result.isFailure
                     )
@@ -386,12 +426,22 @@ class OnboardingViewModel @Inject constructor(
                 _state.update {
                     it.copy(
                         isKilterImporting = false,
-                        kilterImportResult = appContext.getString(R.string.kilter_sync_error, ""),
+                        kilterImportResult = localizeKilterImportError(appContext, e),
                         kilterImportError = true,
                     )
                 }
             }
         }
+    }
+
+    /**
+     * Dismiss the import result/error view and return to the preview so the
+     * user can retry. On a failed one-time import the tokens were NOT cleared
+     * (see [kilterImportOneTime]), so the connection is still live and a
+     * retry works without re-login.
+     */
+    fun clearKilterImportResult() {
+        _state.update { it.copy(kilterImportResult = null, kilterImportError = false) }
     }
 
     // ─── FEAT-002 backup ────────────────────────────────────────────────
