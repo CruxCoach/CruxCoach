@@ -6,17 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [0.2.1] - Unreleased
 
-A follow-up to the 0.2.0 multi-board release: the offline share now
-actually delivers the board database, connecting and updating got more
-reliable, and the browser, lists, logbook and stats each pick up a
-practical improvement.
+Zone search on the board photo, Kilter circuits arriving as lists,
+share links for every climb and lists that span all your boards — plus
+an offline share that now actually delivers the board database and a
+more reliable connect, import and updater underneath.
 
 ### Added
-- **"Newest" sort** in the climb browser — order the catalogue by when a
-  climb was created, newest first.
 - **Zone search** — in the hold search, drag a frame on the board photo
   and only climbs that live entirely inside that area match; combines
   with the hold filter.
+- **Kilter circuits import as lists** — logging in with your Kilter
+  account now also pulls your circuits and turns each one into a local
+  list, alongside ascents and bids. Runs with every logbook sync and
+  shows up in the import summary as a list count.
 - **Share any climb** — community climbs keep their existing link form;
   catalogue climbs (and community climbs that arrived via the daily
   catalogue) are now shareable too. Every link opens directly in
@@ -34,6 +36,9 @@ practical improvement.
   database download can run over mobile data after an explicit
   confirmation with a data-size warning; an explicit per-board reload no
   longer waits for WiFi either.
+- **"Newest" sort** in the climb browser — order the catalogue by when a
+  climb was created; combined with the ascending/descending toggle this
+  covers both newest-first and oldest-first.
 
 ### Fixed
 - **Offline share: the board-database import works now.** Receiving the
@@ -42,10 +47,34 @@ practical improvement.
   database format: every board's climbs stay on their board, the
   sender's private drafts stay private, and gym locations come along.
   The sender also serves a consistent snapshot of its database, so a
-  sync running in parallel can no longer corrupt the transfer.
+  sync running in parallel can no longer corrupt the transfer. And the
+  transfer no longer times out while the sender is still preparing that
+  snapshot: preparation is much faster now, and the receiver politely
+  waits for it instead of giving up after 30 seconds.
 - **Kilter login errors are visible now** — a wrong password or a failed
   logbook import used to fail silently; every login and import failure
   now surfaces in onboarding and in Settings.
+- **Kilter logbook import hardened** — re-syncs no longer overwrite the
+  quality rating or comment you edited locally, a very large logbook no
+  longer crashes the import, transient network errors are retried
+  automatically, big uploads keep partial progress on a mid-way failure,
+  and error messages are localized and readable. A failed onboarding
+  import is no longer a dead end: your credentials are kept and a retry
+  returns to the preview.
+- **Sessions-per-week counted right** — the "Sessions/Woche (8 W.)" tile
+  divided by the time since your first session instead of the full
+  8-week window, inflating the figure for young logbooks.
+- **Climb links open while a climb is already on screen** — tapping a
+  shared climb link was silently ignored when the app was already
+  showing another climb's detail; it now opens the linked climb, and
+  Back returns to the browser.
+- **More resilient backup and message delivery** — encrypted cloud
+  backups now target only servers verified to accept them (a provider
+  that rejects backup uploads was dropped from the defaults; it made
+  every backup report a partial failure), and relay discovery gets a
+  third bootstrap relay. Sending a message to the developer (feedback,
+  crash report, donation note) now completes in the background even if
+  you leave the screen right away.
 - **Calmer, more reliable board connect** — connection retries happen
   quietly in the background (noticeable especially on Android 10) and
   the legacy "experimental" connect toggle is gone.
@@ -53,15 +82,22 @@ practical improvement.
   away comes back; dismissing a version stops muting newer ones; a
   download interrupted by a process kill resumes instead of stranding;
   and update checks are no longer throttled for hours right after a
-  reboot.
+  reboot. The whole pipeline is also hardened: a transient system error
+  during a download can no longer crash the app, the post-install
+  cleanup can't be lost anymore (no more stale "install" notification
+  after a successful update), the install-consent dialog is delivered
+  reliably on newer Android versions via a tappable notification, and
+  release APKs carry the signature scheme some ROMs need to verify the
+  update (with a graceful hand-off to the release page where
+  verification still isn't possible).
 - **Board sync survives a failed chunk** — a single failed chunk
   download no longer aborts the whole board-database refresh.
 - **What's-new popup could be dismissed by accident.** On the first
   launch after an update, the highlights dialog could be closed by
   tapping outside it or pressing Back, which silently marked it as seen
   — so some users never actually read it. It now closes only via its
-  buttons. Because of this, the 0.2.0 highlights are shown once more on
-  0.2.1 for anyone who missed them.
+  buttons. Because of this, the 0.2.1 highlights dialog carries a short
+  recap of the 0.2.0 board additions for anyone who missed them.
 - **Announcements stayed collapsed once read.** Tapping an announcement
   marked it read but also truncated it with no way to expand again; read
   announcements now stay fully readable.
