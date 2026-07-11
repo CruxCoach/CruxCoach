@@ -75,6 +75,22 @@ practical improvement.
   first-try send only counts as a flash if it was the first logbook
   contact with that climb at that angle — attempts in earlier sessions
   disqualify it.
+- **Backup restore is now lossless.** Restoring a backup (file import or
+  Nostr cloud backup — same format) used to fold the built-in "Ignored"
+  list into Favorites (hidden climbs resurfaced in browse — and came back
+  favorited), strip Aurora circuits of their color/description and their
+  re-import idempotency key, drop the Kilter authorship that keeps an own
+  published climb re-publishable, reset benchmark markers, detach
+  boulders from the workout they were logged in, and silently skip
+  legitimately-distinct same-day log entries as "duplicates". All of
+  these now round-trip exactly.
+- **Offline share: private drafts never leave the device.** The served
+  board database is a checkpointed snapshot with the sender's unpublished
+  drafts (and the Kilter publish log) removed *before* transfer —
+  previously they travelled along and were only filtered out during the
+  receiver's import. The snapshot is also WAL-safe now (no more missing
+  newest climbs in rare timing windows), and sharing between different
+  app versions aborts cleanly up front instead of half-importing.
 
 ### Changed
 - **Saved lists show all your climbs, across every board** (FEAT-023) — a list
