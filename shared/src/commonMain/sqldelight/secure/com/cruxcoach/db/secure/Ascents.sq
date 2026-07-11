@@ -56,8 +56,8 @@ INSERT OR REPLACE INTO ascents(uuid, climb_uuid, angle, is_mirror,
     attempt_id, bid_count, quality, difficulty, is_benchmark, comment, climbed_at, synced,
     gym_uuid, wall_uuid, product_layout_uuid,
     climb_name, difficulty_average, climb_frames, frames_count,
-    board_brand, layout_id)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+    board_brand, layout_id, external_id)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 deleteAscent:
 DELETE FROM ascents WHERE uuid = ?;

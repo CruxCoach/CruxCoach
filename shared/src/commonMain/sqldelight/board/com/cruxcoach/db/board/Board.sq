@@ -2009,7 +2009,11 @@ SELECT uuid, layout_id, setter_username, name, frames,
        -- (its layout_id stays MoonBoard's) → a brand/layout mismatch that
        -- misroutes render/BLE/editor caps. Round-tripped so the restored
        -- draft keeps its brand.
-       board_brand
+       board_brand,
+       -- Kilter publish authorship. NULL means "unknown author → not
+       -- publishable", so dropping it on restore silently bricked
+       -- re-publish/update of an own Kilter-published climb.
+       kilter_author_uuid
 FROM climbs
 WHERE origin = 'cruxcoach'
   AND is_deleted = 0
@@ -2084,7 +2088,7 @@ INSERT OR IGNORE INTO climbs(
     created_by_pubkey, frames_hash,
     nostr_event_id, nostr_d_tag, nostr_publish_via,
     kilter_status, kilter_synced_at, kilter_publish_via, kilter_error,
-    board_brand)
+    board_brand, kilter_author_uuid)
 VALUES (
     :uuid, :layout_id, :setter_username, :name, :frames,
     1, 1, :edge_left, :edge_right, :edge_bottom, :edge_top, :created_at,
@@ -2096,7 +2100,7 @@ VALUES (
     -- Restored verbatim from the backup; an old (pre-FEAT-031) envelope
     -- with no board_brand maps to 'kilter' on the Kotlin side, matching
     -- the column DEFAULT — so legacy backups are unaffected.
-    :board_brand
+    :board_brand, :kilter_author_uuid
 );
 
 -- Fill in the previously-NULL Nostr/Kilter publish metadata that the v3
@@ -2114,7 +2118,8 @@ UPDATE climbs SET
     kilter_status       = COALESCE(kilter_status,       :kilter_status),
     kilter_synced_at    = COALESCE(kilter_synced_at,    :kilter_synced_at),
     kilter_publish_via  = COALESCE(kilter_publish_via,  :kilter_publish_via),
-    kilter_error        = COALESCE(kilter_error,        :kilter_error)
+    kilter_error        = COALESCE(kilter_error,        :kilter_error),
+    kilter_author_uuid  = COALESCE(kilter_author_uuid,  :kilter_author_uuid)
 WHERE uuid = :uuid AND origin = 'cruxcoach';
 
 -- Insert/refresh climb_stats for a local climb at a given angle (setter
