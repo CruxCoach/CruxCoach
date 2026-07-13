@@ -40,9 +40,13 @@ Used to decompress board manifests downloaded from Blossom relays.
 - **Source:** extracted from the Kilter Board app's own data files
   (`product_sizes.image_filename`) and re-encoded as WebP.
 - **Rights holder:** Kilter Grips, LLC (formerly Aurora Climbing)
-- **Basis for bundling:** referential / interoperability use under
-  § 23(1) No. 3 MarkenG (DE) and analogous nominative fair-use doctrines —
-  see [`LEGAL.md`](LEGAL.md#bundled-kilter-layout-images).
+- **Copyright status:** third-party copyrighted work; **no licence granted**.
+  Trademark law (§ 23(1) No. 3 MarkenG / nominative fair use) permits using the
+  *name* "Kilter" but does **not** authorise copying the images. Bundled on a
+  documented, accepted-risk basis and slated for replacement by a CruxCoach
+  original — see [`LEGAL.md`](LEGAL.md#bundled-board-layout-images--trademark-vs-copyright),
+  [`board_images/ORIGINALS_TODO.md`](androidApp/src/main/assets/board_images/ORIGINALS_TODO.md),
+  and [`.reuse/dep5`](.reuse/dep5).
 - **Details:** [`board_images/README.md`](androidApp/src/main/assets/board_images/README.md)
 - **Takedown:** Kilter Grips, LLC (or a prior rights holder) may request
   removal or replacement at any time via the contacts in
@@ -60,9 +64,13 @@ Used to decompress board manifests downloaded from Blossom relays.
 - **Rights holders:** the respective board makers (Tension Climbing,
   Grasshopper, Decoy, So iLL, Touchstone Climbing); apps published on the
   Aurora Climbing platform.
-- **Basis for bundling:** referential / interoperability use under
-  § 23(1) No. 3 MarkenG (DE) and analogous nominative fair-use doctrines —
-  see [`LEGAL.md`](LEGAL.md#bundled-aurora-family-layout-images).
+- **Copyright status:** third-party copyrighted works; **no licence granted**.
+  Trademark law (§ 23(1) No. 3 MarkenG / nominative fair use) permits using the
+  board *names* but does **not** authorise copying the images. Bundled on a
+  documented, accepted-risk basis and slated for replacement by CruxCoach
+  originals — see [`LEGAL.md`](LEGAL.md#bundled-board-layout-images--trademark-vs-copyright),
+  [`board_images/ORIGINALS_TODO.md`](androidApp/src/main/assets/board_images/ORIGINALS_TODO.md),
+  and [`.reuse/dep5`](.reuse/dep5).
 - **Details:** [`board_images/README.md`](androidApp/src/main/assets/board_images/README.md)
 - **Takedown:** any rights holder may request removal or replacement at any
   time via the contacts in [`SECURITY.md`](SECURITY.md). Requests will be

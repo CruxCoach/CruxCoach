@@ -1,0 +1,26 @@
+LicenseRef-Proprietary-NoLicenceGranted
+
+This is NOT a licence. It is a marker used to record, in a machine-readable
+way, that certain files in this repository are third-party proprietary works
+for which NO licence has been granted to this project.
+
+Files carrying this identifier (see `.reuse/dep5`) are board-layout images
+extracted from the respective vendors' official mobile apps. They remain the
+exclusive property of their rights holders. They are:
+
+  - NOT covered by this project's GPL-3.0-only source licence;
+  - NOT licensed to this project or to downstream recipients;
+  - included on a deliberate, documented, accepted-risk basis for offline
+    interoperability visualisation, mitigated by an immediate-takedown
+    commitment (see LEGAL.md);
+  - slated for replacement by CruxCoach-original renders — see
+    androidApp/src/main/assets/board_images/ORIGINALS_TODO.md.
+
+Anyone forking, mirroring, rebuilding, or redistributing this repository or an
+artifact built from it redistributes these files at their own risk and
+inherits any infringement liability. Removing the files from a build removes
+that risk; see ORIGINALS_TODO.md for the replacement plan.
+
+Nominative/referential fair use of the vendors' trade *marks* (names such as
+"Kilter", "Tension", etc.) is a separate matter and is addressed under
+trademark law in LEGAL.md; it does not extend to copying these images.

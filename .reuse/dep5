@@ -1,0 +1,47 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: CruxCoach
+Source: https://codeberg.org/CruxCoach/CruxCoach
+
+# Machine-readable copyright status for the bundled board-layout images.
+#
+# This file exists specifically to make ONE fact discoverable to licence
+# scanners and to anyone forking/mirroring the repo: the board-layout images
+# under androidApp/src/main/assets/board_images/ (except the MoonBoard set)
+# are third-party artwork extracted from the respective vendors' official
+# Android apps. They are NOT covered by the project's GPL-3.0-only licence and
+# no licence has been granted by the rights holders. They are slated for
+# replacement by CruxCoach-original renders — see
+# androidApp/src/main/assets/board_images/ORIGINALS_TODO.md.
+#
+# Scope note: this is a TARGETED marking of the known-unlicensed assets, not a
+# claim of full REUSE compliance for the whole repository.
+
+Files: androidApp/src/main/assets/board_images/board_*.webp
+Copyright: Kilter Grips, LLC (formerly Aurora Climbing)
+License: LicenseRef-Proprietary-NoLicenceGranted
+Comment: Kilter Board layout imagery extracted from the official Kilter Board app's bundled database. No licence granted. To be replaced — see ORIGINALS_TODO.md.
+
+Files: androidApp/src/main/assets/board_images/tension/*
+Copyright: Tension Climbing, Inc.
+License: LicenseRef-Proprietary-NoLicenceGranted
+Comment: Tension Board layout imagery extracted from the official Tension Board (Aurora-platform) app. No licence granted. To be replaced — see ORIGINALS_TODO.md.
+
+Files: androidApp/src/main/assets/board_images/grasshopper/*
+Copyright: Grasshopper Climbing
+License: LicenseRef-Proprietary-NoLicenceGranted
+Comment: Grasshopper Board layout imagery extracted from its official Aurora-platform app. No licence granted. To be replaced — see ORIGINALS_TODO.md.
+
+Files: androidApp/src/main/assets/board_images/decoy/*
+Copyright: Decoy Climbing
+License: LicenseRef-Proprietary-NoLicenceGranted
+Comment: Decoy Board layout imagery extracted from its official Aurora-platform app. No licence granted. To be replaced — see ORIGINALS_TODO.md.
+
+Files: androidApp/src/main/assets/board_images/soill/*
+Copyright: So iLL
+License: LicenseRef-Proprietary-NoLicenceGranted
+Comment: So iLL board layout imagery extracted from its official Aurora-platform app. No licence granted. To be replaced — see ORIGINALS_TODO.md.
+
+Files: androidApp/src/main/assets/board_images/touchstone/*
+Copyright: Touchstone Climbing
+License: LicenseRef-Proprietary-NoLicenceGranted
+Comment: Touchstone board layout imagery extracted from its official Aurora-platform app. No licence granted. To be replaced — see ORIGINALS_TODO.md.

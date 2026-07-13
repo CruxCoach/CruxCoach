@@ -56,41 +56,68 @@ CruxCoach distributes board reference data and community-created climb data via 
 - Kilter's or Moon Climbing's proprietary software, source code, or firmware
 - Kilter's or MoonBoard's wordmark, logo, or marketing/branding artwork
 - User personal data (email, profile photos, account details)
-- Kilter's or the MoonBoard app's binary or any portion thereof
+- Kilter's or the MoonBoard app's executable code or firmware
 
-### Bundled Kilter layout images
+> **One documented exception:** a set of board-*layout images* extracted from
+> the official apps' bundled databases **is** currently redistributed (Kilter
+> plus the five Aurora-family boards). These are third-party copyrighted works
+> included on an accepted-risk basis and slated for replacement with
+> CruxCoach-original renders — see the two sections below,
+> [`board_images/ORIGINALS_TODO.md`](androidApp/src/main/assets/board_images/ORIGINALS_TODO.md),
+> and [`.reuse/dep5`](.reuse/dep5).
 
-A small set of Kilter Board layout photographs lives inside the APK at
+### Bundled board layout images — trademark vs. copyright
+
+CruxCoach bundles board-layout images inside the APK at
 [`androidApp/src/main/assets/board_images/`](androidApp/src/main/assets/board_images/)
-so the app can render a recognisable offline view of the board behind its
-hold overlay. These images remain the property of **Kilter Grips, LLC**
-(formerly Aurora Climbing) and are included strictly for interoperability
-and referential purposes — permitted under **§ 23(1) No. 3 MarkenG** in
-Germany and under analogous referential/nominative fair-use doctrines in
-other jurisdictions. CruxCoach claims no ownership, affiliation, or
-endorsement. See the in-directory
-[`README.md`](androidApp/src/main/assets/board_images/README.md) for origin,
-scope, and removal-request contacts, and
-[`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md) for the maintained
-attribution inventory.
+so it can render a recognisable offline view of the physical board behind its
+hold overlay: a Kilter set (flat `board_*.webp`, property of **Kilter Grips,
+LLC**, formerly Aurora Climbing) and per-board sets for five further
+Aurora-protocol boards — **Tension**, **Grasshopper**, **Decoy**, **So iLL**,
+and **Touchstone** (FEAT-031) — under the `tension/`, `grasshopper/`, `decoy/`,
+`soill/`, and `touchstone/` subfolders, each the property of its respective
+maker.
 
-### Bundled Aurora-family layout images
+These two questions must be kept separate, because they are governed by
+different bodies of law:
 
-CruxCoach renders five further Aurora-protocol boards — **Tension**,
-**Grasshopper**, **Decoy**, **So iLL**, and **Touchstone** (FEAT-031). A small
-per-board set of their layout images is bundled under
-[`androidApp/src/main/assets/board_images/`](androidApp/src/main/assets/board_images/)
-(in `tension/`, `grasshopper/`, `decoy/`, `soill/`, and `touchstone/`
-subfolders) for the same offline referential visualization as the Kilter
-images above. Each was extracted from the corresponding board's official
-Aurora Climbing app and remains the property of its respective maker; the
-board apps are published on the **Aurora Climbing** platform. Inclusion is
-strictly for interoperability and referential purposes — permitted under
-**§ 23(1) No. 3 MarkenG** in Germany and analogous referential/nominative
-fair-use doctrines elsewhere. CruxCoach claims no ownership, affiliation, or
-endorsement. See the in-directory
-[`README.md`](androidApp/src/main/assets/board_images/README.md) for origin,
-per-board rights holders, and removal-request contacts.
+- **Trademark (the board *names*).** Using the names "Kilter", "Tension",
+  "MoonBoard", etc. to indicate hardware compatibility is genuine referential
+  use, permitted under **§ 23(1) No. 3 MarkenG** in Germany, **Art. 14(1)(c)
+  EUTMR** in the EU, and the nominative-fair-use doctrine (*New Kids on the
+  Block v. News America*) in the US. This is the basis for the rest of the app
+  and it is sound.
+
+- **Copyright (the *images* themselves).** The bundled images are third-party
+  copyrighted works — in Germany protected at minimum as *Lichtbilder* under
+  **§ 72 UrhG** (no originality threshold) and as works under **§ 2(1) Nr. 5
+  UrhG**. Copying and redistributing them are acts under **§§ 16, 19a UrhG**.
+  **No copyright licence has been granted** by any rights holder, and the
+  trademark provisions above do **not** authorise copying images — trademark
+  law and copyright law are distinct. No copyright *Schranke* / fair-use
+  (17 U.S.C. § 107) analysis has been established for them either.
+
+**Status and mitigation.** Inclusion of these images is therefore a
+**deliberate, documented, accepted risk**, not an oversight and not a claim of
+licence. It is mitigated by (a) an immediate-takedown commitment on request
+(contacts in the in-directory
+[`README.md`](androidApp/src/main/assets/board_images/README.md)), and (b) an
+active plan to **replace every extracted image with a CruxCoach-original
+render** — the same route already completed for the MoonBoard set
+(`moonboard_*.webp` + coordmap `moonboard_*.json`, which are CruxCoach
+originals and are not affected by any of the above). The per-file work-list is
+[`board_images/ORIGINALS_TODO.md`](androidApp/src/main/assets/board_images/ORIGINALS_TODO.md);
+the machine-readable status for licence scanners and forkers is
+[`.reuse/dep5`](.reuse/dep5) (identifier
+`LicenseRef-Proprietary-NoLicenceGranted`).
+
+**Note for redistributors.** These images are **not** covered by CruxCoach's
+GPL-3.0-only source licence and CruxCoach cannot sublicense them. Anyone
+exercising GPL rights (forking, mirroring, rebuilding, redistributing on
+F-Droid/Zapstore) redistributes them at their own risk until they are replaced.
+See [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md) for the maintained
+attribution inventory. CruxCoach claims no ownership, affiliation, or
+endorsement.
 
 ### Map rendering & tile data
 

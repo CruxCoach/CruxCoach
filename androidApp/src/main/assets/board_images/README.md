@@ -63,16 +63,22 @@ Bundling (rather than fetching at runtime) keeps the app fully usable
 offline, which is the expected UX when climbing in gyms with poor
 connectivity.
 
-The images are used:
+**Copyright status — read this.** These images are third-party copyrighted
+works and **no licence has been granted** for them. Trademark law
+(§ 23(1) No. 3 MarkenG / nominative fair use) lets CruxCoach use the *name*
+"Kilter" to indicate compatibility, but it does **not** authorise copying and
+redistributing the *images* — that is a copyright question (DE: §§ 16, 19a,
+72 UrhG), and no copyright licence or fair-use analysis covers it. They are
+bundled on a **deliberate, documented, accepted-risk basis** for offline
+referential visualisation, mitigated by immediate takedown on request and by
+an active plan to replace each one with a CruxCoach-original render (as
+already done for the MoonBoard set). See:
 
-- solely as referential / descriptive material to identify the corresponding
-  Kilter Board product size, and
-- in a non-commercial, open-source context.
-
-This matches § 23(1) No. 3 MarkenG (referential use to indicate intended
-purpose) under German law and the analogous nominative / referential fair-use
-doctrine elsewhere. See `LEGAL.md` in the repository root for the broader
-position on trademarks and interoperability.
+- [`ORIGINALS_TODO.md`](ORIGINALS_TODO.md) — the per-file replacement work-list,
+- [`.reuse/dep5`](../../../../../.reuse/dep5) — machine-readable status
+  (`LicenseRef-Proprietary-NoLicenceGranted`),
+- [`LEGAL.md`](../../../../../LEGAL.md#bundled-board-layout-images--trademark-vs-copyright)
+  — the full trademark-vs-copyright position.
 
 ## Removal requests
 
@@ -149,10 +155,13 @@ underlying board design it portrays: the MoonBoard product, its hardware
 hold layouts, and the MoonBoard name are the property of **Moon Climbing
 Ltd**. The image is bundled solely as referential / descriptive material to
 identify the user's physical MoonBoard, in a non-commercial, open-source
-context — § 23(1) No. 3 MarkenG (referential use to indicate intended
-purpose) and the analogous nominative fair-use doctrine elsewhere, the same
-basis as the Kilter section above. CruxCoach is not affiliated with,
-endorsed by, or officially connected to Moon Climbing Ltd.
+context. Because the image *file* is CruxCoach's own original work, the only
+third-party right in play here is the **trademark** in the MoonBoard *name* and
+board design — referential use of which is permitted under § 23(1) No. 3
+MarkenG and the analogous nominative fair-use doctrine elsewhere. (This is
+unlike the Kilter and Aurora-family sections, where the image files themselves
+are third-party works — see their copyright note.) CruxCoach is not affiliated
+with, endorsed by, or officially connected to Moon Climbing Ltd.
 
 ## Removal requests — MoonBoard
 
@@ -221,11 +230,16 @@ Climbing** — and the board apps are published on the **Aurora Climbing** app
 platform. CruxCoach is not affiliated with, endorsed by, sponsored by, or
 officially connected to any of them.
 
-The images are bundled solely as referential / descriptive material to
-identify the user's physical board, in a non-commercial, open-source context —
-§ 23(1) No. 3 MarkenG (referential use to indicate intended purpose) and the
-analogous nominative / referential fair-use doctrine elsewhere, the same basis
-as the Kilter and MoonBoard sections above. See `LEGAL.md`.
+**Copyright status — read this.** Like the Kilter images (and unlike the
+CruxCoach-original MoonBoard set), these files were extracted from the
+vendors' official apps and are third-party copyrighted works with **no licence
+granted**. Trademark law (§ 23(1) No. 3 MarkenG / nominative fair use) permits
+using the board *names* to indicate compatibility, but does **not** authorise
+copying the *images*. Bundled on a deliberate, documented, accepted-risk basis
+and slated for replacement with CruxCoach originals — see
+[`ORIGINALS_TODO.md`](ORIGINALS_TODO.md),
+[`.reuse/dep5`](../../../../../.reuse/dep5), and
+[`LEGAL.md`](../../../../../LEGAL.md#bundled-board-layout-images--trademark-vs-copyright).
 
 ## Removal requests — Aurora-family boards
 
