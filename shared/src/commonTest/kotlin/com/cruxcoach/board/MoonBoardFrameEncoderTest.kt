@@ -86,6 +86,23 @@ class MoonBoardFrameEncoderTest {
         }
     }
 
+    @Test
+    fun mini2025SharesTheMiniSerpentine() {
+        // Mini 2025 has the same 11×12 footprint as Mini 2020 (it differs in
+        // hold sets and in using row 1, not in geometry) — the wire arithmetic
+        // must be identical for every hold id.
+        val mini2025 = MoonBoardVariant.MINI_2025
+        for (holdId in 1..132) {
+            assertEquals(
+                MoonBoardFrameEncoder.serialPosition(holdId, mini),
+                MoonBoardFrameEncoder.serialPosition(holdId, mini2025),
+            )
+        }
+        assertFailsWith<IllegalArgumentException> {
+            MoonBoardFrameEncoder.serialPosition(133, mini2025)
+        }
+    }
+
     // ── Frame encoding (standard) ────────────────────────────────
 
     @Test

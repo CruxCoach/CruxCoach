@@ -79,6 +79,21 @@ enum class MoonBoardVariant(
         // against a real Mini board still pending.
         gridRows = 12,
     ),
+    MINI_2025(
+        // Mini MoonBoard 2025 (BoardSesh layout 7, holdsetup 22; hold sets
+        // 28-31: Hold Set F, Original School Holds, Wooden Holds B/C). Same
+        // 11-column footprint as Mini 2020 but the catalogue uses the FULL
+        // row range 1..12 (2020's problems only populate rows 2..12).
+        // 40°-fixed: a 600-climb live sample of the official catalogue
+        // (2026-07-13) was 100% angle=40, matching the fixed-angle Mini
+        // hardware. ~4.9k climbs. No bundled board image yet — renders via
+        // the procedural grid until the board-image pipeline delivers the
+        // CruxCoach-original render + coord-map.
+        layoutId = 7L,
+        displayName = "Mini MoonBoard 2025",
+        angles = listOf(40),
+        gridRows = 12,
+    ),
     MOONBOARD_2024(
         // The 2024 198-hold set (BoardSesh "moonboard" layoutId 3). 198 =
         // 11x18 — the same grid as 2016/2017/2019, so the standard 11x18

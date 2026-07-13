@@ -104,6 +104,7 @@ class BoardBrandTest {
         assertEquals(BoardBrand.MOONBOARD, BoardBrand.fromLayoutId(4L))
         assertEquals(BoardBrand.MOONBOARD, BoardBrand.fromLayoutId(5L))
         assertEquals(BoardBrand.MOONBOARD, BoardBrand.fromLayoutId(6L))
+        assertEquals(BoardBrand.MOONBOARD, BoardBrand.fromLayoutId(7L))
         assertEquals(BoardBrand.KILTER, BoardBrand.fromLayoutId(1L))
         assertEquals(BoardBrand.KILTER, BoardBrand.fromLayoutId(8L))
         assertEquals(BoardBrand.KILTER, BoardBrand.fromLayoutId(999L))
@@ -115,6 +116,7 @@ class BoardBrandTest {
         assertEquals(MoonBoardVariant.MASTERS_2017, MoonBoardVariant.fromLayoutId(4L))
         assertEquals(MoonBoardVariant.MASTERS_2019, MoonBoardVariant.fromLayoutId(5L))
         assertEquals(MoonBoardVariant.MINI_2020, MoonBoardVariant.fromLayoutId(6L))
+        assertEquals(MoonBoardVariant.MINI_2025, MoonBoardVariant.fromLayoutId(7L))
     }
 
     @Test

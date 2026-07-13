@@ -78,19 +78,21 @@ private val moonBoardJson = Json { ignoreUnknownKeys = true }
 internal fun parseMoonBoardLayout(jsonText: String): MoonBoardLayoutJson =
     moonBoardJson.decodeFromString(jsonText)
 
-/** Bundled asset base name for a variant. All four v0.2.0 variants
- *  ship a real-board image; see [MoonBoardVariant]'s Mini-2020 caveat
- *  for the deferred procedural-fallback / BLE-encoder bits. */
+/** Bundled asset base name for a variant. Every variant except Mini 2025
+ *  ships a real-board image (see [MoonBoardAssetCache.hasBundledImage]);
+ *  see [MoonBoardVariant]'s Mini-2020 caveat for the deferred
+ *  procedural-fallback / BLE-encoder bits. */
 internal fun MoonBoardVariant.assetBaseName(): String = when (this) {
     MoonBoardVariant.MOONBOARD_2016 -> "moonboard_2016"
     MoonBoardVariant.MASTERS_2017 -> "moonboard_2017"
     MoonBoardVariant.MASTERS_2019 -> "moonboard_2019"
     MoonBoardVariant.MINI_2020 -> "mini_moonboard_2020"
-    // No bundled image ships for 2024 yet (catalogue/coord-map released
-    // after the dump); [hasBundledImage] returns false for it so the
-    // renderer goes straight to the procedural 11x18 grid. Base name kept
-    // for when the coord-map lands from the board-image pipeline.
     MoonBoardVariant.MOONBOARD_2024 -> "moonboard_2024"
+    // No bundled image ships for Mini 2025 yet; [hasBundledImage] returns
+    // false for it so the renderer goes straight to the procedural 11x12
+    // grid. Base name reserved for when the CruxCoach-original render +
+    // coord-map land from the board-image pipeline.
+    MoonBoardVariant.MINI_2025 -> "mini_moonboard_2025"
 }
 
 /**
@@ -106,10 +108,12 @@ internal object MoonBoardAssetCache {
     @Volatile
     private var cached: MoonBoardRenderAsset? = null
 
-    /** True when [variant] has a bundled board image to decode. All five
-     *  variants now ship one — the four spookykat-dump boards plus MoonBoard
-     *  2024, whose coord-map was fit from the supplied 2024 board render. */
-    fun hasBundledImage(variant: MoonBoardVariant): Boolean = true
+    /** True when [variant] has a bundled board image to decode. The four
+     *  spookykat-dump boards and MoonBoard 2024 ship one; Mini 2025 does not
+     *  yet (its CruxCoach-original render + coord-map are pending in the
+     *  board-image pipeline), so it renders via the procedural 11x12 grid. */
+    fun hasBundledImage(variant: MoonBoardVariant): Boolean =
+        variant != MoonBoardVariant.MINI_2025
 
     fun get(variant: MoonBoardVariant?): MoonBoardRenderAsset? =
         if (variant != null && variant == cachedVariant) cached else null
