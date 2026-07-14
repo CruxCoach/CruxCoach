@@ -371,6 +371,11 @@ class FakeBoardRepository : BoardRepository {
     override fun getAllStatKeys(): Map<Pair<String, Long>, Long?> = emptyMap()
     override fun runInTransaction(block: () -> Unit) { block() }
     override fun deleteAllBoardData() { climbs.clear() }
+    override fun deleteBoardDataForBrands(brands: Set<String>) {
+        climbs.removeAll { it.boardBrand in brands }
+    }
+    override fun getClimbBrandsForUuids(uuids: Collection<String>): Map<String, String> =
+        climbs.filter { it.uuid in uuids }.associate { it.uuid to it.boardBrand }
 
     override fun insertLocalDraft(draft: com.cruxcoach.data.repository.LocalClimbDraft, layoutId: Long, angle: Long, setterGradeId: Int?, bounds: com.cruxcoach.domain.community.ClimbBounds?, boardBrand: String?) {}
     override fun deleteLocalClimb(uuid: String) {}

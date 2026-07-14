@@ -41,5 +41,9 @@ SELECT * FROM board_sessions ORDER BY started_at DESC;
 
 -- ═══ Bulk operations ═══
 
+-- Sessions are aggregate counters (durations + ascent/bid counts) with
+-- no climb or board reference, so they cannot be scoped per board: the
+-- per-board "Delete logbook data" path keeps them and only the
+-- all-boards selection wipes them via this query.
 deleteAllBoardSessions:
 DELETE FROM board_sessions;

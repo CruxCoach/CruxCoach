@@ -814,6 +814,33 @@ class PersonalBoardRepositoryImpl(
         cachedIgnoredListId = null
     }
 
+    override fun getAllListEntryClimbUuids(): Set<String> =
+        database.climbListsQueries.getAllListEntryClimbUuids().executeAsList().toSet()
+
+    override fun deleteUserBoardDataForBrands(
+        brands: Set<String>,
+        listEntryClimbUuids: Collection<String>,
+    ) {
+        database.transaction {
+            for (brand in brands) {
+                database.ascentsQueries.deleteAscentsForBrand(brand)
+                database.bidsQueries.deleteBidsForBrand(brand)
+            }
+            // Sessions stay: brand-less aggregates, see BoardSessions.sq.
+            // Each uuid binds one SQLite host parameter — chunk well below
+            // the portable 999-variable limit.
+            listEntryClimbUuids.chunked(500).forEach {
+                database.climbListsQueries.deleteClimbListEntriesForClimbs(it)
+            }
+        }
+        // The built-in list rows survive this path, so the cached ids stay
+        // technically valid — drop them anyway, mirroring
+        // deleteAllUserBoardData, so this path can never grow a stale-cache
+        // bug if what it deletes ever changes.
+        cachedFavoritesListId = null
+        cachedIgnoredListId = null
+    }
+
     override fun runInTransaction(block: () -> Unit) {
         database.transaction { block() }
     }

@@ -93,6 +93,10 @@ WHERE climb_uuid = ? AND angle = ?;
 deleteAllBids:
 DELETE FROM bids;
 
+-- Per-board variant (Settings → "Delete logbook data" multiselect).
+deleteBidsForBrand:
+DELETE FROM bids WHERE board_brand = ?;
+
 getAllBidClimbKeys:
 SELECT DISTINCT climb_uuid, angle FROM bids;
 

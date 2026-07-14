@@ -134,5 +134,7 @@ class FakePersonalBoardRepository : PersonalBoardRepository {
     // -- Bulk operations --
 
     override fun deleteAllUserBoardData() { sentUuids.clear(); attemptedUuids.clear(); ignoredUuids.clear() }
+    override fun getAllListEntryClimbUuids(): Set<String> = emptySet()
+    override fun deleteUserBoardDataForBrands(brands: Set<String>, listEntryClimbUuids: Collection<String>) {}
     override fun runInTransaction(block: () -> Unit) { block() }
 }

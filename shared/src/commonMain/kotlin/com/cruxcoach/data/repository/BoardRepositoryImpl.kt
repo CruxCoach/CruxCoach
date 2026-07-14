@@ -691,8 +691,11 @@ class BoardRepositoryImpl(
 
     override fun deleteAllBoardData() {
         q.transaction {
-            q.deleteAllClimbStats()
-            q.deleteAllClimbs()
+            // Catalogue rows only (source='kilter'): locally-authored /
+            // community climbs are not re-downloadable, so they — and
+            // their stats — survive even the all-boards wipe.
+            q.deleteKilterSourceClimbStats()
+            q.deleteKilterSourceClimbs()
             q.deleteAllHoldPositions()
             q.deleteAllLeds()
             q.deleteAllPlacements()
@@ -702,6 +705,41 @@ class BoardRepositoryImpl(
             q.deleteAllSyncState()
             q.deleteAllBetaLinks()
         }
+    }
+
+    override fun deleteBoardDataForBrands(brands: Set<String>) {
+        q.transaction {
+            for (brand in brands) {
+                // Stats + beta links resolve through the climbs about to
+                // go — both must run before the climbs delete empties
+                // their subselect.
+                q.deleteCatalogueClimbStatsForBrand(brand)
+                q.deleteCatalogueBetaLinksForBrand(brand)
+                q.deleteCatalogueClimbsForBrand(brand)
+                q.deleteHoldPositionsForBrand(brand)
+                q.deleteLedsForBrand(brand)
+                q.deletePlacementsForBrand(brand)
+                q.deleteBoardImagesForBrand(brand)
+                q.deleteProductSizesForBrand(brand)
+                q.deleteHolesForBrand(brand)
+            }
+            if (BoardBrand.KILTER.wireValue in brands) {
+                q.deleteKilterOwnedSyncStates()
+            }
+        }
+    }
+
+    override fun getClimbBrandsForUuids(uuids: Collection<String>): Map<String, String> {
+        if (uuids.isEmpty()) return emptyMap()
+        val brands = HashMap<String, String>(uuids.size)
+        // Each element binds one SQLite host parameter; stay well below
+        // the portable 999-variable limit.
+        uuids.chunked(500).forEach { chunk ->
+            q.getClimbBrandsForUuids(chunk).executeAsList().forEach {
+                brands[it.uuid] = it.board_brand
+            }
+        }
+        return brands
     }
 
     // ── Community-climb support (FEAT-003) ──────────────────────

@@ -4,7 +4,9 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.FileDownload
@@ -16,6 +18,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -24,6 +27,7 @@ import com.cruxcoach.android.BuildConfig
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.theme.SuccessGreen
+import com.cruxcoach.domain.board.BoardBrand
 
 /**
  * File-based import / export — the "manual backup" variant that sits
@@ -171,8 +175,11 @@ internal fun DataDeletionSection(
     showDeleteBoardDataDialog: Boolean,
     showDeleteUserDataDialog: Boolean,
     isDeletingBoardData: Boolean,
+    selectedBrands: Set<BoardBrand>,
     onShowDeleteBoardDataDialog: () -> Unit,
     onShowDeleteUserDataDialog: () -> Unit,
+    onToggleBrand: (BoardBrand) -> Unit,
+    onToggleSelectAll: () -> Unit,
     onDismissDeleteDialog: () -> Unit,
     onDeleteBoardData: () -> Unit,
     onDeleteUserBoardData: () -> Unit,
@@ -220,42 +227,130 @@ internal fun DataDeletionSection(
         color = MaterialTheme.colorScheme.error.copy(alpha = 0.7f)
     )
 
-    // Confirmation dialogs
+    // Confirmation dialogs — both destructive actions are board-scoped:
+    // a multiselect of the interactive board families replaces the old
+    // all-or-nothing confirm.
     if (showDeleteBoardDataDialog) {
-        AlertDialog(
-            onDismissRequest = onDismissDeleteDialog,
-            title = { Text(stringResource(R.string.settings_data_delete_board_dialog_title)) },
-            text = { Text(stringResource(R.string.settings_data_delete_board_dialog_message)) },
-            confirmButton = {
-                TextButton(onClick = onDeleteBoardData) {
-                    Text(stringResource(R.string.action_delete), color = OrangeAccent)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = onDismissDeleteDialog) {
-                    Text(stringResource(R.string.action_cancel))
-                }
-            }
+        BoardMultiSelectDeleteDialog(
+            title = stringResource(R.string.settings_data_delete_board_dialog_title),
+            message = stringResource(R.string.settings_data_delete_board_dialog_message),
+            note = null,
+            confirmLabel = stringResource(R.string.action_delete),
+            confirmColor = OrangeAccent,
+            selectedBrands = selectedBrands,
+            onToggleBrand = onToggleBrand,
+            onToggleSelectAll = onToggleSelectAll,
+            onConfirm = onDeleteBoardData,
+            onDismiss = onDismissDeleteDialog,
         )
     }
 
     if (showDeleteUserDataDialog) {
-        AlertDialog(
-            onDismissRequest = onDismissDeleteDialog,
-            title = { Text(stringResource(R.string.settings_data_delete_user_dialog_title)) },
-            text = { Text(stringResource(R.string.settings_data_delete_user_dialog_message)) },
-            confirmButton = {
-                TextButton(onClick = onDeleteUserBoardData) {
-                    Text(stringResource(R.string.settings_data_delete_user_confirm), color = MaterialTheme.colorScheme.error)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = onDismissDeleteDialog) {
-                    Text(stringResource(R.string.action_cancel))
-                }
-            }
+        BoardMultiSelectDeleteDialog(
+            title = stringResource(R.string.settings_data_delete_user_dialog_title),
+            message = stringResource(R.string.settings_data_delete_user_dialog_message),
+            note = stringResource(R.string.settings_data_delete_user_sessions_note),
+            confirmLabel = stringResource(R.string.settings_data_delete_user_confirm),
+            confirmColor = MaterialTheme.colorScheme.error,
+            selectedBrands = selectedBrands,
+            onToggleBrand = onToggleBrand,
+            onToggleSelectAll = onToggleSelectAll,
+            onConfirm = onDeleteUserBoardData,
+            onDismiss = onDismissDeleteDialog,
         )
     }
+}
+
+/**
+ * Shared multiselect confirm dialog for the two destructive per-board
+ * delete actions: every interactive board family is a checkbox row and
+ * "all boards" toggles the full set. Opens with everything selected
+ * (the pre-0.2.2 all-boards behaviour); confirm stays disabled while
+ * nothing is selected. [note] is an optional caveat line under the
+ * board list — the logbook dialog uses it for the sessions/lists
+ * only-on-full-selection rule.
+ */
+@Composable
+private fun BoardMultiSelectDeleteDialog(
+    title: String,
+    message: String,
+    note: String?,
+    confirmLabel: String,
+    confirmColor: Color,
+    selectedBrands: Set<BoardBrand>,
+    onToggleBrand: (BoardBrand) -> Unit,
+    onToggleSelectAll: () -> Unit,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val boards = remember { BoardBrand.entries.filter { it.isInteractive } }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            // 7 board rows + copy exceed small-screen dialog height.
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                Text(message, style = MaterialTheme.typography.bodyMedium)
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onToggleSelectAll() },
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Checkbox(
+                        checked = selectedBrands.containsAll(boards),
+                        onCheckedChange = { onToggleSelectAll() },
+                        colors = CheckboxDefaults.colors(checkedColor = confirmColor)
+                    )
+                    Text(
+                        stringResource(R.string.settings_data_delete_select_all),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                boards.forEach { brand ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onToggleBrand(brand) },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = brand in selectedBrands,
+                            onCheckedChange = { onToggleBrand(brand) },
+                            colors = CheckboxDefaults.colors(checkedColor = confirmColor)
+                        )
+                        Text(brand.displayName, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+                note?.let {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm, enabled = selectedBrands.isNotEmpty()) {
+                // No explicit color when disabled — it would override the
+                // TextButton's dimmed disabled content color.
+                if (selectedBrands.isNotEmpty()) {
+                    Text(confirmLabel, color = confirmColor)
+                } else {
+                    Text(confirmLabel)
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.action_cancel))
+            }
+        }
+    )
 }
 
 @Composable

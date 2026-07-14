@@ -420,14 +420,16 @@
     <string name="settings_data_import">Daten importieren</string>
     <string name="settings_data_import_desc">Backup oder Waistline-Daten importieren</string>
     <string name="settings_data_delete_board">Board-Daten löschen</string>
-    <string name="settings_data_delete_board_desc">Entfernt alle heruntergeladenen Kilter-Board-Climbs, Statistiken und Layout-Daten. Können jederzeit neu synchronisiert werden.</string>
+    <string name="settings_data_delete_board_desc">Entfernt heruntergeladene Climbs, Statistiken und Layout-Daten — für alle Boards oder nur ausgewählte. Können jederzeit neu synchronisiert werden. Eigene und Community-Climbs bleiben erhalten.</string>
     <string name="settings_data_delete_board_dialog_title">Board-Daten löschen?</string>
-    <string name="settings_data_delete_board_dialog_message">Alle heruntergeladenen Climbs, Statistiken und Layout-Daten werden gelöscht. Du kannst sie jederzeit über die Board-Synchronisierung neu herunterladen.</string>
+    <string name="settings_data_delete_board_dialog_message">Heruntergeladene Climbs, Statistiken und Layout-Daten der ausgewählten Boards werden gelöscht. Du kannst sie jederzeit über die Board-Synchronisierung neu herunterladen. Eigene und Community-Climbs bleiben erhalten.</string>
     <string name="settings_data_delete_board_progress">Board-Daten werden gelöscht…</string>
+    <string name="settings_data_delete_select_all">Alle Boards</string>
     <string name="settings_data_delete_user">Eigene Logbuch-Daten löschen</string>
-    <string name="settings_data_delete_user_desc">Entfernt alle Begehungen, Projekte, Board-Sessions und Listen unwiderruflich.</string>
+    <string name="settings_data_delete_user_desc">Entfernt Begehungen, Projekte, Sessions und Listeneinträge unwiderruflich — für alle Boards oder nur ausgewählte.</string>
     <string name="settings_data_delete_user_dialog_title">Logbuch-Daten löschen?</string>
-    <string name="settings_data_delete_user_dialog_message">Alle deine Begehungen, Projekte, Board-Sessions und Listen werden unwiderruflich gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.</string>
+    <string name="settings_data_delete_user_dialog_message">Deine Begehungen, Projekte und Listeneinträge der ausgewählten Boards werden unwiderruflich gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.</string>
+    <string name="settings_data_delete_user_sessions_note">Board-Sessions und die Listen selbst werden nur entfernt, wenn alle Boards ausgewählt sind.</string>
     <string name="settings_data_delete_user_confirm">Unwiderruflich löschen</string>
 
     <!-- Settings: App Sharing -->

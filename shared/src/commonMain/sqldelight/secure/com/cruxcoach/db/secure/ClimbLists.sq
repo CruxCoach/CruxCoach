@@ -121,6 +121,19 @@ DELETE FROM climb_list_entries;
 deleteAllClimbLists:
 DELETE FROM climb_lists;
 
+-- Per-board logbook deletion (lists are cross-board since 0.2.1):
+-- entries carry no brand column, so the caller resolves each entry's
+-- climb → board family via the board DB (the uuids live in this
+-- encrypted DB, the brands in the plain board DB — no JOIN possible)
+-- and passes the doomed uuids in. The list rows themselves survive.
+deleteClimbListEntriesForClimbs:
+DELETE FROM climb_list_entries WHERE climb_uuid IN :climbUuids;
+
+-- Every DISTINCT climb uuid referenced by any list — the input to the
+-- cross-DB brand resolution above.
+getAllListEntryClimbUuids:
+SELECT DISTINCT climb_uuid FROM climb_list_entries;
+
 -- ═══ FEAT-005 Aurora-JSON-import — circuit upsert by external_id ═══
 
 findClimbListByExternalId:
