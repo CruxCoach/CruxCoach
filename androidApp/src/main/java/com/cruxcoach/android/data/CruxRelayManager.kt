@@ -2,6 +2,7 @@ package com.cruxcoach.android.data
 
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothManager
+import android.bluetooth.le.AdvertisingSetCallback
 import android.content.Context
 import android.util.Log
 import com.cruxcoach.android.ble.BoardBleConnection
@@ -91,6 +92,7 @@ class CruxRelayManager(
         private const val KEY_NAME_DIRTY = "adapter_name_dirty"
         private const val KEY_ORIGINAL_NAME = "adapter_name_original"
         private const val NAME_PROPAGATE_TIMEOUT_MS = 2_000L
+        private const val ADVERTISE_START_TIMEOUT_MS = 3_000L
         private const val BOARD_RELEASE_TIMEOUT_MS = 5_000L
         private const val WATCHDOG_IDLE_MS = 90_000L
     }
@@ -196,6 +198,17 @@ class CruxRelayManager(
         if (advResult != "started" && advResult != "updated") {
             Log.e(TAG, "relay advertising failed: $advResult")
             abortStart(RelayError.ADVERTISE_FAILED, advResult)
+            return
+        }
+        // "started" only means the request was ACCEPTED — the real result
+        // arrives async in onAdvertisingSetStarted. Await it (bounded) so a
+        // controller-side failure surfaces instead of a green sharing card.
+        val advStatus = withTimeoutOrNull(ADVERTISE_START_TIMEOUT_MS) {
+            advertiser.awaitRelayAdvertisingStart()
+        }
+        if (advStatus != AdvertisingSetCallback.ADVERTISE_SUCCESS) {
+            Log.e(TAG, "relay advertising did not start: status=$advStatus")
+            abortStart(RelayError.ADVERTISE_FAILED, advStatus?.let { "status=$it" } ?: "timeout")
             return
         }
         _state.update { it.copy(advertising = true, advertisedName = desired) }
