@@ -72,8 +72,7 @@ class PlaylistDetailViewModel @Inject constructor(
                 // Two-phase: resolve climb details from the board DB in one
                 // batch; angle-agnostic since playlist rows pin their angle.
                 val uuids = rows.mapNotNull { it.climbUuid }.distinct()
-                val climbs = if (uuids.isEmpty()) emptyMap()
-                else boardRepository.getClimbsByUuidsAnyAngle(uuids).associateBy { it.uuid }
+                val climbs = resolveClimbs(boardRepository, uuids)
                 list to rows.map { row ->
                     PlaylistUiEntry(
                         entryId = row.id,
@@ -81,7 +80,7 @@ class PlaylistDetailViewModel @Inject constructor(
                         restSeconds = row.restSeconds,
                         climbUuid = row.climbUuid,
                         angle = row.angle,
-                        climb = row.climbUuid?.let { climbs[it] },
+                        climb = row.climbUuid?.let { climbs[normUuidKey(it)] },
                     )
                 }
             }
@@ -201,7 +200,32 @@ class PlaylistDetailViewModel @Inject constructor(
         playback.play(hostName, items)
     }
 
-    private companion object {
-        const val TAG = "PlaylistDetailVM"
+    companion object {
+        private const val TAG = "PlaylistDetailVM"
+
+        /** Spelling-agnostic uuid key (mirrors KilterSyncEngine.normUuidKey):
+         *  the climbs DB mixes forms — curated rows are nodash-UPPERCASE,
+         *  community rows nodash-lowercase — while share-link imports and
+         *  backup restores may carry dashed and/or lowercased spellings. */
+        fun normUuidKey(uuid: String): String = uuid.replace("-", "").lowercase()
+
+        /** Batch-resolve playlist entry uuids against the board DB, tolerant
+         *  of spelling differences: query every plausible stored spelling and
+         *  key the result by [normUuidKey]. */
+        fun resolveClimbs(
+            boardRepository: BoardRepository,
+            uuids: Collection<String>,
+        ): Map<String, ClimbWithStats> {
+            if (uuids.isEmpty()) return emptyMap()
+            val lookupUuids = uuids.asSequence()
+                .flatMap {
+                    val bare = it.replace("-", "")
+                    sequenceOf(it, bare.lowercase(), bare.uppercase())
+                }
+                .distinct()
+                .toList()
+            return boardRepository.getClimbsByUuidsAnyAngle(lookupUuids)
+                .associateBy { normUuidKey(it.uuid) }
+        }
     }
 }

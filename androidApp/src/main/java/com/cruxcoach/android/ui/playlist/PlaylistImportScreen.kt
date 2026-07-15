@@ -79,7 +79,12 @@ class PlaylistImportViewModel @Inject constructor(
                 personalBoardRepo.replacePlaylistEntries(
                     id,
                     shared.climbs.map { c ->
-                        NewPlaylistEntry(climbUuid = c.climbUuid, angle = c.angle.toLong())
+                        // Store nodash-lowercase — the app's canonical entry
+                        // spelling — instead of the link codec's dashed form.
+                        NewPlaylistEntry(
+                            climbUuid = PlaylistDetailViewModel.normUuidKey(c.climbUuid),
+                            angle = c.angle.toLong(),
+                        )
                     },
                 )
                 id
