@@ -1795,7 +1795,11 @@ class BoardBrowserViewModel @Inject constructor(
                     val ascents = personalBoardRepo.getUserAscentsBetween(
                         session.startedAt, session.endedAt ?: session.startedAt
                     )
-                    SessionSummaryBuilder.build(ascents, zoneManager.zones.value, gradeScale)
+                    // True flashes need the FULL history — a first-try repeat
+                    // of an old project must not count as a flash.
+                    val flashUuids =
+                        BoardStatsComputer.trueFlashUuids(personalBoardRepo.getUserAscentsAll())
+                    SessionSummaryBuilder.build(ascents, zoneManager.zones.value, gradeScale, flashUuids)
                 }
                 _lastSessionSummary.value = summary
             }

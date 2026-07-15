@@ -174,7 +174,11 @@ class PlaylistPlayerViewModel @Inject constructor(
                 val ascents = personalBoardRepo.getUserAscentsBetween(
                     finished.startedAt, finished.endedAt ?: finished.startedAt
                 )
-                SessionSummaryBuilder.build(ascents, zoneManager.zones.value, gradeScale)
+                // True flashes need the FULL history — a first-try repeat of
+                // an old project must not count as a flash.
+                val flashUuids = com.cruxcoach.android.ui.board.BoardStatsComputer
+                    .trueFlashUuids(personalBoardRepo.getUserAscentsAll())
+                SessionSummaryBuilder.build(ascents, zoneManager.zones.value, gradeScale, flashUuids)
             }
             _state.update { it.copy(summary = summary, zones = zoneManager.zones.value) }
         }
