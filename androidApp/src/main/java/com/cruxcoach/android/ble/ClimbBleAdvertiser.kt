@@ -10,6 +10,7 @@ import android.content.Context
 import android.os.ParcelUuid
 import android.util.Log
 import androidx.annotation.VisibleForTesting
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -443,6 +444,10 @@ class ClimbBleAdvertiser(
 
     // --- CruxRelay board-emulation advertising (FEAT-044) ---
     private var relaySet: AdvertisingSet? = null
+    /** Async start result of the current [startRelayAdvertising] attempt —
+     *  completed with the controller status from [relaySetCallback] so the
+     *  relay manager can surface a failure instead of assuming success. */
+    private var relayStartResult: CompletableDeferred<Int>? = null
     private val relaySetCallback = object : AdvertisingSetCallback() {
         override fun onAdvertisingSetStarted(advertisingSet: AdvertisingSet?, txPower: Int, status: Int) {
             if (status == ADVERTISE_SUCCESS) {
@@ -452,6 +457,7 @@ class ClimbBleAdvertiser(
                 Log.e(TAG, "Relay advertising failed: status=$status")
                 relaySet = null
             }
+            relayStartResult?.complete(status)
         }
         override fun onAdvertisingSetStopped(advertisingSet: AdvertisingSet?) { relaySet = null }
     }
@@ -483,14 +489,23 @@ class ClimbBleAdvertiser(
         val scanResponse = AdvertiseData.Builder()
             .setIncludeDeviceName(true) // the adapter's (transparent) name
             .build()
+        val started = CompletableDeferred<Int>()
+        relayStartResult = started
         return try {
             adv.startAdvertisingSet(params, advData, scanResponse, null, null, relaySetCallback)
             "started"
         } catch (e: Exception) {
             Log.e(TAG, "startRelayAdvertising failed", e)
+            relayStartResult = null
             "failed: ${e.message}"
         }
     }
+
+    /** Await the async controller result ([AdvertisingSetCallback.onAdvertisingSetStarted])
+     *  of the in-flight [startRelayAdvertising]. Null when nothing is in flight
+     *  (stopped meanwhile); otherwise the status ([AdvertisingSetCallback.ADVERTISE_SUCCESS]
+     *  = 0 on success). The caller bounds the wait with its own timeout. */
+    suspend fun awaitRelayAdvertisingStart(): Int? = relayStartResult?.await()
 
     @SuppressLint("MissingPermission")
     fun stopRelayAdvertising() = stopRelayAdvertisingInternal()
@@ -498,12 +513,14 @@ class ClimbBleAdvertiser(
     @SuppressLint("MissingPermission")
     private fun stopRelayAdvertisingInternal() {
         val adv = advertiser ?: return
-        if (relaySet != null) {
-            try { adv.stopAdvertisingSet(relaySetCallback) } catch (e: Exception) {
-                Log.e(TAG, "Error stopping relay advertising", e)
-            }
-            relaySet = null
+        // Unconditional stop: relaySet is only assigned in the ASYNC start
+        // callback, so a stop racing that callback would otherwise skip
+        // stopAdvertisingSet and leak a live advertising set.
+        try { adv.stopAdvertisingSet(relaySetCallback) } catch (e: Exception) {
+            Log.e(TAG, "Error stopping relay advertising", e)
         }
+        relaySet = null
+        relayStartResult = null
     }
 
     /** Broadcasts a disconnect response (accepted/rejected), then stops after 200ms. */
