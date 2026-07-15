@@ -710,6 +710,13 @@ class BoardBrowserViewModel @Inject constructor(
                 val needsBoardReload = _state.value.boardSize == null || _state.value.boardSize!!.id.toInt() != prefSizeId
                     || _state.value.filter.layoutId != prefLayoutId
                     || _state.value.filter.boardBrand != prefBoardBrand
+                if (needsBoardReload) {
+                    // The hold/zone filter is board-specific: old placement ids
+                    // plus a zone rect in the old board's coordinate space would
+                    // produce an empty browse list under a stale filter banner.
+                    _state.update { it.copy(holdSearch = HoldSearchState()) }
+                    holdMatchCacheKey = null
+                }
                 // Load/reload board data (placements once, boardSize + layoutId on change)
                 if (count > 0) {
                     // Keep layout filter + brand in sync with preferences.
