@@ -210,12 +210,14 @@ class PlaylistPlaybackCoordinatorTest {
     }
 
     @Test
-    fun `previous during a rest undoes the advance`() {
+    fun `previous during a rest undoes the advance and resumes the session clock`() {
         queueManager.loadPlaylist(
             "Playlist",
             listOf(QueueItem("a", 40, restAfterSeconds = 180), QueueItem("b", 40)),
         )
         queueManager.nextClimb() // → index 1, rest armed
+        // startRestTimer pauses the session — mirror that in the mocked state.
+        sessionState.value = BoardSessionState(isActive = true, isPaused = true)
         restState.value = RestTimerState(isRunning = true, secondsRemaining = 170, totalSeconds = 180)
         awaitState { it.isResting }
 
@@ -223,6 +225,8 @@ class PlaylistPlaybackCoordinatorTest {
 
         assertEquals(0, queueManager.state.value.currentIndex)
         verify(exactly = 1) { boardSessionManager.cancelRestTimer() }
+        // Same semantics as skipRest: the session clock must NOT stay paused.
+        verify(exactly = 1) { boardSessionManager.resumeSession() }
     }
 
     @Test

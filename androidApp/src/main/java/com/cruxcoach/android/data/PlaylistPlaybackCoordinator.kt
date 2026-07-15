@@ -154,11 +154,12 @@ class PlaylistPlaybackCoordinator(
         if (state.value.isParticipant) gattBridge.sendNext() else queueManager.nextClimb()
     }
 
-    /** Previous during a rest = undo the advance: cancel the pause and
-     *  step back to the climb you just left. */
+    /** Previous during a rest = undo the advance: cancel the pause (and
+     *  resume the session clock it paused — same semantics as [skipRest])
+     *  and step back to the climb you just left. */
     fun previous() {
         if (state.value.phase is PlaybackPhase.Resting) {
-            boardSessionManager.cancelRestTimer()
+            skipRest()
         }
         if (state.value.isParticipant) gattBridge.sendPrev() else queueManager.previousClimb()
     }
