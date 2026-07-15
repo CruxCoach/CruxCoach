@@ -2130,7 +2130,6 @@
     <string name="relay_share_button">Share this board</string>
     <string name="relay_chip_text">Sharing board · %1$d connected</string>
     <string name="relay_advertised_as">Visible to others as \"%1$s\"</string>
-    <string name="relay_capture_checkbox">Collect others\' climbs into a playlist</string>
     <string name="relay_disclosure_title">Share this board</string>
     <string name="relay_disclosure_text">While sharing, other Bluetooth devices see your phone as \"CruxRelay…\" (restored when you stop). People using the official app can then send climbs to this board through you.</string>
     <string name="relay_disclosure_disclaimer">CruxCoach is not affiliated with Kilter or Aurora Climbing; board names are used only for compatibility.</string>

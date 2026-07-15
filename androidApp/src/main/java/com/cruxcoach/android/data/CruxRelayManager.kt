@@ -49,7 +49,9 @@ data class CruxRelayState(
     val advertising: Boolean = false,
     val clientCount: Int = 0,
     val advertisedName: String? = null,
-    /** Capture relayed climbs into the playlist (runtime flag, off by default). */
+    /** Capture relayed climbs into a playlist. DEFERRED past 0.2.2 (FEAT-044
+     *  §5/§9): raw relayed frames carry no uuid, so nothing consumes the
+     *  captured set yet — there is no setter and no UI; always false. */
     val captureToPlaylist: Boolean = false,
     val error: RelayError? = null,
     /** Raw technical detail for [error] (log-grade, appended to the message). */
@@ -143,11 +145,6 @@ class CruxRelayManager(
 
     fun clearError() {
         _state.update { it.copy(error = null, errorDetail = null) }
-    }
-
-    /** Runtime capture flag (FEAT-044 §5) — never persisted, off each launch. */
-    fun setCaptureToPlaylist(enabled: Boolean) {
-        _state.update { it.copy(captureToPlaylist = enabled) }
     }
 
     private suspend fun reconcile(enabled: Boolean, boardState: ConnectionState) {

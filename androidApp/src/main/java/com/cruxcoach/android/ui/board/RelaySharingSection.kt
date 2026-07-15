@@ -19,7 +19,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -53,8 +52,8 @@ import com.cruxcoach.android.ui.theme.SuccessGreen
  * Inactive: one deliberate action button, gated by the BLUETOOTH_ADVERTISE
  * permission and (once per app install) the disclosure dialog about the
  * global Bluetooth-name change + non-affiliation.
- * Active: status card with client count, the advertised name, the inline
- * capture checkbox and a one-tap stop. Errors are always surfaced.
+ * Active: status card with client count, the advertised name and a one-tap
+ * stop. Errors are always surfaced.
  */
 @Composable
 fun RelaySharingSection(
@@ -139,8 +138,6 @@ fun RelaySharingSection(
         RelayActiveCard(
             clientCount = state.clientCount,
             advertisedName = state.advertisedName,
-            captureToPlaylist = state.captureToPlaylist,
-            onCaptureChanged = { viewModel.setCaptureToPlaylist(it) },
             onStop = { viewModel.disableSharing() }
         )
     }
@@ -150,8 +147,6 @@ fun RelaySharingSection(
 private fun RelayActiveCard(
     clientCount: Int,
     advertisedName: String?,
-    captureToPlaylist: Boolean,
-    onCaptureChanged: (Boolean) -> Unit,
     onStop: () -> Unit
 ) {
     Card(
@@ -188,17 +183,6 @@ private fun RelayActiveCard(
                     stringResource(R.string.relay_advertised_as, advertisedName),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(
-                    checked = captureToPlaylist,
-                    onCheckedChange = onCaptureChanged,
-                    modifier = Modifier.testTag("relay_capture_checkbox")
-                )
-                Text(
-                    stringResource(R.string.relay_capture_checkbox),
-                    style = MaterialTheme.typography.bodySmall
                 )
             }
             OutlinedButton(

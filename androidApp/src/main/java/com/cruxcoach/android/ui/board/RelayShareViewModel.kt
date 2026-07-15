@@ -90,10 +90,6 @@ class RelayShareViewModel @Inject constructor(
         relayManager.setEnabled(false)
     }
 
-    fun setCaptureToPlaylist(enabled: Boolean) {
-        relayManager.setCaptureToPlaylist(enabled)
-    }
-
     fun clearError() {
         relayManager.clearError()
     }
