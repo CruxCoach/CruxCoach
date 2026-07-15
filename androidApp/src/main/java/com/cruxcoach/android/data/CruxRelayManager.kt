@@ -1,10 +1,14 @@
 package com.cruxcoach.android.data
 
 import android.annotation.SuppressLint
+import android.app.NotificationManager
 import android.bluetooth.BluetoothManager
 import android.bluetooth.le.AdvertisingSetCallback
 import android.content.Context
 import android.util.Log
+import androidx.annotation.StringRes
+import androidx.core.app.NotificationCompat
+import com.cruxcoach.android.R
 import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.ClimbBleAdvertiser
 import com.cruxcoach.android.ble.ConnectionState
@@ -95,6 +99,7 @@ class CruxRelayManager(
         private const val ADVERTISE_START_TIMEOUT_MS = 3_000L
         private const val BOARD_RELEASE_TIMEOUT_MS = 5_000L
         private const val WATCHDOG_IDLE_MS = 90_000L
+        private const val STOPPED_NOTIFICATION_ID = 4402
     }
 
     private val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
@@ -163,7 +168,10 @@ class CruxRelayManager(
             if (boardState == ConnectionState.DISCONNECTED && enabled) {
                 // Board loss while sharing: hard-disable so a later reconnect
                 // never re-activates sharing without a fresh user action, and
-                // surface the loss (never silent — §12).
+                // surface the loss (never silent — §12). The persistent FGS
+                // notification dies with enabled=false, so leave a final
+                // auto-dismissible one for background users.
+                postStoppedNotification(R.string.relay_error_board_lost)
                 enabledFlow.value = false
                 _state.update { it.copy(enabled = false, error = RelayError.BOARD_LOST) }
             }
@@ -245,6 +253,9 @@ class CruxRelayManager(
                 val idle = System.currentTimeMillis() - lastActivityMs
                 if (relayServer.getConnectedCount() == 0 && idle >= WATCHDOG_IDLE_MS) {
                     Log.d(TAG, "watchdog: idle ${idle}ms, no clients — auto-disabling relay")
+                    // Never silent (§12): the persistent notification vanishes
+                    // with the stop, so leave an auto-dismissible trace.
+                    postStoppedNotification(R.string.relay_stopped_idle)
                     setEnabled(false)
                     break
                 }
@@ -307,6 +318,24 @@ class CruxRelayManager(
         restoreAdapterName()
         _state.update { it.copy(advertising = false, clientCount = 0, advertisedName = null) }
         Log.i(TAG, "CruxRelay stopped (releaseBoard=$releaseBoard)")
+    }
+
+    /** Final, auto-dismissible "sharing stopped" notification (FEAT-044 §12:
+     *  never fail/stop silently). Posted BEFORE the enabled=false state change
+     *  tears down [CruxRelayService]'s persistent notification, on the same
+     *  channel (which the service created when sharing started). Best-effort:
+     *  POST_NOTIFICATIONS may have been revoked. */
+    private fun postStoppedNotification(@StringRes textRes: Int) {
+        runCatching {
+            val mgr = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val notification = NotificationCompat.Builder(context, CruxRelayService.CHANNEL_ID)
+                .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
+                .setContentTitle(context.getString(R.string.relay_notification_title))
+                .setContentText(context.getString(textRes))
+                .setAutoCancel(true)
+                .build()
+            mgr.notify(STOPPED_NOTIFICATION_ID, notification)
+        }.onFailure { Log.w(TAG, "failed to post relay-stopped notification", it) }
     }
 
     private fun captureIfNew(device: String, framesHash: Long, holdCount: Int, rawBytes: ByteArray) {

@@ -235,8 +235,10 @@ private fun RelayDisclosureDialog(
     )
 }
 
+/** Shared with [com.cruxcoach.android.ui.common.BleStatusArea]'s transient
+ *  relay-error row — the sheet is usually gone when a BOARD_LOST lands. */
 @Composable
-private fun relayErrorText(error: RelayError, detail: String?): String {
+internal fun relayErrorText(error: RelayError, detail: String?): String {
     val base = when (error) {
         RelayError.SERVER_START_FAILED -> stringResource(R.string.relay_error_server)
         RelayError.ADVERTISE_FAILED -> stringResource(R.string.relay_error_advertise)
