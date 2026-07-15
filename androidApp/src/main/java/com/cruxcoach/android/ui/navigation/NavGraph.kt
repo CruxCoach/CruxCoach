@@ -242,7 +242,8 @@ fun CruxCoachNavHost(
             route == Routes.ANNOUNCEMENTS ||
             route == Routes.DEV_CHAT ||
             route == Routes.SETTINGS ||
-            route.startsWith("message_thread/") ->
+            route.startsWith("message_thread/") ||
+            route.startsWith("playlist_import/") ->
                 navController.navigate(route) { launchSingleTop = true }
             route.startsWith("board_sync") -> {
                 // Deep link: board_sync?localDbUrl=http://...
