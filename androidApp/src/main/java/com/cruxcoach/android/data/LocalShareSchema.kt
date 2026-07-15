@@ -40,4 +40,36 @@ object LocalShareSchema {
         """INSERT OR REPLACE INTO placement_roles(board_brand, id, name, led_color, screen_color)
            SELECT board_brand, id, name, led_color, screen_color FROM src.placement_roles""",
     ).map { it.trimIndent() }
+
+    /**
+     * Zero-row probes derived mechanically from [MODERN_GEOMETRY_COPY]'s
+     * SELECT halves. Run against the ATTACHed source BEFORE any write:
+     * a source produced by an older app whose schema predates any table /
+     * column these copies reference fails here with a clean error instead
+     * of aborting the geometry transaction AFTER climbs/stats already
+     * committed (a partial import). Deriving from the same constants means
+     * the probe set can never drift from the copies it guards.
+     */
+    val MODERN_GEOMETRY_SOURCE_PROBES: List<String> = MODERN_GEOMETRY_COPY.map { stmt ->
+        "SELECT * FROM (${stmt.substring(stmt.indexOf("SELECT"))}) LIMIT 0"
+    }
+
+    /**
+     * Privacy scrub executed on the SENDER's serve-time snapshot (never on
+     * the live DB). The board DB carries the sender's own unpublished
+     * drafts (`source='local'`, identity-linked via created_by_pubkey) and
+     * the per-account Kilter publish-attempt audit log — neither belongs on
+     * the wire. Receiver-side import filters drafts too (defence in depth),
+     * but the guarantee must hold for ANY client that fetches /board.db.
+     *
+     * Order matters: stats reference the draft uuids, so they go first.
+     * The caller must VACUUM afterwards — DELETE alone leaves the row
+     * images recoverable from free pages.
+     */
+    val SNAPSHOT_SCRUB: List<String> = listOf(
+        """DELETE FROM climb_stats WHERE climb_uuid IN
+           (SELECT uuid FROM climbs WHERE COALESCE(source, 'kilter') = 'local')""",
+        """DELETE FROM climbs WHERE COALESCE(source, 'kilter') = 'local'""",
+        """DELETE FROM kilter_publish_attempts""",
+    ).map { it.trimIndent() }
 }

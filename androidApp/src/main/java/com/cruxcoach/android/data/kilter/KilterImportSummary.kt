@@ -14,6 +14,13 @@ import com.cruxcoach.android.R
  * as freshly imported.
  */
 fun formatKilterImportSummary(context: Context, r: KilterImportResult): String {
+    // Nothing came back at all (fresh account, no Kilter history) — a
+    // friendly empty state beats a bare "0 ascents · 0 projects".
+    if (r.newAscents == 0 && r.newBids == 0 && r.ownClimbs == 0 &&
+        r.backfilledClimbs == 0 && r.circuits == 0 && r.duplicateLogs == 0
+    ) {
+        return context.getString(R.string.kilter_import_empty)
+    }
     val parts = mutableListOf<String>()
     parts += context.getString(R.string.kilter_import_part_ascents, r.newAscents)
     parts += context.getString(R.string.kilter_import_part_projects, r.newBids)
@@ -22,6 +29,9 @@ fun formatKilterImportSummary(context: Context, r: KilterImportResult): String {
     }
     if (r.backfilledClimbs > 0) {
         parts += context.getString(R.string.kilter_import_part_catalogue, r.backfilledClimbs)
+    }
+    if (r.circuits > 0) {
+        parts += context.getString(R.string.kilter_import_part_circuits, r.circuits)
     }
     val head = parts.joinToString(" · ")
     return if (r.duplicateLogs > 0) {

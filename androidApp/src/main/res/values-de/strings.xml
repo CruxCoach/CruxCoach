@@ -1042,9 +1042,16 @@
     <string name="kilter_import_part_projects">%d Projekte</string>
     <string name="kilter_import_part_own">%d eigene Climbs</string>
     <string name="kilter_import_part_catalogue">%d Climbs nachgeladen</string>
+    <string name="kilter_import_part_circuits">%d Listen</string>
     <string name="kilter_import_summary_with_dupes" formatted="false">%1$s (%2$d bereits vorhanden)</string>
     <string name="kilter_sync_success">Sync abgeschlossen: %1$d heruntergeladen, %2$d hochgeladen</string>
     <string name="kilter_sync_error">Sync fehlgeschlagen: %s</string>
+    <string name="kilter_import_error_network">Import fehlgeschlagen — bitte prüfe deine Internetverbindung und versuche es erneut.</string>
+    <string name="kilter_import_error_auth">Deine Kilter-Sitzung ist abgelaufen. Bitte melde dich erneut an.</string>
+    <string name="kilter_import_error_generic">Import fehlgeschlagen. Bitte versuche es erneut.</string>
+    <string name="kilter_import_empty">Noch keine Begehungen in deinem Kilter-Logbuch gefunden.</string>
+    <string name="kilter_import_retry">Erneut versuchen</string>
+    <string name="kilter_import_board_sync_pending">Der Board-Katalog wird noch geladen. Du kannst jetzt importieren — Namen und Schwierigkeiten erscheinen automatisch, sobald er fertig ist.</string>
     <string name="kilter_preview_failed">Anmeldung erfolgreich, aber dein Kilter-Logbuch konnte nicht geladen werden: %1$s</string>
     <string name="kilter_sync_upload_failed">Sync abgeschlossen — %1$d Einträge importiert, aber der Upload deiner lokalen Sends ist fehlgeschlagen. Wird beim nächsten Sync erneut versucht.</string>
     <string name="kilter_no_new">Keine neuen Begehungen gefunden</string>
@@ -1970,6 +1977,12 @@
     <string name="whatsnew_moonboard_hint">Außerdem neu: eine weltweite Board-Standortkarte und ein „Finde deine Halle"-Board-Picker — beides in den Einstellungen.</string>
     <string name="whatsnew_moonboard_action_now">Board wählen</string>
     <string name="whatsnew_moonboard_action_later">Später</string>
+    <!-- 0.2.1-Highlights (konsolidiert; 0.2.0-Board-Recap als Hint) -->
+    <string name="whatsnew_021_title">Neu in 0.2.1</string>
+    <string name="whatsnew_021_body">• Bereichssuche — zieh in der Hold-Suche einen Rahmen aufs Board-Foto und finde alle Climbs, die komplett darin liegen.\n\n• Kilter-Circuits werden Listen — der Login mit deinem Kilter-Account importiert jetzt auch deine Circuits.\n\n• Jeden Climb teilen — jeder Climb bekommt einen Link, der direkt in CruxCoach öffnet.\n\n• Listen über alle Boards — gespeicherte Listen zeigen jetzt alle deine Climbs, mit Board-Badge und Board-Filter.</string>
+    <string name="whatsnew_021_hint">In 0.2.0 leicht zu übersehen: MoonBoard und die Aurora-Boards (Tension, Grasshopper u.&#160;a.), eine weltweite Board-Karte und ein „Finde deine Halle"-Picker — alles in den Einstellungen.</string>
+    <string name="whatsnew_021_action_go">Alles klar</string>
+    <string name="whatsnew_021_action_boards">Boards ansehen</string>
     <!-- FEAT-031: Aurora-Boards (What's New) -->
     <string name="whatsnew_aurora_title">Neu: Tension, Grasshopper &amp; mehr</string>
     <string name="whatsnew_aurora_body">0.2.0 bringt zusätzlich die Aurora-Boards — Tension, Grasshopper, Decoy, So iLL und Touchstone — neben Kilter und MoonBoard. Durchsuche den Katalog jedes Boards mit denselben Filtern für Grad, Winkel und Setter, öffne einen Boulder und lass ihn per Bluetooth auf deinem Board aufleuchten.</string>

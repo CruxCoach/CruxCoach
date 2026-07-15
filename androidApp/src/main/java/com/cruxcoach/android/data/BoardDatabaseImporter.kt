@@ -797,6 +797,13 @@ class BoardDatabaseImporter(
             // column-probed and works for both; the geometry + sync-state
             // finalization below must branch. See [LocalShareSchema].
             val isModernSource = hasTable(rawDb, LocalShareSchema.MODERN_MARKER_TABLE)
+            // Pre-flight BEFORE any write: the geometry copies use fixed
+            // column lists (unlike the column-probed climb/stat import), so
+            // a source from an older app used to blow up in the geometry
+            // transaction AFTER climbs/stats had already committed — a
+            // partial import. Probing every source SELECT first turns that
+            // into a clean, zero-write abort.
+            if (isModernSource) preflightModernSource(dbFile)
             val (climbCount, statCount) = withDeferredIndexes {
                 onProgress?.invoke(ImportStep.ImportClimbs(0, 0, 0))
                 val climbs = importClimbs(rawDb, freshInstall = freshInstallClimbs) { inserted, scanned, total ->
@@ -1118,7 +1125,12 @@ class BoardDatabaseImporter(
             // A modern source also carries the sender's own unpublished
             // drafts (source='local'). Those are private working copies —
             // exclude them; published/community/catalogue rows all pass.
-            val draftFilter = if ("source" in srcCols) "AND COALESCE(source, 'kilter') != 'local'" else ""
+            // Hard-deleted rows (is_deleted=1) are equally excluded — a
+            // deleted-but-still-listed row should never exist, but a
+            // crafted/corrupted source must not resurrect one here.
+            val deletedGuard = if ("is_deleted" in srcCols) " AND COALESCE(is_deleted, 0) = 0" else ""
+            val draftFilter =
+                (if ("source" in srcCols) "AND COALESCE(source, 'kilter') != 'local'" else "") + deletedGuard
 
             // Drafts are excluded from `total` too, so the progress bar's
             // denominator matches what the staging INSERT actually scans.
@@ -1888,6 +1900,41 @@ class BoardDatabaseImporter(
      * @return number of placement rows the source carried (progress display,
      *   mirroring what [importPlacements] reports on the legacy path).
      */
+    /**
+     * Zero-write validation of a modern share source: compiles every
+     * geometry-copy SELECT ([LocalShareSchema.MODERN_GEOMETRY_SOURCE_PROBES])
+     * against the ATTACHed source. A source whose schema predates any
+     * referenced table/column (sender app older than the receiver) fails
+     * HERE — before climbs/stats are written — instead of aborting the
+     * geometry transaction after minutes of copying (partial import).
+     *
+     * @throws IllegalStateException with a user-actionable message.
+     */
+    private fun preflightModernSource(srcFile: File) {
+        val targetDb = openTargetDb()
+        try {
+            targetDb.execSQL("ATTACH DATABASE ? AS src", arrayOf(srcFile.absolutePath))
+            try {
+                for (probe in LocalShareSchema.MODERN_GEOMETRY_SOURCE_PROBES) {
+                    try {
+                        targetDb.rawQuery(probe, null).use { it.count }
+                    } catch (e: android.database.SQLException) {
+                        throw IllegalStateException(
+                            "Die geteilte Datenbank stammt von einer älteren " +
+                                "CruxCoach-Version — bitte zuerst die App auf dem " +
+                                "sendenden Gerät aktualisieren. (${e.message})",
+                            e
+                        )
+                    }
+                }
+            } finally {
+                targetDb.execSQL("DETACH DATABASE src")
+            }
+        } finally {
+            targetDb.close()
+        }
+    }
+
     private fun importModernGeometry(srcFile: File): Int {
         val targetDb = openTargetDb()
         try {

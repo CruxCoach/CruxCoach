@@ -3,7 +3,9 @@ package com.cruxcoach.android.updater
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.util.Log
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -20,7 +22,11 @@ class UpdaterActionReceiver : BroadcastReceiver() {
 
     @Inject lateinit var repository: UpdaterRepository
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val scope = CoroutineScope(
+        SupervisorJob() + Dispatchers.IO + CoroutineExceptionHandler { _, e ->
+            Log.w(TAG, "Uncaught exception in updater action receiver", e)
+        },
+    )
 
     override fun onReceive(context: Context, intent: Intent) {
         val pendingAsync = goAsync()
@@ -43,5 +49,9 @@ class UpdaterActionReceiver : BroadcastReceiver() {
                 pendingAsync.finish()
             }
         }
+    }
+
+    companion object {
+        private const val TAG = "UpdaterActionReceiver"
     }
 }

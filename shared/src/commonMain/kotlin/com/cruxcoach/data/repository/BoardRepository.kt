@@ -638,6 +638,77 @@ data class RawClimbListEntry(
 )
 
 /**
+ * Full-fidelity ascent snapshot for the backup envelope. Mirrors every
+ * `ascents` column that matters for a lossless restore. Intentionally
+ * omitted: `attempt_id` (vestigial, always 0 in practice) and
+ * `row_version` (optimistic-lock token, transient by definition).
+ */
+data class AscentBackupRow(
+    val uuid: String,
+    val climbUuid: String,
+    val angle: Long,
+    val isMirror: Boolean,
+    val bidCount: Long,
+    val quality: Long?,
+    val difficulty: Long?,
+    val isBenchmark: Boolean,
+    val comment: String?,
+    val climbedAt: String,
+    val synced: Boolean,
+    val gymUuid: String?,
+    val wallUuid: String?,
+    val productLayoutUuid: String?,
+    val climbName: String,
+    val difficultyAverage: Double?,
+    val climbFrames: String,
+    val framesCount: Long,
+    val externalId: String?,
+    val boardBrand: String,
+    val layoutId: Long?,
+)
+
+/** Full-fidelity bid snapshot for the backup envelope; see [AscentBackupRow]. */
+data class BidBackupRow(
+    val uuid: String,
+    val climbUuid: String,
+    val angle: Long,
+    val isMirror: Boolean,
+    val bidCount: Long,
+    val comment: String?,
+    val climbedAt: String,
+    val synced: Boolean,
+    val gymUuid: String?,
+    val wallUuid: String?,
+    val productLayoutUuid: String?,
+    val climbName: String,
+    val difficultyAverage: Double?,
+    val externalId: String?,
+    val boardBrand: String,
+    val layoutId: Long?,
+)
+
+/**
+ * Full-fidelity climb-list snapshot for the backup envelope. Unlike the
+ * UI-facing [Climb_lists] it carries `external_id` (circuit identity +
+ * the built-in Ignored sentinel), `description` and `color` — without
+ * them a restore folded the Ignored list into Favorites and stripped
+ * FEAT-005 circuits of their idempotency key.
+ */
+data class ClimbListBackupRow(
+    val id: Long,
+    val name: String,
+    val isBuiltin: Boolean,
+    val createdAt: String,
+    val description: String?,
+    val color: String?,
+    val externalId: String?,
+    /** 'list' | 'playlist' (climb_lists.kind). */
+    val kind: String,
+    /** Generator parameter JSON snapshot (playlists only). */
+    val generatorParams: String?,
+)
+
+/**
  * One row of the local "Verlauf" (history) log — a SENT climb the user
  * recorded. Denormalized at record time (climb metadata + board family) so
  * the history screen renders without a cross-DB join. Local-only: never
@@ -820,6 +891,11 @@ data class OwnClimbBackupRow(
     // "kilter" for legacy backups that predate the field (set on the export
     // side from OwnClimbExport.boardBrand).
     val boardBrand: String = "kilter",
+    // Kilter account uuid that authored the publish (`kilter_author_uuid`).
+    // NULL means "unknown author → not publishable", so dropping it on
+    // restore silently bricked re-publish/update of an own Kilter climb.
+    // Defaults to null for backups that predate the field.
+    val kilterAuthorUuid: String? = null,
 )
 
 /**

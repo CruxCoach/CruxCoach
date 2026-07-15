@@ -11,6 +11,7 @@ import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.data.NostrMessageRepository
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.notification.NostrPushCoordinator
+import com.cruxcoach.android.nostr.MessageDeliveryCoordinator
 import com.cruxcoach.android.nostr.NostrConfig
 import com.cruxcoach.android.nostr.NostrMessageSending
 import com.cruxcoach.android.nostr.NostrIdentity
@@ -66,6 +67,7 @@ class DevContactViewModel @Inject constructor(
     private val nostrSigner: NostrIdentity,
     private val userPreferences: UserPreferences,
     private val queueManager: OfflineQueueManager,
+    private val deliveryCoordinator: MessageDeliveryCoordinator,
     @dagger.hilt.android.qualifiers.ApplicationContext private val context: android.content.Context
 ) : ViewModel() {
 
@@ -114,6 +116,15 @@ class DevContactViewModel @Inject constructor(
                 loadMessages()
                 // A live dev reply to the thread the user is reading should
                 // appear without a manual back-and-reopen.
+                refreshOpenThread()
+            }
+        }
+        // Relay-accept confirmations arrive from the app-scoped delivery
+        // coordinator; refresh so the "queued" badge clears while the
+        // screen is open. (The DB bookkeeping already happened there.)
+        viewModelScope.launch {
+            deliveryCoordinator.deliveredEvents.collect {
+                loadMessages()
                 refreshOpenThread()
             }
         }
@@ -586,8 +597,9 @@ class DevContactViewModel @Inject constructor(
                     // appears immediately. replyToId == the local root id.
                     if (replyToId != null) loadThread(replyToId)
 
-                    // 3. Deliver in background (includes random delay)
-                    deliverInBackground(eventId, buildResult.eventJsons)
+                    // 3. Deliver app-scoped (includes random delay) — must
+                    //    survive this ViewModel being cleared mid-delay.
+                    deliveryCoordinator.deliver(eventId, buildResult.eventJsons)
                 }
                 is SendResult.Failed -> {
                     _state.update { it.copy(isSending = false, sendSuccess = false) }
@@ -597,29 +609,6 @@ class DevContactViewModel @Inject constructor(
                     _state.update { it.copy(isSending = false, sendSuccess = true) }
                 }
             }
-        }
-    }
-
-    private fun deliverInBackground(eventId: String, eventJsons: String) {
-        viewModelScope.launch {
-            val success = try {
-                messageSender.deliverWraps(eventJsons)
-            } catch (e: Exception) {
-                Log.e(TAG, "Background delivery failed for $eventId", e)
-                false
-            }
-
-            if (success) {
-                withContext(Dispatchers.IO) {
-                    messageRepository.updateRelayAccepted(eventId)
-                    messageRepository.clearQueued(eventId)
-                }
-                queueManager.refreshCount()
-                loadMessages()
-                refreshOpenThread()
-                Log.i(TAG, "Message $eventId delivered to relay")
-            }
-            // If !success, message stays queued — OfflineQueueManager will retry later
         }
     }
 

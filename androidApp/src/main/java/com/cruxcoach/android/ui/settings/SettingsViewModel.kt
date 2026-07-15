@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.data.kilter.formatKilterImportSummary
 import com.cruxcoach.android.data.kilter.localized
+import com.cruxcoach.android.data.kilter.localizeKilterImportError
 import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.ClimbBleAdvertiser
 import com.cruxcoach.android.data.AnnouncementRepository
@@ -813,7 +814,7 @@ class SettingsViewModel @Inject constructor(
                     isConnected = false,
                     resultMessage = result.fold(
                         onSuccess = { formatKilterImportSummary(context, it) },
-                        onFailure = { context.getString(R.string.kilter_sync_error, it.message ?: it.javaClass.simpleName) }
+                        onFailure = { localizeKilterImportError(context, it) }
                     ),
                     resultIsError = result.isFailure,
                 )) }
@@ -824,7 +825,7 @@ class SettingsViewModel @Inject constructor(
                 _state.update { it.copy(kilterAccount = it.kilterAccount.copy(
                     isImporting = false,
                     showImportPreview = false,
-                    resultMessage = context.getString(R.string.kilter_sync_error, e.message ?: e.javaClass.simpleName),
+                    resultMessage = localizeKilterImportError(context, e),
                     resultIsError = true,
                 )) }
             }
@@ -844,7 +845,7 @@ class SettingsViewModel @Inject constructor(
                     lastSync = lastSync,
                     resultMessage = result.fold(
                         onSuccess = { formatKilterImportSummary(context, it) },
-                        onFailure = { context.getString(R.string.kilter_sync_error, it.message ?: it.javaClass.simpleName) }
+                        onFailure = { localizeKilterImportError(context, it) }
                     ),
                     resultIsError = result.isFailure,
                 )) }
@@ -855,7 +856,7 @@ class SettingsViewModel @Inject constructor(
                 _state.update { it.copy(kilterAccount = it.kilterAccount.copy(
                     isImporting = false,
                     showImportPreview = false,
-                    resultMessage = context.getString(R.string.kilter_sync_error, e.message ?: e.javaClass.simpleName),
+                    resultMessage = localizeKilterImportError(context, e),
                     resultIsError = true,
                 )) }
             }
@@ -888,7 +889,7 @@ class SettingsViewModel @Inject constructor(
                             if (r.uploadFailed) context.getString(R.string.kilter_sync_upload_failed, r.downloaded)
                             else context.getString(R.string.kilter_sync_success, r.downloaded, r.uploaded)
                         },
-                        onFailure = { context.getString(R.string.kilter_sync_error, it.message ?: it.javaClass.simpleName) }
+                        onFailure = { localizeKilterImportError(context, it) }
                     ),
                     resultIsError = result.isFailure || result.getOrNull()?.uploadFailed == true,
                 )) }
@@ -898,7 +899,7 @@ class SettingsViewModel @Inject constructor(
                 Log.w(TAG, "kilterSyncNow threw", e)
                 _state.update { it.copy(kilterAccount = it.kilterAccount.copy(
                     isSyncing = false,
-                    resultMessage = context.getString(R.string.kilter_sync_error, e.message ?: e.javaClass.simpleName),
+                    resultMessage = localizeKilterImportError(context, e),
                     resultIsError = true,
                 )) }
             }

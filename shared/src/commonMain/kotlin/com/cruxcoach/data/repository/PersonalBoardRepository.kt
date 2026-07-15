@@ -9,6 +9,14 @@ import kotlinx.coroutines.flow.Flow
  */
 interface PersonalBoardRepository {
 
+    companion object {
+        /** Stable identifier of the built-in "Ignored" list in
+         *  climb_lists.external_id. Shared with the backup layer so a
+         *  restore can tell the two `is_builtin=1` lists apart —
+         *  Favorites is the builtin WITHOUT an external_id. */
+        const val IGNORED_LIST_EXTERNAL_ID = "cruxcoach:builtin:ignored"
+    }
+
     // ── Ascent queries ──────────────────────────────────────────
 
     fun insertAscent(
@@ -23,6 +31,10 @@ interface PersonalBoardRepository {
         // Kilter-only callers (Kilter sync, backup restore) which leave them
         // implicit; the manual-log path passes the climb's real values.
         boardBrand: String = "kilter", layoutId: Long? = null,
+        // FEAT-005 Aurora idempotency marker, round-tripped by the backup so
+        // a post-restore Aurora re-import still dedups instead of doubling
+        // the logbook. Null for every non-Aurora row.
+        externalId: String? = null,
     )
 
     fun deleteAscent(uuid: String)
@@ -45,6 +57,14 @@ interface PersonalBoardRepository {
 
     fun getUnsyncedAscents(): List<RawAscent>
 
+    /** Full-fidelity ascent rows for the backup envelope — carries the
+     *  columns the UI-facing [AscentWithClimb] intentionally drops
+     *  (is_benchmark, gym/wall/product-layout context, external_id). */
+    fun getAscentsForBackup(): List<AscentBackupRow>
+
+    /** Full-fidelity bid rows for the backup envelope; see [getAscentsForBackup]. */
+    fun getBidsForBackup(): List<BidBackupRow>
+
     /**
      * Stamp `synced = 1` only if [expectedRowVersion] still matches the
      * current row. Returns `true` when the stamp applied, `false` if a
@@ -63,6 +83,8 @@ interface PersonalBoardRepository {
         gymUuid: String? = null, wallUuid: String? = null, productLayoutUuid: String? = null,
         climbName: String, difficultyAverage: Double?,
         boardBrand: String = "kilter", layoutId: Long? = null,
+        // See [insertAscent].externalId.
+        externalId: String? = null,
     )
 
     fun deleteBid(uuid: String)
@@ -121,6 +143,27 @@ interface PersonalBoardRepository {
     fun getIgnoredClimbUuids(): Set<String>
 
     fun getClimbListEntriesRaw(): List<RawClimbListEntry>
+
+    /** Full-fidelity list rows for the backup envelope — includes
+     *  external_id / description / color, which the UI-facing
+     *  [Climb_lists] model doesn't carry (FEAT-005 circuit identity +
+     *  the built-in Ignored sentinel). */
+    fun getClimbListsForBackup(): List<ClimbListBackupRow>
+
+    /**
+     * Restore-side find-or-create for one backup list row. When
+     * [externalId] is non-null the row is keyed on it (circuit identity):
+     * an existing match gets its metadata refreshed and its id returned;
+     * otherwise a new row is inserted with the full metadata — including
+     * the ORIGINAL [createdAt], which the plain [createClimbList] path
+     * used to reset to now(). Never used for the two built-in lists
+     * (those route through [ensureFavoritesListExists] /
+     * [ensureIgnoredListExists]).
+     */
+    fun restoreClimbList(
+        name: String, createdAt: String,
+        description: String?, color: String?, externalId: String?,
+    ): Long
 
     // ── Playlists (kind='playlist' climb_lists) ─────────────────
     // Ordered, playable lists: explicit position, duplicate climbs allowed

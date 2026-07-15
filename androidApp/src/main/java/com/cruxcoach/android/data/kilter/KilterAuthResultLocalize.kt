@@ -32,3 +32,25 @@ fun KilterAuthResult.Error.localized(context: Context): String = when (reason) {
     is KilterAuthResult.Error.Reason.HttpFailure ->
         context.getString(R.string.kilter_auth_http_failure, httpCode ?: -1)
 }
+
+/**
+ * Map an import/sync [Throwable] to a localized, user-safe message.
+ *
+ * Mirrors [com.cruxcoach.android.data.BoardSyncManager]'s policy: NEVER
+ * surface raw exception text (SQLite / IO messages, cache paths, class
+ * names) in the UI — only a category string. The raw cause is logged by
+ * the caller. Distinguishes a lost/expired Kilter session and a network
+ * problem from an otherwise-unclassified failure so the message can guide
+ * the user (re-login vs. check connection vs. just retry).
+ */
+fun localizeKilterImportError(context: Context, error: Throwable): String = when {
+    error is KilterApiException &&
+        error.reason == KilterAuthResult.Error.Reason.NotAuthenticated ->
+        context.getString(R.string.kilter_import_error_auth)
+    error is java.net.UnknownHostException ||
+        error is java.net.SocketTimeoutException ||
+        (error is java.io.IOException && error !is java.io.FileNotFoundException) ->
+        context.getString(R.string.kilter_import_error_network)
+    else ->
+        context.getString(R.string.kilter_import_error_generic)
+}

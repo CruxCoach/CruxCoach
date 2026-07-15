@@ -67,6 +67,36 @@ class UpdateNotifier(private val context: Context) {
         notify(builder)
     }
 
+    /**
+     * §5.5 — surface a pending install-consent dialog as a tappable
+     * notification. The tap fires the [PackageInstaller] consent IntentSender
+     * with a fresh background-activity-start grant (see
+     * [UpdaterRepository.onConsentRequired]); reuses the "ready to install"
+     * copy so no new strings are needed.
+     */
+    fun showConsentRequired(info: UpdateInfo, consentIntent: Intent) {
+        consentIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val consentPi = PendingIntent.getActivity(
+            context,
+            REQ_CONSENT,
+            consentIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val builder = base(info)
+            .setContentTitle(context.getString(R.string.updater_notif_ready_title, info.versionName))
+            .setContentText(context.getString(R.string.updater_notif_ready_body))
+            .setOngoing(false)
+            .setContentIntent(consentPi)
+            .addAction(
+                NotificationCompat.Action.Builder(
+                    0,
+                    context.getString(R.string.updater_notif_action_install),
+                    consentPi,
+                ).build()
+            )
+        notify(builder)
+    }
+
     fun showCertMismatch(info: UpdateInfo) {
         val builder = base(info)
             .setContentTitle(context.getString(R.string.updater_notif_cert_title))
@@ -205,5 +235,6 @@ class UpdateNotifier(private val context: Context) {
         private const val REQ_SETTINGS = 200
         private const val REQ_OPEN_RELEASE_PAGE = 201
         private const val REQ_SETTINGS_ASK = 202
+        private const val REQ_CONSENT = 203
     }
 }

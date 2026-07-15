@@ -370,6 +370,22 @@ class BoardStatsComputerTest {
     }
 
     @Test
+    fun `avgSessionsPerWeek divides by the full window for a young logbook`() {
+        // Logbook younger than the window: 2 distinct session days spanning
+        // ~3 weeks. The divisor stays the 8-week window (not the 3-week active
+        // span), so 2 / 8 = 0.25 — matching the "(8 W.)" label instead of the
+        // inflated 0.6 the active-span divisor produced.
+        val ascents = listOf(
+            ascent(climbedAt = "${today.minusDays(21)}T10:00:00"),
+            ascent(climbedAt = "${today}T10:00:00"),
+        )
+        val stats = BoardStatsComputer.computeStats(
+            ascents, StatsTimeInterval.ALL, GradeScale.V_SCALE, clock = fixedClock,
+        )
+        assertEquals(0.25, stats.personalRecords.avgSessionsPerWeek, 0.001)
+    }
+
+    @Test
     fun `avgSessionsPerWeek counts attempt-only days as sessions`() {
         val ascents = listOf(
             ascent(isSend = false, climbedAt = "${today.minusDays(2)}T10:00:00"),

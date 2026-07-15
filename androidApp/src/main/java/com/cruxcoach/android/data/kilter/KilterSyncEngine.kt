@@ -4,6 +4,7 @@ import android.util.Log
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.PersonalBoardRepository
+import com.cruxcoach.db.secure.SecureDatabase
 import com.cruxcoach.util.DateTimeUtil
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -40,6 +41,8 @@ data class KilterImportResult(
     val ownClimbs: Int,
     /** Logged-climb rows backfilled into the board catalogue. */
     val backfilledClimbs: Int,
+    /** Own Kilter circuits imported as local lists (inserted or refreshed). */
+    val circuits: Int,
 ) {
     val totalNew: Int get() = newAscents + newBids
 }
@@ -48,6 +51,18 @@ data class KilterImportResult(
 private data class LogInsertCounts(val newAscents: Int, val newBids: Int, val duplicates: Int) {
     val totalNew: Int get() = newAscents + newBids
 }
+
+/**
+ * One queued upload paired with the row-version snapshot needed to mark it
+ * synced without clobbering a concurrent local edit. Lets the upload be
+ * chunked while keeping the optimistic per-row mark correct.
+ */
+private data class PendingUpload(
+    val log: KilterLog,
+    val uuid: String,
+    val rowVersion: Long,
+    val isAscent: Boolean,
+)
 
 data class KilterSyncReport(
     val downloaded: Int,
@@ -64,10 +79,33 @@ class KilterSyncEngine @Inject constructor(
     private val tokenStore: KilterTokenStore,
     private val boardRepository: BoardRepository,
     private val personalBoardRepo: PersonalBoardRepository,
+    private val secureDb: SecureDatabase,
     private val userPreferences: UserPreferences
 ) {
     private companion object {
         const val TAG = "KilterSyncEngine"
+
+        /**
+         * Max uuids per board-catalogue IN() lookup. SQLite caps bound
+         * variables (historically 999); a large logbook can reference far
+         * more distinct climbs, so [insertLogs] chunks its lookup below this.
+         */
+        const val CLIMB_LOOKUP_CHUNK = 400
+
+        /**
+         * Max logs per Kilter bulk-upload request. A large offline backlog is
+         * split into batches so one oversized POST can't fail the whole
+         * upload, and each batch that succeeds is marked synced independently.
+         */
+        const val UPLOAD_CHUNK = 200
+
+        /**
+         * Normalize a climb uuid to a spelling-agnostic key. The board DB
+         * mixes forms — curated rows are nodash-UPPERCASE, API rows are
+         * dashed-lowercase — so denormalization must compare on this key,
+         * not the raw uuid (mirrors [BoardRepository.findClimbCanonicalUuid]).
+         */
+        fun normUuidKey(uuid: String): String = uuid.replace("-", "").lowercase()
 
         /**
          * Ensure a timestamp ends with "Z" (UTC) for the Kilter API.
@@ -92,6 +130,10 @@ class KilterSyncEngine @Inject constructor(
      *  board DB (see [KilterClimbBackfiller] for the full contract). */
     private val climbBackfiller = KilterClimbBackfiller(apiClient, boardRepository)
 
+    /** Imports the user's own Kilter circuits into local `climb_lists`
+     *  (see [KilterCircuitImporter]). */
+    private val circuitImporter = KilterCircuitImporter(apiClient, secureDb)
+
     private val _sessionExpired = MutableStateFlow(false)
 
     /** True when the Kilter refresh token has expired and re-login is needed. */
@@ -110,10 +152,15 @@ class KilterSyncEngine @Inject constructor(
      * On network/API errors we do NOT fall through to Strategy 2 — otherwise a
      * transient hiccup would overwrite a real wall context with a locally generated one.
      */
-    suspend fun resolveAndStoreWallContext() {
+    suspend fun resolveAndStoreWallContext(prefetchedLogs: List<KilterLog>? = null) {
         if (tokenStore.hasWallContext()) return
 
-        when (val result = apiClient.resolveWallContext()) {
+        val resolved = if (prefetchedLogs != null) {
+            apiClient.resolveWallContextFromLogs(prefetchedLogs)
+        } else {
+            apiClient.resolveWallContext()
+        }
+        when (val result = resolved) {
             is KilterApiClient.ResolveResult.Found -> {
                 val ctx = result.context
                 tokenStore.setWallContext(ctx.gymUuid, ctx.wallUuid, ctx.productLayoutUuid)
@@ -196,6 +243,7 @@ class KilterSyncEngine @Inject constructor(
                 // denormalizing names/frames in insertLogs (best-effort).
                 climbBackfiller.backfillLoggedClimbs()
                 climbBackfiller.backfillAuthoredClimbs()
+                circuitImporter.importCircuits()
                 val imported = insertLogs(logs).totalNew
 
                 // Upload unsynced local logs (catches offline-logged ascents)
@@ -251,18 +299,21 @@ class KilterSyncEngine @Inject constructor(
      * object type rather than one opaque total.
      */
     suspend fun importLogs(oneTimeOnly: Boolean): Result<KilterImportResult> = withContext(Dispatchers.IO) {
-        // Resolve wall context on first import (auto-detect from user's Kilter data)
-        if (!oneTimeOnly) {
-            resolveAndStoreWallContext()
-        }
-
         val logsResult = apiClient.fetchLogs()
         logsResult.map { logs ->
+            // Resolve wall context on first import (auto-detect from the
+            // user's Kilter data). Reuse the logs we just fetched instead of
+            // downloading the entire logbook a second time inside
+            // resolveWallContext.
+            if (!oneTimeOnly) {
+                resolveAndStoreWallContext(logs)
+            }
             // Backfill PowerSync-only climbs into the board DB before
             // insertLogs denormalizes names/frames (best-effort, non-fatal).
             // Their counts feed the import summary (previously silent).
             val backfilledClimbs = climbBackfiller.backfillLoggedClimbs()
             val ownClimbs = climbBackfiller.backfillAuthoredClimbs()
+            val circuits = circuitImporter.importCircuits()
             val counts = insertLogs(logs)
             val timestamp = DateTimeUtil.nowIso()
             userPreferences.setKilterLastSync(timestamp)
@@ -293,6 +344,7 @@ class KilterSyncEngine @Inject constructor(
                 duplicateLogs = counts.duplicates,
                 ownClimbs = ownClimbs,
                 backfilledClimbs = backfilledClimbs,
+                circuits = circuits,
             )
             Log.i(TAG, "Kilter import (oneTime=$oneTimeOnly): $result")
             result
@@ -308,16 +360,19 @@ class KilterSyncEngine @Inject constructor(
         try {
             val pushEnabled = userPreferences.kilterPushEnabled.first()
 
-            // Ensure wall context is available before upload
-            if (pushEnabled) resolveAndStoreWallContext()
-
-            // Download
+            // Download once, up front, and reuse the logs for wall-context
+            // resolution instead of letting resolveAndStoreWallContext fetch
+            // the whole logbook a second time.
             val logsResult = apiClient.fetchLogs()
             val logs = logsResult.getOrThrow()
+
+            // Ensure wall context is available before the upload below.
+            if (pushEnabled) resolveAndStoreWallContext(logs)
             // Backfill PowerSync-only climbs into the board DB before
             // insertLogs denormalizes names/frames (best-effort, non-fatal).
             climbBackfiller.backfillLoggedClimbs()
             climbBackfiller.backfillAuthoredClimbs()
+            circuitImporter.importCircuits()
             val downloaded = insertLogs(logs).totalNew
 
             // Upload unsynced local data (only if push is enabled). null =
@@ -352,32 +407,50 @@ class KilterSyncEngine @Inject constructor(
      * all-new even though the writes were idempotent no-ops.
      */
     private fun insertLogs(logs: List<KilterLog>): LogInsertCounts {
-        // Snapshot the already-imported log uuids BEFORE writing so the
-        // INSERT-OR-REPLACE below doesn't make every row look pre-existing.
         val existingLogUuids = personalBoardRepo.getExistingLogUuids()
-        var newAscents = 0
-        var newBids = 0
-        var duplicates = 0
+        // Only genuinely NEW logs are written. Re-imported logs are skipped
+        // entirely — insertAscent/insertBid are INSERT OR REPLACE, so
+        // re-writing an existing row would reset row_version and clobber a
+        // user's locally-edited quality/comment (the Aurora path guards the
+        // same way with INSERT OR IGNORE). Skipping them also makes a
+        // steady-state re-sync effectively free instead of rewriting the
+        // whole logbook every time. A row left blank because BoardDB wasn't
+        // synced yet is healed on display by repairMissingDenormalized, so
+        // skipping duplicates here loses nothing.
+        val newLogs = logs.filter { it.logUuid !in existingLogUuids }
+        val duplicates = logs.size - newLogs.size
+        if (newLogs.isEmpty()) return LogInsertCounts(0, 0, duplicates)
 
-        // Pre-fetch denormalized climb data from BoardDB
-        val climbUuids = logs.map { it.climbUuid }.distinct()
-        val angleSet = logs.map { it.angle }.distinct()
-        val climbCache = mutableMapOf<String, Pair<String, Double?>>() // uuid -> (name, diffAvg)
-        val framesCache = mutableMapOf<String, Pair<String, Long>>() // uuid -> (frames, framesCount)
-        for (angle in angleSet) {
-            val climbs = boardRepository.getClimbsByUuids(climbUuids, angle)
-            for (climb in climbs) {
-                climbCache[climb.uuid] = climb.name to climb.difficultyAverage
-                framesCache[climb.uuid] = climb.frames to climb.framesCount
+        // Pre-fetch denormalized climb data from BoardDB, keyed by a
+        // spelling-agnostic key. Query BOTH the API spelling and the legacy
+        // curated spelling (nodash-UPPERCASE) so a curated climb resolves,
+        // and chunk the IN() list so a large logbook can't blow SQLite's
+        // bound-variable limit. One angle-agnostic query per chunk (the
+        // denormalized name/grade is angle-independent for display).
+        val climbCache = mutableMapOf<String, Pair<String, Double?>>() // normKey -> (name, diffAvg)
+        val framesCache = mutableMapOf<String, Pair<String, Long>>()   // normKey -> (frames, framesCount)
+        val lookupUuids = newLogs.asSequence()
+            .map { it.climbUuid }
+            .distinct()
+            .flatMap { sequenceOf(it, it.replace("-", "").uppercase()) }
+            .distinct()
+            .toList()
+        for (chunk in lookupUuids.chunked(CLIMB_LOOKUP_CHUNK)) {
+            for (climb in boardRepository.getClimbsByUuidsAnyAngle(chunk)) {
+                val key = normUuidKey(climb.uuid)
+                climbCache[key] = climb.name to climb.difficultyAverage
+                framesCache[key] = climb.frames to climb.framesCount
             }
         }
 
+        var newAscents = 0
+        var newBids = 0
         personalBoardRepo.runInTransaction {
-            for (log in logs) {
-                val isNew = log.logUuid !in existingLogUuids
-                val (climbName, diffAvg) = climbCache[log.climbUuid] ?: ("" to null)
+            for (log in newLogs) {
+                val key = normUuidKey(log.climbUuid)
+                val (climbName, diffAvg) = climbCache[key] ?: ("" to null)
                 if (log.topped) {
-                    val (frames, framesCount) = framesCache[log.climbUuid] ?: ("" to 1L)
+                    val (frames, framesCount) = framesCache[key] ?: ("" to 1L)
                     personalBoardRepo.insertAscent(
                         uuid = log.logUuid,
                         climbUuid = log.climbUuid,
@@ -399,6 +472,7 @@ class KilterSyncEngine @Inject constructor(
                         climbFrames = frames,
                         framesCount = framesCount
                     )
+                    newAscents++
                 } else {
                     personalBoardRepo.insertBid(
                         uuid = log.logUuid,
@@ -415,11 +489,7 @@ class KilterSyncEngine @Inject constructor(
                         climbName = climbName,
                         difficultyAverage = diffAvg
                     )
-                }
-                if (isNew) {
-                    if (log.topped) newAscents++ else newBids++
-                } else {
-                    duplicates++
+                    newBids++
                 }
             }
         }
@@ -452,44 +522,67 @@ class KilterSyncEngine @Inject constructor(
 
         if (unsyncedAscents.isEmpty() && unsyncedBids.isEmpty()) return 0
 
-        val kilterLogs = mutableListOf<KilterLog>()
+        val pending = ArrayList<PendingUpload>(unsyncedAscents.size + unsyncedBids.size)
 
         for (ascent in unsyncedAscents) {
-            kilterLogs.add(KilterLog(
-                logUuid = ascent.uuid,
-                userUuid = userUuid,
-                climbUuid = ascent.climbUuid,
-                gymUuid = ascent.gymUuid ?: gymUuid,
-                wallUuid = ascent.wallUuid ?: wallUuid,
-                productLayoutUuid = ascent.productLayoutUuid ?: layoutUuid,
-                angle = ascent.angle.toInt(),
-                flashed = ascent.bidCount <= 1L,
-                topped = true,
-                attempts = ascent.bidCount.toInt().coerceAtLeast(1),
-                createdAt = ensureUtcSuffix(ascent.climbedAt),
-                comment = ascent.comment
+            pending.add(PendingUpload(
+                log = KilterLog(
+                    logUuid = ascent.uuid,
+                    userUuid = userUuid,
+                    climbUuid = ascent.climbUuid,
+                    gymUuid = ascent.gymUuid ?: gymUuid,
+                    wallUuid = ascent.wallUuid ?: wallUuid,
+                    productLayoutUuid = ascent.productLayoutUuid ?: layoutUuid,
+                    angle = ascent.angle.toInt(),
+                    flashed = ascent.bidCount <= 1L,
+                    topped = true,
+                    attempts = ascent.bidCount.toInt().coerceAtLeast(1),
+                    createdAt = ensureUtcSuffix(ascent.climbedAt),
+                    comment = ascent.comment
+                ),
+                uuid = ascent.uuid,
+                rowVersion = ascent.rowVersion,
+                isAscent = true,
             ))
         }
 
         for (bid in unsyncedBids) {
-            kilterLogs.add(KilterLog(
-                logUuid = bid.uuid,
-                userUuid = userUuid,
-                climbUuid = bid.climbUuid,
-                gymUuid = bid.gymUuid ?: gymUuid,
-                wallUuid = bid.wallUuid ?: wallUuid,
-                productLayoutUuid = bid.productLayoutUuid ?: layoutUuid,
-                angle = bid.angle.toInt(),
-                flashed = false,
-                topped = false,
-                attempts = bid.bidCount.toInt().coerceAtLeast(1),
-                createdAt = ensureUtcSuffix(bid.climbedAt),
-                comment = bid.comment
+            pending.add(PendingUpload(
+                log = KilterLog(
+                    logUuid = bid.uuid,
+                    userUuid = userUuid,
+                    climbUuid = bid.climbUuid,
+                    gymUuid = bid.gymUuid ?: gymUuid,
+                    wallUuid = bid.wallUuid ?: wallUuid,
+                    productLayoutUuid = bid.productLayoutUuid ?: layoutUuid,
+                    angle = bid.angle.toInt(),
+                    flashed = false,
+                    topped = false,
+                    attempts = bid.bidCount.toInt().coerceAtLeast(1),
+                    createdAt = ensureUtcSuffix(bid.climbedAt),
+                    comment = bid.comment
+                ),
+                uuid = bid.uuid,
+                rowVersion = bid.rowVersion,
+                isAscent = false,
             ))
         }
 
-        val result = apiClient.uploadLogs(kilterLogs)
-        if (result.isSuccess) {
+        // Upload in batches so one oversized POST can't fail the whole
+        // backlog. Each batch that succeeds is marked synced independently;
+        // on the first batch failure we stop and leave the rest queued for
+        // the next sync. Return null (hard failure) only when NOTHING got
+        // through — partial progress returns the count so the caller doesn't
+        // render a clean success while the remainder is still pending.
+        var uploaded = 0
+        var anyFailed = false
+        for (batch in pending.chunked(UPLOAD_CHUNK)) {
+            val result = apiClient.uploadLogs(batch.map { it.log })
+            if (result.isFailure) {
+                Log.w(TAG, "Upload batch failed: ${result.exceptionOrNull()?.message}")
+                anyFailed = true
+                break
+            }
             // Optimistic mark — stamp synced=1 only when row_version still
             // matches the snapshot captured at read time. Any user edit
             // during the HTTP upload window bumps row_version and the stamp
@@ -497,28 +590,20 @@ class KilterSyncEngine @Inject constructor(
             // instead of silently losing it to a stale write.
             var skipped = 0
             personalBoardRepo.runInTransaction {
-                for (ascent in unsyncedAscents) {
-                    val applied = personalBoardRepo.markAscentSyncedIfUnchanged(
-                        uuid = ascent.uuid,
-                        expectedRowVersion = ascent.rowVersion
-                    )
-                    if (!applied) skipped++
-                }
-                for (bid in unsyncedBids) {
-                    val applied = personalBoardRepo.markBidSyncedIfUnchanged(
-                        uuid = bid.uuid,
-                        expectedRowVersion = bid.rowVersion
-                    )
+                for (item in batch) {
+                    val applied = if (item.isAscent) {
+                        personalBoardRepo.markAscentSyncedIfUnchanged(item.uuid, item.rowVersion)
+                    } else {
+                        personalBoardRepo.markBidSyncedIfUnchanged(item.uuid, item.rowVersion)
+                    }
                     if (!applied) skipped++
                 }
             }
             if (skipped > 0) {
                 Log.i(TAG, "Sync: $skipped log(s) edited during upload — will re-upload next sync")
             }
-            return kilterLogs.size
-        } else {
-            Log.w(TAG, "Upload failed: ${result.exceptionOrNull()?.message}")
-            return null
+            uploaded += batch.size
         }
+        return if (anyFailed && uploaded == 0) null else uploaded
     }
 }

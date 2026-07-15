@@ -6,6 +6,7 @@ import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import app.cash.turbine.test
 import com.cruxcoach.android.data.NostrMessageRepository
 import com.cruxcoach.android.fakes.createTestUserPreferences
+import com.cruxcoach.android.nostr.MessageDeliveryCoordinator
 import com.cruxcoach.android.nostr.NostrConfig
 import com.cruxcoach.android.nostr.NostrIdentity
 import com.cruxcoach.android.nostr.NostrMessageSending
@@ -113,6 +114,11 @@ class DevContactViewModelReplyTest {
             nostrSigner = nostrSigner,
             userPreferences = userPreferences,
             queueManager = OfflineQueueManager(repo, messageSender),
+            deliveryCoordinator = MessageDeliveryCoordinator(
+                messageSender = messageSender,
+                messageRepository = repo,
+                queueManager = OfflineQueueManager(repo, messageSender)
+            ),
             context = context
         )
     }

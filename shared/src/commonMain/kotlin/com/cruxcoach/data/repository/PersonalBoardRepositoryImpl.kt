@@ -9,10 +9,11 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 
-/** Stable identifier for the built-in "Ignored" list, stored in
- *  climb_lists.external_id so the list survives renames and never collides
- *  with the Favorites built-in (which has external_id = NULL). */
-private const val IGNORED_LIST_EXTERNAL_ID = "cruxcoach:builtin:ignored"
+/** Stable identifier for the built-in "Ignored" list — promoted to
+ *  [PersonalBoardRepository.IGNORED_LIST_EXTERNAL_ID] so the backup layer
+ *  can discriminate the two built-ins; aliased here to keep call sites
+ *  short. */
+private const val IGNORED_LIST_EXTERNAL_ID = PersonalBoardRepository.IGNORED_LIST_EXTERNAL_ID
 
 class PersonalBoardRepositoryImpl(
     private val database: SecureDatabase
@@ -35,6 +36,7 @@ class PersonalBoardRepositoryImpl(
         climbName: String, difficultyAverage: Double?,
         climbFrames: String, framesCount: Long,
         boardBrand: String, layoutId: Long?,
+        externalId: String?,
     ) {
         database.ascentsQueries.insertAscent(
             uuid = uuid,
@@ -58,6 +60,7 @@ class PersonalBoardRepositoryImpl(
             frames_count = framesCount,
             board_brand = boardBrand,
             layout_id = layoutId,
+            external_id = externalId,
         )
     }
 
@@ -238,6 +241,57 @@ class PersonalBoardRepositoryImpl(
         }
     }
 
+    override fun getAscentsForBackup(): List<AscentBackupRow> {
+        return database.ascentsQueries.getUserAscentsAll().executeAsList().map { row ->
+            AscentBackupRow(
+                uuid = row.uuid,
+                climbUuid = row.climb_uuid,
+                angle = row.angle,
+                isMirror = row.is_mirror != 0L,
+                bidCount = row.bid_count ?: 0L,
+                quality = row.quality,
+                difficulty = row.difficulty,
+                isBenchmark = row.is_benchmark != 0L,
+                comment = row.comment,
+                climbedAt = row.climbed_at,
+                synced = row.synced != 0L,
+                gymUuid = row.gym_uuid,
+                wallUuid = row.wall_uuid,
+                productLayoutUuid = row.product_layout_uuid,
+                climbName = row.climb_name,
+                difficultyAverage = row.difficulty_average,
+                climbFrames = row.climb_frames,
+                framesCount = row.frames_count,
+                externalId = row.external_id,
+                boardBrand = row.board_brand,
+                layoutId = row.layout_id,
+            )
+        }
+    }
+
+    override fun getBidsForBackup(): List<BidBackupRow> {
+        return database.bidsQueries.getRawBidsForUser().executeAsList().map { row ->
+            BidBackupRow(
+                uuid = row.uuid,
+                climbUuid = row.climb_uuid,
+                angle = row.angle,
+                isMirror = row.is_mirror != 0L,
+                bidCount = row.bid_count ?: 0L,
+                comment = row.comment,
+                climbedAt = row.climbed_at,
+                synced = row.synced != 0L,
+                gymUuid = row.gym_uuid,
+                wallUuid = row.wall_uuid,
+                productLayoutUuid = row.product_layout_uuid,
+                climbName = row.climb_name,
+                difficultyAverage = row.difficulty_average,
+                externalId = row.external_id,
+                boardBrand = row.board_brand,
+                layoutId = row.layout_id,
+            )
+        }
+    }
+
     override fun markAscentSyncedIfUnchanged(uuid: String, expectedRowVersion: Long): Boolean {
         // UPDATE + changes() must be atomic: `changes()` returns rows
         // affected by the last statement on the same connection, so any
@@ -257,6 +311,7 @@ class PersonalBoardRepositoryImpl(
         gymUuid: String?, wallUuid: String?, productLayoutUuid: String?,
         climbName: String, difficultyAverage: Double?,
         boardBrand: String, layoutId: Long?,
+        externalId: String?,
     ) {
         database.bidsQueries.insertBid(
             uuid = uuid,
@@ -274,6 +329,7 @@ class PersonalBoardRepositoryImpl(
             difficulty_average = difficultyAverage,
             board_brand = boardBrand,
             layout_id = layoutId,
+            external_id = externalId,
         )
     }
 
@@ -557,6 +613,51 @@ class PersonalBoardRepositoryImpl(
                 restSeconds = row.rest_seconds,
                 angle = row.angle,
             )
+        }
+    }
+
+    override fun getClimbListsForBackup(): List<ClimbListBackupRow> {
+        return database.climbListsQueries.getAllClimbLists().executeAsList().map { row ->
+            ClimbListBackupRow(
+                id = row.id,
+                name = row.name,
+                isBuiltin = row.is_builtin != 0L,
+                createdAt = row.created_at,
+                description = row.description,
+                color = row.color,
+                externalId = row.external_id,
+                kind = row.kind,
+                generatorParams = row.generator_params,
+            )
+        }
+    }
+
+    override fun restoreClimbList(
+        name: String, createdAt: String,
+        description: String?, color: String?, externalId: String?,
+    ): Long {
+        // Find-or-create + last_insert_rowid() must be atomic — same
+        // race rationale as ensureFavoritesListExists / createClimbList.
+        return database.transactionWithResult {
+            val existing = externalId?.let {
+                database.climbListsQueries.findClimbListByExternalId(it).executeAsOneOrNull()
+            }
+            if (existing != null) {
+                database.climbListsQueries.updateAuroraClimbListMeta(
+                    name = name, description = description, color = color, id = existing,
+                )
+                existing
+            } else {
+                // The "Aurora" insert is just the full-metadata insert
+                // (is_builtin=0 + description/color/external_id); it also
+                // preserves the original created_at, which the plain
+                // createClimbList path resets to now().
+                database.climbListsQueries.insertAuroraClimbList(
+                    name = name, created_at = createdAt,
+                    description = description, color = color, external_id = externalId,
+                )
+                database.climbListsQueries.getLastInsertedListId().executeAsOne()
+            }
         }
     }
 

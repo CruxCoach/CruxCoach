@@ -215,6 +215,82 @@ class LocalShareModernSchemaTest {
         verify { boardRepository.upsertSyncState("climbs", "2026-07-01 00:00:00") }
     }
 
+    // ── Sender-side snapshot scrub (privacy on the wire) ──
+    // The served snapshot is a byte copy of the sender's whole board DB;
+    // the receiver-side draft filter alone left the drafts (and their
+    // identity-linked pubkey) on the wire and on the receiver's disk.
+    // The scrub must remove them from the SNAPSHOT while the LIVE DB —
+    // simulated here by scrubbing a copy — keeps every row.
+
+    @Test
+    fun snapshotScrub_removesDraftsTheirStatsAndPublishAttempts() {
+        val snapshot = File(srcPath.parentFile, "share_snapshot.db")
+        srcPath.copyTo(snapshot, overwrite = true)
+        // Enrich the COPY with the two private row kinds the scrub targets
+        // (kept out of the shared seed so the import tests' stat counts
+        // stay untouched): the draft's own stats + a publish-attempt row.
+        SQLiteDatabase.openDatabase(snapshot.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.execSQL(
+                """
+                INSERT INTO climb_stats(climb_uuid, angle, display_difficulty,
+                    difficulty_average, quality_average, ascensionist_count,
+                    benchmark_difficulty, fa_username, fa_at, layout_id)
+                VALUES ('$draftUuid', 40, 15.0, 15.0, NULL, 0, NULL, NULL, NULL, 100)
+                """.trimIndent()
+            )
+            db.execSQL(
+                """
+                INSERT INTO kilter_publish_attempts(climb_uuid, attempted_at, op, via, outcome, http_code)
+                VALUES ('$communityUuid', 1720000000000, 'create', 'self', 'success', 200)
+                """.trimIndent()
+            )
+        }
+
+        com.cruxcoach.android.util.scrubAndCompactBoardDbSnapshot(snapshot)
+
+        SQLiteDatabase.openDatabase(snapshot.absolutePath, null, SQLiteDatabase.OPEN_READONLY).use { db ->
+            assertEquals("draft gone", 0, countWhere(db, "climbs", "uuid = '$draftUuid'"))
+            assertEquals("draft stats gone", 0, countWhere(db, "climb_stats", "climb_uuid = '$draftUuid'"))
+            assertEquals("publish-attempt audit gone", 0, countWhere(db, "kilter_publish_attempts", "1=1"))
+            // Everything shareable is untouched.
+            assertEquals(1, countWhere(db, "climbs", "uuid = '$kilterUuid'"))
+            assertEquals(1, countWhere(db, "climbs", "uuid = '$communityUuid' AND created_by_pubkey = '$authorPubkey'"))
+            assertEquals(1, countWhere(db, "climb_stats", "climb_uuid = '$kilterUuid'"))
+        }
+        // Folded + vacuumed: a single file, no WAL sidecars.
+        assertTrue("no -wal sidecar", !File(snapshot.path + "-wal").exists())
+        assertTrue("no -shm sidecar", !File(snapshot.path + "-shm").exists())
+        snapshot.delete()
+
+        // The live source is untouched — scrub only ever runs on the copy.
+        SQLiteDatabase.openDatabase(srcPath.absolutePath, null, SQLiteDatabase.OPEN_READONLY).use { db ->
+            assertEquals(1, countWhere(db, "climbs", "uuid = '$draftUuid'"))
+        }
+    }
+
+    // ── Import pre-flight: zero-write abort on an older source schema ──
+    // The geometry copies use fixed column lists; pre-fix a source missing
+    // one of the newer tables crashed the geometry transaction AFTER
+    // climbs/stats had committed — a partial import.
+
+    @Test
+    fun preflight_abortsCleanly_beforeAnyWrite_whenSourcePredatesGeometry() {
+        SQLiteDatabase.openDatabase(srcPath.absolutePath, null, SQLiteDatabase.OPEN_READWRITE).use { db ->
+            db.execSQL("DROP TABLE placement_roles")
+        }
+
+        val thrown = runCatching { importer.importFromLocalDb(srcPath) }.exceptionOrNull()
+        assertTrue(
+            "pre-flight must fail with the user-actionable message, got: $thrown",
+            thrown is IllegalStateException && thrown.message.orEmpty().contains("älteren"),
+        )
+
+        openTarget().use { db ->
+            assertEquals("zero-write abort: no climbs imported", 0, countWhere(db, "climbs", "1=1"))
+            assertEquals("zero-write abort: no stats imported", 0, countWhere(db, "climb_stats", "1=1"))
+        }
+    }
+
     @Test
     fun existingInstall_mergesNewBrand_refreshesContent_andDelistsTombstones() {
         openTarget().use { db ->

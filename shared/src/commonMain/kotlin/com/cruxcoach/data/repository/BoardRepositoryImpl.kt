@@ -1423,6 +1423,7 @@ class BoardRepositoryImpl(
                 kilterPublishVia = row.kilter_publish_via,
                 kilterError = row.kilter_error,
                 boardBrand = row.board_brand,
+                kilterAuthorUuid = row.kilter_author_uuid,
             )
         }
 
@@ -1469,6 +1470,7 @@ class BoardRepositoryImpl(
                 kilter_publish_via = row.kilterPublishVia,
                 kilter_error = row.kilterError,
                 board_brand = row.boardBrand,
+                kilter_author_uuid = row.kilterAuthorUuid,
             )
             // Capture changes() BEFORE the COALESCE-fill UPDATE — that
             // UPDATE always reports 1 affected row for an existing
@@ -1489,6 +1491,7 @@ class BoardRepositoryImpl(
                 kilter_synced_at = row.kilterSyncedAt,
                 kilter_publish_via = row.kilterPublishVia,
                 kilter_error = row.kilterError,
+                kilter_author_uuid = row.kilterAuthorUuid,
             )
             freshlyInserted
         }

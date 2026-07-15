@@ -50,7 +50,8 @@ class PaymentViewModel @Inject constructor(
     private val zapManager: ZapManager,
     private val paymentRepository: PaymentRepository,
     private val nostrSigner: NostrSigner,
-    private val messageSender: NostrMessageSending
+    private val messageSender: NostrMessageSending,
+    private val deliveryCoordinator: com.cruxcoach.android.nostr.MessageDeliveryCoordinator
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(PaymentState())
@@ -144,10 +145,10 @@ class PaymentViewModel @Inject constructor(
                 subject = "Spende"
             )
             if (buildResult is com.cruxcoach.android.nostr.SendResult.Queued) {
-                // Fire-and-forget delivery — donation UI doesn't wait
-                viewModelScope.launch {
-                    messageSender.deliverWraps(buildResult.eventJsons)
-                }
+                // Fire-and-forget delivery — donation UI doesn't wait. App-scoped
+                // so closing the payment screen inside the send delay can't
+                // cancel it (the DM is not queued anywhere for retry).
+                deliveryCoordinator.deliver(null, buildResult.eventJsons)
             }
         } catch (e: Exception) {
             Log.w(TAG, "Failed to send donation DM (payment still proceeds)", e)

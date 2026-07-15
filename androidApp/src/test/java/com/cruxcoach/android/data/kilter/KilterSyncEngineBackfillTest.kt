@@ -4,6 +4,7 @@ import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.ClimbWithStats
 import com.cruxcoach.data.repository.PersonalBoardRepository
+import com.cruxcoach.db.secure.SecureDatabase
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
@@ -34,6 +35,7 @@ class KilterSyncEngineBackfillTest {
     private lateinit var prefs: UserPreferences
     private lateinit var boardRepo: BoardRepository
     private lateinit var personalRepo: PersonalBoardRepository
+    private lateinit var secureDb: SecureDatabase
     private lateinit var engine: KilterSyncEngine
 
     private val newWorldUuid = "a30d8042-aeea-42ce-8015-239016c87769"
@@ -58,6 +60,7 @@ class KilterSyncEngineBackfillTest {
         prefs = mockk(relaxed = true)
         boardRepo = mockk(relaxed = true)
         personalRepo = mockk(relaxed = true)
+        secureDb = mockk(relaxed = true)
 
         // Transactions just run the block inline.
         every { boardRepo.runInTransaction(any()) } answers { firstArg<() -> Unit>().invoke() }
@@ -115,7 +118,8 @@ class KilterSyncEngineBackfillTest {
             authorMarks[arg<String>(0)] = arg<String>(1)
         }
 
-        every { boardRepo.getClimbsByUuids(any(), any()) } answers {
+        // insertLogs denormalizes via the angle-agnostic, chunked lookup.
+        every { boardRepo.getClimbsByUuidsAnyAngle(any()) } answers {
             val uuids = arg<Collection<String>>(0)
             resolvableClimbs.filter { it.uuid in uuids }
         }
@@ -126,6 +130,10 @@ class KilterSyncEngineBackfillTest {
         coEvery { apiClient.fetchLoggedClimbs() } returns
             Result.success(KilterLoggedClimbsResponse())
         coEvery { apiClient.fetchOwnAuthoredClimbs() } returns
+            Result.success(emptyList())
+        // Circuit import rides the same sync triggers; default to none so
+        // the backfill assertions here stay focused on climbs.
+        coEvery { apiClient.fetchCircuits() } returns
             Result.success(emptyList())
 
         every {
@@ -144,7 +152,7 @@ class KilterSyncEngineBackfillTest {
             ascents.add(RecordedAscent(arg<String>(1), arg<String>(15), arg<String>(17)))
         }
 
-        engine = KilterSyncEngine(apiClient, tokenStore, boardRepo, personalRepo, prefs)
+        engine = KilterSyncEngine(apiClient, tokenStore, boardRepo, personalRepo, secureDb, prefs)
     }
 
     private fun loggedClimb(uuid: String) = KilterLoggedClimb(
@@ -360,6 +368,74 @@ class KilterSyncEngineBackfillTest {
 
         assertEquals(1, imported.totalNew)
         assertEquals(1, ascents.size)
+    }
+
+    @Test
+    fun reimported_logs_are_skipped_not_rewritten() = runTest {
+        // Two logs for the same climb; one was already imported previously.
+        val already = ascentLog(newWorldUuid).copy(logUuid = "log-existing")
+        val fresh = ascentLog(newWorldUuid).copy(logUuid = "log-fresh")
+        coEvery { apiClient.fetchLogs() } returns Result.success(listOf(already, fresh))
+        every { personalRepo.getExistingLogUuids() } returns setOf("log-existing")
+
+        val imported = engine.importLogs(oneTimeOnly = true).getOrThrow()
+
+        // The already-imported log must NOT be re-inserted: insertAscent is
+        // INSERT OR REPLACE, so re-writing it would reset row_version and
+        // clobber the user's locally-edited quality/comment.
+        assertEquals(1, imported.newAscents)
+        assertEquals(1, imported.duplicateLogs)
+        assertEquals(1, ascents.size, "only the fresh log may be written")
+    }
+
+    @Test
+    fun denormalization_is_uuid_spelling_blind() = runTest {
+        // The log carries the API spelling (dashed-lowercase); the board DB
+        // stores the curated legacy spelling (nodash-UPPERCASE). The ascent
+        // must still pick up the real name/frames, not blank.
+        val apiUuid = "a30d8042-aeea-42ce-8015-239016c87769"
+        val curatedUuid = apiUuid.replace("-", "").uppercase()
+        resolvableClimbs.add(
+            ClimbWithStats(
+                uuid = curatedUuid, layoutId = 10L, setterUsername = null,
+                name = "Curated Classic", frames = "h1p12", framesCount = 1L,
+                difficultyAverage = 20.0, qualityAverage = null, ascensionistCount = null,
+            )
+        )
+        coEvery { apiClient.fetchLogs() } returns Result.success(listOf(ascentLog(apiUuid)))
+
+        engine.importLogs(oneTimeOnly = true).getOrThrow()
+
+        val recorded = ascents.single()
+        assertEquals("Curated Classic", recorded.climbName)
+        assertEquals("h1p12", recorded.climbFrames)
+    }
+
+    @Test
+    fun large_logbook_chunks_the_catalogue_lookup() = runTest {
+        // A logbook referencing many distinct climbs must not hand SQLite an
+        // IN() list longer than its bound-variable limit.
+        val logs = (0 until 900).map { i ->
+            KilterLog(
+                logUuid = "log-$i",
+                climbUuid = "00000000-0000-0000-0000-%012d".format(i),
+                angle = 25, topped = true, attempts = 1,
+                createdAt = "2024-01-01T00:00:00Z",
+            )
+        }
+        coEvery { apiClient.fetchLogs() } returns Result.success(logs)
+        val chunkSizes = mutableListOf<Int>()
+        every { boardRepo.getClimbsByUuidsAnyAngle(any()) } answers {
+            val uuids = arg<Collection<String>>(0)
+            chunkSizes.add(uuids.size)
+            resolvableClimbs.filter { it.uuid in uuids }
+        }
+
+        val imported = engine.importLogs(oneTimeOnly = true).getOrThrow()
+
+        assertEquals(900, imported.newAscents)
+        assertTrue(chunkSizes.isNotEmpty(), "lookup must run")
+        assertTrue(chunkSizes.all { it <= 400 }, "no chunk may exceed the variable-safe limit, got $chunkSizes")
     }
 }
 
