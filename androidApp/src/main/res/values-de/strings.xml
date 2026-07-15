@@ -958,6 +958,7 @@
     <string name="relay_notification_channel_desc">Wird angezeigt, während dein Board mit Nutzern der offiziellen Board-App geteilt wird.</string>
     <string name="relay_notification_title">Board wird geteilt</string>
     <string name="relay_notification_text">%d verbunden</string>
+    <string name="relay_stopped_idle">Teilen beendet — niemand war verbunden</string>
     <string name="relay_notification_stop">Teilen beenden</string>
 
     <!-- Board: Climb Card -->

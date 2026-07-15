@@ -11,6 +11,7 @@ import com.cruxcoach.android.data.SessionGattBridge
 import com.cruxcoach.android.data.SessionQueueManager
 import com.cruxcoach.android.data.SessionRole
 import com.cruxcoach.android.ui.board.SessionQueueSheet
+import com.cruxcoach.android.ui.board.relayErrorText
 
 private const val TAG = "CruxBLE/UI"
 
@@ -94,6 +95,16 @@ fun BleStatusArea(
             clientCount = relayState.clientCount,
             onStop = { relayManager.setEnabled(false) }
         )
+    } else {
+        // Terminal relay errors (BOARD_LOST, a failed start) land AFTER the
+        // sharing sheet's error surface is gone — show them here so the stop
+        // is never silent (§12); dismissible, on every screen.
+        relayState.error?.let { error ->
+            RelayErrorRow(
+                text = relayErrorText(error, relayState.errorDetail),
+                onDismiss = { relayManager.clearError() }
+            )
+        }
     }
 
     if (!hasContent) return

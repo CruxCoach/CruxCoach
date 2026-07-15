@@ -914,6 +914,7 @@
     <string name="relay_notification_channel_desc">Shown while your board is being shared with users of the official board app.</string>
     <string name="relay_notification_title">Sharing board</string>
     <string name="relay_notification_text">%d connected</string>
+    <string name="relay_stopped_idle">Sharing ended — no one connected</string>
     <string name="relay_notification_stop">Stop sharing</string>
 
     <!-- Board: Climb Card -->

@@ -37,7 +37,8 @@ import javax.inject.Inject
 class CruxRelayService : android.app.Service() {
 
     companion object {
-        private const val CHANNEL_ID = "cruxrelay_sharing"
+        /** Shared with [CruxRelayManager]'s final "sharing stopped" notification. */
+        const val CHANNEL_ID = "cruxrelay_sharing"
         private const val NOTIFICATION_ID = 4401
         const val ACTION_STOP_SHARING = "com.cruxcoach.android.relay.ACTION_STOP_SHARING"
 
