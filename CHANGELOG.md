@@ -4,7 +4,27 @@ All notable changes to CruxCoach will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [0.2.1] - Unreleased
+## [0.2.2] - Unreleased
+
+### Changed
+- **Consistent "draft" badge** (FEAT-024) — the browser's *Entwurf* badge and
+  the climb detail screen now derive a climb's published/draft state from the
+  same single signal (whether it has a live Nostr publication), so the two
+  screens can never disagree.
+- **Faster first browse of a newly-added board** (FEAT-037) — after importing
+  a single Aurora/MoonBoard board's catalogue on its own, CruxCoach refreshes
+  the SQLite query-planner statistics for it (the full board sync already did
+  this), so the first browse of that board no longer runs slow.
+
+### Fixed
+- **Deleted community climbs stay deleted on catalogue-only devices**
+  (FEAT-041) — a device that only syncs the daily catalogue (never the live
+  delete event) now also tombstones a delisted community climb, so it can't
+  reappear via a stray relay rebroadcast. Devices on the live feed were
+  already covered; the climb was already hidden either way — this hardens
+  against re-listing.
+
+## [0.2.1] - 2026-07-11
 
 Zone search on the board photo, Kilter circuits arriving as lists,
 share links for every climb and lists that span all your boards — plus
@@ -111,12 +131,6 @@ more reliable connect, import and updater underneath.
   first-try send only counts as a flash if it was the first logbook
   contact with that climb at that angle — attempts in earlier sessions
   disqualify it.
-- **Deleted community climbs stay deleted on catalogue-only devices**
-  (FEAT-041) — a device that only syncs the daily catalogue (never the live
-  delete event) now also tombstones a delisted community climb, so it can't
-  reappear via a stray relay rebroadcast. Devices on the live feed were
-  already covered; the climb was already hidden either way — this hardens
-  against re-listing.
 - **Backup restore is now lossless.** Restoring a backup (file import or
   Nostr cloud backup — same format) used to fold the built-in "Ignored"
   list into Favorites (hidden climbs resurfaced in browse — and came back
@@ -135,14 +149,6 @@ more reliable connect, import and updater underneath.
   app versions aborts cleanly up front instead of half-importing.
 
 ### Changed
-- **Consistent "draft" badge** (FEAT-024) — the browser's *Entwurf* badge and
-  the climb detail screen now derive a climb's published/draft state from the
-  same single signal (whether it has a live Nostr publication), so the two
-  screens can never disagree.
-- **Faster first browse of a newly-added board** (FEAT-037) — after importing
-  a single Aurora/MoonBoard board's catalogue on its own, CruxCoach refreshes
-  the SQLite query-planner statistics for it (the full board sync already did
-  this), so the first browse of that board no longer runs slow.
 - **Saved lists show all your climbs, across every board** (FEAT-023) — a list
   (Favoriten + custom lists) is your own selection, so it's no longer filtered
   down to your currently-configured board. Every entry appears with its board

@@ -1,3 +1,13 @@
+# CruxCoach 0.2.2 — Unreleased
+
+Draft — collected as features land on the 0.2.2 line.
+
+- **Consistent draft badge** — a climb's published/draft state now looks the same in the browser and on the detail screen.
+- **Faster first look at a newly-added board** — browsing a board right after adding it on its own is quicker.
+- **Deleted community climbs stay deleted** — even on devices that only sync via the catalogue.
+
+---
+
 # CruxCoach 0.2.1
 
 Zone search on the board photo, your Kilter circuits as lists, a share link for every climb and lists that span all your boards — plus offline sharing that actually delivers and a more reliable connect, import and updater.
@@ -13,9 +23,6 @@ Zone search on the board photo, your Kilter circuits as lists, a share link for 
 - **"Newest" sort** — browse the catalogue by climb creation date, newest-first or oldest-first via the sort-direction toggle.
 - **Board download over mobile data** — now possible as an explicit opt-in with a data-size warning.
 - **Honest logbook & stats** — "Sent · 3 tries" vs "Open · 3 attempts", grade-true pyramid buckets, a flash only counts if your first-ever go was the send, day-streaks give way to weekly consistency, and sessions-per-week now divides by the full 8-week window.
-- **Consistent draft badge** — a climb's published/draft state now looks the same in the browser and on the detail screen.
-- **Faster first look at a newly-added board** — browsing a board right after adding it on its own is quicker.
-- **Deleted community climbs stay deleted** — even on devices that only sync via the catalogue.
 - **Portrait only** — landscape layouts are gone.
 
 ## Fixes & reliability
