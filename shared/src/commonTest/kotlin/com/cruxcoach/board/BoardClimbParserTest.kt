@@ -45,6 +45,22 @@ class BoardClimbParserTest {
     }
 
     @Test
+    fun encodeClimbConcatUsesHoleIdsAndSkipsUnmappedPlacements() {
+        val holds = listOf(
+            BoardHold(100, HoldRole.START),
+            BoardHold(200, HoldRole.HAND),
+            BoardHold(300, HoldRole.FINISH),
+        )
+
+        assertEquals(
+            "h9001p12h9003p14",
+            BoardClimbParser.encodeClimbConcat(holds, mapOf(100 to 9001L, 300 to 9003L)),
+        )
+        assertEquals("", BoardClimbParser.encodeClimbConcat(holds, emptyMap()))
+        assertEquals("", BoardClimbParser.encodeClimbConcat(emptyList(), mapOf(100 to 9001L)))
+    }
+
+    @Test
     fun countByRole_correctCounts() {
         val frames = "p1091r15p1096r15p1163r12p1229r12p1276r13p1393r14"
         val holds = BoardClimbParser.parseFrames(frames)

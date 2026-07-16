@@ -128,6 +128,11 @@ class KilterClimbPublisher @Inject constructor(
             // surface a "connect Kilter to mirror" hint in the UI.
             return Outcome.Skipped("no-kilter-login")
         }
+        if (framesClimbConcat.isBlank()) {
+            val message = "frames could not be mapped to Kilter hole ids"
+            boardRepository.markKilterPublishFailed(uuid, message)
+            return Outcome.Failed(message)
+        }
 
         // Atomic CAS-claim of the publish slot — replaces the pre-fix
         // markKilterPublishPending + caller-supplied op. The CAS prevents

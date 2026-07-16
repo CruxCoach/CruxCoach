@@ -121,6 +121,20 @@ class KilterClimbPublisherTest {
         assertEquals(KilterClimbPublisher.Outcome.Skipped("no-kilter-login"), outcome)
     }
 
+    @Test
+    fun publish_rejects_blank_mapped_frames_before_claim_or_http() = runTest {
+        val outcome = publisher.publish(uuid, layoutId, state, boardSize, "")
+
+        assertTrue(outcome is KilterClimbPublisher.Outcome.Failed)
+        coVerify(exactly = 1) {
+            repo.markKilterPublishFailed(uuid, match { it.contains("hole ids") })
+        }
+        coVerify(exactly = 0) { repo.claimKilterPublishSlot(any()) }
+        coVerify(exactly = 0) {
+            apiClient.publishClimb(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any())
+        }
+    }
+
     // ── Synced path ─────────────────────────────────────────────────
 
     @Test

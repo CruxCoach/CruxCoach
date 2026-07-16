@@ -14,6 +14,28 @@ class BoardPacketEncoderTest {
 
     private val encoder = BoardPacketEncoder(apiLevel = 3)
 
+    private fun protocolPackets(chunks: List<ByteArray>): List<List<Byte>> {
+        val wire = chunks.flatMap { it.toList() }
+        val packets = mutableListOf<List<Byte>>()
+        var offset = 0
+        while (offset < wire.size) {
+            assertEquals(0x01.toByte(), wire[offset])
+            val payloadLength = wire[offset + 1].toInt() and 0xFF
+            val packetLength = 4 + payloadLength + 1
+            packets += wire.subList(offset, offset + packetLength)
+            offset += packetLength
+        }
+        return packets
+    }
+
+    private fun assertPacket(packet: List<Byte>, type: Byte, holdCount: Int) {
+        assertEquals(type, packet[4])
+        assertEquals(1 + holdCount * 3, packet[1].toInt() and 0xFF)
+        assertEquals(0x03.toByte(), packet.last())
+        val payload = packet.subList(4, packet.lastIndex).toByteArray()
+        assertEquals(encoder.checksum(payload), packet[2])
+    }
+
     @Test
     fun checksumIsOnesComplement() {
         val data = byteArrayOf(0x54, 0x10, 0x00, 0x1C)
@@ -61,6 +83,24 @@ class BoardPacketEncoderTest {
             assertTrue(chunk.size <= BoardPacketEncoder.BLE_MTU,
                 "Chunk size ${chunk.size} exceeds BLE MTU ${BoardPacketEncoder.BLE_MTU}")
         }
+    }
+
+    @Test
+    fun api3MultiPacketSequencePreservesEveryHoldAndPacketBoundary() {
+        val holds = (0 until 169).map { position -> (1000 + position) to 0x1C }
+        val packets = protocolPackets(encoder.encodeClimb(holds))
+
+        assertEquals(3, packets.size)
+        assertPacket(packets[0], BoardPacketEncoder.API3_FIRST, 84)
+        assertPacket(packets[1], BoardPacketEncoder.API3_MIDDLE, 84)
+        assertPacket(packets[2], BoardPacketEncoder.API3_LAST, 1)
+
+        val decodedPositions = packets.flatMap { packet ->
+            packet.subList(5, packet.lastIndex).chunked(3).map { bytes ->
+                (bytes[0].toInt() and 0xFF) or ((bytes[1].toInt() and 0xFF) shl 8)
+            }
+        }
+        assertEquals(holds.map { it.first }, decodedPositions)
     }
 
     @Test
