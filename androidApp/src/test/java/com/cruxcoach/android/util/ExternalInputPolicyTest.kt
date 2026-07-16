@@ -6,6 +6,28 @@ import kotlin.test.assertNull
 
 class ExternalInputPolicyTest {
     @Test
+    fun `generic HTTPS boundary accepts cross-origin assets and callbacks`() {
+        listOf(
+            "https://downloads.example/app.apk",
+            "https://pay.example:8443/callback?token=abc",
+        ).forEach { assertEquals(it, ExternalInputPolicy.trustedHttpsUrlOrNull(it)) }
+    }
+
+    @Test
+    fun `generic HTTPS boundary rejects cleartext opaque and ambiguous URLs`() {
+        listOf(
+            "http://downloads.example/app.apk",
+            "//downloads.example/app.apk",
+            "javascript:alert(1)",
+            "https://user@downloads.example/app.apk",
+            "https:///app.apk",
+            "https://downloads.example/app.apk#fragment",
+            " https://downloads.example/app.apk",
+            "https://downloads.example/app.apk\n",
+        ).forEach { assertNull(ExternalInputPolicy.trustedHttpsUrlOrNull(it), it) }
+    }
+
+    @Test
     fun `release pages stay on configured HTTPS origin`() {
         val base = "https://codeberg.org/api/v1"
         val release = "https://codeberg.org/CruxCoach/CruxCoach/releases/tag/v1.2.3"

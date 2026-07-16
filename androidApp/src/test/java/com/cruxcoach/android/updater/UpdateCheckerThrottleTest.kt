@@ -2,6 +2,7 @@ package com.cruxcoach.android.updater
 
 import io.mockk.Runs
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk
@@ -154,15 +155,49 @@ class UpdateCheckerThrottleTest {
         assertTrue(outcome is UpdateChecker.CheckOutcome.NotModified)
     }
 
-    private fun releaseWithApk(tag: String): CodebergRelease = CodebergRelease(
+    private fun releaseWithApk(
+        tag: String,
+        apkUrl: String = "https://x/$tag.apk",
+        shaUrl: String = "https://x/$tag.apk.sha256",
+    ): CodebergRelease = CodebergRelease(
         id = 1,
         tagName = tag,
         htmlUrl = "https://codeberg.org/CruxCoach/CruxCoach/releases/tag/$tag",
         assets = listOf(
-            CodebergAsset(name = "CruxCoach-$tag.apk", browserDownloadUrl = "https://x/$tag.apk", size = 1000),
-            CodebergAsset(name = "CruxCoach-$tag.apk.sha256", browserDownloadUrl = "https://x/$tag.apk.sha256", size = 64),
+            CodebergAsset(name = "CruxCoach-$tag.apk", browserDownloadUrl = apkUrl, size = 1000),
+            CodebergAsset(name = "CruxCoach-$tag.apk.sha256", browserDownloadUrl = shaUrl, size = 64),
         ),
     )
+
+    @Test
+    fun `cleartext APK asset is rejected before checksum fetch`() = runTest {
+        stubGateAllowed()
+        stubPrefsSnapshot(UpdaterState())
+        coEvery { client.fetchReleases(any(), any()) } returns CodebergReleaseClient.Result.Success(
+            listOf(releaseWithApk("v9.9.9", apkUrl = "http://x/v9.9.9.apk")),
+            "etag",
+        )
+
+        val outcome = checker().maybeCheck(UpdateChecker.Trigger.MANUAL)
+
+        assertEquals(UpdateChecker.CheckOutcome.Error("release_malformed"), outcome)
+        coVerify(exactly = 0) { client.fetchSha256(any()) }
+    }
+
+    @Test
+    fun `scheme-relative checksum asset is rejected before checksum fetch`() = runTest {
+        stubGateAllowed()
+        stubPrefsSnapshot(UpdaterState())
+        coEvery { client.fetchReleases(any(), any()) } returns CodebergReleaseClient.Result.Success(
+            listOf(releaseWithApk("v9.9.9", shaUrl = "//x/v9.9.9.apk.sha256")),
+            "etag",
+        )
+
+        val outcome = checker().maybeCheck(UpdateChecker.Trigger.MANUAL)
+
+        assertEquals(UpdateChecker.CheckOutcome.Error("release_malformed"), outcome)
+        coVerify(exactly = 0) { client.fetchSha256(any()) }
+    }
 
     @Test
     fun `a newer pending version clears the prior version's dismiss and re-arm state`() = runTest {

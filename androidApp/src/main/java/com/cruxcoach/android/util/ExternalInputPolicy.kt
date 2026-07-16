@@ -7,17 +7,27 @@ import java.net.URI
  * exact boundary behaviour is covered by plain JVM tests. */
 internal object ExternalInputPolicy {
 
+    /** Accept a bounded, hierarchical HTTPS URL with a real host. This is
+     * intentionally cross-origin: updater assets and LNURL callbacks may
+     * legitimately live on a different host from their metadata endpoint. */
+    fun trustedHttpsUrlOrNull(raw: String): String? {
+        if (raw.isEmpty() || raw.length > MAX_HTTPS_URL_CHARS || raw != raw.trim()) return null
+        if (raw.any { it.isISOControl() }) return null
+        val candidate = runCatching { URI(raw) }.getOrNull() ?: return null
+        if (!candidate.scheme.equals("https", ignoreCase = true)) return null
+        if (candidate.isOpaque || candidate.host.isNullOrBlank()) return null
+        if (candidate.userInfo != null || candidate.fragment != null) return null
+        return raw
+    }
+
     /** Accept only HTTPS URLs on the same host and effective port as the
      * configured updater API. This supports self-hosted forks without letting
      * an API response choose an arbitrary intent scheme or origin. */
     fun trustedReleasePageUrlOrNull(raw: String, updaterApiBase: String): String? {
-        if (raw.isEmpty() || raw.length > MAX_RELEASE_URL_CHARS || raw != raw.trim()) return null
-        if (raw.any { it.isISOControl() }) return null
-        val candidate = runCatching { URI(raw) }.getOrNull() ?: return null
-        val trusted = runCatching { URI(updaterApiBase) }.getOrNull() ?: return null
-        if (!candidate.scheme.equals("https", ignoreCase = true)) return null
-        if (!trusted.scheme.equals("https", ignoreCase = true)) return null
-        if (candidate.userInfo != null || trusted.userInfo != null) return null
+        val candidateRaw = trustedHttpsUrlOrNull(raw) ?: return null
+        val trustedRaw = trustedHttpsUrlOrNull(updaterApiBase) ?: return null
+        val candidate = URI(candidateRaw)
+        val trusted = URI(trustedRaw)
         val candidateHost = candidate.host ?: return null
         val trustedHost = trusted.host ?: return null
         if (!candidateHost.equals(trustedHost, ignoreCase = true)) return null
@@ -88,7 +98,7 @@ internal object ExternalInputPolicy {
         return checksum
     }
 
-    private const val MAX_RELEASE_URL_CHARS = 2_048
+    private const val MAX_HTTPS_URL_CHARS = 2_048
     private const val MAX_BOLT11_CHARS = 8_192
     private const val MIN_BOLT11_DATA_CHARS = 117
     private const val BECH32_CHECKSUM_CONSTANT = 1

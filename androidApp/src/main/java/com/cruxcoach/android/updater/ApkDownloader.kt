@@ -9,6 +9,7 @@ import android.net.Uri
 import android.os.StatFs
 import android.util.Log
 import androidx.core.net.toUri
+import com.cruxcoach.android.util.ExternalInputPolicy
 import java.io.File
 
 /**
@@ -59,6 +60,12 @@ class ApkDownloader(private val context: Context) {
         info: UpdateInfo,
         allowMobile: Boolean,
     ): StartResult {
+        // DownloadManager runs outside this app process and must not be
+        // assumed to inherit our network_security_config. Revalidate here as
+        // well as at release parsing so persisted/reconstructed UpdateInfo
+        // can never enqueue a cleartext or custom-scheme payload.
+        val trustedApkUrl = ExternalInputPolicy.trustedHttpsUrlOrNull(info.apkUrl)
+            ?: return StartResult.Error("apk_url_not_https")
         val target = targetFileFor(info.versionName)
         if (target.exists() && !target.delete()) {
             Log.w(TAG, "Could not delete previous cached APK at ${target.absolutePath}")
@@ -82,7 +89,7 @@ class ApkDownloader(private val context: Context) {
             DownloadManager.Request.NETWORK_WIFI
         }
 
-        val request = DownloadManager.Request(info.apkUrl.toUri())
+        val request = DownloadManager.Request(trustedApkUrl.toUri())
             .setTitle(info.versionName)
             .setDestinationUri(Uri.fromFile(target))
             .setAllowedNetworkTypes(allowedTypes)

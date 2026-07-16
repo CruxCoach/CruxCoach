@@ -182,12 +182,16 @@ class UpdateChecker(
         val pageUrl = release.htmlUrl
             ?.let { ExternalInputPolicy.trustedReleasePageUrlOrNull(it, BuildConfig.UPDATER_API_BASE) }
             ?: return null
+        val apkUrl = ExternalInputPolicy.trustedHttpsUrlOrNull(apkAsset.browserDownloadUrl)
+            ?: return null
+        val shaUrl = ExternalInputPolicy.trustedHttpsUrlOrNull(shaAsset.browserDownloadUrl)
+            ?: return null
         return UpdateInfo(
             tagName = tag,
             versionName = version.toString(),
             version = version,
-            apkUrl = apkAsset.browserDownloadUrl,
-            apkSha256Url = shaAsset.browserDownloadUrl,
+            apkUrl = apkUrl,
+            apkSha256Url = shaUrl,
             apkSizeBytes = apkAsset.size,
             apkSha256 = "",
             releaseNotesMarkdown = release.body.orEmpty(),

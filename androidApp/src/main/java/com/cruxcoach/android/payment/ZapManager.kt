@@ -100,19 +100,8 @@ class ZapManager @Inject constructor(
         val url = "https://$domain/.well-known/lnurlp/$user"
 
         val responseBody = httpGet(url) ?: return null
-
-        return try {
-            val json = JSONObject(responseBody)
-            LnurlPayResponse(
-                callback = json.getString("callback"),
-                minSendable = json.getLong("minSendable"),
-                maxSendable = json.getLong("maxSendable"),
-                allowsNostr = json.optBoolean("allowsNostr", false),
-                nostrPubkey = json.optString("nostrPubkey", null)
-            )
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to parse LNURL pay response", e)
-            null
+        return parseLnurlPayResponseOrNull(responseBody).also { parsed ->
+            if (parsed == null) Log.w(TAG, "Rejected invalid LNURL pay response")
         }
     }
 
@@ -195,5 +184,25 @@ class ZapManager @Inject constructor(
     companion object {
         private const val TAG = "ZapManager"
         private const val KIND_ZAP_REQUEST = 9734
+    }
+}
+
+/** Parse and validate remote LNURL metadata before its callback can become a
+ * second network hop. Kept internal so the no-cleartext boundary is directly
+ * regression-tested without making a payment or logging the remote URL. */
+internal fun parseLnurlPayResponseOrNull(responseBody: String): LnurlPayResponse? {
+    return try {
+        val json = JSONObject(responseBody)
+        val callback = ExternalInputPolicy.trustedHttpsUrlOrNull(json.getString("callback"))
+            ?: return null
+        LnurlPayResponse(
+            callback = callback,
+            minSendable = json.getLong("minSendable"),
+            maxSendable = json.getLong("maxSendable"),
+            allowsNostr = json.optBoolean("allowsNostr", false),
+            nostrPubkey = json.optString("nostrPubkey").takeIf(String::isNotEmpty),
+        )
+    } catch (_: Exception) {
+        null
     }
 }

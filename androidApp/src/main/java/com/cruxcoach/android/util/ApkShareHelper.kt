@@ -321,21 +321,22 @@ class LocalApkServer(
 </section>"""
         } else ""
         val html = LANDING_HTML.replace("<!-- DB_SECTION -->", dbSection)
-        val headers = "HTTP/1.1 200 OK\r\n" +
-            "Content-Type: text/html; charset=utf-8\r\n" +
-            "Content-Length: ${html.toByteArray().size}\r\n" +
-            "Connection: close\r\n\r\n"
-        out.write(headers.toByteArray())
-        out.write(html.toByteArray())
+        val body = html.toByteArray(Charsets.UTF_8)
+        out.write(responseHeaders(
+            status = "200 OK",
+            contentLength = body.size.toLong(),
+            contentType = "text/html; charset=utf-8",
+        ))
+        out.write(body)
     }
 
     private fun serveApk(out: java.io.OutputStream) {
-        val headers = "HTTP/1.1 200 OK\r\n" +
-            "Content-Type: application/vnd.android.package-archive\r\n" +
-            "Content-Length: ${apkFile.length()}\r\n" +
-            "Content-Disposition: attachment; filename=\"CruxCoach.apk\"\r\n" +
-            "Connection: close\r\n\r\n"
-        out.write(headers.toByteArray())
+        out.write(responseHeaders(
+            status = "200 OK",
+            contentLength = apkFile.length(),
+            contentType = "application/vnd.android.package-archive",
+            contentDisposition = "attachment; filename=\"CruxCoach.apk\"",
+        ))
         apkFile.inputStream().use { it.copyTo(out, bufferSize = 65536) }
     }
 
@@ -373,12 +374,12 @@ class LocalApkServer(
             serve503(out)
             return
         }
-        val headers = "HTTP/1.1 200 OK\r\n" +
-            "Content-Type: application/x-sqlite3\r\n" +
-            "Content-Length: ${db.length()}\r\n" +
-            "Content-Disposition: attachment; filename=\"cruxcoach-board.db\"\r\n" +
-            "Connection: close\r\n\r\n"
-        out.write(headers.toByteArray())
+        out.write(responseHeaders(
+            status = "200 OK",
+            contentLength = db.length(),
+            contentType = "application/x-sqlite3",
+            contentDisposition = "attachment; filename=\"cruxcoach-board.db\"",
+        ))
         db.inputStream().use { input ->
             val buffer = ByteArray(65536)
             var read: Int
@@ -501,23 +502,46 @@ class LocalApkServer(
     }
 
     private fun serve404(out: java.io.OutputStream) {
-        val body = "404 Not Found"
-        val headers = "HTTP/1.1 404 Not Found\r\n" +
-            "Content-Length: ${body.length}\r\n" +
-            "Connection: close\r\n\r\n"
-        out.write(headers.toByteArray())
-        out.write(body.toByteArray())
+        val body = "404 Not Found".toByteArray(Charsets.UTF_8)
+        out.write(responseHeaders("404 Not Found", body.size.toLong(), "text/plain; charset=utf-8"))
+        out.write(body)
     }
 
     private fun serve503(out: java.io.OutputStream) {
-        val body = "503 Snapshot unavailable — retry in a moment"
-        val headers = "HTTP/1.1 503 Service Unavailable\r\n" +
-            "Content-Length: ${body.length}\r\n" +
-            "Retry-After: 5\r\n" +
-            "Connection: close\r\n\r\n"
-        out.write(headers.toByteArray())
-        out.write(body.toByteArray())
+        val body = "503 Snapshot unavailable — retry in a moment".toByteArray(Charsets.UTF_8)
+        out.write(responseHeaders(
+            status = "503 Service Unavailable",
+            contentLength = body.size.toLong(),
+            contentType = "text/plain; charset=utf-8",
+            extraHeaders = listOf("Retry-After" to "5"),
+        ))
+        out.write(body)
     }
+
+    /**
+     * Every response from the cleartext-by-necessity LAN endpoint gets the
+     * same browser hardening. Centralising the framing keeps future response
+     * paths from accidentally omitting `nosniff` or framing/CSP policy.
+     */
+    private fun responseHeaders(
+        status: String,
+        contentLength: Long,
+        contentType: String? = null,
+        contentDisposition: String? = null,
+        extraHeaders: List<Pair<String, String>> = emptyList(),
+    ): ByteArray = buildString {
+        append("HTTP/1.1 ").append(status).append("\r\n")
+        if (contentType != null) append("Content-Type: ").append(contentType).append("\r\n")
+        if (contentDisposition != null) {
+            append("Content-Disposition: ").append(contentDisposition).append("\r\n")
+        }
+        append(SECURITY_HEADERS)
+        for ((name, value) in extraHeaders) {
+            append(name).append(": ").append(value).append("\r\n")
+        }
+        append("Content-Length: ").append(contentLength).append("\r\n")
+        append("Connection: close\r\n\r\n")
+    }.toByteArray(Charsets.US_ASCII)
 
     companion object {
         /** Fixed port for auto-discovery by receivers (WiFi Direct group owner = 192.168.49.1). */
@@ -525,6 +549,13 @@ class LocalApkServer(
         private const val AUTO_SHUTDOWN_MS = 5 * 60 * 1000L  // 5 min
         /** Checkpointed board-DB copy in cacheDir; see [boardDbSnapshot]. */
         const val SNAPSHOT_NAME = "board_share_snapshot.db"
+        private const val SECURITY_HEADERS =
+            "X-Content-Type-Options: nosniff\r\n" +
+                "Referrer-Policy: no-referrer\r\n" +
+                "X-Frame-Options: DENY\r\n" +
+                "Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; " +
+                "img-src 'self' data:; base-uri 'none'; form-action 'none'; " +
+                "frame-ancestors 'none'\r\n"
 
         private val LANDING_HTML = """
 <!DOCTYPE html>
