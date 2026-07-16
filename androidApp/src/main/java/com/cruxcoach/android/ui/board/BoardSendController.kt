@@ -14,6 +14,7 @@ import com.cruxcoach.data.repository.PersonalBoardRepository
 import com.cruxcoach.data.repository.brand
 import com.cruxcoach.domain.board.BoardBrand
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -38,7 +39,9 @@ internal class BoardSendController(
     private val userPreferences: UserPreferences,
     private val climbAdvertiser: ClimbBleAdvertiser,
     private val sessionQueueManager: SessionQueueManager,
-    private val isSharingEnabled: () -> Boolean
+    private val isSharingEnabled: () -> Boolean,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val nowIso: () -> String = DateTimeUtil::nowIso,
 ) {
 
     private var sendJob: Job? = null
@@ -59,7 +62,7 @@ internal class BoardSendController(
      * must never fail the send. */
     private suspend fun recordSentToHistory(s: ClimbDetailState) {
         val climb = s.climb ?: return
-        val now = DateTimeUtil.nowIso()
+        val now = nowIso()
         runCatching {
             personalBoardRepo.recordClimbHistory(
                 climbUuid = climb.uuid,
@@ -136,7 +139,7 @@ internal class BoardSendController(
                 }
                 state.update { it.copy(nearby = it.nearby.copy(debugInfo = "loading LED map...")) }
                 val productSizeId = userPreferences.boardProductSizeId.first()
-                val placementToLed = withContext(Dispatchers.IO) {
+                val placementToLed = withContext(ioDispatcher) {
                     // FEAT-031: scope the LED map to the active board's brand so an
                     // Aurora board (Tension etc.) lights its OWN holds, not Kilter's
                     // same-numbered product_size rows. activeBrand == climb.brand here
@@ -160,7 +163,7 @@ internal class BoardSendController(
                 //     (MoonBoard uses its own send path).
                 // brand == climb.brand == active board (guarded above).
                 val brand = BoardBrand.fromWire(activeBrand)
-                val roleColorMap = withContext(Dispatchers.IO) {
+                val roleColorMap = withContext(ioDispatcher) {
                     boardRepository.getRoleColorMapForBrand(activeBrand)
                 }.ifEmpty {
                     val fallback = if (brand == BoardBrand.KILTER) {

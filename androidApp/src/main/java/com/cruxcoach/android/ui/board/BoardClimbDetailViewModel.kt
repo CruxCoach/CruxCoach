@@ -347,7 +347,8 @@ class BoardClimbDetailViewModel @Inject constructor(
         userPreferences = userPreferences,
         climbAdvertiser = climbAdvertiser,
         sessionQueueManager = sessionQueueManager,
-        isSharingEnabled = { bleShareManager.uiState.value.sharingEnabled }
+        isSharingEnabled = { bleShareManager.uiState.value.sharingEnabled },
+        ioDispatcher = ioDispatcher,
     )
 
     init {
