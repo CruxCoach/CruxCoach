@@ -66,10 +66,14 @@ sqldelight {
         create("BoardDatabase") {
             packageName.set("com.cruxcoach.db.board")
             srcDirs.setFrom("src/commonMain/sqldelight/board")
+            schemaOutputDirectory.set(file("src/commonMain/sqldelight/board"))
+            verifyMigrations.set(true)
         }
         create("SecureDatabase") {
             packageName.set("com.cruxcoach.db.secure")
             srcDirs.setFrom("src/commonMain/sqldelight/secure")
+            schemaOutputDirectory.set(file("src/commonMain/sqldelight/secure"))
+            verifyMigrations.set(true)
         }
     }
 }

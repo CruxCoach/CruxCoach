@@ -1,6 +1,7 @@
 package com.cruxcoach.android.data
 
 import app.cash.sqldelight.ColumnAdapter
+import app.cash.sqldelight.db.AfterVersion
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import com.cruxcoach.db.board.BoardDatabase
 import com.cruxcoach.db.board.Climbs
@@ -15,29 +16,9 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * Migration-chain smoke test — real-data preservation across the full
- * migration walk from v1 to current.
- *
- * Pre-fix the project's only migration coverage was `verifySqlDelightMigration`
- * (synthetic schema-snapshot diffing). Real-data preservation — "after
- * migrations 2-9 run, does a row I inserted at version 1 still carry the
- * fields I care about?" — was untested. Real `body_stat`/`climb_browse`
- * bugs in 4.sqm + 5.sqm could land in production undetected.
- *
- * What this test does:
- *  - Walks the full migration chain from v1 to current via SQLDelight's
- *    `migrate(driver, oldVersion=1, newVersion=schemaVersion)`
- *  - Seeds a representative row at each major schema-shape boundary
- *  - Asserts the row survives every migration with its identity-bearing
- *    columns intact (uuid, name, created_by_pubkey, kilter_status,
- *    nostr_event_id)
- *
- * What it doesn't do:
- *  - Reproduce production data shapes from real users — that requires a
- *    checked-in v0.1.3 DB fixture, deferred to a follow-up.
- *  - Cover the BoardDatabaseImporter Blossom-merge UPDATE pass — that's
- *    a separate code path (post-migration importer logic) and lives in
- *    BoardDatabaseImporterTest.
+ * Board schema checks. The first test materialises the historical v1 DDL,
+ * seeds data, and executes every checked-in SQLDelight migration through the
+ * current version. The remaining tests exercise current-schema query shapes.
  */
 class MigrationSmokeTest {
 
@@ -61,6 +42,63 @@ class MigrationSmokeTest {
         runCatching { driver.close() }
         dbFile.delete()
         dbFile.parentFile?.delete()
+    }
+
+    @Test
+    fun `version 1 board data survives the complete migration chain`() {
+        driver.applyHistoricalSchema("schema/board-v1.sql")
+        driver.execute(
+            null,
+            """
+                INSERT INTO aurora_climb(
+                    uuid, layout_id, setter_username, name, frames_count,
+                    created_at, frames
+                ) VALUES (
+                    'ABC-DEF', 1, 'setter', 'Historical climb', 1,
+                    '2026-01-01 00:00:00', CAST('p1100r12' AS BLOB)
+                )
+            """.trimIndent(),
+            0,
+        )
+        driver.execute(
+            null,
+            "INSERT INTO aurora_sync_state VALUES ('aurora_climb', '2026-01-01')",
+            0,
+        )
+
+        // v1 climbs pre-date provenance. Once migration 4 has introduced the
+        // columns, model a locally-authored row so the intentional Kilter
+        // catalogue wipe in migrations 6/7 does not discard this fixture.
+        BoardDatabase.Schema.migrate(
+            driver,
+            oldVersion = 1L,
+            newVersion = BoardDatabase.Schema.version,
+            AfterVersion(4L) { migrationDriver ->
+                migrationDriver.execute(
+                    null,
+                    """
+                        UPDATE climbs
+                        SET source = 'local', origin = 'cruxcoach',
+                            sync_status = 'draft', created_by_pubkey = 'pubkey-1'
+                        WHERE uuid = 'ABC-DEF'
+                    """.trimIndent(),
+                    0,
+                )
+            },
+        )
+
+        val db = BoardDatabase(driver, climbsAdapter = Climbs.Adapter(framesAdapter))
+        val climb = db.boardQueries.getMyClimbs("pubkey-1").executeAsOne()
+        assertEquals("abc-def", climb.uuid)
+        assertEquals("Historical climb", climb.name)
+        assertEquals("cruxcoach", climb.origin)
+        assertEquals("kilter", climb.board_brand)
+        assertEquals("p1100r12", climb.frames)
+        assertEquals(
+            "2026-01-01",
+            db.boardQueries.getSyncState("climbs").executeAsOne(),
+            "the v2 table-name rewrite must preserve sync state",
+        )
     }
 
     @Test

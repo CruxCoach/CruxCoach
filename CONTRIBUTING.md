@@ -91,6 +91,7 @@ shared-module task because the Android module is configured in the same build.
 # Run tests
 ./gradlew :shared:testDebugUnitTest
 ./gradlew :androidApp:testDebugUnitTest
+./gradlew :shared:verifySqlDelightMigration
 
 # Install on device
 adb install androidApp/build/outputs/apk/debug/androidApp-debug.apk
@@ -109,6 +110,12 @@ before submitting app-wide changes, run both unit-test tasks and
 `:androidApp:assembleDebug` shown above. Pull requests do not run on the
 maintainer's secret-bearing self-hosted release runner, so include exact local
 commands and outcomes in the PR description.
+
+When changing a SQLDelight `.sq` schema, add the matching numbered `.sqm`, run
+`generateCommonMainBoardDatabaseSchema` or
+`generateCommonMainSecureDatabaseSchema`, and commit the regenerated `.db`
+snapshot. `:shared:verifySqlDelightMigration` checks that the migrations and
+current schema converge.
 
 ### Configuration templates
 

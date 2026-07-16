@@ -25,7 +25,8 @@ jobs:
       # this step runs in a clean checkout.
       - name: Run unit tests
         run: |
-          ./gradlew :shared:testDebugUnitTest :androidApp:testDebugUnitTest --console=plain
+          ./gradlew :shared:verifySqlDelightMigration \
+            :shared:testDebugUnitTest :androidApp:testDebugUnitTest --console=plain
 
       - name: Extract version
         id: version
