@@ -55,17 +55,12 @@ jobs:
             echo "New release: $RELEASE_NAME"
           fi
 
-      - name: Copy signing config
-        if: steps.version.outputs.skip == 'false'
-        run: |
-          : "${CRUXCOACH_SECRETS_DIR:?CRUXCOACH_SECRETS_DIR must be set on the runner — see CONTRIBUTING.md 'Releases & CI (maintainer only)'}"
-          cp "$CRUXCOACH_SECRETS_DIR/local.properties" local.properties
-          cp -r "$CRUXCOACH_SECRETS_DIR/.signing" .signing
-
       - name: Build release APK
         if: steps.version.outputs.skip == 'false'
         run: |
-          ./gradlew :androidApp:assembleRelease
+          : "${CRUXCOACH_SECRETS_DIR:?CRUXCOACH_SECRETS_DIR must be set on the runner — see CONTRIBUTING.md 'Releases & CI (maintainer only)'}"
+          ./gradlew :androidApp:assembleRelease \
+            -PlocalPropertiesFile="$CRUXCOACH_SECRETS_DIR/local.properties"
 
       - name: Verify APK signature
         if: steps.version.outputs.skip == 'false'
@@ -74,8 +69,17 @@ jobs:
           APKSIGNER=$(ls -d "$ANDROID_SDK_ROOT"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1)
           [ -x "$APKSIGNER" ] || { echo "apksigner not found under $ANDROID_SDK_ROOT/build-tools/"; exit 1; }
           APK=androidApp/build/outputs/apk/release/androidApp-release.apk
-          "$APKSIGNER" verify --print-certs "$APK"
-          echo "APK verified successfully"
+          CERTS=$("$APKSIGNER" verify --print-certs "$APK")
+          echo "$CERTS"
+          ACTUAL=$(echo "$CERTS" | awk -F ': ' '/certificate SHA-256 digest:/ {print $2; exit}' | tr -d ':[:space:]' | tr 'A-F' 'a-f')
+          EXPECTED=$(tr -d ':[:space:]' < release-cert-sha256.txt | tr 'A-F' 'a-f')
+          echo "$ACTUAL" | grep -Eq '^[0-9a-f]{64}$' \
+            || { echo "::error::could not extract APK signer SHA-256"; exit 1; }
+          echo "$EXPECTED" | grep -Eq '^[0-9a-f]{64}$' \
+            || { echo "::error::invalid release-cert-sha256.txt"; exit 1; }
+          [ "$ACTUAL" = "$EXPECTED" ] \
+            || { echo "::error::APK signer does not match release-cert-sha256.txt"; exit 1; }
+          echo "APK signature is valid and signer fingerprint matches"
 
       - name: Publish to Zapstore
         if: steps.version.outputs.skip == 'false' && steps.version.outputs.branch == 'main'
@@ -101,7 +105,9 @@ jobs:
         env:
           CODEBERG_TOKEN: ${{ secrets.CODEBERG_TOKEN }}
         run: |
-          API="https://codeberg.org/api/v1/repos/CruxCoach/CruxCoach"
+          : "${GITHUB_SERVER_URL:?GITHUB_SERVER_URL must be set by Forgejo}"
+          : "${GITHUB_REPOSITORY:?GITHUB_REPOSITORY must be set by Forgejo}"
+          API="${GITHUB_SERVER_URL%/}/api/v1/repos/${GITHUB_REPOSITORY}"
 
           # Delete existing dev releases (by tag pattern, regardless of prerelease flag)
           RELEASES=$(curl -s -H "Authorization: token ${CODEBERG_TOKEN}" \
@@ -140,7 +146,11 @@ jobs:
           PRERELEASE="${{ steps.version.outputs.prerelease }}"
           BRANCH="${{ steps.version.outputs.branch }}"
           APK="androidApp/build/outputs/apk/release/androidApp-release.apk"
-          API="https://codeberg.org/api/v1/repos/CruxCoach/CruxCoach"
+          : "${GITHUB_SERVER_URL:?GITHUB_SERVER_URL must be set by Forgejo}"
+          : "${GITHUB_REPOSITORY:?GITHUB_REPOSITORY must be set by Forgejo}"
+          API="${GITHUB_SERVER_URL%/}/api/v1/repos/${GITHUB_REPOSITORY}"
+          REMOTE_URL="${GITHUB_SERVER_URL%/}/${GITHUB_REPOSITORY}.git"
+          REPO_NAME="${GITHUB_REPOSITORY##*/}"
 
           # Sanitize prerelease to valid JSON bool
           case "$PRERELEASE" in true|false) ;; *) PRERELEASE=false ;; esac
@@ -148,15 +158,21 @@ jobs:
           # Push tag via git
           git config user.name "CruxCoach CI"
           git config user.email "ci@cruxcoach.local"
-          REMOTE_URL="https://x-access-token:${CODEBERG_TOKEN}@codeberg.org/CruxCoach/CruxCoach.git"
+          AUTH_B64=$(printf 'x-access-token:%s' "$CODEBERG_TOKEN" | base64 | tr -d '\n')
+          git_push() {
+            GIT_CONFIG_COUNT=1 \
+              GIT_CONFIG_KEY_0=http.extraHeader \
+              GIT_CONFIG_VALUE_0="Authorization: Basic ${AUTH_B64}" \
+              git push "$REMOTE_URL" "$@"
+          }
           # Delete tag if it exists (from a previous failed run)
           git tag -d "$TAG" 2>/dev/null || true
-          git push "$REMOTE_URL" ":refs/tags/$TAG" 2>/dev/null || true
+          git_push ":refs/tags/$TAG" 2>/dev/null || true
           curl -sS -o /dev/null -X DELETE \
             -H "Authorization: token ${CODEBERG_TOKEN}" \
             "${API}/tags/${TAG}"
           git tag "$TAG"
-          git push "$REMOTE_URL" "$TAG"
+          git_push "$TAG"
 
           # Create release via minimal POST + PATCH (full POST triggers
           # intermittent Forgejo 500). Retry on transient failures.
@@ -182,10 +198,14 @@ jobs:
               "$NAME" "$NAME" "$PRERELEASE")")
           [ "$PATCH_CODE" = "200" ] || { echo "PATCH failed: $PATCH_CODE"; exit 1; }
 
-          # Generate SHA-256 sidecar in coreutils `sha256sum` format.
+          # Generate SHA-256 sidecar in coreutils `sha256sum` format, naming
+          # the uploaded asset so `sha256sum -c` works after download.
           # Required by in-app UpdateChecker (rejects releases without .apk.sha256).
           SHA_FILE="${APK}.sha256"
-          (cd "$(dirname "$APK")" && sha256sum "$(basename "$APK")" > "$(basename "$APK").sha256")
+          APK_ASSET="${REPO_NAME}-${TAG}.apk"
+          SHA_ASSET="${APK_ASSET}.sha256"
+          APK_SHA=$(sha256sum "$APK" | awk '{print $1}')
+          printf '%s  %s\n' "$APK_SHA" "$APK_ASSET" > "$SHA_FILE"
 
           # Upload SHA-256 sidecar FIRST, then the APK. The updater ignores a
           # release unless BOTH assets exist, so a job that dies between the
@@ -210,17 +230,27 @@ jobs:
             done
             return 1
           }
-          upload_asset "$SHA_FILE" "CruxCoach-${TAG}.apk.sha256" || exit 1
-          upload_asset "$APK" "CruxCoach-${TAG}.apk" || exit 1
+          upload_asset "$SHA_FILE" "$SHA_ASSET" || exit 1
+          upload_asset "$APK" "$APK_ASSET" || exit 1
 
           # Post-verify: read the release back and require BOTH asset names.
           # Catches every remaining partial-upload path loudly instead of
           # shipping a release the updater silently rejects.
           ASSETS=$(curl -sS -H "Authorization: token ${CODEBERG_TOKEN}" \
             "${API}/releases/${RELEASE_ID}" | grep -o '"name":"[^"]*"')
-          echo "$ASSETS" | grep -q "CruxCoach-${TAG}.apk\"" \
+          echo "$ASSETS" | grep -Fq "${APK_ASSET}\"" \
             || { echo "Post-verify: APK asset missing"; exit 1; }
-          echo "$ASSETS" | grep -q "CruxCoach-${TAG}.apk.sha256" \
+          echo "$ASSETS" | grep -Fq "$SHA_ASSET" \
             || { echo "Post-verify: sha256 sidecar missing"; exit 1; }
 
           echo "Release $NAME published with APK + SHA-256 sidecar (verified)"
+
+      - name: Remove credentials from workspace
+        if: always()
+        run: |
+          rm -f -- local.properties .env /tmp/release.json /tmp/asset_upload.json
+          rm -rf -- .signing
+          for PATH_TO_CHECK in local.properties .env .signing; do
+            [ ! -e "$PATH_TO_CHECK" ] \
+              || { echo "::error::credential path survived cleanup: $PATH_TO_CHECK"; exit 1; }
+          done

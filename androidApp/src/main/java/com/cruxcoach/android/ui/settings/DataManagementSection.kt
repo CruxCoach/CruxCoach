@@ -265,7 +265,8 @@ internal fun AppInfoSection(
     isBleConnected: Boolean,
     onUnlockEasterAnimations: () -> Unit,
     onPlayEasterAnimation: () -> Unit,
-    onStopAnimation: () -> Unit
+    onStopAnimation: () -> Unit,
+    onOpenSourceLicenses: () -> Unit,
 ) {
     val tapCount = remember { mutableIntStateOf(0) }
     val context = LocalContext.current
@@ -314,6 +315,14 @@ internal fun AppInfoSection(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+    }
+
+    Spacer(modifier = Modifier.height(8.dp))
+    OutlinedButton(
+        onClick = onOpenSourceLicenses,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Text(stringResource(R.string.open_source_licenses_title))
     }
 
     AnimatedVisibility(visible = easterAnimationsUnlocked) {

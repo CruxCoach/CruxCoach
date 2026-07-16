@@ -55,6 +55,7 @@ fun SettingsScreen(
     onNavigateToCrashReports: () -> Unit = {},
     onNavigateToKeyManagement: () -> Unit = {},
     onNavigateToNostrProfile: () -> Unit = {},
+    onNavigateToOpenSourceLicenses: () -> Unit = {},
     onDonateClick: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
     backupViewModel: BackupSettingsViewModel = hiltViewModel(),
@@ -388,7 +389,8 @@ fun SettingsScreen(
                 isBleConnected = viewModel.isBleConnected(),
                 onUnlockEasterAnimations = { viewModel.unlockEasterAnimations() },
                 onPlayEasterAnimation = { viewModel.playEasterAnimation() },
-                onStopAnimation = { viewModel.stopAnimation() }
+                onStopAnimation = { viewModel.stopAnimation() },
+                onOpenSourceLicenses = onNavigateToOpenSourceLicenses,
             )
 
             Spacer(modifier = Modifier.height(16.dp))

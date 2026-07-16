@@ -177,16 +177,6 @@ class CruxCoachApp : Application(), Configuration.Provider {
             }
         })
 
-        // Pre-warm board bitmap cache in background — ready before first navigation
-        appScope.launch {
-            PerfLogger.trace("BoardImageCache.prewarm") {
-                // Pre-warm with default 12×12 board image; replaced when user's
-                // preferred board type is loaded from preferences
-                // default Kilter 12×12 (product_size 10); path per boardImageAssetPath(KILTER, 10)
-                com.cruxcoach.android.ui.board.BoardImageCache.getOrDecode(listOf("board_images/board_10.webp"), assets)
-            }
-        }
-
         appScope.launch {
             PerfLogger.logCoroutine("appScope", "singleton-init + sync START")
             // Each step is independently fenced: a transient failure in

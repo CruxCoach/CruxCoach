@@ -169,7 +169,11 @@ internal fun AppShareSection(
                             boardDbFile = if (boardDb.exists()) boardDb else null,
                             // Serve a checkpointed snapshot, not the live WAL
                             // file — see LocalApkServer.boardDbSnapshot.
-                            snapshotDir = context.cacheDir
+                            snapshotDir = context.cacheDir,
+                            licenseText = runCatching {
+                                context.assets.open("licenses/CruxCoach-GPL-3.0-only.txt")
+                                    .use { it.readBytes() }
+                            }.getOrNull(),
                         )
                         apkServer.onAutoShutdown = {
                             android.os.Handler(android.os.Looper.getMainLooper()).post {
@@ -515,4 +519,3 @@ private fun ReleaseDownloadCard(
         }
     }
 }
-

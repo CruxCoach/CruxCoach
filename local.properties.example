@@ -14,9 +14,10 @@
 # sdk.dir=/home/yourname/Android/Sdk
 
 # ─── Release signing (optional for local development) ───────────────
-# Debug builds do not need any of these keys. Release builds silently
-# fall back to the debug keystore when RELEASE_STORE_FILE is empty —
-# fine for local testing, not acceptable for distribution.
+# Debug builds do not need any of these keys. Release builds fail when
+# RELEASE_STORE_FILE is empty so a distributable artifact can never silently
+# use the public debug key. For a throwaway local release build only, pass
+# -PallowDebugSignedRelease=true.
 # See CONTRIBUTING.md → "Release signing" for the keytool recipe.
 # RELEASE_STORE_FILE=.signing/release.jks
 # RELEASE_STORE_PASSWORD=

@@ -19,9 +19,10 @@ densities stay in sync.
 
 ## Licensing
 
-These assets are **not** covered by the repository's GPLv3 source-code
-license. See [`LICENSE`](LICENSE) in this directory for what is permitted,
-and [`../TRADEMARK.md`](../TRADEMARK.md) for the broader name + logo policy.
+The artwork files and build-required derivatives are licensed under
+GPL-3.0-only; see [`LICENSE`](LICENSE). Naming and origin-confusion requests
+for publicly distributed modified builds are described separately in
+[`../TRADEMARK.md`](../TRADEMARK.md).
 
 If you fork CruxCoach and intend to distribute modified binaries, replace
 the master SVG and re-export the launcher icons before publishing.

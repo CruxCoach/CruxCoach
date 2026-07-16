@@ -30,6 +30,8 @@ REFERENCE.md
 
 # Android
 local.properties
+local.properties.*
+!local.properties.example
 *.apk
 *.aab
 *.ap_
@@ -85,8 +87,26 @@ scripts/build_board_db.py
 # Secrets
 *.keystore
 *.jks
+*.p12
+*.pfx
+*.pem
+*.der
+*.p8
+*.asc
+*.gpg
+*.ppk
+id_rsa
+id_dsa
+id_ecdsa
+id_ed25519
+.netrc
+key.properties
+keystore.properties
+signing.properties
+secrets.properties
 .signing/
 google-services.json
+GoogleService-Info.plist
 DEV_SERVER.md
 
 # Python
@@ -95,6 +115,8 @@ __pycache__/
 *.egg-info/
 venv/
 .env
+.env.*
+!.env.example
 
 # Maestro
 tests/

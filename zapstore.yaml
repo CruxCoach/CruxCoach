@@ -4,6 +4,11 @@ description: |
     Browse climbs, control your board — Kilter, MoonBoard and more — via
     Bluetooth, log ascents, import your Kilter logbook, and track your progress.
     No third-party cloud services, full control over your data.
+
+    CruxCoach is an independent open-source project. It is not affiliated with,
+    endorsed by, or sponsored by Kilter Grips, LLC, Moon Climbing Ltd, Aurora
+    Climbing, or any other board manufacturer. Product names identify compatible
+    hardware and belong to their respective holders.
 summary: Open-source climbing-board app for Kilter, MoonBoard and more
 tags:
     - climbing

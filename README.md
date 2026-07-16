@@ -80,7 +80,7 @@ Browse climbs, control your Kilter Board or MoonBoard via Bluetooth, log ascents
 |---|---|---|
 | **[Zapstore](https://zapstore.dev/apps/com.cruxcoach.android)** | You already use Zapstore, want hands-off auto-updates and Nostr-native verifiable builds | Requires the Zapstore client app installed |
 | **[Codeberg release APK](https://codeberg.org/CruxCoach/CruxCoach/releases/latest)** | You want a direct sideload, no app-store dependency, full SHA-256 transparency | Manual install + updates (or opt into the in-app updater under *Settings → Updates*) |
-| **[Source build](#building-from-source)** | You want to read / patch the code first | Requires Android SDK + NDK and a few minutes |
+| **[Source build](#building-from-source)** | You want to read / patch the code first | Requires Android SDK; the first NDK install can add roughly 2 GB |
 
 ### Verifying the APK
 
@@ -113,6 +113,8 @@ source ~/.bashrc                # or ~/.zshrc
 The APK is at `androidApp/build/outputs/apk/debug/androidApp-debug.apk`.
 
 For signing, testing, and full setup details see [CONTRIBUTING.md](CONTRIBUTING.md#development-setup).
+Non-Debian and pre-provisioned environments can use the manual `sdkmanager`
+component list documented there instead of the setup script.
 
 ---
 
@@ -173,7 +175,10 @@ Found a vulnerability? See [SECURITY.md](SECURITY.md) for responsible disclosure
 
 ## Legal
 
-CruxCoach is not affiliated with Kilter, LLC or Aurora Climbing. See [LEGAL.md](LEGAL.md).
+CruxCoach is an independent open-source project. It is not affiliated with,
+endorsed by, or sponsored by Kilter Grips, LLC, Aurora Climbing, Moon Climbing
+Ltd, Tension Climbing, Grasshopper, Decoy, So iLL, Touchstone Climbing, egym,
+or any board manufacturer. See [LEGAL.md](LEGAL.md).
 
 ---
 
@@ -192,6 +197,6 @@ CruxCoach is not affiliated with Kilter, LLC or Aurora Climbing. See [LEGAL.md](
 
 ## License & Trademark
 
-- **Code**: [GNU General Public License v3.0](LICENSE) — Copyright (C) 2025-2026 CruxCoach Contributors.
-- **Name + logo**: Reserved — see [TRADEMARK.md](TRADEMARK.md). Forks distributing modified binaries to a wide audience must rename and replace the launcher icon.
+- **Code and artwork files**: [GNU General Public License v3.0 only](LICENSE) — Copyright (C) 2025-2026 CruxCoach contributors.
+- **Project identity**: see [TRADEMARK.md](TRADEMARK.md). Forks distributing modified binaries to a wide audience should rename and replace the launcher icon so users can distinguish them from upstream.
 - **Bundled & vendored third-party components**: see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) and [NOTICE](NOTICE).

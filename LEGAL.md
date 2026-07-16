@@ -49,48 +49,16 @@ CruxCoach distributes board reference data and community-created climb data via 
 | Board layouts, hold positions, mounting holes, LED mappings | Hardware reference data | Derived from product specifications | Functional facts about physical hardware |
 | Climbs (hold sequences + grades) | Community-created factual data | User-generated content | Factual data, created by climbers |
 | Climb statistics (difficulty averages, ascent counts) | Aggregated community data | Community activity metrics | Statistical facts |
+| BoardSesh-labelled climbs | Community-created route records | BoardSesh public GraphQL service | Retained with `origin = 'boardsesh'` and an in-app source badge; no separate dataset/API terms were located as of 2026-07-16 |
 | Gym & wall locations (FEAT-015) | Mixed facility/location directory data | [`@hangtime/climbing-boards`](https://www.npmjs.com/package/@hangtime/climbing-boards) (Kilter PowerSync `global_gyms` mirror + StoreRocket contact records) | Factual / functional board-location data. The upstream snapshot can contain public, members-only, private/home, and unclassified installations as well as contact fields; the Android client applies the safeguards described below. |
 
 ### What we do NOT distribute
 
 - Kilter's or Moon Climbing's proprietary software, source code, or firmware
 - Kilter's or MoonBoard's wordmark, logo, or marketing/branding artwork
+- Board-background images extracted from Kilter or Aurora-family applications
 - CruxCoach users' private credentials or local account/profile records as part of the board catalogue
 - Kilter's or the MoonBoard app's binary or any portion thereof
-
-### Bundled Kilter layout images
-
-A small set of Kilter Board layout photographs lives inside the APK at
-[`androidApp/src/main/assets/board_images/`](androidApp/src/main/assets/board_images/)
-so the app can render a recognisable offline view of the board behind its
-hold overlay. These images remain the property of **Kilter Grips, LLC**
-(formerly Aurora Climbing) and are included strictly for interoperability
-and referential purposes — permitted under **§ 23(1) No. 3 MarkenG** in
-Germany and under analogous referential/nominative fair-use doctrines in
-other jurisdictions. CruxCoach claims no ownership, affiliation, or
-endorsement. See the in-directory
-[`README.md`](androidApp/src/main/assets/board_images/README.md) for origin,
-scope, and removal-request contacts, and
-[`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md) for the maintained
-attribution inventory.
-
-### Bundled Aurora-family layout images
-
-CruxCoach renders five further Aurora-protocol boards — **Tension**,
-**Grasshopper**, **Decoy**, **So iLL**, and **Touchstone** (FEAT-031). A small
-per-board set of their layout images is bundled under
-[`androidApp/src/main/assets/board_images/`](androidApp/src/main/assets/board_images/)
-(in `tension/`, `grasshopper/`, `decoy/`, `soill/`, and `touchstone/`
-subfolders) for the same offline referential visualization as the Kilter
-images above. Each was extracted from the corresponding board's official
-Aurora Climbing app and remains the property of its respective maker; the
-board apps are published on the **Aurora Climbing** platform. Inclusion is
-strictly for interoperability and referential purposes — permitted under
-**§ 23(1) No. 3 MarkenG** in Germany and analogous referential/nominative
-fair-use doctrines elsewhere. CruxCoach claims no ownership, affiliation, or
-endorsement. See the in-directory
-[`README.md`](androidApp/src/main/assets/board_images/README.md) for origin,
-per-board rights holders, and removal-request contacts.
 
 ### Map rendering & tile data
 

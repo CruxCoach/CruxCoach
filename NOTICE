@@ -10,16 +10,9 @@ This product bundles or includes the following third-party components:
 ================================================================================
 
 zstd (Zstandard) — Copyright (c) Meta Platforms, Inc. and affiliates.
-    Vendored under androidApp/src/main/cpp/zstd/ at version 1.5.6.
+    Vendored under androidApp/src/main/cpp/zstd/ at version 1.5.7.
     Dual-licensed BSD-3-Clause OR GPLv2; CruxCoach elects BSD-3-Clause.
     Full attribution in androidApp/src/main/cpp/zstd/LICENSE and
-    THIRD_PARTY_LICENSES.md.
-
-Kilter Board layout images — Property of Kilter Grips, LLC (formerly Aurora
-    Climbing). Bundled under androidApp/src/main/assets/board_images/ for
-    offline board visualization only. No affiliation, sponsorship, or
-    endorsement is claimed. Rights holder may request removal at any time —
-    see androidApp/src/main/assets/board_images/README.md, LEGAL.md, and
     THIRD_PARTY_LICENSES.md.
 
 MoonBoard board images — The bundled image files
@@ -33,17 +26,19 @@ MoonBoard board images — The bundled image files
     androidApp/src/main/assets/board_images/README.md, LEGAL.md, and
     THIRD_PARTY_LICENSES.md.
 
-Aurora-family board layout images — The bundled images under
-    androidApp/src/main/assets/board_images/{tension,grasshopper,decoy,soill,
-    touchstone}/ were extracted from the respective boards' official Aurora
-    Climbing apps for offline board visualization only. Each board product,
-    its hardware layout, and its name are the property of the respective maker
-    (Tension Climbing, Grasshopper, Decoy, So iLL, Touchstone Climbing); the
-    apps are published on the Aurora Climbing platform. No affiliation,
-    sponsorship, or endorsement is claimed. Any rights holder may request
-    removal at any time — see
-    androidApp/src/main/assets/board_images/README.md, LEGAL.md, and
-    THIRD_PARTY_LICENSES.md.
+BoardLib — Copyright (c) 2023 Luke Emery-Fertitta. Parts of the Aurora BLE
+    packet implementation are derived from BoardLib under the MIT License.
+    See LICENSES/BoardLib-MIT.txt.
+
+Kilter.jl — Copyright (c) 2023 Frederik Schnack and contributors. Parts of
+    the Aurora BLE packet implementation are derived from Kilter.jl under the
+    MIT License. See LICENSES/Kilter.jl-MIT.txt.
+
+BoardSesh — The API-level-2 Aurora BLE encoder is derived from BoardSesh's
+    aurora.ts implementation under Apache-2.0. See LICENSES/Apache-2.0.txt and
+    THIRD_PARTY_LICENSES.md for the pinned source revision. BoardSesh-origin
+    community climb rows are separately labelled in the application; no claim
+    is made that the code licence governs user-created data.
 
 dontkillmyapp.com (Urbandroid Team) — OEM background-killer taxonomy used in
     androidApp/src/main/java/com/cruxcoach/android/notification/
@@ -57,11 +52,13 @@ MapLibre Native (Android) — Copyright (c) MapLibre contributors. Used as the
     (https://github.com/maplibre/maplibre-native/blob/main/LICENSE.md).
     See THIRD_PARTY_LICENSES.md for the full attribution.
 
-mapbox-android-gestures — Copyright (c) Mapbox, Inc. Transitive dependency
-    of MapLibre Native for touch-gesture handling. Licensed under Apache
-    License 2.0 (https://www.apache.org/licenses/LICENSE-2.0). See the
-    NOTICE file accompanying that dependency for the required attribution,
-    mirrored in THIRD_PARTY_LICENSES.md.
+MapLibre Android Gestures 0.0.3 — Transitive dependency of MapLibre Native
+    for touch-gesture handling, published as
+    org.maplibre.gl:maplibre-android-gestures under BSD-2-Clause. This is not
+    the Mapbox gestures artifact. See THIRD_PARTY_LICENSES.md.
+
+MapLibre Java GeoJSON / Turf 6.0.1 — Runtime dependencies used by MapLibre,
+    licensed under Apache-2.0. See LICENSES/Apache-2.0.txt.
 
 OpenFreeMap — © OpenFreeMap contributors. Used as the default vector-tile
     provider for the board-locations map. Tile data is delivered under
@@ -82,7 +79,30 @@ OpenStreetMap — © OpenStreetMap contributors. Underlying geographic data
     the upstream data semantics beyond minor normalisation. See LEGAL.md
     and THIRD_PARTY_LICENSES.md for the maintained inventory.
 
+JNA 5.18.1 — Java Native Access is offered under Apache-2.0 OR
+    LGPL-2.1-or-later; CruxCoach elects Apache-2.0. The APK contains
+    libjnidispatch.so. See LICENSES/JNA-dual-license.txt and
+    LICENSES/Apache-2.0.txt.
+
+LazySodium 5.2.0 — Licensed under MPL-2.0. Corresponding Source Code Form is
+    available from https://github.com/terl/lazysodium-android/tree/v5.2.0.
+    The bundled libsodium.so is ISC-licensed, Copyright (c) 2013-2026 Frank
+    Denis. See LICENSES/LazySodium-MPL-2.0.txt and LICENSES/libsodium-ISC.txt.
+
+SQLCipher for Android 4.14.0 — SQLCipher Community Edition, Copyright (c)
+    2008-2023 ZETETIC LLC. The APK contains libsqlcipher.so. The complete
+    binary-redistribution notice accompanies the APK at
+    LICENSES/SQLCipher-Community.txt.
+
+Quartz Android 1.05.1 — Copyright (c) 2023 Vitor Pamplona, MIT License.
+    Its crypto subtree includes ACINQ secp256k1-kmp (Apache-2.0) and Bitcoin
+    Core libsecp256k1, Copyright (c) 2013 Pieter Wuille (MIT). See
+    LICENSES/Quartz-MIT.txt, LICENSES/Apache-2.0.txt, and
+    LICENSES/libsecp256k1-MIT.txt.
+
 ================================================================================
-For runtime Maven/Gradle dependencies, see the build system's license report.
+For runtime Maven/Gradle dependencies, run
+./gradlew :androidApp:licenseeAndroidRelease. The same resolved report is
+packaged in the APK at assets/app/cash/licensee/artifacts.json.
 For a maintained inventory of vendored sources and bundled assets, see
 THIRD_PARTY_LICENSES.md.

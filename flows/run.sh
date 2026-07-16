@@ -5,10 +5,9 @@
 #   1. Clear logcat on the device.
 #   2. Run every flow under flows/ as a SINGLE Maestro session — keeps
 #      the instrumentation driver alive across all flows. Per-flow
-#      `maestro test` invocations were observed to fail ~70 % of the
-#      time on this SSH-tunneled adb path with EOFException in
-#      AndroidDriver.startInstrumentationSession; the single-session
-#      pattern is reliable.
+#      `maestro test` invocations can fail with a transient EOFException in
+#      AndroidDriver.startInstrumentationSession; the single-session pattern
+#      avoids needless driver restarts.
 #   3. After the session, snapshot the device's PERF-tag logcat once.
 #   4. For each flow that has a `flow.expects` file, grep the cumulative
 #      logcat for every pattern listed.
@@ -28,10 +27,9 @@
 #   flows/run.sh smoke browser-search
 #
 # Requires:
-#   - dadb on $PATH (~/bin/dadb wrapper from the dev-server setup)
-#   - maestro on $PATH (~/.maestro/bin/maestro)
-#   - the SSH adb tunnel + Python bridge from the dev-server setup so
-#     that adb on default port 5037 reaches the VM-host's tethered phone
+#   - adb on $PATH and an authorized Android device shown by `adb devices`
+#   - maestro on $PATH (or set MAESTRO=/path/to/maestro)
+# Custom device transports can set ADB=/path/to/an-adb-compatible wrapper.
 
 set -euo pipefail
 
@@ -40,15 +38,15 @@ FLOWS_DIR="$REPO_ROOT/flows"
 LOG_DIR="${MAESTRO_LOG_DIR:-/tmp/cruxcoach-flows-$(date +%Y%m%dT%H%M%S)}"
 mkdir -p "$LOG_DIR"
 
-ADB="${ADB:-$(command -v dadb || command -v adb)}"
-MAESTRO="${MAESTRO:-$(command -v dmaestro || command -v maestro || echo "$HOME/.maestro/bin/maestro")}"
+ADB="${ADB:-$(command -v adb || true)}"
+MAESTRO="${MAESTRO:-$(command -v maestro || echo "$HOME/.maestro/bin/maestro")}"
 
 if [[ ! -x "$ADB" && ! -L "$ADB" ]]; then echo "ERROR: adb not found ($ADB)" >&2; exit 2; fi
 if [[ ! -x "$MAESTRO" && ! -L "$MAESTRO" ]]; then echo "ERROR: maestro not found ($MAESTRO)" >&2; exit 2; fi
 
 if ! "$ADB" devices 2>/dev/null | awk 'NR>1 && $2=="device"' | grep -q .; then
-    echo "ERROR: no adb device. Tunnel down? Try:" >&2
-    echo "       systemctl --user status cruxcoach-adb-bridge.service" >&2
+    echo "ERROR: no authorized adb device found." >&2
+    echo "       Connect a device with USB debugging enabled and check: adb devices" >&2
     exit 2
 fi
 
@@ -91,7 +89,7 @@ maestro_log="$LOG_DIR/maestro.log"
 maestro_status=0
 # Maestro CLI takes ONE path arg (flow file or directory). For
 # multi-flow filtered runs we iterate, with a retry-on-EOF for the
-# 1-in-3 startInstrumentationSession race against tunneled adb.
+# transient startInstrumentationSession failure.
 run_one() {
     local target="$1" attempts=2 try=1
     while (( try <= attempts )); do

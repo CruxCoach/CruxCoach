@@ -2,7 +2,20 @@ package com.cruxcoach.domain.board
 
 /**
  * Encodes hold data into BLE packets for Aurora Climbing boards (Kilter, Tension, etc.).
- * Based on reverse-engineered protocol from BoardLib / Kilter.jl.
+ *
+ * Protocol and encoder derivation:
+ * - BoardLib, Copyright (c) 2023 Luke Emery-Fertitta, MIT License:
+ *   https://github.com/lemeryfertitta/BoardLib
+ * - Kilter.jl, Copyright (c) 2023 Frederik Schnack and contributors, MIT License:
+ *   https://github.com/FrederikSchnack/Kilter.jl
+ * - The API-level-2 power/packing path is ported from BoardSesh's `aurora.ts`,
+ *   Apache-2.0, pinned for this attribution at commit
+ *   12f6b7855a99cd4c7543d078415ec35dd78c192f:
+ *   https://github.com/boardsesh/boardsesh/blob/12f6b7855a99cd4c7543d078415ec35dd78c192f/packages/shared/ble-protocol/src/aurora.ts
+ *
+ * The corresponding license texts ship in `LICENSES/` and in the APK's legal
+ * assets. CruxCoach modifications and the combined file are distributed under
+ * GPL-3.0-only.
  *
  * Packet format:
  * [0x01][dataLen][checksum][0x02][type][...holdData...][0x03]

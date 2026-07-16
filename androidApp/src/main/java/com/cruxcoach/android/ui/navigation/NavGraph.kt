@@ -79,6 +79,7 @@ import com.cruxcoach.android.ui.devcontact.AnnouncementsScreen
 import com.cruxcoach.android.ui.devcontact.MessageThreadScreen
 import com.cruxcoach.android.ui.settings.KeyManagementScreen
 import com.cruxcoach.android.ui.settings.KeyImportScreen
+import com.cruxcoach.android.ui.settings.OpenSourceLicensesScreen
 import com.cruxcoach.android.nostr.NostrConfig
 import com.cruxcoach.android.payment.ui.PaymentViewModel
 import com.cruxcoach.android.util.PerfLogger
@@ -115,6 +116,7 @@ object Routes {
     const val DATA_EXPORT = "data_export"
     const val AURORA_MIGRATION = "aurora_migration"
     const val SETTINGS = "settings"
+    const val OPEN_SOURCE_LICENSES = "open_source_licenses"
     const val PROFILE_ASSESSMENT = "profile_assessment"
     const val APP_SHARE = "app_share"
     const val ASSESSMENT = "assessment"
@@ -603,6 +605,9 @@ fun CruxCoachNavHost(
                     onNavigateToCrashReports = { navController.navigate(Routes.CRASH_REPORT_LIST) },
                     onNavigateToKeyManagement = { navController.navigate(Routes.KEY_MANAGEMENT) },
                     onNavigateToNostrProfile = { navController.navigate(Routes.NOSTR_PROFILE) },
+                    onNavigateToOpenSourceLicenses = {
+                        navController.navigate(Routes.OPEN_SOURCE_LICENSES)
+                    },
                     onDonateClick = {
                         paymentViewModel.initForDonation(NostrConfig.DEV_PUBKEY)
                         showPaymentSheet = true
@@ -615,6 +620,12 @@ fun CruxCoachNavHost(
                     paymentViewModel = paymentViewModel,
                     paymentState = paymentState,
                     context = context
+                )
+            }
+
+            composable(Routes.OPEN_SOURCE_LICENSES) {
+                OpenSourceLicensesScreen(
+                    onNavigateBack = { navController.popBackStack() },
                 )
             }
 

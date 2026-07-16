@@ -5,16 +5,35 @@ plugins {
     alias(libs.plugins.hilt)
     alias(libs.plugins.ksp)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.licensee)
 }
 
-import java.util.Properties
+import java.io.File
 import java.io.FileInputStream
+import java.util.Properties
+import org.gradle.api.tasks.Sync
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
+val localPropertiesOverride = providers.gradleProperty("localPropertiesFile").orNull
+val localPropertiesFile = localPropertiesOverride
+    ?.let(rootProject::file)
+    ?: rootProject.file("local.properties")
 val localProps = Properties().apply {
-    val f = rootProject.file("local.properties")
-    if (f.exists()) load(FileInputStream(f))
+    if (localPropertiesFile.exists()) load(FileInputStream(localPropertiesFile))
 }
+val localPropertiesBaseDir = if (localPropertiesOverride == null) {
+    rootProject.projectDir
+} else {
+    localPropertiesFile.parentFile
+}
+val releaseStorePath = localProps.getProperty("RELEASE_STORE_FILE", "").trim()
+val releaseStoreFile = releaseStorePath.takeIf(String::isNotEmpty)?.let { path ->
+    File(path).let { if (it.isAbsolute) it else File(localPropertiesBaseDir, path) }
+}
+val allowDebugSignedRelease = (
+    providers.gradleProperty("allowDebugSignedRelease").orNull
+        ?: localProps.getProperty("ALLOW_DEBUG_SIGNED_RELEASE", "false")
+    ).toBooleanStrictOrNull() == true
 
 android {
     namespace = "com.cruxcoach.android"
@@ -116,10 +135,9 @@ android {
     }
 
     signingConfigs {
-        val storeFilePath = localProps.getProperty("RELEASE_STORE_FILE", "")
-        if (storeFilePath.isNotEmpty()) {
+        if (releaseStoreFile != null) {
             create("release") {
-                storeFile = rootProject.file(storeFilePath)
+                storeFile = releaseStoreFile
                 storePassword = localProps.getProperty("RELEASE_STORE_PASSWORD", "")
                 keyAlias = localProps.getProperty("RELEASE_KEY_ALIAS", "")
                 keyPassword = localProps.getProperty("RELEASE_KEY_PASSWORD", "")
@@ -143,7 +161,12 @@ android {
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
+            val releaseSigning = signingConfigs.findByName("release")
+            if (releaseSigning != null) {
+                signingConfig = releaseSigning
+            } else if (allowDebugSignedRelease) {
+                signingConfig = signingConfigs.getByName("debug")
+            }
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
@@ -177,16 +200,108 @@ android {
 
 }
 
+val generateLegalAssets = tasks.register<Sync>("generateLegalAssets") {
+    group = "build"
+    description = "Packages project and third-party legal notices into the APK."
+    into(layout.buildDirectory.dir("generated/legalAssets/licenses"))
+
+    from(rootProject.file("LICENSE")) {
+        rename { "CruxCoach-GPL-3.0-only.txt" }
+    }
+    from(
+        rootProject.files(
+            "NOTICE",
+            "THIRD_PARTY_LICENSES.md",
+            "LEGAL.md",
+            "TRADEMARK.md",
+        )
+    )
+    from(rootProject.file("LICENSES"))
+    from(rootProject.file("logos/LICENSE")) {
+        rename { "CruxCoach-artwork-GPL-3.0-only.txt" }
+    }
+    from(file("src/main/cpp/zstd/LICENSE")) {
+        rename { "zstd-BSD-3-Clause.txt" }
+    }
+    from(file("src/main/cpp/zstd/COPYING")) {
+        rename { "zstd-GPL-2.0.txt" }
+    }
+}
+
+android.sourceSets.getByName("main").assets.srcDir(
+    layout.buildDirectory.dir("generated/legalAssets")
+)
+tasks.named("preBuild").configure {
+    dependsOn(generateLegalAssets)
+}
+
 composeCompiler {
     metricsDestination = project.layout.buildDirectory.dir("compose_metrics")
     reportsDestination = project.layout.buildDirectory.dir("compose_reports")
 }
 
+licensee {
+    allow("Apache-2.0")
+    allow("BSD-2-Clause")
+    allow("BSD-3-Clause")
+    allow("MIT")
+    allowUrl("http://www.mozilla.org/MPL/2.0/index.txt") {
+        because("MPL-2.0; legacy URL in lazysodium-android 5.2.0 metadata")
+    }
+    allowUrl("https://github.com/vitorpamplona/amethyst/blob/main/LICENSE") {
+        because("MIT; Quartz 1.05.1 POM links to the upstream Amethyst license")
+    }
+    allowUrl("https://www.zetetic.net/sqlcipher/license/") {
+        because("SQLCipher Community Edition BSD-style license; full text is bundled")
+    }
+    bundleAndroidAsset = true
+}
+
 
 kotlin {
+    jvmToolchain(17)
     compilerOptions {
         jvmTarget.set(JvmTarget.JVM_17)
     }
+}
+
+val validateReleaseSigning = tasks.register("validateReleaseSigning") {
+    group = "verification"
+    description = "Refuses accidental debug-signed or incomplete release builds."
+    doLast {
+        if (releaseStoreFile == null && !allowDebugSignedRelease) {
+            throw GradleException(
+                "Release builds require RELEASE_STORE_FILE. Refusing to create a release " +
+                    "with the non-secret debug key. For a throwaway local build only, pass " +
+                    "-PallowDebugSignedRelease=true. See CONTRIBUTING.md."
+            )
+        }
+        if (releaseStoreFile == null) {
+            logger.warn(
+                "WARNING: release APK uses the DEBUG key because " +
+                    "allowDebugSignedRelease=true. Do not distribute it."
+            )
+            return@doLast
+        }
+
+        val missingKeys = listOf(
+            "RELEASE_STORE_PASSWORD",
+            "RELEASE_KEY_ALIAS",
+            "RELEASE_KEY_PASSWORD",
+        ).filter { localProps.getProperty(it, "").isBlank() }
+        if (missingKeys.isNotEmpty()) {
+            throw GradleException(
+                "Release signing properties are incomplete: ${missingKeys.joinToString()}"
+            )
+        }
+        if (!releaseStoreFile.isFile) {
+            throw GradleException("Release keystore does not exist: $releaseStoreFile")
+        }
+    }
+}
+
+tasks.matching { it.name == "preReleaseBuild" }.configureEach {
+    dependsOn(validateReleaseSigning)
 }
 
 dependencies {

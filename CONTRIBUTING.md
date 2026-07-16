@@ -47,6 +47,28 @@ bash scripts/setup_dev_env.sh
 source ~/.bashrc   # or ~/.zshrc
 ```
 
+The Gradle modules select a JDK 17 toolchain for compilation and tests. Gradle
+itself must still be launched by a compatible JDK, so point `JAVA_HOME` at a
+local JDK 17 installation before invoking the wrapper.
+
+On macOS, Windows, non-Debian Linux, and pre-provisioned CI images, install the
+same Android components through Android Studio's SDK Manager or `sdkmanager`:
+
+```sh
+sdkmanager \
+  "platforms;android-36" \
+  "platforms;android-35" \
+  "build-tools;36.0.0" \
+  "platform-tools" \
+  "ndk;27.2.12479018" \
+  "cmake;3.22.1"
+```
+
+The NDK can add roughly 2 GB to the first setup. The SDK directory must be
+writable by the build user if Gradle needs to provision a missing component;
+for a read-only SDK, pre-install every component above before running even a
+shared-module task because the Android module is configured in the same build.
+
 ### Building
 
 ```bash
@@ -76,10 +98,11 @@ Both target files are gitignored — never commit populated copies.
 ### Release signing
 
 Debug builds need no signing setup — AGP uses the built-in debug keystore
-automatically. Release builds (`./gradlew :androidApp:assembleRelease`)
-**silently fall back to debug signing** if `RELEASE_STORE_FILE` is empty,
-which is convenient locally but means distribution builds are only trusted
-when you have explicitly configured a release keystore.
+automatically. Release builds (`./gradlew :androidApp:assembleRelease`) fail
+unless `RELEASE_STORE_FILE` and the other signing properties are complete.
+This prevents a release from silently using Android's public debug key. For a
+throwaway local minified build only, opt in explicitly with
+`-PallowDebugSignedRelease=true`; never distribute that artifact.
 
 1. Generate a release keystore (one-time, keep it outside the repo too):
 
@@ -110,6 +133,11 @@ when you have explicitly configured a release keystore.
 The `.signing/` directory is gitignored; keep the keystore and passwords
 off shared machines and out of version control.
 
+The release workflow also compares the APK signer with the public SHA-256
+fingerprint in [`release-cert-sha256.txt`](release-cert-sha256.txt). Forks must
+replace that file with the fingerprint of their own established release key
+before publishing.
+
 ### Project Structure
 
 ```
@@ -131,7 +159,7 @@ androidApp/                # Android app (Jetpack Compose)
 
 The release workflow (`.forgejo/workflows/release.yml`) runs **exclusively** on the maintainer's self-hosted Forgejo runner. Pull requests do **not** receive automated build or test feedback — the maintainer runs Gradle locally during review.
 
-The runner expects two environment variables to be defined in its execution environment (e.g. via systemd `Environment=` directives or the runner's config file):
+The runner expects two environment variables to be defined in its execution environment:
 
 | Variable | Purpose |
 |----------|---------|
@@ -140,7 +168,10 @@ The runner expects two environment variables to be defined in its execution envi
 
 The only repository secret used is `CODEBERG_TOKEN` (for creating Codeberg releases via the Forgejo API).
 
-Forks running their own Forgejo runner can reproduce the workflow by providing equivalent secrets and an `ANDROID_SDK_ROOT`; the workflow itself contains no host-specific paths.
+Forks running their own Forgejo runner can reproduce the workflow by providing
+equivalent secrets and an `ANDROID_SDK_ROOT`. Repository coordinates and asset
+names are derived from the Forgejo job context. Forks must also replace
+`release-cert-sha256.txt` with their own release certificate fingerprint.
 
 ### Customizing for forks
 
@@ -162,7 +193,7 @@ following keys to `local.properties` — no source edits required:
 | `ANNOUNCE_NAMESPACE` | Nostr `L`/`l` tag namespace for announcement events | `com.cruxcoach.announce` — change this when you fork to avoid notification cross-talk with upstream users |
 | `UPDATER_API_BASE` | Forgejo/Gitea API root that the in-app auto-updater polls for new releases | `https://codeberg.org/api/v1` |
 | `UPDATER_REPO_OWNER` | Repository owner used by the auto-updater and the "Online" app-share QR code | `CruxCoach` |
-| `UPDATER_REPO_NAME` | Repository name used by the auto-updater and the app-share QR code; also drives the expected APK filename `<repo>-<tag>.apk` | `CruxCoach` |
+| `UPDATER_REPO_NAME` | Repository name used by the auto-updater and the app-share QR code | `CruxCoach` |
 | `ZAPSTORE_APP_URL` | Zapstore listing URL surfaced as a QR code + shareable link in *Settings → Share via Zapstore* | `https://zapstore.dev/apps/com.cruxcoach.android` |
 | `USER_AGENT_PRODUCT` | Product token in outgoing HTTP `User-Agent` headers (`<product>/<version> (https://<host>)`). Lets Kilter operators tell forks apart from upstream traffic | `CruxCoach` |
 | `APP_LINK_HOST` | Host for shareable climb URLs (`https://<host>/c/<naddr>`) and for the Android App Link `<intent-filter>`. Forks need to host their own `/.well-known/assetlinks.json` for verification to succeed; until then App Links fall back to opening in a browser | `cruxcoach.org` |
@@ -174,8 +205,10 @@ handles updates itself). Forks whose APKs are distributed through other
 channels need to expose releases as a Forgejo/Gitea-compatible `releases`
 API endpoint and upload two assets per release:
 
-- `<repo>-<tag>.apk` — the signed release APK (must match `UPDATER_REPO_NAME`)
-- `<repo>-<tag>.apk.sha256` — a single-line `<hex>  <filename>` hash sidecar
+- any asset ending in `.apk` — the signed release APK
+- any asset ending in `.apk.sha256` — a single-line `<hex>  <filename>` hash sidecar
+
+The updater selects by suffix; the filename stem is not part of its protocol.
 
 The first install pins the signing certificate (trust-on-first-use); the
 updater refuses any future release whose signing cert doesn't match.
@@ -238,7 +271,7 @@ Android tests, debug APK and minified release APK rather than trying to resolve
 AGP's synthetic configurations outside the tasks that supply their attributes:
 
 ```bash
-./gradlew resolveAndLockAll --write-locks \
+./gradlew resolveAndLockAll -PallowDebugSignedRelease=true --write-locks \
   --write-verification-metadata sha256
 ```
 

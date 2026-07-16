@@ -16,10 +16,15 @@ class LocalApkServerHeadersTest {
     fun `every LAN response carries the shared browser security policy`() {
         val testDir = File("androidApp/build/tmp/local-apk-server-headers").apply { mkdirs() }
         val apk = File(testDir, "CruxCoach.apk").apply { writeBytes(byteArrayOf(1, 2, 3)) }
-        val server = LocalApkServer(apkFile = apk)
+        val server = LocalApkServer(
+            apkFile = apk,
+            versionName = "9.8.7",
+            sourceCodeUrl = "https://codeberg.org/example/fork/src/tag/v9.8.7",
+            licenseText = "GNU GENERAL PUBLIC LICENSE".toByteArray(),
+        )
         val port = server.start(port = 0, hostIp = "127.0.0.1")
         try {
-            listOf("/", "/download.apk", "/favicon.ico", "/board.db").forEach { path ->
+            listOf("/", "/download.apk", "/favicon.ico", "/board.db", "/LICENSE").forEach { path ->
                 val response = get(port, path)
                 assertTrue(response.contains("X-Content-Type-Options: nosniff\r\n"), path)
                 assertTrue(response.contains("Referrer-Policy: no-referrer\r\n"), path)
@@ -29,11 +34,29 @@ class LocalApkServerHeadersTest {
                     path,
                 )
             }
+            val landingPage = get(port, "/")
+            assertTrue(landingPage.contains("CruxCoach v9.8.7"))
+            assertTrue(landingPage.contains("/example/fork/src/tag/v9.8.7"))
+            val license = get(port, "/LICENSE")
+            assertTrue(license.contains("GNU GENERAL PUBLIC LICENSE"))
         } finally {
             server.stop()
             apk.delete()
             testDir.delete()
         }
+    }
+
+    @Test
+    fun `source directions are pinned to the shared build version`() {
+        assertEquals(
+            "https://codeberg.org/example/fork/src/tag/v9.8.7",
+            ApkShareHelper.versionSourceUrl(
+                apiBase = "https://codeberg.org/api/v1",
+                owner = "example",
+                repository = "fork",
+                version = "9.8.7",
+            ),
+        )
     }
 
     @Test

@@ -32,6 +32,7 @@ turbine = "1.2.1"
 coil = "2.7.0"
 compose-richtext = "0.20.0"
 maplibre = "11.10.0"
+licensee = "1.14.1"
 
 [libraries]
 # Compose BOM
@@ -136,3 +137,4 @@ compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "
 sqldelight = { id = "app.cash.sqldelight", version.ref = "sqldelight" }
 hilt = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
+licensee = { id = "app.cash.licensee", version.ref = "licensee" }

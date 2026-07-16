@@ -6,6 +6,7 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import android.util.Log
 import androidx.core.content.FileProvider
+import com.cruxcoach.android.BuildConfig
 import com.cruxcoach.android.R
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
@@ -35,9 +36,27 @@ object ApkShareHelper {
         val intent = Intent(Intent.ACTION_SEND).apply {
             type = "application/vnd.android.package-archive"
             putExtra(Intent.EXTRA_STREAM, uri)
+            putExtra(
+                Intent.EXTRA_TEXT,
+                context.getString(
+                    R.string.share_app_gpl_notice,
+                    BuildConfig.VERSION_NAME,
+                    versionSourceUrl(),
+                )
+            )
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         context.startActivity(Intent.createChooser(intent, context.getString(R.string.share_app_chooser)))
+    }
+
+    internal fun versionSourceUrl(
+        apiBase: String = BuildConfig.UPDATER_API_BASE,
+        owner: String = BuildConfig.UPDATER_REPO_OWNER,
+        repository: String = BuildConfig.UPDATER_REPO_NAME,
+        version: String = BuildConfig.VERSION_NAME,
+    ): String {
+        val forgeBase = apiBase.trimEnd('/').removeSuffix("/api/v1")
+        return "$forgeBase/$owner/$repository/src/tag/v$version"
     }
 
     /**
@@ -160,6 +179,9 @@ class LocalApkServer(
      *  cacheDir). null → the live file is served as-is. */
     private val snapshotDir: File? = null,
     private val clientReadTimeoutMs: Int = CLIENT_READ_TIMEOUT_MS,
+    private val versionName: String = BuildConfig.VERSION_NAME,
+    private val sourceCodeUrl: String = ApkShareHelper.versionSourceUrl(),
+    private val licenseText: ByteArray? = null,
 ) {
 
     private var serverSocket: ServerSocket? = null
@@ -304,6 +326,7 @@ class LocalApkServer(
                 when {
                     path.endsWith(".apk") -> serveApk(out)
                     path == "/board.db" -> serveBoardDb(out)
+                    path == "/LICENSE" -> serveLicense(out)
                     path == "/favicon.ico" -> serve404(out)
                     else -> serveLandingPage(out)
                 }
@@ -334,7 +357,10 @@ class LocalApkServer(
   <a href="/board.db" class="btn ghost">Download DB only &middot; Nur DB herunterladen</a>
 </section>"""
         } else ""
-        val html = LANDING_HTML.replace("<!-- DB_SECTION -->", dbSection)
+        val html = LANDING_HTML
+            .replace("<!-- DB_SECTION -->", dbSection)
+            .replace("<!-- VERSION -->", versionName.escapeHtml())
+            .replace("<!-- SOURCE_URL -->", sourceCodeUrl.escapeHtml())
         val body = html.toByteArray(Charsets.UTF_8)
         out.write(responseHeaders(
             status = "200 OK",
@@ -352,6 +378,19 @@ class LocalApkServer(
             contentDisposition = "attachment; filename=\"CruxCoach.apk\"",
         ))
         apkFile.inputStream().use { it.copyTo(out, bufferSize = 65536) }
+    }
+
+    private fun serveLicense(out: java.io.OutputStream) {
+        val body = licenseText ?: return serve404(out)
+        out.write(
+            responseHeaders(
+                status = "200 OK",
+                contentLength = body.size.toLong(),
+                contentType = "text/plain; charset=utf-8",
+                contentDisposition = "inline; filename=\"LICENSE\"",
+            )
+        )
+        out.write(body)
     }
 
     /**
@@ -532,6 +571,12 @@ class LocalApkServer(
         out.write(body)
     }
 
+    private fun String.escapeHtml(): String = this
+        .replace("&", "&amp;")
+        .replace("\"", "&quot;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+
     /**
      * Every response from the cleartext-by-necessity LAN endpoint gets the
      * same browser hardening. Centralising the framing keeps future response
@@ -694,7 +739,11 @@ class LocalApkServer(
   <!-- DB_SECTION -->
 
   <footer>Direct LAN transfer &middot; nothing leaves your network.<br>
-  Direkte LAN-Übertragung &middot; verlässt dein Netzwerk nicht.</footer>
+  Direkte LAN-Übertragung &middot; verlässt dein Netzwerk nicht.<br><br>
+  CruxCoach v<!-- VERSION --> &middot; free software under the
+  <a href="/LICENSE">GNU GPL v3</a> &middot; NO WARRANTY.<br>
+  Source code for this exact build &middot; Quellcode dieses Builds:<br>
+  <a href="<!-- SOURCE_URL -->"><!-- SOURCE_URL --></a></footer>
 </div>
 </body>
 </html>

@@ -52,19 +52,13 @@ import com.cruxcoach.domain.board.BoardZone
 import com.cruxcoach.domain.board.BoardZoneFilter
 import kotlinx.coroutines.withTimeoutOrNull
 
-/** Bundled board-size IDs that have a WebP asset in board_images/.
- *  Original Kilter sizes: 7, 8, 10, 14, 27, 28 (product_id=1).
- *  Homewall sizes: 17, 18, 19, 21, 22, 23, 24, 25, 26, 29 (product_id=7). */
-private val BUNDLED_BOARD_SIZES = setOf(
-    7L, 8L, 10L, 14L, 27L, 28L,
-    17L, 18L, 19L, 21L, 22L, 23L, 24L, 25L, 26L, 29L,
-)
-
 /**
  * Single-entry bitmap cache keyed by the full asset path. Each board size has
- * one combined image: Kilter uses board_images/board_<id>.webp, while the other
- * Aurora-family boards are namespaced board_images/<brand>/board_<id>.webp.
- * product_size ids collide across brands, so the path — not the id — is the key.
+ * an optional background path: Kilter uses board_images/board_<id>.webp, while
+ * the other Aurora-family boards are namespaced
+ * board_images/<brand>/board_<id>.webp. The upstream distribution deliberately
+ * omits vendor-extracted backgrounds; a miss is cached as null and the renderer
+ * continues with placements and holds only.
  */
 internal object BoardImageCache {
     @Volatile
@@ -202,14 +196,10 @@ internal fun KilterBoardVisualization(
 
     val brand = boardSize?.boardBrand ?: BoardBrand.KILTER
     val sizeId = boardSize?.id ?: 10L
-    // Kilter's bundled set is enumerated; the other Aurora-family boards
-    // attempt-and-fallback — the asset is present for listed sizes, and a miss
-    // decodes to null (placements-only), never a crash or a blank lock-up.
-    val hasBundledImage = when {
-        brand == BoardBrand.KILTER -> sizeId in BUNDLED_BOARD_SIZES
-        brand.usesAuroraProtocol -> true
-        else -> false
-    }
+    // Backgrounds are an optional downstream extension. The upstream APK does
+    // not redistribute images extracted from board-vendor applications; a
+    // missing file decodes to null and leaves the placements-only view intact.
+    val supportsOptionalBackground = brand.usesAuroraProtocol
     // The active layout (from the size's set images) picks the layout-specific
     // composite — Tension TB2 Mirror vs Spray share a size but not their holds.
     val layoutId = boardImages.firstOrNull()?.layoutId
@@ -263,9 +253,9 @@ internal fun KilterBoardVisualization(
             // Layer 1: Board image — loaded from bundled WebP asset
             val assetManager = context.assets
             var boardBitmap by remember(boardImagePath) {
-                mutableStateOf(if (hasBundledImage) BoardImageCache.get(boardImagePath) else null)
+                mutableStateOf(if (supportsOptionalBackground) BoardImageCache.get(boardImagePath) else null)
             }
-            if (hasBundledImage) {
+            if (supportsOptionalBackground) {
                 LaunchedEffect(boardImagePath) {
                     if (boardBitmap == null) {
                         boardBitmap = BoardImageCache.getOrDecode(boardImageCandidates, assetManager)

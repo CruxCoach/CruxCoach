@@ -1,33 +1,21 @@
-CruxCoach Brand Assets
-Copyright (C) 2025-2026 CruxCoach maintainer.
-All rights reserved.
+CruxCoach Brand Artwork
+Copyright (C) 2025-2026 CruxCoach contributors
 
-The files in this directory — the CruxCoach wordmark, logo, app launcher
-icon source, and pre-rendered raster derivatives — are NOT covered by the
-project's GPLv3 source-code license. They are kept in the repository for
-build reproducibility and developer convenience, not as a grant of
-redistribution rights.
+SPDX-License-Identifier: GPL-3.0-only
 
-App-launcher derivatives under
-androidApp/src/main/res/mipmap-*/ic_launcher*.png are exported from this
-master vector and are subject to the same terms.
+The artwork files in this directory and the build-required derivatives listed
+below are licensed under the GNU General Public License version 3.0 only. The
+complete licence text is in ../LICENSE.
 
-USES PERMITTED WITHOUT PERMISSION
+Covered derivatives include:
 
-  - Building, signing, and installing CruxCoach APKs from this repository
-    for personal or educational use.
-  - Embedding the logo as an inline image when linking to the upstream
-    project at https://codeberg.org/CruxCoach/CruxCoach, with a clear and
-    unobscured link back.
-  - Screenshots of the app for any non-commercial purpose.
+- androidApp/src/main/res/mipmap-*/ic_launcher*.png
+- androidApp/src/main/res/mipmap-anydpi-v26/ic_launcher*.xml
+- androidApp/src/main/res/drawable/ic_launcher_monochrome.xml
+- androidApp/src/main/res/drawable/ic_splash.xml
 
-USES THAT REQUIRE PERMISSION
-
-  - Distributing modified APKs under the CruxCoach name and icon to a wide
-    audience.
-  - Use in a different product name, packaging, advertising, or commercial
-    context.
-  - Producing merchandise (stickers, prints, shirts) that bears the Marks.
-
-See ../TRADEMARK.md in the repository root for the full policy and the
-rationale behind these restrictions.
+This copyright licence permits copying, modification, and redistribution under
+GPL-3.0-only. It does not by itself grant permission to present a modified
+product as the upstream CruxCoach project. Naming and origin-confusion requests
+are described separately in ../TRADEMARK.md; they are not copyright
+restrictions on these files.

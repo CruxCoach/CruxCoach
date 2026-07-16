@@ -342,6 +342,16 @@
     <string name="settings_app_info_easter_play">Project easter egg</string>
     <string name="settings_app_info_easter_no_board">Easter egg (board not connected)</string>
     <string name="settings_app_info_animation_stop">Stop animation</string>
+    <string name="open_source_licenses_title">Open-source licences</string>
+    <string name="open_source_licenses_intro">These notices and the resolved dependency report are packaged with this exact app build.</string>
+    <string name="open_source_licenses_notices">Notices</string>
+    <string name="open_source_licenses_inventory">Inventory</string>
+    <string name="open_source_licenses_dependencies">Dependencies</string>
+    <string name="open_source_licenses_project_license">GPLv3</string>
+    <string name="open_source_licenses_policy">Legal policy</string>
+    <string name="open_source_licenses_texts">Licence texts</string>
+    <string name="open_source_licenses_load_error">The packaged legal notice could not be read.</string>
+    <string name="legal_trademark_disclaimer">CruxCoach is an independent open-source project. It is not affiliated with, endorsed by, or sponsored by Kilter Grips, LLC, Aurora Climbing, Moon Climbing Ltd, Tension Climbing, Grasshopper, Decoy, So iLL, Touchstone Climbing, egym, or any board manufacturer. Product and company names belong to their respective holders.</string>
 
     <!-- Settings: Profile -->
     <string name="settings_profile_title">Profile</string>
@@ -1251,6 +1261,7 @@
     <string name="training_type_deload">Deload</string>
     <string name="wifi_disabled_error">WiFi is off. Please turn on WiFi.</string>
     <string name="share_app_chooser">Share app</string>
+    <string name="share_app_gpl_notice">CruxCoach %1$s is free software under GNU GPL v3 and comes with NO WARRANTY. Source code for this exact build: %2$s</string>
     <string name="hotspot_start_failed">Couldn’t start the hotspot. Make sure Wi-Fi is on and try again.</string>
     <string name="share_download_button">Download CruxCoach</string>
     <string name="share_download_instructions">After downloading, open the APK file and install it.\nYou may need to allow \"Install from unknown sources\".</string>

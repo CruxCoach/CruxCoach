@@ -1,49 +1,36 @@
 # Testing Workflow
 
-CruxCoach has two complementary test layers, both runnable from the
-dev server. **Always use both** when verifying a behaviour change —
-each catches a different class of regression, and either alone has
-known blind spots.
+CruxCoach has two complementary test layers. JVM tests run on any development
+machine; Maestro flows run through standard `adb` against a connected Android
+device. Pick the layer that exercises the changed boundary, and use both for a
+change that spans logic and UI/navigation.
 
-## Architecture
+## Portable device setup
 
-The dev server has no Android device of its own. A physical phone is
-attached via USB to a separate machine ("VM host"). An SSH-reverse-
-tunnel from VM host → dev server exposes the VM host's `adb` daemon
-on the dev server's `localhost:6037`, and a tiny Python forwarder
-maps `localhost:5037 → localhost:6037` so every adb-aware tool finds
-the device on the default port.
+1. Install Android SDK Platform Tools so `adb` is on `PATH`.
+2. Install the Maestro CLI using its
+   [official installation guide](https://docs.maestro.dev/getting-started/installing-maestro).
+3. Enable USB debugging on a physical device (BLE coverage needs real
+   hardware), connect it, accept the authorization prompt, and verify:
 
-```
-   VM host (phone via USB)                  dev server (Claude Code)
-   ┌──────────┐                            ┌──────────────────────────┐
-   │ phone    │ adbd                       │  adb / maestro / gradle  │
-   │ adbd     │←─────────┐                 │  via 127.0.0.1:5037      │
-   └──────────┘  :5037   │                 │            ↓             │
-                          │ SSH -R 6037:.. │      Python bridge       │
-                          │   tunnel       │      :5037 → :6037       │
-                          └────────────────│            ↓             │
-                                           │      :6037 (tunneled)    │
-                                           └──────────────────────────┘
-```
+   ```sh
+   adb devices
+   ```
 
-Two systemd-user services keep this alive:
+   Exactly one intended target should be listed as `device` rather than
+   `unauthorized` or `offline`.
+4. Build and install the debug APK, then run a smoke flow:
 
-| Host | Service | Purpose |
-|---|---|---|
-| VM host | `adb-server.service` | keeps the local adb daemon up |
-| VM host | `cruxcoach-adb-tunnel.service` | maintains the SSH `-R 6037:localhost:5037` tunnel to the dev server |
-| dev server | `cruxcoach-adb-bridge.service` | Python TCP forwarder: `localhost:5037 → localhost:6037` |
+   ```sh
+   ./gradlew :androidApp:assembleDebug
+   adb install -r androidApp/build/outputs/apk/debug/androidApp-debug.apk
+   flows/run.sh smoke
+   ```
 
-`loginctl enable-linger $USER` is set on both hosts so the services
-survive logout/reboot.
-
-Wrappers on the dev server:
-
-| Command | What it does |
-|---|---|
-| `dadb` | `adb` with `ANDROID_ADB_SERVER_PORT=6037` (kept around for explicit-tunnel use; default-port `adb` works through the bridge too) |
-| `dmaestro` | Maestro CLI; same env override |
+Remote-device arrangements are optional and deliberately not part of the
+repository contract. If one is needed, point the runner at compatible wrapper
+commands with the `ADB=/path/to/adb-wrapper` and
+`MAESTRO=/path/to/maestro-wrapper` environment variables.
 
 ## Two test layers
 
@@ -81,8 +68,8 @@ The wrapper:
 
 1. clears the device's logcat ring buffer,
 2. invokes Maestro (single session for full suite, iterative for
-   filtered runs, with one `--reinstall-driver` upfront to dodge the
-   1-in-3 EOFException race against tunneled adb),
+   filtered runs, with one `--reinstall-driver` upfront to recover from an
+   occasional driver-start `EOFException`),
 3. temporarily enables release diagnostics with `log.tag.PERF=DEBUG`, then
    snapshots `adb logcat -d -s PERF:D` post-run,
 4. greps the snapshot for every pattern listed in `flow.expects`.
@@ -184,10 +171,8 @@ it ready:
   `selected=...` on the text node — Maestro's `selected:` matcher
   doesn't read it. Verify chip behaviour via downstream UI changes
   (or just delegate to a JVM test).
-- **`adb logcat` parallel to a Maestro run** races the tunneled adb
-  session and trips `EOFException` in
-  `AndroidDriver.startInstrumentationSession` ~1 in 3. The wrapper
-  uses post-run `logcat -d` instead.
+- **`adb logcat` parallel to a Maestro run** can race the Maestro driver
+  session. The wrapper uses post-run `logcat -d` instead.
 - **Maestro driver instrumentation app** can be evicted by Android's
   memory manager between sessions. The wrapper passes
   `--reinstall-driver` to the very first invocation; subsequent
@@ -229,9 +214,9 @@ selected `.expects` file requires markers but the PERF snapshot is empty.
 ## Quick-reference command summary
 
 ```sh
-# Build APK + install on the tunneled phone
-./gradlew :androidApp:assembleRelease
-dadb install -r -d androidApp/build/outputs/apk/release/androidApp-release.apk
+# Build APK + install on a connected phone
+./gradlew :androidApp:assembleDebug
+adb install -r androidApp/build/outputs/apk/debug/androidApp-debug.apk
 
 # Run Maestro UI flows
 flows/run.sh                                # all
@@ -254,19 +239,14 @@ ls /tmp/cruxcoach-flows-<timestamp>/
 ## Health-checks if a run is failing in unexpected ways
 
 ```sh
-# Is the tunnel up?
-nc -z 127.0.0.1 6037 && echo OK
-nc -z 127.0.0.1 5037 && echo OK
-adb devices                                # phone listed?
-
-# Is the dev-server bridge running?
-systemctl --user status cruxcoach-adb-bridge.service
+# Is exactly one authorized phone listed?
+adb devices
 
 # Reinstall Maestro's driver app on the phone
 ~/.maestro/bin/maestro test --reinstall-driver flows/smoke.yaml
 
 # Reset the phone to the Browser screen (workaround for sticky last-
 # screen restore)
-dadb shell am force-stop com.cruxcoach.android
-dadb shell am start -W --activity-clear-task -n com.cruxcoach.android/.MainActivity
+adb shell am force-stop com.cruxcoach.android
+adb shell am start -W --activity-clear-task -n com.cruxcoach.android/.MainActivity
 ```
