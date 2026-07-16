@@ -118,4 +118,29 @@ class ClimbSearchSqlTest {
         assertEquals(listOf("percent"), search("Setter_"))
         assertEquals(1L, count("Setter_"))
     }
+
+    @Test
+    fun equalPopularityUsesStableUuidTiebreaker() {
+        val firstPage = repo.searchClimbsSorted(
+            angle = 40,
+            layoutId = 1,
+            boardBrand = "kilter",
+            minDifficulty = 0.0,
+            maxDifficulty = 100.0,
+            minAscensionists = 0,
+            sortField = ClimbSortField.ASCENSIONISTS,
+            sortDirection = SortDirection.DESC,
+            limit = 100,
+            offset = 0,
+            climbType = ClimbTypeFilter.ALL,
+            selProductSizeId = 0,
+            hsmExcludedMask = 0,
+            showUngraded = true,
+        ).map { it.uuid }
+
+        assertEquals(
+            listOf("backslash", "digits", "percent", "plain", "underscore"),
+            firstPage,
+        )
+    }
 }

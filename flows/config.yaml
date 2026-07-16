@@ -1,10 +1,8 @@
 name: CruxCoach UI Flows
 
-# Maestro workspace config. All flows assume the device is German-locale
-# (matches our dev phone's current state). Switching locale per flow is
-# possible via `runScript: setprop persist.sys.locale en-US` but adds
-# fragility; for now we keep all assertions in DE and add EN flows later
-# only when the locale-toggle path itself is the test target.
+# Maestro workspace config. UI copy is deliberately exercised on the German
+# fixture device; locale-independent formatting/resource behavior is covered
+# by the Android JVM resource suite.
 #
 # Run all:
 #     dmaestro test flows/
@@ -21,7 +19,7 @@ executionOrder:
     - browser-search
     - browser-filter-sheet
     - detail-open
-    - detail-favorite-toggle
+    - search-result-opens-correct-climb
     - editor-open
     - editor-overflow
     - drafts-drawer-open
@@ -29,3 +27,8 @@ executionOrder:
     - map-navigate
     - settings-board-picker
     - lists-navigate
+    # Mutating flows run last and normalize the state they own on entry.
+    - climb-type-filter-changes-list
+    - detail-favorite-toggle
+    - detail-favorite-persists
+    - detail-add-to-list

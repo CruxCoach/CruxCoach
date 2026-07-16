@@ -16,14 +16,17 @@ tags:
 # UI tap → ViewModel.updateClimbTypeFilter → Repository query →
 # climb_browse VIEW → adapter render.
 #
-# FILTER-STATE precondition: defaults. The flow itself is fully
-# self-contained — it sets and resets the climb-type filter
-# explicitly. Other filters are not touched.
+# The first commands force the owned filter to a known state, so a previous
+# interrupted run cannot poison every later invocation.
 - launchApp:
     stopApp: false
 - waitForAnimationToEnd:
     timeout: 5000
-# Sanity: boulder default → "X Züge" cards visible.
+# Normalize first; do not assert the previous persisted value.
+- tapOn: "Filter"
+- tapOn: "Boulder"
+- pressKey: Back
+# Sanity: boulder → "X Züge" cards visible.
 - assertVisible:
     text: "[0-9]+ Züge"
 # Switch to Routes.

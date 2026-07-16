@@ -16,6 +16,12 @@ tags:
     text: "[0-9]+ Züge"
     index: 0
 - assertVisible: "Zurück"
+# Normalize an interrupted previous run to favorite-off.
+- runFlow:
+    when:
+      visible: "Von Favoriten entfernen"
+    commands:
+      - tapOn: "Von Favoriten entfernen"
 - tapOn: "Zu Favoriten hinzufügen"
 - assertVisible: "Von Favoriten entfernen"
 # Idempotency cleanup.

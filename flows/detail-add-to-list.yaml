@@ -29,6 +29,13 @@ tags:
     text: "[0-9]+ Züge"
     index: 0
 - assertVisible: "Zurück"
+# Favoriten is the list exercised below. Normalize it first so a failed
+# earlier run cannot turn the next "add" operation into a removal.
+- runFlow:
+    when:
+      visible: "Von Favoriten entfernen"
+    commands:
+      - tapOn: "Von Favoriten entfernen"
 # Open Add-to-list dialog from detail TopBar.
 - tapOn: "Zu Liste hinzufügen"
 - assertVisible:
@@ -65,10 +72,8 @@ tags:
     text: "[0-9]+ Züge"
     index: 0
 - assertVisible: "Zurück"
-- tapOn: "Zu Liste hinzufügen"
-- assertVisible: "Favoriten"
-- tapOn:
-    text: "Favoriten"
-- tapOn: "Fertig"
+- assertVisible: "Von Favoriten entfernen"
+- tapOn: "Von Favoriten entfernen"
+- assertVisible: "Zu Favoriten hinzufügen"
 - pressKey: Back
 - assertVisible: "Filter"

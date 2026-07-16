@@ -2,24 +2,13 @@
 # CruxCoach Maestro flow runner with logcat-based behavioural verification.
 #
 # Strategy:
-#   1. Clear logcat on the device.
-#   2. Run every flow under flows/ as a SINGLE Maestro session — keeps
-#      the instrumentation driver alive across all flows. Per-flow
-#      `maestro test` invocations can fail with a transient EOFException in
-#      AndroidDriver.startInstrumentationSession; the single-session pattern
-#      avoids needless driver restarts.
-#   3. After the session, snapshot the device's PERF-tag logcat once.
-#   4. For each flow that has a `flow.expects` file, grep the cumulative
-#      logcat for every pattern listed.
-#   5. Fail the run if Maestro reports any flow as failed OR if any
-#      logcat expectation is missing.
-#
-# Cross-flow logcat contamination caveat: because all flows share one
-# logcat buffer, a marker emitted by an earlier flow could satisfy a
-# later flow's expectation. In practice the PERF NAV markers we
-# assert on (e.g. "BoardBrowser → ClimbDetail") fire only on the
-# specific UI path and not in setup/teardown, so contamination is
-# rare. If it bites, scope the regex tighter.
+#   1. Run each selected flow separately, reusing the installed Maestro
+#      driver but retrying the known cold-start EOFException once.
+#   2. Clear logcat immediately before every attempt and snapshot it
+#      immediately after that flow.
+#   3. Verify a flow's `.expects` only against its own PERF log. An earlier
+#      sibling can therefore never make a later flow pass.
+#   4. Keep per-flow Maestro/logcat artifacts and report every failure.
 #
 # Usage:
 #   flows/run.sh                     # run every flow
@@ -55,14 +44,42 @@ declare -a FLOWS
 declare -a FLOW_NAMES
 if [[ $# -gt 0 ]]; then
     for name in "$@"; do
-        FLOWS+=("$FLOWS_DIR/$name.yaml")
+        flow_path="$FLOWS_DIR/$name.yaml"
+        if [[ ! -f "$flow_path" ]]; then
+            echo "ERROR: unknown flow '$name' ($flow_path)" >&2
+            exit 2
+        fi
+        FLOWS+=("$flow_path")
         FLOW_NAMES+=("$name")
     done
 else
+    # Honour the explicit workspace order. Append any newly-added flow not
+    # listed there so it is still executed (and make that omission visible in
+    # the runner output rather than silently skipping it).
+    declare -A SEEN_FLOWS=()
+    while IFS= read -r name; do
+        [[ -z "$name" ]] && continue
+        flow_path="$FLOWS_DIR/$name.yaml"
+        if [[ ! -f "$flow_path" ]]; then
+            echo "ERROR: config.yaml names missing flow '$name'" >&2
+            exit 2
+        fi
+        FLOWS+=("$flow_path")
+        FLOW_NAMES+=("$name")
+        SEEN_FLOWS["$name"]=1
+    done < <(sed -n '/^[[:space:]]*flowsOrder:/,$s/^[[:space:]]*-[[:space:]]*\([^#[:space:]]\+\).*$/\1/p' "$FLOWS_DIR/config.yaml")
+
     while IFS= read -r -d '' f; do
+        name="$(basename "$f" .yaml)"
+        [[ -n "${SEEN_FLOWS[$name]:-}" ]] && continue
         FLOWS+=("$f")
-        FLOW_NAMES+=("$(basename "$f" .yaml)")
+        FLOW_NAMES+=("$name")
     done < <(find "$FLOWS_DIR" -maxdepth 1 -name '*.yaml' -not -name 'config.yaml' -print0 | sort -z)
+fi
+
+if [[ ${#FLOWS[@]} -eq 0 ]]; then
+    echo "ERROR: no flows selected" >&2
+    exit 2
 fi
 
 echo " ▶ running ${#FLOWS[@]} flow(s): ${FLOW_NAMES[*]}"
@@ -72,6 +89,8 @@ echo " ▶ log dir: $LOG_DIR"
 # property and enable diagnostics only for this runner invocation.
 previous_perf_level="$("$ADB" shell getprop log.tag.PERF 2>/dev/null | tr -d '\r')"
 restore_perf_level() {
+    # Invoked indirectly by the EXIT trap below.
+    # shellcheck disable=SC2317
     "$ADB" shell setprop log.tag.PERF "$previous_perf_level" >/dev/null 2>&1 || true
 }
 trap restore_perf_level EXIT
@@ -80,31 +99,27 @@ if ! "$ADB" shell setprop log.tag.PERF DEBUG >/dev/null 2>&1; then
     exit 2
 fi
 
-# Clear logcat upfront so the post-session snapshot is scoped.
-"$ADB" logcat -c >/dev/null 2>&1 || true
-
-# Single Maestro invocation. --reinstall-driver up-front avoids the
-# 1-in-3 cold-start EOFException race.
-maestro_log="$LOG_DIR/maestro.log"
-maestro_status=0
-# Maestro CLI takes ONE path arg (flow file or directory). For
-# multi-flow filtered runs we iterate, with a retry-on-EOF for the
-# transient startInstrumentationSession failure.
+# Maestro CLI takes one flow path. `--reinstall-driver` on the first attempt
+# avoids the common cold-start failure; a genuine EOFException gets one retry.
 run_one() {
-    local target="$1" attempts=2 try=1
+    local target="$1" name="$2" attempts=2 try=1
+    local maestro_log="$LOG_DIR/$name.maestro.log"
+    : > "$maestro_log"
     while (( try <= attempts )); do
-        local extra=""
-        # --reinstall-driver only on the very first invocation across
-        # the session. Maestro re-uses the driver if it's already
-        # present and operational.
+        local attempt_log="$LOG_DIR/$name.maestro-attempt-$try.log"
+        local -a maestro_args=(test)
         if (( try == 1 && PRIMED == 0 )); then
-            extra="--reinstall-driver"
+            maestro_args+=(--reinstall-driver)
             PRIMED=1
         fi
-        if "$MAESTRO" test $extra "$target" 2>&1 | tee -a "$maestro_log"; then
+        maestro_args+=("$target")
+        "$ADB" logcat -c >/dev/null 2>&1 || true
+        if "$MAESTRO" "${maestro_args[@]}" 2>&1 | tee "$attempt_log"; then
+            cat "$attempt_log" >> "$maestro_log"
             return 0
         fi
-        if grep -q EOFException "$maestro_log"; then
+        cat "$attempt_log" >> "$maestro_log"
+        if grep -q EOFException "$attempt_log" && (( try < attempts )); then
             echo " ⟲ EOFException → retry (attempt $((try + 1))/$attempts)"
             try=$((try + 1))
             sleep 3
@@ -116,73 +131,25 @@ run_one() {
 }
 
 PRIMED=0
-if [[ ${#FLOWS[@]} -eq 1 ]]; then
-    run_one "${FLOWS[0]}" || maestro_status=$?
-elif [[ $# -gt 0 ]]; then
-    # Iterate user-specified flows; one Maestro test per flow.
-    for f in "${FLOWS[@]}"; do
-        run_one "$f" || maestro_status=$?
-    done
-else
-    # Full-suite mode — Maestro test against the directory keeps the
-    # driver alive across all flows in a single session, which is far
-    # more reliable than per-flow invocations.
-    run_one "$FLOWS_DIR" || maestro_status=$?
-fi
-
-# Snapshot logcat (PERF only — that's where our nav markers live).
-"$ADB" logcat -d -s PERF:D > "$LOG_DIR/logcat-perf.txt" 2>/dev/null || true
-
-# An empty diagnostic stream must never let a navigation flow pass merely
-# because Maestro's visual assertions happened to match another screen.
-expects_markers=0
-for fname in "${FLOW_NAMES[@]}"; do
-    expects_path="$FLOWS_DIR/$fname.expects"
-    if [[ -f "$expects_path" ]] && grep -qE '^[[:space:]]*[^#[:space:]]' "$expects_path"; then
-        expects_markers=1
-        break
-    fi
-done
-if [[ $expects_markers -eq 1 && ! -s "$LOG_DIR/logcat-perf.txt" ]]; then
-    echo "ERROR: PERF logcat is empty although selected flows require markers" >&2
-    exit 1
-fi
-
-# Determine per-flow Maestro pass/fail by parsing the human-readable output.
-# Maestro emits "[Passed] $name" or "[Failed] $name (...)" per flow when
-# given a directory; for a single-flow run it doesn't, in which case we
-# infer from the overall exit code.
-declare -A FLOW_RESULT
-if [[ ${#FLOWS[@]} -gt 1 ]]; then
-    while IFS= read -r line; do
-        if [[ $line =~ \[Passed\][[:space:]](.+)[[:space:]]\([0-9]+ ]]; then
-            FLOW_RESULT["${BASH_REMATCH[1]}"]="passed"
-        elif [[ $line =~ \[Failed\][[:space:]](.+)[[:space:]]\([0-9]+ ]]; then
-            FLOW_RESULT["${BASH_REMATCH[1]}"]="failed"
-        fi
-    done < "$maestro_log"
-else
-    if [[ $maestro_status -eq 0 ]]; then
-        FLOW_RESULT["${FLOW_NAMES[0]}"]="passed"
-    else
-        FLOW_RESULT["${FLOW_NAMES[0]}"]="failed"
-    fi
-fi
-
-# Verify per-flow logcat expectations.
-echo
-echo "════════════════════════════════════════════════════════════════"
-echo " logcat verification"
-echo "════════════════════════════════════════════════════════════════"
 PASSED=0
 FAILED=0
 declare -a FAIL_NAMES
-for fname in "${FLOW_NAMES[@]}"; do
+for i in "${!FLOWS[@]}"; do
+    f="${FLOWS[$i]}"
+    fname="${FLOW_NAMES[$i]}"
     expects_path="$FLOWS_DIR/$fname.expects"
-    maestro_state="${FLOW_RESULT[$fname]:-unknown}"
+    flow_log="$LOG_DIR/$fname.logcat-perf.txt"
 
-    if [[ "$maestro_state" != "passed" ]]; then
-        echo "  ✗ $fname  — Maestro $maestro_state"
+    echo
+    echo "════════════════════════════════════════════════════════════════"
+    echo " flow: $fname"
+    echo "════════════════════════════════════════════════════════════════"
+    maestro_status=0
+    run_one "$f" "$fname" || maestro_status=$?
+    "$ADB" logcat -d -s PERF:D > "$flow_log" 2>/dev/null || true
+
+    if [[ $maestro_status -ne 0 ]]; then
+        echo "  ✗ $fname  — Maestro failed"
         FAILED=$((FAILED + 1))
         FAIL_NAMES+=("$fname")
         continue
@@ -194,10 +161,17 @@ for fname in "${FLOW_NAMES[@]}"; do
         continue
     fi
 
+    if grep -qE '^[[:space:]]*[^#[:space:]]' "$expects_path" && [[ ! -s "$flow_log" ]]; then
+        echo "  ✗ $fname  — PERF logcat empty"
+        FAILED=$((FAILED + 1))
+        FAIL_NAMES+=("$fname")
+        continue
+    fi
+
     flow_failed=0
     while IFS= read -r pattern; do
         [[ -z "$pattern" || "$pattern" =~ ^[[:space:]]*# ]] && continue
-        if grep -qE "$pattern" "$LOG_DIR/logcat-perf.txt"; then
+        if grep -qE "$pattern" "$flow_log"; then
             echo "  ✓ $fname  — logcat matched '$pattern'"
         else
             echo "  ✗ $fname  — logcat MISSING '$pattern'"
