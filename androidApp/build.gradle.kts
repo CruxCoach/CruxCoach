@@ -360,6 +360,9 @@ val validateDistributionIdentity = tasks.register("validateDistributionIdentity"
 android.sourceSets.getByName("main").assets.srcDir(
     layout.buildDirectory.dir("generated/legalAssets")
 )
+android.sourceSets.getByName("main").assets.srcDir(
+    rootProject.file("shared/src/commonMain/resources")
+)
 tasks.named("preBuild").configure {
     dependsOn(generateLegalAssets, validateDistributionIdentity)
 }

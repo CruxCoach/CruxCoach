@@ -49,21 +49,22 @@ class ExerciseRepositoryImpl(
     }
 
     override fun seedFromJson(jsonString: String) {
-        if (count() > 0) return // Already seeded
-
         val exercises: List<ExerciseSeedData> = json.decodeFromString(jsonString)
-        for (exercise in exercises) {
-            queries.insert(
-                name_de = exercise.name_de,
-                name_en = exercise.name_en,
-                category = exercise.category,
-                equipment_needed = json.encodeToString(exercise.equipment_needed),
-                muscle_groups = json.encodeToString(exercise.muscle_groups),
-                description_de = exercise.description_de,
-                difficulty_level = exercise.difficulty_level.toLong(),
-                contraindications = json.encodeToString(exercise.contraindications),
-                is_active = 1L
-            )
+        queries.transaction {
+            if (queries.count().executeAsOne() > 0) return@transaction
+            for (exercise in exercises) {
+                queries.insert(
+                    name_de = exercise.name_de,
+                    name_en = exercise.name_en,
+                    category = exercise.category,
+                    equipment_needed = json.encodeToString(exercise.equipment_needed),
+                    muscle_groups = json.encodeToString(exercise.muscle_groups),
+                    description_de = exercise.description_de,
+                    difficulty_level = exercise.difficulty_level.toLong(),
+                    contraindications = json.encodeToString(exercise.contraindications),
+                    is_active = 1L
+                )
+            }
         }
     }
 

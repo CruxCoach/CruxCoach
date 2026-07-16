@@ -774,8 +774,14 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideExerciseSelector(exerciseRepository: ExerciseRepository): ExerciseSelector {
+    fun provideExerciseSelector(
+        exerciseRepository: ExerciseRepository,
+        @ApplicationContext context: Context,
+    ): ExerciseSelector {
         return PerfLogger.trace("DI: ExerciseSelector (DB getAll!)") {
+            context.assets.open("exercises.json").bufferedReader().use { reader ->
+                exerciseRepository.seedFromJson(reader.readText())
+            }
             ExerciseSelector(exerciseRepository.getAll())
         }
     }
