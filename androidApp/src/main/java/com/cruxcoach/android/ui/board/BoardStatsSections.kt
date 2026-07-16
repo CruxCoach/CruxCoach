@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.*
+import com.cruxcoach.android.util.formatDayMonth
 
 /**
  * Reusable chart section with a dropdown selector in the title area.
@@ -238,8 +239,7 @@ internal fun CustomDateChip(
     onClick: () -> Unit
 ) {
     val label = if (isActive && customFrom != null && customTo != null) {
-        val fmt = java.time.format.DateTimeFormatter.ofPattern("dd.MM")
-        "${customFrom.format(fmt)} - ${customTo.format(fmt)}"
+        "${formatDayMonth(customFrom)} - ${formatDayMonth(customTo)}"
     } else {
         stringResource(R.string.board_stats_date_range)
     }

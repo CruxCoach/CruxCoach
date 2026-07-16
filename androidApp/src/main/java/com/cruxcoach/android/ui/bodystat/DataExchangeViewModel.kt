@@ -182,7 +182,11 @@ class DataExchangeViewModel @Inject constructor(
                     } ?: throw Exception(context.getString(R.string.error_cannot_open_file))
                 }
                 val label = when (s.exportFormat) {
-                    ExportFormat.CRUXCOACH -> context.getString(R.string.export_categories_exported, s.exportCategories.size)
+                    ExportFormat.CRUXCOACH -> context.resources.getQuantityString(
+                        R.plurals.export_categories_exported,
+                        s.exportCategories.size,
+                        s.exportCategories.size,
+                    )
                     ExportFormat.WAISTLINE_JSON -> context.getString(R.string.export_waistline_json_success)
                     ExportFormat.WAISTLINE_CSV -> context.getString(R.string.export_waistline_csv_success)
                 }
@@ -231,7 +235,11 @@ class DataExchangeViewModel @Inject constructor(
                         }
                         _state.update { it.copy(
                             isLoadingPreview = false,
-                            message = context.getString(R.string.import_waistline_success, count)
+                            message = context.resources.getQuantityString(
+                                R.plurals.import_waistline_success,
+                                count,
+                                count,
+                            )
                         ) }
                     } else {
                         // CruxCoach format → show preview
@@ -326,20 +334,32 @@ class DataExchangeViewModel @Inject constructor(
 
                 val parts = mutableListOf<String>()
                 if (result.profileImported) parts.add(context.getString(R.string.import_result_profile))
-                if (result.assessments > 0) parts.add(context.getString(R.string.import_result_assessments, result.assessments))
-                if (result.bodyStats > 0) parts.add(context.getString(R.string.import_result_body_stats, result.bodyStats))
-                if (result.workoutLogs > 0) parts.add(context.getString(R.string.import_result_workouts, result.workoutLogs))
-                if (result.climbLogs > 0) parts.add(context.getString(R.string.import_result_climbs, result.climbLogs))
-                if (result.trainingPlans > 0) parts.add(context.getString(R.string.import_result_plans, result.trainingPlans))
-                if (result.boardAscents > 0) parts.add(context.getString(R.string.import_result_board_sends, result.boardAscents))
-                if (result.boardBids > 0) parts.add(context.getString(R.string.import_result_board_bids, result.boardBids))
-                if (result.boardSessions > 0) parts.add(context.getString(R.string.import_result_board_sessions, result.boardSessions))
-                if (result.climbLists > 0) parts.add(context.getString(R.string.import_result_lists, result.climbLists))
-                if (result.ownClimbs > 0) parts.add(context.getString(R.string.import_result_own_climbs, result.ownClimbs))
+                fun addQuantity(resource: Int, count: Int) {
+                    if (count > 0) {
+                        parts += context.resources.getQuantityString(resource, count, count)
+                    }
+                }
+                addQuantity(R.plurals.import_result_assessments, result.assessments)
+                addQuantity(R.plurals.import_result_body_stats, result.bodyStats)
+                addQuantity(R.plurals.import_result_workouts, result.workoutLogs)
+                addQuantity(R.plurals.import_result_climbs, result.climbLogs)
+                addQuantity(R.plurals.import_result_plans, result.trainingPlans)
+                addQuantity(R.plurals.import_result_board_sends, result.boardAscents)
+                addQuantity(R.plurals.import_result_board_bids, result.boardBids)
+                addQuantity(R.plurals.import_result_board_sessions, result.boardSessions)
+                addQuantity(R.plurals.import_result_lists, result.climbLists)
+                addQuantity(R.plurals.import_result_own_climbs, result.ownClimbs)
 
                 val summary = if (parts.isNotEmpty()) parts.joinToString(", ") else context.getString(R.string.import_result_no_data)
-                val dupNote = if (result.skippedDuplicates > 0)
-                    context.getString(R.string.import_result_duplicates_skipped, result.skippedDuplicates) else ""
+                val dupNote = if (result.skippedDuplicates > 0) {
+                    context.resources.getQuantityString(
+                        R.plurals.import_result_duplicates_skipped,
+                        result.skippedDuplicates,
+                        result.skippedDuplicates,
+                    )
+                } else {
+                    ""
+                }
 
                 _state.update { it.copy(
                     isImporting = false,

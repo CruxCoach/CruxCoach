@@ -19,6 +19,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.data.GradeScale
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.*
@@ -150,13 +151,17 @@ internal fun ClimbCard(
                     }
                     if (climb.isRoute) {
                         Text(
-                            stringResource(R.string.board_climb_frames, climb.framesCount),
+                            pluralStringResource(
+                                R.plurals.board_climb_frames,
+                                climb.framesCount.toInt(),
+                                climb.framesCount,
+                            ),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     } else {
                         Text(
-                            stringResource(R.string.board_climb_moves, moveCount),
+                            pluralStringResource(R.plurals.board_climb_moves, moveCount, moveCount),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -183,7 +188,7 @@ internal fun ClimbCard(
                 }
                 climb.ascensionistCount?.let {
                     Text(
-                        stringResource(R.string.board_climb_sends_count, it),
+                        pluralStringResource(R.plurals.board_climb_sends_count, it.toInt(), it),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

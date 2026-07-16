@@ -24,6 +24,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.cruxcoach.android.ui.common.RestTimerBannerSlot
 import com.cruxcoach.android.ui.common.SyncStatusBannerSlot
 import com.cruxcoach.android.ui.common.BleStatusArea
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.*
@@ -127,7 +128,11 @@ fun BoardListDetailScreen(
 
                 Column(modifier = Modifier.padding(padding)) {
                     Text(
-                        stringResource(R.string.board_list_climb_count, state.totalCount),
+                        pluralStringResource(
+                            R.plurals.board_list_climb_count,
+                            state.totalCount.toInt(),
+                            state.totalCount,
+                        ),
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -306,13 +311,17 @@ private fun ListEntryCard(
                     }
                     if (climb.isRoute) {
                         Text(
-                            stringResource(R.string.board_climb_frames, climb.framesCount),
+                            pluralStringResource(
+                                R.plurals.board_climb_frames,
+                                climb.framesCount.toInt(),
+                                climb.framesCount,
+                            ),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     } else {
                         Text(
-                            stringResource(R.string.board_climb_moves, moveCount),
+                            pluralStringResource(R.plurals.board_climb_moves, moveCount, moveCount),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

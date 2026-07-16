@@ -25,6 +25,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.data.GradeScale
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.ErrorRed
@@ -98,10 +99,14 @@ internal fun UserAscentHistory(
                                 )
                             }
                             if (ascent.isSend) {
-                                val attemptsLabel = when {
-                                    ascent.uuid in flashUuids -> "Flash"
-                                    ascent.bidCount <= 1L -> stringResource(R.string.board_ascent_first_try)
-                                    else -> stringResource(R.string.board_ascent_tries, ascent.bidCount)
+                                val attemptsLabel = if (ascent.uuid in flashUuids) {
+                                    stringResource(R.string.climb_log_flash)
+                                } else {
+                                    pluralStringResource(
+                                        R.plurals.board_ascent_tries,
+                                        ascent.bidCount.toInt(),
+                                        ascent.bidCount,
+                                    )
                                 }
                                 val attemptsColor = if (ascent.uuid in flashUuids) SuccessGreen else OrangeAccent
                                 Text(

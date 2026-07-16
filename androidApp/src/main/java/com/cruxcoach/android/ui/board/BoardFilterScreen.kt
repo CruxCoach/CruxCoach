@@ -47,6 +47,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -161,13 +162,18 @@ fun BoardFilterScreen(
             // Climbs count banner (what used to live on the browser screen).
             if (state.filteredCount >= 0) {
                 val countText = if (state.filteredCount > state.climbs.size) {
-                    stringResource(
-                        R.string.board_browser_climbs_loaded,
-                        state.filteredCount,
+                    pluralStringResource(
+                        R.plurals.board_browser_climbs_loaded,
+                        state.filteredCount.toInt(),
+                        state.filteredCount.toInt(),
                         state.climbs.size
                     )
                 } else {
-                    stringResource(R.string.board_browser_climbs_count, state.filteredCount)
+                    pluralStringResource(
+                        R.plurals.board_browser_climbs_count,
+                        state.filteredCount.toInt(),
+                        state.filteredCount,
+                    )
                 }
                 Surface(
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),

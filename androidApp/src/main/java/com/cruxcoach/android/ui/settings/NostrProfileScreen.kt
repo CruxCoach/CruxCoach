@@ -572,9 +572,10 @@ private fun SubscriberHealthLine(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         else -> Text(
-            stringResource(R.string.nostr_profile_subscriber_status_running_active_prefix) +
-                " " +
+            stringResource(
+                R.string.nostr_profile_subscriber_status_running_active,
                 com.cruxcoach.android.ui.board.creator.relativeTimeLabel(snapshot.lastEventAtMs),
+            ),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

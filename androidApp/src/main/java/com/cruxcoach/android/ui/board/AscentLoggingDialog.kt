@@ -26,6 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.OrangeAccent
@@ -123,7 +124,7 @@ internal fun AscentLoggingDialog(
                             ) {
                                 Icon(
                                     if (star <= quality) Icons.Default.Star else Icons.Outlined.Star,
-                                    contentDescription = stringResource(R.string.cd_stars, star),
+                                    contentDescription = pluralStringResource(R.plurals.cd_stars, star, star),
                                     tint = if (star <= quality) WarningYellow
                                            else MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.size(28.dp)

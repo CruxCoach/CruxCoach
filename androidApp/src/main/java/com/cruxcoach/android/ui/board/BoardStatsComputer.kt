@@ -9,6 +9,7 @@ import java.time.Clock
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 import java.time.temporal.ChronoUnit
 import java.time.temporal.TemporalAdjusters
 import java.time.temporal.WeekFields
@@ -21,7 +22,7 @@ import java.util.Locale
 object BoardStatsComputer {
 
     private val DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE
-    private val WEEK_FIELD = WeekFields.of(Locale.GERMANY).weekOfWeekBasedYear()
+    private val WEEK_FIELD = WeekFields.ISO.weekOfWeekBasedYear()
     private val MONTH_NAMES_FALLBACK = arrayOf("", "Jan", "Feb", "Mar", "Apr", "May", "Jun",
         "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 
@@ -200,7 +201,8 @@ object BoardStatsComputer {
     fun computeSendsOverTime(
         ascents: List<AscentWithClimb>,
         interval: StatsTimeInterval,
-        context: Context? = null
+        context: Context? = null,
+        locale: Locale = Locale.getDefault(),
     ): List<TimeBucketEntry> {
         if (ascents.isEmpty()) return emptyList()
         val parsed = ascents.mapNotNull { parseDate(it.climbedAt) }
@@ -208,10 +210,12 @@ object BoardStatsComputer {
 
         return when (interval) {
             StatsTimeInterval.DAYS_30 -> {
-                val dayFmt = DateTimeFormatter.ofPattern("dd.MM")
+                val dayFmt = DateTimeFormatter
+                    .ofLocalizedDate(FormatStyle.SHORT)
+                    .withLocale(locale)
                 parsed.groupBy { it }
+                    .toSortedMap()
                     .map { (date, list) -> TimeBucketEntry(date.format(dayFmt), list.size) }
-                    .sortedBy { it.label }
             }
             StatsTimeInterval.DAYS_90 -> {
                 parsed.groupBy {

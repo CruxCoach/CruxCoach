@@ -12,6 +12,7 @@ import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
+import java.util.Locale
 
 /**
  * Tests for [BoardStatsComputer]. The computer was extracted from
@@ -506,6 +507,20 @@ class BoardStatsComputerTest {
         val out = BoardStatsComputer.computeSendsOverTime(ascents, StatsTimeInterval.DAYS_30)
         // 2 distinct dates → 2 buckets
         assertEquals(2, out.size)
+    }
+
+    @Test
+    fun `computeSendsOverTime sorts by date across year boundary before localizing labels`() {
+        val ascents = listOf(
+            ascent(climbedAt = "2025-12-31T10:00:00"),
+            ascent(climbedAt = "2026-01-01T10:00:00"),
+        )
+        val out = BoardStatsComputer.computeSendsOverTime(
+            ascents,
+            StatsTimeInterval.DAYS_30,
+            locale = Locale.US,
+        )
+        assertEquals(listOf("12/31/25", "1/1/26"), out.map { it.label })
     }
 
     @Test

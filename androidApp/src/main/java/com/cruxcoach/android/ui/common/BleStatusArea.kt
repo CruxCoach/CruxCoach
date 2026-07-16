@@ -88,7 +88,7 @@ fun BleStatusArea(
                         Text(
                             stringResource(
                                 R.string.ble_session_code_message,
-                                sessionEntry.hostName,
+                                sessionEntry.hostName.ifEmpty { stringResource(R.string.ble_unknown) },
                             ),
                         )
                     },

@@ -24,6 +24,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.cruxcoach.android.ui.common.RestTimerBannerSlot
 import com.cruxcoach.android.ui.common.SyncStatusBannerSlot
 import com.cruxcoach.android.ui.common.BleStatusArea
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.*
@@ -77,7 +78,13 @@ fun BoardLogbookScreen(
     if (state.showBatchDeleteConfirm) {
         AlertDialog(
             onDismissRequest = { viewModel.dismissBatchDeleteConfirm() },
-            title = { Text(stringResource(R.string.board_logbook_delete_title, state.selectedUuids.size), fontWeight = FontWeight.Bold) },
+            title = {
+                val count = state.selectedUuids.size
+                Text(
+                    pluralStringResource(R.plurals.board_logbook_delete_title, count, count),
+                    fontWeight = FontWeight.Bold,
+                )
+            },
             text = { Text(stringResource(R.string.board_logbook_delete_message)) },
             confirmButton = {
                 Button(

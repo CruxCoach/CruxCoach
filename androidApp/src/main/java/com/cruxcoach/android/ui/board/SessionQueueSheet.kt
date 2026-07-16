@@ -280,14 +280,14 @@ fun SessionQueueSheet(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
                         Icons.Default.Star,
-                        contentDescription = "Host",
+                        contentDescription = stringResource(R.string.board_queue_host),
                         tint = OrangeAccent,
                         modifier = Modifier.size(14.dp)
                     )
                     Spacer(Modifier.width(4.dp))
                     Text(
                         if (state.role == SessionRole.HOST) stringResource(R.string.board_queue_you_host)
-                        else state.hostName.ifEmpty { "Host" },
+                        else state.hostName.ifEmpty { stringResource(R.string.board_queue_host) },
                         style = MaterialTheme.typography.bodySmall,
                         fontWeight = FontWeight.Medium
                     )

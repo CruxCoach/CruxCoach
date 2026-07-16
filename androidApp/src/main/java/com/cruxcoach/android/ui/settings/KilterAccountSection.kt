@@ -10,6 +10,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -302,12 +303,15 @@ private fun KilterImportPreviewDialog(
         title = { Text(stringResource(R.string.kilter_preview_title)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(stringResource(
-                    R.string.kilter_preview_found,
-                    preview.totalLogs,
-                    preview.newAscents + preview.newBids,
-                    preview.duplicateCount
-                ))
+                Text(
+                    pluralStringResource(
+                        R.plurals.kilter_preview_found,
+                        preview.totalLogs,
+                        preview.totalLogs,
+                        preview.newAscents + preview.newBids,
+                        preview.duplicateCount,
+                    )
+                )
 
                 if (isImporting) {
                     LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
@@ -551,8 +555,10 @@ private fun KilterPublishQueueRow(
             }
             lastAttemptAtMs?.let {
                 Text(
-                    stringResource(R.string.kilter_publish_queue_last_attempt) + " " +
+                    stringResource(
+                        R.string.kilter_publish_queue_last_attempt,
                         com.cruxcoach.android.ui.board.creator.relativeTimeLabel(it),
+                    ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

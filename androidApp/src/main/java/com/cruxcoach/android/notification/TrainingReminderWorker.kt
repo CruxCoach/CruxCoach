@@ -37,7 +37,12 @@ class TrainingReminderWorker @AssistedInject constructor(
             }
             notificationService.notifyTrainingReminder(
                 title = applicationContext.getString(R.string.training_reminder_title),
-                message = applicationContext.getString(R.string.training_reminder_message, typeName, session.exercises.size)
+                message = applicationContext.resources.getQuantityString(
+                    R.plurals.training_reminder_message,
+                    session.exercises.size,
+                    typeName,
+                    session.exercises.size,
+                )
             )
         }
 

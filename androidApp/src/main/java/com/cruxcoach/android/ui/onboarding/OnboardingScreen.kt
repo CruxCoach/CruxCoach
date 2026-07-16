@@ -38,6 +38,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -51,6 +52,7 @@ import com.cruxcoach.android.data.SyncInterval
 import com.cruxcoach.android.nostr.SignerMode
 import com.cruxcoach.android.ui.board.sync.BoardSyncInlineCard
 import com.cruxcoach.android.ui.common.BackupKeyWarningCard
+import com.cruxcoach.android.ui.common.backupRestoredSummary
 import com.cruxcoach.android.ui.theme.*
 
 @Composable
@@ -626,11 +628,7 @@ private fun RestoreSubSection(state: OnboardingState, viewModel: OnboardingViewM
                 Text(
                     // Same wording as the Settings restore snackbar so the user
                     // can sanity-check the restored magnitudes here too.
-                    stringResource(
-                        R.string.settings_backup_restored,
-                        state.restoredAscents,
-                        state.restoredLists,
-                    ),
+                    backupRestoredSummary(state.restoredAscents, state.restoredLists),
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.SemiBold,
                     color = SuccessGreen,
@@ -988,8 +986,9 @@ private fun KilterPreviewContent(state: OnboardingState, viewModel: OnboardingVi
     }
 
     Text(
-        stringResource(
-            R.string.onboarding_kilter_preview,
+        pluralStringResource(
+            R.plurals.onboarding_kilter_preview,
+            preview.totalLogs,
             preview.totalLogs,
             preview.newAscents,
             preview.newBids,

@@ -25,6 +25,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.cruxcoach.android.ui.common.RestTimerBannerSlot
 import com.cruxcoach.android.ui.common.SyncStatusBannerSlot
 import com.cruxcoach.android.ui.common.BleStatusArea
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.OrangeAccent
@@ -295,7 +296,7 @@ fun ExerciseCard(index: Int, exercise: ExerciseBlock) {
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     if (exercise.sets > 0) {
-                        ParamChip(stringResource(R.string.plan_sets_count, exercise.sets))
+                        ParamChip(pluralStringResource(R.plurals.plan_sets_count, exercise.sets, exercise.sets))
                     }
                     if (exercise.reps.isNotBlank()) {
                         ParamChip(exercise.reps)

@@ -31,6 +31,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.cruxcoach.android.ui.common.RestTimerBannerSlot
 import com.cruxcoach.android.ui.common.SyncStatusBannerSlot
 import com.cruxcoach.android.ui.common.BleStatusArea
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.*
@@ -452,7 +453,12 @@ private fun NextSessionCard(
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = stringResource(R.string.dashboard_session_summary, exerciseCount, durationMin),
+                    text = pluralStringResource(
+                        R.plurals.dashboard_session_summary,
+                        exerciseCount,
+                        exerciseCount,
+                        durationMin,
+                    ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

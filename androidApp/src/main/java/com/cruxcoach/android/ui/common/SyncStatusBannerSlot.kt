@@ -44,6 +44,7 @@ import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.android.ui.theme.ErrorRed
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.theme.SuccessGreen
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import kotlinx.coroutines.delay
@@ -287,11 +288,19 @@ private fun stepLabel(step: ImportStep?): String = when (step) {
     is ImportStep.Extract -> stringResource(R.string.sync_extracting)
 
     is ImportStep.ImportClimbs -> {
-        if (step.scanned == 0 && step.total > 0) stringResource(R.string.sync_importing_climbs_bulk, step.total)
+        if (step.scanned == 0 && step.total > 0) pluralStringResource(
+            R.plurals.sync_importing_climbs_bulk,
+            step.total,
+            step.total,
+        )
         else stringResource(R.string.sync_importing_climbs, step.scanned, step.total)
     }
     is ImportStep.ImportStats -> {
-        if (step.scanned == 0 && step.total > 0) stringResource(R.string.sync_importing_stats_bulk, step.total)
+        if (step.scanned == 0 && step.total > 0) pluralStringResource(
+            R.plurals.sync_importing_stats_bulk,
+            step.total,
+            step.total,
+        )
         else stringResource(R.string.sync_importing_stats, step.scanned, step.total)
     }
     is ImportStep.ImportLayout -> stringResource(R.string.sync_importing_layout)

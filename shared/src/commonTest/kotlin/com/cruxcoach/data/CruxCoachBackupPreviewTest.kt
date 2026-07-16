@@ -66,27 +66,6 @@ class CruxCoachBackupPreviewTest {
         assertEquals(setOf(CruxCoachBackup.Category.BODY_STATS), p.detectedCategories())
     }
 
-    // ── ImportPreview.summaryLine (pure, user-facing strings) ──────
-
-    @Test
-    fun `summaryLine includes count for each numeric category`() {
-        val p = CruxCoachBackup.ImportPreview(
-            assessments = 7, bodyStats = 12, workoutLogs = 3,
-            climbLogs = 42, trainingPlans = 2,
-            boardAscents = 55, boardBids = 14,
-            boardSessions = 9, climbLists = 4,
-        )
-        assertEquals("Profil", p.summaryLine(CruxCoachBackup.Category.PROFILE))
-        assertEquals("7 Assessments", p.summaryLine(CruxCoachBackup.Category.ASSESSMENTS))
-        assertEquals("12 Körperdaten", p.summaryLine(CruxCoachBackup.Category.BODY_STATS))
-        assertEquals("3 Workouts", p.summaryLine(CruxCoachBackup.Category.WORKOUT_LOGS))
-        assertEquals("42 Boulder", p.summaryLine(CruxCoachBackup.Category.CLIMB_LOGS))
-        assertEquals("2 Trainingspläne", p.summaryLine(CruxCoachBackup.Category.TRAINING_PLANS))
-        assertEquals("55 Sends, 14 Versuche", p.summaryLine(CruxCoachBackup.Category.BOARD_LOGBOOK))
-        assertEquals("9 Sessions", p.summaryLine(CruxCoachBackup.Category.BOARD_SESSIONS))
-        assertEquals("4 Listen", p.summaryLine(CruxCoachBackup.Category.CLIMB_LISTS))
-    }
-
     // ── preview() counting across populated JSON ───────────────────
 
     @Test

@@ -260,7 +260,10 @@ fun ClimbLogScreen(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                val boards = listOf("Kilter" to "KILTER", "Gym" to null)
+                val boards = listOf(
+                    "Kilter" to "KILTER",
+                    stringResource(R.string.climb_log_board_gym) to null,
+                )
                 boards.forEach { (label, type) ->
                     val isSelected = state.boardType == type
                     FilterChip(

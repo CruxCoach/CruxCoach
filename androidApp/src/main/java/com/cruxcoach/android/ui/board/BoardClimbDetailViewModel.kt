@@ -919,7 +919,7 @@ class BoardClimbDetailViewModel @Inject constructor(
         val pubkey = climb.createdByPubkey
         val displayName = setterUsername
             ?: pubkey?.let { "npub:${it.take(16)}" }
-            ?: "Unbekannt"
+            ?: context.getString(R.string.ble_unknown)
         return SetterProfile(
             displayName = displayName,
             pictureUrl = null,

@@ -21,12 +21,14 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.R
 import com.cruxcoach.android.data.GradeScale
+import com.cruxcoach.android.util.formatIsoDate
 import com.cruxcoach.data.repository.AscentWithClimb
 
 /**
@@ -144,7 +146,7 @@ private fun LogbookOnlyAscentRow(ascent: AscentWithClimb) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Text(
-                    formatDate(ascent.climbedAt),
+                    formatIsoDate(ascent.climbedAt),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -158,7 +160,11 @@ private fun LogbookOnlyAscentRow(ascent: AscentWithClimb) {
                 }
             }
             Text(
-                stringResource(R.string.error_climb_not_in_db_log_attempts, ascent.bidCount),
+                pluralStringResource(
+                    R.plurals.error_climb_not_in_db_log_attempts,
+                    ascent.bidCount.toInt(),
+                    ascent.bidCount,
+                ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

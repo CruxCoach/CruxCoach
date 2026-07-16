@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.*
@@ -127,7 +128,11 @@ internal fun HoldSearchSheet(
                 ) {
                     Text(
                         if (selectedHolds.isEmpty()) stringResource(R.string.board_holdsearch_zone_only)
-                        else stringResource(R.string.board_holdsearch_holds_selected, selectedHolds.size),
+                        else pluralStringResource(
+                            R.plurals.board_holdsearch_holds_selected,
+                            selectedHolds.size,
+                            selectedHolds.size,
+                        ),
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold
                     )
@@ -155,7 +160,11 @@ internal fun HoldSearchSheet(
                         }
                     } else {
                         Text(
-                            stringResource(R.string.board_holdsearch_climbs_found, matchCount),
+                            pluralStringResource(
+                                R.plurals.board_holdsearch_climbs_found,
+                                matchCount,
+                                matchCount,
+                            ),
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Bold,
                             color = if (matchCount > 0) SuccessGreen else GradeHard
@@ -232,9 +241,25 @@ internal fun HoldSearchActionBar(
                 Icon(Icons.Default.GridView, contentDescription = null, modifier = Modifier.size(16.dp), tint = OrangeAccent)
                 Text(
                     if (selectedCount == 0 && zoneActive) {
-                        stringResource(R.string.board_holdsearch_zone_filter_summary, matchCount)
+                        pluralStringResource(
+                            R.plurals.board_holdsearch_zone_filter_summary,
+                            matchCount,
+                            matchCount,
+                        )
                     } else {
-                        stringResource(R.string.board_holdsearch_filter_summary, selectedCount, matchCount)
+                        stringResource(
+                            R.string.board_holdsearch_filter_summary,
+                            pluralStringResource(
+                                R.plurals.board_holdsearch_holds_count,
+                                selectedCount,
+                                selectedCount,
+                            ),
+                            pluralStringResource(
+                                R.plurals.board_holdsearch_climbs_count,
+                                matchCount,
+                                matchCount,
+                            ),
+                        )
                     },
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold

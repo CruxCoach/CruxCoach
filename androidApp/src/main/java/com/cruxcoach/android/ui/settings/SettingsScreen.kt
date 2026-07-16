@@ -31,6 +31,7 @@ import com.cruxcoach.android.ui.board.sync.BoardSyncInlineCard
 import com.cruxcoach.android.ui.common.RestTimerBannerSlot
 import com.cruxcoach.android.ui.common.SyncStatusBannerSlot
 import com.cruxcoach.android.ui.common.BleStatusArea
+import com.cruxcoach.android.ui.common.backupRestoredSummary
 import com.cruxcoach.android.ui.devcontact.DevContactSection
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
@@ -422,7 +423,7 @@ fun SettingsScreen(
             BackupSettingsState.Snackbar.RestoreFailed ->
                 stringResource(R.string.settings_backup_restore_failed)
             is BackupSettingsState.Snackbar.RestoreSucceeded ->
-                stringResource(R.string.settings_backup_restored, snackbar.ascents, snackbar.lists)
+                backupRestoredSummary(snackbar.ascents, snackbar.lists)
             BackupSettingsState.Snackbar.BackupSucceeded ->
                 stringResource(R.string.settings_backup_succeeded)
             is BackupSettingsState.Snackbar.BackupFailed ->

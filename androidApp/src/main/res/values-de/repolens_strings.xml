@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="bodystat_label_weight">Gewicht</string>
+    <string name="bodystat_label_neck">Halsumfang</string>
+    <string name="bodystat_label_waist">Taillenumfang</string>
+    <string name="bodystat_label_hips">Hüftumfang</string>
+    <string name="bodystat_label_body_fat">Körperfett</string>
+    <string name="bodystat_label_arm_span">Spannweite</string>
+    <string name="bodystat_label_forearm_circumference">Unterarmumfang</string>
+    <string name="bodystat_label_max_hang_20mm">Max Hang 20 mm</string>
+    <string name="bodystat_label_finger_span">Fingerspanne</string>
+    <string name="bodystat_label_shoulder_mobility">Schulterbeweglichkeit</string>
+    <string name="bodystat_label_hip_flexion">Hüftbeugung</string>
+    <string name="bodystat_category_body_composition">Körperzusammensetzung</string>
+    <string name="bodystat_category_climbing_specific">Kletterspezifisch</string>
+    <string name="bodystat_category_mobility">Beweglichkeit</string>
+    <string name="bodystat_last_weight_value">%1$s kg (%2$s)</string>
+
+    <string name="dark_mode_system">System</string>
+    <string name="dark_mode_light">Hell</string>
+    <string name="dark_mode_dark">Dunkel</string>
+    <string name="board_holdsearch_filter_summary">%1$s → %2$s</string>
+    <string name="settings_backup_restored">Wiederhergestellt: %1$s, %2$s</string>
+    <string name="export_count_board_logbook">%1$s, %2$s</string>
+    <string name="board_queue_host">Host</string>
+    <string name="climb_log_board_gym">Halle</string>
+    <string name="app_tagline">Open-Source Boulder-Trainings-App</string>
+    <string name="devcontact_section_description">Beschreibung:</string>
+    <string name="devcontact_section_steps">Schritte:</string>
+    <string name="nostr_profile_subscriber_status_running_active">Verbunden — letztes Climb-Event %1$s</string>
+    <string name="kilter_publish_queue_last_attempt">Letzter Versuch %1$s</string>
+    <string name="ble_queue_position">Queue %1$d/%2$d: %3$s</string>
+    <string name="board_stats_redpoint">Rotpunkt</string>
+    <string name="settings_profile_invalid_number">Gib gültige positive Zahlen für Gewicht und Größe ein.</string>
+    <string name="settings_profile_save_failed">Das Profil konnte nicht gespeichert werden. Versuche es erneut.</string>
+</resources>

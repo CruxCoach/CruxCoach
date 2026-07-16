@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -21,6 +22,7 @@ import com.cruxcoach.android.R
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.ui.theme.*
 import com.cruxcoach.android.util.GradeDisplayHelper
+import com.cruxcoach.android.util.formatIsoDate
 import com.cruxcoach.data.repository.AscentWithClimb
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.IntensityZones
@@ -118,7 +120,7 @@ internal fun AscentCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        formatDate(ascent.climbedAt),
+                        formatIsoDate(ascent.climbedAt),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -140,10 +142,14 @@ internal fun AscentCard(
 
             Column(horizontalAlignment = Alignment.End) {
                 if (ascent.isSend) {
-                    val attemptsLabel = when {
-                        isTrueFlash -> "Flash"
-                        ascent.bidCount <= 1L -> stringResource(R.string.board_ascent_first_try)
-                        else -> stringResource(R.string.board_ascent_tries, ascent.bidCount)
+                    val attemptsLabel = if (isTrueFlash) {
+                        stringResource(R.string.board_logbook_flash)
+                    } else {
+                        pluralStringResource(
+                            R.plurals.board_ascent_tries,
+                            ascent.bidCount.toInt(),
+                            ascent.bidCount,
+                        )
                     }
                     val attemptsColor = if (isTrueFlash) SuccessGreen else OrangeAccent
                     Text(
@@ -153,11 +159,11 @@ internal fun AscentCard(
                         color = attemptsColor
                     )
                 } else {
-                    val attemptsText = if (ascent.bidCount > 1L) {
-                        stringResource(R.string.board_ascent_attempts_count, ascent.bidCount)
-                    } else {
-                        stringResource(R.string.board_ascent_open_one)
-                    }
+                    val attemptsText = pluralStringResource(
+                        R.plurals.board_ascent_attempts_count,
+                        ascent.bidCount.toInt(),
+                        ascent.bidCount,
+                    )
                     Text(
                         attemptsText,
                         style = MaterialTheme.typography.labelMedium,
@@ -283,10 +289,9 @@ internal fun DayHeader(dateKey: String, count: Int) {
     val label = try {
         val date = LocalDate.parse(dateKey)
         val dayName = dayNames[date.dayOfWeek.value - 1]
-        val formatted = "${dateKey.substring(8, 10)}.${dateKey.substring(5, 7)}.${dateKey.substring(0, 4)}"
-        "$dayName, $formatted"
+        "$dayName, ${formatIsoDate(dateKey)}"
     } catch (_: Exception) {
-        formatDate(dateKey)
+        formatIsoDate(dateKey)
     }
 
     Column(modifier = Modifier.fillMaxWidth()) {
@@ -308,7 +313,7 @@ internal fun DayHeader(dateKey: String, count: Int) {
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-                text = stringResource(R.string.board_logbook_day_entries, count),
+                text = pluralStringResource(R.plurals.board_logbook_day_entries, count, count),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
             )
@@ -403,19 +408,5 @@ internal fun SummaryCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
-    }
-}
-
-internal fun formatDate(isoDate: String): String {
-    return try {
-        // Locale-aware date instead of a hardcoded German dd.MM.yyyy. java.text.*
-        // works on every API level (no java.time core-library desugaring needed).
-        val parsed = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
-            .parse(isoDate.take(10))!!
-        java.text.DateFormat
-            .getDateInstance(java.text.DateFormat.MEDIUM, java.util.Locale.getDefault())
-            .format(parsed)
-    } catch (_: Exception) {
-        isoDate.take(10)
     }
 }

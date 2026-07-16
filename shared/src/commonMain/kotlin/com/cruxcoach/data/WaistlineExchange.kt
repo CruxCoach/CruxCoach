@@ -91,7 +91,7 @@ object WaistlineExchange {
             statNames.forEach { name ->
                 sb.append(";")
                 statsMap[name]?.let { stat ->
-                    sb.append("%.2f".format(stat.value))
+                    sb.append(formatFixed2(stat.value))
                 }
             }
             sb.appendLine()
@@ -180,4 +180,12 @@ object WaistlineExchange {
         }
         return count
     }
+}
+
+/** Locale-independent fixed-two representation for the CSV interchange format. */
+internal fun formatFixed2(value: Double): String {
+    val scaled = kotlin.math.round(value * 100.0).toLong()
+    val sign = if (scaled < 0) "-" else ""
+    val absolute = kotlin.math.abs(scaled)
+    return "$sign${absolute / 100}.${(absolute % 100).toString().padStart(2, '0')}"
 }

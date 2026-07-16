@@ -133,10 +133,10 @@ enum class HistoryRetention(val days: Int) {
     DAYS_365(365),
 }
 
-enum class DarkModeSetting(val label: String) {
-    SYSTEM("System"),
-    LIGHT("Hell"),
-    DARK("Dunkel")
+enum class DarkModeSetting(@get:androidx.annotation.StringRes val labelRes: Int) {
+    SYSTEM(com.cruxcoach.android.R.string.dark_mode_system),
+    LIGHT(com.cruxcoach.android.R.string.dark_mode_light),
+    DARK(com.cruxcoach.android.R.string.dark_mode_dark),
 }
 
 /**

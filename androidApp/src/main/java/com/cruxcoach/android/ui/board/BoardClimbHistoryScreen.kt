@@ -32,6 +32,7 @@ import com.cruxcoach.android.ui.common.RestTimerBannerSlot
 import com.cruxcoach.android.ui.common.SyncStatusBannerSlot
 import com.cruxcoach.android.ui.theme.*
 import com.cruxcoach.android.util.GradeDisplayHelper
+import com.cruxcoach.android.util.formatIsoDate
 import com.cruxcoach.data.repository.ClimbHistoryEntry
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.MoonBoardVariant
@@ -295,7 +296,7 @@ private fun HistoryEntryCard(
 
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-                formatDate(entry.recordedAt),
+                formatIsoDate(entry.recordedAt),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

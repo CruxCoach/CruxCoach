@@ -40,6 +40,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import com.cruxcoach.android.util.safeLaunch
+import com.cruxcoach.android.util.toUserDoubleOrNull
 import kotlinx.coroutines.withContext
 import com.cruxcoach.android.data.BoardConstants
 import kotlinx.coroutines.flow.combine
@@ -367,6 +368,14 @@ class SettingsViewModel @Inject constructor(
     fun saveProfile() {
         val p = _state.value.profile
         if (p.name.isBlank()) return
+        val weight = p.weightKg.toUserDoubleOrNull()
+        val height = p.heightCm.toUserDoubleOrNull()
+        if (weight == null || height == null || weight <= 0.0 || height <= 0.0) {
+            _state.update {
+                it.copy(error = context.getString(R.string.settings_profile_invalid_number), saveSuccess = false)
+            }
+            return
+        }
         _state.update { it.copy(isSaving = true, error = null, saveSuccess = false) }
 
         viewModelScope.launch {
@@ -376,8 +385,8 @@ class SettingsViewModel @Inject constructor(
                     val updated = existing.copy(
                         name = p.name.trim(),
                         age = p.age.toIntOrNull() ?: existing.age,
-                        weightKg = p.weightKg.toDoubleOrNull() ?: existing.weightKg,
-                        heightCm = p.heightCm.toDoubleOrNull() ?: existing.heightCm,
+                        weightKg = weight,
+                        heightCm = height,
                         maxBoulderGrade = GradeConverter.indexToFrench(p.maxGradeIndex),
                         sessionsPerWeek = p.sessionsPerWeek,
                         updatedAt = DateTimeUtil.nowIso()
@@ -386,7 +395,13 @@ class SettingsViewModel @Inject constructor(
                 }
                 _state.update { it.copy(isSaving = false, saveSuccess = true) }
             } catch (e: Exception) {
-                _state.update { it.copy(isSaving = false, error = e.message) }
+                Log.w(TAG, "profile save failed", e)
+                _state.update {
+                    it.copy(
+                        isSaving = false,
+                        error = context.getString(R.string.settings_profile_save_failed),
+                    )
+                }
             }
         }
     }

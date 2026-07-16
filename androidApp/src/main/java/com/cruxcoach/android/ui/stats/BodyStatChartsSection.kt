@@ -43,6 +43,7 @@ import com.cruxcoach.android.ui.theme.GradeElite
 import com.cruxcoach.android.ui.theme.InfoBlue
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.theme.SuccessGreen
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.domain.model.BodyStatTimeRange
@@ -305,7 +306,13 @@ private fun StatsLines(entries: List<TrendEntry>, statKey: String) {
         }
         Row {
             Text(
-                text = stringResource(R.string.stats_body_range, formatValue(min), formatValue(max), count),
+                text = pluralStringResource(
+                    R.plurals.stats_body_range,
+                    count,
+                    formatValue(min),
+                    formatValue(max),
+                    count,
+                ),
                 style = MaterialTheme.typography.bodySmall,
                 color = color,
             )

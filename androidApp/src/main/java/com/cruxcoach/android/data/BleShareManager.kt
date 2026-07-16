@@ -338,7 +338,9 @@ class BleShareManager @Inject constructor(
             val info = session.currentClimbUuid?.let { climbInfos[it] }
             NearbySessionEntry(
                 sessionId = session.sessionId,
-                hostName = session.hostName.ifEmpty { "Unbekannt" },
+                // Keep transport/domain state language-neutral; render a
+                // localized fallback at the UI boundary when this is empty.
+                hostName = session.hostName,
                 participantCount = session.participantCount,
                 rssi = session.rssi,
                 currentClimbUuid = session.currentClimbUuid,

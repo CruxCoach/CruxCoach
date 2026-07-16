@@ -48,9 +48,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.OrangeAccent
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import com.cruxcoach.android.util.formatEpochDateTime
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -277,7 +275,4 @@ private fun ChatInputBar(
     }
 }
 
-internal fun formatTimestamp(epochMillis: Long): String {
-    val formatter = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.GERMANY)
-    return formatter.format(Date(epochMillis))
-}
+internal fun formatTimestamp(epochMillis: Long): String = formatEpochDateTime(epochMillis)

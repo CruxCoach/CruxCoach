@@ -9,6 +9,7 @@ import com.cruxcoach.domain.model.StatRegistry
 import com.cruxcoach.util.DateTimeUtil
 import android.content.Context
 import com.cruxcoach.android.R
+import com.cruxcoach.android.util.toUserDoubleOrNull
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -85,7 +86,7 @@ class BodyStatViewModel @Inject constructor(
 
                     for (def in StatRegistry.ALL) {
                         val input = currentInputs[def.key] ?: continue
-                        val value = input.replace(",", ".").toDoubleOrNull()
+                        val value = input.toUserDoubleOrNull()
                         if (value != null && value > 0) {
                             bodyStatRepository.upsert(
                                 BodyStat(
@@ -110,7 +111,11 @@ class BodyStatViewModel @Inject constructor(
                     _state.update { it.copy(
                         isSaving = false,
                         inputs = emptyMap(),
-                        savedMessage = context.getString(R.string.bodystat_values_saved, savedCount)
+                        savedMessage = context.resources.getQuantityString(
+                            R.plurals.bodystat_values_saved,
+                            savedCount,
+                            savedCount,
+                        )
                     ) }
                 }
                 loadData()
@@ -142,7 +147,7 @@ class BodyStatViewModel @Inject constructor(
 
     fun saveSingleStat(key: String) {
         val input = _state.value.inputs[key] ?: return
-        val parsed = input.replace(",", ".").toDoubleOrNull()
+        val parsed = input.toUserDoubleOrNull()
         if (parsed == null || parsed <= 0) {
             _state.update { it.copy(error = context.getString(R.string.bodystat_error_invalid_value)) }
             return
@@ -160,7 +165,7 @@ class BodyStatViewModel @Inject constructor(
                         )
                     )
                 }
-                val label = StatRegistry.labelDe(key)
+                val label = context.localizedStatLabel(key)
                 _state.update { it.copy(
                     inputs = it.inputs - key,
                     savedMessage = context.getString(R.string.bodystat_stat_saved, label)

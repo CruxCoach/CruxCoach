@@ -49,8 +49,8 @@ internal fun BoardGradeOutcomeChart(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         modifier = Modifier.padding(bottom = 8.dp)
     ) {
-        LegendDot(FlashColor, "Flash")
-        LegendDot(RedpointColor, "Redpoint")
+        LegendDot(FlashColor, stringResource(R.string.board_logbook_flash))
+        LegendDot(RedpointColor, stringResource(R.string.board_stats_redpoint))
         LegendDot(AttemptColor, stringResource(R.string.board_stats_attempt))
     }
 

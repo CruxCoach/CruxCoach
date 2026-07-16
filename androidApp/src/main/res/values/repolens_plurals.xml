@@ -1,0 +1,263 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools" tools:locale="en">
+    <plurals name="cd_stars">
+        <item quantity="one">%1$d star</item>
+        <item quantity="other">%1$d stars</item>
+    </plurals>
+    <plurals name="board_climb_sends_count">
+        <item quantity="one">%1$d send</item>
+        <item quantity="other">%1$d sends</item>
+    </plurals>
+    <plurals name="board_climb_moves">
+        <item quantity="one">%1$d move</item>
+        <item quantity="other">%1$d moves</item>
+    </plurals>
+    <plurals name="board_climb_frames">
+        <item quantity="one">%1$d frame</item>
+        <item quantity="other">%1$d frames</item>
+    </plurals>
+    <plurals name="board_holdsearch_holds_selected">
+        <item quantity="one">%1$d hold selected</item>
+        <item quantity="other">%1$d holds selected</item>
+    </plurals>
+    <plurals name="board_holdsearch_climbs_found">
+        <item quantity="one">%1$d climb found</item>
+        <item quantity="other">%1$d climbs found</item>
+    </plurals>
+    <plurals name="board_holdsearch_zone_filter_summary">
+        <item quantity="one">Area → %1$d climb</item>
+        <item quantity="other">Area → %1$d climbs</item>
+    </plurals>
+    <plurals name="board_holdsearch_holds_count">
+        <item quantity="one">%1$d hold</item>
+        <item quantity="other">%1$d holds</item>
+    </plurals>
+    <plurals name="board_holdsearch_climbs_count">
+        <item quantity="one">%1$d climb</item>
+        <item quantity="other">%1$d climbs</item>
+    </plurals>
+    <plurals name="board_browser_climbs_count">
+        <item quantity="one">%1$d climb</item>
+        <item quantity="other">%1$d climbs</item>
+    </plurals>
+    <plurals name="board_browser_climbs_loaded">
+        <item quantity="one">%1$d climb (%2$d loaded)</item>
+        <item quantity="other">%1$d climbs (%2$d loaded)</item>
+    </plurals>
+    <plurals name="board_list_climb_count">
+        <item quantity="one">%1$d climb</item>
+        <item quantity="other">%1$d climbs</item>
+    </plurals>
+    <plurals name="board_logbook_delete_title">
+        <item quantity="one">Delete %1$d ascent?</item>
+        <item quantity="other">Delete %1$d ascents?</item>
+    </plurals>
+    <plurals name="board_logbook_day_entries">
+        <item quantity="one">%1$d entry</item>
+        <item quantity="other">%1$d entries</item>
+    </plurals>
+    <plurals name="board_ascent_tries">
+        <item quantity="one">Sent · 1st try</item>
+        <item quantity="other">Sent · %1$d tries</item>
+    </plurals>
+    <plurals name="board_ascent_attempts_count">
+        <item quantity="one">Open · %1$d attempt</item>
+        <item quantity="other">Open · %1$d attempts</item>
+    </plurals>
+    <plurals name="ble_board_occupied_detail">
+        <item quantity="one">%1$d user on board</item>
+        <item quantity="other">%1$d users on board</item>
+    </plurals>
+    <plurals name="ble_participants">
+        <item quantity="one">%1$d participant</item>
+        <item quantity="other">%1$d participants</item>
+    </plurals>
+    <plurals name="ble_nearby_sessions">
+        <item quantity="one">%1$d session</item>
+        <item quantity="other">%1$d sessions</item>
+    </plurals>
+    <plurals name="kilter_import_part_ascents">
+        <item quantity="one">%1$d ascent</item>
+        <item quantity="other">%1$d ascents</item>
+    </plurals>
+    <plurals name="kilter_import_part_projects">
+        <item quantity="one">%1$d project</item>
+        <item quantity="other">%1$d projects</item>
+    </plurals>
+    <plurals name="kilter_import_part_own">
+        <item quantity="one">%1$d own climb</item>
+        <item quantity="other">%1$d own climbs</item>
+    </plurals>
+    <plurals name="kilter_import_part_catalogue">
+        <item quantity="one">%1$d climb backfilled</item>
+        <item quantity="other">%1$d climbs backfilled</item>
+    </plurals>
+    <plurals name="kilter_import_part_circuits">
+        <item quantity="one">%1$d list</item>
+        <item quantity="other">%1$d lists</item>
+    </plurals>
+    <plurals name="kilter_preview_found">
+        <item quantity="one">%1$d ascent found (%2$d new, %3$d already imported)</item>
+        <item quantity="other">%1$d ascents found (%2$d new, %3$d already imported)</item>
+    </plurals>
+    <plurals name="onboarding_kilter_preview">
+        <item quantity="one">%1$d entry found — ascents: %2$d, projects: %3$d (%4$d already imported)</item>
+        <item quantity="other">%1$d entries found — ascents: %2$d, projects: %3$d (%4$d already imported)</item>
+    </plurals>
+    <plurals name="sync_importing_climbs_bulk">
+        <item quantity="one">Importing %1$d climb…</item>
+        <item quantity="other">Importing %1$d climbs…</item>
+    </plurals>
+    <plurals name="sync_importing_stats_bulk">
+        <item quantity="one">Importing %1$d stat…</item>
+        <item quantity="other">Importing %1$d stats…</item>
+    </plurals>
+    <plurals name="import_result_assessments">
+        <item quantity="one">%1$d assessment</item>
+        <item quantity="other">%1$d assessments</item>
+    </plurals>
+    <plurals name="import_result_body_stats">
+        <item quantity="one">%1$d body stat</item>
+        <item quantity="other">%1$d body stats</item>
+    </plurals>
+    <plurals name="import_result_workouts">
+        <item quantity="one">%1$d workout</item>
+        <item quantity="other">%1$d workouts</item>
+    </plurals>
+    <plurals name="import_result_climbs">
+        <item quantity="one">%1$d climb</item>
+        <item quantity="other">%1$d climbs</item>
+    </plurals>
+    <plurals name="import_result_plans">
+        <item quantity="one">%1$d training plan</item>
+        <item quantity="other">%1$d training plans</item>
+    </plurals>
+    <plurals name="import_result_board_sends">
+        <item quantity="one">%1$d board send</item>
+        <item quantity="other">%1$d board sends</item>
+    </plurals>
+    <plurals name="import_result_board_bids">
+        <item quantity="one">%1$d board bid</item>
+        <item quantity="other">%1$d board bids</item>
+    </plurals>
+    <plurals name="import_result_board_sessions">
+        <item quantity="one">%1$d board session</item>
+        <item quantity="other">%1$d board sessions</item>
+    </plurals>
+    <plurals name="import_result_lists">
+        <item quantity="one">%1$d list</item>
+        <item quantity="other">%1$d lists</item>
+    </plurals>
+    <plurals name="import_result_own_climbs">
+        <item quantity="one">%1$d own climb</item>
+        <item quantity="other">%1$d own climbs</item>
+    </plurals>
+    <plurals name="import_result_duplicates_skipped">
+        <item quantity="one"> (%1$d duplicate skipped)</item>
+        <item quantity="other"> (%1$d duplicates skipped)</item>
+    </plurals>
+    <plurals name="queue_count_label">
+        <item quantity="one">%1$d message waiting to be sent</item>
+        <item quantity="other">%1$d messages waiting to be sent</item>
+    </plurals>
+    <plurals name="bodystat_values_saved">
+        <item quantity="one">%1$d value saved</item>
+        <item quantity="other">%1$d values saved</item>
+    </plurals>
+    <plurals name="error_climb_not_in_db_log_attempts">
+        <item quantity="one">%1$d attempt</item>
+        <item quantity="other">%1$d attempts</item>
+    </plurals>
+    <plurals name="export_categories_exported">
+        <item quantity="one">%1$d category exported</item>
+        <item quantity="other">%1$d categories exported</item>
+    </plurals>
+    <plurals name="import_waistline_success">
+        <item quantity="one">Waistline import: %1$d value imported</item>
+        <item quantity="other">Waistline import: %1$d values imported</item>
+    </plurals>
+    <plurals name="exercises_count">
+        <item quantity="one">%1$d exercise</item>
+        <item quantity="other">%1$d exercises</item>
+    </plurals>
+    <plurals name="plan_sets_count">
+        <item quantity="one">%1$d set</item>
+        <item quantity="other">%1$d sets</item>
+    </plurals>
+    <plurals name="plan_session_summary">
+        <item quantity="one">%1$d exercise · %2$d min · RPE %3$.1f</item>
+        <item quantity="other">%1$d exercises · %2$d min · RPE %3$.1f</item>
+    </plurals>
+    <plurals name="dashboard_session_summary">
+        <item quantity="one">%1$d exercise, %2$d min</item>
+        <item quantity="other">%1$d exercises, %2$d min</item>
+    </plurals>
+    <plurals name="stats_body_range">
+        <item quantity="one">Min %1$s · Max %2$s · %3$d measurement</item>
+        <item quantity="other">Min %1$s · Max %2$s · %3$d measurements</item>
+    </plurals>
+    <plurals name="training_reminder_message">
+        <item quantity="one">%1$s session with %2$d exercise</item>
+        <item quantity="other">%1$s session with %2$d exercises</item>
+    </plurals>
+    <plurals name="setter_detail_climb_count">
+        <item quantity="one">%1$d climb</item>
+        <item quantity="other">%1$d climbs</item>
+    </plurals>
+    <plurals name="setters_list_count">
+        <item quantity="one">%1$d climb</item>
+        <item quantity="other">%1$d climbs</item>
+    </plurals>
+    <plurals name="setter_detail_climb_meta">
+        <item quantity="one">%1$d° · %2$s · ⭐%3$.1f · %4$d send</item>
+        <item quantity="other">%1$d° · %2$s · ⭐%3$.1f · %4$d sends</item>
+    </plurals>
+    <plurals name="settings_backup_restored_ascents">
+        <item quantity="one">%1$d ascent</item>
+        <item quantity="other">%1$d ascents</item>
+    </plurals>
+    <plurals name="settings_backup_restored_lists">
+        <item quantity="one">%1$d list</item>
+        <item quantity="other">%1$d lists</item>
+    </plurals>
+    <plurals name="export_count_assessments">
+        <item quantity="one">%1$d assessment</item>
+        <item quantity="other">%1$d assessments</item>
+    </plurals>
+    <plurals name="export_count_body_stats">
+        <item quantity="one">%1$d body stat</item>
+        <item quantity="other">%1$d body stats</item>
+    </plurals>
+    <plurals name="export_count_workouts">
+        <item quantity="one">%1$d workout</item>
+        <item quantity="other">%1$d workouts</item>
+    </plurals>
+    <plurals name="export_count_climbs">
+        <item quantity="one">%1$d climb</item>
+        <item quantity="other">%1$d climbs</item>
+    </plurals>
+    <plurals name="export_count_training_plans">
+        <item quantity="one">%1$d training plan</item>
+        <item quantity="other">%1$d training plans</item>
+    </plurals>
+    <plurals name="export_count_board_sends">
+        <item quantity="one">%1$d send</item>
+        <item quantity="other">%1$d sends</item>
+    </plurals>
+    <plurals name="export_count_board_bids">
+        <item quantity="one">%1$d attempt</item>
+        <item quantity="other">%1$d attempts</item>
+    </plurals>
+    <plurals name="export_count_board_sessions">
+        <item quantity="one">%1$d session</item>
+        <item quantity="other">%1$d sessions</item>
+    </plurals>
+    <plurals name="export_count_climb_lists">
+        <item quantity="one">%1$d list</item>
+        <item quantity="other">%1$d lists</item>
+    </plurals>
+    <plurals name="export_count_own_climbs">
+        <item quantity="one">%1$d own climb</item>
+        <item quantity="other">%1$d own climbs</item>
+    </plurals>
+</resources>

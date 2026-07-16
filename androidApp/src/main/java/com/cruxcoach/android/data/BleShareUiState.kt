@@ -32,30 +32,6 @@ data class BleShareUiState(
         get() = onBoardClimb != null || boardOccupiedCount > 0 ||
             nearbySessions.isNotEmpty() || ownSession != null
 
-    val collapsedSummary: String
-        get() = buildString {
-            val climb = onBoardClimb
-            if (climb != null) {
-                val name = climb.name ?: "Unbekannter Climb"
-                append("\"$name\"")
-                if (climb.grade != null) append(" ${climb.grade}")
-                append(" ${climb.angle}°")
-                when (climb.source) {
-                    OnBoardSource.REMOTE_ACTIVE -> append(" · klettert gerade")
-                    OnBoardSource.REMOTE_LAST, OnBoardSource.LOCAL_MANAGER -> append(" · noch sichtbar")
-                    OnBoardSource.LOCAL_ACTIVE -> append(" · dein Climb")
-                    OnBoardSource.SESSION_REMOTE -> append(" · Session-Climb")
-                }
-            }
-            if (boardOccupiedCount > 0) {
-                if (isNotEmpty()) append(" · ")
-                append("Board besetzt")
-            }
-            if (nearbySessions.isNotEmpty()) {
-                if (isNotEmpty()) append(" · ")
-                append("${nearbySessions.size} Session${if (nearbySessions.size > 1) "s" else ""}")
-            }
-        }
 }
 
 data class OnBoardClimbEntry(

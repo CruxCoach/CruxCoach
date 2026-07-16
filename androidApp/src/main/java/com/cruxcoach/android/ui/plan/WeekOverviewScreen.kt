@@ -28,6 +28,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.cruxcoach.android.ui.common.RestTimerBannerSlot
 import com.cruxcoach.android.ui.common.SyncStatusBannerSlot
 import com.cruxcoach.android.ui.common.BleStatusArea
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.*
@@ -258,7 +259,13 @@ private fun DayCard(dayInfo: WeekDayInfo, onClick: () -> Unit, modifier: Modifie
                         fontWeight = FontWeight.SemiBold
                     )
                     Text(
-                        text = stringResource(R.string.plan_session_summary, session.exercises.size, session.targetDurationMin, session.targetRpe),
+                        text = pluralStringResource(
+                            R.plurals.plan_session_summary,
+                            session.exercises.size,
+                            session.exercises.size,
+                            session.targetDurationMin,
+                            session.targetRpe,
+                        ),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

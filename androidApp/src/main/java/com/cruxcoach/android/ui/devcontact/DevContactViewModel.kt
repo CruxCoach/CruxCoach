@@ -6,6 +6,7 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.util.Log
+import com.cruxcoach.android.R
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.data.NostrMessageRepository
@@ -322,10 +323,10 @@ class DevContactViewModel @Inject constructor(
     fun sendBugReport(title: String, description: String, steps: String) {
         val content = buildString {
             append(title)
-            append("\n\nBeschreibung:\n")
+            append("\n\n${context.getString(R.string.devcontact_section_description)}\n")
             append(description)
             if (steps.isNotBlank()) {
-                append("\n\nSchritte:\n")
+                append("\n\n${context.getString(R.string.devcontact_section_steps)}\n")
                 append(steps)
             }
             append("\n\n---\n")
@@ -337,7 +338,7 @@ class DevContactViewModel @Inject constructor(
     fun sendFeatureRequest(title: String, description: String) {
         val content = buildString {
             append(title)
-            append("\n\nBeschreibung:\n")
+            append("\n\n${context.getString(R.string.devcontact_section_description)}\n")
             append(description)
         }
         sendMessage(content = content, type = MessageType.FEATURE, subject = title)

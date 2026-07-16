@@ -3,6 +3,7 @@ package com.cruxcoach.android.ui.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.util.safeLaunch
+import com.cruxcoach.android.util.toUserDoubleOrNull
 import com.cruxcoach.data.repository.UserRepository
 import com.cruxcoach.domain.model.Assessment
 import com.cruxcoach.util.DateTimeUtil
@@ -70,14 +71,14 @@ class AssessmentViewModel @Inject constructor(
                     val profile = userRepository.getActiveProfile()
                         ?: throw IllegalStateException("No active profile found")
 
-                    val hangKg = s.maxHang20mm.toDoubleOrNull()
+                    val hangKg = s.maxHang20mm.toUserDoubleOrNull()
                     val assessment = Assessment(
                         userId = profile.id,
                         date = DateTimeUtil.nowIso(),
                         maxHang20mmKg = hangKg,
                         maxHangPctBw = if (hangKg != null && profile.weightKg > 0)
                             (hangKg / profile.weightKg) * 100.0 else null,
-                        weightedPullupKg = s.weightedPullup.toDoubleOrNull(),
+                        weightedPullupKg = s.weightedPullup.toUserDoubleOrNull(),
                         pullupMaxReps = s.pullupMaxReps.toIntOrNull(),
                         pushUpMaxReps = s.pushupMaxReps.toIntOrNull(),
                         coreHoldSec = s.coreHoldSec.toIntOrNull()

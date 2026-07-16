@@ -16,6 +16,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import androidx.compose.ui.text.font.FontWeight
@@ -91,7 +92,11 @@ internal fun BleStatusExpanded(
             // Board occupied section
             if (state.boardOccupiedCount > 0) {
                 Text(
-                    stringResource(R.string.ble_board_occupied_detail, state.boardOccupiedCount),
+                    pluralStringResource(
+                        R.plurals.ble_board_occupied_detail,
+                        state.boardOccupiedCount,
+                        state.boardOccupiedCount,
+                    ),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -166,7 +171,11 @@ private fun SessionQueueSection(
                 Icon(Icons.Default.People, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(14.dp))
                 Spacer(Modifier.width(2.dp))
                 Text(
-                    stringResource(R.string.ble_participants, session.participantCount),
+                    pluralStringResource(
+                        R.plurals.ble_participants,
+                        session.participantCount,
+                        session.participantCount,
+                    ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -358,9 +367,19 @@ private fun NearbySessionsSection(
             Icon(Icons.Default.People, null, tint = OrangeAccent, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(session.hostName, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                Text(
+                    session.hostName.ifEmpty { stringResource(R.string.ble_unknown) },
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium,
+                )
                 val details = buildString {
-                    append(stringResource(R.string.ble_participants, session.participantCount))
+                    append(
+                        pluralStringResource(
+                            R.plurals.ble_participants,
+                            session.participantCount,
+                            session.participantCount,
+                        )
+                    )
                     val climbName = session.currentClimbName
                     if (climbName != null) {
                         append(" · $climbName")

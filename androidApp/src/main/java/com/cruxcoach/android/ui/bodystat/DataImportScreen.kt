@@ -218,7 +218,7 @@ private fun ImportPreviewCard(
                         label = category.localizedLabel(),
                         checked = category in selectedCategories,
                         onCheckedChange = { onToggleCategory(category) },
-                        count = preview.summaryLine(category)
+                        count = preview.localizedSummaryLine(category)
                     )
                 }
             }
@@ -344,4 +344,3 @@ private fun PubkeyMismatchDialog(
         }
     )
 }
-

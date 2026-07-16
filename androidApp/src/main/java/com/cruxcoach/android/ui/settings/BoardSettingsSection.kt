@@ -37,7 +37,7 @@ internal fun DisplaySection(
             FilterChip(
                 selected = darkMode == mode,
                 onClick = { onDarkModeChange(mode) },
-                label = { Text(mode.label) },
+                label = { Text(stringResource(mode.labelRes)) },
                 colors = FilterChipDefaults.filterChipColors(
                     selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
                     selectedLabelColor = OrangeAccent

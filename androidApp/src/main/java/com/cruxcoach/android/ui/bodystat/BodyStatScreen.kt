@@ -31,6 +31,7 @@ import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.common.RestTimerBannerSlot
 import com.cruxcoach.android.ui.common.SyncStatusBannerSlot
 import com.cruxcoach.android.ui.theme.*
+import com.cruxcoach.android.util.formatIsoDate
 import com.cruxcoach.domain.model.StatCategory
 import com.cruxcoach.domain.model.StatDefinition
 import com.cruxcoach.domain.model.StatRegistry
@@ -96,7 +97,11 @@ fun BodyStatScreen(
                     ) {
                         Text(stringResource(R.string.bodystat_last_weight), style = MaterialTheme.typography.bodyMedium)
                         Text(
-                            "%.1f kg (${last.date})".format(last.value),
+                            stringResource(
+                                R.string.bodystat_last_weight_value,
+                                "%.1f".format(last.value),
+                                formatIsoDate(last.date),
+                            ),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = InfoBlue
@@ -189,7 +194,7 @@ private fun RecentEntryCard(
                 .padding(12.dp)
         ) {
             Text(
-                text = dayStats.date,
+                text = formatIsoDate(dayStats.date),
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.Bold,
                 color = OrangeAccent
@@ -202,7 +207,7 @@ private fun RecentEntryCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = StatRegistry.labelDe(statName),
+                        text = localizedStatLabel(statName),
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -252,7 +257,7 @@ internal fun StatCategoryCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = category.labelDe,
+                    text = category.localizedLabel(),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                     color = categoryColor(category)
@@ -282,7 +287,7 @@ internal fun StatCategoryCard(
                                 modifier = Modifier
                                     .weight(1f)
                                     .testTag("bodystat_${def.key}_input"),
-                                label = { Text(def.labelDe) },
+                                label = { Text(localizedStatLabel(def.key)) },
                                 suffix = { Text(def.unit) },
                                 placeholder = { Text(stringResource(R.string.bodystat_tap_to_record)) },
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),

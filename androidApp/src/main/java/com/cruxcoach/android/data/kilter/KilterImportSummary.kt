@@ -22,16 +22,16 @@ fun formatKilterImportSummary(context: Context, r: KilterImportResult): String {
         return context.getString(R.string.kilter_import_empty)
     }
     val parts = mutableListOf<String>()
-    parts += context.getString(R.string.kilter_import_part_ascents, r.newAscents)
-    parts += context.getString(R.string.kilter_import_part_projects, r.newBids)
+    parts += context.resources.getQuantityString(R.plurals.kilter_import_part_ascents, r.newAscents, r.newAscents)
+    parts += context.resources.getQuantityString(R.plurals.kilter_import_part_projects, r.newBids, r.newBids)
     if (r.ownClimbs > 0) {
-        parts += context.getString(R.string.kilter_import_part_own, r.ownClimbs)
+        parts += context.resources.getQuantityString(R.plurals.kilter_import_part_own, r.ownClimbs, r.ownClimbs)
     }
     if (r.backfilledClimbs > 0) {
-        parts += context.getString(R.string.kilter_import_part_catalogue, r.backfilledClimbs)
+        parts += context.resources.getQuantityString(R.plurals.kilter_import_part_catalogue, r.backfilledClimbs, r.backfilledClimbs)
     }
     if (r.circuits > 0) {
-        parts += context.getString(R.string.kilter_import_part_circuits, r.circuits)
+        parts += context.resources.getQuantityString(R.plurals.kilter_import_part_circuits, r.circuits, r.circuits)
     }
     val head = parts.joinToString(" · ")
     return if (r.duplicateLogs > 0) {

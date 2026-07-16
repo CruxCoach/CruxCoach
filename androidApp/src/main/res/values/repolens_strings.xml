@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools" tools:locale="en">
+    <string name="bodystat_label_weight">Weight</string>
+    <string name="bodystat_label_neck">Neck circumference</string>
+    <string name="bodystat_label_waist">Waist circumference</string>
+    <string name="bodystat_label_hips">Hip circumference</string>
+    <string name="bodystat_label_body_fat">Body fat</string>
+    <string name="bodystat_label_arm_span">Arm span</string>
+    <string name="bodystat_label_forearm_circumference">Forearm circumference</string>
+    <string name="bodystat_label_max_hang_20mm">Max hang 20 mm</string>
+    <string name="bodystat_label_finger_span">Finger span</string>
+    <string name="bodystat_label_shoulder_mobility">Shoulder mobility</string>
+    <string name="bodystat_label_hip_flexion">Hip flexion</string>
+    <string name="bodystat_category_body_composition">Body composition</string>
+    <string name="bodystat_category_climbing_specific">Climbing-specific</string>
+    <string name="bodystat_category_mobility">Mobility</string>
+    <string name="bodystat_last_weight_value">%1$s kg (%2$s)</string>
+
+    <string name="dark_mode_system">System</string>
+    <string name="dark_mode_light">Light</string>
+    <string name="dark_mode_dark">Dark</string>
+    <string name="board_holdsearch_filter_summary">%1$s → %2$s</string>
+    <string name="settings_backup_restored">Restored: %1$s, %2$s</string>
+    <string name="export_count_board_logbook">%1$s, %2$s</string>
+    <string name="board_queue_host">Host</string>
+    <string name="climb_log_board_gym">Gym</string>
+    <string name="app_tagline">Open-source bouldering training app</string>
+    <string name="devcontact_section_description">Description:</string>
+    <string name="devcontact_section_steps">Steps to reproduce:</string>
+    <string name="nostr_profile_subscriber_status_running_active">Connected — last climb event %1$s</string>
+    <string name="kilter_publish_queue_last_attempt">Last attempt %1$s</string>
+    <string name="ble_queue_position">Queue %1$d/%2$d: %3$s</string>
+    <string name="board_stats_redpoint">Redpoint</string>
+    <string name="settings_profile_invalid_number">Enter valid positive numbers for weight and height.</string>
+    <string name="settings_profile_save_failed">Could not save the profile. Please try again.</string>
+</resources>

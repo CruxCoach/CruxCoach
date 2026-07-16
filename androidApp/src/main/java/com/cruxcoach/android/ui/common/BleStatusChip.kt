@@ -28,6 +28,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import androidx.compose.ui.draw.alpha
@@ -312,12 +313,17 @@ internal fun SessionChipContent(
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    val climbLabel = buildString {
+                        append(session.currentClimbName ?: stringResource(R.string.ble_unknown))
+                        if (session.currentClimbGrade != null) append(" ${session.currentClimbGrade}")
+                    }
                     Text(
-                        buildString {
-                            append("Queue ${session.currentIndex + 1}/${session.queue.size}: ")
-                            append(session.currentClimbName ?: stringResource(R.string.ble_unknown))
-                            if (session.currentClimbGrade != null) append(" ${session.currentClimbGrade}")
-                        },
+                        stringResource(
+                            R.string.ble_queue_position,
+                            session.currentIndex + 1,
+                            session.queue.size,
+                            climbLabel,
+                        ),
                         style = MaterialTheme.typography.bodySmall,
                         color = OrangeAccent,
                         maxLines = 1,
@@ -368,7 +374,13 @@ internal fun buildChipSummary(
     }
     if (state.nearbySessions.isNotEmpty()) {
         if (isNotEmpty()) append(" · ")
-        append("${state.nearbySessions.size} Session${if (state.nearbySessions.size > 1) "s" else ""}")
+        append(
+            pluralStringResource(
+                R.plurals.ble_nearby_sessions,
+                state.nearbySessions.size,
+                state.nearbySessions.size,
+            )
+        )
     }
 }
 

@@ -1,9 +1,11 @@
 package com.cruxcoach.android.ui.bodystat
 
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.data.CruxCoachBackup.Category
+import com.cruxcoach.data.CruxCoachBackup.ImportPreview
 
 /**
  * Resolves a [Category]'s display label against the active locale.
@@ -28,4 +30,55 @@ fun Category.localizedLabel(): String = when (this) {
     Category.BOARD_SESSIONS -> stringResource(R.string.export_category_board_sessions)
     Category.CLIMB_LISTS    -> stringResource(R.string.export_category_climb_lists)
     Category.OWN_CLIMBS     -> stringResource(R.string.export_category_own_climbs)
+}
+
+/** Localizes import-preview counts at the Android render boundary. */
+@Composable
+fun ImportPreview.localizedSummaryLine(category: Category): String = when (category) {
+    Category.PROFILE -> stringResource(R.string.export_category_profile)
+    Category.ASSESSMENTS -> pluralStringResource(
+        R.plurals.export_count_assessments,
+        assessments,
+        assessments,
+    )
+    Category.BODY_STATS -> pluralStringResource(
+        R.plurals.export_count_body_stats,
+        bodyStats,
+        bodyStats,
+    )
+    Category.WORKOUT_LOGS -> pluralStringResource(
+        R.plurals.export_count_workouts,
+        workoutLogs,
+        workoutLogs,
+    )
+    Category.CLIMB_LOGS -> pluralStringResource(
+        R.plurals.export_count_climbs,
+        climbLogs,
+        climbLogs,
+    )
+    Category.TRAINING_PLANS -> pluralStringResource(
+        R.plurals.export_count_training_plans,
+        trainingPlans,
+        trainingPlans,
+    )
+    Category.BOARD_LOGBOOK -> stringResource(
+        R.string.export_count_board_logbook,
+        pluralStringResource(R.plurals.export_count_board_sends, boardAscents, boardAscents),
+        pluralStringResource(R.plurals.export_count_board_bids, boardBids, boardBids),
+    )
+    Category.BOARD_SESSIONS -> pluralStringResource(
+        R.plurals.export_count_board_sessions,
+        boardSessions,
+        boardSessions,
+    )
+    Category.CLIMB_LISTS -> pluralStringResource(
+        R.plurals.export_count_climb_lists,
+        climbLists,
+        climbLists,
+    )
+    Category.OWN_CLIMBS -> pluralStringResource(
+        R.plurals.export_count_own_climbs,
+        ownClimbs,
+        ownClimbs,
+    )
 }

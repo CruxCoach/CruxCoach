@@ -34,6 +34,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -83,7 +84,11 @@ fun SetterDetailScreen(
                 SetterHeader(state)
                 HorizontalDivider()
                 Text(
-                    text = stringResource(R.string.setter_detail_climb_count, state.climbs.size),
+                    text = pluralStringResource(
+                        R.plurals.setter_detail_climb_count,
+                        state.climbs.size,
+                        state.climbs.size,
+                    ),
                     style = MaterialTheme.typography.titleSmall,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
                 )
@@ -213,8 +218,9 @@ private fun SetterClimbRow(
                 fontWeight = FontWeight.Medium,
             )
             Text(
-                text = stringResource(
-                    R.string.setter_detail_climb_meta,
+                text = pluralStringResource(
+                    R.plurals.setter_detail_climb_meta,
+                    ascensionistCount,
                     angle,
                     GradeDisplayHelper.formatDifficulty(difficultyAverage, gradeScale),
                     qualityAverage,

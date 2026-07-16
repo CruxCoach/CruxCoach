@@ -540,18 +540,6 @@ object CruxCoachBackup {
             return cats
         }
 
-        fun summaryLine(category: Category): String = when (category) {
-            Category.PROFILE -> "Profil"
-            Category.ASSESSMENTS -> "$assessments Assessments"
-            Category.BODY_STATS -> "$bodyStats Körperdaten"
-            Category.WORKOUT_LOGS -> "$workoutLogs Workouts"
-            Category.CLIMB_LOGS -> "$climbLogs Boulder"
-            Category.TRAINING_PLANS -> "$trainingPlans Trainingspläne"
-            Category.BOARD_LOGBOOK -> "$boardAscents Sends, $boardBids Versuche"
-            Category.BOARD_SESSIONS -> "$boardSessions Sessions"
-            Category.CLIMB_LISTS -> "$climbLists Listen"
-            Category.OWN_CLIMBS -> "$ownClimbs eigene Climbs"
-        }
     }
 
     /** Parse backup and return counts per category without importing. */
