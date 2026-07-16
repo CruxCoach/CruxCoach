@@ -221,7 +221,7 @@ class CruxCoachApp : Application(), Configuration.Provider {
             }.onFailure { PerfLogger.warn("[appScope] backfillLocationsIfMissing failed", it) }
             runCatching {
                 // Note: no startup probe of the WiFi-Direct-share endpoint. The
-                // legitimate receive flow is deep-link driven (cruxcoach://import-board-db
+                // legitimate receive flow is deep-link driven (<APP_SCHEME>://import-board-db
                 // from the hotspot's landing page), gated by a user-visible consent
                 // dialog in BoardSyncScreen. A bare "server exists on 192.168.49.1:4949"
                 // is not a trustworthy import signal — any attacker-controlled AP

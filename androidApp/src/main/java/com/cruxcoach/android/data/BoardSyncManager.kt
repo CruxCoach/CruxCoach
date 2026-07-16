@@ -424,7 +424,7 @@ class BoardSyncManager(
     /**
      * Stage a local-share import URL for user confirmation.
      *
-     * The deep-link handler (cruxcoach://import-board-db) calls this after
+     * The deep-link handler (`<APP_SCHEME>://import-board-db`) calls this after
      * MainActivity.isAllowedLocalImportUrl has validated the URL is on an
      * RFC1918 / loopback range. The actual download only starts once the
      * user taps confirm on the dialog shown by BoardSyncScreen.

@@ -785,8 +785,6 @@
     <string name="payment_sheet_title">Voluntary Gift</string>
     <string name="payment_lightning_title">Lightning</string>
     <string name="payment_lightning_desc">Fast, cheap, private</string>
-    <string name="payment_kofi_title">Ko-fi</string>
-    <string name="payment_kofi_desc">Classic with card/PayPal</string>
     <string name="payment_amount_title">Choose amount:</string>
     <string name="payment_custom_amount">Custom amount (sats)</string>
     <string name="payment_message_hint">Message (optional)</string>
@@ -805,7 +803,7 @@
     <string name="payment_profile_lightning_hint">Lightning address</string>
     <string name="payment_profile_setup_confirm">Set up</string>
     <string name="payment_profile_setup_skip">Later</string>
-    <string name="payment_zap_privacy_notice">Note: Lightning Zaps are publicly visible on Nostr relays (amount, sender, timestamp). Ko-fi is the more private alternative.</string>
+    <string name="payment_zap_privacy_notice">Note: Lightning Zaps are publicly visible on Nostr relays (amount, sender, timestamp). Choose the private Lightning option to avoid publishing a zap event.</string>
     <string name="payment_open_wallet">Open wallet website</string>
     <string name="payment_invoice_title">Lightning invoice</string>
     <string name="payment_invoice_qr">QR code for the Lightning invoice</string>
@@ -815,15 +813,12 @@
     <string name="payment_lightning_private_desc">No public trace on Nostr relays</string>
     <string name="payment_lightning_public_title">Lightning zap (public)</string>
     <string name="payment_lightning_public_desc">Amount and sender are visible on Nostr</string>
-    <string name="payment_card_title">Card</string>
-    <string name="payment_coming_soon">Coming soon</string>
     <string name="payment_private_title">Lightning gift</string>
     <string name="payment_public_title">Lightning zap</string>
     <string name="payment_amount_sats">Amount in sats:</string>
     <string name="payment_sats_value">%1$s sats</string>
     <string name="payment_private_message_hint">Message (optional, encrypted)</string>
     <string name="payment_public_message_hint">Message (optional, public)</string>
-    <string name="payment_kofi_open_failed">Couldn’t open Ko-fi.</string>
 
     <!-- Offline Queue -->
     <string name="queue_pending_label">Sending…</string>

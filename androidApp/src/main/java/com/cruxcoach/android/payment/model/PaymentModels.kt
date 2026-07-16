@@ -24,5 +24,5 @@ data class NostrProfileData(
 )
 
 enum class PaymentChannel {
-    LIGHTNING, KOFI
+    LIGHTNING
 }

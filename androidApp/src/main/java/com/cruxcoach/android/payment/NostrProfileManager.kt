@@ -11,17 +11,45 @@ import com.vitorpamplona.quartz.nip01Core.core.Event
 import com.vitorpamplona.quartz.nip01Core.crypto.verifyId
 import com.vitorpamplona.quartz.nip01Core.crypto.verifySignature
 import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
 import javax.inject.Inject
 import javax.inject.Singleton
 
+internal fun interface ProfileEventReader {
+    fun subscribe(filter: String): Flow<String>
+}
+
 @Singleton
-class NostrProfileManager @Inject constructor(
-    private val eventBuilder: NostrPublicEventBuilder,
-    private val relayPool: NostrRelayPool,
-    private val database: SecureDatabase
+class NostrProfileManager private constructor(
+    private val eventBuilder: NostrPublicEventBuilder?,
+    private val relayPool: NostrRelayPool?,
+    private val database: SecureDatabase,
+    private val profileEventReader: ProfileEventReader,
 ) {
+    @Inject
+    constructor(
+        eventBuilder: NostrPublicEventBuilder,
+        relayPool: NostrRelayPool,
+        database: SecureDatabase,
+    ) : this(
+        eventBuilder = eventBuilder,
+        relayPool = relayPool,
+        database = database,
+        profileEventReader = ProfileEventReader { filter ->
+            relayPool.subscribe(filter, skipDedup = true, closeOnEose = true)
+        },
+    )
+
+    /** Read-only constructor avoids loading Quartz's Java-21 Event class in
+     *  Java-17 cache-policy unit tests. Production always uses the injected
+     *  constructor above. */
+    internal constructor(
+        database: SecureDatabase,
+        profileEventReader: ProfileEventReader,
+    ) : this(null, null, database, profileEventReader)
+
     private val profileQueries get() = database.nostrProfilesQueries
 
     /**
@@ -54,7 +82,9 @@ class NostrProfileManager @Inject constructor(
                 website?.takeIf { it.isNotBlank() }?.let { put("website", it) }
             }.toString()
 
-            val event = eventBuilder.buildSignedEvent(
+            val event = checkNotNull(eventBuilder) {
+                "profile publisher unavailable"
+            }.buildSignedEvent(
                 kind = KIND_METADATA,
                 content = content,
                 tags = emptyList()
@@ -65,7 +95,9 @@ class NostrProfileManager @Inject constructor(
             // accepted" result diverged silently from what other clients
             // actually saw. Now the caller sees null and surfaces the
             // localized publish-failed Snackbar.
-            val (attempted, accepted) = relayPool.sendEventWithStats(event)
+            val (attempted, accepted) = checkNotNull(relayPool) {
+                "profile publisher unavailable"
+            }.sendEventWithStats(event)
             if (accepted == 0 && attempted > 0) {
                 Log.w(TAG, "publishProfile: zero relays accepted attempted=$attempted — abort cache write")
                 return null
@@ -146,12 +178,13 @@ class NostrProfileManager @Inject constructor(
     }
 
     suspend fun getLightningAddress(pubkey: String): String? {
-        val cached = profileQueries.getLightningAddress(pubkey).executeAsOneOrNull()
-            ?.lightning_address
-        if (cached != null) return cached
-
-        val profile = fetchProfileFromRelays(pubkey)
-        return profile?.lightningAddress
+        // Payment lookups must inherit the same TTL and stale-event guard as
+        // every other profile field. A direct lightning_address query used to
+        // pin the first cached address for the lifetime of the installation,
+        // making a Nostr Kind-0 rotation ineffective precisely on the payment
+        // path. getProfile refreshes stale rows and retains the authenticated
+        // cached row only as a network-failure fallback.
+        return getProfile(pubkey)?.lightningAddress
     }
 
     /**
@@ -199,7 +232,7 @@ class NostrProfileManager @Inject constructor(
             // full RELAY_TIMEOUT_MS — keeps profile blur-fetch latency
             // close to the slowest responsive relay.
             val collected: List<String> = withTimeoutOrNull(NostrConfig.RELAY_TIMEOUT_MS) {
-                relayPool.subscribe(filter, skipDedup = true, closeOnEose = true).toList()
+                profileEventReader.subscribe(filter).toList()
             } ?: emptyList()
             if (collected.isEmpty()) return null
 

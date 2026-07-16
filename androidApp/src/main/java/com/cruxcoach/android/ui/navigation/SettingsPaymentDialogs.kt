@@ -1,6 +1,5 @@
 package com.cruxcoach.android.ui.navigation
 
-import android.content.Context
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -21,7 +20,6 @@ internal fun SettingsPaymentDialogs(
     onDismissSheet: () -> Unit,
     paymentViewModel: PaymentViewModel,
     paymentState: PaymentState,
-    context: Context
 ) {
     if (showPaymentSheet) {
         PaymentBottomSheet(
@@ -33,10 +31,6 @@ internal fun SettingsPaymentDialogs(
             onSelectLightningZap = {
                 onDismissSheet()
                 paymentViewModel.selectLightning(`private` = false)
-            },
-            onSelectKofi = {
-                onDismissSheet()
-                paymentViewModel.openKofi(context)
             },
             isSending = paymentState.isSending
         )

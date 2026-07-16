@@ -35,12 +35,56 @@ val allowDebugSignedRelease = (
         ?: localProps.getProperty("ALLOW_DEBUG_SIGNED_RELEASE", "false")
     ).toBooleanStrictOrNull() == true
 
+val upstreamApplicationId = "com.cruxcoach.android"
+val upstreamMaintainerPubkey =
+    "e75a185c019d09049d5fcb0e29a2cc9bfd016ec0f6d892fc98f6ffe0181a480d"
+val upstreamCatalogueManifestPubkey =
+    "70b2740bff77cf65743a7d6ffa5465b3a27105ae26123458cf5450eafb1bd68d"
+
+val applicationIdValue = localProps.getProperty("APPLICATION_ID", upstreamApplicationId).trim()
+val maintainerPubkey = localProps.getProperty("MAINTAINER_PUBKEY", upstreamMaintainerPubkey).trim()
+val appLinkHost = localProps.getProperty("APP_LINK_HOST", "cruxcoach.org").trim()
+val appScheme = localProps.getProperty("APP_SCHEME", "cruxcoach").trim()
+val brandNamespace = localProps.getProperty("BRAND_NAMESPACE", "cruxcoach").trim()
+val nostrNamespacePrefix = localProps.getProperty("NOSTR_NAMESPACE_PREFIX", "com.cruxcoach").trim()
+val catalogueNamespace = localProps.getProperty("CATALOGUE_NAMESPACE", "cruxcoach").trim()
+val catalogueManifestPubkey = localProps.getProperty(
+    "CATALOGUE_MANIFEST_PUBKEY",
+    upstreamCatalogueManifestPubkey,
+).trim()
+val updaterApiBase = localProps.getProperty("UPDATER_API_BASE", "https://codeberg.org/api/v1").trim()
+val updaterRepoOwner = localProps.getProperty("UPDATER_REPO_OWNER", "CruxCoach").trim()
+val updaterRepoName = localProps.getProperty("UPDATER_REPO_NAME", "CruxCoach").trim()
+val zapstoreAppUrl = localProps.getProperty(
+    "ZAPSTORE_APP_URL",
+    "https://zapstore.dev/apps/com.cruxcoach.android",
+).trim()
+val userAgentProduct = localProps.getProperty("USER_AGENT_PRODUCT", "CruxCoach").trim()
+
+val forkIdentityKeys = listOf(
+    "APPLICATION_ID" to upstreamApplicationId,
+    "MAINTAINER_PUBKEY" to upstreamMaintainerPubkey,
+    "APP_LINK_HOST" to "cruxcoach.org",
+    "APP_SCHEME" to "cruxcoach",
+    "BRAND_NAMESPACE" to "cruxcoach",
+    "NOSTR_NAMESPACE_PREFIX" to "com.cruxcoach",
+    "ANNOUNCE_NAMESPACE" to "com.cruxcoach.announce",
+    "UPDATER_API_BASE" to "https://codeberg.org/api/v1",
+    "UPDATER_REPO_OWNER" to "CruxCoach",
+    "UPDATER_REPO_NAME" to "CruxCoach",
+    "ZAPSTORE_APP_URL" to "https://zapstore.dev/apps/com.cruxcoach.android",
+    "USER_AGENT_PRODUCT" to "CruxCoach",
+)
+val hasForkIdentity = forkIdentityKeys.any { (key, upstreamValue) ->
+    localProps.getProperty(key)?.trim()?.let { it != upstreamValue } == true
+}
+
 android {
     namespace = "com.cruxcoach.android"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.cruxcoach.android"
+        applicationId = applicationIdValue
         minSdk = 26
         targetSdk = 35
         versionCode = 7
@@ -63,53 +107,50 @@ android {
         // can override them in their own local.properties without source
         // edits. See CONTRIBUTING.md "Customizing for forks" and
         // TRADEMARK.md for the rationale.
-        buildConfigField("String", "MAINTAINER_PUBKEY",
-            "\"${localProps.getProperty("MAINTAINER_PUBKEY", "e75a185c019d09049d5fcb0e29a2cc9bfd016ec0f6d892fc98f6ffe0181a480d")}\"")
-        buildConfigField("String", "MAINTAINER_KOFI_URL",
-            "\"${localProps.getProperty("MAINTAINER_KOFI_URL", "https://ko-fi.com/cruxcoach")}\"")
-        buildConfigField("String", "MAINTAINER_LIGHTNING_ADDRESS",
-            "\"${localProps.getProperty("MAINTAINER_LIGHTNING_ADDRESS", "cruxcoach@npub.cash")}\"")
+        buildConfigField("String", "MAINTAINER_PUBKEY", "\"$maintainerPubkey\"")
         buildConfigField("String", "ANNOUNCE_NAMESPACE",
-            "\"${localProps.getProperty("ANNOUNCE_NAMESPACE", "com.cruxcoach.announce")}\"")
+            "\"${localProps.getProperty("ANNOUNCE_NAMESPACE", "$nostrNamespacePrefix.announce")}\"")
+        buildConfigField("String", "BRAND_NAMESPACE", "\"$brandNamespace\"")
+        buildConfigField("String", "NOSTR_NAMESPACE_PREFIX", "\"$nostrNamespacePrefix\"")
+        buildConfigField("String", "CATALOGUE_NAMESPACE", "\"$catalogueNamespace\"")
+        buildConfigField(
+            "String",
+            "CATALOGUE_MANIFEST_PUBKEY",
+            "\"$catalogueManifestPubkey\"",
+        )
 
         // FEAT-004 in-app updater: source of truth for release polling.
         // Hardcoded for release builds; forks override via local.properties
         // to point at their own Codeberg repo (changing the source repo
         // invalidates the TOFU cert pin, so this cannot be user-configurable).
         buildConfigField("String", "UPDATER_API_BASE",
-            "\"${localProps.getProperty("UPDATER_API_BASE", "https://codeberg.org/api/v1")}\"")
+            "\"$updaterApiBase\"")
         buildConfigField("String", "UPDATER_REPO_OWNER",
-            "\"${localProps.getProperty("UPDATER_REPO_OWNER", "CruxCoach")}\"")
+            "\"$updaterRepoOwner\"")
         buildConfigField("String", "UPDATER_REPO_NAME",
-            "\"${localProps.getProperty("UPDATER_REPO_NAME", "CruxCoach")}\"")
+            "\"$updaterRepoName\"")
 
         // Zapstore app-listing URL shown as a share QR / link in the
         // Settings → "Share app" section. Forks override via
         // local.properties to point at their own Zapstore namespace.
         buildConfigField("String", "ZAPSTORE_APP_URL",
-            "\"${localProps.getProperty("ZAPSTORE_APP_URL", "https://zapstore.dev/apps/com.cruxcoach.android")}\"")
+            "\"$zapstoreAppUrl\"")
 
         // Brand-bound constants used in outgoing HTTP traffic, App Links,
         // and the Kind-1 Auto-Note publish path. Forks override via
         // local.properties so they can present as their own brand on the
         // wire (User-Agent visible to Kilter operators, host of any
-        // shareable climb URL, p-tag amplification on auto-Note).
-        val appLinkHost = localProps.getProperty("APP_LINK_HOST", "cruxcoach.org")
+        // shareable climb URL, public Nostr d-tag and label namespaces).
         buildConfigField("String", "USER_AGENT_PRODUCT",
-            "\"${localProps.getProperty("USER_AGENT_PRODUCT", "CruxCoach")}\"")
+            "\"$userAgentProduct\"")
         buildConfigField("String", "APP_LINK_HOST",
             "\"$appLinkHost\"")
-        // Auto-Note p-tag mention of MAINTAINER_PUBKEY. Default true for
-        // upstream (the maintainer self-mention is a known growth-hack
-        // for upstream installs); forks set false so their users don't
-        // accidentally amplify whoever the fork's MAINTAINER_PUBKEY
-        // resolves to.
-        buildConfigField("Boolean", "AUTO_NOTE_PTAG_MAINTAINER",
-            localProps.getProperty("AUTO_NOTE_PTAG_MAINTAINER", "true"))
+        buildConfigField("String", "APP_SCHEME", "\"$appScheme\"")
         // Mirror the App Link host into a manifest placeholder so the
         // <intent-filter><data android:host=…> entry stays in lockstep
         // with what BuildConfig.APP_LINK_HOST tells the runtime parser.
         manifestPlaceholders["appLinkHost"] = appLinkHost
+        manifestPlaceholders["appScheme"] = appScheme
     }
 
     externalNativeBuild {
@@ -228,11 +269,69 @@ val generateLegalAssets = tasks.register<Sync>("generateLegalAssets") {
     }
 }
 
+val validateDistributionIdentity = tasks.register("validateDistributionIdentity") {
+    group = "verification"
+    description = "Rejects incomplete or ambiguous downstream distribution identity settings."
+    doLast {
+        val errors = mutableListOf<String>()
+        if (!appScheme.matches(Regex("^[a-z][a-z0-9+.-]*$"))) {
+            errors += "APP_SCHEME must be a lowercase URI scheme"
+        }
+        if (!brandNamespace.matches(Regex("^[a-z][a-z0-9._-]{0,62}$"))) {
+            errors += "BRAND_NAMESPACE must be a delimiter-free lowercase identifier"
+        }
+        if (!nostrNamespacePrefix.matches(Regex("^[a-z][a-z0-9._-]{0,127}$"))) {
+            errors += "NOSTR_NAMESPACE_PREFIX must be a delimiter-free lowercase identifier"
+        }
+        if (!catalogueNamespace.matches(Regex("^[a-z][a-z0-9._-]{0,62}$"))) {
+            errors += "CATALOGUE_NAMESPACE must be a delimiter-free lowercase identifier"
+        }
+        if (!catalogueManifestPubkey.matches(Regex("^[0-9a-fA-F]{64}$"))) {
+            errors += "CATALOGUE_MANIFEST_PUBKEY must be a 64-character hex public key"
+        }
+        if (!maintainerPubkey.matches(Regex("^[0-9a-fA-F]{64}$"))) {
+            errors += "MAINTAINER_PUBKEY must be a 64-character hex public key"
+        }
+
+        if (hasForkIdentity) {
+            val requiredForkKeys = listOf(
+                "APPLICATION_ID",
+                "APP_LINK_HOST",
+                "APP_SCHEME",
+                "BRAND_NAMESPACE",
+                "NOSTR_NAMESPACE_PREFIX",
+                "MAINTAINER_PUBKEY",
+                "UPDATER_REPO_OWNER",
+                "UPDATER_REPO_NAME",
+                "ZAPSTORE_APP_URL",
+                "USER_AGENT_PRODUCT",
+            )
+            val missing = requiredForkKeys.filter { localProps.getProperty(it).isNullOrBlank() }
+            if (missing.isNotEmpty()) {
+                errors += "fork identity is incomplete; explicitly configure: ${missing.joinToString()}"
+            }
+            if (maintainerPubkey == upstreamMaintainerPubkey) {
+                errors += "a fork must not retain upstream MAINTAINER_PUBKEY"
+            }
+        }
+
+        if (errors.isNotEmpty()) {
+            throw GradleException(
+                errors.joinToString(
+                    prefix = "Invalid distribution identity:\n - ",
+                    separator = "\n - ",
+                    postfix = "\nSee CONTRIBUTING.md#customizing-for-forks.",
+                )
+            )
+        }
+    }
+}
+
 android.sourceSets.getByName("main").assets.srcDir(
     layout.buildDirectory.dir("generated/legalAssets")
 )
 tasks.named("preBuild").configure {
-    dependsOn(generateLegalAssets)
+    dependsOn(generateLegalAssets, validateDistributionIdentity)
 }
 
 composeCompiler {

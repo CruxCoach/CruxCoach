@@ -189,8 +189,9 @@ or any board manufacturer. See [LEGAL.md](LEGAL.md).
 
   <img src="docs/lightning-qr.png" alt="Lightning: cruxcoach@npub.cash" width="180">
 
-  > Forks: this address routes to the upstream maintainer. Replace it via
-  > `local.properties` before publishing your build — see
+  > Forks: this address and QR describe the upstream maintainer. Replace this
+  > documentation and configure your own `MAINTAINER_PUBKEY` before publishing;
+  > the app resolves that profile's current signed Lightning address. See
   > [CONTRIBUTING.md → Customizing for forks](CONTRIBUTING.md#customizing-for-forks).
 
 ---

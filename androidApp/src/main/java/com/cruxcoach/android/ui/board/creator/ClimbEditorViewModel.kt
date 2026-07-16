@@ -860,9 +860,11 @@ class ClimbEditorViewModel @Inject constructor(
         // repository + publisher don't need to know about ViewModel
         // state. Empty/null template + disabled toggle both collapse to
         // null (= skip Kind-1).
-        val noteSpec = if (_state.value.alsoPostNote && !autoNoteTemplate.isNullOrBlank()) {
-            com.cruxcoach.android.community.CommunityClimbPublisher.AutoNoteSpec(autoNoteTemplate)
-        } else null
+        val noteSpec = resolveAutoNoteSpec(
+            enabled = _state.value.alsoPostNote,
+            editedText = _state.value.autoNoteText,
+            defaultTemplate = autoNoteTemplate,
+        )
         viewModelScope.launch {
             val outcome = try {
                 withContext(Dispatchers.IO) {
@@ -1279,4 +1281,22 @@ class ClimbEditorViewModel @Inject constructor(
         private const val AUTOSAVE_DEBOUNCE_MS = 500L
         private const val HEATMAP_DEBOUNCE_MS = 500L
     }
+}
+
+/**
+ * Selects exactly the Auto-Note text the user reviewed. A null editor value
+ * means the globally enabled default has not been seeded on screen yet, so the
+ * resource template is the fallback. An explicit empty edit means "publish no
+ * note" and must never resurrect the promotional default.
+ */
+internal fun resolveAutoNoteSpec(
+    enabled: Boolean,
+    editedText: String?,
+    defaultTemplate: String?,
+): com.cruxcoach.android.community.CommunityClimbPublisher.AutoNoteSpec? {
+    if (!enabled) return null
+    val selected = editedText ?: defaultTemplate
+    return selected
+        ?.takeIf { it.isNotBlank() }
+        ?.let(com.cruxcoach.android.community.CommunityClimbPublisher::AutoNoteSpec)
 }

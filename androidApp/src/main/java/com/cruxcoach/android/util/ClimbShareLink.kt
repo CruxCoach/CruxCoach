@@ -31,7 +31,11 @@ object ClimbShareLink {
         if (authorPubkeyHex == null) {
             return "https://${BuildConfig.APP_LINK_HOST}/c/$uuid"
         }
-        val dTag = communityClimbDTag(authorPubkeyHex, uuid)
+        val dTag = communityClimbDTag(
+            authorPubkeyHex,
+            uuid,
+            BuildConfig.BRAND_NAMESPACE,
+        )
         val naddr = NAddress.create(
             kind = KIND_REPLACEABLE_PARAMETERIZED,
             pubKeyHex = authorPubkeyHex,

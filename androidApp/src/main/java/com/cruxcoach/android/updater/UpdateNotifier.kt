@@ -232,9 +232,9 @@ class UpdateNotifier(private val context: Context) {
     enum class DownloadError { NO_SPACE, CORRUPT, GENERIC }
 
     enum class Action(val intentAction: String, val requestCode: Int) {
-        DOWNLOAD("com.cruxcoach.android.updater.ACTION_DOWNLOAD", 101),
-        INSTALL("com.cruxcoach.android.updater.ACTION_INSTALL", 102),
-        DISMISS("com.cruxcoach.android.updater.ACTION_DISMISS", 103),
+        DOWNLOAD("${BuildConfig.APPLICATION_ID}.updater.ACTION_DOWNLOAD", 101),
+        INSTALL("${BuildConfig.APPLICATION_ID}.updater.ACTION_INSTALL", 102),
+        DISMISS("${BuildConfig.APPLICATION_ID}.updater.ACTION_DISMISS", 103),
     }
 
     companion object {

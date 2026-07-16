@@ -2,6 +2,7 @@ package com.cruxcoach.android.data
 
 import android.content.Context
 import android.util.Log
+import com.cruxcoach.android.BuildConfig
 import com.cruxcoach.android.data.blossom.BlossomSyncException
 import com.cruxcoach.android.data.blossom.BlossomSyncManager
 import com.cruxcoach.domain.board.BoardBrand
@@ -82,7 +83,7 @@ class AuroraCatalogueSync @Inject constructor(
         val blossomSync = BlossomSyncManager(
             context,
             okHttpClient,
-            manifestDTag = "cruxcoach/${board.wireValue}-db",
+            manifestDTag = "${BuildConfig.CATALOGUE_NAMESPACE}/${board.wireValue}-db",
             prefsName = "blossom_sync_${board.wireValue}",
         )
         try {

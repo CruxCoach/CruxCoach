@@ -35,4 +35,25 @@ class ClimbAppLinkRouteTest {
         assertNull(ClimbAppLinkRoute.fromNaddr(30078, "cruxcoach:climb:not-hex!!:$uuid"))
         assertNull(ClimbAppLinkRoute.fromNaddr(30078, "cruxcoach:climb:deadbeef:$uuid:extra"))
     }
+
+    @Test
+    fun `fork namespace accepts only its own naddr`() {
+        val uuid = "01234567-89ab-cdef-0123-456789abcdef"
+
+        assertEquals(
+            "board_climb_detail/$uuid/40",
+            ClimbAppLinkRoute.fromNaddr(
+                30078,
+                "cruxfork:climb:deadbeef:$uuid",
+                brandNamespace = "cruxfork",
+            ),
+        )
+        assertNull(
+            ClimbAppLinkRoute.fromNaddr(
+                30078,
+                "cruxcoach:climb:deadbeef:$uuid",
+                brandNamespace = "cruxfork",
+            )
+        )
+    }
 }

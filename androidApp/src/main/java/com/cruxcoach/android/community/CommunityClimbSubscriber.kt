@@ -1,6 +1,7 @@
 package com.cruxcoach.android.community
 
 import android.util.Log
+import com.cruxcoach.android.BuildConfig
 import com.cruxcoach.android.data.isTransientSqliteLockFailure
 import com.cruxcoach.android.data.retryingOnTransientSqliteLock
 import androidx.annotation.VisibleForTesting
@@ -534,7 +535,13 @@ class CommunityClimbSubscriber @Inject constructor(
         rawEventJson: String,
         fromDeadLetter: Boolean = false,
     ) {
-        val parsedClimb = runCatching { ParsedClimb.from(event) }.getOrElse { failure ->
+        val parsedClimb = runCatching {
+            ParsedClimb.from(
+                event,
+                brandNamespace = BuildConfig.BRAND_NAMESPACE,
+                nostrNamespacePrefix = BuildConfig.NOSTR_NAMESPACE_PREFIX,
+            )
+        }.getOrElse { failure ->
             Log.w(
                 TAG,
                 "Rejected malformed community climb event (${failure.javaClass.simpleName})",
@@ -580,12 +587,17 @@ class CommunityClimbSubscriber @Inject constructor(
         }
 
         // D-tag prefix must encode the same author as the signed pubkey
-        // (FEAT-003 §4.2: d-tag = "cruxcoach:climb:<pubkey-prefix-8>:<uuid>").
+        // (d-tag = "<BRAND_NAMESPACE>:climb:<pubkey-prefix-8>:<uuid>").
         // The wire format already enforces author-isolation, but the
         // ingest path has to re-check it so an attacker who legitimately
         // signs with their own keypair cannot claim someone else's d-tag
         // namespace.
-        if (!CommunityClimbValidation.dTagAuthorMatches(parsedClimb.dTag, parsedClimb.pubkey)) {
+        if (!CommunityClimbValidation.dTagAuthorMatches(
+                parsedClimb.dTag,
+                parsedClimb.pubkey,
+                BuildConfig.BRAND_NAMESPACE,
+            )
+        ) {
             Log.w(
                 TAG,
                 "skip d-tag/pubkey mismatch uuid=${parsedClimb.uuid} " +
@@ -966,11 +978,16 @@ class CommunityClimbSubscriber @Inject constructor(
         // (cruxcoach:climb:<pubkey-prefix-8>:…). A relay-forged d-tag
         // for someone else's climb is otherwise indistinguishable from
         // a legitimate self-delete here.
-        if (!CommunityClimbValidation.dTagAuthorMatches(refDTag, event.pubKey)) {
+        if (!CommunityClimbValidation.dTagAuthorMatches(
+                refDTag,
+                event.pubKey,
+                BuildConfig.BRAND_NAMESPACE,
+            )
+        ) {
             Log.w(TAG, "skip kind-5 with d-tag/pubkey mismatch d=$refDTag")
             return
         }
-        val uuid = ParsedClimb.dTagUuid(refDTag)?.lowercase()
+        val uuid = ParsedClimb.dTagUuid(refDTag, BuildConfig.BRAND_NAMESPACE)?.lowercase()
         if (uuid == null) {
             Log.w(TAG, "skip kind-5 with non-cruxcoach d-tag d=$refDTag")
             return
@@ -1090,7 +1107,11 @@ class CommunityClimbSubscriber @Inject constructor(
         val deleted: Boolean,
     ) {
         companion object {
-            fun from(event: Event): ParsedClimb {
+            fun from(
+                event: Event,
+                brandNamespace: String = "cruxcoach",
+                nostrNamespacePrefix: String = "com.cruxcoach",
+            ): ParsedClimb {
                 var dTag: String? = null
                 var framesText: String? = null
                 var framesHashRaw: String? = null
@@ -1113,8 +1134,8 @@ class CommunityClimbSubscriber @Inject constructor(
                         // Accept BOTH the legacy Kilter namespace and the v2
                         // (new-board) namespace (FEAT-031 dual-namespace gate).
                         "L" -> when (tag[1]) {
-                            NAMESPACE_LABEL -> foundV1 = true
-                            NAMESPACE_LABEL_V2 -> foundV2 = true
+                            "$nostrNamespacePrefix.climb" -> foundV1 = true
+                            "$nostrNamespacePrefix.climb.v2" -> foundV2 = true
                         }
                         // Explicit brand machine tag — the authoritative
                         // ingest key (layout_id collides across boards).
@@ -1184,7 +1205,7 @@ class CommunityClimbSubscriber @Inject constructor(
                 // half the time). Lowercase here so existsClimb /
                 // getClimbAuthorPubkey / upsertCommunityClimb all match.
                 val uuid = (contentObj["uuid"]?.jsonPrimitive?.contentOrNull
-                    ?: dTagUuid(dTag!!)
+                    ?: dTagUuid(dTag!!, brandNamespace)
                     ?: error("uuid not derivable from event")).lowercase()
                 // A community event is self-signed by ANY keypair, so this uuid is
                 // attacker-controlled — yet it becomes the climbs PK AND is
@@ -1221,10 +1242,10 @@ class CommunityClimbSubscriber @Inject constructor(
                 )
             }
 
-            /** d-tag pattern: cruxcoach:climb:<pubkey-prefix-8>:<uuid>. */
-            internal fun dTagUuid(dTag: String): String? {
+            /** d-tag pattern: <brand-namespace>:climb:<pubkey-prefix-8>:<uuid>. */
+            internal fun dTagUuid(dTag: String, brandNamespace: String = "cruxcoach"): String? {
                 val parts = dTag.split(":")
-                return if (parts.size >= 4 && parts[0] == "cruxcoach" && parts[1] == "climb")
+                return if (parts.size >= 4 && parts[0] == brandNamespace && parts[1] == "climb")
                     parts.last() else null
             }
 
@@ -1245,8 +1266,8 @@ class CommunityClimbSubscriber @Inject constructor(
         // a rename of CommunityClimbTags.NS_CLIMB* updates both sides at once.
         // NS_CLIMB = Kilter/legacy; NS_CLIMB_V2 = the non-Kilter back-compat
         // namespace (FEAT-031) that pre-0.2.0 apps' single-#L filter never matches.
-        const val NAMESPACE_LABEL = CommunityClimbTags.NS_CLIMB
-        const val NAMESPACE_LABEL_V2 = CommunityClimbTags.NS_CLIMB_V2
+        val NAMESPACE_LABEL: String = "${BuildConfig.NOSTR_NAMESPACE_PREFIX}.climb"
+        val NAMESPACE_LABEL_V2: String = "${BuildConfig.NOSTR_NAMESPACE_PREFIX}.climb.v2"
         const val STARTUP_GRACE_MS = 2_000L
         const val BACKOFF_MS = 5_000L
         // Exponential backoff ladder for the runSubscriptionLoop's
@@ -1324,7 +1345,7 @@ class CommunityClimbSubscriber @Inject constructor(
 
         /** d-tag prefix that the publisher embeds for [pubkey] (FEAT-003 §4.2). */
         fun communityClimbDTagPrefix(pubkey: String): String =
-            CommunityClimbValidation.expectedDTagPrefix(pubkey)
+            CommunityClimbValidation.expectedDTagPrefix(pubkey, BuildConfig.BRAND_NAMESPACE)
     }
 }
 
@@ -1336,9 +1357,9 @@ class CommunityClimbSubscriber @Inject constructor(
  * Java-17 test runtime).
  */
 internal object CommunityClimbValidation {
-    /** d-tag pattern: `cruxcoach:climb:<pubkey-prefix-8>:<uuid>` (FEAT-003 §4.2). */
-    fun expectedDTagPrefix(pubkey: String): String =
-        "cruxcoach:climb:${pubkey.take(8)}:"
+    /** d-tag pattern: `<brand-namespace>:climb:<pubkey-prefix-8>:<uuid>`. */
+    fun expectedDTagPrefix(pubkey: String, brandNamespace: String = "cruxcoach"): String =
+        "$brandNamespace:climb:${pubkey.take(8)}:"
 
     /**
      * True when the d-tag's embedded author matches the signed pubkey.
@@ -1346,8 +1367,11 @@ internal object CommunityClimbValidation {
      * (e.g. an attacker who legitimately holds some keypair tries to
      * claim a victim's d-tag namespace).
      */
-    fun dTagAuthorMatches(dTag: String, signedPubkey: String): Boolean =
-        dTag.startsWith(expectedDTagPrefix(signedPubkey))
+    fun dTagAuthorMatches(
+        dTag: String,
+        signedPubkey: String,
+        brandNamespace: String = "cruxcoach",
+    ): Boolean = dTag.startsWith(expectedDTagPrefix(signedPubkey, brandNamespace))
 
     /**
      * True when [contentPrefix] is absent (older events) or matches the

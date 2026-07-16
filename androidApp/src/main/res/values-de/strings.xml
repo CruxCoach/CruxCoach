@@ -786,8 +786,6 @@
     <string name="payment_sheet_title">Freiwilliges Geschenk</string>
     <string name="payment_lightning_title">Lightning</string>
     <string name="payment_lightning_desc">Schnell, günstig, privat</string>
-    <string name="payment_kofi_title">Ko-fi</string>
-    <string name="payment_kofi_desc">Klassisch mit Karte/PayPal</string>
     <string name="payment_amount_title">Betrag wählen:</string>
     <string name="payment_custom_amount">Eigener Betrag (Sats)</string>
     <string name="payment_message_hint">Nachricht (optional)</string>
@@ -806,7 +804,7 @@
     <string name="payment_profile_lightning_hint">Lightning-Adresse</string>
     <string name="payment_profile_setup_confirm">Einrichten</string>
     <string name="payment_profile_setup_skip">Später</string>
-    <string name="payment_zap_privacy_notice">Hinweis: Lightning Zaps sind auf Nostr-Relays öffentlich sichtbar (Betrag, Absender, Zeitpunkt). Ko-fi ist die privatere Alternative.</string>
+    <string name="payment_zap_privacy_notice">Hinweis: Lightning-Zaps sind auf Nostr-Relays öffentlich sichtbar (Betrag, Absender, Zeitpunkt). Mit der privaten Lightning-Option wird kein Zap-Event veröffentlicht.</string>
     <string name="payment_open_wallet">Wallet-Webseite öffnen</string>
     <string name="payment_invoice_title">Lightning-Rechnung</string>
     <string name="payment_invoice_qr">QR-Code für die Lightning-Rechnung</string>
@@ -816,15 +814,12 @@
     <string name="payment_lightning_private_desc">Keine öffentliche Spur auf Nostr-Relays</string>
     <string name="payment_lightning_public_title">Lightning-Zap (öffentlich)</string>
     <string name="payment_lightning_public_desc">Betrag und Absender sind auf Nostr sichtbar</string>
-    <string name="payment_card_title">Karte</string>
-    <string name="payment_coming_soon">Demnächst verfügbar</string>
     <string name="payment_private_title">Lightning-Geschenk</string>
     <string name="payment_public_title">Lightning-Zap</string>
     <string name="payment_amount_sats">Betrag in Sats:</string>
     <string name="payment_sats_value">%1$s Sats</string>
     <string name="payment_private_message_hint">Nachricht (optional, verschlüsselt)</string>
     <string name="payment_public_message_hint">Nachricht (optional, öffentlich)</string>
-    <string name="payment_kofi_open_failed">Ko-fi konnte nicht geöffnet werden.</string>
 
     <!-- Offline Queue -->
     <string name="queue_pending_label">Wird gesendet…</string>

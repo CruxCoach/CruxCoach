@@ -54,8 +54,9 @@ practical rules cover the trademark side:
 
 For convenience, the maintainer-bound constants that should be replaced when
 you rebrand are documented in [`CONTRIBUTING.md`](CONTRIBUTING.md) under
-"Customizing for forks" — including donation addresses, the Nostr
-maintainer pubkey, and the Zapstore signing identity.
+"Customizing for forks" — including the Android application ID, import URI
+scheme, public Nostr namespaces, maintainer pubkey, update channel, and
+Zapstore identity. Gradle rejects a partially configured fork identity.
 
 ## Enforcement
 

@@ -3,6 +3,7 @@ package com.cruxcoach.android.data.blossom
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
+import com.cruxcoach.android.BuildConfig
 import com.cruxcoach.android.nostr.NostrConfig
 import com.cruxcoach.android.util.ZstdNative
 import com.vitorpamplona.quartz.nip01Core.core.Event
@@ -405,10 +406,9 @@ class BlossomSyncManager(
         // allowlist so values like "../x" or "a/b" cannot escape cacheDir.
         private val CHUNK_NAME_REGEX = Regex("^[A-Za-z0-9_-]{1,64}$")
 
-        const val MANIFEST_PUBKEY =
-            "70b2740bff77cf65743a7d6ffa5465b3a27105ae26123458cf5450eafb1bd68d"
-        const val MANIFEST_D_TAG = "cruxcoach/board-db"
-        const val MOONBOARD_D_TAG = "cruxcoach/moonboard-db"
+        val MANIFEST_PUBKEY: String = BuildConfig.CATALOGUE_MANIFEST_PUBKEY
+        val MANIFEST_D_TAG: String = "${BuildConfig.CATALOGUE_NAMESPACE}/board-db"
+        val MOONBOARD_D_TAG: String = "${BuildConfig.CATALOGUE_NAMESPACE}/moonboard-db"
         // Per-board SharedPreferences files for chunk-hash state. Kilter
         // keeps the historical "blossom_sync" name so existing installs
         // do not lose their incremental-sync state on upgrade.

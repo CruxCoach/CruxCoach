@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
+import com.cruxcoach.android.BuildConfig
 import com.cruxcoach.android.data.SyncInterval
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -248,7 +249,7 @@ class BackupPreferences @Inject constructor(
     }
 
     companion object {
-        const val IDENTIFIER_BACKUP = "cruxcoach/backup/v1"
-        const val IDENTIFIER_KEY = "cruxcoach/key/v1"
+        val IDENTIFIER_BACKUP: String = "${BuildConfig.BRAND_NAMESPACE}/backup/v1"
+        val IDENTIFIER_KEY: String = "${BuildConfig.BRAND_NAMESPACE}/key/v1"
     }
 }

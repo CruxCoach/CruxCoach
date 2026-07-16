@@ -181,24 +181,34 @@ wide audience, please rename and replace the launcher icon. App-launcher
 sources to replace are in [`logos/`](logos/) and the regeneration procedure
 is documented there.
 
-Maintainer-bound runtime constants are exposed as Gradle `BuildConfig`
-fields with sensible defaults. Override them in your fork by adding the
-following keys to `local.properties` — no source edits required:
+Maintainer- and brand-bound runtime constants are exposed as Gradle
+`BuildConfig` fields. Upstream defaults keep a contributor checkout buildable.
+For a downstream distribution, set the complete identity group below in
+`local.properties`: once any identity differs, `validateDistributionIdentity`
+fails the build if the rebrand is partial. No source edit is required.
 
 | `local.properties` key | What it sets | Default |
 |------------------------|--------------|---------|
-| `MAINTAINER_PUBKEY` | Recipient hex pubkey for in-app crash reports, dev-contact DMs, and announcement subscriptions | upstream maintainer |
-| `MAINTAINER_LIGHTNING_ADDRESS` | Lightning address shown for upstream-style donation flows | `cruxcoach@npub.cash` |
-| `MAINTAINER_KOFI_URL` | Ko-fi donation link surfaced in the Payments UI | `https://ko-fi.com/cruxcoach` |
-| `ANNOUNCE_NAMESPACE` | Nostr `L`/`l` tag namespace for announcement events | `com.cruxcoach.announce` — change this when you fork to avoid notification cross-talk with upstream users |
+| `APPLICATION_ID` | Permanent Android/store identity. Change it so upstream and fork can coexist and stores do not treat them as one app | `com.cruxcoach.android` |
+| `MAINTAINER_PUBKEY` | Recipient hex pubkey for in-app crash/support DMs and donations. The payment path refreshes the signed Kind-0 `lud16`; no immutable Lightning fallback or Ko-fi address is built in | upstream maintainer |
+| `APP_LINK_HOST` | Host for shareable climb URLs and the verified Android App Link. Publish `/.well-known/assetlinks.json` with the fork's `APPLICATION_ID` and release-certificate fingerprint | `cruxcoach.org` |
+| `APP_SCHEME` | Custom board-import URI scheme. Custom schemes cannot be verified; choose a distinct value and retain the import confirmation as the trust boundary | `cruxcoach` |
+| `BRAND_NAMESPACE` | Prefix for user-owned public d-tags (`<ns>:climb:…`, `<ns>/backup/v1`, `<ns>/key/v1`). Change it so a fork does not publish upstream-branded events or overwrite an upstream backup under the same Nostr key | `cruxcoach` |
+| `NOSTR_NAMESPACE_PREFIX` | Prefix for community event `L`/`l` labels | `com.cruxcoach` |
+| `ANNOUNCE_NAMESPACE` | Nostr `L`/`l` namespace for announcement events | derived as `<NOSTR_NAMESPACE_PREFIX>.announce` |
 | `UPDATER_API_BASE` | Forgejo/Gitea API root that the in-app auto-updater polls for new releases | `https://codeberg.org/api/v1` |
 | `UPDATER_REPO_OWNER` | Repository owner used by the auto-updater and the "Online" app-share QR code | `CruxCoach` |
 | `UPDATER_REPO_NAME` | Repository name used by the auto-updater and the app-share QR code | `CruxCoach` |
 | `ZAPSTORE_APP_URL` | Zapstore listing URL surfaced as a QR code + shareable link in *Settings → Share via Zapstore* | `https://zapstore.dev/apps/com.cruxcoach.android` |
 | `USER_AGENT_PRODUCT` | Product token in outgoing HTTP `User-Agent` headers (`<product>/<version> (https://<host>)`). Lets Kilter operators tell forks apart from upstream traffic | `CruxCoach` |
-| `APP_LINK_HOST` | Host for shareable climb URLs (`https://<host>/c/<naddr>`) and for the Android App Link `<intent-filter>`. Forks need to host their own `/.well-known/assetlinks.json` for verification to succeed; until then App Links fall back to opening in a browser | `cruxcoach.org` |
-| `AUTO_NOTE_PTAG_MAINTAINER` | When `true`, Auto-Note Kind-1 publishes attach an unconditional `p`-tag mention of `MAINTAINER_PUBKEY` (Amethyst notification + reach amplifier for upstream). Forks usually want `false` so their users don't accidentally amplify whoever the fork's `MAINTAINER_PUBKEY` resolves to | `true` (set `AUTO_NOTE_PTAG_MAINTAINER=false` in your fork's `local.properties` to opt out) |
 | `auto_note_default_template` (string resource — `values/strings.xml:33` + `values-de/strings.xml:33`) | Editable Kind-1 template a fork user sees in *Settings → Climb Creator → Auto-Note*. The default contains `{npub_cruxcoach}`, `{cruxcoach_url}`, and the `#kilterboard` hashtag — forks should reword the template (and ideally drop the upstream-flavored token names) before publishing | upstream-flavored default |
+
+Catalogue reads are configured separately because a fork may legitimately
+consume the attributed upstream dataset while using its own user-event
+namespace. Keep `CATALOGUE_NAMESPACE=cruxcoach` and the default
+`CATALOGUE_MANIFEST_PUBKEY` for that case. A fork operating its own catalogue
+pipeline must change both values together and publish signed manifests under
+`<CATALOGUE_NAMESPACE>/board-db`, `/moonboard-db`, and `/<board>-db`.
 
 The auto-updater is disabled automatically on Zapstore installs (Zapstore
 handles updates itself). Forks whose APKs are distributed through other
@@ -227,8 +237,9 @@ The `zapstore.yaml` signing pubkey is maintainer-specific too. Forks
 publishing to Zapstore should replace it with their own zsp-managed
 identity (or remove the file if not publishing through Zapstore).
 
-The README's donation block points at the upstream maintainer — update it
-to your own channels when rebranding.
+The README's donation block points at the upstream maintainer — update the
+documentation and QR image to your own channels when rebranding. In-app
+donations resolve the `lud16` in `MAINTAINER_PUBKEY`'s signed Nostr profile.
 
 ---
 

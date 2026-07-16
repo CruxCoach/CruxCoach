@@ -50,6 +50,26 @@ class CommunityClimbSubscriberTest {
         assertTrue(publisherDTag.startsWith(CommunityClimbValidation.expectedDTagPrefix(authorA)))
     }
 
+    @Test
+    fun expectedDTagPrefix_supports_a_fork_namespace_without_cross_talk() {
+        val forkDTag = "cruxfork:climb:${authorA.take(8)}:$uuidA"
+
+        assertTrue(
+            CommunityClimbValidation.dTagAuthorMatches(
+                forkDTag,
+                authorA,
+                brandNamespace = "cruxfork",
+            )
+        )
+        assertFalse(
+            CommunityClimbValidation.dTagAuthorMatches(
+                "cruxcoach:climb:${authorA.take(8)}:$uuidA",
+                authorA,
+                brandNamespace = "cruxfork",
+            )
+        )
+    }
+
     // ----- dTagAuthorMatches -----
 
     @Test

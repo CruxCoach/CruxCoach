@@ -142,6 +142,8 @@ class CommunityClimbPublisher @Inject constructor(
             state = state,
             brand = boardBrand,
             bounds = bounds,
+            brandNamespace = com.cruxcoach.android.BuildConfig.BRAND_NAMESPACE,
+            nostrNamespacePrefix = com.cruxcoach.android.BuildConfig.NOSTR_NAMESPACE_PREFIX,
         )
         val tags: Array<Array<String>> = payload.tags.map { it.toTypedArray() }.toTypedArray()
         val event = nostrSigner.signer.sign<Event>(
@@ -340,12 +342,9 @@ class CommunityClimbPublisher @Inject constructor(
     /**
      * Build + send the Kind-1 announcement. Encodes the just-published
      * climb as NIP-19 `naddr1…` (replaceable-event reference — survives
-     * future edits because the d-tag is stable). The template's
-     * `{npub_cruxcoach}` resolves to [NostrConfig.DEV_PUBKEY] (the
-     * maintainer-bound brand pubkey baked into the build); a `p`-tag
-     * pointing at it makes the mention surface in Amethyst's notifications
-     * for the maintainer account, which doubles as a reach-multiplier for
-     * CruxCoach climbs.
+     * future edits because the d-tag is stable). The optional template
+     * token `{npub_cruxcoach}` resolves to [NostrConfig.DEV_PUBKEY]; it is
+     * visible in the editor and can be removed before the user publishes.
      */
     /**
      * Publish the optional Kind-1 announcement note. Returns:
@@ -384,21 +383,11 @@ class CommunityClimbPublisher @Inject constructor(
                 "cruxcoach_url" to "$APP_LINK_BASE$naddr",
             ),
         )
-        // Tags: explicit hashtags (so #-search hits) + optional p-tag
-        // mention (NIP-10 / Amethyst surfaces this as a reply-mention in
-        // the recipient's notifications). The naddr embed in `content`
-        // covers the climb-link side. The maintainer-mention is gated by
-        // BuildConfig.AUTO_NOTE_PTAG_MAINTAINER so forks default to off
-        // — every fork install would otherwise unconditionally amplify
-        // whoever the fork's MAINTAINER_PUBKEY resolves to.
-        val tagList = mutableListOf(
-            arrayOf("t", com.cruxcoach.domain.community.boardHashtag(boardBrand)),
-            arrayOf("t", "climbing"),
-        )
-        if (com.cruxcoach.android.BuildConfig.AUTO_NOTE_PTAG_MAINTAINER) {
-            tagList.add(0, arrayOf("p", NostrConfig.DEV_PUBKEY))
-        }
-        val tags: Array<Array<String>> = tagList.toTypedArray()
+        // Discovery hashtags are the only automatic tags. In particular, do
+        // not attach a hidden maintainer p-tag: a Nostr mention is a public,
+        // user-attributed notification and must not be added independently of
+        // the text the user reviewed in the editor.
+        val tags = autoNoteTags(boardBrand)
         val noteEvent = nostrSigner.signer.sign<Event>(
             createdAt = System.currentTimeMillis() / 1000,
             kind = KIND_TEXT_NOTE,
@@ -432,3 +421,9 @@ class CommunityClimbPublisher @Inject constructor(
         return ClimbBounds.fromCoords(coords)
     }
 }
+
+/** Pure tag builder kept module-visible for a regression test. */
+internal fun autoNoteTags(boardBrand: BoardBrand): Array<Array<String>> = arrayOf(
+    arrayOf("t", com.cruxcoach.domain.community.boardHashtag(boardBrand)),
+    arrayOf("t", "climbing"),
+)

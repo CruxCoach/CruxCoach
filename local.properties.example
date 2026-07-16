@@ -4,9 +4,10 @@
 # Copy this file to local.properties and fill in only the values you need.
 # local.properties is gitignored — never commit the real file.
 #
-# Every maintainer-bound constant below has a working default baked into
-# androidApp/build.gradle.kts, so forks and contributors only need to set
-# keys they actually want to override.
+# Upstream defaults keep contributor builds simple. A downstream distribution
+# is different: once any identity key changes, Gradle requires the complete
+# fork identity set so a partial rebrand cannot silently retain upstream's
+# package, support recipient, public-event namespace, or update channel.
 
 # ─── Android SDK location ────────────────────────────────────────────
 # Usually auto-written by Android Studio on first project import.
@@ -24,14 +25,19 @@
 # RELEASE_KEY_ALIAS=
 # RELEASE_KEY_PASSWORD=
 
-# ─── Fork overrides (all optional — defaults point at upstream) ─────
-# Change these in your fork to route donations, crash reports, and
-# announcements to your own Nostr identity / Lightning address.
+# ─── Fork identity (set the complete group for a distribution) ─────
+# A fork's MAINTAINER_PUBKEY receives support/crash DMs and is the donation
+# recipient. Payments resolve its current, signed Kind-0 `lud16`; no Lightning
+# address is frozen into the APK. There is no Ko-fi destination in the app.
 # See CONTRIBUTING.md → "Customizing for forks" and TRADEMARK.md.
+# APPLICATION_ID=com.yourfork.android
 # MAINTAINER_PUBKEY=<64-char hex pubkey>
-# MAINTAINER_LIGHTNING_ADDRESS=you@lightning.example
-# MAINTAINER_KOFI_URL=https://ko-fi.com/yourhandle
+# APP_LINK_HOST=yourfork.example
+# APP_SCHEME=yourfork
+# BRAND_NAMESPACE=yourfork
+# NOSTR_NAMESPACE_PREFIX=com.yourfork
 # ANNOUNCE_NAMESPACE=com.yourfork.announce
+# USER_AGENT_PRODUCT=YourFork
 
 # ─── Auto-updater (all optional — defaults point at upstream Codeberg) ─
 # The in-app updater polls this Forgejo/Gitea-compatible releases API and
@@ -48,7 +54,7 @@
 # so the in-app share button doesn't drive their users to upstream.
 # ZAPSTORE_APP_URL=https://zapstore.dev/apps/com.yourfork.android
 
-# ─── Brand-bound constants on the wire (HTTP, App Links, Auto-Note) ──
+# ─── Brand-bound constants on the wire (HTTP and App Links) ─────────
 # USER_AGENT_PRODUCT lands in the outgoing User-Agent header for the
 # Kilter API client (`<product>/<version> (https://<host>)`). Lets Kilter
 # operators tell forks apart from upstream traffic. Default: CruxCoach.
@@ -59,11 +65,16 @@
 # `/.well-known/assetlinks.json` for App Link verification to succeed;
 # until then App Links fall back to opening in a browser. Default:
 # cruxcoach.org.
-# APP_LINK_HOST=yourfork.example
+# APP_SCHEME drives the unverifiable custom import URI. Use a distinct value
+# to avoid Android handler collisions; the in-app confirmation remains the
+# trust boundary for imports.
 #
-# AUTO_NOTE_PTAG_MAINTAINER controls whether Auto-Note Kind-1 publishes
-# attach an unconditional p-tag mention of MAINTAINER_PUBKEY. Default
-# `true` for upstream; forks should set `false` so their users don't
-# accidentally amplify whoever the fork's MAINTAINER_PUBKEY resolves to
-# every time they publish a climb.
-# AUTO_NOTE_PTAG_MAINTAINER=false
+# BRAND_NAMESPACE prefixes user-owned public d-tags (community climbs,
+# backups, key events). NOSTR_NAMESPACE_PREFIX drives their L/l labels.
+# Auto-Notes add discovery hashtags only; they never add a hidden person tag.
+
+# ─── Catalogue source (optional; defaults to upstream) ──────────────
+# Keep these defaults to consume CruxCoach's attributed public catalogue.
+# Override both when your fork publishes its own signed Blossom manifests.
+# CATALOGUE_NAMESPACE=yourfork
+# CATALOGUE_MANIFEST_PUBKEY=<64-char hex pubkey>

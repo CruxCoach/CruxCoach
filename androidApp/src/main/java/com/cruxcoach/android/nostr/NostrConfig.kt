@@ -8,9 +8,9 @@ object NostrConfig {
     // CONTRIBUTING.md "Customizing for forks". Defaults baked in by the
     // Gradle build live in androidApp/build.gradle.kts.
     val DEV_PUBKEY: String = BuildConfig.MAINTAINER_PUBKEY
-    val KOFI_URL: String = BuildConfig.MAINTAINER_KOFI_URL
-    val DEV_LIGHTNING_ADDRESS: String = BuildConfig.MAINTAINER_LIGHTNING_ADDRESS
     val ANNOUNCE_NAMESPACE: String = BuildConfig.ANNOUNCE_NAMESPACE
+    val BRAND_NAMESPACE: String = BuildConfig.BRAND_NAMESPACE
+    val NOSTR_NAMESPACE_PREFIX: String = BuildConfig.NOSTR_NAMESPACE_PREFIX
 
     // Community-climb publish + live-subscribe set. nos.lol is the relay that
     // empirically RETAINS one-time community-climb Kind-30078 events long-term

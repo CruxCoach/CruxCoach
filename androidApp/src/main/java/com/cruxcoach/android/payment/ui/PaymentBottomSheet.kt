@@ -14,7 +14,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -34,7 +33,6 @@ internal fun PaymentBottomSheet(
     onDismiss: () -> Unit,
     onSelectLightningPrivate: () -> Unit,
     onSelectLightningZap: () -> Unit,
-    onSelectKofi: () -> Unit,
     isSending: Boolean
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
@@ -85,35 +83,6 @@ internal fun PaymentBottomSheet(
                     onClick = onSelectLightningZap
                 )
 
-                HorizontalDivider()
-
-                // Ko-fi — disabled until account is set up
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "\u20AC",
-                        style = MaterialTheme.typography.headlineMedium,
-                        modifier = Modifier.width(40.dp),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
-                    )
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = stringResource(R.string.payment_card_title),
-                            style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
-                        )
-                        Text(
-                            text = stringResource(R.string.payment_coming_soon),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
-                        )
-                    }
-                }
             }
 
             Text(

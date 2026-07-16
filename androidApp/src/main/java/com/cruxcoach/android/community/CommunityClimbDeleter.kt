@@ -1,6 +1,7 @@
 package com.cruxcoach.android.community
 
 import android.util.Log
+import com.cruxcoach.android.BuildConfig
 import com.cruxcoach.android.nostr.NostrRelayPool
 import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.data.repository.BoardRepository
@@ -142,7 +143,7 @@ class CommunityClimbDeleter @Inject constructor(
         // source=='local'); by the time we reach here the climb is a published
         // cruxcoach row the owner is deleting.
         val dTag = ctx.nostrDTag?.takeIf { it.isNotBlank() }
-            ?: communityClimbDTag(signer, uuid)
+            ?: communityClimbDTag(signer, uuid, BuildConfig.BRAND_NAMESPACE)
 
         // Monotonic (FEAT-039 audit BUG-1): the tombstone must STRICTLY exceed
         // the climb's last publish/edit created_at so it supersedes them on the
@@ -159,9 +160,9 @@ class CommunityClimbDeleter @Inject constructor(
         // on the legacy one. Kilter → NS_CLIMB, every non-Kilter board →
         // NS_CLIMB_V2 — keyed on the row's stored brand, not its layout_id.
         val ns = if (BoardBrand.fromWire(ctx.boardBrand) == BoardBrand.KILTER) {
-            CommunityClimbTags.NS_CLIMB
+            "${BuildConfig.NOSTR_NAMESPACE_PREFIX}.climb"
         } else {
-            CommunityClimbTags.NS_CLIMB_V2
+            "${BuildConfig.NOSTR_NAMESPACE_PREFIX}.climb.v2"
         }
 
         // 1) Tombstone-replacement — replaceable-event index pathway.

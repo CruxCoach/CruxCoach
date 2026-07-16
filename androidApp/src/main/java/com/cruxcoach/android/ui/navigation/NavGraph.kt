@@ -589,8 +589,6 @@ fun CruxCoachNavHost(
                 var showPaymentSheet by remember { mutableStateOf(false) }
                 val paymentViewModel: PaymentViewModel = hiltViewModel()
                 val paymentState by paymentViewModel.state.collectAsStateWithLifecycle()
-                val context = LocalContext.current
-
                 SettingsScreen(
                     onNavigateBack = { navController.popBackStack() },
                     onNavigateToProfile = { navController.navigate(Routes.PROFILE_ASSESSMENT) },
@@ -619,7 +617,6 @@ fun CruxCoachNavHost(
                     onDismissSheet = { showPaymentSheet = false },
                     paymentViewModel = paymentViewModel,
                     paymentState = paymentState,
-                    context = context
                 )
             }
 

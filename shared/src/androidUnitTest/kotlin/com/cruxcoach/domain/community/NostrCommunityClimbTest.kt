@@ -259,4 +259,24 @@ class NostrCommunityClimbTest {
         assertTrue(ev.content.contains("\"name\":\"Slab\\nProject\""),
             "name field should also be JSON-escaped: ${ev.content}")
     }
+
+    @Test
+    fun downstream_namespaces_replace_every_brand_bound_event_tag() {
+        val ev = buildCommunityClimbEvent(
+            pubkey = pubkey,
+            createdAt = 1714000000L,
+            uuid = uuid,
+            layoutId = 1L,
+            sizeLabel = "12x12",
+            state = state,
+            brandNamespace = "cruxfork",
+            nostrNamespacePrefix = "org.example.cruxfork",
+        )
+
+        assertTrue(ev.dTag.startsWith("cruxfork:climb:"))
+        assertTrue(ev.tags.contains(listOf("L", "org.example.cruxfork.climb")))
+        assertTrue(ev.tags.any { it.size == 3 && it[2] == "org.example.cruxfork.board" })
+        assertTrue(ev.tags.any { it.size == 3 && it[2] == "org.example.cruxfork.size" })
+        assertTrue(ev.tags.flatten().none { it.contains("com.cruxcoach") })
+    }
 }

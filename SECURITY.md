@@ -54,6 +54,13 @@ The following are out of scope:
   operators' responsibility); but client-side amplification or
   rate-limit-bypass bugs in CruxCoach are in scope.
 
+The local board-database share uses a configurable custom URI scheme
+(`<APP_SCHEME>://import-board-db`). Android cannot authenticate ownership of a
+custom scheme, so another installed app can register the same handler. The
+receiving app therefore validates the private-network URL and requires an
+explicit import confirmation; that confirmation, not the scheme name or app
+brand, is the trust boundary. Verified HTTPS App Links are used for climb links.
+
 ---
 
 ## Security Architecture

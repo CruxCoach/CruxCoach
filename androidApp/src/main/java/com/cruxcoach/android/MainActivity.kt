@@ -366,7 +366,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Extract local board DB import URL from cruxcoach://import-board-db?url=...
+     * Extract local board DB import URL from
+     * `<APP_SCHEME>://import-board-db?url=...`.
      * Returns a navigation route like "board_sync?localDbUrl=http://..."
      *
      * Hardens against phishing: only accepts http(s) URLs whose host is an
@@ -376,7 +377,7 @@ class MainActivity : AppCompatActivity() {
      */
     private fun extractBoardDbDeepLink(intent: Intent?): String? {
         val data = intent?.data ?: return null
-        if (data.scheme != "cruxcoach" || data.host != "import-board-db") return null
+        if (data.scheme != BuildConfig.APP_SCHEME || data.host != "import-board-db") return null
         val url = data.getQueryParameter("url") ?: return null
         if (!isAllowedLocalImportUrl(url)) {
             android.util.Log.w("MainActivity", "Rejected import-board-db deep link: host not on private IPv4 range")
@@ -390,8 +391,8 @@ class MainActivity : AppCompatActivity() {
      * where `<ref>` is either an naddr (community climbs) or a raw climb
      * uuid (catalogue climbs, which have no Nostr event to reference).
      * The naddr is NIP-19 bech32 carrying (kind, pubkey, dTag);
-     * CruxCoach climb d-tags follow the shape
-     * `cruxcoach:climb:<pubkey-prefix>:<uuid>`. We pull the uuid out and
+     * Community-climb d-tags follow the build's brand namespace shape
+     * `<BRAND_NAMESPACE>:climb:<pubkey-prefix>:<uuid>`. We pull the uuid out and
      * route to the existing climb-detail screen at the user's preferred
      * angle (the angle isn't part of the link by design — climbs are
      * angle-agnostic at the data layer; the detail screen lets the user
@@ -425,7 +426,11 @@ class MainActivity : AppCompatActivity() {
                 .filterIsInstance<com.vitorpamplona.quartz.nip19Bech32.entities.NAddress>()
                 .firstOrNull()
         }.getOrNull() ?: return null
-        return ClimbAppLinkRoute.fromNaddr(nAddress.kind, nAddress.dTag).also { route ->
+        return ClimbAppLinkRoute.fromNaddr(
+            nAddress.kind,
+            nAddress.dTag,
+            BuildConfig.BRAND_NAMESPACE,
+        ).also { route ->
             if (route == null) android.util.Log.w("MainActivity", "Rejected malformed climb app link")
         }
     }

@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInstaller
 import android.util.Log
+import com.cruxcoach.android.BuildConfig
 import java.io.File
 import java.io.FileInputStream
 
@@ -73,7 +74,7 @@ class ApkInstaller(private val context: Context) {
 
     companion object {
         private const val TAG = "ApkInstaller"
-        const val ACTION_INSTALL_STATUS = "com.cruxcoach.android.updater.INSTALL_STATUS"
+        val ACTION_INSTALL_STATUS = "${BuildConfig.APPLICATION_ID}.updater.INSTALL_STATUS"
         const val EXTRA_SESSION_ID = "session_id"
     }
 }

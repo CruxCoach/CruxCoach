@@ -5,10 +5,10 @@ package com.cruxcoach.android.util
 internal object ClimbAppLinkRoute {
     fun fromRawReference(reference: String): String? = routeForUuid(reference)
 
-    fun fromNaddr(kind: Int, dTag: String): String? {
+    fun fromNaddr(kind: Int, dTag: String, brandNamespace: String = "cruxcoach"): String? {
         if (kind != COMMUNITY_CLIMB_KIND) return null
         val parts = dTag.split(':')
-        if (parts.size != 4 || parts[0] != "cruxcoach" || parts[1] != "climb") return null
+        if (parts.size != 4 || parts[0] != brandNamespace || parts[1] != "climb") return null
         if (!parts[2].matches(PUBKEY_PREFIX)) return null
         return routeForUuid(parts[3])
     }

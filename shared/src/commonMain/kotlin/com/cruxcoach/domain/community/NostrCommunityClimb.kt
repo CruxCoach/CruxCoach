@@ -101,6 +101,8 @@ fun buildCommunityClimbEvent(
     // namespace.
     brand: BoardBrand = BoardBrand.fromLayoutId(layoutId),
     bounds: ClimbBounds? = null,
+    brandNamespace: String = "cruxcoach",
+    nostrNamespacePrefix: String = "com.cruxcoach",
 ): NostrCommunityClimb {
     require(state.angle != null) { "angle is required at publish time" }
     // Grade is required for the same reason: subscribers drop ungraded
@@ -115,7 +117,7 @@ fun buildCommunityClimbEvent(
 
     val frames = state.encodeFrames()
     val framesHash = FramesHash.of(frames, layoutId)
-    val dTag = communityClimbDTag(pubkey, uuid)
+    val dTag = communityClimbDTag(pubkey, uuid, brandNamespace)
     val pubkeyPrefix = pubkey.take(8)
 
     // Back-compat namespace gate (FEAT-031). Kilter climbs stay on the
@@ -125,9 +127,9 @@ fun buildCommunityClimbEvent(
     // new boards reuse layout-ids that collide with Kilter's, and old apps
     // ingest by layout_id). See [CommunityClimbTags.NS_CLIMB_V2].
     val ns = if (brand == BoardBrand.KILTER) {
-        CommunityClimbTags.NS_CLIMB
+        "$nostrNamespacePrefix.climb"
     } else {
-        CommunityClimbTags.NS_CLIMB_V2
+        "$nostrNamespacePrefix.climb.v2"
     }
 
     // Human/discovery board label + hashtag, honest per brand. Kilter and
@@ -146,8 +148,8 @@ fun buildCommunityClimbEvent(
         listOf("d", dTag),
         listOf("L", ns),
         listOf("l", CommunityClimbTags.LABEL_CLIMB, ns),
-        listOf("l", boardLabel, CommunityClimbTags.NS_BOARD),
-        listOf("l", sizeLabel, CommunityClimbTags.NS_SIZE),
+        listOf("l", boardLabel, "$nostrNamespacePrefix.board"),
+        listOf("l", sizeLabel, "$nostrNamespacePrefix.size"),
         listOf("frames", frames),
         listOf("frames_hash", "sha256:$framesHash"),
         listOf("layout_id", layoutId.toString()),
@@ -178,9 +180,12 @@ fun buildCommunityClimbEvent(
     )
 }
 
-/** d-tag: `cruxcoach:climb:<pubkey-prefix-8>:<uuid>` (FEAT-003 §4.2). */
-fun communityClimbDTag(pubkey: String, uuid: String): String =
-    "cruxcoach:climb:${pubkey.take(8)}:$uuid"
+/** d-tag: `<brand-namespace>:climb:<pubkey-prefix-8>:<uuid>`. */
+fun communityClimbDTag(
+    pubkey: String,
+    uuid: String,
+    brandNamespace: String = "cruxcoach",
+): String = "$brandNamespace:climb:${pubkey.take(8)}:$uuid"
 
 /**
  * The content JSON. We hand-build the string deterministically so that

@@ -347,7 +347,8 @@ class LocalApkServer(
         val dbSection = if (boardDbFile != null && boardDbFile.exists() && baseUrl != null) {
             val sizeMb = "%.1f".format(boardDbFile.length() / 1_048_576.0)
             val dbUrl = "$baseUrl/board.db"
-            val deepLink = "cruxcoach://import-board-db?url=${java.net.URLEncoder.encode(dbUrl, "UTF-8")}"
+            val deepLink = "${BuildConfig.APP_SCHEME}://import-board-db?url=" +
+                java.net.URLEncoder.encode(dbUrl, "UTF-8")
             """<section class="card">
   <span class="step">Step 2 · Schritt 2</span>
   <h2>Import the boulder database</h2>

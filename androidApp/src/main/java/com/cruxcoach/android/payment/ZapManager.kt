@@ -85,13 +85,10 @@ class ZapManager @Inject constructor(
     }
 
     private suspend fun resolveLightningAddress(pubkey: String): String? {
-        val address = profileManager.getLightningAddress(pubkey)
-        if (address != null) return address
-
-        if (pubkey == NostrConfig.DEV_PUBKEY) {
-            return NostrConfig.DEV_LIGHTNING_ADDRESS
-        }
-        return null
+        // Never fall back to an address baked into the APK: that destination
+        // cannot be revoked after compromise or account rotation. The signed,
+        // TTL-refreshed Kind-0 profile is the payment source of truth.
+        return profileManager.getLightningAddress(pubkey)
     }
 
     private suspend fun fetchLnurlPayInfo(lnAddress: String): LnurlPayResponse? {

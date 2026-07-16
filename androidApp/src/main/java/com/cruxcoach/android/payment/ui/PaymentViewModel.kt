@@ -153,19 +153,6 @@ class PaymentViewModel @Inject constructor(
         }
     }
 
-    fun openKofi(context: Context) {
-        try {
-            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(NostrConfig.KOFI_URL))
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            context.startActivity(intent)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to open Ko-fi", e)
-            _state.update {
-                it.copy(sendResult = SendResult.Error(context.getString(R.string.payment_kofi_open_failed)))
-            }
-        }
-    }
-
     fun dismissResult() {
         _state.update { it.copy(sendResult = null) }
     }
