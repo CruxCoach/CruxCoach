@@ -5,8 +5,8 @@ import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.data.kilter.KilterClimbPublisher
 import com.cruxcoach.android.data.kilter.KilterTokenStore
 import com.cruxcoach.android.nostr.NostrConfig
-import com.cruxcoach.android.nostr.NostrRelayPool
-import com.cruxcoach.android.nostr.NostrSigner
+import com.cruxcoach.android.nostr.NostrEventRelaySender
+import com.cruxcoach.android.nostr.CommunityEventSigner
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.BoardSize
 import com.cruxcoach.domain.board.BoardBrand
@@ -16,7 +16,6 @@ import com.cruxcoach.domain.community.ClimbBounds
 import com.cruxcoach.domain.community.ClimbEditorState
 import com.cruxcoach.domain.community.buildCommunityClimbEvent
 import com.cruxcoach.domain.community.encodeFrames
-import com.vitorpamplona.quartz.nip01Core.core.Event
 import com.vitorpamplona.quartz.nip01Core.core.hexToByteArray
 import com.vitorpamplona.quartz.nip19Bech32.entities.NAddress
 import com.vitorpamplona.quartz.nip19Bech32.toNpub
@@ -50,8 +49,8 @@ private val APP_LINK_BASE: String =
  */
 @Singleton
 class CommunityClimbPublisher @Inject constructor(
-    private val nostrSigner: NostrSigner,
-    private val pool: NostrRelayPool,
+    private val nostrSigner: CommunityEventSigner,
+    private val pool: NostrEventRelaySender,
     private val boardRepository: BoardRepository,
     private val kilterPublisher: KilterClimbPublisher,
     private val kilterTokenStore: KilterTokenStore,
@@ -146,7 +145,7 @@ class CommunityClimbPublisher @Inject constructor(
             nostrNamespacePrefix = com.cruxcoach.android.BuildConfig.NOSTR_NAMESPACE_PREFIX,
         )
         val tags: Array<Array<String>> = payload.tags.map { it.toTypedArray() }.toTypedArray()
-        val event = nostrSigner.signer.sign<Event>(
+        val event = nostrSigner.signCommunityEvent(
             createdAt = payload.createdAt,
             kind = KIND_REPLACEABLE_PARAMETERIZED,
             tags = tags,
@@ -163,7 +162,7 @@ class CommunityClimbPublisher @Inject constructor(
         // (pubkey, kind, d-tag) so the second event collapses with the
         // first on every relay.
         boardRepository.markClimbPublishInFlight(uuid)
-        val (attempted, accepted) = pool.sendEventWithStats(event)
+        val (attempted, accepted) = pool.sendCommunityEventWithStats(event)
         Log.i(TAG, "publish uuid=$uuid d=${payload.dTag} attempted=$attempted accepted=$accepted")
         if (accepted == 0) {
             // Already 'failed' from the pre-mark above; markClimbPublishFailed
@@ -388,13 +387,13 @@ class CommunityClimbPublisher @Inject constructor(
         // user-attributed notification and must not be added independently of
         // the text the user reviewed in the editor.
         val tags = autoNoteTags(boardBrand)
-        val noteEvent = nostrSigner.signer.sign<Event>(
+        val noteEvent = nostrSigner.signCommunityEvent(
             createdAt = System.currentTimeMillis() / 1000,
             kind = KIND_TEXT_NOTE,
             tags = tags,
             content = content,
         )
-        val (attempted, accepted) = pool.sendEventWithStats(noteEvent)
+        val (attempted, accepted) = pool.sendCommunityEventWithStats(noteEvent)
         if (accepted == 0 && attempted > 0) {
             // The Kind-30078 climb was already accepted by the time we
             // got here, so the user sees "published!" — but the auto-note

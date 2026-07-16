@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.util.Log
 import com.vitorpamplona.quartz.nip01Core.core.toHexKey
+import com.vitorpamplona.quartz.nip01Core.core.Event
 import com.vitorpamplona.quartz.nip01Core.crypto.KeyPair
 import com.vitorpamplona.quartz.nip01Core.signers.NostrSignerInternal
 import com.vitorpamplona.quartz.nip19Bech32.Nip19Parser
@@ -18,11 +19,35 @@ import kotlinx.coroutines.flow.update
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/** Narrow signing boundary used by public community publishers. Keeping the
+ * Quartz-backed implementation behind this interface makes relay state-machine
+ * tests independent of Android Keystore and signer mode. */
+interface CommunityEventSigner {
+    fun getPublicKeyHex(): String
+
+    suspend fun signCommunityEvent(
+        createdAt: Long,
+        kind: Int,
+        tags: Array<Array<String>>,
+        content: String,
+    ): SignedCommunityEvent
+}
+
+/** Quartz-free handle passed through the community publish state machine. */
+interface SignedCommunityEvent {
+    val id: String
+}
+
+/** Production-only bridge back to the Quartz event required by relay I/O. */
+internal class QuartzSignedCommunityEvent(val event: Event) : SignedCommunityEvent {
+    override val id: String get() = event.id
+}
+
 @Singleton
 class NostrSigner @Inject constructor(
     private val keyStore: NostrKeyStore,
     @param:ApplicationContext private val context: Context
-) : NostrIdentity {
+) : NostrIdentity, CommunityEventSigner {
     val keyPair: KeyPair get() = keyStore.getOrCreateKeyPair()
 
     private val signerLock = Any()
@@ -45,6 +70,20 @@ class NostrSigner @Inject constructor(
         }
         return keyPair.pubKey.toHexKey()
     }
+
+    override suspend fun signCommunityEvent(
+        createdAt: Long,
+        kind: Int,
+        tags: Array<Array<String>>,
+        content: String,
+    ): SignedCommunityEvent = QuartzSignedCommunityEvent(
+        signer.sign<Event>(
+            createdAt = createdAt,
+            kind = kind,
+            tags = tags,
+            content = content,
+        ),
+    )
 
     fun switchToLocal() {
         synchronized(signerLock) {

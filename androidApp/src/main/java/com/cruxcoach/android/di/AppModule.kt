@@ -10,12 +10,14 @@ import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import com.cruxcoach.android.nostr.NostrKeyStore
 import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.android.nostr.NostrRelayPool
+import com.cruxcoach.android.nostr.NostrEventRelaySender
 import com.cruxcoach.android.nostr.NostrEventBuilder
 import com.cruxcoach.android.nostr.NostrPublicEventBuilder
 import com.cruxcoach.android.nostr.NostrEventDecryptor
 import com.cruxcoach.android.nostr.NostrMessageSender
 import com.cruxcoach.android.nostr.NostrMessageSending
 import com.cruxcoach.android.nostr.NostrIdentity
+import com.cruxcoach.android.nostr.CommunityEventSigner
 import com.cruxcoach.android.nostr.NostrRelaySubscription
 import com.cruxcoach.android.nostr.OfflineQueueManager
 import com.cruxcoach.android.nostr.PaymentManager
@@ -513,9 +515,17 @@ object AppModule {
 
     @Provides
     @Singleton
+    fun provideCommunityEventSigner(signer: NostrSigner): CommunityEventSigner = signer
+
+    @Provides
+    @Singleton
     fun provideNostrRelayPool(@Named("nostr") okHttpClient: OkHttpClient): NostrRelayPool {
         return PerfLogger.trace("DI: NostrRelayPool") { NostrRelayPool(okHttpClient) }
     }
+
+    @Provides
+    @Singleton
+    fun provideNostrEventRelaySender(pool: NostrRelayPool): NostrEventRelaySender = pool
 
     // --- FEAT-001: NIP-65 relay discovery ---
 

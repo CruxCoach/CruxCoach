@@ -40,10 +40,16 @@ import javax.inject.Named
 import javax.inject.Singleton
 import kotlin.random.Random
 
+/** Minimal public-event delivery boundary for publishers whose tests should
+ * not create sockets or depend on the relay pool's process-wide scope. */
+interface NostrEventRelaySender {
+    suspend fun sendCommunityEventWithStats(event: SignedCommunityEvent): Pair<Int, Int>
+}
+
 @Singleton
 class NostrRelayPool @Inject constructor(
     @Named("nostr") private val okHttpClient: OkHttpClient
-) {
+) : NostrEventRelaySender {
     @Volatile
     internal var webSocketFactory: WebSocket.Factory = okHttpClient
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -437,6 +443,12 @@ class NostrRelayPool @Inject constructor(
      * hides a 1-of-5 outcome from the user when they explicitly asked
      * for full removal.
      */
+    override suspend fun sendCommunityEventWithStats(event: SignedCommunityEvent): Pair<Int, Int> {
+        val quartz = (event as? QuartzSignedCommunityEvent)?.event
+            ?: error("Community event was not produced by the configured Quartz signer")
+        return sendEventWithStats(quartz)
+    }
+
     suspend fun sendEventWithStats(event: Event): Pair<Int, Int> {
         val eventJson = event.toJson()
         val eventId = extractEventId(eventJson) ?: return 0 to 0
