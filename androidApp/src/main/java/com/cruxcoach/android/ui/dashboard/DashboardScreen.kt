@@ -57,7 +57,11 @@ fun DashboardScreen(
                 TopAppBar(
                     title = {
                         Text(
-                            if (state.userName.isNotBlank()) stringResource(R.string.dashboard_greeting, state.userName) else "CruxCoach",
+                            if (state.userName.isNotBlank()) {
+                                stringResource(R.string.dashboard_greeting, state.userName)
+                            } else {
+                                stringResource(R.string.app_name)
+                            },
                             fontWeight = FontWeight.Bold
                         )
                     },

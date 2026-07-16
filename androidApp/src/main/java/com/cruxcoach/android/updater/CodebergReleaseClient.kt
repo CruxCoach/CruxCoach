@@ -31,7 +31,10 @@ class CodebergReleaseClient(
         val request = Request.Builder()
             .url(url)
             .header("Accept", "application/json")
-            .header("User-Agent", "CruxCoach-Updater/${BuildConfig.VERSION_NAME}")
+            .header(
+                "User-Agent",
+                "${BuildConfig.USER_AGENT_PRODUCT}-Updater/${BuildConfig.VERSION_NAME}",
+            )
             .apply { if (!etag.isNullOrBlank()) header("If-None-Match", etag) }
             .build()
         try {
@@ -64,7 +67,10 @@ class CodebergReleaseClient(
     suspend fun fetchSha256(url: String): String? = withContext(Dispatchers.IO) {
         val request = Request.Builder()
             .url(url)
-            .header("User-Agent", "CruxCoach-Updater/${BuildConfig.VERSION_NAME}")
+            .header(
+                "User-Agent",
+                "${BuildConfig.USER_AGENT_PRODUCT}-Updater/${BuildConfig.VERSION_NAME}",
+            )
             .build()
         try {
             httpClient.newCall(request).execute().use { resp ->

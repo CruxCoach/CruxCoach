@@ -4,6 +4,7 @@ import java.io.File
 import java.net.Socket
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -15,10 +16,11 @@ class LocalApkServerHeadersTest {
     @Test
     fun `every LAN response carries the shared browser security policy`() {
         val testDir = File("androidApp/build/tmp/local-apk-server-headers").apply { mkdirs() }
-        val apk = File(testDir, "CruxCoach.apk").apply { writeBytes(byteArrayOf(1, 2, 3)) }
+        val apk = File(testDir, "app.apk").apply { writeBytes(byteArrayOf(1, 2, 3)) }
         val server = LocalApkServer(
             apkFile = apk,
             versionName = "9.8.7",
+            appDisplayName = "Fork Board",
             sourceCodeUrl = "https://codeberg.org/example/fork/src/tag/v9.8.7",
             licenseText = "GNU GENERAL PUBLIC LICENSE".toByteArray(),
         )
@@ -35,8 +37,13 @@ class LocalApkServerHeadersTest {
                 )
             }
             val landingPage = get(port, "/")
-            assertTrue(landingPage.contains("CruxCoach v9.8.7"))
+            assertTrue(landingPage.contains("Fork Board v9.8.7"))
+            assertFalse(landingPage.contains("CruxCoach"))
             assertTrue(landingPage.contains("/example/fork/src/tag/v9.8.7"))
+            assertTrue(
+                get(port, "/download.apk")
+                    .contains("Content-Disposition: attachment; filename=\"Fork_Board.apk\""),
+            )
             val license = get(port, "/LICENSE")
             assertTrue(license.contains("GNU GENERAL PUBLIC LICENSE"))
         } finally {
@@ -57,6 +64,13 @@ class LocalApkServerHeadersTest {
                 version = "9.8.7",
             ),
         )
+    }
+
+    @Test
+    fun `shared APK filename is ASCII header safe and branded`() {
+        assertEquals("Fork_Board.apk", ApkShareHelper.shareApkName("Fork Board"))
+        assertEquals("app.apk", ApkShareHelper.shareApkName("  "))
+        assertEquals("A_B.apk", ApkShareHelper.shareApkName("A/B"))
     }
 
     @Test

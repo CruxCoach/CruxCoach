@@ -1,6 +1,7 @@
 package com.cruxcoach.android.nostr.backup
 
 import android.util.Log
+import com.cruxcoach.android.BuildConfig
 import com.cruxcoach.android.nostr.NostrSigner
 import com.vitorpamplona.quartz.nip01Core.core.Event
 import kotlinx.coroutines.Dispatchers
@@ -472,7 +473,7 @@ class BlossomUploader @Inject constructor(
     internal suspend fun blossomAuthHeader(
         action: String,
         sha256: String,
-        content: String = "CruxCoach backup $action",
+        content: String = "${BuildConfig.APP_DISPLAY_NAME} backup $action",
     ): String {
         val now = System.currentTimeMillis() / 1000
         val expiration = now + AUTH_EXPIRATION_SECONDS

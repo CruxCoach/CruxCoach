@@ -6,6 +6,20 @@ CruxCoach is a free, open-source climbing app for use with the Kilter Board and 
 
 The legal reasoning below is written primarily around the Kilter Board (the project's original target). The same principles — factual/functional climb data, community-created content, referential trademark use, and interoperability via BLE — apply equally to the MoonBoard; MoonBoard-specific provenance details are still being documented.
 
+### Project-name scope
+
+The name “CruxCoach” is also used by independent climbing products, including
+`cruxcoach.app`, `cruxcoach.com`, and `cruxcoach.vercel.app`. The
+open-source Android board app in this repository is not affiliated with or
+endorsed by those products. The same factual disclaimer appears on
+`cruxcoach.org`.
+
+This repository records no first-use date or legal priority determination and
+does not claim that a trademark clearance search has established exclusive
+rights in the name. [TRADEMARK.md](TRADEMARK.md) therefore frames downstream
+rebranding as an origin-clarity request for this project's name and logo, not
+as a conclusion about the rights of independent same-name users.
+
 ---
 
 ## Our Position on Climb Data

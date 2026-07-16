@@ -10,6 +10,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
 import android.util.Log
+import com.cruxcoach.android.BuildConfig
 import com.cruxcoach.android.R
 import java.net.Inet4Address
 import java.net.NetworkInterface
@@ -148,7 +149,10 @@ class WifiDirectHotspot(context: Context) {
                     val r1 = ('a'..'z').random()
                     val r2 = ('a'..'z').random()
                     val config = WifiP2pConfig.Builder()
-                        .setNetworkName("DIRECT-${r1}${r2}-CruxCoach$suffix")
+                        .setNetworkName(
+                            "DIRECT-${r1}${r2}-" +
+                                "${BuildConfig.USER_AGENT_PRODUCT.take(18)}$suffix"
+                        )
                         .setPassphrase(generatePassphrase())
                         .setGroupOperatingBand(WifiP2pConfig.GROUP_OWNER_BAND_2GHZ)
                         .build()

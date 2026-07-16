@@ -212,21 +212,30 @@ names are derived from the Forgejo job context. Forks must also replace
 
 ### Customizing for forks
 
-CruxCoach is GPLv3 — fork freely. The **name and logo** are reserved
-([`TRADEMARK.md`](TRADEMARK.md)); if you publish modified binaries to a
-wide audience, please rename and replace the launcher icon. App-launcher
-sources to replace are in [`logos/`](logos/) and the regeneration procedure
-is documented there.
+CruxCoach is GPLv3 — fork freely. For a public modified distribution, use a
+distinct name and icon so users can tell the fork from upstream; the scope and
+same-name-project disclaimer are in [`TRADEMARK.md`](TRADEMARK.md).
 
 Maintainer- and brand-bound runtime constants are exposed as Gradle
 `BuildConfig` fields. Upstream defaults keep a contributor checkout buildable.
-For a downstream distribution, set the complete identity group below in
-`local.properties`: once any identity differs, `validateDistributionIdentity`
-fails the build if the rebrand is partial. No source edit is required.
+For a downstream distribution, first replace every localized display-name
+literal in one controlled step, then configure the complete identity group:
+
+```bash
+scripts/rebrand_ui.sh "Your App Name"
+# Set APP_DISPLAY_NAME and every required identity key in local.properties.
+```
+
+Once any identity differs, `validateDistributionIdentity` fails the build if
+the group is partial, if `APP_DISPLAY_NAME` differs from `app_name`, or if the
+localized resources retain “CruxCoach”. Runtime code uses the configured
+display/product fields; protocol and schema names retained for compatibility
+are not user-facing fork branding.
 
 | `local.properties` key | What it sets | Default |
 |------------------------|--------------|---------|
 | `APPLICATION_ID` | Permanent Android/store identity. Change it so upstream and fork can coexist and stores do not treat them as one app | `com.cruxcoach.android` |
+| `APP_DISPLAY_NAME` | Runtime display name used outside localized resources (diagnostics, local APK-share page/file, public auth-event descriptions). Set it to the same value passed to `rebrand_ui.sh` | `CruxCoach` |
 | `MAINTAINER_PUBKEY` | Recipient hex pubkey for in-app crash/support DMs and donations. The payment path refreshes the signed Kind-0 `lud16`; no immutable Lightning fallback or Ko-fi address is built in | upstream maintainer |
 | `APP_LINK_HOST` | Host for shareable climb URLs and the verified Android App Link. Publish `/.well-known/assetlinks.json` with the fork's `APPLICATION_ID` and release-certificate fingerprint | `cruxcoach.org` |
 | `APP_SCHEME` | Custom board-import URI scheme. Custom schemes cannot be verified; choose a distinct value and retain the import confirmation as the trust boundary | `cruxcoach` |
@@ -238,7 +247,7 @@ fails the build if the rebrand is partial. No source edit is required.
 | `UPDATER_REPO_NAME` | Repository name used by the auto-updater and the app-share QR code | `CruxCoach` |
 | `ZAPSTORE_APP_URL` | Zapstore listing URL surfaced as a QR code + shareable link in *Settings → Share via Zapstore* | `https://zapstore.dev/apps/com.cruxcoach.android` |
 | `USER_AGENT_PRODUCT` | Product token in outgoing HTTP `User-Agent` headers (`<product>/<version> (https://<host>)`). Lets Kilter operators tell forks apart from upstream traffic | `CruxCoach` |
-| `auto_note_default_template` (string resource — `values/strings.xml:33` + `values-de/strings.xml:33`) | Editable Kind-1 template a fork user sees in *Settings → Climb Creator → Auto-Note*. The default contains `{npub_cruxcoach}`, `{cruxcoach_url}`, and the `#kilterboard` hashtag — forks should reword the template (and ideally drop the upstream-flavored token names) before publishing | upstream-flavored default |
+| `auto_note_default_template` (localized string resource) | Editable Kind-1 template shown in *Settings → Climb Creator → Auto-Note*. New defaults use generic `{author_npub}` and `{climb_url}` placeholders; legacy `{npub_cruxcoach}` / `{cruxcoach_url}` templates remain readable | upstream prose |
 
 Catalogue reads are configured separately because a fork may legitimately
 consume the attributed upstream dataset while using its own user-event
@@ -286,6 +295,12 @@ identity (or remove the file if not publishing through Zapstore).
 The README's donation block points at the upstream maintainer — update the
 documentation and QR image to your own channels when rebranding. In-app
 donations resolve the `lud16` in `MAINTAINER_PUBKEY`'s signed Nostr profile.
+
+Replace the visual assets with
+[`scripts/generate_brand_rasters.sh`](scripts/generate_brand_rasters.sh) and
+the complete [`logos/README.md`](logos/README.md) checklist, then run
+`scripts/check_rebrand_assets.sh <upstream-ref>`. Also update `zapstore.yaml`,
+public documentation, release notes, signing certificate, and store metadata.
 
 ---
 

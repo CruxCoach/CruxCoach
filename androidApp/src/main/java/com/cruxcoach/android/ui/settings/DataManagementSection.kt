@@ -306,7 +306,7 @@ internal fun AppInfoSection(
             .padding(vertical = 4.dp)
     ) {
         Text(
-            "CruxCoach v${BuildConfig.VERSION_NAME}",
+            "${stringResource(R.string.app_name)} v${BuildConfig.VERSION_NAME}",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )

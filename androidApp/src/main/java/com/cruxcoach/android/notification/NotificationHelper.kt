@@ -61,7 +61,7 @@ class NotificationHelper @Inject constructor(
             "release" -> context.getString(R.string.notification_announcement_release) to NotificationCompat.PRIORITY_HIGH
             "issue" -> context.getString(R.string.notification_announcement_issue) to NotificationCompat.PRIORITY_DEFAULT
             "tip" -> context.getString(R.string.notification_announcement_tip) to NotificationCompat.PRIORITY_LOW
-            else -> "CruxCoach" to NotificationCompat.PRIORITY_DEFAULT
+            else -> context.getString(R.string.app_name) to NotificationCompat.PRIORITY_DEFAULT
         }
 
         val intent = Intent(context, MainActivity::class.java).apply {

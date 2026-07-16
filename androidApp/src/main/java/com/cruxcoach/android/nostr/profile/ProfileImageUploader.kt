@@ -1,6 +1,7 @@
 package com.cruxcoach.android.nostr.profile
 
 import android.util.Log
+import com.cruxcoach.android.BuildConfig
 import com.cruxcoach.android.nostr.backup.BlossomUploader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -58,7 +59,7 @@ class ProfileImageUploader @Inject constructor(
             blossomUploader.blossomAuthHeader(
                 action = "upload",
                 sha256 = sha256,
-                content = "CruxCoach profile image upload",
+                content = "${BuildConfig.APP_DISPLAY_NAME} profile image upload",
             )
         } catch (e: Exception) {
             Log.w(TAG, "Auth-event signing failed", e)

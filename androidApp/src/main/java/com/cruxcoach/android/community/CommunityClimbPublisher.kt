@@ -343,8 +343,9 @@ class CommunityClimbPublisher @Inject constructor(
      * Build + send the Kind-1 announcement. Encodes the just-published
      * climb as NIP-19 `naddr1…` (replaceable-event reference — survives
      * future edits because the d-tag is stable). The optional template
-     * token `{npub_cruxcoach}` resolves to [NostrConfig.DEV_PUBKEY]; it is
-     * visible in the editor and can be removed before the user publishes.
+     * token `{author_npub}` resolves to [NostrConfig.DEV_PUBKEY]; it is visible
+     * in the editor and can be removed before the user publishes. The older
+     * `{npub_cruxcoach}` alias remains supported for saved custom templates.
      */
     /**
      * Publish the optional Kind-1 announcement note. Returns:
@@ -371,16 +372,15 @@ class CommunityClimbPublisher @Inject constructor(
             relays = emptyList(),
         )
         val cruxcoachNpub = NostrConfig.DEV_PUBKEY.hexToByteArray().toNpub()
+        val climbUrl = "$APP_LINK_BASE$naddr"
         val content = AutoNoteTemplate.render(
             template = spec.template,
-            vars = mapOf(
-                "name" to climbName,
-                // {board} = the board's display name (Kilter / Tension / MoonBoard / …)
-                // so the announcement says WHICH board the climb is on.
-                "board" to boardBrand.displayName,
-                "naddr" to naddr,
-                "npub_cruxcoach" to cruxcoachNpub,
-                "cruxcoach_url" to "$APP_LINK_BASE$naddr",
+            vars = autoNoteVariables(
+                climbName = climbName,
+                boardName = boardBrand.displayName,
+                naddr = naddr,
+                authorNpub = cruxcoachNpub,
+                climbUrl = climbUrl,
             ),
         )
         // Discovery hashtags are the only automatic tags. In particular, do
@@ -421,6 +421,23 @@ class CommunityClimbPublisher @Inject constructor(
         return ClimbBounds.fromCoords(coords)
     }
 }
+
+/** Generic current placeholders plus the two legacy aliases saved by 0.1.x. */
+internal fun autoNoteVariables(
+    climbName: String,
+    boardName: String,
+    naddr: String,
+    authorNpub: String,
+    climbUrl: String,
+): Map<String, String> = mapOf(
+    "name" to climbName,
+    "board" to boardName,
+    "naddr" to naddr,
+    "author_npub" to authorNpub,
+    "climb_url" to climbUrl,
+    "npub_cruxcoach" to authorNpub,
+    "cruxcoach_url" to climbUrl,
+)
 
 /** Pure tag builder kept module-visible for a regression test. */
 internal fun autoNoteTags(boardBrand: BoardBrand): Array<Array<String>> = arrayOf(

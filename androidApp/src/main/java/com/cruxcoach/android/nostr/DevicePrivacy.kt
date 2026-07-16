@@ -12,8 +12,9 @@ internal fun formatGeneralizedDeviceInfoLine(
     versionName: String,
     versionCode: Int,
     memoryPressure: String,
+    appDisplayName: String = BuildConfig.APP_DISPLAY_NAME,
 ): String =
-    "CruxCoach $versionName ($versionCode) | Android API $apiLevel | $deviceTier | " +
+    "$appDisplayName $versionName ($versionCode) | Android API $apiLevel | $deviceTier | " +
         "$language | memory-pressure=$memoryPressure"
 
 internal fun memoryPressureBucket(count: Int): String = when {

@@ -409,7 +409,7 @@ private fun AppShareActiveCard(
                     onClick = {
                         copyToClipboard(
                             context = context,
-                            label = "CruxCoach WiFi password",
+                            label = "${BuildConfig.APP_DISPLAY_NAME} WiFi password",
                             text = hotspotPassword,
                             toastMessage = context.getString(R.string.settings_share_copied_password),
                         )
@@ -434,7 +434,7 @@ private fun AppShareActiveCard(
 
             CopyableUrlRow(
                 url = downloadUrl,
-                clipLabel = "CruxCoach download URL",
+                clipLabel = "${BuildConfig.APP_DISPLAY_NAME} download URL",
                 toastMessage = stringResource(R.string.settings_share_copied_url),
                 textStyle = MaterialTheme.typography.titleMedium,
                 textColor = OrangeAccent,
@@ -479,7 +479,7 @@ private fun ZapstoreShareCard(
             )
             CopyableUrlRow(
                 url = zapstoreUrl,
-                clipLabel = "CruxCoach Zapstore URL",
+                clipLabel = "${BuildConfig.APP_DISPLAY_NAME} Zapstore URL",
                 toastMessage = stringResource(R.string.settings_share_copied_url),
             )
         }
@@ -513,7 +513,7 @@ private fun ReleaseDownloadCard(
             )
             CopyableUrlRow(
                 url = downloadUrl,
-                clipLabel = "CruxCoach release URL",
+                clipLabel = "${BuildConfig.APP_DISPLAY_NAME} release URL",
                 toastMessage = stringResource(R.string.settings_share_copied_url),
             )
         }

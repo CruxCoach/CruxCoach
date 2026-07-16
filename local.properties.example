@@ -31,6 +31,7 @@
 # address is frozen into the APK. There is no Ko-fi destination in the app.
 # See CONTRIBUTING.md → "Customizing for forks" and TRADEMARK.md.
 # APPLICATION_ID=com.yourfork.android
+# APP_DISPLAY_NAME=Your Fork
 # MAINTAINER_PUBKEY=<64-char hex pubkey>
 # APP_LINK_HOST=yourfork.example
 # APP_SCHEME=yourfork

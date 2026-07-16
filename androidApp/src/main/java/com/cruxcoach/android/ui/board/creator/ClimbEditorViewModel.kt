@@ -125,8 +125,8 @@ data class ClimbEditorUiState(
      *  flipped to ON in this session, OR the screen hasn't seeded the
      *  default template into it yet). When non-null this string is
      *  what gets sent verbatim to publishKind1Note's template renderer
-     *  — placeholders like `{name}`, `{naddr}`, `{npub_cruxcoach}`,
-     *  `{cruxcoach_url}` are still substituted, so the user can keep
+     *  — placeholders like `{name}`, `{naddr}`, `{author_npub}`, and
+     *  `{climb_url}` are still substituted, so the user can keep
      *  the dynamic parts and only tweak the static prose around them. */
     val autoNoteText: String? = null,
     /** True when the editor is editing an already-published climb (came

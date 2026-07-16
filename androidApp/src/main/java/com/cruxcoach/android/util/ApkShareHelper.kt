@@ -23,11 +23,28 @@ import kotlin.concurrent.thread
 object ApkShareHelper {
 
     private const val TAG = "ApkShareHelper"
-    private const val SHARE_APK_NAME = "CruxCoach.apk"
+
+    internal fun shareApkName(appDisplayName: String): String {
+        val stem = appDisplayName
+            .map {
+                if (it in 'A'..'Z' || it in 'a'..'z' || it in '0'..'9' ||
+                    it == '.' || it == '_' || it == '-'
+                ) {
+                    it
+                } else {
+                    '_'
+                }
+            }
+            .joinToString("")
+            .trim('.', '_', '-')
+            .take(48)
+            .ifBlank { "app" }
+        return "$stem.apk"
+    }
 
     fun shareViaIntent(context: Context) {
         val sourceApk = File(context.applicationInfo.sourceDir)
-        val shareApk = File(context.cacheDir, SHARE_APK_NAME)
+        val shareApk = File(context.cacheDir, shareApkName(BuildConfig.APP_DISPLAY_NAME))
         sourceApk.copyTo(shareApk, overwrite = true)
 
         val uri = FileProvider.getUriForFile(
@@ -65,7 +82,9 @@ object ApkShareHelper {
      */
     fun cleanupCache(context: Context) {
         val staleFiles = listOf(
-            SHARE_APK_NAME,
+            shareApkName(BuildConfig.APP_DISPLAY_NAME),
+            // Older upstream builds used this fixed cache name.
+            "CruxCoach.apk",
             "aurora_apk_download.zip",
             "aurora_apk_db.sqlite3",
             "kilter_board_import.sqlite3",
@@ -180,6 +199,7 @@ class LocalApkServer(
     private val snapshotDir: File? = null,
     private val clientReadTimeoutMs: Int = CLIENT_READ_TIMEOUT_MS,
     private val versionName: String = BuildConfig.VERSION_NAME,
+    private val appDisplayName: String = BuildConfig.APP_DISPLAY_NAME,
     private val sourceCodeUrl: String = ApkShareHelper.versionSourceUrl(),
     private val licenseText: ByteArray? = null,
 ) {
@@ -344,6 +364,7 @@ class LocalApkServer(
     internal val activeClientCountForTesting: Int get() = activeClients.size
 
     private fun serveLandingPage(out: java.io.OutputStream) {
+        val escapedAppName = appDisplayName.escapeHtml()
         val dbSection = if (boardDbFile != null && boardDbFile.exists() && baseUrl != null) {
             val sizeMb = "%.1f".format(boardDbFile.length() / 1_048_576.0)
             val dbUrl = "$baseUrl/board.db"
@@ -352,14 +373,16 @@ class LocalApkServer(
             """<section class="card">
   <span class="step">Step 2 · Schritt 2</span>
   <h2>Import the boulder database</h2>
-  <p class="en">After installing, tap the button below — CruxCoach opens and imports the climbs automatically.</p>
-  <p class="de">Nach der Installation auf den Button tippen — CruxCoach öffnet sich und importiert die Boulder automatisch.</p>
-  <a href="$deepLink" class="btn success">&#128640; Open in CruxCoach &middot; In CruxCoach öffnen ($sizeMb MB)</a>
+  <p class="en">After installing, tap the button below — $escapedAppName opens and imports the climbs automatically.</p>
+  <p class="de">Nach der Installation auf den Button tippen — $escapedAppName öffnet sich und importiert die Boulder automatisch.</p>
+  <a href="$deepLink" class="btn success">&#128640; Open in $escapedAppName &middot; In $escapedAppName öffnen ($sizeMb MB)</a>
   <a href="/board.db" class="btn ghost">Download DB only &middot; Nur DB herunterladen</a>
 </section>"""
         } else ""
         val html = LANDING_HTML
             .replace("<!-- DB_SECTION -->", dbSection)
+            .replace("<!-- APP_NAME -->", escapedAppName)
+            .replace("<!-- APP_INITIAL -->", appDisplayName.trim().take(1).escapeHtml())
             .replace("<!-- VERSION -->", versionName.escapeHtml())
             .replace("<!-- SOURCE_URL -->", sourceCodeUrl.escapeHtml())
         val body = html.toByteArray(Charsets.UTF_8)
@@ -376,7 +399,8 @@ class LocalApkServer(
             status = "200 OK",
             contentLength = apkFile.length(),
             contentType = "application/vnd.android.package-archive",
-            contentDisposition = "attachment; filename=\"CruxCoach.apk\"",
+            contentDisposition =
+                "attachment; filename=\"${ApkShareHelper.shareApkName(appDisplayName)}\"",
         ))
         apkFile.inputStream().use { it.copyTo(out, bufferSize = 65536) }
     }
@@ -625,7 +649,7 @@ class LocalApkServer(
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CruxCoach — Install</title>
+<title><!-- APP_NAME --> — Install</title>
 <style>
   :root {
     --bg: #0f0f10;
@@ -724,8 +748,8 @@ class LocalApkServer(
 <body>
 <div class="container">
   <header>
-    <div class="logo">C</div>
-    <h1>CruxCoach</h1>
+    <div class="logo"><!-- APP_INITIAL --></div>
+    <h1><!-- APP_NAME --></h1>
     <p class="tag">Bouldering training app &middot; Trainings-App</p>
   </header>
 
@@ -734,14 +758,14 @@ class LocalApkServer(
     <h2>Install the app</h2>
     <p class="en">Tap download, then open the APK to install. You may need to allow "Install from unknown sources".</p>
     <p class="de">Auf Herunterladen tippen, dann die APK öffnen und installieren. Eventuell muss "Aus unbekannten Quellen installieren" erlaubt werden.</p>
-    <a href="/CruxCoach.apk" class="btn primary">&#11015; Download APK &middot; APK herunterladen</a>
+    <a href="/app.apk" class="btn primary">&#11015; Download APK &middot; APK herunterladen</a>
   </section>
 
   <!-- DB_SECTION -->
 
   <footer>Direct LAN transfer &middot; nothing leaves your network.<br>
   Direkte LAN-Übertragung &middot; verlässt dein Netzwerk nicht.<br><br>
-  CruxCoach v<!-- VERSION --> &middot; free software under the
+  <!-- APP_NAME --> v<!-- VERSION --> &middot; free software under the
   <a href="/LICENSE">GNU GPL v3</a> &middot; NO WARRANTY.<br>
   Source code for this exact build &middot; Quellcode dieses Builds:<br>
   <a href="<!-- SOURCE_URL -->"><!-- SOURCE_URL --></a></footer>

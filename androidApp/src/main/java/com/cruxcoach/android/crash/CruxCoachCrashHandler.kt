@@ -2,6 +2,7 @@ package com.cruxcoach.android.crash
 
 import android.content.Context
 import android.os.Build
+import com.cruxcoach.android.BuildConfig
 import com.cruxcoach.android.nostr.DevicePrivacy
 import java.io.File
 import java.text.SimpleDateFormat
@@ -37,7 +38,7 @@ class CruxCoachCrashHandler(
         }.format(Date())
 
         return buildString {
-            appendLine("--- CruxCoach Crash Report ---")
+            appendLine("--- ${BuildConfig.APP_DISPLAY_NAME} Crash Report ---")
             appendLine("Time: $timestamp")
             appendLine("Crash sequence: $crashSequence")
             appendLine("App: ${getVersionName()} (${getVersionCode()})")

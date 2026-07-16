@@ -7,7 +7,7 @@ class DevicePrivacyTest {
     @Test
     fun `consented diagnostic line includes app version without exact device model`() {
         assertEquals(
-            "CruxCoach 1.2.3 (45) | Android API 36 | mid-range | de | " +
+            "Fork Board 1.2.3 (45) | Android API 36 | mid-range | de | " +
                 "memory-pressure=occasional",
             formatGeneralizedDeviceInfoLine(
                 36,
@@ -16,6 +16,7 @@ class DevicePrivacyTest {
                 "1.2.3",
                 45,
                 "occasional",
+                "Fork Board",
             ),
         )
     }

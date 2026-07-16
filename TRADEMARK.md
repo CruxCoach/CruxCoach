@@ -1,71 +1,73 @@
-# CruxCoach Trademark Policy
+# Project Name and Fork Branding
 
-The CruxCoach **name** and **logo** (collectively, "the Marks") identify the
-upstream project maintained at https://codeberg.org/CruxCoach/CruxCoach.
+In this repository, **CruxCoach** and its orange interlocking-C logo identify
+the upstream open-source Android board app maintained at
+https://codeberg.org/CruxCoach/CruxCoach.
 
-The source code is licensed under the GNU General Public License v3.0 — you
-are free to fork, modify, and redistribute it under those terms. **The Marks
-are not part of that grant.** This document explains what you can do with the
-Marks without asking, and what requires permission first.
+The source code and artwork are licensed under GPL-3.0-only. That copyright
+licence permits copying, modification, and redistribution; it does not by
+itself make a modified build an upstream build or authorize claims of upstream
+endorsement. This document records requests intended to keep project origin
+clear. It does not determine trademark registration, ownership, geographic
+scope, priority, or the rights of any independent same-name user.
 
-The policy is loosely modeled on Mozilla's Firefox / Iceweasel arrangement
-and Mastodon's fork-friendly trademark approach.
+## Same-name projects
 
----
+Other climbing products independently use the name “CruxCoach”, including
+https://cruxcoach.app/, https://cruxcoach.com/, and
+https://cruxcoach.vercel.app/. This project is not affiliated with, endorsed
+by, or sponsored by any of them. Here, “CruxCoach” means only the open-source
+Android board app at cruxcoach.org and the Codeberg repository above.
 
-## What you may do without asking
+No first-use date, clearance conclusion, or legal priority over those
+independent products is asserted here. Anyone planning a public downstream
+brand remains responsible for assessing the name they choose in the places
+where they distribute it.
 
-- **Refer to the project by name** in blog posts, documentation, comparisons,
-  tutorials, social media, talks, podcasts. Discussion is unrestricted.
-- **Distribute unmodified APKs** built from a tagged release in this
-  repository. The Marks identify the same software, so the same name fits.
-- **Build the app for personal or educational use**, including with local
-  modifications, and share the result with friends, classmates, or training
-  partners.
-- **Display the logo when linking to the upstream project**, with a clear
-  link back to the canonical repository or the Zapstore listing.
-- **Take screenshots** of the app for any non-commercial purpose.
+## Uses that preserve clear origin
 
-## What requires asking first
+- Refer to this project by name in documentation, comparisons, tutorials,
+  reviews, talks, and other discussion.
+- Link to the upstream repository or distribution listing using the upstream
+  name or logo, with an accurate destination and no endorsement claim.
+- Redistribute an unmodified upstream APK with its provenance and signature
+  intact.
+- Build and modify the app for personal development, testing, or education.
+- Use screenshots to discuss the upstream app, subject to the rights of any
+  third-party content visible in them.
 
-- **Distributing a modified APK under the CruxCoach name and icon** to a wide
-  audience (Zapstore, third-party app stores, public download links, file
-  shares posted to climbing communities). Modifications can change BLE
-  behavior with climbing hardware in ways users cannot tell apart from
-  upstream — the Marks must not become ambiguous about origin.
-- **Using the name or logo in a derivative product name** (e.g.
-  "CruxCoach Pro", "CruxCoach for X"), in commercial branding, or in any
-  context that suggests endorsement or affiliation with the upstream project.
-- **Selling merchandise** that uses the Marks (stickers, shirts, prints).
-- **Using the Marks in advertising** for commercial products or services.
+## Public downstream distributions
 
-## Forking
+For a modified APK offered through an app store, public download, or other
+broad distribution, upstream asks the distributor to use a distinct name and
+icon and to identify the build as a fork. “Based on CruxCoach” is welcome when
+it links back and does not imply endorsement.
 
-Forks are welcome and explicitly encouraged — that is what GPLv3 is for. Two
-practical rules cover the trademark side:
+Likewise, ask through [MAINTAINERS.md](MAINTAINERS.md) before using the
+upstream name or logo for a derivative product name, commercial advertising,
+or merchandise. This is an origin-clarity request for this project's branding,
+not a claim against unrelated products that independently use a similar name.
 
-1. **If you ship modified binaries to a wide audience, rename your fork.**
-   Pick a different name and a different launcher icon. You may (and we
-   encourage you to) say "based on CruxCoach" in your README, About screen,
-   or release notes — that kind of attribution is welcome.
-2. **If you only fix bugs or add a feature you intend to upstream**, you may
-   keep the name during development. Once you publish the modified build to
-   others, rule 1 applies.
+## Rebranding a fork
 
-For convenience, the maintainer-bound constants that should be replaced when
-you rebrand are documented in [`CONTRIBUTING.md`](CONTRIBUTING.md) under
-"Customizing for forks" — including the Android application ID, import URI
-scheme, public Nostr namespaces, maintainer pubkey, update channel, and
-Zapstore identity. Gradle rejects a partially configured fork identity.
+The complete mechanical path is documented in
+[CONTRIBUTING.md](CONTRIBUTING.md#customizing-for-forks):
 
-## Enforcement
+1. run `scripts/rebrand_ui.sh "Your App Name"` for both localized UI files;
+2. configure the complete fork identity, including `APP_DISPLAY_NAME`,
+   application ID, links, public Nostr namespaces, maintainer, and updater;
+3. replace the launcher, monochrome, splash-composition, documentation, and
+   store assets using [logos/README.md](logos/README.md);
+4. run `scripts/check_rebrand_assets.sh <upstream-ref>` and a release build.
 
-This policy is enforced through requests, not lawsuits. If something seems
-off, the maintainer will reach out politely and ask you to adjust before
-escalating further. Personal and educational use will never be challenged.
+Gradle rejects a partial identity and, for fork builds, rejects localized UI
+resources that still contain the upstream display name. Protocol/schema
+identifiers retained solely for backward compatibility are not presented as
+the fork's user-facing identity.
 
-## Questions
+## Questions and corrections
 
-Open an issue on https://codeberg.org/CruxCoach/CruxCoach/issues or send a
-Nostr DM to the maintainer pubkey published in `NostrConfig.kt` /
-`zapstore.yaml`.
+Use the public issue tracker for non-sensitive questions, or the verified Nostr
+route in [MAINTAINERS.md](MAINTAINERS.md). If this document identifies a
+same-name product inaccurately, please request a factual correction; no legal
+claim is required to do so.

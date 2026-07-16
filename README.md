@@ -199,6 +199,12 @@ endorsed by, or sponsored by Kilter Grips, LLC, Aurora Climbing, Moon Climbing
 Ltd, Tension Climbing, Grasshopper, Decoy, So iLL, Touchstone Climbing, egym,
 or any board manufacturer. See [LEGAL.md](LEGAL.md).
 
+Other independent climbing products also use the name “CruxCoach”, including
+[cruxcoach.app](https://cruxcoach.app/), [cruxcoach.com](https://cruxcoach.com/),
+and [cruxcoach.vercel.app](https://cruxcoach.vercel.app/). This repository is
+not affiliated with or endorsed by them. See [TRADEMARK.md](TRADEMARK.md) for
+the exact project identity and fork-branding guidance.
+
 ---
 
 ## Support
@@ -218,5 +224,8 @@ or any board manufacturer. See [LEGAL.md](LEGAL.md).
 ## License & Trademark
 
 - **Code and artwork files**: [GNU General Public License v3.0 only](LICENSE) — Copyright (C) 2025-2026 CruxCoach contributors.
-- **Project identity**: see [TRADEMARK.md](TRADEMARK.md). Forks distributing modified binaries to a wide audience should rename and replace the launcher icon so users can distinguish them from upstream.
+- **Project identity**: see [TRADEMARK.md](TRADEMARK.md). Forks distributing
+  modified binaries to a wide audience should use a distinct name and icon so
+  users can distinguish them from upstream; the repository includes a complete
+  rebrand procedure and guard.
 - **Bundled & vendored third-party components**: see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) and [NOTICE](NOTICE).

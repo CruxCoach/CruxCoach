@@ -1962,7 +1962,7 @@ class BoardDatabaseImporter(
                     } catch (e: android.database.SQLException) {
                         throw IllegalStateException(
                             "Die geteilte Datenbank stammt von einer älteren " +
-                                "CruxCoach-Version — bitte zuerst die App auf dem " +
+                                "App-Version — bitte zuerst die App auf dem " +
                                 "sendenden Gerät aktualisieren. (${e.message})",
                             e
                         )

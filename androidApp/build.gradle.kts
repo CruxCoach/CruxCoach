@@ -40,8 +40,10 @@ val upstreamMaintainerPubkey =
     "e75a185c019d09049d5fcb0e29a2cc9bfd016ec0f6d892fc98f6ffe0181a480d"
 val upstreamCatalogueManifestPubkey =
     "70b2740bff77cf65743a7d6ffa5465b3a27105ae26123458cf5450eafb1bd68d"
+val upstreamDisplayName = "CruxCoach"
 
 val applicationIdValue = localProps.getProperty("APPLICATION_ID", upstreamApplicationId).trim()
+val appDisplayName = localProps.getProperty("APP_DISPLAY_NAME", upstreamDisplayName).trim()
 val maintainerPubkey = localProps.getProperty("MAINTAINER_PUBKEY", upstreamMaintainerPubkey).trim()
 val appLinkHost = localProps.getProperty("APP_LINK_HOST", "cruxcoach.org").trim()
 val appScheme = localProps.getProperty("APP_SCHEME", "cruxcoach").trim()
@@ -63,6 +65,7 @@ val userAgentProduct = localProps.getProperty("USER_AGENT_PRODUCT", "CruxCoach")
 
 val forkIdentityKeys = listOf(
     "APPLICATION_ID" to upstreamApplicationId,
+    "APP_DISPLAY_NAME" to upstreamDisplayName,
     "MAINTAINER_PUBKEY" to upstreamMaintainerPubkey,
     "APP_LINK_HOST" to "cruxcoach.org",
     "APP_SCHEME" to "cruxcoach",
@@ -107,6 +110,7 @@ android {
         // can override them in their own local.properties without source
         // edits. See CONTRIBUTING.md "Customizing for forks" and
         // TRADEMARK.md for the rationale.
+        buildConfigField("String", "APP_DISPLAY_NAME", "\"$appDisplayName\"")
         buildConfigField("String", "MAINTAINER_PUBKEY", "\"$maintainerPubkey\"")
         buildConfigField("String", "ANNOUNCE_NAMESPACE",
             "\"${localProps.getProperty("ANNOUNCE_NAMESPACE", "$nostrNamespacePrefix.announce")}\"")
@@ -292,10 +296,21 @@ val validateDistributionIdentity = tasks.register("validateDistributionIdentity"
         if (!maintainerPubkey.matches(Regex("^[0-9a-fA-F]{64}$"))) {
             errors += "MAINTAINER_PUBKEY must be a 64-character hex public key"
         }
+        if (
+            appDisplayName.isEmpty() ||
+            appDisplayName.length > 50 ||
+            appDisplayName.any { it == '"' || it == '\\' || it in "<>&\r\n" }
+        ) {
+            errors += "APP_DISPLAY_NAME must be 1-50 XML/Kotlin-safe characters"
+        }
+        if (!userAgentProduct.matches(Regex("^[A-Za-z][A-Za-z0-9._-]{0,31}$"))) {
+            errors += "USER_AGENT_PRODUCT must be an ASCII HTTP product token (max 32 characters)"
+        }
 
         if (hasForkIdentity) {
             val requiredForkKeys = listOf(
                 "APPLICATION_ID",
+                "APP_DISPLAY_NAME",
                 "APP_LINK_HOST",
                 "APP_SCHEME",
                 "BRAND_NAMESPACE",
@@ -312,6 +327,21 @@ val validateDistributionIdentity = tasks.register("validateDistributionIdentity"
             }
             if (maintainerPubkey == upstreamMaintainerPubkey) {
                 errors += "a fork must not retain upstream MAINTAINER_PUBKEY"
+            }
+            val localizedStringFiles = listOf(
+                file("src/main/res/values/strings.xml"),
+                file("src/main/res/values-de/strings.xml"),
+            )
+            for (stringsFile in localizedStringFiles) {
+                val text = stringsFile.readText()
+                if (upstreamDisplayName in text) {
+                    errors += "fork UI still contains '$upstreamDisplayName' in ${stringsFile.relativeTo(projectDir)}; run scripts/rebrand_ui.sh"
+                }
+                val expectedAppName =
+                    "<string name=\"app_name\">$appDisplayName</string>"
+                if (expectedAppName !in text) {
+                    errors += "APP_DISPLAY_NAME does not match app_name in ${stringsFile.relativeTo(projectDir)}"
+                }
             }
         }
 

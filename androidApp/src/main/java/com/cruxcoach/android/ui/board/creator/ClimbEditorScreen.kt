@@ -430,7 +430,7 @@ fun ClimbEditorScreen(
             // visible while the Auto-Note checkbox is on. The text is
             // pre-seeded with the default template (substituted at
             // publish time — placeholders like {name}, {naddr},
-            // {npub_cruxcoach}, {cruxcoach_url} stay literal here so
+            // {author_npub}, {climb_url} stay literal here so
             // the user can keep them, edit them out, or rewrite the
             // surrounding prose without losing the dynamic parts.
             if (state.alsoPostNote) {

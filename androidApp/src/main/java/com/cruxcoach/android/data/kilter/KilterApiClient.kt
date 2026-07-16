@@ -504,10 +504,10 @@ class KilterApiClient @Inject constructor(
                 //    during this auth call.
                 // 2. JWT `name` claim — the user's full name from their
                 //    Kilter profile. Stand-in when (1) is unreachable.
-                // 3. Hard placeholder "CruxCoach" — final safety net so
+                // 3. Distribution product token — final safety net so
                 //    we never fall through to the email itself even if
                 //    every upstream-resolved string looks email-shaped.
-                //    Identifiable as a CruxCoach-app-published climb on
+                //    Identifiable as an app-published climb on
                 //    the Kilter side rather than a generic anonymous
                 //    handle.
                 //
@@ -522,7 +522,7 @@ class KilterApiClient @Inject constructor(
                 val username = when {
                     !displayUsername.isNullOrBlank() && !emailShaped(displayUsername) -> displayUsername
                     nameClaim != null && !emailShaped(nameClaim) -> nameClaim
-                    else -> "CruxCoach"
+                    else -> BuildConfig.USER_AGENT_PRODUCT
                 }
 
                 // Successful login → clear the backoff state for this email.

@@ -35,7 +35,7 @@
     <string name="climb_creator_draft_saved">Entwurf gespeichert.</string>
     <string name="climb_creator_also_post_note">Auch auf Nostr posten</string>
     <string name="climb_creator_also_post_note_hint">Postet eine kurze Nachricht an deine Follower auf Nostr, die zurück auf den Climb verlinkt.</string>
-    <string name="auto_note_default_template">Ich habe einen neuen {board}-Boulder auf nostr:{npub_cruxcoach} veröffentlicht:\n\n{cruxcoach_url}\n\n#climbing #bouldering</string>
+    <string name="auto_note_default_template">Ich habe einen neuen {board}-Boulder auf nostr:{author_npub} veröffentlicht:\n\n{climb_url}\n\n#climbing #bouldering</string>
     <string name="auto_note_setting_title">Neue Climbs auf Nostr posten</string>
     <string name="auto_note_setting_body">Wenn aktiv, wird beim Veröffentlichen eines Climbs zusätzlich eine kurze Nachricht an deine Follower auf Nostr gepostet, die zurück auf den Climb verlinkt. Pro Climb im Editor übersteuerbar. Default aus.</string>
     <string name="nostr_profile_subscriber_status_title">Community-Climb-Feed</string>
@@ -70,7 +70,7 @@
     <string name="climb_creator_publish_failed_will_retry">Kein Relay hat den Climb angenommen — der Entwurf bleibt gespeichert und CruxCoach versucht es im Hintergrund weiter.</string>
     <string name="climb_creator_publish_waiting_for_sync">Board-Sync läuft — dein Climb wird veröffentlicht, sobald der Sync fertig ist.</string>
     <string name="climb_creator_auto_note_text_label">Notiz-Text</string>
-    <string name="climb_creator_auto_note_placeholders_hint">Platzhalter bleiben unverändert: {name}, {naddr}, {npub_cruxcoach}, {cruxcoach_url}</string>
+    <string name="climb_creator_auto_note_placeholders_hint">Platzhalter bleiben unverändert: {name}, {board}, {naddr}, {author_npub}, {climb_url}</string>
     <string name="climb_creator_auto_note_zero_relays">Climb veröffentlicht, aber die Auto-Note hat kein Relay erreicht.</string>
     <string name="climb_creator_publish_both_ok">Climb veröffentlicht auf Nostr und Kilter.</string>
     <string name="climb_creator_publish_kilter_pending">Auf Nostr veröffentlicht — Kilter-Sync läuft im Hintergrund.</string>
