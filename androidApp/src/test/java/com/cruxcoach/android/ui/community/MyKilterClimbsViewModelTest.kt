@@ -53,9 +53,6 @@ class MyKilterClimbsViewModelTest {
 
     @After
     fun tearDown() {
-        // Let IO-tail resumptions land while Main is still installed (see
-        // BoardClimbDetailOwnPublishTest.tearDown for the rationale).
-        Thread.sleep(200)
         Dispatchers.resetMain()
     }
 
@@ -81,6 +78,7 @@ class MyKilterClimbsViewModelTest {
     private fun buildViewModel() = MyKilterClimbsViewModel(
         ownClimbPublisher = ownClimbPublisher,
         boardRepository = boardRepository,
+        ioDispatcher = dispatcher,
     )
 
     @Test

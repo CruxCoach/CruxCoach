@@ -16,6 +16,7 @@ import android.content.Context
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -28,6 +29,7 @@ import com.cruxcoach.domain.board.HoldRole
 import com.cruxcoach.data.repository.ClimbTypeFilter
 import java.time.LocalDate
 import javax.inject.Inject
+import javax.inject.Named
 import com.cruxcoach.android.community.OwnKilterClimbPublisher
 import com.cruxcoach.android.community.isCommunityPublished
 import com.cruxcoach.android.community.normalizeClimbUuid
@@ -168,7 +170,9 @@ class BoardLogbookViewModel @Inject constructor(
      *  navigating to the correct detail screen — confusing UX. */
     private val climbNameResolver: com.cruxcoach.android.data.ClimbNameResolver,
     private val ownClimbPublisher: com.cruxcoach.android.community.OwnKilterClimbPublisher,
-    @param:ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context,
+    @param:Named("io") private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    @param:Named("default") private val defaultDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(BoardLogbookState())
@@ -212,7 +216,7 @@ class BoardLogbookViewModel @Inject constructor(
      */
     private fun refreshOwnPublishable() {
         viewModelScope.safeLaunch(TAG) {
-            val publishable = withContext(Dispatchers.IO) {
+            val publishable = withContext(ioDispatcher) {
                 ownClimbPublisher.getOwnAuthoredClimbs()
                     .filterNot { it.isCommunityPublished }
                     .map { normalizeClimbUuid(it.uuid) }
@@ -227,7 +231,7 @@ class BoardLogbookViewModel @Inject constructor(
         if (_state.value.ownPublishInProgressUuid != null) return
         _state.update { it.copy(ownPublishInProgressUuid = climbUuid) }
         viewModelScope.safeLaunch(TAG) {
-            val outcome = withContext(Dispatchers.IO) {
+            val outcome = withContext(ioDispatcher) {
                 runCatching { ownClimbPublisher.publish(climbUuid) }
                     .onFailure { Log.w(TAG, "logbook own-climb publish threw uuid=$climbUuid", it) }
                     .getOrNull()
@@ -279,7 +283,7 @@ class BoardLogbookViewModel @Inject constructor(
                     return@safeLaunch
                 }
                 val (brand, layoutId, sizeId) = resolved
-                val (placements, boardSize, boardImages) = withContext(Dispatchers.IO) {
+                val (placements, boardSize, boardImages) = withContext(ioDispatcher) {
                     Triple(
                         boardRepository.getPlacementsForLayout(sizeId, layoutId, brand).associate { it.placementId.toInt() to it },
                         boardRepository.getProductSize(sizeId, brand),
@@ -305,7 +309,7 @@ class BoardLogbookViewModel @Inject constructor(
         viewModelScope.safeLaunch(TAG) {
             _state.update { it.copy(isLoading = true, error = null) }
             try {
-                val (ascents, count) = withContext(Dispatchers.IO) {
+                val (ascents, count) = withContext(ioDispatcher) {
                     val list = personalBoardRepo.getUserLogbookPage(PAGE_SIZE, 0).toMutableList()
                     val total = personalBoardRepo.countUserLogbook()
                     repairMissingDenormalized(list)
@@ -330,7 +334,7 @@ class BoardLogbookViewModel @Inject constructor(
     private fun preloadStats() {
         viewModelScope.safeLaunch(TAG) {
             try {
-                val all = withContext(Dispatchers.IO) {
+                val all = withContext(ioDispatcher) {
                     personalBoardRepo.getUserLogbookAllLight()
                 }
                 allAscents = all
@@ -443,7 +447,7 @@ class BoardLogbookViewModel @Inject constructor(
         viewModelScope.safeLaunch(TAG) {
             _state.update { it.copy(isLoadingMore = true) }
             try {
-                val nextPage = withContext(Dispatchers.IO) {
+                val nextPage = withContext(ioDispatcher) {
                     val page = personalBoardRepo.getUserLogbookPage(PAGE_SIZE, s.ascents.size).toMutableList()
                     repairMissingDenormalized(page)
                     page
@@ -546,7 +550,7 @@ class BoardLogbookViewModel @Inject constructor(
                 val scoped = s.boardFilter
                     ?.let { bf -> allAscents.filter { it.brand == BoardBrand.fromWire(bf) } }
                     ?: allAscents
-                val (stats, comparison) = withContext(Dispatchers.Default) {
+                val (stats, comparison) = withContext(defaultDispatcher) {
                     val st = BoardStatsComputer.computeStats(
                         scoped, s.statsInterval, s.gradeScale,
                         s.customDateFrom, s.customDateTo, context
@@ -620,7 +624,7 @@ class BoardLogbookViewModel @Inject constructor(
                     return@safeLaunch
                 }
                 val (activeBrand, layoutId, _) = resolved
-                val data = withContext(Dispatchers.IO) {
+                val data = withContext(ioDispatcher) {
                     val frameRows: List<String> = when (mode) {
                         // allAscents comes from getUserLogbookAllLight() which
                         // strips climb_frames to save memory for the list UI —
@@ -703,7 +707,7 @@ class BoardLogbookViewModel @Inject constructor(
 
         viewModelScope.safeLaunch(TAG) {
             try {
-                withContext(Dispatchers.IO) {
+                withContext(ioDispatcher) {
                     personalBoardRepo.updateAscent(
                         uuid = uuid,
                         bidCount = s.editBidCount.toLong(),
@@ -737,7 +741,7 @@ class BoardLogbookViewModel @Inject constructor(
         val entry = _state.value.ascents.find { it.uuid == uuid }
         viewModelScope.safeLaunch(TAG) {
             try {
-                withContext(Dispatchers.IO) {
+                withContext(ioDispatcher) {
                     if (entry?.isSend == false) personalBoardRepo.deleteBid(uuid)
                     else personalBoardRepo.deleteAscent(uuid)
                 }
@@ -795,7 +799,7 @@ class BoardLogbookViewModel @Inject constructor(
             // Snackbar (audit recommendation); for now logged.
             var deleted = 0
             var errors = 0
-            withContext(Dispatchers.IO) {
+            withContext(ioDispatcher) {
                 for (uuid in uuids) {
                     try {
                         if (uuid in bidUuids) personalBoardRepo.deleteBid(uuid)
@@ -819,7 +823,7 @@ class BoardLogbookViewModel @Inject constructor(
     private fun reloadAscents() {
         viewModelScope.safeLaunch(TAG) {
             try {
-                val (ascents, count) = withContext(Dispatchers.IO) {
+                val (ascents, count) = withContext(ioDispatcher) {
                     val list = personalBoardRepo.getUserLogbookPage(PAGE_SIZE, 0)
                     val total = personalBoardRepo.countUserLogbook()
                     list to total

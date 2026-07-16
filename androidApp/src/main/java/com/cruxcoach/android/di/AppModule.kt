@@ -464,6 +464,12 @@ object AppModule {
     fun provideIoDispatcher(): kotlinx.coroutines.CoroutineDispatcher =
         kotlinx.coroutines.Dispatchers.IO
 
+    @Provides
+    @Singleton
+    @Named("default")
+    fun provideDefaultDispatcher(): kotlinx.coroutines.CoroutineDispatcher =
+        kotlinx.coroutines.Dispatchers.Default
+
     // --- Nostr Communication ---
 
     @Provides

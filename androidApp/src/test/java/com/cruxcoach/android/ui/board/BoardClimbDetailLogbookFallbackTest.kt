@@ -118,6 +118,7 @@ class BoardClimbDetailLogbookFallbackTest {
             ownClimbPublisher = mockk(relaxed = true),
             climbNavState = mockk(relaxed = true),
             context = context,
+            ioDispatcher = dispatcher,
         )
     }
 

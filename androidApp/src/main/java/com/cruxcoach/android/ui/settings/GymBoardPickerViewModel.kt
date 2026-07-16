@@ -12,6 +12,7 @@ import com.cruxcoach.domain.board.MoonBoardVariant
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -19,6 +20,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
+import javax.inject.Named
 import com.cruxcoach.android.util.safeLaunch
 
 private const val TAG = "GymBoardPickerVM"
@@ -76,6 +78,7 @@ data class GymBoardPickerState(
 @HiltViewModel
 class GymBoardPickerViewModel @Inject constructor(
     private val repository: BoardLocationRepository,
+    @param:Named("io") private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(GymBoardPickerState())
@@ -97,8 +100,8 @@ class GymBoardPickerViewModel @Inject constructor(
                 // (no walls) resolves via its variant instead — so gate on
                 // locations, not walls, or MoonBoard-only data would hide
                 // the whole "find my gym" path.
-                val enabled = withContext(Dispatchers.IO) { repository.count() > 0L }
-                frequency = withContext(Dispatchers.IO) { repository.productSizeFrequency() }
+                val enabled = withContext(ioDispatcher) { repository.count() > 0L }
+                frequency = withContext(ioDispatcher) { repository.productSizeFrequency() }
                 _state.update { it.copy(enabled = enabled) }
             } catch (e: CancellationException) {
                 throw e
@@ -119,7 +122,7 @@ class GymBoardPickerViewModel @Inject constructor(
         viewModelScope.safeLaunch(TAG) {
             _state.update { it.copy(searching = true) }
             try {
-                val res = withContext(Dispatchers.IO) { repository.searchLocations(trimmed, 60) }
+                val res = withContext(ioDispatcher) { repository.searchLocations(trimmed, 60) }
                 // Self-heal the one-shot `enabled` snapshot from init: this VM
                 // outlives the sheet, so a locations chunk that lands mid-session
                 // must re-enable the picker — re-check on every search while
@@ -128,9 +131,9 @@ class GymBoardPickerViewModel @Inject constructor(
                 // size-frequency ordering the init read skipped on an empty DB.
                 if (!_state.value.enabled) {
                     val hasData = res.isNotEmpty() ||
-                        withContext(Dispatchers.IO) { repository.count() > 0L }
+                        withContext(ioDispatcher) { repository.count() > 0L }
                     if (hasData) {
-                        frequency = withContext(Dispatchers.IO) { repository.productSizeFrequency() }
+                        frequency = withContext(ioDispatcher) { repository.productSizeFrequency() }
                         _state.update { it.copy(enabled = true) }
                     }
                 }
@@ -182,7 +185,7 @@ class GymBoardPickerViewModel @Inject constructor(
                             opts += auroraOptions(brand)
                         // Kilter gyms resolve their physical walls.
                         else -> {
-                            val walls = withContext(Dispatchers.IO) { repository.getWallsForGym(row.id) }
+                            val walls = withContext(ioDispatcher) { repository.getWallsForGym(row.id) }
                             opts += walls
                                 .filter { it.layoutId != null && it.productSizeId != null }
                                 .map { w ->

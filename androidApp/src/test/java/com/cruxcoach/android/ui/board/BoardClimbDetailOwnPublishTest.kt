@@ -106,12 +106,6 @@ class BoardClimbDetailOwnPublishTest {
 
     @After
     fun tearDown() {
-        // The VM's load coroutine ends with a withContext(Dispatchers.IO)
-        // tail that resumes onto Main AFTER the last observed state
-        // emission. Give that inline resumption a moment to land while
-        // Main is still installed — resetting first turns the tail into
-        // an uncaught "Main dispatcher missing" failure on the NEXT test.
-        Thread.sleep(200)
         Dispatchers.resetMain()
     }
 
@@ -137,6 +131,7 @@ class BoardClimbDetailOwnPublishTest {
             ownClimbPublisher = ownClimbPublisher,
             climbNavState = mockk(relaxed = true),
             context = context,
+            ioDispatcher = dispatcher,
         )
     }
 

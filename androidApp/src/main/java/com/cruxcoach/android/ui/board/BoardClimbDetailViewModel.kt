@@ -32,6 +32,7 @@ import com.cruxcoach.domain.board.BoardClimbParser
 import com.cruxcoach.domain.board.BoardHold
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineDispatcher
 import com.cruxcoach.android.data.RestTimerState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -52,6 +53,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import android.content.Context
 import com.cruxcoach.android.util.PerfLogger
 import javax.inject.Inject
+import javax.inject.Named
 
 enum class RoutePlaybackMode { MANUAL, AUTO }
 
@@ -272,7 +274,8 @@ class BoardClimbDetailViewModel @Inject constructor(
     private val communityClimbDeleter: com.cruxcoach.android.community.CommunityClimbDeleter,
     private val ownClimbPublisher: com.cruxcoach.android.community.OwnKilterClimbPublisher,
     val climbNavState: com.cruxcoach.android.ui.navigation.ClimbNavigationState,
-    @param:ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context,
+    @param:Named("io") private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : ViewModel() {
 
     /** Exposed for the pager to compute its initial page synchronously (before async load). */
@@ -362,7 +365,7 @@ class BoardClimbDetailViewModel @Inject constructor(
         // read failure or a flow-collection throw on one stream doesn't
         // silently kill the entire VM init and leave subsequent flow
         // updates lost.
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(ioDispatcher) {
             try {
                 PerfLogger.traceSuspend("VM.init prefs") {
                     val speed = userPreferences.routeFrameSpeed.first()
@@ -518,7 +521,7 @@ class BoardClimbDetailViewModel @Inject constructor(
         _state.update { it.copy(draftDeleteDialog = dialog.copy(isInProgress = true)) }
         viewModelScope.launch {
             val ok = runCatching {
-                withContext(Dispatchers.IO) {
+                withContext(ioDispatcher) {
                     boardRepository.deleteLocalClimb(dialog.uuid)
                 }
                 true
@@ -607,7 +610,7 @@ class BoardClimbDetailViewModel @Inject constructor(
         if (_state.value.isOwnPublishInProgress) return
         _state.update { it.copy(isOwnPublishInProgress = true) }
         viewModelScope.launch {
-            val outcome = withContext(Dispatchers.IO) {
+            val outcome = withContext(ioDispatcher) {
                 runCatching { ownClimbPublisher.publish(climb.uuid) }
                     .onFailure { Log.w(TAG, "publishOwnClimb threw uuid=${climb.uuid}", it) }
                     .getOrNull()
@@ -736,7 +739,7 @@ class BoardClimbDetailViewModel @Inject constructor(
         loadJob = viewModelScope.launch {
             try {
                 PerfLogger.navMilestone("loadClimb start ($uuid)")
-                withContext(Dispatchers.IO) {
+                withContext(ioDispatcher) {
                     // Try exact match first, then case variants (DB may store
                     // upper/lowercase). Keep the fast primary-key path first;
                     // only on a miss fall back to the normalized (strip-hyphens
@@ -964,7 +967,7 @@ class BoardClimbDetailViewModel @Inject constructor(
         if (_pageCache.value.containsKey(uuid)) return
         viewModelScope.launch {
             try {
-                withContext(Dispatchers.IO) {
+                withContext(ioDispatcher) {
                     val climb = boardRepository.getClimbByUuid(uuid, angle) ?: return@withContext
                     // FEAT-027: skip Kilter-only board geometry for MoonBoard climbs.
                     val isMoonBoard = !climb.brand.usesAuroraPlacements
@@ -1074,7 +1077,7 @@ class BoardClimbDetailViewModel @Inject constructor(
     fun toggleFavorite() {
         viewModelScope.launch {
             try {
-                val newState = withContext(Dispatchers.IO) {
+                val newState = withContext(ioDispatcher) {
                     personalBoardRepo.toggleFavorite(currentClimbUuid)
                 }
                 _state.update { it.copy(isFavorited = newState) }
@@ -1098,7 +1101,7 @@ class BoardClimbDetailViewModel @Inject constructor(
     fun toggleIgnored() {
         viewModelScope.launch {
             try {
-                val newState = withContext(Dispatchers.IO) {
+                val newState = withContext(ioDispatcher) {
                     personalBoardRepo.toggleIgnored(currentClimbUuid)
                 }
                 _state.update { it.copy(isIgnored = newState) }
@@ -1221,14 +1224,14 @@ class BoardClimbDetailViewModel @Inject constructor(
     fun showAddToListDialog() {
         viewModelScope.launch {
             try {
-                val lists = withContext(Dispatchers.IO) {
+                val lists = withContext(ioDispatcher) {
                     personalBoardRepo.ensureFavoritesListExists()
                     // Hide the built-in "Ignored" list — ignoring has its own
                     // dedicated overflow action; it doesn't belong in the
                     // add-to-list picker.
                     personalBoardRepo.getAllClimbLists().filterNot { it.isIgnored }
                 }
-                val inListIds = withContext(Dispatchers.IO) {
+                val inListIds = withContext(ioDispatcher) {
                     personalBoardRepo.getListIdsForClimb(currentClimbUuid)
                 }
                 _state.update { it.copy(listDialog = ListDialogState(
@@ -1246,7 +1249,7 @@ class BoardClimbDetailViewModel @Inject constructor(
         _state.update { it.copy(listDialog = it.listDialog.copy(show = false)) }
         viewModelScope.launch {
             try {
-                val isFav = withContext(Dispatchers.IO) { personalBoardRepo.isClimbFavorited(currentClimbUuid) }
+                val isFav = withContext(ioDispatcher) { personalBoardRepo.isClimbFavorited(currentClimbUuid) }
                 _state.update { it.copy(isFavorited = isFav) }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
@@ -1260,7 +1263,7 @@ class BoardClimbDetailViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val currentlyIn = _state.value.listDialog.climbInListIds.contains(listId)
-                withContext(Dispatchers.IO) {
+                withContext(ioDispatcher) {
                     if (currentlyIn) {
                         personalBoardRepo.removeClimbFromList(listId, currentClimbUuid)
                     } else {
@@ -1296,12 +1299,12 @@ class BoardClimbDetailViewModel @Inject constructor(
         }
         viewModelScope.launch {
             try {
-                val newListId = withContext(Dispatchers.IO) {
+                val newListId = withContext(ioDispatcher) {
                     val id = personalBoardRepo.createClimbList(name)
                     personalBoardRepo.addClimbToList(id, currentClimbUuid)
                     id
                 }
-                val updatedLists = withContext(Dispatchers.IO) {
+                val updatedLists = withContext(ioDispatcher) {
                     personalBoardRepo.getAllClimbLists().filterNot { it.isIgnored }
                 }
                 _state.update { it.copy(listDialog = it.listDialog.copy(

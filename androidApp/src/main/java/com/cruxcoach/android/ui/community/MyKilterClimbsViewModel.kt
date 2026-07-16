@@ -12,12 +12,14 @@ import com.cruxcoach.domain.board.BoardBrand
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
 import com.cruxcoach.android.util.safeLaunch
+import javax.inject.Named
 
 /** Status bucket of a "Meine Climbs" row — drives both the section it
  *  lands in and the trailing affordance (badge vs claim/publish button). */
@@ -86,6 +88,7 @@ data class MyKilterClimbsState(
 class MyKilterClimbsViewModel @Inject constructor(
     private val ownClimbPublisher: OwnKilterClimbPublisher,
     private val boardRepository: BoardRepository,
+    @param:Named("io") private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(MyKilterClimbsState())
@@ -99,7 +102,7 @@ class MyKilterClimbsViewModel @Inject constructor(
         viewModelScope.safeLaunch(TAG) {
             _state.update { it.copy(isLoading = true, loadFailed = false) }
             try {
-                val result = withContext(Dispatchers.IO) {
+                val result = withContext(ioDispatcher) {
                     val connected = ownClimbPublisher.hasConnectedKilterAccount()
                     val hasNostr = ownClimbPublisher.hasNostrIdentity()
 
@@ -189,7 +192,7 @@ class MyKilterClimbsViewModel @Inject constructor(
         if (_state.value.publishingUuid != null) return
         _state.update { it.copy(publishingUuid = uuid) }
         viewModelScope.safeLaunch(TAG) {
-            val outcome = withContext(Dispatchers.IO) {
+            val outcome = withContext(ioDispatcher) {
                 try {
                     ownClimbPublisher.publish(uuid, setterGradeId)
                 } catch (e: kotlinx.coroutines.CancellationException) {

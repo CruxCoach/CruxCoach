@@ -22,10 +22,8 @@ import org.junit.Test
 /**
  * Tests for [GymBoardPickerViewModel].
  *
- * The VM body uses `withContext(Dispatchers.IO) { ... }` for repository
- * reads, which means the work executes on a real IO thread regardless of
- * the test scheduler. Tests therefore use Turbine's `.test {}` to await
- * the eventual StateFlow emission rather than asserting eagerly.
+ * Repository work runs on the injected test dispatcher, so virtual-time
+ * completion is deterministic and no real IO thread can outlive a test.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class GymBoardPickerViewModelTest {
@@ -35,6 +33,8 @@ class GymBoardPickerViewModelTest {
 
     @Before fun setUp() { Dispatchers.setMain(dispatcher) }
     @After fun tearDown() { Dispatchers.resetMain() }
+
+    private fun buildViewModel() = GymBoardPickerViewModel(repo, dispatcher)
 
     private fun loc(
         id: String,
@@ -71,7 +71,7 @@ class GymBoardPickerViewModelTest {
     @Test
     fun `init disables picker when no locations`() = runTest {
         // No locations synced at all → nothing to search, picker stays off.
-        val vm = GymBoardPickerViewModel(repo)
+        val vm = buildViewModel()
         vm.state.test {
             val first = awaitItem()
             assertEquals(false, first.enabled)
@@ -84,7 +84,7 @@ class GymBoardPickerViewModelTest {
         // Gated on locations, not walls — a MoonBoard-only dataset (no
         // walls) must still enable the "find my gym" path.
         repo.locations += loc("g1")
-        val vm = GymBoardPickerViewModel(repo)
+        val vm = buildViewModel()
         vm.state.test {
             // Drain emissions until enabled flips.
             var seen = awaitItem()
@@ -102,7 +102,7 @@ class GymBoardPickerViewModelTest {
             "mb1", name = "Boulderwelt", layoutId = 5,
             boardBrand = com.cruxcoach.domain.board.BoardBrand.MOONBOARD,
         )
-        val vm = GymBoardPickerViewModel(repo)
+        val vm = buildViewModel()
         vm.state.test {
             var seen = awaitItem()
             while (!seen.enabled) seen = awaitItem()
@@ -124,7 +124,7 @@ class GymBoardPickerViewModelTest {
             "mb2", name = "Home Board", layoutId = null,
             boardBrand = com.cruxcoach.domain.board.BoardBrand.MOONBOARD,
         )
-        val vm = GymBoardPickerViewModel(repo)
+        val vm = buildViewModel()
         vm.state.test {
             var seen = awaitItem()
             while (!seen.enabled) seen = awaitItem()
@@ -142,7 +142,7 @@ class GymBoardPickerViewModelTest {
     @Test
     fun `onQueryChange under 2 chars clears results`() = runTest {
         repo.locations += loc("g1", "Boulderwelt München")
-        val vm = GymBoardPickerViewModel(repo)
+        val vm = buildViewModel()
         vm.state.test {
             awaitItem() // initial / init-update
             vm.onQueryChange("B")
@@ -161,7 +161,7 @@ class GymBoardPickerViewModelTest {
     fun `onQueryChange triggers search at 2 chars and surfaces results`() = runTest {
         repo.locations += loc("g1", "Boulderwelt München")
         repo.locations += loc("g2", "Klettercentrum Stuttgart")
-        val vm = GymBoardPickerViewModel(repo)
+        val vm = buildViewModel()
         vm.state.test {
             awaitItem()
             vm.onQueryChange("Bo")
@@ -179,7 +179,7 @@ class GymBoardPickerViewModelTest {
         repo.walls += wall(gymUuid = "g1", productSizeId = 10)
         repo.walls += wall(gymUuid = "g1", productSizeId = null)
         repo.walls += wall(gymUuid = "g1", layoutId = null)
-        val vm = GymBoardPickerViewModel(repo)
+        val vm = buildViewModel()
         vm.state.test {
             awaitItem()
             vm.selectGym(repo.locations.first())
@@ -202,7 +202,7 @@ class GymBoardPickerViewModelTest {
         // Selected gym has one of each.
         repo.walls += wall(gymUuid = "g1", productSizeId = 20)
         repo.walls += wall(gymUuid = "g1", productSizeId = 10)
-        val vm = GymBoardPickerViewModel(repo)
+        val vm = buildViewModel()
         vm.state.test {
             // Wait for init to settle (enabled=true) so frequency is populated.
             var seen = awaitItem()
@@ -219,7 +219,7 @@ class GymBoardPickerViewModelTest {
     fun `clearGymSelection resets selectedGym and wallOptions`() = runTest {
         repo.locations += loc("g1")
         repo.walls += wall(gymUuid = "g1")
-        val vm = GymBoardPickerViewModel(repo)
+        val vm = buildViewModel()
         vm.state.test {
             awaitItem()
             vm.selectGym(repo.locations.first())

@@ -89,9 +89,6 @@ class BoardLogbookOwnPublishTest {
 
     @After
     fun tearDown() {
-        // Let IO-tail resumptions land while Main is still installed (see
-        // BoardClimbDetailOwnPublishTest.tearDown for the rationale).
-        Thread.sleep(200)
         Dispatchers.resetMain()
     }
 
@@ -138,6 +135,8 @@ class BoardLogbookOwnPublishTest {
         climbNameResolver = mockk(relaxed = true),
         ownClimbPublisher = ownClimbPublisher,
         context = context,
+        ioDispatcher = dispatcher,
+        defaultDispatcher = dispatcher,
     )
 
     @Test
