@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlin.time.Clock
 
 internal fun emptyPreferencesCorruptionHandler() =
     ReplaceFileCorruptionHandler<Preferences> { emptyPreferences() }
@@ -261,6 +262,7 @@ object PreferenceKeys {
     val SYNC_INTERVAL = stringPreferencesKey("sync_interval")
     val CLIMB_HISTORY_RETENTION_DAYS = intPreferencesKey("climb_history_retention_days")
     val LAST_SYNC_TIMESTAMP = stringPreferencesKey("last_sync_timestamp")
+    val LAST_SYNC_EPOCH_MILLIS = longPreferencesKey("last_sync_epoch_millis")
     val GRADE_SCALE = stringPreferencesKey("grade_scale")
     val LED_COLOR_START = intPreferencesKey("led_color_start")
     val LED_COLOR_HAND = intPreferencesKey("led_color_hand")
@@ -434,6 +436,12 @@ class UserPreferences(
 
     val lastSyncTimestamp: Flow<String?> = dataStore.data.map { prefs ->
         prefs[PreferenceKeys.LAST_SYNC_TIMESTAMP]
+    }
+
+    /** Zone-independent instant used for staleness decisions. The legacy
+     * display timestamp remains separate because it intentionally has no zone. */
+    val lastSyncEpochMillis: Flow<Long?> = dataStore.data.map { prefs ->
+        prefs[PreferenceKeys.LAST_SYNC_EPOCH_MILLIS]
     }
 
     val gradeScale: Flow<GradeScale> = dataStore.data.map { prefs ->
@@ -677,8 +685,10 @@ class UserPreferences(
         dataStore.edit { prefs ->
             if (timestamp != null) {
                 prefs[PreferenceKeys.LAST_SYNC_TIMESTAMP] = timestamp
+                prefs[PreferenceKeys.LAST_SYNC_EPOCH_MILLIS] = Clock.System.now().toEpochMilliseconds()
             } else {
                 prefs.remove(PreferenceKeys.LAST_SYNC_TIMESTAMP)
+                prefs.remove(PreferenceKeys.LAST_SYNC_EPOCH_MILLIS)
             }
         }
     }

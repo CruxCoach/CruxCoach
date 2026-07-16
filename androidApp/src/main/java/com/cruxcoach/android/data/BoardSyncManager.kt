@@ -30,10 +30,6 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import java.util.concurrent.atomic.AtomicLong
-import kotlin.time.Clock
-import kotlinx.datetime.LocalDateTime
-import kotlinx.datetime.TimeZone
-import kotlinx.datetime.toInstant
 
 /**
  * Application-scoped sync manager that survives ViewModel lifecycle.
@@ -340,8 +336,8 @@ class BoardSyncManager(
             val interval = userPreferences.syncInterval.first()
             if (interval == SyncInterval.MANUAL) return@safeLaunch
 
-            val lastSync = userPreferences.lastSyncTimestamp.first()
-            if (!isStale(lastSync, interval)) {
+            val lastSyncEpochMillis = userPreferences.lastSyncEpochMillis.first()
+            if (!isBoardSyncStale(lastSyncEpochMillis, interval)) {
                 Log.d(TAG, "Data fresh — no sync needed")
                 return@safeLaunch
             }
@@ -406,19 +402,6 @@ class BoardSyncManager(
             }
         }
         return claimed
-    }
-
-    private fun isStale(lastSync: String?, interval: SyncInterval): Boolean {
-        if (lastSync == null) return true
-        return try {
-            val last = LocalDateTime.parse(lastSync).toInstant(TimeZone.currentSystemDefault())
-            val hours = (Clock.System.now() - last).inWholeHours
-            when (interval) {
-                SyncInterval.DAILY -> hours >= 24
-                SyncInterval.WEEKLY -> hours >= 168
-                SyncInterval.MANUAL -> false
-            }
-        } catch (e: Exception) { Log.w(TAG, "Stale check failed", e); false }
     }
 
     /**
