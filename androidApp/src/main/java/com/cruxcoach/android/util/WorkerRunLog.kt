@@ -18,6 +18,13 @@ internal fun formatWorkerResult(
     if (errorClass != null) append(" errorClass=").append(errorClass)
 }
 
+internal fun workerOutcome(result: ListenableWorker.Result): String = when (result.javaClass) {
+    ListenableWorker.Result.success().javaClass -> "success"
+    ListenableWorker.Result.retry().javaClass -> "retry"
+    ListenableWorker.Result.failure().javaClass -> "failure"
+    else -> "unknown"
+}
+
 /** One privacy-bounded terminal line for every WorkManager invocation. */
 object WorkerRunLog {
     fun started(): Long = SystemClock.elapsedRealtime()
@@ -30,7 +37,7 @@ object WorkerRunLog {
         result: ListenableWorker.Result,
         errorClass: String? = null,
     ): ListenableWorker.Result {
-        val outcome = result.javaClass.simpleName.lowercase().ifBlank { "unknown" }
+        val outcome = workerOutcome(result)
         val line = formatWorkerResult(
             worker = worker,
             outcome = outcome,
