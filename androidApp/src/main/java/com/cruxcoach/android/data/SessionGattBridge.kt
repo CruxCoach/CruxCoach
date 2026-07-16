@@ -405,7 +405,10 @@ class SessionGattBridge(
             // Listen for queue events
             launch {
                 gattClient.queueEvents.collect { data ->
-                    val event = SessionQueueProtocol.decodeEvent(data) ?: return@collect
+                    val event = SessionQueueProtocol.decodeEvent(data) ?: run {
+                        Log.w(TAG, "event=decode_fail frame=event bytes=${data.size}")
+                        return@collect
+                    }
                     applyRemoteEvent(event)
                 }
             }
@@ -414,7 +417,10 @@ class SessionGattBridge(
             // participantCount == 0 is a sentinel meaning "session ended by host".
             launch {
                 gattClient.sessionInfoUpdates.collect { data ->
-                    val info = SessionQueueProtocol.decodeSessionInfo(data) ?: return@collect
+                    val info = SessionQueueProtocol.decodeSessionInfo(data) ?: run {
+                        Log.w(TAG, "event=decode_fail frame=session_info bytes=${data.size}")
+                        return@collect
+                    }
                     if (info.participantCount == 0) {
                         Log.d(TAG, "Received session-ended signal from host")
                         handleSessionEndedByHost()
@@ -441,7 +447,10 @@ class SessionGattBridge(
             // Listen for full queue state (initial sync + updates)
             launch {
                 gattClient.queueStateUpdates.collect { data ->
-                    val parsed = SessionQueueProtocol.decodeQueueState(data) ?: return@collect
+                    val parsed = SessionQueueProtocol.decodeQueueState(data) ?: run {
+                        Log.w(TAG, "event=decode_fail frame=queue_state bytes=${data.size}")
+                        return@collect
+                    }
                     val (currentIndex, items) = parsed
                     Log.d(TAG, "Received queue state: ${items.size} items, currentIndex=$currentIndex")
                     queueManager.applyRemoteState(currentIndex, items)
@@ -451,7 +460,10 @@ class SessionGattBridge(
             // Listen for participant list updates (names + our index)
             launch {
                 gattClient.participantListUpdates.collect { data ->
-                    val names = SessionQueueProtocol.decodeParticipantList(data) ?: return@collect
+                    val names = SessionQueueProtocol.decodeParticipantList(data) ?: run {
+                        Log.w(TAG, "event=decode_fail frame=participant_list bytes=${data.size}")
+                        return@collect
+                    }
                     queueManager.applyRemoteParticipants(names)
                 }
             }

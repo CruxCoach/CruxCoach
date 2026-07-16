@@ -1051,7 +1051,11 @@ class BackupRepository @Inject constructor(
                 "event=query_all_valid_timeout collectedSoFar=${collected.size}",
             )
         }
-        return collected.mapNotNull { MinimalEvent.fromJson(it) }
+        val valid = collected.mapNotNull { MinimalEvent.fromJson(it) }
+        if (collected.isNotEmpty() && valid.isEmpty()) {
+            Log.w(TAG, "event=all_backup_events_rejected received=${collected.size}")
+        }
+        return valid
     }
 
     // ------------------------------------------------------------- crypto ops
@@ -1271,6 +1275,7 @@ data class MinimalEvent(
             val signatureValid = event.verifySignature()
             val idValid = signatureValid && event.verifyId()
             if (!NostrEventPolicy.hasValidBodyBinding(signatureValid, idValid)) {
+                Log.w(TAG, "event=backup_event_rejected reason=signature_or_id")
                 null
             } else {
                 MinimalEvent(
@@ -1283,9 +1288,15 @@ data class MinimalEvent(
                     sig = event.sig,
                 )
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Log.w(
+                TAG,
+                "event=backup_event_rejected reason=parse type=${e.javaClass.simpleName} bytes=${json.length}",
+            )
             null
         }
+
+        private const val TAG = "BackupEvent"
     }
 }
 

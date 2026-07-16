@@ -460,7 +460,10 @@ class SessionQueueManager(
                 if (climb.frames.isBlank()) return
                 val variant = com.cruxcoach.domain.board.MoonBoardVariant.fromLayoutId(climb.layoutId)
                     ?: com.cruxcoach.domain.board.MoonBoardVariant.MOONBOARD_2016
-                bleConnection.sendMoonBoardClimb(climb.frames, variant)
+                if (!bleConnection.sendMoonBoardClimb(climb.frames, variant)) {
+                    Log.w(TAG, "sendCurrentClimbToBoard: MoonBoard write failed")
+                    return
+                }
                 lastSentClimbKey = key
                 Log.d(TAG, "sendCurrentClimbToBoard: sent MoonBoard ${item.climbUuid.take(8)} angle=${item.angle}")
                 onFirstQueueClimbSent?.invoke()
@@ -480,7 +483,10 @@ class SessionQueueManager(
                 (if (climb.brand == BoardBrand.KILTER) userPreferences.ledHoldColors.first()
                  else LedHoldColors.standardFor(climb.brand)).toRoleColorMap()
             }
-            bleConnection.sendClimb(holds, ledMap, roleColors)
+            if (!bleConnection.sendClimb(holds, ledMap, roleColors)) {
+                Log.w(TAG, "sendCurrentClimbToBoard: board write failed")
+                return
+            }
             lastSentClimbKey = key
             Log.d(TAG, "sendCurrentClimbToBoard: sent ${item.climbUuid.take(8)} angle=${item.angle}")
             // Clear last-projected-climb banner on first queue send

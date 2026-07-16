@@ -569,6 +569,7 @@ class SessionQueueManagerTest {
 
     @Test
     fun `sendCurrentClimbToBoard sends when climb brand matches connected board`() {
+        coEvery { bleConnection.sendMoonBoardClimb(any(), any()) } returns true
         setupConnectedSendScenario(connectedBrand = BoardBrand.MOONBOARD)
 
         queueManager.sendCurrentClimbToBoard()
@@ -580,11 +581,29 @@ class SessionQueueManagerTest {
     fun `sendCurrentClimbToBoard sends when connected board brand is unknown`() {
         // Legacy behavior preserved: with no connected-brand information the
         // guard must not block (matches pre-guard semantics).
+        coEvery { bleConnection.sendMoonBoardClimb(any(), any()) } returns true
         setupConnectedSendScenario(connectedBrand = null)
 
         queueManager.sendCurrentClimbToBoard()
 
         coVerify(exactly = 1) { bleConnection.sendMoonBoardClimb(any(), any()) }
+    }
+
+    @Test
+    fun `failed board write remains eligible for retry and does not fire sent callback`() {
+        coEvery { bleConnection.sendMoonBoardClimb(any(), any()) } returnsMany listOf(false, true)
+        every { bleConnection.connectionState } returns MutableStateFlow(ConnectionState.CONNECTED)
+        every { bleConnection.connectedBoardBrand } returns MutableStateFlow(BoardBrand.MOONBOARD)
+        every { boardRepository.getClimbByUuid(any(), any()) } returns moonBoardClimb("uuid-mb")
+        var callbackCount = 0
+        queueManager.onFirstQueueClimbSent = { callbackCount++ }
+
+        queueManager.startQueue("Host")
+        queueManager.addClimb("uuid-mb", 40)
+        queueManager.sendCurrentClimbToBoard()
+
+        coVerify(exactly = 2) { bleConnection.sendMoonBoardClimb(any(), any()) }
+        assertEquals(1, callbackCount)
     }
 
     @Test

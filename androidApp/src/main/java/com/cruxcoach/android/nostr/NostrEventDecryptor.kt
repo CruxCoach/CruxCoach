@@ -46,7 +46,10 @@ class NostrEventDecryptor(
             Log.w(TAG, "Rejecting gift wrap with invalid signature/id")
             return null
         }
-        val unwrapped = giftWrap.unwrapOrNull(nostrSigner.signer) ?: return null
+        val unwrapped = giftWrap.unwrapOrNull(nostrSigner.signer) ?: run {
+            Log.w(TAG, "event=dm_decrypt outcome=failed stage=unwrap")
+            return null
+        }
         // NIP-17 always uses gift-wrap -> kind-13 seal -> unsigned rumor.
         // Accepting a single-layer fallback makes the self-declared rumor
         // pubkey forgeable and lets a remote sender impersonate the developer.
@@ -61,7 +64,7 @@ class NostrEventDecryptor(
             return null
         }
         val rumor = seal.unsealOrNull(nostrSigner.signer) ?: run {
-            Log.w(TAG, "Failed to unseal rumor from seal ${seal.id}")
+            Log.w(TAG, "event=dm_decrypt outcome=failed stage=unseal")
             return null
         }
         if (!NostrEventPolicy.hasBoundDmSender(seal.pubKey, rumor.pubKey)) {

@@ -240,6 +240,7 @@ class BlossomUploader @Inject constructor(
                 val request = Request.Builder().url(url).get().build()
                 okHttpClient.newCall(request).execute().use { resp ->
                     if (!resp.isSuccessful) {
+                        Log.w(TAG, "event=download_server_failed outcome=http_error code=${resp.code}")
                         lastError = IOException("HTTP ${resp.code} from ${server.shortHost()}")
                         return@use
                     }
@@ -302,8 +303,20 @@ class BlossomUploader @Inject constructor(
                     .head()
                     .build()
                 try {
-                    okHttpClient.newCall(request).execute().use { it.isSuccessful }
-                } catch (_: Exception) {
+                    okHttpClient.newCall(request).execute().use { response ->
+                        if (!response.isSuccessful) {
+                            Log.w(
+                                TAG,
+                                "event=verify_probe outcome=http_error code=${response.code}",
+                            )
+                        }
+                        response.isSuccessful
+                    }
+                } catch (e: Exception) {
+                    Log.w(
+                        TAG,
+                        "event=verify_probe outcome=exception type=${e.javaClass.simpleName}",
+                    )
                     false
                 }
             }

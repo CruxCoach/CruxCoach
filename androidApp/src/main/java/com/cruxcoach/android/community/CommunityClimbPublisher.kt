@@ -423,7 +423,7 @@ class CommunityClimbPublisher @Inject constructor(
         if (ids.isEmpty()) return null
         // Brand-scope placements: an Aurora climb's bounds must come from its own
         // board's placement coords, not Kilter's (the no-arg default).
-        val all = runCatching { boardRepository.getAllPlacements(boardBrand.wireValue) }.getOrNull().orEmpty()
+        val all = boardRepository.getAllPlacements(boardBrand.wireValue)
         if (all.isEmpty()) return null
         val coords = all.asSequence()
             .filter { it.placementId.toInt() in ids }

@@ -21,6 +21,7 @@ import com.cruxcoach.android.nostr.NostrEventPolicy
 import com.cruxcoach.android.nostr.NostrRelayPool
 import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.android.nostr.OfflineQueueManager
+import com.cruxcoach.android.util.WorkerRunLog
 import com.vitorpamplona.quartz.nip01Core.core.Event
 import com.vitorpamplona.quartz.nip01Core.crypto.verifyId
 import com.vitorpamplona.quartz.nip01Core.crypto.verifySignature
@@ -29,6 +30,14 @@ import dagger.assisted.AssistedInject
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.TimeUnit
+
+internal data class RelayPollBatch(
+    val events: List<String>,
+    val completed: Boolean,
+)
+
+internal fun completedPollCursorOrNull(completed: Boolean, cursor: Long): Long? =
+    cursor.takeIf { completed }
 
 @HiltWorker
 class NotificationPollWorker @AssistedInject constructor(
@@ -46,16 +55,29 @@ class NotificationPollWorker @AssistedInject constructor(
 ) : CoroutineWorker(appContext, workerParams) {
 
     override suspend fun doWork(): Result {
-        return try {
+        val startedAt = WorkerRunLog.started()
+        var errorClass: String? = null
+        val result = try {
             queueManager.cleanupExpired()
             queueManager.drainQueue()
             pollAnnouncements()
             pollDmReplies()
             Result.success()
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
-            Log.e(TAG, "Poll failed", e)
+            errorClass = e.javaClass.simpleName
+            Log.e(TAG, "Poll failed (${e.javaClass.simpleName})")
             Result.retry()
         }
+        return WorkerRunLog.finished(
+            TAG,
+            WORK_NAME,
+            runAttemptCount,
+            startedAt,
+            result,
+            errorClass,
+        )
     }
 
     private suspend fun pollAnnouncements() {
@@ -74,11 +96,11 @@ class NotificationPollWorker @AssistedInject constructor(
             if (userPreferences.announcementCatTip.first()) add(AnnouncementTagParser.CATEGORY_TIP)
             if (userPreferences.announcementCatGeneral.first()) add(AnnouncementTagParser.CATEGORY_GENERAL)
         }
-        val events = collectEventsWithTimeout(filter)
+        val batch = collectEventsWithTimeout(filter)
         var latestTimestamp = sinceTimestamp
         val appLang = getCurrentAppLanguage()
 
-        for (json in events) {
+        for (json in batch.events) {
             try {
                 val event = Event.fromJson(json)
 
@@ -92,7 +114,16 @@ class NotificationPollWorker @AssistedInject constructor(
                         signatureValid = signatureValid,
                         idValid = idValid,
                     )
-                ) continue
+                ) {
+                    val reason = when {
+                        event.pubKey != NostrConfig.DEV_PUBKEY -> "author"
+                        event.kind != 1 -> "kind"
+                        !signatureValid -> "signature"
+                        else -> "id"
+                    }
+                    Log.w(TAG, "event=announcement_rejected reason=$reason")
+                    continue
+                }
 
                 if (!AnnouncementTagParser.isAnnouncement(event.tags)) continue
 
@@ -132,7 +163,12 @@ class NotificationPollWorker @AssistedInject constructor(
             }
         }
 
-        userPreferences.setLastAnnouncementCheck(latestTimestamp)
+        completedPollCursorOrNull(batch.completed, latestTimestamp)?.let {
+            userPreferences.setLastAnnouncementCheck(it)
+        } ?: Log.w(
+            TAG,
+            "Announcement relay poll timed out; cursor retained (events=${batch.events.size})",
+        )
     }
 
     private suspend fun pollDmReplies() {
@@ -152,15 +188,20 @@ class NotificationPollWorker @AssistedInject constructor(
 
         val filter = """{"kinds":[1059],"#p":["$ownPubkey"],"since":$sinceTimestamp}"""
 
-        val events = collectEventsWithTimeout(filter)
+        val batch = collectEventsWithTimeout(filter)
         // Initialize from the previously saved cursor (NOT sinceTimestamp,
         // which is buffered 2 days backwards for the NIP-59 random window
         // and would otherwise let the cursor regress on a quiet poll).
         var latestTimestamp = cursor
+        var decryptFailures = 0
 
-        for (json in events) {
+        for (json in batch.events) {
             try {
-                val msg = decryptor.decrypt(json) ?: continue
+                val msg = decryptor.decrypt(json)
+                if (msg == null) {
+                    decryptFailures++
+                    continue
+                }
 
                 // NIP-17 self-wraps echo our sent messages back. Store them
                 // as "sent" so sent history is recoverable; don't notify.
@@ -210,18 +251,30 @@ class NotificationPollWorker @AssistedInject constructor(
             }
         }
 
+        if (decryptFailures > 0) {
+            Log.w(
+                TAG,
+                "DM poll decrypt failures=$decryptFailures events=${batch.events.size}",
+            )
+        }
+
         // Advance the shared cursor with a 60s back-off for safety against
         // out-of-order delivery from multiple relays. Go through the
         // atomic advance helper so foreground subscription advances
         // during the 30s collect window are not overwritten by our
         // stale `cursor` snapshot.
         val newCursor = (latestTimestamp - 60).coerceAtLeast(0L)
-        userPreferences.advanceNostrSyncCursor(newCursor)
+        completedPollCursorOrNull(batch.completed, newCursor)?.let {
+            userPreferences.advanceNostrSyncCursor(it)
+        } ?: Log.w(
+            TAG,
+            "DM relay poll timed out; cursor retained (events=${batch.events.size})",
+        )
     }
 
-    private suspend fun collectEventsWithTimeout(filter: String): List<String> {
+    private suspend fun collectEventsWithTimeout(filter: String): RelayPollBatch {
         val collected = mutableListOf<String>()
-        withTimeoutOrNull(30_000L) {
+        val completed = withTimeoutOrNull(30_000L) {
             // skipDedup: poll worker must see events even if foreground subscription
             // already added them to the relay pool's seenEventIds cache.
             // closeOnEose: complete as soon as all relays have sent their stored
@@ -229,8 +282,9 @@ class NotificationPollWorker @AssistedInject constructor(
             relayPool.subscribe(filter, skipDedup = true, closeOnEose = true).collect { json ->
                 collected.add(json)
             }
-        }
-        return collected
+            true
+        } == true
+        return RelayPollBatch(collected, completed)
     }
 
     // Reads from "locale_prefs" (same store as LanguageSection) — must not use

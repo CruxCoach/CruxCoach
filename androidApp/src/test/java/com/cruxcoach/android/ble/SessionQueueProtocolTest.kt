@@ -170,6 +170,20 @@ class SessionQueueProtocolTest {
         assertEquals(names, decoded)
     }
 
+    @Test
+    fun `decodeParticipantList rejects a truncated name`() {
+        val truncated = byteArrayOf(1, 5, 'A'.code.toByte(), 'l'.code.toByte())
+
+        assertNull(SessionQueueProtocol.decodeParticipantList(truncated))
+    }
+
+    @Test
+    fun `decodeParticipantList rejects a missing declared participant`() {
+        val truncated = byteArrayOf(2, 1, 'A'.code.toByte())
+
+        assertNull(SessionQueueProtocol.decodeParticipantList(truncated))
+    }
+
     // ===== Edge cases =====
 
     @Test

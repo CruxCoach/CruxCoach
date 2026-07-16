@@ -1,5 +1,6 @@
 package com.cruxcoach.android.ble
 
+import android.util.Log
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.UUID
@@ -18,6 +19,7 @@ import java.util.UUID
  *   [1B currentIndex][1B itemCount][per item: 1B angle + 16B uuid]
  */
 object SessionQueueProtocol {
+    private const val TAG = "SessionQueueProtocol"
 
     // --- Command opcodes (Client → Host) ---
     const val CMD_ADD: Byte = 0x01
@@ -118,7 +120,10 @@ object SessionQueueProtocol {
                 if (data.size < 3) return null
                 SessionCommand.Move(data[1].toInt() and 0xFF, data[2].toInt() and 0xFF)
             }
-            else -> null
+            else -> {
+                Log.w(TAG, "event=unknown_opcode frame=command opcode=${data[0].toInt() and 0xFF} bytes=${data.size}")
+                null
+            }
         }
     }
 
@@ -193,7 +198,10 @@ object SessionQueueProtocol {
                 val nameLen = (data[1].toInt() and 0xFF).coerceAtMost(data.size - 2)
                 SessionEvent.ParticipantLeft(String(data, 2, nameLen, Charsets.UTF_8))
             }
-            else -> null
+            else -> {
+                Log.w(TAG, "event=unknown_opcode frame=event opcode=${data[0].toInt() and 0xFF} bytes=${data.size}")
+                null
+            }
         }
     }
 
@@ -282,8 +290,9 @@ object SessionQueueProtocol {
         val names = mutableListOf<String>()
         var offset = 1
         repeat(count) {
-            if (offset >= data.size) return names
-            val nameLen = (data[offset].toInt() and 0xFF).coerceAtMost(data.size - offset - 1)
+            if (offset >= data.size) return null
+            val nameLen = data[offset].toInt() and 0xFF
+            if (nameLen > data.size - offset - 1) return null
             names.add(String(data, offset + 1, nameLen, Charsets.UTF_8))
             offset += 1 + nameLen
         }

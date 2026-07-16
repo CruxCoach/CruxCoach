@@ -238,7 +238,13 @@ class KilterSyncEngine @Inject constructor(
 
                 // Download
                 val logsResult = apiClient.fetchLogs()
-                val logs = logsResult.getOrNull() ?: return@launch
+                val logs = logsResult.getOrElse { failure ->
+                    Log.w(
+                        TAG,
+                        "App-start log download failed (${failure.javaClass.simpleName})",
+                    )
+                    return@launch
+                }
                 // Backfill board-DB rows for PowerSync-only climbs BEFORE
                 // denormalizing names/frames in insertLogs (best-effort).
                 climbBackfiller.backfillLoggedClimbs()

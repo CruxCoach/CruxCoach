@@ -89,7 +89,16 @@ class AnnouncementsViewModel @Inject constructor(
                             signatureValid = signatureValid,
                             idValid = idValid,
                         )
-                    ) return@collect
+                    ) {
+                        val reason = when {
+                            event.pubKey != NostrConfig.DEV_PUBKEY -> "author"
+                            event.kind != 1 -> "kind"
+                            !signatureValid -> "signature"
+                            else -> "id"
+                        }
+                        Log.w(TAG, "event=announcement_rejected reason=$reason")
+                        return@collect
+                    }
 
                     if (!AnnouncementTagParser.isAnnouncement(event.tags)) return@collect
 

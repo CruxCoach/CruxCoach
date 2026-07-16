@@ -43,15 +43,25 @@ class MessageDeliveryCoordinator @Inject constructor(
             val success = try {
                 messageSender.deliverWraps(eventJsons)
             } catch (e: Exception) {
-                Log.e(TAG, "Background delivery failed for ${eventId ?: "untracked"}", e)
+                Log.e(
+                    TAG,
+                    "Background delivery failed (tracked=${eventId != null}, type=${e.javaClass.simpleName})",
+                )
                 false
+            }
+            if (!success) {
+                Log.w(
+                    TAG,
+                    "Message accepted by zero relays; " +
+                        if (eventId == null) "untracked delivery dropped" else "tracked delivery deferred",
+                )
             }
             if (success && eventId != null) {
                 messageRepository.updateRelayAccepted(eventId)
                 messageRepository.clearQueued(eventId)
                 queueManager.refreshCount()
                 _deliveredEvents.emit(eventId)
-                Log.i(TAG, "Message $eventId delivered to relay")
+                Log.i(TAG, "Tracked message delivered to relay")
             }
         }
     }

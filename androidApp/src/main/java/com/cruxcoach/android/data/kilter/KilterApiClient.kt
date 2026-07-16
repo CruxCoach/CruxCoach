@@ -673,6 +673,7 @@ class KilterApiClient @Inject constructor(
                 val bodyText = response.body?.string().orEmpty().take(MAX_ERR_BODY)
                 response.close()
                 if (response.code !in 500..599) {
+                    Log.w(TAG, "fetchLogs rejected: HTTP ${response.code}")
                     return@withContext Result.failure(Exception("HTTP ${response.code}: $bodyText"))
                 }
                 lastError = Exception("HTTP ${response.code}: $bodyText")
@@ -720,6 +721,7 @@ class KilterApiClient @Inject constructor(
             val response = httpClient.newCall(request).execute()
 
             if (!response.isSuccessful) {
+                Log.w(TAG, "fetchLoggedClimbs rejected: HTTP ${response.code}")
                 return@withContext Result.failure(
                     Exception("HTTP ${response.code}: ${response.body?.string()?.take(MAX_ERR_BODY)}")
                 )
@@ -763,6 +765,7 @@ class KilterApiClient @Inject constructor(
             val response = httpClient.newCall(request).execute()
 
             if (!response.isSuccessful) {
+                Log.w(TAG, "fetchOwnAuthoredClimbs rejected: HTTP ${response.code}")
                 return@withContext Result.failure(
                     Exception("HTTP ${response.code}: ${response.body?.string()?.take(MAX_ERR_BODY)}")
                 )
@@ -826,6 +829,7 @@ class KilterApiClient @Inject constructor(
             if (!response.isSuccessful) {
                 val err = response.body?.string().orEmpty().take(MAX_ERR_BODY)
                 response.close()
+                Log.w(TAG, "fetchCircuits rejected: HTTP ${response.code}")
                 return@withContext Result.failure(Exception("HTTP ${response.code}: $err"))
             }
             val source = response.body?.source()
@@ -887,6 +891,7 @@ class KilterApiClient @Inject constructor(
             val response = httpClient.newCall(request).execute()
 
             if (!response.isSuccessful) {
+                Log.w(TAG, "uploadLogs rejected: HTTP ${response.code}")
                 return@withContext Result.failure(
                     Exception("HTTP ${response.code}: ${response.body?.string().orEmpty().take(MAX_ERR_BODY)}")
                 )
@@ -1305,7 +1310,10 @@ class KilterApiClient @Inject constructor(
                 .get()
                 .build()
             httpClient.newCall(req).execute().use { resp ->
-                if (!resp.isSuccessful) return@withContext null
+                if (!resp.isSuccessful) {
+                    Log.w(TAG, "fetchDisplayUsername rejected: HTTP ${resp.code}")
+                    return@withContext null
+                }
                 val body = resp.body?.string() ?: return@withContext null
                 json.parseToJsonElement(body).jsonObject["username"]?.jsonPrimitive?.contentOrNull
             }

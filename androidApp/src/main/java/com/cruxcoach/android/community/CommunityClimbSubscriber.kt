@@ -302,6 +302,18 @@ class CommunityClimbSubscriber @Inject constructor(
      */
     suspend fun retryDeadLetters() {
         awaitBoardSyncQuiescent()
+        runCatching {
+            boardRepository.getCommunityClimbDeadLetterCounts(MAX_DEAD_LETTER_RETRIES)
+        }.onSuccess { counts ->
+            if (counts.abandoned > 0L) {
+                Log.w(
+                    TAG,
+                    "DLQ contains abandoned entries total=${counts.total} abandoned=${counts.abandoned}",
+                )
+            }
+        }.onFailure {
+            Log.w(TAG, "DLQ count query failed (${it.javaClass.simpleName})")
+        }
         val rows = runCatching {
             boardRepository.getRetriableCommunityClimbDeadLetters(
                 maxRetries = MAX_DEAD_LETTER_RETRIES,
@@ -522,7 +534,13 @@ class CommunityClimbSubscriber @Inject constructor(
         rawEventJson: String,
         fromDeadLetter: Boolean = false,
     ) {
-        val parsedClimb = runCatching { ParsedClimb.from(event) }.getOrNull() ?: return
+        val parsedClimb = runCatching { ParsedClimb.from(event) }.getOrElse { failure ->
+            Log.w(
+                TAG,
+                "Rejected malformed community climb event (${failure.javaClass.simpleName})",
+            )
+            return
+        }
 
         // Self-filter: skip events we authored ourselves. Relays echo
         // every event back to all subscribers including the publisher,

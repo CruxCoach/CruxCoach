@@ -205,7 +205,7 @@ class ClimbCreatorRepository @Inject constructor(
         // overlap across boards (layout_id=1 alone is five brands), so the
         // default Kilter scope would derive edge_* from Kilter coordinates for
         // an Aurora-family draft and persist a physically wrong bbox.
-        val all = runCatching { boardRepository.getAllPlacements(state.boardBrand) }.getOrNull().orEmpty()
+        val all = boardRepository.getAllPlacements(state.boardBrand)
         if (all.isEmpty()) return null
         val coords = all.asSequence()
             .filter { it.placementId.toInt() in ids }

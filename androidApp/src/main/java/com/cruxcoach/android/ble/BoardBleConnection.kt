@@ -426,10 +426,19 @@ class BoardBleConnection(private val context: Context) {
         if (canRetryConnect()) {
             scheduleRetry("status=0x${status.toString(16)}")
         } else {
+            val terminalFailure = _connectionState.value == ConnectionState.CONNECTING &&
+                !userDisconnecting
             if (_connectionState.value == ConnectionState.CONNECTING &&
                 !userDisconnecting && _connectFailureReason.value == null
             ) {
                 _connectFailureReason.value = R.string.board_ble_connect_failed_hint
+            }
+            if (terminalFailure) {
+                Log.w(
+                    TAG,
+                    "Connect attempts exhausted attempt=$connectAttempt/$MAX_CONNECT_ATTEMPTS " +
+                        "status=0x${status.toString(16)}",
+                )
             }
             finalizeDisconnect(status)
         }
