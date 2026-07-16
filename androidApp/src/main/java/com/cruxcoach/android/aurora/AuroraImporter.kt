@@ -1,7 +1,7 @@
 package com.cruxcoach.android.aurora
 
 import android.util.Log
-import com.cruxcoach.android.nostr.NostrSigner
+import com.cruxcoach.android.nostr.NostrIdentity
 import kotlinx.coroutines.CancellationException
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.LocalClimbDraft
@@ -13,10 +13,12 @@ import com.cruxcoach.domain.board.HoldRole
 import com.cruxcoach.domain.board.KilterGradeMapper
 import com.cruxcoach.domain.community.ClimbBounds
 import com.cruxcoach.domain.community.FramesHash
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.UUID
 import javax.inject.Inject
+import javax.inject.Named
 import javax.inject.Singleton
 
 /**
@@ -47,14 +49,15 @@ class AuroraImporter @Inject constructor(
     private val secureDb: SecureDatabase,
     private val boardDb: BoardDatabase,
     private val boardRepository: BoardRepository,
-    private val nostrSigner: NostrSigner,
+    private val nostrIdentity: NostrIdentity,
     private val parser: AuroraExportParser,
+    @param:Named("io") private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
 
     suspend fun import(
         json: String,
         progress: (AuroraImportProgress) -> Unit = {},
-    ): AuroraImportResult = withContext(Dispatchers.IO) {
+    ): AuroraImportResult = withContext(ioDispatcher) {
         progress(AuroraImportProgress.Parsing)
         val data = parser.parse(json).getOrElse {
             Log.w(TAG, "Aurora export parse failed", it)
@@ -63,7 +66,7 @@ class AuroraImporter @Inject constructor(
             )
         }
 
-        val ownPubkey = runCatching { nostrSigner.getPublicKeyHex() }.getOrNull().orEmpty()
+        val ownPubkey = runCatching { nostrIdentity.getPublicKeyHex() }.getOrNull().orEmpty()
 
         // Pass 1: resolve names referenced by ascents/attempts/circuits.
         // climbs[] are imported AFTER this so we can detect collisions
