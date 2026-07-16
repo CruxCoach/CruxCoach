@@ -54,10 +54,10 @@ import com.cruxcoach.domain.board.MoonBoardVariant
  * sheet shows shared venue info once — name, location, contact — then lists
  * each board with its own "browse climbs" action.
  *
- * Contact rows are sourced from the board at the venue that carries the most
- * contact detail (MoonBoard rows ship none, so a co-located Kilter row wins).
- * All outbound intents go through the hardened safe-launch / input-validation
- * helpers (FEAT-015 security hardening).
+ * Contact rows are sourced only from PUBLIC boards. Private, members-only,
+ * and unclassified installations retain their board metadata but expose no
+ * direct contact channel. All outbound intents go through the hardened
+ * safe-launch / input-validation helpers (FEAT-015 security hardening).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -68,9 +68,7 @@ fun BoardLocationDetailSheet(
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val context = LocalContext.current
-    // Representative board for the shared contact block: the one with the
-    // most populated contact fields.
-    val contact = venue.boards.maxByOrNull { it.contactScore() } ?: venue.boards.first()
+    val contact = contactBoardFor(venue)
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(
@@ -108,56 +106,58 @@ fun BoardLocationDetailSheet(
                 }
             }
 
-            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+            if (contact != null) {
+                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
 
-            // Shared contact rows. "—" placeholder when missing → predictable
-            // layout. Each clickable row is gated by an input validator.
-            DetailRow(icon = Icons.Filled.LocationOn, value = contact.address)
-            DetailRow(
-                icon = Icons.Filled.Phone,
-                value = contact.phone,
-                onClick = sanitisedPhoneOrNull(contact.phone)?.let { phone ->
-                    {
-                        safeStartActivity(
-                            context,
-                            Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", phone, null)),
-                            gymId = contact.id,
-                            action = "dial",
-                        )
-                    }
-                },
-            )
-            DetailRow(
-                icon = Icons.Filled.Email,
-                value = contact.email,
-                onClick = validatedEmailOrNull(contact.email)?.let { email ->
-                    {
-                        safeStartActivity(
-                            context,
-                            Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:"))
-                                .putExtra(Intent.EXTRA_EMAIL, arrayOf(email)),
-                            gymId = contact.id,
-                            action = "email",
-                        )
-                    }
-                },
-            )
-            DetailRow(
-                icon = Icons.Filled.Language,
-                value = contact.url,
-                onClick = validatedHttpUrlOrNull(contact.url)?.let { url ->
-                    {
-                        safeStartActivity(
-                            context,
-                            Intent(Intent.ACTION_VIEW, url),
-                            gymId = contact.id,
-                            action = "web",
-                        )
-                    }
-                },
-            )
+                // Shared contact rows. Each clickable row is gated by an input
+                // validator. Non-public venues omit this entire block.
+                DetailRow(icon = Icons.Filled.LocationOn, value = contact.address)
+                DetailRow(
+                    icon = Icons.Filled.Phone,
+                    value = contact.phone,
+                    onClick = sanitisedPhoneOrNull(contact.phone)?.let { phone ->
+                        {
+                            safeStartActivity(
+                                context,
+                                Intent(Intent.ACTION_DIAL, Uri.fromParts("tel", phone, null)),
+                                gymId = contact.id,
+                                action = "dial",
+                            )
+                        }
+                    },
+                )
+                DetailRow(
+                    icon = Icons.Filled.Email,
+                    value = contact.email,
+                    onClick = validatedEmailOrNull(contact.email)?.let { email ->
+                        {
+                            safeStartActivity(
+                                context,
+                                Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:"))
+                                    .putExtra(Intent.EXTRA_EMAIL, arrayOf(email)),
+                                gymId = contact.id,
+                                action = "email",
+                            )
+                        }
+                    },
+                )
+                DetailRow(
+                    icon = Icons.Filled.Language,
+                    value = contact.url,
+                    onClick = validatedHttpUrlOrNull(contact.url)?.let { url ->
+                        {
+                            safeStartActivity(
+                                context,
+                                Intent(Intent.ACTION_VIEW, url),
+                                gymId = contact.id,
+                                action = "web",
+                            )
+                        }
+                    },
+                )
 
-            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+            }
 
             // One card per board at this venue. A single-board venue shows
             // exactly one card; a mixed venue lists each, brand-ordered.
@@ -296,6 +296,15 @@ private const val TAG_SHEET = "BoardLocationSheet"
  *  representative contact row. */
 private fun BoardLocation.contactScore(): Int =
     listOf(phone, email, url, address).count { !it.isNullOrBlank() }
+
+/** Select contact data only from a publicly accessible board. This remains
+ *  fail-closed even when callers construct a [MapVenue] without first running
+ *  [MapFilters]. */
+internal fun contactBoardFor(venue: MapVenue): BoardLocation? =
+    venue.boards
+        .asSequence()
+        .filter { it.accessType == AccessType.PUBLIC }
+        .maxByOrNull { it.contactScore() }
 
 /** Human label for one board within a venue card. MoonBoard → variant name;
  *  foreign info-layer brands → brand name; Kilter → layout + size. */

@@ -1982,8 +1982,13 @@ class BoardDatabaseImporter(
                             access_type, adjustability, fixed_angle, frame_maker,
                             board_brand, wellpass
                         )
-                        SELECT gym_uuid, name, lat, lng, address, city, country_code,
-                               phone, email, url, instagram,
+                        SELECT gym_uuid, name, lat, lng,
+                               CASE WHEN UPPER(COALESCE(access_type, 'UNKNOWN')) = 'PUBLIC' THEN address END,
+                               city, country_code,
+                               CASE WHEN UPPER(COALESCE(access_type, 'UNKNOWN')) = 'PUBLIC' THEN phone END,
+                               CASE WHEN UPPER(COALESCE(access_type, 'UNKNOWN')) = 'PUBLIC' THEN email END,
+                               CASE WHEN UPPER(COALESCE(access_type, 'UNKNOWN')) = 'PUBLIC' THEN url END,
+                               CASE WHEN UPPER(COALESCE(access_type, 'UNKNOWN')) = 'PUBLIC' THEN instagram END,
                                layout_name, layout_id, size_label, product_size_id,
                                COALESCE(access_type, 'UNKNOWN'),
                                COALESCE(adjustability, 'UNKNOWN'),

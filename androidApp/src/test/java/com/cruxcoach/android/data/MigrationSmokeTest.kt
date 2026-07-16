@@ -11,6 +11,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -186,5 +187,50 @@ class MigrationSmokeTest {
         assertEquals("ADJUSTABLE", row.adjustability)
         assertEquals("kilter", row.board_brand)
         assertEquals(1L, row.wellpass)
+    }
+
+    @Test
+    fun `24 sqm migration removes non-public contact data but preserves public contact`() {
+        BoardDatabase.Schema.create(driver)
+        val db = BoardDatabase(driver, climbsAdapter = Climbs.Adapter(framesAdapter = framesAdapter))
+
+        fun seed(id: String, access: String) {
+            db.kilterBoardLocationQueries.upsertLocation(
+                gym_uuid = id, name = "Gym $id", lat = 48.1, lng = 11.5,
+                address = "Street 1", city = "Munich", country_code = "DE",
+                phone = "+49 100", email = "$id@example.test",
+                url = "https://$id.example", instagram = id,
+                layout_name = "Original", layout_id = 1L,
+                size_label = "12x12", product_size_id = 10L,
+                access_type = access, adjustability = "ADJUSTABLE",
+                fixed_angle = null, frame_maker = "Kilter",
+                board_brand = "kilter", wellpass = null,
+            )
+        }
+        seed("public", "PUBLIC")
+        seed("private", "PRIVATE")
+        seed("members", "MEMBERS")
+        seed("unknown", "UNKNOWN")
+
+        BoardDatabase.Schema.migrate(driver, oldVersion = 24L, newVersion = 25L)
+
+        val public = db.kilterBoardLocationQueries.getLocationById("public").executeAsOne()
+        assertEquals("Street 1", public.address)
+        assertEquals("+49 100", public.phone)
+        assertEquals("public@example.test", public.email)
+        assertEquals("https://public.example", public.url)
+        assertEquals("public", public.instagram)
+
+        for (id in listOf("private", "members", "unknown")) {
+            val row = db.kilterBoardLocationQueries.getLocationById(id).executeAsOne()
+            assertNull(row.address, "$id address")
+            assertNull(row.phone, "$id phone")
+            assertNull(row.email, "$id email")
+            assertNull(row.url, "$id url")
+            assertNull(row.instagram, "$id instagram")
+            assertEquals("Gym $id", row.name)
+            assertEquals(48.1, row.lat)
+            assertEquals(11.5, row.lng)
+        }
     }
 }

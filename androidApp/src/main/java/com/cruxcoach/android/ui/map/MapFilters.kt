@@ -15,9 +15,9 @@ import com.cruxcoach.domain.board.BoardBrand
  * GL-Expression-only filter.
  *
  * Empty sets mean "no filter on this dimension" — the wildcard
- * semantic. `showOriginal` and `showHomewalls` are explicit booleans
- * because they're commonly toggled together and the boolean form is
- * easier to bind to two separate switch UI components.
+ * semantic — except for [accessTypes]. An empty access selection is the
+ * privacy-safe default and means PUBLIC only. Non-public installations
+ * remain available only after an explicit filter choice.
  */
 data class MapFilters(
     val showOriginal: Boolean = true,
@@ -32,6 +32,12 @@ data class MapFilters(
     /** When true, keep only venues/boards that accept egym Wellpass. */
     val wellpassOnly: Boolean = false,
 ) {
+    /** Effective access selection. The empty persisted value is also what
+     *  every pre-fix install carries, so interpreting it as PUBLIC repairs
+     *  existing installs without a preferences migration. */
+    val effectiveAccessTypes: Set<AccessType>
+        get() = accessTypes.ifEmpty { setOf(AccessType.PUBLIC) }
+
     /** True when no user-applied filter is active beyond the homewall default. */
     val isAtDefault: Boolean
         get() = showOriginal && !showHomewalls && !matchesMyBoard &&
@@ -81,7 +87,7 @@ data class MapFilters(
             }
 
             if (countries.isNotEmpty() && loc.countryCode !in countries) return@filter false
-            if (accessTypes.isNotEmpty() && loc.accessType !in accessTypes) return@filter false
+            if (loc.accessType !in effectiveAccessTypes) return@filter false
             if (adjustabilities.isNotEmpty() && loc.adjustability !in adjustabilities) return@filter false
             if (sizeIds.isNotEmpty()) {
                 val sizeId = loc.productSizeId ?: return@filter false

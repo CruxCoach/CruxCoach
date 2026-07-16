@@ -600,8 +600,19 @@ class UserPreferences(
     suspend fun toggleMapFilterCountry(code: String) =
         toggleCsvSetMember(PreferenceKeys.MAP_FILTER_COUNTRIES, code)
 
-    suspend fun toggleMapFilterAccessType(key: String) =
-        toggleCsvSetMember(PreferenceKeys.MAP_FILTER_ACCESS_TYPES, key)
+    /** Access filtering has a privacy-safe empty sentinel: an empty stored set
+     *  means PUBLIC only. Expand that sentinel before toggling so selecting
+     *  PRIVATE from the default adds it alongside PUBLIC instead of silently
+     *  replacing the public results. Canonicalise PUBLIC-only back to empty. */
+    suspend fun toggleMapFilterAccessType(key: String) {
+        dataStore.edit { prefs ->
+            val stored = parseCsvSet(prefs[PreferenceKeys.MAP_FILTER_ACCESS_TYPES])
+            val current = stored.ifEmpty { setOf("PUBLIC") }
+            val toggled = if (key in current) current - key else current + key
+            val canonical = toggled.takeUnless { it == setOf("PUBLIC") }.orEmpty()
+            prefs[PreferenceKeys.MAP_FILTER_ACCESS_TYPES] = canonical.joinToString(",")
+        }
+    }
 
     suspend fun toggleMapFilterAdjustability(key: String) =
         toggleCsvSetMember(PreferenceKeys.MAP_FILTER_ADJUSTABILITIES, key)

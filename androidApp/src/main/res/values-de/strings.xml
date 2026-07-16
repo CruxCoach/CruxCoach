@@ -254,8 +254,8 @@
     <string name="map_screen_title">Karte</string>
     <string name="cd_map">Kilter Board auf der Karte finden</string>
     <string name="map_filter_show_all">Alle</string>
-    <string name="map_filter_show_original">Kommerzielle Hallen (Original)</string>
-    <string name="map_filter_show_homewalls">Private Homewalls</string>
+    <string name="map_filter_show_original">Kilter-Original-Layout</string>
+    <string name="map_filter_show_homewalls">Kilter-Homewall-Layout</string>
     <string name="map_open_filters">Filter öffnen</string>
     <string name="map_open_stats">Statistik öffnen</string>
     <string name="map_filter_sheet_title">Karte filtern</string>
@@ -1983,7 +1983,7 @@
 
     <!-- FEAT-015 Board-Locations-Map (0.2.0) -->
     <string name="whatsnew_board_map_title">Neu: Boards auf der Karte</string>
-    <string name="whatsnew_board_map_body">0.2.0 stellt alle bekannten Kilter- und MoonBoard-Installationen weltweit auf eine interaktive Karte. Tippe das Karten-Icon neben der Griffsuche im Board-Browser, navigiere zum Marker, hol dir Adresse, Telefon, E-Mail — und einen Direktlink zu allen Climbs für das exakte Layout und die Größe dieses Boards.</string>
+    <string name="whatsnew_board_map_body">0.2.0 stellt bekannte Kilter- und MoonBoard-Installationen weltweit auf eine interaktive Karte. Öffentliche Orte können Verzeichnis-Kontaktdaten anzeigen; nichtöffentliche Einträge sind standardmäßig verborgen und zeigen niemals einen Kontaktblock. Ein Marker führt außerdem zu den Climbs für das exakte Layout und die Größe des Boards.</string>
     <string name="whatsnew_board_map_hint">Filter für Board-Marke, Layout, Land, öffentlich/privat, Verstellbarkeit und Größe sind dabei. „Passt zu meinem Board" reduziert die Marker auf Hallen, deren Hardware zu deinem konfigurierten Board passt.</string>
     <string name="whatsnew_board_map_action_now">Karte öffnen</string>
     <string name="whatsnew_board_map_action_later">Später</string>

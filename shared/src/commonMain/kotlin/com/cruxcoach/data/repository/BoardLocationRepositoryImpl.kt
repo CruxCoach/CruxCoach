@@ -56,29 +56,33 @@ class BoardLocationRepositoryImpl(
             .mapNotNull { row -> row.product_size_id?.let { it.toInt() to row.cnt } }
             .toMap()
 
-    private fun Kilter_board_location.toDomain() = BoardLocation(
-        id = gym_uuid,
-        name = name,
-        lat = lat,
-        lng = lng,
-        address = address,
-        city = city,
-        countryCode = country_code,
-        phone = phone,
-        email = email,
-        url = url,
-        instagram = instagram,
-        layoutName = layout_name,
-        layoutId = layout_id?.toInt(),
-        sizeLabel = size_label,
-        productSizeId = product_size_id?.toInt(),
-        accessType = AccessType.fromString(access_type),
-        adjustability = Adjustability.fromString(adjustability),
-        fixedAngle = fixed_angle?.toInt(),
-        frameMaker = frame_maker,
-        boardBrand = BoardBrand.fromWire(board_brand),
-        wellpass = wellpass?.let { it == 1L },
-    )
+    private fun Kilter_board_location.toDomain(): BoardLocation {
+        val mappedAccessType = AccessType.fromString(access_type)
+        val exposeContact = mappedAccessType == AccessType.PUBLIC
+        return BoardLocation(
+            id = gym_uuid,
+            name = name,
+            lat = lat,
+            lng = lng,
+            address = address.takeIf { exposeContact },
+            city = city,
+            countryCode = country_code,
+            phone = phone.takeIf { exposeContact },
+            email = email.takeIf { exposeContact },
+            url = url.takeIf { exposeContact },
+            instagram = instagram.takeIf { exposeContact },
+            layoutName = layout_name,
+            layoutId = layout_id?.toInt(),
+            sizeLabel = size_label,
+            productSizeId = product_size_id?.toInt(),
+            accessType = mappedAccessType,
+            adjustability = Adjustability.fromString(adjustability),
+            fixedAngle = fixed_angle?.toInt(),
+            frameMaker = frame_maker,
+            boardBrand = BoardBrand.fromWire(board_brand),
+            wellpass = wellpass?.let { it == 1L },
+        )
+    }
 
     private fun Kilter_board_wall.toDomain() = BoardWall(
         wallUuid = wall_uuid,

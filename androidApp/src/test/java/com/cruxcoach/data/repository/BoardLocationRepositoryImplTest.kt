@@ -63,13 +63,18 @@ class BoardLocationRepositoryImplTest {
         city: String? = null,
         boardBrand: String = "kilter",
         wellpass: Long? = null,
+        address: String? = null,
+        phone: String? = null,
+        email: String? = null,
+        url: String? = null,
+        instagram: String? = null,
     ) {
         db.kilterBoardLocationQueries.upsertLocation(
             gym_uuid = gymUuid,
             name = name,
             lat = lat, lng = lng,
-            address = null, city = city, country_code = country,
-            phone = null, email = null, url = null, instagram = null,
+            address = address, city = city, country_code = country,
+            phone = phone, email = email, url = url, instagram = instagram,
             layout_name = null, layout_id = layoutId,
             size_label = null, product_size_id = productSizeId,
             access_type = accessType, adjustability = adjustability,
@@ -133,6 +138,26 @@ class BoardLocationRepositoryImplTest {
         // mapping — fromString must return UNKNOWN, not throw.
         seed("g-x", accessType = "RESERVATIONS")
         assertEquals(AccessType.UNKNOWN, repo.getById("g-x")!!.accessType)
+    }
+
+    @Test
+    fun `repository redacts direct contact fields for non-public rows`() {
+        seed(
+            "g-private",
+            accessType = "PRIVATE",
+            address = "Private Street 1",
+            phone = "+49 1",
+            email = "private@example.test",
+            url = "https://private.example",
+            instagram = "private-wall",
+        )
+
+        val row = repo.getById("g-private")!!
+        assertNull(row.address)
+        assertNull(row.phone)
+        assertNull(row.email)
+        assertNull(row.url)
+        assertNull(row.instagram)
     }
 
     @Test

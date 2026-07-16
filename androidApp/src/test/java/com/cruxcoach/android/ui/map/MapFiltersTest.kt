@@ -49,6 +49,41 @@ class MapFiltersTest {
     }
 
     @Test
+    fun `default access selection keeps only public locations`() {
+        val items = listOf(
+            loc("public", accessType = AccessType.PUBLIC),
+            loc("private", accessType = AccessType.PRIVATE),
+            loc("members", accessType = AccessType.MEMBERS),
+            loc("unknown", accessType = AccessType.UNKNOWN),
+        )
+
+        assertEquals(listOf("public"), MapFilters().apply(items).map { it.id })
+    }
+
+    @Test
+    fun `default access gate also drops a non-Kilter private location`() {
+        val privateMoonBoard = loc(
+            "private-moon",
+            layoutId = 5,
+            accessType = AccessType.PRIVATE,
+            boardBrand = BoardBrand.MOONBOARD,
+        )
+
+        assertTrue(MapFilters().apply(listOf(privateMoonBoard)).isEmpty())
+    }
+
+    @Test
+    fun `explicit private selection exposes only private locations`() {
+        val items = listOf(
+            loc("public", accessType = AccessType.PUBLIC),
+            loc("private", accessType = AccessType.PRIVATE),
+        )
+
+        val out = MapFilters(accessTypes = setOf(AccessType.PRIVATE)).apply(items)
+        assertEquals(listOf("private"), out.map { it.id })
+    }
+
+    @Test
     fun `showHomewalls toggle includes layoutId=8`() {
         val items = listOf(loc("a", layoutId = 1), loc("b", layoutId = 8))
         val out = MapFilters(showHomewalls = true).apply(items)

@@ -152,7 +152,7 @@ fun MapFilterSheet(
                     Section(stringResource(R.string.map_filter_section_access)) {
                         AccessType.entries.forEach { type ->
                             FilterChip(
-                                selected = type in state.filters.accessTypes,
+                                selected = type in state.filters.effectiveAccessTypes,
                                 onClick = { onToggleAccessType(type) },
                                 label = { Text(accessTypeLabel(type)) },
                             )

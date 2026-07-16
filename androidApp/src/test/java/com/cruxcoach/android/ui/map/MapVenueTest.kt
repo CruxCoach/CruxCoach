@@ -19,13 +19,18 @@ class MapVenueTest {
         layoutId: Int? = 1,
         city: String? = "Munich",
         country: String = "DE",
+        accessType: AccessType = AccessType.PUBLIC,
+        address: String? = null,
+        phone: String? = null,
+        email: String? = null,
+        url: String? = null,
     ) = BoardLocation(
         id = id, name = name, lat = lat, lng = lng,
-        address = null, city = city, countryCode = country,
-        phone = null, email = null, url = null, instagram = null,
+        address = address, city = city, countryCode = country,
+        phone = phone, email = email, url = url, instagram = null,
         layoutName = null, layoutId = layoutId,
         sizeLabel = null, productSizeId = null,
-        accessType = AccessType.PUBLIC, adjustability = Adjustability.ADJUSTABLE,
+        accessType = accessType, adjustability = Adjustability.ADJUSTABLE,
         fixedAngle = null, frameMaker = null, boardBrand = brand,
     )
 
@@ -94,5 +99,50 @@ class MapVenueTest {
             listOf(loc("m", 48.1370, 11.5750, brand = BoardBrand.MOONBOARD, layoutId = 5))
         ).single()
         assertEquals(VenueBrandKey.MOONBOARD, v.brandKey)
+    }
+
+    @Test
+    fun `private and members-only venues expose no contact board`() {
+        val privateVenue = groupIntoVenues(
+            listOf(loc("private", 48.1, 11.5, accessType = AccessType.PRIVATE, phone = "+49 1")),
+        ).single()
+        val membersVenue = groupIntoVenues(
+            listOf(loc("members", 49.1, 12.5, accessType = AccessType.MEMBERS, email = "member@example.test")),
+        ).single()
+
+        assertEquals(null, contactBoardFor(privateVenue))
+        assertEquals(null, contactBoardFor(membersVenue))
+    }
+
+    @Test
+    fun `mixed venue contact selection never prefers a richer private row`() {
+        val venue = groupIntoVenues(
+            listOf(
+                loc(
+                    "public", 48.13700, 11.57500,
+                    accessType = AccessType.PUBLIC,
+                    url = "https://public.example",
+                ),
+                loc(
+                    "private", 48.13701, 11.57501,
+                    accessType = AccessType.PRIVATE,
+                    address = "Private Street 1",
+                    phone = "+49 1",
+                    email = "private@example.test",
+                    url = "https://private.example",
+                ),
+            ),
+        ).single()
+
+        assertEquals("public", contactBoardFor(venue)?.id)
+    }
+
+    @Test
+    fun `public venue still exposes its contact board`() {
+        val venue = groupIntoVenues(
+            listOf(loc("public", 48.1, 11.5, accessType = AccessType.PUBLIC, phone = "+49 1")),
+        ).single()
+
+        assertEquals("public", contactBoardFor(venue)?.id)
     }
 }

@@ -1,0 +1,11 @@
+-- Migration 24 -> 25. Location snapshots published before the guarded importer
+-- copied direct contact data for PRIVATE, MEMBERS, and UNKNOWN installations.
+-- Remove those fields from existing databases. Coarse map/board metadata stays
+-- available for an explicit non-public filter selection.
+UPDATE kilter_board_location
+SET address = NULL,
+    phone = NULL,
+    email = NULL,
+    url = NULL,
+    instagram = NULL
+WHERE UPPER(COALESCE(access_type, 'UNKNOWN')) <> 'PUBLIC';

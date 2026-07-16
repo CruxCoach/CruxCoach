@@ -158,8 +158,26 @@ class LocalShareModernSchemaTest {
 
             db.execSQL(
                 """
-                INSERT INTO kilter_board_location(gym_uuid, name, lat, lng, country_code, board_brand)
-                VALUES ('gym-1', 'Test Gym', 48.1, 11.5, 'DE', 'moonboard')
+                INSERT INTO kilter_board_location(
+                    gym_uuid, name, lat, lng, address, city, country_code,
+                    phone, email, url, instagram, access_type, board_brand
+                ) VALUES (
+                    'gym-public', 'Public Gym', 48.1, 11.5, 'Public Street 1', 'Munich', 'DE',
+                    '+49 100', 'public@example.test', 'https://public.example', 'public-gym',
+                    'PUBLIC', 'moonboard'
+                )
+                """.trimIndent()
+            )
+            db.execSQL(
+                """
+                INSERT INTO kilter_board_location(
+                    gym_uuid, name, lat, lng, address, city, country_code,
+                    phone, email, url, instagram, access_type, board_brand
+                ) VALUES (
+                    'gym-private', 'Private Board', 48.2, 11.6, 'Private Street 1', 'Munich', 'DE',
+                    '+49 200', 'private@example.test', 'https://private.example', 'private-wall',
+                    'PRIVATE', 'kilter'
+                )
                 """.trimIndent()
             )
         }
@@ -207,7 +225,28 @@ class LocalShareModernSchemaTest {
             }
 
             // Gym locations came along (replace-all via importLocations).
-            assertEquals(1, countWhere(db, "kilter_board_location", "gym_uuid = 'gym-1'"))
+            // Public directory contact survives; direct contact fields on a
+            // private installation are minimised at the import boundary.
+            assertEquals(
+                1,
+                countWhere(
+                    db,
+                    "kilter_board_location",
+                    "gym_uuid = 'gym-public' AND address = 'Public Street 1' " +
+                        "AND phone = '+49 100' AND email = 'public@example.test' " +
+                        "AND url = 'https://public.example' AND instagram = 'public-gym'",
+                ),
+            )
+            assertEquals(
+                1,
+                countWhere(
+                    db,
+                    "kilter_board_location",
+                    "gym_uuid = 'gym-private' AND name = 'Private Board' " +
+                        "AND lat = 48.2 AND lng = 11.6 AND address IS NULL " +
+                        "AND phone IS NULL AND email IS NULL AND url IS NULL AND instagram IS NULL",
+                ),
+            )
         }
 
         // Modern sync-state table resolved (pre-fix: "no such table:

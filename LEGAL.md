@@ -49,13 +49,13 @@ CruxCoach distributes board reference data and community-created climb data via 
 | Board layouts, hold positions, mounting holes, LED mappings | Hardware reference data | Derived from product specifications | Functional facts about physical hardware |
 | Climbs (hold sequences + grades) | Community-created factual data | User-generated content | Factual data, created by climbers |
 | Climb statistics (difficulty averages, ascent counts) | Aggregated community data | Community activity metrics | Statistical facts |
-| Gym & wall locations (FEAT-015) | Public-business directory data | [`@hangtime/climbing-boards`](https://www.npmjs.com/package/@hangtime/climbing-boards) (Kilter PowerSync `global_gyms` mirror + StoreRocket contact records) | Factual / functional information about commercial gym entities, used to render the in-app board-locations map. No user personal data. |
+| Gym & wall locations (FEAT-015) | Mixed facility/location directory data | [`@hangtime/climbing-boards`](https://www.npmjs.com/package/@hangtime/climbing-boards) (Kilter PowerSync `global_gyms` mirror + StoreRocket contact records) | Factual / functional board-location data. The upstream snapshot can contain public, members-only, private/home, and unclassified installations as well as contact fields; the Android client applies the safeguards described below. |
 
 ### What we do NOT distribute
 
 - Kilter's or Moon Climbing's proprietary software, source code, or firmware
 - Kilter's or MoonBoard's wordmark, logo, or marketing/branding artwork
-- User personal data (email, profile photos, account details)
+- CruxCoach users' private credentials or local account/profile records as part of the board catalogue
 - Kilter's or the MoonBoard app's binary or any portion thereof
 
 ### Bundled Kilter layout images
@@ -120,18 +120,34 @@ pulled at build time (Maven) or fetched at runtime (tile HTTP requests).
 
 ### Gym & wall locations dataset
 
-The board-locations map (FEAT-015) sources gym entities — names,
+The board-locations map (FEAT-015) sources location records — names,
 coordinates, addresses, contact details (phone / email / website /
-Instagram), accessibility classification, board-hardware metadata — from
+Instagram), accessibility classification, and board-hardware metadata — from
 the [`@hangtime/climbing-boards`](https://www.npmjs.com/package/@hangtime/climbing-boards)
 npm package. That dataset is itself a daily mirror of the Kilter
 PowerSync `global_gyms` bucket, augmented with StoreRocket contact
-records. The data covers commercial gym entities only; no end-user
-personal data is included. CruxCoach distributes this data via the
-daily Blossom locations chunk; the upstream maintainers handle update
-correctness and removal at the dataset level. Gym operators or rights
-holders may request removal at any time via the contacts in `SECURITY.md`,
-which are forwarded upstream where applicable.
+records. The upstream snapshot is not limited to commercial gyms: it can
+include public facilities, members-only facilities, private/home
+installations, and records whose accessibility is unknown. Direct contact
+fields on such records may be personal data; CruxCoach does not assume that
+public availability makes every field suitable for republication.
+
+The content-addressed Blossom locations chunk is downloaded and hash-checked
+as a complete upstream snapshot. Before writing it to the app database, the
+Android client retains address, phone, email, website, and Instagram fields
+only for records classified as `PUBLIC`; the privacy migration removes those
+fields from non-public rows already stored by earlier versions. The map defaults to
+`PUBLIC` records. A user may explicitly select another accessibility class,
+but its detail sheet exposes only coarse location/board metadata and no direct
+contact block. The raw upstream chunk can still contain the discarded fields
+before this client-side minimisation step.
+
+Any person or organisation represented by a location record may request its
+correction or removal via an encrypted Nostr DM to the developer pubkey in
+[`SECURITY.md`](SECURITY.md), or via the
+[Codeberg issue tracker](https://codeberg.org/CruxCoach/CruxCoach/issues)
+(without posting personal details publicly). Requests are applied to sources
+under CruxCoach's control and forwarded upstream where applicable.
 
 ### Integrity & verifiability
 
@@ -183,4 +199,4 @@ We will review all concerns in good faith.
 
 ---
 
-*This document is provided for informational purposes and does not constitute legal advice. Last updated: 2026-04-14.*
+*This document is provided for informational purposes and does not constitute legal advice. Last updated: 2026-07-16.*
