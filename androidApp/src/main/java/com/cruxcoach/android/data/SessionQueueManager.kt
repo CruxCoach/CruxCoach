@@ -5,6 +5,7 @@ import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.ble.QueueItem
 import com.cruxcoach.android.ble.SessionQueueProtocol
+import com.cruxcoach.android.ble.SessionJoinCode
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.brand
 import com.cruxcoach.domain.board.BoardBrand
@@ -70,6 +71,12 @@ class SessionQueueManager(
     private val _state = MutableStateFlow(SessionQueueState())
     val state: StateFlow<SessionQueueState> = _state.asStateFlow()
 
+    // Process-local capability for the active shared session. It is kept out
+    // of SessionQueueState so data-class diagnostics cannot accidentally print
+    // it, and is never persisted or advertised.
+    private val _sessionJoinCode = MutableStateFlow("")
+    val sessionJoinCode: StateFlow<String> = _sessionJoinCode.asStateFlow()
+
     init {
         // Auto-send current queue climb when board connects during an active session.
         // This handles two scenarios:
@@ -132,6 +139,7 @@ class SessionQueueManager(
     fun startQueue(hostName: String = "") {
         if (_state.value.isActive) return
         val sessionId = (System.currentTimeMillis() % Int.MAX_VALUE).toInt()
+        _sessionJoinCode.value = SessionJoinCode.generate()
         _state.update { SessionQueueState(
             role = SessionRole.HOST,
             sessionId = sessionId,
@@ -149,6 +157,7 @@ class SessionQueueManager(
             "participants=${prev.participants.size}, " +
             "callbacks: onQueue=${onQueueChanged != null}, onParticipants=${onParticipantsChanged != null}")
         _state.update { SessionQueueState() }
+        _sessionJoinCode.value = ""
         onQueueChanged = null
         onCurrentClimbChanged = null
         onParticipantsChanged = null
@@ -328,8 +337,16 @@ class SessionQueueManager(
         ) }
     }
 
+    fun setSessionJoinCode(code: String) {
+        require(SessionJoinCode.isValid(code)) { "invalid session join code" }
+        _sessionJoinCode.value = code
+    }
+
     /** Promote this participant to host, keeping all queue data intact. */
     fun promoteToHost(hostName: String) {
+        if (!SessionJoinCode.isValid(_sessionJoinCode.value)) {
+            _sessionJoinCode.value = SessionJoinCode.generate()
+        }
         val newSessionId = (System.currentTimeMillis() % Int.MAX_VALUE).toInt()
         _state.update { it.copy(
             role = SessionRole.HOST,

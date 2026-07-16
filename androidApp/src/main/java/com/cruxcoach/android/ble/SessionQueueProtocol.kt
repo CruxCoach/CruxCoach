@@ -56,14 +56,23 @@ object SessionQueueProtocol {
 
     fun encodePrev(): ByteArray = byteArrayOf(CMD_PREV)
 
-    fun encodeJoin(displayName: String): ByteArray {
+    /**
+     * The code extends the released `[cmd][nameLen][name]` shape, so a new
+     * client can still join an older host. A new host deliberately rejects a
+     * legacy join with no code; retaining that insecure direction would defeat
+     * authorization.
+     */
+    fun encodeJoin(displayName: String, sessionCode: String): ByteArray {
+        require(SessionJoinCode.isValid(sessionCode)) { "invalid session join code" }
         val nameBytes = displayName.toByteArray(Charsets.UTF_8).let {
-            if (it.size > 20) it.copyOf(20) else it
+            if (it.size > MAX_JOIN_NAME_BYTES) it.copyOf(MAX_JOIN_NAME_BYTES) else it
         }
-        val buf = ByteArray(2 + nameBytes.size)
+        val codeBytes = sessionCode.toByteArray(Charsets.US_ASCII)
+        val buf = ByteArray(2 + nameBytes.size + codeBytes.size)
         buf[0] = CMD_JOIN
         buf[1] = nameBytes.size.toByte()
         nameBytes.copyInto(buf, 2)
+        codeBytes.copyInto(buf, 2 + nameBytes.size)
         return buf
     }
 
@@ -96,7 +105,13 @@ object SessionQueueProtocol {
                 if (data.size < 2) return null
                 val nameLen = (data[1].toInt() and 0xFF).coerceAtMost(data.size - 2)
                 val name = String(data, 2, nameLen, Charsets.UTF_8)
-                SessionCommand.Join(name)
+                val codeOffset = 2 + nameLen
+                val sessionCode = if (data.size == codeOffset + SessionJoinCode.CODE_LENGTH) {
+                    String(data, codeOffset, SessionJoinCode.CODE_LENGTH, Charsets.US_ASCII)
+                } else {
+                    ""
+                }
+                SessionCommand.Join(name, sessionCode)
             }
             CMD_LEAVE -> SessionCommand.Leave
             CMD_MOVE -> {
@@ -294,7 +309,7 @@ sealed class SessionCommand {
     data class SetCurrent(val index: Int) : SessionCommand()
     data object Next : SessionCommand()
     data object Prev : SessionCommand()
-    data class Join(val displayName: String) : SessionCommand()
+    data class Join(val displayName: String, val sessionCode: String) : SessionCommand()
     data object Leave : SessionCommand()
     data class Move(val from: Int, val to: Int) : SessionCommand()
 }
@@ -310,3 +325,5 @@ sealed class SessionEvent {
 
 data class QueueItem(val climbUuid: String, val angle: Int)
 data class SessionInfo(val hostName: String, val participantCount: Int)
+
+private const val MAX_JOIN_NAME_BYTES = 12

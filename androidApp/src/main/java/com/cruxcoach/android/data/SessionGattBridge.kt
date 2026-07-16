@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.util.Log
+import com.cruxcoach.android.R
 import com.cruxcoach.android.ble.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -49,6 +50,7 @@ class SessionGattBridge(
     private var hostJob: Job? = null
     private var isSharing = false
     private var isRejoining = false
+    private val commandGate = SessionCommandGate()
     /** SessionId of the host we just left — used to ignore stale advertisements during migration. */
     private var lastHostSessionId: Int = 0
 
@@ -81,6 +83,8 @@ class SessionGattBridge(
             Log.w(TAG, "Cannot share: not in HOST mode")
             return
         }
+
+        commandGate.clear()
 
         // Start GATT server
         if (!gattServer.start()) {
@@ -165,6 +169,7 @@ class SessionGattBridge(
                         }
                         is GattConnectionEvent.Disconnected -> {
                             Log.d(TAG, "Client disconnected: ${event.deviceAddress}")
+                            commandGate.remove(event.deviceAddress)
                             queueManager.removeParticipant(event.deviceAddress)
                             // Restart advertising in case it stopped
                             if (isSharing) {
@@ -173,23 +178,6 @@ class SessionGattBridge(
                         }
                     }
                 }
-            }
-        }
-
-        // Auto-import the active/last climb from nearby devices into the queue.
-        // Lets the session start with the boulder already on the board, so the other
-        // user joins and immediately sees their climb as the first queue item.
-        val existingUuids = queueManager.state.value.queue.map { it.climbUuid }.toSet()
-        val nearbyToImport = nearbyScanner.nearbyClimbs.value
-            .filter { climb ->
-                !climb.connectedOnly && climb.climbUuid.isNotEmpty() && climb.climbUuid !in existingUuids
-            }
-            .sortedByDescending { it.rssi }
-        if (nearbyToImport.isNotEmpty()) {
-            Log.d(TAG, "Auto-importing ${nearbyToImport.size} nearby climb(s) into queue")
-            nearbyToImport.forEach { climb ->
-                queueManager.addClimb(climb.climbUuid, climb.angle)
-                Log.d(TAG, "Auto-added: ${climb.climbUuid.take(8)} angle=${climb.angle} isLastClimb=${climb.isLastClimb}")
             }
         }
 
@@ -227,6 +215,7 @@ class SessionGattBridge(
         Log.d(TAG, "stopSharing() called, isSharing=$isSharing, " +
             "connectedClients=${gattServer.getConnectedCount()}, " +
             "boardConnected=${bleConnection.connectionState.value}")
+        commandGate.clear()
         // Capture last queue climb BEFORE endQueue() clears it (called by UI right after)
         val lastQueueClimb = queueManager.state.value.currentClimb
         Log.d(TAG, "stopSharing(): lastQueueClimb=${lastQueueClimb?.climbUuid?.take(8)}")
@@ -315,7 +304,13 @@ class SessionGattBridge(
 
     // ===== Participant mode =====
 
-    fun joinSession(device: BluetoothDevice) {
+    fun joinSession(device: BluetoothDevice, sessionCode: String? = null) {
+        val joinCode = sessionCode ?: queueManager.sessionJoinCode.value
+        if (!SessionJoinCode.isValid(joinCode)) {
+            queueManager.setError(context.getString(R.string.ble_session_code_invalid))
+            return
+        }
+        if (sessionCode != null) queueManager.setSessionJoinCode(sessionCode)
         Log.d(TAG, "joinSession() called, device=${device.address}, " +
             "isRejoining=$isRejoining, joinJob=${joinJob != null}, " +
             "clientState=${gattClient.connectionState.value}")
@@ -354,7 +349,9 @@ class SessionGattBridge(
                         SessionClientState.CONNECTED -> {
                             migrationJob?.cancel()
                             Log.d(TAG, "Connected to host, sending JOIN command")
-                            val joinSent = gattClient.sendCommand(SessionQueueProtocol.encodeJoin(""))
+                            val joinSent = gattClient.sendCommand(
+                                SessionQueueProtocol.encodeJoin("", joinCode),
+                            )
                             Log.d(TAG, "JOIN command sent: success=$joinSent")
                             gattClient.readInitialState()
                             queueManager.setParticipantRole(0, "")
@@ -518,26 +515,48 @@ class SessionGattBridge(
     private fun handleClientCommand(deviceAddress: String, data: ByteArray) {
         val cmd = SessionQueueProtocol.decodeCommand(data)
         if (cmd == null) {
-            Log.w(TAG, "Failed to decode command from $deviceAddress (${data.size} bytes)")
+            Log.w(TAG, "Failed to decode session command (${data.size} bytes)")
+            if (!commandGate.isAdmitted(deviceAddress)) rejectClient(deviceAddress)
             return
         }
-        Log.d(TAG, "Received command from $deviceAddress: $cmd")
+
+        if (cmd is SessionCommand.Join) {
+            val admitted = commandGate.admit(
+                deviceAddress = deviceAddress,
+                expectedCode = queueManager.sessionJoinCode.value,
+                suppliedCode = cmd.sessionCode,
+            )
+            if (!admitted) {
+                commandGate.remove(deviceAddress)
+                queueManager.removeParticipant(deviceAddress)
+                rejectClient(deviceAddress)
+                return
+            }
+            val count = queueManager.state.value.participants.size
+            val label = "Teilnehmer ${count + 1}"
+            Log.d(TAG, "Authorized participant joined")
+            queueManager.addParticipant(deviceAddress, label)
+            return
+        }
+
+        if (!commandGate.isAdmitted(deviceAddress)) {
+            rejectClient(deviceAddress)
+            return
+        }
+
+        Log.d(TAG, "Received authorized session command (${cmd.javaClass.simpleName})")
         when (cmd) {
             is SessionCommand.Add -> queueManager.addClimb(cmd.climbUuid, cmd.angle)
             is SessionCommand.Remove -> queueManager.removeClimb(cmd.index)
             is SessionCommand.SetCurrent -> queueManager.setCurrentClimb(cmd.index)
             is SessionCommand.Next -> queueManager.nextClimb()
             is SessionCommand.Prev -> queueManager.previousClimb()
-            is SessionCommand.Join -> {
-                val count = queueManager.state.value.participants.size
-                val label = "Teilnehmer ${count + 1}"
-                Log.d(TAG, "Participant joined: $label (device=$deviceAddress)")
-                queueManager.addParticipant(deviceAddress, label)
-            }
+            is SessionCommand.Join -> Unit // handled before authorization gate
             is SessionCommand.Leave -> {
                 Log.d(TAG, "Processing LEAVE from $deviceAddress, " +
                     "participants before: ${queueManager.state.value.participants.map { it.deviceAddress }}")
                 queueManager.removeParticipant(deviceAddress)
+                commandGate.remove(deviceAddress)
                 Log.d(TAG, "After removeParticipant: count=${queueManager.state.value.participantCount}, " +
                     "participants=${queueManager.state.value.participants.map { it.deviceAddress }}")
                 // Proactively disconnect from server side to ensure clean teardown
@@ -545,6 +564,11 @@ class SessionGattBridge(
             }
             is SessionCommand.Move -> queueManager.moveClimb(cmd.from, cmd.to)
         }
+    }
+
+    private fun rejectClient(deviceAddress: String) {
+        Log.w(TAG, "Rejected unauthorized session command")
+        gattServer.cancelDevice(deviceAddress)
     }
 
     // ===== Internal: Participant applies remote events =====

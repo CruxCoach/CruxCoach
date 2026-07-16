@@ -39,6 +39,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
@@ -186,7 +187,7 @@ class SessionGattBridgeMigrationTest {
      */
     private fun participantJoinsSession(hostDevice: BluetoothDevice, sessionId: Int) {
         nearbySessionsFlow.value = listOf(makeSession(sessionId, hostDevice.address, hostDevice))
-        bridge.joinSession(hostDevice)
+        bridge.joinSession(hostDevice, "123456")
         // Trigger the CONNECTED handler — sets role=PARTICIPANT
         clientStateFlow.value = SessionClientState.CONNECTED
         // Add climbs so migration has a non-empty queue
@@ -342,7 +343,7 @@ class SessionGattBridgeMigrationTest {
         val hostDevice = mockDevice("AA:BB:CC:DD:EE:01")
         nearbySessionsFlow.value = listOf(makeSession(55555, "AA:BB:CC:DD:EE:01", hostDevice))
 
-        bridge.joinSession(hostDevice)
+        bridge.joinSession(hostDevice, "123456")
         clientStateFlow.value = SessionClientState.CONNECTED
         queueManager.setParticipantRole(0, "TestHost")
         // Queue stays EMPTY — no applyRemoteState call
@@ -386,4 +387,78 @@ class SessionGattBridgeMigrationTest {
             queueManager.state.value.role
         )
     }
+
+    // ===== Session command authorization =====
+
+    @Test
+    fun `host drops state-changing command before authorized join`() = runTest(testDispatcher.scheduler) {
+        queueManager.startQueue("Host")
+        bridge.startSharing()
+
+        serverCommandsFlow.emit(
+            GattCommand(
+                "AA:AA:AA:AA:AA:AA",
+                SessionQueueProtocol.encodeAdd("550e8400-e29b-41d4-a716-446655440000", 40),
+            ),
+        )
+
+        assertTrue(queueManager.state.value.queue.isEmpty())
+        verify { mockGattServer.cancelDevice("AA:AA:AA:AA:AA:AA") }
+    }
+
+    @Test
+    fun `wrong join is disconnected and not admitted`() = runTest(testDispatcher.scheduler) {
+        queueManager.startQueue("Host")
+        queueManager.setSessionJoinCode("123456")
+        bridge.startSharing()
+        val address = "BB:BB:BB:BB:BB:BB"
+
+        serverCommandsFlow.emit(
+            GattCommand(address, SessionQueueProtocol.encodeJoin("", "999999")),
+        )
+
+        assertTrue(queueManager.state.value.participants.isEmpty())
+        assertEquals(1, queueManager.state.value.participantCount)
+        verify { mockGattServer.cancelDevice(address) }
+    }
+
+    @Test
+    fun `matching join admits subsequent queue command`() = runTest(testDispatcher.scheduler) {
+        queueManager.startQueue("Host")
+        bridge.startSharing()
+        val address = "CC:CC:CC:CC:CC:CC"
+        val code = queueManager.sessionJoinCode.value
+
+        serverCommandsFlow.emit(
+            GattCommand(address, SessionQueueProtocol.encodeJoin("", code)),
+        )
+        serverCommandsFlow.emit(
+            GattCommand(
+                address,
+                SessionQueueProtocol.encodeAdd("550e8400-e29b-41d4-a716-446655440000", 40),
+            ),
+        )
+
+        assertEquals(1, queueManager.state.value.participants.size)
+        assertEquals(1, queueManager.state.value.queue.size)
+    }
+
+    @Test
+    fun `starting a host never auto-imports unauthenticated nearby advertisement`() =
+        runTest(testDispatcher.scheduler) {
+            nearbyClimbsFlow.value = listOf(
+                NearbyClimb(
+                    climbUuid = "550e8400-e29b-41d4-a716-446655440000",
+                    angle = 40,
+                    rssi = -20,
+                    lastSeenMs = 1L,
+                    deviceAddress = "DD:DD:DD:DD:DD:DD",
+                ),
+            )
+            queueManager.startQueue("Host")
+
+            bridge.startSharing()
+
+            assertTrue(queueManager.state.value.queue.isEmpty())
+        }
 }

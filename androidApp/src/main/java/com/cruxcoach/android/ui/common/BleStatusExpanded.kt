@@ -125,6 +125,7 @@ private fun SessionQueueSection(
     val queueManager = LocalSessionQueueManager.current
     val gattBridge = LocalSessionGattBridge.current
     val queueState by queueManager.state.collectAsStateWithLifecycle()
+    val sessionJoinCode by queueManager.sessionJoinCode.collectAsStateWithLifecycle()
     val isParticipant = queueState.role == SessionRole.PARTICIPANT
 
     val boardSessionManager = LocalBoardSessionManager.current
@@ -173,6 +174,21 @@ private fun SessionQueueSection(
         }
 
         Spacer(Modifier.height(8.dp))
+
+        if (!isParticipant && sessionJoinCode.isNotEmpty()) {
+            Text(
+                stringResource(R.string.ble_session_host_code, sessionJoinCode),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Bold,
+                color = OrangeAccent,
+            )
+            Text(
+                stringResource(R.string.ble_session_host_code_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(8.dp))
+        }
 
         // Prev / Current climb + Add / Next navigation — < climb + >
         if (session.queue.isNotEmpty()) {

@@ -49,10 +49,23 @@ class SessionQueueProtocolTest {
 
     @Test
     fun `encodeJoin and decodeCommand roundtrip`() {
-        val encoded = SessionQueueProtocol.encodeJoin("Alice")
+        val encoded = SessionQueueProtocol.encodeJoin("Alice", "042917")
         val cmd = SessionQueueProtocol.decodeCommand(encoded)
         assertTrue(cmd is SessionCommand.Join)
         assertEquals("Alice", (cmd as SessionCommand.Join).displayName)
+        assertEquals("042917", cmd.sessionCode)
+        assertTrue("JOIN must fit the default 20-byte GATT payload", encoded.size <= 20)
+    }
+
+    @Test
+    fun `legacy join decodes without an authorization code`() {
+        val name = "Alice".toByteArray()
+        val legacy = byteArrayOf(SessionQueueProtocol.CMD_JOIN, name.size.toByte()) + name
+
+        val cmd = SessionQueueProtocol.decodeCommand(legacy) as SessionCommand.Join
+
+        assertEquals("Alice", cmd.displayName)
+        assertEquals("", cmd.sessionCode)
     }
 
     @Test

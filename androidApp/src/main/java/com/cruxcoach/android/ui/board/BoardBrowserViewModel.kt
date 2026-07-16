@@ -1766,10 +1766,10 @@ class BoardBrowserViewModel @Inject constructor(
     fun sendPrev() = gattBridge.sendPrev()
     fun sendNext() = gattBridge.sendNext()
 
-    fun joinNearbySession(session: NearbySession) {
+    fun joinNearbySession(session: NearbySession, sessionCode: String) {
         val device = session.device
         if (device != null) {
-            gattBridge.joinSession(device)
+            gattBridge.joinSession(device, sessionCode)
         } else {
             Log.w("BoardBrowserVM", "Cannot join session: no BluetoothDevice available")
         }

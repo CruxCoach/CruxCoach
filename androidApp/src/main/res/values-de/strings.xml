@@ -1220,6 +1220,12 @@
     <string name="ble_queue_empty">Warteschlange ist leer</string>
     <string name="ble_session_climb">Session-Climb</string>
     <string name="ble_session_label">SESSION</string>
+    <string name="ble_session_code_title">Session-Code eingeben</string>
+    <string name="ble_session_code_label">6-stelliger Beitrittscode</string>
+    <string name="ble_session_code_message">Gib den Code ein, der auf dem Gerät von %1$s angezeigt wird.</string>
+    <string name="ble_session_code_invalid">Ein gültiger 6-stelliger Session-Code ist erforderlich.</string>
+    <string name="ble_session_host_code">Beitrittscode: %1$s</string>
+    <string name="ble_session_host_code_hint">Teile diesen Code nur mit Personen, die die Warteschlange steuern dürfen.</string>
     <string name="ble_sharing_title">BLE Sharing</string>
     <string name="ble_still_visible">Noch sichtbar</string>
     <string name="ble_unknown">Unbekannt</string>

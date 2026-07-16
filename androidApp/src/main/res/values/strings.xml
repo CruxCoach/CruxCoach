@@ -1173,6 +1173,12 @@
     <string name="ble_queue_empty">Queue is empty</string>
     <string name="ble_session_climb">Session climb</string>
     <string name="ble_session_label">SESSION</string>
+    <string name="ble_session_code_title">Join protected session</string>
+    <string name="ble_session_code_label">6-digit join code</string>
+    <string name="ble_session_code_message">Enter the code shown on %1$s’s device.</string>
+    <string name="ble_session_code_invalid">A valid 6-digit session code is required.</string>
+    <string name="ble_session_host_code">Join code: %1$s</string>
+    <string name="ble_session_host_code_hint">Share this code only with people you want to control the queue.</string>
     <string name="ble_sharing_title">BLE Sharing</string>
     <string name="ble_still_visible">Still visible</string>
     <string name="ble_unknown">Unknown</string>
