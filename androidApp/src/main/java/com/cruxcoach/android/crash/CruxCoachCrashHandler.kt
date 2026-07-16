@@ -16,13 +16,12 @@ class CruxCoachCrashHandler(
 
     override fun uncaughtException(thread: Thread, throwable: Throwable) {
         try {
-            val report = buildReport(throwable)
             val crashFile = File(context.filesDir, CRASH_FILE_NAME)
-            if (crashFile.exists()) {
-                val prevFile = File(context.filesDir, "crash_log_prev.txt")
-                prevFile.delete() // delete oldest
-                crashFile.renameTo(prevFile)
-            }
+            val previous = crashFile.takeIf { it.exists() }?.readText()
+            val report = buildReport(throwable, nextCrashSequence(previous))
+            // Clean up the orphan created by older versions. Keeping a second
+            // stack trace increased privacy exposure and nothing ever read it.
+            File(context.filesDir, LEGACY_PREVIOUS_CRASH_FILE_NAME).delete()
             crashFile.writeText(report)
         } catch (e: Exception) {
             android.util.Log.w(TAG, "Failed to write crash report", e)
@@ -30,7 +29,7 @@ class CruxCoachCrashHandler(
         defaultHandler?.uncaughtException(thread, throwable)
     }
 
-    private fun buildReport(throwable: Throwable): String {
+    private fun buildReport(throwable: Throwable, crashSequence: Int): String {
         val sanitizedTrace = CrashReportSanitizer.renderStack(throwable)
 
         val timestamp = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply {
@@ -40,6 +39,7 @@ class CruxCoachCrashHandler(
         return buildString {
             appendLine("--- CruxCoach Crash Report ---")
             appendLine("Time: $timestamp")
+            appendLine("Crash sequence: $crashSequence")
             appendLine("App: ${getVersionName()} (${getVersionCode()})")
             appendLine("Android: API ${Build.VERSION.SDK_INT}")
             appendLine("Device: ${DevicePrivacy.generalizedDeviceTier(context)}")
@@ -70,6 +70,17 @@ class CruxCoachCrashHandler(
     companion object {
         private const val TAG = "CruxCoachCrashHandler"
         const val CRASH_FILE_NAME = "crash_log.txt"
+        private const val LEGACY_PREVIOUS_CRASH_FILE_NAME = "crash_log_prev.txt"
+        private val CRASH_SEQUENCE = Regex("(?m)^Crash sequence: ([0-9]+)$")
+
+        internal fun nextCrashSequence(previousReport: String?): Int {
+            if (previousReport == null) return 1
+            val previous = CRASH_SEQUENCE.find(previousReport)
+                ?.groupValues?.getOrNull(1)?.toIntOrNull()
+                ?.coerceAtLeast(1)
+                ?: 1
+            return if (previous == Int.MAX_VALUE) Int.MAX_VALUE else previous + 1
+        }
 
         fun getCrashFile(context: Context): File = File(context.filesDir, CRASH_FILE_NAME)
 
@@ -82,6 +93,7 @@ class CruxCoachCrashHandler(
 
         fun deleteCrashReport(context: Context) {
             getCrashFile(context).delete()
+            File(context.filesDir, LEGACY_PREVIOUS_CRASH_FILE_NAME).delete()
         }
     }
 }

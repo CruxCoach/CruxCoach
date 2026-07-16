@@ -12,6 +12,7 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.cruxcoach.android.data.SyncInterval
+import com.cruxcoach.android.util.WorkerRunLog
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import java.util.concurrent.TimeUnit
@@ -37,27 +38,34 @@ class BackupSyncWorker @AssistedInject constructor(
 ) : CoroutineWorker(appContext, workerParams) {
 
     override suspend fun doWork(): Result {
-        return try {
+        val startedAt = WorkerRunLog.started()
+        var errorClass: String? = null
+        val result = try {
             // DataStore reads are inside the try so an IOException (e.g.
             // disk full / corruption) becomes Result.retry() instead of
             // Result.failure() — failure is a permanent give-up that never
             // re-runs, retry honors the WorkManager backoff. Pre-fix the
             // gate reads happened outside the try and the worker silently
             // gave up on transient disk hiccups.
-            if (!preferences.isBackupFeatureEnabled()) {
-                Log.i(TAG, "event=killswitch_off")
-                return Result.failure()
+            when {
+                !preferences.isBackupFeatureEnabled() -> {
+                    Log.i(TAG, "event=killswitch_off")
+                    Result.failure()
+                }
+                !preferences.isBackupEnabled() -> {
+                    // Disabled is a permanent state per this scheduling cycle —
+                    // success here lets the existing schedule() cancel logic
+                    // remove the periodic run.
+                    Result.success()
+                }
+                else -> {
+                    backupRepository.performFullBackup(trigger = "periodic")
+                    Result.success()
+                }
             }
-            if (!preferences.isBackupEnabled()) {
-                // Disabled is a permanent state per this scheduling cycle —
-                // success here lets the existing schedule() cancel logic
-                // remove the periodic run.
-                return Result.success()
-            }
-            backupRepository.performFullBackup(trigger = "periodic")
-            Result.success()
         } catch (e: BackupException) {
-            Log.w(TAG, "event=backup_done_retry reason=${e.message}", e)
+            errorClass = e.javaClass.simpleName
+            Log.w(TAG, "event=backup_done_retry errorClass=${e.javaClass.simpleName}")
             Result.retry()
         } catch (e: kotlinx.coroutines.CancellationException) {
             // Coroutine cancellation must always propagate. Catching it as
@@ -72,9 +80,18 @@ class BackupSyncWorker @AssistedInject constructor(
             // failures so a bad release doesn't permanently kill the
             // periodic backup. The retry storm is bounded by WorkManager's
             // exponential backoff (30 min × 1.5^n, hard-capped at ~5 h).
-            Log.w(TAG, "event=backup_done_retry_exception", e)
+            errorClass = e.javaClass.simpleName
+            Log.w(TAG, "event=backup_done_retry_exception errorClass=${e.javaClass.simpleName}")
             Result.retry()
         }
+        return WorkerRunLog.finished(
+            TAG,
+            WORK_NAME_PERIODIC,
+            runAttemptCount,
+            startedAt,
+            result,
+            errorClass,
+        )
     }
 
     companion object {

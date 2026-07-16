@@ -153,8 +153,6 @@ class MainActivity : AppCompatActivity() {
         // userPreferences injected via Hilt
         PerfLogger.trace("enableEdgeToEdge") { enableEdgeToEdge() }
         requestNotificationPermissionIfNeeded()
-        PerfLogger.startFrameMonitor()
-
         PerfLogger.milestone("MainActivity.setContent START")
         setContent {
             val darkMode by userPreferences.darkMode.collectAsStateWithLifecycle(
@@ -324,10 +322,12 @@ class MainActivity : AppCompatActivity() {
 
     override fun onStart() {
         super.onStart()
+        PerfLogger.startFrameMonitor()
         nostrSigner.get().registerAmberForegroundLauncher(amberForegroundCallback)
     }
 
     override fun onStop() {
+        PerfLogger.stopFrameMonitor()
         nostrSigner.get().unregisterAmberForegroundLauncher(amberForegroundCallback)
         super.onStop()
     }

@@ -321,6 +321,7 @@ class BoardLogbookViewModel @Inject constructor(
                 // Preload stats data in background so sheet opens instantly
                 preloadStats()
             } catch (e: Exception) {
+                Log.w(TAG, "loadLogbook failed (${e.javaClass.simpleName})")
                 _state.update { it.copy(isLoading = false, error = e.message) }
             }
         }
@@ -453,6 +454,7 @@ class BoardLogbookViewModel @Inject constructor(
                     canLoadMore = nextPage.size >= PAGE_SIZE
                 ) }
             } catch (e: Exception) {
+                Log.w(TAG, "loadMore failed (${e.javaClass.simpleName})")
                 _state.update { it.copy(isLoadingMore = false, error = e.message) }
             }
         }

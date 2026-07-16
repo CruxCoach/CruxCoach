@@ -111,6 +111,7 @@ class NostrRelayPool @Inject constructor(
                         return
                     }
                     connected = true
+                    Log.i(TAG, "event=relay_socket_open")
                     deferred.complete(Unit)
                 }
 
@@ -121,13 +122,19 @@ class NostrRelayPool @Inject constructor(
 
                 override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                     if (!invalidate(epoch, webSocket)) return
+                    Log.w(
+                        TAG,
+                        "event=relay_socket_failure type=${t.javaClass.simpleName} httpCode=${response?.code ?: -1}",
+                    )
                     deferred.completeExceptionally(t)
                     failAllPending(t)
                     scheduleReconnect()
                 }
 
                 override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                    val wasConnected = connected
                     if (!invalidate(epoch, webSocket)) return
+                    Log.w(TAG, "event=relay_socket_closed code=$code wasConnected=$wasConnected")
                     deferred.completeExceptionally(
                         Exception("Relay $url closed during connection: $code ${reason.forLog()}")
                     )

@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -51,7 +52,10 @@ class NotificationHelper @Inject constructor(
         category: String,
         content: String
     ) {
-        if (!hasPermission()) return
+        if (!hasPermission()) {
+            Log.w(TAG, "event=notification_dropped kind=announcement reason=post_notifications_denied")
+            return
+        }
 
         val (title, priority) = when (category) {
             "release" -> context.getString(R.string.notification_announcement_release) to NotificationCompat.PRIORITY_HIGH
@@ -80,6 +84,7 @@ class NotificationHelper @Inject constructor(
             .build()
 
         manager.notify(eventId.hashCode(), notification)
+        Log.i(TAG, "event=notification_posted kind=announcement")
     }
 
     fun showMessageNotification(
@@ -88,7 +93,10 @@ class NotificationHelper @Inject constructor(
         preview: String,
         threadRoute: String
     ) {
-        if (!hasPermission()) return
+        if (!hasPermission()) {
+            Log.w(TAG, "event=notification_dropped kind=message reason=post_notifications_denied")
+            return
+        }
 
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -109,6 +117,7 @@ class NotificationHelper @Inject constructor(
             .build()
 
         manager.notify(eventId.hashCode(), notification)
+        Log.i(TAG, "event=notification_posted kind=message")
     }
 
     private fun hasPermission(): Boolean {
@@ -122,6 +131,7 @@ class NotificationHelper @Inject constructor(
     }
 
     companion object {
+        private const val TAG = "NotificationHelper"
         const val CHANNEL_ANNOUNCEMENTS = "cruxcoach_announcements"
         const val CHANNEL_MESSAGES = "cruxcoach_messages"
     }

@@ -108,8 +108,15 @@ class AppNotificationService(private val context: Context) {
     }
 
     private fun showIfPermitted(id: Int, notification: Notification) {
-        if (!hasPermission()) return
+        if (!hasPermission()) {
+            android.util.Log.w(
+                TAG,
+                "event=notification_dropped reason=post_notifications_denied id=$id",
+            )
+            return
+        }
         manager.notify(id, notification)
+        android.util.Log.i(TAG, "event=notification_posted id=$id")
     }
 
     // ── Rest Timer ──────────────────────────────────────────────
@@ -320,6 +327,7 @@ class AppNotificationService(private val context: Context) {
     }
 
     companion object {
+        private const val TAG = "NotificationService"
         val PATTERN_ALERT = longArrayOf(0, 300, 200, 300, 200, 300)
     }
 }

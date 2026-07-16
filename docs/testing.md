@@ -83,7 +83,8 @@ The wrapper:
 2. invokes Maestro (single session for full suite, iterative for
    filtered runs, with one `--reinstall-driver` upfront to dodge the
    1-in-3 EOFException race against tunneled adb),
-3. snapshots `adb logcat -d -s PERF:D` post-run,
+3. temporarily enables release diagnostics with `log.tag.PERF=DEBUG`, then
+   snapshots `adb logcat -d -s PERF:D` post-run,
 4. greps the snapshot for every pattern listed in `flow.expects`.
 
 A flow passes only if Maestro reports it Passed AND every logcat
@@ -206,9 +207,24 @@ PerfLogger.milestone("$name composable entered")
 PerfLogger.navStart(from = "$current", to = "$next")
 ```
 
-These calls cost nothing measurable and feed both this test
-infrastructure and the in-app `PerfLogger.reportStartupTimeline()`
-diagnostics.
+These calls are gated off in normal release execution and feed both this test
+infrastructure and the in-app `PerfLogger.reportStartupTimeline()` diagnostics
+when enabled.
+
+`PerfLogger` is automatic in debug builds and runtime-gated in release builds.
+For a manual release-build investigation, set the property before starting the
+app, then clear it afterward:
+
+```sh
+adb shell setprop log.tag.PERF DEBUG
+adb shell am force-stop com.cruxcoach.android
+adb shell monkey -p com.cruxcoach.android 1
+adb logcat -s PERF:I
+adb shell setprop log.tag.PERF ''
+```
+
+The flow runner performs this enable/restore sequence itself and fails if a
+selected `.expects` file requires markers but the PERF snapshot is empty.
 
 ## Quick-reference command summary
 

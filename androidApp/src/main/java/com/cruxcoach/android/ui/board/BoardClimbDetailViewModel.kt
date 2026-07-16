@@ -898,7 +898,7 @@ class BoardClimbDetailViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Log.w(TAG, "Climb detail load failed", e)
+                Log.w(TAG, "Climb detail load failed (${e.javaClass.simpleName})")
                 _state.update {
                     it.copy(isLoading = false, error = context.getString(R.string.board_detail_error))
                 }

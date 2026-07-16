@@ -111,6 +111,7 @@ class PostWorkoutViewModel @Inject constructor(
                 }
                 _state.update { it.copy(isSaving = false, isSaved = true) }
             } catch (e: Exception) {
+                android.util.Log.w("PostWorkoutViewModel", "saveWorkout failed (${e.javaClass.simpleName})")
                 _state.update { it.copy(isSaving = false, error = e.message) }
             }
         }

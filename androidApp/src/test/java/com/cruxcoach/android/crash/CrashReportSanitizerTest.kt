@@ -6,6 +6,19 @@ import kotlin.test.assertFalse
 
 class CrashReportSanitizerTest {
     @Test
+    fun `crash sequence starts at one and advances from the pending report`() {
+        kotlin.test.assertEquals(1, CruxCoachCrashHandler.nextCrashSequence(null))
+        kotlin.test.assertEquals(
+            2,
+            CruxCoachCrashHandler.nextCrashSequence("legacy report without a sequence"),
+        )
+        kotlin.test.assertEquals(
+            8,
+            CruxCoachCrashHandler.nextCrashSequence("Crash sequence: 7\nStack"),
+        )
+    }
+
+    @Test
     fun `renders allow-listed structure without messages or file paths`() {
         val secretMessage =
             "boom nsec1secret npub1identity ${"a".repeat(64)} Bearer token?access_token=secret\nFORGED"

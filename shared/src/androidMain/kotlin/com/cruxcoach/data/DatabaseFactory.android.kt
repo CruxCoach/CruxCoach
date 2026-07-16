@@ -27,6 +27,29 @@ actual class BoardDriverFactory(private val context: Context) {
                     super.onConfigure(db)
                     db.pragma("PRAGMA busy_timeout = 5000")
                 }
+                override fun onUpgrade(
+                    db: SupportSQLiteDatabase,
+                    oldVersion: Int,
+                    newVersion: Int,
+                ) {
+                    val startedAt = android.os.SystemClock.elapsedRealtime()
+                    Log.i(DATABASE_TAG, "event=db_migration_start db=board from=$oldVersion to=$newVersion")
+                    try {
+                        super.onUpgrade(db, oldVersion, newVersion)
+                        Log.i(
+                            DATABASE_TAG,
+                            "event=db_migration_done db=board from=$oldVersion to=$newVersion " +
+                                "durationMs=${android.os.SystemClock.elapsedRealtime() - startedAt}",
+                        )
+                    } catch (e: Exception) {
+                        Log.e(
+                            DATABASE_TAG,
+                            "event=db_migration_failed db=board from=$oldVersion to=$newVersion " +
+                                "type=${e.javaClass.simpleName}",
+                        )
+                        throw e
+                    }
+                }
                 override fun onOpen(db: SupportSQLiteDatabase) {
                     super.onOpen(db)
                     db.pragma("PRAGMA journal_mode = WAL")
@@ -111,7 +134,32 @@ actual class SecureDriverFactory(
             schema = SecureDatabase.Schema,
             context = context,
             name = dbName,
-            factory = factory
+            factory = factory,
+            callback = object : AndroidSqliteDriver.Callback(SecureDatabase.Schema) {
+                override fun onUpgrade(
+                    db: SupportSQLiteDatabase,
+                    oldVersion: Int,
+                    newVersion: Int,
+                ) {
+                    val startedAt = android.os.SystemClock.elapsedRealtime()
+                    Log.i(DATABASE_TAG, "event=db_migration_start db=secure from=$oldVersion to=$newVersion")
+                    try {
+                        super.onUpgrade(db, oldVersion, newVersion)
+                        Log.i(
+                            DATABASE_TAG,
+                            "event=db_migration_done db=secure from=$oldVersion to=$newVersion " +
+                                "durationMs=${android.os.SystemClock.elapsedRealtime() - startedAt}",
+                        )
+                    } catch (e: Exception) {
+                        Log.e(
+                            DATABASE_TAG,
+                            "event=db_migration_failed db=secure from=$oldVersion to=$newVersion " +
+                                "type=${e.javaClass.simpleName}",
+                        )
+                        throw e
+                    }
+                }
+            },
         )
         // SQLCipher requires PRAGMAs to go through query path, not execute
         fun SqlDriver.pragma(stmt: String) {
@@ -124,3 +172,5 @@ actual class SecureDriverFactory(
         return driver
     }
 }
+
+private const val DATABASE_TAG = "DatabaseFactory"

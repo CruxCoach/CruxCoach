@@ -192,6 +192,7 @@ class DataExchangeViewModel @Inject constructor(
                 }
                 _state.update { it.copy(isExporting = false, message = label) }
             } catch (e: Exception) {
+                Log.w(TAG, "exportData failed (${e.javaClass.simpleName})")
                 _state.update { it.copy(isExporting = false, error = context.getString(R.string.error_export_failed, e.message ?: "")) }
             }
         }
@@ -259,6 +260,7 @@ class DataExchangeViewModel @Inject constructor(
                     }
                 }
             } catch (e: Exception) {
+                Log.w(TAG, "previewImport failed (${e.javaClass.simpleName})")
                 _state.update { it.copy(
                     isLoadingPreview = false,
                     error = context.getString(R.string.error_file_not_readable, e.message ?: "")
@@ -371,6 +373,7 @@ class DataExchangeViewModel @Inject constructor(
                     message = context.getString(R.string.import_result_summary, "$summary$dupNote")
                 ) }
             } catch (e: Exception) {
+                Log.w(TAG, "importData failed (${e.javaClass.simpleName})")
                 _state.update { it.copy(isImporting = false, error = context.getString(R.string.error_import_failed, e.message ?: "")) }
             }
         }

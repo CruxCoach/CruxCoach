@@ -141,6 +141,7 @@ class DashboardViewModel @Inject constructor(
                     ) }
                 }
             } catch (e: Exception) {
+                android.util.Log.w("DashboardViewModel", "loadDashboard failed (${e.javaClass.simpleName})")
                 _state.update { it.copy(isLoading = false, error = e.message) }
             }
         }

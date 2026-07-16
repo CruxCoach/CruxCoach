@@ -13,6 +13,7 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.nostr.NostrSigner
+import com.cruxcoach.android.util.WorkerRunLog
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.community.ClimbEditorState
@@ -55,16 +56,29 @@ class CommunityPublishRetryWorker @AssistedInject constructor(
     private val userPreferences: UserPreferences,
 ) : CoroutineWorker(appContext, workerParams) {
 
-    override suspend fun doWork(): androidx.work.ListenableWorker.Result = try {
-        CommunityPublishDrainGate.tryRun { drainQueue() }
-            ?: androidx.work.ListenableWorker.Result.success().also {
-                Log.i(TAG, "skip: another Nostr retry drain is already in flight")
-            }
-    } catch (e: kotlinx.coroutines.CancellationException) {
-        throw e
-    } catch (e: Exception) {
-        Log.w(TAG, "worker pre-flight failed; retrying", e)
-        androidx.work.ListenableWorker.Result.retry()
+    override suspend fun doWork(): androidx.work.ListenableWorker.Result {
+        val startedAt = WorkerRunLog.started()
+        var errorClass: String? = null
+        val result = try {
+            CommunityPublishDrainGate.tryRun { drainQueue() }
+                ?: androidx.work.ListenableWorker.Result.success().also {
+                    Log.i(TAG, "skip: another Nostr retry drain is already in flight")
+                }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            errorClass = e.javaClass.simpleName
+            Log.w(TAG, "worker pre-flight failed; retrying (${e.javaClass.simpleName})")
+            androidx.work.ListenableWorker.Result.retry()
+        }
+        return WorkerRunLog.finished(
+            TAG,
+            WORK_NAME,
+            runAttemptCount,
+            startedAt,
+            result,
+            errorClass,
+        )
     }
 
     private suspend fun drainQueue(): androidx.work.ListenableWorker.Result {

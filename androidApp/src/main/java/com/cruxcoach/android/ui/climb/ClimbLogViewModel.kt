@@ -191,6 +191,7 @@ class ClimbLogViewModel @Inject constructor(
                 ) }
                 loadTodayClimbs()
             } catch (e: Exception) {
+                android.util.Log.w(TAG, "saveClimbLog failed (${e.javaClass.simpleName})")
                 _state.update { it.copy(isSaving = false, error = e.message) }
             }
         }

@@ -1080,6 +1080,7 @@ class BoardBrowserViewModel @Inject constructor(
                 }
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
+                Log.w(TAG, "refreshBoardData failed (${e.javaClass.simpleName})")
                 _state.update { it.copy(isLoading = false, isLoadingMore = false, error = e.message) }
             }
         }
@@ -1165,6 +1166,7 @@ class BoardBrowserViewModel @Inject constructor(
                 ) }
             } catch (e: Exception) {
                 if (e is kotlinx.coroutines.CancellationException) throw e
+                Log.w(TAG, "loadMore failed (${e.javaClass.simpleName})")
                 _state.update { it.copy(isLoadingMore = false, error = e.message) }
             }
         }
@@ -1330,12 +1332,12 @@ class BoardBrowserViewModel @Inject constructor(
             return fetchRandomPage(f, offset)
         }
         return if (f.searchQuery.isNotBlank()) {
-            PerfLogger.traceQuery("searchClimbsByName(offset=$offset)") {
+            PerfLogger.traceQuery("searchClimbsByName") {
                 boardRepository.searchClimbsByName(f.searchQuery, f.angle, f.layoutId, f.boardBrand, f.sortField, f.sortDirection, PAGE_SIZE, offset, f.climbTypeFilter, selProductSizeId = selSizeId(), hsmExcludedMask = hsmMask())
             }
         } else {
             val gb = gradeBounds(f)
-            PerfLogger.traceQuery("searchClimbsSorted(offset=$offset)") {
+            PerfLogger.traceQuery("searchClimbsSorted") {
                 boardRepository.searchClimbsSorted(f.angle, f.layoutId, f.boardBrand, gb.minDiff, gb.maxDiff, f.minAscensionists, f.sortField, f.sortDirection, PAGE_SIZE, offset, f.climbTypeFilter, selProductSizeId = selSizeId(), hsmExcludedMask = hsmMask(), showUngraded = gb.showUngraded)
             }
         }
@@ -1414,7 +1416,7 @@ class BoardBrowserViewModel @Inject constructor(
         val cacheIdx = offset - (randomPage1?.size ?: 0)
         if (cacheIdx < 0 || cacheIdx >= cache.size) return emptyList()
         val slice = cache.subList(cacheIdx, minOf(cacheIdx + PAGE_SIZE, cache.size))
-        val climbs = PerfLogger.traceQuery("randomPage(uuid×${slice.size})") {
+        val climbs = PerfLogger.traceQuery("randomPageByUuid") {
             boardRepository.getClimbsByUuids(slice, f.angle)
         }
         val byUuid = climbs.associateBy { it.uuid }

@@ -12,6 +12,7 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import com.cruxcoach.android.util.WorkerRunLog
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import java.util.concurrent.TimeUnit
@@ -34,27 +35,41 @@ class UpdateCheckWorker @AssistedInject constructor(
     private val repository: UpdaterRepository,
 ) : CoroutineWorker(context, params) {
 
-    override suspend fun doWork(): Result = try {
-        if (!repository.selfUpdateAllowed()) {
-            Log.i(TAG, "event=periodic_check outcome=skipped reason=install_source_gated")
-            return Result.success()
+    override suspend fun doWork(): Result {
+        val startedAt = WorkerRunLog.started()
+        var errorClass: String? = null
+        val result = try {
+            if (!repository.selfUpdateAllowed()) {
+                Log.i(TAG, "event=periodic_check outcome=skipped reason=install_source_gated")
+                Result.success()
+            } else {
+                val outcome = repository.checkNow(UpdateChecker.Trigger.PERIODIC)
+                val outcomeName = when (outcome) {
+                    is UpdateChecker.CheckOutcome.Error -> "error"
+                    is UpdateChecker.CheckOutcome.Skipped -> "skipped"
+                    is UpdateChecker.CheckOutcome.Throttled -> "throttled"
+                    UpdateChecker.CheckOutcome.NotModified -> "not_modified"
+                    UpdateChecker.CheckOutcome.NoUpdate -> "no_update"
+                    is UpdateChecker.CheckOutcome.Update -> "update_available"
+                }
+                Log.i(TAG, "event=periodic_check outcome=$outcomeName")
+                if (outcome is UpdateChecker.CheckOutcome.Error) Result.retry() else Result.success()
+            }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            errorClass = e.javaClass.simpleName
+            Log.w(TAG, "event=periodic_check outcome=preflight_error_retry type=${e.javaClass.simpleName}")
+            Result.retry()
         }
-        val outcome = repository.checkNow(UpdateChecker.Trigger.PERIODIC)
-        val outcomeName = when (outcome) {
-            is UpdateChecker.CheckOutcome.Error -> "error:${outcome.message}"
-            is UpdateChecker.CheckOutcome.Skipped -> "skipped:${outcome.reason}"
-            is UpdateChecker.CheckOutcome.Throttled -> "throttled"
-            UpdateChecker.CheckOutcome.NotModified -> "not_modified"
-            UpdateChecker.CheckOutcome.NoUpdate -> "no_update"
-            is UpdateChecker.CheckOutcome.Update -> "update:${outcome.info.versionName}"
-        }
-        Log.i(TAG, "event=periodic_check outcome=$outcomeName")
-        if (outcome is UpdateChecker.CheckOutcome.Error) Result.retry() else Result.success()
-    } catch (e: kotlinx.coroutines.CancellationException) {
-        throw e
-    } catch (e: Exception) {
-        Log.w(TAG, "event=periodic_check outcome=preflight_error_retry", e)
-        Result.retry()
+        return WorkerRunLog.finished(
+            TAG,
+            PERIODIC_NAME,
+            runAttemptCount,
+            startedAt,
+            result,
+            errorClass,
+        )
     }
 
     companion object {

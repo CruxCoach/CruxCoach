@@ -101,7 +101,7 @@ class ActiveWorkoutViewModel @Inject constructor(
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Log.w(TAG, "Session load failed", e)
+                Log.w(TAG, "Session load failed (${e.javaClass.simpleName})")
                 _state.update { it.copy(isLoading = false, error = context.getString(R.string.workout_error)) }
             }
         }

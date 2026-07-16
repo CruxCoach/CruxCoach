@@ -70,6 +70,18 @@ fi
 echo " ▶ running ${#FLOWS[@]} flow(s): ${FLOW_NAMES[*]}"
 echo " ▶ log dir: $LOG_DIR"
 
+# PERF markers are runtime-gated in release builds. Preserve the device's prior
+# property and enable diagnostics only for this runner invocation.
+previous_perf_level="$("$ADB" shell getprop log.tag.PERF 2>/dev/null | tr -d '\r')"
+restore_perf_level() {
+    "$ADB" shell setprop log.tag.PERF "$previous_perf_level" >/dev/null 2>&1 || true
+}
+trap restore_perf_level EXIT
+if ! "$ADB" shell setprop log.tag.PERF DEBUG >/dev/null 2>&1; then
+    echo "ERROR: could not enable runtime PERF diagnostics" >&2
+    exit 2
+fi
+
 # Clear logcat upfront so the post-session snapshot is scoped.
 "$ADB" logcat -c >/dev/null 2>&1 || true
 
@@ -122,6 +134,21 @@ fi
 
 # Snapshot logcat (PERF only — that's where our nav markers live).
 "$ADB" logcat -d -s PERF:D > "$LOG_DIR/logcat-perf.txt" 2>/dev/null || true
+
+# An empty diagnostic stream must never let a navigation flow pass merely
+# because Maestro's visual assertions happened to match another screen.
+expects_markers=0
+for fname in "${FLOW_NAMES[@]}"; do
+    expects_path="$FLOWS_DIR/$fname.expects"
+    if [[ -f "$expects_path" ]] && grep -qE '^[[:space:]]*[^#[:space:]]' "$expects_path"; then
+        expects_markers=1
+        break
+    fi
+done
+if [[ $expects_markers -eq 1 && ! -s "$LOG_DIR/logcat-perf.txt" ]]; then
+    echo "ERROR: PERF logcat is empty although selected flows require markers" >&2
+    exit 1
+fi
 
 # Determine per-flow Maestro pass/fail by parsing the human-readable output.
 # Maestro emits "[Passed] $name" or "[Failed] $name (...)" per flow when

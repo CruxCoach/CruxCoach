@@ -319,4 +319,37 @@ class CruxCoachApp : Application(), Configuration.Provider {
         PerfLogger.logMemory("app-create-end")
         PerfLogger.milestone("CruxCoachApp.onCreate END")
     }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        Log.i(TAG, "event=trim_memory level=$level")
+        if (isMemoryPressureLevel(level)) {
+            com.cruxcoach.android.nostr.DevicePrivacy.recordMemoryPressure(this)
+            com.cruxcoach.android.ui.board.BoardImageCache.clear()
+            com.cruxcoach.android.ui.board.MoonBoardAssetCache.clear()
+            Log.i(TAG, "event=memory_cache_clear reason=trim level=$level")
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    override fun onLowMemory() {
+        super.onLowMemory()
+        com.cruxcoach.android.nostr.DevicePrivacy.recordMemoryPressure(this)
+        com.cruxcoach.android.ui.board.BoardImageCache.clear()
+        com.cruxcoach.android.ui.board.MoonBoardAssetCache.clear()
+        Log.w(TAG, "event=memory_cache_clear reason=low_memory")
+    }
+
+    companion object {
+        private const val TAG = "CruxCoachApp"
+
+        @Suppress("DEPRECATION")
+        internal fun isMemoryPressureLevel(level: Int): Boolean = level in setOf(
+            android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_MODERATE,
+            android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW,
+            android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL,
+            android.content.ComponentCallbacks2.TRIM_MEMORY_MODERATE,
+            android.content.ComponentCallbacks2.TRIM_MEMORY_COMPLETE,
+        )
+    }
 }

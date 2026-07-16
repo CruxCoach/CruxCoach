@@ -395,7 +395,7 @@ class SettingsViewModel @Inject constructor(
                 }
                 _state.update { it.copy(isSaving = false, saveSuccess = true) }
             } catch (e: Exception) {
-                Log.w(TAG, "profile save failed", e)
+                Log.w(TAG, "profile save failed (${e.javaClass.simpleName})")
                 _state.update {
                     it.copy(
                         isSaving = false,

@@ -2011,11 +2011,11 @@ class BoardDatabaseImporter(
      */
     private fun importLocations(rawDb: SQLiteDatabase) {
         if (!hasTable(rawDb, "kilter_board_location")) {
-            Log.w("BoardDatabaseImporter", "locations chunk missing kilter_board_location table — skipping")
+            Log.w(TAG, "locations chunk missing kilter_board_location table — skipping")
             return
         }
         val chunkPath = rawDb.path ?: run {
-            Log.w("BoardDatabaseImporter", "locations chunk has no path (in-memory) — skipping")
+            Log.w(TAG, "locations chunk has no path (in-memory) — skipping")
             return
         }
         val targetDb = openTargetDb()
@@ -2027,7 +2027,7 @@ class BoardDatabaseImporter(
             // table and leave the user with an empty map.
             val srcLocCount = queryLong(targetDb, "SELECT COUNT(*) FROM loc_src.kilter_board_location")
             if (srcLocCount == 0L) {
-                Log.w("BoardDatabaseImporter", "locations chunk has 0 source rows — refusing to wipe local table")
+                Log.w(TAG, "locations chunk has 0 source rows — refusing to wipe local table")
             } else {
                 val beforeCount = queryLong(targetDb, "SELECT COUNT(*) FROM kilter_board_location")
                 // board_brand landed in the locations chunk alongside
@@ -2075,7 +2075,7 @@ class BoardDatabaseImporter(
                     targetDb.endTransaction()
                 }
                 val afterCount = queryLong(targetDb, "SELECT COUNT(*) FROM kilter_board_location")
-                Log.i("BoardDatabaseImporter", "kilter_board_location: $beforeCount → $afterCount (source=$srcLocCount)")
+                Log.i(TAG, "kilter_board_location: $beforeCount → $afterCount (source=$srcLocCount)")
             }
 
             // Per-wall detail (FEAT-007). Additive + guarded: pre-0.1.6
@@ -2086,7 +2086,7 @@ class BoardDatabaseImporter(
                 try {
                     val srcWallCount = queryLong(targetDb, "SELECT COUNT(*) FROM loc_src.kilter_board_wall")
                     if (srcWallCount == 0L) {
-                        Log.w("BoardDatabaseImporter", "kilter_board_wall chunk has 0 source rows — refusing to wipe local table")
+                        Log.w(TAG, "kilter_board_wall chunk has 0 source rows — refusing to wipe local table")
                     } else {
                         val beforeWalls = queryLong(targetDb, "SELECT COUNT(*) FROM kilter_board_wall")
                         targetDb.beginTransaction()
@@ -2110,18 +2110,18 @@ class BoardDatabaseImporter(
                             targetDb.endTransaction()
                         }
                         val afterWalls = queryLong(targetDb, "SELECT COUNT(*) FROM kilter_board_wall")
-                        Log.i("BoardDatabaseImporter", "kilter_board_wall: $beforeWalls → $afterWalls (source=$srcWallCount)")
+                        Log.i(TAG, "kilter_board_wall: $beforeWalls → $afterWalls (source=$srcWallCount)")
                     }
                 } catch (e: Exception) {
-                    Log.w("BoardDatabaseImporter", "kilter_board_wall import failed (non-fatal)", e)
+                    Log.w(TAG, "kilter_board_wall import failed (non-fatal)", e)
                 }
             } else {
-                Log.d("BoardDatabaseImporter", "locations chunk has no kilter_board_wall (pre-0.1.6 chunk) — skipping walls")
+                Log.d(TAG, "locations chunk has no kilter_board_wall (pre-0.1.6 chunk) — skipping walls")
             }
             targetDb.execSQL("DETACH DATABASE loc_src")
         } catch (e: Exception) {
             try { targetDb.execSQL("DETACH DATABASE loc_src") } catch (_: Exception) {}
-            Log.w("BoardDatabaseImporter", "locations chunk import failed", e)
+            Log.w(TAG, "locations chunk import failed", e)
         } finally {
             targetDb.close()
         }

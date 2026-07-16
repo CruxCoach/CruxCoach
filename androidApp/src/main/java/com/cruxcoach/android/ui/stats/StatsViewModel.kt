@@ -166,6 +166,7 @@ class StatsViewModel @Inject constructor(
                     ) }
                 }
             } catch (e: Exception) {
+                android.util.Log.w("StatsViewModel", "loadStats failed (${e.javaClass.simpleName})")
                 _state.update { it.copy(isLoading = false, error = e.message) }
             }
         }

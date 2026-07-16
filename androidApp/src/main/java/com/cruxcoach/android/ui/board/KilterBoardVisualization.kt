@@ -75,6 +75,11 @@ internal object BoardImageCache {
     fun get(path: String): ImageBitmap? =
         if (path == cachedPath) cachedBitmap else null
 
+    fun clear() {
+        cachedBitmap = null
+        cachedPath = ""
+    }
+
     /**
      * Decode the first [candidates] path that resolves to an asset, keyed in
      * the cache by the first (most-specific) candidate. The renderer passes

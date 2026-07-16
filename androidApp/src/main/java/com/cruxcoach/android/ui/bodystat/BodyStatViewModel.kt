@@ -120,6 +120,7 @@ class BodyStatViewModel @Inject constructor(
                 }
                 loadData()
             } catch (e: Exception) {
+                android.util.Log.w("BodyStatViewModel", "saveAll failed (${e.javaClass.simpleName})")
                 _state.update { it.copy(isSaving = false, error = e.message) }
             }
         }
@@ -172,6 +173,7 @@ class BodyStatViewModel @Inject constructor(
                 ) }
                 loadData()
             } catch (e: Exception) {
+                android.util.Log.w("BodyStatViewModel", "saveStat failed (${e.javaClass.simpleName})")
                 _state.update { it.copy(error = e.message ?: context.getString(R.string.bodystat_error_save_failed)) }
             }
         }

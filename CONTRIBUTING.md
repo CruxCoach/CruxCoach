@@ -11,7 +11,8 @@ Thank you for your interest in contributing to CruxCoach! This document explains
    - **Device** (model, Android version)
    - **Steps to reproduce**
    - **Expected vs. actual behavior**
-   - **Logcat output** if applicable (`adb logcat -s CruxCoach`)
+   - **Logcat output** if applicable
+     (`PID=$(adb shell pidof -s com.cruxcoach.android); adb logcat --pid="$PID"`)
 
 > **Tip:** You can also report bugs directly from within the app via **Settings > Contact Developer**. Your report is sent as an encrypted Nostr DM and automatically includes device info.
 

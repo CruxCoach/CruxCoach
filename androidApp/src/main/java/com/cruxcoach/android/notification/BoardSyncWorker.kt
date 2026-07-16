@@ -8,6 +8,7 @@ import androidx.work.*
 import com.cruxcoach.android.data.BoardDatabaseImporter
 import com.cruxcoach.android.data.BoardSyncManager
 import com.cruxcoach.android.data.SyncInterval
+import com.cruxcoach.android.util.WorkerRunLog
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import kotlinx.coroutines.flow.first
@@ -33,7 +34,11 @@ class BoardSyncWorker @AssistedInject constructor(
     override suspend fun getForegroundInfo(): ForegroundInfo = createForegroundInfo()
 
     override suspend fun doWork(): Result {
-        return try {
+        val workerStartedAt = WorkerRunLog.started()
+        val startedAt = System.currentTimeMillis()
+        Log.i(TAG, "event=sync_start attempt=$runAttemptCount")
+        var errorClass: String? = null
+        val result = try {
             setForeground(createForegroundInfo())
 
             // Delegate to the shared BoardSyncManager so the in-app banner
@@ -45,16 +50,42 @@ class BoardSyncWorker @AssistedInject constructor(
                 .filter { !it.isSyncing }
                 .first()
 
-            if (finalState.errorMessage != null && !importer.isImported()) {
-                // Only retry if we have no data at all — stale data is better than retrying endlessly
-                Result.retry()
-            } else {
-                Result.success()
+            val durationMs = System.currentTimeMillis() - startedAt
+            val imported = importer.isImported()
+            when {
+                finalState.errorMessage == null -> {
+                    Log.i(TAG, "event=sync_done outcome=ok durationMs=$durationMs")
+                    Result.success()
+                }
+                !imported -> {
+                    Log.w(TAG, "event=sync_done outcome=retry reason=no_local_data durationMs=$durationMs")
+                    Result.retry()
+                }
+                else -> {
+                    // Deliberate policy: stale, usable data beats an endless retry loop.
+                    Log.w(TAG, "event=sync_done outcome=stale_data_accepted durationMs=$durationMs")
+                    Result.success()
+                }
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
-            Log.e(TAG, "Sync failed", e)
+            errorClass = e.javaClass.simpleName
+            Log.e(
+                TAG,
+                "event=sync_done outcome=exception type=${e.javaClass.simpleName} " +
+                    "durationMs=${System.currentTimeMillis() - startedAt}",
+            )
             Result.retry()
         }
+        return WorkerRunLog.finished(
+            TAG,
+            WORK_NAME,
+            runAttemptCount,
+            workerStartedAt,
+            result,
+            errorClass,
+        )
     }
 
     private fun createForegroundInfo(): ForegroundInfo {

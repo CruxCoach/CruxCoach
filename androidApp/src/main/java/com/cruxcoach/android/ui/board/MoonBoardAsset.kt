@@ -114,6 +114,11 @@ internal object MoonBoardAssetCache {
     fun get(variant: MoonBoardVariant?): MoonBoardRenderAsset? =
         if (variant != null && variant == cachedVariant) cached else null
 
+    fun clear() {
+        cached = null
+        cachedVariant = null
+    }
+
     /** True when a decode was already ATTEMPTED for [variant] but produced
      *  no asset (missing/corrupt bundle, or an OOM during bitmap decode).
      *  Distinguishes a failed decode from a not-yet-decoded variant so the

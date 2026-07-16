@@ -90,6 +90,7 @@ class AssessmentViewModel @Inject constructor(
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
+                android.util.Log.w(TAG, "saveAssessment failed (${e.javaClass.simpleName})")
                 _state.update { it.copy(isSaving = false, error = e.message) }
             }
         }

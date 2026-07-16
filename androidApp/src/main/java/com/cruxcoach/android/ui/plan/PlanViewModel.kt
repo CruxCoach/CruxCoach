@@ -82,6 +82,7 @@ class PlanViewModel @Inject constructor(
                     }
                 }
             } catch (e: Exception) {
+                android.util.Log.w("PlanViewModel", "loadPlan failed (${e.javaClass.simpleName})")
                 _state.update { it.copy(isLoading = false, error = e.message) }
             }
         }
@@ -106,6 +107,7 @@ class PlanViewModel @Inject constructor(
                 }
                 loadPlan()
             } catch (e: Exception) {
+                android.util.Log.w("PlanViewModel", "generatePlan failed (${e.javaClass.simpleName})")
                 _state.update { it.copy(isLoading = false, error = e.message) }
             }
         }
@@ -126,6 +128,7 @@ class PlanViewModel @Inject constructor(
                 }
                 loadPlan()
             } catch (e: Exception) {
+                android.util.Log.w("PlanViewModel", "adaptPlan failed (${e.javaClass.simpleName})")
                 _state.update { it.copy(isLoading = false, error = e.message) }
             }
         }
