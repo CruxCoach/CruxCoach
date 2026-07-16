@@ -108,8 +108,10 @@ class BoardStatsComputerTest {
 
     @Test
     fun `filterByInterval custom range is inclusive of end-date sends`() {
-        // customTo.plusDays(1) handling ensures sends on the end date aren't dropped.
-        val ascents = listOf(ascent(climbedAt = "2026-03-08T23:59:00"))
+        val ascents = listOf(
+            ascent(climbedAt = "2026-03-08T23:59:00"),
+            ascent(climbedAt = "2026-03-09T00:00:00"),
+        )
         val out = BoardStatsComputer.filterByInterval(
             ascents,
             StatsTimeInterval.DAYS_30,
@@ -117,6 +119,7 @@ class BoardStatsComputerTest {
             customTo = LocalDate.of(2026, 3, 8),
         )
         assertEquals(1, out.size)
+        assertEquals("2026-03-08T23:59:00", out.single().climbedAt)
     }
 
     // -- computeStats: empty path --
@@ -288,6 +291,21 @@ class BoardStatsComputerTest {
         assertEquals(1, wk.eliteCount)
     }
 
+    @Test
+    fun `ISO week year keeps year-boundary dates in the same weekly bucket`() {
+        val ascents = listOf(
+            ascent(climbedAt = "2025-12-29T10:00:00", difficulty = 18.0),
+            ascent(climbedAt = "2026-01-02T10:00:00", difficulty = 20.0),
+        )
+
+        val stats = BoardStatsComputer.computeStats(ascents, StatsTimeInterval.ALL, GradeScale.V_SCALE)
+
+        assertEquals(1, stats.weeklyVolume.size)
+        assertEquals("KW 1/26", stats.weeklyVolume.single().weekLabel)
+        assertEquals(1, stats.gradeProgression.size)
+        assertEquals("CW 1/26", stats.gradeProgression.single().label)
+    }
+
     // -- Period comparison --
 
     @Test
@@ -310,6 +328,19 @@ class BoardStatsComputerTest {
             gradeScale = GradeScale.V_SCALE,
         )
         assertNull(stats.periodComparison)
+    }
+
+    @Test
+    fun `periodComparison assigns the boundary date to current period only`() {
+        val currentStart = today.minusDays(29)
+        val stats = BoardStatsComputer.computeStats(
+            ascents = listOf(ascent(climbedAt = "${currentStart}T10:00:00")),
+            clock = fixedClock,
+            interval = StatsTimeInterval.DAYS_30,
+            gradeScale = GradeScale.V_SCALE,
+        )
+
+        assertEquals(1, stats.periodComparison?.totalSendsDelta)
     }
 
     // -- Personal records --
@@ -434,6 +465,17 @@ class BoardStatsComputerTest {
         assertEquals(1, stats.personalRecords.weekStreak)
     }
 
+    @Test
+    fun `weekStreak ignores future-dated sessions`() {
+        val stats = BoardStatsComputer.computeStats(
+            listOf(ascent(climbedAt = "${today.plusDays(14)}T10:00:00")),
+            StatsTimeInterval.ALL,
+            GradeScale.V_SCALE,
+            clock = fixedClock,
+        )
+        assertEquals(0, stats.personalRecords.weekStreak)
+    }
+
     // -- Outcome distribution --
 
     @Test
@@ -521,6 +563,16 @@ class BoardStatsComputerTest {
             locale = Locale.US,
         )
         assertEquals(listOf("12/31/25", "1/1/26"), out.map { it.label })
+    }
+
+    @Test
+    fun `computeSendsOverTime DAYS_90 sorts by ISO week key not label`() {
+        val ascents = listOf(
+            ascent(climbedAt = "2026-03-03T10:00:00"), // week 10
+            ascent(climbedAt = "2026-01-06T10:00:00"), // week 2
+        )
+        val out = BoardStatsComputer.computeSendsOverTime(ascents, StatsTimeInterval.DAYS_90)
+        assertEquals(listOf("CW 2/26", "CW 10/26"), out.map { it.label })
     }
 
     @Test

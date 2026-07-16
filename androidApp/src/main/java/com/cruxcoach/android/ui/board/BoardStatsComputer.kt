@@ -23,6 +23,7 @@ object BoardStatsComputer {
 
     private val DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE
     private val WEEK_FIELD = WeekFields.ISO.weekOfWeekBasedYear()
+    private val WEEK_YEAR_FIELD = WeekFields.ISO.weekBasedYear()
     private val MONTH_NAMES_FALLBACK = arrayOf("", "Jan", "Feb", "Mar", "Apr", "May", "Jun",
         "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 
@@ -45,6 +46,16 @@ object BoardStatsComputer {
     private const val ELITE_THRESHOLD = 27.0
     private const val AVG_WINDOW_WEEKS = 8
     private const val DAYS_PER_WEEK = 7L
+
+    private data class IsoWeekKey(val year: Int, val week: Int) : Comparable<IsoWeekKey> {
+        override fun compareTo(other: IsoWeekKey): Int =
+            compareValuesBy(this, other, IsoWeekKey::year, IsoWeekKey::week)
+    }
+
+    private fun LocalDate.isoWeekKey() = IsoWeekKey(
+        year = get(WEEK_YEAR_FIELD),
+        week = get(WEEK_FIELD),
+    )
 
     fun computeStats(
         ascents: List<AscentWithClimb>,
@@ -159,11 +170,11 @@ object BoardStatsComputer {
         // Custom date range overrides interval
         if (customFrom != null && customTo != null) {
             val from = customFrom.toString()
-            val to = customTo.plusDays(1).toString() // inclusive end
+            val to = customTo.toString()
             return ascents.filter { it.climbedAt.take(10) in from..to }
         }
         val cutoffDays = interval.days ?: return ascents
-        val cutoff = LocalDate.now(clock).minusDays(cutoffDays.toLong()).toString()
+        val cutoff = LocalDate.now(clock).minusDays(cutoffDays.toLong() - 1L).toString()
         return ascents.filter { it.climbedAt.take(10) >= cutoff }
     }
 
@@ -218,12 +229,16 @@ object BoardStatsComputer {
                     .map { (date, list) -> TimeBucketEntry(date.format(dayFmt), list.size) }
             }
             StatsTimeInterval.DAYS_90 -> {
-                parsed.groupBy {
-                    context?.getString(R.string.calendar_week_short, it.get(WEEK_FIELD))
-                        ?: "CW ${it.get(WEEK_FIELD)}"
-                }
+                parsed.groupBy { it.isoWeekKey() }
                     .toSortedMap()
-                    .map { (label, list) -> TimeBucketEntry(label, list.size) }
+                    .map { (key, list) ->
+                        val label = context?.getString(
+                            R.string.calendar_week_short_year,
+                            key.week,
+                            key.year % 100,
+                        ) ?: "CW ${key.week}/${key.year % 100}"
+                        TimeBucketEntry(label, list.size)
+                    }
             }
             StatsTimeInterval.YEAR_1, StatsTimeInterval.ALL -> {
                 parsed.groupBy { it.year to it.monthValue }
@@ -287,15 +302,10 @@ object BoardStatsComputer {
     ): List<WeeklyVolumeEntry> {
         if (filtered.isEmpty()) return emptyList()
 
-        data class WeekKey(val year: Int, val week: Int) : Comparable<WeekKey> {
-            override fun compareTo(other: WeekKey): Int =
-                compareValuesBy(this, other, { it.year }, { it.week })
-        }
-
         val withDate = filtered.mapNotNull { a ->
             val date = parseDate(a.climbedAt) ?: return@mapNotNull null
             val diff = a.difficultyAverage ?: return@mapNotNull null
-            Triple(WeekKey(date.year, date.get(WEEK_FIELD)), diff, a)
+            Triple(date.isoWeekKey(), diff, a)
         }
 
         return withDate.groupBy { it.first }
@@ -303,7 +313,7 @@ object BoardStatsComputer {
             .map { (weekKey, entries) ->
                 val diffs = entries.map { it.second }
                 WeeklyVolumeEntry(
-                    weekLabel = "KW ${weekKey.week}",
+                    weekLabel = "KW ${weekKey.week}/${weekKey.year % 100}",
                     easyCount = diffs.count { it < MEDIUM_THRESHOLD },
                     mediumCount = diffs.count { it >= MEDIUM_THRESHOLD && it < HARD_THRESHOLD },
                     hardCount = diffs.count { it >= HARD_THRESHOLD && it < ELITE_THRESHOLD },
@@ -327,14 +337,14 @@ object BoardStatsComputer {
 
         // Bucket by week for all intervals — gives readable trend
         return withDateAndDiff
-            .groupBy { (date, _) -> date.year to date.get(WEEK_FIELD) }
-            .toSortedMap(compareBy({ it.first }, { it.second }))
+            .groupBy { (date, _) -> date.isoWeekKey() }
+            .toSortedMap()
             .map { (key, pairs) ->
                 val label = when (interval) {
-                    StatsTimeInterval.DAYS_30 -> context?.getString(R.string.calendar_week_short, key.second)
-                        ?: "CW ${key.second}"
-                    else -> context?.getString(R.string.calendar_week_short_year, key.second, key.first % 100)
-                        ?: "CW ${key.second}/${key.first % 100}"
+                    StatsTimeInterval.DAYS_30 -> context?.getString(R.string.calendar_week_short, key.week)
+                        ?: "CW ${key.week}"
+                    else -> context?.getString(R.string.calendar_week_short_year, key.week, key.year % 100)
+                        ?: "CW ${key.week}/${key.year % 100}"
                 }
                 GradeProgressionPoint(label, pairs.maxOf { it.second })
             }
@@ -370,15 +380,17 @@ object BoardStatsComputer {
     ): PeriodComparison? {
         val days = interval.days ?: return null // No comparison for "ALL"
         val now = LocalDate.now(clock)
-        val currentStart = now.minusDays(days.toLong())
-        val previousStart = currentStart.minusDays(days.toLong())
+        val currentStart = now.minusDays(days.toLong() - 1L)
+        val previousEnd = currentStart.minusDays(1)
+        val previousStart = previousEnd.minusDays(days.toLong() - 1L)
 
         val currentStr = currentStart.toString()
         val previousStr = previousStart.toString()
+        val previousEndStr = previousEnd.toString()
         val nowStr = now.toString()
 
         val current = allAscents.filter { it.climbedAt.take(10) in currentStr..nowStr }
-        val previous = allAscents.filter { it.climbedAt.take(10) in previousStr..currentStr }
+        val previous = allAscents.filter { it.climbedAt.take(10) in previousStr..previousEndStr }
 
         if (current.isEmpty() && previous.isEmpty()) return null
 
@@ -505,8 +517,14 @@ object BoardStatsComputer {
     ): Int {
         if (sessionDates.isEmpty()) return 0
         val toMonday = TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)
-        val weekStarts = sessionDates.map { it.with(toMonday) }.distinct().sorted()
-        val thisWeek = LocalDate.now(clock).with(toMonday)
+        val today = LocalDate.now(clock)
+        val weekStarts = sessionDates
+            .filter { !it.isAfter(today) }
+            .map { it.with(toMonday) }
+            .distinct()
+            .sorted()
+        if (weekStarts.isEmpty()) return 0
+        val thisWeek = today.with(toMonday)
         if (ChronoUnit.DAYS.between(weekStarts.last(), thisWeek) > DAYS_PER_WEEK) return 0
         var streak = 1
         for (i in weekStarts.size - 1 downTo 1) {

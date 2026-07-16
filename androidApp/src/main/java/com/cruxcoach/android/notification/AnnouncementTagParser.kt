@@ -71,7 +71,7 @@ internal object AnnouncementTagParser {
 
         val afterFlag = targetIdx + targetFlag.length
         val nextFlagIdx = content.indexOf(otherFlag, afterFlag)
-        return if (nextFlagIdx > afterFlag) {
+        return if (nextFlagIdx >= afterFlag) {
             content.substring(afterFlag, nextFlagIdx).trim()
         } else {
             content.substring(afterFlag).trim()

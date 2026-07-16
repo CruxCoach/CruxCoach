@@ -64,6 +64,10 @@ object KilterGradeMapper {
     /** Round half-up (matches SQLite ROUND for positive values). */
     private fun roundHalfUp(d: Double): Int = (d + 0.5).toInt()
 
+    /** Largest representable value below a positive exclusive boundary. */
+    private fun justBelow(boundary: Double): Double =
+        Double.fromBits(boundary.toBits() - 1)
+
     fun difficultyToVScale(difficulty: Int): String {
         return DIFFICULTY_TO_VSCALE[difficulty] ?: when {
             difficulty < 10 -> "V0"
@@ -179,19 +183,21 @@ object KilterGradeMapper {
      * Upper filter bound for a grade index.
      *
      * @param frenchMode true = Font-Scale (midpoint boundaries),
-     *                   false = V-Scale (ROUND boundaries: upper + 0.49)
+     *                   false = V-Scale (exclusive ROUND boundary)
      */
     fun indexToFilterMax(index: Int, frenchMode: Boolean = false): Double {
         if (index >= INDEX_TO_DIFFICULTY.lastIndex) return 99.0
         val idx = index.coerceIn(0, INDEX_TO_DIFFICULTY.lastIndex)
         if (frenchMode) {
-            // Midpoint to next index minus epsilon
+            // The next midpoint is exclusive while SQL applies <= maxDiff.
             val nextDiff = INDEX_TO_DIFFICULTY[idx + 1]
-            return (INDEX_TO_DIFFICULTY[idx] + nextDiff) / 2.0 - 0.01
+            return justBelow((INDEX_TO_DIFFICULTY[idx] + nextDiff) / 2.0)
         }
-        // V-Scale: ROUND boundary (grade ends at upper + 0.49)
+        // V-Scale: ROUND boundary is likewise exclusive.
         val vGrade = difficultyToVScale(INDEX_TO_DIFFICULTY[idx].toInt())
-        return (VSCALE_UPPER[vGrade] ?: INDEX_TO_DIFFICULTY[idx].toInt()).toDouble() + 0.49
+        return justBelow(
+            (VSCALE_UPPER[vGrade] ?: INDEX_TO_DIFFICULTY[idx].toInt()).toDouble() + 0.5,
+        )
     }
 
     /**

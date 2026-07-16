@@ -99,12 +99,13 @@ class KilterGradeMapperTest {
 
     @Test
     fun filterBoundaries_vScale_matchRound() {
-        // 6a is unified index 6. V3 covers difficulties 16-17. With ROUND, range is [15.5, 17.49]
+        // 6a is unified index 6. V3 covers difficulties 16-17. With ROUND,
+        // the exact range is [15.5, 17.5).
         val v3Min = KilterGradeMapper.indexToFilterMin(6, frenchMode = false)
         val v3Max = KilterGradeMapper.indexToFilterMax(6, frenchMode = false)
         assertTrue(v3Min <= 15.5, "V3 min should be <= 15.5, was $v3Min")
-        assertTrue(v3Max >= 17.49, "V3 max should be >= 17.49, was $v3Max")
-        assertTrue(v3Max < 17.51, "V3 max should be < 17.51, was $v3Max")
+        assertTrue(v3Max > 17.49, "V3 max should include the whole bucket, was $v3Max")
+        assertTrue(v3Max < 17.5, "V3 max must remain below the next ROUND bucket, was $v3Max")
     }
 
     @Test
@@ -113,6 +114,7 @@ class KilterGradeMapperTest {
         val sixAMax = KilterGradeMapper.indexToFilterMax(6, frenchMode = true)
         val sixAplusMin = KilterGradeMapper.indexToFilterMin(7, frenchMode = true)
         assertTrue(sixAMax < 16.5, "6a max should be < 16.5, was $sixAMax")
+        assertTrue(sixAMax > 16.49, "6a max should not create a dead band, was $sixAMax")
         assertTrue(sixAplusMin >= 16.5, "6a+ min should be >= 16.5, was $sixAplusMin")
     }
 

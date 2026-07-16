@@ -125,4 +125,11 @@ class AnnouncementTagParserTest {
         val content = "Plain text without flags"
         assertEquals("Plain text without flags", AnnouncementTagParser.extractLocalizedContent(content, "en"))
     }
+
+    @Test
+    fun `extractLocalizedContent preserves an empty section between adjacent flags`() {
+        val content = "\uD83C\uDDEC\uD83C\uDDE7\uD83C\uDDE9\uD83C\uDDEA Nur Deutsch"
+        assertEquals("", AnnouncementTagParser.extractLocalizedContent(content, "en"))
+        assertEquals("Nur Deutsch", AnnouncementTagParser.extractLocalizedContent(content, "de"))
+    }
 }
