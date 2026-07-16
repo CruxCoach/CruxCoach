@@ -14,6 +14,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Scan tracked files for secrets
+        run: ./scripts/check_secrets.sh
+
       # Run unit tests BEFORE anything else (signing config copy, APK build,
       # publish) so a regression hard-stops the release pipeline. Pre-fix
       # the workflow built + published without exercising any of the 38

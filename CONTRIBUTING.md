@@ -120,6 +120,24 @@ which keys the build expects without reading the Gradle scripts:
 | [`local.properties.example`](local.properties.example) | `local.properties` | SDK path, release signing keys, fork overrides |
 | [`.env.example`](.env.example) | `.env` | Zapstore publishing credentials (`zsp publish`) — maintainer / fork publishers only |
 
+Before committing, run the redacting credential scan. It reports rule names
+and paths, never matched values:
+
+```bash
+./scripts/check_secrets.sh
+```
+
+To apply the same check automatically to staged content in this checkout,
+enable the repository hook once:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+The release workflow runs the tracked-tree scan before tests, signing, or
+publishing. If a real credential is ever committed, rotate it immediately;
+deleting it in a later commit does not remove it from Git history.
+
 Both target files are gitignored — never commit populated copies.
 
 ### Release signing
