@@ -141,23 +141,6 @@ android {
         unitTests.isIncludeAndroidResources = true
     }
 
-    // Pin OkHttp on the *unit-test* classpath to 4.12.0 so MockWebServer 4.12
-    // resolves the `okhttp3.internal.Util` it expects. Production keeps the
-    // 5.3.2 that quartz-android transitively pulls — only the test runtime
-    // needs the older internals layout. The 5.x-only artifacts (okhttp-android,
-    // okhttp-coroutines) are excluded from test classpaths so they don't drag
-    // 5.x .class files in alongside the forced 4.12 okhttp jar.
-    configurations.matching {
-        it.name.endsWith("UnitTestRuntimeClasspath") ||
-        it.name.endsWith("UnitTestCompileClasspath")
-    }.configureEach {
-        resolutionStrategy {
-            force("com.squareup.okhttp3:okhttp:4.12.0")
-        }
-        exclude(group = "com.squareup.okhttp3", module = "okhttp-android")
-        exclude(group = "com.squareup.okhttp3", module = "okhttp-coroutines")
-    }
-
     buildTypes {
         release {
             signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
@@ -258,12 +241,17 @@ dependencies {
     // ZXing (QR code generation for APK sharing)
     implementation(libs.zxing.core)
 
-    // Nostr NIP-17 crash reporting (quartz requires Jackson for event hashing/signing)
+    // Nostr NIP-17 crash reporting. Keep quartz's untrusted-JSON parser on a
+    // patched, internally aligned Jackson line rather than its stale transitives.
+    implementation(platform(libs.jackson.bom))
     implementation(libs.quartz.android)
     implementation(libs.okhttp)
 
-    // Encrypted SharedPreferences for Nostr key storage
+    // security-crypto is deprecated but retained for the existing on-disk
+    // EncryptedSharedPreferences format. Control its maintained crypto engine
+    // directly until the documented read-old/write-new migration is complete.
     implementation(libs.security.crypto)
+    implementation(libs.tink.android)
     implementation(libs.biometric)
 
     // SQLCipher (needed directly for data migration between plain and encrypted DBs)
@@ -296,11 +284,8 @@ dependencies {
     // the sqlite-JDBC driver invisible to every plain-JVM JDBC test that
     // runs later in the same Gradle worker.
     testImplementation(libs.sqldelight.android.driver)
-    // MockWebServer for KilterApiClient HTTP-error-mapping tests.
-    // Pulls okhttp explicitly on the test classpath so okhttp3.internal.*
-    // is resolvable at test runtime (mockwebserver depends on internals
-    // that the production-only `implementation(okhttp)` doesn't expose
-    // here through the ASM-transformed test runtime).
+    // MockWebServer compatibility facade and the application both resolve the
+    // same OkHttp 5.3.2 runtime; tests must not exercise a different major.
     testImplementation(libs.okhttp)
     testImplementation(libs.okhttp.mockwebserver)
     // Robolectric: Android-framework shim on JVM. Activity lifecycle,

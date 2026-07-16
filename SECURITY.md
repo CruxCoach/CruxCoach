@@ -63,6 +63,18 @@ The following are out of scope:
 - Nostr private key: **EncryptedSharedPreferences** (AES-256-GCM, key in Android Keystore)
 - Board data (community climbs): unencrypted (public data)
 
+`androidx.security:security-crypto` and its `EncryptedSharedPreferences` API are
+deprecated. CruxCoach retains the wrapper only to preserve the encrypted format
+already installed on devices and pins the underlying maintained Tink engine as
+an explicit dependency. Removal requires a fail-safe, read-old/write-new
+migration: decrypt an existing value, write it through a direct Keystore-backed
+AEAD store, verify the new copy, and only then remove the old entry. Both stores
+must refuse destructive recovery while old ciphertext exists. The intended
+replacement is either direct Tink with Android Keystore wrapping or the same
+Keystore-wrapped-DEK pattern used by `SqlCipherKeyManager`; a flag-day format
+change is not acceptable because it could rotate a Nostr identity or discard
+account tokens.
+
 ### Data in Transit
 - Nostr sync: NIP-17 encrypted direct messages
 - Board DB updates: content-addressed via SHA-256 (Blossom protocol)

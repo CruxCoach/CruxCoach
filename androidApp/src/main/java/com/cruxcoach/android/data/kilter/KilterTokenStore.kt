@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import android.util.Log
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import java.io.File
 
 /**
  * Secure storage for Kilter account credentials (refresh token, access token).
@@ -38,16 +39,20 @@ class KilterTokenStore(
     private val prefs: SharedPreferences by lazy { openOrRecreatePrefs() }
 
     private fun openOrRecreatePrefs(): SharedPreferences {
-        return try {
-            createEncryptedPrefs()
-        } catch (e: Exception) {
-            Log.e(TAG, "EncryptedSharedPreferences corrupted, regenerating", e)
-            context.deleteSharedPreferences(prefsFile)
-            createEncryptedPrefs()
-        }
+        val storageFile = File(context.dataDir, "shared_prefs/$prefsFile.xml")
+        return openEncryptedPrefsPreservingExisting(
+            storageFile = storageFile,
+            create = ::createEncryptedPrefs,
+            resetEmptyStore = {
+                Log.w(TAG, "No encrypted credential data exists; creating a fresh store")
+                context.deleteSharedPreferences(prefsFile)
+            },
+        )
     }
 
     private fun createEncryptedPrefs(): SharedPreferences {
+        // Deprecated wrapper retained strictly for the established on-disk
+        // format. Keep Tink patched independently and migrate read-old/write-new.
         val masterKey = MasterKey.Builder(context)
             .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
             .build()
@@ -196,4 +201,25 @@ class KilterTokenStore(
             .remove(keyProductLayoutUuid)
             .apply()
     }
+}
+
+/**
+ * A crypto/provider failure is not evidence that ciphertext is corrupt. Never
+ * turn a transient or upgrade-related open failure into credential loss.
+ */
+internal fun openEncryptedPrefsPreservingExisting(
+    storageFile: File,
+    create: () -> SharedPreferences,
+    resetEmptyStore: () -> Unit,
+): SharedPreferences = try {
+    create()
+} catch (error: Exception) {
+    if (storageFile.exists() && storageFile.length() > 0L) {
+        throw IllegalStateException(
+            "Encrypted credentials are unreadable; refusing to delete existing ciphertext",
+            error,
+        )
+    }
+    resetEmptyStore()
+    create()
 }

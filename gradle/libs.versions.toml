@@ -20,8 +20,10 @@ kotlinx-coroutines = "1.10.2"
 kotlinx-datetime = "0.7.1"
 zxing = "3.5.4"
 quartz = "1.05.1"
-okhttp = "4.12.0"
+okhttp = "5.3.2"
+jackson = "2.22.1"
 security-crypto = "1.1.0"
+tink = "1.23.0"
 appcompat = "1.7.0"
 biometric = "1.1.0"
 mockk = "1.14.9"
@@ -83,6 +85,7 @@ zxing-core = { group = "com.google.zxing", name = "core", version.ref = "zxing" 
 
 # Nostr (NIP-17 crash reporting)
 quartz-android = { group = "com.vitorpamplona.quartz", name = "quartz-android", version.ref = "quartz" }
+jackson-bom = { group = "com.fasterxml.jackson", name = "jackson-bom", version.ref = "jackson" }
 
 # OkHttp (WebSocket for Nostr relay communication)
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
@@ -91,6 +94,7 @@ okhttp-mockwebserver = { group = "com.squareup.okhttp3", name = "mockwebserver",
 
 # Encrypted SharedPreferences
 security-crypto = { group = "androidx.security", name = "security-crypto", version.ref = "security-crypto" }
+tink-android = { group = "com.google.crypto.tink", name = "tink-android", version.ref = "tink" }
 biometric = { group = "androidx.biometric", name = "biometric", version.ref = "biometric" }
 
 # AppCompat (per-app language switching)

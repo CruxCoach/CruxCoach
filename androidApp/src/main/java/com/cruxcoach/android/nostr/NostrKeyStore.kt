@@ -102,6 +102,9 @@ class NostrKeyStore @Inject constructor(
     }
 
     private fun createEncryptedPrefs(): SharedPreferences {
+        // Deprecated wrapper retained strictly to read existing installations.
+        // Its Tink engine is pinned independently; replacement must migrate
+        // read-old/write-new so a user's Nostr identity is never orphaned.
         val masterKey = MasterKey.Builder(context)
             .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
             .build()
