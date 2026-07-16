@@ -190,4 +190,16 @@ class ProfileClassifierTest {
             assertTrue(score in 1.0f..10.0f, "Score out of range: $score")
         }
     }
+
+    @Test
+    fun nonPositiveBodyweightUsesNeutralStrengthScores() {
+        for (weight in listOf(0.0, -1.0, Double.NaN)) {
+            val result = classifier.classify(
+                makeAssessment(hangKg = 80.0, pullupKg = 30.0),
+                makeProfile(weightKg = weight),
+            )
+            assertEquals(5.0f, result.fingerStrength)
+            assertEquals(5.0f, result.upperBodyPull)
+        }
+    }
 }

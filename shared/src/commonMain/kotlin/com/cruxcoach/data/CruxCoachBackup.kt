@@ -114,6 +114,8 @@ object CruxCoachBackup {
             requireIntRange("profile.age", p.age, 1..120)
             requireFinite("profile.weightKg", p.weightKg)
             requireFinite("profile.heightCm", p.heightCm)
+            require(p.weightKg > 0.0) { "invalid backup: profile.weightKg must be positive" }
+            require(p.heightCm > 0.0) { "invalid backup: profile.heightCm must be positive" }
             requireFinite("profile.apeIndex", p.apeIndex)
             requireFinite("profile.climbingYears", p.climbingYears)
             requireIntRange("profile.sessionsPerWeek", p.sessionsPerWeek, 0..21)

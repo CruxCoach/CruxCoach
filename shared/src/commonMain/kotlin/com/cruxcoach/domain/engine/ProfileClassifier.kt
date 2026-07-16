@@ -58,6 +58,7 @@ class ProfileClassifier {
 
     internal fun calculateFingerScore(assessment: Assessment, grade: String, bodyweight: Double): Float {
         val hangKg = assessment.maxHang20mmKg ?: return 5.0f
+        if (!bodyweight.isFinite() || bodyweight <= 0.0) return 5.0f
         val expectedPct = FINGER_STRENGTH_BENCHMARKS[grade] ?: 130f
         val actualPct = (hangKg / bodyweight * 100.0).toFloat()
         return (actualPct / expectedPct * 5.0f).coerceIn(1.0f, 10.0f)
@@ -65,6 +66,7 @@ class ProfileClassifier {
 
     internal fun calculatePullScore(assessment: Assessment, grade: String, bodyweight: Double): Float {
         val pullKg = assessment.weightedPullupKg ?: return 5.0f
+        if (!bodyweight.isFinite() || bodyweight <= 0.0) return 5.0f
         val expectedPct = PULL_STRENGTH_BENCHMARKS[grade] ?: 25f
         if (expectedPct <= 0f) {
             // For grades where 0% is expected, any added weight is above benchmark

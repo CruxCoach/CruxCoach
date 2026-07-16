@@ -32,6 +32,21 @@ class CruxCoachBackupValidationTest {
         assertFailsWith<IllegalArgumentException> { CruxCoachBackup.preview(json) }
     }
 
+    @Test
+    fun rejects_profile_with_non_positive_body_dimensions() {
+        fun profile(weight: String, height: String) = """{
+            "exportedAt":"2026-04-21",
+            "profile":{
+                "name":"Test","age":30,"weightKg":$weight,"heightCm":$height,
+                "maxBoulderGrade":"V4","sessionsPerWeek":3
+            }
+        }"""
+
+        assertFailsWith<IllegalArgumentException> { CruxCoachBackup.preview(profile("0.0", "175.0")) }
+        assertFailsWith<IllegalArgumentException> { CruxCoachBackup.preview(profile("70.0", "-1.0")) }
+        assertFailsWith<IllegalArgumentException> { CruxCoachBackup.preview(profile("NaN", "175.0")) }
+    }
+
     // ── Board ascent validation ──────────────────────────────────
 
     private fun ascent(

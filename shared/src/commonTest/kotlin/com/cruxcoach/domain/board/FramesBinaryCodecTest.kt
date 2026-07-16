@@ -2,6 +2,7 @@ package com.cruxcoach.domain.board
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 
 class FramesBinaryCodecTest {
 
@@ -91,5 +92,41 @@ class FramesBinaryCodecTest {
         assertEquals(18, encoded.size)
         assertEquals(0xFF.toByte(), encoded[0]) // magic byte
         assertEquals(2.toByte(), encoded[1]) // frame count
+    }
+
+    @Test
+    fun unrepresentableEntriesAreDroppedWithoutOverflowOrCorruption() {
+        val text = "p100r12p99999999999r13p200r99999999999p300r14" +
+            "p65536r15p400r254p500r255p600r300"
+
+        assertEquals("p100r12p300r14", FramesBinaryCodec.decode(FramesBinaryCodec.encode(text)))
+    }
+
+    @Test
+    fun placementId65535StillRoundTrips() {
+        roundtrip("p65535r253")
+    }
+
+    @Test
+    fun frameCount255StillRoundTripsAnd256IsRejected() {
+        val max = (0 until 255).joinToString(",") { "p${100 + it}r12" }
+        roundtrip(max)
+
+        val tooMany = (0 until 256).joinToString(",") { "p${100 + it}r12" }
+        assertFailsWith<IllegalArgumentException> { FramesBinaryCodec.encode(tooMany) }
+    }
+
+    @Test
+    fun truncatedOrLyingMultiFrameBlobDecodesOnlyCompletePrefix() {
+        val good = FramesBinaryCodec.encode("p100r42p200r45,x100p300r43")
+        assertEquals("p100r42p200r45", FramesBinaryCodec.decode(good.copyOf(good.size - 4)))
+        assertEquals("", FramesBinaryCodec.decode(byteArrayOf(0xFF.toByte())))
+        assertEquals("", FramesBinaryCodec.decode(byteArrayOf(0xFF.toByte(), 1)))
+        assertEquals(
+            "",
+            FramesBinaryCodec.decode(
+                byteArrayOf(0xFF.toByte(), 1, 0xFF.toByte(), 0x7F, 1, 2, 3),
+            ),
+        )
     }
 }

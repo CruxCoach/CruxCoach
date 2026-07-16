@@ -45,6 +45,13 @@ class SemVerTest {
     }
 
     @Test
+    fun `numeric segments outside Int range are rejected`() {
+        assertNull(SemVer.parseOrNull("2147483648.1.2"))
+        assertNull(SemVer.parseOrNull("1.999999999999999999999.2"))
+        assertNull(SemVer.parseOrNull("1.2.2147483648"))
+    }
+
+    @Test
     fun `whitespace around the tag is tolerated`() {
         assertEquals(SemVer(0, 1, 2), SemVer.parseOrNull("  v0.1.2  "))
     }

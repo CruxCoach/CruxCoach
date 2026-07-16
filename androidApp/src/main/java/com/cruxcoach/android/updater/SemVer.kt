@@ -26,9 +26,9 @@ data class SemVer(
         fun parseOrNull(raw: String): SemVer? {
             val m = STRICT.matchEntire(raw.trim()) ?: return null
             return SemVer(
-                major = m.groupValues[1].toInt(),
-                minor = m.groupValues[2].toInt(),
-                patch = m.groupValues[3].toInt(),
+                major = m.groupValues[1].toIntOrNull() ?: return null,
+                minor = m.groupValues[2].toIntOrNull() ?: return null,
+                patch = m.groupValues[3].toIntOrNull() ?: return null,
             )
         }
     }

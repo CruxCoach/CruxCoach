@@ -21,6 +21,9 @@ object FramesBinaryCodec {
     private const val MULTI_FRAME_MAGIC: Byte = 0xFF.toByte()
     private const val REMOVAL_MARKER: Byte = 0xFE.toByte()
     private const val BYTES_PER_ENTRY = 3
+    private const val MAX_PLACEMENT_ID = 0xFFFF
+    private const val MAX_ROLE_ID = 0xFD
+    private const val MAX_FRAMES = 0xFF
 
     // Three disjoint entry shapes in delta- and range-format frame strings:
     //   p{id}r{role}  — delta-format hold
@@ -37,7 +40,15 @@ object FramesBinaryCodec {
 
         val frames = framesText.split(",")
         if (frames.size == 1) {
-            return encodeSingleFrame(frames[0])
+            val encoded = encodeSingleFrame(frames[0])
+            // A single-frame blob whose first placement-id byte is 0xFF
+            // would be mistaken for the multi-frame magic on decode. Wrap
+            // only that rare shape in the self-describing multi-frame form.
+            return if (encoded.firstOrNull() == MULTI_FRAME_MAGIC) {
+                encodeMultiFrame(frames)
+            } else {
+                encoded
+            }
         }
         return encodeMultiFrame(frames)
     }
@@ -104,6 +115,9 @@ object FramesBinaryCodec {
     // ── Multi-frame encoding ──────────────────────────────────────
 
     private fun encodeMultiFrame(frames: List<String>): ByteArray {
+        require(frames.size <= MAX_FRAMES) {
+            "frames: ${frames.size} exceeds the $MAX_FRAMES-frame wire limit"
+        }
         val frameBlobs = frames.map { encodeSingleFrame(it) }
         // header: 1 (magic) + 1 (count) + 2 * frameCount (lengths)
         val totalSize = 2 + frames.size * 2 + frameBlobs.sumOf { it.size }
@@ -121,13 +135,16 @@ object FramesBinaryCodec {
     }
 
     private fun decodeMultiFrame(blob: ByteArray): String {
+        if (blob.size < 2) return ""
         var pos = 1 // skip magic
         val frameCount = blob[pos++].toInt() and 0xFF
         val sb = StringBuilder()
         for (i in 0 until frameCount) {
+            if (pos + 2 > blob.size) break
             val lenLow = blob[pos++].toInt() and 0xFF
             val lenHigh = blob[pos++].toInt() and 0xFF
             val frameLen = lenLow or (lenHigh shl 8)
+            if (frameLen % BYTES_PER_ENTRY != 0 || frameLen > blob.size - pos) break
             if (i > 0) sb.append(',')
             val frameBlob = blob.copyOfRange(pos, pos + frameLen)
             sb.append(decodeSingleFrame(frameBlob))
@@ -141,12 +158,29 @@ object FramesBinaryCodec {
     private data class Entry(val type: Char, val id: Int, val role: Int)
 
     private fun parseEntries(frame: String): List<Entry> {
-        return ENTRY_REGEX.findAll(frame).map { match ->
+        return ENTRY_REGEX.findAll(frame).mapNotNull { match ->
             val g = match.groupValues
-            when {
-                g[1].isNotEmpty() -> Entry('p', g[1].toInt(), g[2].toInt()) // p{id}r{role}
-                g[3].isNotEmpty() -> Entry('x', g[3].toInt(), 0)            // x{id}
-                else -> Entry('h', g[4].toInt(), g[5].toInt())              // h{id}p{role}
+            val entry = when {
+                g[1].isNotEmpty() -> Entry(
+                    'p',
+                    g[1].toIntOrNull() ?: return@mapNotNull null,
+                    g[2].toIntOrNull() ?: return@mapNotNull null,
+                )
+                g[3].isNotEmpty() -> Entry(
+                    'x',
+                    g[3].toIntOrNull() ?: return@mapNotNull null,
+                    0,
+                )
+                else -> Entry(
+                    'h',
+                    g[4].toIntOrNull() ?: return@mapNotNull null,
+                    g[5].toIntOrNull() ?: return@mapNotNull null,
+                )
+            }
+
+            entry.takeIf {
+                it.id in 0..MAX_PLACEMENT_ID &&
+                    (it.type == 'x' || it.role in 0..MAX_ROLE_ID)
             }
         }.toList()
     }
