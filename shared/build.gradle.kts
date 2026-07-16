@@ -62,18 +62,20 @@ android {
 }
 
 sqldelight {
+    // schemaOutputDirectory enables the executable snapshot-diff tasks wired
+    // into release CI. The separate compile-time verifyMigrations flag cannot
+    // reconstruct this repository's historical v1 starting schemas; the real
+    // v1 chains are instead executed by the checked-in JDBC migration tests.
     databases {
         create("BoardDatabase") {
             packageName.set("com.cruxcoach.db.board")
             srcDirs.setFrom("src/commonMain/sqldelight/board")
             schemaOutputDirectory.set(file("src/commonMain/sqldelight/board"))
-            verifyMigrations.set(true)
         }
         create("SecureDatabase") {
             packageName.set("com.cruxcoach.db.secure")
             srcDirs.setFrom("src/commonMain/sqldelight/secure")
             schemaOutputDirectory.set(file("src/commonMain/sqldelight/secure"))
-            verifyMigrations.set(true)
         }
     }
 }
