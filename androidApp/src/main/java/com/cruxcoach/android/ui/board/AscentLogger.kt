@@ -7,6 +7,7 @@ import com.cruxcoach.data.repository.AscentWithClimb
 import com.cruxcoach.data.repository.PersonalBoardRepository
 import com.cruxcoach.util.DateTimeUtil
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
@@ -28,7 +29,10 @@ internal class AscentLogger(
     private val zoneManager: IntensityZoneManager,
     private val climbNavState: ClimbNavigationState,
     private val currentClimbUuid: () -> String,
-    private val onAscentSaved: (isSend: Boolean) -> Unit
+    private val onAscentSaved: (isSend: Boolean) -> Unit,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val nowIso: () -> String = DateTimeUtil::nowIso,
+    private val newUuid: () -> String = { UUID.randomUUID().toString() },
 ) {
 
     fun showDialog() {
@@ -63,7 +67,7 @@ internal class AscentLogger(
         val climbUuid = currentClimbUuid()
 
         scope.launch {
-            withContext(Dispatchers.IO) {
+            withContext(ioDispatcher) {
                 if (editUuid != null) {
                     // Route by entry type: a bid lives in the bids table, so
                     // updateAscent (ascents table) would match zero rows and
@@ -83,8 +87,8 @@ internal class AscentLogger(
                         )
                     }
                 } else {
-                    val uuid = UUID.randomUUID().toString()
-                    val now = DateTimeUtil.nowIso()
+                    val uuid = newUuid()
+                    val now = nowIso()
                     if (form.isSend) {
                         personalBoardRepo.insertAscent(
                             uuid = uuid,
@@ -176,7 +180,7 @@ internal class AscentLogger(
         val entry = state.value.userAscents.find { it.uuid == uuid }
         val climbUuid = currentClimbUuid()
         scope.launch {
-            withContext(Dispatchers.IO) {
+            withContext(ioDispatcher) {
                 if (entry?.isSend == false) personalBoardRepo.deleteBid(uuid)
                 else personalBoardRepo.deleteAscent(uuid)
                 val updatedAscents = personalBoardRepo.getUserHistoryForClimb(climbUuid)
