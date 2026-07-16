@@ -94,10 +94,11 @@ The following are out of scope:
   published, an event with that signature on a relay is permanent —
   relays do not delete on request.
 - **Ingest is verified.** Every incoming Kind-30078 community-climb event
-  is parsed via Quartz `Event.fromJson` (recomputes the canonical event
-  id) and rejected unless `verifySignature()` passes. Events whose d-tag
-  prefix or content `pubkey_prefix` field claims a different author than
-  the signed pubkey are dropped. A uuid already owned by author A
+  is parsed via Quartz `Event.fromJson` and rejected unless both
+  `verifySignature()` and `verifyId()` pass. The latter recomputes the
+  canonical event id and binds the signature to the event body. Events whose
+  d-tag prefix or content `pubkey_prefix` field claims a different author
+  than the signed pubkey are dropped. A uuid already owned by author A
   cannot be overwritten by an event from author B (first-author wins).
   Without these guards a relay (or MITM on a non-TLS connection) could
   spoof events under any pubkey or clobber legitimate climbs.

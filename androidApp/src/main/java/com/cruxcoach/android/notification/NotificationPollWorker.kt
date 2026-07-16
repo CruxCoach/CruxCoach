@@ -17,10 +17,12 @@ import com.cruxcoach.android.data.NostrMessageRepository
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.nostr.NostrConfig
 import com.cruxcoach.android.nostr.NostrEventDecryptor
+import com.cruxcoach.android.nostr.NostrEventPolicy
 import com.cruxcoach.android.nostr.NostrRelayPool
 import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.android.nostr.OfflineQueueManager
 import com.vitorpamplona.quartz.nip01Core.core.Event
+import com.vitorpamplona.quartz.nip01Core.crypto.verifyId
 import com.vitorpamplona.quartz.nip01Core.crypto.verifySignature
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
@@ -80,8 +82,17 @@ class NotificationPollWorker @AssistedInject constructor(
             try {
                 val event = Event.fromJson(json)
 
-                if (event.pubKey != NostrConfig.DEV_PUBKEY) continue
-                if (!event.verifySignature()) continue
+                val signatureValid = event.verifySignature()
+                val idValid = signatureValid && event.verifyId()
+                if (!NostrEventPolicy.accepts(
+                        actualPubkey = event.pubKey,
+                        actualKind = event.kind,
+                        expectedPubkey = NostrConfig.DEV_PUBKEY,
+                        expectedKind = 1,
+                        signatureValid = signatureValid,
+                        idValid = idValid,
+                    )
+                ) continue
 
                 if (!AnnouncementTagParser.isAnnouncement(event.tags)) continue
 

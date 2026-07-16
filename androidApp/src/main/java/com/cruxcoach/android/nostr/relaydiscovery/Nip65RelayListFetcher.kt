@@ -15,7 +15,9 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.long
 import com.vitorpamplona.quartz.nip01Core.core.Event
+import com.vitorpamplona.quartz.nip01Core.crypto.verifyId
 import com.vitorpamplona.quartz.nip01Core.crypto.verifySignature
+import com.cruxcoach.android.nostr.NostrEventPolicy
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -159,9 +161,16 @@ class Nip65RelayListFetcher @Inject constructor(
                     // only an actually forged event fails here.
                     val verified = try {
                         val quartzEvent = Event.fromJson(eventElement.toString())
-                        quartzEvent.pubKey == expectedPubkey &&
-                            quartzEvent.kind == 10002 &&
-                            quartzEvent.verifySignature()
+                        val signatureValid = quartzEvent.verifySignature()
+                        val idValid = signatureValid && quartzEvent.verifyId()
+                        NostrEventPolicy.accepts(
+                            actualPubkey = quartzEvent.pubKey,
+                            actualKind = quartzEvent.kind,
+                            expectedPubkey = expectedPubkey,
+                            expectedKind = 10002,
+                            signatureValid = signatureValid,
+                            idValid = idValid,
+                        )
                     } catch (_: Exception) {
                         false
                     }

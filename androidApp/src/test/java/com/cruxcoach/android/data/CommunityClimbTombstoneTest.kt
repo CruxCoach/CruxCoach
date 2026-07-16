@@ -13,6 +13,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /**
  * Regression tests for the tombstone path on community climbs:
@@ -313,6 +314,63 @@ class CommunityClimbTombstoneTest {
         assertEquals("Test", r.name, "real row's name untouched by shell INSERT OR IGNORE")
         assertEquals(authorA, r.created_by_pubkey, "real row's author untouched")
         assertEquals(0L, r.is_deleted, "shell did not flip is_deleted (real row's value preserved)")
+    }
+
+    @Test
+    fun `foreign shell is removable so genuine author can reclaim uuid`() {
+        insertTombstoneShell("target", authorB, "cruxcoach:climb:${authorB.take(8)}:target")
+
+        assertNotNull(
+            db.boardQueries.isForeignTombstoneShell(
+                uuid = "target",
+                incoming_pubkey = authorA,
+            ).executeAsOneOrNull(),
+        )
+        db.boardQueries.deleteForeignTombstoneShell(
+            uuid = "target",
+            incoming_pubkey = authorA,
+        )
+
+        assertNull(rowFor("target"), "attacker-owned synthetic shell no longer squats the uuid")
+        insertCommunityRow("target", authorA)
+        assertEquals(authorA, rowFor("target")!!.created_by_pubkey)
+    }
+
+    @Test
+    fun `same-author shell remains and continues to absorb original replays`() {
+        insertTombstoneShell("target", authorA, "cruxcoach:climb:${authorA.take(8)}:target")
+
+        assertNull(
+            db.boardQueries.isForeignTombstoneShell(
+                uuid = "target",
+                incoming_pubkey = authorA,
+            ).executeAsOneOrNull(),
+        )
+        db.boardQueries.deleteForeignTombstoneShell(
+            uuid = "target",
+            incoming_pubkey = authorA,
+        )
+
+        assertNotNull(rowFor("target"), "the author's legitimate deletion memorial must remain")
+        assertTrue(isTombstoned("target"))
+    }
+
+    @Test
+    fun `real deleted climb is never mistaken for a removable shell`() {
+        insertCommunityRow("target", authorB)
+        db.boardQueries.markCommunityClimbDeleted(
+            uuid = "target",
+            pubkey = authorB,
+            tombstone_iso = "2026-05-04T13:00:00Z",
+        )
+
+        db.boardQueries.deleteForeignTombstoneShell(
+            uuid = "target",
+            incoming_pubkey = authorA,
+        )
+
+        assertEquals(authorB, rowFor("target")!!.created_by_pubkey)
+        assertTrue(isTombstoned("target"))
     }
 
     // ── Combined absorbTombstone semantics ──────────────────────────

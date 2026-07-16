@@ -1494,6 +1494,43 @@ SELECT 1 FROM climbs
 WHERE uuid = :uuid AND is_deleted = 1
 LIMIT 1;
 
+-- A pre-emptive Kind-5 deletion is represented as a minimal shell so it can
+-- absorb a late original event. Because uuid is the table PK, a hostile author
+-- can otherwise squat a victim's public uuid with a shell under the attacker's
+-- own d-tag. These predicates identify only synthetic shells (never a real
+-- deleted climb) and let the genuine, differently-authored event reclaim the
+-- slot. Same-author shells remain durable and continue to absorb replays.
+isForeignTombstoneShell:
+SELECT 1 FROM climbs
+WHERE uuid = :uuid
+  AND is_deleted = 1
+  AND is_listed = 0
+  AND layout_id = 0
+  AND setter_username IS NULL
+  AND name = ''
+  AND nostr_event_id IS NULL
+  AND source = 'nostr'
+  AND sync_status = 'deleted'
+  AND origin = 'cruxcoach'
+  AND created_by_pubkey IS NOT NULL
+  AND created_by_pubkey != :incoming_pubkey
+LIMIT 1;
+
+deleteForeignTombstoneShell:
+DELETE FROM climbs
+WHERE uuid = :uuid
+  AND is_deleted = 1
+  AND is_listed = 0
+  AND layout_id = 0
+  AND setter_username IS NULL
+  AND name = ''
+  AND nostr_event_id IS NULL
+  AND source = 'nostr'
+  AND sync_status = 'deleted'
+  AND origin = 'cruxcoach'
+  AND created_by_pubkey IS NOT NULL
+  AND created_by_pubkey != :incoming_pubkey;
+
 -- Cross-device defence: when a Kind-5 deletion (or Kind-30078 tombstone-
 -- replacement) lands on a device that *never* had the original climb,
 -- there's no row to flip and L3's is_deleted=1 absorption fires nowhere.
