@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -44,6 +45,14 @@ fun BoardClimbHistoryScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showDeleteSelectedConfirm by remember { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
+    val context = LocalContext.current
+
+    LaunchedEffect(state.userMessage) {
+        val message = state.userMessage ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(context.getString(message))
+        viewModel.consumeUserMessage()
+    }
 
     if (showDeleteSelectedConfirm) {
         val count = state.selectedIds.size
@@ -70,6 +79,7 @@ fun BoardClimbHistoryScreen(
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             Column {
                 TopAppBar(
@@ -159,10 +169,10 @@ fun BoardClimbHistoryScreen(
 }
 
 private val retentionOptions = listOf(
-    HistoryRetention.OFF to "Aus",
-    HistoryRetention.DAYS_30 to "30 Tage",
-    HistoryRetention.DAYS_90 to "90 Tage",
-    HistoryRetention.DAYS_365 to "365 Tage",
+    HistoryRetention.OFF to R.string.history_retention_off,
+    HistoryRetention.DAYS_30 to R.string.history_retention_30,
+    HistoryRetention.DAYS_90 to R.string.history_retention_90,
+    HistoryRetention.DAYS_365 to R.string.history_retention_365,
 )
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -177,11 +187,11 @@ private fun RetentionSelectorRow(
             .padding(horizontal = 16.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        retentionOptions.forEach { (retention, label) ->
+        retentionOptions.forEach { (retention, labelRes) ->
             FilterChip(
                 selected = selected == retention,
                 onClick = { onSelect(retention) },
-                label = { Text(label) },
+                label = { Text(stringResource(labelRes)) },
                 colors = FilterChipDefaults.filterChipColors(
                     selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
                     selectedLabelColor = OrangeAccent

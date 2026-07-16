@@ -157,7 +157,7 @@ class WifiDirectHotspot(context: Context) {
                     wifiP2pManager.createGroup(ch, listener)
                 }
             } catch (e: Exception) {
-                failureLog.add("P2P exception: ${e.message}")
+                failureLog.add("P2P exception: ${e.javaClass.simpleName}")
                 Log.e(TAG, "createGroup exception", e)
                 tryLocalOnlyHotspot(onStarted, onError)
             }
@@ -292,7 +292,7 @@ class WifiDirectHotspot(context: Context) {
                 }
             }, handler)
         } catch (e: Exception) {
-            failureLog.add("LOH exception: ${e.message}")
+            failureLog.add("LOH exception: ${e.javaClass.simpleName}")
             Log.e(TAG, "LocalOnlyHotspot exception", e)
             reportFinalError(onError)
         }
@@ -302,15 +302,14 @@ class WifiDirectHotspot(context: Context) {
 
     private fun reportFinalError(onError: (String) -> Unit) {
         val details = failureLog.joinToString("\n")
-        val msg = appContext.getString(
-            R.string.hotspot_start_failed,
-            Build.VERSION.SDK_INT,
-            wifiManager?.isWifiEnabled.toString(),
-            details
+        Log.w(
+            TAG,
+            "Hotspot start failed: api=${Build.VERSION.SDK_INT} " +
+                "wifi=${wifiManager?.isWifiEnabled} attempts=${details.replace('\n', ';')}",
         )
         releaseLocks()
         closeChannel()
-        onError(msg)
+        onError(appContext.getString(R.string.hotspot_start_failed))
     }
 
     private fun acquireLocks() {

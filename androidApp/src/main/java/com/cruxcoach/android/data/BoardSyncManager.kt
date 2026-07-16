@@ -1018,7 +1018,7 @@ class BoardSyncManager(
                 _state.update { it.copy(
                     isSyncing = false,
                     importStep = null,
-                    errorMessage = "Lokaler Import fehlgeschlagen: ${e.message}"
+                    errorMessage = appContext.getString(R.string.board_sync_local_import_failed)
                 ) }
             } finally {
                 tempFile.delete()

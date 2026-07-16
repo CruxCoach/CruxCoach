@@ -36,6 +36,7 @@ data class BoardFilterOption(val brandWire: String, val layoutKey: Long, val cou
 
 data class BoardListDetailState(
     val isLoading: Boolean = true,
+    val loadFailed: Boolean = false,
     val listId: Long = 0,
     val listName: String = "",
     /** Entries currently shown — the full set narrowed by [selectedFilters]. */
@@ -102,32 +103,40 @@ class BoardListDetailViewModel @Inject constructor(
 
     private fun loadList() {
         viewModelScope.safeLaunch(TAG) {
-            withContext(Dispatchers.IO) {
-                val list = personalBoardRepo.getClimbListById(listId)
-                val angle = _state.value.angle
-                val resolved = resolveAllEntries(angle)
-                allEntries = resolved
-                val savedCount = personalBoardRepo.countClimbListEntries(listId)
-                val filters = buildBoardFilters(resolved)
-                _state.update { s ->
-                    // Re-map active filters onto the refreshed options (updates
-                    // counts; drops ones whose board no longer exists).
-                    val sel = s.selectedFilters
-                        .mapNotNull { prev -> filters.firstOrNull { it.matchesKey(prev) } }
-                        .toSet()
-                    s.copy(
-                        isLoading = false,
-                        listName = list?.name ?: "",
-                        // True saved count; resolved may be smaller when an
-                        // entry's board catalogue isn't downloaded — that gap is
-                        // surfaced via unavailableCount, never silently dropped.
-                        totalCount = savedCount,
-                        unavailableCount = (savedCount - resolved.size).coerceAtLeast(0).toInt(),
-                        boardFilters = filters,
-                        selectedFilters = sel,
-                        entries = applyFilter(resolved, sel),
-                    )
+            _state.update { it.copy(isLoading = true, loadFailed = false) }
+            try {
+                withContext(Dispatchers.IO) {
+                    val list = personalBoardRepo.getClimbListById(listId)
+                    val angle = _state.value.angle
+                    val resolved = resolveAllEntries(angle)
+                    allEntries = resolved
+                    val savedCount = personalBoardRepo.countClimbListEntries(listId)
+                    val filters = buildBoardFilters(resolved)
+                    _state.update { s ->
+                        // Re-map active filters onto the refreshed options (updates
+                        // counts; drops ones whose board no longer exists).
+                        val sel = s.selectedFilters
+                            .mapNotNull { prev -> filters.firstOrNull { it.matchesKey(prev) } }
+                            .toSet()
+                        s.copy(
+                            isLoading = false,
+                            loadFailed = false,
+                            listName = list?.name ?: "",
+                            // True saved count; resolved may be smaller when an
+                            // entry's board catalogue isn't downloaded — that gap is
+                            // surfaced via unavailableCount, never silently dropped.
+                            totalCount = savedCount,
+                            unavailableCount = (savedCount - resolved.size).coerceAtLeast(0).toInt(),
+                            boardFilters = filters,
+                            selectedFilters = sel,
+                            entries = applyFilter(resolved, sel),
+                        )
+                    }
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                _state.update { it.copy(isLoading = false, loadFailed = true) }
             }
         }
     }

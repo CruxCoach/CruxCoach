@@ -898,7 +898,10 @@ class BoardClimbDetailViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _state.update { it.copy(isLoading = false, error = e.message) }
+                Log.w(TAG, "Climb detail load failed", e)
+                _state.update {
+                    it.copy(isLoading = false, error = context.getString(R.string.board_detail_error))
+                }
             }
         }
     }

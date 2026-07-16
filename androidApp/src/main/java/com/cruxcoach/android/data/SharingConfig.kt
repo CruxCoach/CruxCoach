@@ -1,5 +1,6 @@
 package com.cruxcoach.android.data
 
+import com.cruxcoach.android.util.safeLaunch
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -7,7 +8,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -28,11 +28,15 @@ class SharingConfig @Inject constructor(
     val allowRemoteDisconnect: StateFlow<Boolean> = _allowRemoteDisconnect.asStateFlow()
 
     init {
-        scope.launch {
+        scope.safeLaunch(TAG) {
             userPreferences.nearbyClimbSharing.collect { value -> _sharingEnabled.update { value } }
         }
-        scope.launch {
+        scope.safeLaunch(TAG) {
             userPreferences.allowRemoteDisconnect.collect { value -> _allowRemoteDisconnect.update { value } }
         }
+    }
+
+    private companion object {
+        const val TAG = "SharingConfig"
     }
 }

@@ -55,11 +55,17 @@ class CommunityPublishRetryWorker @AssistedInject constructor(
     private val userPreferences: UserPreferences,
 ) : CoroutineWorker(appContext, workerParams) {
 
-    override suspend fun doWork(): androidx.work.ListenableWorker.Result =
+    override suspend fun doWork(): androidx.work.ListenableWorker.Result = try {
         CommunityPublishDrainGate.tryRun { drainQueue() }
             ?: androidx.work.ListenableWorker.Result.success().also {
                 Log.i(TAG, "skip: another Nostr retry drain is already in flight")
             }
+    } catch (e: kotlinx.coroutines.CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Log.w(TAG, "worker pre-flight failed; retrying", e)
+        androidx.work.ListenableWorker.Result.retry()
+    }
 
     private suspend fun drainQueue(): androidx.work.ListenableWorker.Result {
         val pubkey = runCatching { nostrSigner.getPublicKeyHex() }.getOrNull()

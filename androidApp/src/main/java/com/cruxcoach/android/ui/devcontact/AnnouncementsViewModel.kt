@@ -8,6 +8,7 @@ import com.cruxcoach.android.nostr.NostrConfig
 import com.cruxcoach.android.nostr.NostrEventPolicy
 import com.cruxcoach.android.nostr.NostrRelayPool
 import com.cruxcoach.android.notification.AnnouncementTagParser
+import com.cruxcoach.android.util.safeLaunch
 import com.cruxcoach.db.secure.Announcements
 import com.vitorpamplona.quartz.nip01Core.core.Event
 import com.vitorpamplona.quartz.nip01Core.crypto.verifyId
@@ -19,7 +20,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
@@ -53,24 +53,28 @@ class AnnouncementsViewModel @Inject constructor(
     }
 
     fun loadAnnouncements() {
-        viewModelScope.launch {
-            val announcements = withContext(Dispatchers.IO) {
-                announcementRepository.getAll()
-            }
-            val unread = withContext(Dispatchers.IO) {
-                announcementRepository.getUnreadCount()
-            }
-            _state.update { s ->
-                s.copy(
-                    announcements = announcements.map { it.toUi() },
-                    unreadCount = unread.toInt()
-                )
-            }
+        viewModelScope.safeLaunch(TAG) {
+            loadAnnouncementsNow()
+        }
+    }
+
+    private suspend fun loadAnnouncementsNow() {
+        val announcements = withContext(Dispatchers.IO) {
+            announcementRepository.getAll()
+        }
+        val unread = withContext(Dispatchers.IO) {
+            announcementRepository.getUnreadCount()
+        }
+        _state.update { s ->
+            s.copy(
+                announcements = announcements.map { it.toUi() },
+                unreadCount = unread.toInt(),
+            )
         }
     }
 
     private fun startSubscription() {
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             val filter = """{"kinds":[1],"authors":["${NostrConfig.DEV_PUBKEY}"]}"""
             relayPool.subscribe(filter).collect { json ->
                 try {
@@ -101,7 +105,9 @@ class AnnouncementsViewModel @Inject constructor(
                             createdAt = event.createdAt * 1000
                         )
                     }
-                    loadAnnouncements()
+                    loadAnnouncementsNow()
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     Log.w(TAG, "Failed to process announcement", e)
                 }
@@ -111,16 +117,19 @@ class AnnouncementsViewModel @Inject constructor(
 
     fun refresh() {
         _state.update { it.copy(isRefreshing = true) }
-        viewModelScope.launch {
-            loadAnnouncements()
-            _state.update { it.copy(isRefreshing = false) }
+        viewModelScope.safeLaunch(TAG) {
+            try {
+                loadAnnouncementsNow()
+            } finally {
+                _state.update { it.copy(isRefreshing = false) }
+            }
         }
     }
 
     fun markAsRead(id: String) {
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             withContext(Dispatchers.IO) { announcementRepository.markRead(id) }
-            loadAnnouncements()
+            loadAnnouncementsNow()
         }
     }
 

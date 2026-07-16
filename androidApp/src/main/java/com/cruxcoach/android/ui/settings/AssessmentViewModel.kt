@@ -2,6 +2,7 @@ package com.cruxcoach.android.ui.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.cruxcoach.android.util.safeLaunch
 import com.cruxcoach.data.repository.UserRepository
 import com.cruxcoach.domain.model.Assessment
 import com.cruxcoach.util.DateTimeUtil
@@ -38,7 +39,7 @@ class AssessmentViewModel @Inject constructor(
     }
 
     private fun loadExisting() {
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             withContext(Dispatchers.IO) {
                 val profile = userRepository.getActiveProfile() ?: return@withContext
                 val existing = userRepository.getLatestAssessment(profile.id) ?: return@withContext
@@ -85,9 +86,15 @@ class AssessmentViewModel @Inject constructor(
                 }
                 _state.update { it.copy(isSaving = false) }
                 onComplete()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _state.update { it.copy(isSaving = false, error = e.message) }
             }
         }
+    }
+
+    private companion object {
+        const val TAG = "AssessmentVM"
     }
 }

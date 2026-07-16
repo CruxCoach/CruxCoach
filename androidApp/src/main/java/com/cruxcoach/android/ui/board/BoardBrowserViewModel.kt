@@ -482,7 +482,7 @@ class BoardBrowserViewModel @Inject constructor(
                 // changes. The shared board picker persists the new selection
                 // from any screen; observe the board prefs directly so the
                 // browser reflects it (race-free, unlike a post-confirm callback).
-                launch {
+                viewModelScope.safeLaunch(TAG) {
                     combine(
                         userPreferences.boardBrand,
                         userPreferences.boardLayoutId,
@@ -507,15 +507,19 @@ class BoardBrowserViewModel @Inject constructor(
                         }
                 }
                 // Eagerly load status UUIDs in background (non-blocking)
-                launch(Dispatchers.IO) {
-                    PerfLogger.traceSuspend("ensureStatusLoaded") { ensureStatusLoaded() }
+                viewModelScope.safeLaunch(TAG) {
+                    withContext(Dispatchers.IO) {
+                        PerfLogger.traceSuspend("ensureStatusLoaded") { ensureStatusLoaded() }
+                    }
                 }
                 // Live updates for grade scale changes
-                launch {
+                viewModelScope.safeLaunch(TAG) {
                     userPreferences.gradeScale.collect { s ->
                         _state.update { it.copy(gradeScale = s) }
                     }
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 android.util.Log.w("BoardBrowserVM", "init failed; rendering empty list", e)
                 _state.update { it.copy(isLoading = false) }

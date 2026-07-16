@@ -3,8 +3,10 @@ package com.cruxcoach.android.data
 import android.content.Context
 import androidx.datastore.core.DataMigration
 import androidx.datastore.core.DataStore
+import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
@@ -20,8 +22,12 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
+internal fun emptyPreferencesCorruptionHandler() =
+    ReplaceFileCorruptionHandler<Preferences> { emptyPreferences() }
+
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(
     name = "cruxcoach_prefs",
+    corruptionHandler = emptyPreferencesCorruptionHandler(),
     produceMigrations = { listOf(boardGradeScaleMigrationV1) },
 )
 

@@ -22,6 +22,7 @@ import kotlinx.datetime.minus
 import kotlinx.datetime.toLocalDateTime
 import javax.inject.Inject
 import com.cruxcoach.android.util.safeLaunch
+import com.cruxcoach.android.R
 
 data class BoardClimbHistoryState(
     val entries: List<ClimbHistoryEntry> = emptyList(),
@@ -32,6 +33,7 @@ data class BoardClimbHistoryState(
     /** Ids of entries the user has ticked for single/multi-select delete.
      *  Empty = no selection (cards just navigate on tap). */
     val selectedIds: Set<Long> = emptySet(),
+    @androidx.annotation.StringRes val userMessage: Int? = null,
 ) {
     val hasSelection: Boolean get() = selectedIds.isNotEmpty()
     val allSelected: Boolean get() = entries.isNotEmpty() && selectedIds.size == entries.size
@@ -93,6 +95,7 @@ class BoardClimbHistoryViewModel @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 Log.w(TAG, "setRetention failed value=$retention", e)
+                _state.update { it.copy(userMessage = R.string.history_retention_failed) }
             }
         }
     }
@@ -105,6 +108,7 @@ class BoardClimbHistoryViewModel @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 Log.w(TAG, "clearHistory failed", e)
+                _state.update { it.copy(userMessage = R.string.history_delete_failed) }
             }
         }
     }
@@ -143,6 +147,7 @@ class BoardClimbHistoryViewModel @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 Log.w(TAG, "deleteSelected failed count=${ids.size}", e)
+                _state.update { it.copy(userMessage = R.string.history_delete_failed) }
             }
         }
     }
@@ -156,8 +161,13 @@ class BoardClimbHistoryViewModel @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 Log.w(TAG, "pruneToRetention failed days=${retention.days}", e)
+                _state.update { it.copy(userMessage = R.string.history_prune_failed) }
             }
         }
+    }
+
+    fun consumeUserMessage() {
+        _state.update { it.copy(userMessage = null) }
     }
 
     /** "now minus [days] days" as an ISO LocalDateTime string in the exact

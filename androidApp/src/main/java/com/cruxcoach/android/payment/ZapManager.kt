@@ -76,6 +76,8 @@ class ZapManager @Inject constructor(
                 ?: return ZapResult.Error("Failed to fetch lightning invoice")
 
             ZapResult.Invoice(invoice)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Failed to create payment request (${e.javaClass.simpleName})")
             ZapResult.Error("Payment request failed")

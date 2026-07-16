@@ -1,6 +1,7 @@
 package com.cruxcoach.android.notification
 
 import android.content.Context
+import android.util.Log
 import androidx.hilt.work.HiltWorker
 import androidx.work.*
 import com.cruxcoach.android.R
@@ -19,7 +20,7 @@ class TrainingReminderWorker @AssistedInject constructor(
     private val notificationService: AppNotificationService
 ) : CoroutineWorker(appContext, workerParams) {
 
-    override suspend fun doWork(): Result {
+    override suspend fun doWork(): Result = try {
         val profile = userRepository.getActiveProfile() ?: return Result.success()
 
         planRepository.getActivePlan(profile.id) ?: return Result.success()
@@ -40,10 +41,16 @@ class TrainingReminderWorker @AssistedInject constructor(
             )
         }
 
-        return Result.success()
+        Result.success()
+    } catch (e: kotlinx.coroutines.CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Log.w(TAG, "Training reminder failed; retrying", e)
+        Result.retry()
     }
 
     companion object {
+        private const val TAG = "TrainingReminder"
         const val WORK_NAME = "training_reminder_daily"
 
         fun schedule(context: Context) {

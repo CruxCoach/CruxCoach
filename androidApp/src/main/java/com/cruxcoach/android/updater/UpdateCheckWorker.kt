@@ -34,7 +34,7 @@ class UpdateCheckWorker @AssistedInject constructor(
     private val repository: UpdaterRepository,
 ) : CoroutineWorker(context, params) {
 
-    override suspend fun doWork(): Result {
+    override suspend fun doWork(): Result = try {
         if (!repository.selfUpdateAllowed()) {
             Log.i(TAG, "event=periodic_check outcome=skipped reason=install_source_gated")
             return Result.success()
@@ -49,7 +49,12 @@ class UpdateCheckWorker @AssistedInject constructor(
             is UpdateChecker.CheckOutcome.Update -> "update:${outcome.info.versionName}"
         }
         Log.i(TAG, "event=periodic_check outcome=$outcomeName")
-        return if (outcome is UpdateChecker.CheckOutcome.Error) Result.retry() else Result.success()
+        if (outcome is UpdateChecker.CheckOutcome.Error) Result.retry() else Result.success()
+    } catch (e: kotlinx.coroutines.CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Log.w(TAG, "event=periodic_check outcome=preflight_error_retry", e)
+        Result.retry()
     }
 
     companion object {

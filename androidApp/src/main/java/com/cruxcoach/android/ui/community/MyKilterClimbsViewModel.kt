@@ -16,8 +16,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.cruxcoach.android.util.safeLaunch
 
 /** Status bucket of a "Meine Climbs" row — drives both the section it
  *  lands in and the trailing affordance (badge vs claim/publish button). */
@@ -56,6 +56,7 @@ data class MyClimbItem(
 
 data class MyKilterClimbsState(
     val isLoading: Boolean = true,
+    val loadFailed: Boolean = false,
     /** False when no Kilter account is connected — gates the empty-state
      *  copy and the meaning of an empty "imported" section. */
     val hasKilterConnection: Boolean = true,
@@ -95,7 +96,8 @@ class MyKilterClimbsViewModel @Inject constructor(
     }
 
     fun refresh() {
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
+            _state.update { it.copy(isLoading = true, loadFailed = false) }
             try {
                 val result = withContext(Dispatchers.IO) {
                     val connected = ownClimbPublisher.hasConnectedKilterAccount()
@@ -121,6 +123,7 @@ class MyKilterClimbsViewModel @Inject constructor(
                 _state.update {
                     it.copy(
                         isLoading = false,
+                        loadFailed = false,
                         hasKilterConnection = result.first,
                         hasNostrIdentity = result.second,
                         climbs = result.third,
@@ -130,7 +133,7 @@ class MyKilterClimbsViewModel @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 Log.w(TAG, "refresh failed", e)
-                _state.update { it.copy(isLoading = false) }
+                _state.update { it.copy(isLoading = false, loadFailed = true) }
             }
         }
     }
@@ -185,11 +188,16 @@ class MyKilterClimbsViewModel @Inject constructor(
     private fun doPublish(uuid: String, setterGradeId: Int) {
         if (_state.value.publishingUuid != null) return
         _state.update { it.copy(publishingUuid = uuid) }
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             val outcome = withContext(Dispatchers.IO) {
-                runCatching { ownClimbPublisher.publish(uuid, setterGradeId) }
-                    .onFailure { Log.w(TAG, "publish threw uuid=$uuid", it) }
-                    .getOrNull()
+                try {
+                    ownClimbPublisher.publish(uuid, setterGradeId)
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.w(TAG, "publish threw", e)
+                    null
+                }
             }
             val feedback = when (outcome) {
                 is OwnKilterClimbPublisher.Outcome.Published -> OwnPublishFeedback.Published

@@ -29,7 +29,7 @@ data class SettersListState(
     /** Non-null after a DB read fails — distinguishes "no setters yet"
      *  from "the read threw and we're showing nothing because of a bug".
      *  UI surfaces this as an inline error card with a retry button. */
-    val errorMessage: String? = null,
+    val loadFailed: Boolean = false,
 )
 
 @HiltViewModel
@@ -50,35 +50,28 @@ class SettersListViewModel @Inject constructor(
     /** Re-count for the (possibly changed) active board on resume. */
     fun refresh() = load()
 
-    fun clearError() = _state.update { it.copy(errorMessage = null) }
+    fun clearError() = _state.update { it.copy(loadFailed = false) }
 
     private fun load() {
         viewModelScope.launch {
-            _state.update { it.copy(isLoading = true, errorMessage = null) }
-            val result = withContext(Dispatchers.IO) {
+            _state.update { it.copy(isLoading = true, loadFailed = false) }
+            try {
+                val rows = withContext(Dispatchers.IO) {
                 // Board-scope the counts to the active board so the list count
                 // matches the (board-filtered) setter detail. Same params the
                 // SetterDetailScreen uses.
                 val brand = userPreferences.boardBrand.first()
                 val layoutId = userPreferences.boardLayoutId.first().toInt()
                 val sizeId = userPreferences.boardProductSizeId.first().toInt()
-                runCatching { boardRepository.getCommunitySetterStats(brand, layoutId, sizeId) }
+                    boardRepository.getCommunitySetterStats(brand, layoutId, sizeId)
+                }
+                _state.update { it.copy(setters = rows, isLoading = false, loadFailed = false) }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "getCommunitySetterStats failed", e)
+                _state.update { it.copy(setters = emptyList(), isLoading = false, loadFailed = true) }
             }
-            result.fold(
-                onSuccess = { rows ->
-                    _state.update { it.copy(setters = rows, isLoading = false, errorMessage = null) }
-                },
-                onFailure = { e ->
-                    Log.w(TAG, "getCommunitySetterStats failed", e)
-                    _state.update {
-                        it.copy(
-                            setters = emptyList(),
-                            isLoading = false,
-                            errorMessage = e.message ?: e::class.simpleName ?: "load failed",
-                        )
-                    }
-                },
-            )
         }
     }
 

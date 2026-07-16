@@ -6,6 +6,7 @@ import com.cruxcoach.android.data.BoardConstants
 import com.cruxcoach.android.data.BoardSyncManager
 import com.cruxcoach.android.data.BoardSyncState
 import com.cruxcoach.android.data.UserPreferences
+import com.cruxcoach.android.util.safeLaunch
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.BoardSize
 import com.cruxcoach.domain.board.BoardBrand
@@ -19,7 +20,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
@@ -64,7 +64,7 @@ class BoardSyncViewModel @Inject constructor(
     /** Recompute per-board catalogue sizes off the main thread. Call on first
      *  composition and whenever a sync completes. */
     fun refreshBoardCounts() {
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             _boardCounts.value = withContext(Dispatchers.IO) { boardRepository.getClimbCountsByBrand() }
         }
     }
@@ -114,15 +114,15 @@ class BoardSyncViewModel @Inject constructor(
      * Either gate true → no dialog. Otherwise show the picker.
      */
     fun checkFirstSyncModelSelection() {
-        viewModelScope.launch {
-            if (!userPreferences.isOnboardingCompleted()) return@launch
+        viewModelScope.safeLaunch(TAG) {
+            if (!userPreferences.isOnboardingCompleted()) return@safeLaunch
             // FEAT-027: MoonBoard users have already picked their variant
             // in onboarding/Settings — don't re-prompt them with this
             // Kilter-flavoured post-Kilter-sync nudge.
             val brand = userPreferences.boardBrand.first()
-            if (BoardBrand.fromWire(brand) != BoardBrand.KILTER) return@launch
+            if (BoardBrand.fromWire(brand) != BoardBrand.KILTER) return@safeLaunch
             val isDefault = userPreferences.isBoardProductSizeDefault.first()
-            if (!isDefault) return@launch
+            if (!isDefault) return@safeLaunch
 
             // Unified picker shows all 16 hardware-known Kilter sizes
             // (both products); the picker's category tier filters them
@@ -148,7 +148,7 @@ class BoardSyncViewModel @Inject constructor(
         // land on the right Kilter board.
         val sizes = _modelState.value.productSizes
         _modelState.update { it.copy(showDialog = false) }
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             val ps = sizes.firstOrNull { it.id.toInt() == id }
             val layout = BoardConstants.layoutIdForProduct(
                 ps?.productId?.toInt() ?: BoardConstants.KILTER_PRODUCT_ID
@@ -165,7 +165,7 @@ class BoardSyncViewModel @Inject constructor(
      *  atomically. */
     fun confirmMoonBoardVariant(variant: com.cruxcoach.domain.board.MoonBoardVariant) {
         _modelState.update { it.copy(showDialog = false) }
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             userPreferences.setMoonBoardSelection(variant.layoutId.toInt())
         }
     }
@@ -180,5 +180,9 @@ class BoardSyncViewModel @Inject constructor(
      *  only need to flip the visibility flag back on. */
     fun showModelDialog() {
         _modelState.update { it.copy(showDialog = true) }
+    }
+
+    private companion object {
+        const val TAG = "BoardSyncVM"
     }
 }

@@ -7,6 +7,7 @@ import com.cruxcoach.android.ble.NearbyClimbScanner
 import com.cruxcoach.android.ble.NearbySession
 import com.cruxcoach.android.util.GradeDisplayHelper
 import com.cruxcoach.android.util.PerfLogger
+import com.cruxcoach.android.util.safeLaunch
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -74,7 +75,7 @@ class BleShareManager @Inject constructor(
     init {
         PerfLogger.log("📡 BleShareManager.init — starting combine collectors")
         // Restore persisted last climb on app start
-        scope.launch {
+        scope.safeLaunch(TAG) {
             PerfLogger.logCoroutine("BleShareManager", "boardStateManager.restore() START")
             boardStateManager.restore()
             PerfLogger.logCoroutine("BleShareManager", "boardStateManager.restore() DONE")
@@ -83,7 +84,7 @@ class BleShareManager @Inject constructor(
         // Bug 1 fix: Single combine block handles BOTH bridge logic AND UI state.
         // No separate nearbyPresenceManager.climbs.collect — that caused a dual-collection
         // race where bridgeRemoteClimbs() called removeEntry() → re-emission → flicker loop.
-        scope.launch {
+        scope.safeLaunch(TAG) {
             combine(
                 boardStateManager.lastClimb,
                 nearbyPresenceManager.climbs,
@@ -155,7 +156,7 @@ class BleShareManager @Inject constructor(
         // elapsedSeconds. The session chip collects BoardSessionManager.state directly
         // for the live timer display; propagating ticks through uiState would cause
         // every BleStatusArea consumer (on every screen) to recompose 2x/sec.
-        scope.launch {
+        scope.safeLaunch(TAG) {
             combine(
                 sessionQueueManager.state,
                 sessionQueueManager.currentClimbInfo,
@@ -178,7 +179,7 @@ class BleShareManager @Inject constructor(
         }
 
         // Watch for disconnect responses
-        scope.launch {
+        scope.safeLaunch(TAG) {
             nearbyClimbScanner.disconnectResponses.collect { accepted ->
                 if (!_uiState.value.isRequestingDisconnect) return@collect
                 if (accepted) {
@@ -198,7 +199,7 @@ class BleShareManager @Inject constructor(
         // Detect session end (HOST/PARTICIPANT → NONE) to activate post-session grace period.
         // Stale participant LastClimb advertising can persist in the scanner for up to 15s
         // after the session ends, overwriting the correct board state.
-        scope.launch {
+        scope.safeLaunch(TAG) {
             var previousRole = SessionRole.NONE
             sessionQueueManager.state.collect { queueState ->
                 val currentRole = queueState.role

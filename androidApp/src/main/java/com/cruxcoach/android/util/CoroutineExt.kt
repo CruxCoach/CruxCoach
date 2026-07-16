@@ -17,6 +17,10 @@ import kotlinx.coroutines.launch
  * DataStore/SQLite read on ViewModel init should leave sensible defaults, not
  * kill the app — use [safeLaunch].
  *
+ * Start long-lived child collectors with their own [safeLaunch]. A nested
+ * plain `launch` can fail only after this wrapper's block has returned, when
+ * this `try` is no longer on the child's exception path.
+ *
  * [CancellationException] is re-thrown so structured cancellation still works;
  * `Error`s (e.g. OOM) are intentionally NOT caught and continue to propagate.
  */

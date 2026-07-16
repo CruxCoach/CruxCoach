@@ -97,7 +97,7 @@ fun DashboardScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(state.error ?: stringResource(R.string.dashboard_error), textAlign = TextAlign.Center)
+                        Text(stringResource(R.string.dashboard_error), textAlign = TextAlign.Center)
                         Spacer(modifier = Modifier.height(16.dp))
                         Button(
                             onClick = { viewModel.loadDashboard() },

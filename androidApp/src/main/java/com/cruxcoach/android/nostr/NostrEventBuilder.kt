@@ -106,6 +106,8 @@ class NostrEventBuilder(
                         }
                     }
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to build gift wraps", e)
             }

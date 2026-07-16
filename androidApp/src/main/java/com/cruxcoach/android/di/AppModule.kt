@@ -5,6 +5,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.data.dataStore
+import com.cruxcoach.android.data.emptyPreferencesCorruptionHandler
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import com.cruxcoach.android.nostr.NostrKeyStore
 import com.cruxcoach.android.nostr.NostrSigner
@@ -191,7 +192,9 @@ object AppModule {
         nostrSigner: NostrSigner
     ): DataStore<Preferences> {
         val prefix = nostrSigner.getPublicKeyHex().take(16)
-        return PreferenceDataStoreFactory.create {
+        return PreferenceDataStoreFactory.create(
+            corruptionHandler = emptyPreferencesCorruptionHandler(),
+        ) {
             java.io.File(context.filesDir, "datastore/cruxcoach_prefs_$prefix.preferences_pb")
         }
     }
@@ -829,7 +832,9 @@ object AppModule {
     @Singleton
     @Named("updater")
     fun provideUpdaterDataStore(@ApplicationContext context: Context): DataStore<Preferences> {
-        return PreferenceDataStoreFactory.create {
+        return PreferenceDataStoreFactory.create(
+            corruptionHandler = emptyPreferencesCorruptionHandler(),
+        ) {
             java.io.File(context.filesDir, "datastore/updater_state.preferences_pb")
         }
     }

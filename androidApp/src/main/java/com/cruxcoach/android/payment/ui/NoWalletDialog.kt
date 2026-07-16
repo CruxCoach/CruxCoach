@@ -22,9 +22,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.ui.theme.OrangeAccent
+import com.cruxcoach.android.R
 
 private data class WalletRecommendation(
     val name: String,
@@ -44,17 +46,17 @@ internal fun NoWalletDialog(onDismiss: () -> Unit) {
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Keine Lightning-Wallet gefunden") },
+        title = { Text(stringResource(R.string.payment_no_wallet_title)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
-                    "Du benötigst eine Lightning-Wallet-App, um Zaps zu senden.",
+                    stringResource(R.string.payment_no_wallet_message),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
                 Text(
-                    "Empfohlene Wallets:",
+                    stringResource(R.string.payment_recommended_wallets),
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Bold
                 )
@@ -74,7 +76,7 @@ internal fun NoWalletDialog(onDismiss: () -> Unit) {
                 onClick = onDismiss,
                 colors = ButtonDefaults.textButtonColors(contentColor = OrangeAccent)
             ) {
-                Text("OK")
+                Text(stringResource(R.string.action_ok))
             }
         }
     )
@@ -98,7 +100,7 @@ private fun WalletRow(name: String, onClick: () -> Unit) {
         )
         Icon(
             Icons.Default.OpenInNew,
-            contentDescription = "Öffnen",
+            contentDescription = stringResource(R.string.payment_open_wallet),
             modifier = Modifier.size(16.dp),
             tint = MaterialTheme.colorScheme.onSurfaceVariant
         )

@@ -83,8 +83,7 @@ fun SettersListScreen(
         // Distinguish "DB read failed" from "no setters yet" — pre-fix
         // both rendered the same empty-state, so a SQLDelight throw from
         // the new community queries vanished into "noch keine Kletterer".
-        val errorMessage = state.errorMessage
-        if (errorMessage != null) {
+        if (state.loadFailed) {
             Box(
                 modifier = Modifier.fillMaxSize().padding(padding).padding(24.dp),
                 contentAlignment = Alignment.Center,
@@ -99,11 +98,6 @@ fun SettersListScreen(
                         Text(
                             stringResource(R.string.setters_list_load_failed),
                             style = MaterialTheme.typography.titleSmall,
-                            color = MaterialTheme.colorScheme.onErrorContainer,
-                        )
-                        Text(
-                            errorMessage,
-                            style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onErrorContainer,
                         )
                         OutlinedButton(

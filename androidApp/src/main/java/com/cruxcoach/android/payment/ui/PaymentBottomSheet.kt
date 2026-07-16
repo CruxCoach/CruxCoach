@@ -66,22 +66,22 @@ internal fun PaymentBottomSheet(
                     )
                     Spacer(modifier = Modifier.width(12.dp))
                     Text(
-                        "Wird gesendet\u2026",
+                        stringResource(R.string.payment_sending),
                         style = MaterialTheme.typography.bodyLarge
                     )
                 }
             } else {
                 PaymentOptionRow(
                     icon = "\u26A1",
-                    title = "Lightning (privat)",
-                    subtitle = "Keine öffentliche Spur auf Nostr-Relays",
+                    title = stringResource(R.string.payment_lightning_private_title),
+                    subtitle = stringResource(R.string.payment_lightning_private_desc),
                     onClick = onSelectLightningPrivate
                 )
 
                 PaymentOptionRow(
                     icon = "\u26A1",
-                    title = "Lightning Zap (öffentlich)",
-                    subtitle = "Betrag + Absender auf Nostr sichtbar",
+                    title = stringResource(R.string.payment_lightning_public_title),
+                    subtitle = stringResource(R.string.payment_lightning_public_desc),
                     onClick = onSelectLightningZap
                 )
 
@@ -102,13 +102,13 @@ internal fun PaymentBottomSheet(
                     )
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Karte",
+                            text = stringResource(R.string.payment_card_title),
                             style = MaterialTheme.typography.bodyLarge,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
                         )
                         Text(
-                            text = "Demnächst verfügbar",
+                            text = stringResource(R.string.payment_coming_soon),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
                         )

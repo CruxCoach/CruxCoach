@@ -365,9 +365,12 @@ class CommunityClimbSubscriber @Inject constructor(
         // burning battery + relay budget.
         var failureStreak = 0
         while (true) {
-            val since = userPreferences.communityClimbSince.first()
-            val filter = buildFilter(since)
             try {
+                // DataStore can fail before the relay flow exists. Keep this
+                // read inside the same retry boundary as collect so a transient
+                // preferences I/O error cannot terminate the app-scoped job.
+                val since = userPreferences.communityClimbSince.first()
+                val filter = buildFilter(since)
                 pool.subscribe(filter, skipDedup = false, closeOnEose = false).collect { eventJson ->
                     handleEvent(eventJson)
                     // Reset the backoff streak on each successful event

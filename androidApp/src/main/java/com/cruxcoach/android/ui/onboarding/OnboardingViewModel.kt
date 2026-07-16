@@ -182,7 +182,7 @@ class OnboardingViewModel @Inject constructor(
         }
         // FEAT-031: the shared board picker persists selections from any screen;
         // mirror the choice into onboarding's state so its board step reflects it.
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             combine(
                 userPreferences.boardBrand,
                 userPreferences.boardLayoutId,
@@ -487,7 +487,7 @@ class OnboardingViewModel @Inject constructor(
      * navigate to the KeyImport route. Navigation itself is a UI concern.
      */
     fun confirmKeyImportNavigation(navigate: () -> Unit) {
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             backupPreferences.setBackupRestoreIntent(true)
             _state.update { it.copy(showRestartConfirm = false) }
             navigate()
@@ -592,7 +592,7 @@ class OnboardingViewModel @Inject constructor(
     }
 
     fun dismissOnboardingRestore() {
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             backupPreferences.setBackupRestoreIntent(false)
             _state.update { it.copy(pendingRestore = null) }
         }

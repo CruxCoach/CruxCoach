@@ -24,6 +24,8 @@ class NostrEventDecryptor(
             } else {
                 decryptGiftWrap(event)
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Failed to decrypt gift wrap event", e)
             null

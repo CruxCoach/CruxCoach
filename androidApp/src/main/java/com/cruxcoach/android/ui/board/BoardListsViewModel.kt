@@ -2,6 +2,7 @@ package com.cruxcoach.android.ui.board
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.cruxcoach.android.util.safeLaunch
 import com.cruxcoach.data.repository.PersonalBoardRepository
 import com.cruxcoach.data.repository.Climb_lists
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -10,7 +11,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
@@ -30,7 +30,7 @@ class BoardListsViewModel @Inject constructor(
     val state: StateFlow<BoardListsState> = _state.asStateFlow()
 
     init {
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             withContext(Dispatchers.IO) {
                 personalBoardRepo.ensureFavoritesListExists()
                 // Seed the built-in "Ignored" list so it's visible here as the
@@ -43,7 +43,7 @@ class BoardListsViewModel @Inject constructor(
     }
 
     fun refresh() {
-        viewModelScope.launch { refreshLists() }
+        viewModelScope.safeLaunch(TAG) { refreshLists() }
     }
 
     private suspend fun refreshLists() {
@@ -70,7 +70,7 @@ class BoardListsViewModel @Inject constructor(
         if (name.isBlank()) return
         val exists = _state.value.lists.any { it.name.equals(name, ignoreCase = true) }
         if (exists) return
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             withContext(Dispatchers.IO) {
                 personalBoardRepo.createClimbList(name)
             }
@@ -89,12 +89,16 @@ class BoardListsViewModel @Inject constructor(
 
     fun confirmDeleteList() {
         val listId = _state.value.deleteConfirmListId ?: return
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             withContext(Dispatchers.IO) {
                 personalBoardRepo.deleteClimbList(listId)
             }
             _state.update { it.copy(deleteConfirmListId = null) }
             refreshLists()
         }
+    }
+
+    private companion object {
+        const val TAG = "BoardListsVM"
     }
 }

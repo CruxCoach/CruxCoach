@@ -96,6 +96,8 @@ class NostrProfileManager @Inject constructor(
                 nip05 = nip05?.takeIf { it.isNotBlank() },
                 website = website?.takeIf { it.isNotBlank() },
             )
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Failed to publish profile", e)
             null
@@ -210,6 +212,8 @@ class NostrProfileManager @Inject constructor(
             candidates.firstNotNullOfOrNull { (_, json) ->
                 parseAndCacheProfile(pubkey, json)
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Failed to fetch profile (${e.javaClass.simpleName})")
             null

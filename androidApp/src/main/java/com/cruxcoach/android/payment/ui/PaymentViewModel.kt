@@ -123,14 +123,14 @@ class PaymentViewModel @Inject constructor(
                         }
                     }
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to send Lightning payment", e)
                 _state.update {
                     it.copy(
                         isSending = false,
-                        sendResult = SendResult.Error(
-                            context.getString(R.string.error_send_failed, e.message ?: context.getString(R.string.error_unknown))
-                        )
+                        sendResult = SendResult.Error(context.getString(R.string.payment_error))
                     )
                 }
             }
@@ -151,6 +151,8 @@ class PaymentViewModel @Inject constructor(
                 // cancel it (the DM is not queued anywhere for retry).
                 deliveryCoordinator.deliver(null, buildResult.eventJsons)
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.w(TAG, "Failed to send donation DM (payment still proceeds)", e)
         }
@@ -180,7 +182,7 @@ class PaymentViewModel @Inject constructor(
         } catch (e: Exception) {
             Log.e(TAG, "Failed to open Ko-fi", e)
             _state.update {
-                it.copy(sendResult = SendResult.Error("Ko-fi konnte nicht geöffnet werden."))
+                it.copy(sendResult = SendResult.Error(context.getString(R.string.payment_kofi_open_failed)))
             }
         }
     }

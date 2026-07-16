@@ -239,8 +239,6 @@
     <string name="action_save">Speichern</string>
     <string name="action_delete">Löschen</string>
     <string name="action_back">Zurück</string>
-    <string name="screen_error_boundary_title">Da ist etwas schiefgegangen</string>
-    <string name="screen_error_boundary_body" formatted="false">Der Screen „%1$s" hat einen unerwarteten Fehler — der Rest der App ist weiter benutzbar. Gehe zurück und versuche es erneut.</string>
     <string name="action_refresh">Aktualisieren</string>
     <string name="action_done">Fertig</string>
     <string name="action_share">Freigeben</string>
@@ -316,6 +314,22 @@
 
     <string name="action_send">Senden</string>
     <string name="action_retry">Erneut versuchen</string>
+    <string name="board_list_load_error">Diese Liste konnte nicht geladen werden.</string>
+    <string name="my_climbs_load_error">Deine Climbs konnten nicht geladen werden.</string>
+    <string name="board_sync_local_import_failed">Der lokale Board-Import ist fehlgeschlagen. Bitte versuche es erneut.</string>
+    <string name="apk_update_unexpected_response">Der Update-Dienst hat HTTP %1$d zurückgegeben.</string>
+    <string name="apk_update_version_unrecognized">Die verfügbare Board-Daten-Version konnte nicht erkannt werden.</string>
+    <string name="apk_update_check_failed">Board-Daten-Updates konnten nicht geprüft werden.</string>
+    <string name="apk_download_failed_http">Der Board-Daten-Download ist fehlgeschlagen (HTTP %1$d).</string>
+    <string name="session_gatt_server_start_failed">Die Session-Freigabe konnte nicht gestartet werden.</string>
+    <string name="session_connection_failed">Die Verbindung zur Session ist fehlgeschlagen.</string>
+    <string name="history_delete_failed">Der ausgewählte Verlauf konnte nicht gelöscht werden. Deine Daten wurden nicht entfernt.</string>
+    <string name="history_retention_failed">Die Aufbewahrungsdauer konnte nicht gespeichert werden.</string>
+    <string name="history_prune_failed">Alter Verlauf konnte nicht entfernt werden.</string>
+    <string name="history_retention_off">Aus</string>
+    <string name="history_retention_30">30 Tage</string>
+    <string name="history_retention_90">90 Tage</string>
+    <string name="history_retention_365">365 Tage</string>
     <string name="action_reset">Zurücksetzen</string>
     <string name="action_understood">Verstanden</string>
     <string name="action_more_options">Weitere Optionen</string>
@@ -532,7 +546,7 @@
     <string name="workout_type_volume">Volumen-Workout</string>
     <string name="workout_type_technique">Technik-Workout</string>
     <string name="workout_type_deload">Deload-Workout</string>
-    <string name="workout_error">Fehler</string>
+    <string name="workout_error">Dieses Workout konnte nicht geladen werden. Bitte versuche es erneut.</string>
     <string name="workout_no_recording">Kein Workout aufgezeichnet</string>
     <string name="workout_set_done_label">%s fertig</string>
     <string name="workout_hours">%s Stunden</string>
@@ -623,7 +637,7 @@
     <string name="dashboard_quick_actions">Schnellzugriff</string>
     <string name="dashboard_refresh">Aktualisieren</string>
     <string name="dashboard_retry">Erneut versuchen</string>
-    <string name="dashboard_error">Fehler</string>
+    <string name="dashboard_error">Das Dashboard konnte nicht geladen werden. Bitte versuche es erneut.</string>
     <string name="dashboard_log_boulder">Boulder loggen</string>
     <string name="dashboard_phase">Phase: %s</string>
     <string name="dashboard_session_summary">%d Übungen, %d min</string>
@@ -641,7 +655,7 @@
     <string name="stats_compare_with">Vergleichen mit…</string>
     <string name="stats_measurements">%d Messungen</string>
     <string name="stats_average">Ø %s</string>
-    <string name="stats_error">Fehler</string>
+    <string name="stats_error">Deine Statistiken konnten nicht geladen werden. Bitte versuche es erneut.</string>
 
     <!-- Board Browser -->
     <string name="board_browser_title">Board Browser</string>
@@ -679,7 +693,7 @@
     <string name="board_browser_empty_catalogue_loading">Katalog wird geladen…</string>
     <string name="board_detail_title">Climb Details</string>
     <string name="board_detail_by_setter">von %s</string>
-    <string name="board_detail_error">Fehler</string>
+    <string name="board_detail_error">Dieser Climb konnte nicht geladen werden. Bitte versuche es erneut.</string>
     <string name="board_detail_delete_ascent_title">Begehung löschen?</string>
     <string name="board_detail_delete_ascent_message">Diese Begehung wird unwiderruflich gelöscht.</string>
     <string name="board_filter_all">Alle</string>
@@ -792,6 +806,24 @@
     <string name="payment_profile_setup_confirm">Einrichten</string>
     <string name="payment_profile_setup_skip">Später</string>
     <string name="payment_zap_privacy_notice">Hinweis: Lightning Zaps sind auf Nostr-Relays öffentlich sichtbar (Betrag, Absender, Zeitpunkt). Ko-fi ist die privatere Alternative.</string>
+    <string name="payment_open_wallet">Wallet-Webseite öffnen</string>
+    <string name="payment_invoice_title">Lightning-Rechnung</string>
+    <string name="payment_invoice_qr">QR-Code für die Lightning-Rechnung</string>
+    <string name="payment_wallet">Wallet</string>
+    <string name="payment_invoice_copied">Rechnung kopiert</string>
+    <string name="payment_lightning_private_title">Lightning (privat)</string>
+    <string name="payment_lightning_private_desc">Keine öffentliche Spur auf Nostr-Relays</string>
+    <string name="payment_lightning_public_title">Lightning-Zap (öffentlich)</string>
+    <string name="payment_lightning_public_desc">Betrag und Absender sind auf Nostr sichtbar</string>
+    <string name="payment_card_title">Karte</string>
+    <string name="payment_coming_soon">Demnächst verfügbar</string>
+    <string name="payment_private_title">Lightning-Geschenk</string>
+    <string name="payment_public_title">Lightning-Zap</string>
+    <string name="payment_amount_sats">Betrag in Sats:</string>
+    <string name="payment_sats_value">%1$s Sats</string>
+    <string name="payment_private_message_hint">Nachricht (optional, verschlüsselt)</string>
+    <string name="payment_public_message_hint">Nachricht (optional, öffentlich)</string>
+    <string name="payment_kofi_open_failed">Ko-fi konnte nicht geöffnet werden.</string>
 
     <!-- Offline Queue -->
     <string name="queue_pending_label">Wird gesendet…</string>
@@ -1303,7 +1335,7 @@
     <string name="training_type_deload">Deload</string>
     <string name="wifi_disabled_error">WiFi ist ausgeschaltet. Bitte WiFi einschalten.</string>
     <string name="share_app_chooser">App teilen</string>
-    <string name="hotspot_start_failed">Hotspot konnte nicht gestartet werden.\n\nAPI: %1$d, WiFi: %2$s\n\nVersuche:\n%3$s</string>
+    <string name="hotspot_start_failed">Der Hotspot konnte nicht gestartet werden. Prüfe, ob WLAN eingeschaltet ist, und versuche es erneut.</string>
     <string name="share_download_button">CruxCoach herunterladen</string>
     <string name="share_download_instructions">Nach dem Download die APK-Datei öffnen und installieren.\nEventuell muss \"Aus unbekannten Quellen installieren\" erlaubt werden.</string>
     <string name="board_playback_frame">%1$d / %2$d</string>

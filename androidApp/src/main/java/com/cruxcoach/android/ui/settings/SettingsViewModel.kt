@@ -290,24 +290,24 @@ class SettingsViewModel @Inject constructor(
             _state.update { initialState }
 
             // Start collectors for live updates after initial load
-            launch { userPreferences.ledHoldColors.collect { colors -> _state.update { it.copy(ledColors = colors) } } }
-            launch { userPreferences.routeFrameSpeed.collect { speed -> _state.update { it.copy(routePlayback = it.routePlayback.copy(frameSpeed = speed)) } } }
-            launch { userPreferences.routeUseSetterSpeed.collect { v -> _state.update { it.copy(routePlayback = it.routePlayback.copy(useSetterSpeed = v)) } } }
-            launch { userPreferences.routeCountdown.collect { v -> _state.update { it.copy(routePlayback = it.routePlayback.copy(countdown = v)) } } }
-            launch { userPreferences.routeCountdownSeconds.collect { v -> _state.update { it.copy(routePlayback = it.routePlayback.copy(countdownSeconds = v)) } } }
-            launch { userPreferences.routeAutoLoop.collect { v -> _state.update { it.copy(routePlayback = it.routePlayback.copy(autoLoop = v)) } } }
-            launch { userPreferences.restTimerDurationSeconds.collect { v -> _state.update { it.copy(restTimer = it.restTimer.copy(durationSeconds = v)) } } }
-            launch { userPreferences.restTimerAutoStart.collect { v -> _state.update { it.copy(restTimer = it.restTimer.copy(autoStart = v)) } } }
-            launch { userPreferences.lastSyncTimestamp.collect { v -> _state.update { it.copy(lastSyncTimestamp = v) } } }
-            launch { userPreferences.darkMode.collect { v -> _state.update { it.copy(darkMode = v) } } }
-            launch { userPreferences.keepScreenOn.collect { v -> _state.update { it.copy(keepScreenOn = v) } } }
-            launch { userPreferences.nearbyClimbSharing.collect { v -> _state.update { it.copy(climbSharing = it.climbSharing.copy(enabled = v)) } } }
-            launch { userPreferences.allowRemoteDisconnect.collect { v -> _state.update { it.copy(climbSharing = it.climbSharing.copy(allowRemoteDisconnect = v)) } } }
-            launch { userPreferences.crashReportOptIn.collect { v -> _state.update { it.copy(crashReportOptIn = v ?: false) } } }
+            viewModelScope.safeLaunch("SettingsViewModel") { userPreferences.ledHoldColors.collect { colors -> _state.update { it.copy(ledColors = colors) } } }
+            viewModelScope.safeLaunch("SettingsViewModel") { userPreferences.routeFrameSpeed.collect { speed -> _state.update { it.copy(routePlayback = it.routePlayback.copy(frameSpeed = speed)) } } }
+            viewModelScope.safeLaunch("SettingsViewModel") { userPreferences.routeUseSetterSpeed.collect { v -> _state.update { it.copy(routePlayback = it.routePlayback.copy(useSetterSpeed = v)) } } }
+            viewModelScope.safeLaunch("SettingsViewModel") { userPreferences.routeCountdown.collect { v -> _state.update { it.copy(routePlayback = it.routePlayback.copy(countdown = v)) } } }
+            viewModelScope.safeLaunch("SettingsViewModel") { userPreferences.routeCountdownSeconds.collect { v -> _state.update { it.copy(routePlayback = it.routePlayback.copy(countdownSeconds = v)) } } }
+            viewModelScope.safeLaunch("SettingsViewModel") { userPreferences.routeAutoLoop.collect { v -> _state.update { it.copy(routePlayback = it.routePlayback.copy(autoLoop = v)) } } }
+            viewModelScope.safeLaunch("SettingsViewModel") { userPreferences.restTimerDurationSeconds.collect { v -> _state.update { it.copy(restTimer = it.restTimer.copy(durationSeconds = v)) } } }
+            viewModelScope.safeLaunch("SettingsViewModel") { userPreferences.restTimerAutoStart.collect { v -> _state.update { it.copy(restTimer = it.restTimer.copy(autoStart = v)) } } }
+            viewModelScope.safeLaunch("SettingsViewModel") { userPreferences.lastSyncTimestamp.collect { v -> _state.update { it.copy(lastSyncTimestamp = v) } } }
+            viewModelScope.safeLaunch("SettingsViewModel") { userPreferences.darkMode.collect { v -> _state.update { it.copy(darkMode = v) } } }
+            viewModelScope.safeLaunch("SettingsViewModel") { userPreferences.keepScreenOn.collect { v -> _state.update { it.copy(keepScreenOn = v) } } }
+            viewModelScope.safeLaunch("SettingsViewModel") { userPreferences.nearbyClimbSharing.collect { v -> _state.update { it.copy(climbSharing = it.climbSharing.copy(enabled = v)) } } }
+            viewModelScope.safeLaunch("SettingsViewModel") { userPreferences.allowRemoteDisconnect.collect { v -> _state.update { it.copy(climbSharing = it.climbSharing.copy(allowRemoteDisconnect = v)) } } }
+            viewModelScope.safeLaunch("SettingsViewModel") { userPreferences.crashReportOptIn.collect { v -> _state.update { it.copy(crashReportOptIn = v ?: false) } } }
             // FEAT-031: keep the board section in sync with the shared board
             // picker, which persists the selection from any screen. Derive the
             // displayed board from the board prefs reactively (race-free).
-            launch {
+            viewModelScope.safeLaunch("SettingsViewModel") {
                 combine(
                     userPreferences.boardBrand,
                     userPreferences.boardLayoutId,
@@ -333,14 +333,14 @@ class SettingsViewModel @Inject constructor(
                         }
                     }
             }
-            launch { kilterSyncEngine.sessionExpired.collect { expired -> _state.update { it.copy(kilterAccount = it.kilterAccount.copy(sessionExpired = expired)) } } }
-            launch { userPreferences.announcementsEnabled.collect { v -> _state.update { it.copy(announcementsEnabled = v) } } }
-            launch { userPreferences.announcementCatRelease.collect { v -> _state.update { it.copy(announcementCatRelease = v) } } }
-            launch { userPreferences.announcementCatIssue.collect { v -> _state.update { it.copy(announcementCatIssue = v) } } }
-            launch { userPreferences.announcementCatTip.collect { v -> _state.update { it.copy(announcementCatTip = v) } } }
-            launch { userPreferences.announcementCatGeneral.collect { v -> _state.update { it.copy(announcementCatGeneral = v) } } }
-            launch { queueManager.queuedCount.collect { v -> _state.update { it.copy(queuedCount = v) } } }
-            launch { queueManager.refreshCount() }
+            viewModelScope.safeLaunch("SettingsViewModel") { kilterSyncEngine.sessionExpired.collect { expired -> _state.update { it.copy(kilterAccount = it.kilterAccount.copy(sessionExpired = expired)) } } }
+            viewModelScope.safeLaunch("SettingsViewModel") { userPreferences.announcementsEnabled.collect { v -> _state.update { it.copy(announcementsEnabled = v) } } }
+            viewModelScope.safeLaunch("SettingsViewModel") { userPreferences.announcementCatRelease.collect { v -> _state.update { it.copy(announcementCatRelease = v) } } }
+            viewModelScope.safeLaunch("SettingsViewModel") { userPreferences.announcementCatIssue.collect { v -> _state.update { it.copy(announcementCatIssue = v) } } }
+            viewModelScope.safeLaunch("SettingsViewModel") { userPreferences.announcementCatTip.collect { v -> _state.update { it.copy(announcementCatTip = v) } } }
+            viewModelScope.safeLaunch("SettingsViewModel") { userPreferences.announcementCatGeneral.collect { v -> _state.update { it.copy(announcementCatGeneral = v) } } }
+            viewModelScope.safeLaunch("SettingsViewModel") { queueManager.queuedCount.collect { v -> _state.update { it.copy(queuedCount = v) } } }
+            viewModelScope.safeLaunch("SettingsViewModel") { queueManager.refreshCount() }
         }
     }
 

@@ -275,29 +275,20 @@ fun CruxCoachNavHost(
                 .imePadding()
         ) {
             composable(Routes.ONBOARDING) {
-                // Onboarding is the highest-blast-radius first-launch flow:
-                // a render throw before `setOnboardingCompleted(true)` lands
-                // would brick the app in a cold-install crash loop. The
-                // boundary surfaces a reported error UI instead.
-                com.cruxcoach.android.ui.common.ScreenErrorBoundary(
-                    screenName = "Onboarding",
-                    onNavigateBack = { navController.popBackStack() },
-                ) {
-                    OnboardingScreen(
-                        onComplete = {
-                            navController.navigate(Routes.BOARD_BROWSER) {
-                                popUpTo(Routes.ONBOARDING) { inclusive = true }
-                            }
-                        },
-                        onNavigateToKeyImport = { navController.navigate(Routes.KEY_IMPORT) },
-                        // KeyManagementScreen as a forward push (not a popUpTo).
-                        // Onboarding's NavBackStackEntry stays on the stack, so
-                        // hitting back from KeyManagementScreen returns the user
-                        // to the same onboarding step they were on (state +
-                        // ViewModel preserved via the survived BackStackEntry).
-                        onNavigateToKeyManagement = { navController.navigate(Routes.KEY_MANAGEMENT) },
-                    )
-                }
+                OnboardingScreen(
+                    onComplete = {
+                        navController.navigate(Routes.BOARD_BROWSER) {
+                            popUpTo(Routes.ONBOARDING) { inclusive = true }
+                        }
+                    },
+                    onNavigateToKeyImport = { navController.navigate(Routes.KEY_IMPORT) },
+                    // KeyManagementScreen as a forward push (not a popUpTo).
+                    // Onboarding's NavBackStackEntry stays on the stack, so
+                    // hitting back from KeyManagementScreen returns the user
+                    // to the same onboarding step they were on (state +
+                    // ViewModel preserved via the survived BackStackEntry).
+                    onNavigateToKeyManagement = { navController.navigate(Routes.KEY_MANAGEMENT) },
+                )
             }
 
             composable(Routes.DASHBOARD) {
@@ -412,14 +403,9 @@ fun CruxCoachNavHost(
             }
 
             composable(Routes.AURORA_MIGRATION) {
-                com.cruxcoach.android.ui.common.ScreenErrorBoundary(
-                    screenName = "AuroraMigration",
+                com.cruxcoach.android.ui.aurora.AuroraMigrationScreen(
                     onNavigateBack = { navController.popBackStack() },
-                ) {
-                    com.cruxcoach.android.ui.aurora.AuroraMigrationScreen(
-                        onNavigateBack = { navController.popBackStack() },
-                    )
-                }
+                )
             }
 
             composable(Routes.STATS) {
@@ -456,22 +442,17 @@ fun CruxCoachNavHost(
             }
 
             composable(Routes.BOARD_MAP) {
-                com.cruxcoach.android.ui.common.ScreenErrorBoundary(
-                    screenName = "BoardMap",
+                MapScreen(
                     onNavigateBack = { navController.popBackStack() },
-                ) {
-                    MapScreen(
-                        onNavigateBack = { navController.popBackStack() },
-                        onNavigateToBoardBrowser = {
-                            // popBackStack lands the user on the BoardBrowser
-                            // already on the back stack. The browser's
-                            // ViewModel re-reads board prefs that the Map
-                            // screen wrote via applyBoardConfigForBrowse.
-                            navController.popBackStack(Routes.BOARD_BROWSER, false)
-                        },
-                        onNavigateToBoardSync = { navController.navigate(Routes.BOARD_SYNC) },
-                    )
-                }
+                    onNavigateToBoardBrowser = {
+                        // popBackStack lands the user on the BoardBrowser
+                        // already on the back stack. The browser's
+                        // ViewModel re-reads board prefs that the Map
+                        // screen wrote via applyBoardConfigForBrowse.
+                        navController.popBackStack(Routes.BOARD_BROWSER, false)
+                    },
+                    onNavigateToBoardSync = { navController.navigate(Routes.BOARD_SYNC) },
+                )
             }
 
             composable(
@@ -489,22 +470,17 @@ fun CruxCoachNavHost(
                     },
                 ),
             ) {
-                com.cruxcoach.android.ui.common.ScreenErrorBoundary(
-                    screenName = "ClimbEditor",
-                    onNavigateBack = { navController.popBackStack() },
-                ) {
-                    com.cruxcoach.android.ui.board.creator.ClimbEditorScreen(
-                        onBack = { navController.popBackStack() },
-                        onPublished = { uuid -> navController.popBackStack() },
-                        onNavigateToKilterSettings = {
-                            navController.popBackStack()
-                            navController.navigate(Routes.SETTINGS)
-                        },
-                        onNavigateToNostrProfile = {
-                            navController.navigate(Routes.NOSTR_PROFILE)
-                        },
-                    )
-                }
+                com.cruxcoach.android.ui.board.creator.ClimbEditorScreen(
+                    onBack = { navController.popBackStack() },
+                    onPublished = { uuid -> navController.popBackStack() },
+                    onNavigateToKilterSettings = {
+                        navController.popBackStack()
+                        navController.navigate(Routes.SETTINGS)
+                    },
+                    onNavigateToNostrProfile = {
+                        navController.navigate(Routes.NOSTR_PROFILE)
+                    },
+                )
             }
 
             composable(Routes.BOARD_FILTER) { entry ->
@@ -741,14 +717,9 @@ fun CruxCoachNavHost(
             }
 
             composable(Routes.NOSTR_PROFILE) {
-                com.cruxcoach.android.ui.common.ScreenErrorBoundary(
-                    screenName = "NostrProfile",
-                    onNavigateBack = { navController.popBackStack() },
-                ) {
-                    com.cruxcoach.android.ui.settings.NostrProfileScreen(
-                        onNavigateBack = { navController.popBackStack() }
-                    )
-                }
+                com.cruxcoach.android.ui.settings.NostrProfileScreen(
+                    onNavigateBack = { navController.popBackStack() }
+                )
             }
 
             composable(
@@ -757,45 +728,30 @@ fun CruxCoachNavHost(
                     androidx.navigation.navArgument("setterPubkey") { type = androidx.navigation.NavType.StringType }
                 ),
             ) {
-                com.cruxcoach.android.ui.common.ScreenErrorBoundary(
-                    screenName = "SetterDetail",
+                com.cruxcoach.android.ui.community.SetterDetailScreen(
                     onNavigateBack = { navController.popBackStack() },
-                ) {
-                    com.cruxcoach.android.ui.community.SetterDetailScreen(
-                        onNavigateBack = { navController.popBackStack() },
-                        onClimbClick = { uuid, angle ->
-                            navController.navigate(Routes.boardClimbDetail(uuid, angle))
-                        },
-                    )
-                }
+                    onClimbClick = { uuid, angle ->
+                        navController.navigate(Routes.boardClimbDetail(uuid, angle))
+                    },
+                )
             }
 
             composable(Routes.SETTERS_LIST) {
-                com.cruxcoach.android.ui.common.ScreenErrorBoundary(
-                    screenName = "SettersList",
+                com.cruxcoach.android.ui.community.SettersListScreen(
                     onNavigateBack = { navController.popBackStack() },
-                ) {
-                    com.cruxcoach.android.ui.community.SettersListScreen(
-                        onNavigateBack = { navController.popBackStack() },
-                        onSetterClick = { pubkey ->
-                            navController.navigate(Routes.setterDetail(pubkey))
-                        },
-                    )
-                }
+                    onSetterClick = { pubkey ->
+                        navController.navigate(Routes.setterDetail(pubkey))
+                    },
+                )
             }
 
             composable(Routes.MY_KILTER_CLIMBS) {
-                com.cruxcoach.android.ui.common.ScreenErrorBoundary(
-                    screenName = "MyKilterClimbs",
+                com.cruxcoach.android.ui.community.MyKilterClimbsScreen(
                     onNavigateBack = { navController.popBackStack() },
-                ) {
-                    com.cruxcoach.android.ui.community.MyKilterClimbsScreen(
-                        onNavigateBack = { navController.popBackStack() },
-                        onClimbClick = { uuid, angle ->
-                            navController.navigate(Routes.boardClimbDetail(uuid, angle))
-                        },
-                    )
-                }
+                    onClimbClick = { uuid, angle ->
+                        navController.navigate(Routes.boardClimbDetail(uuid, angle))
+                    },
+                )
             }
 
         }
@@ -878,4 +834,3 @@ private fun CruxCoachBottomBar(navController: NavHostController) {
     }
     } // AnimatedVisibility
 }
-

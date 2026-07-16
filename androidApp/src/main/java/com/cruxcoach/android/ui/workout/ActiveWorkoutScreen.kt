@@ -104,12 +104,12 @@ fun ActiveWorkoutScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     com.cruxcoach.android.ui.common.ErrorCard(
-                        error = state.error ?: stringResource(R.string.workout_error),
+                        error = stringResource(R.string.workout_error),
                         onDismiss = { viewModel.clearError() },
                         onReportBug = {
                             onNavigateToBugReport(
                                 context.getString(R.string.error_bug_report_workout_title),
-                                state.error ?: ""
+                                context.getString(R.string.workout_error)
                             )
                             viewModel.clearError()
                         }

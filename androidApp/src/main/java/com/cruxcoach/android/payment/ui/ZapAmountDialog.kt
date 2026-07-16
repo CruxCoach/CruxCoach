@@ -24,9 +24,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.ui.theme.OrangeAccent
+import com.cruxcoach.android.R
 
 private val PRESET_AMOUNTS = listOf(
     1_000L to "1k",
@@ -57,11 +59,13 @@ internal fun ZapAmountDialog(
 
     AlertDialog(
         onDismissRequest = { if (!isSending) onDismiss() },
-        title = { Text(if (`private`) "Lightning Spende" else "Lightning Zap") },
+        title = {
+            Text(stringResource(if (`private`) R.string.payment_private_title else R.string.payment_public_title))
+        },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
-                    "Betrag in Sats:",
+                    stringResource(R.string.payment_amount_sats),
                     style = MaterialTheme.typography.bodyMedium
                 )
 
@@ -77,7 +81,7 @@ internal fun ZapAmountDialog(
                                 isCustom = false
                                 customAmount = ""
                             },
-                            label = { Text("$label sats") },
+                            label = { Text(stringResource(R.string.payment_sats_value, label)) },
                             enabled = !isSending,
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = OrangeAccent.copy(alpha = 0.2f),
@@ -95,7 +99,7 @@ internal fun ZapAmountDialog(
                             isCustom = true
                         }
                     },
-                    label = { Text("Eigener Betrag (Sats)") },
+                    label = { Text(stringResource(R.string.payment_custom_amount)) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     singleLine = true,
                     enabled = !isSending,
@@ -108,8 +112,10 @@ internal fun ZapAmountDialog(
                     onValueChange = { message = it },
                     label = {
                         Text(
-                            if (`private`) "Nachricht (optional, verschlüsselt)"
-                            else "Nachricht (optional, öffentlich)"
+                            stringResource(
+                                if (`private`) R.string.payment_private_message_hint
+                                else R.string.payment_public_message_hint,
+                            )
                         )
                     },
                     singleLine = true,
@@ -132,14 +138,14 @@ internal fun ZapAmountDialog(
                         strokeWidth = 2.dp
                     )
                 } else {
-                    Text("Senden")
+                    Text(stringResource(R.string.action_send))
                 }
             }
         },
         dismissButton = {
             if (!isSending) {
                 TextButton(onClick = onDismiss) {
-                    Text("Abbrechen")
+                    Text(stringResource(R.string.action_cancel))
                 }
             }
         }

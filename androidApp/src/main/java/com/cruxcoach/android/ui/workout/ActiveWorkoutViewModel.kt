@@ -1,6 +1,7 @@
 package com.cruxcoach.android.ui.workout
 
 import android.content.Context
+import android.util.Log
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -97,8 +98,11 @@ class ActiveWorkoutViewModel @Inject constructor(
                         ) }
                     }
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
-                _state.update { it.copy(isLoading = false, error = e.message) }
+                Log.w(TAG, "Session load failed", e)
+                _state.update { it.copy(isLoading = false, error = context.getString(R.string.workout_error)) }
             }
         }
     }
@@ -126,6 +130,10 @@ class ActiveWorkoutViewModel @Inject constructor(
     }
 
     fun clearError() { _state.update { it.copy(error = null) } }
+
+    private companion object {
+        const val TAG = "ActiveWorkoutVM"
+    }
 
     fun completeSet() {
         val state = _state.value

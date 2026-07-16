@@ -239,8 +239,6 @@
     <string name="action_save">Save</string>
     <string name="action_delete">Delete</string>
     <string name="action_back">Back</string>
-    <string name="screen_error_boundary_title">Something went wrong</string>
-    <string name="screen_error_boundary_body" formatted="false">The %1$s screen ran into an unexpected error. The rest of the app is still usable — go back and try again.</string>
     <string name="action_refresh">Refresh</string>
     <string name="action_done">Done</string>
     <string name="action_share">Share</string>
@@ -315,6 +313,22 @@
     <string name="map_adjustability_full">Fully adjustable</string>
     <string name="action_send">Send</string>
     <string name="action_retry">Retry</string>
+    <string name="board_list_load_error">Couldn’t load this list.</string>
+    <string name="my_climbs_load_error">Couldn’t load your climbs.</string>
+    <string name="board_sync_local_import_failed">The local board import failed. Please try again.</string>
+    <string name="apk_update_unexpected_response">The update service returned HTTP %1$d.</string>
+    <string name="apk_update_version_unrecognized">The available board-data version could not be identified.</string>
+    <string name="apk_update_check_failed">Couldn’t check for board-data updates.</string>
+    <string name="apk_download_failed_http">The board-data download failed (HTTP %1$d).</string>
+    <string name="session_gatt_server_start_failed">Couldn’t start session sharing.</string>
+    <string name="session_connection_failed">Couldn’t connect to the session.</string>
+    <string name="history_delete_failed">Couldn’t delete the selected history. Your data was not removed.</string>
+    <string name="history_retention_failed">Couldn’t save the history-retention setting.</string>
+    <string name="history_prune_failed">Old history could not be removed.</string>
+    <string name="history_retention_off">Off</string>
+    <string name="history_retention_30">30 days</string>
+    <string name="history_retention_90">90 days</string>
+    <string name="history_retention_365">365 days</string>
     <string name="action_reset">Reset</string>
     <string name="action_understood">Understood</string>
     <string name="action_more_options">More options</string>
@@ -531,7 +545,7 @@
     <string name="workout_type_volume">Volume workout</string>
     <string name="workout_type_technique">Technique workout</string>
     <string name="workout_type_deload">Deload workout</string>
-    <string name="workout_error">Error</string>
+    <string name="workout_error">Couldn’t load this workout. Please try again.</string>
     <string name="workout_no_recording">No workout recorded</string>
     <string name="workout_set_done_label">%s done</string>
     <string name="workout_hours">%s hours</string>
@@ -622,7 +636,7 @@
     <string name="dashboard_quick_actions">Quick actions</string>
     <string name="dashboard_refresh">Refresh</string>
     <string name="dashboard_retry">Retry</string>
-    <string name="dashboard_error">Error</string>
+    <string name="dashboard_error">Couldn’t load the dashboard. Please try again.</string>
     <string name="dashboard_log_boulder">Log boulder</string>
     <string name="dashboard_phase">Phase: %s</string>
     <string name="dashboard_session_summary">%d exercises, %d min</string>
@@ -640,7 +654,7 @@
     <string name="stats_compare_with">Compare with…</string>
     <string name="stats_measurements">%d measurements</string>
     <string name="stats_average">Avg %s</string>
-    <string name="stats_error">Error</string>
+    <string name="stats_error">Couldn’t load your stats. Please try again.</string>
 
     <!-- Board Browser -->
     <string name="board_browser_title">Board Browser</string>
@@ -678,7 +692,7 @@
     <string name="board_browser_empty_catalogue_loading">Catalogue is loading…</string>
     <string name="board_detail_title">Climb details</string>
     <string name="board_detail_by_setter">by %s</string>
-    <string name="board_detail_error">Error</string>
+    <string name="board_detail_error">Couldn’t load this climb. Please try again.</string>
     <string name="board_detail_delete_ascent_title">Delete ascent?</string>
     <string name="board_detail_delete_ascent_message">This ascent will be permanently deleted.</string>
     <string name="board_filter_all">All</string>
@@ -791,6 +805,24 @@
     <string name="payment_profile_setup_confirm">Set up</string>
     <string name="payment_profile_setup_skip">Later</string>
     <string name="payment_zap_privacy_notice">Note: Lightning Zaps are publicly visible on Nostr relays (amount, sender, timestamp). Ko-fi is the more private alternative.</string>
+    <string name="payment_open_wallet">Open wallet website</string>
+    <string name="payment_invoice_title">Lightning invoice</string>
+    <string name="payment_invoice_qr">QR code for the Lightning invoice</string>
+    <string name="payment_wallet">Wallet</string>
+    <string name="payment_invoice_copied">Invoice copied</string>
+    <string name="payment_lightning_private_title">Lightning (private)</string>
+    <string name="payment_lightning_private_desc">No public trace on Nostr relays</string>
+    <string name="payment_lightning_public_title">Lightning zap (public)</string>
+    <string name="payment_lightning_public_desc">Amount and sender are visible on Nostr</string>
+    <string name="payment_card_title">Card</string>
+    <string name="payment_coming_soon">Coming soon</string>
+    <string name="payment_private_title">Lightning gift</string>
+    <string name="payment_public_title">Lightning zap</string>
+    <string name="payment_amount_sats">Amount in sats:</string>
+    <string name="payment_sats_value">%1$s sats</string>
+    <string name="payment_private_message_hint">Message (optional, encrypted)</string>
+    <string name="payment_public_message_hint">Message (optional, public)</string>
+    <string name="payment_kofi_open_failed">Couldn’t open Ko-fi.</string>
 
     <!-- Offline Queue -->
     <string name="queue_pending_label">Sending…</string>
@@ -1256,7 +1288,7 @@
     <string name="training_type_deload">Deload</string>
     <string name="wifi_disabled_error">WiFi is off. Please turn on WiFi.</string>
     <string name="share_app_chooser">Share app</string>
-    <string name="hotspot_start_failed">Could not start hotspot.\n\nAPI: %1$d, WiFi: %2$s\n\nAttempts:\n%3$s</string>
+    <string name="hotspot_start_failed">Couldn’t start the hotspot. Make sure Wi-Fi is on and try again.</string>
     <string name="share_download_button">Download CruxCoach</string>
     <string name="share_download_instructions">After downloading, open the APK file and install it.\nYou may need to allow \"Install from unknown sources\".</string>
     <string name="board_playback_frame">%1$d / %2$d</string>

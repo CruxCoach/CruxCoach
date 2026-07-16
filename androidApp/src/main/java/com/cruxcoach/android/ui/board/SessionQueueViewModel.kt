@@ -1,5 +1,6 @@
 package com.cruxcoach.android.ui.board
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.data.BoardSessionManager
@@ -8,13 +9,13 @@ import com.cruxcoach.android.data.SessionQueueManager
 import com.cruxcoach.android.data.SessionQueueState
 import com.cruxcoach.android.data.SessionRole
 import com.cruxcoach.android.ui.navigation.ClimbNavigationState
+import com.cruxcoach.android.util.safeLaunch
 import com.cruxcoach.data.repository.BoardRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
@@ -34,20 +35,27 @@ class SessionQueueViewModel @Inject constructor(
 
     init {
         // Resolve climb names whenever queue changes
-        viewModelScope.launch {
+        viewModelScope.safeLaunch(TAG) {
             queueManager.state.collect { s ->
                 val newUuids = s.queue.map { it.climbUuid }.toSet()
                 val existing = _climbNames.value
                 val missing = newUuids - existing.keys
                 if (missing.isNotEmpty()) {
-                    val resolved = withContext(Dispatchers.IO) {
-                        missing.associateWith { uuid ->
-                            val angle = s.queue.firstOrNull { it.climbUuid == uuid }?.angle ?: 40
-                            (boardRepository.getClimbByUuid(uuid, angle)
-                                ?: boardRepository.getClimbByUuid(uuid.lowercase(), angle)
-                                ?: boardRepository.getClimbByUuid(uuid.uppercase(), angle))?.name
-                                ?: uuid.take(8)
+                    val resolved = try {
+                        withContext(Dispatchers.IO) {
+                            missing.associateWith { uuid ->
+                                val angle = s.queue.firstOrNull { it.climbUuid == uuid }?.angle ?: 40
+                                (boardRepository.getClimbByUuid(uuid, angle)
+                                    ?: boardRepository.getClimbByUuid(uuid.lowercase(), angle)
+                                    ?: boardRepository.getClimbByUuid(uuid.uppercase(), angle))?.name
+                                    ?: uuid.take(8)
+                            }
                         }
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Queue climb-name lookup failed; using UUID prefixes", e)
+                        missing.associateWith { it.take(8) }
                     }
                     _climbNames.value = existing + resolved
                 }
@@ -108,5 +116,9 @@ class SessionQueueViewModel @Inject constructor(
             }
             SessionRole.NONE -> { /* nothing */ }
         }
+    }
+
+    private companion object {
+        const val TAG = "SessionQueueVM"
     }
 }

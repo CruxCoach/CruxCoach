@@ -44,7 +44,7 @@ data class SetterDetailState(
     val isLoading: Boolean = true,
     /** Non-null after the climbs DB read fails — distinguishes "this
      *  setter has no climbs yet" from "the read threw". */
-    val errorMessage: String? = null,
+    val loadFailed: Boolean = false,
     /** Mirrors [UserPreferences.gradeScale] so the per-climb row can
      *  resolve `difficulty_average` (e.g. 24.0) to "V8"/"7b" instead of
      *  rendering the raw internal float. */
@@ -110,48 +110,39 @@ class SetterDetailViewModel @Inject constructor(
         loadProfile()
     }
 
-    fun clearError() = _state.update { it.copy(errorMessage = null) }
+    fun clearError() = _state.update { it.copy(loadFailed = false) }
 
     private fun loadClimbs() {
         viewModelScope.launch {
-            _state.update { it.copy(isLoading = true, errorMessage = null) }
-            val result = withContext(Dispatchers.IO) {
-                // Snapshot the active board (brand + layout + size) and scope the
-                // setter's climbs to it. Kilter-only fit exception is applied in
-                // the query: while on Kilter, the setter's climbs from other
-                // Kilter layouts that fit the active size are still shown.
-                val brand = userPreferences.boardBrand.first()
-                val layoutId = userPreferences.boardLayoutId.first()
-                val sizeId = userPreferences.boardProductSizeId.first()
-                val angle = userPreferences.boardAngle.first()
-                runCatching {
+            _state.update { it.copy(isLoading = true, loadFailed = false) }
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    // Snapshot the active board (brand + layout + size) and scope the
+                    // setter's climbs to it. Kilter-only fit exception is applied in
+                    // the query: while on Kilter, the setter's climbs from other
+                    // Kilter layouts that fit the active size are still shown.
+                    val brand = userPreferences.boardBrand.first()
+                    val layoutId = userPreferences.boardLayoutId.first()
+                    val sizeId = userPreferences.boardProductSizeId.first()
+                    val angle = userPreferences.boardAngle.first()
                     boardRepository.getClimbsByPubkeyForBoard(pubkey, angle, brand, layoutId, sizeId)
                 }
+                _state.update {
+                    it.copy(
+                        climbs = result,
+                        // SetterClimbEntry doesn't carry the resolved
+                        // setter_username — the title bar uses the npub
+                        // stub from init; loadProfile replaces it.
+                        isLoading = false,
+                        loadFailed = false,
+                    )
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "getClimbsByPubkey failed", e)
+                _state.update { it.copy(climbs = emptyList(), isLoading = false, loadFailed = true) }
             }
-            result.fold(
-                onSuccess = { rows ->
-                    _state.update {
-                        it.copy(
-                            climbs = rows,
-                            // SetterClimbEntry doesn't carry the resolved
-                            // setter_username — the title bar uses the npub
-                            // stub from init; loadProfile replaces it.
-                            isLoading = false,
-                            errorMessage = null,
-                        )
-                    }
-                },
-                onFailure = { e ->
-                    Log.w(TAG, "getClimbsByPubkey failed (${e.javaClass.simpleName})")
-                    _state.update {
-                        it.copy(
-                            climbs = emptyList(),
-                            isLoading = false,
-                            errorMessage = e.message ?: e::class.simpleName ?: "load failed",
-                        )
-                    }
-                },
-            )
         }
     }
 

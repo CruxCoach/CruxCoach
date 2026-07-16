@@ -70,6 +70,20 @@ fun BoardListDetailScreen(
         }
     ) { padding ->
         when {
+            state.loadFailed -> {
+                Box(
+                    modifier = Modifier.fillMaxSize().padding(padding),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(stringResource(R.string.board_list_load_error))
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Button(onClick = viewModel::refresh) {
+                            Text(stringResource(R.string.action_retry))
+                        }
+                    }
+                }
+            }
             state.isLoading -> {
                 Box(
                     modifier = Modifier.fillMaxSize().padding(padding),
@@ -328,4 +342,3 @@ private fun ListEntryCard(
         }
     }
 }
-

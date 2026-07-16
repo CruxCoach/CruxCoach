@@ -35,6 +35,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -52,7 +53,7 @@ internal fun InvoiceDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Lightning Invoice") },
+        title = { Text(stringResource(R.string.payment_invoice_title)) },
         text = {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -71,7 +72,7 @@ internal fun InvoiceDialog(
                     ) {
                         Image(
                             bitmap = qrBitmap.asImageBitmap(),
-                            contentDescription = "Lightning Invoice QR Code",
+                            contentDescription = stringResource(R.string.payment_invoice_qr),
                             modifier = Modifier.size(204.dp)
                         )
                     }
@@ -101,7 +102,7 @@ internal fun InvoiceDialog(
                             contentDescription = null,
                             modifier = Modifier.size(16.dp)
                         )
-                        Text(" Kopieren", maxLines = 1)
+                        Text(" " + stringResource(R.string.action_copy), maxLines = 1)
                     }
 
                     OutlinedButton(
@@ -113,7 +114,7 @@ internal fun InvoiceDialog(
                             contentDescription = null,
                             modifier = Modifier.size(16.dp)
                         )
-                        Text(" Wallet", maxLines = 1)
+                        Text(" " + stringResource(R.string.payment_wallet), maxLines = 1)
                     }
                 }
             }
@@ -123,7 +124,7 @@ internal fun InvoiceDialog(
                 onClick = onDismiss,
                 colors = ButtonDefaults.textButtonColors(contentColor = OrangeAccent)
             ) {
-                Text("Fertig")
+                Text(stringResource(R.string.action_done))
             }
         }
     )
@@ -131,8 +132,8 @@ internal fun InvoiceDialog(
 
 private fun copyToClipboard(context: Context, bolt11: String) {
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-    clipboard.setPrimaryClip(ClipData.newPlainText("Lightning Invoice", bolt11))
-    Toast.makeText(context, "Invoice kopiert", Toast.LENGTH_SHORT).show()
+    clipboard.setPrimaryClip(ClipData.newPlainText(context.getString(R.string.payment_invoice_title), bolt11))
+    Toast.makeText(context, R.string.payment_invoice_copied, Toast.LENGTH_SHORT).show()
 }
 
 private fun openInWallet(context: Context, bolt11: String) {
@@ -145,7 +146,7 @@ private fun openInWallet(context: Context, bolt11: String) {
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         context.startActivity(intent)
     } catch (e: Exception) {
-        Toast.makeText(context, "Keine Lightning-Wallet gefunden", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, R.string.payment_no_wallet_title, Toast.LENGTH_SHORT).show()
     }
 }
 

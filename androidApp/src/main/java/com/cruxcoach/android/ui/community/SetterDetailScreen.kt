@@ -88,8 +88,7 @@ fun SetterDetailScreen(
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
                 )
             }
-            val errorMessage = state.errorMessage
-            if (errorMessage != null) {
+            if (state.loadFailed) {
                 // Distinguish DB read failure from genuine empty state.
                 item {
                     androidx.compose.material3.Card(
@@ -104,11 +103,6 @@ fun SetterDetailScreen(
                             Text(
                                 stringResource(R.string.setter_detail_load_failed),
                                 style = MaterialTheme.typography.titleSmall,
-                                color = MaterialTheme.colorScheme.onErrorContainer,
-                            )
-                            Text(
-                                errorMessage,
-                                style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onErrorContainer,
                             )
                             androidx.compose.material3.OutlinedButton(

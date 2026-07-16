@@ -86,7 +86,16 @@ class KilterPublishRetryWorker @AssistedInject constructor(
     private val activePubkeyResolver: ActivePubkeyResolver,
 ) : CoroutineWorker(appContext, workerParams) {
 
-    override suspend fun doWork(): androidx.work.ListenableWorker.Result {
+    override suspend fun doWork(): androidx.work.ListenableWorker.Result = try {
+        doWorkGuarded()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Log.w(TAG, "worker pre-flight failed; retrying", e)
+        androidx.work.ListenableWorker.Result.retry()
+    }
+
+    private suspend fun doWorkGuarded(): androidx.work.ListenableWorker.Result {
         if (!userPreferences.kilterClimbPublishEnabled.first()) {
             Log.i(TAG, "skip: user opt-out (kilterClimbPublishEnabled=false)")
             return androidx.work.ListenableWorker.Result.success()

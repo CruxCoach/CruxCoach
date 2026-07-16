@@ -860,12 +860,12 @@ private fun ClimbDetailPageContent(
         state.error != null -> {
             Box(modifier = modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.Center) {
                 com.cruxcoach.android.ui.common.ErrorCard(
-                    error = state.error ?: stringResource(R.string.board_detail_error),
+                    error = stringResource(R.string.board_detail_error),
                     onDismiss = { viewModel.clearError() },
                     onReportBug = {
                         onNavigateToBugReport(
                             context.getString(R.string.error_bug_report_climb_title),
-                            state.error ?: ""
+                            context.getString(R.string.board_detail_error)
                         )
                         viewModel.clearError()
                     }

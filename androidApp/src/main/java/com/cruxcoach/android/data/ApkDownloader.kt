@@ -3,6 +3,7 @@ package com.cruxcoach.android.data
 import android.content.Context
 import android.util.Base64
 import android.util.Log
+import com.cruxcoach.android.R
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.domain.board.SupportedBoard
 import java.io.File
@@ -65,10 +66,12 @@ class ApkDownloader(
                 val responseCode = conn.responseCode
                 val location = conn.getHeaderField("Location")
                 if (location == null || responseCode != 302) {
-                    return UpdateCheck.Error("Unerwartete Antwort: HTTP $responseCode")
+                    return UpdateCheck.Error(
+                        context.getString(R.string.apk_update_unexpected_response, responseCode),
+                    )
                 }
                 val versionCode = extractVersionCode(location)
-                    ?: return UpdateCheck.Error("Version nicht erkannt")
+                    ?: return UpdateCheck.Error(context.getString(R.string.apk_update_version_unrecognized))
                 val lastKnown = boardRepository.getSyncState("apk_version_code")
                 Log.d(TAG, "APK version check: remote=$versionCode, local=$lastKnown")
                 if (lastKnown == versionCode) {
@@ -81,7 +84,7 @@ class ApkDownloader(
             }
         } catch (e: Exception) {
             Log.w(TAG, "Update check failed", e)
-            UpdateCheck.Error("Update-Check fehlgeschlagen: ${e.message}")
+            UpdateCheck.Error(context.getString(R.string.apk_update_check_failed))
         }
     }
 
@@ -152,7 +155,7 @@ class ApkDownloader(
         conn.readTimeout = 120_000
         try {
             if (conn.responseCode != HttpURLConnection.HTTP_OK) {
-                throw Exception("Download fehlgeschlagen: HTTP ${conn.responseCode}")
+                throw Exception(context.getString(R.string.apk_download_failed_http, conn.responseCode))
             }
             val totalBytes = conn.contentLength.toLong()
             var bytesRead = 0L

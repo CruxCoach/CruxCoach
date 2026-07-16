@@ -132,6 +132,21 @@ class MyKilterClimbsViewModelTest {
     }
 
     @Test
+    fun load_failure_is_distinct_from_an_empty_account() = runTest {
+        every { ownClimbPublisher.hasConnectedKilterAccount() } throws
+            IllegalStateException("database unavailable")
+
+        val vm = buildViewModel()
+        vm.state.test {
+            var s = awaitItem()
+            while (s.isLoading) s = awaitItem()
+            assertTrue(s.loadFailed)
+            assertTrue(s.climbs.isEmpty())
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
     fun claim_gradedClimb_routesThroughPublisher_withItsGrade_andRefreshes() = runTest {
         // setUp stubs grade 20 → the climb is graded → one-tap claim.
         coEvery { ownClimbPublisher.publish(unpublishedUuid, 20) } returns

@@ -15,6 +15,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.runTest
 import org.junit.Before
 import org.junit.Test
@@ -135,6 +136,18 @@ class KilterPublishRetryWorkerTest {
         every { tokenStore.getAccessToken() } returns null
         val result = worker().doWork()
         assertTrue(result is ListenableWorker.Result.Success, "expected success-skip, got $result")
+        coVerify(exactly = 0) { repo.getClimbsAwaitingKilterRetry(any()) }
+    }
+
+    @Test
+    fun returns_retry_when_preflight_preferences_read_throws() = runTest {
+        every { prefs.kilterClimbPublishEnabled } returns flow {
+            throw IllegalStateException("corrupt preferences")
+        }
+
+        val result = worker().doWork()
+
+        assertTrue(result is ListenableWorker.Result.Retry, "expected retry, got $result")
         coVerify(exactly = 0) { repo.getClimbsAwaitingKilterRetry(any()) }
     }
 
