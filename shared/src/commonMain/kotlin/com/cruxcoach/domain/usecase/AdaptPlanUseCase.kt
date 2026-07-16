@@ -11,7 +11,8 @@ class AdaptPlanUseCase(
     private val adaptiveAdjuster: AdaptiveAdjuster,
     private val planRepository: PlanRepository,
     private val workoutRepository: WorkoutRepository,
-    private val climbRepository: ClimbRepository
+    private val climbRepository: ClimbRepository,
+    private val today: () -> String = DateTimeUtil::todayIso,
 ) {
 
     data class AdaptResult(
@@ -33,9 +34,13 @@ class AdaptPlanUseCase(
         )
 
         // 3. Gather recent data
-        val recentLogs = workoutRepository.getRecentWorkouts(limit = 10)
-        val weekStart = DateTimeUtil.startOfWeek(DateTimeUtil.todayIso())
-        val weekEnd = DateTimeUtil.endOfWeek(DateTimeUtil.todayIso())
+        val todayIso = today()
+        val weekStart = DateTimeUtil.startOfWeek(todayIso)
+        val weekEnd = DateTimeUtil.endOfWeek(todayIso)
+        // Deload detection reasons about four adjacent calendar weeks. A row
+        // limit cannot represent that window for users training frequently.
+        val historyStart = DateTimeUtil.addWeeks(weekStart, -3)
+        val recentLogs = workoutRepository.getWorkoutsForDateRange(historyStart, weekEnd)
         val recentClimbs = climbRepository.getSendsForDateRange(weekStart, weekEnd)
 
         // 4. Run adaptive adjuster

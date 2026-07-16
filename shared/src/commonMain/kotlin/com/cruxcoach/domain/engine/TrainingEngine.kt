@@ -84,7 +84,7 @@ class TrainingEngine(
         sessionsPerWeek: Int,
         phase: TrainingPhase
     ): List<Pair<Int, SessionType>> {
-        return when (sessionsPerWeek) {
+        return when (sessionsPerWeek.coerceIn(MIN_SESSIONS_PER_WEEK, MAX_SESSIONS_PER_WEEK)) {
             2 -> when (phase) {
                 TrainingPhase.STRENGTH -> listOf(2 to SessionType.STRENGTH, 5 to SessionType.VOLUME)
                 TrainingPhase.POWER -> listOf(2 to SessionType.POWER, 5 to SessionType.VOLUME)
@@ -126,10 +126,13 @@ class TrainingEngine(
                     5 to SessionType.VOLUME, 6 to SessionType.TECHNIQUE
                 )
             }
-            else -> listOf(
-                2 to SessionType.STRENGTH, 4 to SessionType.VOLUME, 6 to SessionType.TECHNIQUE
-            )
+            else -> error("sessions/week bounds are exhaustive")
         }
+    }
+
+    private companion object {
+        const val MIN_SESSIONS_PER_WEEK = 2
+        const val MAX_SESSIONS_PER_WEEK = 4
     }
 
     internal fun targetRpeForPhase(phase: TrainingPhase, sessionType: SessionType): Float {

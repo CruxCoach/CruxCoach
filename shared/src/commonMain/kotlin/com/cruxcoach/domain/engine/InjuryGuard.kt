@@ -16,7 +16,7 @@ class InjuryGuard {
         }
 
         // Check acute pain from most recent workout log
-        val lastLog = recentLogs.lastOrNull()
+        val lastLog = recentLogs.maxWithOrNull(compareBy<WorkoutLog> { it.date }.thenBy { it.id })
         if (lastLog != null) {
             addAcuteRestrictions(lastLog, restrictions)
         }
@@ -42,7 +42,11 @@ class InjuryGuard {
 
         val cautionReasons = restrictions
             .filter { it.severity == Severity.CAUTION }
-            .associate { it.restrictedCategories.first() to it.reason }
+            .flatMap { restriction ->
+                restriction.restrictedCategories.map { category -> category to restriction.reason }
+            }
+            .groupBy({ it.first }, { it.second })
+            .mapValues { (_, reasons) -> reasons.distinct().joinToString(" · ") }
 
         val filteredExercises = session.exercises
             .filter { exercise ->

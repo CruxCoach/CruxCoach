@@ -35,14 +35,16 @@ class PhaseSelector {
     }
 
     internal fun hasFingerPain(recentLogs: List<WorkoutLog>): Boolean {
-        val lastLog = recentLogs.lastOrNull() ?: return false
+        val lastLog = recentLogs.maxWithOrNull(compareBy<WorkoutLog> { it.date }.thenBy { it.id })
+            ?: return false
         return lastLog.painAreas.any { it.contains("finger", ignoreCase = true) }
     }
 
     internal fun isOverreaching(recentLogs: List<WorkoutLog>): Boolean {
         val rpeValues = recentLogs
+            .sortedWith(compareByDescending<WorkoutLog> { it.date }.thenByDescending { it.id })
             .filter { it.perceivedRpe != null }
-            .takeLast(4)
+            .take(4)
             .mapNotNull { it.perceivedRpe }
 
         if (rpeValues.size < 2) return false

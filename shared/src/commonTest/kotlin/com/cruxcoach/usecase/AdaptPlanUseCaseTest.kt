@@ -19,7 +19,8 @@ class AdaptPlanUseCaseTest {
         adaptiveAdjuster = AdaptiveAdjuster(),
         planRepository = fakePlanRepo,
         workoutRepository = fakeWorkoutRepo,
-        climbRepository = fakeClimbRepo
+        climbRepository = fakeClimbRepo,
+        today = { "2026-03-04" },
     )
 
     private val userProfile = UserProfile(
@@ -188,5 +189,24 @@ class AdaptPlanUseCaseTest {
         assertNotNull(result)
         assertTrue(result.adaptations.any { it.type == AdaptationType.INTENSITY_INCREASE },
             "Should increase intensity when RPE is low")
+    }
+
+    @Test
+    fun executeUsesFourCalendarWeeksInsteadOfTenRowsForDeloadEvidence() {
+        seedPlan()
+        val dates = listOf(
+            "2026-02-09", "2026-02-10", "2026-02-11", "2026-02-12", "2026-02-13",
+            "2026-02-16", "2026-02-17", "2026-02-18", "2026-02-19", "2026-02-20",
+            "2026-02-23", "2026-02-24", "2026-02-25", "2026-02-26", "2026-02-27",
+            "2026-03-02", "2026-03-03", "2026-03-04", "2026-03-05", "2026-03-06",
+        )
+        dates.forEachIndexed { index, date ->
+            fakeWorkoutRepo.addLog(WorkoutLog(id = index.toLong(), date = date, perceivedRpe = 7.0))
+        }
+
+        val result = useCase.execute(userId = 1, userProfile = userProfile)
+
+        assertNotNull(result)
+        assertTrue(result.adaptations.any { it.type == AdaptationType.SUGGEST_DELOAD })
     }
 }

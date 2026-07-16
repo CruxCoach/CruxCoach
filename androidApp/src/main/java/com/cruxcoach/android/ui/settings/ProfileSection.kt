@@ -88,8 +88,8 @@ internal fun ProfileSection(
             Slider(
                 value = profile.sessionsPerWeek.toFloat(),
                 onValueChange = { onSessionsPerWeekChange(it.toInt()) },
-                valueRange = 1f..7f,
-                steps = 5,
+                valueRange = 2f..4f,
+                steps = 1,
                 colors = SliderDefaults.colors(thumbColor = OrangeAccent, activeTrackColor = OrangeAccent)
             )
         }

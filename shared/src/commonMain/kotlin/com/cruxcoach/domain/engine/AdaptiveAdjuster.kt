@@ -45,8 +45,9 @@ class AdaptiveAdjuster {
         adaptations: MutableList<Adaptation>
     ): WeekPlan {
         val rpeValues = recentLogs
+            .sortedWith(compareByDescending<WorkoutLog> { it.date }.thenByDescending { it.id })
             .filter { it.perceivedRpe != null }
-            .takeLast(4)
+            .take(4)
             .mapNotNull { it.perceivedRpe }
 
         if (rpeValues.size < 2) return plan
@@ -83,7 +84,8 @@ class AdaptiveAdjuster {
         recentLogs: List<WorkoutLog>,
         adaptations: MutableList<Adaptation>
     ): WeekPlan {
-        val lastLog = recentLogs.lastOrNull() ?: return plan
+        val lastLog = recentLogs.maxWithOrNull(compareBy<WorkoutLog> { it.date }.thenBy { it.id })
+            ?: return plan
 
         if (lastLog.painAreas.any { it.contains("finger", ignoreCase = true) }) {
             adaptations.add(
@@ -104,7 +106,8 @@ class AdaptiveAdjuster {
         recentLogs: List<WorkoutLog>,
         adaptations: MutableList<Adaptation>
     ): WeekPlan {
-        val lastLog = recentLogs.lastOrNull() ?: return plan
+        val lastLog = recentLogs.maxWithOrNull(compareBy<WorkoutLog> { it.date }.thenBy { it.id })
+            ?: return plan
 
         if (lastLog.fingerSkinStatus == "SPLIT") {
             adaptations.add(
@@ -168,8 +171,9 @@ class AdaptiveAdjuster {
         adaptations: MutableList<Adaptation>
     ) {
         val moodValues = recentLogs
+            .sortedWith(compareByDescending<WorkoutLog> { it.date }.thenByDescending { it.id })
             .filter { it.moodPre != null }
-            .takeLast(3)
+            .take(3)
             .mapNotNull { it.moodPre }
 
         if (moodValues.isEmpty()) return
@@ -192,6 +196,10 @@ class AdaptiveAdjuster {
         adaptations: MutableList<Adaptation>
     ) {
         val logsThisWeek = recentLogs.count { isThisWeek(it.date) }
+        // An empty observation window is not evidence that sessions were
+        // missed. Require at least one log from this week before inferring a
+        // completion shortfall from the remaining plan.
+        if (logsThisWeek == 0) return
         val plannedSessions = currentPlan.sessions.size
         val missed = plannedSessions - logsThisWeek
 
@@ -251,38 +259,23 @@ class AdaptiveAdjuster {
 
     internal fun countWeeksWithoutDeload(logs: List<WorkoutLog>): Int {
         if (logs.isEmpty()) return 0
-        // Count how many consecutive weeks from the end have RPE >= 6
-        // (meaning they were working weeks, not deload)
-        var weeks = 0
-        val sortedByDateDesc = logs.sortedByDescending { it.date }
-        var currentWeekStart = ""
-
-        for (log in sortedByDateDesc) {
+        val byWeek = logs.mapNotNull { log ->
             val weekStart = try {
                 DateTimeUtil.startOfWeek(log.date)
             } catch (_: Exception) {
-                continue
+                return@mapNotNull null
             }
+            weekStart to log
+        }.groupBy({ it.first }, { it.second })
 
-            if (weekStart != currentWeekStart) {
-                currentWeekStart = weekStart
-                val weekRpe = logs
-                    .filter {
-                        try {
-                            DateTimeUtil.startOfWeek(it.date) == weekStart
-                        } catch (_: Exception) {
-                            false
-                        }
-                    }
-                    .mapNotNull { it.perceivedRpe }
-                    .average()
-
-                if (weekRpe.isNaN() || weekRpe >= 6.0) {
-                    weeks++
-                } else {
-                    break // Found a deload week
-                }
-            }
+        var weeks = 0
+        var expectedWeek: String? = null
+        for ((weekStart, weekLogs) in byWeek.toSortedMap(reverseOrder())) {
+            if (expectedWeek != null && weekStart != expectedWeek) break
+            val rpeValues = weekLogs.mapNotNull { it.perceivedRpe }
+            if (rpeValues.isEmpty() || rpeValues.average() < 6.0) break
+            weeks++
+            expectedWeek = DateTimeUtil.addWeeks(weekStart, -1)
         }
         return weeks
     }

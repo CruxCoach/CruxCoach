@@ -100,6 +100,16 @@ class InjuryGuardTest {
         assertEquals(Severity.CAUTION, restrictions[0].severity)
     }
 
+    @Test
+    fun newestLogIsSelectedRegardlessOfInputOrder() {
+        val oldPain = makeLog(painAreas = listOf("finger")).copy(id = 1, date = "2026-01-01")
+        val newestHealthy = makeLog().copy(id = 2, date = "2026-01-20")
+
+        val restrictions = guard.getActiveRestrictions(makeProfile(), listOf(newestHealthy, oldPain))
+
+        assertTrue(restrictions.none { it.severity == Severity.STOP })
+    }
+
     // === validateSession ===
 
     @Test
@@ -175,5 +185,29 @@ class InjuryGuardTest {
 
         val validated = guard.validateSession(session, emptyList())
         assertEquals(session, validated)
+    }
+
+    @Test
+    fun validateSessionMapsEveryCautionCategoryAndPreservesEveryReason() {
+        val session = PlannedSession(
+            dayOfWeek = 1,
+            sessionType = SessionType.STRENGTH,
+            exercises = listOf(
+                ExerciseBlock(nameEn = "Campus", nameDe = "Campus", category = "CAMPUS", sets = 2),
+                ExerciseBlock(nameEn = "Hangs", nameDe = "Hangs", category = "HANGBOARD", sets = 2),
+            ),
+            targetDurationMin = 45,
+            targetRpe = 7.0f,
+        )
+        val restrictions = listOf(
+            TrainingRestriction(setOf("HANGBOARD", "CAMPUS"), "Finger history", Severity.CAUTION),
+            TrainingRestriction(setOf("CAMPUS"), "Shoulder history", Severity.CAUTION),
+        )
+
+        val validated = guard.validateSession(session, restrictions)
+
+        assertTrue(validated.exercises[0].notes.contains("Finger history"))
+        assertTrue(validated.exercises[0].notes.contains("Shoulder history"))
+        assertTrue(validated.exercises[1].notes.contains("Finger history"))
     }
 }

@@ -118,6 +118,26 @@ class AdaptiveAdjusterTest {
             "Should not have intensity increase")
     }
 
+    @Test
+    fun rpeAndMoodUseNewestDatedValuesRegardlessOfListOrder() {
+        val oldLow = (1..4).map { i ->
+            WorkoutLog(id = i.toLong(), date = "2026-01-0$i", perceivedRpe = 4.0, moodPre = 1)
+        }
+        val newNormal = (5..8).map { i ->
+            WorkoutLog(id = i.toLong(), date = "2026-02-0${i - 4}", perceivedRpe = 7.0, moodPre = 4)
+        }
+
+        val (_, adaptations) = adjuster.analyzeAndAdapt(
+            makeWeekPlan(),
+            (newNormal + oldLow).reversed(),
+            emptyList(),
+            makeUserProfile(),
+        )
+
+        assertTrue(adaptations.none { it.type == AdaptationType.INTENSITY_INCREASE })
+        assertTrue(adaptations.none { it.type == AdaptationType.MOTIVATION_BOOST })
+    }
+
     // === INJURY TESTS ===
 
     @Test
@@ -228,6 +248,16 @@ class AdaptiveAdjusterTest {
             "Should not suggest deload when already in deload phase")
     }
 
+    @Test
+    fun nonAdjacentOrUnratedWeeksDoNotCountAsConsecutiveWorkWeeks() {
+        val gapped = listOf("2026-01-05", "2026-01-19", "2026-02-02", "2026-02-16")
+            .mapIndexed { index, date -> WorkoutLog(index.toLong(), date = date, perceivedRpe = 7.0) }
+        assertEquals(1, adjuster.countWeeksWithoutDeload(gapped))
+
+        val unratedNewest = gapped + WorkoutLog(99, date = "2026-02-23", perceivedRpe = null)
+        assertEquals(0, adjuster.countWeeksWithoutDeload(unratedNewest))
+    }
+
     // === MOTIVATION ===
 
     @Test
@@ -271,11 +301,7 @@ class AdaptiveAdjusterTest {
             userProfile = makeUserProfile()
         )
 
-        assertTrue(adaptations.isEmpty() || adaptations.all {
-            it.type != AdaptationType.VOLUME_DECREASE &&
-            it.type != AdaptationType.INTENSITY_INCREASE &&
-            it.type != AdaptationType.INJURY_ALERT
-        }, "Should have no RPE/injury adaptations with empty logs")
+        assertTrue(adaptations.isEmpty(), "No observations must not be interpreted as missed sessions")
     }
 
     @Test

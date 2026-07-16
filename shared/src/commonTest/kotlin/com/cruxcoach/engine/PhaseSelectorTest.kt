@@ -140,8 +140,7 @@ class PhaseSelectorTest {
             recentLogs = makeLogs(4, rpe = 7.5),
             profile = makeProfile()
         )
-        // Not DELOAD (RPE is normal)
-        assertTrue(result != TrainingPhase.DELOAD || false)
+        assertEquals(TrainingPhase.STRENGTH, result)
     }
 
     // === FINGER PAIN OVERRIDE ===
@@ -160,6 +159,20 @@ class PhaseSelectorTest {
     fun noFingerPain_noOverride() {
         val hasFingerPain = selector.hasFingerPain(makeLogs(3))
         assertEquals(false, hasFingerPain)
+    }
+
+    @Test
+    fun newestPainAndRpeAreSelectedRegardlessOfInputOrder() {
+        val logs = listOf(
+            WorkoutLog(id = 3, date = "2026-01-03", perceivedRpe = 9.5, painAreas = listOf("finger")),
+            WorkoutLog(id = 1, date = "2026-01-01", perceivedRpe = 4.0),
+            WorkoutLog(id = 2, date = "2026-01-02", perceivedRpe = 4.0),
+            WorkoutLog(id = 0, date = "2025-12-31", perceivedRpe = 4.0),
+            WorkoutLog(id = 4, date = "2026-01-04", perceivedRpe = 9.5, painAreas = listOf("finger")),
+        )
+
+        assertEquals(true, selector.hasFingerPain(logs.shuffledForTest()))
+        assertEquals(false, selector.isOverreaching(logs.shuffledForTest()))
     }
 
     // === HELPER TESTS ===
@@ -182,7 +195,5 @@ class PhaseSelectorTest {
         assertEquals(false, selector.isOverreaching(logs))
     }
 
-    private fun assertTrue(condition: Boolean) {
-        assertEquals(true, condition)
-    }
+    private fun <T> List<T>.shuffledForTest(): List<T> = listOf(last(), first()) + drop(1).dropLast(1)
 }

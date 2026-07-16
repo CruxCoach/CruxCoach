@@ -98,6 +98,12 @@ class TrainingEngineTest {
     }
 
     @Test
+    fun legacySessionCountsAreClampedToSupportedTemplates() {
+        assertEquals(2, engine.createWeekTemplate(1, TrainingPhase.POWER).size)
+        assertEquals(4, engine.createWeekTemplate(7, TrainingPhase.POWER).size)
+    }
+
+    @Test
     fun deloadPhase_lowTargetRpe() {
         val plan = engine.generateWeekPlan(
             profile = profile,

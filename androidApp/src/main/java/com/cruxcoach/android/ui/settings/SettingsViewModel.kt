@@ -226,7 +226,7 @@ class SettingsViewModel @Inject constructor(
                         weightKg = profile.weightKg.toString(),
                         heightCm = profile.heightCm.toString(),
                         maxGradeIndex = gradeIndex,
-                        sessionsPerWeek = profile.sessionsPerWeek,
+                        sessionsPerWeek = profile.sessionsPerWeek.coerceIn(2, 4),
                         profileId = profile.id
                     )
                 } else ProfileFormState()
@@ -349,7 +349,7 @@ class SettingsViewModel @Inject constructor(
     fun updateAge(v: String) { _state.update { it.copy(profile = it.profile.copy(age = v.filter { c -> c.isDigit() }), saveSuccess = false) } }
     fun updateWeight(v: String) { _state.update { it.copy(profile = it.profile.copy(weightKg = v), saveSuccess = false) } }
     fun updateHeight(v: String) { _state.update { it.copy(profile = it.profile.copy(heightCm = v), saveSuccess = false) } }
-    fun updateSessionsPerWeek(v: Int) { _state.update { it.copy(profile = it.profile.copy(sessionsPerWeek = v.coerceIn(1, 7)), saveSuccess = false) } }
+    fun updateSessionsPerWeek(v: Int) { _state.update { it.copy(profile = it.profile.copy(sessionsPerWeek = v.coerceIn(2, 4)), saveSuccess = false) } }
 
     fun gradeUp() {
         _state.update { s ->
@@ -388,7 +388,7 @@ class SettingsViewModel @Inject constructor(
                         weightKg = weight,
                         heightCm = height,
                         maxBoulderGrade = GradeConverter.indexToFrench(p.maxGradeIndex),
-                        sessionsPerWeek = p.sessionsPerWeek,
+                        sessionsPerWeek = p.sessionsPerWeek.coerceIn(2, 4),
                         updatedAt = DateTimeUtil.nowIso()
                     )
                     userRepository.updateProfile(updated)
