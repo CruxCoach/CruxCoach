@@ -7,6 +7,7 @@ import com.cruxcoach.android.nostr.NostrRelayPool
 import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.android.payment.model.LnurlPayResponse
 import com.cruxcoach.android.payment.model.ZapResult
+import com.cruxcoach.android.util.ExternalInputPolicy
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -76,8 +77,8 @@ class ZapManager @Inject constructor(
 
             ZapResult.Invoice(invoice)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to create payment request", e)
-            ZapResult.Error("Payment request failed: ${e.message}")
+            Log.e(TAG, "Failed to create payment request (${e.javaClass.simpleName})")
+            ZapResult.Error("Payment request failed")
         }
     }
 
@@ -155,14 +156,15 @@ class ZapManager @Inject constructor(
         return try {
             val json = JSONObject(responseBody)
             val pr = json.optString("pr", null)
-            if (pr.isNullOrBlank()) {
+            val validInvoice = pr?.let(ExternalInputPolicy::validBolt11OrNull)
+            if (validInvoice == null) {
                 Log.e(TAG, "No payment request in invoice response")
                 null
             } else {
-                pr
+                validInvoice
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to parse invoice response", e)
+            Log.e(TAG, "Failed to parse invoice response (${e.javaClass.simpleName})")
             null
         }
     }
@@ -180,11 +182,11 @@ class ZapManager @Inject constructor(
                 if (response.isSuccessful && body != null) {
                     cont.resume(body)
                 } else {
-                    Log.e(TAG, "HTTP GET failed: ${response.code} for $url")
+                    Log.e(TAG, "HTTP GET failed: ${response.code}")
                     cont.resume(null)
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "HTTP GET exception for $url", e)
+                Log.e(TAG, "HTTP GET exception (${e.javaClass.simpleName})")
                 cont.resume(null)
             }
         }

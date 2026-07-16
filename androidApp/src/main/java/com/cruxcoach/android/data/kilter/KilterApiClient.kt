@@ -2,6 +2,7 @@ package com.cruxcoach.android.data.kilter
 
 import android.util.Log
 import com.cruxcoach.android.BuildConfig
+import com.cruxcoach.android.util.forLog
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -309,7 +310,7 @@ sealed class KilterAuthResult {
      * Typed authentication failure. `reason` is the canonical category
      * (the UI layer maps it to a localized R.string); `httpCode` and
      * `throttleSec` carry context for reasons that need it; `cause` is
-     * a free-form diagnostic string for logcat (never user-visible).
+     * a bounded diagnostic string (never user-visible).
      *
      * Pre-fix this carried a single hardcoded German message that the
      * UI surfaced verbatim (English-locale users saw German text), and
@@ -433,7 +434,7 @@ class KilterApiClient @Inject constructor(
             val now = System.currentTimeMillis()
             if (now < nextAllowed) {
                 val waitSec = ((nextAllowed - now) / 1000L).coerceAtLeast(1)
-                Log.w(TAG, "auth throttled for ${throttleKey.take(3)}*** waitSec=$waitSec")
+                Log.w(TAG, "auth throttled waitSec=$waitSec")
                 return@withContext KilterAuthResult.Error(
                     reason = KilterAuthResult.Error.Reason.Throttled,
                     throttleSec = waitSec,
@@ -452,15 +453,15 @@ class KilterApiClient @Inject constructor(
                 val response = httpClient.newCall(request).execute()
 
                 if (!response.isSuccessful) {
-                    val errorBody = response.body?.string() ?: ""
-                    Log.w(TAG, "Auth failed: HTTP ${response.code}, $errorBody")
+                    val errorBody = response.body?.string().orEmpty().take(MAX_ERR_BODY)
+                    Log.w(TAG, "Auth failed: HTTP ${response.code}")
                     bumpAuthBackoff(throttleKey)
                     return@withContext KilterAuthResult.Error(
                         reason = if (response.code == 401)
                             KilterAuthResult.Error.Reason.InvalidCredentials
                         else KilterAuthResult.Error.Reason.HttpFailure,
                         httpCode = response.code,
-                        cause = errorBody.take(200),
+                        cause = errorBody,
                     )
                 }
 
@@ -538,11 +539,11 @@ class KilterApiClient @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Log.e(TAG, "Auth error", e)
+                Log.e(TAG, "Auth error (${e.javaClass.simpleName})")
                 bumpAuthBackoff(throttleKey)
                 KilterAuthResult.Error(
                     reason = KilterAuthResult.Error.Reason.NetworkError,
-                    cause = e.message?.take(200),
+                    cause = e.message?.forLog(MAX_ERR_BODY),
                 )
             }
         }
@@ -1096,7 +1097,7 @@ class KilterApiClient @Inject constructor(
                     return@withContext KilterPublishResult.Success(climbUuid)
                 }
                 val responseBody = resp.body?.string().orEmpty().take(MAX_ERR_BODY)
-                Log.w(TAG, "deleteClimb HTTP ${resp.code}: $responseBody")
+                Log.w(TAG, "deleteClimb HTTP ${resp.code}: ${responseBody.forLog(MAX_ERR_BODY)}")
                 return@withContext when (resp.code) {
                     401, 403 -> KilterPublishResult.NotAuthenticated
                     in 400..499 -> KilterPublishResult.PermanentError(responseBody, resp.code)
@@ -1232,7 +1233,7 @@ class KilterApiClient @Inject constructor(
                 // HTML stack-trace render could be 50–500 KB into the
                 // unencrypted board DB and into Android Auto-Backup.
                 val responseBody = resp.body?.string().orEmpty().take(MAX_ERR_BODY)
-                Log.w(TAG, "$op HTTP ${resp.code}: $responseBody")
+                Log.w(TAG, "$op HTTP ${resp.code}: ${responseBody.forLog(MAX_ERR_BODY)}")
                 return@withContext when (resp.code) {
                     401, 403 -> KilterPublishResult.NotAuthenticated
                     429 -> {

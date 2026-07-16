@@ -2,6 +2,7 @@ package com.cruxcoach.android.nostr
 
 import android.util.Log
 import com.cruxcoach.android.nostr.model.RelayConfig
+import com.cruxcoach.android.util.forLog
 import com.vitorpamplona.quartz.nip01Core.core.Event
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -117,7 +118,7 @@ class NostrRelayPool @Inject constructor(
                     // publisher's RELAY_TIMEOUT_MS — otherwise every in-flight
                     // sendEvent hangs and the pendingOks map piles up while
                     // reconnect is pending.
-                    failAllPending(Exception("Relay $url closed: $code $reason"))
+                    failAllPending(Exception("Relay $url closed: $code ${reason.forLog()}"))
                     if (activeFilters.isNotEmpty()) scheduleReconnect()
                 }
             })
@@ -147,13 +148,13 @@ class NostrRelayPool @Inject constructor(
                             Log.w(
                                 TAG,
                                 "event=relay_ok_false url=$url eventIdPrefix=${eventId.take(8)} " +
-                                    "reason=${if (reason.isEmpty()) "<none>" else reason}",
+                                    "reason=${if (reason.isEmpty()) "<none>" else reason.forLog()}",
                             )
                         } else if (reason.isNotEmpty()) {
                             Log.d(
                                 TAG,
                                 "event=relay_ok_true_with_reason url=$url " +
-                                    "eventIdPrefix=${eventId.take(8)} reason=$reason",
+                                    "eventIdPrefix=${eventId.forLog(8)} reason=${reason.forLog()}",
                             )
                         }
                         pendingOks.remove(eventId)?.complete(accepted)
@@ -162,16 +163,16 @@ class NostrRelayPool @Inject constructor(
                         val subId = arr[1].jsonPrimitive.content
                         val eventJson = arr[2].toString()
                         val emitted = subscriptionFlows[subId]?.tryEmit(eventJson) ?: false
-                        if (!emitted) Log.w(TAG, "EVENT not emitted from $url subId=$subId (flow missing or full)")
+                        if (!emitted) Log.w(TAG, "EVENT not emitted from $url subId=${subId.forLog()} (flow missing or full)")
                     }
                     "EOSE" -> {
                         val subId = arr[1].jsonPrimitive.content
                         subscriptionFlows[subId]?.tryEmit(EOSE_SENTINEL)
                     }
-                    "NOTICE" -> Log.w(TAG, "Relay $url: ${arr[1].jsonPrimitive.content}")
+                    "NOTICE" -> Log.w(TAG, "Relay $url: ${arr[1].jsonPrimitive.content.forLog()}")
                 }
             } catch (e: Exception) {
-                Log.w(TAG, "Failed to parse relay message from $url", e)
+                Log.w(TAG, "Failed to parse relay message from $url (${e.javaClass.simpleName})")
             }
         }
 

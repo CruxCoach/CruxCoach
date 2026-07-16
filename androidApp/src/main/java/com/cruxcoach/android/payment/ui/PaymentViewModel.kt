@@ -15,6 +15,7 @@ import com.cruxcoach.android.payment.PaymentRepository
 import com.cruxcoach.android.payment.ZapManager
 import com.cruxcoach.android.payment.model.PaymentChannel
 import com.cruxcoach.android.payment.model.ZapResult
+import com.cruxcoach.android.util.ExternalInputPolicy
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -156,8 +157,13 @@ class PaymentViewModel @Inject constructor(
     }
 
     fun openLightningInvoice(context: Context, bolt11: String) {
+        val safeInvoice = ExternalInputPolicy.validBolt11OrNull(bolt11) ?: run {
+            Log.w(TAG, "Refusing malformed Lightning invoice")
+            _state.update { it.copy(showNoWalletDialog = true) }
+            return
+        }
         try {
-            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("lightning:$bolt11"))
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("lightning:$safeInvoice"))
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             context.startActivity(intent)
         } catch (e: Exception) {

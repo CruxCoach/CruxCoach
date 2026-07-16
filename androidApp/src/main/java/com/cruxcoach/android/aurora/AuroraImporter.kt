@@ -253,7 +253,7 @@ class AuroraImporter @Inject constructor(
             try {
                 val layoutId = resolveLayoutId(climb.layout)
                 if (layoutId == null) {
-                    Log.w(TAG, "climbs[$idx] '${climb.name}' — unknown layout '${climb.layout}'")
+                    Log.w(TAG, "climbs[$idx] — unknown layout")
                     failed++; return@forEachIndexed
                 }
                 if (climb.holds.isEmpty()) { failed++; return@forEachIndexed }
@@ -276,7 +276,7 @@ class AuroraImporter @Inject constructor(
                 if (holds.isEmpty()) {
                     Log.w(
                         TAG,
-                        "climbs[$idx] '${climb.name}' — no holds resolvable " +
+                        "climbs[$idx] — no holds resolvable " +
                             "(in=${climb.holds.size}, unmappedCoords=$unmappedCoords, " +
                             "unknownRoles=$unknownRoles, layout=$layoutId). " +
                             "Aurora hold coords are expected on the same scale as " +
@@ -330,7 +330,7 @@ class AuroraImporter @Inject constructor(
                 imported++
                 newUuids[climb.name] = draftUuid
             } catch (e: Exception) {
-                Log.w(TAG, "climbs[$idx] '${climb.name}' import failed", e)
+                Log.w(TAG, "climbs[$idx] import failed (${e.javaClass.simpleName})")
                 failed++
             }
         }
@@ -414,7 +414,7 @@ class AuroraImporter @Inject constructor(
                 } catch (e: CancellationException) {
                     throw e
                 } catch (t: Throwable) {
-                    Log.w(TAG, "ascents[$idx] '${a.climb}' insert failed", t)
+                    Log.w(TAG, "ascents[$idx] insert failed (${t.javaClass.simpleName})")
                     failed++
                 }
             }
@@ -465,7 +465,7 @@ class AuroraImporter @Inject constructor(
                 } catch (e: CancellationException) {
                     throw e
                 } catch (t: Throwable) {
-                    Log.w(TAG, "bids[$idx] '${b.climb}' insert failed", t)
+                    Log.w(TAG, "bids[$idx] insert failed (${t.javaClass.simpleName})")
                     failed++
                 }
             }
@@ -532,7 +532,7 @@ class AuroraImporter @Inject constructor(
                     }
                 }
             } catch (e: Exception) {
-                Log.w(TAG, "Circuit '${circuit.name}' import failed", e)
+                Log.w(TAG, "circuits[$idx] import failed (${e.javaClass.simpleName})")
                 failed++
             }
         }

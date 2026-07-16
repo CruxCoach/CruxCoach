@@ -64,7 +64,7 @@ class LnurlVerifier @Inject constructor(
                     else State.Unreachable("no callback")
                 }
             } catch (e: Exception) {
-                Log.w(TAG, "LNURL verify failed for $url", e)
+                Log.w(TAG, "LNURL verify failed (${e.javaClass.simpleName})")
                 State.Unreachable(e.message ?: e.javaClass.simpleName)
             }
         }

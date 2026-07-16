@@ -58,6 +58,7 @@ import kotlinx.coroutines.withContext
 import java.util.UUID
 import com.cruxcoach.android.nostr.NostrKeyStore
 import com.cruxcoach.android.nostr.NostrSigner
+import com.cruxcoach.android.util.ClimbAppLinkRoute
 import com.cruxcoach.android.util.PerfLogger
 import javax.inject.Inject
 
@@ -357,7 +358,7 @@ class MainActivity : AppCompatActivity() {
             else -> {
                 android.util.Log.w(
                     "MainActivity",
-                    "Rejected navigate_to='$raw' from external intent"
+                    "Rejected navigate_to from external intent"
                 )
                 null
             }
@@ -416,11 +417,7 @@ class MainActivity : AppCompatActivity() {
         // legacy 32-hex Kilter uuids and dashed new-world uuids. Anything
         // that isn't an naddr and doesn't look like a uuid falls through
         // to the normal launcher path.
-        if (!ref.startsWith("naddr1")) {
-            return if (ref.matches(Regex("[0-9a-fA-F-]{8,64}"))) {
-                "board_climb_detail/$ref/40"
-            } else null
-        }
+        if (!ref.startsWith("naddr1")) return ClimbAppLinkRoute.fromRawReference(ref)
         val naddr = ref
 
         val nAddress = runCatching {
@@ -428,23 +425,9 @@ class MainActivity : AppCompatActivity() {
                 .filterIsInstance<com.vitorpamplona.quartz.nip19Bech32.entities.NAddress>()
                 .firstOrNull()
         }.getOrNull() ?: return null
-        if (nAddress.kind != 30078) return null
-
-        // Expected dTag: "cruxcoach:climb:<pubkey-prefix-8>:<uuid>"
-        val dParts = nAddress.dTag.split(":")
-        if (dParts.size < 4 || dParts[0] != "cruxcoach" || dParts[1] != "climb") {
-            android.util.Log.w("MainActivity", "App link dTag doesn't look like cruxcoach climb: ${nAddress.dTag}")
-            return null
+        return ClimbAppLinkRoute.fromNaddr(nAddress.kind, nAddress.dTag).also { route ->
+            if (route == null) android.util.Log.w("MainActivity", "Rejected malformed climb app link")
         }
-        val uuid = dParts.last()
-        if (uuid.isBlank()) return null
-
-        // Angle: best-effort lookup at runtime would require Hilt-injected
-        // prefs reachable from the deep-link helper. Default to 40 (the
-        // user-preferences default) — the detail screen exposes an angle
-        // selector if the user wants a different angle.
-        val angle = 40
-        return "board_climb_detail/$uuid/$angle"
     }
 
     private fun isAllowedLocalImportUrl(rawUrl: String): Boolean {

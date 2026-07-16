@@ -626,7 +626,7 @@ class SessionGattBridge(
                     val newHost = nearbySessions.first()
                     val device = newHost.device
                     Log.d(TAG, "Migration: found new session during wait " +
-                        "(id=${newHost.sessionId}, host='${newHost.hostName}', device=${device?.address}, lastHostId=$lastHostSessionId)")
+                        "(id=${newHost.sessionId}, hasDevice=${device != null}, lastHostId=$lastHostSessionId)")
                     if (device != null) {
                         Log.d(TAG, "Migration: joining new host instead of promoting")
                         joinSession(device)

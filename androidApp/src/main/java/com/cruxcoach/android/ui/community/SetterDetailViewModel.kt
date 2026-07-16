@@ -142,7 +142,7 @@ class SetterDetailViewModel @Inject constructor(
                     }
                 },
                 onFailure = { e ->
-                    Log.w(TAG, "getClimbsByPubkey($pubkey) failed", e)
+                    Log.w(TAG, "getClimbsByPubkey failed (${e.javaClass.simpleName})")
                     _state.update {
                         it.copy(
                             climbs = emptyList(),
@@ -166,7 +166,7 @@ class SetterDetailViewModel @Inject constructor(
             // appeared — perceived as "nothing loaded yet" even
             // though we had cached metadata locally.
             val cached = runCatching { nostrProfileManager.getProfileFromCache(pubkey) }
-                .onFailure { Log.w(TAG, "getProfileFromCache($pubkey) failed", it) }
+                .onFailure { Log.w(TAG, "getProfileFromCache failed (${it.javaClass.simpleName})") }
                 .getOrNull()
             if (cached != null) {
                 _state.update { current -> current.applyProfile(cached) }
@@ -180,7 +180,7 @@ class SetterDetailViewModel @Inject constructor(
             // refreshProfile: a relay outage just falls back to the
             // existing cache instead of blanking the screen.
             val refreshed = runCatching { nostrProfileManager.refreshProfile(pubkey) }
-                .onFailure { Log.w(TAG, "refreshProfile($pubkey) failed", it) }
+                .onFailure { Log.w(TAG, "refreshProfile failed (${it.javaClass.simpleName})") }
                 .getOrNull()
                 ?: return@launch
             _state.update { current -> current.applyProfile(refreshed) }

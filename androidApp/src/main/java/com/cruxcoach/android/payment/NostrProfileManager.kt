@@ -211,7 +211,7 @@ class NostrProfileManager @Inject constructor(
                 parseAndCacheProfile(pubkey, json)
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to fetch profile for $pubkey", e)
+            Log.e(TAG, "Failed to fetch profile (${e.javaClass.simpleName})")
             null
         }
     }
@@ -234,12 +234,12 @@ class NostrProfileManager @Inject constructor(
                     idValid = idValid,
                 )
             ) {
-                Log.w(TAG, "Profile event author/kind/signature/id invalid for ${pubkey.take(8)}")
+                Log.w(TAG, "Profile event author/kind/signature/id invalid")
                 return null
             }
             val nowSeconds = System.currentTimeMillis() / 1000
             if (!NostrEventPolicy.isCreatedAtAcceptable(event.createdAt, nowSeconds)) {
-                Log.w(TAG, "Profile event timestamp too far in future for ${pubkey.take(8)}")
+                Log.w(TAG, "Profile event timestamp too far in future")
                 return null
             }
 
@@ -268,7 +268,7 @@ class NostrProfileManager @Inject constructor(
                 website = website,
             )
             if (!written) {
-                Log.i(TAG, "skip stale Kind-0 for $pubkey created_at=${event.createdAt}")
+                Log.i(TAG, "skip stale Kind-0 created_at=${event.createdAt}")
                 // Return the cache view (callers expect non-null on
                 // success; the freshest data is already there). Falling
                 // through to a re-read keeps the contract intact for

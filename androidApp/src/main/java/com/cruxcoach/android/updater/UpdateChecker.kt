@@ -3,6 +3,7 @@ package com.cruxcoach.android.updater
 import android.os.SystemClock
 import android.util.Log
 import com.cruxcoach.android.BuildConfig
+import com.cruxcoach.android.util.ExternalInputPolicy
 
 /**
  * Single coalescing check entry point (§5.1, §6.12).
@@ -178,7 +179,9 @@ class UpdateChecker(
             ?: return null
         val shaAsset = release.assets.firstOrNull { it.name.endsWith(".apk.sha256", ignoreCase = true) }
             ?: return null
-        val pageUrl = release.htmlUrl ?: return null
+        val pageUrl = release.htmlUrl
+            ?.let { ExternalInputPolicy.trustedReleasePageUrlOrNull(it, BuildConfig.UPDATER_API_BASE) }
+            ?: return null
         return UpdateInfo(
             tagName = tag,
             versionName = version.toString(),

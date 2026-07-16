@@ -62,7 +62,7 @@ class BoardStateManager @Inject constructor(
         _lastClimb.update { LastBoardClimb(uuid, angle, name) }
         userPreferences.setLastClimb(uuid, angle)
         scheduleStaleCleanup()
-        Log.d(TAG, "SET uuid=${uuid.take(8)} angle=$angle name=${name ?: "unknown"}")
+        Log.d(TAG, "SET uuid=${uuid.take(8)} angle=$angle hasName=${name != null}")
     }
 
     /**
@@ -97,7 +97,7 @@ class BoardStateManager @Inject constructor(
         val existingName = current?.name?.takeIf { current.uuid == uuid }
         _lastClimb.value = LastBoardClimb(uuid, angle, existingName)
         scheduleStaleCleanup()
-        Log.d(TAG, "QUICK uuid=${uuid.take(8)} angle=$angle name=${existingName ?: "pending"}")
+        Log.d(TAG, "QUICK uuid=${uuid.take(8)} angle=$angle hasName=${existingName != null}")
     }
 
     /**

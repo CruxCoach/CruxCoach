@@ -10,9 +10,11 @@ import android.net.Uri
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import com.cruxcoach.android.BuildConfig
 import com.cruxcoach.android.MainActivity
 import com.cruxcoach.android.R
 import com.cruxcoach.android.notification.AppNotificationService
+import com.cruxcoach.android.util.ExternalInputPolicy
 
 /**
  * Single-notification surface for the updater (§5.2, §6.10, §6.14).
@@ -182,7 +184,11 @@ class UpdateNotifier(private val context: Context) {
     }
 
     private fun openReleasePendingIntent(url: String): PendingIntent {
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+        val safeUrl = ExternalInputPolicy.trustedReleasePageUrlOrNull(
+            url,
+            BuildConfig.UPDATER_API_BASE,
+        ) ?: return settingsPendingIntent()
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(safeUrl)).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
         return PendingIntent.getActivity(

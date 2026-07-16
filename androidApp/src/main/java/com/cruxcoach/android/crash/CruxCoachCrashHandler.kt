@@ -4,8 +4,6 @@ import android.content.Context
 import android.os.Build
 import com.cruxcoach.android.nostr.DevicePrivacy
 import java.io.File
-import java.io.PrintWriter
-import java.io.StringWriter
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -33,12 +31,7 @@ class CruxCoachCrashHandler(
     }
 
     private fun buildReport(throwable: Throwable): String {
-        val stackTrace = StringWriter().also { sw ->
-            throwable.printStackTrace(PrintWriter(sw))
-        }.toString()
-
-        // Strip file paths that might contain usernames
-        val sanitizedTrace = stackTrace.replace(Regex("/data/user/\\d+/[^/]+/"), "/…/")
+        val sanitizedTrace = CrashReportSanitizer.renderStack(throwable)
 
         val timestamp = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply {
             timeZone = TimeZone.getTimeZone("UTC")

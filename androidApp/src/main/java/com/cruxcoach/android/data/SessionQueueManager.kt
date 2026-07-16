@@ -288,7 +288,7 @@ class SessionQueueManager(
                 participantCount = newParticipants.size + 1
             )
         }
-        Log.d(TAG, "addParticipant: $displayName, total=${_state.value.participantCount}")
+        Log.d(TAG, "addParticipant: total=${_state.value.participantCount}")
         onParticipantsChanged?.invoke()
         return assignedIndex
     }
@@ -347,7 +347,7 @@ class SessionQueueManager(
     /** Update session info from host notification (participant side).
      *  The count from the host already includes the host (+1). */
     fun updateSessionInfo(hostName: String, participantCount: Int) {
-        Log.d(TAG, "updateSessionInfo: hostName=$hostName, participantCount=$participantCount")
+        Log.d(TAG, "updateSessionInfo: participantCount=$participantCount")
         _state.update { it.copy(
             hostName = hostName,
             participantCount = participantCount
@@ -358,7 +358,7 @@ class SessionQueueManager(
      *  Updates the displayed list and recalculates our own index.
      *  Does NOT update participantCount — that comes solely from [updateSessionInfo]. */
     fun applyRemoteParticipants(names: List<String>) {
-        Log.d(TAG, "applyRemoteParticipants: ${names.size} names: $names")
+        Log.d(TAG, "applyRemoteParticipants: count=${names.size}")
         _state.update { s ->
             val participants = names.mapIndexed { i, name ->
                 SessionParticipant(deviceAddress = "remote-$i", displayName = name)

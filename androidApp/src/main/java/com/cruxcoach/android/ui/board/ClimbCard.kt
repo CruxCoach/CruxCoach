@@ -100,9 +100,6 @@ internal fun ClimbCard(
                         (climb.syncStatus == null ||
                          climb.syncStatus == "draft" ||
                          climb.syncStatus == "failed")
-                    if (climb.name.startsWith("TEST-")) {
-                        android.util.Log.d("ClimbCard", "badge-eval name=${climb.name} source=${climb.source} sync_status=${climb.syncStatus} kilter_status=${climb.kilterStatus} → showDraft=$showDraftBadge")
-                    }
                     if (showDraftBadge) {
                         Surface(
                             color = OrangeAccent.copy(alpha = 0.18f),

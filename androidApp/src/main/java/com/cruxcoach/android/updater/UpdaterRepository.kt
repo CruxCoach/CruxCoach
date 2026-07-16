@@ -5,6 +5,8 @@ import android.content.Intent
 import android.content.pm.PackageInstaller
 import android.net.Uri
 import android.util.Log
+import com.cruxcoach.android.BuildConfig
+import com.cruxcoach.android.util.ExternalInputPolicy
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineExceptionHandler
@@ -411,13 +413,20 @@ class UpdaterRepository @Inject constructor(
 
     /** §5.4.3 — one-tap handoff to the Codeberg release page. */
     fun openReleasePage(info: UpdateInfo) {
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(info.releasePageUrl)).apply {
+        val safeUrl = ExternalInputPolicy.trustedReleasePageUrlOrNull(
+            info.releasePageUrl,
+            BuildConfig.UPDATER_API_BASE,
+        ) ?: run {
+            Log.w(TAG, "Refusing untrusted release-page URL")
+            return
+        }
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(safeUrl)).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
         try {
             context.startActivity(intent)
         } catch (e: Exception) {
-            Log.w(TAG, "No browser available for ${info.releasePageUrl}", e)
+            Log.w(TAG, "No browser available for release page", e)
         }
     }
 

@@ -87,7 +87,7 @@ class Nip05Verifier @Inject constructor(
                     }
                 }
             } catch (e: Exception) {
-                Log.w(TAG, "NIP-05 verify failed for $url", e)
+                Log.w(TAG, "NIP-05 verify failed (${e.javaClass.simpleName})")
                 State.Unreachable(e.message ?: e.javaClass.simpleName)
             }
         }

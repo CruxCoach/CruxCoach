@@ -38,7 +38,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.OrangeAccent
+import com.cruxcoach.android.util.ExternalInputPolicy
 
 @Composable
 internal fun InvoiceDialog(
@@ -134,8 +136,12 @@ private fun copyToClipboard(context: Context, bolt11: String) {
 }
 
 private fun openInWallet(context: Context, bolt11: String) {
+    val safeInvoice = ExternalInputPolicy.validBolt11OrNull(bolt11) ?: run {
+        Toast.makeText(context, R.string.payment_invalid_invoice, Toast.LENGTH_SHORT).show()
+        return
+    }
     try {
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("lightning:$bolt11"))
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("lightning:$safeInvoice"))
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         context.startActivity(intent)
     } catch (e: Exception) {

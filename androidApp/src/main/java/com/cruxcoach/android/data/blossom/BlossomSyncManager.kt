@@ -123,7 +123,7 @@ class BlossomSyncManager(
                                     // event before parsing its content as a manifest.
                                     val event = Event.fromJson(arr[2].toString())
                                     if (event.pubKey != MANIFEST_PUBKEY) {
-                                        Log.w(TAG, "Manifest pubkey mismatch from $relayUrl: ${event.pubKey}")
+                                        Log.w(TAG, "Manifest pubkey mismatch from $relayUrl")
                                         return
                                     }
                                     if (!event.verifySignature()) {
@@ -149,7 +149,7 @@ class BlossomSyncManager(
                                     // fail the parse.
                                     val dTag = Companion.extractDTag(event.tags)
                                     if (dTag != manifestDTag) {
-                                        Log.w(TAG, "Manifest d-tag mismatch from $relayUrl: $dTag")
+                                        Log.w(TAG, "Manifest d-tag mismatch from $relayUrl")
                                         return
                                     }
                                     val parsed = json.decodeFromString<BlossomManifest>(event.content)

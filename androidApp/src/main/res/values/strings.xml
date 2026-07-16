@@ -781,6 +781,7 @@
     <string name="payment_error">Error sending gift</string>
     <string name="payment_gift_disclaimer">CruxCoach is and remains completely free — regardless of whether you send a gift or not. Gifts are purely voluntary and do not create any entitlement to services or features.</string>
     <string name="payment_no_wallet_title">No Lightning wallet found</string>
+    <string name="payment_invalid_invoice">Invalid Lightning invoice</string>
     <string name="payment_no_wallet_message">You need a Lightning wallet app to send zaps.</string>
     <string name="payment_recommended_wallets">Recommended wallets:</string>
     <string name="payment_profile_setup_title">Set up Nostr profile</string>

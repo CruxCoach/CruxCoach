@@ -864,7 +864,7 @@ class CommunityClimbSubscriber @Inject constructor(
                     pubkey = pubkey,
                     displayName = displayName,
                 )
-            }.onFailure { Log.w(TAG, "setter rename for $pubkey failed", it) }
+            }.onFailure { Log.w(TAG, "setter rename failed (${it.javaClass.simpleName})") }
         }
     }
 

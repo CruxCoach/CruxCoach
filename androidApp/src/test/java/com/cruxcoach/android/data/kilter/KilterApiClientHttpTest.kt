@@ -110,13 +110,17 @@ class KilterApiClientHttpTest {
 
     @Test
     fun authenticate_500_maps_to_HttpFailure() = runTest {
-        server.enqueue(MockResponse().setResponseCode(500).setBody("Internal Server Error"))
+        server.enqueue(
+            MockResponse().setResponseCode(500)
+                .setBody("S".repeat(10_000))
+        )
 
         val result = client.authenticate("alice@example.com", "secret")
 
         assertTrue(result is KilterAuthResult.Error, "expected Error, got $result")
         assertEquals(KilterAuthResult.Error.Reason.HttpFailure, result.reason)
         assertEquals(500, result.httpCode)
+        assertEquals(200, result.cause?.length)
     }
 
     @Test
