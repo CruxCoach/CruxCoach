@@ -230,6 +230,28 @@ These are non-negotiable for all contributions.
 - Constructor injection via Hilt. No global mutable singletons.
 - Use the type that the storage layer expects (SQLDelight `Long` for INTEGER).
 
+All supported Gradle build configurations use strict dependency locking and
+SHA-256 dependency verification. After changing a dependency, regenerate both
+controls from a trusted network. The helper exercises the real shared tests,
+Android tests, debug APK and minified release APK rather than trying to resolve
+AGP's synthetic configurations outside the tasks that supply their attributes:
+
+```bash
+./gradlew resolveAndLockAll --write-locks \
+  --write-verification-metadata sha256
+```
+
+Review every changed coordinate, resolved version, repository and checksum in
+the lock/verification diff before committing it. A successful download is not
+evidence that new bytes are trustworthy; compare security-sensitive artifacts
+with checksums or release information published by their upstream project.
+Normal builds run in strict mode and must not rewrite these files.
+
+Third-party CI actions are pinned to a full 40-character commit SHA. To update
+one, resolve the intended upstream release tag, review that revision, and
+change the SHA and trailing version comment in the same commit. Never replace
+the pin with a branch or major-version tag.
+
 ---
 
 ## Submitting Changes
