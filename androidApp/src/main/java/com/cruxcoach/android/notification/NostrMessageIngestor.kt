@@ -75,10 +75,9 @@ class NostrMessageIngestor @Inject constructor(
         )
 
         if (isSelfWrap) {
-            // Self-wrap echoes prove the relay has the event. Flip any
-            // pre-existing queued row (INSERT OR IGNORE left it untouched)
-            // to delivered so the UI transitions queued → delivered.
-            repository.clearQueued(msg.id)
+            // A self-wrap echo proves only that the sender copy landed. It
+            // must not dequeue the message: the recipient-addressed wrap may
+            // still have failed and is the critical delivery component.
             if (msg.replyToId == null) {
                 // Re-ingested own ROOT: its recipient-wrap id is not
                 // recoverable from the echo itself — re-learn it from any

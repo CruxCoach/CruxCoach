@@ -38,6 +38,7 @@ import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 import javax.inject.Named
 import javax.inject.Singleton
+import kotlin.random.Random
 
 @Singleton
 class NostrRelayPool @Inject constructor(
@@ -241,11 +242,22 @@ class NostrRelayPool @Inject constructor(
             }
             return try {
                 withTimeout(NostrConfig.RELAY_TIMEOUT_MS) { deferred.await() }
-            } catch (e: Exception) {
+            } catch (e: TimeoutCancellationException) {
                 pendingOks.remove(eventId)
                 Log.w(
                     TAG,
                     "event=relay_send_timeout url=$url eventIdPrefix=${eventId.take(8)} " +
+                        "reason=${e.javaClass.simpleName}",
+                )
+                false
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                pendingOks.remove(eventId)
+                throw e
+            } catch (e: Exception) {
+                pendingOks.remove(eventId)
+                Log.w(
+                    TAG,
+                    "event=relay_send_failed url=$url eventIdPrefix=${eventId.take(8)} " +
                         "reason=${e.javaClass.simpleName}",
                 )
                 false
@@ -283,7 +295,7 @@ class NostrRelayPool @Inject constructor(
                 var attempts = 0
 
                 while (isActive && !connected && attempts < NostrConfig.MAX_RECONNECT_ATTEMPTS) {
-                    delay(currentDelay)
+                    delay(equalJitterDelay(currentDelay))
                     attempts++
                     try {
                         connectCurrentSocket()
@@ -294,6 +306,8 @@ class NostrRelayPool @Inject constructor(
                         }
                         Log.i(TAG, "Reconnected to $url after $attempts attempt(s)")
                         return@launch
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
                     } catch (e: Exception) {
                         Log.w(TAG, "Reconnect to $url failed (attempt $attempts/${NostrConfig.MAX_RECONNECT_ATTEMPTS})", e)
                         currentDelay = (currentDelay * 2)
@@ -315,7 +329,7 @@ class NostrRelayPool @Inject constructor(
                     // cost, very high reliability win for the
                     // community-climb live-sub.
                     while (isActive && !connected) {
-                        delay(NostrConfig.RECONNECT_SLOW_RETRY_MS)
+                        delay(equalJitterDelay(NostrConfig.RECONNECT_SLOW_RETRY_MS))
                         try {
                             connectCurrentSocket()
                             activeFilters.forEach { (subId, filter) ->
@@ -324,6 +338,8 @@ class NostrRelayPool @Inject constructor(
                             reconnectExhausted = false
                             Log.i(TAG, "Slow-retry reconnect to $url succeeded")
                             return@launch
+                        } catch (e: kotlinx.coroutines.CancellationException) {
+                            throw e
                         } catch (e: Exception) {
                             Log.d(TAG, "Slow-retry to $url failed; will try again in ${NostrConfig.RECONNECT_SLOW_RETRY_MS}ms")
                         }
@@ -352,6 +368,8 @@ class NostrRelayPool @Inject constructor(
 
         internal val connectedForTesting: Boolean get() = connected
         internal val socketForTesting: WebSocket? get() = ws
+        internal val likelyDownForSend: Boolean get() = reconnectExhausted && !connected
+        internal val activeFilterCountForTesting: Int get() = activeFilters.size
     }
 
     private fun getOrCreateConnection(url: String): RelayConnection {
@@ -415,12 +433,17 @@ class NostrRelayPool @Inject constructor(
     suspend fun sendEventWithStats(event: Event): Pair<Int, Int> {
         val eventJson = event.toJson()
         val eventId = extractEventId(eventJson) ?: return 0 to 0
-        val relays = writeRelays()
+        val configuredRelays = writeRelays()
+        val relays = selectPublishRelays(configuredRelays) { relay ->
+            connections[relay.url]?.likelyDownForSend == true
+        }
         val results = coroutineScope {
             relays.map { relay ->
                 async {
                     try {
                         getOrCreateConnection(relay.url).sendEvent(eventJson, eventId)
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
                     } catch (e: Exception) {
                         Log.w(TAG, "Send to ${relay.url} failed", e)
                         false
@@ -428,7 +451,10 @@ class NostrRelayPool @Inject constructor(
                 }
             }.map { it.await() }
         }
-        return relays.size to results.count { it }
+        // Keep the historical meaning of `attempted`: all configured write
+        // destinations. Callers use it to surface partial relay coverage; a
+        // circuit-open destination must not silently disappear from that UI.
+        return configuredRelays.size to results.count { it }
     }
 
     /**
@@ -472,10 +498,14 @@ class NostrRelayPool @Inject constructor(
         }
 
         readRelays.forEach { relay ->
+            val conn = getOrCreateConnection(relay.url)
+            // Persist desired subscription state before dialing. If launch is
+            // offline, the reconnect loop can then restore the REQ later.
+            conn.addSubscription(subId, filter, flow)
             try {
-                val conn = getOrCreateConnection(relay.url)
                 conn.ensureConnected()
-                conn.addSubscription(subId, filter, flow)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "Subscribe to ${relay.url} failed", e)
                 // Count failed relays as "EOSE received" so we don't hang forever
@@ -513,6 +543,8 @@ class NostrRelayPool @Inject constructor(
             scope.launch {
                 try {
                     conn.ensureConnected()
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     Log.w(TAG, "Manual reconnect to ${relay.url} failed", e)
                 }
@@ -535,4 +567,24 @@ class NostrRelayPool @Inject constructor(
         /** Sentinel value emitted by EOSE handler — never valid JSON. */
         internal const val EOSE_SENTINEL = "__EOSE__"
     }
+}
+
+/** Equal jitter in [capMs / 2, capMs], with an injectable draw for tests. */
+internal fun equalJitterDelay(
+    capMs: Long,
+    draw: (Long) -> Long = { upperExclusive -> Random.nextLong(upperExclusive) },
+): Long {
+    require(capMs > 0L)
+    val floor = capMs / 2L
+    val width = capMs - floor + 1L
+    return floor + draw(width).coerceIn(0L, width - 1L)
+}
+
+/** Skip known-open circuits when another relay is still usable. */
+internal fun selectPublishRelays(
+    configured: List<RelayConfig>,
+    isLikelyDown: (RelayConfig) -> Boolean,
+): List<RelayConfig> {
+    val available = configured.filterNot(isLikelyDown)
+    return available.ifEmpty { configured }
 }

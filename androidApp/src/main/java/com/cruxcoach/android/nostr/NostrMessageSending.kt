@@ -37,7 +37,9 @@ interface NostrMessageSending {
 
     /**
      * Delivers pre-built wrap JSONs to relays (includes a random 2-10s
-     * timing-correlation delay). Returns true if at least one relay accepted.
+     * timing-correlation delay). Returns true only when every non-self
+     * recipient wrap was accepted by at least one relay; delivery of the
+     * sender's own archival wrap is best-effort.
      * Call from an app-scoped context (see [MessageDeliveryCoordinator]) so a
      * screen exit cannot cancel the delay mid-flight.
      */

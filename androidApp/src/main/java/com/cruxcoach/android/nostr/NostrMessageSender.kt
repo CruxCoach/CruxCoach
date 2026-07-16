@@ -5,6 +5,10 @@ import com.cruxcoach.android.nostr.model.MessageType
 import com.cruxcoach.android.nostr.model.NostrRecipient
 import com.vitorpamplona.quartz.nip01Core.core.Event
 import kotlinx.coroutines.delay
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -41,6 +45,8 @@ class NostrMessageSender @Inject constructor(
             }
             val wrapJsons = build.wraps.joinToString(separator = "\n") { it.toJson() }
             SendResult.Queued(wrapJsons, build.selfWrapId, build.recipientWrapId)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Failed to build gift wraps for ${type.label}", e)
             SendResult.Failed(e.message ?: "Unknown error")
@@ -55,6 +61,8 @@ class NostrMessageSender @Inject constructor(
             // window in which delivery could be interrupted.
             delay(kotlin.random.Random.nextLong(2_000, 10_000))
             sendJsonLines(eventJsons)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Deliver wraps failed", e)
             false
@@ -64,6 +72,8 @@ class NostrMessageSender @Inject constructor(
     override suspend fun retrySend(eventJsons: String): Boolean {
         return try {
             sendJsonLines(eventJsons)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Retry send failed", e)
             false
@@ -72,17 +82,38 @@ class NostrMessageSender @Inject constructor(
 
     private suspend fun sendJsonLines(eventJsons: String): Boolean {
         val lines = eventJsons.split("\n").filter { it.isNotBlank() }
-        var anySuccess = false
+        val senderPubkey = nostrSigner.getPublicKeyHex()
+        val outcomes = mutableListOf<Pair<String?, Boolean>>()
         for (json in lines) {
             val event = Event.fromJson(json)
-            if (relayPool.sendEvent(event)) {
-                anySuccess = true
-            }
+            outcomes += recipientPTag(json) to relayPool.sendEvent(event)
         }
-        return anySuccess
+        return recipientDeliverySucceeded(senderPubkey, outcomes)
     }
 
     companion object {
         private const val TAG = "NostrMessageSender"
     }
 }
+
+internal fun recipientDeliverySucceeded(
+    senderPubkey: String,
+    outcomes: List<Pair<String?, Boolean>>,
+): Boolean {
+    val recipientOutcomes = outcomes.filter { (recipient, _) ->
+        recipient != null && !recipient.equals(senderPubkey, ignoreCase = true)
+    }
+    return recipientOutcomes.isNotEmpty() && recipientOutcomes.all { it.second }
+}
+
+private fun recipientPTag(eventJson: String): String? = runCatching {
+    Json.parseToJsonElement(eventJson).jsonObject["tags"]?.jsonArray
+        ?.firstOrNull { tag ->
+            val fields = tag.jsonArray
+            fields.firstOrNull()?.jsonPrimitive?.content == "p" && fields.size >= 2
+        }
+        ?.jsonArray
+        ?.get(1)
+        ?.jsonPrimitive
+        ?.content
+}.getOrNull()

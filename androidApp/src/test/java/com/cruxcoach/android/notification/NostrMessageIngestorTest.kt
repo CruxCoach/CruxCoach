@@ -16,7 +16,7 @@ import kotlin.test.assertNull
  * Shared ingest wiring (used by BOTH NostrPushCoordinator and
  * NotificationPollWorker) against the REAL SecureDatabase schema and
  * repository: reply normalization, notification deep-link route
- * construction, queued → delivered bookkeeping, and — the regression this
+ * construction, recipient-safe queue bookkeeping, and — the regression this
  * guards against — the wipe-and-refetch flow (recovery migrations v1-v4,
  * reinstalls, 365-day backfill), where every thread_anchor_id is lost and
  * must be re-learned from the re-ingested echoes in WHATEVER order the
@@ -62,7 +62,11 @@ class NostrMessageIngestorTest {
     )
 
     /** Seeds an own root the way sendMessage stores it (anchor known). */
-    private fun seedSentRoot(id: String = ROOT_LOCAL, anchorId: String? = ROOT_ANCHOR) {
+    private fun seedSentRoot(
+        id: String = ROOT_LOCAL,
+        anchorId: String? = ROOT_ANCHOR,
+        relayAccepted: Boolean = true,
+    ) {
         repo.insert(
             id = id,
             type = MessageType.FEATURE.label,
@@ -71,7 +75,7 @@ class NostrMessageIngestorTest {
             subject = "Subject",
             senderPubkey = OWN_PUBKEY,
             createdAt = ++clock,
-            relayAccepted = true,
+            relayAccepted = relayAccepted,
             read = true,
             replyToId = null,
             threadAnchorId = anchorId
@@ -118,15 +122,15 @@ class NostrMessageIngestorTest {
     // ── self-wrap bookkeeping ─────────────────────────────────────────
 
     @Test
-    fun `self-wrap echo flips a queued row to delivered`() {
-        seedSentRoot()
+    fun `self-wrap echo does not mark recipient delivery`() {
+        seedSentRoot(relayAccepted = false)
         repo.markQueued(ROOT_LOCAL, queuedAt = 123L, eventJson = "{}")
 
         ingestor.ingest(msg(ROOT_LOCAL), isSelfWrap = true)
 
         val row = repo.getById(ROOT_LOCAL)!!
-        assertNull(row.queued_at)
-        assertEquals(1L, row.relay_accepted)
+        assertEquals(123L, row.queued_at)
+        assertEquals(0L, row.relay_accepted)
         // INSERT OR IGNORE must keep the original row (anchor untouched).
         assertEquals(ROOT_ANCHOR, row.thread_anchor_id)
     }

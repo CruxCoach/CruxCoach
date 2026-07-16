@@ -234,4 +234,28 @@ class SessionQueueProtocolTest {
         // Protocol normalizes UUIDs to uppercase, no hyphens — regardless of input format
         assertEquals("550E8400E29B41D4A716446655440000", cmd.climbUuid)
     }
+
+    @Test
+    fun `malformed UUID commands and events are rejected without throwing`() {
+        assertFalse(SessionQueueProtocol.isEncodableClimbUuid("1"))
+        assertTrue(SessionQueueProtocol.encodeAdd("not-a-uuid", 30).isEmpty())
+        assertTrue(SessionQueueProtocol.encodeEventAdded(0, "not-a-uuid", 30).isEmpty())
+    }
+
+    @Test
+    fun `queue encoding omits malformed UUID and remaps current index`() {
+        val items = listOf(
+            QueueItem("550e8400-e29b-41d4-a716-446655440000", 30),
+            QueueItem("attacker-controlled", 40),
+            QueueItem("660e8400-e29b-41d4-a716-446655440001", 50),
+        )
+
+        val decoded = SessionQueueProtocol.decodeQueueState(
+            SessionQueueProtocol.encodeQueueState(currentIndex = 2, items = items),
+        )!!
+
+        assertEquals(1, decoded.first)
+        assertEquals(2, decoded.second.size)
+        assertEquals("660E8400E29B41D4A716446655440001", decoded.second[1].climbUuid)
+    }
 }

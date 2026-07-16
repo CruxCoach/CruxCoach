@@ -3,6 +3,7 @@ package com.cruxcoach.android.util
 import java.io.File
 import java.net.Socket
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -35,6 +36,26 @@ class LocalApkServerHeadersTest {
         }
     }
 
+    @Test
+    fun `client that never sends a request is closed after read timeout`() {
+        val apk = File.createTempFile("local-server-timeout", ".apk").apply {
+            writeBytes(byteArrayOf(1))
+            deleteOnExit()
+        }
+        val server = LocalApkServer(apkFile = apk, clientReadTimeoutMs = 100)
+        val port = server.start(port = 0, hostIp = "127.0.0.1")
+        val client = Socket("127.0.0.1", port)
+        try {
+            eventually { server.activeClientCountForTesting == 1 }
+            eventually { server.activeClientCountForTesting == 0 }
+            assertEquals(0, server.activeClientCountForTesting)
+        } finally {
+            client.close()
+            server.stop()
+            apk.delete()
+        }
+    }
+
     private fun get(port: Int, path: String): String = Socket("127.0.0.1", port).use { socket ->
         socket.soTimeout = 5_000
         socket.getOutputStream().write(
@@ -43,5 +64,13 @@ class LocalApkServerHeadersTest {
         )
         socket.getOutputStream().flush()
         socket.getInputStream().readBytes().toString(Charsets.ISO_8859_1)
+    }
+
+    private fun eventually(predicate: () -> Boolean) {
+        val deadline = System.currentTimeMillis() + 2_000L
+        while (!predicate() && System.currentTimeMillis() < deadline) {
+            Thread.sleep(10L)
+        }
+        assertTrue(predicate(), "condition was not met before timeout")
     }
 }

@@ -180,18 +180,13 @@ class NotificationPollWorker @AssistedInject constructor(
                 }
 
                 val existingRow = messageRepository.getById(msg.id)
-                // Seeing our own wrap echoed by a relay proves the relay has
-                // the event, so flip any pre-existing queued row to delivered
-                // even if we skip the duplicate insert below.
-                if (isSelfWrap && existingRow != null) {
-                    messageRepository.clearQueued(msg.id)
-                }
+                // A self-wrap echo does not prove the recipient wrap landed,
+                // so an existing queued row must remain eligible for retry.
                 if (existingRow != null) continue
 
                 // Shared ingest (also used by NostrPushCoordinator): thread-id
                 // normalization, anchor re-learning, idempotent insert,
-                // queued → delivered bookkeeping. Returns the notification
-                // deep-link route.
+                // Returns the notification deep-link route.
                 val threadRoute = messageIngestor.ingest(msg, isSelfWrap)
 
                 if (!isSelfWrap) {

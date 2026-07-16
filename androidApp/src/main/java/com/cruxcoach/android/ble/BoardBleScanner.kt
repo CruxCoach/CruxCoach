@@ -15,6 +15,7 @@ import com.cruxcoach.domain.board.BoardBrand
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -67,6 +68,7 @@ class BoardBleScanner(private val context: Context) {
 
     /** Tracks the number of consecutive errorCode=2 failures for retry logic. */
     private var registrationRetryCount = 0
+    private var registrationRetryJob: Job? = null
 
     private val btStateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -88,6 +90,9 @@ class BoardBleScanner(private val context: Context) {
     private val scanCallback = object : ScanCallback() {
         @SuppressLint("MissingPermission")
         override fun onScanResult(callbackType: Int, result: ScanResult) {
+            // An actual result proves registration succeeded; only now is a
+            // consecutive asynchronous-failure episode over.
+            registrationRetryCount = 0
             val device = result.device
             // Prefer the freshly-advertised local name from the scan record
             // over BluetoothDevice.getName(): Android caches getName() per MAC
@@ -143,14 +148,17 @@ class BoardBleScanner(private val context: Context) {
             // ErrorCode 2 = APPLICATION_REGISTRATION_FAILED: BLE scan client slots are
             // exhausted. Common on Android 9 after app reinstall or crash. Retry after
             // a delay — the BLE stack sometimes frees slots asynchronously.
-            if (errorCode == SCAN_FAILED_APPLICATION_REGISTRATION_FAILED
-                && registrationRetryCount < MAX_REGISTRATION_RETRIES
-            ) {
-                registrationRetryCount++
+            val nextAttempt = nextRegistrationRetryAttempt(
+                registrationRetryCount,
+                MAX_REGISTRATION_RETRIES,
+            )
+            if (errorCode == SCAN_FAILED_APPLICATION_REGISTRATION_FAILED && nextAttempt != null) {
+                registrationRetryCount = nextAttempt
                 Log.w(TAG, "Retrying scan registration (attempt $registrationRetryCount/$MAX_REGISTRATION_RETRIES)")
-                scope.launch {
+                registrationRetryJob?.cancel()
+                registrationRetryJob = scope.launch {
                     delay(REGISTRATION_RETRY_DELAY_MS * registrationRetryCount)
-                    startScan()
+                    startScanInternal(clearResults = false)
                 }
             } else if (errorCode == SCAN_FAILED_APPLICATION_REGISTRATION_FAILED) {
                 Log.e(TAG, "Scan registration failed after $MAX_REGISTRATION_RETRIES retries. " +
@@ -161,13 +169,23 @@ class BoardBleScanner(private val context: Context) {
 
     @SuppressLint("MissingPermission")
     fun startScan() {
+        registrationRetryJob?.cancel()
+        registrationRetryJob = null
+        registrationRetryCount = 0
+        startScanInternal(clearResults = true)
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun startScanInternal(clearResults: Boolean) {
         val s = scanner ?: run {
             Log.w(TAG, "BLE scanner is null (Bluetooth off?)")
             return
         }
         if (_isScanning.value) return
-        boardMap.clear()
-        _discoveredBoards.value = emptyList()
+        if (clearResults) {
+            boardMap.clear()
+            _discoveredBoards.value = emptyList()
+        }
 
         // Scan without UUID filter — rely on name parsing for board identification.
         // Some BLE peripherals (e.g. BlueZ bless) don't always include the service
@@ -180,7 +198,6 @@ class BoardBleScanner(private val context: Context) {
         try {
             s.startScan(null, settings, scanCallback)
             _isScanning.value = true
-            registrationRetryCount = 0
         } catch (e: SecurityException) {
             Log.e(TAG, "BLE scan SecurityException (missing permission?)", e)
         } catch (e: Exception) {
@@ -190,6 +207,9 @@ class BoardBleScanner(private val context: Context) {
 
     @SuppressLint("MissingPermission")
     fun stopScan() {
+        registrationRetryJob?.cancel()
+        registrationRetryJob = null
+        registrationRetryCount = 0
         if (!_isScanning.value) return
         val s = scanner ?: return
         try {
@@ -267,3 +287,6 @@ class BoardBleScanner(private val context: Context) {
 
     fun isBluetoothEnabled(): Boolean = bluetoothAdapter?.isEnabled == true
 }
+
+internal fun nextRegistrationRetryAttempt(completedAttempts: Int, maxAttempts: Int): Int? =
+    (completedAttempts + 1).takeIf { it <= maxAttempts }

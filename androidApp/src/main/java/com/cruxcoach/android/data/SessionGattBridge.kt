@@ -42,6 +42,7 @@ class SessionGattBridge(
         private const val TAG = "CruxBLE/Session"
         private const val MIGRATION_BASE_DELAY_MS = 1000L
         private const val MIGRATION_INDEX_STEP_MS = 3000L
+        private const val MAX_MIGRATION_HOST_ATTEMPTS = 4
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -51,6 +52,7 @@ class SessionGattBridge(
     private var isSharing = false
     private var isRejoining = false
     private val commandGate = SessionCommandGate()
+    private val migrationAttempts = HostMigrationAttempts(MAX_MIGRATION_HOST_ATTEMPTS)
     /** SessionId of the host we just left — used to ignore stale advertisements during migration. */
     private var lastHostSessionId: Int = 0
 
@@ -76,6 +78,7 @@ class SessionGattBridge(
     // ===== Host mode =====
 
     fun startSharing() {
+        migrationAttempts.reset()
         val state = queueManager.state.value
         Log.d(TAG, "startSharing() called, role=${state.role}, isSharing=$isSharing, " +
             "hostJob=${hostJob != null}, joinJob=${joinJob != null}")
@@ -89,7 +92,7 @@ class SessionGattBridge(
         // Start GATT server
         if (!gattServer.start()) {
             Log.e(TAG, "startSharing(): GATT server failed to start")
-            queueManager.setError("GATT-Server konnte nicht gestartet werden")
+            queueManager.setError(context.getString(R.string.session_gatt_server_start_failed))
             return
         }
 
@@ -305,6 +308,15 @@ class SessionGattBridge(
     // ===== Participant mode =====
 
     fun joinSession(device: BluetoothDevice, sessionCode: String? = null) {
+        joinSessionInternal(device, sessionCode, fromMigration = false)
+    }
+
+    private fun joinSessionInternal(
+        device: BluetoothDevice,
+        sessionCode: String? = null,
+        fromMigration: Boolean,
+    ) {
+        if (!fromMigration) migrationAttempts.reset()
         val joinCode = sessionCode ?: queueManager.sessionJoinCode.value
         if (!SessionJoinCode.isValid(joinCode)) {
             queueManager.setError(context.getString(R.string.ble_session_code_invalid))
@@ -348,6 +360,7 @@ class SessionGattBridge(
                     when (state) {
                         SessionClientState.CONNECTED -> {
                             migrationJob?.cancel()
+                            migrationAttempts.reset()
                             Log.d(TAG, "Connected to host, sending JOIN command")
                             val joinSent = gattClient.sendCommand(
                                 SessionQueueProtocol.encodeJoin("", joinCode),
@@ -374,7 +387,7 @@ class SessionGattBridge(
                                 migrationJob = null  // reset so attemptHostMigration() can start fresh
                                 attemptHostMigration()
                             } else if (qState.isConnecting) {
-                                queueManager.setError("Verbindung fehlgeschlagen")
+                                queueManager.setError(context.getString(R.string.session_connection_failed))
                             } else if (qState.role == SessionRole.PARTICIPANT) {
                                 Log.d(TAG, "Participant disconnected from host → attempting migration")
                                 attemptHostMigration()
@@ -446,6 +459,7 @@ class SessionGattBridge(
     }
 
     fun leaveSession() {
+        migrationAttempts.reset()
         Log.d(TAG, "leaveSession() called, joinJob=${joinJob != null}, " +
             "clientState=${gattClient.connectionState.value}, " +
             "role=${queueManager.state.value.role}")
@@ -607,6 +621,7 @@ class SessionGattBridge(
      */
     private fun attemptHostMigration() {
         val queueState = queueManager.state.value
+        migrationAttempts.begin(lastHostSessionId)
         Log.d(TAG, "attemptHostMigration() called, role=${queueState.role}, " +
             "queue=${queueState.queue.size}, participantIndex=${queueState.participantIndex}, " +
             "isConnecting=${queueState.isConnecting}, migrating=${migrationJob?.isActive}")
@@ -645,31 +660,40 @@ class SessionGattBridge(
                 elapsed += pollInterval
 
                 val nearbySessions = nearbyScanner.nearbySessions.value
-                    .filter { it.sessionId != lastHostSessionId }
+                    .filter { migrationAttempts.canConsider(it.sessionId) }
                 if (nearbySessions.isNotEmpty()) {
                     val newHost = nearbySessions.first()
                     val device = newHost.device
                     Log.d(TAG, "Migration: found new session during wait " +
                         "(id=${newHost.sessionId}, hasDevice=${device != null}, lastHostId=$lastHostSessionId)")
+                    if (!migrationAttempts.claim(newHost.sessionId)) {
+                        Log.w(TAG, "Migration: host-attempt cap reached; promoting self")
+                        promoteMigratingParticipant(queueState)
+                        return@launch
+                    }
                     if (device != null) {
                         Log.d(TAG, "Migration: joining new host instead of promoting")
-                        joinSession(device)
+                        joinSessionInternal(device, fromMigration = true)
+                        return@launch
                     } else {
                         Log.w(TAG, "Migration: new host has no BluetoothDevice — cannot join")
                     }
-                    return@launch
                 }
                 Log.d(TAG, "Migration: ${elapsed}ms/${waitMs}ms elapsed, no new session found")
             }
 
             // No new session detected — promote self
             Log.d(TAG, "Migration: no new host found after ${waitMs}ms, promoting self to host")
-            queueManager.promoteToHost("Warteschlange")
-            Log.d(TAG, "Migration: promoteToHost complete, role=${queueManager.state.value.role}, " +
-                "queue=${queueManager.state.value.queue.size}, calling startSharing()")
-            startSharing()
-            Log.d(TAG, "Migration complete — now hosting with ${queueState.queue.size} queued climbs")
+            promoteMigratingParticipant(queueState)
         }
+    }
+
+    private fun promoteMigratingParticipant(queueState: SessionQueueState) {
+        queueManager.promoteToHost("Warteschlange")
+        Log.d(TAG, "Migration: promoteToHost complete, role=${queueManager.state.value.role}, " +
+            "queue=${queueManager.state.value.queue.size}, calling startSharing()")
+        startSharing()
+        Log.d(TAG, "Migration complete — now hosting with ${queueState.queue.size} queued climbs")
     }
 
     /**
@@ -732,5 +756,33 @@ class SessionGattBridge(
         Log.d(TAG, "updateSessionAdvertising: sessionId=${s.sessionId}, " +
             "count=${s.participantCount}, hostName='${s.hostName}', " +
             "climb=${currentClimb?.climbUuid?.take(8)}, result=$result")
+    }
+}
+
+internal class HostMigrationAttempts(private val maxAttempts: Int) {
+    private val triedSessionIds = mutableSetOf<Int>()
+    private var attempts = 0
+    private var active = false
+
+    fun begin(previousHostSessionId: Int) {
+        if (active) return
+        active = true
+        if (previousHostSessionId != 0) triedSessionIds += previousHostSessionId
+    }
+
+    fun canConsider(sessionId: Int): Boolean =
+        attempts < maxAttempts && sessionId !in triedSessionIds
+
+    fun claim(sessionId: Int): Boolean {
+        if (!canConsider(sessionId)) return false
+        triedSessionIds += sessionId
+        attempts++
+        return true
+    }
+
+    fun reset() {
+        active = false
+        attempts = 0
+        triedSessionIds.clear()
     }
 }

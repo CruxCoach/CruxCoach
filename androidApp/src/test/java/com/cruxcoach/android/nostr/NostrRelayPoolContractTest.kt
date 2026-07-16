@@ -5,6 +5,7 @@ import com.cruxcoach.android.nostr.model.RelaySource
 import okhttp3.OkHttpClient
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import org.junit.Test
 
 /**
@@ -76,5 +77,28 @@ class NostrRelayPoolContractTest {
             setOf("wss://read-only.example.com", "wss://both.example.com"),
             p.readRelays().map { it.url }.toSet(),
         )
+    }
+
+    @Test
+    fun `publish selection skips an open circuit when another relay is available`() {
+        val relays = listOf(RelayConfig("wss://down.example"), RelayConfig("wss://up.example"))
+
+        val selected = selectPublishRelays(relays) { it.url.contains("down") }
+
+        assertEquals(listOf("wss://up.example"), selected.map { it.url })
+    }
+
+    @Test
+    fun `publish selection still attempts all relays when every circuit is open`() {
+        val relays = listOf(RelayConfig("wss://a.example"), RelayConfig("wss://b.example"))
+
+        assertEquals(relays, selectPublishRelays(relays) { true })
+    }
+
+    @Test
+    fun `equal jitter stays bounded and varies with draw`() {
+        assertEquals(5_000L, equalJitterDelay(10_000L) { 0L })
+        assertEquals(10_000L, equalJitterDelay(10_000L) { upper -> upper - 1L })
+        assertFalse(equalJitterDelay(10_000L) { 1L } == equalJitterDelay(10_000L) { 4_000L })
     }
 }

@@ -172,6 +172,9 @@ class NostrMessageRepository @Inject constructor(
     fun markQueued(id: String, queuedAt: Long, eventJson: String) =
         queries.markQueued(queued_at = queuedAt, event_json = eventJson, id = id)
 
+    fun deferQueued(id: String, queuedAt: Long) =
+        queries.deferQueued(queuedAt = queuedAt, id = id)
+
     fun clearQueued(id: String) = queries.clearQueued(id)
 
     fun deleteExpiredQueued(cutoffTimestamp: Long) =

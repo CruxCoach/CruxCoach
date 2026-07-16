@@ -38,7 +38,12 @@ class OfflineQueueManager @Inject constructor(
 
             val batch = queued.take(MAX_DRAIN_BATCH)
             for (msg in batch) {
-                val eventJson = msg.event_json ?: continue
+                val eventJson = msg.event_json
+                if (eventJson == null) {
+                    defer(msg.id)
+                    Log.w(TAG, "Queue drain: missing payload; deferred row")
+                    continue
+                }
                 // Cap per-message send so a stalled relay cannot hold drainMutex
                 // across the whole batch and silently starve other drain triggers.
                 val success = withTimeoutOrNull(RELAY_SEND_TIMEOUT_MS) {
@@ -50,21 +55,34 @@ class OfflineQueueManager @Inject constructor(
                         Log.d(TAG, "Queue drain: sent ${msg.id}")
                     }
                     false -> {
-                        Log.w(TAG, "Queue drain: failed to send ${msg.id}, will retry later")
-                        break
+                        // A Boolean result cannot distinguish a permanent
+                        // relay rejection from a transient outage. Preserve
+                        // the user's message, but rotate it behind later rows
+                        // so one poison payload cannot starve the queue.
+                        defer(msg.id)
+                        Log.w(TAG, "Queue drain: send rejected; deferred row")
                     }
                     null -> {
-                        Log.w(TAG, "Queue drain: send timed out for ${msg.id}, will retry later")
+                        defer(msg.id)
+                        Log.w(TAG, "Queue drain: send timed out; deferred row")
                         break
                     }
                 }
             }
 
             refreshCount()
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Queue drain failed", e)
         } finally {
             drainMutex.unlock()
+        }
+    }
+
+    private suspend fun defer(id: String) {
+        withContext(Dispatchers.IO) {
+            messageRepository.deferQueued(id, System.currentTimeMillis())
         }
     }
 

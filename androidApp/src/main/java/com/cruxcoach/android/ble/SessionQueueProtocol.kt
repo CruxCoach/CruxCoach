@@ -40,7 +40,7 @@ object SessionQueueProtocol {
     // ===== Command encoding (Client → Host) =====
 
     fun encodeAdd(climbUuid: String, angle: Int): ByteArray {
-        val uuid = UUID.fromString(normalizeUuid(climbUuid))
+        val uuid = parseClimbUuid(climbUuid) ?: return ByteArray(0)
         val buf = ByteArray(18) // 1 cmd + 1 angle + 16 uuid
         buf[0] = CMD_ADD
         buf[1] = angle.coerceIn(0, 70).toByte()
@@ -125,7 +125,7 @@ object SessionQueueProtocol {
     // ===== Event encoding (Host → Client, via notifications) =====
 
     fun encodeEventAdded(index: Int, climbUuid: String, angle: Int): ByteArray {
-        val uuid = UUID.fromString(normalizeUuid(climbUuid))
+        val uuid = parseClimbUuid(climbUuid) ?: return ByteArray(0)
         val buf = ByteArray(19) // 1 evt + 1 index + 1 angle + 16 uuid
         buf[0] = EVT_ADDED
         buf[1] = index.toByte()
@@ -200,13 +200,24 @@ object SessionQueueProtocol {
     // ===== Full queue state (for GATT Read / initial sync) =====
 
     fun encodeQueueState(currentIndex: Int, items: List<QueueItem>): ByteArray {
-        val buf = ByteArray(2 + items.size * 17)
-        buf[0] = currentIndex.toByte()
-        buf[1] = items.size.toByte()
-        items.forEachIndexed { i, item ->
+        val encodable = items.mapIndexedNotNull { originalIndex, item ->
+            parseClimbUuid(item.climbUuid)?.let { Triple(originalIndex, item, it) }
+        }.take(MAX_QUEUE_ITEMS)
+        val encodedCurrentIndex = when {
+            encodable.isEmpty() -> 0
+            currentIndex < 0 -> 0
+            else -> encodable.indexOfFirst { it.first == currentIndex }
+                .takeIf { it >= 0 }
+                ?: encodable.indexOfFirst { it.first > currentIndex }
+                    .takeIf { it >= 0 }
+                ?: encodable.lastIndex
+        }
+        val buf = ByteArray(2 + encodable.size * 17)
+        buf[0] = encodedCurrentIndex.toByte()
+        buf[1] = encodable.size.toByte()
+        encodable.forEachIndexed { i, (_, item, uuid) ->
             val offset = 2 + i * 17
             buf[offset] = item.angle.coerceIn(0, 70).toByte()
-            val uuid = UUID.fromString(normalizeUuid(item.climbUuid))
             putUuid(buf, offset + 1, uuid)
         }
         return buf
@@ -293,6 +304,12 @@ object SessionQueueProtocol {
         return UUID(bb.long, bb.long)
     }
 
+    /** Whether a climb id fits the fixed-width UUID field used on the wire. */
+    fun isEncodableClimbUuid(s: String): Boolean = parseClimbUuid(s) != null
+
+    private fun parseClimbUuid(s: String): UUID? =
+        runCatching { UUID.fromString(normalizeUuid(s)) }.getOrNull()
+
     /** Ensures a UUID string has hyphens for UUID.fromString(). */
     private fun normalizeUuid(s: String): String {
         if (s.contains('-')) return s
@@ -327,3 +344,4 @@ data class QueueItem(val climbUuid: String, val angle: Int)
 data class SessionInfo(val hostName: String, val participantCount: Int)
 
 private const val MAX_JOIN_NAME_BYTES = 12
+private const val MAX_QUEUE_ITEMS = 255

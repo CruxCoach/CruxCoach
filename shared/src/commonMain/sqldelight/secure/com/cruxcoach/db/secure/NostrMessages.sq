@@ -164,8 +164,13 @@ SELECT COUNT(*) FROM nostr_messages WHERE queued_at IS NOT NULL;
 markQueued:
 UPDATE nostr_messages SET queued_at = ?, event_json = ? WHERE id = ?;
 
+-- Move a failed row to the back of the queue without extending its lifetime.
+-- Expiry is based on immutable created_at below, not this scheduling field.
+deferQueued:
+UPDATE nostr_messages SET queued_at = :queuedAt WHERE id = :id AND queued_at IS NOT NULL;
+
 clearQueued:
 UPDATE nostr_messages SET queued_at = NULL, relay_accepted = 1 WHERE id = ?;
 
 deleteExpiredQueued:
-DELETE FROM nostr_messages WHERE queued_at IS NOT NULL AND queued_at < ?;
+DELETE FROM nostr_messages WHERE queued_at IS NOT NULL AND created_at < ?;

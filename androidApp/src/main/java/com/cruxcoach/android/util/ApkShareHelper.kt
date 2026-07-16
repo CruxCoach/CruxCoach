@@ -158,12 +158,14 @@ class LocalApkServer(
     private val boardDbFile: File? = null,
     /** Where the checkpointed board-DB snapshot is written (the app's
      *  cacheDir). null → the live file is served as-is. */
-    private val snapshotDir: File? = null
+    private val snapshotDir: File? = null,
+    private val clientReadTimeoutMs: Int = CLIENT_READ_TIMEOUT_MS,
 ) {
 
     private var serverSocket: ServerSocket? = null
     private var running = false
     private var shutdownTimer: java.util.Timer? = null
+    private val activeClients = java.util.concurrent.ConcurrentHashMap.newKeySet<Socket>()
 
     /** Snapshot lifecycle. The build (copy + scrub + VACUUM of an ~85 MB DB)
      *  can take minutes on a phone, so /board.db must NEVER block on it —
@@ -237,6 +239,9 @@ class LocalApkServer(
         shutdownTimer?.cancel()
         shutdownTimer = null
         try { serverSocket?.close() } catch (_: Exception) { }
+        activeClients.toList().forEach { client ->
+            try { client.close() } catch (_: Exception) { }
+        }
         synchronized(snapshotLock) {
             snapshotFile?.let { snap ->
                 snap.delete()
@@ -279,14 +284,19 @@ class LocalApkServer(
 
     private fun handleClient(socket: Socket) {
         lastActivityMs = System.currentTimeMillis()
+        activeClients += socket
         thread(isDaemon = true, name = "apk-client") {
             try {
+                socket.soTimeout = clientReadTimeoutMs
                 val reader = socket.getInputStream().bufferedReader()
                 val requestLine = reader.readLine() ?: ""
                 var line = reader.readLine()
-                while (!line.isNullOrBlank()) {
+                var headerLines = 0
+                while (!line.isNullOrBlank() && headerLines < MAX_HEADER_LINES) {
+                    headerLines++
                     line = reader.readLine()
                 }
+                if (!line.isNullOrBlank()) throw java.io.IOException("too many request headers")
 
                 val out = socket.getOutputStream()
                 val path = requestLine.split(" ").getOrNull(1) ?: "/"
@@ -299,12 +309,16 @@ class LocalApkServer(
                 }
 
                 out.flush()
-                socket.close()
             } catch (e: Exception) {
                 Log.e("LocalApkServer", "Client error", e)
+            } finally {
+                activeClients -= socket
+                try { socket.close() } catch (_: Exception) { }
             }
         }
     }
+
+    internal val activeClientCountForTesting: Int get() = activeClients.size
 
     private fun serveLandingPage(out: java.io.OutputStream) {
         val dbSection = if (boardDbFile != null && boardDbFile.exists() && baseUrl != null) {
@@ -547,6 +561,8 @@ class LocalApkServer(
         /** Fixed port for auto-discovery by receivers (WiFi Direct group owner = 192.168.49.1). */
         const val LOCAL_SHARE_PORT = 4949
         private const val AUTO_SHUTDOWN_MS = 5 * 60 * 1000L  // 5 min
+        private const val CLIENT_READ_TIMEOUT_MS = 10_000
+        private const val MAX_HEADER_LINES = 100
         /** Checkpointed board-DB copy in cacheDir; see [boardDbSnapshot]. */
         const val SNAPSHOT_NAME = "board_share_snapshot.db"
         private const val SECURITY_HEADERS =
