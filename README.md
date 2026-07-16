@@ -116,6 +116,20 @@ For signing, testing, and full setup details see [CONTRIBUTING.md](CONTRIBUTING.
 Non-Debian and pre-provisioned environments can use the manual `sdkmanager`
 component list documented there instead of the setup script.
 
+### First run and catalogue download
+
+The APK does not bundle the climb catalogues. On a fresh install, onboarding
+downloads and imports the current board database (approximately 85 MB at the
+time of writing) from the project's third-party Blossom storage. Use Wi-Fi if
+mobile-data cost matters. The board browser can remain empty while that import
+is running.
+
+If the download is interrupted, reconnect and use **Load catalogue** in the
+empty board browser or **Settings → Sync board data** to retry. A firewall,
+VPN, or filtered network that blocks the configured Blossom servers can also
+prevent the initial catalogue from loading; existing personal data is not
+required for the retry.
+
 ---
 
 ## Architecture
@@ -165,13 +179,18 @@ See [LEGAL.md](LEGAL.md) for our position on interoperability and data usage.
 
 ## Contributing
 
-We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for bug reporting, dev setup, coding standards, and PR guidelines.
+We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for bug
+reporting, development setup, tests, contribution sign-off, and PR guidelines.
+Please also read the [Code of Conduct](CODE_OF_CONDUCT.md).
 
-For the active feature roadmap and per-release specifications, see [`docs/specs/`](docs/specs/).
+Public feature identifiers and release status are indexed in
+[ROADMAP.md](ROADMAP.md). Maintainer roles and verified contact routes are in
+[MAINTAINERS.md](MAINTAINERS.md).
 
 ## Security
 
-Found a vulnerability? See [SECURITY.md](SECURITY.md) for responsible disclosure.
+Found a vulnerability? See [SECURITY.md](SECURITY.md) for the encrypted
+responsible-disclosure route. Do not put sensitive details in a public issue.
 
 ## Legal
 

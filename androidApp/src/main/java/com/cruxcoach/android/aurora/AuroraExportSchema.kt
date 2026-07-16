@@ -5,8 +5,8 @@ import kotlinx.serialization.Serializable
 /**
  * kotlinx-serialization mirror of the Aurora email-export JSON shape.
  *
- * Field set verified against the Aurora email-export wire format. Spec
- * reference: `docs/specs/0.1.4/FEAT-005-aurora-json-import.md` §2.
+ * Field set is intentionally limited to the Aurora email-export keys consumed
+ * by [AuroraExportParser]. Unknown top-level keys remain forward-compatible.
  *
  * Top-level keys not consumed by the importer (`follows`, `walls`,
  * `blocks`, `beta_links`, `agreements`) are silently dropped at parse

@@ -12,7 +12,21 @@ Thank you for your interest in contributing to CruxCoach! This document explains
    - **Steps to reproduce**
    - **Expected vs. actual behavior**
    - **Logcat output** if applicable
-     (`PID=$(adb shell pidof -s com.cruxcoach.android); adb logcat --pid="$PID"`)
+
+To capture only the running app process:
+
+```bash
+APP_ID="${APPLICATION_ID:-com.cruxcoach.android}"
+PID="$(adb shell pidof -s "$APP_ID")"
+test -n "$PID" || { echo "$APP_ID is not running" >&2; exit 1; }
+adb logcat --pid="$PID" -v threadtime > cruxcoach-logcat.txt
+```
+
+Reproduce the problem, stop capture with **Ctrl-C**, and review the file before
+sharing it. Remove access tokens, private keys, Nostr identifiers, private
+climbing notes, precise private/home locations, and unrelated device or app
+data. The issue tracker is public. Security vulnerabilities belong on the
+encrypted route in [SECURITY.md](SECURITY.md), not in an issue.
 
 > **Tip:** You can also report bugs directly from within the app via **Settings > Contact Developer**. Your report is sent as an encrypted Nostr DM and automatically includes device info.
 
@@ -23,10 +37,9 @@ Open an issue with the `feature` label. Describe:
 - **Why** it would be useful for your climbing workflow
 - **How** you envision the UI/interaction
 
-Non-trivial features are tracked as `FEAT-NNN` specifications under
-[`docs/specs/`](docs/specs/). For larger proposals, open the issue
-first; the maintainer will either draft the spec or invite you to
-contribute one.
+Public `FEAT-NNN` identifiers and their release status are indexed in
+[ROADMAP.md](ROADMAP.md). For larger proposals, open the issue first; an
+identifier is assigned only when it helps implementation or release tracking.
 
 > **Tip:** Feature requests can also be sent directly from the app via **Settings > Contact Developer**.
 
@@ -82,6 +95,20 @@ shared-module task because the Android module is configured in the same build.
 # Install on device
 adb install androidApp/build/outputs/apk/debug/androidApp-debug.apk
 ```
+
+On a fresh install, the climb catalogues are downloaded rather than bundled.
+The current full board database is approximately 85 MB, so allow the onboarding
+sync to finish (Wi-Fi recommended) before treating an empty browser as a bug.
+
+### Testing
+
+The repository's test layers, commands, device prerequisites, and manual
+release checks are documented in [docs/testing.md](docs/testing.md). During
+development, run the narrow test class or module that exercises your change;
+before submitting app-wide changes, run both unit-test tasks and
+`:androidApp:assembleDebug` shown above. Pull requests do not run on the
+maintainer's secret-bearing self-hosted release runner, so include exact local
+commands and outcomes in the PR description.
 
 ### Configuration templates
 
@@ -141,18 +168,28 @@ before publishing.
 ### Project Structure
 
 ```
-shared/                    # Kotlin Multiplatform module
-├── domain/model/          # Data classes (pure Kotlin)
-├── domain/board/          # Board protocol, frame codec, grade system
+shared/src/commonMain/                         # Kotlin Multiplatform logic
+├── kotlin/com/cruxcoach/
+│   ├── data/repository/                       # shared repository contracts
+│   ├── domain/{board,community,engine,model,usecase}/
+│   └── util/
 └── sqldelight/
-    ├── board/             # Board DB schema: climbs, stats, layouts (unencrypted)
-    └── secure/            # Personal data schema: logbook, body stats, Nostr (SQLCipher)
+    ├── board/com/cruxcoach/db/board/          # public catalogue schema
+    └── secure/com/cruxcoach/db/secure/        # personal SQLCipher schema
 
-androidApp/                # Android app (Jetpack Compose)
-├── ui/                    # Screens + ViewModels
-├── data/                  # Repositories, Kilter API client
-├── ble/                   # Bluetooth board communication (Nordic UART)
-└── nostr/                 # Nostr relay pool, sync, announcements
+androidApp/src/main/                           # Android app
+├── java/com/cruxcoach/android/
+│   ├── {aurora,ble,community,crash,data,di}/
+│   ├── {nostr,notification,payment,updater,util}/
+│   └── ui/                                    # Compose screens + ViewModels
+│       ├── {board,climb,community,dashboard,map,onboarding}/
+│       └── {settings,stats,workout,...}/
+├── assets/                                    # legal data and runtime assets
+├── cpp/                                       # native SQLCipher integration
+└── res/                                       # Android resources/localizations
+
+shared/src/{commonTest,androidUnitTest}/        # shared tests
+androidApp/src/test/                            # Android/JVM unit tests
 ```
 
 ### Releases & CI (maintainer only)
@@ -210,6 +247,15 @@ namespace. Keep `CATALOGUE_NAMESPACE=cruxcoach` and the default
 pipeline must change both values together and publish signed manifests under
 `<CATALOGUE_NAMESPACE>/board-db`, `/moonboard-db`, and `/<board>-db`.
 
+This repository contains the catalogue **consumer**, not a supported tool for
+harvesting third-party services or publishing the upstream snapshots. The
+runtime contract is defined by
+`androidApp/src/main/java/com/cruxcoach/android/data/blossom/BlossomManifest.kt`
+and `androidApp/src/main/java/com/cruxcoach/android/data/BoardDatabaseImporter.kt`.
+A fork must therefore either retain the attributed upstream catalogue identity
+or implement and operate its own lawful producer for that contract; changing
+the namespace alone does not create a catalogue.
+
 The auto-updater is disabled automatically on Zapstore installs (Zapstore
 handles updates itself). Forks whose APKs are distributed through other
 channels need to expose releases as a Forgejo/Gitea-compatible `releases`
@@ -245,20 +291,26 @@ donations resolve the `lud16` in `MAINTAINER_PUBKEY`'s signed Nostr profile.
 
 ## Coding Standards
 
-These are non-negotiable for all contributions.
+These guidelines apply to new and changed code. Existing code does not always
+match every preference below; keep a change focused and do not mix unrelated
+cleanup into a bug fix.
 
 ### State Management
-- **Thread-safe updates only**: Use `_state.update { it.copy(...) }` (atomic). Never use `_state.value = _state.value.copy(...)`.
+- Prefer atomic `_state.update { it.copy(...) }` for concurrent state-flow
+  updates. A direct assignment is appropriate only when it cannot race and the
+  surrounding lifecycle makes that invariant clear.
 - State class naming: `XyzState`, `XyzViewModel`, `XyzScreen`.
 
 ### File Size
-- Max ~500 lines per file. Extract composables into separate files if needed.
+- Treat roughly 500 lines as a review signal, not a mechanical limit. Extract
+  cohesive components when doing so makes ownership and tests clearer.
 - One screen composable per file.
 - Extracted composables use `internal` visibility.
 
 ### Code Hygiene
 - No dead code. Delete unused functions, don't comment them out.
-- No swallowed exceptions: always log at minimum.
+- Handle expected failures deliberately. Log unexpected failures without
+  credentials, personal data, or redundant stack traces.
 - No duplicated constants: centralize shared values.
 - DRY mappers: extract repeated DB-to-domain mapping logic.
 
@@ -301,6 +353,11 @@ the pin with a branch or major-version tag.
 
 ## Submitting Changes
 
+Read the [Code of Conduct](CODE_OF_CONDUCT.md). Contributions are licensed
+under GPL-3.0-only and certified under [DCO 1.1](DCO.md); sign every commit with
+`git commit -s`. A sign-off is a statement about your right to contribute,
+not merely a formatting convention.
+
 ### Branch Naming
 
 - `feat/<short-description>` for new features
@@ -322,12 +379,13 @@ refactor(engine): extract periodization into standalone class
 
 Before submitting a PR:
 
-- [ ] Code compiles: `./gradlew :androidApp:assembleDebug`
-- [ ] Shared tests pass: `./gradlew :shared:testDebugUnitTest`
-- [ ] Android tests pass: `./gradlew :androidApp:testDebugUnitTest`
+- [ ] `git diff --check` passes and the diff contains no secrets or personal data
+- [ ] Relevant focused regression tests pass
+- [ ] Shared tests pass when shared code is affected: `./gradlew :shared:testDebugUnitTest`
+- [ ] Android tests pass when Android code is affected: `./gradlew :androidApp:testDebugUnitTest`
+- [ ] The debug APK builds when app/build inputs change: `./gradlew :androidApp:assembleDebug`
 - [ ] `values/strings.xml` (en) and `values-de/strings.xml` both updated (if UI strings changed)
-- [ ] No new warnings introduced
-- [ ] No files exceed ~500 lines
+- [ ] Each commit includes the DCO `Signed-off-by` line
 
 ### PR Description
 
@@ -356,4 +414,5 @@ Room is Android-only. SQLDelight generates code for all KMP targets from a singl
 
 ## Questions?
 
-Open an issue or reach out via Nostr.
+Open an issue or use the verified Nostr route in
+[MAINTAINERS.md](MAINTAINERS.md).

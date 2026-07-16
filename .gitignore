@@ -2,9 +2,7 @@
 .gradle/
 build/
 
-# Claude Code
-# No trailing slash: in some worktrees .claude is a symlink, which the
-# directory-only pattern ".claude/" does not match.
+# Local assistant/workspace metadata
 .claude
 CLAUDE.md
 REFERENCE.md
@@ -37,27 +35,14 @@ local.properties.*
 *.ap_
 *.dex
 
-# Internal docs (keep docs/lightning-qr.png and docs/screenshots/)
+# Local planning and audit notes (public documentation remains trackable)
 docs/audit/
 docs/backlog/
-docs/*.md
-!docs/KEY_ROTATION.md
-!docs/testing.md
 
-# FEAT specs are internal planning docs — never public. Kept only in the
-# local main worktree. Whole docs/specs/ tree excluded (incl. INDEX.md /
-# README.md navigation), consistent with docs/backlog/. NOTE: 23 specs
-# were tracked + pushed before this rule; they remain in public git
-# history until a deliberate history-rewrite purge — see CLAUDE.md
-# Public-Repo-Hygiene.
+# Local design drafts are not part of the public documentation set.
 docs/specs/
 
-# Internal triage workflow (RepoLens findings, verdicts, per-release audits)
-#
-# HARD RULE: RepoLens findings and any audit-tool output NEVER land in this
-# repo. Always output to an absolute path under ~/cruxcoach-internal-archive/
-# or similar — see CLAUDE.md "RepoLens and other audit tools" for the policy.
-# The patterns below are a defence-in-depth backstop, not the primary control.
+# Local triage and audit-tool output
 docs/specs/*/triage/
 tools/triage/
 scripts/repolens-*.sh

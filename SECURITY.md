@@ -6,13 +6,18 @@ If you discover a security vulnerability in CruxCoach, please report it responsi
 
 ### How to Report
 
-Send an encrypted Nostr DM (NIP-17) to the developer pubkey:
+Send an encrypted Nostr DM (NIP-17) to the upstream maintainer. Both forms
+below identify the same key:
 
 ```
 e75a185c019d09049d5fcb0e29a2cc9bfd016ec0f6d892fc98f6ffe0181a480d
+npub1uadpshqpn5ysf82lev8zngkvn07szmkq7mvf9lyc7ml7qxq6fqxsmrqt2s
 ```
 
-Alternatively, open a confidential issue on the [Codeberg repository](https://codeberg.org/CruxCoach/CruxCoach).
+The repository currently has no private issue intake. Codeberg issues are
+public, so use them only for non-sensitive coordination after removing exploit
+details, credentials, identifiers, and personal data. See
+[MAINTAINERS.md](MAINTAINERS.md) for the normal project contact routes.
 
 ### What to Include
 
@@ -23,7 +28,10 @@ Alternatively, open a confidential issue on the [Codeberg repository](https://co
 
 ### What to Expect
 
-This is a solo-maintained project. I'll do my best to respond promptly, but cannot guarantee specific timelines. Critical issues (key exposure, data leaks) will be prioritized.
+This is a solo-maintained project. Reports are reviewed as capacity permits;
+no response or remediation deadline is guaranteed. Key exposure and data leaks
+receive priority. Nostr is decentralized, so relay-level delivery and metadata
+confidentiality cannot be guaranteed by this project.
 
 ### Scope
 
@@ -143,3 +151,6 @@ If a user loses their device without having stored the key elsewhere (a password
 | Older releases | Best effort |
 
 We recommend always running the latest version.
+
+Signing-key change guidance for users and maintainers is published in
+[docs/KEY_ROTATION.md](docs/KEY_ROTATION.md).

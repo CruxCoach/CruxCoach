@@ -4,9 +4,8 @@
 > describes both what users see if the signing key ever changes, and the
 > developer procedure for rotating it.
 >
-> Status: written 2026-04-21 alongside FEAT-004 (in-app auto-updater).
-> This document is a release blocker for v0.1.2 — the in-app updater
-> refers users here when it detects a signing-cert mismatch.
+> Status: public operating procedure for the in-app updater (FEAT-004).
+> Review it before any release whose signing certificate could change.
 
 ## What is a signing key?
 
@@ -102,11 +101,15 @@ A rotation is a coordinated action with three phases.
 
 ### 2. Release — sign with the new key
 
-- Generate the new keystore using the standard procedure documented
-  in `CONTRIBUTING.md` (kept private; the keystore itself is never
-  committed).
-- Update the signing config in `local.properties` (see CLAUDE.md for
-  the rules around the `.signing/` directory).
+- Generate the new keystore using the public release-signing procedure in
+  [`CONTRIBUTING.md`](../CONTRIBUTING.md#release-signing). The keystore itself
+  and its credentials are never committed.
+- Update the signing config in the ignored `local.properties` file. The
+  template and required fields are documented in
+  [`local.properties.example`](../local.properties.example).
+- Replace [`release-cert-sha256.txt`](../release-cert-sha256.txt) with the
+  SHA-256 fingerprint of the new certificate. The release workflow rejects an
+  APK whose signer does not match this file.
 - Build the release APK as usual: `./gradlew :androidApp:assembleRelease`.
 - The first release notes after a rotation must include, near the top:
   - A clearly labelled "Signing key changed" section.
@@ -145,7 +148,10 @@ key — proceed normally.
 
 ## See also
 
-- `docs/specs/0.1.2/FEAT-004-auto-update.md` — the in-app updater spec
-  that references this document (§5.4.3, §6.9).
-- `CLAUDE.md` — repository rules for keystore files (`.signing/`,
-  `local.properties`, never committed).
+- [`ROADMAP.md`](../ROADMAP.md) — public status index for FEAT-004.
+- [`CONTRIBUTING.md`](../CONTRIBUTING.md#release-signing) — keystore setup and
+  APK verification.
+- [`.forgejo/workflows/release.yml`](../.forgejo/workflows/release.yml) — the
+  executable signer-fingerprint and release-artifact checks.
+- [`release-cert-sha256.txt`](../release-cert-sha256.txt) — expected upstream
+  release certificate fingerprint.
