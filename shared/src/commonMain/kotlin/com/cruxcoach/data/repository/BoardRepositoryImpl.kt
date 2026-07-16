@@ -5,6 +5,9 @@ import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.SupportedBoard
 import kotlin.time.Instant
 
+internal fun escapeLikePattern(value: String): String =
+    value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
 class BoardRepositoryImpl(
     private val database: BoardDatabase
 ) : BoardRepository {
@@ -77,16 +80,17 @@ class BoardRepositoryImpl(
         val sel = selProductSizeId.toLong()
         val hm = hsmExcludedMask
         val desc = sortDirection == SortDirection.DESC
+        val escapedQuery = escapeLikePattern(query)
 
         return when (sortField) {
-            ClimbSortField.QUALITY -> if (desc) q.searchByQualityDesc(lay, boardBrand, query, a, mn, mx, hm, sel, l, o) else q.searchByQualityAsc(lay, boardBrand, query, a, mn, mx, hm, sel, l, o)
-            ClimbSortField.DIFFICULTY -> if (desc) q.searchByDifficultyDesc(lay, boardBrand, query, a, mn, mx, hm, sel, l, o) else q.searchByDifficultyAsc(lay, boardBrand, query, a, mn, mx, hm, sel, l, o)
-            ClimbSortField.NAME -> if (desc) q.searchByNameDesc(lay, boardBrand, query, a, mn, mx, hm, sel, l, o) else q.searchByNameAsc(lay, boardBrand, query, a, mn, mx, hm, sel, l, o)
-            ClimbSortField.QUALITY_SENDS -> if (desc) q.searchByQualitySendsDesc(lay, boardBrand, query, a, mn, mx, hm, sel, l, o) else q.searchByQualitySendsAsc(lay, boardBrand, query, a, mn, mx, hm, sel, l, o)
-            ClimbSortField.HOLDS -> if (desc) q.searchByMovesDesc(lay, boardBrand, query, a, mn, mx, hm, sel, l, o) else q.searchByMovesAsc(lay, boardBrand, query, a, mn, mx, hm, sel, l, o)
-            ClimbSortField.NEWEST -> if (desc) q.searchByNewestDesc(lay, boardBrand, query, a, mn, mx, hm, sel, l, o) else q.searchByNewestAsc(lay, boardBrand, query, a, mn, mx, hm, sel, l, o)
-            ClimbSortField.RANDOM -> q.searchRandom(lay, boardBrand, query, a, mn, mx, hm, sel, l, o)
-            else -> if (desc) q.searchByAscensionistsDesc(lay, boardBrand, query, a, mn, mx, hm, sel, l, o) else q.searchByAscensionistsAsc(lay, boardBrand, query, a, mn, mx, hm, sel, l, o)
+            ClimbSortField.QUALITY -> if (desc) q.searchByQualityDesc(lay, boardBrand, escapedQuery, a, mn, mx, hm, sel, l, o) else q.searchByQualityAsc(lay, boardBrand, escapedQuery, a, mn, mx, hm, sel, l, o)
+            ClimbSortField.DIFFICULTY -> if (desc) q.searchByDifficultyDesc(lay, boardBrand, escapedQuery, a, mn, mx, hm, sel, l, o) else q.searchByDifficultyAsc(lay, boardBrand, escapedQuery, a, mn, mx, hm, sel, l, o)
+            ClimbSortField.NAME -> if (desc) q.searchByNameDesc(lay, boardBrand, escapedQuery, a, mn, mx, hm, sel, l, o) else q.searchByNameAsc(lay, boardBrand, escapedQuery, a, mn, mx, hm, sel, l, o)
+            ClimbSortField.QUALITY_SENDS -> if (desc) q.searchByQualitySendsDesc(lay, boardBrand, escapedQuery, a, mn, mx, hm, sel, l, o) else q.searchByQualitySendsAsc(lay, boardBrand, escapedQuery, a, mn, mx, hm, sel, l, o)
+            ClimbSortField.HOLDS -> if (desc) q.searchByMovesDesc(lay, boardBrand, escapedQuery, a, mn, mx, hm, sel, l, o) else q.searchByMovesAsc(lay, boardBrand, escapedQuery, a, mn, mx, hm, sel, l, o)
+            ClimbSortField.NEWEST -> if (desc) q.searchByNewestDesc(lay, boardBrand, escapedQuery, a, mn, mx, hm, sel, l, o) else q.searchByNewestAsc(lay, boardBrand, escapedQuery, a, mn, mx, hm, sel, l, o)
+            ClimbSortField.RANDOM -> q.searchRandom(lay, boardBrand, escapedQuery, a, mn, mx, hm, sel, l, o)
+            else -> if (desc) q.searchByAscensionistsDesc(lay, boardBrand, escapedQuery, a, mn, mx, hm, sel, l, o) else q.searchByAscensionistsAsc(lay, boardBrand, escapedQuery, a, mn, mx, hm, sel, l, o)
         }.executeAsList().map { mapBrowse(it) }
     }
 
@@ -172,11 +176,13 @@ class BoardRepositoryImpl(
     }
 
     override fun countSearchClimbs(query: String, angle: Int, layoutId: Int, boardBrand: String, climbType: ClimbTypeFilter, selProductSizeId: Int, hsmExcludedMask: Long): Long {
-        return q.countSearchClimbs(layoutId.toLong(), boardBrand, query, query, angle.toLong(), climbType.minFrames(), climbType.maxFrames(), hsmExcludedMask, selProductSizeId.toLong()).executeAsOne()
+        val escapedQuery = escapeLikePattern(query)
+        return q.countSearchClimbs(layoutId.toLong(), boardBrand, escapedQuery, escapedQuery, angle.toLong(), climbType.minFrames(), climbType.maxFrames(), hsmExcludedMask, selProductSizeId.toLong()).executeAsOne()
     }
 
     override fun countBenchmarkSearchClimbs(query: String, angle: Int, layoutId: Int, boardBrand: String, climbType: ClimbTypeFilter, selProductSizeId: Int, hsmExcludedMask: Long): Long {
-        return q.countBenchmarkSearchClimbs(layoutId.toLong(), boardBrand, query, query, angle.toLong(), climbType.minFrames(), climbType.maxFrames(), hsmExcludedMask, selProductSizeId.toLong()).executeAsOne()
+        val escapedQuery = escapeLikePattern(query)
+        return q.countBenchmarkSearchClimbs(layoutId.toLong(), boardBrand, escapedQuery, escapedQuery, angle.toLong(), climbType.minFrames(), climbType.maxFrames(), hsmExcludedMask, selProductSizeId.toLong()).executeAsOne()
     }
 
     override fun getClimbCount(): Long {

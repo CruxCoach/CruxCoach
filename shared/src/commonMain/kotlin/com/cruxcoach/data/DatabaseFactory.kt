@@ -21,7 +21,12 @@ private val framesAdapter = object : ColumnAdapter<String, ByteArray> {
 }
 
 fun createBoardDatabase(driverFactory: BoardDriverFactory): BoardDatabase {
-    val driver = driverFactory.createDriver()
+    return createBoardDatabase(driverFactory.createDriver())
+}
+
+/** Build a board database around an already-created driver.
+ *  Production factories and JDBC-backed tests share the exact same adapters. */
+fun createBoardDatabase(driver: SqlDriver): BoardDatabase {
     return BoardDatabase(
         driver = driver,
         climbsAdapter = Climbs.Adapter(framesAdapter = framesAdapter)
