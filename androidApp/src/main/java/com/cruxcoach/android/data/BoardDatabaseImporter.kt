@@ -133,7 +133,8 @@ class BoardDatabaseImporter(
      *
      * Import order: climbs first, then stats, then meta (layout data).
      */
-    // @Synchronized: all five board-DB writers serialise on this @Singleton
+    // @Synchronized: every board-DB writer, including analyzeDatabase,
+    // serialises on this @Singleton
     // importer's monitor (reentrant — the imports call backfillMoveCounts
     // internally). Single writer at a time → no concurrent ATTACH/index-DDL,
     // no SQLITE_BUSY from a backfill racing a sync (#3 concurrency cluster).
@@ -1749,12 +1750,13 @@ class BoardDatabaseImporter(
      * Both import paths ([importFromChunks] for Kilter, [importMoonBoardSnapshot]
      * for MoonBoard) go through [withDeferredIndexes], which deliberately skips
      * `ANALYZE` inline — a full pass adds 10-30s to the visible "finalizing"
-     * phase. Per the note there, it must instead run once, detached, after a
-     * sync completes: without fresh stats the planner mis-plans multi-table
+     * phase. It runs once after the imports while BoardSyncManager still owns
+     * the writer gate: without fresh stats the planner mis-plans multi-table
      * filtered counts once the catalogue is large. The MoonBoard catalogue
      * alone adds ~245k climbs, which turned `countFilteredClimbs` into a ~3s
      * query and janked the UI. Safe to call on a background dispatcher.
      */
+    @Synchronized
     fun analyzeDatabase() {
         val db = openTargetDb()
         try {

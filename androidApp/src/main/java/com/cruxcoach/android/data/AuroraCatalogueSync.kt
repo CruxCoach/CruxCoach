@@ -12,7 +12,6 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import java.io.File
-import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Named
 import javax.inject.Singleton
@@ -45,7 +44,11 @@ class AuroraCatalogueSync @Inject constructor(
     // race on the shared per-board cache file + double-import. Different boards
     // still run in parallel; the DB write itself is already serialised by the
     // @Synchronized importer.
-    private val boardLocks = ConcurrentHashMap<BoardBrand, Mutex>()
+    // Eager, immutable lookup: every caller for a brand necessarily receives
+    // the same Mutex. MutableMap.getOrPut is a non-atomic read/put sequence,
+    // even when the backing map happens to be a ConcurrentHashMap.
+    private val boardLocks: Map<BoardBrand, Mutex> =
+        BoardBrand.entries.associateWith { Mutex() }
 
     sealed class Result {
         /** Local catalogue already matches the published snapshot — no download. */
@@ -68,7 +71,7 @@ class AuroraCatalogueSync @Inject constructor(
     suspend fun sync(
         board: BoardBrand,
         onProgress: ((BoardDatabaseImporter.ImportStep) -> Unit)? = null
-    ): Result = boardLocks.getOrPut(board) { Mutex() }.withLock {
+    ): Result = boardLocks.getValue(board).withLock {
         withContext(Dispatchers.IO) {
         require(board.usesAuroraProtocol && board != BoardBrand.KILTER) {
             "AuroraCatalogueSync only handles the non-Kilter Aurora family, got $board"

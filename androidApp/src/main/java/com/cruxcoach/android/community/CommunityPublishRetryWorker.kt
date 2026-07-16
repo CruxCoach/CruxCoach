@@ -55,7 +55,13 @@ class CommunityPublishRetryWorker @AssistedInject constructor(
     private val userPreferences: UserPreferences,
 ) : CoroutineWorker(appContext, workerParams) {
 
-    override suspend fun doWork(): androidx.work.ListenableWorker.Result {
+    override suspend fun doWork(): androidx.work.ListenableWorker.Result =
+        CommunityPublishDrainGate.tryRun { drainQueue() }
+            ?: androidx.work.ListenableWorker.Result.success().also {
+                Log.i(TAG, "skip: another Nostr retry drain is already in flight")
+            }
+
+    private suspend fun drainQueue(): androidx.work.ListenableWorker.Result {
         val pubkey = runCatching { nostrSigner.getPublicKeyHex() }.getOrNull()
         if (pubkey.isNullOrBlank()) {
             Log.i(TAG, "skip: no local pubkey (signer not initialized)")
@@ -199,9 +205,9 @@ class CommunityPublishRetryWorker @AssistedInject constructor(
          *  cadence): `enqueueUniqueWork` against a name already held by
          *  a PeriodicWorkRequest is silently dropped on some WorkManager
          *  versions — see [com.cruxcoach.android.data.kilter.KilterPublishRetryWorker.runOnce]
-         *  where the same bug was diagnosed and fixed. Row-level
-         *  idempotency (pre-mark + replaceable NIP-78 d-tag) keeps a
-         *  one-shot racing the periodic tick harmless. */
+         *  where the same bug was diagnosed and fixed. The process-wide
+         *  drain gate makes a one-shot racing the periodic tick harmless;
+         *  the pre-mark is crash safety, not a dequeue claim. */
         fun runOnce(context: Context) {
             Log.i(TAG, "runOnce: enqueueing one-shot retry")
             val request = androidx.work.OneTimeWorkRequestBuilder<CommunityPublishRetryWorker>()

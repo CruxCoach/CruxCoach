@@ -9,6 +9,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.coroutineScope
@@ -33,6 +34,7 @@ import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import java.util.Collections
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 import javax.inject.Named
 import javax.inject.Singleton
@@ -41,6 +43,8 @@ import javax.inject.Singleton
 class NostrRelayPool @Inject constructor(
     @Named("nostr") private val okHttpClient: OkHttpClient
 ) {
+    @Volatile
+    internal var webSocketFactory: WebSocket.Factory = okHttpClient
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val connections = ConcurrentHashMap<String, RelayConnection>()
     private val seenEventIds: MutableMap<String, Boolean> = Collections.synchronizedMap(
@@ -61,7 +65,7 @@ class NostrRelayPool @Inject constructor(
     @Volatile
     private var resolvedRelays: List<RelayConfig> = NostrConfig.DEFAULT_RELAYS
 
-    private inner class RelayConnection(val url: String) {
+    internal inner class RelayConnection(val url: String) {
         // @Volatile: ws is written from the OkHttp WebSocketListener dispatcher
         // (onFailure / onClosed) and read from sender coroutines — visibility
         // must be guaranteed to avoid leaked/stale WebSocket references.
@@ -71,6 +75,7 @@ class NostrRelayPool @Inject constructor(
         private val subscriptionFlows = ConcurrentHashMap<String, MutableSharedFlow<String>>()
         private val activeFilters = ConcurrentHashMap<String, String>()
         private val connectLock = Mutex()
+        private val socketEpoch = AtomicLong(0L)
 
         @Volatile
         private var connected = false
@@ -84,6 +89,10 @@ class NostrRelayPool @Inject constructor(
 
         suspend fun ensureConnected() {
             if (connected && ws != null) return
+            connectCurrentSocket()
+        }
+
+        private suspend fun connectCurrentSocket() {
             connectLock.withLock {
                 if (connected && ws != null) return
                 openWebSocket()
@@ -93,27 +102,34 @@ class NostrRelayPool @Inject constructor(
         private suspend fun openWebSocket() {
             val deferred = CompletableDeferred<Unit>()
             val request = Request.Builder().url(url).build()
-            ws = okHttpClient.newWebSocket(request, object : WebSocketListener() {
-                override fun onOpen(ws: WebSocket, response: Response) {
+            val epoch = socketEpoch.incrementAndGet()
+            val socket = webSocketFactory.newWebSocket(request, object : WebSocketListener() {
+                override fun onOpen(webSocket: WebSocket, response: Response) {
+                    if (!isCurrent(epoch)) {
+                        webSocket.cancel()
+                        return
+                    }
                     connected = true
                     deferred.complete(Unit)
                 }
 
-                override fun onMessage(ws: WebSocket, text: String) {
+                override fun onMessage(webSocket: WebSocket, text: String) {
+                    if (!isCurrent(epoch)) return
                     handleMessage(text)
                 }
 
-                override fun onFailure(ws: WebSocket, t: Throwable, response: Response?) {
-                    connected = false
-                    this@RelayConnection.ws = null
+                override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                    if (!invalidate(epoch, webSocket)) return
                     deferred.completeExceptionally(t)
                     failAllPending(t)
                     scheduleReconnect()
                 }
 
-                override fun onClosed(ws: WebSocket, code: Int, reason: String) {
-                    connected = false
-                    this@RelayConnection.ws = null
+                override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                    if (!invalidate(epoch, webSocket)) return
+                    deferred.completeExceptionally(
+                        Exception("Relay $url closed during connection: $code ${reason.forLog()}")
+                    )
                     // Fail pending OKs immediately instead of waiting for each
                     // publisher's RELAY_TIMEOUT_MS — otherwise every in-flight
                     // sendEvent hangs and the pendingOks map piles up while
@@ -122,7 +138,38 @@ class NostrRelayPool @Inject constructor(
                     if (activeFilters.isNotEmpty()) scheduleReconnect()
                 }
             })
-            withTimeout(NostrConfig.RELAY_TIMEOUT_MS) { deferred.await() }
+            // A callback is allowed to run before newWebSocket returns. Only
+            // publish the returned handle if that callback did not already
+            // invalidate this generation.
+            if (isCurrent(epoch)) {
+                ws = socket
+                // Close the check/assignment race with an immediately-firing
+                // failure callback: if it invalidated after the first check
+                // but before the assignment, do not resurrect its handle.
+                if (!isCurrent(epoch) && ws === socket) ws = null
+            } else {
+                socket.cancel()
+            }
+            try {
+                withTimeout(NostrConfig.RELAY_TIMEOUT_MS) { deferred.await() }
+            } catch (e: Throwable) {
+                val abandonedCurrent = invalidate(epoch, socket)
+                socket.cancel()
+                if (abandonedCurrent && e is TimeoutCancellationException) {
+                    scheduleReconnect()
+                }
+                throw e
+            }
+        }
+
+        private fun isCurrent(epoch: Long): Boolean = socketEpoch.get() == epoch
+
+        /** Returns true only for the callback that invalidated the live epoch. */
+        private fun invalidate(epoch: Long, socket: WebSocket): Boolean {
+            if (!socketEpoch.compareAndSet(epoch, epoch + 1L)) return false
+            connected = false
+            if (ws === socket) ws = null
+            return true
         }
 
         private fun handleMessage(text: String) {
@@ -239,7 +286,7 @@ class NostrRelayPool @Inject constructor(
                     delay(currentDelay)
                     attempts++
                     try {
-                        openWebSocket()
+                        connectCurrentSocket()
                         // Reconnected — re-subscribe all active filters
                         activeFilters.forEach { (subId, filter) ->
                             val msg = "[\"REQ\",\"$subId\",$filter]"
@@ -270,7 +317,7 @@ class NostrRelayPool @Inject constructor(
                     while (isActive && !connected) {
                         delay(NostrConfig.RECONNECT_SLOW_RETRY_MS)
                         try {
-                            openWebSocket()
+                            connectCurrentSocket()
                             activeFilters.forEach { (subId, filter) ->
                                 ws?.send("[\"REQ\",\"$subId\",$filter]")
                             }
@@ -295,12 +342,16 @@ class NostrRelayPool @Inject constructor(
             reconnectJob = null
             reconnectExhausted = false
             connected = false
+            socketEpoch.incrementAndGet()
             ws?.close(1000, "shutdown")
             ws = null
             failAllPending(Exception("Connection closed"))
             subscriptionFlows.clear()
             activeFilters.clear()
         }
+
+        internal val connectedForTesting: Boolean get() = connected
+        internal val socketForTesting: WebSocket? get() = ws
     }
 
     private fun getOrCreateConnection(url: String): RelayConnection {
@@ -308,6 +359,8 @@ class NostrRelayPool @Inject constructor(
         // (it is get() ?: put(), which races and leaks duplicate connections).
         return connections.computeIfAbsent(url) { RelayConnection(it) }
     }
+
+    internal fun connectionForTesting(url: String): RelayConnection = getOrCreateConnection(url)
 
     /**
      * Relays marked write-enabled in the current resolved list. Safe to call

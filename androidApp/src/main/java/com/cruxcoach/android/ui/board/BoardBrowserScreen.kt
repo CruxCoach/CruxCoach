@@ -343,14 +343,10 @@ fun BoardBrowserScreen(
         RestTimerBannerSlot()
         SyncStatusBannerSlot()
         if (state.isLoading && !state.hasBoardData) {
-            // First DB access lazily runs any pending schema migration +
-            // the onOpen VACUUM / index rebuild on the ~190k-row board DB.
-            // On slower devices (mid-range eMMC) this blocks the first
-            // query for 1-2+ minutes. A bare spinner here reads as a
-            // freeze and tempts the user to force-kill mid-migration —
-            // the migration is atomic + recoverable so that's data-safe,
-            // but it wastes their time re-running it. Tell them what's
-            // happening instead.
+            // First DB access lazily runs any pending schema migration and
+            // may self-heal indexes after an interrupted import. A bare
+            // spinner during that bounded preparation reads as a freeze;
+            // tell the user what is happening.
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -725,4 +721,3 @@ fun BoardBrowserScreen(
         }
     }
 }
-

@@ -113,11 +113,11 @@ class CommunityClimbPublisher @Inject constructor(
         // Monotonic per d-tag (FEAT-039 audit BUG-1): a same-second re-publish
         // (fast typo-fix after publish) or a backward clock must still STRICTLY
         // advance, or "newest wins" diverges between the live-sub (applies on a
-        // tie) and the Blossom chunk (skips on a tie). Clamp against the row's
-        // last emitted created_at; persisted below via markClimbPublishedNostr.
-        val createdAt = monotonicCreatedAtSeconds(
-            System.currentTimeMillis() / 1000,
-            boardRepository.getClimbCreatedAt(uuid),
+        // tie) and the Blossom chunk (skips on a tie). Reserve and persist the
+        // next value atomically before signing; failed sends may leave gaps.
+        val createdAt = boardRepository.reserveNextNostrCreatedAt(
+            uuid = uuid,
+            nowEpochSeconds = System.currentTimeMillis() / 1000L,
         )
 
         // Brand is the climb's REAL board family, threaded in by the caller

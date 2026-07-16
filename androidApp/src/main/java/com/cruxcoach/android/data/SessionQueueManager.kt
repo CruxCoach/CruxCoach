@@ -19,6 +19,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 enum class SessionRole { NONE, HOST, PARTICIPANT }
@@ -412,74 +414,80 @@ class SessionQueueManager(
 
     /** Tracks last sent climb to prevent duplicate sends from multiple callers. */
     private var lastSentClimbKey: String? = null
+    /** Serializes the dedup check and the suspending physical-board write. */
+    private val boardSendMutex = Mutex()
 
     fun sendCurrentClimbToBoard() {
         scope.launch {
-            val item = _state.value.currentClimb ?: return@launch
-            if (bleConnection.connectionState.value != ConnectionState.CONNECTED) return@launch
+            boardSendMutex.withLock { sendCurrentClimbToBoardLocked() }
+        }
+    }
 
-            // Dedup: don't re-send the same climb (multiple callers can trigger this)
-            val key = "${item.climbUuid}:${item.angle}"
-            if (key == lastSentClimbKey) {
-                Log.d(TAG, "sendCurrentClimbToBoard: skipped dedup ${item.climbUuid.take(8)}")
-                return@launch
+    private suspend fun sendCurrentClimbToBoardLocked() {
+        val item = _state.value.currentClimb ?: return
+        if (bleConnection.connectionState.value != ConnectionState.CONNECTED) return
+
+        // Dedup: don't re-send the same climb (multiple callers can trigger this)
+        val key = "${item.climbUuid}:${item.angle}"
+        if (key == lastSentClimbKey) {
+            Log.d(TAG, "sendCurrentClimbToBoard: skipped dedup ${item.climbUuid.take(8)}")
+            return
+        }
+
+        try {
+            val climb = resolveClimb(item.climbUuid, item.angle)
+            if (climb == null) {
+                Log.w(TAG, "Climb not found: ${item.climbUuid}")
+                return
             }
-
-            try {
-                val climb = resolveClimb(item.climbUuid, item.angle)
-                if (climb == null) {
-                    Log.w(TAG, "Climb not found: ${item.climbUuid}")
-                    return@launch
-                }
-                // Board-match guard against the CONNECTED board (when known):
-                // switching the active board in Settings never disconnects, so
-                // the queue could otherwise push wrong-brand frames to the
-                // board still on the link (e.g. a MoonBoard ASCII frame to an
-                // Aurora board). Skip without marking lastSentClimbKey so the
-                // climb is retried once the matching board (re)connects.
-                val connectedBrand = bleConnection.connectedBoardBrand.value
-                if (connectedBrand != null && climb.brand != connectedBrand) {
-                    Log.w(TAG, "sendCurrentClimbToBoard: skipped — climb brand " +
-                        "${climb.brand} != connected board $connectedBrand")
-                    return@launch
-                }
-                // Brand-aware transport: a MoonBoard climb sends an ASCII
-                // frames payload via the Nordic-UART path, not the Kilter
-                // placement→LED map. Resolve the variant from the climb's own
-                // layout (the queue can hold any active-board climb).
-                if (climb.brand == BoardBrand.MOONBOARD) {
-                    if (climb.frames.isBlank()) return@launch
-                    val variant = com.cruxcoach.domain.board.MoonBoardVariant.fromLayoutId(climb.layoutId)
-                        ?: com.cruxcoach.domain.board.MoonBoardVariant.MOONBOARD_2016
-                    bleConnection.sendMoonBoardClimb(climb.frames, variant)
-                    lastSentClimbKey = key
-                    Log.d(TAG, "sendCurrentClimbToBoard: sent MoonBoard ${item.climbUuid.take(8)} angle=${item.angle}")
-                    onFirstQueueClimbSent?.invoke()
-                    onFirstQueueClimbSent = null
-                    return@launch
-                }
-                val holds = BoardClimbParser.parseFrames(climb.frames)
-                if (holds.isEmpty()) return@launch
-                val productSizeId = userPreferences.boardProductSizeId.first()
-                // Brand-scope the LED map + colours, keyed off the CLIMB's own
-                // brand (mirrors BoardSendController). Aurora boards reuse
-                // Kilter's product_size ids, so the no-brand default would load
-                // Kilter's LED partition and the wrong per-board colours.
-                val brandWire = climb.brand.wireValue
-                val ledMap = boardRepository.getPlacementLedMap(productSizeId, brandWire)
-                val roleColors = boardRepository.getRoleColorMapForBrand(brandWire).ifEmpty {
-                    (if (climb.brand == BoardBrand.KILTER) userPreferences.ledHoldColors.first()
-                     else LedHoldColors.standardFor(climb.brand)).toRoleColorMap()
-                }
-                bleConnection.sendClimb(holds, ledMap, roleColors)
+            // Board-match guard against the CONNECTED board (when known):
+            // switching the active board in Settings never disconnects, so
+            // the queue could otherwise push wrong-brand frames to the
+            // board still on the link (e.g. a MoonBoard ASCII frame to an
+            // Aurora board). Skip without marking lastSentClimbKey so the
+            // climb is retried once the matching board (re)connects.
+            val connectedBrand = bleConnection.connectedBoardBrand.value
+            if (connectedBrand != null && climb.brand != connectedBrand) {
+                Log.w(TAG, "sendCurrentClimbToBoard: skipped — climb brand " +
+                    "${climb.brand} != connected board $connectedBrand")
+                return
+            }
+            // Brand-aware transport: a MoonBoard climb sends an ASCII
+            // frames payload via the Nordic-UART path, not the Kilter
+            // placement→LED map. Resolve the variant from the climb's own
+            // layout (the queue can hold any active-board climb).
+            if (climb.brand == BoardBrand.MOONBOARD) {
+                if (climb.frames.isBlank()) return
+                val variant = com.cruxcoach.domain.board.MoonBoardVariant.fromLayoutId(climb.layoutId)
+                    ?: com.cruxcoach.domain.board.MoonBoardVariant.MOONBOARD_2016
+                bleConnection.sendMoonBoardClimb(climb.frames, variant)
                 lastSentClimbKey = key
-                Log.d(TAG, "sendCurrentClimbToBoard: sent ${item.climbUuid.take(8)} angle=${item.angle}")
-                // Clear last-projected-climb banner on first queue send
+                Log.d(TAG, "sendCurrentClimbToBoard: sent MoonBoard ${item.climbUuid.take(8)} angle=${item.angle}")
                 onFirstQueueClimbSent?.invoke()
-                onFirstQueueClimbSent = null // fire once
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to send climb to board", e)
+                onFirstQueueClimbSent = null
+                return
             }
+            val holds = BoardClimbParser.parseFrames(climb.frames)
+            if (holds.isEmpty()) return
+            val productSizeId = userPreferences.boardProductSizeId.first()
+            // Brand-scope the LED map + colours, keyed off the CLIMB's own
+            // brand (mirrors BoardSendController). Aurora boards reuse
+            // Kilter's product_size ids, so the no-brand default would load
+            // Kilter's LED partition and the wrong per-board colours.
+            val brandWire = climb.brand.wireValue
+            val ledMap = boardRepository.getPlacementLedMap(productSizeId, brandWire)
+            val roleColors = boardRepository.getRoleColorMapForBrand(brandWire).ifEmpty {
+                (if (climb.brand == BoardBrand.KILTER) userPreferences.ledHoldColors.first()
+                 else LedHoldColors.standardFor(climb.brand)).toRoleColorMap()
+            }
+            bleConnection.sendClimb(holds, ledMap, roleColors)
+            lastSentClimbKey = key
+            Log.d(TAG, "sendCurrentClimbToBoard: sent ${item.climbUuid.take(8)} angle=${item.angle}")
+            // Clear last-projected-climb banner on first queue send
+            onFirstQueueClimbSent?.invoke()
+            onFirstQueueClimbSent = null // fire once
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to send climb to board", e)
         }
     }
 

@@ -6,10 +6,12 @@ import com.cruxcoach.android.ble.QueueItem
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.ClimbWithStats
 import com.cruxcoach.domain.board.BoardBrand
+import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
@@ -582,6 +584,29 @@ class SessionQueueManagerTest {
 
         queueManager.sendCurrentClimbToBoard()
 
+        coVerify(exactly = 1) { bleConnection.sendMoonBoardClimb(any(), any()) }
+    }
+
+    @Test
+    fun `concurrent send requests produce one physical board write`() {
+        val firstSendEntered = CompletableDeferred<Unit>()
+        val releaseFirstSend = CompletableDeferred<Unit>()
+        coEvery { bleConnection.sendMoonBoardClimb(any(), any()) } coAnswers {
+            firstSendEntered.complete(Unit)
+            releaseFirstSend.await()
+            true
+        }
+        setupConnectedSendScenario(connectedBrand = BoardBrand.MOONBOARD)
+        assertTrue("the automatic first-climb send must be in flight", firstSendEntered.isCompleted)
+
+        // This second request reaches the manager while the first BLE write is
+        // suspended. It must wait for the same critical section, then observe
+        // the completed send's dedup key instead of writing another frame.
+        queueManager.sendCurrentClimbToBoard()
+        coVerify(exactly = 1) { bleConnection.sendMoonBoardClimb(any(), any()) }
+
+        releaseFirstSend.complete(Unit)
+        testDispatcher.scheduler.advanceUntilIdle()
         coVerify(exactly = 1) { bleConnection.sendMoonBoardClimb(any(), any()) }
     }
 

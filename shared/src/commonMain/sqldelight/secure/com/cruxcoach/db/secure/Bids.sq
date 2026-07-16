@@ -45,7 +45,12 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 -- path wrongly ran updateAscent against the ascents table — a no-op for a
 -- bid uuid, silently dropping the edit.
 updateBid:
-UPDATE bids SET bid_count = ?, comment = ? WHERE uuid = ?;
+UPDATE bids
+SET bid_count = ?,
+    comment = ?,
+    synced = 0,
+    row_version = row_version + 1
+WHERE uuid = ?;
 
 deleteBid:
 DELETE FROM bids WHERE uuid = ?;

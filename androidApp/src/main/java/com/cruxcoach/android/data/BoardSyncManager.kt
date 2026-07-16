@@ -490,11 +490,17 @@ class BoardSyncManager(
                 performBlossomSync()
                 // Refresh SQLite query-planner stats now the catalogue may
                 // have grown substantially (Kilter + MoonBoard imports both
-                // skip ANALYZE inline to keep the "finalizing" phase short).
-                // Runs detached, after performBlossomSync already signalled
-                // syncComplete, so it never extends the visible sync.
+                // skip ANALYZE inline). Keep the writer gate claimed until it
+                // completes: ANALYZE writes sqlite_stat1 and must not overlap
+                // another import or an isSyncing-gated app write.
                 runCatching { importer.analyzeDatabase() }
                     .onFailure { Log.w(TAG, "Post-sync ANALYZE failed", it) }
+                _state.update { it.copy(
+                    isSyncing = false,
+                    syncComplete = true,
+                    importStep = null,
+                    lastSyncCompletedAtMillis = System.currentTimeMillis(),
+                ) }
             } catch (e: Exception) {
                 Log.w(TAG, "Blossom sync failed", e)
                 // Distinguish network failures (where the "prüfe Internet"
@@ -561,12 +567,9 @@ class BoardSyncManager(
             val timestamp = DateTimeUtil.nowIso()
             userPreferences.setLastSyncTimestamp(timestamp)
             _state.update { it.copy(
-                isSyncing = false,
-                syncComplete = true,
                 alreadyImported = true,
                 lastSyncTimestamp = timestamp,
-                importStep = null,
-                lastSyncCompletedAtMillis = System.currentTimeMillis()
+                importStep = ImportStep.Finalizing,
             ) }
             return
         }
@@ -723,13 +726,10 @@ class BoardSyncManager(
             val timestamp = DateTimeUtil.nowIso()
             userPreferences.setLastSyncTimestamp(timestamp)
             _state.update { it.copy(
-                isSyncing = false,
-                syncComplete = true,
                 alreadyImported = true,
                 lastSyncTimestamp = timestamp,
                 errorMessage = null,
-                importStep = null,
-                lastSyncCompletedAtMillis = System.currentTimeMillis()
+                importStep = ImportStep.Finalizing,
             ) }
         } finally {
             chunkFiles.values.forEach { it.delete() }

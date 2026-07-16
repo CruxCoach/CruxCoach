@@ -1,6 +1,7 @@
 package com.cruxcoach.android.community
 
 import com.cruxcoach.android.data.UserPreferences
+import com.cruxcoach.android.data.retryingOnTransientSqliteLock
 import com.cruxcoach.android.nostr.NostrSigner
 import com.cruxcoach.android.payment.NostrProfileManager
 import com.cruxcoach.data.repository.BoardRepository
@@ -76,27 +77,33 @@ class ClimbCreatorRepository @Inject constructor(
         )
         val angle = state.angle ?: error("angle required")
         val bounds = computeBounds(state)
-        boardRepository.insertLocalDraft(
-            draft = draft,
-            layoutId = layoutId,
-            angle = angle.toLong(),
-            // Fall back to the slider's visible default when editor state
-            // never carried a grade. Pre-fix the UI seeded this with a
-            // LaunchedEffect, but the seed lost a race against the VM's
-            // _state.update calls in loadDraft / seedFromEdit which
-            // emitted setterGradeId=null after the seed, causing
-            // climb_stats.difficulty_average to be persisted as NULL —
-            // surfaced as "?" in the browser even though the editor
-            // showed V5. Defaulting at write time closes every
-            // persistence path (autosave, fork-and-edit, future tooling)
-            // in one place rather than per-call-site.
-            setterGradeId = state.setterGradeId ?: KilterGradeMapper.DEFAULT_SETTER_GRADE_ID,
-            bounds = bounds,
-            // Persist the active board's real brand so the draft stays visible
-            // in this board's drafts drawer — layout-id alone can't tell the
-            // Aurora-family boards apart from Kilter.
-            boardBrand = state.boardBrand,
-        )
+        retryingOnTransientSqliteLock(
+            onRetry = { attempt, max ->
+                android.util.Log.w("ClimbCreator", "event=draft_db_lock_retry attempt=$attempt/$max")
+            },
+        ) {
+            boardRepository.insertLocalDraft(
+                draft = draft,
+                layoutId = layoutId,
+                angle = angle.toLong(),
+                // Fall back to the slider's visible default when editor state
+                // never carried a grade. Pre-fix the UI seeded this with a
+                // LaunchedEffect, but the seed lost a race against the VM's
+                // _state.update calls in loadDraft / seedFromEdit which
+                // emitted setterGradeId=null after the seed, causing
+                // climb_stats.difficulty_average to be persisted as NULL —
+                // surfaced as "?" in the browser even though the editor
+                // showed V5. Defaulting at write time closes every
+                // persistence path (autosave, fork-and-edit, future tooling)
+                // in one place rather than per-call-site.
+                setterGradeId = state.setterGradeId ?: KilterGradeMapper.DEFAULT_SETTER_GRADE_ID,
+                bounds = bounds,
+                // Persist the active board's real brand so the draft stays visible
+                // in this board's drafts drawer — layout-id alone can't tell the
+                // Aurora-family boards apart from Kilter.
+                boardBrand = state.boardBrand,
+            )
+        }
         return uuid
     }
 
@@ -129,15 +136,21 @@ class ClimbCreatorRepository @Inject constructor(
         )
         val angle = state.angle ?: error("angle required")
         val bounds = computeBounds(state)
-        boardRepository.insertLocalDraft(
-            draft = draft,
-            layoutId = layoutId,
-            angle = angle.toLong(),
-            // See saveDraft for why the default lives here, not in the UI.
-            setterGradeId = state.setterGradeId ?: KilterGradeMapper.DEFAULT_SETTER_GRADE_ID,
-            bounds = bounds,
-            boardBrand = state.boardBrand,
-        )
+        retryingOnTransientSqliteLock(
+            onRetry = { attempt, max ->
+                android.util.Log.w("ClimbCreator", "event=draft_db_lock_retry attempt=$attempt/$max")
+            },
+        ) {
+            boardRepository.insertLocalDraft(
+                draft = draft,
+                layoutId = layoutId,
+                angle = angle.toLong(),
+                // See saveDraft for why the default lives here, not in the UI.
+                setterGradeId = state.setterGradeId ?: KilterGradeMapper.DEFAULT_SETTER_GRADE_ID,
+                bounds = bounds,
+                boardBrand = state.boardBrand,
+            )
+        }
     }
 
     /**

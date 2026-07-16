@@ -1,6 +1,7 @@
 package com.cruxcoach.android.nostr.backup
 
 import android.util.Log
+import com.cruxcoach.android.data.retryingOnTransientSqliteLock
 import com.cruxcoach.android.nostr.NostrEventPolicy
 import com.cruxcoach.android.nostr.NostrRelayPool
 import com.cruxcoach.android.nostr.NostrSigner
@@ -445,7 +446,11 @@ class BackupRepository @Inject constructor(
         // pubkey check catches bookkeeping bugs (re-imported own old
         // nsec, mid-flow identity flip before A2 clears ran, etc.)
         // before any row is written.
-        val importResult = importRetryingOnDbLock {
+        val importResult = retryingOnTransientSqliteLock(
+            onRetry = { attempt, max ->
+                Log.w(TAG, "event=restore_db_lock_retry attempt=$attempt/$max")
+            },
+        ) {
             CruxCoachBackup.import(
                 jsonString = json,
                 selectedCategories = CruxCoachBackup.Category.entries.toSet(),
@@ -476,44 +481,6 @@ class BackupRepository @Inject constructor(
             "event=restore_done rowsImported=$rowsImported skippedDuplicates=${importResult.skippedDuplicates} durationMs=${System.currentTimeMillis() - started}",
         )
         importResult
-    }
-
-    /**
-     * Retry the secure-DB import when it fails with a transient SQLite
-     * lock ("database is locked" / "busy"). Root cause: the secure DB
-     * ATTACHes the unencrypted board DB to resolve ascent→climb names,
-     * so the very first ascent step JOINs the board DB — which collides
-     * with an in-progress board-catalogue bulk import (index rebuilds /
-     * checkpoints can hold the board-DB write lock past the connection's
-     * 5 s busy_timeout). A fresh-install "restore while boards are still
-     * downloading" then rolled the whole secure transaction back to zero
-     * and surfaced only as a transient generic snackbar. The import is
-     * idempotent (UUID dedup + name-merged lists), so re-running after a
-     * short backoff — by which point the offending board-DB batch has
-     * committed — completes cleanly. `restore()` already waits for
-     * `isSyncing` to clear up front; this covers the residual windows it
-     * can't (ensureActiveBoardCatalogue runs before that guard; the
-     * detached post-sync ANALYZE runs after it).
-     */
-    private suspend fun <T> importRetryingOnDbLock(block: () -> T): T {
-        val maxAttempts = 4
-        var attempt = 1
-        while (true) {
-            try {
-                return block()
-            } catch (e: Exception) {
-                val msg = e.message ?: ""
-                val isLock = msg.contains("locked", ignoreCase = true) ||
-                    msg.contains("busy", ignoreCase = true)
-                if (!isLock || attempt >= maxAttempts) throw e
-                Log.w(
-                    TAG,
-                    "event=restore_db_lock_retry attempt=$attempt/$maxAttempts msg=${msg.take(80)}",
-                )
-                kotlinx.coroutines.delay(600L * attempt)
-                attempt++
-            }
-        }
     }
 
     /**

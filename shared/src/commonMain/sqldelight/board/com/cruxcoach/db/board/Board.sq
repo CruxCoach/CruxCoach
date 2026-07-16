@@ -275,6 +275,12 @@ SELECT 1 FROM climbs WHERE uuid = ? LIMIT 1;
 getClimbCreatedAt:
 SELECT created_at FROM climbs WHERE uuid = ? LIMIT 1;
 
+-- Reserve an emitted Nostr timestamp inside the repository transaction that
+-- reads the prior value. The reservation happens before signing/network I/O;
+-- failed sends may leave gaps, which is harmless for a monotonic counter.
+setClimbCreatedAtForReservation:
+UPDATE climbs SET created_at = :created_at WHERE uuid = :uuid;
+
 -- Returns the local row's `created_by_pubkey` so the live subscriber can
 -- reject incoming Kind-30078 events whose signed pubkey differs from
 -- whoever already owns this uuid. Without this guard a second author
@@ -1475,7 +1481,8 @@ markCommunityClimbDeleted {
         sync_status = 'deleted',
         created_at = :tombstone_iso
     WHERE uuid = :uuid
-      AND created_by_pubkey = :pubkey;
+      AND created_by_pubkey = :pubkey
+      AND (created_at IS NULL OR created_at <= :tombstone_iso);
     -- climb_stats intentionally preserved. The tombstone-design treats
     -- a deletion as a *visibility flip*, not a row purge: the climb
     -- stays in the climbs table with is_listed=0 so user-history JOINs
@@ -1588,10 +1595,23 @@ INSERT OR REPLACE INTO climbs(uuid, layout_id, setter_username, name, frames,
     frames_count, is_listed, edge_left, edge_right, edge_bottom, edge_top, created_at,
     description, is_nomatch, frames_pace, hsm, move_count,
     source, nostr_event_id, nostr_d_tag, created_by_pubkey, frames_hash, sync_status, origin, board_brand)
-VALUES (?, ?, ?, ?, ?,
-    1, 1, ?, ?, ?, ?, ?,
-    ?, 0, 0, 0, ?,
-    'nostr', ?, ?, ?, ?, 'synced', 'cruxcoach', ?);
+SELECT :uuid, :layout_id, :setter_username, :name, :frames,
+    1, 1, :edge_left, :edge_right, :edge_bottom, :edge_top, :created_at,
+    :description, 0, 0, 0, :move_count,
+    'nostr', :nostr_event_id, :nostr_d_tag, :created_by_pubkey, :frames_hash,
+    'synced', 'cruxcoach', :board_brand
+WHERE NOT EXISTS (
+    SELECT 1 FROM climbs AS existing
+    WHERE existing.uuid = :uuid
+      AND (
+          existing.origin != 'cruxcoach'
+          OR existing.source = 'local'
+          OR existing.created_by_pubkey IS NULL
+          OR existing.created_by_pubkey != :created_by_pubkey
+          OR existing.is_deleted != 0
+          OR (existing.created_at IS NOT NULL AND existing.created_at >= :created_at)
+      )
+);
 
 -- Flip a draft to "published_nostr" once the relay accepts the event.
 -- `nostr_publish_via` and `kilter_publish_via` columns remain in the
@@ -1616,7 +1636,8 @@ UPDATE climbs SET
     -- (event time), so the stale-event recency check is symmetric.
     created_at = :created_at
 WHERE uuid = :uuid
-  AND (created_by_pubkey IS NULL OR created_by_pubkey = :pubkey);
+  AND (created_by_pubkey IS NULL OR created_by_pubkey = :pubkey)
+  AND (created_at IS NULL OR created_at <= :created_at);
 
 -- Mark a draft as failed (so the publish queue can retry / surface error).
 markClimbPublishFailed:

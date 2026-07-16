@@ -147,9 +147,9 @@ class CommunityClimbDeleter @Inject constructor(
         // Monotonic (FEAT-039 audit BUG-1): the tombstone must STRICTLY exceed
         // the climb's last publish/edit created_at so it supersedes them on the
         // replaceable index even under a same-second delete or a backward clock.
-        val tombstoneEpoch = monotonicCreatedAtSeconds(
-            System.currentTimeMillis() / 1000L,
-            boardRepository.getClimbCreatedAt(uuid),
+        val tombstoneEpoch = boardRepository.reserveNextNostrCreatedAt(
+            uuid = uuid,
+            nowEpochSeconds = System.currentTimeMillis() / 1000L,
         )
         val tombstoneIso = java.time.Instant.ofEpochSecond(tombstoneEpoch).toString()
 

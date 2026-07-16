@@ -87,6 +87,31 @@ class KilterSyncRaceTest {
         )
     }
 
+    private fun insertBid(
+        uuid: String = "bid-1",
+        synced: Boolean = false,
+        comment: String? = "initial",
+    ) {
+        repo.insertBid(
+            uuid = uuid,
+            climbUuid = "climb-xyz",
+            angle = 40L,
+            isMirror = false,
+            bidCount = 3L,
+            comment = comment,
+            climbedAt = "2026-04-20T10:00:00Z",
+            synced = synced,
+            gymUuid = null,
+            wallUuid = null,
+            productLayoutUuid = null,
+            climbName = "Test Climb",
+            difficultyAverage = null,
+            boardBrand = "kilter",
+            layoutId = 1L,
+            externalId = null,
+        )
+    }
+
     // ── Happy path ───────────────────────────────────────────────
 
     @Test
@@ -117,6 +142,32 @@ class KilterSyncRaceTest {
 
         val after = repo.getUnsyncedAscents().single()
         assertEquals(before.rowVersion + 1, after.rowVersion)
+    }
+
+    @Test
+    fun `updateBid increments row_version and rejects stale mark-synced`() {
+        insertBid()
+        val snapshot = repo.getUnsyncedBids().single()
+
+        repo.updateBid(snapshot.uuid, bidCount = 7L, comment = "edited")
+
+        assertFalse(repo.markBidSyncedIfUnchanged(snapshot.uuid, snapshot.rowVersion))
+        val edited = repo.getUnsyncedBids().single()
+        assertEquals(snapshot.rowVersion + 1L, edited.rowVersion)
+        assertEquals(7L, edited.bidCount)
+        assertEquals("edited", edited.comment)
+    }
+
+    @Test
+    fun `editing a synced bid requeues it`() {
+        insertBid(synced = true)
+        assertTrue(repo.getUnsyncedBids().isEmpty())
+
+        repo.updateBid("bid-1", bidCount = 8L, comment = "changed after upload")
+
+        val queued = repo.getUnsyncedBids().single()
+        assertEquals(8L, queued.bidCount)
+        assertEquals(1L, queued.rowVersion)
     }
 
     // ── Sequential race (read → edit → markIfUnchanged) ──────────

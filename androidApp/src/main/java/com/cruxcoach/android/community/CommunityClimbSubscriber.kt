@@ -1,6 +1,8 @@
 package com.cruxcoach.android.community
 
 import android.util.Log
+import com.cruxcoach.android.data.isTransientSqliteLockFailure
+import com.cruxcoach.android.data.retryingOnTransientSqliteLock
 import androidx.annotation.VisibleForTesting
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.nostr.NostrRelayPool
@@ -289,8 +291,8 @@ class CommunityClimbSubscriber @Inject constructor(
      * cross-author check, and absorption rules apply on retry too.
      *
      * Rows whose upsert succeeds are deleted from the DLQ via the
-     * happy path inside [handleClimbEvent]. Rows that fail again get
-     * their retry_count bumped by [recordCommunityClimbDeadLetter];
+     * happy path inside [handleClimbEvent]. Poison-event failures bump
+     * retry_count; transient SQLite writer contention leaves it unchanged.
      * once a row's retry_count reaches [MAX_DEAD_LETTER_RETRIES] the
      * SQL `getRetriableDeadLetters` filter excludes it from future
      * retries (the row is still readable for a future diagnostics UI).
@@ -299,6 +301,7 @@ class CommunityClimbSubscriber @Inject constructor(
      * without restarting the subscriber.
      */
     suspend fun retryDeadLetters() {
+        awaitBoardSyncQuiescent()
         val rows = runCatching {
             boardRepository.getRetriableCommunityClimbDeadLetters(
                 maxRetries = MAX_DEAD_LETTER_RETRIES,
@@ -327,7 +330,7 @@ class CommunityClimbSubscriber @Inject constructor(
                     runCatching { boardRepository.deleteCommunityClimbDeadLetter(row.uuid) }
                     continue
                 }
-                handleClimbEvent(event, row.rawEventJson)
+                handleClimbEvent(event, row.rawEventJson, fromDeadLetter = true)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -448,11 +451,7 @@ class CommunityClimbSubscriber @Inject constructor(
         // relays don't re-push already-delivered events; only a fresh
         // REQ with the cursor would backfill them. By suspending we
         // keep every event without depending on relay backfill behaviour.
-        if (boardSyncManager.state.value.isSyncing) {
-            Log.d(TAG, "suspend event handling during board-sync (resume after import)")
-            boardSyncManager.state.first { !it.isSyncing }
-            Log.d(TAG, "board-sync ended, resuming event handling")
-        }
+        awaitBoardSyncQuiescent()
         // Hard size cap on the raw event payload before we even parse it.
         // The largest legitimate climb event is ~6 KB (≈84 holds × ~12
         // chars per p/r token + name + description + tag overhead);
@@ -499,6 +498,14 @@ class CommunityClimbSubscriber @Inject constructor(
         }
     }
 
+    private suspend fun awaitBoardSyncQuiescent() {
+        if (boardSyncManager.state.value.isSyncing) {
+            Log.d(TAG, "suspend event handling during board-sync (resume after import)")
+            boardSyncManager.state.first { !it.isSyncing }
+            Log.d(TAG, "board-sync ended, resuming event handling")
+        }
+    }
+
     /**
      * Process a Kind-30078 community-climb event. Two sub-paths:
      *  * `parsedClimb.deleted == true` → tombstone-replacement: route to
@@ -507,7 +514,11 @@ class CommunityClimbSubscriber @Inject constructor(
      *    pipeline plus the L3 absorption check that refuses re-importing
      *    a climb whose local row already carries `is_deleted=1`.
      */
-    private suspend fun handleClimbEvent(event: Event, rawEventJson: String) {
+    private suspend fun handleClimbEvent(
+        event: Event,
+        rawEventJson: String,
+        fromDeadLetter: Boolean = false,
+    ) {
         val parsedClimb = runCatching { ParsedClimb.from(event) }.getOrNull() ?: return
 
         // Self-filter: skip events we authored ourselves. Relays echo
@@ -738,31 +749,37 @@ class CommunityClimbSubscriber @Inject constructor(
         val moveCount = computeMoveCount(parsedClimb.framesText)
 
         try {
-            boardRepository.upsertCommunityClimb(
-                uuid = parsedClimb.uuid,
-                layoutId = parsedClimb.layoutId,
-                // Display stub mirrors the cron-side merge format
-                // (`merge_cruxcoach_climbs` in update_board_db.py): same
-                // 16-hex-char prefix means a Blossom blob refresh produces
-                // no diff with what the live sub already wrote. When Plan 3
-                // adds Kind-0 lookup the UI takes the real display_name,
-                // this column is the persistent fallback.
-                setterUsername = "npub:${parsedClimb.pubkey.take(16)}",
-                name = parsedClimb.name,
-                framesText = parsedClimb.framesText,
-                description = parsedClimb.description,
-                moveCount = moveCount.toLong(),
-                nostrEventId = parsedClimb.eventId,
-                nostrDTag = parsedClimb.dTag,
-                createdByPubkey = parsedClimb.pubkey,
-                framesHash = parsedClimb.framesHash,
-                createdAt = incomingIso,
-                angle = angle.toLong(),
-                difficultyAverage = grade.toDouble(),
-                qualityAverage = null,
-                bounds = parsedClimb.bounds,
-                boardBrand = parsedClimb.boardBrand,
-            )
+            retryingOnTransientSqliteLock(
+                onRetry = { attempt, max ->
+                    Log.w(TAG, "event=community_upsert_db_lock_retry attempt=$attempt/$max")
+                },
+            ) {
+                boardRepository.upsertCommunityClimb(
+                    uuid = parsedClimb.uuid,
+                    layoutId = parsedClimb.layoutId,
+                    // Display stub mirrors the cron-side merge format
+                    // (`merge_cruxcoach_climbs` in update_board_db.py): same
+                    // 16-hex-char prefix means a Blossom blob refresh produces
+                    // no diff with what the live sub already wrote. When Plan 3
+                    // adds Kind-0 lookup the UI takes the real display_name,
+                    // this column is the persistent fallback.
+                    setterUsername = "npub:${parsedClimb.pubkey.take(16)}",
+                    name = parsedClimb.name,
+                    framesText = parsedClimb.framesText,
+                    description = parsedClimb.description,
+                    moveCount = moveCount.toLong(),
+                    nostrEventId = parsedClimb.eventId,
+                    nostrDTag = parsedClimb.dTag,
+                    createdByPubkey = parsedClimb.pubkey,
+                    framesHash = parsedClimb.framesHash,
+                    createdAt = incomingIso,
+                    angle = angle.toLong(),
+                    difficultyAverage = grade.toDouble(),
+                    qualityAverage = null,
+                    bounds = parsedClimb.bounds,
+                    boardBrand = parsedClimb.boardBrand,
+                )
+            }
             // Successful upsert wins. Drop a previous DLQ entry (if any
             // — the row may have failed earlier in this session before
             // the next retry path retried it). No-op when no DLQ entry
@@ -775,6 +792,13 @@ class CommunityClimbSubscriber @Inject constructor(
             // (app stop, signer outage). NOT a DLQ-able failure.
             throw e
         } catch (e: Exception) {
+            if (fromDeadLetter && e.isTransientSqliteLockFailure()) {
+                // Infrastructure contention must not consume the permanent
+                // poison-event retry budget. The existing row remains in the
+                // queue unchanged for the next quiescent drain.
+                Log.w(TAG, "DLQ retry deferred by SQLite writer contention uuid=${parsedClimb.uuid}")
+                return
+            }
             // Persist the raw signed event in the DLQ so the next
             // start-up (or an explicit retryDeadLetters call) can
             // re-run the upsert. Without the DLQ the cursor would

@@ -3,6 +3,7 @@ package com.cruxcoach.data.repository
 import com.cruxcoach.db.board.BoardDatabase
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.board.SupportedBoard
+import kotlin.time.Instant
 
 class BoardRepositoryImpl(
     private val database: BoardDatabase
@@ -760,6 +761,20 @@ class BoardRepositoryImpl(
     override fun getClimbCreatedAt(uuid: String): String? =
         q.getClimbCreatedAt(uuid).executeAsOneOrNull()?.created_at
 
+    override fun reserveNextNostrCreatedAt(uuid: String, nowEpochSeconds: Long): Long =
+        q.transactionWithResult {
+            val priorIso = q.getClimbCreatedAt(uuid).executeAsOneOrNull()?.created_at
+            val next = monotonicCreatedAtSeconds(nowEpochSeconds, priorIso)
+            q.setClimbCreatedAtForReservation(
+                created_at = Instant.fromEpochSeconds(next).toString(),
+                uuid = uuid,
+            )
+            check(q.lastClimbsChangeCount().executeAsOne() > 0L) {
+                "Cannot reserve Nostr created_at for missing climb"
+            }
+            next
+        }
+
     override fun getClimbAuthorPubkey(uuid: String): String? =
         q.getClimbAuthorPubkey(uuid).executeAsOneOrNull()?.created_by_pubkey
 
@@ -1046,7 +1061,8 @@ class BoardRepositoryImpl(
                 // mis-key Grasshopper/Decoy (layout_id=1) as Kilter Original.
                 board_brand = boardBrand,
             )
-            q.upsertClimbStat(
+            val applied = q.lastClimbsChangeCount().executeAsOne() > 0L
+            if (applied) q.upsertClimbStat(
                 climb_uuid = uuid,
                 angle = angle,
                 display_difficulty = difficultyAverage,

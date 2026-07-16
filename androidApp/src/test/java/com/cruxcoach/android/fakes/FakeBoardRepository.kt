@@ -381,6 +381,7 @@ class FakeBoardRepository : BoardRepository {
     override fun insertTombstoneShell(uuid: String, pubkey: String, dTag: String, tombstoneIso: String) {}
     override fun getCommunityClimbDeleteContext(uuid: String): com.cruxcoach.data.repository.CommunityClimbDeleteContext? = null
     override fun getClimbCreatedAt(uuid: String): String? = null
+    override fun reserveNextNostrCreatedAt(uuid: String, nowEpochSeconds: Long): Long = nowEpochSeconds
     override fun getClimbAuthorPubkey(uuid: String): String? = null
     override fun isNonCommunityClimb(uuid: String): Boolean =
         climbs.any { it.uuid == uuid && (it.origin != "cruxcoach" || it.createdByPubkey == null) }

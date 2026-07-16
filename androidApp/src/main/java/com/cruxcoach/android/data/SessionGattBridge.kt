@@ -580,8 +580,8 @@ class SessionGattBridge(
             }
             is SessionEvent.Removed -> queueManager.removeClimb(event.index)
             is SessionEvent.CurrentChanged -> {
+                // setCurrentClimb already schedules the physical-board send.
                 queueManager.setCurrentClimb(event.index)
-                queueManager.sendCurrentClimbToBoard()
             }
             is SessionEvent.Cleared -> queueManager.clearQueue()
             is SessionEvent.ParticipantJoined, is SessionEvent.ParticipantLeft -> {

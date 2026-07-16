@@ -988,6 +988,12 @@ interface CommunityClimbQueries {
      */
     fun getClimbCreatedAt(uuid: String): String?
     /**
+     * Atomically reserve the next strictly-monotonic Nostr timestamp for this
+     * row before an event is signed. A failed publish may consume a value;
+     * monotonicity, not gaplessness, is the protocol invariant.
+     */
+    fun reserveNextNostrCreatedAt(uuid: String, nowEpochSeconds: Long): Long
+    /**
      * Returns the local row's stored `created_by_pubkey` (or null if no
      * row, or if the row has no Nostr provenance). Used by the Channel-B
      * subscriber to enforce one-author-per-uuid: an incoming event whose

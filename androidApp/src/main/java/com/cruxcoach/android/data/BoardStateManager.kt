@@ -1,6 +1,7 @@
 package com.cruxcoach.android.data
 
 import android.util.Log
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -12,7 +13,11 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -25,10 +30,21 @@ import javax.inject.Singleton
  * inactivity so users don't see a days-old climb in the BLE status area.
  */
 @Singleton
-class BoardStateManager @Inject constructor(
+class BoardStateManager internal constructor(
     private val userPreferences: UserPreferences,
-    private val climbNameResolver: ClimbNameResolver
+    private val climbNameResolver: ClimbNameResolver,
+    private val scope: CoroutineScope,
 ) {
+    @Inject
+    constructor(
+        userPreferences: UserPreferences,
+        climbNameResolver: ClimbNameResolver,
+    ) : this(
+        userPreferences,
+        climbNameResolver,
+        CoroutineScope(SupervisorJob() + Dispatchers.Main),
+    )
+
     data class LastBoardClimb(
         val uuid: String,
         val angle: Int,
@@ -36,8 +52,9 @@ class BoardStateManager @Inject constructor(
         val timestamp: Long = System.currentTimeMillis()
     )
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    private var staleJob: Job? = null
+    private val staleJob = AtomicReference<Job?>(null)
+    private val requestSequence = AtomicLong(0L)
+    private val commitMutex = Mutex()
 
     private val _lastClimb = MutableStateFlow<LastBoardClimb?>(null)
     /** The last climb, or null if it's older than [STALE_THRESHOLD_MS]. */
@@ -49,6 +66,10 @@ class BoardStateManager @Inject constructor(
      * Persists to DataStore for app-restart survival.
      */
     suspend fun setLastClimb(uuid: String, angle: Int) {
+        // Allocate the sequence before resolving the name. A later invocation
+        // supersedes this one immediately, so a slow older DB lookup cannot
+        // overwrite a newer climb when it eventually completes.
+        val requestId = requestSequence.incrementAndGet()
         val current = _lastClimb.value
         if (current != null && current.uuid == uuid && current.angle == angle && current.name != null) {
             Log.d(TAG, "SKIP dedup uuid=${uuid.take(8)} angle=$angle (unchanged)")
@@ -59,10 +80,16 @@ class BoardStateManager @Inject constructor(
             climbNameResolver.resolveName(uuid, angle)
         }
 
-        _lastClimb.update { LastBoardClimb(uuid, angle, name) }
-        userPreferences.setLastClimb(uuid, angle)
-        scheduleStaleCleanup()
-        Log.d(TAG, "SET uuid=${uuid.take(8)} angle=$angle hasName=${name != null}")
+        commitMutex.withLock {
+            if (requestSequence.get() != requestId) {
+                Log.d(TAG, "SKIP superseded uuid=${uuid.take(8)} angle=$angle")
+                return@withLock
+            }
+            _lastClimb.update { LastBoardClimb(uuid, angle, name) }
+            userPreferences.setLastClimb(uuid, angle)
+            scheduleStaleCleanup(requestId)
+            Log.d(TAG, "SET uuid=${uuid.take(8)} angle=$angle hasName=${name != null}")
+        }
     }
 
     /**
@@ -91,12 +118,13 @@ class BoardStateManager @Inject constructor(
      * Always follow up with the full [setLastClimb] for persistence + name resolution.
      */
     fun setLastClimbQuick(uuid: String, angle: Int) {
+        val requestId = requestSequence.incrementAndGet()
         val current = _lastClimb.value
         if (current != null && current.uuid == uuid && current.angle == angle) return
         // Keep existing name if same UUID (just angle changed), otherwise null
         val existingName = current?.name?.takeIf { current.uuid == uuid }
         _lastClimb.value = LastBoardClimb(uuid, angle, existingName)
-        scheduleStaleCleanup()
+        scheduleStaleCleanup(requestId)
         Log.d(TAG, "QUICK uuid=${uuid.take(8)} angle=$angle hasName=${existingName != null}")
     }
 
@@ -104,13 +132,16 @@ class BoardStateManager @Inject constructor(
      * Schedules a coroutine that clears [_lastClimb] after [STALE_THRESHOLD_MS].
      * Resets on every new climb so only truly idle boards get cleared.
      */
-    private fun scheduleStaleCleanup() {
-        staleJob?.cancel()
-        staleJob = scope.launch {
+    private fun scheduleStaleCleanup(requestId: Long) {
+        val replacement = scope.launch(start = CoroutineStart.LAZY) {
             delay(STALE_THRESHOLD_MS)
-            Log.d(TAG, "STALE — clearing last climb after ${STALE_THRESHOLD_MS / 60_000}min")
-            _lastClimb.value = null
+            if (requestSequence.get() == requestId) {
+                Log.d(TAG, "STALE — clearing last climb after ${STALE_THRESHOLD_MS / 60_000}min")
+                _lastClimb.value = null
+            }
         }
+        staleJob.getAndSet(replacement)?.cancel()
+        replacement.start()
     }
 
     companion object {
