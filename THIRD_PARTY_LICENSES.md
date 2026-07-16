@@ -18,10 +18,12 @@ or APK.
 
 ## Vendored Source Code
 
-### zstd (1.5.6) — Meta Platforms, Inc.
+### zstd (1.5.7) — Meta Platforms, Inc.
 
 - **Location:** [`androidApp/src/main/cpp/zstd/`](androidApp/src/main/cpp/zstd/)
 - **Upstream:** https://github.com/facebook/zstd
+- **Package URL:** `pkg:github/facebook/zstd@1.5.7`
+- **Pinned source:** tag `v1.5.7`, commit `f8745da6ff1ad1e7bab384bd1f9d742439278e99`
 - **License:** Dual BSD-3-Clause OR GPLv2
 - **CruxCoach election:** **BSD-3-Clause** (required for GPLv3 compatibility)
 - **Texts:** [`LICENSE`](androidApp/src/main/cpp/zstd/LICENSE), [`COPYING`](androidApp/src/main/cpp/zstd/COPYING)

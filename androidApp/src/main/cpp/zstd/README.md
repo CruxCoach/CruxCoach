@@ -9,8 +9,9 @@ uses zstd to decompress board manifests fetched via Blossom.
 | Field | Value |
 |-------|-------|
 | Upstream | https://github.com/facebook/zstd |
-| Version | **1.5.6** (tag `v1.5.6`) |
-| Imported | 2026-04-09 |
+| Version | **1.5.7** (tag `v1.5.7`) |
+| Upstream commit | `f8745da6ff1ad1e7bab384bd1f9d742439278e99` |
+| Imported | 2026-07-16 |
 | Subset | `lib/zstd.h`, `lib/zstd_errors.h`, `lib/common/`, `lib/decompress/` |
 
 ## License Election
@@ -26,11 +27,17 @@ GPLv2 is not GPLv3-compatible — only the BSD-3-Clause arm permits the
 combination.
 
 The full BSD-3-Clause text is reproduced in [`LICENSE`](LICENSE) verbatim from
-the upstream `v1.5.6` tag. The GPLv2 text is retained in [`COPYING`](COPYING)
+the upstream `v1.5.7` tag. The GPLv2 text is retained in [`COPYING`](COPYING)
 because the source headers reference it; downstream consumers who prefer GPLv2
 may exercise that option independently.
 
 ## Updating
+
+Check the official zstd releases and security advisories during every
+CruxCoach release cycle and immediately when a zstd advisory is published.
+The version macros in `zstd.h`, the tag/commit above, and the package URL in
+`THIRD_PARTY_LICENSES.md` are the auditable component identity; update all
+three together.
 
 To refresh the vendored copy to a newer zstd release:
 
