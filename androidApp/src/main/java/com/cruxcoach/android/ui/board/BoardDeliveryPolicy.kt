@@ -1,5 +1,6 @@
 package com.cruxcoach.android.ui.board
 
+import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.data.BoardSendMode
 import com.cruxcoach.android.data.SessionRole
 
@@ -22,6 +23,22 @@ internal data class BoardDeliveryDecision(
  * while an explicit action routes it to the host through the shared queue.
  */
 internal object BoardDeliveryPolicy {
+    fun shouldAutoConnectSessionHost(
+        newRole: SessionRole,
+        previousRole: SessionRole,
+        connectionState: ConnectionState,
+    ): Boolean = newRole == SessionRole.HOST &&
+        previousRole != SessionRole.HOST &&
+        connectionState == ConnectionState.DISCONNECTED
+
+    fun shouldReleaseBoardForSessionParticipant(
+        newRole: SessionRole,
+        previousRole: SessionRole,
+        connectionState: ConnectionState,
+    ): Boolean = newRole == SessionRole.PARTICIPANT &&
+        previousRole != SessionRole.PARTICIPANT &&
+        connectionState != ConnectionState.DISCONNECTED
+
     fun resolve(
         sendMode: BoardSendMode,
         sessionRole: SessionRole,

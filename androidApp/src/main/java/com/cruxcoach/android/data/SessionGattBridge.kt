@@ -78,6 +78,12 @@ class SessionGattBridge(
 
     // ===== Host mode =====
 
+    /** Starts the host transport only when it is not already active. */
+    fun ensureHostSharing(): Boolean {
+        if (!isSharing) startSharing()
+        return isSharing
+    }
+
     fun startSharing() {
         val state = queueManager.state.value
         Log.d(TAG, "startSharing() called, role=${state.role}, isSharing=$isSharing, " +
@@ -123,8 +129,9 @@ class SessionGattBridge(
             // navigation launches concurrent coroutines whose async name resolution can
             // finish out of order, causing the final state to show an earlier climb.
             // Full persistence + name resolution happens in stopSharing()/leaveSession().
-            val currentClimb = queueManager.state.value.currentClimb
-            if (currentClimb != null) {
+            val queueState = queueManager.state.value
+            val currentClimb = queueState.currentClimb
+            if (currentClimb != null && !queueState.externalBoardOverride) {
                 boardStateManager.setLastClimbQuick(
                     currentClimb.climbUuid,
                     currentClimb.angle,
@@ -233,12 +240,17 @@ class SessionGattBridge(
     }
 
     fun stopSharing() {
+        stopSharing(allowBoardRelease = true)
+    }
+
+    fun stopSharing(allowBoardRelease: Boolean) {
         Log.d(TAG, "stopSharing() called, isSharing=$isSharing, " +
             "connectedClients=${gattServer.getConnectedCount()}, " +
             "boardConnected=${bleConnection.connectionState.value}")
         // Capture last queue climb BEFORE endQueue() clears it (called by UI right after)
         val sessionState = queueManager.state.value
         val lastQueueClimb = sessionState.currentClimb
+            ?.takeUnless { sessionState.externalBoardOverride }
         val projectionSurvivesDisconnect = projectionSurvivesCurrentBoardDisconnect()
         // A viable successor must have completed JOIN (counted by the queue)
         // and still have a live GATT link. Either signal on its own can be
@@ -275,10 +287,11 @@ class SessionGattBridge(
         // successor, Aurora-family controllers can still be released because
         // they retain their LEDs; a MoonBoard must remain connected or its
         // final projection disappears immediately.
-        val releaseBoard = BoardProjectionPolicy.shouldReleaseBoardAfterHosting(
-            hasSuccessor = hasSuccessor,
-            projectionSurvivesDisconnect = projectionSurvivesDisconnect,
-        )
+        val releaseBoard = allowBoardRelease &&
+            BoardProjectionPolicy.shouldReleaseBoardAfterHosting(
+                hasSuccessor = hasSuccessor,
+                projectionSurvivesDisconnect = projectionSurvivesDisconnect,
+            )
         if (bleConnection.connectionState.value == ConnectionState.CONNECTED && releaseBoard) {
             Log.d(TAG, "stopSharing(): releasing board (successor=$hasSuccessor retained=$projectionSurvivesDisconnect)")
             bleConnection.disconnect()
@@ -314,7 +327,7 @@ class SessionGattBridge(
                     advertiser.advertiseClimb(
                         lastQueueClimb.climbUuid,
                         lastQueueClimb.angle,
-                        projectionSurvivesDisconnect = false,
+                        projectionSurvivesDisconnect = projectionSurvivesDisconnect,
                     )
                 }
             } else {
@@ -426,6 +439,9 @@ class SessionGattBridge(
                                 attemptHostMigration()
                             } else if (qState.isConnecting) {
                                 queueManager.setError("Verbindung fehlgeschlagen")
+                                advertiser.suppressClimbAdvertising = false
+                                restartClimbAdvertisingIfConnected()
+                                boardSessionManager.endSession()
                             } else if (qState.role == SessionRole.PARTICIPANT) {
                                 Log.d(TAG, "Participant disconnected from host → attempting migration")
                                 attemptHostMigration()
@@ -467,7 +483,10 @@ class SessionGattBridge(
                 gattClient.currentClimbUpdates.collect { data ->
                     if (data.isNotEmpty()) {
                         val index = data[0].toInt() and 0xFF
-                        if (index != 0xFF) {
+                        if (SessionQueueManager.isExternalBoardOverride(data)) {
+                            Log.d(TAG, "Physical board was overwritten by an external app")
+                            queueManager.applyRemoteExternalBoardWrite()
+                        } else if (index != 0xFF) {
                             Log.d(TAG, "Current climb changed to index $index")
                             queueManager.applyRemoteCurrentIndex(index)
                             queueManager.sendCurrentClimbToBoard()
@@ -506,7 +525,9 @@ class SessionGattBridge(
         advertiser.suppressClimbAdvertising = false
         restartClimbAdvertisingIfConnected()
         // Set last climb to the current queue item so the banner shows what was on the board
-        val lastItem = queueManager.state.value.currentClimb
+        val queueState = queueManager.state.value
+        val lastItem = queueState.currentClimb
+            ?.takeUnless { queueState.externalBoardOverride }
         val projectionSurvivesDisconnect = projectionSurvivesCurrentBoardDisconnect()
         // Update board state SYNCHRONOUSLY before endQueue() triggers combine flow
         if (lastItem != null) {
@@ -654,6 +675,7 @@ class SessionGattBridge(
         if (queueState.queue.isEmpty()) {
             Log.d(TAG, "attemptHostMigration: queue is empty, ending queue instead of migrating")
             val lastQueueClimb = queueState.currentClimb
+                ?.takeUnless { queueState.externalBoardOverride }
             val projectionSurvivesDisconnect = projectionSurvivesCurrentBoardDisconnect()
             advertiser.suppressClimbAdvertising = false
             restartClimbAdvertisingIfConnected()
@@ -773,7 +795,7 @@ class SessionGattBridge(
 
     private fun updateSessionAdvertising() {
         val s = queueManager.state.value
-        val currentClimb = s.currentClimb
+        val currentClimb = s.currentClimb?.takeUnless { s.externalBoardOverride }
         val result = advertiser.advertiseSession(
             s.sessionId, s.participantCount, s.hostName,
             climbUuid = currentClimb?.climbUuid,

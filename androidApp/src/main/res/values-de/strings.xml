@@ -954,12 +954,12 @@
     <string name="board_ble_request_disconnect">Disconnect anfragen</string>
 
     <!-- FEAT-044 CruxRelay board sharing -->
-    <string name="relay_notification_channel">Board-Teilen</string>
-    <string name="relay_notification_channel_desc">Wird angezeigt, während dein Board mit Nutzern der offiziellen Board-App geteilt wird.</string>
-    <string name="relay_notification_title">Board wird geteilt</string>
-    <string name="relay_notification_text">%d verbunden</string>
-    <string name="relay_stopped_idle">Teilen beendet — niemand war verbunden</string>
-    <string name="relay_notification_stop">Teilen beenden</string>
+    <string name="relay_notification_channel">Freigabe für Board-Apps</string>
+    <string name="relay_notification_channel_desc">Wird angezeigt, während kompatible Board-Apps über CruxCoach senden können.</string>
+    <string name="relay_notification_title">Board für andere Apps freigegeben</string>
+    <string name="relay_notification_text">%d Board-App-Verbindungen</string>
+    <string name="relay_stopped_idle">App-Freigabe beendet — niemand war verbunden</string>
+    <string name="relay_notification_stop">App-Freigabe beenden</string>
 
     <!-- Board: Climb Card -->
     <string name="board_climb_by_setter">von %s</string>
@@ -1227,6 +1227,7 @@
     <string name="ble_on_board">Auf dem Board</string>
     <string name="ble_participants">%1$d Teilnehmer</string>
     <string name="ble_queue_empty">Warteschlange ist leer</string>
+    <string name="ble_external_board_override">Eine andere Board-App hat die Beleuchtung geändert</string>
     <string name="ble_ready_to_resend">Zum erneuten Senden</string>
     <string name="ble_session_climb">Session-Climb</string>
     <string name="ble_session_label">SESSION</string>
@@ -1594,6 +1595,7 @@
     <string name="settings_board_projection_lifecycle_retained">Dieses Board behält den letzten Boulder, nachdem CruxCoach die Verbindung freigibt.</string>
     <string name="cd_add_climb_to_shared_queue">Boulder zur gemeinsamen Warteschlange hinzufügen</string>
     <string name="cd_light_climb_on_board">Climb am Board beleuchten</string>
+    <string name="cd_restore_queue_climb">Aktuellen Queue-Boulder erneut beleuchten</string>
     <string name="board_ble_last_used">Zuletzt verwendet</string>
     <string name="settings_board_find_via_gym">Weiß nicht?</string>
     <string name="settings_board_find_via_gym_fallback">Board direkt wählen</string>
@@ -2065,17 +2067,20 @@
         <item quantity="other">%1$d Einträge aus dem Verlauf löschen?</item>
     </plurals>
     <!-- FEAT-044 CruxRelay: Host-„Board teilen"-Fläche -->
-    <string name="relay_share_button">Board teilen</string>
-    <string name="relay_chip_text">Board wird geteilt · %1$d verbunden</string>
+    <string name="relay_share_button">Für andere Board-Apps freigeben</string>
+    <string name="relay_chip_text">Für Board-Apps freigegeben · %1$d verbunden</string>
     <string name="relay_advertised_as">Für andere sichtbar als \"%1$s\"</string>
-    <string name="relay_disclosure_title">Board teilen</string>
-    <string name="relay_disclosure_text">Während du teilst, sehen andere Bluetooth-Geräte dein Handy als \"CruxRelay…\" (beim Beenden zurückgesetzt). Nutzer der offiziellen App können dann über dich Climbs an dieses Board senden.</string>
+    <string name="relay_disclosure_title">Für Board-Apps freigeben</string>
+    <string name="relay_disclosure_text">Dein Handy erscheint vorübergehend als kompatibles Board namens \"CruxRelay…\". Andere Board-Apps senden über CruxCoach; CruxCoach-Nutzer treten der gemeinsamen Queue bei. Der zuletzt erfolgreich gesendete Boulder steuert die Beleuchtung. Beim Beenden wird dein Bluetooth-Name wiederhergestellt.</string>
     <string name="relay_disclosure_disclaimer">CruxCoach ist nicht mit Kilter oder Aurora Climbing verbunden; Board-Namen dienen nur der Kompatibilität.</string>
-    <string name="relay_disclosure_confirm">Teilen starten</string>
+    <string name="relay_disclosure_confirm">Board-Apps zulassen</string>
     <string name="relay_error_server">Teilen konnte nicht starten. Bitte erneut versuchen.</string>
     <string name="relay_error_advertise">Board konnte nicht sichtbar gemacht werden.</string>
     <string name="relay_error_name">Freigabe-Name konnte nicht gesetzt werden.</string>
     <string name="relay_error_board_lost">Board-Verbindung verloren — Teilen beendet.</string>
+    <string name="relay_error_unsupported_board">Dieses Board unterstützt die Freigabe für kompatible Board-Apps nicht.</string>
+    <string name="relay_error_session_participant">Nur der Host der CruxCoach-Session kann das Board für andere Apps freigeben.</string>
     <string name="relay_chip_stop">Beenden</string>
-    <string name="relay_host_join_subtitle">CruxCoach-Host — antippen, um der Session beizutreten</string>
+    <string name="relay_host_title">Geteilte CruxCoach-Session</string>
+    <string name="relay_host_join_subtitle">%1$d in der Session · Antippen zum Beitreten</string>
 </resources>

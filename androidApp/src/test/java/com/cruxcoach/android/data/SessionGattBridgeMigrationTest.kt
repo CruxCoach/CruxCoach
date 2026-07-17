@@ -200,6 +200,21 @@ class SessionGattBridgeMigrationTest {
     }
 
     @Test
+    fun `failed initial join ends timer and restores standalone advertising`() =
+        runTest(testDispatcher.scheduler) {
+            val hostDevice = mockDevice("AA:BB:CC:DD:EE:01")
+            nearbySessionsFlow.value = listOf(makeSession(12345, hostDevice.address, hostDevice))
+            clientStateFlow.value = SessionClientState.CONNECTING
+
+            bridge.joinSession(hostDevice)
+            clientStateFlow.value = SessionClientState.DISCONNECTED
+
+            assertEquals("Verbindung fehlgeschlagen", queueManager.state.value.error)
+            verify { mockAdvertiser.suppressClimbAdvertising = false }
+            verify(exactly = 1) { mockBoardSessionManager.endSession() }
+        }
+
+    @Test
     fun `solo MoonBoard host keeps physical connection when sharing ends`() {
         every { mockBleConnection.connectedBoardBrand } returns
             MutableStateFlow<BoardBrand?>(BoardBrand.MOONBOARD)
@@ -253,6 +268,36 @@ class SessionGattBridgeMigrationTest {
         bridge.stopSharing()
 
         verify(exactly = 1) { mockBleConnection.disconnect() }
+    }
+
+    @Test
+    fun `failed relay startup can tear down sharing without dropping the board`() {
+        every { mockBleConnection.connectedBoardBrand } returns
+            MutableStateFlow<BoardBrand?>(BoardBrand.KILTER)
+        queueManager.startQueue("Host")
+        bleConnectionStateFlow.value = ConnectionState.CONNECTED
+        bridge.startSharing()
+
+        bridge.stopSharing(allowBoardRelease = false)
+
+        verify(exactly = 0) { mockBleConnection.disconnect() }
+    }
+
+    @Test
+    fun `external relay projection is not mislabeled as the queue climb on stop`() {
+        every { mockBleConnection.connectedBoardBrand } returns
+            MutableStateFlow<BoardBrand?>(BoardBrand.KILTER)
+        queueManager.startQueue("Host")
+        queueManager.addClimb("305ecf35-4ab5-4c9c-afd5-91af0848004b", 40)
+        queueManager.markExternalBoardWrite()
+        bleConnectionStateFlow.value = ConnectionState.CONNECTED
+        bridge.startSharing()
+
+        bridge.stopSharing()
+
+        verify(exactly = 0) {
+            mockBoardStateManager.setLastClimbQuick(any(), any(), any())
+        }
     }
 
     // ===== Test 1: participant sessionId is always 0 =====

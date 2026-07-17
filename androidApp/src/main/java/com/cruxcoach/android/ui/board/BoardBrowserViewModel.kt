@@ -16,6 +16,7 @@ import com.cruxcoach.android.data.IntensityZoneManager
 import com.cruxcoach.android.data.RestTimerState
 import com.cruxcoach.android.data.BoardDatabaseImporter.ImportStep
 import com.cruxcoach.android.data.BoardSyncManager
+import com.cruxcoach.android.data.CruxRelayManager
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.data.SessionGattBridge
 import com.cruxcoach.android.data.SessionQueueManager
@@ -311,6 +312,7 @@ class BoardBrowserViewModel @Inject constructor(
     private val gattBridge: SessionGattBridge,
     private val sessionQueueManager: SessionQueueManager,
     private val bleShareManager: BleShareManager,
+    private val cruxRelayManager: CruxRelayManager,
     private val nostrSigner: NostrSigner,
     val climbNavState: com.cruxcoach.android.ui.navigation.ClimbNavigationState
 ) : ViewModel() {
@@ -1759,8 +1761,10 @@ class BoardBrowserViewModel @Inject constructor(
         }
     }
 
-    fun stopQueueSharing() {
-        gattBridge.stopSharing()
+    /** End the host queue and any board relay as one user-visible session. */
+    fun endSharedSession(): com.cruxcoach.data.repository.Board_sessions? {
+        cruxRelayManager.stopRelayAndSession()
+        return endSession()
     }
 
     fun sendPrev() = gattBridge.sendPrev()

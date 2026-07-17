@@ -3,6 +3,7 @@ package com.cruxcoach.android.ui.board
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.data.BoardSessionManager
+import com.cruxcoach.android.data.CruxRelayManager
 import com.cruxcoach.android.data.SessionGattBridge
 import com.cruxcoach.android.data.SessionQueueManager
 import com.cruxcoach.android.data.SessionQueueState
@@ -24,6 +25,7 @@ class SessionQueueViewModel @Inject constructor(
     private val gattBridge: SessionGattBridge,
     private val boardRepository: BoardRepository,
     private val sessionManager: BoardSessionManager,
+    private val cruxRelayManager: CruxRelayManager,
     val climbNavState: ClimbNavigationState
 ) : ViewModel() {
 
@@ -98,8 +100,7 @@ class SessionQueueViewModel @Inject constructor(
     fun endOrLeave() {
         when (state.value.role) {
             SessionRole.HOST -> {
-                gattBridge.stopSharing()
-                queueManager.endQueue()
+                cruxRelayManager.stopRelayAndSession()
                 sessionManager.endSession()
             }
             SessionRole.PARTICIPANT -> {

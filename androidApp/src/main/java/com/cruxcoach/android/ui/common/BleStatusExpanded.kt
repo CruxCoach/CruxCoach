@@ -9,6 +9,7 @@ import androidx.compose.material.icons.filled.CellTower
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
@@ -30,6 +31,7 @@ import com.cruxcoach.android.data.OwnSessionState
 import com.cruxcoach.android.data.SessionRole
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.theme.SuccessGreen
+import com.cruxcoach.android.ui.theme.WarningYellow
 
 @Composable
 internal fun BleStatusExpanded(
@@ -129,15 +131,17 @@ private fun SessionQueueSection(
 
     val boardSessionManager = LocalBoardSessionManager.current
     val bleShareManager = LocalBleShareManager.current
+    val relayManager = LocalCruxRelayManager.current
 
     // Bug 6: Internalized stop via CompositionLocals — works on every screen
     val handleStop: () -> Unit = {
         // Capture last queue climb BEFORE endQueue() clears it — needed for
         // "last on board" display after session ends.
-        val lastClimb = queueManager.state.value.currentClimb
+        val currentState = queueManager.state.value
+        val lastClimb = currentState.currentClimb
+            ?.takeUnless { currentState.externalBoardOverride }
         if (queueState.role == SessionRole.HOST) {
-            gattBridge.stopSharing()
-            queueManager.endQueue()
+            relayManager.stopRelayAndSession()
         } else {
             gattBridge.leaveSession()
         }
@@ -173,6 +177,36 @@ private fun SessionQueueSection(
         }
 
         Spacer(Modifier.height(8.dp))
+
+        if (session.externalBoardOverride) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    stringResource(R.string.ble_external_board_override),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = WarningYellow,
+                    modifier = Modifier.weight(1f)
+                )
+                IconButton(
+                    onClick = {
+                        if (isParticipant) gattBridge.sendSetCurrent(session.currentIndex)
+                        else queueManager.sendCurrentClimbToBoard()
+                    },
+                    enabled = session.currentIndex in session.queue.indices,
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Lightbulb,
+                        stringResource(R.string.cd_restore_queue_climb),
+                        tint = OrangeAccent,
+                        modifier = Modifier.size(21.dp)
+                    )
+                }
+            }
+            Spacer(Modifier.height(4.dp))
+        }
 
         // Prev / Current climb + Add / Next navigation — < climb + >
         if (session.queue.isNotEmpty()) {

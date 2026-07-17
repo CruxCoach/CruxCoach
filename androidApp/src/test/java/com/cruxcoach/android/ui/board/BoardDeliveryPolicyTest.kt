@@ -1,5 +1,6 @@
 package com.cruxcoach.android.ui.board
 
+import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.data.BoardSendMode
 import com.cruxcoach.android.data.SessionRole
 import org.junit.Assert.assertEquals
@@ -8,6 +9,56 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BoardDeliveryPolicyTest {
+
+    @Test
+    fun `only a newly elected session host auto-connects to the physical board`() {
+        assertTrue(
+            BoardDeliveryPolicy.shouldAutoConnectSessionHost(
+                SessionRole.HOST,
+                SessionRole.PARTICIPANT,
+                ConnectionState.DISCONNECTED,
+            )
+        )
+        assertFalse(
+            BoardDeliveryPolicy.shouldAutoConnectSessionHost(
+                SessionRole.PARTICIPANT,
+                SessionRole.NONE,
+                ConnectionState.DISCONNECTED,
+            )
+        )
+        assertFalse(
+            BoardDeliveryPolicy.shouldAutoConnectSessionHost(
+                SessionRole.HOST,
+                SessionRole.NONE,
+                ConnectionState.CONNECTED,
+            )
+        )
+    }
+
+    @Test
+    fun `a newly joined participant releases any local physical board connection`() {
+        assertTrue(
+            BoardDeliveryPolicy.shouldReleaseBoardForSessionParticipant(
+                SessionRole.PARTICIPANT,
+                SessionRole.NONE,
+                ConnectionState.CONNECTED,
+            )
+        )
+        assertFalse(
+            BoardDeliveryPolicy.shouldReleaseBoardForSessionParticipant(
+                SessionRole.HOST,
+                SessionRole.NONE,
+                ConnectionState.CONNECTED,
+            )
+        )
+        assertFalse(
+            BoardDeliveryPolicy.shouldReleaseBoardForSessionParticipant(
+                SessionRole.PARTICIPANT,
+                SessionRole.NONE,
+                ConnectionState.DISCONNECTED,
+            )
+        )
+    }
 
     @Test
     fun `automatic mode dispatches only to a directly connected board`() {

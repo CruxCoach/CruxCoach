@@ -434,9 +434,18 @@ object AppModule {
         advertiser: ClimbBleAdvertiser,
         bleConnection: BoardBleConnection,
         sessionQueueManager: SessionQueueManager,
-        sessionGattBridge: SessionGattBridge
+        sessionGattBridge: SessionGattBridge,
+        boardStateManager: BoardStateManager,
     ): CruxRelayManager {
-        return CruxRelayManager(context, relayServer, advertiser, bleConnection, sessionQueueManager, sessionGattBridge)
+        return CruxRelayManager(
+            context,
+            relayServer,
+            advertiser,
+            bleConnection,
+            sessionQueueManager,
+            sessionGattBridge,
+            boardStateManager,
+        )
     }
 
     @Provides

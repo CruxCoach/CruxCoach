@@ -4,9 +4,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.data.CruxRelayManager
 import com.cruxcoach.android.data.CruxRelayState
-import com.cruxcoach.android.data.SessionGattBridge
-import com.cruxcoach.android.data.SessionQueueManager
-import com.cruxcoach.android.data.SessionRole
 import com.cruxcoach.android.data.UserPreferences
 import com.cruxcoach.android.util.safeLaunch
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -28,8 +25,6 @@ import javax.inject.Inject
 class RelayShareViewModel @Inject constructor(
     private val relayManager: CruxRelayManager,
     private val userPreferences: UserPreferences,
-    private val sessionQueueManager: SessionQueueManager,
-    private val gattBridge: SessionGattBridge,
 ) : ViewModel() {
 
     companion object {
@@ -40,11 +35,6 @@ class RelayShareViewModel @Inject constructor(
 
     private val _disclosureSeen = MutableStateFlow(false)
     val disclosureSeen: StateFlow<Boolean> = _disclosureSeen.asStateFlow()
-
-    /** Participants are inside someone else's session — they hold the board
-     *  only on the host's behalf and must not re-share it. */
-    val isSessionParticipant: Boolean
-        get() = sessionQueueManager.state.value.role == SessionRole.PARTICIPANT
 
     init {
         viewModelScope.safeLaunch(TAG) {
@@ -61,20 +51,11 @@ class RelayShareViewModel @Inject constructor(
     /**
      * Deliberate user action: start sharing the connected board.
      *
-     * §11 coupling: also make sure a joinable CruxCoach session exists —
-     * without one, the relay's picker join entry would dead-end for nearby
-     * CruxCoach users. [hostLabel] seeds the session name when none is
-     * running yet.
+     * The manager owns the atomic relay/session coupling so a partially
+     * started UI flow can never leave an orphan session behind.
      */
     fun enableSharing(hostLabel: String) {
-        val role = sessionQueueManager.state.value.role
-        if (role == SessionRole.NONE) {
-            sessionQueueManager.startQueue(hostLabel)
-        }
-        if (sessionQueueManager.state.value.role == SessionRole.HOST) {
-            gattBridge.startSharing()
-        }
-        relayManager.setEnabled(true)
+        relayManager.enable(hostLabel)
     }
 
     /** One-tap stop — runs the §7 host-leave ordering in the manager. The

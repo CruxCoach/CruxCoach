@@ -14,6 +14,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Casino
 import androidx.compose.material.icons.filled.CellTower
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.PlayArrow
@@ -29,6 +30,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import androidx.compose.ui.draw.alpha
@@ -151,11 +153,13 @@ internal fun SessionChipContent(
         else sessionManager.pauseSession()
     }
     val bleShareManager = LocalBleShareManager.current
+    val relayManager = LocalCruxRelayManager.current
     val handleStop: () -> Unit = {
-        val lastClimb = queueManager.state.value.currentClimb
+        val currentState = queueManager.state.value
+        val lastClimb = currentState.currentClimb
+            ?.takeUnless { currentState.externalBoardOverride }
         if (queueState.role == SessionRole.HOST) {
-            gattBridge.stopSharing()
-            queueManager.endQueue()
+            relayManager.stopRelayAndSession()
         } else {
             gattBridge.leaveSession()
         }
@@ -206,7 +210,19 @@ internal fun SessionChipContent(
                 }
 
                 // Board climb (preferred) or queue info
-                if (effectiveOnBoard != null) {
+                if (session.externalBoardOverride) {
+                    Icon(Icons.Default.SignalCellularAlt, null, tint = WarningYellow, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(5.dp))
+                    Text(
+                        stringResource(R.string.ble_external_board_override),
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = WarningYellow,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                } else if (effectiveOnBoard != null) {
                     // Board was externally overwritten — show what's actually on the board
                     Icon(Icons.Default.SignalCellularAlt, null, tint = WarningYellow, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(5.dp))
@@ -304,7 +320,7 @@ internal fun SessionChipContent(
         }
 
         // Second line: queue info when board shows external climb
-        if (effectiveOnBoard != null && session.queue.isNotEmpty()) {
+        if ((effectiveOnBoard != null || session.externalBoardOverride) && session.queue.isNotEmpty()) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = OrangeAccent.copy(alpha = 0.08f)),
@@ -323,8 +339,25 @@ internal fun SessionChipContent(
                         style = MaterialTheme.typography.bodySmall,
                         color = OrangeAccent,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
                     )
+                    if (session.externalBoardOverride) {
+                        IconButton(
+                            onClick = {
+                                if (isParticipant) gattBridge.sendSetCurrent(session.currentIndex)
+                                else queueManager.sendCurrentClimbToBoard()
+                            },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Lightbulb,
+                                stringResource(R.string.cd_restore_queue_climb),
+                                modifier = Modifier.size(19.dp),
+                                tint = OrangeAccent
+                            )
+                        }
+                    }
                 }
             }
         }

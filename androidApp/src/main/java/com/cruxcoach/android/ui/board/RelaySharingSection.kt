@@ -41,6 +41,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ble.BlePermissionHelper
 import com.cruxcoach.android.data.RelayError
+import com.cruxcoach.android.data.SessionRole
+import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.android.ui.theme.ErrorRed
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.theme.SuccessGreen
@@ -57,10 +59,13 @@ import com.cruxcoach.android.ui.theme.SuccessGreen
  */
 @Composable
 fun RelaySharingSection(
+    boardBrand: BoardBrand?,
+    sessionRole: SessionRole,
     viewModel: RelayShareViewModel = hiltViewModel()
 ) {
-    // Session participants must not re-share the host's board.
-    if (viewModel.isSessionParticipant) return
+    // The pass-through server understands Aurora binary frames only. A
+    // participant also never owns the host's physical board connection.
+    if (boardBrand?.usesAuroraProtocol != true || sessionRole == SessionRole.PARTICIPANT) return
 
     val context = LocalContext.current
     val state by viewModel.relayState.collectAsStateWithLifecycle()
@@ -244,6 +249,8 @@ internal fun relayErrorText(error: RelayError, detail: String?): String {
         RelayError.ADVERTISE_FAILED -> stringResource(R.string.relay_error_advertise)
         RelayError.NAME_SET_FAILED -> stringResource(R.string.relay_error_name)
         RelayError.BOARD_LOST -> stringResource(R.string.relay_error_board_lost)
+        RelayError.UNSUPPORTED_BOARD -> stringResource(R.string.relay_error_unsupported_board)
+        RelayError.SESSION_PARTICIPANT -> stringResource(R.string.relay_error_session_participant)
     }
     return if (detail != null) "$base ($detail)" else base
 }

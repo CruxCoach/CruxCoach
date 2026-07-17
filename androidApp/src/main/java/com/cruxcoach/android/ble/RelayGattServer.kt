@@ -42,7 +42,7 @@ data class RelayInboundClimb(val deviceAddress: String, val climb: CompleteClimb
  *
  * Inbound writes are reassembled PER CLIENT ([RelayFrameReassembler]) into
  * complete climbs and emitted on [climbs]; [CruxRelayManager] forwards them
- * byte-faithfully to the real board (and optionally captures them). Structure
+ * byte-faithfully to the real board. Structure
  * mirrors [SessionGattServer] (server lifecycle, device tracking, stale-liveness
  * check) minus everything notify/read.
  */
