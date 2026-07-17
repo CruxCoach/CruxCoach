@@ -209,11 +209,13 @@ fun SettingsScreen(
                     HorizontalDivider()
                     BoardSendModeSection(
                         mode = state.boardSendMode,
+                        boardBrand = BoardBrand.fromWire(state.boardBrand),
                         onModeChange = viewModel::updateBoardSendMode,
                     )
                     HorizontalDivider()
                     BleAutoDisconnectSection(
                         bleAutoDisconnectSeconds = state.bleAutoDisconnectSeconds,
+                        boardBrand = BoardBrand.fromWire(state.boardBrand),
                         onAutoDisconnectChange = { viewModel.updateBleAutoDisconnect(it) },
                     )
                     HorizontalDivider()

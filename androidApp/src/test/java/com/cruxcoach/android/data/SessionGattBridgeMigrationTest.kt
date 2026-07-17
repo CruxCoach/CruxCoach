@@ -199,6 +199,62 @@ class SessionGattBridgeMigrationTest {
         ))
     }
 
+    @Test
+    fun `solo MoonBoard host keeps physical connection when sharing ends`() {
+        every { mockBleConnection.connectedBoardBrand } returns
+            MutableStateFlow<BoardBrand?>(BoardBrand.MOONBOARD)
+        queueManager.startQueue("Host")
+        bleConnectionStateFlow.value = ConnectionState.CONNECTED
+        bridge.startSharing()
+
+        bridge.stopSharing()
+
+        verify(exactly = 0) { mockBleConnection.disconnect() }
+    }
+
+    @Test
+    fun `MoonBoard host releases physical connection for a successor`() {
+        every { mockBleConnection.connectedBoardBrand } returns
+            MutableStateFlow<BoardBrand?>(BoardBrand.MOONBOARD)
+        every { mockGattServer.getConnectedCount() } returns 1
+        queueManager.startQueue("Host")
+        queueManager.addParticipant("AA:BB:CC:DD:EE:02", "Teilnehmer 1")
+        bleConnectionStateFlow.value = ConnectionState.CONNECTED
+        bridge.startSharing()
+
+        bridge.stopSharing()
+
+        verify(exactly = 1) { mockBleConnection.disconnect() }
+    }
+
+    @Test
+    fun `stale participant count does not release a solo MoonBoard`() {
+        every { mockBleConnection.connectedBoardBrand } returns
+            MutableStateFlow<BoardBrand?>(BoardBrand.MOONBOARD)
+        every { mockGattServer.getConnectedCount() } returns 0
+        queueManager.startQueue("Host")
+        queueManager.addParticipant("AA:BB:CC:DD:EE:02", "Teilnehmer 1")
+        bleConnectionStateFlow.value = ConnectionState.CONNECTED
+        bridge.startSharing()
+
+        bridge.stopSharing()
+
+        verify(exactly = 0) { mockBleConnection.disconnect() }
+    }
+
+    @Test
+    fun `retaining board is released when sharing ends without successor`() {
+        every { mockBleConnection.connectedBoardBrand } returns
+            MutableStateFlow<BoardBrand?>(BoardBrand.KILTER)
+        queueManager.startQueue("Host")
+        bleConnectionStateFlow.value = ConnectionState.CONNECTED
+        bridge.startSharing()
+
+        bridge.stopSharing()
+
+        verify(exactly = 1) { mockBleConnection.disconnect() }
+    }
+
     // ===== Test 1: participant sessionId is always 0 =====
 
     /**

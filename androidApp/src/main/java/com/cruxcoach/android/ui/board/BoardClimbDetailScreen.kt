@@ -58,10 +58,11 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.cruxcoach.android.ble.BoardProjectionPolicy
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.data.GradeScale
-import com.cruxcoach.android.data.BoardSendMode
 import com.cruxcoach.android.data.LedHoldColors
+import com.cruxcoach.android.data.SessionRole
 import com.cruxcoach.android.ui.common.BleStatusArea
 import com.cruxcoach.android.ui.common.LocalSessionQueueManager
 import com.cruxcoach.android.ui.common.RestTimerBannerSlot
@@ -818,6 +819,8 @@ fun BoardClimbDetailScreen(
                 ClimbDetailPageContent(
                     state = pageState,
                     isSharingEnabled = isSharingEnabled,
+                    sessionRole = detailQueueState.role,
+                    sessionConnecting = detailQueueState.isConnecting,
                     viewModel = viewModel,
                     onNavigateBack = onNavigateBack,
                     onNavigateToBugReport = onNavigateToBugReport,
@@ -828,6 +831,8 @@ fun BoardClimbDetailScreen(
             ClimbDetailPageContent(
                 state = state,
                 isSharingEnabled = isSharingEnabled,
+                sessionRole = detailQueueState.role,
+                sessionConnecting = detailQueueState.isConnecting,
                 viewModel = viewModel,
                 onNavigateBack = onNavigateBack,
                 onNavigateToBugReport = onNavigateToBugReport,
@@ -843,6 +848,8 @@ fun BoardClimbDetailScreen(
 private fun ClimbDetailPageContent(
     state: ClimbDetailState,
     isSharingEnabled: Boolean,
+    sessionRole: SessionRole,
+    sessionConnecting: Boolean,
     viewModel: BoardClimbDetailViewModel,
     onNavigateBack: () -> Unit,
     onNavigateToBugReport: (title: String, description: String) -> Unit = { _, _ -> },
@@ -1124,28 +1131,57 @@ private fun ClimbDetailPageContent(
                     }
                     val boardConnected = state.ble.connectionState == ConnectionState.CONNECTED ||
                         state.ble.connectionState == ConnectionState.SENDING
-                    if (state.boardSendMode == BoardSendMode.EXPLICIT &&
-                        boardConnected &&
-                        state.playback.countdownSeconds == 0
-                    ) {
+                    val deliveryDecision = BoardDeliveryPolicy.resolve(
+                        sendMode = state.boardSendMode,
+                        sessionRole = sessionRole,
+                        sessionConnecting = sessionConnecting,
+                        boardConnected = boardConnected,
+                        hasDirectPayload = BoardProjectionPolicy.hasSendablePayload(
+                            brand = climb.brand,
+                            holdCount = state.holds.size,
+                            frames = climb.frames,
+                        ),
+                    )
+                    if (deliveryDecision.showAction && state.playback.countdownSeconds == 0) {
                         FilledTonalIconButton(
-                            onClick = viewModel::sendToBoard,
-                            enabled = !state.ble.isSending,
+                            onClick = viewModel::deliverClimb,
+                            enabled = deliveryDecision.target == BoardDeliveryTarget.SHARED_QUEUE ||
+                                !state.ble.isSending,
                             modifier = Modifier
                                 .align(Alignment.TopEnd)
                                 .padding(8.dp)
                                 .size(40.dp)
-                                .testTag("boarddetail_light_climb_button"),
+                                .testTag(
+                                    if (deliveryDecision.target == BoardDeliveryTarget.SHARED_QUEUE) {
+                                        "boarddetail_add_to_shared_queue_button"
+                                    } else {
+                                        "boarddetail_light_climb_button"
+                                    },
+                                ),
                         ) {
-                            if (state.ble.isSending) {
+                            if (deliveryDecision.target == BoardDeliveryTarget.DIRECT_BOARD &&
+                                state.ble.isSending
+                            ) {
                                 CircularProgressIndicator(
                                     modifier = Modifier.size(18.dp),
                                     strokeWidth = 2.dp,
                                 )
                             } else {
                                 Icon(
-                                    Icons.Default.Lightbulb,
-                                    contentDescription = stringResource(R.string.cd_light_climb_on_board),
+                                    imageVector = if (
+                                        deliveryDecision.target == BoardDeliveryTarget.SHARED_QUEUE
+                                    ) {
+                                        Icons.AutoMirrored.Filled.PlaylistAdd
+                                    } else {
+                                        Icons.Default.Lightbulb
+                                    },
+                                    contentDescription = stringResource(
+                                        if (deliveryDecision.target == BoardDeliveryTarget.SHARED_QUEUE) {
+                                            R.string.cd_add_climb_to_shared_queue
+                                        } else {
+                                            R.string.cd_light_climb_on_board
+                                        },
+                                    ),
                                     tint = OrangeAccent,
                                 )
                             }

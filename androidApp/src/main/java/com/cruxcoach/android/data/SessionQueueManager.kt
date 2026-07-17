@@ -80,7 +80,10 @@ class SessionQueueManager(
             var wasConnected = false
             bleConnection.connectionState.collect { connState ->
                 val isConnected = connState == ConnectionState.CONNECTED
-                if (isConnected && !wasConnected && _state.value.isActive && _state.value.currentClimb != null) {
+                if (isConnected && !wasConnected &&
+                    _state.value.role == SessionRole.HOST &&
+                    _state.value.currentClimb != null
+                ) {
                     Log.d(TAG, "Board connected during active session — sending current climb")
                     sendCurrentClimbToBoard()
                 }
@@ -455,11 +458,17 @@ class SessionQueueManager(
     fun sendCurrentClimbToBoard() {
         scope.launch {
             sendMutex.withLock {
-            // Read the current climb INSIDE the lock: queued-up callers from
-            // rapid next/next taps all resolve to the newest selection and
-            // the dedup key collapses them to a single BLE write.
-            val item = _state.value.currentClimb ?: return@withLock
-            if (bleConnection.connectionState.value != ConnectionState.CONNECTED) return@withLock
+                // Read state inside the lock so queued navigation events resolve
+                // to the latest selection and collapse to one physical write.
+                val queueState = _state.value
+                // Participants only mutate the host queue via GATT. The host is
+                // the sole writer to the physical board.
+                if (queueState.role != SessionRole.HOST) {
+                    Log.d(TAG, "sendCurrentClimbToBoard: skipped - role=${queueState.role}")
+                    return@withLock
+                }
+                val item = queueState.currentClimb ?: return@withLock
+                if (bleConnection.connectionState.value != ConnectionState.CONNECTED) return@withLock
 
             // Dedup: don't re-send the same climb (multiple callers can trigger this)
             val key = "${item.climbUuid}:${item.angle}"
@@ -472,7 +481,7 @@ class SessionQueueManager(
                 val climb = resolveClimb(item.climbUuid, item.angle)
                 if (climb == null) {
                     Log.w(TAG, "Climb not found: ${item.climbUuid}")
-                    return@launch
+                    return@withLock
                 }
                 // Board-match guard against the CONNECTED board (when known):
                 // switching the active board in Settings never disconnects, so
@@ -484,14 +493,14 @@ class SessionQueueManager(
                 if (connectedBrand != null && climb.brand != connectedBrand) {
                     Log.w(TAG, "sendCurrentClimbToBoard: skipped — climb brand " +
                         "${climb.brand} != connected board $connectedBrand")
-                    return@launch
+                    return@withLock
                 }
                 // Brand-aware transport: a MoonBoard climb sends an ASCII
                 // frames payload via the Nordic-UART path, not the Kilter
                 // placement→LED map. Resolve the variant from the climb's own
                 // layout (the queue can hold any active-board climb).
                 if (climb.brand == BoardBrand.MOONBOARD) {
-                    if (climb.frames.isBlank()) return@launch
+                    if (climb.frames.isBlank()) return@withLock
                     val variant = com.cruxcoach.domain.board.MoonBoardVariant.fromLayoutId(climb.layoutId)
                         ?: com.cruxcoach.domain.board.MoonBoardVariant.MOONBOARD_2016
                     bleConnection.sendMoonBoardClimb(climb.frames, variant)
@@ -499,10 +508,10 @@ class SessionQueueManager(
                     Log.d(TAG, "sendCurrentClimbToBoard: sent MoonBoard ${item.climbUuid.take(8)} angle=${item.angle}")
                     onFirstQueueClimbSent?.invoke()
                     onFirstQueueClimbSent = null
-                    return@launch
+                    return@withLock
                 }
                 val holds = BoardClimbParser.parseFrames(climb.frames)
-                if (holds.isEmpty()) return@launch
+                if (holds.isEmpty()) return@withLock
                 val productSizeId = userPreferences.boardProductSizeId.first()
                 // Brand-scope the LED map + colours, keyed off the CLIMB's own
                 // brand (mirrors BoardSendController). Aurora boards reuse

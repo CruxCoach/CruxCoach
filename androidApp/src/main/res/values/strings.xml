@@ -372,8 +372,9 @@
     <string name="settings_board_auto_download_desc">Downloads the complete board database (~85 MB) in the background over WiFi.</string>
 
     <!-- Settings: BLE -->
-    <string name="settings_ble_auto_disconnect_title">BLE Auto-Disconnect</string>
-    <string name="settings_ble_auto_disconnect_desc">Automatically disconnect board connection after inactivity.</string>
+    <string name="settings_ble_auto_disconnect_title">Release board connection</string>
+    <string name="settings_ble_auto_disconnect_desc_retained">Release the direct connection after inactivity. This board keeps the last climb lit; a shared-session host stays connected while the session is active.</string>
+    <string name="settings_ble_auto_disconnect_desc_moonboard">Release an idle connection before a climb is sent. After lighting a climb, CruxCoach stays connected because a MoonBoard clears its LEDs on disconnect.</string>
     <string name="settings_duration_minutes_label">Minutes</string>
     <string name="settings_duration_seconds_label">Seconds</string>
     <string name="settings_ble_keep_screen_on">Keep screen on</string>
@@ -453,8 +454,8 @@
     <string name="settings_share_server_error">Server error: %s</string>
 
     <!-- Settings: Climb Sharing -->
-    <string name="settings_sharing_title">Climb sharing</string>
-    <string name="settings_sharing_enable">Enable climb sharing</string>
+    <string name="settings_sharing_title">Nearby sharing</string>
+    <string name="settings_sharing_enable">Share current climb</string>
     <string name="settings_sharing_enable_desc">Shows nearby CruxCoach users which climb is currently projected. Also needed to send disconnect requests to other users.</string>
     <string name="settings_sharing_bluetooth_off">Bluetooth is off. Turn on Bluetooth to use climb sharing.</string>
     <string name="settings_sharing_no_ble_advertising">This device does not support BLE advertising. The feature is unavailable.</string>
@@ -1538,10 +1539,13 @@
     <string name="settings_board_model_title">Board size</string>
     <string name="settings_board_model_change">Change</string>
     <string name="settings_board_model_not_configured">Not configured</string>
-    <string name="settings_board_send_mode_title">Send climbs to board</string>
-    <string name="settings_board_send_mode_desc">Automatic lights a climb as soon as it is opened. Explicit only lights it when you tap the lamp button.</string>
-    <string name="settings_board_send_mode_automatic">Automatic</string>
-    <string name="settings_board_send_mode_explicit">Explicit</string>
+    <string name="settings_board_send_mode_title">Direct board control</string>
+    <string name="settings_board_send_mode_desc">Choose what happens when this device is connected directly. In a shared session, climbs are always added to the queue explicitly.</string>
+    <string name="settings_board_send_mode_automatic">Immediately</string>
+    <string name="settings_board_send_mode_explicit">Tap to send</string>
+    <string name="settings_board_projection_lifecycle_moonboard">MoonBoard: CruxCoach keeps the direct connection after lighting a climb so it remains visible.</string>
+    <string name="settings_board_projection_lifecycle_retained">This board keeps the last climb lit after CruxCoach releases the connection.</string>
+    <string name="cd_add_climb_to_shared_queue">Add climb to shared queue</string>
     <string name="cd_light_climb_on_board">Light climb on board</string>
     <string name="board_ble_last_used">Last used</string>
     <string name="settings_board_find_via_gym">Don\'t know?</string>

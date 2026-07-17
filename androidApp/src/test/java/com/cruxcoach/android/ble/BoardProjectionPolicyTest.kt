@@ -8,6 +8,36 @@ import org.junit.Test
 class BoardProjectionPolicyTest {
 
     @Test
+    fun `solo MoonBoard host keeps connection after ending session`() {
+        assertFalse(
+            BoardProjectionPolicy.shouldReleaseBoardAfterHosting(
+                hasSuccessor = false,
+                projectionSurvivesDisconnect = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `MoonBoard host releases connection for successor`() {
+        assertTrue(
+            BoardProjectionPolicy.shouldReleaseBoardAfterHosting(
+                hasSuccessor = true,
+                projectionSurvivesDisconnect = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `retaining controller can always be released after session`() {
+        assertTrue(
+            BoardProjectionPolicy.shouldReleaseBoardAfterHosting(
+                hasSuccessor = false,
+                projectionSurvivesDisconnect = true,
+            ),
+        )
+    }
+
+    @Test
     fun `active MoonBoard projection suppresses idle disconnect`() {
         assertFalse(
             BoardProjectionPolicy.shouldArmIdleDisconnect(

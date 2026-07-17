@@ -16,6 +16,7 @@ import com.cruxcoach.android.data.SyncInterval
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.OrangeAccent
+import com.cruxcoach.domain.board.BoardBrand
 
 @Composable
 internal fun DisplaySection(
@@ -163,6 +164,7 @@ internal fun BoardModelSection(
 @Composable
 internal fun BoardSendModeSection(
     mode: BoardSendMode,
+    boardBrand: BoardBrand,
     onModeChange: (BoardSendMode) -> Unit,
 ) {
     Text(
@@ -200,12 +202,25 @@ internal fun BoardSendModeSection(
             )
         }
     }
+
+    Text(
+        text = stringResource(
+            if (boardBrand == BoardBrand.MOONBOARD) {
+                R.string.settings_board_projection_lifecycle_moonboard
+            } else {
+                R.string.settings_board_projection_lifecycle_retained
+            },
+        ),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun BleAutoDisconnectSection(
     bleAutoDisconnectSeconds: Int,
+    boardBrand: BoardBrand,
     onAutoDisconnectChange: (Int) -> Unit,
 ) {
     Text(
@@ -215,7 +230,13 @@ internal fun BleAutoDisconnectSection(
     )
 
     Text(
-        stringResource(R.string.settings_ble_auto_disconnect_desc),
+        stringResource(
+            if (boardBrand == BoardBrand.MOONBOARD) {
+                R.string.settings_ble_auto_disconnect_desc_moonboard
+            } else {
+                R.string.settings_ble_auto_disconnect_desc_retained
+            },
+        ),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )

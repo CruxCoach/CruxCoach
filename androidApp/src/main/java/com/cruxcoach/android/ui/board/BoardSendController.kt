@@ -78,7 +78,9 @@ internal class BoardSendController(
     fun sendToBoard() {
         // When a session queue is active, the queue controls what's on the board.
         // Individual climb sends from detail views are suppressed.
-        if (sessionQueueManager.state.value.isActive) {
+        if (sessionQueueManager.state.value.isActive ||
+            sessionQueueManager.state.value.isConnecting
+        ) {
             Log.d(TAG, "sendToBoard: suppressed (session queue active)")
             return
         }

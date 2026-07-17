@@ -242,8 +242,14 @@ class SessionGattBridge(
             "connectedClients=${gattServer.getConnectedCount()}, " +
             "boardConnected=${bleConnection.connectionState.value}")
         // Capture last queue climb BEFORE endQueue() clears it (called by UI right after)
-        val lastQueueClimb = queueManager.state.value.currentClimb
+        val sessionState = queueManager.state.value
+        val lastQueueClimb = sessionState.currentClimb
         val projectionSurvivesDisconnect = projectionSurvivesCurrentBoardDisconnect()
+        // A viable successor must have completed JOIN (counted by the queue)
+        // and still have a live GATT link. Either signal on its own can be
+        // stale while callbacks and commands cross during teardown.
+        val hasSuccessor = sessionState.participantCount > 1 &&
+            gattServer.getConnectedCount() > 0
         Log.d(TAG, "stopSharing(): lastQueueClimb=${lastQueueClimb?.climbUuid?.take(8)}")
 
         // Update board state SYNCHRONOUSLY before returning. The UI calls endQueue()
@@ -270,11 +276,19 @@ class SessionGattBridge(
         hostJob = null
         joinJob?.cancel()
         joinJob = null
-        // Disconnect from the board so the successor host can connect.
-        // Must happen before teardown so the board is free when the new host promotes.
-        if (bleConnection.connectionState.value == ConnectionState.CONNECTED) {
-            Log.d(TAG, "stopSharing(): disconnecting from board to free it for successor host")
+        // Release the physical controller for a real successor. With no
+        // successor, Aurora-family controllers can still be released because
+        // they retain their LEDs; a MoonBoard must remain connected or its
+        // final projection disappears immediately.
+        val releaseBoard = BoardProjectionPolicy.shouldReleaseBoardAfterHosting(
+            hasSuccessor = hasSuccessor,
+            projectionSurvivesDisconnect = projectionSurvivesDisconnect,
+        )
+        if (bleConnection.connectionState.value == ConnectionState.CONNECTED && releaseBoard) {
+            Log.d(TAG, "stopSharing(): releasing board (successor=$hasSuccessor retained=$projectionSurvivesDisconnect)")
             bleConnection.disconnect()
+        } else if (bleConnection.connectionState.value == ConnectionState.CONNECTED) {
+            Log.d(TAG, "stopSharing(): keeping volatile projection connected (no successor)")
         }
         // Brief delay so the sentinel notification is delivered before we tear down
         // the server and disconnect clients. Participants use the sentinel to trigger
@@ -285,23 +299,35 @@ class SessionGattBridge(
             advertiser.stopSessionAdvertising()
             // Re-enable individual climb advertising (was suppressed during session)
             advertiser.suppressClimbAdvertising = false
-            restartClimbAdvertisingIfConnected()
-            // Transition to LAST_CLIMB so the "Letzter Boulder" banner appears after session ends.
+            // A retained controller that was released transitions to
+            // LAST_CLIMB. A solo MoonBoard host stays physically connected,
+            // so restore an active ClimbData advertisement instead of claiming
+            // the sender has disconnected.
             if (lastQueueClimb != null) {
-                boardStateManager.setLastClimb(
-                    lastQueueClimb.climbUuid,
-                    lastQueueClimb.angle,
-                    projectionSurvivesDisconnect,
-                )
-                advertiser.advertiseLastClimb(
-                    lastQueueClimb.climbUuid,
-                    lastQueueClimb.angle,
-                    projectionSurvivesDisconnect,
-                )
+                if (releaseBoard) {
+                    boardStateManager.setLastClimb(
+                        lastQueueClimb.climbUuid,
+                        lastQueueClimb.angle,
+                        projectionSurvivesDisconnect,
+                    )
+                    advertiser.advertiseLastClimb(
+                        lastQueueClimb.climbUuid,
+                        lastQueueClimb.angle,
+                        projectionSurvivesDisconnect,
+                    )
+                } else {
+                    advertiser.advertiseClimb(
+                        lastQueueClimb.climbUuid,
+                        lastQueueClimb.angle,
+                        projectionSurvivesDisconnect = false,
+                    )
+                }
+            } else {
+                restartClimbAdvertisingIfConnected()
             }
             Log.d(TAG, "stopSharing(): teardown complete")
         }
-        Log.d(TAG, "stopSharing(): sentinel sent, board disconnected, teardown scheduled")
+        Log.d(TAG, "stopSharing(): sentinel sent, releaseBoard=$releaseBoard, teardown scheduled")
     }
 
     /**
