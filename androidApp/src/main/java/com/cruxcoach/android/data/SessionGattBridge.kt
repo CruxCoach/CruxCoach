@@ -35,7 +35,8 @@ class SessionGattBridge(
     private val nearbyScanner: NearbyClimbScanner,
     private val bleConnection: BoardBleConnection,
     private val boardStateManager: BoardStateManager,
-    private val boardSessionManager: BoardSessionManager
+    private val boardSessionManager: BoardSessionManager,
+    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main),
 ) {
     companion object {
         private const val TAG = "CruxBLE/Session"
@@ -43,7 +44,6 @@ class SessionGattBridge(
         private const val MIGRATION_INDEX_STEP_MS = 3000L
     }
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var migrationJob: Job? = null
     private var joinJob: Job? = null
     private var hostJob: Job? = null
@@ -56,6 +56,9 @@ class SessionGattBridge(
         BoardProjectionPolicy.projectionSurvivesDisconnect(
             bleConnection.connectedBoardBrand.value
         )
+
+    private fun currentBoardConnectionCapacity(): BoardConnectionCapacity =
+        BoardControllerProfiles.forBoard(bleConnection.connectedBoard).connectionCapacity
 
     init {
         // Auto-recover BLE when Bluetooth is toggled off/on.
@@ -227,8 +230,17 @@ class SessionGattBridge(
         // Request other devices to disconnect from the board so the host can connect.
         // The DisconnectRequest is sent via BLE advertising — it only affects OTHER
         // devices; the host doesn't receive its own advertising packets.
-        Log.d(TAG, "Sending DisconnectRequest to free board for session host")
-        advertiser.advertiseDisconnectRequest()
+        val exclusiveNearbyOwner = nearbyScanner.nearbyClimbs.value.any {
+            !it.isLastClimb &&
+                !it.supportsConcurrentConnections &&
+                it.acceptsDisconnectRequests
+        }
+        if (currentBoardConnectionCapacity() == BoardConnectionCapacity.SINGLE ||
+            exclusiveNearbyOwner
+        ) {
+            Log.d(TAG, "Sending DisconnectRequest to free exclusive board for session host")
+            advertiser.advertiseDisconnectRequest()
+        }
 
         // Start advertising session (replaces the DisconnectRequest advertising)
         updateSessionAdvertising()
@@ -296,6 +308,10 @@ class SessionGattBridge(
             BoardProjectionPolicy.shouldReleaseBoardAfterHosting(
                 hasSuccessor = hasSuccessor,
                 projectionSurvivesDisconnect = projectionSurvivesDisconnect,
+                connectionCapacity = currentBoardConnectionCapacity(),
+                pinnedByAnotherFeature = bleConnection.hasOtherKeepAliveOwners(
+                    BoardConnectionOwner.SESSION,
+                ),
             )
         if (bleConnection.connectionState.value == ConnectionState.CONNECTED && releaseBoard) {
             Log.d(TAG, "stopSharing(): releasing board (successor=$hasSuccessor retained=$projectionSurvivesDisconnect)")

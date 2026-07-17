@@ -5,6 +5,7 @@ import android.content.Context
 import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.ClimbBleAdvertiser
 import com.cruxcoach.android.ble.ConnectionState
+import com.cruxcoach.android.ble.DiscoveredBoard
 import com.cruxcoach.android.ble.GattCommand
 import com.cruxcoach.android.ble.GattConnectionEvent
 import com.cruxcoach.android.ble.NearbyClimb
@@ -26,15 +27,18 @@ import io.mockk.verify
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -149,14 +153,17 @@ class SessionGattBridgeMigrationTest {
             nearbyScanner = mockNearbyScanner,
             bleConnection = mockBleConnection,
             boardStateManager = mockBoardStateManager,
-            boardSessionManager = mockBoardSessionManager
+            boardSessionManager = mockBoardSessionManager,
+            scope = managerScope,
         )
     }
 
     @After
     fun tearDown() {
-        // Cancel before resetMain — see SessionQueueManagerTest.tearDown for the rationale.
-        managerScope.cancel()
+        testDispatcher.scheduler.advanceUntilIdle()
+        runBlocking {
+            managerScope.coroutineContext[Job]?.cancelAndJoin()
+        }
         Dispatchers.resetMain()
     }
 
@@ -181,6 +188,18 @@ class SessionGattBridgeMigrationTest {
 
     private fun sentinelBytes(): ByteArray =
         SessionQueueProtocol.encodeSessionInfo("", 0)
+
+    private fun mockConnectedBoard(brand: BoardBrand, apiLevel: Int = 0) {
+        every { mockBleConnection.connectedBoardBrand } returns MutableStateFlow(brand)
+        every { mockBleConnection.connectedBoard } returns DiscoveredBoard(
+            displayName = brand.name,
+            serial = "test-controller",
+            apiLevel = apiLevel,
+            address = "AA:BB:CC:DD:EE:FF",
+            rssi = -50,
+            boardBrand = brand,
+        )
+    }
 
     /**
      * Simulates a participant joining a session: triggers joinSession, drives the
@@ -216,8 +235,7 @@ class SessionGattBridgeMigrationTest {
 
     @Test
     fun `solo MoonBoard host keeps physical connection when sharing ends`() {
-        every { mockBleConnection.connectedBoardBrand } returns
-            MutableStateFlow<BoardBrand?>(BoardBrand.MOONBOARD)
+        mockConnectedBoard(BoardBrand.MOONBOARD)
         queueManager.startQueue("Host")
         bleConnectionStateFlow.value = ConnectionState.CONNECTED
         bridge.startSharing()
@@ -228,9 +246,8 @@ class SessionGattBridgeMigrationTest {
     }
 
     @Test
-    fun `MoonBoard host releases physical connection for a successor`() {
-        every { mockBleConnection.connectedBoardBrand } returns
-            MutableStateFlow<BoardBrand?>(BoardBrand.MOONBOARD)
+    fun `MoonBoard host stays connected while a successor connects independently`() {
+        mockConnectedBoard(BoardBrand.MOONBOARD)
         every { mockGattServer.getConnectedCount() } returns 1
         queueManager.startQueue("Host")
         queueManager.addParticipant("AA:BB:CC:DD:EE:02", "Teilnehmer 1")
@@ -239,13 +256,12 @@ class SessionGattBridgeMigrationTest {
 
         bridge.stopSharing()
 
-        verify(exactly = 1) { mockBleConnection.disconnect() }
+        verify(exactly = 0) { mockBleConnection.disconnect() }
     }
 
     @Test
     fun `stale participant count does not release a solo MoonBoard`() {
-        every { mockBleConnection.connectedBoardBrand } returns
-            MutableStateFlow<BoardBrand?>(BoardBrand.MOONBOARD)
+        mockConnectedBoard(BoardBrand.MOONBOARD)
         every { mockGattServer.getConnectedCount() } returns 0
         queueManager.startQueue("Host")
         queueManager.addParticipant("AA:BB:CC:DD:EE:02", "Teilnehmer 1")
@@ -258,9 +274,8 @@ class SessionGattBridgeMigrationTest {
     }
 
     @Test
-    fun `retaining board is released when sharing ends without successor`() {
-        every { mockBleConnection.connectedBoardBrand } returns
-            MutableStateFlow<BoardBrand?>(BoardBrand.KILTER)
+    fun `legacy single-connect board is released when sharing ends`() {
+        mockConnectedBoard(BoardBrand.KILTER, apiLevel = 2)
         queueManager.startQueue("Host")
         bleConnectionStateFlow.value = ConnectionState.CONNECTED
         bridge.startSharing()
@@ -272,8 +287,7 @@ class SessionGattBridgeMigrationTest {
 
     @Test
     fun `failed relay startup can tear down sharing without dropping the board`() {
-        every { mockBleConnection.connectedBoardBrand } returns
-            MutableStateFlow<BoardBrand?>(BoardBrand.KILTER)
+        mockConnectedBoard(BoardBrand.KILTER, apiLevel = 2)
         queueManager.startQueue("Host")
         bleConnectionStateFlow.value = ConnectionState.CONNECTED
         bridge.startSharing()
@@ -285,8 +299,7 @@ class SessionGattBridgeMigrationTest {
 
     @Test
     fun `external relay projection is not mislabeled as the queue climb on stop`() {
-        every { mockBleConnection.connectedBoardBrand } returns
-            MutableStateFlow<BoardBrand?>(BoardBrand.KILTER)
+        mockConnectedBoard(BoardBrand.KILTER, apiLevel = 2)
         queueManager.startQueue("Host")
         queueManager.addClimb("305ecf35-4ab5-4c9c-afd5-91af0848004b", 40)
         queueManager.markExternalBoardWrite()

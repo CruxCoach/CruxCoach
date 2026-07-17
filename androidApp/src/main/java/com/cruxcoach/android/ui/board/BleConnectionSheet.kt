@@ -30,6 +30,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.cruxcoach.android.ble.BlePermissionHelper
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.ble.DiscoveredBoard
+import com.cruxcoach.android.ble.BoardConnectionCapacity
+import com.cruxcoach.android.ble.BoardControllerProfiles
 import com.cruxcoach.android.ble.NearbySession
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.android.ui.common.LocalBleShareManager
@@ -162,14 +164,14 @@ fun BleConnectionSheet(
                 state.connectionState == ConnectionState.SENDING -> {
                     ConnectedContent(
                         boardName = state.connectedBoardName ?: "Board",
+                        board = state.connectedBoard,
                         isSending = state.connectionState == ConnectionState.SENDING,
                         onDisconnect = { viewModel.disconnect() }
                     )
                     // FEAT-044 §12: "share this board" (party mode) — only
                     // offered while actually holding a real board.
                     RelaySharingSection(
-                        boardBrand = state.connectedBoardBrand,
-                        sessionRole = state.sessionRole,
+                        board = state.connectedBoard,
                     )
                 }
 
@@ -219,7 +221,7 @@ fun BleConnectionSheet(
                         onStartScan = { viewModel.startScan() },
                         onStopScan = { viewModel.stopScan() },
                         onConnectBoard = { viewModel.connectToBoard(it) },
-                        onRelayHostTapped = {
+                        onSessionTapped = {
                             viewModel.joinNearbySession(it)
                             onDismiss()
                         },
@@ -351,6 +353,7 @@ private fun SessionParticipantContent() {
 @Composable
 private fun ConnectedContent(
     boardName: String,
+    board: DiscoveredBoard?,
     isSending: Boolean,
     onDisconnect: () -> Unit
 ) {
@@ -380,6 +383,21 @@ private fun ConnectedContent(
                 boardName,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            val connectionMode = when {
+                board?.isCruxRelay == true -> R.string.board_ble_connection_via_relay
+                BoardControllerProfiles.forBoard(board).connectionCapacity ==
+                    BoardConnectionCapacity.MULTIPLE ->
+                    R.string.board_ble_connection_multi
+                BoardControllerProfiles.forBoard(board).connectionCapacity ==
+                    BoardConnectionCapacity.SINGLE ->
+                    R.string.board_ble_connection_single
+                else -> R.string.board_ble_connection_unknown
+            }
+            Text(
+                stringResource(connectionMode),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
@@ -444,7 +462,7 @@ private fun ScanContent(
     onStartScan: () -> Unit,
     onStopScan: () -> Unit,
     onConnectBoard: (DiscoveredBoard) -> Unit,
-    onRelayHostTapped: (NearbySession) -> Unit,
+    onSessionTapped: (NearbySession) -> Unit,
     onRequestDisconnect: () -> Unit,
     onClimbTapped: ((uuid: String, angle: Int) -> Unit)? = null
 ) {
@@ -457,6 +475,7 @@ private fun ScanContent(
             connectedOnly = false,
             isRequestingDisconnect = isRequestingDisconnect,
             climbSharingEnabled = climbSharingEnabled,
+            canRequestDisconnect = bleShareState.canRequestDisconnect,
             onRequestDisconnect = onRequestDisconnect,
             onClimbTapped = if (onClimbTapped != null) {
                 { onClimbTapped(onBoard.climbUuid, onBoard.angle) }
@@ -469,6 +488,7 @@ private fun ScanContent(
             connectedOnly = true,
             isRequestingDisconnect = isRequestingDisconnect,
             climbSharingEnabled = climbSharingEnabled,
+            canRequestDisconnect = bleShareState.canRequestDisconnect,
             onRequestDisconnect = onRequestDisconnect,
             onClimbTapped = null
         )
@@ -488,26 +508,22 @@ private fun ScanContent(
         }
     }
 
-    val realBoards = boards.filterNot { it.isCruxRelay }
-    if (realBoards.isNotEmpty() || nearbySessions.isNotEmpty()) {
+    if (boards.isNotEmpty() || nearbySessions.isNotEmpty()) {
         LazyColumn(
             verticalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.heightIn(max = 300.dp)
         ) {
-            items(realBoards, key = { it.address }) { board ->
+            items(boards, key = { it.address }) { board ->
                 BoardItem(
                     board = board,
                     isLastUsed = lastUsedBoardAddresses[board.boardBrand] == board.address,
                     onClick = { onConnectBoard(board) },
                 )
             }
-            // Raw CruxRelay board advertisements are deliberately hidden. The
-            // separately advertised CruxCoach session identifies the exact
-            // host and remains unambiguous when several relays are nearby.
             items(nearbySessions, key = { it.deviceAddress }) { session ->
-                RelayHostItem(
+                SessionHostItem(
                     session = session,
-                    onClick = { onRelayHostTapped(session) },
+                    onClick = { onSessionTapped(session) },
                 )
             }
         }
@@ -549,6 +565,7 @@ private fun NearbyActiveClimbCard(
     connectedOnly: Boolean = false,
     isRequestingDisconnect: Boolean,
     climbSharingEnabled: Boolean,
+    canRequestDisconnect: Boolean,
     onRequestDisconnect: () -> Unit,
     onClimbTapped: (() -> Unit)? = null
 ) {
@@ -624,7 +641,7 @@ private fun NearbyActiveClimbCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-            } else {
+            } else if (canRequestDisconnect) {
                 OutlinedButton(
                     onClick = onRequestDisconnect,
                     enabled = !isRequestingDisconnect,
@@ -656,12 +673,12 @@ private fun NearbyActiveClimbCard(
 }
 
 @Composable
-private fun RelayHostItem(session: NearbySession, onClick: () -> Unit) {
+private fun SessionHostItem(session: NearbySession, onClick: () -> Unit) {
     Card(
         onClick = onClick,
         modifier = Modifier
             .fillMaxWidth()
-            .testTag("ble_relay_host_item"),
+            .testTag("ble_session_host_item"),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
         ),
@@ -733,7 +750,7 @@ private fun BoardItem(
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.Bold
                 )
-                if (isLastUsed || board.serial.isNotBlank()) {
+                if (isLastUsed || board.isCruxRelay || board.serial.isNotBlank()) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -741,6 +758,11 @@ private fun BoardItem(
                         if (isLastUsed) {
                             Badge(containerColor = OrangeAccent) {
                                 Text(stringResource(R.string.board_ble_last_used))
+                            }
+                        }
+                        if (board.isCruxRelay) {
+                            Badge(containerColor = MaterialTheme.colorScheme.primary) {
+                                Text(stringResource(R.string.board_ble_via_cruxcoach))
                             }
                         }
                         if (board.serial.isNotBlank()) {

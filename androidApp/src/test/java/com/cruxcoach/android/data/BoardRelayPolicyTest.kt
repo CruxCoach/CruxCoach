@@ -1,118 +1,59 @@
 package com.cruxcoach.android.data
 
+import com.cruxcoach.android.ble.DiscoveredBoard
 import com.cruxcoach.domain.board.BoardBrand
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BoardRelayPolicyTest {
     @Test
-    fun `relay is available to hosts on Aurora protocol boards`() {
-        listOf(
-            BoardBrand.KILTER,
-            BoardBrand.TENSION,
-            BoardBrand.GRASSHOPPER,
-            BoardBrand.DECOY,
-            BoardBrand.SOILL,
-            BoardBrand.TOUCHSTONE,
-        ).forEach { brand ->
-            assertEquals(
-                BoardRelayAvailability.AVAILABLE,
-                BoardRelayPolicy.availability(brand, SessionRole.HOST),
-            )
-        }
+    fun `relay is available only for verified single-connect Aurora controllers`() {
+        assertEquals(
+            BoardRelayAvailability.AVAILABLE,
+            BoardRelayPolicy.availability(board(apiLevel = 2)),
+        )
+        assertEquals(
+            BoardRelayAvailability.MULTI_CONNECT_NOT_NEEDED,
+            BoardRelayPolicy.availability(board(apiLevel = 3)),
+        )
+        assertEquals(
+            BoardRelayAvailability.MULTI_CONNECT_NOT_NEEDED,
+            BoardRelayPolicy.availability(board(apiLevel = 0)),
+        )
     }
 
     @Test
-    fun `MoonBoard is not offered an Aurora frame relay`() {
+    fun `MoonBoard does not use Aurora frame relay`() {
         assertEquals(
             BoardRelayAvailability.UNSUPPORTED_PROTOCOL,
-            BoardRelayPolicy.availability(BoardBrand.MOONBOARD, SessionRole.NONE),
+            BoardRelayPolicy.availability(board(brand = BoardBrand.MOONBOARD, apiLevel = 0)),
         )
     }
 
     @Test
-    fun `session participants cannot front the hosts board`() {
+    fun `relay endpoint cannot be relayed again`() {
         assertEquals(
-            BoardRelayAvailability.SESSION_PARTICIPANT,
-            BoardRelayPolicy.availability(BoardBrand.KILTER, SessionRole.PARTICIPANT),
+            BoardRelayAvailability.RELAY_ENDPOINT,
+            BoardRelayPolicy.availability(board(apiLevel = 2, isRelay = true)),
         )
     }
 
     @Test
-    fun `stopping relay ends its own session instead of disconnecting twice`() {
-        val plan = BoardRelayPolicy.stopPlan(
-            relayStartedSession = true,
-            sessionRole = SessionRole.HOST,
-            releaseBoardRequested = true,
-        )
-
-        assertTrue(plan.stopHostSession)
-        assertFalse(plan.releaseBoardDirectly)
+    fun `missing board is unavailable`() {
+        assertEquals(BoardRelayAvailability.NO_BOARD, BoardRelayPolicy.availability(null))
     }
 
-    @Test
-    fun `stopping relay preserves an independently started session and board`() {
-        val plan = BoardRelayPolicy.stopPlan(
-            relayStartedSession = false,
-            sessionRole = SessionRole.HOST,
-            releaseBoardRequested = true,
-        )
-
-        assertFalse(plan.stopHostSession)
-        assertFalse(plan.releaseBoardDirectly)
-    }
-
-    @Test
-    fun `relay-only stop preserves its helper session after CruxCoach guests join`() {
-        val plan = BoardRelayPolicy.stopPlan(
-            relayStartedSession = true,
-            sessionRole = SessionRole.HOST,
-            releaseBoardRequested = true,
-            hasCruxCoachGuests = true,
-        )
-
-        assertFalse(plan.stopHostSession)
-        assertFalse(plan.releaseBoardDirectly)
-    }
-
-    @Test
-    fun `relay without a session releases a connected board on stop`() {
-        val plan = BoardRelayPolicy.stopPlan(
-            relayStartedSession = false,
-            sessionRole = SessionRole.NONE,
-            releaseBoardRequested = true,
-        )
-
-        assertFalse(plan.stopHostSession)
-        assertTrue(plan.releaseBoardDirectly)
-    }
-
-    @Test
-    fun `session stop explicitly ends an independently started host session`() {
-        val plan = BoardRelayPolicy.stopPlan(
-            relayStartedSession = false,
-            sessionRole = SessionRole.HOST,
-            releaseBoardRequested = true,
-            endHostSessionRequested = true,
-        )
-
-        assertTrue(plan.stopHostSession)
-        assertFalse(plan.releaseBoardDirectly)
-    }
-
-    @Test
-    fun `explicit session stop also ends a relay helper session with guests`() {
-        val plan = BoardRelayPolicy.stopPlan(
-            relayStartedSession = true,
-            sessionRole = SessionRole.HOST,
-            releaseBoardRequested = true,
-            endHostSessionRequested = true,
-            hasCruxCoachGuests = true,
-        )
-
-        assertTrue(plan.stopHostSession)
-        assertFalse(plan.releaseBoardDirectly)
-    }
+    private fun board(
+        brand: BoardBrand = BoardBrand.KILTER,
+        apiLevel: Int,
+        isRelay: Boolean = false,
+    ) = DiscoveredBoard(
+        displayName = brand.displayName,
+        serial = "",
+        apiLevel = apiLevel,
+        address = "00:11:22:33:44:55",
+        rssi = -50,
+        boardBrand = brand,
+        isCruxRelay = isRelay,
+    )
 }

@@ -1,6 +1,7 @@
 package com.cruxcoach.android.ui.board
 
 import com.cruxcoach.android.ble.ConnectionState
+import com.cruxcoach.android.ble.BoardConnectionCapacity
 import com.cruxcoach.android.data.BoardSendMode
 import com.cruxcoach.android.data.SessionRole
 import org.junit.Assert.assertEquals
@@ -42,6 +43,7 @@ class BoardDeliveryPolicyTest {
                 SessionRole.PARTICIPANT,
                 SessionRole.NONE,
                 ConnectionState.CONNECTED,
+                BoardConnectionCapacity.SINGLE,
             )
         )
         assertFalse(
@@ -49,6 +51,7 @@ class BoardDeliveryPolicyTest {
                 SessionRole.HOST,
                 SessionRole.NONE,
                 ConnectionState.CONNECTED,
+                BoardConnectionCapacity.SINGLE,
             )
         )
         assertFalse(
@@ -56,6 +59,32 @@ class BoardDeliveryPolicyTest {
                 SessionRole.PARTICIPANT,
                 SessionRole.NONE,
                 ConnectionState.DISCONNECTED,
+                BoardConnectionCapacity.SINGLE,
+            )
+        )
+    }
+
+    @Test
+    fun `session participant keeps a multi-connect board connection`() {
+        assertFalse(
+            BoardDeliveryPolicy.shouldReleaseBoardForSessionParticipant(
+                SessionRole.PARTICIPANT,
+                SessionRole.NONE,
+                ConnectionState.CONNECTED,
+                BoardConnectionCapacity.MULTIPLE,
+            )
+        )
+    }
+
+    @Test
+    fun `session participant cannot release a board pinned by relay`() {
+        assertFalse(
+            BoardDeliveryPolicy.shouldReleaseBoardForSessionParticipant(
+                SessionRole.PARTICIPANT,
+                SessionRole.NONE,
+                ConnectionState.CONNECTED,
+                BoardConnectionCapacity.SINGLE,
+                connectionPinnedByAnotherFeature = true,
             )
         )
     }
@@ -84,6 +113,35 @@ class BoardDeliveryPolicyTest {
         )
 
         assertEquals(BoardDeliveryTarget.DIRECT_BOARD, decision.target)
+        assertFalse(decision.dispatchAutomatically)
+        assertTrue(decision.showAction)
+    }
+
+    @Test
+    fun `automatic mode becomes explicit while connected through a relay`() {
+        val decision = BoardDeliveryPolicy.resolve(
+            sendMode = BoardSendMode.AUTOMATIC,
+            sessionRole = SessionRole.NONE,
+            boardConnected = true,
+            hasDirectPayload = true,
+            connectedViaRelay = true,
+        )
+
+        assertEquals(BoardDeliveryTarget.DIRECT_BOARD, decision.target)
+        assertFalse(decision.dispatchAutomatically)
+        assertTrue(decision.showAction)
+    }
+
+    @Test
+    fun `automatic mode becomes explicit while hosting relay guests`() {
+        val decision = BoardDeliveryPolicy.resolve(
+            sendMode = BoardSendMode.AUTOMATIC,
+            sessionRole = SessionRole.NONE,
+            boardConnected = true,
+            hasDirectPayload = true,
+            hostedRelayClientCount = 2,
+        )
+
         assertFalse(decision.dispatchAutomatically)
         assertTrue(decision.showAction)
     }

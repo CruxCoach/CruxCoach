@@ -2,6 +2,7 @@ package com.cruxcoach.android.data
 
 import android.util.Log
 import com.cruxcoach.android.ble.BoardBleConnection
+import com.cruxcoach.android.ble.BoardConnectionOwner
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.ble.QueueItem
 import com.cruxcoach.android.ble.SessionQueueProtocol
@@ -156,7 +157,7 @@ class SessionQueueManager(
             hostName = hostName,
             participantCount = 1  // host counts as 1
         ) }
-        bleConnection.acquireKeepAlive("session")
+        bleConnection.acquireKeepAlive(BoardConnectionOwner.SESSION)
         Log.d(TAG, "Queue started (sessionId=$sessionId, hostName=$hostName)")
     }
 
@@ -174,7 +175,7 @@ class SessionQueueManager(
         remoteAddClimb = null
         onRestRequested = null
         isPlaylistQueue = false
-        bleConnection.releaseKeepAlive("session")
+        bleConnection.releaseKeepAlive(BoardConnectionOwner.SESSION)
         Log.d(TAG, "endQueue(): complete, state reset to NONE")
     }
 
@@ -406,7 +407,7 @@ class SessionQueueManager(
             isConnecting = false,
             error = null
         ) }
-        bleConnection.acquireKeepAlive("session")
+        bleConnection.acquireKeepAlive(BoardConnectionOwner.SESSION)
         Log.d(TAG, "Promoted to host (sessionId=$newSessionId, queue=${_state.value.queue.size} items)")
     }
 

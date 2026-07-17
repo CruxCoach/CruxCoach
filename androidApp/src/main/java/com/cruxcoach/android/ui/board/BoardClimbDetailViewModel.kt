@@ -86,6 +86,8 @@ data class PlaybackState(
 /** BLE send-to-board state. */
 data class BoardSendState(
     val connectionState: ConnectionState = ConnectionState.DISCONNECTED,
+    val connectedViaRelay: Boolean = false,
+    val hostedRelayClientCount: Int = 0,
     val isSending: Boolean = false,
     val success: Boolean = false,
     /** Localized error as a string-resource id (resolved at the UI layer),
@@ -268,6 +270,7 @@ class BoardClimbDetailViewModel @Inject constructor(
     private val zoneManager: IntensityZoneManager,
     private val climbAdvertiser: ClimbBleAdvertiser,
     private val sessionQueueManager: com.cruxcoach.android.data.SessionQueueManager,
+    private val cruxRelayManager: com.cruxcoach.android.data.CruxRelayManager,
     private val bleShareManager: BleShareManager,
     private val kilterSyncEngine: com.cruxcoach.android.data.kilter.KilterSyncEngine,
     private val nostrSigner: com.cruxcoach.android.nostr.NostrSigner,
@@ -332,7 +335,10 @@ class BoardClimbDetailViewModel @Inject constructor(
         scope = viewModelScope,
         state = _state,
         userPreferences = userPreferences,
-        onFrameChanged = { holds ->
+        onFrameChanged = {
+            // Frame navigation/playback is already an explicit user command.
+            // Once started, every frame must reach the board regardless of the
+            // saved climb-selection send mode.
             if (sendController.isConnected()) sendController.sendToBoard()
         }
     )
@@ -387,6 +393,15 @@ class BoardClimbDetailViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
+            cruxRelayManager.state.collect { relayState ->
+                _state.update {
+                    it.copy(
+                        ble = it.ble.copy(hostedRelayClientCount = relayState.clientCount),
+                    )
+                }
+            }
+        }
+        viewModelScope.launch {
             try {
                 userPreferences.gradeScale.collect { scale ->
                     _state.update { it.copy(gradeScale = scale) }
@@ -431,7 +446,15 @@ class BoardClimbDetailViewModel @Inject constructor(
                         && connState == ConnectionState.CONNECTED
                     prevConnState = connState
 
-                    _state.update { it.copy(ble = it.ble.copy(connectionState = connState)) }
+                    _state.update {
+                        it.copy(
+                            ble = it.ble.copy(
+                                connectionState = connState,
+                                connectedViaRelay = connState != ConnectionState.DISCONNECTED &&
+                                    bleConnection.connectedBoard?.isCruxRelay == true,
+                            ),
+                        )
+                    }
 
                     val climbState = _state.value
                     if (connState == ConnectionState.CONNECTED &&
@@ -680,7 +703,13 @@ class BoardClimbDetailViewModel @Inject constructor(
             _state.update { current -> cached.copy(
                 ascent = AscentFormState(),
                 listDialog = ListDialogState(),
-                ble = BoardSendState(connectionState = currentConn),
+                ble = current.ble.copy(
+                    connectionState = currentConn,
+                    isSending = false,
+                    success = false,
+                    error = null,
+                    warning = null,
+                ),
                 nearby = current.nearby
             ) }
         } else {
@@ -688,7 +717,13 @@ class BoardClimbDetailViewModel @Inject constructor(
                 isLoading = true,
                 error = null,
                 isMirrored = false,
-                ble = BoardSendState(connectionState = currentConn),
+                ble = it.ble.copy(
+                    connectionState = currentConn,
+                    isSending = false,
+                    success = false,
+                    error = null,
+                    warning = null,
+                ),
                 playback = it.playback.copy(showPreview = false),
                 ascent = AscentFormState(),
                 listDialog = it.listDialog.copy(show = false)
@@ -1094,6 +1129,8 @@ class BoardClimbDetailViewModel @Inject constructor(
                 holdCount = climbState.holds.size,
                 frames = climb.frames,
             ),
+            connectedViaRelay = climbState.ble.connectedViaRelay,
+            hostedRelayClientCount = climbState.ble.hostedRelayClientCount,
         )
         when (decision.target) {
             BoardDeliveryTarget.DIRECT_BOARD -> sendController.sendToBoard()
@@ -1186,6 +1223,8 @@ class BoardClimbDetailViewModel @Inject constructor(
                 holdCount = climbState.holds.size,
                 frames = climbState.climb?.frames,
             ),
+            connectedViaRelay = climbState.ble.connectedViaRelay,
+            hostedRelayClientCount = climbState.ble.hostedRelayClientCount,
         )
         if (decision.dispatchAutomatically) {
             sendController.sendToBoard()

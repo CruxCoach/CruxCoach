@@ -365,7 +365,9 @@ class BleShareManager @Inject constructor(
             boardOccupiedCount = boardOccupiedCount,
             nearbySessions = nearbySessionEntries,
             sharingEnabled = sharingEnabled,
-            canRequestDisconnect = sharingEnabled && nearbyClimbs.any { !it.isLastClimb && !it.connectedOnly }
+            canRequestDisconnect = sharingEnabled && nearbyClimbs.any {
+                !it.isLastClimb && it.acceptsDisconnectRequests
+            }
         )
     }
 

@@ -391,7 +391,7 @@ internal fun formatSessionTime(totalSeconds: Int): String {
 /**
  * FEAT-044 §12: persistent "board is shared" status with a one-tap stop.
  * Rendered by [BleStatusArea] on every screen while CruxRelay is active;
- * stopping runs the §7 host-leave ordering in CruxRelayManager.
+ * stopping affects only relay transport; queue and board ownership stay intact.
  */
 @Composable
 internal fun RelayStatusChip(

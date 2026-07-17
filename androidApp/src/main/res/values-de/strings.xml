@@ -374,8 +374,7 @@
 
     <!-- Settings: BLE -->
     <string name="settings_ble_auto_disconnect_title">Board-Verbindung freigeben</string>
-    <string name="settings_ble_auto_disconnect_desc_retained">Gibt die direkte Verbindung nach Inaktivität frei. Dieses Board behält den letzten Boulder; während einer gemeinsamen Session bleibt der Host verbunden.</string>
-    <string name="settings_ble_auto_disconnect_desc_moonboard">Gibt eine ungenutzte Verbindung frei, bevor ein Boulder gesendet wurde. Danach bleibt CruxCoach verbunden, weil ein MoonBoard seine LEDs beim Trennen löscht.</string>
+    <string name="settings_ble_auto_disconnect_desc_retained">Gilt nur für verifizierte ältere Controller mit genau einer direkten Verbindung. Multi-Connect- und unbekannte Controller bleiben verbunden.</string>
     <string name="settings_duration_minutes_label">Minuten</string>
     <string name="settings_duration_seconds_label">Sekunden</string>
     <string name="settings_ble_keep_screen_on">Bildschirm anlassen</string>
@@ -958,7 +957,6 @@
     <string name="relay_notification_channel_desc">Wird angezeigt, während kompatible Board-Apps über CruxCoach senden können.</string>
     <string name="relay_notification_title">Board für andere Apps freigegeben</string>
     <string name="relay_notification_text">%d Board-App-Verbindungen</string>
-    <string name="relay_stopped_idle">App-Freigabe beendet — niemand war verbunden</string>
     <string name="relay_notification_stop">App-Freigabe beenden</string>
 
     <!-- Board: Climb Card -->
@@ -1588,11 +1586,11 @@
     <string name="settings_board_model_change">Ändern</string>
     <string name="settings_board_model_not_configured">Nicht konfiguriert</string>
     <string name="settings_board_send_mode_title">Direkte Board-Steuerung</string>
-    <string name="settings_board_send_mode_desc">Legt fest, was bei einer direkten Verbindung passiert. In einer gemeinsamen Session kommen Boulder immer bewusst in die Warteschlange.</string>
+    <string name="settings_board_send_mode_desc">Legt das Verhalten bei einer privaten Direktverbindung fest. Beim Nutzen oder Teilen eines Relays zeigt CruxCoach automatisch die Sendetaste; eine Queue bleibt immer explizit.</string>
     <string name="settings_board_send_mode_automatic">Sofort</string>
     <string name="settings_board_send_mode_explicit">Per Taste</string>
-    <string name="settings_board_projection_lifecycle_moonboard">MoonBoard: CruxCoach hält nach dem Beleuchten die direkte Verbindung, damit der Boulder sichtbar bleibt.</string>
-    <string name="settings_board_projection_lifecycle_retained">Dieses Board behält den letzten Boulder, nachdem CruxCoach die Verbindung freigibt.</string>
+    <string name="settings_board_projection_lifecycle_moonboard">MoonBoard akzeptiert mehrere Verbindungen. Die Beleuchtung bleibt bis zur letzten Trennung erhalten.</string>
+    <string name="settings_board_projection_lifecycle_retained">Moderne Controller akzeptieren mehrere Verbindungen; verifizierte ältere Controller lassen sich über CruxCoach Relay teilen.</string>
     <string name="cd_add_climb_to_shared_queue">Boulder zur gemeinsamen Warteschlange hinzufügen</string>
     <string name="cd_light_climb_on_board">Climb am Board beleuchten</string>
     <string name="cd_restore_queue_climb">Aktuellen Queue-Boulder erneut beleuchten</string>
@@ -2149,7 +2147,7 @@
     <string name="relay_chip_text">Für Board-Apps freigegeben · %1$d verbunden</string>
     <string name="relay_advertised_as">Für andere sichtbar als \"%1$s\"</string>
     <string name="relay_disclosure_title">Für Board-Apps freigeben</string>
-    <string name="relay_disclosure_text">Dein Handy erscheint vorübergehend als kompatibles Board namens \"CruxRelay…\". Andere Board-Apps senden über CruxCoach; CruxCoach-Nutzer treten der gemeinsamen Queue bei. Der zuletzt erfolgreich gesendete Boulder steuert die Beleuchtung. Beim Beenden wird dein Bluetooth-Name wiederhergestellt.</string>
+    <string name="relay_disclosure_text">Dein Handy erscheint vorübergehend als kompatibles Board namens \"CruxRelay…\". Andere Board-Apps senden über CruxCoach, ohne eine Queue zu starten. Der zuletzt erfolgreich gesendete Boulder steuert die Beleuchtung. Beim Beenden wird dein Bluetooth-Name wiederhergestellt.</string>
     <string name="relay_disclosure_disclaimer">CruxCoach ist nicht mit Kilter oder Aurora Climbing verbunden; Board-Namen dienen nur der Kompatibilität.</string>
     <string name="relay_disclosure_confirm">Board-Apps zulassen</string>
     <string name="relay_error_server">Teilen konnte nicht starten. Bitte erneut versuchen.</string>
@@ -2157,8 +2155,12 @@
     <string name="relay_error_name">Freigabe-Name konnte nicht gesetzt werden.</string>
     <string name="relay_error_board_lost">Board-Verbindung verloren — Teilen beendet.</string>
     <string name="relay_error_unsupported_board">Dieses Board unterstützt die Freigabe für kompatible Board-Apps nicht.</string>
-    <string name="relay_error_session_participant">Nur der Host der CruxCoach-Session kann das Board für andere Apps freigeben.</string>
     <string name="relay_chip_stop">Beenden</string>
     <string name="relay_host_title">Geteilte CruxCoach-Session</string>
     <string name="relay_host_join_subtitle">%1$d in der Session · Antippen zum Beitreten</string>
+    <string name="board_ble_via_cruxcoach">via CruxCoach</string>
+    <string name="board_ble_connection_via_relay">Über CruxCoach Relay verbunden</string>
+    <string name="board_ble_connection_multi">Mehrere Geräte können verbunden bleiben</string>
+    <string name="board_ble_connection_single">Älterer Controller · eine Direktverbindung</string>
+    <string name="board_ble_connection_unknown">Verbindungskapazität nicht verifiziert</string>
 </resources>

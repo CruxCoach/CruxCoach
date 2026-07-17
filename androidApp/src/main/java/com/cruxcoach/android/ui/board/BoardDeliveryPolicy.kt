@@ -1,6 +1,7 @@
 package com.cruxcoach.android.ui.board
 
 import com.cruxcoach.android.ble.ConnectionState
+import com.cruxcoach.android.ble.BoardConnectionCapacity
 import com.cruxcoach.android.data.BoardSendMode
 import com.cruxcoach.android.data.SessionRole
 
@@ -35,9 +36,13 @@ internal object BoardDeliveryPolicy {
         newRole: SessionRole,
         previousRole: SessionRole,
         connectionState: ConnectionState,
+        connectionCapacity: BoardConnectionCapacity,
+        connectionPinnedByAnotherFeature: Boolean = false,
     ): Boolean = newRole == SessionRole.PARTICIPANT &&
         previousRole != SessionRole.PARTICIPANT &&
-        connectionState != ConnectionState.DISCONNECTED
+        connectionState != ConnectionState.DISCONNECTED &&
+        connectionCapacity == BoardConnectionCapacity.SINGLE &&
+        !connectionPinnedByAnotherFeature
 
     fun resolve(
         sendMode: BoardSendMode,
@@ -45,6 +50,8 @@ internal object BoardDeliveryPolicy {
         sessionConnecting: Boolean = false,
         boardConnected: Boolean,
         hasDirectPayload: Boolean,
+        connectedViaRelay: Boolean = false,
+        hostedRelayClientCount: Int = 0,
     ): BoardDeliveryDecision {
         // Joining has already handed ownership to the shared-session flow, but
         // the participant GATT command channel is not ready yet. Hide both
@@ -73,10 +80,11 @@ internal object BoardDeliveryPolicy {
             )
         }
 
+        val sharedTransport = connectedViaRelay || hostedRelayClientCount > 0
         return BoardDeliveryDecision(
             target = BoardDeliveryTarget.DIRECT_BOARD,
-            dispatchAutomatically = sendMode == BoardSendMode.AUTOMATIC,
-            showAction = sendMode == BoardSendMode.EXPLICIT,
+            dispatchAutomatically = sendMode == BoardSendMode.AUTOMATIC && !sharedTransport,
+            showAction = sendMode == BoardSendMode.EXPLICIT || sharedTransport,
         )
     }
 }

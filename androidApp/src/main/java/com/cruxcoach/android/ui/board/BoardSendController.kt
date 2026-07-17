@@ -104,7 +104,12 @@ internal class BoardSendController(
         }
 
         state.update { it.copy(
-            ble = BoardSendState(connectionState = it.ble.connectionState, isSending = true),
+            ble = it.ble.copy(
+                isSending = true,
+                success = false,
+                error = null,
+                warning = null,
+            ),
             nearby = it.nearby.copy(debugInfo = "sending...")
         ) }
         Log.i(TAG, "sendToBoard: start frames=${s.holds.size}")
@@ -251,7 +256,12 @@ internal class BoardSendController(
         }
 
         state.update { it.copy(
-            ble = BoardSendState(connectionState = it.ble.connectionState, isSending = true),
+            ble = it.ble.copy(
+                isSending = true,
+                success = false,
+                error = null,
+                warning = null,
+            ),
             nearby = it.nearby.copy(debugInfo = "sending (moonboard)...")
         ) }
         Log.i(TAG, "sendMoonBoardToBoard: start frames=${frames.length}")

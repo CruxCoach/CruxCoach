@@ -37,6 +37,7 @@ import com.cruxcoach.android.data.BoardDatabaseImporter
 import com.cruxcoach.android.data.BleShareManager
 import com.cruxcoach.android.data.BoardSessionManager
 import com.cruxcoach.android.data.BoardStateManager
+import com.cruxcoach.android.data.BoardProjectionCoordinator
 import com.cruxcoach.android.data.CruxRelayManager
 import com.cruxcoach.android.data.ClimbNameResolver
 import com.cruxcoach.android.data.RestTimerAlarmScheduler
@@ -447,20 +448,24 @@ object AppModule {
         relayServer: RelayGattServer,
         advertiser: ClimbBleAdvertiser,
         bleConnection: BoardBleConnection,
-        sessionQueueManager: SessionQueueManager,
-        sessionGattBridge: SessionGattBridge,
-        boardStateManager: BoardStateManager,
+        projectionCoordinator: BoardProjectionCoordinator,
     ): CruxRelayManager {
         return CruxRelayManager(
             context,
             relayServer,
             advertiser,
             bleConnection,
-            sessionQueueManager,
-            sessionGattBridge,
-            boardStateManager,
+            projectionCoordinator,
         )
     }
+
+    @Provides
+    @Singleton
+    fun provideBoardProjectionCoordinator(
+        sessionQueueManager: SessionQueueManager,
+        boardStateManager: BoardStateManager,
+    ): BoardProjectionCoordinator =
+        BoardProjectionCoordinator(sessionQueueManager, boardStateManager)
 
     @Provides
     @Singleton

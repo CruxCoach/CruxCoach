@@ -47,6 +47,15 @@ class RelayBoardNameTest {
     }
 
     @Test
+    fun unwrap_restoresBoardName_forNormalScannerParsing() {
+        assertEquals(
+            "Kilter Board@2",
+            RelayBoardName.unwrap("CruxRelay·Kilter Board@2"),
+        )
+        assertEquals("MoonBoard", RelayBoardName.unwrap("MoonBoard"))
+    }
+
+    @Test
     fun serialMarked_fallback_keepsProductAndApiPristine() {
         val name = RelayBoardName.serialMarked("Kilter Board@3")
         assertEquals("Kilter Board#CR@3", name)
