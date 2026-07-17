@@ -58,7 +58,13 @@ class ClimbBleAdvertiser(
     // Priority state: session > climb > boardConnected > nothing.
     // When a session queue is active, individual climb advertising is suppressed —
     // the session handles sharing via GATT, not per-climb advertising.
-    private var activeClimb: Pair<String, Int>? = null // (uuid, angle)
+    private data class ActiveClimb(
+        val uuid: String,
+        val angle: Int,
+        val projectionSurvivesDisconnect: Boolean,
+    )
+
+    private var activeClimb: ActiveClimb? = null
     private var boardConnected: Boolean = false
 
     /** True when the local user has sent a climb to the board and is still connected. */
@@ -74,7 +80,11 @@ class ClimbBleAdvertiser(
     fun isBoardConnected(): Boolean = boardConnected
 
     /** Returns the currently active climb (uuid, angle) or null. */
-    fun getActiveClimb(): Pair<String, Int>? = activeClimb
+    fun getActiveClimb(): Pair<String, Int>? = activeClimb?.let { it.uuid to it.angle }
+
+    /** Whether the active board is expected to retain its LEDs after disconnect. */
+    fun activeProjectionSurvivesDisconnect(): Boolean =
+        activeClimb?.projectionSurvivesDisconnect ?: true
 
     /**
      * When true, [advertiseClimb] and [advertiseConnected] are suppressed and
@@ -158,9 +168,16 @@ class ClimbBleAdvertiser(
     /** Advertises a specific climb. Highest priority — takes precedence over boardConnected.
      *  Suppressed when a session queue is active ([suppressClimbAdvertising] = true). */
     @SuppressLint("MissingPermission")
-    fun advertiseClimb(climbUuid: String, angle: Int, sharingEnabled: Boolean = true): String {
-        activeClimb = climbUuid to angle
-        scope.launch { boardStateManager.setLastClimb(climbUuid, angle) }
+    fun advertiseClimb(
+        climbUuid: String,
+        angle: Int,
+        sharingEnabled: Boolean = true,
+        projectionSurvivesDisconnect: Boolean = true,
+    ): String {
+        activeClimb = ActiveClimb(climbUuid, angle, projectionSurvivesDisconnect)
+        scope.launch {
+            boardStateManager.setLastClimb(climbUuid, angle, projectionSurvivesDisconnect)
+        }
         if (suppressClimbAdvertising) {
             Log.d(TAG, "advertiseClimb: suppressed (session active)")
             return "suppressed (session active)"
@@ -172,7 +189,11 @@ class ClimbBleAdvertiser(
         advertiser ?: return "no advertiser (BT off?)"
         disconnectTimeoutJob?.cancel()
 
-        val payload = NearbyClimbProtocol.encodeClimbData(climbUuid, angle)
+        val payload = NearbyClimbProtocol.encodeClimbData(
+            climbUuid,
+            angle,
+            projectionSurvivesDisconnect,
+        )
         val data = buildAdvertiseData(payload)
         Log.d(TAG, "START ClimbData uuid=${climbUuid.take(8)} angle=$angle sharing=$sharingEnabled")
 
@@ -227,8 +248,9 @@ class ClimbBleAdvertiser(
 
     /**
      * Called when the board disconnects. If a climb was active, switches to
-     * TYPE_LAST_CLIMB advertising (LEDs are still visible on the physical board)
-     * for [LAST_CLIMB_TIMEOUT_MS], then sends GONE and stops.
+     * TYPE_LAST_CLIMB advertising for 30 seconds, then sends GONE
+     * and stops. The payload explicitly distinguishes retained LEDs from a
+     * MoonBoard climb that is only available for reconnect/resend.
      */
     @SuppressLint("MissingPermission")
     fun onBoardDisconnected(sharingEnabled: Boolean = true) {
@@ -242,14 +264,23 @@ class ClimbBleAdvertiser(
         if (lastClimb == null && !wasConnected) return
 
         if (lastClimb != null) {
-            Log.d(TAG, "DISCONNECT lastClimb=${lastClimb.first.take(8)} wasConnected=$wasConnected → advertising LastClimb for 30s")
+            Log.d(TAG, "DISCONNECT lastClimb=${lastClimb.uuid.take(8)} retained=${lastClimb.projectionSurvivesDisconnect} wasConnected=$wasConnected → advertising LastClimb for 30s")
             // Dedup: setLastClimb was already called in advertiseClimb() (same UUID+angle → skip)
-            scope.launch { boardStateManager.setLastClimb(lastClimb.first, lastClimb.second) }
+            scope.launch {
+                boardStateManager.setLastClimb(
+                    lastClimb.uuid,
+                    lastClimb.angle,
+                    lastClimb.projectionSurvivesDisconnect,
+                )
+            }
 
             // Try BLE advertising for remote visibility (only with sharing enabled)
             if (sharingEnabled && BlePermissionHelper.hasAdvertisingPermission(context) && advertiser != null) {
-                val (uuid, angle) = lastClimb
-                val payload = NearbyClimbProtocol.encodeLastClimb(uuid, angle)
+                val payload = NearbyClimbProtocol.encodeLastClimb(
+                    lastClimb.uuid,
+                    lastClimb.angle,
+                    lastClimb.projectionSurvivesDisconnect,
+                )
                 val data = buildAdvertiseData(payload)
                 updateOrStartAdvertising(data)
                 // Bug 2: LastClimb advertising for 30s so remote scanners reliably receive it.
@@ -264,7 +295,8 @@ class ClimbBleAdvertiser(
             }
         } else if (sharingEnabled) {
             // Was connected but no climb was active — stop advertising.
-            // Manager state NOT touched — LEDs from previous climb still on board.
+            // Preserve the manager's previous last-climb metadata: a connection
+            // without a new send gives us no evidence that it was overwritten.
             sendGoneAndStop()
         }
     }
@@ -542,10 +574,18 @@ class ClimbBleAdvertiser(
      * Does NOT manage state — [BoardStateManager] is the single source of truth.
      */
     @SuppressLint("MissingPermission")
-    fun advertiseLastClimb(climbUuid: String, angle: Int) {
-        Log.d(TAG, "advertiseLastClimb: $climbUuid angle=$angle")
+    fun advertiseLastClimb(
+        climbUuid: String,
+        angle: Int,
+        projectionSurvivesDisconnect: Boolean = true,
+    ) {
+        Log.d(TAG, "advertiseLastClimb: $climbUuid angle=$angle retained=$projectionSurvivesDisconnect")
         if (BlePermissionHelper.hasAdvertisingPermission(context) && advertiser != null) {
-            val payload = NearbyClimbProtocol.encodeLastClimb(climbUuid, angle)
+            val payload = NearbyClimbProtocol.encodeLastClimb(
+                climbUuid,
+                angle,
+                projectionSurvivesDisconnect,
+            )
             val data = buildAdvertiseData(payload)
             updateOrStartAdvertising(data)
         }
@@ -555,7 +595,7 @@ class ClimbBleAdvertiser(
      *  Called when [suppressClimbAdvertising] is set to true. */
     private fun stopClimbAdvertising() {
         activeClimb = null
-        // No clearLastClimb — board state persists (LEDs still on, session takes over)
+        // Preserve last-climb metadata while the session takes over.
         disconnectTimeoutJob?.cancel()
         disconnectTimeoutJob = null
         sendGoneAndStop()
@@ -565,7 +605,7 @@ class ClimbBleAdvertiser(
     fun stopAdvertising() {
         disconnectTimeoutJob?.cancel()
         disconnectTimeoutJob = null
-        // No clearLastClimb — stopping advertising doesn't change the physical board state
+        // Advertising lifecycle is separate from saved last-climb metadata.
         sendGoneAndStop()
     }
 

@@ -350,7 +350,9 @@ internal fun buildChipSummary(
         append(" ${onBoard.angle}°")
         when (onBoard.source) {
             OnBoardSource.REMOTE_ACTIVE -> append(" · ${stringResource(R.string.ble_climbing_now)}")
-            OnBoardSource.REMOTE_LAST, OnBoardSource.LOCAL_MANAGER -> append(" · ${stringResource(R.string.ble_still_visible)}")
+            OnBoardSource.REMOTE_LAST, OnBoardSource.LOCAL_MANAGER -> append(
+                " · ${stringResource(if (onBoard.isStillProjected) R.string.ble_still_visible else R.string.ble_last_climb)}"
+            )
             OnBoardSource.LOCAL_ACTIVE -> append(" · ${stringResource(R.string.ble_your_climb)}")
             OnBoardSource.SESSION_REMOTE -> append(" · ${stringResource(R.string.ble_session_climb)}")
         }

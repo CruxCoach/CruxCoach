@@ -167,9 +167,13 @@ private fun OnBoardClimbSection(
     val name = climb.name ?: stringResource(R.string.ble_unknown_climb)
     val statusText = when (climb.source) {
         OnBoardSource.REMOTE_ACTIVE -> stringResource(R.string.ble_climbing_now)
-        OnBoardSource.REMOTE_LAST -> stringResource(R.string.ble_still_visible)
+        OnBoardSource.REMOTE_LAST -> stringResource(
+            if (climb.isStillProjected) R.string.ble_still_visible else R.string.ble_ready_to_resend
+        )
         OnBoardSource.LOCAL_ACTIVE -> stringResource(R.string.ble_your_climb)
-        OnBoardSource.LOCAL_MANAGER -> stringResource(R.string.ble_still_visible)
+        OnBoardSource.LOCAL_MANAGER -> stringResource(
+            if (climb.isStillProjected) R.string.ble_still_visible else R.string.ble_ready_to_resend
+        )
         OnBoardSource.SESSION_REMOTE -> stringResource(R.string.ble_session_climb)
     }
 
@@ -186,7 +190,9 @@ private fun OnBoardClimbSection(
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                stringResource(R.string.ble_on_board),
+                stringResource(
+                    if (climb.isStillProjected) R.string.ble_on_board else R.string.ble_last_climb
+                ),
                 style = MaterialTheme.typography.labelMedium,
                 color = OrangeAccent,
                 fontWeight = FontWeight.Bold

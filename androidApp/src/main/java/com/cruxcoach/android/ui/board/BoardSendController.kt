@@ -3,6 +3,7 @@ package com.cruxcoach.android.ui.board
 import android.util.Log
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ble.BoardBleConnection
+import com.cruxcoach.android.ble.BoardProjectionPolicy
 import com.cruxcoach.android.ble.ClimbBleAdvertiser
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.data.LedHoldColors
@@ -234,10 +235,11 @@ internal class BoardSendController(
      */
     private fun sendMoonBoardToBoard() {
         val s = state.value
-        val frames = s.climb?.frames
-        if (frames.isNullOrBlank() || s.ble.connectionState != ConnectionState.CONNECTED) {
+        val climb = s.climb ?: return
+        val frames = climb.frames
+        if (frames.isBlank() || s.ble.connectionState != ConnectionState.CONNECTED) {
             state.update { it.copy(nearby = it.nearby.copy(
-                debugInfo = "skip: frames=${frames?.length ?: 0} conn=${s.ble.connectionState}"
+                debugInfo = "skip: frames=${frames.length} conn=${s.ble.connectionState}"
             )) }
             return
         }
@@ -279,7 +281,7 @@ internal class BoardSendController(
                     return@launch
                 }
                 val activeLayout = userPreferences.boardLayoutId.first().toLong()
-                if (s.climb?.layoutId?.toLong() != null && s.climb.layoutId.toLong() != activeLayout) {
+                if (climb.layoutId != activeLayout) {
                     state.update { it.copy(
                         ble = it.ble.copy(isSending = false, error = R.string.board_send_error_moonboard_variant_mismatch),
                         nearby = it.nearby.copy(debugInfo = "moonboard variant mismatch")
@@ -292,11 +294,9 @@ internal class BoardSendController(
                 // Mini 2020), and a list / deep-link can surface a climb of a
                 // different variant than the one currently configured. Using
                 // the climb's own layout_id guarantees the wire frame matches
-                // the holds we're rendering. Falls back to the active pref,
-                // then MOONBOARD_2016, only if the climb carries no usable
-                // layout id (stale/corrupt row).
-                val layoutId = s.climb?.layoutId?.toLong()
-                    ?: userPreferences.boardLayoutId.first().toLong()
+                // the holds we're rendering. A stale/corrupt layout id falls
+                // back to MOONBOARD_2016 in the variant lookup below.
+                val layoutId = climb.layoutId
                 val variant = com.cruxcoach.domain.board.MoonBoardVariant
                     .fromLayoutId(layoutId)
                     ?: com.cruxcoach.domain.board.MoonBoardVariant.MOONBOARD_2016
@@ -310,7 +310,19 @@ internal class BoardSendController(
                     ),
                     nearby = it.nearby.copy(debugInfo = "sent ok=$success")
                 ) }
-                if (success) recordSentToHistory(s)
+                if (success) {
+                    recordSentToHistory(s)
+                    val result = climbAdvertiser.advertiseClimb(
+                        climbUuid = climb.uuid,
+                        angle = s.angle,
+                        sharingEnabled = isSharingEnabled(),
+                        projectionSurvivesDisconnect =
+                            BoardProjectionPolicy.projectionSurvivesDisconnect(climb.brand),
+                    )
+                    state.update { it.copy(
+                        nearby = it.nearby.copy(debugInfo = "adv: $result")
+                    ) }
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -320,16 +332,6 @@ internal class BoardSendController(
                     nearby = it.nearby.copy(debugInfo = "exception: ${e.message?.take(50)}")
                 ) }
             }
-        }
-    }
-
-    /** Re-advertise the current climb to nearby devices (called on every climb load/switch). */
-    fun updateNearbyAdvertising(uuid: String, angle: Int) {
-        if (!isSharingEnabled()) return
-        // Only advertise when the board is connected -- browsing without connection should not share
-        if (bleConnection.connectionState.value != ConnectionState.CONNECTED) return
-        scope.launch {
-            climbAdvertiser.advertiseClimb(uuid, angle)
         }
     }
 

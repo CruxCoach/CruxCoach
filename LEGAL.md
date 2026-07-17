@@ -56,7 +56,9 @@ CruxCoach distributes board reference data and community-created climb data via 
 - Kilter's or Moon Climbing's proprietary software, source code, or firmware
 - Kilter's or MoonBoard's wordmark, logo, or marketing/branding artwork
 - User personal data (email, profile photos, account details)
-- Kilter's or the MoonBoard app's binary or any portion thereof
+- Executable portions of Kilter's or the MoonBoard app's binary. The small
+  official MoonBoard 2010 / Mini 2025 layout-image exception is disclosed
+  below and in the maintained asset inventory.
 
 ### Bundled Kilter layout images
 
@@ -71,6 +73,24 @@ other jurisdictions. CruxCoach claims no ownership, affiliation, or
 endorsement. See the in-directory
 [`README.md`](androidApp/src/main/assets/board_images/README.md) for origin,
 scope, and removal-request contacts, and
+[`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md) for the maintained
+attribution inventory.
+
+### Bundled MoonBoard layout images
+
+CruxCoach-created WebP renders cover MoonBoard 2016, Masters 2017/2019, Mini
+2020 and 2024. MoonBoard 2010 and Mini MoonBoard 2025 additionally use a small
+set of unchanged board-plate and transparent hold-layer PNGs from the official
+MoonBoard Android app. They are bundled so the app can identify and render the
+exact physical configuration offline; the constituent layers are fixed and
+not exposed as a general hold-set browser.
+
+The official PNGs and underlying layouts remain the property of **Moon
+Climbing Ltd**. Inclusion is limited to referential visualization and hardware
+interoperability. CruxCoach claims no ownership of those files, affiliation,
+or endorsement. See the in-directory
+[`README.md`](androidApp/src/main/assets/board_images/README.md) for exact file
+provenance and removal-request contacts, and
 [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md) for the maintained
 attribution inventory.
 

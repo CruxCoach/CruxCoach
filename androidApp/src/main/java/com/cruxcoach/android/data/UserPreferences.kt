@@ -111,6 +111,17 @@ enum class GradeScale(val label: String) {
     FRENCH("Fontainebleau")
 }
 
+/** Controls whether opening a climb immediately updates a connected board. */
+enum class BoardSendMode {
+    AUTOMATIC,
+    EXPLICIT;
+
+    companion object {
+        fun fromWire(value: String?): BoardSendMode =
+            entries.firstOrNull { it.name == value } ?: AUTOMATIC
+    }
+}
+
 enum class SyncInterval(@androidx.annotation.StringRes val labelRes: Int) {
     // labelRes points to a localized string resource so both the German
     // and English (system-fallback) locales render correctly. Pre-fix
@@ -275,6 +286,9 @@ object PreferenceKeys {
     // by bleAutoDisconnectSeconds, which transparently migrates the
     // older minutes key on first read if the new key is absent.
     val BLE_AUTO_DISCONNECT_SECONDS = intPreferencesKey("ble_auto_disconnect_seconds")
+    val BOARD_SEND_MODE = stringPreferencesKey("board_send_mode")
+    fun lastUsedBoardAddress(brand: BoardBrand) =
+        stringPreferencesKey("last_used_board_address_${brand.wireValue}")
     val BOARD_ANGLE = intPreferencesKey("board_angle")
     val BOARD_MIN_GRADE = intPreferencesKey("board_min_grade")
     val BOARD_MAX_GRADE = intPreferencesKey("board_max_grade")
@@ -312,6 +326,8 @@ object PreferenceKeys {
     val LAST_CLIMB_UUID = stringPreferencesKey("last_climb_uuid")
     val LAST_CLIMB_ANGLE = intPreferencesKey("last_climb_angle")
     val LAST_CLIMB_TIMESTAMP = longPreferencesKey("last_climb_timestamp")
+    val LAST_CLIMB_PROJECTION_SURVIVES_DISCONNECT =
+        booleanPreferencesKey("last_climb_projection_survives_disconnect")
     val CRASH_REPORT_OPT_IN = booleanPreferencesKey("crash_report_opt_in")
     val LAST_ANNOUNCEMENT_CHECK = stringPreferencesKey("last_announcement_check")
     val ANNOUNCEMENTS_ENABLED = booleanPreferencesKey("announcements_enabled")
@@ -799,6 +815,33 @@ class UserPreferences(
         }
     }
 
+    val boardSendMode: Flow<BoardSendMode> = dataStore.data.map { prefs ->
+        BoardSendMode.fromWire(prefs[PreferenceKeys.BOARD_SEND_MODE])
+    }
+
+    suspend fun setBoardSendMode(mode: BoardSendMode) {
+        dataStore.edit { prefs ->
+            prefs[PreferenceKeys.BOARD_SEND_MODE] = mode.name
+        }
+    }
+
+    /** Physical controller most recently connected successfully, per board family. */
+    val lastUsedBoardAddresses: Flow<Map<BoardBrand, String>> = dataStore.data.map { prefs ->
+        BoardBrand.entries
+            .asSequence()
+            .filter { it.isInteractive }
+            .mapNotNull { brand ->
+                prefs[PreferenceKeys.lastUsedBoardAddress(brand)]?.let { brand to it }
+            }
+            .toMap()
+    }
+
+    suspend fun setLastUsedBoardAddress(brand: BoardBrand, address: String) {
+        dataStore.edit { prefs ->
+            prefs[PreferenceKeys.lastUsedBoardAddress(brand)] = address
+        }
+    }
+
     suspend fun resetLedColors() {
         dataStore.edit { prefs ->
             prefs.remove(PreferenceKeys.LED_COLOR_START)
@@ -1001,12 +1044,21 @@ class UserPreferences(
     val lastClimbTimestamp: Flow<Long> = dataStore.data.map {
         it[PreferenceKeys.LAST_CLIMB_TIMESTAMP] ?: 0L
     }
+    val lastClimbProjectionSurvivesDisconnect: Flow<Boolean> = dataStore.data.map {
+        it[PreferenceKeys.LAST_CLIMB_PROJECTION_SURVIVES_DISCONNECT] ?: true
+    }
 
-    suspend fun setLastClimb(uuid: String, angle: Int) {
+    suspend fun setLastClimb(
+        uuid: String,
+        angle: Int,
+        projectionSurvivesDisconnect: Boolean = true,
+    ) {
         dataStore.edit {
             it[PreferenceKeys.LAST_CLIMB_UUID] = uuid
             it[PreferenceKeys.LAST_CLIMB_ANGLE] = angle
             it[PreferenceKeys.LAST_CLIMB_TIMESTAMP] = System.currentTimeMillis()
+            it[PreferenceKeys.LAST_CLIMB_PROJECTION_SURVIVES_DISCONNECT] =
+                projectionSurvivesDisconnect
         }
     }
 

@@ -10,6 +10,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.cruxcoach.android.data.DarkModeSetting
+import com.cruxcoach.android.data.BoardSendMode
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.data.SyncInterval
 import androidx.compose.ui.res.stringResource
@@ -154,6 +155,49 @@ internal fun BoardModelSection(
         )
         TextButton(onClick = onChangeModel) {
             Text(stringResource(R.string.settings_board_model_change), color = OrangeAccent)
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun BoardSendModeSection(
+    mode: BoardSendMode,
+    onModeChange: (BoardSendMode) -> Unit,
+) {
+    Text(
+        stringResource(R.string.settings_board_send_mode_title),
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.Bold,
+    )
+    Text(
+        stringResource(R.string.settings_board_send_mode_desc),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+
+    SingleChoiceSegmentedButtonRow(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("settings_board_send_mode"),
+    ) {
+        BoardSendMode.entries.forEachIndexed { index, option ->
+            SegmentedButton(
+                selected = mode == option,
+                onClick = { onModeChange(option) },
+                shape = SegmentedButtonDefaults.itemShape(index, BoardSendMode.entries.size),
+                label = {
+                    Text(
+                        stringResource(
+                            if (option == BoardSendMode.AUTOMATIC) {
+                                R.string.settings_board_send_mode_automatic
+                            } else {
+                                R.string.settings_board_send_mode_explicit
+                            },
+                        ),
+                    )
+                },
+            )
         }
     }
 }

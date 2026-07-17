@@ -48,10 +48,10 @@ data class GymWallOption(
 const val MOONBOARD_NO_SIZE = 0
 
 /** Most-likely-first ordering for the unresolved MoonBoard variant list, keyed
- *  by layout_id: 2016 (modal) → Masters 2019 → Masters 2017 → 2024 → Mini.
+ *  by layout_id: current full-size boards first, then Mini and legacy 2010.
  *  Drives the gym picker's variant order + recommended flag (FEAT-007). */
 private val MOONBOARD_VARIANT_RANK: Map<Long, Int> =
-    mapOf(2L to 0, 5L to 1, 4L to 2, 3L to 3, 6L to 4)
+    mapOf(2L to 0, 5L to 1, 4L to 2, 3L to 3, 7L to 4, 6L to 5, 1L to 6)
 
 data class GymBoardPickerState(
     /** False while no location data is on the device — drives the sheet's
@@ -295,7 +295,7 @@ class GymBoardPickerViewModel @Inject constructor(
             )
         }
         // Unresolved: offer every variant, most-likely first, with the modal
-        // 2016 set flagged recommended — a cold 1-of-5 becomes confirm/correct.
+        // 2016 set flagged recommended — a cold 1-of-7 becomes confirm/correct.
         return MoonBoardVariant.entries
             .sortedBy { MOONBOARD_VARIANT_RANK[it.layoutId] ?: Int.MAX_VALUE }
             .mapIndexed { index, variant ->

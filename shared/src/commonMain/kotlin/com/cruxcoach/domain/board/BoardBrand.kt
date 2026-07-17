@@ -142,26 +142,21 @@ enum class BoardBrand(val wireValue: String) {
             entries.firstOrNull { it.wireValue == value }
 
         /**
-         * Derive the board family from a layout id — the single source of
-         * truth for "which board does this layout belong to". MoonBoard
-         * variant layouts (2/4/5/6 via [MoonBoardVariant.fromLayoutId]) →
-         * [MOONBOARD]; everything else (Kilter Original 1, Homewall 8, …) →
-         * [KILTER]. Used wherever only a layout_id is in hand and the brand
-         * must be inferred rather than threaded through — notably the
-         * local-draft insert and community-climb ingest write paths, so an
-         * authored or received MoonBoard climb lands with the right
-         * `board_brand` automatically.
+         * Best-effort legacy inference when only a layout id is available.
+         * MoonBoard layouts 2/3/4/5/6/7 resolve to [MOONBOARD]. Layout 1 is
+         * shared by Kilter Original and MoonBoard 2010, so it intentionally
+         * keeps the historical [KILTER] default. Any MoonBoard-2010 write must
+         * thread its explicit brand, as current authoring/publish paths do.
          *
-         * NOTE: this only disambiguates Kilter vs MoonBoard. The Aurora-family
-         * boards (Tension, Grasshopper, Decoy, So iLL, Touchstone) reuse low
-         * layout-ids that OVERLAP Kilter's, so a layout_id alone can't tell
-         * them apart — they would resolve to [KILTER] here. Any Aurora-family
-         * write path must therefore thread the active board's brand explicitly
-         * instead of calling this — which the draft-insert (insertLocalDraft)
-         * and publish (buildCommunityClimbEvent) paths do, so authoring works
-         * correctly for every interactive board.
+         * The same limitation already applies to Aurora-family boards whose
+         * low layout ids overlap Kilter. Prefer explicit [BoardBrand] at every
+         * persistence and wire boundary; this helper exists for old defaults.
          */
         fun fromLayoutId(layoutId: Long): BoardBrand =
-            if (MoonBoardVariant.fromLayoutId(layoutId) != null) MOONBOARD else KILTER
+            if (layoutId != 1L && MoonBoardVariant.fromLayoutId(layoutId) != null) {
+                MOONBOARD
+            } else {
+                KILTER
+            }
     }
 }

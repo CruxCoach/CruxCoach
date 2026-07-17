@@ -46,10 +46,12 @@ data class NearbyClimb(
     val lastSeenMs: Long,
     val deviceAddress: String,
     val connectedOnly: Boolean = false,
-    /** True when the sender has disconnected but the climb LEDs are still on the board. */
+    /** True when the sender has disconnected and this is its last projection metadata. */
     val isLastClimb: Boolean = false,
     /** Whether this device accepts disconnect requests (from BoardConnected flag). */
-    val acceptsDisconnectRequests: Boolean = true
+    val acceptsDisconnectRequests: Boolean = true,
+    /** Whether the board family retains this projection after the sender disconnects. */
+    val projectionSurvivesDisconnect: Boolean = true,
 )
 
 class NearbyClimbScanner(private val context: Context) {
@@ -57,6 +59,7 @@ class NearbyClimbScanner(private val context: Context) {
     companion object {
         private const val TAG = "CruxBLE/Scanner"
         private const val STALE_TIMEOUT_MS = 3_000L
+        private const val NON_RETAINED_LAST_TIMEOUT_MS = 30_000L
         private const val SESSION_STALE_TIMEOUT_MS = 5_000L  // Bug 3: 5s avoids session flicker
         private const val CLEANUP_INTERVAL_MS = 1_000L
         private const val DEFAULT_RSSI_THRESHOLD = -82  // Bug 6: -82 filters weak signal noise
@@ -151,7 +154,10 @@ class NearbyClimbScanner(private val context: Context) {
                     val (uuid, angle, last) = when (payload) {
                         is NearbyPayload.ClimbData -> Triple(payload.climbUuid, payload.angle, false)
                         is NearbyPayload.LastClimb -> Triple(payload.climbUuid, payload.angle, true)
-                        else -> return // unreachable
+                    }
+                    val projectionSurvivesDisconnect = when (payload) {
+                        is NearbyPayload.ClimbData -> payload.projectionSurvivesDisconnect
+                        is NearbyPayload.LastClimb -> payload.projectionSurvivesDisconnect
                     }
                     val type = if (last) "LastClimb" else "ClimbData"
                     Log.d(TAG, "RECV $type from ${result.device.address} RSSI=$rssi uuid=${uuid.take(8)}... angle=$angle")
@@ -162,7 +168,8 @@ class NearbyClimbScanner(private val context: Context) {
                         rssi = rssi,
                         lastSeenMs = now,
                         deviceAddress = result.device.address,
-                        isLastClimb = last
+                        isLastClimb = last,
+                        projectionSurvivesDisconnect = projectionSurvivesDisconnect,
                     )
                     synchronized(rawEntries) {
                         convertOrRemoveStale(now, result.device.address)
@@ -171,7 +178,7 @@ class NearbyClimbScanner(private val context: Context) {
                             val lastClimbAddrs = rawEntries.keys.filter { rawEntries[it]!!.isLastClimb }
                             lastClimbAddrs.forEach { rawEntries.remove(it) }
                         } else {
-                            // LastClimb: only one can be visible — remove OTHER devices' LastClimbs
+                            // A new LastClimb supersedes older board-state metadata.
                             val otherLastClimbs = rawEntries.keys.filter {
                                 rawEntries[it]!!.isLastClimb && it != result.device.address
                             }
@@ -442,16 +449,25 @@ class NearbyClimbScanner(private val context: Context) {
     }
 
     /**
-     * Converts stale ClimbData entries to LastClimb (LEDs still on the board) and removes
-     * stale BoardConnected entries. Must be called inside synchronized(rawEntries).
+     * Converts stale ClimbData entries to LastClimb and removes stale
+     * BoardConnected entries. Must be called inside synchronized(rawEntries).
      *
      * When a sender's app is killed without sending GONE, the advertising simply stops.
-     * The LEDs remain on the physical board, so we preserve the climb as a LastClimb entry
-     * instead of removing it.
+     * Retaining controllers keep their LEDs on; volatile controllers such as a
+     * stock MoonBoard keep only short-lived resend metadata.
      */
     private fun convertOrRemoveStale(now: Long, excludeAddress: String? = null) {
-        // Bug 4: LastClimb entries are NEVER removed by stale cleanup.
-        // They persist until replaced by: GONE signal, new ClimbData, new LastClimb, or app restart.
+        // Retained LastClimb entries persist until replaced by GONE/new data/app
+        // restart. Non-retained history expires even if the sender was killed
+        // before it could send GONE.
+        rawEntries.entries
+            .filter { (_, entry) ->
+                entry.isLastClimb &&
+                    !entry.projectionSurvivesDisconnect &&
+                    now - entry.lastSeenMs > NON_RETAINED_LAST_TIMEOUT_MS
+            }
+            .map { it.key }
+            .forEach { rawEntries.remove(it) }
 
         // Convert stale active entries to LastClimb or remove
         val stale = rawEntries.entries.filter { (addr, entry) ->
@@ -467,7 +483,7 @@ class NearbyClimbScanner(private val context: Context) {
 
         if (toConvert.isNotEmpty()) {
             // The board can only show one climb at a time — keep only the most recently seen one.
-            // Remove all existing LastClimb entries first (they were replaced on the physical board).
+            // A newly observed active climb makes older LastClimb metadata obsolete.
             rawEntries.keys.filter { rawEntries[it]!!.isLastClimb }
                 .forEach { rawEntries.remove(it) }
             // Keep only the most recently active entry as LastClimb
@@ -503,7 +519,8 @@ class NearbyClimbScanner(private val context: Context) {
         val current = _nearbyClimbs.value
         if (deduped.size == current.size && deduped.zip(current).all { (a, b) ->
             a.climbUuid == b.climbUuid && a.angle == b.angle &&
-            a.isLastClimb == b.isLastClimb && a.connectedOnly == b.connectedOnly
+            a.isLastClimb == b.isLastClimb && a.connectedOnly == b.connectedOnly &&
+            a.projectionSurvivesDisconnect == b.projectionSurvivesDisconnect
         }) return
         _nearbyClimbs.value = deduped
         val sessionCount = rawSessionEntries.size

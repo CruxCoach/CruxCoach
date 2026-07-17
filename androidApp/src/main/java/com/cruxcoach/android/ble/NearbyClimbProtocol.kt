@@ -3,9 +3,17 @@ package com.cruxcoach.android.ble
 import android.util.Log
 
 sealed class NearbyPayload {
-    data class ClimbData(val climbUuid: String, val angle: Int) : NearbyPayload()
-    /** Like ClimbData, but the sender is no longer connected — LEDs still visible on the board. */
-    data class LastClimb(val climbUuid: String, val angle: Int) : NearbyPayload()
+    data class ClimbData(
+        val climbUuid: String,
+        val angle: Int,
+        val projectionSurvivesDisconnect: Boolean = true,
+    ) : NearbyPayload()
+    /** The sender's last projection. [projectionSurvivesDisconnect] says whether its LEDs remain on. */
+    data class LastClimb(
+        val climbUuid: String,
+        val angle: Int,
+        val projectionSurvivesDisconnect: Boolean = true,
+    ) : NearbyPayload()
     data object DisconnectRequest : NearbyPayload()
     /** Board connected without a specific climb. Bit 0 of flags byte = acceptsDisconnectRequests. */
     data class BoardConnected(val acceptsDisconnect: Boolean = true) : NearbyPayload()
@@ -37,35 +45,68 @@ object NearbyClimbProtocol {
     private const val TYPE_LAST_CLIMB_STRING: Byte = 0x07
     private const val TYPE_SESSION: Byte = 0x08
     private const val TYPE_DISCONNECT_RESPONSE: Byte = 0x09
-
-    // UUID binary format: [4 magic][1 type=0x01][1 angle+flag][16 uuid] = 22 bytes
+    // UUID format: [4 magic][1 type][1 angle+format][16 uuid][optional 1 flags].
+    // The optional byte is only emitted for volatile projections; old readers
+    // consume the stable 22-byte prefix and ignore it.
     private const val UUID_PAYLOAD_SIZE = 22
     private const val UUID_HYPHEN_FLAG = 0x80 // bit 7 of angle byte
+    private const val PROJECTION_RETAINED_FLAG = 0x01
 
-    // String format: [4 magic][1 type=0x03][1 angle][1 len][N utf8] = 7+N bytes
+    // String format: [4 magic][1 type][1 angle][1 len+volatile flag][N utf8].
     private const val STRING_HEADER_SIZE = 7
     private const val MAX_STRING_ID_LENGTH = 17 // 24 budget - 7 header
+    private const val STRING_VOLATILE_FLAG = 0x80
 
     // Disconnect: [4 magic][1 type=0x02][1 zero] = 6 bytes
     private const val DISCONNECT_SIZE = 6
 
-    fun encodeClimbData(climbId: String, angle: Int): ByteArray {
+    fun encodeClimbData(
+        climbId: String,
+        angle: Int,
+        projectionSurvivesDisconnect: Boolean = true,
+    ): ByteArray {
         val uuid = parseUuid(climbId)
         return if (uuid != null) {
             val hasHyphens = climbId.contains('-')
-            encodeAsUuid(uuid, angle, hasHyphens, TYPE_CLIMB_UUID)
+            encodeAsUuid(
+                uuid,
+                angle,
+                hasHyphens,
+                TYPE_CLIMB_UUID,
+                projectionSurvivesDisconnect,
+            )
         } else {
-            encodeAsString(climbId, angle, TYPE_CLIMB_STRING)
+            encodeAsString(
+                climbId,
+                angle,
+                TYPE_CLIMB_STRING,
+                projectionSurvivesDisconnect,
+            )
         }
     }
 
-    fun encodeLastClimb(climbId: String, angle: Int): ByteArray {
+    fun encodeLastClimb(
+        climbId: String,
+        angle: Int,
+        projectionSurvivesDisconnect: Boolean = true,
+    ): ByteArray {
         val uuid = parseUuid(climbId)
         return if (uuid != null) {
             val hasHyphens = climbId.contains('-')
-            encodeAsUuid(uuid, angle, hasHyphens, TYPE_LAST_CLIMB_UUID)
+            encodeAsUuid(
+                uuid,
+                angle,
+                hasHyphens,
+                TYPE_LAST_CLIMB_UUID,
+                projectionSurvivesDisconnect,
+            )
         } else {
-            encodeAsString(climbId, angle, TYPE_LAST_CLIMB_STRING)
+            encodeAsString(
+                climbId,
+                angle,
+                TYPE_LAST_CLIMB_STRING,
+                projectionSurvivesDisconnect,
+            )
         }
     }
 
@@ -171,8 +212,17 @@ object NearbyClimbProtocol {
 
     // --- UUID binary encoding (16 bytes) ---
 
-    private fun encodeAsUuid(uuid: java.util.UUID, angle: Int, hasHyphens: Boolean, type: Byte): ByteArray {
-        val buf = ByteArray(UUID_PAYLOAD_SIZE)
+    private fun encodeAsUuid(
+        uuid: java.util.UUID,
+        angle: Int,
+        hasHyphens: Boolean,
+        type: Byte,
+        projectionSurvivesDisconnect: Boolean,
+    ): ByteArray {
+        // Volatile projections append one flags byte. Legacy decoders require
+        // only the first 22 bytes and ignore the extension, so they continue
+        // to discover MoonBoard users instead of dropping an unknown type.
+        val buf = ByteArray(UUID_PAYLOAD_SIZE + if (projectionSurvivesDisconnect) 0 else 1)
         MAGIC.copyInto(buf, 0)
         buf[4] = type
         val angleBits = angle.coerceIn(0, 70)
@@ -183,6 +233,9 @@ object NearbyClimbProtocol {
         for (i in 0 until 8) {
             buf[6 + i] = (msb shr (56 - i * 8)).toByte()
             buf[14 + i] = (lsb shr (56 - i * 8)).toByte()
+        }
+        if (!projectionSurvivesDisconnect) {
+            buf[UUID_PAYLOAD_SIZE] = 0 // bit 0 clear = projection not retained
         }
         return buf
     }
@@ -204,20 +257,35 @@ object NearbyClimbProtocol {
         } else {
             uuid.toString().replace("-", "").uppercase()
         }
-        return if (last) NearbyPayload.LastClimb(formatted, angle)
-        else NearbyPayload.ClimbData(formatted, angle)
+        val projectionSurvivesDisconnect = data.size == UUID_PAYLOAD_SIZE ||
+            (data[UUID_PAYLOAD_SIZE].toInt() and PROJECTION_RETAINED_FLAG) != 0
+        return if (last) {
+            NearbyPayload.LastClimb(formatted, angle, projectionSurvivesDisconnect)
+        } else {
+            NearbyPayload.ClimbData(formatted, angle, projectionSurvivesDisconnect)
+        }
     }
 
     // --- UTF-8 string encoding (for numeric IDs) ---
 
-    private fun encodeAsString(climbId: String, angle: Int, type: Byte): ByteArray {
+    private fun encodeAsString(
+        climbId: String,
+        angle: Int,
+        type: Byte,
+        projectionSurvivesDisconnect: Boolean,
+    ): ByteArray {
         val idBytes = climbId.toByteArray(Charsets.UTF_8)
         val len = idBytes.size.coerceAtMost(MAX_STRING_ID_LENGTH)
         val buf = ByteArray(STRING_HEADER_SIZE + len)
         MAGIC.copyInto(buf, 0)
         buf[4] = type
         buf[5] = angle.coerceIn(0, 70).toByte()
-        buf[6] = len.toByte()
+        // Bit 7 is outside the valid length range (max 17), so it can mark a
+        // volatile projection without spending another advertising byte.
+        // Legacy decoders coerce the flagged length to the available bytes and
+        // therefore still recover the full climb ID.
+        val volatileFlag = if (projectionSurvivesDisconnect) 0 else STRING_VOLATILE_FLAG
+        buf[6] = (len or volatileFlag).toByte()
         idBytes.copyInto(buf, STRING_HEADER_SIZE, 0, len)
         return buf
     }
@@ -225,11 +293,16 @@ object NearbyClimbProtocol {
     private fun decodeString(data: ByteArray, last: Boolean): NearbyPayload? {
         if (data.size < STRING_HEADER_SIZE) return null
         val angle = data[5].toInt() and 0xFF
-        val idLen = (data[6].toInt() and 0xFF).coerceAtMost(data.size - STRING_HEADER_SIZE)
+        val rawLength = data[6].toInt() and 0xFF
+        val projectionSurvivesDisconnect = (rawLength and STRING_VOLATILE_FLAG) == 0
+        val idLen = (rawLength and 0x7F).coerceAtMost(data.size - STRING_HEADER_SIZE)
         if (idLen == 0) return null
         val climbId = String(data, STRING_HEADER_SIZE, idLen, Charsets.UTF_8)
-        return if (last) NearbyPayload.LastClimb(climbId, angle)
-        else NearbyPayload.ClimbData(climbId, angle)
+        return if (last) {
+            NearbyPayload.LastClimb(climbId, angle, projectionSurvivesDisconnect)
+        } else {
+            NearbyPayload.ClimbData(climbId, angle, projectionSurvivesDisconnect)
+        }
     }
 
     // --- Helpers ---

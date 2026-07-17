@@ -2,6 +2,7 @@ package com.cruxcoach.android.ble
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -101,6 +102,39 @@ class NearbyClimbProtocolTest {
         assertIs<NearbyPayload.LastClimb>(decoded)
         assertEquals(climbId, decoded.climbUuid)
         assertEquals(55, decoded.angle)
+    }
+
+    @Test
+    fun `volatile UUID climb round-trips without claiming disconnect retention`() {
+        val uuid = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        val encoded = NearbyClimbProtocol.encodeClimbData(
+            uuid,
+            40,
+            projectionSurvivesDisconnect = false,
+        )
+        val decoded = NearbyClimbProtocol.decode(encoded)
+
+        assertIs<NearbyPayload.ClimbData>(decoded)
+        assertEquals(uuid, decoded.climbUuid)
+        assertFalse(decoded.projectionSurvivesDisconnect)
+        assertEquals(0x01, encoded[4].toInt()) // legacy ClimbData type remains discoverable
+        assertEquals(23, encoded.size) // 22-byte legacy payload + one extension flag
+    }
+
+    @Test
+    fun `volatile string last climb round-trips as resend metadata`() {
+        val encoded = NearbyClimbProtocol.encodeLastClimb(
+            "99887766",
+            40,
+            projectionSurvivesDisconnect = false,
+        )
+        val decoded = NearbyClimbProtocol.decode(encoded)
+
+        assertIs<NearbyPayload.LastClimb>(decoded)
+        assertEquals("99887766", decoded.climbUuid)
+        assertFalse(decoded.projectionSurvivesDisconnect)
+        assertEquals(0x07, encoded[4].toInt()) // legacy LastClimb type remains discoverable
+        assertEquals(8, encoded[6].toInt() and 0x7F)
     }
 
     // ── DisconnectRequest ────────────────────────────────────────
