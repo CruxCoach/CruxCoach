@@ -11,6 +11,9 @@ import com.cruxcoach.android.ble.BlePermissionHelper
 import com.cruxcoach.android.ble.ClimbBleAdvertiser
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.ble.DiscoveredBoard
+import com.cruxcoach.android.ble.BoardConnectionCapacity
+import com.cruxcoach.android.ble.BoardConnectionOwner
+import com.cruxcoach.android.ble.BoardControllerProfiles
 import com.cruxcoach.android.ble.NearbyClimbScanner
 import com.cruxcoach.android.ble.NearbySession
 import com.cruxcoach.android.data.BoardSessionManager
@@ -44,6 +47,7 @@ data class BleConnectionState(
     val connectionState: ConnectionState = ConnectionState.DISCONNECTED,
     val connectedBoardName: String? = null,
     val connectedBoardBrand: BoardBrand? = null,
+    val connectedBoard: DiscoveredBoard? = null,
     val isRequestingDisconnect: Boolean = false,
     val disconnectRequestNoResponse: Boolean = false,
     val climbSharingEnabled: Boolean = false,
@@ -110,7 +114,16 @@ class BleConnectionViewModel @Inject constructor(
         }
         viewModelScope.safeLaunch(TAG) {
             bleConnection.connectionState.collect { connState ->
-                _state.update { it.copy(connectionState = connState) }
+                _state.update {
+                    it.copy(
+                        connectionState = connState,
+                        connectedBoard = if (connState == ConnectionState.DISCONNECTED) {
+                            null
+                        } else {
+                            bleConnection.connectedBoard
+                        },
+                    )
+                }
                 // Auto-advertise "board connected" so nearby users can send disconnect requests
                 if (connState == ConnectionState.CONNECTED) {
                     pendingBoard?.let { board ->
@@ -119,8 +132,13 @@ class BleConnectionViewModel @Inject constructor(
                     }
                     suppressDisconnectDialog = false
                     if (_state.value.climbSharingEnabled) {
+                        val capacity = BoardControllerProfiles.forBoard(bleConnection.connectedBoard)
+                            .connectionCapacity
                         climbAdvertiser.advertiseConnected(
-                            acceptsDisconnect = _state.value.allowRemoteDisconnect
+                            acceptsDisconnect = _state.value.allowRemoteDisconnect &&
+                                capacity == BoardConnectionCapacity.SINGLE,
+                            supportsConcurrentConnections =
+                                capacity == BoardConnectionCapacity.MULTIPLE,
                         )
                     }
                 } else if (connState == ConnectionState.DISCONNECTED) {
@@ -189,7 +207,9 @@ class BleConnectionViewModel @Inject constructor(
                 val s = _state.value
                 val now = System.currentTimeMillis()
                 if (s.connectionState != ConnectionState.CONNECTED) return@collect
-                if (!s.allowRemoteDisconnect) {
+                val isExclusive = BoardControllerProfiles.forBoard(s.connectedBoard)
+                    .connectionCapacity == BoardConnectionCapacity.SINGLE
+                if (!s.allowRemoteDisconnect || !isExclusive) {
                     // Auto-reject: broadcast rejection so the sender knows immediately
                     climbAdvertiser.advertiseDisconnectResponse(accepted = false)
                     return@collect
@@ -228,6 +248,9 @@ class BleConnectionViewModel @Inject constructor(
                         newRole,
                         previousQueueRole,
                         _state.value.connectionState,
+                        BoardControllerProfiles.forBoard(bleConnection.connectedBoard)
+                            .connectionCapacity,
+                        bleConnection.hasOtherKeepAliveOwners(BoardConnectionOwner.SESSION),
                     )
                 ) {
                     Log.d(TAG, "Participant role acquired — releasing local board connection")
@@ -326,9 +349,8 @@ class BleConnectionViewModel @Inject constructor(
      * brand mismatch that never explains the connection itself is wrong.
      */
     private suspend fun preferActiveBrand(boards: List<DiscoveredBoard>): List<DiscoveredBoard> {
-        val realBoards = boards.filterNot { it.isCruxRelay }
         val activeBrand = BoardBrand.fromWire(userPreferences.boardBrand.first())
-        return realBoards.filter { it.boardBrand == activeBrand }.ifEmpty { realBoards }
+        return boards.filter { it.boardBrand == activeBrand }.ifEmpty { boards }
     }
 
     /**
@@ -386,7 +408,6 @@ class BleConnectionViewModel @Inject constructor(
     }
 
     fun connectToBoard(board: DiscoveredBoard) {
-        if (board.isCruxRelay) return
         if (bleConnection.connectionState.value != ConnectionState.DISCONNECTED) return
         pendingBoard = board
         bleScanner.stopScan()
@@ -463,6 +484,13 @@ class BleConnectionViewModel @Inject constructor(
     }
 
     fun acceptRemoteDisconnect() {
+        if (BoardControllerProfiles.forBoard(_state.value.connectedBoard)
+                .connectionCapacity != BoardConnectionCapacity.SINGLE
+        ) {
+            dismissDisconnectRequest()
+            climbAdvertiser.advertiseDisconnectResponse(accepted = false)
+            return
+        }
         _state.update { it.copy(showDisconnectRequestDialog = false) }
         suppressDisconnectDialog = true
         disconnectCooldownUntil = System.currentTimeMillis() + 30_000L
@@ -494,7 +522,9 @@ class BleConnectionViewModel @Inject constructor(
         autoConnectJob = viewModelScope.safeLaunch(TAG) {
             Log.d(TAG, "startAutoConnectForSession: waiting for board to become vacant")
             nearbyClimbScanner.nearbyClimbs.first { climbs ->
-                val vacant = climbs.none { !it.isLastClimb }
+                val vacant = climbs.none {
+                    !it.isLastClimb && !it.supportsConcurrentConnections
+                }
                 Log.d(TAG, "startAutoConnectForSession: nearbyClimbs=${climbs.size}, " +
                     "activeClimbs=${climbs.count { !it.isLastClimb }}, vacant=$vacant")
                 vacant

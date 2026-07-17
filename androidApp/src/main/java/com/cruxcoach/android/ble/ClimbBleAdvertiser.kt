@@ -66,6 +66,8 @@ class ClimbBleAdvertiser(
 
     private var activeClimb: ActiveClimb? = null
     private var boardConnected: Boolean = false
+    private var acceptsDisconnectRequests: Boolean = true
+    private var supportsConcurrentConnections: Boolean = false
 
     /** True when the local user has sent a climb to the board and is still connected. */
     fun hasActiveClimb(): Boolean = activeClimb != null
@@ -193,6 +195,8 @@ class ClimbBleAdvertiser(
             climbUuid,
             angle,
             projectionSurvivesDisconnect,
+            acceptsDisconnectRequests,
+            supportsConcurrentConnections,
         )
         val data = buildAdvertiseData(payload)
         Log.d(TAG, "START ClimbData uuid=${climbUuid.take(8)} angle=$angle sharing=$sharingEnabled")
@@ -205,8 +209,13 @@ class ClimbBleAdvertiser(
      * climb is currently being advertised (climb has higher priority).
      */
     @SuppressLint("MissingPermission")
-    fun advertiseConnected(acceptsDisconnect: Boolean = true): String {
+    fun advertiseConnected(
+        acceptsDisconnect: Boolean = acceptsDisconnectRequests,
+        supportsConcurrentConnections: Boolean = this.supportsConcurrentConnections,
+    ): String {
         boardConnected = true
+        acceptsDisconnectRequests = acceptsDisconnect
+        this.supportsConcurrentConnections = supportsConcurrentConnections
         if (suppressClimbAdvertising) {
             Log.d(TAG, "advertiseConnected: suppressed (session active)")
             return "suppressed (session active)"
@@ -221,7 +230,10 @@ class ClimbBleAdvertiser(
         advertiser ?: return "no advertiser (BT off?)"
         disconnectTimeoutJob?.cancel()
 
-        val payload = NearbyClimbProtocol.encodeBoardConnected(acceptsDisconnect)
+        val payload = NearbyClimbProtocol.encodeBoardConnected(
+            acceptsDisconnect,
+            supportsConcurrentConnections,
+        )
         val data = buildAdvertiseData(payload)
         return updateOrStartAdvertising(data)
     }
@@ -238,7 +250,10 @@ class ClimbBleAdvertiser(
             if (!BlePermissionHelper.hasAdvertisingPermission(context)) return
             advertiser ?: return
             disconnectTimeoutJob?.cancel()
-            val payload = NearbyClimbProtocol.encodeBoardConnected()
+            val payload = NearbyClimbProtocol.encodeBoardConnected(
+                acceptsDisconnectRequests,
+                supportsConcurrentConnections,
+            )
             val data = buildAdvertiseData(payload)
             updateOrStartAdvertising(data)
         } else {
@@ -458,6 +473,12 @@ class ClimbBleAdvertiser(
                 relaySet = null
             }
             relayStartResult?.complete(status)
+        }
+        override fun onAdvertisingEnabled(advertisingSet: AdvertisingSet?, enable: Boolean, status: Int) {
+            if (!enable && relaySet === advertisingSet) {
+                Log.d(TAG, "Relay advertising disabled by controller (client connected?)")
+                relaySet = null
+            }
         }
         override fun onAdvertisingSetStopped(advertisingSet: AdvertisingSet?) { relaySet = null }
     }

@@ -21,20 +21,23 @@ internal object BoardProjectionPolicy {
     fun shouldReleaseBoardAfterHosting(
         hasSuccessor: Boolean,
         projectionSurvivesDisconnect: Boolean,
-    ): Boolean = hasSuccessor || projectionSurvivesDisconnect
+        connectionCapacity: BoardConnectionCapacity,
+        pinnedByAnotherFeature: Boolean = false,
+    ): Boolean = connectionCapacity == BoardConnectionCapacity.SINGLE &&
+        !pinnedByAnotherFeature &&
+        (hasSuccessor || projectionSurvivesDisconnect)
 
     /** Keep a successfully projected MoonBoard climb alive by retaining GATT. */
     fun shouldArmIdleDisconnect(
         seconds: Int,
         connectionState: ConnectionState,
         explicitlySuppressed: Boolean,
-        connectedBrand: BoardBrand?,
-        hasActiveMoonBoardProjection: Boolean,
+        connectionCapacity: BoardConnectionCapacity,
     ): Boolean =
         seconds > 0 &&
             connectionState == ConnectionState.CONNECTED &&
             !explicitlySuppressed &&
-            !(connectedBrand == BoardBrand.MOONBOARD && hasActiveMoonBoardProjection)
+            connectionCapacity == BoardConnectionCapacity.SINGLE
 
     /** MoonBoard climbs carry wire-ready frames instead of Aurora hold rows. */
     fun hasSendablePayload(

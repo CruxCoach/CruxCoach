@@ -10,6 +10,7 @@ import androidx.annotation.StringRes
 import androidx.core.app.NotificationCompat
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ble.BoardBleConnection
+import com.cruxcoach.android.ble.BoardConnectionOwner
 import com.cruxcoach.android.ble.ClimbBleAdvertiser
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.ble.GattConnectionEvent
@@ -24,7 +25,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
@@ -37,7 +37,6 @@ enum class RelayError {
     NAME_SET_FAILED,
     BOARD_LOST,
     UNSUPPORTED_BOARD,
-    SESSION_PARTICIPANT,
 }
 
 data class CruxRelayState(
@@ -58,8 +57,8 @@ data class CruxRelayState(
  * 4488B571 UUID under a transparent [RelayBoardName]. A completed climb is
  * forwarded byte-faithfully to the real board via [BoardBleConnection.sendRawChunks]
  * (last-write-wins; the board's own writeMutex + one send-per-climb keep whole
- * climbs atomic). Raw frames have no CruxCoach climb ID, so a successful write
- * is represented as an external override of the shared queue.
+ * climbs atomic). Queue and relay have independent lifecycles; the narrow
+ * [BoardProjectionCoordinator] notification only prevents stale projection UI.
  *
  * The advertised name is set via the GLOBAL, persistent [android.bluetooth.BluetoothAdapter.setName]
  * (no per-advertiser API), snapshotted to a crash-safe flag so an abrupt death
@@ -73,20 +72,15 @@ class CruxRelayManager(
     private val relayServer: RelayGattServer,
     private val advertiser: ClimbBleAdvertiser,
     private val bleConnection: BoardBleConnection,
-    private val sessionQueueManager: SessionQueueManager,
-    private val sessionGattBridge: SessionGattBridge,
-    private val boardStateManager: BoardStateManager,
+    private val projectionCoordinator: BoardProjectionCoordinator,
 ) {
     companion object {
         private const val TAG = "CruxRelay/Manager"
-        private const val KEEP_ALIVE_OWNER = "relay"
         private const val PREFS = "cruxrelay"
         private const val KEY_NAME_DIRTY = "adapter_name_dirty"
         private const val KEY_ORIGINAL_NAME = "adapter_name_original"
         private const val NAME_PROPAGATE_TIMEOUT_MS = 2_000L
         private const val ADVERTISE_START_TIMEOUT_MS = 3_000L
-        private const val BOARD_RELEASE_TIMEOUT_MS = 5_000L
-        private const val WATCHDOG_IDLE_MS = 5 * 60_000L
         private const val STOPPED_NOTIFICATION_ID = 4402
     }
 
@@ -106,13 +100,6 @@ class CruxRelayManager(
     private var running = false
     private var forwardJob: Job? = null
     private var eventJob: Job? = null
-    private var watchdogJob: Job? = null
-    private var lastActivityMs: Long = 0L
-    // True when the relay auto-started a session for coexistence (§11), so
-    // teardown stops only OUR session — never a user-started one.
-    private var relayStartedSession = false
-    private var pendingHostLabel = ""
-    private var endHostSessionOnStop = false
 
     init {
         // Crash-safe: a previous run may have died with the adapter name still
@@ -130,28 +117,11 @@ class CruxRelayManager(
     }
 
     /** UI entry point — a deliberate user action; [init]'s collector does the rest. */
-    fun enable(hostLabel: String) {
-        pendingHostLabel = hostLabel
-        setEnabled(true)
-    }
+    fun enable() = setEnabled(true)
 
     fun setEnabled(enabled: Boolean) {
         enabledFlow.value = enabled
         if (enabled) _state.update { it.copy(error = null, errorDetail = null) }
-    }
-
-    /** Session-level stop: shut down relay and host queue as one ownership unit. */
-    fun stopRelayAndSession() {
-        endHostSessionOnStop = true
-        if (!running) {
-            if (sessionQueueManager.state.value.role == SessionRole.HOST) {
-                sessionGattBridge.stopSharing()
-                sessionQueueManager.endQueue()
-            }
-            relayStartedSession = false
-            endHostSessionOnStop = false
-        }
-        setEnabled(false)
     }
 
     fun clearError() {
@@ -165,20 +135,18 @@ class CruxRelayManager(
         // stops the relay, so a relayed send never tears itself down.)
         if (enabled && boardState == ConnectionState.CONNECTED && !running) {
             when (BoardRelayPolicy.availability(
-                boardBrand = bleConnection.connectedBoardBrand.value,
-                sessionRole = sessionQueueManager.state.value.role,
+                board = bleConnection.connectedBoard,
             )) {
                 BoardRelayAvailability.AVAILABLE -> startRelay()
-                BoardRelayAvailability.UNSUPPORTED_PROTOCOL ->
+                BoardRelayAvailability.UNSUPPORTED_PROTOCOL,
+                BoardRelayAvailability.MULTI_CONNECT_NOT_NEEDED,
+                BoardRelayAvailability.RELAY_ENDPOINT,
+                ->
                     rejectEnable(RelayError.UNSUPPORTED_BOARD)
-                BoardRelayAvailability.SESSION_PARTICIPANT ->
-                    rejectEnable(RelayError.SESSION_PARTICIPANT)
                 BoardRelayAvailability.NO_BOARD -> Unit
             }
         } else if (running && (!enabled || boardState == ConnectionState.DISCONNECTED)) {
-            // Release the real board only if it's still up (user turned the relay
-            // off = host leaving, §7 ordering); a dropped board is already gone.
-            stopRelay(releaseBoard = boardState != ConnectionState.DISCONNECTED)
+            stopRelay()
             if (boardState == ConnectionState.DISCONNECTED && enabled) {
                 // Board loss while sharing: hard-disable so a later reconnect
                 // never re-activates sharing without a fresh user action, and
@@ -206,7 +174,6 @@ class CruxRelayManager(
             return
         }
         running = true
-        lastActivityMs = System.currentTimeMillis()
 
         // 1) Snapshot + set the transparent adapter name (crash-safe). An
         // unset name would advertise the relay under the phone's own name —
@@ -218,22 +185,9 @@ class CruxRelayManager(
             return
         }
 
-        // 2) Keep the real board link parked and establish the CruxCoach entry
-        // before exposing the emulated board. This prevents the first official-
-        // app write from arriving before the shared queue can represent it.
-        bleConnection.acquireKeepAlive(KEEP_ALIVE_OWNER)
-        if (!sessionQueueManager.state.value.isActive) {
-            sessionQueueManager.startQueue(pendingHostLabel)
-            relayStartedSession = true
-        }
-        if (sessionQueueManager.state.value.role != SessionRole.HOST ||
-            !sessionGattBridge.ensureHostSharing()
-        ) {
-            Log.e(TAG, "CruxCoach host session failed to start")
-            abortStart(RelayError.SERVER_START_FAILED, "session transport")
-            return
-        }
-
+        // 2) Keep the real board link parked while this independent transport
+        // is enabled. Relay never creates or tears down a shared queue.
+        bleConnection.acquireKeepAlive(BoardConnectionOwner.RELAY)
         if (!relayServer.start()) {
             Log.e(TAG, "relay server failed to start")
             abortStart(RelayError.SERVER_START_FAILED, null)
@@ -244,13 +198,10 @@ class CruxRelayManager(
         // write that arrives while there is no collector.
         forwardJob = scope.launch {
             relayServer.climbs.collect { inbound ->
-                lastActivityMs = System.currentTimeMillis()
                 val ok = bleConnection.sendRawChunks(inbound.climb.chunks)
                 if (ok) {
                     advertiser.clearActiveClimb()
-                    sessionQueueManager.markExternalBoardWrite()
-                    runCatching { boardStateManager.clearLastClimb() }
-                        .onFailure { Log.w(TAG, "failed to clear persisted climb after relay write", it) }
+                    projectionCoordinator.onExternalBoardWrite()
                 } else {
                     Log.w(TAG, "sendRawChunks failed for a relayed climb")
                 }
@@ -258,28 +209,19 @@ class CruxRelayManager(
         }
         eventJob = scope.launch {
             relayServer.connectionEvents.collect { event ->
-                if (event is GattConnectionEvent.Connected) {
-                    lastActivityMs = System.currentTimeMillis()
-                }
                 _state.update { it.copy(clientCount = relayServer.getConnectedCount()) }
+                if (event is GattConnectionEvent.Connected) {
+                    // A connectable legacy advertising set may stop after one
+                    // connection. Restart it so further clients can join the
+                    // same relay without queue semantics.
+                    restartRelayAdvertising()
+                }
             }
         }
 
-        val advResult = advertiser.startRelayAdvertising()
-        if (advResult != "started" && advResult != "updated") {
-            Log.e(TAG, "relay advertising failed: $advResult")
-            abortStart(RelayError.ADVERTISE_FAILED, advResult)
-            return
-        }
-        // "started" only means the request was ACCEPTED — the real result
-        // arrives async in onAdvertisingSetStarted. Await it (bounded) so a
-        // controller-side failure surfaces instead of a green sharing card.
-        val advStatus = withTimeoutOrNull(ADVERTISE_START_TIMEOUT_MS) {
-            advertiser.awaitRelayAdvertisingStart()
-        }
-        if (advStatus != AdvertisingSetCallback.ADVERTISE_SUCCESS) {
-            Log.e(TAG, "relay advertising did not start: status=$advStatus")
-            abortStart(RelayError.ADVERTISE_FAILED, advStatus?.let { "status=$it" } ?: "timeout")
+        val advertisingFailure = startRelayAdvertisingAndAwait()
+        if (advertisingFailure != null) {
+            abortStart(RelayError.ADVERTISE_FAILED, advertisingFailure)
             return
         }
         _state.update { it.copy(advertising = true, advertisedName = desired) }
@@ -289,94 +231,60 @@ class CruxRelayManager(
         runCatching { CruxRelayService.start(context) }
             .onFailure { Log.e(TAG, "failed to start relay foreground service", it) }
 
-        // 3) Board-loss teardown is handled by the init combine() collector,
-        // which observes connectionState whether or not the relay is running.
-        // Watchdog: auto-disable after a long idle with no clients.
-        watchdogJob = scope.launch {
-            while (running) {
-                delay(WATCHDOG_IDLE_MS / 3)
-                val idle = System.currentTimeMillis() - lastActivityMs
-                val hasCruxCoachGuests =
-                    sessionQueueManager.state.value.participantCount > 1
-                if (relayServer.getConnectedCount() == 0 &&
-                    !hasCruxCoachGuests &&
-                    idle >= WATCHDOG_IDLE_MS
-                ) {
-                    Log.d(TAG, "watchdog: idle ${idle}ms, no clients — auto-disabling relay")
-                    // Never silent (§12): the persistent notification vanishes
-                    // with the stop, so leave an auto-dismissible trace.
-                    postStoppedNotification(R.string.relay_stopped_idle)
-                    setEnabled(false)
-                    break
-                }
+        Log.i(TAG, "CruxRelay started as \"$desired\"")
+    }
+
+    private suspend fun startRelayAdvertisingAndAwait(): String? {
+        val result = advertiser.startRelayAdvertising()
+        if (result != "started" && result != "updated") return result
+        val status = withTimeoutOrNull(ADVERTISE_START_TIMEOUT_MS) {
+            advertiser.awaitRelayAdvertisingStart()
+        }
+        return if (status == AdvertisingSetCallback.ADVERTISE_SUCCESS) {
+            null
+        } else {
+            status?.let { "status=$it" } ?: "timeout"
+        }
+    }
+
+    private suspend fun restartRelayAdvertising() {
+        if (!running) return
+        _state.update { it.copy(advertising = false) }
+        val failure = startRelayAdvertisingAndAwait()
+        if (!running) return
+        if (failure == null) {
+            _state.update { it.copy(advertising = true, error = null, errorDetail = null) }
+        } else {
+            Log.e(TAG, "relay re-advertising failed: $failure")
+            _state.update {
+                it.copy(advertising = false, error = RelayError.ADVERTISE_FAILED, errorDetail = failure)
             }
         }
-        Log.i(TAG, "CruxRelay started as \"$desired\"")
     }
 
     /** Failed mid-start: unwind what was set up (board stays connected — the
      *  user is still using it), disable the toggle, surface the error. */
     private suspend fun abortStart(error: RelayError, detail: String?) {
-        stopRelay(releaseBoard = false)
+        stopRelay()
         enabledFlow.value = false
         _state.update { it.copy(enabled = false, error = error, errorDetail = detail) }
     }
 
-    /**
-     * Host-leave ordering (FEAT-044 §7): release the REAL board FIRST so it
-     * re-advertises and the official-app clients' own reconnect finds it, THEN
-     * tear down the relay, THEN restore the adapter name.
-     */
+    /** Stop only the relay transport. The direct board connection remains. */
     @SuppressLint("MissingPermission")
-    private suspend fun stopRelay(releaseBoard: Boolean) {
-        if (!running) {
-            endHostSessionOnStop = false
-            return
-        }
+    private suspend fun stopRelay() {
+        if (!running) return
         running = false
-        // Drain.
         forwardJob?.cancel(); forwardJob = null
         eventJob?.cancel(); eventJob = null
-        watchdogJob?.cancel(); watchdogJob = null
-        val stopPlan = BoardRelayPolicy.stopPlan(
-            relayStartedSession = relayStartedSession,
-            sessionRole = sessionQueueManager.state.value.role,
-            releaseBoardRequested = releaseBoard,
-            endHostSessionRequested = endHostSessionOnStop,
-            hasCruxCoachGuests = sessionQueueManager.state.value.participantCount > 1,
-        )
-        // Stop only the session this relay created. SessionGattBridge owns its
-        // board release/handover, so do not disconnect a second time below.
-        // A failed start passes releaseBoard=false and leaves the user's direct
-        // controller connection intact.
-        if (stopPlan.stopHostSession) {
-            sessionGattBridge.stopSharing(allowBoardRelease = releaseBoard)
-            sessionQueueManager.endQueue()
-            if (releaseBoard) {
-                withTimeoutOrNull(BOARD_RELEASE_TIMEOUT_MS) {
-                    bleConnection.connectionState.first { it == ConnectionState.DISCONNECTED }
-                }
-            }
-        }
-        relayStartedSession = false
-        endHostSessionOnStop = false
-
-        if (stopPlan.releaseBoardDirectly &&
-            bleConnection.connectionState.value != ConnectionState.DISCONNECTED
-        ) {
-            bleConnection.disconnect()
-            withTimeoutOrNull(BOARD_RELEASE_TIMEOUT_MS) {
-                bleConnection.connectionState.first { it == ConnectionState.DISCONNECTED }
-            }
-        }
-        bleConnection.releaseKeepAlive(KEEP_ALIVE_OWNER)
+        bleConnection.releaseKeepAlive(BoardConnectionOwner.RELAY)
 
         advertiser.stopRelayAdvertising()
         relayServer.stop()
 
         restoreAdapterName()
         _state.update { it.copy(advertising = false, clientCount = 0, advertisedName = null) }
-        Log.i(TAG, "CruxRelay stopped (plan=$stopPlan)")
+        Log.i(TAG, "CruxRelay stopped; direct board connection preserved")
     }
 
     /** Final, auto-dismissible "sharing stopped" notification (FEAT-044 §12:

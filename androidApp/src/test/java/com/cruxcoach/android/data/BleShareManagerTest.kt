@@ -107,9 +107,11 @@ class BleShareManagerTest {
     private fun nearbyClimb(
         uuid: String = UUID_A, angle: Int = 40, rssi: Int = -50,
         connectedOnly: Boolean = false, isLastClimb: Boolean = false,
+        acceptsDisconnectRequests: Boolean = true,
         projectionSurvivesDisconnect: Boolean = true,
     ) = NearbyClimb(uuid, angle, rssi, System.currentTimeMillis(), "AA:BB:CC:DD:EE:FF",
         connectedOnly, isLastClimb,
+        acceptsDisconnectRequests = acceptsDisconnectRequests,
         projectionSurvivesDisconnect = projectionSurvivesDisconnect)
 
     private fun session(
@@ -503,6 +505,17 @@ class BleShareManagerTest {
     fun `canRequestDisconnect false when only LastClimb entries`() = runTest {
         sharingEnabledFlow.value = true
         nearbyClimbsFlow.value = listOf(nearbyClimb(UUID_A, isLastClimb = true))
+        advanceUntilIdle()
+
+        assertFalse(manager.uiState.value.canRequestDisconnect)
+    }
+
+    @Test
+    fun `canRequestDisconnect false when active sender rejects handover`() = runTest {
+        sharingEnabledFlow.value = true
+        nearbyClimbsFlow.value = listOf(
+            nearbyClimb(UUID_A, acceptsDisconnectRequests = false),
+        )
         advanceUntilIdle()
 
         assertFalse(manager.uiState.value.canRequestDisconnect)

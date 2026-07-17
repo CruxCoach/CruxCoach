@@ -50,6 +50,8 @@ data class NearbyClimb(
     val isLastClimb: Boolean = false,
     /** Whether this device accepts disconnect requests (from BoardConnected flag). */
     val acceptsDisconnectRequests: Boolean = true,
+    /** True when another client can connect without taking this sender's slot. */
+    val supportsConcurrentConnections: Boolean = false,
     /** Whether the board family retains this projection after the sender disconnects. */
     val projectionSurvivesDisconnect: Boolean = true,
 )
@@ -159,6 +161,14 @@ class NearbyClimbScanner(private val context: Context) {
                         is NearbyPayload.ClimbData -> payload.projectionSurvivesDisconnect
                         is NearbyPayload.LastClimb -> payload.projectionSurvivesDisconnect
                     }
+                    val acceptsDisconnect = when (payload) {
+                        is NearbyPayload.ClimbData -> payload.acceptsDisconnect
+                        is NearbyPayload.LastClimb -> false
+                    }
+                    val supportsConcurrentConnections = when (payload) {
+                        is NearbyPayload.ClimbData -> payload.supportsConcurrentConnections
+                        is NearbyPayload.LastClimb -> false
+                    }
                     val type = if (last) "LastClimb" else "ClimbData"
                     Log.d(TAG, "RECV $type from ${result.device.address} RSSI=$rssi uuid=${uuid.take(8)}... angle=$angle")
                     val now = System.currentTimeMillis()
@@ -169,6 +179,8 @@ class NearbyClimbScanner(private val context: Context) {
                         lastSeenMs = now,
                         deviceAddress = result.device.address,
                         isLastClimb = last,
+                        acceptsDisconnectRequests = acceptsDisconnect,
+                        supportsConcurrentConnections = supportsConcurrentConnections,
                         projectionSurvivesDisconnect = projectionSurvivesDisconnect,
                     )
                     synchronized(rawEntries) {
@@ -198,7 +210,8 @@ class NearbyClimbScanner(private val context: Context) {
                         lastSeenMs = now,
                         deviceAddress = result.device.address,
                         connectedOnly = true,
-                        acceptsDisconnectRequests = payload.acceptsDisconnect
+                        acceptsDisconnectRequests = payload.acceptsDisconnect,
+                        supportsConcurrentConnections = payload.supportsConcurrentConnections,
                     )
                     synchronized(rawEntries) {
                         convertOrRemoveStale(now, result.device.address)

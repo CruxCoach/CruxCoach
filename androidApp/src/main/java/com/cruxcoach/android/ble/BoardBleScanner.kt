@@ -32,9 +32,7 @@ data class DiscoveredBoard(
      *  speaks (Aurora binary vs MoonBoard ASCII). Defaults to KILTER
      *  so existing Aurora call sites are unaffected (FEAT-027). */
     val boardBrand: BoardBrand = BoardBrand.KILTER,
-    /** True if this "board" is actually another CruxCoach user's CruxRelay
-     *  (FEAT-044). Such an entry must NOT be offered as a connectable board —
-     *  the picker renders it as a "join session/playlist" entry instead. */
+    /** True when the endpoint is another CruxCoach user's connectable relay. */
     val isCruxRelay: Boolean = false,
 )
 
@@ -104,16 +102,14 @@ class BoardBleScanner(private val context: Context) {
                 ?: return
             Log.d(TAG, "BLE scan result: name=$name addr=${device.address} rssi=${result.rssi}")
 
-            // Another CruxCoach user's CruxRelay (FEAT-044): tag it so the
-            // picker renders a "join session/playlist" entry instead of
-            // offering it as a connectable board.
             val isRelay = RelayBoardName.isRelayName(name)
-            val board = if (isMoonBoardName(name)) {
+            val boardName = RelayBoardName.unwrap(name)
+            val board = if (isMoonBoardName(boardName)) {
                 // MoonBoard advertises a bare "MoonBoard…" name with no
                 // Aurora #serial@apiLevel suffix. apiLevel is an Aurora
                 // concept and stays 0 for MoonBoard.
                 DiscoveredBoard(
-                    displayName = name,
+                    displayName = boardName,
                     serial = "",
                     apiLevel = 0,
                     address = device.address,
@@ -122,7 +118,7 @@ class BoardBleScanner(private val context: Context) {
                     isCruxRelay = isRelay,
                 )
             } else {
-                val parsed = parseBoardName(name) ?: return
+                val parsed = parseBoardName(boardName) ?: return
                 DiscoveredBoard(
                     displayName = parsed.first,
                     serial = parsed.second,

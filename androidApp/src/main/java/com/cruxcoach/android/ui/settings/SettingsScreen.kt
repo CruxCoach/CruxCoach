@@ -182,6 +182,7 @@ fun SettingsScreen(
             CollapsibleHeader(stringResource(R.string.settings_section_board), boardSettingsExpanded) { boardSettingsExpanded = !boardSettingsExpanded }
             AnimatedVisibility(visible = boardSettingsExpanded) {
                 Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    val activeBoardBrand = BoardBrand.fromWire(state.boardBrand)
                     // FEAT-027: for a MoonBoard show the variant name; else the
                     // Kilter board-size label. (0.1.5 dropped the standalone
                     // Original/Homewall toggle — the picker resolves layout.)
@@ -190,7 +191,7 @@ fun SettingsScreen(
                         // (FEAT-031): MoonBoard shows its variant; an Aurora board
                         // shows its name/variant + size; Kilter shows the size.
                         boardModelName = run {
-                            val brand = BoardBrand.fromWire(state.boardBrand)
+                            val brand = activeBoardBrand
                             when {
                                 brand == BoardBrand.MOONBOARD ->
                                     state.moonBoardVariant?.displayName ?: ""
@@ -209,15 +210,16 @@ fun SettingsScreen(
                     HorizontalDivider()
                     BoardSendModeSection(
                         mode = state.boardSendMode,
-                        boardBrand = BoardBrand.fromWire(state.boardBrand),
+                        boardBrand = activeBoardBrand,
                         onModeChange = viewModel::updateBoardSendMode,
                     )
-                    HorizontalDivider()
-                    BleAutoDisconnectSection(
-                        bleAutoDisconnectSeconds = state.bleAutoDisconnectSeconds,
-                        boardBrand = BoardBrand.fromWire(state.boardBrand),
-                        onAutoDisconnectChange = { viewModel.updateBleAutoDisconnect(it) },
-                    )
+                    if (activeBoardBrand != BoardBrand.MOONBOARD) {
+                        HorizontalDivider()
+                        BleAutoDisconnectSection(
+                            bleAutoDisconnectSeconds = state.bleAutoDisconnectSeconds,
+                            onAutoDisconnectChange = { viewModel.updateBleAutoDisconnect(it) },
+                        )
+                    }
                     HorizontalDivider()
                     ClimbSharingSection(
                         climbSharing = state.climbSharing,

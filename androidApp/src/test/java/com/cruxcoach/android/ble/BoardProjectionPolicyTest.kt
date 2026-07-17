@@ -6,72 +6,83 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BoardProjectionPolicyTest {
-
     @Test
     fun `solo MoonBoard host keeps connection after ending session`() {
         assertFalse(
             BoardProjectionPolicy.shouldReleaseBoardAfterHosting(
                 hasSuccessor = false,
                 projectionSurvivesDisconnect = false,
+                connectionCapacity = BoardConnectionCapacity.MULTIPLE,
             ),
         )
     }
 
     @Test
-    fun `MoonBoard host releases connection for successor`() {
-        assertTrue(
+    fun `multi-connect host stays connected when a queue successor exists`() {
+        assertFalse(
             BoardProjectionPolicy.shouldReleaseBoardAfterHosting(
                 hasSuccessor = true,
                 projectionSurvivesDisconnect = false,
+                connectionCapacity = BoardConnectionCapacity.MULTIPLE,
             ),
         )
     }
 
     @Test
-    fun `retaining controller can always be released after session`() {
+    fun `retaining exclusive controller can be released after session`() {
         assertTrue(
             BoardProjectionPolicy.shouldReleaseBoardAfterHosting(
                 hasSuccessor = false,
                 projectionSurvivesDisconnect = true,
+                connectionCapacity = BoardConnectionCapacity.SINGLE,
             ),
         )
     }
 
     @Test
-    fun `active MoonBoard projection suppresses idle disconnect`() {
+    fun `queue cannot release an exclusive connection pinned by relay`() {
+        assertFalse(
+            BoardProjectionPolicy.shouldReleaseBoardAfterHosting(
+                hasSuccessor = true,
+                projectionSurvivesDisconnect = true,
+                connectionCapacity = BoardConnectionCapacity.SINGLE,
+                pinnedByAnotherFeature = true,
+            ),
+        )
+    }
+
+    @Test
+    fun `multi-connect controller never uses idle disconnect`() {
         assertFalse(
             BoardProjectionPolicy.shouldArmIdleDisconnect(
                 seconds = 60,
                 connectionState = ConnectionState.CONNECTED,
                 explicitlySuppressed = false,
-                connectedBrand = BoardBrand.MOONBOARD,
-                hasActiveMoonBoardProjection = true,
+                connectionCapacity = BoardConnectionCapacity.MULTIPLE,
             )
         )
     }
 
     @Test
-    fun `MoonBoard without successful projection still uses idle disconnect`() {
-        assertTrue(
+    fun `unknown controller never uses idle disconnect`() {
+        assertFalse(
             BoardProjectionPolicy.shouldArmIdleDisconnect(
                 seconds = 60,
                 connectionState = ConnectionState.CONNECTED,
                 explicitlySuppressed = false,
-                connectedBrand = BoardBrand.MOONBOARD,
-                hasActiveMoonBoardProjection = false,
+                connectionCapacity = BoardConnectionCapacity.UNKNOWN,
             )
         )
     }
 
     @Test
-    fun `Aurora boards retain their existing idle disconnect behavior`() {
+    fun `legacy exclusive controller retains idle disconnect behavior`() {
         assertTrue(
             BoardProjectionPolicy.shouldArmIdleDisconnect(
                 seconds = 60,
                 connectionState = ConnectionState.CONNECTED,
                 explicitlySuppressed = false,
-                connectedBrand = BoardBrand.KILTER,
-                hasActiveMoonBoardProjection = true,
+                connectionCapacity = BoardConnectionCapacity.SINGLE,
             )
         )
     }

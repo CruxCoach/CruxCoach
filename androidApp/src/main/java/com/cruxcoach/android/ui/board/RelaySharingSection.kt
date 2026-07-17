@@ -40,9 +40,9 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ble.BlePermissionHelper
+import com.cruxcoach.android.ble.BoardControllerProfiles
+import com.cruxcoach.android.ble.DiscoveredBoard
 import com.cruxcoach.android.data.RelayError
-import com.cruxcoach.android.data.SessionRole
-import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.android.ui.theme.ErrorRed
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.ui.theme.SuccessGreen
@@ -59,18 +59,14 @@ import com.cruxcoach.android.ui.theme.SuccessGreen
  */
 @Composable
 fun RelaySharingSection(
-    boardBrand: BoardBrand?,
-    sessionRole: SessionRole,
+    board: DiscoveredBoard?,
     viewModel: RelayShareViewModel = hiltViewModel()
 ) {
-    // The pass-through server understands Aurora binary frames only. A
-    // participant also never owns the host's physical board connection.
-    if (boardBrand?.usesAuroraProtocol != true || sessionRole == SessionRole.PARTICIPANT) return
+    if (board == null || !BoardControllerProfiles.forBoard(board).relaySupported) return
 
     val context = LocalContext.current
     val state by viewModel.relayState.collectAsStateWithLifecycle()
     val disclosureSeen by viewModel.disclosureSeen.collectAsStateWithLifecycle()
-    val hostLabel = stringResource(R.string.board_queue_title)
 
     var showDisclosure by remember { mutableStateOf(false) }
 
@@ -78,7 +74,7 @@ fun RelaySharingSection(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { granted ->
         if (granted.values.all { it }) {
-            if (disclosureSeen) viewModel.enableSharing(hostLabel) else showDisclosure = true
+            if (disclosureSeen) viewModel.enableSharing() else showDisclosure = true
         }
     }
     val startSharing = {
@@ -87,7 +83,7 @@ fun RelaySharingSection(
         } else if (!disclosureSeen) {
             showDisclosure = true
         } else {
-            viewModel.enableSharing(hostLabel)
+            viewModel.enableSharing()
         }
     }
 
@@ -96,7 +92,7 @@ fun RelaySharingSection(
             onConfirm = {
                 showDisclosure = false
                 viewModel.confirmDisclosure()
-                viewModel.enableSharing(hostLabel)
+                viewModel.enableSharing()
             },
             onDismiss = { showDisclosure = false }
         )
@@ -250,7 +246,6 @@ internal fun relayErrorText(error: RelayError, detail: String?): String {
         RelayError.NAME_SET_FAILED -> stringResource(R.string.relay_error_name)
         RelayError.BOARD_LOST -> stringResource(R.string.relay_error_board_lost)
         RelayError.UNSUPPORTED_BOARD -> stringResource(R.string.relay_error_unsupported_board)
-        RelayError.SESSION_PARTICIPANT -> stringResource(R.string.relay_error_session_participant)
     }
     return if (detail != null) "$base ($detail)" else base
 }

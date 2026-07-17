@@ -220,7 +220,6 @@ internal fun BoardSendModeSection(
 @Composable
 internal fun BleAutoDisconnectSection(
     bleAutoDisconnectSeconds: Int,
-    boardBrand: BoardBrand,
     onAutoDisconnectChange: (Int) -> Unit,
 ) {
     Text(
@@ -230,13 +229,7 @@ internal fun BleAutoDisconnectSection(
     )
 
     Text(
-        stringResource(
-            if (boardBrand == BoardBrand.MOONBOARD) {
-                R.string.settings_ble_auto_disconnect_desc_moonboard
-            } else {
-                R.string.settings_ble_auto_disconnect_desc_retained
-            },
-        ),
+        stringResource(R.string.settings_ble_auto_disconnect_desc_retained),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )

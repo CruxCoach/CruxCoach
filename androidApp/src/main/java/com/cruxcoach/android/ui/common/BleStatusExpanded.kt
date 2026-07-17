@@ -131,7 +131,6 @@ private fun SessionQueueSection(
 
     val boardSessionManager = LocalBoardSessionManager.current
     val bleShareManager = LocalBleShareManager.current
-    val relayManager = LocalCruxRelayManager.current
 
     // Bug 6: Internalized stop via CompositionLocals — works on every screen
     val handleStop: () -> Unit = {
@@ -141,7 +140,8 @@ private fun SessionQueueSection(
         val lastClimb = currentState.currentClimb
             ?.takeUnless { currentState.externalBoardOverride }
         if (queueState.role == SessionRole.HOST) {
-            relayManager.stopRelayAndSession()
+            gattBridge.stopSharing()
+            queueManager.endQueue()
         } else {
             gattBridge.leaveSession()
         }

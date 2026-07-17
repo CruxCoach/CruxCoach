@@ -1136,6 +1136,8 @@ private fun ClimbDetailPageContent(
                             holdCount = state.holds.size,
                             frames = climb.frames,
                         ),
+                        connectedViaRelay = state.ble.connectedViaRelay,
+                        hostedRelayClientCount = state.ble.hostedRelayClientCount,
                     )
                     if (deliveryDecision.showAction && state.playback.countdownSeconds == 0) {
                         FilledTonalIconButton(

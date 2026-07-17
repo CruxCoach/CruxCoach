@@ -17,9 +17,8 @@ import javax.inject.Inject
  *
  * Sharing is a momentary runtime action on [CruxRelayManager] — this VM adds
  * the two UI-side obligations around it: the one-time disclosure gate (the
- * phone's GLOBAL Bluetooth name changes while sharing) and the §11 coupling
- * "relay-on implies a joinable session" (the host monopolises the single board
- * link, so nearby CruxCoach users can only reach the board by joining).
+ * phone's GLOBAL Bluetooth name changes while sharing). Queue and relay are
+ * deliberately independent runtime features.
  */
 @HiltViewModel
 class RelayShareViewModel @Inject constructor(
@@ -48,18 +47,10 @@ class RelayShareViewModel @Inject constructor(
         viewModelScope.safeLaunch(TAG) { userPreferences.setRelayDisclosureSeen() }
     }
 
-    /**
-     * Deliberate user action: start sharing the connected board.
-     *
-     * The manager owns the atomic relay/session coupling so a partially
-     * started UI flow can never leave an orphan session behind.
-     */
-    fun enableSharing(hostLabel: String) {
-        relayManager.enable(hostLabel)
-    }
+    /** Deliberate user action: start sharing the connected board transport. */
+    fun enableSharing() = relayManager.enable()
 
-    /** One-tap stop — runs the §7 host-leave ordering in the manager. The
-     *  CruxCoach session (if any) keeps running; it has its own stop. */
+    /** One-tap stop. A CruxCoach queue and the direct board link keep running. */
     fun disableSharing() {
         relayManager.setEnabled(false)
     }

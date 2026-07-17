@@ -373,8 +373,7 @@
 
     <!-- Settings: BLE -->
     <string name="settings_ble_auto_disconnect_title">Release board connection</string>
-    <string name="settings_ble_auto_disconnect_desc_retained">Release the direct connection after inactivity. This board keeps the last climb lit; a shared-session host stays connected while the session is active.</string>
-    <string name="settings_ble_auto_disconnect_desc_moonboard">Release an idle connection before a climb is sent. After lighting a climb, CruxCoach stays connected because a MoonBoard clears its LEDs on disconnect.</string>
+    <string name="settings_ble_auto_disconnect_desc_retained">Used only by verified legacy controllers that allow one direct connection. Multi-client and unknown controllers stay connected.</string>
     <string name="settings_duration_minutes_label">Minutes</string>
     <string name="settings_duration_seconds_label">Seconds</string>
     <string name="settings_ble_keep_screen_on">Keep screen on</string>
@@ -914,7 +913,6 @@
     <string name="relay_notification_channel_desc">Shown while compatible board apps can send through CruxCoach.</string>
     <string name="relay_notification_title">Board available to other apps</string>
     <string name="relay_notification_text">%d board-app connections</string>
-    <string name="relay_stopped_idle">App sharing ended — no one was connected</string>
     <string name="relay_notification_stop">Stop app sharing</string>
 
     <!-- Board: Climb Card -->
@@ -1541,11 +1539,11 @@
     <string name="settings_board_model_change">Change</string>
     <string name="settings_board_model_not_configured">Not configured</string>
     <string name="settings_board_send_mode_title">Direct board control</string>
-    <string name="settings_board_send_mode_desc">Choose what happens when this device is connected directly. In a shared session, climbs are always added to the queue explicitly.</string>
+    <string name="settings_board_send_mode_desc">Choose what happens on a private direct connection. CruxCoach automatically shows the send button while using or sharing a relay; a queue always stays explicit.</string>
     <string name="settings_board_send_mode_automatic">Immediately</string>
     <string name="settings_board_send_mode_explicit">Tap to send</string>
-    <string name="settings_board_projection_lifecycle_moonboard">MoonBoard: CruxCoach keeps the direct connection after lighting a climb so it remains visible.</string>
-    <string name="settings_board_projection_lifecycle_retained">This board keeps the last climb lit after CruxCoach releases the connection.</string>
+    <string name="settings_board_projection_lifecycle_moonboard">MoonBoard accepts multiple clients. Its lights remain until the final connection closes.</string>
+    <string name="settings_board_projection_lifecycle_retained">Modern controllers accept multiple clients; verified legacy controllers can be shared through CruxCoach Relay.</string>
     <string name="cd_add_climb_to_shared_queue">Add climb to shared queue</string>
     <string name="cd_light_climb_on_board">Light climb on board</string>
     <string name="cd_restore_queue_climb">Light the current queue climb again</string>
@@ -2068,7 +2066,7 @@
     <string name="relay_chip_text">Available to board apps · %1$d connected</string>
     <string name="relay_advertised_as">Visible to others as \"%1$s\"</string>
     <string name="relay_disclosure_title">Share with board apps</string>
-    <string name="relay_disclosure_text">Your phone temporarily appears as a compatible board named \"CruxRelay…\". Other board apps can send through CruxCoach, while CruxCoach users join the shared queue. The latest successful send controls the lights. Your Bluetooth name is restored when you stop.</string>
+    <string name="relay_disclosure_text">Your phone temporarily appears as a compatible board named \"CruxRelay…\". Other board apps can send through CruxCoach without starting a queue. The latest successful send controls the lights. Your Bluetooth name is restored when you stop.</string>
     <string name="relay_disclosure_disclaimer">CruxCoach is not affiliated with Kilter or Aurora Climbing; board names are used only for compatibility.</string>
     <string name="relay_disclosure_confirm">Allow board apps</string>
     <string name="relay_error_server">Couldn\'t start sharing. Please try again.</string>
@@ -2076,8 +2074,12 @@
     <string name="relay_error_name">Couldn\'t set the sharing name.</string>
     <string name="relay_error_board_lost">Board connection lost — sharing stopped.</string>
     <string name="relay_error_unsupported_board">This board does not support compatible app sharing.</string>
-    <string name="relay_error_session_participant">Only the CruxCoach session host can share the board with other apps.</string>
     <string name="relay_chip_stop">Stop</string>
     <string name="relay_host_title">Shared CruxCoach session</string>
     <string name="relay_host_join_subtitle">%1$d in session · Tap to join</string>
+    <string name="board_ble_via_cruxcoach">via CruxCoach</string>
+    <string name="board_ble_connection_via_relay">Connected via CruxCoach Relay</string>
+    <string name="board_ble_connection_multi">Multiple devices can stay connected</string>
+    <string name="board_ble_connection_single">Legacy controller · one direct connection</string>
+    <string name="board_ble_connection_unknown">Connection capacity not verified</string>
 </resources>
