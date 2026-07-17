@@ -16,6 +16,7 @@ import com.cruxcoach.android.ble.SessionGattClient
 import com.cruxcoach.android.ble.SessionGattServer
 import com.cruxcoach.android.ble.SessionQueueProtocol
 import com.cruxcoach.data.repository.BoardRepository
+import com.cruxcoach.domain.board.BoardBrand
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.just
@@ -111,6 +112,8 @@ class SessionGattBridgeMigrationTest {
         managerScope = CoroutineScope(SupervisorJob() + testDispatcher)
 
         every { mockBleConnection.connectionState } returns bleConnectionStateFlow
+        every { mockBleConnection.connectedBoardBrand } returns
+            MutableStateFlow<BoardBrand?>(null)
 
         every { mockGattClient.connectionState } returns clientStateFlow
         every { mockGattClient.queueEvents } returns queueEventsFlow

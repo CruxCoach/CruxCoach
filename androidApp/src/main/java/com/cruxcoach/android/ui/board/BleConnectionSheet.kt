@@ -205,6 +205,7 @@ fun BleConnectionSheet(
                     ScanContent(
                         isScanning = state.isScanning,
                         boards = state.discoveredBoards,
+                        lastUsedBoardAddresses = state.lastUsedBoardAddresses,
                         bleShareState = bleShareState,
                         isRequestingDisconnect = state.isRequestingDisconnect,
                         climbSharingEnabled = state.climbSharingEnabled,
@@ -424,6 +425,7 @@ private fun ConnectingContent(boardName: String?) {
 private fun ScanContent(
     isScanning: Boolean,
     boards: List<DiscoveredBoard>,
+    lastUsedBoardAddresses: Map<BoardBrand, String>,
     bleShareState: com.cruxcoach.android.data.BleShareUiState,
     isRequestingDisconnect: Boolean,
     climbSharingEnabled: Boolean,
@@ -479,7 +481,11 @@ private fun ScanContent(
             modifier = Modifier.heightIn(max = 300.dp)
         ) {
             items(boards, key = { it.address }) { board ->
-                BoardItem(board = board, onClick = { onConnectBoard(board) })
+                BoardItem(
+                    board = board,
+                    isLastUsed = lastUsedBoardAddresses[board.boardBrand] == board.address,
+                    onClick = { onConnectBoard(board) },
+                )
             }
         }
     } else if (!isScanning) {
@@ -627,7 +633,11 @@ private fun NearbyActiveClimbCard(
 }
 
 @Composable
-private fun BoardItem(board: DiscoveredBoard, onClick: () -> Unit) {
+private fun BoardItem(
+    board: DiscoveredBoard,
+    isLastUsed: Boolean,
+    onClick: () -> Unit,
+) {
     Card(
         onClick = onClick,
         modifier = Modifier
@@ -655,18 +665,28 @@ private fun BoardItem(board: DiscoveredBoard, onClick: () -> Unit) {
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.Bold
                 )
-                // FEAT-027: brand label so the user can tell a discovered
-                // Kilter board apart from a MoonBoard. For Kilter the serial
-                // stays the secondary line; MoonBoard has no serial.
-                Text(
-                    text = if (board.serial.isNotBlank()) {
-                        "${brandLabel(board.boardBrand)} · ${board.serial}"
-                    } else {
-                        brandLabel(board.boardBrand)
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                if (isLastUsed || board.serial.isNotBlank()) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        if (isLastUsed) {
+                            Badge(containerColor = OrangeAccent) {
+                                Text(stringResource(R.string.board_ble_last_used))
+                            }
+                        }
+                        if (board.serial.isNotBlank()) {
+                            // A bare MoonBoard name contains no reliable setup,
+                            // angle or venue information. Do not present the
+                            // app-selected setup as controller metadata.
+                            Text(
+                                text = "${brandLabel(board.boardBrand)} · ${board.serial}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
             }
             Row(
                 verticalAlignment = Alignment.CenterVertically,

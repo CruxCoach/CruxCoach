@@ -45,6 +45,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.cruxcoach.android.ble.ConnectionState
@@ -340,6 +341,26 @@ fun BoardBrowserScreen(
             },
             windowInsets = WindowInsets(0.dp)
         )
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("board_active_configuration"),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+        ) {
+            Text(
+                text = activeBoardConfigurationLabel(
+                    brand = BoardBrand.fromWire(state.filter.boardBrand),
+                    layoutId = state.filter.layoutId,
+                    angle = state.filter.angle,
+                    boardSize = state.boardSize,
+                ),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 5.dp),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
         RestTimerBannerSlot()
         SyncStatusBannerSlot()
         if (state.isLoading && !state.hasBoardData) {
@@ -725,4 +746,3 @@ fun BoardBrowserScreen(
         }
     }
 }
-

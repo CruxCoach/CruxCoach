@@ -106,9 +106,11 @@ class BleShareManagerTest {
 
     private fun nearbyClimb(
         uuid: String = UUID_A, angle: Int = 40, rssi: Int = -50,
-        connectedOnly: Boolean = false, isLastClimb: Boolean = false
+        connectedOnly: Boolean = false, isLastClimb: Boolean = false,
+        projectionSurvivesDisconnect: Boolean = true,
     ) = NearbyClimb(uuid, angle, rssi, System.currentTimeMillis(), "AA:BB:CC:DD:EE:FF",
-        connectedOnly, isLastClimb)
+        connectedOnly, isLastClimb,
+        projectionSurvivesDisconnect = projectionSurvivesDisconnect)
 
     private fun session(
         sessionId: Int = 12345, hostName: String = "TestHost",
@@ -140,6 +142,20 @@ class BleShareManagerTest {
         val state = manager.uiState.value
         assertEquals(OnBoardSource.REMOTE_LAST, state.onBoardClimb?.source)
         assertEquals(UUID_A, state.onBoardClimb?.climbUuid)
+    }
+
+    @Test
+    fun `resolve - volatile REMOTE_LAST is labelled as not projected`() = runTest {
+        nearbyClimbsFlow.value = listOf(nearbyClimb(
+            UUID_A,
+            isLastClimb = true,
+            projectionSurvivesDisconnect = false,
+        ))
+        advanceUntilIdle()
+
+        val state = manager.uiState.value
+        assertEquals(OnBoardSource.REMOTE_LAST, state.onBoardClimb?.source)
+        assertFalse(state.onBoardClimb?.isStillProjected ?: true)
     }
 
     @Test

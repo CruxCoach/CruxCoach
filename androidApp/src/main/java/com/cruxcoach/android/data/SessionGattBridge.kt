@@ -52,6 +52,11 @@ class SessionGattBridge(
     /** SessionId of the host we just left — used to ignore stale advertisements during migration. */
     private var lastHostSessionId: Int = 0
 
+    private fun projectionSurvivesCurrentBoardDisconnect(): Boolean =
+        BoardProjectionPolicy.projectionSurvivesDisconnect(
+            bleConnection.connectedBoardBrand.value
+        )
+
     init {
         // Auto-recover BLE when Bluetooth is toggled off/on.
         // Intentionally never unregistered: this class is a @Singleton, so the receiver
@@ -120,7 +125,11 @@ class SessionGattBridge(
             // Full persistence + name resolution happens in stopSharing()/leaveSession().
             val currentClimb = queueManager.state.value.currentClimb
             if (currentClimb != null) {
-                boardStateManager.setLastClimbQuick(currentClimb.climbUuid, currentClimb.angle)
+                boardStateManager.setLastClimbQuick(
+                    currentClimb.climbUuid,
+                    currentClimb.angle,
+                    projectionSurvivesCurrentBoardDisconnect(),
+                )
             }
             // Update session advertisement scan response with new current climb
             if (isSharing) {
@@ -229,13 +238,18 @@ class SessionGattBridge(
             "boardConnected=${bleConnection.connectionState.value}")
         // Capture last queue climb BEFORE endQueue() clears it (called by UI right after)
         val lastQueueClimb = queueManager.state.value.currentClimb
+        val projectionSurvivesDisconnect = projectionSurvivesCurrentBoardDisconnect()
         Log.d(TAG, "stopSharing(): lastQueueClimb=${lastQueueClimb?.climbUuid?.take(8)}")
 
         // Update board state SYNCHRONOUSLY before returning. The UI calls endQueue()
         // right after stopSharing(), which triggers the combine flow. Without this
         // immediate update, boardStateManager still has the stale pre-session climb.
         if (lastQueueClimb != null) {
-            boardStateManager.setLastClimbQuick(lastQueueClimb.climbUuid, lastQueueClimb.angle)
+            boardStateManager.setLastClimbQuick(
+                lastQueueClimb.climbUuid,
+                lastQueueClimb.angle,
+                projectionSurvivesDisconnect,
+            )
         }
 
         // Notify all clients that the session is ending (participantCount=0 = sentinel).
@@ -269,8 +283,16 @@ class SessionGattBridge(
             restartClimbAdvertisingIfConnected()
             // Transition to LAST_CLIMB so the "Letzter Boulder" banner appears after session ends.
             if (lastQueueClimb != null) {
-                boardStateManager.setLastClimb(lastQueueClimb.climbUuid, lastQueueClimb.angle)
-                advertiser.advertiseLastClimb(lastQueueClimb.climbUuid, lastQueueClimb.angle)
+                boardStateManager.setLastClimb(
+                    lastQueueClimb.climbUuid,
+                    lastQueueClimb.angle,
+                    projectionSurvivesDisconnect,
+                )
+                advertiser.advertiseLastClimb(
+                    lastQueueClimb.climbUuid,
+                    lastQueueClimb.angle,
+                    projectionSurvivesDisconnect,
+                )
             }
             Log.d(TAG, "stopSharing(): teardown complete")
         }
@@ -459,16 +481,27 @@ class SessionGattBridge(
         restartClimbAdvertisingIfConnected()
         // Set last climb to the current queue item so the banner shows what was on the board
         val lastItem = queueManager.state.value.currentClimb
+        val projectionSurvivesDisconnect = projectionSurvivesCurrentBoardDisconnect()
         // Update board state SYNCHRONOUSLY before endQueue() triggers combine flow
         if (lastItem != null) {
-            boardStateManager.setLastClimbQuick(lastItem.climbUuid, lastItem.angle)
+            boardStateManager.setLastClimbQuick(
+                lastItem.climbUuid,
+                lastItem.angle,
+                projectionSurvivesDisconnect,
+            )
         }
         // End queue immediately so UI updates right away (banner reappears)
         queueManager.endQueue()
         boardSessionManager.endSession()
         // Async: full persistence + name resolution
         if (lastItem != null) {
-            scope.launch { boardStateManager.setLastClimb(lastItem.climbUuid, lastItem.angle) }
+            scope.launch {
+                boardStateManager.setLastClimb(
+                    lastItem.climbUuid,
+                    lastItem.angle,
+                    projectionSurvivesDisconnect,
+                )
+            }
         }
         // Send leave command, then wait briefly so the host processes it before we disconnect
         scope.launch {
@@ -595,11 +628,22 @@ class SessionGattBridge(
         if (queueState.queue.isEmpty()) {
             Log.d(TAG, "attemptHostMigration: queue is empty, ending queue instead of migrating")
             val lastQueueClimb = queueState.currentClimb
+            val projectionSurvivesDisconnect = projectionSurvivesCurrentBoardDisconnect()
             advertiser.suppressClimbAdvertising = false
             restartClimbAdvertisingIfConnected()
             if (lastQueueClimb != null) {
-                boardStateManager.setLastClimbQuick(lastQueueClimb.climbUuid, lastQueueClimb.angle)
-                scope.launch { boardStateManager.setLastClimb(lastQueueClimb.climbUuid, lastQueueClimb.angle) }
+                boardStateManager.setLastClimbQuick(
+                    lastQueueClimb.climbUuid,
+                    lastQueueClimb.angle,
+                    projectionSurvivesDisconnect,
+                )
+                scope.launch {
+                    boardStateManager.setLastClimb(
+                        lastQueueClimb.climbUuid,
+                        lastQueueClimb.angle,
+                        projectionSurvivesDisconnect,
+                    )
+                }
             }
             queueManager.endQueue()
             boardSessionManager.endSession()
@@ -690,7 +734,11 @@ class SessionGattBridge(
         val active = advertiser.getActiveClimb()
         if (active != null) {
             Log.d(TAG, "restartClimbAdvertising: resuming ClimbData ${active.first.take(8)}")
-            advertiser.advertiseClimb(active.first, active.second)
+            advertiser.advertiseClimb(
+                active.first,
+                active.second,
+                projectionSurvivesDisconnect = advertiser.activeProjectionSurvivesDisconnect(),
+            )
         } else {
             Log.d(TAG, "restartClimbAdvertising: resuming BoardConnected")
             advertiser.advertiseConnected()

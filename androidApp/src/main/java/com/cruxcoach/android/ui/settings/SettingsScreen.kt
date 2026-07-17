@@ -207,6 +207,11 @@ fun SettingsScreen(
                         onChangeModel = { showBoardModelDialog = true },
                     )
                     HorizontalDivider()
+                    BoardSendModeSection(
+                        mode = state.boardSendMode,
+                        onModeChange = viewModel::updateBoardSendMode,
+                    )
+                    HorizontalDivider()
                     BleAutoDisconnectSection(
                         bleAutoDisconnectSeconds = state.bleAutoDisconnectSeconds,
                         onAutoDisconnectChange = { viewModel.updateBleAutoDisconnect(it) },

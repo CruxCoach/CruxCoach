@@ -5,11 +5,13 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.ble.BoardBleConnection
+import com.cruxcoach.android.ble.BoardProjectionPolicy
 import com.cruxcoach.android.ble.ClimbBleAdvertiser
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.data.BleShareManager
 import com.cruxcoach.android.data.BleShareUiState
 import com.cruxcoach.android.data.BoardConstants
+import com.cruxcoach.android.data.BoardSendMode
 import com.cruxcoach.android.data.BoardSessionManager
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.data.IntensityZoneManager
@@ -174,6 +176,7 @@ data class ClimbDetailState(
     val ascent: AscentFormState = AscentFormState(),
     val playback: PlaybackState = PlaybackState(),
     val ble: BoardSendState = BoardSendState(),
+    val boardSendMode: BoardSendMode = BoardSendMode.AUTOMATIC,
     val listDialog: ListDialogState = ListDialogState(),
     val nearby: NearbySharingState = NearbySharingState(),
     /** Hex pubkey of the local NostrSigner. Used by the UI to gate
@@ -407,6 +410,17 @@ class BoardClimbDetailViewModel @Inject constructor(
         }
         viewModelScope.launch {
             try {
+                userPreferences.boardSendMode.collect { mode ->
+                    _state.update { it.copy(boardSendMode = mode) }
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "boardSendMode collect terminated", e)
+            }
+        }
+        viewModelScope.launch {
+            try {
                 // Track previous state to only auto-send on genuine first-connect,
                 // not on SENDING->CONNECTED transitions (which caused a send loop on Android 9).
                 var prevConnState = bleConnection.connectionState.value
@@ -419,11 +433,16 @@ class BoardClimbDetailViewModel @Inject constructor(
 
                     _state.update { it.copy(ble = it.ble.copy(connectionState = connState)) }
 
-                    if (connState == ConnectionState.CONNECTED
-                        && wasDisconnectedOrConnecting
-                        && _state.value.holds.isNotEmpty()
+                    val climbState = _state.value
+                    if (connState == ConnectionState.CONNECTED &&
+                        wasDisconnectedOrConnecting &&
+                        BoardProjectionPolicy.hasSendablePayload(
+                            brand = climbState.climb?.brand,
+                            holdCount = climbState.holds.size,
+                            frames = climbState.climb?.frames,
+                        )
                     ) {
-                        sendToBoard()
+                        sendAutomaticallyIfEnabled()
                     }
 
                     // Auto-disconnect after a send is now driven entirely by
@@ -652,14 +671,6 @@ class BoardClimbDetailViewModel @Inject constructor(
         playbackController.stopPlayback()
         loadJob?.cancel()
         sendController.cancelSend()
-        // Update nearby advertising immediately on swipe (before async load / state replacement)
-        val sharingEnabled = bleShareManager.uiState.value.sharingEnabled
-        val isConnected = bleConnection.connectionState.value == ConnectionState.CONNECTED
-        Log.d(TAG, "switchClimb: climbSharingEnabled=$sharingEnabled connected=$isConnected")
-        if (sharingEnabled && isConnected) {
-            val result = climbAdvertiser.advertiseClimb(uuid, angle)
-            Log.d(TAG, "switchClimb: advertiseClimb result=$result")
-        }
         // Reset BLE send state so a stale isSending=true from the previous climb
         // doesn't block auto-send for the new climb.
         val currentConn = bleConnection.connectionState.value
@@ -683,7 +694,7 @@ class BoardClimbDetailViewModel @Inject constructor(
                 listDialog = it.listDialog.copy(show = false)
             ) }
         }
-        loadClimb(uuid, angle, advertise = false) // switchClimb already called advertiseClimb
+        loadClimb(uuid, angle)
     }
 
     fun onAngleSelected(angle: Int) {
@@ -732,7 +743,7 @@ class BoardClimbDetailViewModel @Inject constructor(
         }
     }
 
-    private fun loadClimb(uuid: String, angle: Int, advertise: Boolean = true) {
+    private fun loadClimb(uuid: String, angle: Int) {
         loadJob = viewModelScope.launch {
             try {
                 PerfLogger.navMilestone("loadClimb start ($uuid)")
@@ -854,8 +865,7 @@ class BoardClimbDetailViewModel @Inject constructor(
                         }
                         _pageCache.update { it + (uuid to _state.value) }
                         PerfLogger.navMilestone("loadClimb complete ($uuid)")
-                        if (advertise) sendController.updateNearbyAdvertising(uuid, angle)
-                        if (sendController.isConnected()) sendController.sendToBoard()
+                        sendAutomaticallyIfEnabled()
                         // Fire-and-forget Kind 0 lookup. Doesn't block UI;
                         // updates state when the relay responds (or skips
                         // silently if not). Only relevant for community
@@ -1126,7 +1136,21 @@ class BoardClimbDetailViewModel @Inject constructor(
             holds = holds,
             playback = it.playback.copy(allFrames = frames)
         ) }
-        if (sendController.isConnected()) sendController.sendToBoard()
+        viewModelScope.launch { sendAutomaticallyIfEnabled() }
+    }
+
+    private suspend fun sendAutomaticallyIfEnabled() {
+        val mode = try {
+            userPreferences.boardSendMode.first()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "boardSendMode read failed; using current UI state", e)
+            _state.value.boardSendMode
+        }
+        if (sendController.isConnected() && mode == BoardSendMode.AUTOMATIC) {
+            sendController.sendToBoard()
+        }
     }
 
     private fun mirrorHolds(holds: List<BoardHold>): List<BoardHold> {

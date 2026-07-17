@@ -36,6 +36,7 @@ data class BleConnectionState(
     val isBluetoothEnabled: Boolean = false,
     val isScanning: Boolean = false,
     val discoveredBoards: List<DiscoveredBoard> = emptyList(),
+    val lastUsedBoardAddresses: Map<BoardBrand, String> = emptyMap(),
     val connectionState: ConnectionState = ConnectionState.DISCONNECTED,
     val connectedBoardName: String? = null,
     val isRequestingDisconnect: Boolean = false,
@@ -86,6 +87,7 @@ class BleConnectionViewModel @Inject constructor(
 
     private val _state = MutableStateFlow(BleConnectionState())
     val state: StateFlow<BleConnectionState> = _state.asStateFlow()
+    private var pendingBoard: DiscoveredBoard? = null
 
     init {
         viewModelScope.safeLaunch(TAG) {
@@ -103,6 +105,10 @@ class BleConnectionViewModel @Inject constructor(
                 _state.update { it.copy(connectionState = connState) }
                 // Auto-advertise "board connected" so nearby users can send disconnect requests
                 if (connState == ConnectionState.CONNECTED) {
+                    pendingBoard?.let { board ->
+                        userPreferences.setLastUsedBoardAddress(board.boardBrand, board.address)
+                        pendingBoard = null
+                    }
                     suppressDisconnectDialog = false
                     if (_state.value.climbSharingEnabled) {
                         climbAdvertiser.advertiseConnected(
@@ -110,6 +116,7 @@ class BleConnectionViewModel @Inject constructor(
                         )
                     }
                 } else if (connState == ConnectionState.DISCONNECTED) {
+                    pendingBoard = null
                     climbAdvertiser.onBoardDisconnected(_state.value.climbSharingEnabled)
                 }
                 // Always ensure nearby scanner is running after any connection state change.
@@ -151,6 +158,11 @@ class BleConnectionViewModel @Inject constructor(
         viewModelScope.safeLaunch(TAG) {
             userPreferences.allowRemoteDisconnect.collect { allowed ->
                 _state.update { it.copy(allowRemoteDisconnect = allowed) }
+            }
+        }
+        viewModelScope.safeLaunch(TAG) {
+            userPreferences.lastUsedBoardAddresses.collect { addresses ->
+                _state.update { it.copy(lastUsedBoardAddresses = addresses) }
             }
         }
         // Receive disconnect requests from nearby users (works on any screen)
@@ -332,6 +344,8 @@ class BleConnectionViewModel @Inject constructor(
     }
 
     fun connectToBoard(board: DiscoveredBoard) {
+        if (bleConnection.connectionState.value != ConnectionState.DISCONNECTED) return
+        pendingBoard = board
         bleScanner.stopScan()
         bleConnection.connect(board)
     }
@@ -365,8 +379,9 @@ class BleConnectionViewModel @Inject constructor(
             disconnectRequestNoResponse = false
         ) }
 
-        // Watch nearby advertising — wait until there are no active climb connections
-        // (LastClimb entries are OK — they just mean LEDs still on from a disconnected device).
+        // Watch nearby advertising and wait until no sender still owns an
+        // active connection. LastClimb is metadata from an already-released
+        // connection; its retention flag separately says whether LEDs remain.
         autoConnectJob?.cancel()
         autoConnectJob = viewModelScope.safeLaunch(TAG) {
             nearbyClimbScanner.nearbyClimbs.first { climbs ->
@@ -380,7 +395,7 @@ class BleConnectionViewModel @Inject constructor(
                 bleScanner.discoveredBoards.first { it.isNotEmpty() }
             ).first()
             bleScanner.stopScan()
-            bleConnection.connect(board)
+            connectToBoard(board)
             _state.update { it.copy(
                 isRequestingDisconnect = false,
                 disconnectRequestNoResponse = false
@@ -461,7 +476,7 @@ class BleConnectionViewModel @Inject constructor(
             ).first()
             bleScanner.stopScan()
             Log.d(TAG, "startAutoConnectForSession: found board '${board.displayName}', connecting")
-            bleConnection.connect(board)
+            connectToBoard(board)
         }
         // Timeout: stop trying after 30s
         disconnectTimeoutJob?.cancel()

@@ -13,6 +13,7 @@ import com.cruxcoach.android.data.AnnouncementRepository
 import com.cruxcoach.android.data.DarkModeSetting
 import com.cruxcoach.android.data.GradeScale
 import com.cruxcoach.android.data.BoardSyncManager
+import com.cruxcoach.android.data.BoardSendMode
 import com.cruxcoach.android.data.LedHoldColors
 import com.cruxcoach.android.data.AuroraBoardSelector
 import com.cruxcoach.android.data.SyncInterval
@@ -100,6 +101,7 @@ data class SettingsState(
     val hasAssessment: Boolean = false,
     val ledColors: LedHoldColors = LedHoldColors(),
     val bleAutoDisconnectSeconds: Int = 60,
+    val boardSendMode: BoardSendMode = BoardSendMode.AUTOMATIC,
     val isSaving: Boolean = false,
     val saveSuccess: Boolean = false,
     val error: String? = null,
@@ -184,14 +186,16 @@ class SettingsViewModel @Inject constructor(
                 val boardBrand = userPreferences.boardBrand.first()
                 val boardSizeName = boardRepository.getProductSize(boardSizeId, boardBrand)
                     ?.let { BoardConstants.sizeLabel(it.id, it.name, it.boardBrand) } ?: ""
-                // MoonBoard layout ids (2/4/5) are disjoint from Kilter's,
-                // so the active variant is derived directly from the
-                // single boardLayoutId pref.
-                val moonBoardVariant = MoonBoardVariant.fromLayoutId(layoutId.toLong())
+                // Layout 1 is shared by Kilter Original and MoonBoard 2010;
+                // resolve the variant only inside the active brand's id space.
+                val moonBoardVariant = MoonBoardVariant.fromBoardSelection(
+                    layoutId.toLong(), BoardBrand.fromWire(boardBrand),
+                )
                 val interval = userPreferences.syncInterval.first()
                 val lastSync = userPreferences.lastSyncTimestamp.first()
                 val scale = userPreferences.gradeScale.first()
                 val autoDisconnect = userPreferences.bleAutoDisconnectSeconds.first()
+                val boardSendMode = userPreferences.boardSendMode.first()
                 val ledColors = userPreferences.ledHoldColors.first()
                 val frameSpeed = userPreferences.routeFrameSpeed.first()
                 val useSetterSpeed = userPreferences.routeUseSetterSpeed.first()
@@ -248,6 +252,7 @@ class SettingsViewModel @Inject constructor(
                     hasAssessment = hasAssessment,
                     ledColors = ledColors,
                     bleAutoDisconnectSeconds = autoDisconnect,
+                    boardSendMode = boardSendMode,
                     profile = profileForm,
                     routePlayback = RoutePlaybackSettings(
                         frameSpeed = frameSpeed,
@@ -291,6 +296,7 @@ class SettingsViewModel @Inject constructor(
 
             // Start collectors for live updates after initial load
             launch { userPreferences.ledHoldColors.collect { colors -> _state.update { it.copy(ledColors = colors) } } }
+            launch { userPreferences.boardSendMode.collect { mode -> _state.update { it.copy(boardSendMode = mode) } } }
             launch { userPreferences.routeFrameSpeed.collect { speed -> _state.update { it.copy(routePlayback = it.routePlayback.copy(frameSpeed = speed)) } } }
             launch { userPreferences.routeUseSetterSpeed.collect { v -> _state.update { it.copy(routePlayback = it.routePlayback.copy(useSetterSpeed = v)) } } }
             launch { userPreferences.routeCountdown.collect { v -> _state.update { it.copy(routePlayback = it.routePlayback.copy(countdown = v)) } } }
@@ -315,8 +321,9 @@ class SettingsViewModel @Inject constructor(
                 ) { brand, layoutId, sizeId -> Triple(brand, layoutId, sizeId) }
                     .distinctUntilChanged()
                     .collect { (brand, layoutId, sizeId) ->
-                        val variant = MoonBoardVariant.fromLayoutId(layoutId.toLong())
-                        val name = if (BoardBrand.fromWire(brand) == BoardBrand.MOONBOARD) {
+                        val parsedBrand = BoardBrand.fromWire(brand)
+                        val variant = MoonBoardVariant.fromBoardSelection(layoutId.toLong(), parsedBrand)
+                        val name = if (parsedBrand == BoardBrand.MOONBOARD) {
                             variant?.displayName ?: ""
                         } else {
                             withContext(Dispatchers.IO) { boardRepository.getProductSize(sizeId, brand) }
@@ -577,6 +584,11 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             userPreferences.setBleAutoDisconnectSeconds(seconds)
         }
+    }
+
+    fun updateBoardSendMode(mode: BoardSendMode) {
+        _state.update { it.copy(boardSendMode = mode) }
+        viewModelScope.launch { userPreferences.setBoardSendMode(mode) }
     }
 
     fun updateNearbyClimbSharing(enabled: Boolean) {

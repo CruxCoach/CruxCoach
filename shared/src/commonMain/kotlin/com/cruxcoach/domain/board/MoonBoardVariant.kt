@@ -1,7 +1,7 @@
 package com.cruxcoach.domain.board
 
 /**
- * The MoonBoard board variants CruxCoach supports in v0.2.0 (FEAT-027).
+ * MoonBoard configurations supported by CruxCoach (FEAT-027).
  *
  * Unlike Kilter — one board offered in several physical SIZES — the
  * MoonBoard family is several DISTINCT boards: each variant has its own
@@ -10,24 +10,11 @@ package com.cruxcoach.domain.board
  * them as separate problems, and the importer writes one climb row per
  * (problem, angle) accordingly.
  *
- * v0.2.0 ships all four variants present in the spookykat 2023-01-30
- * dump: the three 11x18 boards plus Mini 2020 (11x12 sub-grid, hold
- * IDs 1..132). Mini's frames are encoded with the same universal
- * formula (`(row-1)*11 + col + 1`) so the dump's hold IDs land in
- * 12..132 (rows 2..12, no row 1).
- *
- * MoonBoard 2024 (layout 3, the 198-hold 11x18 set released after the
- * dump) ships too — its catalogue is synced via the board-data sync like
- * the other variants. It reuses the standard 11x18 grid (same coord
- * arithmetic as 2016/2017/2019), so no new frame/render code is needed.
- * Mini 2025 (smaller grid again) remains deferred to 0.2.x — see FEAT-027 §3.
- *
- * Mini 2020 caveat: the procedural-grid fallback + the BLE wire
- * encoder still assume 11x18 ([MoonBoardFrameEncoder],
- * [MoonBoardVisualization]). Detail-screen rendering uses the bundled
- * coord-map so it shows correctly; the fallback only triggers on
- * decode failure, and Mini-hardware BLE testing isn't in 0.2.0 scope.
- * Per-variant grid dims are a 0.2.x polish.
+ * Each entry is a complete, fixed hold configuration, not a selectable
+ * collection of hold sets. MoonBoard 2010 and Mini MoonBoard 2025 therefore
+ * sit alongside the existing configurations as their own catalogue/render/BLE
+ * identities. Standard boards use an 11x18 grid (198 LED positions); Mini
+ * boards use 11x12 (132 positions).
  *
  * [layoutId] matches `climbs.layout_id` in the board DB, assigned by the
  * MoonBoard importer from the hold-setup → layout mapping dictated by the
@@ -41,7 +28,7 @@ enum class MoonBoardVariant(
     /**
      * Rows of bolt positions on the physical board — the per-column
      * height that the BLE wire-format serpentine arithmetic walks.
-     * Standard MoonBoards are 18; Mini 2020 is 12.
+     * Standard MoonBoards are 18; Mini boards are 12.
      */
     val gridRows: Int,
 ) {
@@ -75,8 +62,8 @@ enum class MoonBoardVariant(
         // Mini physically has 12 rows (1..12). The dump uses rows 2..12;
         // row 1 is included in the coord-map for completeness so a
         // future climb that uses row-1 holds still has a position. The
-        // BLE serpentine multiplier is 12, not 18; dynamic-capture
-        // against a real Mini board still pending.
+        // BLE serpentine multiplier is 12, not 18. Physical-controller
+        // integration remains a release check separate from the grid map.
         gridRows = 12,
     ),
     MOONBOARD_2024(
@@ -93,20 +80,43 @@ enum class MoonBoardVariant(
         displayName = "MoonBoard 2024",
         angles = listOf(25, 40),
         gridRows = 18,
+    ),
+    MINI_2025(
+        // The 2025 Mini is a complete configuration made from Hold Set F,
+        // Original School Holds and Wooden Holds B/C. The constituent sets
+        // are deliberately not exposed as independent user choices.
+        layoutId = 7L,
+        displayName = "Mini MoonBoard 2025",
+        angles = listOf(40),
+        gridRows = 12,
+    ),
+    MOONBOARD_2010(
+        // Legacy Original School Holds configuration. layout_id=1 collides
+        // with Kilter Original, so callers resolving a persisted board choice
+        // must also carry BoardBrand; see fromBoardSelection().
+        layoutId = 1L,
+        displayName = "MoonBoard 2010",
+        angles = listOf(40),
+        gridRows = 18,
     );
 
     companion object {
         /**
-         * Hold grid — uniform across every v0.2.0 variant (columns A-K,
-         * rows 1-18, row 1 at the bottom). When the smaller Mini variants
-         * land in 0.2.x these become per-variant fields.
+         * Universal column count plus the standard-board row count. Mini
+         * variants override the row count through [gridRows].
          */
         const val GRID_COLUMNS = 11
         const val GRID_ROWS = 18
 
-        /** Resolve a board-DB `layout_id` to its variant, or null if the
-         *  layout isn't a v0.2.0-supported MoonBoard variant. */
+        /** Resolve a MoonBoard catalogue `layout_id` to its variant. Layout 1
+         *  is ambiguous globally because Kilter Original uses it as well. */
         fun fromLayoutId(layoutId: Long): MoonBoardVariant? =
             entries.firstOrNull { it.layoutId == layoutId }
+
+        /** Resolve a persisted board selection without crossing brand-owned
+         *  id spaces. This is required for layout 1 (MoonBoard 2010 / Kilter
+         *  Original) and is the safe choice whenever [boardBrand] is known. */
+        fun fromBoardSelection(layoutId: Long, boardBrand: BoardBrand): MoonBoardVariant? =
+            if (boardBrand == BoardBrand.MOONBOARD) fromLayoutId(layoutId) else null
     }
 }
