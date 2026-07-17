@@ -171,6 +171,7 @@ class BleShareManager @Inject constructor(
                 old?.currentIndex == new?.currentIndex &&
                 old?.currentClimbName == new?.currentClimbName &&
                 old?.currentClimbGrade == new?.currentClimbGrade &&
+                old?.externalBoardOverride == new?.externalBoardOverride &&
                 old?.isPaused == new?.isPaused
                 // Deliberately ignoring elapsedSeconds — timer display collects directly
             }.collect { ownSession ->
@@ -231,6 +232,7 @@ class BleShareManager @Inject constructor(
             currentClimbGrade = climbInfo?.difficultyAverage?.let {
                 GradeDisplayHelper.formatDifficulty(it, gradeScale)
             },
+            externalBoardOverride = queueState.externalBoardOverride,
             isPaused = sessionState.isPaused,
             elapsedSeconds = sessionState.elapsedSeconds
         )

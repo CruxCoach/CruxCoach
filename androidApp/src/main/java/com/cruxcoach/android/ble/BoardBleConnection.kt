@@ -110,6 +110,9 @@ class BoardBleConnection(private val context: Context) {
     // connected and which attempt (1-based) is currently running. State stays
     // CONNECTING across quiet retries so the UI shows one continuous attempt.
     private var currentBoard: DiscoveredBoard? = null
+    /** Full scan descriptor for features that must preserve the controller API level. */
+    val connectedBoard: DiscoveredBoard?
+        get() = currentBoard
     private var connectAttempt = 0
 
     var autoDisconnectSeconds: Int = 0
@@ -170,7 +173,6 @@ class BoardBleConnection(private val context: Context) {
 
     private fun resetIdleTimer() {
         disconnectJob?.cancel()
-        if (isKeepAliveHeld()) return
         val seconds = autoDisconnectSeconds
         // Only arm the timer while the connection is truly idle. SENDING
         // is "writes in flight" — the send path re-arms us from its
@@ -181,7 +183,7 @@ class BoardBleConnection(private val context: Context) {
         if (BoardProjectionPolicy.shouldArmIdleDisconnect(
                 seconds = seconds,
                 connectionState = _connectionState.value,
-                explicitlySuppressed = suppressAutoDisconnect,
+                explicitlySuppressed = isKeepAliveHeld(),
                 connectedBrand = _connectedBoardBrand.value,
                 hasActiveMoonBoardProjection = hasActiveMoonBoardProjection,
             )

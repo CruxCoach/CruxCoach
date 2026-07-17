@@ -37,6 +37,16 @@ object RelayBoardName {
         return PREFIX + trimmedProduct + apiSuffix
     }
 
+    /** Rebuilds the protocol-relevant product/API name after the scanner split it. */
+    fun transparentBoard(
+        productName: String,
+        apiLevel: Int,
+        maxBytes: Int = MAX_NAME_BYTES,
+    ): String {
+        val source = if (apiLevel > 0) "${productName.trim()}@$apiLevel" else productName
+        return transparent(source, maxBytes)
+    }
+
     /** Fallback: keep product + "@api" pristine, marker in the free-form serial
      *  ("Kilter Board#CR<serial>@3"). Use only if a device test shows the
      *  transparent form isn't listed / shows a confusing "Unknown Board". */

@@ -36,7 +36,9 @@ data class SessionQueueState(
     val isConnecting: Boolean = false,
     val error: String? = null,
     /** This participant's position in the join order (0-based). Used for host election. */
-    val participantIndex: Int = -1
+    val participantIndex: Int = -1,
+    /** A compatible external board app last wrote the physical board through CruxRelay. */
+    val externalBoardOverride: Boolean = false,
 ) {
     val isActive: Boolean get() = role != SessionRole.NONE
     val currentClimb: QueueItem? get() = queue.getOrNull(currentIndex)
@@ -66,6 +68,18 @@ class SessionQueueManager(
 ) {
     companion object {
         private const val TAG = "SessionQueueManager"
+        private const val NO_CURRENT_CLIMB_INDEX = 0xFF
+        private const val EXTERNAL_BOARD_OVERRIDE_FLAG = 0x01
+
+        /**
+         * Uses the legacy "no current climb" index plus a new flag byte. Older
+         * clients see 0xFF and safely do nothing; current clients can still
+         * distinguish an external board-app write from an empty queue.
+         */
+        fun isExternalBoardOverride(data: ByteArray): Boolean =
+            data.size >= 2 &&
+                (data[0].toInt() and 0xFF) == NO_CURRENT_CLIMB_INDEX &&
+                (data[1].toInt() and 0xFF) == EXTERNAL_BOARD_OVERRIDE_FLAG
     }
 
     private val _state = MutableStateFlow(SessionQueueState())
@@ -350,8 +364,25 @@ class SessionQueueManager(
     /** Apply current index change from host notification. */
     fun applyRemoteCurrentIndex(index: Int) {
         _state.update { s ->
-            if (index in s.queue.indices) s.copy(currentIndex = index) else s
+            if (index in s.queue.indices) {
+                s.copy(currentIndex = index, externalBoardOverride = false)
+            } else {
+                s
+            }
         }
+    }
+
+    /** Marks a successful raw relay write whose climb ID is unknown to CruxCoach. */
+    fun markExternalBoardWrite() {
+        if (_state.value.role != SessionRole.HOST) return
+        lastSentClimbKey = null
+        _state.update { it.copy(externalBoardOverride = true) }
+        onCurrentClimbChanged?.invoke()
+    }
+
+    /** Applies the host's external-write marker without touching the physical board. */
+    fun applyRemoteExternalBoardWrite() {
+        _state.update { it.copy(externalBoardOverride = true) }
     }
 
     fun setParticipantRole(sessionId: Int, hostName: String) {
@@ -503,11 +534,11 @@ class SessionQueueManager(
                     if (climb.frames.isBlank()) return@withLock
                     val variant = com.cruxcoach.domain.board.MoonBoardVariant.fromLayoutId(climb.layoutId)
                         ?: com.cruxcoach.domain.board.MoonBoardVariant.MOONBOARD_2016
-                    bleConnection.sendMoonBoardClimb(climb.frames, variant)
-                    lastSentClimbKey = key
-                    Log.d(TAG, "sendCurrentClimbToBoard: sent MoonBoard ${item.climbUuid.take(8)} angle=${item.angle}")
-                    onFirstQueueClimbSent?.invoke()
-                    onFirstQueueClimbSent = null
+                    val sent = bleConnection.sendMoonBoardClimb(climb.frames, variant)
+                    if (sent) {
+                        markCurrentClimbProjected(key)
+                        Log.d(TAG, "sendCurrentClimbToBoard: sent MoonBoard ${item.climbUuid.take(8)} angle=${item.angle}")
+                    }
                     return@withLock
                 }
                 val holds = BoardClimbParser.parseFrames(climb.frames)
@@ -523,17 +554,27 @@ class SessionQueueManager(
                     (if (climb.brand == BoardBrand.KILTER) userPreferences.ledHoldColors.first()
                      else LedHoldColors.standardFor(climb.brand)).toRoleColorMap()
                 }
-                bleConnection.sendClimb(holds, ledMap, roleColors)
-                lastSentClimbKey = key
-                Log.d(TAG, "sendCurrentClimbToBoard: sent ${item.climbUuid.take(8)} angle=${item.angle}")
-                // Clear last-projected-climb banner on first queue send
-                onFirstQueueClimbSent?.invoke()
-                onFirstQueueClimbSent = null // fire once
+                val sent = bleConnection.sendClimb(holds, ledMap, roleColors)
+                if (sent) {
+                    markCurrentClimbProjected(key)
+                    Log.d(TAG, "sendCurrentClimbToBoard: sent ${item.climbUuid.take(8)} angle=${item.angle}")
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to send climb to board", e)
             }
             }
         }
+    }
+
+    private fun markCurrentClimbProjected(key: String) {
+        lastSentClimbKey = key
+        val hadExternalOverride = _state.value.externalBoardOverride
+        if (hadExternalOverride) {
+            _state.update { it.copy(externalBoardOverride = false) }
+            onCurrentClimbChanged?.invoke()
+        }
+        onFirstQueueClimbSent?.invoke()
+        onFirstQueueClimbSent = null
     }
 
     /**
@@ -574,11 +615,18 @@ class SessionQueueManager(
     }
 
     fun encodeCurrentClimb(): ByteArray {
-        val item = _state.value.currentClimb
+        val state = _state.value
+        if (state.externalBoardOverride) {
+            return byteArrayOf(
+                NO_CURRENT_CLIMB_INDEX.toByte(),
+                EXTERNAL_BOARD_OVERRIDE_FLAG.toByte(),
+            )
+        }
+        val item = state.currentClimb
         return if (item != null) {
-            SessionQueueProtocol.encodeQueueState(_state.value.currentIndex, listOf(item))
+            SessionQueueProtocol.encodeQueueState(state.currentIndex, listOf(item))
         } else {
-            byteArrayOf(0xFF.toByte(), 0)
+            byteArrayOf(NO_CURRENT_CLIMB_INDEX.toByte(), 0)
         }
     }
 }

@@ -30,6 +30,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.cruxcoach.android.ble.BlePermissionHelper
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.ble.DiscoveredBoard
+import com.cruxcoach.android.ble.NearbySession
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.android.ui.common.LocalBleShareManager
 import com.cruxcoach.android.data.SessionRole
@@ -43,7 +44,6 @@ fun BleConnectionSheet(
     onDismiss: () -> Unit,
     onNavigateToClimb: ((uuid: String, angle: Int) -> Unit)? = null,
     autoStartScan: Boolean = false,
-    sessionRole: SessionRole = SessionRole.NONE,
     viewModel: BleConnectionViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -167,7 +167,10 @@ fun BleConnectionSheet(
                     )
                     // FEAT-044 §12: "share this board" (party mode) — only
                     // offered while actually holding a real board.
-                    RelaySharingSection()
+                    RelaySharingSection(
+                        boardBrand = state.connectedBoardBrand,
+                        sessionRole = state.sessionRole,
+                    )
                 }
 
                 // State 4: Connecting
@@ -176,7 +179,7 @@ fun BleConnectionSheet(
                 }
 
                 // State 5: Session participant — board is controlled by host
-                sessionRole == SessionRole.PARTICIPANT -> {
+                state.sessionRole == SessionRole.PARTICIPANT -> {
                     SessionParticipantContent()
                 }
 
@@ -208,6 +211,7 @@ fun BleConnectionSheet(
                     ScanContent(
                         isScanning = state.isScanning,
                         boards = state.discoveredBoards,
+                        nearbySessions = state.nearbySessions,
                         lastUsedBoardAddresses = state.lastUsedBoardAddresses,
                         bleShareState = bleShareState,
                         isRequestingDisconnect = state.isRequestingDisconnect,
@@ -215,7 +219,10 @@ fun BleConnectionSheet(
                         onStartScan = { viewModel.startScan() },
                         onStopScan = { viewModel.stopScan() },
                         onConnectBoard = { viewModel.connectToBoard(it) },
-                        onRelayHostTapped = { viewModel.joinNearbyRelaySession(); onDismiss() },
+                        onRelayHostTapped = {
+                            viewModel.joinNearbySession(it)
+                            onDismiss()
+                        },
                         onRequestDisconnect = { viewModel.requestDisconnect() },
                         onClimbTapped = if (onNavigateToClimb != null) {
                             { uuid, angle -> onDismiss(); onNavigateToClimb(uuid, angle) }
@@ -429,6 +436,7 @@ private fun ConnectingContent(boardName: String?) {
 private fun ScanContent(
     isScanning: Boolean,
     boards: List<DiscoveredBoard>,
+    nearbySessions: List<NearbySession>,
     lastUsedBoardAddresses: Map<BoardBrand, String>,
     bleShareState: com.cruxcoach.android.data.BleShareUiState,
     isRequestingDisconnect: Boolean,
@@ -436,7 +444,7 @@ private fun ScanContent(
     onStartScan: () -> Unit,
     onStopScan: () -> Unit,
     onConnectBoard: (DiscoveredBoard) -> Unit,
-    onRelayHostTapped: () -> Unit,
+    onRelayHostTapped: (NearbySession) -> Unit,
     onRequestDisconnect: () -> Unit,
     onClimbTapped: ((uuid: String, angle: Int) -> Unit)? = null
 ) {
@@ -480,9 +488,8 @@ private fun ScanContent(
         }
     }
 
-    if (boards.isNotEmpty()) {
-        val realBoards = boards.filter { !it.isCruxRelay }
-        val relayHosts = boards.filter { it.isCruxRelay }
+    val realBoards = boards.filterNot { it.isCruxRelay }
+    if (realBoards.isNotEmpty() || nearbySessions.isNotEmpty()) {
         LazyColumn(
             verticalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.heightIn(max = 300.dp)
@@ -494,11 +501,14 @@ private fun ScanContent(
                     onClick = { onConnectBoard(board) },
                 )
             }
-            // FEAT-044 §11: a CruxRelay is another CruxCoach user fronting the
-            // board — never a connectable board; tapping routes to joining
-            // their session (via the existing nearby-session surface).
-            items(relayHosts, key = { it.address }) { host ->
-                RelayHostItem(host = host, onClick = onRelayHostTapped)
+            // Raw CruxRelay board advertisements are deliberately hidden. The
+            // separately advertised CruxCoach session identifies the exact
+            // host and remains unambiguous when several relays are nearby.
+            items(nearbySessions, key = { it.deviceAddress }) { session ->
+                RelayHostItem(
+                    session = session,
+                    onClick = { onRelayHostTapped(session) },
+                )
             }
         }
     } else if (!isScanning) {
@@ -646,7 +656,7 @@ private fun NearbyActiveClimbCard(
 }
 
 @Composable
-private fun RelayHostItem(host: DiscoveredBoard, onClick: () -> Unit) {
+private fun RelayHostItem(session: NearbySession, onClick: () -> Unit) {
     Card(
         onClick = onClick,
         modifier = Modifier
@@ -670,12 +680,12 @@ private fun RelayHostItem(host: DiscoveredBoard, onClick: () -> Unit) {
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    host.displayName,
+                    session.hostName.ifBlank { stringResource(R.string.relay_host_title) },
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    stringResource(R.string.relay_host_join_subtitle),
+                    stringResource(R.string.relay_host_join_subtitle, session.participantCount),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.primary
                 )

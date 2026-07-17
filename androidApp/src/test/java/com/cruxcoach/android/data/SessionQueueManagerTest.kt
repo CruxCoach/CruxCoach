@@ -6,6 +6,7 @@ import com.cruxcoach.android.ble.QueueItem
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.ClimbWithStats
 import com.cruxcoach.domain.board.BoardBrand
+import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
@@ -563,11 +564,13 @@ class SessionQueueManagerTest {
     )
 
     private fun setupConnectedSendScenario(connectedBrand: BoardBrand?) {
+        val uuid = "305ecf35-4ab5-4c9c-afd5-91af0848004b"
         every { bleConnection.connectionState } returns MutableStateFlow(ConnectionState.CONNECTED)
         every { bleConnection.connectedBoardBrand } returns MutableStateFlow(connectedBrand)
-        every { boardRepository.getClimbByUuid(any(), any()) } returns moonBoardClimb("uuid-mb")
+        every { boardRepository.getClimbByUuid(any(), any()) } returns moonBoardClimb(uuid)
+        coEvery { bleConnection.sendMoonBoardClimb(any(), any()) } returns true
         queueManager.startQueue("Host")
-        queueManager.addClimb("uuid-mb", 40)
+        queueManager.addClimb(uuid, 40)
     }
 
     @Test
@@ -733,5 +736,82 @@ class SessionQueueManagerTest {
         queueManager.addClimb("extra", 40)
         assertTrue(queueManager.isPlaylistQueue)
         assertEquals(2, queueManager.state.value.queue.size)
+    }
+
+    // ===== External board-app override =====
+
+    @Test
+    fun `empty queue is not mistaken for an external board override`() {
+        queueManager.startQueue("Host")
+
+        val encoded = queueManager.encodeCurrentClimb()
+
+        assertEquals(0xFF, encoded[0].toInt() and 0xFF)
+        assertFalse(SessionQueueManager.isExternalBoardOverride(encoded))
+    }
+
+    @Test
+    fun `host external write is broadcast as a dedicated current-climb sentinel`() {
+        queueManager.startQueue("Host")
+        queueManager.addClimb("uuid0", 40)
+        var currentChanged = 0
+        queueManager.onCurrentClimbChanged = { currentChanged++ }
+
+        queueManager.markExternalBoardWrite()
+
+        assertTrue(queueManager.state.value.externalBoardOverride)
+        val encoded = queueManager.encodeCurrentClimb()
+        assertEquals(0xFF, encoded[0].toInt() and 0xFF)
+        assertTrue(SessionQueueManager.isExternalBoardOverride(encoded))
+        assertEquals(1, currentChanged)
+    }
+
+    @Test
+    fun `participant applies external override without writing the physical board`() {
+        every { bleConnection.connectionState } returns MutableStateFlow(ConnectionState.CONNECTED)
+        queueManager.setParticipantRole(0, "Host")
+        queueManager.applyRemoteState(0, listOf(QueueItem("remote-climb", 40)))
+
+        queueManager.applyRemoteExternalBoardWrite()
+        queueManager.sendCurrentClimbToBoard()
+
+        assertTrue(queueManager.state.value.externalBoardOverride)
+        coVerify(exactly = 0) { bleConnection.sendClimb(any(), any(), any()) }
+        coVerify(exactly = 0) { bleConnection.sendMoonBoardClimb(any(), any()) }
+    }
+
+    @Test
+    fun `successful host resend restores queue projection and clears external override`() {
+        setupConnectedSendScenario(connectedBrand = BoardBrand.MOONBOARD)
+        queueManager.markExternalBoardWrite()
+        coEvery { bleConnection.sendMoonBoardClimb(any(), any()) } returns true
+
+        queueManager.sendCurrentClimbToBoard()
+
+        assertFalse(queueManager.state.value.externalBoardOverride)
+        assertEquals(0, queueManager.encodeCurrentClimb()[0].toInt() and 0xFF)
+    }
+
+    @Test
+    fun `failed host resend keeps external override honest`() {
+        setupConnectedSendScenario(connectedBrand = BoardBrand.MOONBOARD)
+        queueManager.markExternalBoardWrite()
+        coEvery { bleConnection.sendMoonBoardClimb(any(), any()) } returns false
+
+        queueManager.sendCurrentClimbToBoard()
+
+        assertTrue(queueManager.state.value.externalBoardOverride)
+    }
+
+    @Test
+    fun `valid remote queue index clears external override`() {
+        queueManager.setParticipantRole(0, "Host")
+        queueManager.applyRemoteState(0, listOf(QueueItem("a", 40), QueueItem("b", 40)))
+        queueManager.applyRemoteExternalBoardWrite()
+
+        queueManager.applyRemoteCurrentIndex(1)
+
+        assertFalse(queueManager.state.value.externalBoardOverride)
+        assertEquals(1, queueManager.state.value.currentIndex)
     }
 }

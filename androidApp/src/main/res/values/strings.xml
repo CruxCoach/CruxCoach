@@ -910,12 +910,12 @@
     <string name="board_ble_request_disconnect">Request disconnect</string>
 
     <!-- FEAT-044 CruxRelay board sharing -->
-    <string name="relay_notification_channel">Board sharing</string>
-    <string name="relay_notification_channel_desc">Shown while your board is being shared with users of the official board app.</string>
-    <string name="relay_notification_title">Sharing board</string>
-    <string name="relay_notification_text">%d connected</string>
-    <string name="relay_stopped_idle">Sharing ended — no one connected</string>
-    <string name="relay_notification_stop">Stop sharing</string>
+    <string name="relay_notification_channel">Board-app sharing</string>
+    <string name="relay_notification_channel_desc">Shown while compatible board apps can send through CruxCoach.</string>
+    <string name="relay_notification_title">Board available to other apps</string>
+    <string name="relay_notification_text">%d board-app connections</string>
+    <string name="relay_stopped_idle">App sharing ended — no one was connected</string>
+    <string name="relay_notification_stop">Stop app sharing</string>
 
     <!-- Board: Climb Card -->
     <string name="board_climb_by_setter">by %s</string>
@@ -1180,6 +1180,7 @@
     <string name="ble_on_board">On Board</string>
     <string name="ble_participants">%1$d participants</string>
     <string name="ble_queue_empty">Playlist is empty</string>
+    <string name="ble_external_board_override">Another board app changed the lights</string>
     <string name="ble_ready_to_resend">Ready to resend</string>
     <string name="ble_session_climb">Playlist climb</string>
     <string name="ble_session_label">PLAYLIST</string>
@@ -1547,6 +1548,7 @@
     <string name="settings_board_projection_lifecycle_retained">This board keeps the last climb lit after CruxCoach releases the connection.</string>
     <string name="cd_add_climb_to_shared_queue">Add climb to shared queue</string>
     <string name="cd_light_climb_on_board">Light climb on board</string>
+    <string name="cd_restore_queue_climb">Light the current queue climb again</string>
     <string name="board_ble_last_used">Last used</string>
     <string name="settings_board_find_via_gym">Don\'t know?</string>
     <string name="settings_board_find_via_gym_fallback">Pick your board directly</string>
@@ -2140,17 +2142,20 @@
     <string name="playlist_selection_projects">Open projects</string>
     <string name="playlist_selection_all">All</string>
     <!-- FEAT-044 CruxRelay: host "share board" surface -->
-    <string name="relay_share_button">Share this board</string>
-    <string name="relay_chip_text">Sharing board · %1$d connected</string>
+    <string name="relay_share_button">Share with other board apps</string>
+    <string name="relay_chip_text">Available to board apps · %1$d connected</string>
     <string name="relay_advertised_as">Visible to others as \"%1$s\"</string>
-    <string name="relay_disclosure_title">Share this board</string>
-    <string name="relay_disclosure_text">While sharing, other Bluetooth devices see your phone as \"CruxRelay…\" (restored when you stop). People using the official app can then send climbs to this board through you.</string>
+    <string name="relay_disclosure_title">Share with board apps</string>
+    <string name="relay_disclosure_text">Your phone temporarily appears as a compatible board named \"CruxRelay…\". Other board apps can send through CruxCoach, while CruxCoach users join the shared queue. The latest successful send controls the lights. Your Bluetooth name is restored when you stop.</string>
     <string name="relay_disclosure_disclaimer">CruxCoach is not affiliated with Kilter or Aurora Climbing; board names are used only for compatibility.</string>
-    <string name="relay_disclosure_confirm">Start sharing</string>
+    <string name="relay_disclosure_confirm">Allow board apps</string>
     <string name="relay_error_server">Couldn\'t start sharing. Please try again.</string>
     <string name="relay_error_advertise">Couldn\'t make this board discoverable.</string>
     <string name="relay_error_name">Couldn\'t set the sharing name.</string>
     <string name="relay_error_board_lost">Board connection lost — sharing stopped.</string>
+    <string name="relay_error_unsupported_board">This board does not support compatible app sharing.</string>
+    <string name="relay_error_session_participant">Only the CruxCoach session host can share the board with other apps.</string>
     <string name="relay_chip_stop">Stop</string>
-    <string name="relay_host_join_subtitle">CruxCoach host — tap to join their session</string>
+    <string name="relay_host_title">Shared CruxCoach session</string>
+    <string name="relay_host_join_subtitle">%1$d in session · Tap to join</string>
 </resources>

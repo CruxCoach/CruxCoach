@@ -12,6 +12,8 @@ import com.cruxcoach.android.ble.ClimbBleAdvertiser
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.ble.DiscoveredBoard
 import com.cruxcoach.android.ble.NearbyClimbScanner
+import com.cruxcoach.android.ble.NearbySession
+import com.cruxcoach.android.data.BoardSessionManager
 import com.cruxcoach.android.data.NearbyPresenceManager
 import com.cruxcoach.android.data.SessionGattBridge
 import com.cruxcoach.android.data.SessionQueueManager
@@ -37,14 +39,17 @@ data class BleConnectionState(
     val isBluetoothEnabled: Boolean = false,
     val isScanning: Boolean = false,
     val discoveredBoards: List<DiscoveredBoard> = emptyList(),
+    val nearbySessions: List<NearbySession> = emptyList(),
     val lastUsedBoardAddresses: Map<BoardBrand, String> = emptyMap(),
     val connectionState: ConnectionState = ConnectionState.DISCONNECTED,
     val connectedBoardName: String? = null,
+    val connectedBoardBrand: BoardBrand? = null,
     val isRequestingDisconnect: Boolean = false,
     val disconnectRequestNoResponse: Boolean = false,
     val climbSharingEnabled: Boolean = false,
     val allowRemoteDisconnect: Boolean = false,
     val showDisconnectRequestDialog: Boolean = false,
+    val sessionRole: SessionRole = SessionRole.NONE,
     /**
      * True while a scan started via [BleConnectionViewModel.startScanWithAutoConnect]
      * is still inside its 2 s settling window. The sheet uses this to know whether
@@ -68,7 +73,8 @@ class BleConnectionViewModel @Inject constructor(
     private val climbAdvertiser: ClimbBleAdvertiser,
     private val sessionQueueManager: SessionQueueManager,
     private val nearbyPresenceManager: NearbyPresenceManager,
-    private val sessionGattBridge: SessionGattBridge
+    private val sessionGattBridge: SessionGattBridge,
+    private val boardSessionManager: BoardSessionManager,
 ) : ViewModel() {
 
     companion object {
@@ -137,6 +143,16 @@ class BleConnectionViewModel @Inject constructor(
             }
         }
         viewModelScope.safeLaunch(TAG) {
+            bleConnection.connectedBoardBrand.collect { brand ->
+                _state.update { it.copy(connectedBoardBrand = brand) }
+            }
+        }
+        viewModelScope.safeLaunch(TAG) {
+            nearbyClimbScanner.nearbySessions.collect { sessions ->
+                _state.update { it.copy(nearbySessions = sessions.sortedByDescending(NearbySession::rssi)) }
+            }
+        }
+        viewModelScope.safeLaunch(TAG) {
             bleConnection.connectFailureReason.collect { reason ->
                 _state.update { it.copy(connectFailureReason = reason) }
             }
@@ -187,23 +203,35 @@ class BleConnectionViewModel @Inject constructor(
             }
         }
 
-        // Auto-connect to board when entering a session (HOST or PARTICIPANT) while not connected.
-        // HOST: SessionGattBridge already sent the DisconnectRequest — wait for board to become vacant.
-        // PARTICIPANT: GATT connection to host succeeded — connect to board for LED control.
+        // Only the session host owns the physical board connection. Participants
+        // send queue commands to the host and connect to the board only after a
+        // host-migration promotion changes their role to HOST.
         var previousQueueRole = SessionRole.NONE
         viewModelScope.safeLaunch(TAG) {
             sessionQueueManager.state.collect { queueState ->
                 val newRole = queueState.role
+                _state.update { it.copy(sessionRole = newRole) }
                 if (newRole != previousQueueRole) {
                     Log.d(TAG, "Queue role changed: $previousQueueRole → $newRole, " +
                         "connectionState=${_state.value.connectionState}")
                 }
-                if ((newRole == SessionRole.HOST || newRole == SessionRole.PARTICIPANT)
-                    && previousQueueRole != newRole
-                    && _state.value.connectionState == ConnectionState.DISCONNECTED
+                if (BoardDeliveryPolicy.shouldAutoConnectSessionHost(
+                        newRole,
+                        previousQueueRole,
+                        _state.value.connectionState,
+                    )
                 ) {
                     Log.d(TAG, "Role became $newRole while disconnected → triggering auto-connect")
                     startAutoConnectForSession()
+                }
+                if (BoardDeliveryPolicy.shouldReleaseBoardForSessionParticipant(
+                        newRole,
+                        previousQueueRole,
+                        _state.value.connectionState,
+                    )
+                ) {
+                    Log.d(TAG, "Participant role acquired — releasing local board connection")
+                    bleConnection.disconnect()
                 }
                 previousQueueRole = newRole
             }
@@ -298,8 +326,9 @@ class BleConnectionViewModel @Inject constructor(
      * brand mismatch that never explains the connection itself is wrong.
      */
     private suspend fun preferActiveBrand(boards: List<DiscoveredBoard>): List<DiscoveredBoard> {
+        val realBoards = boards.filterNot { it.isCruxRelay }
         val activeBrand = BoardBrand.fromWire(userPreferences.boardBrand.first())
-        return boards.filter { it.boardBrand == activeBrand }.ifEmpty { boards }
+        return realBoards.filter { it.boardBrand == activeBrand }.ifEmpty { realBoards }
     }
 
     /**
@@ -345,22 +374,19 @@ class BleConnectionViewModel @Inject constructor(
         }
     }
 
-    /**
-     * Join a nearby CruxCoach host that is fronting the board (FEAT-044 §5/§11).
-     * A CruxRelay board-ad can't be reliably correlated to its host's session
-     * advertisement (different randomised BLE addresses), so join the strongest
-     * nearby session — unambiguous in the common single-host case.
-     */
-    fun joinNearbyRelaySession() {
-        val device = nearbyClimbScanner.nearbySessions.value.maxByOrNull { it.rssi }?.device
+    /** Joins the exact session selected by the user; multiple nearby hosts stay unambiguous. */
+    fun joinNearbySession(session: NearbySession) {
+        val device = session.device
         if (device != null) {
+            boardSessionManager.startSession()
             sessionGattBridge.joinSession(device)
         } else {
-            Log.w("BleConnectionVM", "joinNearbyRelaySession: no joinable nearby session found")
+            Log.w(TAG, "joinNearbySession: selected session has no connectable device")
         }
     }
 
     fun connectToBoard(board: DiscoveredBoard) {
+        if (board.isCruxRelay) return
         if (bleConnection.connectionState.value != ConnectionState.DISCONNECTED) return
         pendingBoard = board
         bleScanner.stopScan()

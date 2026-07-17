@@ -129,6 +129,15 @@ class BoardStateManager @Inject constructor(
         Log.d(TAG, "QUICK uuid=${uuid.take(8)} angle=$angle name=${existingName ?: "pending"}")
     }
 
+    /** Clears state when the board was overwritten by a frame without a CruxCoach climb ID. */
+    suspend fun clearLastClimb() {
+        staleJob?.cancel()
+        staleJob = null
+        _lastClimb.value = null
+        userPreferences.clearLastClimb()
+        Log.d(TAG, "CLEAR external board write")
+    }
+
     /**
      * Schedules a coroutine that clears [_lastClimb] after [STALE_THRESHOLD_MS].
      * Resets on every new climb so only truly idle boards get cleared.

@@ -23,6 +23,14 @@ class RelayBoardNameTest {
     }
 
     @Test
+    fun transparentBoard_restoresScannerSeparatedApiLevel() {
+        assertEquals(
+            "CruxRelay·Kilter Board@3",
+            RelayBoardName.transparentBoard("Kilter Board", 3),
+        )
+    }
+
+    @Test
     fun transparent_trimsProductToFitByteBudget_keepingPrefixAndApi() {
         val name = RelayBoardName.transparent("Kilter Board Original Homewall Mega@3")
         assertTrue(name.encodeToByteArray().size <= RelayBoardName.MAX_NAME_BYTES, "name=$name")

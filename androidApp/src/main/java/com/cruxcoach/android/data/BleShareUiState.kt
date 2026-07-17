@@ -103,6 +103,7 @@ data class OwnSessionState(
     val currentIndex: Int,
     val currentClimbName: String?,
     val currentClimbGrade: String? = null,
+    val externalBoardOverride: Boolean = false,
     val isPaused: Boolean,
     val elapsedSeconds: Int
 )

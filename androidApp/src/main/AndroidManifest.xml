@@ -24,6 +24,7 @@
     <!-- Foreground service for background sync notifications -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
 
     <!-- Exact alarms for the rest timer. SCHEDULE_EXACT_ALARM (API 31)
          can be revoked on API 33+, silently degrading the timer to an
@@ -158,7 +159,7 @@
         <service
             android:name=".data.CruxRelayService"
             android:exported="false"
-            android:foregroundServiceType="dataSync" />
+            android:foregroundServiceType="connectedDevice" />
 
         <!-- Rest timer alarm receiver (fires in Doze mode) -->
         <receiver
@@ -197,10 +198,6 @@
                 android:value="androidx.startup"
                 tools:node="remove" />
         </provider>
-        <service
-            android:name="androidx.work.impl.foreground.SystemForegroundService"
-            android:foregroundServiceType="dataSync"
-            tools:node="merge" />
     </application>
 
 </manifest>

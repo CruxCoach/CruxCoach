@@ -186,7 +186,19 @@ internal fun SessionChipContent(
                 }
 
                 // Board climb (preferred) or queue info
-                if (effectiveOnBoard != null) {
+                if (session.externalBoardOverride) {
+                    Icon(Icons.Default.SignalCellularAlt, null, tint = WarningYellow, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(5.dp))
+                    Text(
+                        stringResource(R.string.ble_external_board_override),
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = WarningYellow,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                } else if (effectiveOnBoard != null) {
                     // Board was externally overwritten — show what's actually on the board
                     Icon(Icons.Default.SignalCellularAlt, null, tint = WarningYellow, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(5.dp))
@@ -277,7 +289,7 @@ internal fun SessionChipContent(
         }
 
         // Second line: queue info when board shows external climb
-        if (effectiveOnBoard != null && session.queue.isNotEmpty()) {
+        if ((effectiveOnBoard != null || session.externalBoardOverride) && session.queue.isNotEmpty()) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = OrangeAccent.copy(alpha = 0.08f)),

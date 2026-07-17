@@ -1062,6 +1062,15 @@ class UserPreferences(
         }
     }
 
+    suspend fun clearLastClimb() {
+        dataStore.edit {
+            it.remove(PreferenceKeys.LAST_CLIMB_UUID)
+            it.remove(PreferenceKeys.LAST_CLIMB_ANGLE)
+            it.remove(PreferenceKeys.LAST_CLIMB_TIMESTAMP)
+            it.remove(PreferenceKeys.LAST_CLIMB_PROJECTION_SURVIVES_DISCONNECT)
+        }
+    }
+
 
     val easterAnimationsUnlocked: Flow<Boolean> = dataStore.data.map {
         it[PreferenceKeys.EASTER_ANIMATIONS_UNLOCKED] ?: false

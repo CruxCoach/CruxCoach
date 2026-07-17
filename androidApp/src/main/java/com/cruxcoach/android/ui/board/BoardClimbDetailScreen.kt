@@ -159,7 +159,6 @@ fun BoardClimbDetailScreen(
         BleConnectionSheet(
             onDismiss = { showBleSheet = false },
             autoStartScan = true,
-            sessionRole = detailQueueState.role
         )
     }
 

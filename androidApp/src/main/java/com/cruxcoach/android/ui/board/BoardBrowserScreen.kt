@@ -221,7 +221,6 @@ fun BoardBrowserScreen(
                 onNavigateToClimb(uuid, angle)
             },
             autoStartScan = true,
-            sessionRole = queueState.role
         )
     }
 
@@ -266,9 +265,7 @@ fun BoardBrowserScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        viewModel.stopQueueSharing()
-                        lastEndedSession = viewModel.endSession()
-                        queueManager.endQueue()
+                        lastEndedSession = viewModel.endSharedSession()
                         showEndSessionDialog = false
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),

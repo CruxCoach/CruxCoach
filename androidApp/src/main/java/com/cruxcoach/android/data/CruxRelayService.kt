@@ -7,6 +7,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
@@ -22,7 +23,7 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
- * `dataSync` foreground service for CruxRelay board sharing (FEAT-044 §12).
+ * `connectedDevice` foreground service for CruxRelay board sharing (FEAT-044 §12).
  *
  * Keeps BLE advertising alive while the phone fronts the real board (Android
  * 12+ throttles background advertising) and shows the mandatory persistent
@@ -69,7 +70,11 @@ class CruxRelayService : android.app.Service() {
             this,
             NOTIFICATION_ID,
             buildNotification(relayManager.state.value.clientCount),
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+            } else {
+                0
+            }
         )
         if (stateJob == null) {
             stateJob = scope.launch {
