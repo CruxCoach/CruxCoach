@@ -34,6 +34,13 @@ import com.cruxcoach.android.util.safeLaunch
 data class BleConnectionState(
     val hasPermissions: Boolean = false,
     val isBluetoothEnabled: Boolean = false,
+    /**
+     * System-wide location-services switch. Only relevant for the discovery
+     * scan on API ≤ 30 (see [BlePermissionHelper.isLocationRequired]); an
+     * established or in-flight GATT connection never depends on it. Defaults
+     * to true so no location prompt flashes before the first [checkState].
+     */
+    val isLocationEnabled: Boolean = true,
     val isScanning: Boolean = false,
     val discoveredBoards: List<DiscoveredBoard> = emptyList(),
     val connectionState: ConnectionState = ConnectionState.DISCONNECTED,
@@ -211,7 +218,8 @@ class BleConnectionViewModel @Inject constructor(
     fun checkState() {
         _state.update { it.copy(
             hasPermissions = BlePermissionHelper.hasPermissions(application),
-            isBluetoothEnabled = bleScanner.isBluetoothEnabled()
+            isBluetoothEnabled = bleScanner.isBluetoothEnabled(),
+            isLocationEnabled = BlePermissionHelper.isLocationServicesEnabled(application)
         ) }
     }
 
