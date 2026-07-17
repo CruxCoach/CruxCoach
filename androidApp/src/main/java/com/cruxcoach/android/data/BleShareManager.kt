@@ -124,6 +124,7 @@ class BleShareManager @Inject constructor(
                 old.onBoardClimb?.angle == new.onBoardClimb?.angle &&
                 old.onBoardClimb?.name == new.onBoardClimb?.name &&
                 old.onBoardClimb?.grade == new.onBoardClimb?.grade &&
+                old.onBoardClimb?.isStillProjected == new.onBoardClimb?.isStillProjected &&
                 old.boardOccupiedCount == new.boardOccupiedCount &&
                 old.nearbySessions.size == new.nearbySessions.size &&
                 old.nearbySessions.zip(new.nearbySessions).all { (a, b) ->
@@ -270,7 +271,11 @@ class BleShareManager @Inject constructor(
             // Either we don't have an active climb, or the remote UUID changed (new send
             // that overwrites our climb on the board).
             Log.d(TAG, "BRIDGE remote=ClimbData uuid=${remoteActive.climbUuid.take(8)} hasActive=${climbAdvertiser.hasActiveClimb()} newSend=$isNewRemoteSend → accept")
-            boardStateManager.setLastClimb(remoteActive.climbUuid, remoteActive.angle)
+            boardStateManager.setLastClimb(
+                remoteActive.climbUuid,
+                remoteActive.angle,
+                remoteActive.projectionSurvivesDisconnect,
+            )
             climbAdvertiser.clearActiveClimb()
             return
         }
@@ -292,7 +297,11 @@ class BleShareManager @Inject constructor(
                 return
             }
             Log.d(TAG, "BRIDGE remote=LastClimb uuid=${remoteLast.climbUuid.take(8)} hasActive=false → accept")
-            boardStateManager.setLastClimb(remoteLast.climbUuid, remoteLast.angle)
+            boardStateManager.setLastClimb(
+                remoteLast.climbUuid,
+                remoteLast.angle,
+                remoteLast.projectionSurvivesDisconnect,
+            )
         }
     }
 
@@ -460,7 +469,9 @@ class BleShareManager @Inject constructor(
         val remoteLast = nearbyClimbs.firstOrNull {
             !it.connectedOnly && it.climbUuid.isNotEmpty() && it.isLastClimb
         }
-        if (remoteLast != null && !climbAdvertiser.hasActiveClimb() && overwriteSessionUuid != null) {
+        if (remoteLast != null && remoteLast.projectionSurvivesDisconnect &&
+            !climbAdvertiser.hasActiveClimb() && overwriteSessionUuid != null
+        ) {
             // Session hasn't advanced since the overwrite → board still shows external climb
             if (anySessionClimbUuid == overwriteSessionUuid) {
                 val info = climbInfos[remoteLast.climbUuid]
@@ -470,7 +481,8 @@ class BleShareManager @Inject constructor(
                     name = info?.name,
                     grade = info.grade(),
                     source = OnBoardSource.REMOTE_LAST,
-                    rssi = remoteLast.rssi
+                    rssi = remoteLast.rssi,
+                    isStillProjected = true,
                 )
             }
             // Session advanced → it sent a new climb → session re-took control
@@ -534,7 +546,8 @@ class BleShareManager @Inject constructor(
                 name = info?.name,
                 grade = info.grade(),
                 source = OnBoardSource.REMOTE_LAST,
-                rssi = remoteLast.rssi
+                rssi = remoteLast.rssi,
+                isStillProjected = remoteLast.projectionSurvivesDisconnect,
             )
         }
 
@@ -546,7 +559,8 @@ class BleShareManager @Inject constructor(
                 angle = lastClimb.angle,
                 name = info?.name ?: lastClimb.name,
                 grade = info.grade(),
-                source = OnBoardSource.LOCAL_MANAGER
+                source = OnBoardSource.LOCAL_MANAGER,
+                isStillProjected = lastClimb.projectionSurvivesDisconnect,
             )
         }
 

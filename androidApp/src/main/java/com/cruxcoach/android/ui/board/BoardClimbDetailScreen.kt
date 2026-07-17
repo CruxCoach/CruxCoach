@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Star
@@ -59,6 +60,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.data.GradeScale
+import com.cruxcoach.android.data.BoardSendMode
 import com.cruxcoach.android.data.LedHoldColors
 import com.cruxcoach.android.ui.common.BleStatusArea
 import com.cruxcoach.android.ui.common.LocalSessionQueueManager
@@ -1114,6 +1116,35 @@ private fun ClimbDetailPageContent(
                                 fontWeight = FontWeight.Bold,
                                 color = OrangeAccent
                             )
+                        }
+                    }
+                    val boardConnected = state.ble.connectionState == ConnectionState.CONNECTED ||
+                        state.ble.connectionState == ConnectionState.SENDING
+                    if (state.boardSendMode == BoardSendMode.EXPLICIT &&
+                        boardConnected &&
+                        state.playback.countdownSeconds == 0
+                    ) {
+                        FilledTonalIconButton(
+                            onClick = viewModel::sendToBoard,
+                            enabled = !state.ble.isSending,
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(8.dp)
+                                .size(40.dp)
+                                .testTag("boarddetail_light_climb_button"),
+                        ) {
+                            if (state.ble.isSending) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    strokeWidth = 2.dp,
+                                )
+                            } else {
+                                Icon(
+                                    Icons.Default.Lightbulb,
+                                    contentDescription = stringResource(R.string.cd_light_climb_on_board),
+                                    tint = OrangeAccent,
+                                )
+                            }
                         }
                     }
                 }

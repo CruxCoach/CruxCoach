@@ -144,10 +144,13 @@ class BoardBleConnection(private val context: Context) {
     // Remember last sent climb for live color preview
     private var lastHolds: List<BoardHold>? = null
     private var lastPlacementToLed: Map<Int, Int>? = null
+    // A stock MoonBoard controller clears its LEDs when the last GATT client
+    // leaves. Once a Moon climb was sent successfully, keep this connection
+    // out of the generic idle-disconnect path until the user disconnects.
+    private var hasActiveMoonBoardProjection = false
 
     private fun resetIdleTimer() {
         disconnectJob?.cancel()
-        if (suppressAutoDisconnect) return
         val seconds = autoDisconnectSeconds
         // Only arm the timer while the connection is truly idle. SENDING
         // is "writes in flight" — the send path re-arms us from its
@@ -155,7 +158,14 @@ class BoardBleConnection(private val context: Context) {
         // this guard, a small autoDisconnectSeconds (e.g. 1 s, used as
         // a replacement for the old Quick-Send macro) could fire mid-
         // send on long climbs.
-        if (seconds > 0 && _connectionState.value == ConnectionState.CONNECTED) {
+        if (BoardProjectionPolicy.shouldArmIdleDisconnect(
+                seconds = seconds,
+                connectionState = _connectionState.value,
+                explicitlySuppressed = suppressAutoDisconnect,
+                connectedBrand = _connectedBoardBrand.value,
+                hasActiveMoonBoardProjection = hasActiveMoonBoardProjection,
+            )
+        ) {
             disconnectJob = scope.launch {
                 delay(seconds * 1_000L)
                 disconnect()
@@ -320,6 +330,7 @@ class BoardBleConnection(private val context: Context) {
         _connectionState.value = ConnectionState.DISCONNECTED
         _connectedBoardName.value = null
         _connectedBoardBrand.value = null
+        hasActiveMoonBoardProjection = false
         gatt = null
         writeCharacteristic = null
     }
@@ -376,6 +387,7 @@ class BoardBleConnection(private val context: Context) {
         _connectionState.value = ConnectionState.CONNECTING
         _connectedBoardName.value = board.displayName
         _connectedBoardBrand.value = board.boardBrand
+        hasActiveMoonBoardProjection = false
         // Fresh attempt — drop any failure reason from the previous one.
         _connectFailureReason.value = null
         currentBoard = board
@@ -631,8 +643,7 @@ class BoardBleConnection(private val context: Context) {
                 encoder.encodeClimbFromHolds(holds, placementToLed)
             }
 
-            val success = writeChunks(chunks)
-            return success
+            return writeChunks(chunks)
         } finally {
             if (_connectionState.value == ConnectionState.SENDING) {
                 _connectionState.value = ConnectionState.CONNECTED
@@ -692,6 +703,7 @@ class BoardBleConnection(private val context: Context) {
                 .chunked(BoardPacketEncoder.BLE_MTU)
                 .map { it.toByteArray() }
             val success = writeChunks(chunks)
+            if (success) hasActiveMoonBoardProjection = true
             return success
         } finally {
             if (_connectionState.value == ConnectionState.SENDING) {
@@ -751,6 +763,7 @@ class BoardBleConnection(private val context: Context) {
         gatt = null
         writeCharacteristic = null
         currentBoard = null
+        hasActiveMoonBoardProjection = false
         _connectionState.value = ConnectionState.DISCONNECTED
         _connectedBoardName.value = null
         _connectedBoardBrand.value = null

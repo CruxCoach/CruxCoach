@@ -94,7 +94,9 @@ class BoardPickerViewModel @Inject constructor(
             initialBrand = brand,
             productSizes = sizes,
             selectedKilterSizeId = sizeId,
-            selectedMoonBoardVariant = MoonBoardVariant.fromLayoutId(layoutId.toLong()),
+            selectedMoonBoardVariant = MoonBoardVariant.fromBoardSelection(
+                layoutId.toLong(), BoardBrand.fromWire(brand),
+            ),
             selectedAuroraLayoutId = layoutId,
             loadedAuroraBrands = loaded,
             selectedAuroraProductSizeId = sizeId,

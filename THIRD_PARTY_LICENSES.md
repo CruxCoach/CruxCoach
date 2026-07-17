@@ -48,6 +48,21 @@ Used to decompress board manifests downloaded from Blossom relays.
   removal or replacement at any time via the contacts in
   [`SECURITY.md`](SECURITY.md). Requests will be handled promptly.
 
+### MoonBoard 2010 and Mini MoonBoard 2025 layout images
+
+- **Location:** [`androidApp/src/main/assets/board_images/`](androidApp/src/main/assets/board_images/)
+- **Files:** `moonboard_2010_*.png`, `mini_moonboard_2025_*.png`
+- **Source:** extracted unchanged from the official MoonBoard Android app
+  (`1.3.56`); one board plate plus the fixed transparent hold layers for each
+  complete configuration.
+- **Rights holder:** Moon Climbing Ltd
+- **Basis for bundling:** referential offline visualization and hardware
+  interoperability; see [`LEGAL.md`](LEGAL.md#bundled-moonboard-layout-images).
+- **Details:** [`board_images/README.md`](androidApp/src/main/assets/board_images/README.md)
+- **Takedown:** Moon Climbing Ltd may request removal or replacement at any
+  time via the contacts in [`SECURITY.md`](SECURITY.md). Requests will be
+  handled promptly.
+
 ### Aurora-family board layout images
 
 - **Location:** [`board_images/`](androidApp/src/main/assets/board_images/) —

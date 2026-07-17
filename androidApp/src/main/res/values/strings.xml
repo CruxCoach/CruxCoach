@@ -1167,9 +1167,11 @@
     <string name="ble_climbing_now">Climbing now</string>
     <string name="ble_end_session">End Session</string>
     <string name="ble_leave_session">Leave Session</string>
+    <string name="ble_last_climb">Last climb</string>
     <string name="ble_on_board">On Board</string>
     <string name="ble_participants">%1$d participants</string>
     <string name="ble_queue_empty">Queue is empty</string>
+    <string name="ble_ready_to_resend">Ready to resend</string>
     <string name="ble_session_climb">Session climb</string>
     <string name="ble_session_label">SESSION</string>
     <string name="ble_sharing_title">BLE Sharing</string>
@@ -1528,6 +1530,12 @@
     <string name="settings_board_model_title">Board size</string>
     <string name="settings_board_model_change">Change</string>
     <string name="settings_board_model_not_configured">Not configured</string>
+    <string name="settings_board_send_mode_title">Send climbs to board</string>
+    <string name="settings_board_send_mode_desc">Automatic lights a climb as soon as it is opened. Explicit only lights it when you tap the lamp button.</string>
+    <string name="settings_board_send_mode_automatic">Automatic</string>
+    <string name="settings_board_send_mode_explicit">Explicit</string>
+    <string name="cd_light_climb_on_board">Light climb on board</string>
+    <string name="board_ble_last_used">Last used</string>
     <string name="settings_board_find_via_gym">Don\'t know?</string>
     <string name="settings_board_find_via_gym_fallback">Pick your board directly</string>
     <string name="feat007_gym_search_title">Find your gym</string>

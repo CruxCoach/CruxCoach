@@ -9,14 +9,42 @@ import kotlin.test.assertFailsWith
 /**
  * Unit tests for [MoonBoardFrameEncoder] — the FEAT-027 MoonBoard BLE
  * wire-frame encoder. The serial-position arithmetic is verified against
- * known-good frames for the standard 11×18 boards, and against the natural
- * per-column-height extrapolation for Mini 2020 (variant gridRows = 12;
- * dynamic-capture against real Mini hardware still pending).
+ * known-good frames for the standard 11×18 boards and the documented
+ * A1-first zig-zag installation order for 11×12 Mini boards.
  */
 class MoonBoardFrameEncoderTest {
 
     private val standard = MoonBoardVariant.MOONBOARD_2016   // 11×18
     private val mini = MoonBoardVariant.MINI_2020             // 11×12
+
+    @Test
+    fun `MoonBoard 2010 uses the standard 198-position wiring map`() {
+        (1..198).forEach { holdId ->
+            assertEquals(
+                MoonBoardFrameEncoder.serialPosition(holdId, standard),
+                MoonBoardFrameEncoder.serialPosition(holdId, MoonBoardVariant.MOONBOARD_2010),
+                "holdId=$holdId",
+            )
+        }
+    }
+
+    @Test
+    fun `Mini MoonBoard 2025 uses the documented 132-position Mini map`() {
+        (1..132).forEach { holdId ->
+            assertEquals(
+                MoonBoardFrameEncoder.serialPosition(holdId, mini),
+                MoonBoardFrameEncoder.serialPosition(holdId, MoonBoardVariant.MINI_2025),
+                "holdId=$holdId",
+            )
+        }
+        assertEquals(0, MoonBoardFrameEncoder.serialPosition(1, MoonBoardVariant.MINI_2025))
+        assertEquals(11, MoonBoardFrameEncoder.serialPosition(122, MoonBoardVariant.MINI_2025))
+        assertEquals(23, MoonBoardFrameEncoder.serialPosition(2, MoonBoardVariant.MINI_2025))
+        assertEquals(131, MoonBoardFrameEncoder.serialPosition(132, MoonBoardVariant.MINI_2025))
+        assertFailsWith<IllegalArgumentException> {
+            MoonBoardFrameEncoder.serialPosition(133, MoonBoardVariant.MINI_2025)
+        }
+    }
 
     // ── Serial-position arithmetic (standard 11×18 boards) ───────
 

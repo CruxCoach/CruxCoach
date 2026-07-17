@@ -33,7 +33,9 @@ class BoardStateManager @Inject constructor(
         val uuid: String,
         val angle: Int,
         val name: String?,
-        val timestamp: Long = System.currentTimeMillis()
+        val timestamp: Long = System.currentTimeMillis(),
+        /** Whether the physical controller retains this projection without GATT. */
+        val projectionSurvivesDisconnect: Boolean = true,
     )
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -48,9 +50,16 @@ class BoardStateManager @Inject constructor(
      * Deduplicates: if uuid + angle match current value, no update.
      * Persists to DataStore for app-restart survival.
      */
-    suspend fun setLastClimb(uuid: String, angle: Int) {
+    suspend fun setLastClimb(
+        uuid: String,
+        angle: Int,
+        projectionSurvivesDisconnect: Boolean = true,
+    ) {
         val current = _lastClimb.value
-        if (current != null && current.uuid == uuid && current.angle == angle && current.name != null) {
+        if (current != null && current.uuid == uuid && current.angle == angle &&
+            current.name != null &&
+            current.projectionSurvivesDisconnect == projectionSurvivesDisconnect
+        ) {
             Log.d(TAG, "SKIP dedup uuid=${uuid.take(8)} angle=$angle (unchanged)")
             return
         }
@@ -59,8 +68,15 @@ class BoardStateManager @Inject constructor(
             climbNameResolver.resolveName(uuid, angle)
         }
 
-        _lastClimb.update { LastBoardClimb(uuid, angle, name) }
-        userPreferences.setLastClimb(uuid, angle)
+        _lastClimb.update {
+            LastBoardClimb(
+                uuid = uuid,
+                angle = angle,
+                name = name,
+                projectionSurvivesDisconnect = projectionSurvivesDisconnect,
+            )
+        }
+        userPreferences.setLastClimb(uuid, angle, projectionSurvivesDisconnect)
         scheduleStaleCleanup()
         Log.d(TAG, "SET uuid=${uuid.take(8)} angle=$angle name=${name ?: "unknown"}")
     }
@@ -75,13 +91,15 @@ class BoardStateManager @Inject constructor(
         if (uuid != null) {
             val angle = userPreferences.lastClimbAngle.first()
             val persistedAt = userPreferences.lastClimbTimestamp.first()
+            val projectionSurvivesDisconnect =
+                userPreferences.lastClimbProjectionSurvivesDisconnect.first()
             val age = System.currentTimeMillis() - persistedAt
             if (persistedAt > 0 && age > STALE_THRESHOLD_MS) {
                 Log.d(TAG, "RESTORE skipped — stale (${age / 60_000}min old)")
                 return
             }
             Log.d(TAG, "RESTORE uuid=${uuid.take(8)} angle=$angle")
-            setLastClimb(uuid, angle)
+            setLastClimb(uuid, angle, projectionSurvivesDisconnect)
         }
     }
 
@@ -90,12 +108,23 @@ class BoardStateManager @Inject constructor(
      * Call before endQueue() to prevent stale data flashing in the combine flow.
      * Always follow up with the full [setLastClimb] for persistence + name resolution.
      */
-    fun setLastClimbQuick(uuid: String, angle: Int) {
+    fun setLastClimbQuick(
+        uuid: String,
+        angle: Int,
+        projectionSurvivesDisconnect: Boolean = true,
+    ) {
         val current = _lastClimb.value
-        if (current != null && current.uuid == uuid && current.angle == angle) return
+        if (current != null && current.uuid == uuid && current.angle == angle &&
+            current.projectionSurvivesDisconnect == projectionSurvivesDisconnect
+        ) return
         // Keep existing name if same UUID (just angle changed), otherwise null
         val existingName = current?.name?.takeIf { current.uuid == uuid }
-        _lastClimb.value = LastBoardClimb(uuid, angle, existingName)
+        _lastClimb.value = LastBoardClimb(
+            uuid = uuid,
+            angle = angle,
+            name = existingName,
+            projectionSurvivesDisconnect = projectionSurvivesDisconnect,
+        )
         scheduleStaleCleanup()
         Log.d(TAG, "QUICK uuid=${uuid.take(8)} angle=$angle name=${existingName ?: "pending"}")
     }

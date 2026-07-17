@@ -21,10 +21,11 @@ package com.cruxcoach.domain.board
  * MoonBoard climb's `frames`.
  *
  * Per-variant: the serpentine arithmetic walks `variant.gridRows` per
- * column — 18 for standard 11×18 boards, 12 for Mini 2020. The base
- * format is identical across variants. Mini-hardware dynamic-capture is
- * still outstanding; the Mini path is the natural extrapolation of
- * the documented standard-board protocol.
+ * column — 18 for standard 11×18 boards, 12 for Mini boards. The base
+ * format is identical across variants. The official LED installation
+ * sequence starts at A1, snakes column-by-column and uses 198 active
+ * standard or 132 active Mini positions; physical-controller integration
+ * remains a separate hardware test from this deterministic mapping.
  */
 object MoonBoardFrameEncoder {
 
@@ -56,7 +57,7 @@ object MoonBoardFrameEncoder {
      * LED-strip position for the given [variant]. The strip snakes
      * column by column: even columns run bottom-to-top, odd columns
      * top-to-bottom. The per-column height is [MoonBoardVariant.gridRows]
-     * (18 for the standard 11×18 boards, 12 for Mini 2020).
+     * (18 for the standard 11×18 boards, 12 for Mini boards).
      *
      * Inverse of the board-protocol decoder's serial→hold mapping.
      *
