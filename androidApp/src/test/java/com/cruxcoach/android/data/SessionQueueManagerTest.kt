@@ -9,6 +9,7 @@ import com.cruxcoach.domain.board.BoardBrand
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -212,6 +213,22 @@ class SessionQueueManagerTest {
 
         assertTrue("PARTICIPANT addClimb must route via remoteAddClimb", remoteCalled)
         assertTrue("Queue must stay empty on participant side", queueManager.state.value.queue.isEmpty())
+    }
+
+    @Test
+    fun `participant never resolves or writes current climb to physical board`() {
+        every { bleConnection.connectionState } returns MutableStateFlow(ConnectionState.CONNECTED)
+        queueManager.setParticipantRole(0, "Host")
+        queueManager.applyRemoteState(
+            currentIndex = 0,
+            items = listOf(QueueItem("remote-climb", 40)),
+        )
+
+        queueManager.sendCurrentClimbToBoard()
+
+        verify(exactly = 0) { boardRepository.getClimbByUuid(any(), any()) }
+        coVerify(exactly = 0) { bleConnection.sendClimb(any(), any(), any()) }
+        coVerify(exactly = 0) { bleConnection.sendMoonBoardClimb(any(), any()) }
     }
 
     @Test

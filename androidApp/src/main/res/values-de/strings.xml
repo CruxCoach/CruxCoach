@@ -373,8 +373,9 @@
     <string name="settings_board_auto_download_desc">Lädt die komplette Board-Datenbank (~85 MB) im Hintergrund über WLAN herunter.</string>
 
     <!-- Settings: BLE -->
-    <string name="settings_ble_auto_disconnect_title">BLE Auto-Disconnect</string>
-    <string name="settings_ble_auto_disconnect_desc">Board-Verbindung automatisch trennen nach Inaktivität.</string>
+    <string name="settings_ble_auto_disconnect_title">Board-Verbindung freigeben</string>
+    <string name="settings_ble_auto_disconnect_desc_retained">Gibt die direkte Verbindung nach Inaktivität frei. Dieses Board behält den letzten Boulder; während einer gemeinsamen Session bleibt der Host verbunden.</string>
+    <string name="settings_ble_auto_disconnect_desc_moonboard">Gibt eine ungenutzte Verbindung frei, bevor ein Boulder gesendet wurde. Danach bleibt CruxCoach verbunden, weil ein MoonBoard seine LEDs beim Trennen löscht.</string>
     <string name="settings_duration_minutes_label">Minuten</string>
     <string name="settings_duration_seconds_label">Sekunden</string>
     <string name="settings_ble_keep_screen_on">Bildschirm anlassen</string>
@@ -454,8 +455,8 @@
     <string name="settings_share_server_error">Server-Fehler: %s</string>
 
     <!-- Settings: Climb Sharing -->
-    <string name="settings_sharing_title">Climb-Teilen</string>
-    <string name="settings_sharing_enable">Climb-Teilen aktivieren</string>
+    <string name="settings_sharing_title">In der Nähe</string>
+    <string name="settings_sharing_enable">Aktuellen Boulder teilen</string>
     <string name="settings_sharing_enable_desc">Zeigt anderen CruxCoach-Nutzern in der Nähe, welcher Climb gerade projiziert ist. Wird auch benötigt, um Disconnect-Anfragen an andere Nutzer zu senden.</string>
     <string name="settings_sharing_bluetooth_off">Bluetooth ist ausgeschaltet. Schalte Bluetooth ein, um Climb-Teilen nutzen zu können.</string>
     <string name="settings_sharing_no_ble_advertising">Dieses Gerät unterstützt kein BLE Advertising. Das Feature ist nicht verfügbar.</string>
@@ -1577,10 +1578,13 @@
     <string name="settings_board_model_title">Board-Größe</string>
     <string name="settings_board_model_change">Ändern</string>
     <string name="settings_board_model_not_configured">Nicht konfiguriert</string>
-    <string name="settings_board_send_mode_title">Climbs ans Board senden</string>
-    <string name="settings_board_send_mode_desc">Automatisch beleuchtet einen Climb direkt beim Öffnen. Explizit beleuchtet ihn erst über den Lampen-Button.</string>
-    <string name="settings_board_send_mode_automatic">Automatisch</string>
-    <string name="settings_board_send_mode_explicit">Explizit</string>
+    <string name="settings_board_send_mode_title">Direkte Board-Steuerung</string>
+    <string name="settings_board_send_mode_desc">Legt fest, was bei einer direkten Verbindung passiert. In einer gemeinsamen Session kommen Boulder immer bewusst in die Warteschlange.</string>
+    <string name="settings_board_send_mode_automatic">Sofort</string>
+    <string name="settings_board_send_mode_explicit">Per Taste</string>
+    <string name="settings_board_projection_lifecycle_moonboard">MoonBoard: CruxCoach hält nach dem Beleuchten die direkte Verbindung, damit der Boulder sichtbar bleibt.</string>
+    <string name="settings_board_projection_lifecycle_retained">Dieses Board behält den letzten Boulder, nachdem CruxCoach die Verbindung freigibt.</string>
+    <string name="cd_add_climb_to_shared_queue">Boulder zur gemeinsamen Warteschlange hinzufügen</string>
     <string name="cd_light_climb_on_board">Climb am Board beleuchten</string>
     <string name="board_ble_last_used">Zuletzt verwendet</string>
     <string name="settings_board_find_via_gym">Weiß nicht?</string>

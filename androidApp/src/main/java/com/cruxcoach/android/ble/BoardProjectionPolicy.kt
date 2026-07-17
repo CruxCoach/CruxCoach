@@ -12,6 +12,17 @@ internal object BoardProjectionPolicy {
     fun projectionSurvivesDisconnect(brand: BoardBrand?): Boolean =
         brand != BoardBrand.MOONBOARD
 
+    /**
+     * A session host must release the controller for an actual successor.
+     * Without a successor, disconnect only when the controller itself keeps
+     * the projection; otherwise a solo MoonBoard session would end by
+     * needlessly turning off the final climb.
+     */
+    fun shouldReleaseBoardAfterHosting(
+        hasSuccessor: Boolean,
+        projectionSurvivesDisconnect: Boolean,
+    ): Boolean = hasSuccessor || projectionSurvivesDisconnect
+
     /** Keep a successfully projected MoonBoard climb alive by retaining GATT. */
     fun shouldArmIdleDisconnect(
         seconds: Int,

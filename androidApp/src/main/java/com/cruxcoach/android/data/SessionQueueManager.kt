@@ -79,7 +79,10 @@ class SessionQueueManager(
             var wasConnected = false
             bleConnection.connectionState.collect { connState ->
                 val isConnected = connState == ConnectionState.CONNECTED
-                if (isConnected && !wasConnected && _state.value.isActive && _state.value.currentClimb != null) {
+                if (isConnected && !wasConnected &&
+                    _state.value.role == SessionRole.HOST &&
+                    _state.value.currentClimb != null
+                ) {
                     Log.d(TAG, "Board connected during active session — sending current climb")
                     sendCurrentClimbToBoard()
                 }
@@ -398,7 +401,16 @@ class SessionQueueManager(
 
     fun sendCurrentClimbToBoard() {
         scope.launch {
-            val item = _state.value.currentClimb ?: return@launch
+            val queueState = _state.value
+            // The CruxCoach session host is the single physical-board writer.
+            // Participants only mutate the host queue via GATT; letting their
+            // local connection observer forward the same current-index event
+            // would race the host and defeat the relay ownership model.
+            if (queueState.role != SessionRole.HOST) {
+                Log.d(TAG, "sendCurrentClimbToBoard: skipped — role=${queueState.role}")
+                return@launch
+            }
+            val item = queueState.currentClimb ?: return@launch
             if (bleConnection.connectionState.value != ConnectionState.CONNECTED) return@launch
 
             // Dedup: don't re-send the same climb (multiple callers can trigger this)

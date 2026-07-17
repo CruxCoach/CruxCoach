@@ -1076,6 +1076,33 @@ class BoardClimbDetailViewModel @Inject constructor(
 
     fun sendToBoard() = sendController.sendToBoard()
 
+    /**
+     * Primary detail action. A shared session owns board delivery, so the
+     * same surface that lights a directly connected board adds to the shared
+     * queue when this device is a host or participant.
+     */
+    fun deliverClimb() {
+        val climbState = _state.value
+        val climb = climbState.climb ?: return
+        val decision = BoardDeliveryPolicy.resolve(
+            sendMode = climbState.boardSendMode,
+            sessionRole = sessionQueueManager.state.value.role,
+            sessionConnecting = sessionQueueManager.state.value.isConnecting,
+            boardConnected = sendController.isConnected(),
+            hasDirectPayload = BoardProjectionPolicy.hasSendablePayload(
+                brand = climb.brand,
+                holdCount = climbState.holds.size,
+                frames = climb.frames,
+            ),
+        )
+        when (decision.target) {
+            BoardDeliveryTarget.DIRECT_BOARD -> sendController.sendToBoard()
+            BoardDeliveryTarget.SHARED_QUEUE ->
+                sessionQueueManager.addClimb(climb.uuid, climbState.angle)
+            BoardDeliveryTarget.NONE -> Unit
+        }
+    }
+
     // --- Favorites & lists ---
 
     fun toggleFavorite() {
@@ -1148,7 +1175,19 @@ class BoardClimbDetailViewModel @Inject constructor(
             Log.w(TAG, "boardSendMode read failed; using current UI state", e)
             _state.value.boardSendMode
         }
-        if (sendController.isConnected() && mode == BoardSendMode.AUTOMATIC) {
+        val climbState = _state.value
+        val decision = BoardDeliveryPolicy.resolve(
+            sendMode = mode,
+            sessionRole = sessionQueueManager.state.value.role,
+            sessionConnecting = sessionQueueManager.state.value.isConnecting,
+            boardConnected = sendController.isConnected(),
+            hasDirectPayload = BoardProjectionPolicy.hasSendablePayload(
+                brand = climbState.climb?.brand,
+                holdCount = climbState.holds.size,
+                frames = climbState.climb?.frames,
+            ),
+        )
+        if (decision.dispatchAutomatically) {
             sendController.sendToBoard()
         }
     }
