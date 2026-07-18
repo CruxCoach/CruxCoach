@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothManager
 import android.bluetooth.le.ScanCallback
+import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
 import android.content.BroadcastReceiver
@@ -14,6 +15,7 @@ import android.util.Log
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.domain.relay.RelayBoardName
 import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
@@ -21,6 +23,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
+
+internal enum class ConnectedAdvertisingProbeResult {
+    CONNECTABLE_ADVERTISEMENT_OBSERVED,
+    NOT_OBSERVED,
+    INCONCLUSIVE,
+}
 
 data class DiscoveredBoard(
     val displayName: String,
@@ -34,6 +43,13 @@ data class DiscoveredBoard(
     val boardBrand: BoardBrand = BoardBrand.KILTER,
     /** True when the endpoint is another CruxCoach user's connectable relay. */
     val isCruxRelay: Boolean = false,
+    /**
+     * Runtime-only result from scanning for this controller after GATT became
+     * ready. Null means the probe has not completed or failed; false is an
+     * operational hint for this connection and must not be persisted as a
+     * firmware fact.
+     */
+    val advertisesWhileConnected: Boolean? = null,
 )
 
 /**
@@ -48,6 +64,7 @@ class BoardBleScanner(private val context: Context) {
         private const val TAG = "BoardBleScanner"
         private const val MAX_REGISTRATION_RETRIES = 3
         private const val REGISTRATION_RETRY_DELAY_MS = 1000L
+        private const val CONNECTED_ADVERTISING_PROBE_MS = 3_000L
     }
 
     private val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
@@ -205,6 +222,65 @@ class BoardBleScanner(private val context: Context) {
             Log.e(TAG, "Error stopping scan", e)
         }
         _isScanning.value = false
+    }
+
+    /**
+     * Looks only for the currently connected controller's address. A
+     * connectable advertisement is positive evidence that the firmware has a
+     * slot available for another central. A timeout is useful as an
+     * operational fallback, but is not persisted because Android may suppress
+     * packets or the radio may simply miss the advertising window.
+     */
+    @SuppressLint("MissingPermission")
+    internal suspend fun probeAdvertisingWhileConnected(
+        address: String,
+        timeoutMs: Long = CONNECTED_ADVERTISING_PROBE_MS,
+    ): ConnectedAdvertisingProbeResult {
+        if (!BlePermissionHelper.hasPermissions(context)) {
+            return ConnectedAdvertisingProbeResult.INCONCLUSIVE
+        }
+        val s = scanner ?: return ConnectedAdvertisingProbeResult.INCONCLUSIVE
+
+        // A manual board scan should already have stopped before connect, but
+        // make the probe self-contained and avoid two callbacks competing for
+        // the same Android BLE scan client.
+        stopScan()
+        val result = CompletableDeferred<ConnectedAdvertisingProbeResult>()
+        val callback = object : ScanCallback() {
+            override fun onScanResult(callbackType: Int, scanResult: ScanResult) {
+                if (scanResult.device.address.equals(address, ignoreCase = true) &&
+                    scanResult.isConnectable
+                ) {
+                    result.complete(
+                        ConnectedAdvertisingProbeResult.CONNECTABLE_ADVERTISEMENT_OBSERVED
+                    )
+                }
+            }
+
+            override fun onScanFailed(errorCode: Int) {
+                Log.w(TAG, "Connected-advertising probe failed: code=$errorCode")
+                result.complete(ConnectedAdvertisingProbeResult.INCONCLUSIVE)
+            }
+        }
+        val settings = ScanSettings.Builder()
+            .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+            .build()
+        val filters = listOf(ScanFilter.Builder().setDeviceAddress(address).build())
+
+        return try {
+            s.startScan(filters, settings, callback)
+            withTimeoutOrNull(timeoutMs) { result.await() }
+                ?: ConnectedAdvertisingProbeResult.NOT_OBSERVED
+        } catch (e: SecurityException) {
+            Log.w(TAG, "Connected-advertising probe lacks permission", e)
+            ConnectedAdvertisingProbeResult.INCONCLUSIVE
+        } catch (e: Exception) {
+            Log.w(TAG, "Connected-advertising probe could not start", e)
+            ConnectedAdvertisingProbeResult.INCONCLUSIVE
+        } finally {
+            runCatching { s.stopScan(callback) }
+                .onFailure { Log.w(TAG, "Could not stop connected-advertising probe", it) }
+        }
     }
 
     /**

@@ -9,6 +9,7 @@ import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.BoardBleScanner
 import com.cruxcoach.android.ble.BlePermissionHelper
 import com.cruxcoach.android.ble.ClimbBleAdvertiser
+import com.cruxcoach.android.ble.ConnectedAdvertisingProbeResult
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.ble.DiscoveredBoard
 import com.cruxcoach.android.ble.BoardConnectionCapacity
@@ -100,6 +101,7 @@ class BleConnectionViewModel @Inject constructor(
     private val _state = MutableStateFlow(BleConnectionState())
     val state: StateFlow<BleConnectionState> = _state.asStateFlow()
     private var pendingBoard: DiscoveredBoard? = null
+    private var capacityProbeJob: Job? = null
 
     init {
         viewModelScope.safeLaunch(TAG) {
@@ -142,15 +144,15 @@ class BleConnectionViewModel @Inject constructor(
                         )
                     }
                 } else if (connState == ConnectionState.DISCONNECTED) {
+                    capacityProbeJob?.cancel()
+                    capacityProbeJob = null
                     pendingBoard = null
                     climbAdvertiser.onBoardDisconnected(_state.value.climbSharingEnabled)
                 }
-                // Always ensure nearby scanner is running after any connection state change.
-                // onStopScannersForConnect kills it before GATT connect, but
-                // onRestartScannersAfterConnect only fires on successful service discovery.
-                // If the user dismisses the BLE sheet mid-connect, or the connection
-                // fails/times out, the nearby scanner stays dead until app restart.
-                if (connState != ConnectionState.CONNECTING) {
+                // Successful service discovery restarts nearby scanning after
+                // the short capacity probe. This disconnected-state fallback
+                // covers cancellation, connect failure and timeout paths.
+                if (connState == ConnectionState.DISCONNECTED) {
                     nearbyClimbScanner.startScan(clearExisting = false)
                 }
             }
@@ -163,6 +165,23 @@ class BleConnectionViewModel @Inject constructor(
         viewModelScope.safeLaunch(TAG) {
             bleConnection.connectedBoardBrand.collect { brand ->
                 _state.update { it.copy(connectedBoardBrand = brand) }
+            }
+        }
+        viewModelScope.safeLaunch(TAG) {
+            bleConnection.connectedBoardDescriptor.collect { board ->
+                _state.update { it.copy(connectedBoard = board) }
+                if (board != null &&
+                    bleConnection.connectionState.value == ConnectionState.CONNECTED &&
+                    _state.value.climbSharingEnabled
+                ) {
+                    val capacity = BoardControllerProfiles.forBoard(board).connectionCapacity
+                    climbAdvertiser.advertiseConnected(
+                        acceptsDisconnect = _state.value.allowRemoteDisconnect &&
+                            capacity == BoardConnectionCapacity.SINGLE,
+                        supportsConcurrentConnections =
+                            capacity == BoardConnectionCapacity.MULTIPLE,
+                    )
+                }
             }
         }
         viewModelScope.safeLaunch(TAG) {
@@ -267,7 +286,38 @@ class BleConnectionViewModel @Inject constructor(
             nearbyClimbScanner.stopScan(preserveEntries = true)
         }
         bleConnection.onRestartScannersAfterConnect = {
-            nearbyClimbScanner.startScan(clearExisting = false)
+            capacityProbeJob?.cancel()
+            val board = bleConnection.connectedBoard
+            if (bleConnection.connectionState.value == ConnectionState.CONNECTED &&
+                board != null && !board.isCruxRelay
+            ) {
+                capacityProbeJob = viewModelScope.safeLaunch(TAG) {
+                    // Avoid competing scan registrations on legacy Android
+                    // stacks. Board writes are already available while this
+                    // short, address-filtered observation runs.
+                    nearbyClimbScanner.stopScan(preserveEntries = true)
+                    try {
+                        when (bleScanner.probeAdvertisingWhileConnected(board.address)) {
+                            ConnectedAdvertisingProbeResult.CONNECTABLE_ADVERTISEMENT_OBSERVED ->
+                                bleConnection.recordAdvertisingWhileConnected(
+                                    address = board.address,
+                                    observed = true,
+                                )
+                            ConnectedAdvertisingProbeResult.NOT_OBSERVED ->
+                                bleConnection.recordAdvertisingWhileConnected(
+                                    address = board.address,
+                                    observed = false,
+                                )
+                            ConnectedAdvertisingProbeResult.INCONCLUSIVE ->
+                                Log.w(TAG, "Controller-capacity probe was inconclusive")
+                        }
+                    } finally {
+                        nearbyClimbScanner.startScan(clearExisting = false)
+                    }
+                }
+            } else {
+                nearbyClimbScanner.startScan(clearExisting = false)
+            }
         }
 
         checkState()

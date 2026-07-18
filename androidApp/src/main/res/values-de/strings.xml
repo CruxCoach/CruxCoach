@@ -1585,8 +1585,10 @@
     <string name="settings_board_model_title">Board-Größe</string>
     <string name="settings_board_model_change">Ändern</string>
     <string name="settings_board_model_not_configured">Nicht konfiguriert</string>
-    <string name="settings_board_send_mode_title">Direkte Board-Steuerung</string>
-    <string name="settings_board_send_mode_desc">Legt das Verhalten bei einer privaten Direktverbindung fest. Beim Nutzen oder Teilen eines Relays zeigt CruxCoach automatisch die Sendetaste; eine Queue bleibt immer explizit.</string>
+    <string name="settings_board_send_mode_title">Ans Board senden</string>
+    <string name="settings_board_send_mode_desc">Lege getrennt fest, wie Boulder bei Controllern mit einer oder mehreren möglichen App-Verbindungen gesendet werden. Bei aktiver Relay-Nutzung und in Queues bleibt Senden explizit.</string>
+    <string name="settings_board_send_mode_single">Nur eine Verbindung</string>
+    <string name="settings_board_send_mode_multi">Mehrere Verbindungen</string>
     <string name="settings_board_send_mode_automatic">Sofort</string>
     <string name="settings_board_send_mode_explicit">Per Taste</string>
     <string name="settings_board_projection_lifecycle_moonboard">MoonBoard akzeptiert mehrere Verbindungen. Die Beleuchtung bleibt bis zur letzten Trennung erhalten.</string>

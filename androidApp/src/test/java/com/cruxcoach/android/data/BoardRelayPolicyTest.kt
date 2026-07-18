@@ -7,18 +7,18 @@ import org.junit.Test
 
 class BoardRelayPolicyTest {
     @Test
-    fun `relay is available only for verified single-connect Aurora controllers`() {
+    fun `relay follows the current Aurora advertising observation`() {
         assertEquals(
             BoardRelayAvailability.AVAILABLE,
-            BoardRelayPolicy.availability(board(apiLevel = 2)),
+            BoardRelayPolicy.availability(board(advertisesWhileConnected = false)),
         )
         assertEquals(
             BoardRelayAvailability.MULTI_CONNECT_NOT_NEEDED,
-            BoardRelayPolicy.availability(board(apiLevel = 3)),
+            BoardRelayPolicy.availability(board(advertisesWhileConnected = true)),
         )
         assertEquals(
-            BoardRelayAvailability.MULTI_CONNECT_NOT_NEEDED,
-            BoardRelayPolicy.availability(board(apiLevel = 0)),
+            BoardRelayAvailability.CAPACITY_UNKNOWN,
+            BoardRelayPolicy.availability(board()),
         )
     }
 
@@ -26,7 +26,7 @@ class BoardRelayPolicyTest {
     fun `MoonBoard does not use Aurora frame relay`() {
         assertEquals(
             BoardRelayAvailability.UNSUPPORTED_PROTOCOL,
-            BoardRelayPolicy.availability(board(brand = BoardBrand.MOONBOARD, apiLevel = 0)),
+            BoardRelayPolicy.availability(board(brand = BoardBrand.MOONBOARD)),
         )
     }
 
@@ -34,7 +34,7 @@ class BoardRelayPolicyTest {
     fun `relay endpoint cannot be relayed again`() {
         assertEquals(
             BoardRelayAvailability.RELAY_ENDPOINT,
-            BoardRelayPolicy.availability(board(apiLevel = 2, isRelay = true)),
+            BoardRelayPolicy.availability(board(isRelay = true)),
         )
     }
 
@@ -45,15 +45,16 @@ class BoardRelayPolicyTest {
 
     private fun board(
         brand: BoardBrand = BoardBrand.KILTER,
-        apiLevel: Int,
         isRelay: Boolean = false,
+        advertisesWhileConnected: Boolean? = null,
     ) = DiscoveredBoard(
         displayName = brand.displayName,
         serial = "",
-        apiLevel = apiLevel,
+        apiLevel = 3,
         address = "00:11:22:33:44:55",
         rssi = -50,
         boardBrand = brand,
         isCruxRelay = isRelay,
+        advertisesWhileConnected = advertisesWhileConnected,
     )
 }

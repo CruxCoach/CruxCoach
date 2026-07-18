@@ -1538,8 +1538,10 @@
     <string name="settings_board_model_title">Board size</string>
     <string name="settings_board_model_change">Change</string>
     <string name="settings_board_model_not_configured">Not configured</string>
-    <string name="settings_board_send_mode_title">Direct board control</string>
-    <string name="settings_board_send_mode_desc">Choose what happens on a private direct connection. CruxCoach automatically shows the send button while using or sharing a relay; a queue always stays explicit.</string>
+    <string name="settings_board_send_mode_title">Send to board</string>
+    <string name="settings_board_send_mode_desc">Choose separately how climbs are sent for controllers that allow one or several connected apps. Active relay clients and queues always use an explicit action.</string>
+    <string name="settings_board_send_mode_single">Single connection</string>
+    <string name="settings_board_send_mode_multi">Multiple connections</string>
     <string name="settings_board_send_mode_automatic">Immediately</string>
     <string name="settings_board_send_mode_explicit">Tap to send</string>
     <string name="settings_board_projection_lifecycle_moonboard">MoonBoard accepts multiple clients. Its lights remain until the final connection closes.</string>

@@ -10,6 +10,7 @@ import com.cruxcoach.android.community.OwnKilterClimbPublisher
 import com.cruxcoach.android.data.BleShareManager
 import com.cruxcoach.android.data.BleShareUiState
 import com.cruxcoach.android.data.BoardSessionManager
+import com.cruxcoach.android.data.BoardSendMode
 import com.cruxcoach.android.data.CruxRelayManager
 import com.cruxcoach.android.data.CruxRelayState
 import com.cruxcoach.android.data.GradeScale
@@ -89,11 +90,16 @@ class BoardClimbDetailOwnPublishTest {
 
         every { bleConnection.connectionState } returns
             MutableStateFlow(ConnectionState.DISCONNECTED)
+        every { bleConnection.connectedBoardDescriptor } returns MutableStateFlow(null)
         every { sessionManager.restTimer } returns MutableStateFlow(RestTimerState())
         every { bleShareManager.uiState } returns MutableStateFlow(BleShareUiState())
         every { cruxRelayManager.state } returns MutableStateFlow(CruxRelayState())
         every { userPreferences.gradeScale } returns flowOf(GradeScale.V_SCALE)
         every { userPreferences.ledHoldColors } returns flowOf(LedHoldColors())
+        every { userPreferences.singleConnectionBoardSendMode } returns
+            flowOf(BoardSendMode.AUTOMATIC)
+        every { userPreferences.multiConnectionBoardSendMode } returns
+            flowOf(BoardSendMode.AUTOMATIC)
         every { zoneManager.zones } returns
             MutableStateFlow(IntensityZones(warmUpCeiling = 10.0, optimalCeiling = 20.0, isPersonalized = false))
         // Flow surfaces the found-climb load path reads.

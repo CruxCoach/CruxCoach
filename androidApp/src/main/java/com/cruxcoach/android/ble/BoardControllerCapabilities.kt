@@ -2,7 +2,7 @@ package com.cruxcoach.android.ble
 
 import com.cruxcoach.domain.board.BoardBrand
 
-/** Number of apps a physical board controller can serve at the same time. */
+/** Operational connection capacity inferred for the current controller session. */
 internal enum class BoardConnectionCapacity {
     SINGLE,
     MULTIPLE,
@@ -23,32 +23,35 @@ internal enum class BoardProjectionLifetime {
 internal data class BoardControllerProfile(
     val connectionCapacity: BoardConnectionCapacity,
     val projectionLifetime: BoardProjectionLifetime,
-    /** A relay only adds value for a verified single-connection Aurora controller. */
+    /** A relay only adds value when an Aurora controller appears exclusive. */
     val relaySupported: Boolean,
 )
 
 /**
  * One capability registry for connection, queue and relay UX.
  *
- * The advertised Aurora API level is the only machine-readable generation
- * signal currently available: API 2 is treated as the legacy exclusive
- * generation and API 3+ as the newer multi-client generation. The API level is
- * still a wire-protocol version, not an explicit connection-count bit, so every
- * newly supported controller generation must be verified on hardware. Unknown
- * controllers are treated conservatively: CruxCoach neither disconnects them
- * automatically nor offers a relay until their behaviour is verified.
+ * Neither the board family nor Aurora's advertised API level says how many
+ * centrals the firmware accepts. CruxCoach therefore observes whether the exact
+ * controller keeps sending connectable advertisements after GATT is ready:
+ * visible means another direct client can at least attempt to connect; not
+ * observed means the controller is treated as operationally exclusive for this
+ * connection. The negative observation is deliberately not persisted because
+ * Android or radio conditions can hide advertisements.
+ *
+ * Unknown controllers are treated conservatively until that short probe has
+ * completed. CruxRelay itself is known to be a multi-client endpoint.
  */
 internal object BoardControllerProfiles {
     fun forBoard(board: DiscoveredBoard?): BoardControllerProfile = resolve(
         brand = board?.boardBrand,
-        apiLevel = board?.apiLevel ?: 0,
         isCruxRelay = board?.isCruxRelay == true,
+        advertisesWhileConnected = board?.advertisesWhileConnected,
     )
 
     fun resolve(
         brand: BoardBrand?,
-        apiLevel: Int,
         isCruxRelay: Boolean = false,
+        advertisesWhileConnected: Boolean? = null,
     ): BoardControllerProfile {
         if (isCruxRelay) {
             return BoardControllerProfile(
@@ -58,31 +61,20 @@ internal object BoardControllerProfiles {
             )
         }
 
-        if (brand == BoardBrand.MOONBOARD) {
-            return BoardControllerProfile(
-                connectionCapacity = BoardConnectionCapacity.MULTIPLE,
-                projectionLifetime = BoardProjectionLifetime.UNTIL_LAST_CONNECTION,
-                relaySupported = false,
-            )
+        val capacity = when (advertisesWhileConnected) {
+            true -> BoardConnectionCapacity.MULTIPLE
+            false -> BoardConnectionCapacity.SINGLE
+            null -> BoardConnectionCapacity.UNKNOWN
         }
-
-        if (brand?.usesAuroraProtocol == true) {
-            val capacity = when {
-                apiLevel in 1..2 -> BoardConnectionCapacity.SINGLE
-                apiLevel >= 3 -> BoardConnectionCapacity.MULTIPLE
-                else -> BoardConnectionCapacity.UNKNOWN
-            }
-            return BoardControllerProfile(
-                connectionCapacity = capacity,
-                projectionLifetime = BoardProjectionLifetime.RETAINED_AFTER_DISCONNECT,
-                relaySupported = capacity == BoardConnectionCapacity.SINGLE,
-            )
-        }
-
         return BoardControllerProfile(
-            connectionCapacity = BoardConnectionCapacity.UNKNOWN,
-            projectionLifetime = BoardProjectionLifetime.RETAINED_AFTER_DISCONNECT,
-            relaySupported = false,
+            connectionCapacity = capacity,
+            projectionLifetime = if (brand == BoardBrand.MOONBOARD) {
+                BoardProjectionLifetime.UNTIL_LAST_CONNECTION
+            } else {
+                BoardProjectionLifetime.RETAINED_AFTER_DISCONNECT
+            },
+            relaySupported = brand?.usesAuroraProtocol == true &&
+                capacity == BoardConnectionCapacity.SINGLE,
         )
     }
 }

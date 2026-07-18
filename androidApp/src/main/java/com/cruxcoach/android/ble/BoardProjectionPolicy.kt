@@ -33,11 +33,13 @@ internal object BoardProjectionPolicy {
         connectionState: ConnectionState,
         explicitlySuppressed: Boolean,
         connectionCapacity: BoardConnectionCapacity,
+        projectionSurvivesDisconnect: Boolean,
     ): Boolean =
         seconds > 0 &&
             connectionState == ConnectionState.CONNECTED &&
             !explicitlySuppressed &&
-            connectionCapacity == BoardConnectionCapacity.SINGLE
+            connectionCapacity == BoardConnectionCapacity.SINGLE &&
+            projectionSurvivesDisconnect
 
     /** MoonBoard climbs carry wire-ready frames instead of Aurora hold rows. */
     fun hasSendablePayload(

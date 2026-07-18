@@ -163,9 +163,11 @@ internal fun BoardModelSection(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun BoardSendModeSection(
-    mode: BoardSendMode,
+    singleConnectionMode: BoardSendMode,
+    multiConnectionMode: BoardSendMode,
     boardBrand: BoardBrand,
-    onModeChange: (BoardSendMode) -> Unit,
+    onSingleConnectionModeChange: (BoardSendMode) -> Unit,
+    onMultiConnectionModeChange: (BoardSendMode) -> Unit,
 ) {
     Text(
         stringResource(R.string.settings_board_send_mode_title),
@@ -178,10 +180,45 @@ internal fun BoardSendModeSection(
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
 
+    BoardSendModePicker(
+        label = stringResource(R.string.settings_board_send_mode_single),
+        mode = singleConnectionMode,
+        onModeChange = onSingleConnectionModeChange,
+        testTag = "settings_board_send_mode_single",
+    )
+    BoardSendModePicker(
+        label = stringResource(R.string.settings_board_send_mode_multi),
+        mode = multiConnectionMode,
+        onModeChange = onMultiConnectionModeChange,
+        testTag = "settings_board_send_mode_multi",
+    )
+
+    Text(
+        text = stringResource(
+            if (boardBrand == BoardBrand.MOONBOARD) {
+                R.string.settings_board_projection_lifecycle_moonboard
+            } else {
+                R.string.settings_board_projection_lifecycle_retained
+            },
+        ),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun BoardSendModePicker(
+    label: String,
+    mode: BoardSendMode,
+    onModeChange: (BoardSendMode) -> Unit,
+    testTag: String,
+) {
+    Text(label, style = MaterialTheme.typography.bodyMedium)
     SingleChoiceSegmentedButtonRow(
         modifier = Modifier
             .fillMaxWidth()
-            .testTag("settings_board_send_mode"),
+            .testTag(testTag),
     ) {
         BoardSendMode.entries.forEachIndexed { index, option ->
             SegmentedButton(
@@ -202,18 +239,6 @@ internal fun BoardSendModeSection(
             )
         }
     }
-
-    Text(
-        text = stringResource(
-            if (boardBrand == BoardBrand.MOONBOARD) {
-                R.string.settings_board_projection_lifecycle_moonboard
-            } else {
-                R.string.settings_board_projection_lifecycle_retained
-            },
-        ),
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
 }
 
 @OptIn(ExperimentalLayoutApi::class)
