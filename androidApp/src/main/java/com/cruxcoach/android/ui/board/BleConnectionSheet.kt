@@ -84,6 +84,12 @@ fun BleConnectionSheet(
         flowNeedsScan = true, // this sheet's disconnected flow discovers boards by scanning
         locationEnabled = state.isLocationEnabled
     )
+    val connectionFlowCanProceed = state.hasConnectionPermission && (
+        state.connectionState == ConnectionState.CONNECTED ||
+            state.connectionState == ConnectionState.SENDING ||
+            state.connectionState == ConnectionState.CONNECTING ||
+            state.sessionRole == SessionRole.PARTICIPANT
+    )
 
     // Auto-close once the connect succeeds — the top-bar BLE icon flips
     // to green (BluetoothConnected) so the sheet has no further purpose.
@@ -154,8 +160,10 @@ fun BleConnectionSheet(
             )
 
             when {
-                // State 1: Permissions missing
-                !state.hasPermissions -> {
+                // Discovery permissions are irrelevant once a direct GATT
+                // connection is active. This matters on Android 10-11 where
+                // foreground/background location controls only scanning.
+                !state.hasPermissions && !connectionFlowCanProceed -> {
                     PermissionContent(
                         onRequestPermissions = {
                             permissionLauncher.launch(BlePermissionHelper.getRequiredPermissions())

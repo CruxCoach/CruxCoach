@@ -16,19 +16,32 @@ import androidx.core.location.LocationManagerCompat
  */
 object BlePermissionHelper {
 
-    fun getRequiredPermissions(apiLevel: Int = Build.VERSION.SDK_INT): Array<String> =
+    fun getScanPermissions(apiLevel: Int = Build.VERSION.SDK_INT): Array<String> =
         when {
-            apiLevel >= Build.VERSION_CODES.S -> arrayOf(
-                Manifest.permission.BLUETOOTH_SCAN,
-                Manifest.permission.BLUETOOTH_CONNECT
-            )
+            apiLevel >= Build.VERSION_CODES.S -> arrayOf(Manifest.permission.BLUETOOTH_SCAN)
             apiLevel >= Build.VERSION_CODES.Q -> arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
             apiLevel >= Build.VERSION_CODES.M -> arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION)
             else -> emptyArray()
         }
 
+    fun getConnectionPermissions(apiLevel: Int = Build.VERSION.SDK_INT): Array<String> =
+        if (apiLevel >= Build.VERSION_CODES.S) {
+            arrayOf(Manifest.permission.BLUETOOTH_CONNECT)
+        } else {
+            emptyArray()
+        }
+
+    fun getRequiredPermissions(apiLevel: Int = Build.VERSION.SDK_INT): Array<String> =
+        getScanPermissions(apiLevel) + getConnectionPermissions(apiLevel)
+
     fun hasPermissions(context: Context): Boolean {
         return getRequiredPermissions().all {
+            ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
+        }
+    }
+
+    fun hasConnectionPermission(context: Context): Boolean {
+        return getConnectionPermissions().all {
             ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
         }
     }

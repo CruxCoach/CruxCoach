@@ -40,6 +40,8 @@ import com.cruxcoach.android.util.safeLaunch
 
 data class BleConnectionState(
     val hasPermissions: Boolean = false,
+    /** Permission needed for an existing/direct GATT link, without discovery scanning. */
+    val hasConnectionPermission: Boolean = false,
     val isBluetoothEnabled: Boolean = false,
     /**
      * System-wide location-services switch. Only relevant for the discovery
@@ -333,6 +335,7 @@ class BleConnectionViewModel @Inject constructor(
     fun checkState() {
         _state.update { it.copy(
             hasPermissions = BlePermissionHelper.hasPermissions(application),
+            hasConnectionPermission = BlePermissionHelper.hasConnectionPermission(application),
             isBluetoothEnabled = bleScanner.isBluetoothEnabled(),
             isLocationEnabled = BlePermissionHelper.isLocationServicesEnabled(application)
         ) }

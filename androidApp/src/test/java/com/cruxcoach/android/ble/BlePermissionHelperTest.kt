@@ -52,6 +52,18 @@ class BlePermissionHelperTest {
     }
 
     @Test
+    fun direct_connection_permissions_do_not_include_legacy_location() {
+        assertContentEquals(
+            emptyArray<String>(),
+            BlePermissionHelper.getConnectionPermissions(Build.VERSION_CODES.Q)
+        )
+        assertContentEquals(
+            arrayOf(Manifest.permission.BLUETOOTH_CONNECT),
+            BlePermissionHelper.getConnectionPermissions(Build.VERSION_CODES.S)
+        )
+    }
+
+    @Test
     fun advertising_is_not_part_of_board_discovery_permissions() {
         for (api in apisFromS) {
             assertFalse(
