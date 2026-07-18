@@ -4,12 +4,15 @@ import com.cruxcoach.data.repository.AscentWithClimb
 import com.cruxcoach.data.repository.Board_sessions
 import com.cruxcoach.data.repository.ClimbHistoryEntry
 import com.cruxcoach.data.repository.Climb_lists
-import com.cruxcoach.data.repository.NewPlaylistEntry
+import com.cruxcoach.data.repository.ListPlaybackAdvance
+import com.cruxcoach.data.repository.ListPlaybackOrder
+import com.cruxcoach.data.repository.ListPlaybackStepRow
+import com.cruxcoach.data.repository.NewListPlaybackStep
 import com.cruxcoach.data.repository.PersonalBoardRepository
-import com.cruxcoach.data.repository.PlaylistEntryRow
 import com.cruxcoach.data.repository.RawAscent
 import com.cruxcoach.data.repository.RawBid
 import com.cruxcoach.data.repository.RawClimbListEntry
+import com.cruxcoach.data.repository.RawListPlaybackStep
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 
@@ -93,7 +96,12 @@ class FakePersonalBoardRepository : PersonalBoardRepository {
     override fun ensureFavoritesListExists(): Long = 1L
     override fun getAllClimbLists(): List<Climb_lists> = emptyList()
     override fun getClimbListById(id: Long): Climb_lists? = null
-    override fun createClimbList(name: String): Long = 1L
+    override fun createClimbList(name: String, generatorParams: String?): Long {
+        val id = nextListId++
+        playbackSteps[id] = mutableListOf()
+        listMeta[id] = name to generatorParams
+        return id
+    }
     override fun renameClimbList(id: Long, name: String) {}
     override fun deleteClimbList(id: Long) {}
     override fun addClimbToList(listId: Long, climbUuid: String) {}
@@ -111,74 +119,74 @@ class FakePersonalBoardRepository : PersonalBoardRepository {
     }
     override fun getIgnoredClimbUuids(): Set<String> = ignoredUuids
     override fun getClimbListEntriesRaw(): List<RawClimbListEntry> = emptyList()
+    override fun getListPlaybackStepsRaw(): List<RawListPlaybackStep> = emptyList()
     override fun getClimbListsForBackup(): List<com.cruxcoach.data.repository.ClimbListBackupRow> = emptyList()
     override fun restoreClimbList(
         name: String, createdAt: String,
         description: String?, color: String?, externalId: String?,
     ): Long = 1L
 
-    // -- Playlists (functional in-memory impl so VM tests can exercise
-    //    create/reorder/replace flows) --
+    // -- Optional training plans (functional in-memory implementation) --
 
-    val playlists = mutableMapOf<Long, MutableList<PlaylistEntryRow>>()
-    val playlistMeta = mutableMapOf<Long, Pair<String, String?>>()
+    val playbackSteps = mutableMapOf<Long, MutableList<ListPlaybackStepRow>>()
+    val listMeta = mutableMapOf<Long, Pair<String, String?>>()
     private var nextListId = 100L
     private var nextEntryId = 1L
 
-    override fun createPlaylist(name: String, generatorParams: String?): Long {
-        val id = nextListId++
-        playlists[id] = mutableListOf()
-        playlistMeta[id] = name to generatorParams
-        return id
-    }
-
     override fun updateGeneratorParams(listId: Long, generatorParams: String?) {
-        playlistMeta[listId] = (playlistMeta[listId]?.first ?: "") to generatorParams
+        listMeta[listId] = (listMeta[listId]?.first ?: "") to generatorParams
     }
 
-    override fun addPlaylistClimb(listId: Long, climbUuid: String, angle: Long?): Long {
-        val entries = playlists.getOrPut(listId) { mutableListOf() }
+    override fun updatePlaybackSettings(
+        listId: Long,
+        order: ListPlaybackOrder,
+        advance: ListPlaybackAdvance,
+        restSeconds: Long,
+    ) = Unit
+
+    override fun addPlaybackClimb(listId: Long, climbUuid: String, angle: Long?): Long {
+        val entries = playbackSteps.getOrPut(listId) { mutableListOf() }
         val id = nextEntryId++
-        entries.add(PlaylistEntryRow(id, listId, entries.size.toLong(), "climb", climbUuid, null, angle))
+        entries.add(ListPlaybackStepRow(id, listId, entries.size.toLong(), "climb", climbUuid, null, angle))
         return id
     }
 
-    override fun addPlaylistRest(listId: Long, restSeconds: Long): Long {
-        val entries = playlists.getOrPut(listId) { mutableListOf() }
+    override fun addPlaybackRest(listId: Long, restSeconds: Long): Long {
+        val entries = playbackSteps.getOrPut(listId) { mutableListOf() }
         val id = nextEntryId++
-        entries.add(PlaylistEntryRow(id, listId, entries.size.toLong(), "rest", null, restSeconds, null))
+        entries.add(ListPlaybackStepRow(id, listId, entries.size.toLong(), "rest", null, restSeconds, null))
         return id
     }
 
-    override fun getPlaylistEntries(listId: Long): List<PlaylistEntryRow> =
-        playlists[listId]?.toList() ?: emptyList()
+    override fun getPlaybackSteps(listId: Long): List<ListPlaybackStepRow> =
+        playbackSteps[listId]?.toList() ?: emptyList()
 
-    override fun removePlaylistEntry(entryId: Long) {
-        playlists.values.forEach { it.removeAll { e -> e.id == entryId } }
+    override fun removePlaybackStep(stepId: Long) {
+        playbackSteps.values.forEach { it.removeAll { e -> e.id == stepId } }
     }
 
-    override fun updatePlaylistRestSeconds(entryId: Long, restSeconds: Long) {
-        playlists.values.forEach { entries ->
-            val i = entries.indexOfFirst { it.id == entryId }
+    override fun updatePlaybackRestSeconds(stepId: Long, restSeconds: Long) {
+        playbackSteps.values.forEach { entries ->
+            val i = entries.indexOfFirst { it.id == stepId }
             if (i >= 0) entries[i] = entries[i].copy(restSeconds = restSeconds)
         }
     }
 
-    override fun movePlaylistEntry(listId: Long, fromIndex: Int, toIndex: Int) {
-        val entries = playlists[listId] ?: return
+    override fun movePlaybackStep(listId: Long, fromIndex: Int, toIndex: Int) {
+        val entries = playbackSteps[listId] ?: return
         if (fromIndex !in entries.indices || toIndex !in entries.indices) return
         val moved = entries.removeAt(fromIndex)
         entries.add(toIndex, moved)
         for (i in entries.indices) entries[i] = entries[i].copy(position = i.toLong())
     }
 
-    override fun replacePlaylistEntries(listId: Long, entries: List<NewPlaylistEntry>) {
-        val target = playlists.getOrPut(listId) { mutableListOf() }
+    override fun replacePlaybackSteps(listId: Long, steps: List<NewListPlaybackStep>) {
+        val target = playbackSteps.getOrPut(listId) { mutableListOf() }
         target.clear()
-        entries.forEachIndexed { index, e ->
+        steps.forEachIndexed { index, e ->
             val id = nextEntryId++
             target.add(
-                PlaylistEntryRow(
+                ListPlaybackStepRow(
                     id, listId, index.toLong(),
                     if (e.climbUuid != null) "climb" else "rest",
                     e.climbUuid, e.restSeconds, e.angle,

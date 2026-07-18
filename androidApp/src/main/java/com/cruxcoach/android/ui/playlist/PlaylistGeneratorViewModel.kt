@@ -9,7 +9,7 @@ import com.cruxcoach.android.util.safeLaunch
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.ClimbSortField
 import com.cruxcoach.data.repository.ClimbTypeFilter
-import com.cruxcoach.data.repository.NewPlaylistEntry
+import com.cruxcoach.data.repository.NewListPlaybackStep
 import com.cruxcoach.data.repository.PersonalBoardRepository
 import com.cruxcoach.data.repository.SortDirection
 import com.cruxcoach.domain.playlist.CandidateSelection
@@ -279,16 +279,16 @@ class PlaylistGeneratorViewModel @Inject constructor(
                 )
                 if (filled.entries.none { it is GeneratedEntry.Climb }) return@withContext null
 
-                val listId = personalBoardRepo.createPlaylist(name, params.toJson())
-                personalBoardRepo.replacePlaylistEntries(
+                val listId = personalBoardRepo.createClimbList(name, params.toJson())
+                personalBoardRepo.replacePlaybackSteps(
                     listId,
                     filled.entries.map { entry ->
                         when (entry) {
-                            is GeneratedEntry.Climb -> NewPlaylistEntry(
+                            is GeneratedEntry.Climb -> NewListPlaybackStep(
                                 climbUuid = entry.climbUuid,
                                 angle = params.angle.toLong(),
                             )
-                            is GeneratedEntry.Rest -> NewPlaylistEntry(
+                            is GeneratedEntry.Rest -> NewListPlaybackStep(
                                 climbUuid = null,
                                 restSeconds = entry.seconds.toLong(),
                             )

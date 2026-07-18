@@ -1,6 +1,9 @@
 package com.cruxcoach.android.util
 
 import com.cruxcoach.android.util.PlaylistShareLink.SharedClimb
+import com.cruxcoach.data.repository.ListPlaybackAdvance
+import com.cruxcoach.data.repository.ListPlaybackOrder
+import java.util.Base64
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -22,6 +25,68 @@ class PlaylistShareLinkTest {
         val parsed = PlaylistShareLink.parse(payloadOf(link))!!
         assertEquals("4x4 Dienstag", parsed.name)
         assertEquals(climbs, parsed.climbs)
+    }
+
+    @Test
+    fun `version 2 round-trips repetitions rests and playback defaults`() {
+        val uuid = "305ecf35-4ab5-4c9c-afd5-91af0848004b"
+        val link = PlaylistShareLink.buildPlan(
+            name = "4x4 Tuesday",
+            steps = listOf(
+                PlaylistShareLink.SharedStep.Climb(uuid, 40),
+                PlaylistShareLink.SharedStep.Rest(90),
+                PlaylistShareLink.SharedStep.Climb(uuid, 40),
+            ),
+            order = ListPlaybackOrder.SHUFFLE,
+            advance = ListPlaybackAdvance.AFTER_SEND,
+            defaultRestSeconds = 120,
+        )!!
+
+        val parsed = PlaylistShareLink.parse(payloadOf(link))!!
+        assertEquals("4x4 Tuesday", parsed.name)
+        assertEquals(ListPlaybackOrder.SHUFFLE, parsed.order)
+        assertEquals(ListPlaybackAdvance.AFTER_SEND, parsed.advance)
+        assertEquals(120, parsed.defaultRestSeconds)
+        assertEquals(
+            listOf(
+                PlaylistShareLink.SharedStep.Climb(uuid, 40),
+                PlaylistShareLink.SharedStep.Rest(90),
+                PlaylistShareLink.SharedStep.Climb(uuid, 40),
+            ),
+            parsed.steps,
+        )
+    }
+
+    @Test
+    fun `version 2 requires at least one valid climb`() {
+        assertNull(
+            PlaylistShareLink.buildPlan(
+                name = "rest only",
+                steps = listOf(PlaylistShareLink.SharedStep.Rest(60)),
+                order = ListPlaybackOrder.LIST,
+                advance = ListPlaybackAdvance.MANUAL,
+                defaultRestSeconds = 0,
+            )
+        )
+    }
+
+    @Test
+    fun `version 2 clamps rest durations to the supported one hour maximum`() {
+        val uuid = "305ecf35-4ab5-4c9c-afd5-91af0848004b"
+        val link = PlaylistShareLink.buildPlan(
+            name = "long rest",
+            steps = listOf(
+                PlaylistShareLink.SharedStep.Climb(uuid, 40),
+                PlaylistShareLink.SharedStep.Rest(99_999),
+            ),
+            order = ListPlaybackOrder.LIST,
+            advance = ListPlaybackAdvance.MANUAL,
+            defaultRestSeconds = 99_999,
+        )!!
+
+        val parsed = PlaylistShareLink.parse(payloadOf(link))!!
+        assertEquals(3_600, parsed.defaultRestSeconds)
+        assertEquals(PlaylistShareLink.SharedStep.Rest(3_600), parsed.steps.last())
     }
 
     @Test
@@ -59,6 +124,17 @@ class PlaylistShareLinkTest {
     }
 
     @Test
+    fun `name truncation never splits a utf8 code point`() {
+        val link = PlaylistShareLink.build(
+            "ä".repeat(100),
+            listOf(SharedClimb("305ecf35-4ab5-4c9c-afd5-91af0848004b", 40)),
+        )!!
+        val parsed = PlaylistShareLink.parse(payloadOf(link))!!
+        assertEquals("ä".repeat(30), parsed.name)
+        assertEquals(60, parsed.name.toByteArray(Charsets.UTF_8).size)
+    }
+
+    @Test
     fun `caps climb count at 100`() {
         val many = (0 until 200).map {
             SharedClimb("00000000-0000-4000-8000-${it.toString().padStart(12, '0')}", 40)
@@ -82,10 +158,22 @@ class PlaylistShareLinkTest {
     }
 
     @Test
-    fun `angle clamps into a byte`() {
+    fun `angle clamps to the supported board range`() {
         val link = PlaylistShareLink.build(
             "p", listOf(SharedClimb("305ecf35-4ab5-4c9c-afd5-91af0848004b", 999)),
         )!!
-        assertEquals(255, PlaylistShareLink.parse(payloadOf(link))!!.climbs.single().angle)
+        assertEquals(90, PlaylistShareLink.parse(payloadOf(link))!!.climbs.single().angle)
+    }
+
+    @Test
+    fun `parser rejects out-of-range board angles`() {
+        val link = PlaylistShareLink.build(
+            "p", listOf(SharedClimb("305ecf35-4ab5-4c9c-afd5-91af0848004b", 40)),
+        )!!
+        val bytes = Base64.getUrlDecoder().decode(payloadOf(link))
+        bytes[4] = 91 // v1 + name length + "p" + count
+        val payload = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
+
+        assertNull(PlaylistShareLink.parse(payload))
     }
 }

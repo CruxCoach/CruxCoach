@@ -16,11 +16,7 @@ import javax.inject.Inject
 
 data class BoardListsState(
     val lists: List<Climb_lists> = emptyList(),
-    /** kind='playlist' rows — shown in their own hub section. */
-    val playlists: List<Climb_lists> = emptyList(),
     val showCreateDialog: Boolean = false,
-    /** Whether the create dialog makes a playlist (true) or a plain list. */
-    val createAsPlaylist: Boolean = false,
     val newListName: String = "",
     val deleteConfirmListId: Long? = null
 )
@@ -54,20 +50,11 @@ class BoardListsViewModel @Inject constructor(
         val all = withContext(Dispatchers.IO) {
             personalBoardRepo.getAllClimbLists()
         }
-        // One hub for everything list-shaped: playlists section on top,
-        // plain Merklisten below.
-        _state.update {
-            it.copy(
-                lists = all.filter { l -> l.kind == "list" },
-                playlists = all.filter { l -> l.kind == "playlist" },
-            )
-        }
+        _state.update { it.copy(lists = all) }
     }
 
-    fun showCreateDialog(asPlaylist: Boolean = false) {
-        _state.update {
-            it.copy(showCreateDialog = true, createAsPlaylist = asPlaylist, newListName = "")
-        }
+    fun showCreateDialog() {
+        _state.update { it.copy(showCreateDialog = true, newListName = "") }
     }
 
     fun dismissCreateDialog() {
@@ -78,22 +65,14 @@ class BoardListsViewModel @Inject constructor(
         _state.update { it.copy(newListName = name) }
     }
 
-    /** Creates a list or playlist (per dialog mode); playlists report their
-     *  id via [onPlaylistCreated] so the screen can jump into the detail. */
-    fun createList(onPlaylistCreated: (Long) -> Unit = {}) {
+    fun createList() {
         val name = _state.value.newListName.trim()
         if (name.isBlank()) return
-        val asPlaylist = _state.value.createAsPlaylist
-        val existing = if (asPlaylist) _state.value.playlists else _state.value.lists
-        if (existing.any { it.name.equals(name, ignoreCase = true) }) return
+        if (_state.value.lists.any { it.name.equals(name, ignoreCase = true) }) return
         viewModelScope.launch {
-            val playlistId = withContext(Dispatchers.IO) {
-                if (asPlaylist) personalBoardRepo.createPlaylist(name)
-                else { personalBoardRepo.createClimbList(name); null }
-            }
+            withContext(Dispatchers.IO) { personalBoardRepo.createClimbList(name) }
             _state.update { it.copy(showCreateDialog = false, newListName = "") }
             refreshLists()
-            playlistId?.let(onPlaylistCreated)
         }
     }
 

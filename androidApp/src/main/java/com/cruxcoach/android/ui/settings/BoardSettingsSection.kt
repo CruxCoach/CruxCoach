@@ -2,6 +2,8 @@ package com.cruxcoach.android.ui.settings
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -16,6 +18,7 @@ import com.cruxcoach.android.data.SyncInterval
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.OrangeAccent
+import com.cruxcoach.android.ui.theme.InfoBlue
 import com.cruxcoach.domain.board.BoardBrand
 
 @Composable
@@ -245,6 +248,7 @@ private fun BoardSendModePicker(
 @Composable
 internal fun BleAutoDisconnectSection(
     bleAutoDisconnectSeconds: Int,
+    boardBrand: BoardBrand,
     onAutoDisconnectChange: (Int) -> Unit,
 ) {
     Text(
@@ -252,6 +256,33 @@ internal fun BleAutoDisconnectSection(
         style = MaterialTheme.typography.titleMedium,
         fontWeight = FontWeight.Bold
     )
+
+    if (boardBrand == BoardBrand.MOONBOARD) {
+        Surface(
+            color = InfoBlue.copy(alpha = 0.10f),
+            shape = RoundedCornerShape(8.dp),
+            modifier = Modifier.fillMaxWidth().testTag("moonboard_auto_disconnect_info"),
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    Icons.Default.Info,
+                    contentDescription = null,
+                    tint = InfoBlue,
+                    modifier = Modifier.size(20.dp),
+                )
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    stringResource(R.string.settings_ble_auto_disconnect_moonboard),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = InfoBlue,
+                )
+            }
+        }
+        return
+    }
 
     Text(
         stringResource(R.string.settings_ble_auto_disconnect_desc_retained),

@@ -2,7 +2,7 @@ package com.cruxcoach.android.data
 
 import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
-import com.cruxcoach.data.repository.NewPlaylistEntry
+import com.cruxcoach.data.repository.NewListPlaybackStep
 import com.cruxcoach.data.repository.PersonalBoardRepositoryImpl
 import com.cruxcoach.db.secure.SecureDatabase
 import com.cruxcoach.domain.playlist.*
@@ -48,14 +48,14 @@ class PlaylistGenerationPipelineTest {
                 val params = PlaylistGeneratorParams(type, 90, pos, 40, "kilter", 8)
                 val plan = PlaylistPlanner.plan(params, profile)
                 val filled = PlaylistFiller.fill(plan, source, random = Random(7))
-                val listId = repo.createPlaylist("t-$type-$pos", params.toJson())
-                repo.replacePlaylistEntries(listId, filled.entries.map { e ->
+                val listId = repo.createClimbList("t-$type-$pos", params.toJson())
+                repo.replacePlaybackSteps(listId, filled.entries.map { e ->
                     when (e) {
-                        is GeneratedEntry.Climb -> NewPlaylistEntry(e.climbUuid, angle = 40L)
-                        is GeneratedEntry.Rest -> NewPlaylistEntry(null, restSeconds = e.seconds.toLong())
+                        is GeneratedEntry.Climb -> NewListPlaybackStep(e.climbUuid, angle = 40L)
+                        is GeneratedEntry.Rest -> NewListPlaybackStep(null, restSeconds = e.seconds.toLong())
                     }
                 })
-                val rests = repo.getPlaylistEntries(listId).filter { it.isRest }
+                val rests = repo.getPlaybackSteps(listId).filter { it.isRest }
                 println("$type/$pos: ${rests.size} rests -> ${rests.map { it.restSeconds }}")
                 assertTrue(rests.all { (it.restSeconds ?: 0L) > 0L }, "$type/$pos has a 0-second rest")
             }

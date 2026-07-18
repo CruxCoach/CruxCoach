@@ -1,6 +1,7 @@
 package com.cruxcoach.android.data
 
 import com.cruxcoach.android.ble.QueueItem
+import com.cruxcoach.data.repository.ListPlaybackAdvance
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -87,6 +88,8 @@ class PlaylistPlaybackCoordinator(
     private val bleShareManager: BleShareManager,
     scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main),
 ) {
+
+    private var advanceMode: ListPlaybackAdvance = ListPlaybackAdvance.MANUAL
 
     val state: StateFlow<PlaylistPlaybackState> = combine(
         queueManager.state,
@@ -186,12 +189,27 @@ class PlaylistPlaybackCoordinator(
     /** Host-only: force re-send when someone else re-lit the wall. */
     fun resendCurrentClimb() = queueManager.resendCurrentClimb()
 
+    /** Applies the list's interaction rule after a successful quick-log write. */
+    fun onClimbLogged(isSend: Boolean) {
+        val shouldAdvance = when (advanceMode) {
+            ListPlaybackAdvance.MANUAL -> false
+            ListPlaybackAdvance.AFTER_SEND -> isSend
+            ListPlaybackAdvance.AFTER_LOG -> true
+        }
+        if (shouldAdvance && state.value.isActive && state.value.hasNext) next()
+    }
+
     /**
      * Start playing a playlist as HOST: session timer + queue bulk-load +
      * rest hook + GATT advertising (behind the privacy toggle).
      */
-    fun play(hostName: String, items: List<QueueItem>) {
+    fun play(
+        hostName: String,
+        items: List<QueueItem>,
+        advance: ListPlaybackAdvance = ListPlaybackAdvance.MANUAL,
+    ) {
         if (items.isEmpty()) return
+        advanceMode = advance
         boardSessionManager.startSession()
         queueManager.onRestRequested = { seconds ->
             boardSessionManager.startRestTimer(seconds)
@@ -203,12 +221,13 @@ class PlaylistPlaybackCoordinator(
     }
 
     /**
-     * Start an ad-hoc playlist as HOST (browser "Playlist" button). Seeds
+     * Start an ad-hoc session as HOST (browser session button). Seeds
      * the queue with the climb currently ON the board (the mini-player
      * banner shows it, so an empty player with "unknown climb" right after
      * would contradict what the user just saw lit on the wall).
      */
     fun startEmpty(hostName: String) {
+        advanceMode = ListPlaybackAdvance.MANUAL
         boardSessionManager.startSession()
         queueManager.startQueue(hostName)
         queueManager.onRestRequested = { seconds ->
@@ -227,6 +246,7 @@ class PlaylistPlaybackCoordinator(
     /** Join a nearby playlist as PARTICIPANT. */
     fun join(entry: NearbySessionEntry) {
         val device = entry.rawSession.device ?: return
+        advanceMode = ListPlaybackAdvance.MANUAL
         boardSessionManager.startSession()
         // No startQueue() here: that would flash HOST before GATT connects;
         // joinSession() drives setConnecting() → setParticipantRole().
@@ -252,6 +272,7 @@ class PlaylistPlaybackCoordinator(
         if (lastClimb != null) {
             bleShareManager.setLastClimbAfterSession(lastClimb.climbUuid, lastClimb.angle)
         }
+        advanceMode = ListPlaybackAdvance.MANUAL
         return finished
     }
 }

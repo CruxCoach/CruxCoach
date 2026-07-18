@@ -115,7 +115,7 @@ interface PersonalBoardRepository {
     fun ensureFavoritesListExists(): Long
     fun getAllClimbLists(): List<Climb_lists>
     fun getClimbListById(id: Long): Climb_lists?
-    fun createClimbList(name: String): Long
+    fun createClimbList(name: String, generatorParams: String? = null): Long
     fun renameClimbList(id: Long, name: String)
     fun deleteClimbList(id: Long)
     fun addClimbToList(listId: Long, climbUuid: String)
@@ -143,6 +143,7 @@ interface PersonalBoardRepository {
     fun getIgnoredClimbUuids(): Set<String>
 
     fun getClimbListEntriesRaw(): List<RawClimbListEntry>
+    fun getListPlaybackStepsRaw(): List<RawListPlaybackStep>
 
     /** Full-fidelity list rows for the backup envelope — includes
      *  external_id / description / color, which the UI-facing
@@ -165,29 +166,27 @@ interface PersonalBoardRepository {
         description: String?, color: String?, externalId: String?,
     ): Long
 
-    // ── Playlists (kind='playlist' climb_lists) ─────────────────
-    // Ordered, playable lists: explicit position, duplicate climbs allowed
-    // (4x4 sets), rest rows interleaved. Plain-list methods above stay
-    // added_at-ordered and untouched.
+    // ── Optional training plan + playback defaults ──────────────
+    // Every list is playable. An explicit plan adds ordering, repeated climbs,
+    // pinned angles and rest blocks without changing unique list membership.
 
-    /** Creates an empty playlist; [generatorParams] is the JSON parameter
-     *  snapshot for generated playlists (null for manual ones). */
-    fun createPlaylist(name: String, generatorParams: String? = null): Long
     fun updateGeneratorParams(listId: Long, generatorParams: String?)
-    /** Appends a climb at the end; returns the new entry id. */
-    fun addPlaylistClimb(listId: Long, climbUuid: String, angle: Long?): Long
-    /** Appends a rest block at the end; returns the new entry id. */
-    fun addPlaylistRest(listId: Long, restSeconds: Long): Long
-    /** All entries ordered by position (climbs + rests). */
-    fun getPlaylistEntries(listId: Long): List<PlaylistEntryRow>
-    fun removePlaylistEntry(entryId: Long)
-    fun updatePlaylistRestSeconds(entryId: Long, restSeconds: Long)
-    /** Moves the entry at [fromIndex] to [toIndex] (indices into the
-     *  position-ordered entry list) and re-writes dense positions. */
-    fun movePlaylistEntry(listId: Long, fromIndex: Int, toIndex: Int)
-    /** Replaces ALL entries of the playlist with [entries] in order —
-     *  the generator's snapshot write. */
-    fun replacePlaylistEntries(listId: Long, entries: List<NewPlaylistEntry>)
+    fun updatePlaybackSettings(
+        listId: Long,
+        order: ListPlaybackOrder,
+        advance: ListPlaybackAdvance,
+        restSeconds: Long,
+    )
+    /** Appends a climb to the plan and ensures normal list membership. */
+    fun addPlaybackClimb(listId: Long, climbUuid: String, angle: Long?): Long
+    fun addPlaybackRest(listId: Long, restSeconds: Long): Long
+    fun getPlaybackSteps(listId: Long): List<ListPlaybackStepRow>
+    fun removePlaybackStep(stepId: Long)
+    fun updatePlaybackRestSeconds(stepId: Long, restSeconds: Long)
+    fun movePlaybackStep(listId: Long, fromIndex: Int, toIndex: Int)
+    /** Replaces only the ordered plan. Referenced climbs are added to normal
+     *  membership, while existing list members not used by the plan remain. */
+    fun replacePlaybackSteps(listId: Long, steps: List<NewListPlaybackStep>)
 
     // ── Denormalization refresh ─────────────────────────────────
 

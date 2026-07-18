@@ -601,10 +601,6 @@ fun CruxCoachNavHost(
                     onNavigateToHistory = {
                         navController.navigate(Routes.BOARD_LOGBOOK_HISTORY)
                     },
-                    // Playlists live in the same hub since the UI consolidation.
-                    onNavigateToPlaylistDetail = { listId ->
-                        navController.navigate(Routes.playlistDetail(listId))
-                    },
                     onNavigateToGenerator = {
                         navController.navigate(Routes.PLAYLIST_GENERATOR)
                     },
@@ -625,7 +621,15 @@ fun CruxCoachNavHost(
                     onNavigateBack = { navController.popBackStack() },
                     onNavigateToClimb = { climbUuid, angle ->
                         navController.navigate(Routes.boardClimbDetail(climbUuid, angle))
-                    }
+                    },
+                    onNavigateToPlaybackPlan = { listId ->
+                        navController.navigate(Routes.playlistDetail(listId))
+                    },
+                    onPlayed = {
+                        navController.navigate(Routes.PLAYLIST_PLAYER) {
+                            launchSingleTop = true
+                        }
+                    },
                 )
             }
 
@@ -639,7 +643,7 @@ fun CruxCoachNavHost(
                         onNavigateToClimb = { climbUuid, angle ->
                             navController.navigate(Routes.boardClimbDetail(climbUuid, angle))
                         },
-                        // Play opens the dedicated player — the playlist's home.
+                        // The training-plan editor can also start directly.
                         onPlayed = {
                             navController.navigate(Routes.PLAYLIST_PLAYER) {
                                 launchSingleTop = true
@@ -676,8 +680,8 @@ fun CruxCoachNavHost(
                 ) {
                     com.cruxcoach.android.ui.playlist.PlaylistImportScreen(
                         onImported = { listId ->
-                            navController.navigate(Routes.playlistDetail(listId)) {
-                                // Import is one-shot: back from the detail must
+                            navController.navigate(Routes.boardListDetail(listId)) {
+                                // Import is one-shot: back from the list must
                                 // not re-import.
                                 popUpTo(Routes.PLAYLIST_IMPORT) { inclusive = true }
                             }
@@ -695,7 +699,7 @@ fun CruxCoachNavHost(
                     com.cruxcoach.android.ui.playlist.PlaylistGeneratorScreen(
                         onNavigateBack = { navController.popBackStack() },
                         onNavigateToPlaylist = { listId ->
-                            navController.navigate(Routes.playlistDetail(listId)) {
+                            navController.navigate(Routes.boardListDetail(listId)) {
                                 // Generator is a one-shot wizard: leaving it on the
                                 // back stack would re-generate on back-press.
                                 popUpTo(Routes.BOARD_LISTS)
@@ -976,4 +980,3 @@ private fun CruxCoachBottomBar(navController: NavHostController) {
     }
     } // AnimatedVisibility
 }
-

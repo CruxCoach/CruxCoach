@@ -261,38 +261,60 @@ data class Climb_lists(
     /** True only for the built-in "Ignored" list — lets the lists UI pick a
      *  distinct icon and the add-to-list dialog filter it out. */
     val isIgnored: Boolean = false,
-    /** 'list' (plain Merkliste) | 'playlist' (ordered, playable, may carry
-     *  rest entries). */
-    val kind: String = "list",
-    /** JSON snapshot of the generator parameters a generated playlist was
-     *  built from; NULL for manual lists/playlists. */
+    /** JSON snapshot of the generator parameters a generated training list
+     *  was built from; NULL for manually assembled lists. */
     val generatorParams: String? = null,
+    /** Whether this list has an explicit ordered training plan. Lists without
+     *  one are still directly playable in their normal or shuffled order. */
+    val hasPlaybackPlan: Boolean = false,
+    val playbackOrder: ListPlaybackOrder = ListPlaybackOrder.LIST,
+    val playbackAdvance: ListPlaybackAdvance = ListPlaybackAdvance.MANUAL,
+    val playbackRestSeconds: Long = 0L,
 )
+
+enum class ListPlaybackOrder(val wireValue: String) {
+    LIST("list"),
+    SHUFFLE("shuffle");
+
+    companion object {
+        fun fromWire(value: String?) = entries.firstOrNull { it.wireValue == value } ?: LIST
+    }
+}
+
+enum class ListPlaybackAdvance(val wireValue: String) {
+    MANUAL("manual"),
+    AFTER_SEND("after_send"),
+    AFTER_LOG("after_log");
+
+    companion object {
+        fun fromWire(value: String?) = entries.firstOrNull { it.wireValue == value } ?: MANUAL
+    }
+}
 
 data class Climb_list_entries(
     val addedAt: String,
     val climb: ClimbWithStats
 )
 
-/** One ordered playlist entry — either a climb (climbUuid + pinned angle)
- *  or a rest block (restSeconds). Two-phase like plain lists: this row
+/** One ordered training-plan step — either a climb (climbUuid + pinned angle)
+ *  or a rest block (restSeconds). Two-phase like normal lists: this row
  *  carries only the uuid; climb details resolve against the BoardDB. */
-data class PlaylistEntryRow(
+data class ListPlaybackStepRow(
     val id: Long,
     val listId: Long,
     val position: Long,
-    /** 'climb' | 'rest' (schema climb_list_entries.entry_type). */
-    val entryType: String,
+    /** 'climb' | 'rest' (schema list_playback_steps.step_type). */
+    val stepType: String,
     val climbUuid: String?,
     val restSeconds: Long?,
     val angle: Long?,
 ) {
-    val isRest: Boolean get() = entryType == "rest"
+    val isRest: Boolean get() = stepType == "rest"
 }
 
-/** Insert payload for [PersonalBoardRepository.replacePlaylistEntries] /
- *  append helpers. climbUuid == null ⇒ rest entry. */
-data class NewPlaylistEntry(
+/** Insert payload for [PersonalBoardRepository.replacePlaybackSteps] /
+ *  append helpers. climbUuid == null means a rest step. */
+data class NewListPlaybackStep(
     val climbUuid: String?,
     val angle: Long? = null,
     val restSeconds: Long? = null,
@@ -628,11 +650,15 @@ data class RawBid(
 
 data class RawClimbListEntry(
     val listId: Long,
-    /** NULL for rest entries (entry_type='rest'). */
-    val climbUuid: String?,
+    val climbUuid: String,
     val addedAt: String,
-    val position: Long = 0,
-    val entryType: String = "climb",
+)
+
+data class RawListPlaybackStep(
+    val listId: Long,
+    val climbUuid: String?,
+    val position: Long,
+    val stepType: String,
     val restSeconds: Long? = null,
     val angle: Long? = null,
 )
@@ -702,10 +728,11 @@ data class ClimbListBackupRow(
     val description: String?,
     val color: String?,
     val externalId: String?,
-    /** 'list' | 'playlist' (climb_lists.kind). */
-    val kind: String,
-    /** Generator parameter JSON snapshot (playlists only). */
+    /** Generator parameter JSON snapshot (generated training lists only). */
     val generatorParams: String?,
+    val playbackOrder: ListPlaybackOrder,
+    val playbackAdvance: ListPlaybackAdvance,
+    val playbackRestSeconds: Long,
 )
 
 /**

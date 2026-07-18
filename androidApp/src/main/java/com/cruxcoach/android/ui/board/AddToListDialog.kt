@@ -131,13 +131,13 @@ internal fun AddToListDialog(
                         Icon(
                             when {
                                 list.isBuiltin -> Icons.Default.Star
-                                list.kind == "playlist" -> Icons.AutoMirrored.Filled.PlaylistPlay
+                                list.hasPlaybackPlan -> Icons.AutoMirrored.Filled.PlaylistPlay
                                 else -> Icons.AutoMirrored.Filled.PlaylistAdd
                             },
                             contentDescription = null,
                             tint = when {
                                 list.isBuiltin -> WarningYellow
-                                list.kind == "playlist" -> OrangeAccent
+                                list.hasPlaybackPlan -> OrangeAccent
                                 else -> MaterialTheme.colorScheme.onSurfaceVariant
                             },
                             modifier = Modifier.size(18.dp)

@@ -373,7 +373,8 @@
 
     <!-- Settings: BLE -->
     <string name="settings_ble_auto_disconnect_title">Release board connection</string>
-    <string name="settings_ble_auto_disconnect_desc_retained">Used only by verified legacy controllers that allow one direct connection. Multi-client and unknown controllers stay connected.</string>
+    <string name="settings_ble_auto_disconnect_desc_retained">Used only for exclusive controllers whose lighting remains after disconnecting. Multi-client and unknown controllers stay connected.</string>
+    <string name="settings_ble_auto_disconnect_moonboard">Not used for MoonBoard: the lighting requires an active connection.</string>
     <string name="settings_duration_minutes_label">Minutes</string>
     <string name="settings_duration_seconds_label">Seconds</string>
     <string name="settings_ble_keep_screen_on">Keep screen on</string>
@@ -715,8 +716,8 @@
     <string name="board_filter_type">Type</string>
     <string name="board_filter_type_boulder">Boulder</string>
     <string name="board_filter_type_routes">Routes</string>
-    <string name="board_session_connecting">Connecting to playlist…</string>
-    <string name="board_session_end_title">End playlist?</string>
+    <string name="board_session_connecting">Connecting to session…</string>
+    <string name="board_session_end_title">End session?</string>
     <string name="board_session_end_confirm">End</string>
     <string name="board_session_end_summary">Total time: %1$s\nActive: %2$s\nBreaks: %3$s\nSends: %4$d / Attempts: %5$d</string>
     <string name="board_ble_disconnect_request_title">Connection request</string>
@@ -724,7 +725,7 @@
     <string name="board_ble_disconnect_request_confirm">Release</string>
     <string name="board_ble_disconnect_request_deny">Deny</string>
     <string name="board_bt_off_title">Bluetooth disabled</string>
-    <string name="board_bt_off_message">Bluetooth is required for the active playlist and board connection. Please re-enable.</string>
+    <string name="board_bt_off_message">Bluetooth is required for the active session and board connection. Please re-enable.</string>
     <string name="board_bt_off_enable">Enable Bluetooth</string>
     <string name="board_bt_off_ignore">Ignore</string>
 
@@ -830,7 +831,7 @@
     <string name="board_logbook_ascent_count">%d ascents</string>
 
     <!-- Board: Lists -->
-    <string name="board_lists_title">Lists &amp; playlists</string>
+    <string name="board_lists_title">Lists</string>
     <string name="board_lists_delete_title">Delete list?</string>
     <string name="board_lists_delete_message">The list and all entries will be deleted.</string>
     <string name="board_lists_empty_title">No lists yet</string>
@@ -860,7 +861,7 @@
     <string name="board_ascent_comment">Comment (optional)</string>
 
     <!-- Board: Session Summary -->
-    <string name="board_session_summary_title">Playlist finished</string>
+    <string name="board_session_summary_title">Session finished</string>
     <string name="board_session_summary_attempts">Attempts</string>
     <string name="board_session_summary_hardest_send">Hardest send</string>
     <string name="board_session_summary_total_time">Total time</string>
@@ -884,8 +885,8 @@
     <string name="board_ble_bt_enable_button">Turn Bluetooth on</string>
     <string name="board_ble_location_disabled_title">Location services disabled</string>
     <string name="board_ble_location_disabled_message">Location services (GPS) must be enabled on this device to find Bluetooth devices.</string>
-    <string name="board_ble_session_active_title">Playlist active</string>
-    <string name="board_ble_session_active_message">The board is controlled by the playlist host. Your climbs are sent to the board via the playlist.</string>
+    <string name="board_ble_session_active_title">Session active</string>
+    <string name="board_ble_session_active_message">The board is controlled by the session host. Your climbs are sent to the board via the session.</string>
     <string name="board_ble_connect_failed_hint">Connection failed. Make sure the board is powered and nearby, then tap it again to retry.</string>
     <string name="board_ble_open_location_settings">Open location settings</string>
     <string name="board_ble_connected">Connected</string>
@@ -1172,16 +1173,16 @@
     <string name="ble_board_occupied">Board occupied</string>
     <string name="ble_board_occupied_detail">%1$d users on board</string>
     <string name="ble_climbing_now">Climbing now</string>
-    <string name="ble_end_session">End playlist</string>
-    <string name="ble_leave_session">Leave playlist</string>
+    <string name="ble_end_session">End session</string>
+    <string name="ble_leave_session">Leave session</string>
     <string name="ble_last_climb">Last climb</string>
     <string name="ble_on_board">On Board</string>
     <string name="ble_participants">%1$d participants</string>
-    <string name="ble_queue_empty">Playlist is empty</string>
+    <string name="ble_queue_empty">Session queue is empty</string>
     <string name="ble_external_board_override">Another board app changed the lights</string>
     <string name="ble_ready_to_resend">Ready to resend</string>
-    <string name="ble_session_climb">Playlist climb</string>
-    <string name="ble_session_label">PLAYLIST</string>
+    <string name="ble_session_climb">Session climb</string>
+    <string name="ble_session_label">SESSION</string>
     <string name="ble_sharing_title">BLE Sharing</string>
     <string name="ble_still_visible">Still visible</string>
     <string name="ble_unknown">Unknown</string>
@@ -1205,6 +1206,7 @@
     <string name="board_heatmap_start">Start Holds</string>
     <string name="board_holdsearch_filter_summary">%1$d Holds → %2$d Climbs</string>
     <string name="board_list_climb_count">%d Climbs</string>
+    <string name="board_list_climb_count_with_plan">%d Climbs · Training plan</string>
     <string name="board_list_filter_all">All</string>
     <string name="board_list_unavailable_count">%d not shown — board not downloaded</string>
     <string name="board_list_on_board_count">%1$d of %2$d on this board</string>
@@ -1265,17 +1267,17 @@
     <string name="board_playback_frame">%1$d / %2$d</string>
     <string name="board_queue_empty">Queue is empty</string>
     <string name="board_queue_empty_editor">Add climbs from the browser</string>
-    <string name="board_queue_end_session">End playlist</string>
-    <string name="board_queue_leave_session">Leave playlist</string>
+    <string name="board_queue_end_session">End session</string>
+    <string name="board_queue_leave_session">Leave session</string>
     <string name="board_queue_participants">Participants (%d)</string>
-    <string name="board_queue_title">Playlist</string>
+    <string name="board_queue_title">Session</string>
     <string name="board_queue_you_host">You (Host)</string>
     <string name="board_random_climb">Random</string>
     <string name="board_rest_timer_finished">Rest finished!</string>
     <string name="board_rest_timer_ready">Ready for the next attempt!</string>
     <string name="board_rest_timer_rest">Rest</string>
     <string name="board_session_flashes">Flashes</string>
-    <string name="board_session_label">Playlist</string>
+    <string name="board_session_label">Session</string>
     <string name="board_sort_quality_sends">Sends × Quality</string>
     <string name="board_sort_random">Random</string>
     <string name="board_sort_newest">Newest</string>
@@ -2064,38 +2066,30 @@
         <item quantity="other">Delete %1$d entries from history?</item>
     </plurals>
 
-    <!-- Playlists (training playlists + generator) -->
-    <string name="playlists_title">Playlists</string>
-    <string name="playlists_empty_title">No playlists yet</string>
-    <string name="playlists_empty_message">Generate a training session or build a playlist by hand — the + button gets you started.</string>
-    <string name="playlist_create">Create playlist</string>
-    <string name="playlist_create_generated">Generate training playlist</string>
-    <string name="playlist_create_manual">Create manually</string>
-    <string name="playlist_new_manual">New playlist</string>
-    <string name="playlist_name_hint">Playlist name</string>
-    <string name="playlist_delete_title">Delete playlist?</string>
-    <string name="playlist_delete_message">The playlist will be removed. Your climbs and logbook stay untouched.</string>
+    <!-- Lists: optional training plans + generator -->
+    <string name="playlist_create_generated">Generate training list</string>
     <string name="playlist_rename">Rename</string>
     <string name="playlist_add_rest">Add rest</string>
     <string name="playlist_reorder">Reorder</string>
     <string name="playlist_play">Play</string>
     <string name="playlist_move_up">Move up</string>
     <string name="playlist_move_down">Move down</string>
-    <string name="playlist_empty_message">This playlist is empty. Long-press a climb in the browser to add it.</string>
+    <string name="playlist_empty_message">This training plan has no steps yet. Rebuild it from the list.</string>
     <string name="playlist_unavailable_climbs">%1$d climbs are not in your downloaded catalogue and will be skipped.</string>
     <string name="playlist_climb_unavailable">Climb not available</string>
     <string name="playlist_angle_label">%1$d°</string>
     <string name="playlist_rest_entry">Rest · %1$s</string>
     <string name="playlist_rest_duration">Rest duration</string>
     <string name="playlist_rest_seconds_label">Seconds</string>
-    <string name="playlist_generator_title">Playlist generator</string>
+    <string name="playlist_rest_range">10 s to 60 min</string>
+    <string name="playlist_generator_title">Training list generator</string>
     <string name="playlist_generator_type">Training type</string>
     <string name="playlist_generator_duration">Duration: %1$d min</string>
     <string name="playlist_generator_position">Where are you in your training?</string>
     <string name="playlist_generator_angle">Angle: %1$d°</string>
     <string name="playlist_generator_preview">Preview</string>
     <string name="playlist_generator_generate">Generate</string>
-    <string name="playlist_generator_name_title">Name your playlist</string>
+    <string name="playlist_generator_name_title">Name your list</string>
     <string name="playlist_generator_summary">%1$d climbs · %2$d rests · ~%3$d min · %4$s–%5$s</string>
     <string name="playlist_generator_profile">Your logbook: max %1$s · flash %2$s</string>
     <string name="playlist_generator_profile_empty">No logbook data yet — grades are based on a ~V5 default. Log some climbs for personal recommendations.</string>
@@ -2115,23 +2109,23 @@
     <string name="playlist_position_cold">Not warmed up</string>
     <string name="playlist_position_warm">Warmed up</string>
     <string name="playlist_position_end">End of training</string>
-    <string name="playlist_default_name_pyramid">Pyramid playlist</string>
-    <string name="playlist_default_name_power_endurance">Power endurance playlist</string>
-    <string name="playlist_default_name_volume">Volume playlist</string>
-    <string name="playlist_default_name_limit">Max playlist</string>
-    <string name="playlist_default_name_projecting">Project playlist</string>
+    <string name="playlist_default_name_pyramid">Pyramid training</string>
+    <string name="playlist_default_name_power_endurance">Power endurance training</string>
+    <string name="playlist_default_name_volume">Volume training</string>
+    <string name="playlist_default_name_limit">Max training</string>
+    <string name="playlist_default_name_projecting">Project training</string>
     <string name="ble_queue_resend">Re-send queue climb to the board</string>
-    <string name="playlist_import_error">This playlist link is invalid or damaged.</string>
-    <string name="playlist_player_title">Playlist</string>
-    <string name="playlist_player_hosted_by">Playlist by %1$s</string>
+    <string name="playlist_import_error">This training-list link is invalid or damaged.</string>
+    <string name="playlist_player_title">Training</string>
+    <string name="playlist_player_hosted_by">Training by %1$s</string>
     <string name="playlist_player_progress">%1$d of %2$d · %3$s</string>
     <string name="playlist_player_rest_title">Rest</string>
     <string name="playlist_player_skip_rest">Skip rest</string>
     <string name="playlist_player_up_next">Up next</string>
     <string name="playlist_player_attempt">Attempt %1$d of %2$d</string>
     <string name="playlist_attempts_badge">%1$d attempts</string>
-    <string name="playlist_add_to_running">Add to running playlist</string>
-    <string name="playlist_added_to_running">Added to playlist</string>
+    <string name="playlist_add_to_running">Add to running session</string>
+    <string name="playlist_added_to_running">Added to session</string>
     <string name="playlist_log_send">Sent it</string>
     <string name="playlist_log_attempt">Attempt</string>
     <string name="playlist_logged_send">Send logged</string>
@@ -2141,6 +2135,34 @@
     <string name="playlist_selection_new">New climbs</string>
     <string name="playlist_selection_projects">Open projects</string>
     <string name="playlist_selection_all">All</string>
+    <string name="list_playback_title">Play list</string>
+    <string name="list_playback_start">Start</string>
+    <string name="list_playback_source">Playback source</string>
+    <string name="list_playback_source_list">List</string>
+    <string name="list_playback_source_plan">Training plan</string>
+    <string name="list_playback_order">Order</string>
+    <string name="list_playback_order_list">List order</string>
+    <string name="list_playback_order_shuffle">Shuffle</string>
+    <string name="list_playback_default_rest">Rest between climbs</string>
+    <string name="list_playback_advance">Continue</string>
+    <string name="list_playback_advance_manual">Manually</string>
+    <string name="list_playback_advance_send">After a send</string>
+    <string name="list_playback_advance_log">After every logged attempt</string>
+    <string name="list_playback_plan_info">Order, repetitions, angles and rests come from this list’s training plan.</string>
+    <string name="list_playback_edit_plan">Edit training plan</string>
+    <string name="list_playback_multiple_boards_hint">Select exactly one board above before starting. A session cannot switch board controllers automatically.</string>
+    <string name="list_playback_unavailable_hint">%1$d saved climbs are unavailable locally and are not included.</string>
+    <string name="list_playback_error_empty">No locally available climbs can be played.</string>
+    <string name="list_playback_error_multiple_boards">This training plan contains multiple board configurations. Split it into one plan per board.</string>
+    <string name="list_plan_membership_info">This plan controls playback only. Removing or reordering steps does not remove climbs from the list.</string>
+    <string name="list_plan_duplicate_step">Repeat climb</string>
+    <string name="list_plan_append_missing">Append new list climbs</string>
+    <string name="list_plan_reset_title">Rebuild training plan?</string>
+    <string name="list_plan_reset_message">The current order, repetitions and rests will be replaced by the list’s current climbs.</string>
+    <string name="list_plan_reset_action">Rebuild from list</string>
+    <string name="list_plan_clear_title">Remove training plan?</string>
+    <string name="list_plan_clear_message">The list and all its climbs remain. Only the custom playback sequence is removed.</string>
+    <string name="list_plan_clear_action">Remove training plan</string>
     <!-- FEAT-044 CruxRelay: host "share board" surface -->
     <string name="relay_share_button">Share with other board apps</string>
     <string name="relay_chip_text">Available to board apps · %1$d connected</string>

@@ -8,7 +8,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
-import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Delete
@@ -48,7 +47,6 @@ fun BoardListsScreen(
     onNavigateToSetters: () -> Unit = {},
     onNavigateToMyClimbs: () -> Unit = {},
     onNavigateToHistory: () -> Unit,
-    onNavigateToPlaylistDetail: (Long) -> Unit = {},
     onNavigateToGenerator: () -> Unit = {},
     viewModel: BoardListsViewModel = hiltViewModel()
 ) {
@@ -72,9 +70,8 @@ fun BoardListsScreen(
     if (state.showCreateDialog) {
         CreateListDialog(
             name = state.newListName,
-            isPlaylist = state.createAsPlaylist,
             onNameChanged = { viewModel.updateNewListName(it) },
-            onCreate = { viewModel.createList(onPlaylistCreated = onNavigateToPlaylistDetail) },
+            onCreate = viewModel::createList,
             onDismiss = { viewModel.dismissCreateDialog() }
         )
     }
@@ -133,24 +130,13 @@ fun BoardListsScreen(
                         modifier = Modifier.testTag("lists_fab_generator"),
                     )
                     DropdownMenuItem(
-                        text = { Text(stringResource(R.string.playlist_create_manual)) },
-                        leadingIcon = {
-                            Icon(Icons.AutoMirrored.Filled.PlaylistPlay, contentDescription = null, tint = OrangeAccent)
-                        },
-                        onClick = {
-                            fabMenuExpanded = false
-                            viewModel.showCreateDialog(asPlaylist = true)
-                        },
-                        modifier = Modifier.testTag("lists_fab_playlist"),
-                    )
-                    DropdownMenuItem(
                         text = { Text(stringResource(R.string.board_lists_new_list)) },
                         leadingIcon = {
                             Icon(Icons.AutoMirrored.Filled.PlaylistAdd, contentDescription = null)
                         },
                         onClick = {
                             fabMenuExpanded = false
-                            viewModel.showCreateDialog(asPlaylist = false)
+                            viewModel.showCreateDialog()
                         },
                         modifier = Modifier.testTag("lists_fab_list"),
                     )
@@ -186,25 +172,8 @@ fun BoardListsScreen(
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
             }
 
-            // ── Playlists (ordered, playable) ───────────────────
-            if (state.playlists.isNotEmpty()) {
-                item(key = "playlists-header") {
-                    Text(
-                        stringResource(R.string.playlists_title),
-                        style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                items(state.playlists, key = { "p${it.id}" }) { playlist ->
-                    PlaylistCard(
-                        playlist = playlist,
-                        onClick = { onNavigateToPlaylistDetail(playlist.id) },
-                        onDelete = { viewModel.requestDeleteList(playlist.id) },
-                    )
-                }
-            }
-
-            // ── Plain lists (Merklisten) + Verlauf ──────────────
+            // All collections are lists. An optional training plan is shown
+            // on the same card instead of creating a second object type.
             item(key = "lists-header") {
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
@@ -387,6 +356,7 @@ private fun ListCard(
                 when {
                     list.isIgnored -> Icons.Default.VisibilityOff
                     list.isBuiltin -> Icons.Default.Star
+                    list.generatorParams != null -> Icons.Default.AutoAwesome
                     else -> Icons.AutoMirrored.Filled.PlaylistAdd
                 },
                 contentDescription = null,
@@ -405,7 +375,11 @@ private fun ListCard(
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    stringResource(R.string.board_list_climb_count, list.climbCount),
+                    if (list.hasPlaybackPlan) {
+                        stringResource(R.string.board_list_climb_count_with_plan, list.climbCount)
+                    } else {
+                        stringResource(R.string.board_list_climb_count, list.climbCount)
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -471,77 +445,16 @@ private fun HistoryCard(onClick: () -> Unit) {
     }
 }
 
-/** Card for a kind='playlist' row — generated ones get the sparkle icon. */
-@Composable
-private fun PlaylistCard(
-    playlist: Climb_lists,
-    onClick: () -> Unit,
-    onDelete: () -> Unit,
-) {
-    Card(
-        onClick = onClick,
-        modifier = Modifier
-            .fillMaxWidth()
-            .testTag("playlist_card_${playlist.id}"),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-        ),
-        shape = RoundedCornerShape(12.dp),
-    ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                if (playlist.generatorParams != null) Icons.Default.AutoAwesome
-                else Icons.AutoMirrored.Filled.PlaylistPlay,
-                contentDescription = null,
-                tint = OrangeAccent,
-                modifier = Modifier.size(28.dp),
-            )
-            Spacer(modifier = Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    playlist.name,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                )
-                Text(
-                    stringResource(R.string.board_list_climb_count, playlist.climbCount),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
-                Icon(
-                    Icons.Default.Delete,
-                    contentDescription = stringResource(R.string.action_delete),
-                    tint = ErrorRed,
-                    modifier = Modifier.size(20.dp),
-                )
-            }
-        }
-    }
-}
-
 @Composable
 private fun CreateListDialog(
     name: String,
-    isPlaylist: Boolean,
     onNameChanged: (String) -> Unit,
     onCreate: () -> Unit,
     onDismiss: () -> Unit
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = {
-            Text(
-                stringResource(
-                    if (isPlaylist) R.string.playlist_new_manual else R.string.board_lists_new_list
-                ),
-                fontWeight = FontWeight.Bold,
-            )
-        },
+        title = { Text(stringResource(R.string.board_lists_new_list), fontWeight = FontWeight.Bold) },
         text = {
             OutlinedTextField(
                 value = name,

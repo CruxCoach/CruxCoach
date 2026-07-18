@@ -4,6 +4,7 @@ import com.cruxcoach.android.ble.BoardBleConnection
 import com.cruxcoach.android.ble.ConnectionState
 import com.cruxcoach.android.ble.QueueItem
 import com.cruxcoach.data.repository.BoardRepository
+import com.cruxcoach.data.repository.ListPlaybackAdvance
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -166,6 +167,38 @@ class PlaylistPlaybackCoordinatorTest {
         verify(exactly = 1) { boardSessionManager.startRestTimer(45) }
         // Sharing disabled → no advertising.
         verify(exactly = 0) { gattBridge.startSharing() }
+    }
+
+    @Test
+    fun `after-send mode advances only after a logged send`() {
+        every { bleShareManager.uiState } returns MutableStateFlow(
+            mockk(relaxed = true) { every { sharingEnabled } returns false }
+        )
+        coordinator.play(
+            "Training",
+            listOf(QueueItem("a", 40), QueueItem("b", 40)),
+            ListPlaybackAdvance.AFTER_SEND,
+        )
+
+        coordinator.onClimbLogged(isSend = false)
+        assertEquals(0, queueManager.state.value.currentIndex)
+        coordinator.onClimbLogged(isSend = true)
+        assertEquals(1, queueManager.state.value.currentIndex)
+    }
+
+    @Test
+    fun `after-log mode advances after an attempt`() {
+        every { bleShareManager.uiState } returns MutableStateFlow(
+            mockk(relaxed = true) { every { sharingEnabled } returns false }
+        )
+        coordinator.play(
+            "Training",
+            listOf(QueueItem("a", 40), QueueItem("b", 40)),
+            ListPlaybackAdvance.AFTER_LOG,
+        )
+
+        coordinator.onClimbLogged(isSend = false)
+        assertEquals(1, queueManager.state.value.currentIndex)
     }
 
     @Test

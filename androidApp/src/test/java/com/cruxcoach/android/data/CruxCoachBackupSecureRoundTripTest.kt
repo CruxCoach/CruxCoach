@@ -7,6 +7,9 @@ import com.cruxcoach.data.SecureDatabaseTransactionRunner
 import com.cruxcoach.data.repository.BoardRepository
 import com.cruxcoach.data.repository.BodyStatRepository
 import com.cruxcoach.data.repository.ClimbRepositoryImpl
+import com.cruxcoach.data.repository.ListPlaybackAdvance
+import com.cruxcoach.data.repository.ListPlaybackOrder
+import com.cruxcoach.data.repository.NewListPlaybackStep
 import com.cruxcoach.data.repository.PersonalBoardRepository
 import com.cruxcoach.data.repository.PersonalBoardRepositoryImpl
 import com.cruxcoach.data.repository.PlanRepository
@@ -205,6 +208,45 @@ class CruxCoachBackupSecureRoundTripTest {
                 .count { it.externalId == "aurora-json:circuit:deadbeef" },
             "re-import must upsert by external_id, not duplicate",
         )
+    }
+
+    @Test
+    fun `list membership training plan and playback settings round-trip independently`() {
+        val savedOnly = "77777777-7777-4777-8777-777777777777"
+        val repeated = "88888888-8888-4888-8888-888888888888"
+        val listId = source.personal.createClimbList("4x4 Tuesday", """{"type":"powerEndurance"}""")
+        source.personal.addClimbToList(listId, savedOnly)
+        source.personal.replacePlaybackSteps(
+            listId,
+            listOf(
+                NewListPlaybackStep(repeated, angle = 40L),
+                NewListPlaybackStep(null, restSeconds = 60L),
+                NewListPlaybackStep(repeated, angle = 40L),
+            ),
+        )
+        source.personal.updatePlaybackSettings(
+            listId,
+            ListPlaybackOrder.SHUFFLE,
+            ListPlaybackAdvance.AFTER_SEND,
+            90L,
+        )
+
+        val json = export(source)
+        import(target, json)
+        import(target, json)
+
+        val restored = target.personal.getAllClimbLists().single { it.name == "4x4 Tuesday" }
+        assertEquals(ListPlaybackOrder.SHUFFLE, restored.playbackOrder)
+        assertEquals(ListPlaybackAdvance.AFTER_SEND, restored.playbackAdvance)
+        assertEquals(90L, restored.playbackRestSeconds)
+        assertEquals(
+            setOf(savedOnly, repeated),
+            target.personal.getClimbListEntryUuids(restored.id, Int.MAX_VALUE, 0)
+                .map { it.first }.toSet(),
+        )
+        val steps = target.personal.getPlaybackSteps(restored.id)
+        assertEquals(listOf(repeated, null, repeated), steps.map { it.climbUuid })
+        assertEquals(60L, steps[1].restSeconds)
     }
 
     // ── 3. Ascent/bid full fidelity ──────────────────────────────

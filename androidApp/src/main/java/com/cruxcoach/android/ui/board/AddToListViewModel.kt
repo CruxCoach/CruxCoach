@@ -27,9 +27,9 @@ data class AddToListState(
 
 /**
  * Self-contained backing for the add-to-list dialog so ANY screen can
- * offer "add this climb to a list/playlist" without re-implementing the
+ * offer "add this climb to a list" without re-implementing the
  * toggle logic (previously only the climb-detail VM carried it). Also
- * powers the "add to the running playlist" shortcut.
+ * powers the "add to the running session" shortcut.
  */
 @HiltViewModel
 class AddToListViewModel @Inject constructor(
@@ -67,13 +67,9 @@ class AddToListViewModel @Inject constructor(
     fun toggleList(listId: Long) {
         viewModelScope.safeLaunch(TAG) {
             val currentlyIn = _state.value.climbInListIds.contains(listId)
-            val isPlaylist = _state.value.lists.firstOrNull { it.id == listId }?.kind == "playlist"
             withContext(Dispatchers.IO) {
                 if (currentlyIn) {
                     personalBoardRepo.removeClimbFromList(listId, climbUuid)
-                } else if (isPlaylist) {
-                    // Playlists are ordered + angle-pinned: append at the end.
-                    personalBoardRepo.addPlaylistClimb(listId, climbUuid, angle.toLong())
                 } else {
                     personalBoardRepo.addClimbToList(listId, climbUuid)
                 }

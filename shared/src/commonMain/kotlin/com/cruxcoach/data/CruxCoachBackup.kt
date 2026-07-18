@@ -239,6 +239,19 @@ object CruxCoachBackup {
             require(list.kind in setOf("list", "playlist")) {
                 "invalid backup: climbList.kind=${list.kind}"
             }
+            list.playbackOrder?.let {
+                require(it in ListPlaybackOrder.entries.map(ListPlaybackOrder::wireValue)) {
+                    "invalid backup: climbList.playbackOrder=$it"
+                }
+            }
+            list.playbackAdvance?.let {
+                require(it in ListPlaybackAdvance.entries.map(ListPlaybackAdvance::wireValue)) {
+                    "invalid backup: climbList.playbackAdvance=$it"
+                }
+            }
+            list.playbackRestSeconds?.let {
+                requireRange("climbList.playbackRestSeconds", it, 0L..3_600L)
+            }
             requireLen("climbList.generatorParams", list.generatorParams, MAX_NOTES_LEN)
             require(list.playlistEntries.size <= MAX_COLLECTION_SIZE) {
                 "invalid backup: climbList.playlistEntries too large"
@@ -457,9 +470,8 @@ object CruxCoachBackup {
         val name: String,
         val isBuiltin: Boolean,
         val createdAt: String,
-        // Climb UUIDs. For playlists this stays populated (climbs only, in
-        // order) so a pre-playlist app importing a newer backup still
-        // restores the membership as a plain list — graceful degradation.
+        // Unique normal list membership. The optional ordered training plan
+        // is stored separately below.
         val entries: List<String>,
         // ── Identity metadata (all defaulted; absent in pre-fix backups).
         // externalId disambiguates the two is_builtin=1 lists (Favorites has
@@ -470,14 +482,19 @@ object CruxCoachBackup {
         val externalId: String? = null,
         val description: String? = null,
         val color: String? = null,
-        // ── Playlist additions (0.2.2) — defaults keep old backups valid ──
-        /** 'list' | 'playlist' (climb_lists.kind). */
+        // Legacy wire hint retained so backups from the pre-release playlist
+        // implementation stay readable. It is not an app-side object type.
         val kind: String = "list",
-        /** Generator parameter JSON snapshot (playlists only). */
+        /** Generator parameter JSON snapshot (generated training lists). */
         val generatorParams: String? = null,
-        /** Full ordered entry rows incl. rests — playlists only; plain
-         *  lists keep using [entries]. */
+        /** Full ordered training-plan rows including rests. The historical
+         *  JSON field name is kept for backup compatibility. */
         val playlistEntries: List<PlaylistEntryExport> = emptyList(),
+        /** Nullable defaults distinguish old backups (field absent) from an
+         *  explicit setting and avoid overwriting newer local preferences. */
+        val playbackOrder: String? = null,
+        val playbackAdvance: String? = null,
+        val playbackRestSeconds: Long? = null,
     )
 
     @Serializable
@@ -708,29 +725,32 @@ object CruxCoachBackup {
         val climbLists = if (Category.CLIMB_LISTS in categories) {
             val rawEntries = personalBoardRepo.getClimbListEntriesRaw()
             val entriesByList = rawEntries.groupBy { it.listId }
+            val rawPlaybackSteps = personalBoardRepo.getListPlaybackStepsRaw()
+            val playbackStepsByList = rawPlaybackSteps.groupBy { it.listId }
             personalBoardRepo.getClimbListsForBackup().map { list ->
                 val raw = entriesByList[list.id].orEmpty()
+                val plan = playbackStepsByList[list.id].orEmpty().sortedBy { it.position }
                 ClimbListExport(
                     name = list.name, isBuiltin = list.isBuiltin,
                     createdAt = list.createdAt,
-                    // Climb membership for every kind — a pre-playlist app
-                    // importing this backup restores playlists as plain lists.
-                    entries = raw.filter { it.entryType == "climb" }.mapNotNull { it.climbUuid },
+                    entries = raw.map { it.climbUuid },
                     externalId = list.externalId,
                     description = list.description,
                     color = list.color,
-                    kind = list.kind,
+                    // Older 0.2.2 development builds understand this hint.
+                    kind = if (plan.isEmpty()) "list" else "playlist",
                     generatorParams = list.generatorParams,
-                    playlistEntries = if (list.kind == "playlist") {
-                        raw.sortedBy { it.position }.map { e ->
-                            PlaylistEntryExport(
-                                climbUuid = e.climbUuid,
-                                entryType = e.entryType,
-                                restSeconds = e.restSeconds,
-                                angle = e.angle,
-                            )
-                        }
-                    } else emptyList(),
+                    playlistEntries = plan.map { step ->
+                        PlaylistEntryExport(
+                            climbUuid = step.climbUuid,
+                            entryType = step.stepType,
+                            restSeconds = step.restSeconds,
+                            angle = step.angle,
+                        )
+                    },
+                    playbackOrder = list.playbackOrder.wireValue,
+                    playbackAdvance = list.playbackAdvance.wireValue,
+                    playbackRestSeconds = list.playbackRestSeconds,
                 )
             }
         } else emptyList()
@@ -1112,35 +1132,9 @@ object CruxCoachBackup {
             if (Category.CLIMB_LISTS in selectedCategories) {
                 val existingLists = personalBoardRepo.getClimbListsForBackup()
                 val existingByName = existingLists
-                    .filter { !it.isBuiltin && it.externalId == null && it.kind != "playlist" }
+                    .filter { !it.isBuiltin && it.externalId == null }
                     .associate { it.name to it.id }
                 for (list in backup.climbLists) {
-                    // Playlists: name-merged like plain lists, but entries
-                    // are REPLACED (position-ordered incl. rest rows) — the
-                    // additive plain-list path can't express ordering or
-                    // duplicates, and replace keeps re-imports idempotent.
-                    if (list.kind == "playlist") {
-                        // Merge only into a same-name PLAYLIST — a plain list
-                        // sharing the name must not get its entries replaced.
-                        val existingPlaylistId = existingLists
-                            .firstOrNull { it.name == list.name && it.kind == "playlist" }?.id
-                        val playlistId = existingPlaylistId
-                            ?: personalBoardRepo.createPlaylist(list.name, list.generatorParams)
-                        if (existingPlaylistId != null) {
-                            personalBoardRepo.updateGeneratorParams(playlistId, list.generatorParams)
-                        }
-                        personalBoardRepo.replacePlaylistEntries(
-                            playlistId,
-                            list.playlistEntries.map { pe ->
-                                com.cruxcoach.data.repository.NewPlaylistEntry(
-                                    climbUuid = pe.climbUuid?.lowercase(),
-                                    angle = pe.angle,
-                                    restSeconds = pe.restSeconds,
-                                )
-                            },
-                        )
-                        continue
-                    }
                     val listId = when {
                         list.isBuiltin &&
                             list.externalId == PersonalBoardRepository.IGNORED_LIST_EXTERNAL_ID ->
@@ -1168,6 +1162,34 @@ object CruxCoachBackup {
                             // Duplicate list entry — expected for re-imports
                             skipped++
                         }
+                    }
+                    // Generated metadata and the optional plan are independent
+                    // of normal membership. Referenced plan climbs are also
+                    // added to membership by replacePlaybackSteps().
+                    personalBoardRepo.updateGeneratorParams(listId, list.generatorParams)
+                    if (list.playlistEntries.isNotEmpty() || list.kind == "playlist") {
+                        personalBoardRepo.replacePlaybackSteps(
+                            listId,
+                            list.playlistEntries.map { step ->
+                                NewListPlaybackStep(
+                                    climbUuid = step.climbUuid?.lowercase(),
+                                    angle = step.angle,
+                                    restSeconds = step.restSeconds,
+                                )
+                            },
+                        )
+                    }
+                    if (
+                        list.playbackOrder != null ||
+                        list.playbackAdvance != null ||
+                        list.playbackRestSeconds != null
+                    ) {
+                        personalBoardRepo.updatePlaybackSettings(
+                            listId = listId,
+                            order = ListPlaybackOrder.fromWire(list.playbackOrder),
+                            advance = ListPlaybackAdvance.fromWire(list.playbackAdvance),
+                            restSeconds = list.playbackRestSeconds ?: 0L,
+                        )
                     }
                 }
                 result = result.copy(climbLists = backup.climbLists.size)

@@ -27,7 +27,7 @@ import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.OrangeAccent
 import com.cruxcoach.android.util.PlaylistShareLink
 import com.cruxcoach.android.util.safeLaunch
-import com.cruxcoach.data.repository.NewPlaylistEntry
+import com.cruxcoach.data.repository.NewListPlaybackStep
 import com.cruxcoach.data.repository.PersonalBoardRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -43,8 +43,8 @@ data class PlaylistImportState(
     val importedListId: Long? = null,
 )
 
-/** Decodes a shared `/l/<payload>` link and persists it as a local
- *  playlist — climbs + pinned angles; rests stay with the sender. */
+/** Decodes a shared `/l/<payload>` link and persists it as a local list with
+ *  an optional full-fidelity training plan. */
 @HiltViewModel
 class PlaylistImportViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
@@ -66,26 +66,40 @@ class PlaylistImportViewModel @Inject constructor(
             }
             val listId = withContext(Dispatchers.IO) {
                 // Never merge into an existing list on import — a foreign
-                // playlist must not silently replace local content. Suffix
+                // shared plan must not silently replace local content. Suffix
                 // colliding names instead.
-                val existingNames = personalBoardRepo.getAllClimbLists().map { it.name }.toSet()
-                var name = shared.name.ifBlank { "Playlist" }
+                val existingNames = personalBoardRepo.getAllClimbLists()
+                    .map { it.name.lowercase() }
+                    .toSet()
+                val baseName = shared.name.trim().ifBlank { "Training" }
+                var name = baseName
                 var suffix = 2
-                while (name in existingNames) {
-                    name = "${shared.name} ($suffix)"
+                while (name.lowercase() in existingNames) {
+                    name = "$baseName ($suffix)"
                     suffix++
                 }
-                val id = personalBoardRepo.createPlaylist(name)
-                personalBoardRepo.replacePlaylistEntries(
+                val id = personalBoardRepo.createClimbList(name)
+                personalBoardRepo.replacePlaybackSteps(
                     id,
-                    shared.climbs.map { c ->
-                        // Store nodash-lowercase — the app's canonical entry
-                        // spelling — instead of the link codec's dashed form.
-                        NewPlaylistEntry(
-                            climbUuid = PlaylistDetailViewModel.normUuidKey(c.climbUuid),
-                            angle = c.angle.toLong(),
-                        )
+                    shared.steps.map { step ->
+                        when (step) {
+                            is PlaylistShareLink.SharedStep.Climb -> NewListPlaybackStep(
+                                // Store nodash-lowercase, the app's canonical spelling.
+                                climbUuid = PlaylistDetailViewModel.normUuidKey(step.climbUuid),
+                                angle = step.angle.toLong(),
+                            )
+                            is PlaylistShareLink.SharedStep.Rest -> NewListPlaybackStep(
+                                climbUuid = null,
+                                restSeconds = step.seconds.toLong(),
+                            )
+                        }
                     },
+                )
+                personalBoardRepo.updatePlaybackSettings(
+                    listId = id,
+                    order = shared.order,
+                    advance = shared.advance,
+                    restSeconds = shared.defaultRestSeconds.toLong(),
                 )
                 id
             }

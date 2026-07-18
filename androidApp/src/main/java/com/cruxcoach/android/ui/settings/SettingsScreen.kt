@@ -217,13 +217,12 @@ fun SettingsScreen(
                         onMultiConnectionModeChange =
                             viewModel::updateMultiConnectionBoardSendMode,
                     )
-                    if (activeBoardBrand != BoardBrand.MOONBOARD) {
-                        HorizontalDivider()
-                        BleAutoDisconnectSection(
-                            bleAutoDisconnectSeconds = state.bleAutoDisconnectSeconds,
-                            onAutoDisconnectChange = { viewModel.updateBleAutoDisconnect(it) },
-                        )
-                    }
+                    HorizontalDivider()
+                    BleAutoDisconnectSection(
+                        bleAutoDisconnectSeconds = state.bleAutoDisconnectSeconds,
+                        boardBrand = activeBoardBrand,
+                        onAutoDisconnectChange = { viewModel.updateBleAutoDisconnect(it) },
+                    )
                     HorizontalDivider()
                     ClimbSharingSection(
                         climbSharing = state.climbSharing,

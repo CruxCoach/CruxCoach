@@ -65,7 +65,7 @@ import com.cruxcoach.domain.playlist.TrainingRanges
 /**
  * Generator wizard: session type, duration, session position, angle — with
  * a live grade-curve preview of the planned session. Generate persists the
- * snapshot playlist and navigates to its detail screen.
+ * generated list plus its training plan and opens the normal list detail.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -77,7 +77,7 @@ fun PlaylistGeneratorScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showNameDialog by rememberSaveable { mutableStateOf(false) }
 
-    // Successful generate → jump into the fresh playlist.
+    // Successful generate -> jump into the fresh list.
     LaunchedEffect(state.createdListId) {
         state.createdListId?.let { id ->
             viewModel.consumeCreatedList()

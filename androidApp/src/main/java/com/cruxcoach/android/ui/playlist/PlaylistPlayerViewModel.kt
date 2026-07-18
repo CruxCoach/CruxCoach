@@ -155,6 +155,7 @@ class PlaylistPlayerViewModel @Inject constructor(
             if (isSend) boardSessionManager.recordAscent() else boardSessionManager.recordBid()
             zoneManager.recompute()
             _state.update { it.copy(lastLogged = isSend) }
+            playback.onClimbLogged(isSend)
         }
     }
 

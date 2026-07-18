@@ -374,7 +374,8 @@
 
     <!-- Settings: BLE -->
     <string name="settings_ble_auto_disconnect_title">Board-Verbindung freigeben</string>
-    <string name="settings_ble_auto_disconnect_desc_retained">Gilt nur für verifizierte ältere Controller mit genau einer direkten Verbindung. Multi-Connect- und unbekannte Controller bleiben verbunden.</string>
+    <string name="settings_ble_auto_disconnect_desc_retained">Gilt nur für exklusive Controller, deren Beleuchtung nach dem Trennen erhalten bleibt. Multi-Connect- und unbekannte Controller bleiben verbunden.</string>
+    <string name="settings_ble_auto_disconnect_moonboard">Nicht für MoonBoard verwendet: Die Beleuchtung benötigt eine aktive Verbindung.</string>
     <string name="settings_duration_minutes_label">Minuten</string>
     <string name="settings_duration_seconds_label">Sekunden</string>
     <string name="settings_ble_keep_screen_on">Bildschirm anlassen</string>
@@ -716,8 +717,8 @@
     <string name="board_filter_type">Typ</string>
     <string name="board_filter_type_boulder">Boulder</string>
     <string name="board_filter_type_routes">Routen</string>
-    <string name="board_session_connecting">Verbinde mit Playlist…</string>
-    <string name="board_session_end_title">Playlist beenden?</string>
+    <string name="board_session_connecting">Verbinde mit Session…</string>
+    <string name="board_session_end_title">Session beenden?</string>
     <string name="board_session_end_confirm">Beenden</string>
     <string name="board_session_end_summary">Gesamtzeit: %1$s\nAktiv: %2$s\nPausen: %3$s\nSends: %4$d / Versuche: %5$d</string>
     <string name="board_ble_disconnect_request_title">Verbindungsanfrage</string>
@@ -725,7 +726,7 @@
     <string name="board_ble_disconnect_request_confirm">Freigeben</string>
     <string name="board_ble_disconnect_request_deny">Ablehnen</string>
     <string name="board_bt_off_title">Bluetooth deaktiviert</string>
-    <string name="board_bt_off_message">Bluetooth wird für die aktive Playlist und Board-Verbindung benötigt. Bitte wieder aktivieren.</string>
+    <string name="board_bt_off_message">Bluetooth wird für die aktive Session und Board-Verbindung benötigt. Bitte wieder aktivieren.</string>
     <string name="board_bt_off_enable">Bluetooth aktivieren</string>
     <string name="board_bt_off_ignore">Ignorieren</string>
 
@@ -874,7 +875,7 @@
     <string name="board_logbook_ascent_count">%d Begehungen</string>
 
     <!-- Board: Lists -->
-    <string name="board_lists_title">Listen &amp; Playlists</string>
+    <string name="board_lists_title">Listen</string>
     <string name="board_lists_delete_title">Liste löschen?</string>
     <string name="board_lists_delete_message">Die Liste und alle Einträge werden gelöscht.</string>
     <string name="board_lists_empty_title">Noch keine Listen</string>
@@ -904,7 +905,7 @@
     <string name="board_ascent_comment">Kommentar (optional)</string>
 
     <!-- Board: Session Summary -->
-    <string name="board_session_summary_title">Playlist beendet</string>
+    <string name="board_session_summary_title">Session beendet</string>
     <string name="board_session_summary_attempts">Versuche</string>
     <string name="board_session_summary_hardest_send">Härtester Send</string>
     <string name="board_session_summary_total_time">Gesamtzeit</string>
@@ -928,8 +929,8 @@
     <string name="board_ble_bt_enable_button">Bluetooth einschalten</string>
     <string name="board_ble_location_disabled_title">Standortdienste deaktiviert</string>
     <string name="board_ble_location_disabled_message">Auf diesem Gerät müssen die Standortdienste (GPS) eingeschaltet sein, damit Bluetooth-Geräte gefunden werden können.</string>
-    <string name="board_ble_session_active_title">Playlist aktiv</string>
-    <string name="board_ble_session_active_message">Das Board wird vom Playlist-Host gesteuert. Deine Climbs werden über die Playlist an das Board gesendet.</string>
+    <string name="board_ble_session_active_title">Session aktiv</string>
+    <string name="board_ble_session_active_message">Das Board wird vom Session-Host gesteuert. Deine Climbs werden über die Session an das Board gesendet.</string>
     <string name="board_ble_connect_failed_hint">Verbindung fehlgeschlagen. Stelle sicher, dass das Board eingeschaltet und in der Nähe ist, und tippe es erneut an.</string>
     <string name="board_ble_open_location_settings">Standort-Einstellungen öffnen</string>
     <string name="board_ble_connected">Verbunden</string>
@@ -1219,16 +1220,16 @@
     <string name="ble_board_occupied">Board belegt</string>
     <string name="ble_board_occupied_detail">%1$d Nutzer am Board</string>
     <string name="ble_climbing_now">Klettert gerade</string>
-    <string name="ble_end_session">Playlist beenden</string>
-    <string name="ble_leave_session">Playlist verlassen</string>
+    <string name="ble_end_session">Session beenden</string>
+    <string name="ble_leave_session">Session verlassen</string>
     <string name="ble_last_climb">Letzter Boulder</string>
     <string name="ble_on_board">Auf dem Board</string>
     <string name="ble_participants">%1$d Teilnehmer</string>
-    <string name="ble_queue_empty">Playlist ist leer</string>
+    <string name="ble_queue_empty">Session-Warteschlange ist leer</string>
     <string name="ble_external_board_override">Eine andere Board-App hat die Beleuchtung geändert</string>
     <string name="ble_ready_to_resend">Zum erneuten Senden</string>
-    <string name="ble_session_climb">Playlist-Climb</string>
-    <string name="ble_session_label">PLAYLIST</string>
+    <string name="ble_session_climb">Session-Climb</string>
+    <string name="ble_session_label">SESSION</string>
     <string name="ble_sharing_title">BLE Sharing</string>
     <string name="ble_still_visible">Noch sichtbar</string>
     <string name="ble_unknown">Unbekannt</string>
@@ -1252,6 +1253,7 @@
     <string name="board_heatmap_start">Start-Holds</string>
     <string name="board_holdsearch_filter_summary">%1$d Holds → %2$d Climbs</string>
     <string name="board_list_climb_count">%d Climbs</string>
+    <string name="board_list_climb_count_with_plan">%d Climbs · Trainingsablauf</string>
     <string name="board_list_filter_all">Alle</string>
     <string name="board_list_unavailable_count">%d nicht angezeigt — Board nicht geladen</string>
     <string name="board_list_on_board_count">%1$d von %2$d auf diesem Board</string>
@@ -1312,17 +1314,17 @@
     <string name="board_playback_frame">%1$d / %2$d</string>
     <string name="board_queue_empty">Warteschlange ist leer</string>
     <string name="board_queue_empty_editor">Füge Climbs aus dem Browser hinzu</string>
-    <string name="board_queue_end_session">Playlist beenden</string>
-    <string name="board_queue_leave_session">Playlist verlassen</string>
+    <string name="board_queue_end_session">Session beenden</string>
+    <string name="board_queue_leave_session">Session verlassen</string>
     <string name="board_queue_participants">Teilnehmer (%d)</string>
-    <string name="board_queue_title">Playlist</string>
+    <string name="board_queue_title">Session</string>
     <string name="board_queue_you_host">Du (Host)</string>
     <string name="board_random_climb">Zufall</string>
     <string name="board_rest_timer_finished">Pause vorbei!</string>
     <string name="board_rest_timer_ready">Bereit für den nächsten Versuch!</string>
     <string name="board_rest_timer_rest">Pause</string>
     <string name="board_session_flashes">Flashes</string>
-    <string name="board_session_label">Playlist</string>
+    <string name="board_session_label">Session</string>
     <string name="board_sort_quality_sends">Sends × Qualität</string>
     <string name="board_sort_random">Zufällig</string>
     <string name="board_sort_newest">Neueste</string>
@@ -2067,38 +2069,30 @@
         <item quantity="other">%1$d Einträge aus dem Verlauf löschen?</item>
     </plurals>
 
-    <!-- Playlists (Trainings-Playlists + Generator) -->
-    <string name="playlists_title">Playlists</string>
-    <string name="playlists_empty_title">Noch keine Playlists</string>
-    <string name="playlists_empty_message">Erstelle eine Trainingssession mit dem Generator oder baue eine Playlist von Hand — über den +-Button geht\'s los.</string>
-    <string name="playlist_create">Playlist erstellen</string>
-    <string name="playlist_create_generated">Trainings-Playlist generieren</string>
-    <string name="playlist_create_manual">Manuell erstellen</string>
-    <string name="playlist_new_manual">Neue Playlist</string>
-    <string name="playlist_name_hint">Name der Playlist</string>
-    <string name="playlist_delete_title">Playlist löschen?</string>
-    <string name="playlist_delete_message">Die Playlist wird entfernt. Deine Climbs und dein Logbuch bleiben unberührt.</string>
+    <!-- Listen: optionale Trainingsabläufe + Generator -->
+    <string name="playlist_create_generated">Trainingsliste generieren</string>
     <string name="playlist_rename">Umbenennen</string>
     <string name="playlist_add_rest">Pause hinzufügen</string>
     <string name="playlist_reorder">Sortieren</string>
     <string name="playlist_play">Abspielen</string>
     <string name="playlist_move_up">Nach oben</string>
     <string name="playlist_move_down">Nach unten</string>
-    <string name="playlist_empty_message">Diese Playlist ist leer. Halte einen Climb im Browser gedrückt, um ihn hinzuzufügen.</string>
+    <string name="playlist_empty_message">Dieser Trainingsablauf enthält noch keine Schritte. Erstelle ihn neu aus der Liste.</string>
     <string name="playlist_unavailable_climbs">%1$d Climbs sind nicht in deinem heruntergeladenen Katalog und werden übersprungen.</string>
     <string name="playlist_climb_unavailable">Climb nicht verfügbar</string>
     <string name="playlist_angle_label">%1$d°</string>
     <string name="playlist_rest_entry">Pause · %1$s</string>
     <string name="playlist_rest_duration">Pausendauer</string>
     <string name="playlist_rest_seconds_label">Sekunden</string>
-    <string name="playlist_generator_title">Playlist-Generator</string>
+    <string name="playlist_rest_range">10 s bis 60 min</string>
+    <string name="playlist_generator_title">Trainingslisten-Generator</string>
     <string name="playlist_generator_type">Trainingstyp</string>
     <string name="playlist_generator_duration">Dauer: %1$d min</string>
     <string name="playlist_generator_position">Wo bist du in deinem Training?</string>
     <string name="playlist_generator_angle">Winkel: %1$d°</string>
     <string name="playlist_generator_preview">Vorschau</string>
     <string name="playlist_generator_generate">Generieren</string>
-    <string name="playlist_generator_name_title">Playlist benennen</string>
+    <string name="playlist_generator_name_title">Liste benennen</string>
     <string name="playlist_generator_summary">%1$d Climbs · %2$d Pausen · ~%3$d min · %4$s–%5$s</string>
     <string name="playlist_generator_profile">Dein Logbuch: Max %1$s · Flash %2$s</string>
     <string name="playlist_generator_profile_empty">Noch keine Logbuch-Daten — die Grade basieren auf einem ~V5-Standard. Logge ein paar Climbs für persönliche Empfehlungen.</string>
@@ -2118,23 +2112,23 @@
     <string name="playlist_position_cold">Nicht aufgewärmt</string>
     <string name="playlist_position_warm">Aufgewärmt</string>
     <string name="playlist_position_end">Trainingsende</string>
-    <string name="playlist_default_name_pyramid">Pyramiden-Playlist</string>
-    <string name="playlist_default_name_power_endurance">Kraftausdauer-Playlist</string>
-    <string name="playlist_default_name_volume">Volume-Playlist</string>
-    <string name="playlist_default_name_limit">Max-Playlist</string>
-    <string name="playlist_default_name_projecting">Projekt-Playlist</string>
+    <string name="playlist_default_name_pyramid">Pyramiden-Training</string>
+    <string name="playlist_default_name_power_endurance">Kraftausdauer-Training</string>
+    <string name="playlist_default_name_volume">Volume-Training</string>
+    <string name="playlist_default_name_limit">Max-Training</string>
+    <string name="playlist_default_name_projecting">Projekt-Training</string>
     <string name="ble_queue_resend">Queue-Climb erneut ans Board senden</string>
-    <string name="playlist_import_error">Dieser Playlist-Link ist ungültig oder beschädigt.</string>
-    <string name="playlist_player_title">Playlist</string>
-    <string name="playlist_player_hosted_by">Playlist von %1$s</string>
+    <string name="playlist_import_error">Dieser Trainingslisten-Link ist ungültig oder beschädigt.</string>
+    <string name="playlist_player_title">Training</string>
+    <string name="playlist_player_hosted_by">Training von %1$s</string>
     <string name="playlist_player_progress">%1$d von %2$d · %3$s</string>
     <string name="playlist_player_rest_title">Pause</string>
     <string name="playlist_player_skip_rest">Pause überspringen</string>
     <string name="playlist_player_up_next">Als Nächstes</string>
     <string name="playlist_player_attempt">Versuch %1$d von %2$d</string>
     <string name="playlist_attempts_badge">%1$d Versuche</string>
-    <string name="playlist_add_to_running">Zur laufenden Playlist hinzufügen</string>
-    <string name="playlist_added_to_running">Zur Playlist hinzugefügt</string>
+    <string name="playlist_add_to_running">Zur laufenden Session hinzufügen</string>
+    <string name="playlist_added_to_running">Zur Session hinzugefügt</string>
     <string name="playlist_log_send">Geschafft</string>
     <string name="playlist_log_attempt">Versuch</string>
     <string name="playlist_logged_send">Send geloggt</string>
@@ -2144,6 +2138,34 @@
     <string name="playlist_selection_new">Neue Climbs</string>
     <string name="playlist_selection_projects">Offene Projekte</string>
     <string name="playlist_selection_all">Alle</string>
+    <string name="list_playback_title">Liste abspielen</string>
+    <string name="list_playback_start">Starten</string>
+    <string name="list_playback_source">Abspielquelle</string>
+    <string name="list_playback_source_list">Liste</string>
+    <string name="list_playback_source_plan">Trainingsablauf</string>
+    <string name="list_playback_order">Reihenfolge</string>
+    <string name="list_playback_order_list">Listenreihenfolge</string>
+    <string name="list_playback_order_shuffle">Zufällig</string>
+    <string name="list_playback_default_rest">Pause zwischen Climbs</string>
+    <string name="list_playback_advance">Weiter</string>
+    <string name="list_playback_advance_manual">Manuell</string>
+    <string name="list_playback_advance_send">Nach einem Send</string>
+    <string name="list_playback_advance_log">Nach jedem geloggten Versuch</string>
+    <string name="list_playback_plan_info">Reihenfolge, Wiederholungen, Winkel und Pausen kommen aus dem Trainingsablauf dieser Liste.</string>
+    <string name="list_playback_edit_plan">Trainingsablauf bearbeiten</string>
+    <string name="list_playback_multiple_boards_hint">Wähle oben genau ein Board aus. Eine Session kann den Board-Controller nicht automatisch wechseln.</string>
+    <string name="list_playback_unavailable_hint">%1$d gespeicherte Climbs sind lokal nicht verfügbar und werden nicht einbezogen.</string>
+    <string name="list_playback_error_empty">Es sind keine lokal verfügbaren Climbs abspielbar.</string>
+    <string name="list_playback_error_multiple_boards">Dieser Trainingsablauf enthält mehrere Board-Konfigurationen. Teile ihn in einen Ablauf pro Board auf.</string>
+    <string name="list_plan_membership_info">Dieser Ablauf steuert nur das Abspielen. Schritte zu entfernen oder zu sortieren entfernt keine Climbs aus der Liste.</string>
+    <string name="list_plan_duplicate_step">Climb wiederholen</string>
+    <string name="list_plan_append_missing">Neue Listen-Climbs anhängen</string>
+    <string name="list_plan_reset_title">Trainingsablauf neu erstellen?</string>
+    <string name="list_plan_reset_message">Die aktuelle Reihenfolge, Wiederholungen und Pausen werden durch die derzeitigen Climbs der Liste ersetzt.</string>
+    <string name="list_plan_reset_action">Neu aus Liste erstellen</string>
+    <string name="list_plan_clear_title">Trainingsablauf entfernen?</string>
+    <string name="list_plan_clear_message">Die Liste und alle Climbs bleiben erhalten. Nur die eigene Abspielreihenfolge wird entfernt.</string>
+    <string name="list_plan_clear_action">Trainingsablauf entfernen</string>
     <!-- FEAT-044 CruxRelay: Host-„Board teilen"-Fläche -->
     <string name="relay_share_button">Für andere Board-Apps freigeben</string>
     <string name="relay_chip_text">Für Board-Apps freigegeben · %1$d verbunden</string>

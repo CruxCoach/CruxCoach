@@ -52,4 +52,17 @@ class GroupAttemptsTest {
         val rows = groupAttempts(listOf(climb("a"), rest(60)))
         assertEquals(2, rows.size)
     }
+
+    @Test
+    fun `different inter-attempt rests remain visible instead of being mislabelled`() {
+        val rows = groupAttempts(
+            listOf(climb("a"), rest(30), climb("a"), rest(60), climb("a"))
+        )
+
+        assertEquals(3, rows.size)
+        assertEquals(2, (rows[0] as PlaylistRow.Climb).attemptCount)
+        assertEquals(30L, (rows[0] as PlaylistRow.Climb).attemptRestSeconds)
+        assertEquals(60L, (rows[1] as PlaylistRow.Rest).entry.restSeconds)
+        assertEquals(1, (rows[2] as PlaylistRow.Climb).attemptCount)
+    }
 }

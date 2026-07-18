@@ -15,16 +15,19 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material.icons.filled.HourglassBottom
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Reorder
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.AlertDialog
@@ -41,6 +44,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -71,22 +75,22 @@ import com.cruxcoach.android.util.GradeDisplayHelper
 import kotlinx.coroutines.launch
 
 /**
- * Ordered playlist: climb rows + rest rows, edit mode with up/down reorder,
- * per-rest duration editing, and the Play entry into the session queue.
+ * Optional ordered training plan belonging to a normal list.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlaylistDetailScreen(
     onNavigateBack: () -> Unit,
     onNavigateToClimb: (String, Int) -> Unit,
-    /** Called AFTER the playlist was loaded into the session queue — the
-     *  NavGraph navigates to the browser, where the queue UI lives. */
+    /** Called after the plan was loaded into the session queue. */
     onPlayed: () -> Unit,
     viewModel: PlaylistDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var menuExpanded by remember { mutableStateOf(false) }
     var showAddRestDialog by rememberSaveable { mutableStateOf(false) }
+    var showResetConfirm by rememberSaveable { mutableStateOf(false) }
+    var showClearConfirm by rememberSaveable { mutableStateOf(false) }
     val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
     val snackbarHostState = remember { androidx.compose.material3.SnackbarHostState() }
     val shareScope = androidx.compose.runtime.rememberCoroutineScope()
@@ -138,6 +142,47 @@ fun PlaylistDetailScreen(
         )
     }
 
+    if (showResetConfirm) {
+        AlertDialog(
+            onDismissRequest = { showResetConfirm = false },
+            title = { Text(stringResource(R.string.list_plan_reset_title), fontWeight = FontWeight.Bold) },
+            text = { Text(stringResource(R.string.list_plan_reset_message)) },
+            confirmButton = {
+                Button(onClick = {
+                    showResetConfirm = false
+                    viewModel.resetFromList()
+                }) { Text(stringResource(R.string.list_plan_reset_action)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showResetConfirm = false }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            },
+        )
+    }
+
+    if (showClearConfirm) {
+        AlertDialog(
+            onDismissRequest = { showClearConfirm = false },
+            title = { Text(stringResource(R.string.list_plan_clear_title), fontWeight = FontWeight.Bold) },
+            text = { Text(stringResource(R.string.list_plan_clear_message)) },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showClearConfirm = false
+                        viewModel.clearPlan()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = ErrorRed),
+                ) { Text(stringResource(R.string.list_plan_clear_action)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearConfirm = false }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            },
+        )
+    }
+
     Scaffold(
         snackbarHost = { androidx.compose.material3.SnackbarHost(snackbarHostState) },
         topBar = {
@@ -168,14 +213,16 @@ fun PlaylistDetailScreen(
                             Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.action_more_options))
                         }
                         DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.playlist_rename)) },
-                                leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
-                                onClick = {
-                                    menuExpanded = false
-                                    viewModel.showRenameDialog()
-                                },
-                            )
+                            if (!state.isBuiltin) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.playlist_rename)) },
+                                    leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
+                                    onClick = {
+                                        menuExpanded = false
+                                        viewModel.showRenameDialog()
+                                    },
+                                )
+                            }
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.playlist_add_rest)) },
                                 leadingIcon = { Icon(Icons.Default.Timer, contentDescription = null) },
@@ -185,10 +232,34 @@ fun PlaylistDetailScreen(
                                 },
                                 modifier = Modifier.testTag("playlist_add_rest"),
                             )
-                            // Share: /l/<payload> link with the climbs +
-                            // pinned angles (rests stay local — personal
-                            // pacing). Same copy-to-clipboard UX as the
-                            // climb share.
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.list_plan_append_missing)) },
+                                leadingIcon = {
+                                    Icon(Icons.AutoMirrored.Filled.PlaylistPlay, contentDescription = null)
+                                },
+                                onClick = {
+                                    menuExpanded = false
+                                    viewModel.appendMissingFromList()
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.list_plan_reset_action)) },
+                                leadingIcon = { Icon(Icons.Default.Refresh, contentDescription = null) },
+                                onClick = {
+                                    menuExpanded = false
+                                    showResetConfirm = true
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.list_plan_clear_action)) },
+                                leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) },
+                                onClick = {
+                                    menuExpanded = false
+                                    showClearConfirm = true
+                                },
+                            )
+                            // Versioned /l/<payload> link: ordered steps,
+                            // pinned angles, rests and playback defaults.
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.board_detail_share_link)) },
                                 leadingIcon = {
@@ -196,14 +267,23 @@ fun PlaylistDetailScreen(
                                 },
                                 onClick = {
                                     menuExpanded = false
-                                    val link = com.cruxcoach.android.util.PlaylistShareLink.build(
+                                    val link = com.cruxcoach.android.util.PlaylistShareLink.buildPlan(
                                         name = state.name,
-                                        climbs = state.entries.mapNotNull { e ->
-                                            val uuid = e.climbUuid ?: return@mapNotNull null
-                                            com.cruxcoach.android.util.PlaylistShareLink.SharedClimb(
-                                                uuid, e.angle?.toInt() ?: 40,
-                                            )
+                                        steps = state.entries.mapNotNull { entry ->
+                                            if (entry.isRest) {
+                                                com.cruxcoach.android.util.PlaylistShareLink.SharedStep.Rest(
+                                                    (entry.restSeconds ?: 0L).toInt(),
+                                                )
+                                            } else {
+                                                val uuid = entry.climbUuid ?: return@mapNotNull null
+                                                com.cruxcoach.android.util.PlaylistShareLink.SharedStep.Climb(
+                                                    uuid, entry.angle?.toInt() ?: 40,
+                                                )
+                                            }
                                         },
+                                        order = state.playbackOrder,
+                                        advance = state.playbackAdvance,
+                                        defaultRestSeconds = state.playbackRestSeconds.toInt(),
                                     )
                                     if (link != null) {
                                         clipboardManager.setText(
@@ -231,8 +311,7 @@ fun PlaylistDetailScreen(
                 ExtendedFloatingActionButton(
                     onClick = {
                         requestNotificationPermissionIfNeeded()
-                        viewModel.play(hostName)
-                        onPlayed()
+                        viewModel.play(hostName, onPlayed)
                     },
                     containerColor = OrangeAccent,
                     icon = {
@@ -251,11 +330,31 @@ fun PlaylistDetailScreen(
         },
     ) { padding ->
         Column(modifier = Modifier.padding(padding)) {
+            Surface(
+                color = InfoBlue.copy(alpha = 0.10f),
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+            ) {
+                Text(
+                    stringResource(R.string.list_plan_membership_info),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = InfoBlue,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                )
+            }
             if (state.unavailableCount > 0) {
                 Text(
                     stringResource(R.string.playlist_unavailable_climbs, state.unavailableCount),
                     style = MaterialTheme.typography.bodySmall,
                     color = InfoBlue,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                )
+            }
+            if (state.playbackBoardError) {
+                Text(
+                    stringResource(R.string.list_playback_error_multiple_boards),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = ErrorRed,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                 )
             }
@@ -312,6 +411,7 @@ fun PlaylistDetailScreen(
                                 attemptRestSeconds = null,
                                 onClick = {},
                                 onRemove = { viewModel.removeEntry(entry.entryId) },
+                                onDuplicate = { viewModel.duplicateClimb(entry.entryId) },
                                 onMoveUp = if (index > 0) {
                                     { viewModel.moveEntry(index, index - 1) }
                                 } else null,
@@ -356,6 +456,7 @@ fun PlaylistDetailScreen(
                                     onNavigateToClimb(uuid, angle)
                                 },
                                 onRemove = {},
+                                onDuplicate = null,
                                 onMoveUp = null,
                                 onMoveDown = null,
                             )
@@ -413,7 +514,12 @@ internal fun groupAttempts(entries: List<PlaylistUiEntry>): List<PlaylistRow> {
                 }
                 next.isRest && afterRest != null && !afterRest.isRest &&
                     afterRest.climbUuid == e.climbUuid -> {
-                    attemptRest = next.restSeconds
+                    val restSeconds = next.restSeconds
+                    // A collapsed row may state one inter-attempt rest value.
+                    // Keep different rest durations visible as separate rows
+                    // instead of displaying the final value for every attempt.
+                    if (attemptRest != null && attemptRest != restSeconds) break
+                    attemptRest = restSeconds
                     count++; j += 2
                 }
                 else -> break
@@ -434,6 +540,7 @@ private fun ClimbRow(
     attemptRestSeconds: Long?,
     onClick: () -> Unit,
     onRemove: () -> Unit,
+    onDuplicate: (() -> Unit)?,
     onMoveUp: (() -> Unit)?,
     onMoveDown: (() -> Unit)?,
 ) {
@@ -454,7 +561,7 @@ private fun ClimbRow(
         ) {
             if (climb == null) {
                 Icon(
-                    Icons.Default.HelpOutline,
+                    Icons.AutoMirrored.Filled.HelpOutline,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                     modifier = Modifier.size(24.dp),
@@ -497,7 +604,7 @@ private fun ClimbRow(
                 }
             }
             if (editMode) {
-                ReorderControls(onMoveUp, onMoveDown, onRemove)
+                ReorderControls(onMoveUp, onMoveDown, onRemove, onDuplicate)
             }
         }
     }
@@ -541,7 +648,7 @@ private fun RestRow(
                 modifier = Modifier.weight(1f),
             )
             if (editMode) {
-                ReorderControls(onMoveUp, onMoveDown, onRemove)
+                ReorderControls(onMoveUp, onMoveDown, onRemove, onDuplicate = null)
             }
         }
     }
@@ -552,8 +659,18 @@ private fun ReorderControls(
     onMoveUp: (() -> Unit)?,
     onMoveDown: (() -> Unit)?,
     onRemove: () -> Unit,
+    onDuplicate: (() -> Unit)?,
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
+        if (onDuplicate != null) {
+            IconButton(onClick = onDuplicate, modifier = Modifier.size(32.dp)) {
+                Icon(
+                    Icons.Default.ContentCopy,
+                    contentDescription = stringResource(R.string.list_plan_duplicate_step),
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+        }
         IconButton(onClick = onMoveUp ?: {}, enabled = onMoveUp != null, modifier = Modifier.size(32.dp)) {
             Icon(Icons.Default.KeyboardArrowUp, contentDescription = stringResource(R.string.playlist_move_up))
         }
@@ -612,6 +729,7 @@ private fun RestDurationDialog(
     onDismiss: () -> Unit,
 ) {
     var text by rememberSaveable { mutableStateOf(initialSeconds.toString()) }
+    val seconds = text.toLongOrNull()
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.playlist_rest_duration), fontWeight = FontWeight.Bold) },
@@ -629,6 +747,8 @@ private fun RestDurationDialog(
                     onValueChange = { new -> text = new.filter { it.isDigit() }.take(4) },
                     singleLine = true,
                     label = { Text(stringResource(R.string.playlist_rest_seconds_label)) },
+                    isError = seconds != null && seconds !in 10L..3600L,
+                    supportingText = { Text(stringResource(R.string.playlist_rest_range)) },
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier
                         .fillMaxWidth()
@@ -638,8 +758,8 @@ private fun RestDurationDialog(
         },
         confirmButton = {
             Button(
-                onClick = { text.toLongOrNull()?.let(onConfirm) },
-                enabled = (text.toLongOrNull() ?: 0L) >= 10L,
+                onClick = { seconds?.let(onConfirm) },
+                enabled = seconds != null && seconds in 10L..3600L,
                 colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
                 shape = RoundedCornerShape(12.dp),
             ) { Text(stringResource(R.string.action_save), fontWeight = FontWeight.Bold) }
