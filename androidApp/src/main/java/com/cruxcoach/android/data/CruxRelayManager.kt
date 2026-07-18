@@ -140,6 +140,7 @@ class CruxRelayManager(
                 BoardRelayAvailability.AVAILABLE -> startRelay()
                 BoardRelayAvailability.UNSUPPORTED_PROTOCOL,
                 BoardRelayAvailability.MULTI_CONNECT_NOT_NEEDED,
+                BoardRelayAvailability.CAPACITY_UNKNOWN,
                 BoardRelayAvailability.RELAY_ENDPOINT,
                 ->
                     rejectEnable(RelayError.UNSUPPORTED_BOARD)

@@ -59,6 +59,7 @@ class BoardProjectionPolicyTest {
                 connectionState = ConnectionState.CONNECTED,
                 explicitlySuppressed = false,
                 connectionCapacity = BoardConnectionCapacity.MULTIPLE,
+                projectionSurvivesDisconnect = false,
             )
         )
     }
@@ -71,6 +72,7 @@ class BoardProjectionPolicyTest {
                 connectionState = ConnectionState.CONNECTED,
                 explicitlySuppressed = false,
                 connectionCapacity = BoardConnectionCapacity.UNKNOWN,
+                projectionSurvivesDisconnect = true,
             )
         )
     }
@@ -83,6 +85,20 @@ class BoardProjectionPolicyTest {
                 connectionState = ConnectionState.CONNECTED,
                 explicitlySuppressed = false,
                 connectionCapacity = BoardConnectionCapacity.SINGLE,
+                projectionSurvivesDisconnect = true,
+            )
+        )
+    }
+
+    @Test
+    fun `exclusive volatile controller keeps connection to preserve projection`() {
+        assertFalse(
+            BoardProjectionPolicy.shouldArmIdleDisconnect(
+                seconds = 60,
+                connectionState = ConnectionState.CONNECTED,
+                explicitlySuppressed = false,
+                connectionCapacity = BoardConnectionCapacity.SINGLE,
+                projectionSurvivesDisconnect = false,
             )
         )
     }

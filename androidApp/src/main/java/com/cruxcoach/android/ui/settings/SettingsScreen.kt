@@ -209,9 +209,13 @@ fun SettingsScreen(
                     )
                     HorizontalDivider()
                     BoardSendModeSection(
-                        mode = state.boardSendMode,
+                        singleConnectionMode = state.singleConnectionBoardSendMode,
+                        multiConnectionMode = state.multiConnectionBoardSendMode,
                         boardBrand = activeBoardBrand,
-                        onModeChange = viewModel::updateBoardSendMode,
+                        onSingleConnectionModeChange =
+                            viewModel::updateSingleConnectionBoardSendMode,
+                        onMultiConnectionModeChange =
+                            viewModel::updateMultiConnectionBoardSendMode,
                     )
                     if (activeBoardBrand != BoardBrand.MOONBOARD) {
                         HorizontalDivider()

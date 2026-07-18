@@ -5,6 +5,8 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.ble.BoardBleConnection
+import com.cruxcoach.android.ble.BoardConnectionCapacity
+import com.cruxcoach.android.ble.BoardControllerProfiles
 import com.cruxcoach.android.ble.BoardProjectionPolicy
 import com.cruxcoach.android.ble.ClimbBleAdvertiser
 import com.cruxcoach.android.ble.ConnectionState
@@ -40,6 +42,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
@@ -425,13 +428,42 @@ class BoardClimbDetailViewModel @Inject constructor(
         }
         viewModelScope.launch {
             try {
-                userPreferences.boardSendMode.collect { mode ->
+                var previousCapacity = BoardControllerProfiles
+                    .forBoard(bleConnection.connectedBoard)
+                    .connectionCapacity
+                var previousResolvedMode = _state.value.boardSendMode
+                combine(
+                    userPreferences.singleConnectionBoardSendMode,
+                    userPreferences.multiConnectionBoardSendMode,
+                    bleConnection.connectedBoardDescriptor,
+                ) { singleMode, multiMode, board ->
+                    val capacity = BoardControllerProfiles.forBoard(board).connectionCapacity
+                    BoardSendModePolicy.resolve(
+                        connectionCapacity = capacity,
+                        singleConnectionMode = singleMode,
+                        multiConnectionMode = multiMode,
+                    ) to capacity
+                }.distinctUntilChanged().collect { (mode, capacity) ->
+                    val shouldAutoSend = BoardSendModePolicy
+                        .shouldAutoSendAfterCapacityResolution(
+                            previousCapacity = previousCapacity,
+                            currentCapacity = capacity,
+                            previousResolvedMode = previousResolvedMode,
+                            resolvedMode = mode,
+                        )
+                    previousCapacity = capacity
+                    previousResolvedMode = mode
                     _state.update { it.copy(boardSendMode = mode) }
+                    if (shouldAutoSend &&
+                        bleConnection.connectionState.value == ConnectionState.CONNECTED
+                    ) {
+                        sendAutomaticallyIfEnabled()
+                    }
                 }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
-                Log.w(TAG, "boardSendMode collect terminated", e)
+                Log.w(TAG, "capacity-specific board send mode collect terminated", e)
             }
         }
         viewModelScope.launch {
@@ -1205,11 +1237,22 @@ class BoardClimbDetailViewModel @Inject constructor(
 
     private suspend fun sendAutomaticallyIfEnabled() {
         val mode = try {
-            userPreferences.boardSendMode.first()
+            combine(
+                userPreferences.singleConnectionBoardSendMode,
+                userPreferences.multiConnectionBoardSendMode,
+            ) { singleMode, multiMode ->
+                BoardSendModePolicy.resolve(
+                    connectionCapacity = BoardControllerProfiles
+                        .forBoard(bleConnection.connectedBoard)
+                        .connectionCapacity,
+                    singleConnectionMode = singleMode,
+                    multiConnectionMode = multiMode,
+                )
+            }.first()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            Log.w(TAG, "boardSendMode read failed; using current UI state", e)
+            Log.w(TAG, "capacity-specific board send mode read failed; using UI state", e)
             _state.value.boardSendMode
         }
         val climbState = _state.value

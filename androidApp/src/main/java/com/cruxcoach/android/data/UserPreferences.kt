@@ -286,7 +286,13 @@ object PreferenceKeys {
     // by bleAutoDisconnectSeconds, which transparently migrates the
     // older minutes key on first read if the new key is absent.
     val BLE_AUTO_DISCONNECT_SECONDS = intPreferencesKey("ble_auto_disconnect_seconds")
+    // Legacy global key retained as a read-only migration fallback for the two
+    // capacity-specific modes below.
     val BOARD_SEND_MODE = stringPreferencesKey("board_send_mode")
+    val SINGLE_CONNECTION_BOARD_SEND_MODE =
+        stringPreferencesKey("single_connection_board_send_mode")
+    val MULTI_CONNECTION_BOARD_SEND_MODE =
+        stringPreferencesKey("multi_connection_board_send_mode")
     fun lastUsedBoardAddress(brand: BoardBrand) =
         stringPreferencesKey("last_used_board_address_${brand.wireValue}")
     val BOARD_ANGLE = intPreferencesKey("board_angle")
@@ -815,13 +821,29 @@ class UserPreferences(
         }
     }
 
-    val boardSendMode: Flow<BoardSendMode> = dataStore.data.map { prefs ->
-        BoardSendMode.fromWire(prefs[PreferenceKeys.BOARD_SEND_MODE])
+    val singleConnectionBoardSendMode: Flow<BoardSendMode> = dataStore.data.map { prefs ->
+        BoardSendMode.fromWire(
+            prefs[PreferenceKeys.SINGLE_CONNECTION_BOARD_SEND_MODE]
+                ?: prefs[PreferenceKeys.BOARD_SEND_MODE]
+        )
     }
 
-    suspend fun setBoardSendMode(mode: BoardSendMode) {
+    suspend fun setSingleConnectionBoardSendMode(mode: BoardSendMode) {
         dataStore.edit { prefs ->
-            prefs[PreferenceKeys.BOARD_SEND_MODE] = mode.name
+            prefs[PreferenceKeys.SINGLE_CONNECTION_BOARD_SEND_MODE] = mode.name
+        }
+    }
+
+    val multiConnectionBoardSendMode: Flow<BoardSendMode> = dataStore.data.map { prefs ->
+        BoardSendMode.fromWire(
+            prefs[PreferenceKeys.MULTI_CONNECTION_BOARD_SEND_MODE]
+                ?: prefs[PreferenceKeys.BOARD_SEND_MODE]
+        )
+    }
+
+    suspend fun setMultiConnectionBoardSendMode(mode: BoardSendMode) {
+        dataStore.edit { prefs ->
+            prefs[PreferenceKeys.MULTI_CONNECTION_BOARD_SEND_MODE] = mode.name
         }
     }
 

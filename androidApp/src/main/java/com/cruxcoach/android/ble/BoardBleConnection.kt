@@ -112,7 +112,10 @@ class BoardBleConnection(private val context: Context) {
     private var currentBoard: DiscoveredBoard? = null
     /** Full scan descriptor for features that must preserve the controller API level. */
     val connectedBoard: DiscoveredBoard?
-        get() = currentBoard
+        get() = _connectedBoardDescriptor.value
+    private val _connectedBoardDescriptor = MutableStateFlow<DiscoveredBoard?>(null)
+    val connectedBoardDescriptor: StateFlow<DiscoveredBoard?> =
+        _connectedBoardDescriptor.asStateFlow()
     private var connectAttempt = 0
 
     var autoDisconnectSeconds: Int = 0
@@ -141,6 +144,25 @@ class BoardBleConnection(private val context: Context) {
 
     private fun isKeepAliveHeld(): Boolean =
         synchronized(keepAliveLock) { keepAliveOwners.isNotEmpty() }
+
+    /**
+     * Applies the short post-connect advertising probe to this connection only.
+     * A negative observation is intentionally discarded at disconnect rather
+     * than becoming a permanent claim about the controller firmware.
+     */
+    fun recordAdvertisingWhileConnected(address: String, observed: Boolean) {
+        if (_connectionState.value != ConnectionState.CONNECTED &&
+            _connectionState.value != ConnectionState.SENDING
+        ) return
+        val board = currentBoard?.takeIf { it.address.equals(address, ignoreCase = true) } ?: return
+        val updated = board.copy(advertisesWhileConnected = observed)
+        currentBoard = updated
+        _connectedBoardDescriptor.value = updated
+        Log.i(TAG, "Controller advertising while connected: $observed")
+        // UNKNOWN controllers do not arm idle release. Re-evaluate now that
+        // this connection has an operational capacity classification.
+        resetIdleTimer()
+    }
 
     // Write flow control: signaled by onCharacteristicWrite callback.
     // @Volatile: callback may arrive on a GATT-stack Binder thread on some
@@ -179,13 +201,14 @@ class BoardBleConnection(private val context: Context) {
         // this guard, a small autoDisconnectSeconds (e.g. 1 s, used as
         // a replacement for the old Quick-Send macro) could fire mid-
         // send on long climbs.
+        val profile = BoardControllerProfiles.forBoard(currentBoard)
         if (BoardProjectionPolicy.shouldArmIdleDisconnect(
                 seconds = seconds,
                 connectionState = _connectionState.value,
                 explicitlySuppressed = isKeepAliveHeld(),
-                connectionCapacity = BoardControllerProfiles
-                    .forBoard(currentBoard)
-                    .connectionCapacity,
+                connectionCapacity = profile.connectionCapacity,
+                projectionSurvivesDisconnect =
+                    profile.projectionLifetime == BoardProjectionLifetime.RETAINED_AFTER_DISCONNECT,
             )
         ) {
             disconnectJob = scope.launch {
@@ -352,6 +375,8 @@ class BoardBleConnection(private val context: Context) {
         _connectionState.value = ConnectionState.DISCONNECTED
         _connectedBoardName.value = null
         _connectedBoardBrand.value = null
+        currentBoard = null
+        _connectedBoardDescriptor.value = null
         gatt = null
         writeCharacteristic = null
     }
@@ -411,6 +436,7 @@ class BoardBleConnection(private val context: Context) {
         // Fresh attempt — drop any failure reason from the previous one.
         _connectFailureReason.value = null
         currentBoard = board
+        _connectedBoardDescriptor.value = board
         connectAttempt = 1
         // FEAT-031: ledsPerHold (Kilter = 2, other Aurora boards = 1) feeds the
         // @2 LED power-budget scaling; harmless on @3 (where it is unused).
@@ -500,6 +526,8 @@ class BoardBleConnection(private val context: Context) {
         if (_connectionState.value != ConnectionState.CONNECTING) {
             _connectedBoardName.value = null
             _connectedBoardBrand.value = null
+            currentBoard = null
+            _connectedBoardDescriptor.value = null
             return
         }
 
@@ -541,6 +569,8 @@ class BoardBleConnection(private val context: Context) {
                 _connectionState.value = ConnectionState.DISCONNECTED
                 _connectedBoardName.value = null
                 _connectedBoardBrand.value = null
+                currentBoard = null
+                _connectedBoardDescriptor.value = null
                 onRestartScannersAfterConnect?.invoke()
             }
             return
@@ -782,6 +812,7 @@ class BoardBleConnection(private val context: Context) {
         gatt = null
         writeCharacteristic = null
         currentBoard = null
+        _connectedBoardDescriptor.value = null
         _connectionState.value = ConnectionState.DISCONNECTED
         _connectedBoardName.value = null
         _connectedBoardBrand.value = null

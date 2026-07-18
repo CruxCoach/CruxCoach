@@ -101,7 +101,8 @@ data class SettingsState(
     val hasAssessment: Boolean = false,
     val ledColors: LedHoldColors = LedHoldColors(),
     val bleAutoDisconnectSeconds: Int = 60,
-    val boardSendMode: BoardSendMode = BoardSendMode.AUTOMATIC,
+    val singleConnectionBoardSendMode: BoardSendMode = BoardSendMode.AUTOMATIC,
+    val multiConnectionBoardSendMode: BoardSendMode = BoardSendMode.AUTOMATIC,
     val isSaving: Boolean = false,
     val saveSuccess: Boolean = false,
     val error: String? = null,
@@ -195,7 +196,10 @@ class SettingsViewModel @Inject constructor(
                 val lastSync = userPreferences.lastSyncTimestamp.first()
                 val scale = userPreferences.gradeScale.first()
                 val autoDisconnect = userPreferences.bleAutoDisconnectSeconds.first()
-                val boardSendMode = userPreferences.boardSendMode.first()
+                val singleConnectionBoardSendMode =
+                    userPreferences.singleConnectionBoardSendMode.first()
+                val multiConnectionBoardSendMode =
+                    userPreferences.multiConnectionBoardSendMode.first()
                 val ledColors = userPreferences.ledHoldColors.first()
                 val frameSpeed = userPreferences.routeFrameSpeed.first()
                 val useSetterSpeed = userPreferences.routeUseSetterSpeed.first()
@@ -252,7 +256,8 @@ class SettingsViewModel @Inject constructor(
                     hasAssessment = hasAssessment,
                     ledColors = ledColors,
                     bleAutoDisconnectSeconds = autoDisconnect,
-                    boardSendMode = boardSendMode,
+                    singleConnectionBoardSendMode = singleConnectionBoardSendMode,
+                    multiConnectionBoardSendMode = multiConnectionBoardSendMode,
                     profile = profileForm,
                     routePlayback = RoutePlaybackSettings(
                         frameSpeed = frameSpeed,
@@ -296,7 +301,16 @@ class SettingsViewModel @Inject constructor(
 
             // Start collectors for live updates after initial load
             launch { userPreferences.ledHoldColors.collect { colors -> _state.update { it.copy(ledColors = colors) } } }
-            launch { userPreferences.boardSendMode.collect { mode -> _state.update { it.copy(boardSendMode = mode) } } }
+            launch {
+                userPreferences.singleConnectionBoardSendMode.collect { mode ->
+                    _state.update { it.copy(singleConnectionBoardSendMode = mode) }
+                }
+            }
+            launch {
+                userPreferences.multiConnectionBoardSendMode.collect { mode ->
+                    _state.update { it.copy(multiConnectionBoardSendMode = mode) }
+                }
+            }
             launch { userPreferences.routeFrameSpeed.collect { speed -> _state.update { it.copy(routePlayback = it.routePlayback.copy(frameSpeed = speed)) } } }
             launch { userPreferences.routeUseSetterSpeed.collect { v -> _state.update { it.copy(routePlayback = it.routePlayback.copy(useSetterSpeed = v)) } } }
             launch { userPreferences.routeCountdown.collect { v -> _state.update { it.copy(routePlayback = it.routePlayback.copy(countdown = v)) } } }
@@ -586,9 +600,14 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun updateBoardSendMode(mode: BoardSendMode) {
-        _state.update { it.copy(boardSendMode = mode) }
-        viewModelScope.launch { userPreferences.setBoardSendMode(mode) }
+    fun updateSingleConnectionBoardSendMode(mode: BoardSendMode) {
+        _state.update { it.copy(singleConnectionBoardSendMode = mode) }
+        viewModelScope.launch { userPreferences.setSingleConnectionBoardSendMode(mode) }
+    }
+
+    fun updateMultiConnectionBoardSendMode(mode: BoardSendMode) {
+        _state.update { it.copy(multiConnectionBoardSendMode = mode) }
+        viewModelScope.launch { userPreferences.setMultiConnectionBoardSendMode(mode) }
     }
 
     fun updateNearbyClimbSharing(enabled: Boolean) {
