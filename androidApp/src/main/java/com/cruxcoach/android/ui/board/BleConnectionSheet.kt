@@ -2,6 +2,7 @@ package com.cruxcoach.android.ui.board
 
 import android.bluetooth.BluetoothAdapter
 import android.content.Intent
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -19,6 +20,9 @@ import androidx.compose.material.icons.filled.SignalCellularAlt
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -49,16 +53,37 @@ fun BleConnectionSheet(
     viewModel: BleConnectionViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val context = LocalContext.current
 
     // BleConnectionViewModel is scoped per nav-backstack entry, so the board
     // browser and the detail screen hold separate instances — a permission
     // grant in one leaves the other's cached hasPermissions stale at false.
-    // Android has no permission-change broadcast, so re-check the live OS
-    // permission + Bluetooth state on every sheet open.
-    LaunchedEffect(Unit) {
-        viewModel.checkState()
+    // Android has no permission-change broadcast (nor a location-toggle one),
+    // so re-check the live OS permission + Bluetooth + location state on every
+    // sheet open AND on every resume: registering the observer replays
+    // ON_RESUME for an already-resumed owner, and returning from the system
+    // location settings (LocationDisabledContent's button) re-fires it — the
+    // only feedback path for that toggle.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.checkState()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
+
+    // Location services gate the *discovery scan* on API ≤ 30 only — never a
+    // direct GATT connect, and nothing at all on API 31+ (BLUETOOTH_SCAN is
+    // declared neverForLocation). Computed once here and used both to pick the
+    // prompt branch below and to hold back the auto-scan: the prompt must only
+    // ever show while the flow it blocks genuinely cannot proceed.
+    val locationPromptNeeded = BlePermissionHelper.isLocationRequired(
+        apiLevel = Build.VERSION.SDK_INT,
+        flowNeedsScan = true, // this sheet's disconnected flow discovers boards by scanning
+        locationEnabled = state.isLocationEnabled
+    )
 
     // Auto-close once the connect succeeds — the top-bar BLE icon flips
     // to green (BluetoothConnected) so the sheet has no further purpose.
@@ -75,13 +100,19 @@ fun BleConnectionSheet(
         }
     }
 
-    // Auto-start scan when sheet opens (if permissions granted and BT enabled).
-    // Use the auto-connect-on-single variant: after a 2 s settling window, if
-    // exactly one board was found, the VM connects without the user tapping
-    // the list entry. 2+ boards leave the list visible for manual pick.
+    // Auto-start scan when sheet opens (if permissions granted, BT enabled and
+    // the scan isn't location-gated — starting one behind the location prompt
+    // would contradict it: the OS accepts the registration and, depending on
+    // the device, may even deliver results and auto-connect while the sheet
+    // still claims location is required). Use the auto-connect-on-single
+    // variant: after a 2 s settling window, if exactly one board was found,
+    // the VM connects without the user tapping the list entry. 2+ boards
+    // leave the list visible for manual pick. Keying on locationPromptNeeded
+    // also re-fires the effect the moment the user comes back from settings
+    // with location enabled.
     if (autoStartScan) {
-        LaunchedEffect(state.hasPermissions, state.isBluetoothEnabled) {
-            if (state.hasPermissions && state.isBluetoothEnabled &&
+        LaunchedEffect(state.hasPermissions, state.isBluetoothEnabled, locationPromptNeeded) {
+            if (state.hasPermissions && state.isBluetoothEnabled && !locationPromptNeeded &&
                 state.connectionState == ConnectionState.DISCONNECTED && !state.isScanning) {
                 viewModel.startScanWithAutoConnect()
             }
@@ -154,12 +185,12 @@ fun BleConnectionSheet(
                     )
                 }
 
-                // State 2b: Location services off (needed for BLE on Android 11 and below)
-                !BlePermissionHelper.isLocationEnabledForBle(context) -> {
-                    LocationDisabledContent()
-                }
-
-                // State 3: Connected
+                // State 3: Connected. Deliberately ranked above the location
+                // gate: a live GATT connection never needs location services,
+                // so an existing connection (session auto-connect, or one made
+                // before the user toggled location off) must show as connected
+                // instead of hiding behind an "enable location" prompt it
+                // plainly contradicts.
                 state.connectionState == ConnectionState.CONNECTED ||
                 state.connectionState == ConnectionState.SENDING -> {
                     ConnectedContent(
@@ -175,14 +206,26 @@ fun BleConnectionSheet(
                     )
                 }
 
-                // State 4: Connecting
+                // State 4: Connecting — above the location gate for the same
+                // reason as State 3.
                 state.connectionState == ConnectionState.CONNECTING -> {
                     ConnectingContent(boardName = state.connectedBoardName)
                 }
 
-                // State 5: Session participant — board is controlled by host
+                // State 5: Session participant — board is controlled by host,
+                // this device runs no discovery scan of its own here.
                 state.sessionRole == SessionRole.PARTICIPANT -> {
                     SessionParticipantContent()
+                }
+
+                // State 5b: Location services off while the remaining flow is
+                // the discovery scan, which the OS location-gates on API ≤ 30
+                // (always false on API 31+, see BlePermissionHelper). Sits
+                // directly above the scan branch it blocks — and only that
+                // branch — so the message can never contradict an ongoing or
+                // established connection.
+                locationPromptNeeded -> {
+                    LocationDisabledContent()
                 }
 
                 // State 6: Scanning / Board list

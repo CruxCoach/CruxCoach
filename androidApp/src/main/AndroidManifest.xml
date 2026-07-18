@@ -46,8 +46,11 @@
         android:usesPermissionFlags="neverForLocation" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
 
-    <!-- BLE scanning requires location on Android 11 and below only.
+    <!-- BLE scanning requires coarse location on Android 8-9 and fine
+         location on Android 10-11. Runtime requests are API-specific.
          On Android 12+ BLUETOOTH_SCAN with neverForLocation is sufficient. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"
+        android:maxSdkVersion="28" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"
         android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
