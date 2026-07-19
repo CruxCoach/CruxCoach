@@ -58,7 +58,10 @@ class ApkDownloader(private val context: Context) {
     fun start(
         info: UpdateInfo,
         allowMobile: Boolean,
+        sourceIndex: Int = 0,
     ): StartResult {
+        val downloadUrl = info.downloadUrls.getOrNull(sourceIndex)
+            ?: return StartResult.Error("No APK download source at index $sourceIndex")
         val target = targetFileFor(info.versionName)
         if (target.exists() && !target.delete()) {
             Log.w(TAG, "Could not delete previous cached APK at ${target.absolutePath}")
@@ -82,7 +85,7 @@ class ApkDownloader(private val context: Context) {
             DownloadManager.Request.NETWORK_WIFI
         }
 
-        val request = DownloadManager.Request(info.apkUrl.toUri())
+        val request = DownloadManager.Request(downloadUrl.toUri())
             .setTitle(info.versionName)
             .setDestinationUri(Uri.fromFile(target))
             .setAllowedNetworkTypes(allowedTypes)

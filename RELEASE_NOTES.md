@@ -1,7 +1,16 @@
 # CruxCoach 0.2.2 — Unreleased
 
-Draft — collected as features land on the 0.2.2 line.
+Lists become playable training sessions, board delivery adapts to the controller in front of you, and app updates keep a verified second download path.
 
+## Highlights
+- **Lists + playlists in one feature** — every normal list can optionally be played as an interactive training session with per-entry pauses, progress and playback controls. Existing list workflows stay unchanged until playback starts.
+- **One consistent board-delivery UX** — direct and explicit sending are available for single- and multi-connect boards. CruxCoach probes controller capacity during the live connection and can expose a single-connect board through CruxRelay without coupling relay use to a queue.
+- **MoonBoard behavior that matches its firmware** — the projected climb remains selected while CruxCoach keeps the required BLE connection alive. MoonBoard 2010 and Mini MoonBoard 2025 are represented as their own verified board variants.
+- **More reliable reconnects on older Android** — a known controller can be reused directly without a fresh scan; users can still choose a rescan when they need discovery.
+- **Resilient APK delivery** — Codeberg and Zapstore now serve the exact same signed APK through direct-download links. The in-app updater switches sources transparently after a network or integrity failure.
+- **Optional automatic updates** — choose notification only, automatic verified download, or automatic installation. Silent self-update is opt-in and used only where Android permits it; otherwise CruxCoach asks for the required system confirmation. The normal What's New dialog still appears after the updated app starts.
+
+## More improvements
 - **Consistent draft badge** — a climb's published/draft state now looks the same in the browser and on the detail screen.
 - **Faster first look at a newly-added board** — browsing a board right after adding it on its own is quicker.
 - **Deleted community climbs stay deleted** — even on devices that only sync via the catalogue.

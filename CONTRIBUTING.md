@@ -162,16 +162,20 @@ following keys to `local.properties` — no source edits required:
 | `UPDATER_API_BASE` | Forgejo/Gitea API root that the in-app auto-updater polls for new releases | `https://codeberg.org/api/v1` |
 | `UPDATER_REPO_OWNER` | Repository owner used by the auto-updater and the "Online" app-share QR code | `CruxCoach` |
 | `UPDATER_REPO_NAME` | Repository name used by the auto-updater and the app-share QR code; also drives the expected APK filename `<repo>-<tag>.apk` | `CruxCoach` |
-| `ZAPSTORE_APP_URL` | Zapstore listing URL surfaced as a QR code + shareable link in *Settings → Share via Zapstore* | `https://zapstore.dev/apps/com.cruxcoach.android` |
+| `ZAPSTORE_APP_URL` | Zapstore listing URL used as the manual release handoff when signed Zapstore metadata supplied the update | `https://zapstore.dev/apps/com.cruxcoach.android` |
+| `ZAPSTORE_RELAY_URL` | Relay queried for publisher-signed Zapstore release and APK metadata | `wss://relay.zapstore.dev` |
+| `ZAPSTORE_CDN_BASE_URL` | Content-addressed direct-download fallback; the path is the verified APK SHA-256 | `https://cdn.zapstore.dev` |
 | `USER_AGENT_PRODUCT` | Product token in outgoing HTTP `User-Agent` headers (`<product>/<version> (https://<host>)`). Lets Kilter operators tell forks apart from upstream traffic | `CruxCoach` |
 | `APP_LINK_HOST` | Host for shareable climb URLs (`https://<host>/c/<naddr>`) and for the Android App Link `<intent-filter>`. Forks need to host their own `/.well-known/assetlinks.json` for verification to succeed; until then App Links fall back to opening in a browser | `cruxcoach.org` |
 | `AUTO_NOTE_PTAG_MAINTAINER` | When `true`, Auto-Note Kind-1 publishes attach an unconditional `p`-tag mention of `MAINTAINER_PUBKEY` (Amethyst notification + reach amplifier for upstream). Forks usually want `false` so their users don't accidentally amplify whoever the fork's `MAINTAINER_PUBKEY` resolves to | `true` (set `AUTO_NOTE_PTAG_MAINTAINER=false` in your fork's `local.properties` to opt out) |
 | `auto_note_default_template` (string resource — `values/strings.xml:33` + `values-de/strings.xml:33`) | Editable Kind-1 template a fork user sees in *Settings → Climb Creator → Auto-Note*. The default contains `{npub_cruxcoach}`, `{cruxcoach_url}`, and the `#kilterboard` hashtag — forks should reword the template (and ideally drop the upstream-flavored token names) before publishing | upstream-flavored default |
 
 The auto-updater is disabled automatically on Zapstore installs (Zapstore
-handles updates itself). Forks whose APKs are distributed through other
-channels need to expose releases as a Forgejo/Gitea-compatible `releases`
-API endpoint and upload two assets per release:
+handles updates itself). For direct installs it discovers releases through
+the Forgejo/Gitea-compatible `releases` API and falls back to publisher-signed
+Zapstore events when Codeberg is unavailable. The APK may be downloaded from
+either source, but its SHA-256 and signing certificate must match before it is
+handed to Android. Forks need to upload two assets per Codeberg release:
 
 - `<repo>-<tag>.apk` — the signed release APK (must match `UPDATER_REPO_NAME`)
 - `<repo>-<tag>.apk.sha256` — a single-line `<hex>  <filename>` hash sidecar
@@ -185,6 +189,9 @@ manifest:
 - `android.permission.REQUEST_INSTALL_PACKAGES` — hands the downloaded APK to
   the system `PackageInstaller`; the user must additionally grant
   "Install unknown apps" in system settings on first use
+- `android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION` — allows the
+  opt-in automatic-install mode to request a no-interaction self-update on
+  Android 12 and newer; Android can still require confirmation
 - `android.permission.DOWNLOAD_WITHOUT_NOTIFICATION` — lets the background
   WorkManager pull the APK without surfacing a system DownloadManager
   notification (the in-app updater posts its own progress notification)

@@ -25,6 +25,7 @@ class UpdateCheckerThrottleTest {
     private val installSourceGate: InstallSourceGate = mockk(relaxed = true)
     private val preferences: UpdaterPreferences = mockk(relaxed = true)
     private val client: CodebergReleaseClient = mockk(relaxed = true)
+    private val zapstoreClient: ZapstoreReleaseClient = mockk(relaxed = true)
 
     private var simulatedRealtimeMs: Long = 10_000L
 
@@ -32,6 +33,14 @@ class UpdateCheckerThrottleTest {
         preferences = preferences,
         client = client,
         installSourceGate = installSourceGate,
+        elapsedRealtimeProvider = { simulatedRealtimeMs },
+    )
+
+    private fun checkerWithZapstore(): UpdateChecker = UpdateChecker(
+        preferences = preferences,
+        client = client,
+        installSourceGate = installSourceGate,
+        zapstoreClient = zapstoreClient,
         elapsedRealtimeProvider = { simulatedRealtimeMs },
     )
 
@@ -221,6 +230,56 @@ class UpdateCheckerThrottleTest {
     }
 
     @Test
+    fun `re-detecting the same version preserves an active pipeline stage`() = runTest {
+        stubGateAllowed()
+        simulatedRealtimeMs = 10_000L
+        val seed = UpdaterState(
+            autoCheckEnabled = true,
+            pendingVersionName = "9.9.9",
+            pipelineStage = PipelineStage.READY_TO_INSTALL,
+            pendingDownloadSourceIndex = 1,
+        )
+        coEvery { preferences.snapshot() } returns seed
+        val captured = mutableListOf<(UpdaterState) -> UpdaterState>()
+        coEvery { preferences.update(capture(captured)) } just Runs
+        coEvery { client.fetchReleases(any(), any()) } returns
+            CodebergReleaseClient.Result.Success(listOf(releaseWithApk("v9.9.9")), "etag-b")
+        coEvery { client.fetchSha256(any()) } returns "a".repeat(64)
+
+        checker().maybeCheck(UpdateChecker.Trigger.PERIODIC)
+
+        val finalState = captured.fold(seed) { state, transform -> transform(state) }
+        assertEquals(PipelineStage.READY_TO_INSTALL, finalState.pipelineStage)
+        assertEquals(1, finalState.pendingDownloadSourceIndex)
+    }
+
+    @Test
+    fun `new release does not replace an in-flight PackageInstaller session`() = runTest {
+        stubGateAllowed()
+        val seed = UpdaterState(
+            lastCheckEtag = "installing-etag",
+            pendingTagName = "v0.2.5",
+            pendingVersionName = "0.2.5",
+            pendingApkUrl = "https://old.example/app.apk",
+            pipelineStage = PipelineStage.INSTALLING,
+        )
+        coEvery { preferences.snapshot() } returns seed
+        val captured = mutableListOf<(UpdaterState) -> UpdaterState>()
+        coEvery { preferences.update(capture(captured)) } just Runs
+        coEvery { client.fetchReleases(any(), any()) } returns
+            CodebergReleaseClient.Result.Success(listOf(releaseWithApk("v9.9.9")), "new-etag")
+        coEvery { client.fetchSha256(any()) } returns "a".repeat(64)
+
+        val outcome = checker().maybeCheck(UpdateChecker.Trigger.MANUAL)
+
+        assertTrue(outcome is UpdateChecker.CheckOutcome.Update)
+        val finalState = captured.fold(seed) { state, transform -> transform(state) }
+        assertEquals(PipelineStage.INSTALLING, finalState.pipelineStage)
+        assertEquals("0.2.5", finalState.pendingVersionName)
+        assertEquals("installing-etag", finalState.lastCheckEtag)
+    }
+
+    @Test
     fun `reboot resets throttle — negative sinceBoot must not block the check`() = runTest {
         stubGateAllowed()
         // The last check ran 1h into a previous long-uptime session (stored
@@ -242,6 +301,97 @@ class UpdateCheckerThrottleTest {
         assertTrue(
             "a post-reboot check must not be throttled, was $outcome",
             outcome is UpdateChecker.CheckOutcome.NotModified,
+        )
+    }
+
+    @Test
+    fun `Codeberg outage discovers the update from signed Zapstore metadata`() = runTest {
+        stubGateAllowed()
+        simulatedRealtimeMs = 10_000L
+        val seed = UpdaterState(autoCheckEnabled = true)
+        coEvery { preferences.snapshot() } returns seed
+        val captured = mutableListOf<(UpdaterState) -> UpdaterState>()
+        coEvery { preferences.update(capture(captured)) } just Runs
+        coEvery { client.fetchReleases(any(), any()) } returns
+            CodebergReleaseClient.Result.Error("HTTP 503")
+        coEvery { zapstoreClient.fetchReleases(any(), any(), any(), any(), any()) } returns
+            ZapstoreReleaseClient.Result.Success(
+                listOf(
+                    ZapstoreRelease(
+                        versionName = "9.9.9",
+                        versionCode = 999,
+                        apkUrl = "https://cdn.zapstore.dev/${"a".repeat(64)}",
+                        apkSha256 = "a".repeat(64),
+                        apkSizeBytes = 1234,
+                        apkCertificateSha256 = "b".repeat(64),
+                        releaseNotesMarkdown = "notes",
+                        publishedAtEpochSeconds = 123,
+                    ),
+                ),
+            )
+
+        val outcome = checkerWithZapstore().maybeCheck(UpdateChecker.Trigger.PERIODIC)
+
+        assertTrue("expected Zapstore update, was $outcome", outcome is UpdateChecker.CheckOutcome.Update)
+        val info = (outcome as UpdateChecker.CheckOutcome.Update).info
+        assertEquals("https://cdn.zapstore.dev/${"a".repeat(64)}", info.apkUrl)
+        assertTrue(info.apkFallbackUrl!!.contains("/releases/download/v9.9.9/"))
+        val finalState = captured.fold(seed) { state, transform -> transform(state) }
+        assertEquals(info.apkUrl, finalState.pendingApkUrl)
+        assertEquals(info.apkFallbackUrl, finalState.pendingApkFallbackUrl)
+    }
+
+    @Test
+    fun `Codeberg sidecar outage discovers the same update from Zapstore`() = runTest {
+        stubGateAllowed()
+        simulatedRealtimeMs = 10_000L
+        val seed = UpdaterState(autoCheckEnabled = true)
+        coEvery { preferences.snapshot() } returns seed
+        coEvery { preferences.update(any()) } just Runs
+        coEvery { client.fetchReleases(any(), any()) } returns
+            CodebergReleaseClient.Result.Success(listOf(releaseWithApk("v9.9.9")), "etag-b")
+        coEvery { client.fetchSha256(any()) } returns null
+        coEvery { zapstoreClient.fetchReleases(any(), any(), any(), any(), any()) } returns
+            ZapstoreReleaseClient.Result.Success(
+                listOf(
+                    ZapstoreRelease(
+                        versionName = "9.9.9",
+                        versionCode = 999,
+                        apkUrl = "https://cdn.zapstore.dev/${"c".repeat(64)}",
+                        apkSha256 = "c".repeat(64),
+                        apkSizeBytes = 1234,
+                        apkCertificateSha256 = "b".repeat(64),
+                        releaseNotesMarkdown = "notes",
+                        publishedAtEpochSeconds = 123,
+                    ),
+                ),
+            )
+
+        val outcome = checkerWithZapstore().maybeCheck(UpdateChecker.Trigger.PERIODIC)
+
+        assertTrue("expected Zapstore update, was $outcome", outcome is UpdateChecker.CheckOutcome.Update)
+        assertEquals(
+            "https://cdn.zapstore.dev/${"c".repeat(64)}",
+            (outcome as UpdateChecker.CheckOutcome.Update).info.apkUrl,
+        )
+    }
+
+    @Test
+    fun `sidecar failure remains retryable when Zapstore has no matching update`() = runTest {
+        stubGateAllowed()
+        simulatedRealtimeMs = 10_000L
+        stubPrefsSnapshot(UpdaterState(autoCheckEnabled = true))
+        coEvery { client.fetchReleases(any(), any()) } returns
+            CodebergReleaseClient.Result.Success(listOf(releaseWithApk("v9.9.9")), "etag-b")
+        coEvery { client.fetchSha256(any()) } returns null
+        coEvery { zapstoreClient.fetchReleases(any(), any(), any(), any(), any()) } returns
+            ZapstoreReleaseClient.Result.Success(emptyList())
+
+        val outcome = checkerWithZapstore().maybeCheck(UpdateChecker.Trigger.PERIODIC)
+
+        assertEquals(
+            "sha256_asset_fetch_failed",
+            (outcome as UpdateChecker.CheckOutcome.Error).message,
         )
     }
 }

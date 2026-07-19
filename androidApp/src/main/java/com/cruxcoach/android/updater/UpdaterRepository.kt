@@ -18,7 +18,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
 import javax.inject.Named
 import javax.inject.Singleton
@@ -53,6 +56,8 @@ class UpdaterRepository @Inject constructor(
     }
     private val scope = CoroutineScope(SupervisorJob() + ioDispatcher + exceptionHandler)
     private var downloadMonitorJob: Job? = null
+    private val downloadCompletionMutex = Mutex()
+    private val automaticInstallInFlight = AtomicBoolean(false)
 
     val state: Flow<UpdaterState> = preferences.state
 
@@ -90,6 +95,8 @@ class UpdaterRepository @Inject constructor(
 
     fun selfUpdateAllowed(): Boolean = installSourceGate.selfUpdateAllowed()
 
+    fun canRequestPackageInstalls(): Boolean = installer.canRequestPackageInstalls()
+
     /**
      * Runs a check round and reacts to the outcome: auto-downloads when the
      * network policy permits (§6.14), posts a PENDING_DOWNLOAD notification
@@ -99,6 +106,8 @@ class UpdaterRepository @Inject constructor(
         val outcome = checker.maybeCheck(trigger)
         if (outcome is UpdateChecker.CheckOutcome.Update) {
             onNewerUpdateDetected(outcome.info)
+        } else {
+            resumePendingAutomationIfAllowed()
         }
         // Re-surface a dismissed-but-pending update on its backoff, INDEPENDENT of
         // the network outcome. maybeCheck returns NotModified on an ETag 304, which
@@ -108,10 +117,60 @@ class UpdaterRepository @Inject constructor(
         return outcome
     }
 
+    /**
+     * A network callback can arrive inside the check throttle window. Re-use a
+     * previously verified pending release so automatic mode does not wait for
+     * the next two-hour check merely because discovery returned 304/throttled.
+     */
+    private suspend fun resumePendingAutomationIfAllowed() {
+        val prefs = preferences.snapshot()
+        if (prefs.pipelineStage != PipelineStage.PENDING_DOWNLOAD ||
+            prefs.automationMode == UpdateAutomationMode.NOTIFY
+        ) return
+        prefs.pendingUpdate()?.let { onNewerUpdateDetected(it) }
+    }
+
     private suspend fun onNewerUpdateDetected(info: UpdateInfo) {
-        // No auto-download: every download is gated behind an in-app
-        // confirmation dialog. Notification brings the user into the app.
-        notifier.showPendingDownload(info)
+        val prefs = preferences.snapshot()
+        when (prefs.pipelineStage) {
+            PipelineStage.DOWNLOADING,
+            PipelineStage.INSTALLING,
+            PipelineStage.BLOCKED_CERT_MISMATCH,
+                -> return
+            PipelineStage.READY_TO_INSTALL -> {
+                if (prefs.automationMode == UpdateAutomationMode.AUTO_INSTALL) {
+                    val apk = downloader.targetFileFor(info.versionName)
+                    if (!tryAutomaticInstall(info, apk)) notifier.showReadyToInstall(info)
+                }
+                return
+            }
+            PipelineStage.NONE,
+            PipelineStage.PENDING_DOWNLOAD,
+                -> Unit
+        }
+
+        // A newly discovered version can replace an older download between
+        // check rounds. Stop that orphaned DownloadManager job before acting
+        // on the new pending APK.
+        prefs.pendingDownloadId?.let { staleId ->
+            downloadMonitorJob?.cancel()
+            downloadMonitorJob = null
+            downloader.cancel(staleId)
+            _downloadProgress.value = null
+            preferences.update { it.copy(pendingDownloadId = null) }
+        }
+        val transportAllowed = when (downloader.currentTransport()) {
+            ApkDownloader.Transport.WIFI -> true
+            ApkDownloader.Transport.CELLULAR -> prefs.autoDownloadOnMobile
+            ApkDownloader.Transport.OFFLINE,
+            ApkDownloader.Transport.UNKNOWN,
+                -> false
+        }
+        if (prefs.automationMode != UpdateAutomationMode.NOTIFY && transportAllowed) {
+            startDownload(info, allowMobile = prefs.autoDownloadOnMobile)
+        } else {
+            notifier.showPendingDownload(info)
+        }
     }
 
     /**
@@ -169,37 +228,71 @@ class UpdaterRepository @Inject constructor(
                 notifier.showPendingDownload(info)
                 return@launch
             }
-            Log.i(TAG, "event=resume_download id=$id version=${info.versionName}")
-            monitorDownload(info, id)
+            val sourceIndex = prefs.pendingDownloadSourceIndex
+            if (info.downloadUrls.getOrNull(sourceIndex) == null) {
+                preferences.update {
+                    it.copy(
+                        pendingDownloadId = null,
+                        pendingDownloadSourceIndex = 0,
+                        pipelineStage = PipelineStage.PENDING_DOWNLOAD,
+                    )
+                }
+                notifier.showPendingDownload(info)
+                return@launch
+            }
+            Log.i(TAG, "event=resume_download id=$id version=${info.versionName} source=$sourceIndex")
+            monitorDownload(
+                info,
+                id,
+                prefs.pendingAllowMobile,
+                sourceIndex,
+                showProgressNotification = prefs.automationMode == UpdateAutomationMode.NOTIFY,
+            )
         }
     }
 
     /** Starts (or resumes) the download and watches it to completion. */
-    fun startDownload(info: UpdateInfo, allowMobile: Boolean) {
-        scope.launch {
-            val enqueue = downloader.start(info, allowMobile)
-            when (enqueue) {
-                is ApkDownloader.StartResult.Enqueued -> {
+    suspend fun startDownload(info: UpdateInfo, allowMobile: Boolean) {
+        downloadMonitorJob?.cancel()
+        enqueueDownload(info, allowMobile, sourceIndex = 0)
+    }
+
+    private suspend fun enqueueDownload(info: UpdateInfo, allowMobile: Boolean, sourceIndex: Int) {
+        val showProgressNotification =
+            preferences.snapshot().automationMode == UpdateAutomationMode.NOTIFY
+        val enqueue = downloader.start(info, allowMobile, sourceIndex)
+        when (enqueue) {
+            is ApkDownloader.StartResult.Enqueued -> {
+                preferences.update {
+                    it.copy(
+                        pendingDownloadId = enqueue.id,
+                        pendingDownloadSourceIndex = sourceIndex,
+                        pendingAllowMobile = allowMobile,
+                        pipelineStage = PipelineStage.DOWNLOADING,
+                    )
+                }
+                if (showProgressNotification) notifier.showDownloading(info, progressPercent = 0)
+                monitorDownload(
+                    info,
+                    enqueue.id,
+                    allowMobile,
+                    sourceIndex,
+                    showProgressNotification,
+                )
+            }
+            is ApkDownloader.StartResult.InsufficientStorage -> {
+                Log.w(TAG, "Insufficient storage: need=${enqueue.neededBytes} free=${enqueue.freeBytes}")
+                preferences.update { it.copy(pipelineStage = PipelineStage.PENDING_DOWNLOAD) }
+                notifier.showDownloadError(info, reason = UpdateNotifier.DownloadError.NO_SPACE)
+            }
+            is ApkDownloader.StartResult.Error -> {
+                Log.w(TAG, "Download enqueue failed for source=$sourceIndex: ${enqueue.message}")
+                if (!startNextDownloadSource(info, allowMobile, sourceIndex)) {
                     preferences.update {
                         it.copy(
-                            pendingDownloadId = enqueue.id,
-                            pipelineStage = PipelineStage.DOWNLOADING,
+                            pendingDownloadSourceIndex = 0,
+                            pipelineStage = PipelineStage.PENDING_DOWNLOAD,
                         )
-                    }
-                    notifier.showDownloading(info, progressPercent = 0)
-                    monitorDownload(info, enqueue.id)
-                }
-                is ApkDownloader.StartResult.InsufficientStorage -> {
-                    Log.w(TAG, "Insufficient storage: need=${enqueue.neededBytes} free=${enqueue.freeBytes}")
-                    preferences.update {
-                        it.copy(pipelineStage = PipelineStage.PENDING_DOWNLOAD)
-                    }
-                    notifier.showDownloadError(info, reason = UpdateNotifier.DownloadError.NO_SPACE)
-                }
-                is ApkDownloader.StartResult.Error -> {
-                    Log.w(TAG, "Download enqueue failed: ${enqueue.message}")
-                    preferences.update {
-                        it.copy(pipelineStage = PipelineStage.PENDING_DOWNLOAD)
                     }
                     notifier.showDownloadError(info, reason = UpdateNotifier.DownloadError.GENERIC)
                 }
@@ -207,7 +300,13 @@ class UpdaterRepository @Inject constructor(
         }
     }
 
-    private fun monitorDownload(info: UpdateInfo, id: Long) {
+    private fun monitorDownload(
+        info: UpdateInfo,
+        id: Long,
+        allowMobile: Boolean,
+        sourceIndex: Int,
+        showProgressNotification: Boolean,
+    ) {
         downloadMonitorJob?.cancel()
         _downloadProgress.value = 0
         downloadMonitorJob = scope.launch {
@@ -227,27 +326,35 @@ class UpdaterRepository @Inject constructor(
                 when (status.state) {
                     ApkDownloader.State.SUCCESSFUL -> {
                         _downloadProgress.value = 100
-                        onDownloadFinished(info)
+                        downloadMonitorJob = null
+                        handleDownloadTerminal(
+                            info = info,
+                            id = id,
+                            status = status,
+                            allowMobile = allowMobile,
+                            sourceIndex = sourceIndex,
+                            cancelMonitor = false,
+                        )
                         _downloadProgress.value = null
                         return@launch
                     }
                     ApkDownloader.State.FAILED -> {
-                        Log.w(TAG, "Download failed — reason=${status.reason}")
-                        preferences.update {
-                            it.copy(
-                                pendingDownloadId = null,
-                                pipelineStage = PipelineStage.PENDING_DOWNLOAD,
-                            )
-                        }
                         _downloadProgress.value = null
-                        downloader.clearCacheFor(info.versionName)
-                        notifier.showDownloadError(info, reason = UpdateNotifier.DownloadError.GENERIC)
+                        downloadMonitorJob = null
+                        handleDownloadTerminal(
+                            info = info,
+                            id = id,
+                            status = status,
+                            allowMobile = allowMobile,
+                            sourceIndex = sourceIndex,
+                            cancelMonitor = false,
+                        )
                         return@launch
                     }
                     else -> {
                         val pct = status.progressPercent
                         if (pct != null) _downloadProgress.value = pct
-                        if (pct != null && pct != lastNotifyPct) {
+                        if (showProgressNotification && pct != null && pct != lastNotifyPct) {
                             lastNotifyPct = pct
                             notifier.showDownloading(info, pct)
                         }
@@ -259,12 +366,95 @@ class UpdaterRepository @Inject constructor(
         }
     }
 
-    private suspend fun onDownloadFinished(info: UpdateInfo) {
+    /**
+     * Completes a DownloadManager job exactly once. The in-process poller and
+     * [ApkDownloadCompleteReceiver] can observe the same terminal transition;
+     * the mutex plus persisted id check prevents double verification or
+     * duplicate PackageInstaller sessions.
+     */
+    private suspend fun handleDownloadTerminal(
+        info: UpdateInfo,
+        id: Long,
+        status: ApkDownloader.Status,
+        allowMobile: Boolean,
+        sourceIndex: Int,
+        cancelMonitor: Boolean,
+    ): Boolean {
+        if (status.state != ApkDownloader.State.SUCCESSFUL &&
+            status.state != ApkDownloader.State.FAILED
+        ) return false
+        return downloadCompletionMutex.withLock {
+            val current = preferences.snapshot()
+            if (current.pipelineStage != PipelineStage.DOWNLOADING ||
+                current.pendingDownloadId != id
+            ) return@withLock true
+            if (cancelMonitor) {
+                downloadMonitorJob?.cancel()
+                downloadMonitorJob = null
+                _downloadProgress.value = null
+            }
+
+            when (status.state) {
+                ApkDownloader.State.SUCCESSFUL -> onDownloadFinished(info, allowMobile, sourceIndex)
+                ApkDownloader.State.FAILED -> {
+                    Log.w(TAG, "Download failed — source=$sourceIndex reason=${status.reason}")
+                    downloader.clearCacheFor(info.versionName)
+                    if (!startNextDownloadSource(info, allowMobile, sourceIndex)) {
+                        preferences.update {
+                            it.copy(
+                                pendingDownloadId = null,
+                                pendingDownloadSourceIndex = 0,
+                                pipelineStage = PipelineStage.PENDING_DOWNLOAD,
+                            )
+                        }
+                        notifier.showDownloadError(info, reason = UpdateNotifier.DownloadError.GENERIC)
+                    }
+                }
+            }
+            true
+        }
+    }
+
+    /** Continues verification/install after DownloadManager wakes our process. */
+    fun onDownloadManagerCompleted(id: Long, onDone: () -> Unit = {}) {
+        scope.launch {
+            try {
+                val prefs = preferences.snapshot()
+                if (prefs.pipelineStage != PipelineStage.DOWNLOADING ||
+                    prefs.pendingDownloadId != id
+                ) return@launch
+                val info = prefs.pendingUpdate() ?: return@launch
+                val status = downloader.query(id) ?: return@launch
+                handleDownloadTerminal(
+                    info = info,
+                    id = id,
+                    status = status,
+                    allowMobile = prefs.pendingAllowMobile,
+                    sourceIndex = prefs.pendingDownloadSourceIndex,
+                    cancelMonitor = true,
+                )
+            } finally {
+                onDone()
+            }
+        }
+    }
+
+    private suspend fun onDownloadFinished(
+        info: UpdateInfo,
+        allowMobile: Boolean,
+        sourceIndex: Int,
+    ) {
         val apk = downloader.targetFileFor(info.versionName)
         when (val result = verifier.verify(apk, info.apkSha256)) {
             IntegrityVerifier.Result.Ok -> {
                 preferences.update { it.copy(pipelineStage = PipelineStage.READY_TO_INSTALL) }
-                notifier.showReadyToInstall(info)
+                val mode = preferences.snapshot().automationMode
+                if (mode == UpdateAutomationMode.AUTO_INSTALL && tryAutomaticInstall(info, apk)) {
+                    // PackageInstaller owns the rest. A pending user-action
+                    // callback is surfaced by ApkInstallStatusReceiver.
+                } else {
+                    notifier.showReadyToInstall(info)
+                }
             }
             is IntegrityVerifier.Result.CertMismatch -> {
                 Log.w(TAG, "Cert mismatch — handoff to browser per §5.4.3")
@@ -298,17 +488,33 @@ class UpdaterRepository @Inject constructor(
             IntegrityVerifier.Result.PayloadMissing,
             is IntegrityVerifier.Result.PayloadError,
                 -> {
-                Log.w(TAG, "Integrity verification failed ($result)")
+                Log.w(TAG, "Integrity verification failed for source=$sourceIndex ($result)")
                 downloader.clearCacheFor(info.versionName)
-                preferences.update {
-                    it.copy(
-                        pendingDownloadId = null,
-                        pipelineStage = PipelineStage.PENDING_DOWNLOAD,
-                    )
+                downloadMonitorJob = null
+                if (!startNextDownloadSource(info, allowMobile, sourceIndex)) {
+                    preferences.update {
+                        it.copy(
+                            pendingDownloadId = null,
+                            pendingDownloadSourceIndex = 0,
+                            pipelineStage = PipelineStage.PENDING_DOWNLOAD,
+                        )
+                    }
+                    notifier.showDownloadError(info, reason = UpdateNotifier.DownloadError.CORRUPT)
                 }
-                notifier.showDownloadError(info, reason = UpdateNotifier.DownloadError.CORRUPT)
             }
         }
+    }
+
+    private suspend fun startNextDownloadSource(
+        info: UpdateInfo,
+        allowMobile: Boolean,
+        failedSourceIndex: Int,
+    ): Boolean {
+        val next = failedSourceIndex + 1
+        if (info.downloadUrls.getOrNull(next) == null) return false
+        Log.i(TAG, "event=download_source_fallback from=$failedSourceIndex to=$next")
+        enqueueDownload(info, allowMobile, next)
+        return true
     }
 
     /** Manual "Installieren" from notification / Settings. */
@@ -317,12 +523,14 @@ class UpdaterRepository @Inject constructor(
             val prefs = preferences.snapshot()
             val info = prefs.pendingUpdate() ?: return@launch
             val apk = downloader.targetFileFor(info.versionName)
-            when (val result = installer.install(apk)) {
+            preferences.update { it.copy(pipelineStage = PipelineStage.INSTALLING) }
+            when (val result = installer.install(apk, preferNoUserAction = false)) {
                 is ApkInstaller.InstallResult.Committed -> {
                     Log.i(TAG, "Install session ${result.sessionId} committed")
                 }
                 is ApkInstaller.InstallResult.Error -> {
                     Log.w(TAG, "Install commit failed: ${result.message}")
+                    preferences.update { it.copy(pipelineStage = PipelineStage.READY_TO_INSTALL) }
                     notifier.showInstallError(info, status = Int.MIN_VALUE, message = result.message)
                 }
             }
@@ -339,37 +547,49 @@ class UpdaterRepository @Inject constructor(
     fun onInstallOutcome(outcome: InstallOutcome, onDone: () -> Unit = {}) {
         scope.launch {
             try {
-            val prefs = preferences.snapshot()
-            val info = prefs.pendingUpdate()
-            when (outcome) {
-                InstallOutcome.Success -> {
-                    info?.let { downloader.clearCacheFor(it.versionName) }
-                    preferences.update {
-                        UpdaterState(
-                            autoCheckEnabled = it.autoCheckEnabled,
-                            autoDownloadOnWifi = it.autoDownloadOnWifi,
-                            autoDownloadOnMobile = it.autoDownloadOnMobile,
-                            lastCheckAtEpochMs = it.lastCheckAtEpochMs,
-                            lastCheckBootRealtime = it.lastCheckBootRealtime,
-                            lastCheckEtag = it.lastCheckEtag,
-                            lastCheckResult = CheckResult.NO_UPDATE,
-                        )
-                    }
-                    notifier.cancel()
-                }
-                is InstallOutcome.Failed -> {
-                    when (outcome.status) {
-                        PackageInstaller.STATUS_FAILURE_ABORTED -> {
-                            // User cancelled consent — stay ready to install.
-                            info?.let { notifier.showReadyToInstall(it) }
+                val prefs = preferences.snapshot()
+                val info = prefs.pendingUpdate()
+                when (outcome) {
+                    InstallOutcome.Success -> {
+                        automaticInstallInFlight.set(false)
+                        info?.let { downloader.clearCacheFor(it.versionName) }
+                        preferences.update {
+                            UpdaterState(
+                                autoCheckEnabled = it.autoCheckEnabled,
+                                automationMode = it.automationMode,
+                                autoDownloadOnWifi = it.autoDownloadOnWifi,
+                                autoDownloadOnMobile = it.autoDownloadOnMobile,
+                                lastCheckAtEpochMs = it.lastCheckAtEpochMs,
+                                // The installed version just changed. Avoid an
+                                // old ETag/throttle hiding a newer release that
+                                // appeared while PackageInstaller was active.
+                                lastCheckBootRealtime = 0L,
+                                lastCheckEtag = null,
+                                lastCheckResult = CheckResult.NO_UPDATE,
+                            )
                         }
-                        else -> {
-                            if (info != null) notifier.showInstallError(info, outcome.status, outcome.message)
-                            if (outcome.status != PackageInstaller.STATUS_FAILURE_ABORTED) {
+                        notifier.cancel()
+                    }
+                    is InstallOutcome.Failed -> {
+                        when (outcome.status) {
+                            PackageInstaller.STATUS_FAILURE_ABORTED -> {
+                                // User cancelled consent — stay ready to install.
+                                automaticInstallInFlight.set(false)
+                                preferences.update {
+                                    it.copy(pipelineStage = PipelineStage.READY_TO_INSTALL)
+                                }
+                                info?.let { notifier.showReadyToInstall(it) }
+                            }
+                            else -> {
+                                automaticInstallInFlight.set(false)
+                                if (info != null) {
+                                    notifier.showInstallError(info, outcome.status, outcome.message)
+                                }
                                 info?.let { downloader.clearCacheFor(it.versionName) }
                                 preferences.update {
                                     it.copy(
                                         pendingDownloadId = null,
+                                        pendingDownloadSourceIndex = 0,
                                         pipelineStage = PipelineStage.PENDING_DOWNLOAD,
                                     )
                                 }
@@ -377,7 +597,6 @@ class UpdaterRepository @Inject constructor(
                         }
                     }
                 }
-            }
             } finally {
                 onDone()
             }
@@ -395,12 +614,18 @@ class UpdaterRepository @Inject constructor(
      * IntentSender, so the user's tap provides a fresh background-activity-start
      * grant either way. [onDone] finishes the receiver's goAsync() PendingResult.
      */
-    fun onConsentRequired(consentIntent: Intent, onDone: () -> Unit = {}) {
+    fun onConsentRequired(
+        consentIntent: Intent,
+        automatic: Boolean,
+        onDone: () -> Unit = {},
+    ) {
         scope.launch {
             try {
                 consentIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                runCatching { context.startActivity(consentIntent) }
-                    .onFailure { Log.w(TAG, "Direct consent launch failed", it) }
+                if (!automatic) {
+                    runCatching { context.startActivity(consentIntent) }
+                        .onFailure { Log.w(TAG, "Direct consent launch failed", it) }
+                }
                 val info = preferences.snapshot().pendingUpdate()
                 if (info != null) notifier.showConsentRequired(info, consentIntent)
             } finally {
@@ -468,11 +693,52 @@ class UpdaterRepository @Inject constructor(
     suspend fun setAutoCheck(enabled: Boolean) =
         preferences.update { it.copy(autoCheckEnabled = enabled) }
 
+    suspend fun setAutomationMode(mode: UpdateAutomationMode) {
+        preferences.update { it.copy(automationMode = mode) }
+        if (mode != UpdateAutomationMode.NOTIFY) {
+            preferences.snapshot().pendingUpdate()?.let { info -> onNewerUpdateDetected(info) }
+        }
+    }
+
+    fun resumeAutomaticInstallIfReady() {
+        scope.launch {
+            val prefs = preferences.snapshot()
+            if (prefs.automationMode != UpdateAutomationMode.AUTO_INSTALL ||
+                prefs.pipelineStage != PipelineStage.READY_TO_INSTALL
+            ) return@launch
+            val info = prefs.pendingUpdate() ?: return@launch
+            val apk = downloader.targetFileFor(info.versionName)
+            if (!tryAutomaticInstall(info, apk)) notifier.showReadyToInstall(info)
+        }
+    }
+
+    private suspend fun tryAutomaticInstall(info: UpdateInfo, apk: java.io.File): Boolean {
+        if (!installer.canRequestPackageInstalls()) return false
+        if (!automaticInstallInFlight.compareAndSet(false, true)) return true
+        preferences.update { it.copy(pipelineStage = PipelineStage.INSTALLING) }
+        return when (val install = installer.install(apk, preferNoUserAction = true)) {
+            is ApkInstaller.InstallResult.Committed -> {
+                Log.i(TAG, "Automatic install session ${install.sessionId} committed")
+                true
+            }
+            is ApkInstaller.InstallResult.Error -> {
+                Log.w(TAG, "Automatic install commit failed: ${install.message}")
+                automaticInstallInFlight.set(false)
+                preferences.update { it.copy(pipelineStage = PipelineStage.READY_TO_INSTALL) }
+                false
+            }
+        }
+    }
+
     suspend fun setAutoDownloadOnWifi(enabled: Boolean) =
         preferences.update { it.copy(autoDownloadOnWifi = enabled) }
 
-    suspend fun setAutoDownloadOnMobile(enabled: Boolean) =
+    suspend fun setAutoDownloadOnMobile(enabled: Boolean) {
         preferences.update { it.copy(autoDownloadOnMobile = enabled) }
+        if (enabled) {
+            preferences.snapshot().pendingUpdate()?.let { info -> onNewerUpdateDetected(info) }
+        }
+    }
 
     companion object {
         private const val TAG = "UpdaterRepository"

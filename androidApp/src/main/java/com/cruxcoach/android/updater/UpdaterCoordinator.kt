@@ -67,6 +67,9 @@ class UpdaterCoordinator @Inject constructor(
         // Re-attach to a download the OS may have killed us mid-way through, so
         // the pipeline can't strand in DOWNLOADING forever on killer-OEM devices.
         repository.resumePendingDownloadIfAny()
+        // A verified APK may already be ready after process death or after the
+        // one-time package-install permission was granted outside the app.
+        repository.resumeAutomaticInstallIfReady()
     }
 
     override fun onStart(owner: LifecycleOwner) {

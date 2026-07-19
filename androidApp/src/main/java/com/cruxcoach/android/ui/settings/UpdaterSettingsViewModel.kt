@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.cruxcoach.android.updater.InstallSourceGate
 import com.cruxcoach.android.updater.PipelineStage
 import com.cruxcoach.android.updater.UpdateChecker
+import com.cruxcoach.android.updater.UpdateAutomationMode
 import com.cruxcoach.android.updater.UpdateNotificationReliabilityHelper
 import com.cruxcoach.android.updater.UpdaterRepository
 import com.cruxcoach.android.updater.UpdaterState
@@ -38,6 +39,9 @@ class UpdaterSettingsViewModel @Inject constructor(
     private val _notificationNudgeVisible = MutableStateFlow(false)
     val notificationNudgeVisible: StateFlow<Boolean> = _notificationNudgeVisible.asStateFlow()
 
+    private val _installPermissionGranted = MutableStateFlow(repository.canRequestPackageInstalls())
+    val installPermissionGranted: StateFlow<Boolean> = _installPermissionGranted.asStateFlow()
+
     val storeGated: Boolean get() = !installSourceGate.selfUpdateAllowed()
 
     val state: StateFlow<UpdaterState> = repository.state.stateIn(
@@ -63,6 +67,11 @@ class UpdaterSettingsViewModel @Inject constructor(
             UpdateNotificationReliabilityHelper.isBlocked(getApplication())
     }
 
+    fun refreshInstallPermission() {
+        _installPermissionGranted.value = repository.canRequestPackageInstalls()
+        if (_installPermissionGranted.value) repository.resumeAutomaticInstallIfReady()
+    }
+
     fun checkNow() {
         if (_checkingNow.value) return
         viewModelScope.launch {
@@ -79,6 +88,10 @@ class UpdaterSettingsViewModel @Inject constructor(
         repository.setAutoCheck(enabled)
     }
 
+    fun setAutomationMode(mode: UpdateAutomationMode) = viewModelScope.launch {
+        repository.setAutomationMode(mode)
+    }
+
     fun setAutoDownloadOnWifi(enabled: Boolean) = viewModelScope.launch {
         repository.setAutoDownloadOnWifi(enabled)
     }
@@ -91,7 +104,9 @@ class UpdaterSettingsViewModel @Inject constructor(
         viewModelScope.launch {
             val prefs = repository.snapshot()
             val info = prefs.pendingUpdate() ?: return@launch
-            repository.startDownload(info, allowMobile = prefs.autoDownloadOnMobile)
+            // This path follows an explicit confirmation dialog that includes
+            // the APK size, so it may use the currently active transport.
+            repository.startDownload(info, allowMobile = true)
         }
     }
 

@@ -71,8 +71,8 @@ class UpdateNotifier(private val context: Context) {
      * §5.5 — surface a pending install-consent dialog as a tappable
      * notification. The tap fires the [PackageInstaller] consent IntentSender
      * with a fresh background-activity-start grant (see
-     * [UpdaterRepository.onConsentRequired]); reuses the "ready to install"
-     * copy so no new strings are needed.
+     * [UpdaterRepository.onConsentRequired]). It stays ongoing because
+     * dismissing the only consent handle would strand the committed session.
      */
     fun showConsentRequired(info: UpdateInfo, consentIntent: Intent) {
         consentIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -84,8 +84,8 @@ class UpdateNotifier(private val context: Context) {
         )
         val builder = base(info)
             .setContentTitle(context.getString(R.string.updater_notif_ready_title, info.versionName))
-            .setContentText(context.getString(R.string.updater_notif_ready_body))
-            .setOngoing(false)
+            .setContentText(context.getString(R.string.updater_notif_consent_body))
+            .setOngoing(true)
             .setContentIntent(consentPi)
             .addAction(
                 NotificationCompat.Action.Builder(

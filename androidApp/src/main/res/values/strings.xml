@@ -438,7 +438,7 @@
     <string name="settings_share_via_apps">Share via apps</string>
     <string name="settings_share_online">Share online</string>
     <string name="settings_share_online_hide">Hide online QR</string>
-    <string name="settings_share_online_desc">Scan the QR code to download the app online from the release page.</string>
+    <string name="settings_share_online_desc">Scan the QR code to download the APK directly from Codeberg.</string>
     <string name="settings_share_online_hint">Scan to open the APK download.</string>
     <string name="settings_share_local">Share offline</string>
     <string name="settings_share_local_desc">Share the app locally via WiFi hotspot. No internet needed.</string>
@@ -1128,6 +1128,7 @@
     <string name="updater_notif_downloading_body">%1$d %%</string>
     <string name="updater_notif_ready_title">Update v%1$s ready</string>
     <string name="updater_notif_ready_body">Tap to install</string>
+    <string name="updater_notif_consent_body">Android requires confirmation. Tap to continue.</string>
     <string name="updater_notif_action_download">Download</string>
     <string name="updater_notif_action_install">Install</string>
     <string name="updater_notif_action_retry">Try again</string>
@@ -1153,14 +1154,27 @@
     <string name="updater_settings_status_never">Last checked: never</string>
     <string name="updater_settings_check_now">Check now</string>
     <string name="updater_settings_auto_check">Check automatically</string>
-    <string name="updater_settings_auto_check_desc">When off, the updater never checks on its own. You have to press "Check now" yourself.</string>
+    <string name="updater_settings_auto_check_desc">Checks after app start, when the network returns, and periodically in the background.</string>
+    <string name="updater_settings_automation_title">When an update is available</string>
+    <string name="updater_mode_notify">Notify</string>
+    <string name="updater_mode_download">Download</string>
+    <string name="updater_mode_install">Install</string>
+    <string name="updater_mode_notify_desc">Shows an update notice. Download and installation start only after you confirm.</string>
+    <string name="updater_mode_download_desc">Downloads and verifies the update automatically. You decide when to install it.</string>
+    <string name="updater_mode_install_desc">Downloads, verifies, and installs automatically when Android permits it. Android may still require confirmation.</string>
     <string name="updater_settings_auto_wifi">Auto-download (Wi-Fi)</string>
     <string name="updater_settings_auto_wifi_desc">Downloads updates in the background once Wi-Fi is available. Install still requires one tap.</string>
     <string name="updater_settings_auto_mobile">Also download over mobile data</string>
     <string name="updater_settings_auto_mobile_desc">Only enable if you have an unlimited data plan.</string>
+    <string name="updater_auto_install_info_title">Automatic installation</string>
+    <string name="updater_auto_install_ready_desc">Ready. Android 12 or newer can normally install verified CruxCoach self-updates in the background. The system may still ask for confirmation.</string>
+    <string name="updater_auto_install_permission_desc">Android needs one system-level approval before CruxCoach may install its own verified updates.</string>
+    <string name="updater_auto_install_permission_action">Allow app installs</string>
+    <string name="updater_auto_install_legacy_desc">On Android 8 through 11, download and verification are automatic, but Android always requires confirmation before installation.</string>
     <string name="updater_settings_pending_title">Version %1$s available</string>
     <string name="updater_settings_pending_size">about %1$s</string>
     <string name="updater_settings_pending_release_notes">Release notes</string>
+    <string name="updater_settings_installing">Waiting for Android to finish installation…</string>
     <string name="updater_download_confirm_title">Download update %1$s?</string>
     <string name="updater_download_confirm_body">Download is about %1$s. You can then install the update.</string>
     <string name="updater_download_confirm_start">Download</string>
@@ -1911,10 +1925,11 @@
     <string name="settings_share_copied_password">Password copied.</string>
 
     <!-- Zapstore share -->
-    <string name="settings_share_zapstore">Share via Zapstore</string>
-    <string name="settings_share_zapstore_hide">Hide Zapstore QR</string>
-    <string name="settings_share_zapstore_desc">Recommended app store for CruxCoach — verifiable builds, Nostr-native.</string>
-    <string name="settings_share_zapstore_hint">Scan the QR or send the link. Zapstore opens automatically if installed.</string>
+    <string name="settings_share_zapstore">Share APK fallback</string>
+    <string name="settings_share_zapstore_hide">Hide fallback QR</string>
+    <string name="settings_share_zapstore_retry">Retry APK fallback</string>
+    <string name="settings_share_zapstore_desc">Same APK, downloaded directly from Zapstore’s content-addressed CDN if Codeberg is unavailable.</string>
+    <string name="settings_share_zapstore_hint">Scan to download the APK directly from the Zapstore CDN.</string>
     <string name="cd_zapstore_share_qr">Zapstore share QR code</string>
 
     <!-- Sync interval enum labels (FilterChip text in Backup + Board settings) -->
@@ -2006,6 +2021,11 @@
     <string name="whatsnew_021_hint">Easy to miss in 0.2.0: MoonBoard and the Aurora boards (Tension, Grasshopper and more), a worldwide board map and a find-your-gym picker — all in Settings.</string>
     <string name="whatsnew_021_action_go">Got it</string>
     <string name="whatsnew_021_action_boards">See boards</string>
+    <string name="whatsnew_022_title">New in 0.2.2</string>
+    <string name="whatsnew_022_body">• Lists can now be played as training playlists, with order, advance rules, interaction, and rest times.\n\n• Board delivery adapts to single- and multi-connect controllers, and CruxRelay lets several CruxCoach users share an exclusive board connection.\n\n• MoonBoard handling keeps the active climb visible as reliably as the controller permits, with clearer reconnect and send controls.\n\n• APK downloads now have an independent Zapstore fallback, and verified app updates can optionally download or install automatically.</string>
+    <string name="whatsnew_022_hint">Automatic installation is off by default. Choose your preferred update behavior in Settings.</string>
+    <string name="whatsnew_022_action_go">Got it</string>
+    <string name="whatsnew_022_action_settings">Update settings</string>
     <!-- FEAT-031: Aurora-family boards what's-new -->
     <string name="whatsnew_aurora_title">New: Tension, Grasshopper &amp; more</string>
     <string name="whatsnew_aurora_body">0.2.0 also adds the Aurora-family boards — Tension, Grasshopper, Decoy, So iLL and Touchstone — alongside Kilter and MoonBoard. Browse each board\'s catalogue with the same grade, angle and setter filters, open a climb, and light it up on your board over Bluetooth.</string>

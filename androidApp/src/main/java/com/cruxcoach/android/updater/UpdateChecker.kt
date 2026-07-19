@@ -22,6 +22,7 @@ class UpdateChecker(
     private val preferences: UpdaterPreferences,
     private val client: CodebergReleaseClient,
     private val installSourceGate: InstallSourceGate,
+    private val zapstoreClient: ZapstoreReleaseClient? = null,
     /** Override only for tests — real calls use [SystemClock.elapsedRealtime]. */
     private val elapsedRealtimeProvider: () -> Long = { SystemClock.elapsedRealtime() },
 ) {
@@ -79,6 +80,11 @@ class UpdateChecker(
                 CheckOutcome.NotModified
             }
             is CodebergReleaseClient.Result.Error -> {
+                val zapstoreOutcome = checkZapstoreFallback(
+                    installed = installed,
+                    trigger = trigger,
+                )
+                if (zapstoreOutcome != null) return zapstoreOutcome
                 // Do NOT stamp lastCheckBootRealtime on network errors — the
                 // 2 h throttle would otherwise block the NETWORK_AVAILABLE
                 // retry after the user regains internet. Typical trigger:
@@ -110,6 +116,12 @@ class UpdateChecker(
                 }
 
                 val info = buildUpdateInfo(chosen) ?: run {
+                    val zapstoreOutcome = checkZapstoreFallback(
+                        installed = installed,
+                        trigger = trigger,
+                        requireUpdate = true,
+                    )
+                    if (zapstoreOutcome != null) return zapstoreOutcome
                     preferences.update {
                         it.copy(
                             lastCheckBootRealtime = elapsedRealtimeProvider(),
@@ -122,6 +134,12 @@ class UpdateChecker(
                 }
 
                 val resolvedSha = client.fetchSha256(info.apkSha256Url) ?: run {
+                    val zapstoreOutcome = checkZapstoreFallback(
+                        installed = installed,
+                        trigger = trigger,
+                        requireUpdate = true,
+                    )
+                    if (zapstoreOutcome != null) return zapstoreOutcome
                     // Transient network error (same reasoning as Result.Error
                     // above) — don't stamp lastCheckBootRealtime.
                     preferences.update {
@@ -133,7 +151,10 @@ class UpdateChecker(
                     Log.w(TAG, "event=check_error trigger=$trigger reason=sha256_asset_fetch_failed")
                     return CheckOutcome.Error("sha256_asset_fetch_failed")
                 }
-                val infoWithSha = info.copy(apkSha256 = resolvedSha)
+                val infoWithSha = info.copy(
+                    apkSha256 = resolvedSha,
+                    apkFallbackUrl = BuildConfig.ZAPSTORE_CDN_BASE_URL.trimEnd('/') + "/" + resolvedSha,
+                )
 
                 // A newer version than the one currently pending is a FRESH
                 // surface: clear the dismiss / re-arm state carried over from the
@@ -144,9 +165,12 @@ class UpdateChecker(
                 // bail on the stale flag and the ETag-304 short-circuit would stop
                 // re-detection — so 0.2.0 would never resurface. Dismiss is
                 // per-version, not sticky forever.
-                val isNewerThanPending = infoWithSha.versionName != snapshot.pendingVersionName
-
                 preferences.update {
+                    // PackageInstaller owns the current session. Keep its
+                    // release metadata intact; after success the repository
+                    // clears the ETag/throttle and checks the new app version.
+                    if (it.pipelineStage == PipelineStage.INSTALLING) return@update it
+                    val isNewerThanPending = infoWithSha.versionName != it.pendingVersionName
                     it.copy(
                         lastCheckAtEpochMs = nowMs(),
                         lastCheckBootRealtime = elapsedRealtimeProvider(),
@@ -155,12 +179,18 @@ class UpdateChecker(
                         pendingTagName = infoWithSha.tagName,
                         pendingVersionName = infoWithSha.versionName,
                         pendingApkUrl = infoWithSha.apkUrl,
+                        pendingApkFallbackUrl = infoWithSha.apkFallbackUrl,
                         pendingApkSha256 = infoWithSha.apkSha256,
                         pendingApkSizeBytes = infoWithSha.apkSizeBytes,
                         pendingApkSha256Url = infoWithSha.apkSha256Url,
                         pendingReleasePageUrl = infoWithSha.releasePageUrl,
                         pendingReleaseNotesMarkdown = infoWithSha.releaseNotesMarkdown,
-                        pipelineStage = PipelineStage.PENDING_DOWNLOAD,
+                        pendingDownloadSourceIndex = if (isNewerThanPending) 0 else it.pendingDownloadSourceIndex,
+                        pipelineStage = if (isNewerThanPending || it.pipelineStage == PipelineStage.NONE) {
+                            PipelineStage.PENDING_DOWNLOAD
+                        } else {
+                            it.pipelineStage
+                        },
                         notifDismissedAtEpochMs = if (isNewerThanPending) null else it.notifDismissedAtEpochMs,
                         notifReArmCount = if (isNewerThanPending) 0 else it.notifReArmCount,
                     )
@@ -191,6 +221,96 @@ class UpdateChecker(
             releasePageUrl = pageUrl,
             publishedAtEpochSeconds = 0L,
         )
+    }
+
+    /**
+     * Codeberg-independent discovery path. Zapstore assets are accepted only
+     * after [ZapstoreReleaseClient] has verified their Nostr signature,
+     * publisher, package id, content hash and installed signer certificate.
+     */
+    private suspend fun checkZapstoreFallback(
+        installed: SemVer,
+        trigger: Trigger,
+        requireUpdate: Boolean = false,
+    ): CheckOutcome? {
+        val zapstore = zapstoreClient ?: return null
+        return when (val response = zapstore.fetchReleases()) {
+            is ZapstoreReleaseClient.Result.Error -> {
+                Log.w(TAG, "event=zapstore_fallback_failed reason=${response.message}")
+                null
+            }
+            is ZapstoreReleaseClient.Result.Success -> {
+                val chosen = response.releases
+                    .mapNotNull { release ->
+                        val version = SemVer.parseOrNull(release.versionName) ?: return@mapNotNull null
+                        if (version > installed) version to release else null
+                    }
+                    .maxByOrNull { it.first }
+                    ?.second
+                if (chosen == null) {
+                    if (requireUpdate) return null
+                    preferences.update {
+                        it.copy(
+                            lastCheckAtEpochMs = nowMs(),
+                            lastCheckBootRealtime = elapsedRealtimeProvider(),
+                            lastCheckResult = CheckResult.NO_UPDATE,
+                        )
+                    }
+                    Log.i(TAG, "event=check_no_update source=zapstore trigger=$trigger")
+                    CheckOutcome.NoUpdate
+                } else {
+                    val version = SemVer.parseOrNull(chosen.versionName) ?: return null
+                    val tag = "v$version"
+                    val info = UpdateInfo(
+                        tagName = tag,
+                        versionName = version.toString(),
+                        version = version,
+                        apkUrl = chosen.apkUrl,
+                        apkFallbackUrl = codebergApkUrl(tag),
+                        apkSha256Url = "",
+                        apkSizeBytes = chosen.apkSizeBytes,
+                        apkSha256 = chosen.apkSha256,
+                        releaseNotesMarkdown = chosen.releaseNotesMarkdown,
+                        releasePageUrl = BuildConfig.ZAPSTORE_APP_URL,
+                        publishedAtEpochSeconds = chosen.publishedAtEpochSeconds,
+                    )
+                    preferences.update {
+                        if (it.pipelineStage == PipelineStage.INSTALLING) return@update it
+                        val isNewerThanPending = info.versionName != it.pendingVersionName
+                        it.copy(
+                            lastCheckAtEpochMs = nowMs(),
+                            lastCheckBootRealtime = elapsedRealtimeProvider(),
+                            lastCheckResult = CheckResult.SUCCESS,
+                            pendingTagName = info.tagName,
+                            pendingVersionName = info.versionName,
+                            pendingApkUrl = info.apkUrl,
+                            pendingApkFallbackUrl = info.apkFallbackUrl,
+                            pendingApkSha256 = info.apkSha256,
+                            pendingApkSizeBytes = info.apkSizeBytes,
+                            pendingApkSha256Url = info.apkSha256Url,
+                            pendingReleasePageUrl = info.releasePageUrl,
+                            pendingReleaseNotesMarkdown = info.releaseNotesMarkdown,
+                            pendingDownloadSourceIndex = if (isNewerThanPending) 0 else it.pendingDownloadSourceIndex,
+                            pipelineStage = if (isNewerThanPending || it.pipelineStage == PipelineStage.NONE) {
+                                PipelineStage.PENDING_DOWNLOAD
+                            } else {
+                                it.pipelineStage
+                            },
+                            notifDismissedAtEpochMs = if (isNewerThanPending) null else it.notifDismissedAtEpochMs,
+                            notifReArmCount = if (isNewerThanPending) 0 else it.notifReArmCount,
+                        )
+                    }
+                    Log.i(TAG, "event=update_available source=zapstore trigger=$trigger tag=$tag")
+                    CheckOutcome.Update(info)
+                }
+            }
+        }
+    }
+
+    private fun codebergApkUrl(tag: String): String {
+        val webHost = BuildConfig.UPDATER_API_BASE.substringBefore("/api/", BuildConfig.UPDATER_API_BASE)
+        return "$webHost/${BuildConfig.UPDATER_REPO_OWNER}/${BuildConfig.UPDATER_REPO_NAME}" +
+            "/releases/download/$tag/${BuildConfig.UPDATER_REPO_NAME}-$tag.apk"
     }
 
     private fun nowMs(): Long = System.currentTimeMillis()

@@ -439,7 +439,7 @@
     <string name="settings_share_via_apps">Über Apps teilen</string>
     <string name="settings_share_online">Online teilen</string>
     <string name="settings_share_online_hide">Online-QR ausblenden</string>
-    <string name="settings_share_online_desc">QR-Code scannen, um die App online von der Release-Seite herunterzuladen.</string>
+    <string name="settings_share_online_desc">QR-Code scannen, um die APK direkt von Codeberg herunterzuladen.</string>
     <string name="settings_share_online_hint">Scannen, um den APK-Download zu öffnen.</string>
     <string name="settings_share_local">Offline teilen</string>
     <string name="settings_share_local_desc">App lokal per WiFi-Hotspot teilen. Kein Internet nötig.</string>
@@ -1175,6 +1175,7 @@
     <string name="updater_notif_downloading_body">%1$d %%</string>
     <string name="updater_notif_ready_title">Update v%1$s bereit</string>
     <string name="updater_notif_ready_body">Tippen zum Installieren</string>
+    <string name="updater_notif_consent_body">Android benötigt eine Bestätigung. Tippen, um fortzufahren.</string>
     <string name="updater_notif_action_download">Herunterladen</string>
     <string name="updater_notif_action_install">Installieren</string>
     <string name="updater_notif_action_retry">Erneut versuchen</string>
@@ -1200,14 +1201,27 @@
     <string name="updater_settings_status_never">Zuletzt geprüft: noch nie</string>
     <string name="updater_settings_check_now">Jetzt prüfen</string>
     <string name="updater_settings_auto_check">Automatisch prüfen</string>
-    <string name="updater_settings_auto_check_desc">Aus: der Updater prüft nie mehr selbst. Du musst "Jetzt prüfen" manuell drücken.</string>
+    <string name="updater_settings_auto_check_desc">Prüft beim App-Start, nach Netzrückkehr und regelmäßig im Hintergrund.</string>
+    <string name="updater_settings_automation_title">Wenn ein Update verfügbar ist</string>
+    <string name="updater_mode_notify">Hinweis</string>
+    <string name="updater_mode_download">Laden</string>
+    <string name="updater_mode_install">Installieren</string>
+    <string name="updater_mode_notify_desc">Zeigt einen Update-Hinweis. Download und Installation starten erst nach deiner Bestätigung.</string>
+    <string name="updater_mode_download_desc">Lädt und prüft das Update automatisch. Du entscheidest, wann es installiert wird.</string>
+    <string name="updater_mode_install_desc">Lädt, prüft und installiert automatisch, soweit Android es zulässt. Android kann trotzdem eine Bestätigung verlangen.</string>
     <string name="updater_settings_auto_wifi">Automatisch herunterladen (WLAN)</string>
     <string name="updater_settings_auto_wifi_desc">Lädt Updates im Hintergrund, sobald WLAN verfügbar ist. Installation erfordert weiterhin einen Tap.</string>
     <string name="updater_settings_auto_mobile">Auch über mobile Daten laden</string>
     <string name="updater_settings_auto_mobile_desc">Nur aktivieren, wenn du einen unbegrenzten Datentarif hast.</string>
+    <string name="updater_auto_install_info_title">Automatische Installation</string>
+    <string name="updater_auto_install_ready_desc">Bereit. Ab Android 12 kann CruxCoach verifizierte eigene Updates normalerweise im Hintergrund installieren. Das System kann trotzdem eine Bestätigung verlangen.</string>
+    <string name="updater_auto_install_permission_desc">Android benötigt einmalig eine Systemfreigabe, bevor CruxCoach eigene verifizierte Updates installieren darf.</string>
+    <string name="updater_auto_install_permission_action">App-Installationen erlauben</string>
+    <string name="updater_auto_install_legacy_desc">Unter Android 8 bis 11 laufen Download und Prüfung automatisch, Android verlangt vor der Installation aber immer eine Bestätigung.</string>
     <string name="updater_settings_pending_title">Version %1$s verfügbar</string>
     <string name="updater_settings_pending_size">ca. %1$s</string>
     <string name="updater_settings_pending_release_notes">Release-Notes</string>
+    <string name="updater_settings_installing">Android schließt die Installation ab…</string>
     <string name="updater_download_confirm_title">Update %1$s herunterladen?</string>
     <string name="updater_download_confirm_body">Download ist ca. %1$s groß. Anschließend kannst du das Update installieren.</string>
     <string name="updater_download_confirm_start">Herunterladen</string>
@@ -1914,10 +1928,11 @@
     <string name="settings_share_copied_password">Passwort kopiert.</string>
 
     <!-- Zapstore share -->
-    <string name="settings_share_zapstore">Über Zapstore teilen</string>
-    <string name="settings_share_zapstore_hide">Zapstore-QR ausblenden</string>
-    <string name="settings_share_zapstore_desc">Empfohlener App-Store für CruxCoach — verifizierbare Builds, Nostr-nativ.</string>
-    <string name="settings_share_zapstore_hint">QR scannen oder Link senden. Zapstore öffnet automatisch, falls installiert.</string>
+    <string name="settings_share_zapstore">APK-Fallback teilen</string>
+    <string name="settings_share_zapstore_hide">Fallback-QR ausblenden</string>
+    <string name="settings_share_zapstore_retry">APK-Fallback erneut prüfen</string>
+    <string name="settings_share_zapstore_desc">Dieselbe APK direkt vom content-adressierten Zapstore-CDN, falls Codeberg nicht erreichbar ist.</string>
+    <string name="settings_share_zapstore_hint">Scannen, um die APK direkt vom Zapstore-CDN herunterzuladen.</string>
     <string name="cd_zapstore_share_qr">Zapstore-Share-QR-Code</string>
 
     <!-- Sync-Intervall-Enum-Labels (FilterChip in Backup- + Board-Einstellungen) -->
@@ -2009,6 +2024,11 @@
     <string name="whatsnew_021_hint">In 0.2.0 leicht zu übersehen: MoonBoard und die Aurora-Boards (Tension, Grasshopper u.&#160;a.), eine weltweite Board-Karte und ein „Finde deine Halle"-Picker — alles in den Einstellungen.</string>
     <string name="whatsnew_021_action_go">Alles klar</string>
     <string name="whatsnew_021_action_boards">Boards ansehen</string>
+    <string name="whatsnew_022_title">Neu in 0.2.2</string>
+    <string name="whatsnew_022_body">• Listen lassen sich jetzt als Trainings-Playlists abspielen — mit Reihenfolge, Weiterschaltregeln, Interaktion und Pausenzeiten.\n\n• Die Board-Steuerung passt sich an Single- und Multi-Connect-Controller an. Mit CruxRelay können mehrere CruxCoach-Nutzer eine exklusive Board-Verbindung teilen.\n\n• Die MoonBoard-Steuerung hält den aktiven Climb so zuverlässig sichtbar, wie es der Controller zulässt, mit klareren Reconnect- und Sendeoptionen.\n\n• APK-Downloads haben jetzt einen unabhängigen Zapstore-Fallback. Verifizierte App-Updates können optional automatisch geladen oder installiert werden.</string>
+    <string name="whatsnew_022_hint">Automatische Installation ist standardmäßig aus. Das gewünschte Update-Verhalten lässt sich in den Einstellungen wählen.</string>
+    <string name="whatsnew_022_action_go">Alles klar</string>
+    <string name="whatsnew_022_action_settings">Update-Einstellungen</string>
     <!-- FEAT-031: Aurora-Boards (What's New) -->
     <string name="whatsnew_aurora_title">Neu: Tension, Grasshopper &amp; mehr</string>
     <string name="whatsnew_aurora_body">0.2.0 bringt zusätzlich die Aurora-Boards — Tension, Grasshopper, Decoy, So iLL und Touchstone — neben Kilter und MoonBoard. Durchsuche den Katalog jedes Boards mit denselben Filtern für Grad, Winkel und Setter, öffne einen Boulder und lass ihn per Bluetooth auf deinem Board aufleuchten.</string>

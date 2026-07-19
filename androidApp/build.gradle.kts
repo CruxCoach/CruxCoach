@@ -64,11 +64,15 @@ android {
         buildConfigField("String", "UPDATER_REPO_NAME",
             "\"${localProps.getProperty("UPDATER_REPO_NAME", "CruxCoach")}\"")
 
-        // Zapstore app-listing URL shown as a share QR / link in the
-        // Settings → "Share app" section. Forks override via
-        // local.properties to point at their own Zapstore namespace.
+        // Zapstore's signed release metadata and content-addressed CDN provide
+        // a second direct-APK path. Forks override all three values together
+        // to point at their own publisher namespace and infrastructure.
         buildConfigField("String", "ZAPSTORE_APP_URL",
             "\"${localProps.getProperty("ZAPSTORE_APP_URL", "https://zapstore.dev/apps/com.cruxcoach.android")}\"")
+        buildConfigField("String", "ZAPSTORE_RELAY_URL",
+            "\"${localProps.getProperty("ZAPSTORE_RELAY_URL", "wss://relay.zapstore.dev")}\"")
+        buildConfigField("String", "ZAPSTORE_CDN_BASE_URL",
+            "\"${localProps.getProperty("ZAPSTORE_CDN_BASE_URL", "https://cdn.zapstore.dev")}\"")
 
         // Brand-bound constants used in outgoing HTTP traffic, App Links,
         // and the Kind-1 Auto-Note publish path. Forks override via

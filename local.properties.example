@@ -46,6 +46,8 @@
 # Forks publishing to their own Zapstore namespace should override this
 # so the in-app share button doesn't drive their users to upstream.
 # ZAPSTORE_APP_URL=https://zapstore.dev/apps/com.yourfork.android
+# ZAPSTORE_RELAY_URL=wss://relay.zapstore.dev
+# ZAPSTORE_CDN_BASE_URL=https://cdn.zapstore.dev
 
 # ─── Brand-bound constants on the wire (HTTP, App Links, Auto-Note) ──
 # USER_AGENT_PRODUCT lands in the outgoing User-Agent header for the

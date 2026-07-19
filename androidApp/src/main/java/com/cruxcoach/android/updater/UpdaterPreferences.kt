@@ -49,14 +49,20 @@ class UpdaterPreferences(private val store: DataStore<Preferences>) {
         pendingTagName = this[Keys.PENDING_TAG_NAME],
         pendingVersionName = this[Keys.PENDING_VERSION_NAME],
         pendingApkUrl = this[Keys.PENDING_APK_URL],
+        pendingApkFallbackUrl = this[Keys.PENDING_APK_FALLBACK_URL],
         pendingApkSha256 = this[Keys.PENDING_APK_SHA256],
         pendingApkSizeBytes = this[Keys.PENDING_APK_SIZE_BYTES],
         pendingApkSha256Url = this[Keys.PENDING_APK_SHA256_URL],
         pendingReleasePageUrl = this[Keys.PENDING_RELEASE_PAGE_URL],
         pendingReleaseNotesMarkdown = this[Keys.PENDING_RELEASE_NOTES],
+        pendingDownloadSourceIndex = this[Keys.PENDING_DOWNLOAD_SOURCE_INDEX] ?: 0,
+        pendingAllowMobile = this[Keys.PENDING_ALLOW_MOBILE] ?: false,
         pipelineStage = this[Keys.PIPELINE_STAGE]?.let { runCatching { PipelineStage.valueOf(it) }.getOrNull() }
             ?: PipelineStage.NONE,
         autoCheckEnabled = this[Keys.AUTO_CHECK_ENABLED] ?: true,
+        automationMode = this[Keys.AUTOMATION_MODE]
+            ?.let { runCatching { UpdateAutomationMode.valueOf(it) }.getOrNull() }
+            ?: UpdateAutomationMode.NOTIFY,
         autoDownloadOnWifi = this[Keys.AUTO_DOWNLOAD_ON_WIFI] ?: true,
         autoDownloadOnMobile = this[Keys.AUTO_DOWNLOAD_ON_MOBILE] ?: false,
         lastNotifiedTagName = this[Keys.LAST_NOTIFIED_TAG],
@@ -74,13 +80,18 @@ class UpdaterPreferences(private val store: DataStore<Preferences>) {
         s.pendingTagName?.let { set(Keys.PENDING_TAG_NAME, it) } ?: remove(Keys.PENDING_TAG_NAME)
         s.pendingVersionName?.let { set(Keys.PENDING_VERSION_NAME, it) } ?: remove(Keys.PENDING_VERSION_NAME)
         s.pendingApkUrl?.let { set(Keys.PENDING_APK_URL, it) } ?: remove(Keys.PENDING_APK_URL)
+        s.pendingApkFallbackUrl?.let { set(Keys.PENDING_APK_FALLBACK_URL, it) }
+            ?: remove(Keys.PENDING_APK_FALLBACK_URL)
         s.pendingApkSha256?.let { set(Keys.PENDING_APK_SHA256, it) } ?: remove(Keys.PENDING_APK_SHA256)
         s.pendingApkSizeBytes?.let { set(Keys.PENDING_APK_SIZE_BYTES, it) } ?: remove(Keys.PENDING_APK_SIZE_BYTES)
         s.pendingApkSha256Url?.let { set(Keys.PENDING_APK_SHA256_URL, it) } ?: remove(Keys.PENDING_APK_SHA256_URL)
         s.pendingReleasePageUrl?.let { set(Keys.PENDING_RELEASE_PAGE_URL, it) } ?: remove(Keys.PENDING_RELEASE_PAGE_URL)
         s.pendingReleaseNotesMarkdown?.let { set(Keys.PENDING_RELEASE_NOTES, it) } ?: remove(Keys.PENDING_RELEASE_NOTES)
+        set(Keys.PENDING_DOWNLOAD_SOURCE_INDEX, s.pendingDownloadSourceIndex)
+        set(Keys.PENDING_ALLOW_MOBILE, s.pendingAllowMobile)
         set(Keys.PIPELINE_STAGE, s.pipelineStage.name)
         set(Keys.AUTO_CHECK_ENABLED, s.autoCheckEnabled)
+        set(Keys.AUTOMATION_MODE, s.automationMode.name)
         set(Keys.AUTO_DOWNLOAD_ON_WIFI, s.autoDownloadOnWifi)
         set(Keys.AUTO_DOWNLOAD_ON_MOBILE, s.autoDownloadOnMobile)
         s.lastNotifiedTagName?.let { set(Keys.LAST_NOTIFIED_TAG, it) } ?: remove(Keys.LAST_NOTIFIED_TAG)
@@ -98,13 +109,17 @@ class UpdaterPreferences(private val store: DataStore<Preferences>) {
         val PENDING_TAG_NAME = stringPreferencesKey("updater_pending_tag")
         val PENDING_VERSION_NAME = stringPreferencesKey("updater_pending_version")
         val PENDING_APK_URL = stringPreferencesKey("updater_pending_apk_url")
+        val PENDING_APK_FALLBACK_URL = stringPreferencesKey("updater_pending_apk_fallback_url")
         val PENDING_APK_SHA256 = stringPreferencesKey("updater_pending_apk_sha256")
         val PENDING_APK_SIZE_BYTES = longPreferencesKey("updater_pending_apk_size")
         val PENDING_APK_SHA256_URL = stringPreferencesKey("updater_pending_apk_sha256_url")
         val PENDING_RELEASE_PAGE_URL = stringPreferencesKey("updater_pending_release_page_url")
         val PENDING_RELEASE_NOTES = stringPreferencesKey("updater_pending_release_notes")
+        val PENDING_DOWNLOAD_SOURCE_INDEX = intPreferencesKey("updater_pending_download_source_index")
+        val PENDING_ALLOW_MOBILE = booleanPreferencesKey("updater_pending_allow_mobile")
         val PIPELINE_STAGE = stringPreferencesKey("updater_pipeline_stage")
         val AUTO_CHECK_ENABLED = booleanPreferencesKey("updater_auto_check_enabled")
+        val AUTOMATION_MODE = stringPreferencesKey("updater_automation_mode")
         val AUTO_DOWNLOAD_ON_WIFI = booleanPreferencesKey("updater_auto_download_on_wifi")
         val AUTO_DOWNLOAD_ON_MOBILE = booleanPreferencesKey("updater_auto_download_on_mobile")
         val LAST_NOTIFIED_TAG = stringPreferencesKey("updater_last_notified_tag")
@@ -127,13 +142,17 @@ data class UpdaterState(
     val pendingTagName: String? = null,
     val pendingVersionName: String? = null,
     val pendingApkUrl: String? = null,
+    val pendingApkFallbackUrl: String? = null,
     val pendingApkSha256: String? = null,
     val pendingApkSizeBytes: Long? = null,
     val pendingApkSha256Url: String? = null,
     val pendingReleasePageUrl: String? = null,
     val pendingReleaseNotesMarkdown: String? = null,
+    val pendingDownloadSourceIndex: Int = 0,
+    val pendingAllowMobile: Boolean = false,
     val pipelineStage: PipelineStage = PipelineStage.NONE,
     val autoCheckEnabled: Boolean = true,
+    val automationMode: UpdateAutomationMode = UpdateAutomationMode.NOTIFY,
     val autoDownloadOnWifi: Boolean = true,
     val autoDownloadOnMobile: Boolean = false,
     val lastNotifiedTagName: String? = null,
@@ -154,6 +173,7 @@ data class UpdaterState(
             versionName = pendingVersionName ?: version.toString(),
             version = version,
             apkUrl = apkUrl,
+            apkFallbackUrl = pendingApkFallbackUrl,
             apkSha256Url = shaUrl,
             apkSizeBytes = size,
             apkSha256 = sha,
@@ -162,4 +182,11 @@ data class UpdaterState(
             publishedAtEpochSeconds = 0L,
         )
     }
+}
+
+/** User-selected updater behavior. New installs and upgrades default to [NOTIFY]. */
+enum class UpdateAutomationMode {
+    NOTIFY,
+    AUTO_DOWNLOAD,
+    AUTO_INSTALL,
 }

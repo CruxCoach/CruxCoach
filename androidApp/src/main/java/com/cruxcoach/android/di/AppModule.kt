@@ -930,12 +930,27 @@ object AppModule {
 
     @Provides
     @Singleton
+    fun provideZapstoreReleaseClient(
+        @Named("updater") okHttpClient: OkHttpClient,
+        pinStore: com.cruxcoach.android.updater.UpdaterPinStore,
+    ): com.cruxcoach.android.updater.ZapstoreReleaseClient {
+        return com.cruxcoach.android.updater.ZapstoreReleaseClient(okHttpClient, pinStore)
+    }
+
+    @Provides
+    @Singleton
     fun provideUpdateChecker(
         preferences: com.cruxcoach.android.updater.UpdaterPreferences,
         client: com.cruxcoach.android.updater.CodebergReleaseClient,
         gate: com.cruxcoach.android.updater.InstallSourceGate,
+        zapstoreClient: com.cruxcoach.android.updater.ZapstoreReleaseClient,
     ): com.cruxcoach.android.updater.UpdateChecker {
-        return com.cruxcoach.android.updater.UpdateChecker(preferences, client, gate)
+        return com.cruxcoach.android.updater.UpdateChecker(
+            preferences,
+            client,
+            gate,
+            zapstoreClient,
+        )
     }
 
     @Provides

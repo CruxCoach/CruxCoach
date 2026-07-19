@@ -19,6 +19,7 @@ import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -31,6 +32,8 @@ import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cruxcoach.android.BuildConfig
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.common.ErrorCard
@@ -115,7 +118,8 @@ private fun CopyableUrlRow(
 
 @Composable
 internal fun AppShareSection(
-    onNavigateToBugReport: (title: String, description: String) -> Unit = { _, _ -> }
+    onNavigateToBugReport: (title: String, description: String) -> Unit = { _, _ -> },
+    viewModel: AppShareViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
     val resources = LocalResources.current
@@ -130,6 +134,7 @@ internal fun AppShareSection(
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var showReleaseQr by remember { mutableStateOf(false) }
     var showZapstoreQr by remember { mutableStateOf(false) }
+    val zapstoreApkState by viewModel.zapstoreApk.collectAsStateWithLifecycle()
 
     val releaseApkUrl = remember {
         val tag = "v${BuildConfig.VERSION_NAME}"
@@ -145,13 +150,12 @@ internal fun AppShareSection(
         runCatching { ApkShareHelper.generateQrBitmap(releaseApkUrl) }.getOrNull()
     }
 
-    // Zapstore public app page. Fork-configurable via local.properties
-    // (BuildConfig.ZAPSTORE_APP_URL), same mechanism as the UPDATER_*
-    // constants — a fork pointing at its own repo almost certainly wants
-    // its own Zapstore listing as well.
-    val zapstoreAppUrl = remember { BuildConfig.ZAPSTORE_APP_URL }
-    val zapstoreQrBitmap = remember {
-        runCatching { ApkShareHelper.generateQrBitmap(zapstoreAppUrl) }.getOrNull()
+    val zapstoreApkUrl = (zapstoreApkState as? AppShareViewModel.ZapstoreApkState.Ready)?.url
+    val zapstoreQrBitmap = remember(zapstoreApkUrl) {
+        zapstoreApkUrl?.let { runCatching { ApkShareHelper.generateQrBitmap(it) }.getOrNull() }
+    }
+    LaunchedEffect(zapstoreApkUrl) {
+        if (zapstoreApkUrl == null) showZapstoreQr = false
     }
 
     val startSharing: () -> Unit = {
@@ -317,20 +321,37 @@ internal fun AppShareSection(
             color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 
-    // 3. Zapstore: share the Zapstore app-listing URL as QR + link. The
-    //    recipient scans / taps and lands on zapstore.dev/apps/... — if
-    //    Zapstore is installed with the matching intent filter it opens
-    //    there directly; otherwise the browser shows the install guide.
+    // 3. Zapstore fallback: same direct-APK UX as Codeberg, backed by a
+    //    publisher-signed, content-addressed NIP-82 asset event.
     OutlinedButton(
-        onClick = { showZapstoreQr = !showZapstoreQr },
+        onClick = {
+            when (zapstoreApkState) {
+                is AppShareViewModel.ZapstoreApkState.Ready -> showZapstoreQr = !showZapstoreQr
+                AppShareViewModel.ZapstoreApkState.Unavailable -> viewModel.refreshZapstoreApk()
+                AppShareViewModel.ZapstoreApkState.Loading -> Unit
+            }
+        },
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
         colors = ButtonDefaults.outlinedButtonColors(contentColor = OrangeAccent),
+        enabled = zapstoreApkState != AppShareViewModel.ZapstoreApkState.Loading,
     ) {
+        if (zapstoreApkState == AppShareViewModel.ZapstoreApkState.Loading) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(16.dp),
+                strokeWidth = 2.dp,
+                color = OrangeAccent,
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+        }
         Text(
             stringResource(
-                if (showZapstoreQr) R.string.settings_share_zapstore_hide
-                else R.string.settings_share_zapstore,
+                when {
+                    showZapstoreQr -> R.string.settings_share_zapstore_hide
+                    zapstoreApkState == AppShareViewModel.ZapstoreApkState.Unavailable ->
+                        R.string.settings_share_zapstore_retry
+                    else -> R.string.settings_share_zapstore
+                },
             ),
         )
     }
@@ -339,10 +360,13 @@ internal fun AppShareSection(
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
-    if (showZapstoreQr && zapstoreQrBitmap != null) {
-        ZapstoreShareCard(
+    if (showZapstoreQr && zapstoreQrBitmap != null && zapstoreApkUrl != null) {
+        DirectDownloadCard(
             qrBitmap = zapstoreQrBitmap,
-            zapstoreUrl = zapstoreAppUrl,
+            downloadUrl = zapstoreApkUrl,
+            hintRes = R.string.settings_share_zapstore_hint,
+            contentDescriptionRes = R.string.cd_zapstore_share_qr,
+            clipLabel = "CruxCoach Zapstore APK URL",
         )
     }
 
@@ -452,9 +476,12 @@ private fun AppShareActiveCard(
 }
 
 @Composable
-private fun ZapstoreShareCard(
+private fun DirectDownloadCard(
     qrBitmap: Bitmap,
-    zapstoreUrl: String,
+    downloadUrl: String,
+    @androidx.annotation.StringRes hintRes: Int,
+    @androidx.annotation.StringRes contentDescriptionRes: Int,
+    clipLabel: String,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -467,18 +494,18 @@ private fun ZapstoreShareCard(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
-                stringResource(R.string.settings_share_zapstore_hint),
+                stringResource(hintRes),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Image(
                 bitmap = qrBitmap.asImageBitmap(),
-                contentDescription = stringResource(R.string.cd_zapstore_share_qr),
+                contentDescription = stringResource(contentDescriptionRes),
                 modifier = Modifier.size(220.dp),
             )
             CopyableUrlRow(
-                url = zapstoreUrl,
-                clipLabel = "CruxCoach Zapstore URL",
+                url = downloadUrl,
+                clipLabel = clipLabel,
                 toastMessage = stringResource(R.string.settings_share_copied_url),
             )
         }
@@ -489,32 +516,10 @@ private fun ZapstoreShareCard(
 private fun ReleaseDownloadCard(
     qrBitmap: Bitmap,
     downloadUrl: String,
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = OrangeAccent.copy(alpha = 0.08f)),
-    ) {
-        Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Text(
-                stringResource(R.string.settings_share_online_hint),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Image(
-                bitmap = qrBitmap.asImageBitmap(),
-                contentDescription = stringResource(R.string.cd_release_download_qr),
-                modifier = Modifier.size(220.dp),
-            )
-            CopyableUrlRow(
-                url = downloadUrl,
-                clipLabel = "CruxCoach release URL",
-                toastMessage = stringResource(R.string.settings_share_copied_url),
-            )
-        }
-    }
-}
+) = DirectDownloadCard(
+    qrBitmap = qrBitmap,
+    downloadUrl = downloadUrl,
+    hintRes = R.string.settings_share_online_hint,
+    contentDescriptionRes = R.string.cd_release_download_qr,
+    clipLabel = "CruxCoach Codeberg APK URL",
+)
