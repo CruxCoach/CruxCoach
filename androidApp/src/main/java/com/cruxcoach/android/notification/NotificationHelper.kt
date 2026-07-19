@@ -51,8 +51,6 @@ class NotificationHelper @Inject constructor(
         category: String,
         content: String
     ) {
-        if (!hasPermission()) return
-
         val (title, priority) = when (category) {
             "release" -> context.getString(R.string.notification_announcement_release) to NotificationCompat.PRIORITY_HIGH
             "issue" -> context.getString(R.string.notification_announcement_issue) to NotificationCompat.PRIORITY_DEFAULT
@@ -79,7 +77,7 @@ class NotificationHelper @Inject constructor(
             .setAutoCancel(true)
             .build()
 
-        manager.notify(eventId.hashCode(), notification)
+        notifyIfPermitted(eventId.hashCode(), notification)
     }
 
     fun showMessageNotification(
@@ -88,8 +86,6 @@ class NotificationHelper @Inject constructor(
         preview: String,
         threadRoute: String
     ) {
-        if (!hasPermission()) return
-
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra("navigate_to", threadRoute)
@@ -108,17 +104,18 @@ class NotificationHelper @Inject constructor(
             .setAutoCancel(true)
             .build()
 
-        manager.notify(eventId.hashCode(), notification)
+        notifyIfPermitted(eventId.hashCode(), notification)
     }
 
-    private fun hasPermission(): Boolean {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+    private fun notifyIfPermitted(id: Int, notification: android.app.Notification) {
+        if (
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(
-                context, Manifest.permission.POST_NOTIFICATIONS
-            ) == PackageManager.PERMISSION_GRANTED
-        } else {
-            true
-        }
+                context,
+                Manifest.permission.POST_NOTIFICATIONS,
+            ) != PackageManager.PERMISSION_GRANTED
+        ) return
+        manager.notify(id, notification)
     }
 
     companion object {

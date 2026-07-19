@@ -50,17 +50,19 @@ fun FeatureRequestScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val sentMessage = stringResource(R.string.devcontact_feature_sent)
+    val sendFailedMessage = stringResource(R.string.devcontact_send_failed)
 
     var title by rememberSaveable { mutableStateOf("") }
     var description by rememberSaveable { mutableStateOf("") }
 
     LaunchedEffect(state.sendSuccess) {
         if (state.sendSuccess == true) {
-            Toast.makeText(context, context.getString(R.string.devcontact_feature_sent), Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, sentMessage, Toast.LENGTH_SHORT).show()
             viewModel.dismissSendResult()
             onNavigateBack()
         } else if (state.sendSuccess == false) {
-            Toast.makeText(context, context.getString(R.string.devcontact_send_failed), Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, sendFailedMessage, Toast.LENGTH_SHORT).show()
             viewModel.dismissSendResult()
         }
     }

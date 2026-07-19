@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -44,14 +45,12 @@ fun MapView(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
-    // Initialize MapLibre once per process. Idempotent — MapLibre.getInstance
-    // returns the existing singleton on subsequent calls. Also caps the
-    // ambient tile/style/glyph disk cache at 20 MB so it doesn't grow
-    // open-ended (MapLibre's default ceiling is much higher). The cap is
-    // process-global, idempotent to set, and applies to subsequent
-    // tile/glyph fetches.
-    remember(context) {
-        MapLibre.getInstance(context)
+    // MapLibre.getInstance is idempotent and returns the process singleton.
+    val mapLibre = remember(context) { MapLibre.getInstance(context) }
+
+    // Cap the ambient tile/style/glyph disk cache at 20 MB once the
+    // composition has committed. The cap is process-global and idempotent.
+    LaunchedEffect(mapLibre) {
         OfflineManager.getInstance(context).setMaximumAmbientCacheSize(
             20L * 1024L * 1024L,
             object : OfflineManager.FileSourceCallback {
@@ -61,7 +60,6 @@ fun MapView(
                 }
             },
         )
-        Unit
     }
 
     val mapView = remember(context) {

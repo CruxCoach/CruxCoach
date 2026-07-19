@@ -17,6 +17,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
@@ -269,6 +270,7 @@ internal fun AppInfoSection(
 ) {
     val tapCount = remember { mutableIntStateOf(0) }
     val context = LocalContext.current
+    val resources = LocalResources.current
 
     Text(
         stringResource(R.string.settings_app_info_title),
@@ -289,14 +291,14 @@ internal fun AppInfoSection(
                         onUnlockEasterAnimations()
                         android.widget.Toast.makeText(
                             context,
-                            context.getString(R.string.settings_app_info_easter_unlocked),
+                            resources.getString(R.string.settings_app_info_easter_unlocked),
                             android.widget.Toast.LENGTH_SHORT
                         ).show()
                     }
                     remaining in 1..3 -> {
                         android.widget.Toast.makeText(
                             context,
-                            context.getString(R.string.settings_app_info_easter_remaining, remaining),
+                            resources.getString(R.string.settings_app_info_easter_remaining, remaining),
                             android.widget.Toast.LENGTH_SHORT
                         ).show()
                     }

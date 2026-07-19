@@ -57,6 +57,7 @@ fun BoardSyncInlineCard(
     val boardCounts by viewModel.boardCounts.collectAsStateWithLifecycle()
     val activeBrand by viewModel.activeBrand.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val syncBugReportTitle = stringResource(R.string.error_bug_report_sync_title)
 
     LaunchedEffect(Unit) { viewModel.checkNetwork() }
     // Recompute per-board catalogue sizes on first show, after each sync
@@ -223,7 +224,7 @@ fun BoardSyncInlineCard(
             onDismissError = { viewModel.clearError() },
             onReportBug = { error ->
                 onNavigateToBugReport(
-                    context.getString(R.string.error_bug_report_sync_title),
+                    syncBugReportTitle,
                     error,
                 )
                 viewModel.clearError()

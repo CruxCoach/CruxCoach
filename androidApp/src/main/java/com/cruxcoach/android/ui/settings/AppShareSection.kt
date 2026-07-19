@@ -27,6 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
@@ -117,6 +118,7 @@ internal fun AppShareSection(
     onNavigateToBugReport: (title: String, description: String) -> Unit = { _, _ -> }
 ) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     var hotspot by remember { mutableStateOf<WifiDirectHotspot?>(null) }
     var server by remember { mutableStateOf<LocalApkServer?>(null) }
     var qrBitmap by remember { mutableStateOf<Bitmap?>(null) }
@@ -190,7 +192,7 @@ internal fun AppShareSection(
                     } catch (e: Exception) {
                         Log.e("AppShare", "Server start failed", e)
                         wifiHotspot.stop()
-                        errorMessage = context.getString(R.string.settings_share_server_error, e.message ?: ""); isStarting = false
+                        errorMessage = resources.getString(R.string.settings_share_server_error, e.message ?: ""); isStarting = false
                     }
                 },
                 onError = { err ->
@@ -200,7 +202,7 @@ internal fun AppShareSection(
             )
         } catch (e: Exception) {
             Log.e("AppShare", "WiFi Direct failed", e)
-            errorMessage = context.getString(R.string.settings_share_error, e.message ?: ""); isStarting = false
+            errorMessage = resources.getString(R.string.settings_share_error, e.message ?: ""); isStarting = false
         }
     }
 
@@ -213,7 +215,7 @@ internal fun AppShareSection(
             val denied = results.filter { !it.value }.keys.joinToString(", ") {
                 it.substringAfterLast(".")
             }
-            errorMessage = context.getString(R.string.settings_share_permissions_needed, denied)
+            errorMessage = resources.getString(R.string.settings_share_permissions_needed, denied)
             isStarting = false
         }
     }
@@ -267,7 +269,7 @@ internal fun AppShareSection(
             onDismiss = { errorMessage = null },
             onReportBug = {
                 onNavigateToBugReport(
-                    context.getString(R.string.error_bug_report_share_title),
+                    resources.getString(R.string.error_bug_report_share_title),
                     err
                 )
                 errorMessage = null
@@ -390,6 +392,7 @@ private fun AppShareActiveCard(
             )
 
             val context = LocalContext.current
+            val copiedPasswordMessage = stringResource(R.string.settings_share_copied_password)
             Text(
                 stringResource(R.string.settings_share_network, hotspotSsid),
                 style = MaterialTheme.typography.bodySmall,
@@ -407,7 +410,7 @@ private fun AppShareActiveCard(
                             context = context,
                             label = "CruxCoach WiFi password",
                             text = hotspotPassword,
-                            toastMessage = context.getString(R.string.settings_share_copied_password),
+                            toastMessage = copiedPasswordMessage,
                         )
                     },
                     contentDescription = stringResource(R.string.action_copy),
@@ -515,4 +518,3 @@ private fun ReleaseDownloadCard(
         }
     }
 }
-

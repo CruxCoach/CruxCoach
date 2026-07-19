@@ -47,6 +47,7 @@ fun ClimbLogScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val snackbarHostState = SnackbarHostState()
+    val climbLogBugReportTitle = stringResource(R.string.error_bug_report_climblog_title)
 
     // Show saved message as snackbar
     LaunchedEffect(state.savedMessage) {
@@ -305,13 +306,12 @@ fun ClimbLogScreen(
             }
 
             state.error?.let { error ->
-                val context = androidx.compose.ui.platform.LocalContext.current
                 com.cruxcoach.android.ui.common.ErrorCard(
                     error = error,
                     onDismiss = { viewModel.clearError() },
                     onReportBug = {
                         onNavigateToBugReport(
-                            context.getString(R.string.error_bug_report_climblog_title),
+                            climbLogBugReportTitle,
                             error
                         )
                         viewModel.clearError()

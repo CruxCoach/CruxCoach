@@ -121,6 +121,8 @@ fun MigrationFlowContent(
     onReset: () -> Unit,
 ) {
     val context = LocalContext.current
+    val fallbackToast = stringResource(R.string.aurora_migration_email_copy_fallback_toast)
+    val copiedToast = stringResource(R.string.aurora_migration_email_copy_toast)
 
     val pickFileLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
@@ -165,7 +167,7 @@ fun MigrationFlowContent(
                     copyAuroraEmailToClipboard(context)
                     Toast.makeText(
                         context,
-                        context.getString(R.string.aurora_migration_email_copy_fallback_toast),
+                        fallbackToast,
                         Toast.LENGTH_LONG,
                     ).show()
                 }
@@ -186,7 +188,7 @@ fun MigrationFlowContent(
                 copyAuroraEmailToClipboard(context)
                 Toast.makeText(
                     context,
-                    context.getString(R.string.aurora_migration_email_copy_toast),
+                    copiedToast,
                     Toast.LENGTH_LONG,
                 ).show()
             },

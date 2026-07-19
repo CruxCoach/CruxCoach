@@ -54,6 +54,7 @@ fun BoardListDetailScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     var menuExpanded by remember { mutableStateOf(false) }
     val context = androidx.compose.ui.platform.LocalContext.current
+    val queueTitle = stringResource(R.string.board_queue_title)
     val notificationPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
     ) { _ -> }
@@ -82,7 +83,7 @@ fun BoardListDetailScreen(
             },
             onStart = {
                 requestNotificationPermissionIfNeeded()
-                viewModel.startPlayback(context.getString(R.string.board_queue_title), onPlayed)
+                viewModel.startPlayback(queueTitle, onPlayed)
             },
         )
     }

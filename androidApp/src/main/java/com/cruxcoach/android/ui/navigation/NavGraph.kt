@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.DeveloperBoard
 import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material3.*
 import android.view.WindowManager
+import androidx.activity.compose.LocalActivity
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -922,7 +923,7 @@ private fun WakeLockEffect(navController: NavHostController, startViewModel: Sta
     val keepScreenOnSetting by startViewModel.keepScreenOn.collectAsStateWithLifecycle(initialValue = false)
     val keepScreenOn = keepScreenOnSetting && currentRoute in wakeLockRoutes
 
-    val activity = LocalContext.current as? android.app.Activity
+    val activity = LocalActivity.current
     DisposableEffect(keepScreenOn) {
         if (keepScreenOn) {
             activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)

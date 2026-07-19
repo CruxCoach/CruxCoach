@@ -50,6 +50,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.text.font.FontWeight
@@ -92,7 +93,7 @@ fun BoardClimbDetailScreen(
     viewModel: BoardClimbDetailViewModel = hiltViewModel()
 ) {
     PerfLogger.navMilestone("BoardClimbDetailScreen composing")
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val resources = LocalResources.current
     // collectAsState (NOT ...WithLifecycle): the detail's nav entry can stay
     // in a non-STARTED state behind the editor and not re-deliver on return,
     // leaving the climb stale after an edit even though the VM reloaded it.
@@ -356,20 +357,20 @@ fun BoardClimbDetailScreen(
                 } else {
                     R.string.community_climb_delete_done_nostr_only
                 }
-                context.getString(template, feedback.accepted, feedback.attempted)
+                resources.getString(template, feedback.accepted, feedback.attempted)
             }
             is CommunityDeleteFeedback.LocalTombstoneFailed ->
-                context.getString(
+                resources.getString(
                     R.string.community_climb_delete_local_failed,
                     feedback.accepted, feedback.attempted,
                 )
-            CommunityDeleteFeedback.NotOwner -> context.getString(R.string.community_climb_delete_not_owner)
+            CommunityDeleteFeedback.NotOwner -> resources.getString(R.string.community_climb_delete_not_owner)
             // Defensive: NotOurClimb / NotFound shouldn't reach the user
             // because the menu item is gated on origin=cruxcoach + owner.
             // If they ever do, fall back to the generic failure message.
             CommunityDeleteFeedback.NotOurClimb,
             CommunityDeleteFeedback.NotFound,
-            CommunityDeleteFeedback.Failed -> context.getString(R.string.community_climb_delete_failed)
+            CommunityDeleteFeedback.Failed -> resources.getString(R.string.community_climb_delete_failed)
         }
         snackbarHostState.showSnackbar(msg)
         viewModel.consumeCommunityDeleteFeedback()
@@ -380,11 +381,11 @@ fun BoardClimbDetailScreen(
     LaunchedEffect(state.ownPublishFeedback) {
         val feedback = state.ownPublishFeedback ?: return@LaunchedEffect
         val msg = when (feedback) {
-            OwnPublishFeedback.Published -> context.getString(R.string.own_climb_publish_done)
-            OwnPublishFeedback.NoNostrIdentity -> context.getString(R.string.own_climb_publish_no_nostr)
-            OwnPublishFeedback.NotAuthor -> context.getString(R.string.own_climb_publish_not_author)
-            OwnPublishFeedback.AlreadyPublished -> context.getString(R.string.own_climb_publish_already)
-            OwnPublishFeedback.Failed -> context.getString(R.string.climb_creator_publish_failed)
+            OwnPublishFeedback.Published -> resources.getString(R.string.own_climb_publish_done)
+            OwnPublishFeedback.NoNostrIdentity -> resources.getString(R.string.own_climb_publish_no_nostr)
+            OwnPublishFeedback.NotAuthor -> resources.getString(R.string.own_climb_publish_not_author)
+            OwnPublishFeedback.AlreadyPublished -> resources.getString(R.string.own_climb_publish_already)
+            OwnPublishFeedback.Failed -> resources.getString(R.string.climb_creator_publish_failed)
         }
         snackbarHostState.showSnackbar(msg)
         viewModel.consumeOwnPublishFeedback()
@@ -855,7 +856,8 @@ private fun ClimbDetailPageContent(
     onNavigateToSetter: (pubkey: String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val climbBugReportTitle = stringResource(R.string.error_bug_report_climb_title)
+    val bleBugReportTitle = stringResource(R.string.error_bug_report_ble_title)
     when {
         state.isLoading -> {
             Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -876,7 +878,7 @@ private fun ClimbDetailPageContent(
                     onDismiss = { viewModel.clearError() },
                     onReportBug = {
                         onNavigateToBugReport(
-                            context.getString(R.string.error_bug_report_climb_title),
+                            climbBugReportTitle,
                             state.error ?: ""
                         )
                         viewModel.clearError()
@@ -1234,7 +1236,7 @@ private fun ClimbDetailPageContent(
                                     color = ErrorRed,
                                     modifier = Modifier.clickable {
                                         onNavigateToBugReport(
-                                            context.getString(R.string.error_bug_report_ble_title),
+                                            bleBugReportTitle,
                                             bleErrorText
                                         )
                                     }

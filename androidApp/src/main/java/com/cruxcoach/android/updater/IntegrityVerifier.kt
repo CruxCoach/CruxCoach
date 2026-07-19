@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.util.Log
+import androidx.annotation.RequiresApi
 import java.io.File
 import java.io.FileInputStream
 import java.security.MessageDigest
@@ -95,6 +96,7 @@ class IntegrityVerifier(
      *  non-null [android.content.pm.PackageInfo] with a `null` `signingInfo`
      *  for APKs in app-scoped external dirs — caller falls back to the
      *  deprecated [extractSignerLegacy] when this returns null. */
+    @RequiresApi(Build.VERSION_CODES.P)
     private fun extractSignerModern(pm: PackageManager, apkFile: File): ByteArray? {
         val info = pm.getPackageArchiveInfo(apkFile.absolutePath, PackageManager.GET_SIGNING_CERTIFICATES)
         if (info == null) {
