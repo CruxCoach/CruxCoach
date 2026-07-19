@@ -19,6 +19,7 @@ import com.cruxcoach.android.ble.NearbyClimbScanner
 import com.cruxcoach.android.ble.NearbySession
 import com.cruxcoach.android.data.BoardSessionManager
 import com.cruxcoach.android.data.NearbyPresenceManager
+import com.cruxcoach.android.data.RememberedBoardController
 import com.cruxcoach.android.data.SessionGattBridge
 import com.cruxcoach.android.data.SessionQueueManager
 import com.cruxcoach.android.data.SessionRole
@@ -54,6 +55,9 @@ data class BleConnectionState(
     val discoveredBoards: List<DiscoveredBoard> = emptyList(),
     val nearbySessions: List<NearbySession> = emptyList(),
     val lastUsedBoardAddresses: Map<BoardBrand, String> = emptyMap(),
+    val rememberedBoardControllers: Map<BoardBrand, RememberedBoardController> = emptyMap(),
+    val activeBoardBrand: BoardBrand = BoardBrand.KILTER,
+    val rememberedBoardControllersLoaded: Boolean = false,
     val connectionState: ConnectionState = ConnectionState.DISCONNECTED,
     val connectedBoardName: String? = null,
     val connectedBoardBrand: BoardBrand? = null,
@@ -138,7 +142,17 @@ class BleConnectionViewModel @Inject constructor(
                 // Auto-advertise "board connected" so nearby users can send disconnect requests
                 if (connState == ConnectionState.CONNECTED) {
                     pendingBoard?.let { board ->
-                        userPreferences.setLastUsedBoardAddress(board.boardBrand, board.address)
+                        if (!board.isCruxRelay) {
+                            userPreferences.setRememberedBoardController(
+                                RememberedBoardController(
+                                    displayName = board.displayName,
+                                    serial = board.serial,
+                                    apiLevel = board.apiLevel,
+                                    address = board.address,
+                                    boardBrand = board.boardBrand,
+                                )
+                            )
+                        }
                         pendingBoard = null
                     }
                     suppressDisconnectDialog = false
@@ -225,8 +239,21 @@ class BleConnectionViewModel @Inject constructor(
             }
         }
         viewModelScope.safeLaunch(TAG) {
-            userPreferences.lastUsedBoardAddresses.collect { addresses ->
-                _state.update { it.copy(lastUsedBoardAddresses = addresses) }
+            combine(
+                userPreferences.boardBrand,
+                userPreferences.lastUsedBoardAddresses,
+                userPreferences.rememberedBoardControllers,
+            ) { brandWire, addresses, controllers ->
+                Triple(BoardBrand.fromWire(brandWire), addresses, controllers)
+            }.collect { (activeBrand, addresses, controllers) ->
+                _state.update {
+                    it.copy(
+                        activeBoardBrand = activeBrand,
+                        lastUsedBoardAddresses = addresses,
+                        rememberedBoardControllers = controllers,
+                        rememberedBoardControllersLoaded = true,
+                    )
+                }
             }
         }
         // Receive disconnect requests from nearby users (works on any screen)
@@ -457,6 +484,16 @@ class BleConnectionViewModel @Inject constructor(
         }
     }
 
+    /** Stop discovery owned by a dismissed picker, without interrupting a
+     * connect or the post-connect controller-capacity probe. */
+    fun onConnectionSheetDismissed() {
+        if (_state.value.connectionState == ConnectionState.DISCONNECTED &&
+            bleScanner.isScanning.value
+        ) {
+            stopScan()
+        }
+    }
+
     /** Joins the exact session selected by the user; multiple nearby hosts stay unambiguous. */
     fun joinNearbySession(session: NearbySession) {
         val device = session.device
@@ -473,6 +510,29 @@ class BleConnectionViewModel @Inject constructor(
         pendingBoard = board
         bleScanner.stopScan()
         bleConnection.connect(board)
+    }
+
+    /**
+     * Reuses the active board family's last successful physical-controller
+     * descriptor. This is a direct GATT connect and intentionally performs no
+     * discovery scan; on Android 8-11 it therefore needs no location access.
+     */
+    fun reconnectRememberedBoard() {
+        checkState()
+        if (!_state.value.hasConnectionPermission) return
+        val remembered = _state.value
+            .rememberedBoardControllers[_state.value.activeBoardBrand]
+            ?: return
+        connectToBoard(
+            DiscoveredBoard(
+                displayName = remembered.displayName,
+                serial = remembered.serial,
+                apiLevel = remembered.apiLevel,
+                address = remembered.address,
+                rssi = 0,
+                boardBrand = remembered.boardBrand,
+            )
+        )
     }
 
     /**

@@ -16,6 +16,8 @@ import androidx.compose.material.icons.filled.BluetoothConnected
 import androidx.compose.material.icons.filled.BluetoothDisabled
 import androidx.compose.material.icons.filled.CellTower
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.LocationOff
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SignalCellularAlt
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
@@ -39,10 +41,16 @@ import com.cruxcoach.android.ble.BoardControllerProfiles
 import com.cruxcoach.android.ble.NearbySession
 import com.cruxcoach.domain.board.BoardBrand
 import com.cruxcoach.android.ui.common.LocalBleShareManager
+import com.cruxcoach.android.data.RememberedBoardController
 import com.cruxcoach.android.data.SessionRole
 import androidx.compose.ui.res.stringResource
 import com.cruxcoach.android.R
 import com.cruxcoach.android.ui.theme.*
+
+private enum class PendingScanStart {
+    MANUAL,
+    AUTO_CONNECT,
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -53,6 +61,18 @@ fun BleConnectionSheet(
     viewModel: BleConnectionViewModel = hiltViewModel()
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val rememberedBoard = state.rememberedBoardControllers[state.activeBoardBrand]
+    var discoveryRequested by remember(state.activeBoardBrand) { mutableStateOf(false) }
+    var pendingScanStart by remember(state.activeBoardBrand) {
+        mutableStateOf<PendingScanStart?>(null)
+    }
+
+    // A known physical controller gives the user an explicit direct-reconnect
+    // path. Discovery (and its legacy location requirements) only becomes the
+    // active flow after "search other boards" is chosen, or when no complete
+    // remembered descriptor exists yet.
+    val discoveryFlowActive = state.rememberedBoardControllersLoaded &&
+        (discoveryRequested || rememberedBoard == null)
 
     // BleConnectionViewModel is scoped per nav-backstack entry, so the board
     // browser and the detail screen hold separate instances — a permission
@@ -71,7 +91,10 @@ fun BleConnectionSheet(
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            viewModel.onConnectionSheetDismissed()
+        }
     }
 
     // Location services gate the *discovery scan* on API ≤ 30 only — never a
@@ -81,14 +104,8 @@ fun BleConnectionSheet(
     // ever show while the flow it blocks genuinely cannot proceed.
     val locationPromptNeeded = BlePermissionHelper.isLocationRequired(
         apiLevel = Build.VERSION.SDK_INT,
-        flowNeedsScan = true, // this sheet's disconnected flow discovers boards by scanning
+        flowNeedsScan = discoveryFlowActive,
         locationEnabled = state.isLocationEnabled
-    )
-    val connectionFlowCanProceed = state.hasConnectionPermission && (
-        state.connectionState == ConnectionState.CONNECTED ||
-            state.connectionState == ConnectionState.SENDING ||
-            state.connectionState == ConnectionState.CONNECTING ||
-            state.sessionRole == SessionRole.PARTICIPANT
     )
 
     // Auto-close once the connect succeeds — the top-bar BLE icon flips
@@ -106,22 +123,16 @@ fun BleConnectionSheet(
         }
     }
 
-    // Auto-start scan when sheet opens (if permissions granted, BT enabled and
-    // the scan isn't location-gated — starting one behind the location prompt
-    // would contradict it: the OS accepts the registration and, depending on
-    // the device, may even deliver results and auto-connect while the sheet
-    // still claims location is required). Use the auto-connect-on-single
-    // variant: after a 2 s settling window, if exactly one board was found,
-    // the VM connects without the user tapping the list entry. 2+ boards
-    // leave the list visible for manual pick. Keying on locationPromptNeeded
-    // also re-fires the effect the moment the user comes back from settings
-    // with location enabled.
-    if (autoStartScan) {
-        LaunchedEffect(state.hasPermissions, state.isBluetoothEnabled, locationPromptNeeded) {
-            if (state.hasPermissions && state.isBluetoothEnabled && !locationPromptNeeded &&
-                state.connectionState == ConnectionState.DISCONNECTED && !state.isScanning) {
-                viewModel.startScanWithAutoConnect()
-            }
+    // Preserve the previous quick-connect behaviour only for first use, when
+    // there is no remembered controller to offer. A remembered controller is
+    // never silently replaced by a scan.
+    LaunchedEffect(
+        autoStartScan,
+        state.rememberedBoardControllersLoaded,
+        rememberedBoard?.address,
+    ) {
+        if (autoStartScan && state.rememberedBoardControllersLoaded && rememberedBoard == null) {
+            pendingScanStart = PendingScanStart.AUTO_CONNECT
         }
     }
 
@@ -130,6 +141,36 @@ fun BleConnectionSheet(
     ) { permissions ->
         if (permissions.values.all { it }) {
             viewModel.onPermissionsGranted()
+        }
+    }
+
+    val connectionPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        if (permissions.values.all { it }) {
+            viewModel.reconnectRememberedBoard()
+        }
+    }
+
+    // A scan requested before permission or before the legacy location toggle
+    // was enabled resumes exactly once when that prerequisite becomes true.
+    LaunchedEffect(
+        pendingScanStart,
+        discoveryFlowActive,
+        state.hasPermissions,
+        state.isBluetoothEnabled,
+        locationPromptNeeded,
+        state.connectionState,
+    ) {
+        val requestedStart = pendingScanStart ?: return@LaunchedEffect
+        if (discoveryFlowActive && state.hasPermissions && state.isBluetoothEnabled &&
+            !locationPromptNeeded && state.connectionState == ConnectionState.DISCONNECTED
+        ) {
+            pendingScanStart = null
+            when (requestedStart) {
+                PendingScanStart.MANUAL -> viewModel.startScan()
+                PendingScanStart.AUTO_CONNECT -> viewModel.startScanWithAutoConnect()
+            }
         }
     }
 
@@ -159,42 +200,13 @@ fun BleConnectionSheet(
                 fontWeight = FontWeight.Bold
             )
 
+            if (state.connectionState == ConnectionState.DISCONNECTED) {
+                state.connectFailureReason?.let { ConnectionFailureMessage(it) }
+            }
+
             when {
-                // Discovery permissions are irrelevant once a direct GATT
-                // connection is active. This matters on Android 10-11 where
-                // foreground/background location controls only scanning.
-                !state.hasPermissions && !connectionFlowCanProceed -> {
-                    PermissionContent(
-                        onRequestPermissions = {
-                            permissionLauncher.launch(BlePermissionHelper.getRequiredPermissions())
-                        }
-                    )
-                }
-
-                // State 2: Bluetooth disabled. Auto-fire the system
-                // "turn Bluetooth on?" dialog the moment the user lands
-                // on this branch — pre-fix the user saw only a static
-                // "Bluetooth ist aus" hint and had to leave the app to
-                // toggle it manually. The same launcher is wired to a
-                // retry button below in case the system dialog was
-                // dismissed without enabling.
-                !state.isBluetoothEnabled -> {
-                    LaunchedEffect(Unit) {
-                        bluetoothEnableLauncher.launch(
-                            Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
-                        )
-                    }
-                    BluetoothDisabledContent(
-                        onRequestEnable = {
-                            bluetoothEnableLauncher.launch(
-                                Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
-                            )
-                        }
-                    )
-                }
-
-                // State 3: Connected. Deliberately ranked above the location
-                // gate: a live GATT connection never needs location services,
+                // Connected. Deliberately ranked above every discovery gate:
+                // a live GATT connection never needs location services,
                 // so an existing connection (session auto-connect, or one made
                 // before the user toggled location off) must show as connected
                 // instead of hiding behind an "enable location" prompt it
@@ -214,52 +226,93 @@ fun BleConnectionSheet(
                     )
                 }
 
-                // State 4: Connecting — above the location gate for the same
-                // reason as State 3.
+                // Connecting is also a direct-GATT state and must not disappear
+                // behind a permission or location prompt.
                 state.connectionState == ConnectionState.CONNECTING -> {
                     ConnectingContent(boardName = state.connectedBoardName)
                 }
 
-                // State 5: Session participant — board is controlled by host,
+                // Session participant: board is controlled by host,
                 // this device runs no discovery scan of its own here.
                 state.sessionRole == SessionRole.PARTICIPANT -> {
                     SessionParticipantContent()
                 }
 
-                // State 5b: Location services off while the remaining flow is
-                // the discovery scan, which the OS location-gates on API ≤ 30
-                // (always false on API 31+, see BlePermissionHelper). Sits
-                // directly above the scan branch it blocks — and only that
-                // branch — so the message can never contradict an ongoing or
-                // established connection.
-                locationPromptNeeded -> {
-                    LocationDisabledContent()
-                }
-
-                // State 6: Scanning / Board list
-                else -> {
-                    // Honest connect-failure reason from the last attempt
-                    // (e.g. a pre-2017 RedBear-UART MoonBoard LED kit we
-                    // can't drive yet) — otherwise the board just "drops"
-                    // back into the scan list with no explanation.
-                    state.connectFailureReason?.let { reasonRes ->
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Icon(
-                                Icons.Default.Warning,
-                                contentDescription = null,
-                                modifier = Modifier.size(20.dp),
-                                tint = WarningYellow
-                            )
-                            Text(
-                                stringResource(reasonRes),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = WarningYellow
+                // Bluetooth is needed by both reconnect and discovery. Auto-fire
+                // the platform enable dialog, with an explicit retry button.
+                !state.isBluetoothEnabled -> {
+                    LaunchedEffect(Unit) {
+                        bluetoothEnableLauncher.launch(
+                            Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
+                        )
+                    }
+                    BluetoothDisabledContent(
+                        onRequestEnable = {
+                            bluetoothEnableLauncher.launch(
+                                Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
                             )
                         }
-                    }
+                    )
+                }
+
+                !state.rememberedBoardControllersLoaded -> {
+                    LoadingConnectionOptionsContent()
+                }
+
+                // Default for a known controller: let the user choose direct
+                // reuse or a fresh scan before asking for either permission set.
+                !discoveryFlowActive && rememberedBoard != null -> {
+                    RememberedBoardContent(
+                        board = rememberedBoard,
+                        onReconnect = {
+                            val connectionPermissions =
+                                BlePermissionHelper.getConnectionPermissions()
+                            if (state.hasConnectionPermission || connectionPermissions.isEmpty()) {
+                                viewModel.reconnectRememberedBoard()
+                            } else {
+                                connectionPermissionLauncher.launch(connectionPermissions)
+                            }
+                        },
+                        onSearchOtherBoards = {
+                            viewModel.stopScan()
+                            discoveryRequested = true
+                            pendingScanStart = PendingScanStart.MANUAL
+                        },
+                    )
+                }
+
+                // Discovery permissions are requested only after discovery was
+                // selected. On Android 8-11 this is the sole location-permission
+                // branch; direct reconnect never reaches it.
+                !state.hasPermissions -> {
+                    PermissionContent(
+                        isLegacyAndroid = Build.VERSION.SDK_INT < Build.VERSION_CODES.S,
+                        onRequestPermissions = {
+                            permissionLauncher.launch(BlePermissionHelper.getRequiredPermissions())
+                        },
+                        onUseRememberedBoard = rememberedBoard?.let {
+                            {
+                                pendingScanStart = null
+                                discoveryRequested = false
+                            }
+                        },
+                    )
+                }
+
+                // Location services gate the discovery scan on API 23-30 only.
+                locationPromptNeeded -> {
+                    LocationDisabledContent(
+                        onUseRememberedBoard = rememberedBoard?.let {
+                            {
+                                pendingScanStart = null
+                                discoveryRequested = false
+                            }
+                        },
+                    )
+                }
+
+                // Discovery scan / board list.
+                else -> {
                     val bleShareState by LocalBleShareManager.current.uiState.collectAsStateWithLifecycle()
                     ScanContent(
                         isScanning = state.isScanning,
@@ -269,9 +322,17 @@ fun BleConnectionSheet(
                         bleShareState = bleShareState,
                         isRequestingDisconnect = state.isRequestingDisconnect,
                         climbSharingEnabled = state.climbSharingEnabled,
-                        onStartScan = { viewModel.startScan() },
+                        onStartScan = {
+                            pendingScanStart = PendingScanStart.MANUAL
+                        },
                         onStopScan = { viewModel.stopScan() },
                         onConnectBoard = { viewModel.connectToBoard(it) },
+                        onReconnectRemembered = rememberedBoard?.let {
+                            {
+                                viewModel.stopScan()
+                                viewModel.reconnectRememberedBoard()
+                            }
+                        },
                         onSessionTapped = {
                             viewModel.joinNearbySession(it)
                             onDismiss()
@@ -288,20 +349,148 @@ fun BleConnectionSheet(
 }
 
 @Composable
-private fun PermissionContent(onRequestPermissions: () -> Unit) {
+private fun ConnectionFailureMessage(@androidx.annotation.StringRes reasonRes: Int) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Icon(
+            Icons.Default.Warning,
+            contentDescription = null,
+            modifier = Modifier.size(20.dp),
+            tint = WarningYellow,
+        )
+        Text(
+            stringResource(reasonRes),
+            style = MaterialTheme.typography.bodyMedium,
+            color = WarningYellow,
+        )
+    }
+}
+
+@Composable
+private fun LoadingConnectionOptionsContent() {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        CircularProgressIndicator(
+            modifier = Modifier.size(24.dp),
+            color = OrangeAccent,
+            strokeWidth = 2.dp,
+        )
+        Text(
+            stringResource(R.string.board_ble_loading_connection_options),
+            style = MaterialTheme.typography.bodyMedium,
+        )
+    }
+}
+
+@Composable
+private fun RememberedBoardContent(
+    board: RememberedBoardController,
+    onReconnect: () -> Unit,
+    onSearchOtherBoards: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+        ),
+        shape = RoundedCornerShape(8.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Icon(
+                Icons.Default.BluetoothConnected,
+                contentDescription = null,
+                tint = OrangeAccent,
+                modifier = Modifier.size(24.dp),
+            )
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    board.displayName,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Bold,
+                )
+                Badge(containerColor = OrangeAccent) {
+                    Text(stringResource(R.string.board_ble_last_used))
+                }
+            }
+        }
+    }
+
+    Text(
+        stringResource(R.string.board_ble_direct_reconnect_privacy_hint),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+
+    Button(
+        onClick = onReconnect,
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("ble_reconnect_button"),
+        colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
+        shape = RoundedCornerShape(12.dp),
+    ) {
+        Icon(
+            Icons.Default.BluetoothConnected,
+            contentDescription = null,
+            modifier = Modifier.size(18.dp),
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(stringResource(R.string.board_ble_reconnect), fontWeight = FontWeight.Bold)
+    }
+
+    OutlinedButton(
+        onClick = onSearchOtherBoards,
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("ble_search_other_boards_button"),
+        shape = RoundedCornerShape(12.dp),
+    ) {
+        Icon(
+            Icons.Default.Search,
+            contentDescription = null,
+            modifier = Modifier.size(18.dp),
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(stringResource(R.string.board_ble_search_other_boards))
+    }
+}
+
+@Composable
+private fun PermissionContent(
+    isLegacyAndroid: Boolean,
+    onRequestPermissions: () -> Unit,
+    onUseRememberedBoard: (() -> Unit)?,
+) {
     Icon(
-        Icons.Default.BluetoothDisabled,
+        Icons.Default.Search,
         contentDescription = null,
         modifier = Modifier.size(48.dp),
         tint = MaterialTheme.colorScheme.onSurfaceVariant
     )
     Text(
-        stringResource(R.string.board_ble_permission_title),
+        stringResource(R.string.board_ble_scan_permission_title),
         style = MaterialTheme.typography.bodyLarge,
         fontWeight = FontWeight.Bold
     )
     Text(
-        stringResource(R.string.board_ble_permission_message),
+        stringResource(
+            if (isLegacyAndroid) {
+                R.string.board_ble_scan_permission_message_legacy
+            } else {
+                R.string.board_ble_scan_permission_message_modern
+            }
+        ),
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
@@ -313,7 +502,15 @@ private fun PermissionContent(onRequestPermissions: () -> Unit) {
         colors = ButtonDefaults.buttonColors(containerColor = OrangeAccent),
         shape = RoundedCornerShape(12.dp)
     ) {
-        Text(stringResource(R.string.board_ble_grant_permission), fontWeight = FontWeight.Bold)
+        Text(stringResource(R.string.board_ble_allow_search), fontWeight = FontWeight.Bold)
+    }
+    if (onUseRememberedBoard != null) {
+        TextButton(
+            onClick = onUseRememberedBoard,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(stringResource(R.string.board_ble_use_remembered_instead))
+        }
     }
 }
 
@@ -349,10 +546,10 @@ private fun BluetoothDisabledContent(onRequestEnable: () -> Unit) {
 }
 
 @Composable
-private fun LocationDisabledContent() {
+private fun LocationDisabledContent(onUseRememberedBoard: (() -> Unit)?) {
     val context = LocalContext.current
     Icon(
-        Icons.Default.SignalCellularAlt,
+        Icons.Default.LocationOff,
         contentDescription = null,
         modifier = Modifier.size(48.dp),
         tint = WarningYellow
@@ -378,6 +575,14 @@ private fun LocationDisabledContent() {
         colors = ButtonDefaults.outlinedButtonColors(contentColor = WarningYellow)
     ) {
         Text(stringResource(R.string.board_ble_open_location_settings), fontWeight = FontWeight.Bold)
+    }
+    if (onUseRememberedBoard != null) {
+        TextButton(
+            onClick = onUseRememberedBoard,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(stringResource(R.string.board_ble_use_remembered_instead))
+        }
     }
 }
 
@@ -513,6 +718,7 @@ private fun ScanContent(
     onStartScan: () -> Unit,
     onStopScan: () -> Unit,
     onConnectBoard: (DiscoveredBoard) -> Unit,
+    onReconnectRemembered: (() -> Unit)?,
     onSessionTapped: (NearbySession) -> Unit,
     onRequestDisconnect: () -> Unit,
     onClimbTapped: ((uuid: String, angle: Int) -> Unit)? = null
@@ -584,6 +790,22 @@ private fun ScanContent(
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+    }
+
+    if (onReconnectRemembered != null) {
+        OutlinedButton(
+            onClick = onReconnectRemembered,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+        ) {
+            Icon(
+                Icons.Default.BluetoothConnected,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(stringResource(R.string.board_ble_use_remembered_instead))
+        }
     }
 
     Button(

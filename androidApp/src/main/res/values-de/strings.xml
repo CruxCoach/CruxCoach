@@ -924,6 +924,15 @@
     <string name="board_ble_permission_title">Bluetooth-Berechtigung erforderlich</string>
     <string name="board_ble_permission_message">CruxCoach benötigt Bluetooth-Zugriff, um dein Board zu finden und zu verbinden.</string>
     <string name="board_ble_grant_permission">Berechtigung erteilen</string>
+    <string name="board_ble_scan_permission_title">Berechtigung für die Board-Suche</string>
+    <string name="board_ble_scan_permission_message_legacy">Auf dieser Android-Version können Bluetooth-Geräte in der Nähe nur mit Standortberechtigung gefunden werden. CruxCoach verwendet deinen Standort nicht für die Board-Verbindung.</string>
+    <string name="board_ble_scan_permission_message_modern">Erlaube den Zugriff auf Bluetooth-Geräte in der Nähe, um Boards zu suchen und zu verbinden.</string>
+    <string name="board_ble_allow_search">Board-Suche erlauben</string>
+    <string name="board_ble_loading_connection_options">Verbindungsoptionen werden geladen…</string>
+    <string name="board_ble_direct_reconnect_privacy_hint">Die direkte Wiederverbindung greift nicht auf deinen Standort zu.</string>
+    <string name="board_ble_reconnect">Wiederverbinden</string>
+    <string name="board_ble_search_other_boards">Boards neu suchen</string>
+    <string name="board_ble_use_remembered_instead">Stattdessen mit dem letzten Board verbinden</string>
     <string name="board_ble_bt_disabled_title">Bluetooth ist deaktiviert</string>
     <string name="board_ble_bt_disabled_message">CruxCoach braucht Bluetooth, um mit deinem Board zu sprechen.</string>
     <string name="board_ble_bt_enable_button">Bluetooth einschalten</string>

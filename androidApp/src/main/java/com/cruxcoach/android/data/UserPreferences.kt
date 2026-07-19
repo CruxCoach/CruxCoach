@@ -258,6 +258,19 @@ data class LedHoldColors(
     }
 }
 
+/**
+ * Stable descriptor for reconnecting to a controller without discovering it again.
+ * RSSI and runtime capacity-probe results are deliberately excluded because they
+ * only describe the scan/connection in which the controller was observed.
+ */
+data class RememberedBoardController(
+    val displayName: String,
+    val serial: String,
+    val apiLevel: Int,
+    val address: String,
+    val boardBrand: BoardBrand,
+)
+
 /** Shared preference keys — device-level settings, same across all Nostr identities. */
 object PreferenceKeys {
     // FEAT-044 CruxRelay: one-time board-sharing disclosure (global Bluetooth
@@ -295,6 +308,12 @@ object PreferenceKeys {
         stringPreferencesKey("multi_connection_board_send_mode")
     fun lastUsedBoardAddress(brand: BoardBrand) =
         stringPreferencesKey("last_used_board_address_${brand.wireValue}")
+    fun lastUsedBoardDisplayName(brand: BoardBrand) =
+        stringPreferencesKey("last_used_board_display_name_${brand.wireValue}")
+    fun lastUsedBoardSerial(brand: BoardBrand) =
+        stringPreferencesKey("last_used_board_serial_${brand.wireValue}")
+    fun lastUsedBoardApiLevel(brand: BoardBrand) =
+        intPreferencesKey("last_used_board_api_level_${brand.wireValue}")
     val BOARD_ANGLE = intPreferencesKey("board_angle")
     val BOARD_MIN_GRADE = intPreferencesKey("board_min_grade")
     val BOARD_MAX_GRADE = intPreferencesKey("board_max_grade")
@@ -861,6 +880,47 @@ class UserPreferences(
     suspend fun setLastUsedBoardAddress(brand: BoardBrand, address: String) {
         dataStore.edit { prefs ->
             prefs[PreferenceKeys.lastUsedBoardAddress(brand)] = address
+        }
+    }
+
+    /**
+     * Last successfully connected physical controller, per board family. A
+     * complete descriptor lets Android reconnect by address without a BLE scan,
+     * so legacy Android does not need location permission or location services.
+     */
+    val rememberedBoardControllers: Flow<Map<BoardBrand, RememberedBoardController>> =
+        dataStore.data.map { prefs ->
+            BoardBrand.entries
+                .asSequence()
+                .filter { it.isInteractive }
+                .mapNotNull { brand ->
+                    val address = prefs[PreferenceKeys.lastUsedBoardAddress(brand)]
+                        ?.takeIf(String::isNotBlank)
+                        ?: return@mapNotNull null
+                    val displayName = prefs[PreferenceKeys.lastUsedBoardDisplayName(brand)]
+                        ?.takeIf(String::isNotBlank)
+                        ?: return@mapNotNull null
+                    val apiLevel = prefs[PreferenceKeys.lastUsedBoardApiLevel(brand)]
+                        ?.takeIf { it >= 0 }
+                        ?: return@mapNotNull null
+                    brand to RememberedBoardController(
+                        displayName = displayName,
+                        serial = prefs[PreferenceKeys.lastUsedBoardSerial(brand)].orEmpty(),
+                        apiLevel = apiLevel,
+                        address = address,
+                        boardBrand = brand,
+                    )
+                }
+                .toMap()
+        }
+
+    suspend fun setRememberedBoardController(controller: RememberedBoardController) {
+        dataStore.edit { prefs ->
+            val brand = controller.boardBrand
+            prefs[PreferenceKeys.lastUsedBoardAddress(brand)] = controller.address
+            prefs[PreferenceKeys.lastUsedBoardDisplayName(brand)] = controller.displayName
+            prefs[PreferenceKeys.lastUsedBoardSerial(brand)] = controller.serial
+            prefs[PreferenceKeys.lastUsedBoardApiLevel(brand)] = controller.apiLevel
         }
     }
 
