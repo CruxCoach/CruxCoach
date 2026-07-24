@@ -40,6 +40,10 @@
 # UPDATER_API_BASE=https://codeberg.org/api/v1
 # UPDATER_REPO_OWNER=yourhandle
 # UPDATER_REPO_NAME=YourFork
+# One-way aggregate endpoint called only after a verified updater download.
+# Empty is the safe default. Forks must use an endpoint they operate or trust;
+# the upstream release workflow injects its endpoint only for the upstream repo.
+# ANONYMOUS_METRICS_ENDPOINT=
 
 # ─── Share via Zapstore (optional — defaults to upstream listing) ───
 # QR code + shareable link surfaced in Settings → Share via Zapstore.

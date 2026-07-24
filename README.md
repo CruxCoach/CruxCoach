@@ -45,7 +45,7 @@ Browse climbs, control your Kilter Board or MoonBoard via Bluetooth, log ascents
 
 **Nearby Sharing** — Share your current climb with nearby CruxCoach users over Bluetooth. No internet needed, works instantly at the Kilter Board.
 
-**Your Data, Your Device** — All personal data encrypted locally. Decentralized identity via [Nostr](https://nostr.com) — no email, no password, no central server. No cloud accounts, no telemetry, no ads.
+**Your Data, Your Device** — All personal data encrypted locally. Decentralized identity via [Nostr](https://nostr.com) — no email, no password, no central account server. No user tracking, no ads. Official builds can send an identifier-free aggregate update count only after an APK has been fully downloaded and cryptographically verified; it is disclosed and can be disabled under *Settings → Updates*.
 
 ---
 
@@ -158,6 +158,8 @@ See [LEGAL.md](LEGAL.md) for our position on interoperability and data usage.
 **Optional cloud backup** *(off by default)* — when you turn it on, your data is encrypted on the device with a key derived from your Nostr identity, then mirrored across the open Nostr network and Blossom storage servers. No single provider holds a usable copy. Saving your CruxCoach Account key once is what makes the backup recoverable on any other device — see [SECURITY.md](SECURITY.md#encrypted-cloud-backup-feat-002-013) for the full threat model.
 
 **Your identity** — a Nostr key pair. No central server can lock you out. The same key pair that is your CruxCoach Account encrypts your cloud backup, so saving it once protects both.
+
+**Anonymous update counter** — in official endpoint-enabled builds, this setting is on by default and can be disabled persistently under *Settings → Updates*. After the in-app updater fully downloads an APK and verifies both its SHA-256 and signing certificate, the app makes at most one best-effort dispatch attempt per target version containing only that version and the source (`codeberg` or `zapstore`). It creates no device, installation, account, Nostr, advertising, session, or event identifier; ordinary/fork builds have an empty endpoint unless their builder explicitly configures one. There is no retry, and failure can never affect update checking, verification, download readiness, or installation. The first-party backend immediately folds accepted requests into UTC-day aggregates, retains no raw event, request header, IP address, User-Agent, referrer, or exact timestamp, and retains the identifier-free daily aggregates and repository history without a fixed deletion period. This counts verified updater APKs, not people or successful PackageInstaller completions; Zapstore-managed store updates are excluded. See the [complete client, backend, and retention contract](docs/anonymous-update-metrics.md) and the public [privacy notice](https://cruxcoach.org/privacy.html).
 
 ---
 

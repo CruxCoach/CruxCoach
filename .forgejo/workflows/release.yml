@@ -65,8 +65,14 @@ jobs:
 
       - name: Build release APK
         if: steps.version.outputs.skip == 'false'
+        env:
+          REPOSITORY_SLUG: ${{ github.repository }}
         run: |
-          ./gradlew :androidApp:assembleRelease
+          METRICS_ARGS=()
+          if [ "$REPOSITORY_SLUG" = "CruxCoach/CruxCoach" ]; then
+            METRICS_ARGS+=("-PANONYMOUS_METRICS_ENDPOINT=https://stats.cruxcoach.org/v1/app-event")
+          fi
+          ./gradlew :androidApp:assembleRelease "${METRICS_ARGS[@]}"
 
       - name: Verify APK signature
         if: steps.version.outputs.skip == 'false'

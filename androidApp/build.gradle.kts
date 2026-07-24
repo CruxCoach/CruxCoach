@@ -7,14 +7,34 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
-import java.util.Properties
 import java.io.FileInputStream
+import java.net.URI
+import java.util.Properties
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 val localProps = Properties().apply {
     val f = rootProject.file("local.properties")
     if (f.exists()) load(FileInputStream(f))
 }
+
+// Disabled in ordinary and fork builds. The upstream release workflow injects
+// the public first-party endpoint explicitly for CruxCoach/CruxCoach only;
+// forks may opt into their own endpoint through the same Gradle/local property.
+val anonymousMetricsEndpoint = providers.gradleProperty("ANONYMOUS_METRICS_ENDPOINT").orNull
+    ?: localProps.getProperty("ANONYMOUS_METRICS_ENDPOINT", "")
+if (anonymousMetricsEndpoint.isNotBlank()) {
+    val uri = runCatching { URI(anonymousMetricsEndpoint) }.getOrNull()
+    require(
+        uri != null &&
+            uri.scheme == "https" &&
+            !uri.host.isNullOrBlank() &&
+            uri.userInfo == null &&
+            uri.fragment == null,
+    ) { "ANONYMOUS_METRICS_ENDPOINT must be empty or an HTTPS URL without credentials/fragment" }
+}
+val anonymousMetricsEndpointBuildConfig = anonymousMetricsEndpoint
+    .replace("\\", "\\\\")
+    .replace("\"", "\\\"")
 
 android {
     namespace = "com.cruxcoach.android"
@@ -63,6 +83,10 @@ android {
             "\"${localProps.getProperty("UPDATER_REPO_OWNER", "CruxCoach")}\"")
         buildConfigField("String", "UPDATER_REPO_NAME",
             "\"${localProps.getProperty("UPDATER_REPO_NAME", "CruxCoach")}\"")
+        // One-way aggregate increment after a fully verified in-app update APK.
+        // Empty by default; only the official CI build injects upstream's URL.
+        buildConfigField("String", "ANONYMOUS_METRICS_ENDPOINT",
+            "\"$anonymousMetricsEndpointBuildConfig\"")
 
         // Zapstore's signed release metadata and content-addressed CDN provide
         // a second direct-APK path. Forks override all three values together

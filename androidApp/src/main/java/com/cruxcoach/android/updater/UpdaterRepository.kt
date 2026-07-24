@@ -6,6 +6,7 @@ import android.content.pm.PackageInstaller
 import android.net.Uri
 import android.util.Log
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
@@ -44,6 +45,7 @@ class UpdaterRepository @Inject constructor(
     private val installer: ApkInstaller,
     private val notifier: UpdateNotifier,
     private val installSourceGate: InstallSourceGate,
+    private val verifiedUpdateMetrics: VerifiedUpdateMetrics = VerifiedUpdateMetrics.NONE,
     @param:Named("io") private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
 
@@ -57,6 +59,7 @@ class UpdaterRepository @Inject constructor(
     private val scope = CoroutineScope(SupervisorJob() + ioDispatcher + exceptionHandler)
     private var downloadMonitorJob: Job? = null
     private val downloadCompletionMutex = Mutex()
+    private val anonymousUpdateMetricsMutex = Mutex()
     private val automaticInstallInFlight = AtomicBoolean(false)
 
     val state: Flow<UpdaterState> = preferences.state
@@ -94,6 +97,9 @@ class UpdaterRepository @Inject constructor(
     suspend fun snapshot(): UpdaterState = preferences.snapshot()
 
     fun selfUpdateAllowed(): Boolean = installSourceGate.selfUpdateAllowed()
+
+    val anonymousUpdateMetricsAvailable: Boolean
+        get() = verifiedUpdateMetrics.isConfigured
 
     fun canRequestPackageInstalls(): Boolean = installer.canRequestPackageInstalls()
 
@@ -448,6 +454,17 @@ class UpdaterRepository @Inject constructor(
         when (val result = verifier.verify(apk, info.apkSha256)) {
             IntegrityVerifier.Result.Ok -> {
                 preferences.update { it.copy(pipelineStage = PipelineStage.READY_TO_INSTALL) }
+                // Count only after both verification gates. Persist the attempt
+                // before enqueueing and never retry: without a user/event ID the
+                // server cannot deduplicate an ambiguous network failure.
+                try {
+                    recordVerifiedUpdateOnce(info, sourceIndex)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    // Metrics are ancillary and must never block install UX.
+                    Log.w(TAG, "Anonymous update count failed locally", error)
+                }
                 val mode = preferences.snapshot().automationMode
                 if (mode == UpdateAutomationMode.AUTO_INSTALL && tryAutomaticInstall(info, apk)) {
                     // PackageInstaller owns the rest. A pending user-action
@@ -517,6 +534,32 @@ class UpdaterRepository @Inject constructor(
         return true
     }
 
+    private suspend fun recordVerifiedUpdateOnce(
+        info: UpdateInfo,
+        sourceIndex: Int,
+    ) = anonymousUpdateMetricsMutex.withLock {
+        if (!verifiedUpdateMetrics.isConfigured) return@withLock
+        val downloadUrl = info.downloadUrls.getOrNull(sourceIndex) ?: return@withLock
+        val source = anonymousUpdateSource(downloadUrl) ?: run {
+            Log.w(TAG, "Anonymous update count skipped for an unknown download source")
+            return@withLock
+        }
+        var shouldDispatch = false
+        preferences.update { current ->
+            if (!current.anonymousUpdateMetricsEnabled ||
+                current.lastAnonymousMetricsAttemptVersion == info.versionName
+            ) {
+                current
+            } else {
+                shouldDispatch = true
+                current.copy(lastAnonymousMetricsAttemptVersion = info.versionName)
+            }
+        }
+        if (shouldDispatch) {
+            verifiedUpdateMetrics.recordVerifiedUpdate(info.versionName, source)
+        }
+    }
+
     /** Manual "Installieren" from notification / Settings. */
     fun installPending() {
         scope.launch {
@@ -559,6 +602,9 @@ class UpdaterRepository @Inject constructor(
                                 automationMode = it.automationMode,
                                 autoDownloadOnWifi = it.autoDownloadOnWifi,
                                 autoDownloadOnMobile = it.autoDownloadOnMobile,
+                                anonymousUpdateMetricsEnabled = it.anonymousUpdateMetricsEnabled,
+                                lastAnonymousMetricsAttemptVersion =
+                                    it.lastAnonymousMetricsAttemptVersion,
                                 lastCheckAtEpochMs = it.lastCheckAtEpochMs,
                                 // The installed version just changed. Avoid an
                                 // old ETag/throttle hiding a newer release that
@@ -732,6 +778,11 @@ class UpdaterRepository @Inject constructor(
 
     suspend fun setAutoDownloadOnWifi(enabled: Boolean) =
         preferences.update { it.copy(autoDownloadOnWifi = enabled) }
+
+    suspend fun setAnonymousUpdateMetricsEnabled(enabled: Boolean) =
+        anonymousUpdateMetricsMutex.withLock {
+            preferences.update { it.copy(anonymousUpdateMetricsEnabled = enabled) }
+        }
 
     suspend fun setAutoDownloadOnMobile(enabled: Boolean) {
         preferences.update { it.copy(autoDownloadOnMobile = enabled) }

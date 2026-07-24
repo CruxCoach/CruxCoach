@@ -43,6 +43,8 @@ class UpdaterSettingsViewModel @Inject constructor(
     val installPermissionGranted: StateFlow<Boolean> = _installPermissionGranted.asStateFlow()
 
     val storeGated: Boolean get() = !installSourceGate.selfUpdateAllowed()
+    val anonymousUpdateMetricsAvailable: Boolean
+        get() = repository.anonymousUpdateMetricsAvailable
 
     val state: StateFlow<UpdaterState> = repository.state.stateIn(
         viewModelScope,
@@ -98,6 +100,10 @@ class UpdaterSettingsViewModel @Inject constructor(
 
     fun setAutoDownloadOnMobile(enabled: Boolean) = viewModelScope.launch {
         repository.setAutoDownloadOnMobile(enabled)
+    }
+
+    fun setAnonymousUpdateMetricsEnabled(enabled: Boolean) = viewModelScope.launch {
+        repository.setAnonymousUpdateMetricsEnabled(enabled)
     }
 
     fun downloadNow() {

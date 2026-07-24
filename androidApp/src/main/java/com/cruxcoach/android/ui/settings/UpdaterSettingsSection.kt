@@ -217,6 +217,15 @@ internal fun UpdaterSettingsSection(
             }
         }
 
+        if (viewModel.anonymousUpdateMetricsAvailable) {
+            ToggleSettingRow(
+                title = stringResource(R.string.updater_settings_anonymous_metrics),
+                description = stringResource(R.string.updater_settings_anonymous_metrics_desc),
+                checked = state.anonymousUpdateMetricsEnabled,
+                onCheckedChange = viewModel::setAnonymousUpdateMetricsEnabled,
+            )
+        }
+
         var downloadConfirmFor by remember { mutableStateOf<com.cruxcoach.android.updater.UpdateInfo?>(null) }
 
         val info = state.pendingUpdate()

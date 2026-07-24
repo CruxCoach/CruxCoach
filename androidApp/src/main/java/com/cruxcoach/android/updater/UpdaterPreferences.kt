@@ -65,6 +65,8 @@ class UpdaterPreferences(private val store: DataStore<Preferences>) {
             ?: UpdateAutomationMode.NOTIFY,
         autoDownloadOnWifi = this[Keys.AUTO_DOWNLOAD_ON_WIFI] ?: true,
         autoDownloadOnMobile = this[Keys.AUTO_DOWNLOAD_ON_MOBILE] ?: false,
+        anonymousUpdateMetricsEnabled = this[Keys.ANONYMOUS_UPDATE_METRICS_ENABLED] ?: true,
+        lastAnonymousMetricsAttemptVersion = this[Keys.LAST_ANONYMOUS_METRICS_ATTEMPT_VERSION],
         lastNotifiedTagName = this[Keys.LAST_NOTIFIED_TAG],
         notifDismissedAtEpochMs = this[Keys.NOTIF_DISMISSED_AT_MS],
         notifReArmCount = this[Keys.NOTIF_REARM_COUNT] ?: 0,
@@ -94,6 +96,10 @@ class UpdaterPreferences(private val store: DataStore<Preferences>) {
         set(Keys.AUTOMATION_MODE, s.automationMode.name)
         set(Keys.AUTO_DOWNLOAD_ON_WIFI, s.autoDownloadOnWifi)
         set(Keys.AUTO_DOWNLOAD_ON_MOBILE, s.autoDownloadOnMobile)
+        set(Keys.ANONYMOUS_UPDATE_METRICS_ENABLED, s.anonymousUpdateMetricsEnabled)
+        s.lastAnonymousMetricsAttemptVersion?.let {
+            set(Keys.LAST_ANONYMOUS_METRICS_ATTEMPT_VERSION, it)
+        } ?: remove(Keys.LAST_ANONYMOUS_METRICS_ATTEMPT_VERSION)
         s.lastNotifiedTagName?.let { set(Keys.LAST_NOTIFIED_TAG, it) } ?: remove(Keys.LAST_NOTIFIED_TAG)
         s.notifDismissedAtEpochMs?.let { set(Keys.NOTIF_DISMISSED_AT_MS, it) } ?: remove(Keys.NOTIF_DISMISSED_AT_MS)
         set(Keys.NOTIF_REARM_COUNT, s.notifReArmCount)
@@ -122,6 +128,10 @@ class UpdaterPreferences(private val store: DataStore<Preferences>) {
         val AUTOMATION_MODE = stringPreferencesKey("updater_automation_mode")
         val AUTO_DOWNLOAD_ON_WIFI = booleanPreferencesKey("updater_auto_download_on_wifi")
         val AUTO_DOWNLOAD_ON_MOBILE = booleanPreferencesKey("updater_auto_download_on_mobile")
+        val ANONYMOUS_UPDATE_METRICS_ENABLED =
+            booleanPreferencesKey("updater_anonymous_metrics_enabled")
+        val LAST_ANONYMOUS_METRICS_ATTEMPT_VERSION =
+            stringPreferencesKey("updater_anonymous_metrics_attempt_version")
         val LAST_NOTIFIED_TAG = stringPreferencesKey("updater_last_notified_tag")
         val NOTIF_DISMISSED_AT_MS = longPreferencesKey("updater_notif_dismissed_at_ms")
         val NOTIF_REARM_COUNT = intPreferencesKey("updater_notif_rearm_count")
@@ -155,6 +165,10 @@ data class UpdaterState(
     val automationMode: UpdateAutomationMode = UpdateAutomationMode.NOTIFY,
     val autoDownloadOnWifi: Boolean = true,
     val autoDownloadOnMobile: Boolean = false,
+    /** User-visible opt-out. No request is attempted while false. */
+    val anonymousUpdateMetricsEnabled: Boolean = true,
+    /** Local at-most-once guard; contains only a public target version. */
+    val lastAnonymousMetricsAttemptVersion: String? = null,
     val lastNotifiedTagName: String? = null,
     val notifDismissedAtEpochMs: Long? = null,
     val notifReArmCount: Int = 0,

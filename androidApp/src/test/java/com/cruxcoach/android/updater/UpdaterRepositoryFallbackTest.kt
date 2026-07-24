@@ -7,6 +7,7 @@ import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk
 import io.mockk.verify
+import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -15,9 +16,9 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
-import java.io.File
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class UpdaterRepositoryFallbackTest {
@@ -31,18 +32,21 @@ class UpdaterRepositoryFallbackTest {
     private val installer: ApkInstaller = mockk(relaxed = true)
     private val notifier: UpdateNotifier = mockk(relaxed = true)
     private val installSourceGate: InstallSourceGate = mockk(relaxed = true)
+    private val verifiedUpdateMetrics: VerifiedUpdateMetrics = mockk(relaxed = true)
 
     private val info = UpdateInfo(
         tagName = "v9.9.9",
         versionName = "9.9.9",
         version = SemVer.parseOrNull("9.9.9")!!,
-        apkUrl = "https://codeberg.example/CruxCoach-v9.9.9.apk",
-        apkFallbackUrl = "https://cdn.example/${"a".repeat(64)}",
-        apkSha256Url = "https://codeberg.example/CruxCoach-v9.9.9.apk.sha256",
+        apkUrl = "https://codeberg.org/CruxCoach/CruxCoach/releases/download/" +
+            "v9.9.9/CruxCoach-v9.9.9.apk",
+        apkFallbackUrl = "https://cdn.zapstore.dev/${"a".repeat(64)}",
+        apkSha256Url = "https://codeberg.org/CruxCoach/CruxCoach/releases/download/" +
+            "v9.9.9/CruxCoach-v9.9.9.apk.sha256",
         apkSizeBytes = 1234L,
         apkSha256 = "a".repeat(64),
         releaseNotesMarkdown = "notes",
-        releasePageUrl = "https://codeberg.example/releases/v9.9.9",
+        releasePageUrl = "https://codeberg.org/CruxCoach/CruxCoach/releases/tag/v9.9.9",
         publishedAtEpochSeconds = 1L,
     )
 
@@ -51,6 +55,7 @@ class UpdaterRepositoryFallbackTest {
         Dispatchers.setMain(dispatcher)
         coEvery { preferences.snapshot() } returns UpdaterState()
         coEvery { preferences.update(any()) } just Runs
+        every { verifiedUpdateMetrics.isConfigured } returns true
     }
 
     @After
@@ -67,7 +72,51 @@ class UpdaterRepositoryFallbackTest {
         installer = installer,
         notifier = notifier,
         installSourceGate = installSourceGate,
+        verifiedUpdateMetrics = verifiedUpdateMetrics,
         ioDispatcher = dispatcher,
+    )
+
+    private class StateHolder(var value: UpdaterState)
+
+    private fun persist(initial: UpdaterState): StateHolder {
+        val holder = StateHolder(initial)
+        coEvery { preferences.snapshot() } answers { holder.value }
+        coEvery { preferences.update(any()) } coAnswers {
+            holder.value = firstArg<(UpdaterState) -> UpdaterState>().invoke(holder.value)
+        }
+        return holder
+    }
+
+    private fun downloadingState(
+        id: Long = 42L,
+        sourceIndex: Int = 0,
+        metricsEnabled: Boolean = true,
+        lastMetricsAttemptVersion: String? = null,
+    ) = UpdaterState(
+        pendingDownloadId = id,
+        pendingTagName = info.tagName,
+        pendingVersionName = info.versionName,
+        pendingApkUrl = info.apkUrl,
+        pendingApkFallbackUrl = info.apkFallbackUrl,
+        pendingApkSha256 = info.apkSha256,
+        pendingApkSizeBytes = info.apkSizeBytes,
+        pendingApkSha256Url = info.apkSha256Url,
+        pendingReleasePageUrl = info.releasePageUrl,
+        pendingReleaseNotesMarkdown = info.releaseNotesMarkdown,
+        pendingDownloadSourceIndex = sourceIndex,
+        pendingAllowMobile = true,
+        pipelineStage = PipelineStage.DOWNLOADING,
+        automationMode = UpdateAutomationMode.AUTO_DOWNLOAD,
+        anonymousUpdateMetricsEnabled = metricsEnabled,
+        lastAnonymousMetricsAttemptVersion = lastMetricsAttemptVersion,
+    )
+
+    private fun status(apk: File) = ApkDownloader.Status(
+        state = ApkDownloader.State.SUCCESSFUL,
+        totalBytes = info.apkSizeBytes,
+        bytesSoFar = info.apkSizeBytes,
+        reason = 0,
+        localUri = apk.toURI().toString(),
     )
 
     @Test
@@ -145,48 +194,118 @@ class UpdaterRepositoryFallbackTest {
     }
 
     @Test
-    fun `system download completion verifies an automatic background download`() = runTest {
-        var state = UpdaterState(
-            pendingDownloadId = 42L,
-            pendingTagName = info.tagName,
-            pendingVersionName = info.versionName,
-            pendingApkUrl = info.apkUrl,
-            pendingApkFallbackUrl = info.apkFallbackUrl,
-            pendingApkSha256 = info.apkSha256,
-            pendingApkSizeBytes = info.apkSizeBytes,
-            pendingApkSha256Url = info.apkSha256Url,
-            pendingReleasePageUrl = info.releasePageUrl,
-            pendingReleaseNotesMarkdown = info.releaseNotesMarkdown,
-            pendingDownloadSourceIndex = 0,
-            pendingAllowMobile = true,
-            pipelineStage = PipelineStage.DOWNLOADING,
-            automationMode = UpdateAutomationMode.AUTO_DOWNLOAD,
-        )
-        coEvery { preferences.snapshot() } answers { state }
-        coEvery { preferences.update(any()) } coAnswers {
-            state = firstArg<(UpdaterState) -> UpdaterState>().invoke(state)
-        }
+    fun `duplicate system completion dispatches at most one verified update count`() = runTest {
+        val state = persist(downloadingState())
         val apk = File("build/tmp/pending-update-${info.versionName}.apk")
-        every { downloader.query(42L) } returns ApkDownloader.Status(
-            state = ApkDownloader.State.SUCCESSFUL,
-            totalBytes = info.apkSizeBytes,
-            bytesSoFar = info.apkSizeBytes,
-            reason = 0,
-            localUri = apk.toURI().toString(),
-        )
+        every { downloader.query(42L) } returns status(apk)
         every { downloader.targetFileFor(info.versionName) } returns apk
         every { verifier.verify(apk, info.apkSha256) } returns IntegrityVerifier.Result.Ok
         var completed = false
+        var duplicateCompleted = false
+        val repository = repository()
 
-        repository().onDownloadManagerCompleted(42L) { completed = true }
+        repository.onDownloadManagerCompleted(42L) { completed = true }
+        repository.onDownloadManagerCompleted(42L) { duplicateCompleted = true }
 
         assertEquals(true, completed)
-        assertEquals(PipelineStage.READY_TO_INSTALL, state.pipelineStage)
+        assertEquals(true, duplicateCompleted)
+        assertEquals(PipelineStage.READY_TO_INSTALL, state.value.pipelineStage)
+        assertEquals(info.versionName, state.value.lastAnonymousMetricsAttemptVersion)
         verify(exactly = 1) { verifier.verify(apk, info.apkSha256) }
+        verify(exactly = 1) {
+            verifiedUpdateMetrics.recordVerifiedUpdate(info.versionName, "codeberg")
+        }
         verify(exactly = 1) {
             notifier.showReadyToInstall(match { it.tagName == info.tagName })
         }
         verify(exactly = 0) { installer.install(any(), any()) }
+    }
+
+    @Test
+    fun `opted out verified download never dispatches a count`() = runTest {
+        val state = persist(downloadingState(metricsEnabled = false))
+        val apk = File("build/tmp/pending-update-${info.versionName}.apk")
+        every { downloader.query(42L) } returns status(apk)
+        every { downloader.targetFileFor(info.versionName) } returns apk
+        every { verifier.verify(apk, info.apkSha256) } returns IntegrityVerifier.Result.Ok
+
+        repository().onDownloadManagerCompleted(42L)
+
+        assertEquals(PipelineStage.READY_TO_INSTALL, state.value.pipelineStage)
+        assertNull(state.value.lastAnonymousMetricsAttemptVersion)
+        verify(exactly = 0) { verifiedUpdateMetrics.recordVerifiedUpdate(any(), any()) }
+        verify(exactly = 1) { notifier.showReadyToInstall(any()) }
+    }
+
+    @Test
+    fun `persisted attempt suppresses another count for the same target version`() = runTest {
+        val state = persist(
+            downloadingState(lastMetricsAttemptVersion = info.versionName),
+        )
+        val apk = File("build/tmp/pending-update-${info.versionName}.apk")
+        every { downloader.query(42L) } returns status(apk)
+        every { downloader.targetFileFor(info.versionName) } returns apk
+        every { verifier.verify(apk, info.apkSha256) } returns IntegrityVerifier.Result.Ok
+
+        repository().onDownloadManagerCompleted(42L)
+
+        assertEquals(PipelineStage.READY_TO_INSTALL, state.value.pipelineStage)
+        assertEquals(info.versionName, state.value.lastAnonymousMetricsAttemptVersion)
+        verify(exactly = 0) { verifiedUpdateMetrics.recordVerifiedUpdate(any(), any()) }
+        verify(exactly = 1) { notifier.showReadyToInstall(any()) }
+    }
+
+    @Test
+    fun `metrics failure cannot block verified update readiness`() = runTest {
+        val state = persist(downloadingState())
+        val apk = File("build/tmp/pending-update-${info.versionName}.apk")
+        every { downloader.query(42L) } returns status(apk)
+        every { downloader.targetFileFor(info.versionName) } returns apk
+        every { verifier.verify(apk, info.apkSha256) } returns IntegrityVerifier.Result.Ok
+        every {
+            verifiedUpdateMetrics.recordVerifiedUpdate(info.versionName, "codeberg")
+        } throws IllegalStateException("test-only failure")
+
+        repository().onDownloadManagerCompleted(42L)
+
+        assertEquals(PipelineStage.READY_TO_INSTALL, state.value.pipelineStage)
+        assertEquals(info.versionName, state.value.lastAnonymousMetricsAttemptVersion)
+        verify(exactly = 1) { notifier.showReadyToInstall(any()) }
+        verify(exactly = 0) { installer.install(any(), any()) }
+    }
+
+    @Test
+    fun `verified fallback records zapstore rather than failed primary source`() = runTest {
+        val state = persist(downloadingState())
+        val apk = File("build/tmp/pending-update-${info.versionName}.apk")
+        every { downloader.query(42L) } returns status(apk)
+        every { downloader.query(43L) } returns status(apk)
+        every { downloader.targetFileFor(info.versionName) } returns apk
+        every { verifier.verify(apk, info.apkSha256) } returnsMany listOf(
+            IntegrityVerifier.Result.PayloadMismatch,
+            IntegrityVerifier.Result.Ok,
+        )
+        every {
+            downloader.start(
+                match { it.versionName == info.versionName },
+                allowMobile = true,
+                sourceIndex = 1,
+            )
+        } returns ApkDownloader.StartResult.Enqueued(43L, apk)
+
+        repository().onDownloadManagerCompleted(42L)
+
+        assertEquals(PipelineStage.READY_TO_INSTALL, state.value.pipelineStage)
+        assertEquals(1, state.value.pendingDownloadSourceIndex)
+        assertEquals(info.versionName, state.value.lastAnonymousMetricsAttemptVersion)
+        verify(exactly = 2) { verifier.verify(apk, info.apkSha256) }
+        verify(exactly = 1) {
+            verifiedUpdateMetrics.recordVerifiedUpdate(info.versionName, "zapstore")
+        }
+        verify(exactly = 0) {
+            verifiedUpdateMetrics.recordVerifiedUpdate(info.versionName, "codeberg")
+        }
+        verify(exactly = 1) { notifier.showReadyToInstall(any()) }
     }
 
     @Test
@@ -204,6 +323,8 @@ class UpdaterRepositoryFallbackTest {
             pendingReleasePageUrl = info.releasePageUrl,
             pipelineStage = PipelineStage.INSTALLING,
             automationMode = UpdateAutomationMode.AUTO_INSTALL,
+            anonymousUpdateMetricsEnabled = false,
+            lastAnonymousMetricsAttemptVersion = info.versionName,
         )
         coEvery { preferences.snapshot() } answers { state }
         coEvery { preferences.update(any()) } coAnswers {
@@ -217,6 +338,8 @@ class UpdaterRepositoryFallbackTest {
         assertEquals(null, state.lastCheckEtag)
         assertEquals(0L, state.lastCheckBootRealtime)
         assertEquals(UpdateAutomationMode.AUTO_INSTALL, state.automationMode)
+        assertEquals(false, state.anonymousUpdateMetricsEnabled)
+        assertEquals(info.versionName, state.lastAnonymousMetricsAttemptVersion)
         assertEquals(PipelineStage.NONE, state.pipelineStage)
     }
 }

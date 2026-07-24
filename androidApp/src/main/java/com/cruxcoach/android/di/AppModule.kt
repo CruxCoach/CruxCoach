@@ -922,6 +922,12 @@ object AppModule {
 
     @Provides
     @Singleton
+    fun provideVerifiedUpdateMetrics(): com.cruxcoach.android.updater.VerifiedUpdateMetrics {
+        return com.cruxcoach.android.updater.AnonymousUpdateMetricsClient()
+    }
+
+    @Provides
+    @Singleton
     fun provideCodebergReleaseClient(
         @Named("updater") okHttpClient: OkHttpClient,
     ): com.cruxcoach.android.updater.CodebergReleaseClient {
