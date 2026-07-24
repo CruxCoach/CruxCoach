@@ -15,6 +15,7 @@ import java.io.FileOutputStream
  * - **Blossom** ([importFromChunks]): Imports from 3 separate chunk files (meta, climbs, stats)
  * - **Online legacy** ([downloadAndImport]): Delegates APK download and DB extraction
  *   to [ApkDownloader], then imports the extracted file.
+ * - **Local share** ([importFromLocalDb]): Imports missing rows from an unverified peer DB.
  *
  * All produce temp SQLite files with the Kilter board schema (Aurora-style: climbs, climb_stats,
  * placements, holes, etc.), then bulk-insert into SQLDelight.
@@ -24,6 +25,38 @@ class BoardDatabaseImporter(
     private val boardRepository: BoardRepository,
     private val apkDownloader: ApkDownloader
 ) {
+    /**
+     * Trust belongs to the import entry point, never to columns inside the
+     * source DB. A peer-controlled SQLite file can claim any schema, origin,
+     * or setter pubkey it wants.
+     */
+    private enum class ClimbImportPolicy(
+        val acceptsCommunityProvenance: Boolean,
+        val refreshesExistingClimbs: Boolean,
+    ) {
+        /** Maintainer-authenticated Blossom chunks. */
+        AUTHENTICATED_CATALOGUE(
+            acceptsCommunityProvenance = true,
+            refreshesExistingClimbs = true,
+        ),
+
+        /** Legacy upstream catalogue: refresh data, but never assert Nostr identity. */
+        LEGACY_CATALOGUE(
+            acceptsCommunityProvenance = false,
+            refreshesExistingClimbs = true,
+        ),
+
+        /**
+         * Explicit local/WiFi share: climb rows are additive only and cannot
+         * assert community authorship. Public stats and geometry remain part
+         * of the catalogue payload the user explicitly chose to import.
+         */
+        UNVERIFIED_LOCAL_SHARE(
+            acceptsCommunityProvenance = false,
+            refreshesExistingClimbs = false,
+        ),
+    }
+
     companion object {
         private const val TAG = "BoardImporter"
         private const val BATCH_SIZE = 500
@@ -177,7 +210,12 @@ class BoardDatabaseImporter(
                     for ((i, file) in climbsDbFiles.withIndex()) {
                         val baseInserted = cumInserted; val baseScanned = cumScanned
                         openReadOnly(file) { rawDb ->
-                            importClimbs(rawDb, freshInstall = freshInstallClimbs, sharedTargetDb = sharedDb) { inserted, scanned, _ ->
+                            importClimbs(
+                                rawDb,
+                                freshInstall = freshInstallClimbs,
+                                sharedTargetDb = sharedDb,
+                                policy = ClimbImportPolicy.AUTHENTICATED_CATALOGUE,
+                            ) { inserted, scanned, _ ->
                                 onProgress?.invoke(ImportStep.ImportClimbs(
                                     baseInserted + inserted, baseScanned + scanned, grandClimbTotal
                                 ))
@@ -728,15 +766,20 @@ class BoardDatabaseImporter(
     }
 
     /**
-     * Import from a full uncompressed board DB (e.g. received via local WiFi share).
-     * This is the same as the legacy online import path.
+     * Import from a full uncompressed board DB received via local WiFi share.
+     * Peer climb rows are additive and cannot assert Nostr provenance or
+     * refresh climbs already present on the receiver.
      */
     @Synchronized
     fun importFromLocalDb(
         dbFile: File,
         onProgress: ((step: ImportStep) -> Unit)? = null
     ) {
-        importFromDbFile(dbFile, onProgress)
+        importFromDbFile(
+            dbFile = dbFile,
+            policy = ClimbImportPolicy.UNVERIFIED_LOCAL_SHARE,
+            onProgress = onProgress,
+        )
     }
 
     /**
@@ -757,7 +800,11 @@ class BoardDatabaseImporter(
             )
 
             onProgress?.invoke(ImportStep.Extract)
-            importFromDbFile(tempDb, onProgress)
+            importFromDbFile(
+                dbFile = tempDb,
+                policy = ClimbImportPolicy.LEGACY_CATALOGUE,
+                onProgress = onProgress,
+            )
         } finally {
             tempDb.delete()
         }
@@ -766,12 +813,14 @@ class BoardDatabaseImporter(
     // ── Shared import core ───────────────────────────────────────────
 
     /**
-     * Central import method used by both online and offline paths.
+     * Central import method used by both online and offline paths. [policy]
+     * carries the trust decision made by the caller into the merge logic.
      * Opens the raw-schema SQLite [dbFile], runs delta comparison if data
      * already exists, and bulk-inserts all tables into SQLDelight.
      */
     private fun importFromDbFile(
         dbFile: File,
+        policy: ClimbImportPolicy,
         onProgress: ((step: ImportStep) -> Unit)? = null
     ) {
         val snapshot = loadExistingSnapshot()
@@ -806,7 +855,11 @@ class BoardDatabaseImporter(
             if (isModernSource) preflightModernSource(dbFile)
             val (climbCount, statCount) = withDeferredIndexes {
                 onProgress?.invoke(ImportStep.ImportClimbs(0, 0, 0))
-                val climbs = importClimbs(rawDb, freshInstall = freshInstallClimbs) { inserted, scanned, total ->
+                val climbs = importClimbs(
+                    rawDb,
+                    freshInstall = freshInstallClimbs,
+                    policy = policy,
+                ) { inserted, scanned, total ->
                     onProgress?.invoke(ImportStep.ImportClimbs(inserted, scanned, total))
                 }
                 onProgress?.invoke(ImportStep.ImportStats(0, 0, 0))
@@ -842,7 +895,7 @@ class BoardDatabaseImporter(
             } else {
                 val hasLayout = snapshot != null && snapshot.placementCount > 0
                 val count = if (hasLayout) {
-                    snapshot!!.placementCount
+                    snapshot.placementCount
                 } else {
                     importPlacements(rawDb)
                 }
@@ -1057,9 +1110,15 @@ class BoardDatabaseImporter(
         existingUuids: Set<String>? = null,
         freshInstall: Boolean = false,
         sharedTargetDb: SQLiteDatabase? = null,
+        policy: ClimbImportPolicy,
         onProgress: ((inserted: Int, scanned: Int, total: Int) -> Unit)? = null
     ): Int {
-        val chunkPath = rawDb.path ?: return importClimbsLegacy(rawDb, existingUuids, onProgress)
+        val chunkPath = rawDb.path ?: return importClimbsLegacy(
+            rawDb = rawDb,
+            existingUuids = existingUuids,
+            allowExistingUpdates = policy.refreshesExistingClimbs,
+            onProgress = onProgress,
+        )
         val srcTable = resolveClimbsTable(rawDb)
         // sharedTargetDb is owned by the caller (importFromChunks holds one
         // connection per phase to avoid PRAGMA-roundtrip + page-cache-cold
@@ -1100,7 +1159,11 @@ class BoardDatabaseImporter(
             // works for fresh installs. Defensive — pre-Plan-C blobs
             // don't have it.
             val hasCreatedByPubkey = "created_by_pubkey" in srcCols
-            val pubkeyExpr = if (hasCreatedByPubkey) "created_by_pubkey" else "NULL"
+            val pubkeyExpr = if (hasCreatedByPubkey && policy.acceptsCommunityProvenance) {
+                "created_by_pubkey"
+            } else {
+                "NULL"
+            }
             // A climb that carries a setter pubkey is CruxCoach-authored — a
             // native Kilter climb never has one — so recognise it as
             // origin='cruxcoach' even when the blob's own origin column says
@@ -1111,10 +1174,18 @@ class BoardDatabaseImporter(
             // climbs as 'kilter' and stops recognising them as CruxCoach
             // climbs — no edit/publish actions, missing from the cruxcoach
             // filter. 21.sqm heals rows imported before this landed.
-            val originExpr = if (hasCreatedByPubkey)
+            val originExpr = if (!policy.acceptsCommunityProvenance) {
+                // Neither a schema marker nor peer-provided origin/pubkey
+                // authenticates authorship. Keep the row usable as catalogue
+                // data. A later maintainer-authenticated catalogue sync can
+                // restore verified community provenance for the same UUID.
+                "'kilter'"
+            } else if (hasCreatedByPubkey) {
                 "CASE WHEN created_by_pubkey IS NOT NULL AND created_by_pubkey != '' " +
                     "THEN 'cruxcoach' ELSE $baseOriginExpr END"
-            else baseOriginExpr
+            } else {
+                baseOriginExpr
+            }
             // board_brand exists on modern CruxCoach sources (the in-app
             // offline share serves the sender's own cruxcoach.db, which
             // carries EVERY brand's climbs); Kilter cron chunks are
@@ -1153,15 +1224,15 @@ class BoardDatabaseImporter(
             // target (chunk #1 just populated it) and would otherwise
             // wrongly re-enable the slow UPDATE path.
             //
-            // For incremental syncs (`freshInstall=false`), the UPDATE
-            // passes remain mandatory for content / tombstone / pubkey
-            // refresh.
-            val skipUpdatePasses = freshInstall
+            // Authenticated incremental catalogue syncs refresh existing
+            // content/tombstones/provenance. Unverified local shares stay
+            // additive even when the target is not a fresh install.
+            val updateExistingClimbs = !freshInstall && policy.refreshesExistingClimbs
             // countBefore is now only used for the inserted-count math
             // on the incremental path; on the fresh-install path we skip
             // it entirely (saves an O(N) PK-index scan on a 174k+ row
             // target before each chunk's batches).
-            val countBefore = if (skipUpdatePasses) 0L
+            val countBefore = if (freshInstall) 0L
             else queryLong(targetDb, "SELECT COUNT(*) FROM climbs")
             onProgress?.invoke(0, 0, total)
 
@@ -1281,7 +1352,7 @@ class BoardDatabaseImporter(
                     // Climbs authored via CruxCoach (origin='cruxcoach')
                     // have Nostr as their source of truth and are
                     // protected from blob refresh entirely.
-                    if (!skipUpdatePasses) {
+                    if (updateExistingClimbs) {
                         targetDb.execSQL("""
                             UPDATE climbs SET
                                 (layout_id, setter_username, name, frames,
@@ -1314,7 +1385,7 @@ class BoardDatabaseImporter(
                     // Splitting the listing flip into its own UPDATE
                     // pass keeps tombstone propagation working while
                     // separating it from the kilter content-refresh.
-                    if (!skipUpdatePasses) {
+                    if (updateExistingClimbs) {
                         targetDb.execSQL("""
                             UPDATE climbs SET is_listed = 0
                             WHERE is_listed = 1
@@ -1333,7 +1404,7 @@ class BoardDatabaseImporter(
                     // same on-disk state markCommunityClimbDeleted produces on
                     // live-sub devices. Kilter-origin is_listed=0 is a catalogue
                     // delist, NOT a deletion, so it is left untouched.
-                    if (!skipUpdatePasses) {
+                    if (updateExistingClimbs) {
                         targetDb.execSQL("""
                             UPDATE climbs SET is_deleted = 1
                             WHERE origin = 'cruxcoach'
@@ -1345,7 +1416,7 @@ class BoardDatabaseImporter(
                     // climbs (Plan C: cron resolves Kind-0 + writes the
                     // display_name into the blob). COALESCE keeps the
                     // local value when source is NULL.
-                    if (!skipUpdatePasses) {
+                    if (updateExistingClimbs) {
                         targetDb.execSQL("""
                             UPDATE climbs SET setter_username = COALESCE(
                                 (SELECT setter_username FROM chunk_norm
@@ -1357,7 +1428,7 @@ class BoardDatabaseImporter(
                         """)
                     }
                     // Origin upgrade — kilter→cruxcoach only (asymmetric).
-                    if (!skipUpdatePasses && hasOrigin) {
+                    if (updateExistingClimbs && hasOrigin && policy.acceptsCommunityProvenance) {
                         targetDb.execSQL("""
                             UPDATE climbs SET origin = 'cruxcoach'
                             WHERE origin != 'cruxcoach'
@@ -1365,7 +1436,7 @@ class BoardDatabaseImporter(
                         """)
                     }
                     // Pubkey backfill — fills NULL only, never overwrites.
-                    if (!skipUpdatePasses && hasCreatedByPubkey) {
+                    if (updateExistingClimbs && hasCreatedByPubkey && policy.acceptsCommunityProvenance) {
                         targetDb.execSQL("""
                             UPDATE climbs SET created_by_pubkey = (
                                 SELECT created_by_pubkey FROM chunk_norm
@@ -1406,7 +1477,7 @@ class BoardDatabaseImporter(
             // the progress callback.
             // Incremental path keeps the precise COUNT(*) so the UI's
             // "X new climbs" line is accurate.
-            val inserted = if (skipUpdatePasses) {
+            val inserted = if (freshInstall) {
                 scanned
             } else {
                 val countAfter = queryLong(targetDb, "SELECT COUNT(*) FROM climbs")
@@ -1418,7 +1489,12 @@ class BoardDatabaseImporter(
         } catch (e: Exception) {
             try { targetDb.execSQL("DETACH DATABASE src") } catch (_: Exception) {}
             Log.w(TAG, "ATTACH-import failed for climbs; falling back to legacy row-by-row", e)
-            return importClimbsLegacy(rawDb, existingUuids, onProgress)
+            return importClimbsLegacy(
+                rawDb = rawDb,
+                existingUuids = existingUuids,
+                allowExistingUpdates = policy.refreshesExistingClimbs,
+                onProgress = onProgress,
+            )
         } finally {
             if (ownsTargetDb) targetDb.close()
         }
@@ -1432,6 +1508,7 @@ class BoardDatabaseImporter(
     private fun importClimbsLegacy(
         rawDb: SQLiteDatabase,
         existingUuids: Set<String>? = null,
+        allowExistingUpdates: Boolean = true,
         onProgress: ((inserted: Int, scanned: Int, total: Int) -> Unit)? = null
     ): Int {
         val srcTable = resolveClimbsTable(rawDb)
@@ -1457,7 +1534,9 @@ class BoardDatabaseImporter(
                 // on the same string regardless of which path the chunk
                 // took to get here.
                 val uuid = it.getString(0).lowercase()
-                if (existingUuids != null && uuid in existingUuids) {
+                if ((existingUuids != null && uuid in existingUuids) ||
+                    (!allowExistingUpdates && boardRepository.climbExistsByUuid(uuid))
+                ) {
                     if (scanned % (BATCH_SIZE * 4) == 0) onProgress?.invoke(inserted, scanned, total)
                     continue
                 }

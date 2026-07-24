@@ -1032,6 +1032,13 @@ interface CommunityClimbQueries {
      */
     fun insertTombstoneShell(uuid: String, pubkey: String, dTag: String, tombstoneIso: String)
     /**
+     * Atomically remove a synthetic tombstone shell owned by a different
+     * author so a genuine event can reclaim its uuid. Real deleted climbs and
+     * same-author shells are never removed. Returns true only when a shell was
+     * recognized and deleted.
+     */
+    fun removeForeignTombstoneShell(uuid: String, incomingPubkey: String): Boolean = false
+    /**
      * Bundle of fields the CommunityClimbDeleter reads in one go: the
      * d-tag + last published event id (for NIP-09 `a`+`e` tags), the
      * row's author (owner check), Kilter publish status (UI hint), and

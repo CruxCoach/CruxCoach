@@ -32,12 +32,11 @@ import org.robolectric.RobolectricTestRunner
  *  - multi-brand climbs keep their board_brand (pre-fix: a modern source
  *    collapsed every MoonBoard/Aurora climb onto 'kilter'),
  *  - the sender's private drafts (source='local') stay private,
- *  - community provenance (origin='cruxcoach' + created_by_pubkey)
- *    survives the transfer,
+ *  - unverified community provenance is stripped at the peer boundary,
  *  - sync_states resolves the modern marker table,
- *  - on an existing install: tombstones delist, content refreshes, and
- *    geometry for a brand the receiver doesn't have yet still lands
- *    (the modern path is deliberately not gated on hasLayout).
+ *  - on an existing install: peer climb rows cannot refresh/delist existing
+ *    climbs, while new catalogue rows and public stats/geometry still land
+ *    (the modern geometry path is deliberately not gated on hasLayout).
  *
  * Same Robolectric setup rationale as [BoardChunkImportOriginUpgradeTest]:
  * ANDROID SQLDelight driver (not JDBC — DriverManager inside the
@@ -171,7 +170,7 @@ class LocalShareModernSchemaTest {
         }
 
     @Test
-    fun freshInstall_importCompletes_withBrandsDraftsAndProvenanceIntact() {
+    fun freshInstall_importCompletes_withBrandsDraftsPrivateAndProvenanceStripped() {
         val steps = mutableListOf<BoardDatabaseImporter.ImportStep>()
         importer.importFromLocalDb(srcPath) { steps += it }
 
@@ -184,12 +183,14 @@ class LocalShareModernSchemaTest {
             // Brand survives (pre-fix: everything collapsed onto 'kilter').
             assertEquals(1, countWhere(db, "climbs", "uuid = '$moonUuid' AND board_brand = 'moonboard'"))
             assertEquals(1, countWhere(db, "climbs", "uuid = '$kilterUuid' AND board_brand = 'kilter'"))
-            // Community provenance intact.
+            // A peer-controlled DB has no signed Nostr event with which to
+            // bind this UUID to its claimed author. Keep it usable as
+            // catalogue data without materialising asserted authorship.
             assertEquals(
                 1,
                 countWhere(
                     db, "climbs",
-                    "uuid = '$communityUuid' AND origin = 'cruxcoach' AND created_by_pubkey = '$authorPubkey'"
+                    "uuid = '$communityUuid' AND origin = 'kilter' AND created_by_pubkey IS NULL"
                 )
             )
             // The sender's private draft stays private; tombstones aren't materialised.
@@ -292,11 +293,11 @@ class LocalShareModernSchemaTest {
     }
 
     @Test
-    fun existingInstall_mergesNewBrand_refreshesContent_andDelistsTombstones() {
+    fun existingInstall_addsNewRows_butCannotRewriteOrReclassifyExistingClimbs() {
         openTarget().use { db ->
             // Existing kilter row with stale content + a row the sender has
-            // since tombstoned. Non-empty climbs table → incremental path
-            // (UPDATE passes active).
+            // since tombstoned. A local share may add missing rows, but its
+            // unsigned claims must not activate normal catalogue UPDATEs.
             db.execSQL(
                 """
                 INSERT INTO climbs(uuid, layout_id, setter_username, name, frames,
@@ -315,15 +316,38 @@ class LocalShareModernSchemaTest {
                     1, 1, '2026-01-01 00:00:00', '', 0, 0, 0, 3, 'kilter', 'synced', 'kilter', 'kilter')
                 """.trimIndent()
             )
+            // The peer source claims this UUID is a community climb authored
+            // by authorPubkey. Existing trusted local content/provenance wins.
+            db.execSQL(
+                """
+                INSERT INTO climbs(uuid, layout_id, setter_username, name, frames,
+                    frames_count, is_listed, created_at, description, is_nomatch,
+                    frames_pace, hsm, move_count, source, sync_status, origin, board_brand)
+                VALUES ('$communityUuid', 1, 'trusted-setter', 'Trusted Existing', 'p1100r12',
+                    1, 1, '2026-01-01 00:00:00', 'trusted description', 0, 0, 0, 1,
+                    'kilter', 'synced', 'kilter', 'kilter')
+                """.trimIndent()
+            )
         }
 
         importer.importFromLocalDb(srcPath)
 
         openTarget().use { db ->
-            // Content refresh from the sender's copy.
-            assertEquals(1, countWhere(db, "climbs", "uuid = '$kilterUuid' AND name = 'Kilter Classic'"))
-            // Sender's tombstone delists the local row without wiping it.
-            assertEquals(1, countWhere(db, "climbs", "uuid = '$tombstoneUuid' AND is_listed = 0 AND name = 'Gone Climb'"))
+            // Existing catalogue content is authoritative over the unsigned
+            // peer copy, including the peer's claimed tombstone.
+            assertEquals(1, countWhere(db, "climbs", "uuid = '$kilterUuid' AND name = 'Stale Name'"))
+            assertEquals(1, countWhere(db, "climbs", "uuid = '$tombstoneUuid' AND is_listed = 1 AND name = 'Gone Climb'"))
+            // Claimed community authorship cannot reclassify/backfill an
+            // existing row or replace its trusted local fields.
+            assertEquals(
+                1,
+                countWhere(
+                    db,
+                    "climbs",
+                    "uuid = '$communityUuid' AND name = 'Trusted Existing' " +
+                        "AND frames = 'p1100r12' AND origin = 'kilter' AND created_by_pubkey IS NULL",
+                ),
+            )
             // New brand still arrives on a non-fresh install…
             assertEquals(1, countWhere(db, "climbs", "uuid = '$moonUuid' AND board_brand = 'moonboard'"))
             // …and so does its geometry (modern path has no hasLayout gate).

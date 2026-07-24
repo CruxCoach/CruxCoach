@@ -727,6 +727,24 @@ class BoardRepositoryImpl(
         )
     }
 
+    override fun removeForeignTombstoneShell(uuid: String, incomingPubkey: String): Boolean {
+        var removed = false
+        q.transaction {
+            val isForeignShell = q.isForeignTombstoneShell(
+                uuid = uuid,
+                incoming_pubkey = incomingPubkey,
+            ).executeAsOneOrNull() != null
+            if (isForeignShell) {
+                q.deleteForeignTombstoneShell(
+                    uuid = uuid,
+                    incoming_pubkey = incomingPubkey,
+                )
+                removed = true
+            }
+        }
+        return removed
+    }
+
     override fun getCommunityClimbDeleteContext(uuid: String): CommunityClimbDeleteContext? {
         val row = q.getCommunityClimbDeleteContext(uuid).executeAsOneOrNull() ?: return null
         return CommunityClimbDeleteContext(
